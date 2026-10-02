@@ -71,6 +71,11 @@ carry secrets. Server errors (5xx) log at `ERROR` level. A handler panic
 returns a 500 Problem Details response and logs `msg=panic` with its stack
 trace; the panic value never reaches the client.
 
+Each response has an `X-Request-ID` header, and that request's log lines
+carry the same value as `request_id`. Quote it when reporting a failed
+request. An incoming `X-Request-ID` that parses as a UUID, e.g. nginx's
+`$request_id`, is reused unchanged; any other value is replaced.
+
 From `backend`, check the code:
 
 ```sh
