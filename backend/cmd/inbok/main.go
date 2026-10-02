@@ -1,9 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -18,23 +19,22 @@ type healthResponse struct {
 }
 
 func main() {
-	// Report whether this process can answer HTTP requests.
-	mux := http.NewServeMux()
-	mux.HandleFunc(http.MethodGet+" "+healthPath, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+	router := gin.New()
+	router.HandleMethodNotAllowed = true
 
+	// Report whether this process can answer HTTP requests.
+	health := func(ctx *gin.Context) {
 		response := healthResponse{}
 		response.Data.Status = "ok"
+		ctx.JSON(http.StatusOK, response)
+	}
 
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			log.Printf("write health response: %v", err)
-		}
-	})
+	router.GET(healthPath, health)
+	router.HEAD(healthPath, health)
 
 	server := http.Server{
 		Addr:    listenAddr,
-		Handler: mux,
+		Handler: router,
 	}
 
 	log.Printf("starting HTTP server on http://%s", listenAddr)
