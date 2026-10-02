@@ -12,7 +12,7 @@ import (
 )
 
 func TestHealth(t *testing.T) {
-	router := New(testAddr).Handler()
+	router := New().Handler()
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/health", nil))
 
@@ -89,7 +89,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestHealthHead(t *testing.T) {
-	router := New(testAddr).Handler()
+	router := New().Handler()
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodHead, "/api/v0/health", nil))
 
@@ -107,7 +107,7 @@ func TestHealthHead(t *testing.T) {
 }
 
 func TestHealthOpenAPI(t *testing.T) {
-	a := New(testAddr)
+	a := New()
 	router, api := a.Handler(), a.api
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/openapi.json", nil))
@@ -125,7 +125,7 @@ func TestHealthOpenAPI(t *testing.T) {
 		t.Fatalf("OpenAPI version = %v", document["openapi"])
 	}
 
-	if servers := api.OpenAPI().Servers; len(servers) != 1 || servers[0].URL != "http://127.0.0.1:8080/api/v0" {
+	if servers := api.OpenAPI().Servers; len(servers) != 1 || servers[0].URL != "/api/v0" {
 		t.Fatalf("API servers = %v, want the versioned base URL", servers)
 	}
 
@@ -164,7 +164,7 @@ func TestHealthOpenAPI(t *testing.T) {
 		t.Fatal("success schema must document its read-only schema metadata")
 	}
 
-	wantSchemaURL := "http://127.0.0.1:8080/api/v0/schemas/HealthResponse.json"
+	wantSchemaURL := "/api/v0/schemas/HealthResponse.json"
 	if !reflect.DeepEqual(metadata.Examples, []any{wantSchemaURL}) {
 		t.Fatalf("schema URL examples = %v, want %q", metadata.Examples, wantSchemaURL)
 	}

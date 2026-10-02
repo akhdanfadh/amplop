@@ -30,8 +30,9 @@ Operation IDs use camelCase. A shared typed response helper will be added
 when the probe introduces another payload.
 
 Huma's operation metadata and Go response types define the API contract.
-The API base URL is `http://127.0.0.1:8080/api/v0`; operation paths such as
-`/health` are relative to that base URL.
+The API base path is `/api/v0`; operation paths such as `/health` are
+relative to it. The OpenAPI document advertises this relative base, so it
+works on whatever host serves it. Locally, that is `http://127.0.0.1:8080`.
 View its documentation at `http://127.0.0.1:8080/api/v0/docs` and its OpenAPI
 document at `http://127.0.0.1:8080/api/v0/openapi.json`.
 
@@ -52,6 +53,16 @@ validation, application failures, and browser error handling. Map service
 errors in the HTTP layer.
 
 Stop the server with Ctrl+C.
+
+`serve` reads these environment variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `INBOK_HTTP_ADDR` | `127.0.0.1:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
+| `GIN_MODE` | `debug` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
+
+`export` reads none of them, so the committed document is the same on every
+machine.
 
 From `backend`, check the code:
 

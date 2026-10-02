@@ -21,7 +21,7 @@ func TestExport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want, err := httpapi.New(listenAddr).OpenAPI()
+	want, err := httpapi.New().OpenAPI()
 	if err != nil {
 		t.Fatal(err)
 	}

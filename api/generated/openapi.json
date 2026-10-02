@@ -24,7 +24,7 @@
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
             "examples": [
-              "http://127.0.0.1:8080/api/v0/schemas/ErrorModel.json"
+              "/api/v0/schemas/ErrorModel.json"
             ],
             "format": "uri",
             "readOnly": true,
@@ -88,7 +88,7 @@
           "$schema": {
             "description": "A URL to the JSON Schema for this object.",
             "examples": [
-              "http://127.0.0.1:8080/api/v0/schemas/HealthResponse.json"
+              "/api/v0/schemas/HealthResponse.json"
             ],
             "format": "uri",
             "readOnly": true,
@@ -183,7 +183,7 @@
   },
   "servers": [
     {
-      "url": "http://127.0.0.1:8080/api/v0"
+      "url": "/api/v0"
     }
   ]
 }

@@ -18,14 +18,16 @@ type API struct {
 	api    huma.API
 }
 
-// New registers every operation. addr appears in the OpenAPI server URL.
-func New(addr string) *API {
+// New registers every operation.
+func New() *API {
 	router := gin.New()
 	router.HandleMethodNotAllowed = true
 	group := router.Group(apiPrefix)
 
 	config := huma.DefaultConfig("inbok", "0.0.0")
-	config.Servers = []*huma.Server{{URL: "http://" + addr + apiPrefix}}
+	// A relative server URL resolves against wherever the document is
+	// served, e.g. https://mail.example.com/api/v0, with no host config.
+	config.Servers = []*huma.Server{{URL: apiPrefix}}
 
 	api := humagin.NewWithGroup(router, group, config)
 

@@ -6,13 +6,11 @@ import (
 	"net/http"
 	"os"
 
+	"inbok/internal/config"
 	"inbok/internal/httpapi"
 )
 
-const (
-	listenAddr = "127.0.0.1:8080"
-	exportPerm = 0o644 // new files: owner writes, everyone reads
-)
+const exportPerm = 0o644 // new files: owner writes, everyone reads
 
 var errUsage = errors.New("usage: inbok serve | inbok export <path>")
 
@@ -38,18 +36,23 @@ func run(args []string) error {
 }
 
 func serve() error {
-	server := http.Server{
-		Addr:    listenAddr,
-		Handler: httpapi.New(listenAddr).Handler(),
+	cfg, err := config.Load()
+	if err != nil {
+		return err
 	}
 
-	log.Printf("starting HTTP server on http://%s", listenAddr)
+	server := http.Server{
+		Addr:    cfg.HTTPAddr,
+		Handler: httpapi.New().Handler(),
+	}
+
+	log.Printf("starting HTTP server on http://%s", cfg.HTTPAddr)
 	return server.ListenAndServe()
 }
 
 // export writes the OpenAPI document to path without starting a listener.
 func export(path string) error {
-	doc, err := httpapi.New(listenAddr).OpenAPI()
+	doc, err := httpapi.New().OpenAPI()
 	if err != nil {
 		return err
 	}
