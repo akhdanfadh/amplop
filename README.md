@@ -64,6 +64,10 @@ Stop the server with Ctrl+C.
 `export` reads none of them, so the committed document is the same on every
 machine.
 
+`serve` writes text logs to stderr, one line per request with its method,
+path, status, and duration. The query string is never logged because it may
+carry secrets. Server errors (5xx) log at `ERROR` level.
+
 From `backend`, check the code:
 
 ```sh

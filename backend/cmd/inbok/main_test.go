@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,9 +11,11 @@ import (
 	"inbok/internal/httpapi"
 )
 
+var discard = slog.New(slog.DiscardHandler)
+
 func TestExport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "openapi.json")
-	if err := run([]string{"export", path}); err != nil {
+	if err := run([]string{"export", path}, discard); err != nil {
 		t.Fatal(err)
 	}
 
@@ -21,7 +24,7 @@ func TestExport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want, err := httpapi.New().OpenAPI()
+	want, err := httpapi.New(discard).OpenAPI()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +37,7 @@ func TestExport(t *testing.T) {
 func TestRunUsage(t *testing.T) {
 	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"export"}, {"export", "a", "b"}}
 	for _, args := range cases {
-		if err := run(args); !errors.Is(err, errUsage) {
+		if err := run(args, discard); !errors.Is(err, errUsage) {
 			t.Fatalf("run(%q) = %v, want usage error", args, err)
 		}
 	}

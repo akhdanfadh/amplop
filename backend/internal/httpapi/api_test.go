@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -10,8 +11,11 @@ import (
 	"testing"
 )
 
+// discard silences request logs in tests that do not inspect them.
+var discard = slog.New(slog.DiscardHandler)
+
 func TestAPIDocs(t *testing.T) {
-	router := New().Handler()
+	router := New(discard).Handler()
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/docs", nil))
 
@@ -25,7 +29,7 @@ func TestAPIDocs(t *testing.T) {
 }
 
 func TestOpenAPI(t *testing.T) {
-	a := New()
+	a := New(discard)
 	doc, err := a.OpenAPI()
 	if err != nil {
 		t.Fatal(err)

@@ -3,6 +3,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -18,9 +19,10 @@ type API struct {
 	api    huma.API
 }
 
-// New registers every operation.
-func New() *API {
+// New registers every operation. logger receives one line per request.
+func New(logger *slog.Logger) *API {
 	router := gin.New()
+	router.Use(withRequestLog(logger))
 	router.HandleMethodNotAllowed = true
 	group := router.Group(apiPrefix)
 

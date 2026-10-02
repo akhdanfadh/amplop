@@ -12,7 +12,7 @@ import (
 )
 
 func TestHealth(t *testing.T) {
-	router := New().Handler()
+	router := New(discard).Handler()
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/health", nil))
 
@@ -89,7 +89,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestHealthHead(t *testing.T) {
-	router := New().Handler()
+	router := New(discard).Handler()
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodHead, "/api/v0/health", nil))
 
@@ -107,7 +107,7 @@ func TestHealthHead(t *testing.T) {
 }
 
 func TestHealthOpenAPI(t *testing.T) {
-	a := New()
+	a := New(discard)
 	router, api := a.Handler(), a.api
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/openapi.json", nil))
