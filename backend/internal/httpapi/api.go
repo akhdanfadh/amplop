@@ -22,7 +22,8 @@ type API struct {
 // New registers every operation. logger receives one line per request.
 func New(logger *slog.Logger) *API {
 	router := gin.New()
-	router.Use(withRequestLog(logger))
+	// Recovery runs inside the request log, so a panic is logged as 500.
+	router.Use(withRequestLog(logger), withRecovery(logger))
 	router.HandleMethodNotAllowed = true
 	group := router.Group(apiPrefix)
 

@@ -66,7 +66,9 @@ machine.
 
 `serve` writes text logs to stderr, one line per request with its method,
 path, status, and duration. The query string is never logged because it may
-carry secrets. Server errors (5xx) log at `ERROR` level.
+carry secrets. Server errors (5xx) log at `ERROR` level. A handler panic
+returns a 500 Problem Details response and logs `msg=panic` with its stack
+trace; the panic value never reaches the client.
 
 From `backend`, check the code:
 

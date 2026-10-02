@@ -44,8 +44,8 @@ func serve(logger *slog.Logger) error {
 		return err
 	}
 
-	// ErrorLog routes net/http's internal errors, e.g. a panic in a
-	// handler, into the same log.
+	// ErrorLog routes net/http's internal errors, e.g. a failed TLS
+	// handshake, into the same log.
 	server := http.Server{
 		Addr:     cfg.HTTPAddr,
 		Handler:  httpapi.New(logger).Handler(),
