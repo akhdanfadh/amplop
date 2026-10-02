@@ -65,6 +65,11 @@ The probe will demonstrate Huma's Problem Details errors for field
 validation, application failures, and browser error handling. Map service
 errors in the HTTP layer.
 
+Error responses never echo input values (`errors[].value` is removed), and
+a 5xx response keeps its `detail` but drops `errors[]`: a handler's raw Go
+error is logged as `msg="unexpected error"` with the request ID instead of
+being sent to the client.
+
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and
 gives in-flight requests up to 5 seconds to finish.
 

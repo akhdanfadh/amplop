@@ -36,6 +36,11 @@ func New(logger *slog.Logger) *API {
 	// served, e.g. https://mail.example.com/api/v0, with no host config.
 	config.Servers = []*huma.Server{{URL: apiPrefix}}
 
+	// Stop error responses leaking internals or user input. These run
+	// before Huma's $schema transformer, which it adds when the API is
+	// created and which turns the error into a new type.
+	config.Transformers = []huma.Transformer{hideServerErrors(logger), hideInputValues}
+
 	api := humagin.NewWithGroup(router, group, config)
 
 	// Huma v2.39.1 omits the API prefix in nested JSON Schema references;
