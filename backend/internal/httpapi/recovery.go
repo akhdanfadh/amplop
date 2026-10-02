@@ -1,12 +1,10 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
 
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,14 +36,7 @@ func withRecovery(logger *slog.Logger) gin.HandlerFunc {
 
 			// Same body as Huma's own unexpected errors; the panic value
 			// stays in the log, never in the response.
-			body, err := json.Marshal(huma.NewError(http.StatusInternalServerError, "unexpected error occurred"))
-			if err != nil {
-				ctx.AbortWithStatus(http.StatusInternalServerError)
-				return
-			}
-
-			ctx.Data(http.StatusInternalServerError, "application/problem+json", body)
-			ctx.Abort()
+			writeProblem(ctx, http.StatusInternalServerError, "unexpected error occurred")
 		}()
 
 		ctx.Next()

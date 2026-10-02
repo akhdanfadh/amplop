@@ -70,6 +70,9 @@ a 5xx response keeps its `detail` but drops `errors[]`: a handler's raw Go
 error is logged as `msg="unexpected error"` with the request ID instead of
 being sent to the client.
 
+Unknown routes (404) and unsupported methods (405, with an `Allow` header)
+return the same Problem Details, never Gin's plain-text bodies.
+
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and
 gives in-flight requests up to 5 seconds to finish.
 

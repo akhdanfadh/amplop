@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/gin-gonic/gin"
 )
 
 // hideServerErrors logs a 5xx error's details and removes them from the
@@ -40,4 +42,17 @@ func hideInputValues(_ huma.Context, _ string, v any) (any, error) {
 	}
 
 	return e, nil
+}
+
+// writeProblem answers a request Huma never handles, e.g. a Gin 404 or a
+// recovered panic, with the same Problem Details body Huma writes.
+func writeProblem(ctx *gin.Context, status int, detail string) {
+	body, err := json.Marshal(huma.NewError(status, detail))
+	if err != nil {
+		ctx.AbortWithStatus(status)
+		return
+	}
+
+	ctx.Data(status, "application/problem+json", body)
+	ctx.Abort()
 }

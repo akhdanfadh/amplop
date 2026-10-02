@@ -29,6 +29,8 @@ func New(logger *slog.Logger) *API {
 	// the request log, so a panic is logged as 500.
 	router.Use(withRequestID(), withRequestLog(logger), withRecovery(logger))
 	router.HandleMethodNotAllowed = true
+	router.NoRoute(handleNoRoute)
+	router.NoMethod(handleNoMethod)
 	group := router.Group(apiPrefix)
 
 	config := huma.DefaultConfig("inbok", "0.0.0")
@@ -66,4 +68,15 @@ func (a *API) OpenAPI() ([]byte, error) {
 		return nil, err
 	}
 	return append(doc, '\n'), nil
+}
+
+// handleNoRoute replaces Gin's plain-text 404 with Problem Details.
+func handleNoRoute(ctx *gin.Context) {
+	writeProblem(ctx, http.StatusNotFound, "route not found")
+}
+
+// handleNoMethod replaces Gin's plain-text 405 with Problem Details. Gin
+// still sets the Allow header, e.g. "GET, HEAD".
+func handleNoMethod(ctx *gin.Context) {
+	writeProblem(ctx, http.StatusMethodNotAllowed, "method not allowed")
 }
