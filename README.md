@@ -9,6 +9,19 @@ cd backend
 go run ./cmd/inbok serve
 ```
 
+Or, to rebuild and restart the server whenever a Go file changes, use
+[Air](https://github.com/air-verse/air). Its version is pinned in
+`backend/tools.mod`, separate from the server's own dependencies in
+`go.mod`:
+
+```sh
+cd backend
+go tool -modfile=tools.mod air
+```
+
+Edits to `_test.go` files do not trigger a restart. The first run downloads
+Air's dependencies.
+
 In another terminal, check process health:
 
 ```sh

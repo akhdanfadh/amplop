@@ -1,0 +1,20 @@
+# Air rebuilds and restarts `inbok serve` when a Go file changes.
+# Run from backend: go tool -modfile=tools.mod air
+# Settings not listed here use Air's defaults.
+
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/inbok ./cmd/inbok"
+entrypoint = ["./tmp/inbok", "serve"]
+include_ext = ["go"]
+exclude_dir = ["tmp"]
+exclude_regex = ["_test\\.go$"]
+
+# Stop with SIGINT so serve shuts down gracefully. Force-kill only after
+# serve's 5s shutdown timeout has passed.
+send_interrupt = true
+kill_delay = "6s"
+
+[misc]
+clean_on_exit = true
