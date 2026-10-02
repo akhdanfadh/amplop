@@ -18,14 +18,30 @@ curl --fail-with-body http://127.0.0.1:8080/api/v0/health
 Expect HTTP 200 with:
 
 ```json
-{"data":{"status":"ok"}}
+{
+  "$schema": "http://127.0.0.1:8080/api/v0/schemas/HealthResponse.json",
+  "data": {"status": "ok"}
+}
 ```
 
-JSON success responses put their payload in `data`.
+JSON success responses put their payload in `data`. Huma adds `$schema`
+metadata and a `Link` header so tools can discover the response schema.
+Operation IDs use camelCase. A shared typed response helper will be added
+when the probe introduces another payload.
 
-When Huma is added, errors will use its Problem Details format. The probe
-will demonstrate field validation, application failures, and browser error
-handling. Map service errors in the HTTP layer.
+Huma's operation metadata and Go response types define the API contract.
+The API base URL is `http://127.0.0.1:8080/api/v0`; operation paths such as
+`/health` are relative to that base URL.
+View its documentation at `http://127.0.0.1:8080/api/v0/docs` and its OpenAPI
+document at `http://127.0.0.1:8080/api/v0/openapi.json`.
+
+Huma v2.39.1 omits the API prefix in nested JSON Schema references. A
+temporary `/schemas/...` redirect sends those requests to
+`/api/v0/schemas/...`. Remove it when Huma fixes grouped schema references.
+
+The probe will demonstrate Huma's Problem Details errors for field
+validation, application failures, and browser error handling. Map service
+errors in the HTTP layer.
 
 Stop the server with Ctrl+C.
 
