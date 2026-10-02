@@ -6,7 +6,7 @@ From the repository root, start the development server:
 
 ```sh
 cd backend
-go run ./cmd/inbok
+go run ./cmd/inbok serve
 ```
 
 In another terminal, check process health:
@@ -34,6 +34,14 @@ The API base URL is `http://127.0.0.1:8080/api/v0`; operation paths such as
 `/health` are relative to that base URL.
 View its documentation at `http://127.0.0.1:8080/api/v0/docs` and its OpenAPI
 document at `http://127.0.0.1:8080/api/v0/openapi.json`.
+
+The committed copy of that document is `api/generated/openapi.json`. After
+changing an operation, regenerate it from `backend` without starting the
+server:
+
+```sh
+go run ./cmd/inbok export ../api/generated/openapi.json
+```
 
 Huma v2.39.1 omits the API prefix in nested JSON Schema references. A
 temporary `/schemas/...` redirect sends those requests to

@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -11,8 +12,14 @@ import (
 
 const apiPrefix = "/api/v0"
 
-// New returns the HTTP handler and its API description for addr.
-func New(addr string) (http.Handler, huma.API) {
+// API serves inbok's HTTP operations and describes them as OpenAPI.
+type API struct {
+	router *gin.Engine
+	api    huma.API
+}
+
+// New registers every operation. addr appears in the OpenAPI server URL.
+func New(addr string) *API {
 	router := gin.New()
 	router.HandleMethodNotAllowed = true
 	group := router.Group(apiPrefix)
@@ -30,5 +37,19 @@ func New(addr string) (http.Handler, huma.API) {
 
 	registerHealth(api)
 
-	return router, api
+	return &API{router: router, api: api}
+}
+
+// Handler returns the handler for every registered route.
+func (a *API) Handler() http.Handler {
+	return a.router
+}
+
+// OpenAPI returns the document indented, so committed copies diff well.
+func (a *API) OpenAPI() ([]byte, error) {
+	doc, err := json.MarshalIndent(a.api.OpenAPI(), "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(doc, '\n'), nil
 }
