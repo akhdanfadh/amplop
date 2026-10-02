@@ -52,7 +52,8 @@ The probe will demonstrate Huma's Problem Details errors for field
 validation, application failures, and browser error handling. Map service
 errors in the HTTP layer.
 
-Stop the server with Ctrl+C.
+Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and
+gives in-flight requests up to 5 seconds to finish.
 
 `serve` reads these environment variables:
 
