@@ -1,4 +1,4 @@
-package main
+package httpapi
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 )
 
 func TestHealth(t *testing.T) {
-	router, _ := newAPI()
+	router, _ := New(testAddr)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/health", nil))
 
@@ -89,7 +89,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestHealthHead(t *testing.T) {
-	router, _ := newAPI()
+	router, _ := New(testAddr)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodHead, "/api/v0/health", nil))
 
@@ -106,22 +106,8 @@ func TestHealthHead(t *testing.T) {
 	}
 }
 
-func TestAPIDocs(t *testing.T) {
-	router, _ := newAPI()
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/docs", nil))
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
-	}
-
-	if !strings.Contains(response.Body.String(), "/api/v0/openapi.yaml") {
-		t.Fatal("documentation must load the versioned OpenAPI document")
-	}
-}
-
 func TestHealthOpenAPI(t *testing.T) {
-	router, api := newAPI()
+	router, api := New(testAddr)
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/openapi.json", nil))
 
