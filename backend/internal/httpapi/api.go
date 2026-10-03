@@ -38,18 +38,16 @@ func New(logger *slog.Logger) *API {
 	// served, e.g. https://mail.example.com/api/v0, with no host config.
 	config.Servers = []*huma.Server{{URL: apiPrefix}}
 
-	// Stop error responses leaking internals or user input. These run
-	// before Huma's $schema transformer, which it adds when the API is
-	// created and which turns the error into a new type.
+	// No $schema field, Link header, or /schemas route: their URLs follow
+	// the request's Host header and break behind a proxy. Clients read
+	// schemas from the OpenAPI document instead.
+	config.CreateHooks = nil
+	config.SchemasPath = ""
+
+	// Stop error responses leaking internals or user input.
 	config.Transformers = []huma.Transformer{hideServerErrors(logger), hideInputValues}
 
 	api := humagin.NewWithGroup(router, group, config)
-
-	// Huma v2.39.1 omits the API prefix in nested JSON Schema references;
-	// this is a workaround.
-	router.GET("/schemas/:schema", func(ctx *gin.Context) {
-		ctx.Redirect(http.StatusTemporaryRedirect, apiPrefix+ctx.Request.URL.Path)
-	})
 
 	registerHealth(api)
 

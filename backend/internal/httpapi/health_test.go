@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
@@ -33,58 +32,13 @@ func TestHealth(t *testing.T) {
 		t.Fatalf("data = %v", body["data"])
 	}
 
-	schemaURL, ok := body["$schema"].(string)
-	if !ok || len(body) != 2 {
-		t.Fatalf("body must contain data and schema metadata: %v", body)
+	// No $schema metadata: the body is exactly the data envelope.
+	if len(body) != 1 {
+		t.Fatalf("body must contain only data: %v", body)
 	}
 
-	schema, err := url.Parse(schemaURL)
-	if err != nil || !schema.IsAbs() || !strings.HasPrefix(schema.Path, "/api/v0/schemas/") {
-		t.Fatalf("schema URL = %q", schemaURL)
-	}
-
-	if link := response.Header().Get("Link"); !strings.Contains(link, "<"+schema.Path+">") {
-		t.Fatalf("Link = %q, schema URL = %q", link, schemaURL)
-	}
-
-	// The advertised schema must be served by the same API.
-	schemaResponse := httptest.NewRecorder()
-	router.ServeHTTP(schemaResponse, httptest.NewRequest(http.MethodGet, schema.Path, nil))
-	if schemaResponse.Code != http.StatusOK || !json.Valid(schemaResponse.Body.Bytes()) {
-		t.Fatalf("schema response = %d %s", schemaResponse.Code, schemaResponse.Body.String())
-	}
-
-	var definition struct {
-		Properties map[string]struct {
-			Ref string `json:"$ref"`
-		} `json:"properties"`
-	}
-	if err := json.Unmarshal(schemaResponse.Body.Bytes(), &definition); err != nil {
-		t.Fatal(err)
-	}
-
-	dataRef, err := url.Parse(definition.Properties["data"].Ref)
-	if err != nil || dataRef.Path == "" {
-		t.Fatalf("data schema reference = %q", definition.Properties["data"].Ref)
-	}
-
-	dataURL := schema.ResolveReference(dataRef)
-	dataResponse := httptest.NewRecorder()
-	router.ServeHTTP(dataResponse, httptest.NewRequest(http.MethodGet, dataURL.Path, nil))
-
-	if dataResponse.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("unprefixed schema status = %d, want %d", dataResponse.Code, http.StatusTemporaryRedirect)
-	}
-
-	location := dataResponse.Header().Get("Location")
-	if location != "/api/v0"+dataURL.Path {
-		t.Fatalf("schema redirect = %q", location)
-	}
-
-	dataResponse = httptest.NewRecorder()
-	router.ServeHTTP(dataResponse, httptest.NewRequest(http.MethodGet, location, nil))
-	if dataResponse.Code != http.StatusOK || !json.Valid(dataResponse.Body.Bytes()) {
-		t.Fatalf("data schema %q = %d %s", location, dataResponse.Code, dataResponse.Body.String())
+	if link := response.Header().Get("Link"); link != "" {
+		t.Fatalf("Link = %q, want none", link)
 	}
 }
 
@@ -159,14 +113,8 @@ func TestHealthOpenAPI(t *testing.T) {
 		t.Fatal("success schema must contain the data envelope")
 	}
 
-	metadata := schema.Properties["$schema"]
-	if metadata == nil || metadata.Type != "string" || !metadata.ReadOnly {
-		t.Fatal("success schema must document its read-only schema metadata")
-	}
-
-	wantSchemaURL := "/api/v0/schemas/HealthResponse.json"
-	if !reflect.DeepEqual(metadata.Examples, []any{wantSchemaURL}) {
-		t.Fatalf("schema URL examples = %v, want %q", metadata.Examples, wantSchemaURL)
+	if schema.Properties["$schema"] != nil {
+		t.Fatal("success schema must not document $schema metadata")
 	}
 
 	if data.Ref != "" {

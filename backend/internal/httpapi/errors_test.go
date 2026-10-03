@@ -186,12 +186,12 @@ func TestSharedErrorUnchanged(t *testing.T) {
 	}
 }
 
-// Other errors pass through unchanged, $schema included.
+// Other errors pass through unchanged.
 func TestClientErrorUnchanged(t *testing.T) {
 	response := post(errorAPI(discard), `{"note":"missing","password":"x"}`)
 
 	body := decodeJSON(t, response.Body.Bytes())
-	if response.Code != http.StatusNotFound || body["detail"] != "counter not found" || body["$schema"] == nil {
+	if response.Code != http.StatusNotFound || body["detail"] != "counter not found" || body["title"] != "Not Found" {
 		t.Fatalf("%d %s", response.Code, response.Body.String())
 	}
 }

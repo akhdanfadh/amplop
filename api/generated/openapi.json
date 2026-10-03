@@ -21,15 +21,6 @@
       "ErrorModel": {
         "additionalProperties": false,
         "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "/api/v0/schemas/ErrorModel.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
-            "type": "string"
-          },
           "detail": {
             "description": "A human-readable explanation specific to this occurrence of the problem.",
             "examples": [
@@ -85,15 +76,6 @@
       "HealthResponse": {
         "additionalProperties": false,
         "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "/api/v0/schemas/HealthResponse.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
-            "type": "string"
-          },
           "data": {
             "$ref": "#/components/schemas/HealthResponseDataStruct"
           }
