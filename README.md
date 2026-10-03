@@ -100,6 +100,20 @@ go test ./...
 go vet ./...
 ```
 
+PostgreSQL runs in Docker Compose (`compose.yaml`). From the repository
+root, create your local settings once, then start it in the background:
+
+```sh
+cp .env.example .env
+docker compose up -d --wait
+```
+
+`--wait` returns once PostgreSQL accepts connections on
+`127.0.0.1:5432` (`INBOK_POSTGRES_PORT` in `.env`). Data lives in a Docker
+volume and survives `docker compose down`. To delete it and start empty,
+e.g. after changing the user or password in `.env`, run
+`docker compose down -v`.
+
 The browser app in `web` requires pnpm. `package.json` pins the pnpm and
 Node.js versions: another installed pnpm downloads and runs the pinned
 one, and `pnpm install` downloads the pinned Node.js, which the `pnpm`

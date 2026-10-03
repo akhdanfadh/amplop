@@ -1,0 +1,29 @@
+# Development services. Values come from .env; see .env.example.
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ${INBOK_POSTGRES_USER:?copy .env.example to .env}
+      POSTGRES_PASSWORD: ${INBOK_POSTGRES_PASSWORD:?copy .env.example to .env}
+      POSTGRES_DB: ${INBOK_POSTGRES_DB:?copy .env.example to .env}
+
+    # Only this machine can connect, not the network.
+    ports:
+      - 127.0.0.1:${INBOK_POSTGRES_PORT:?copy .env.example to .env}:5432
+
+    # PostgreSQL 18 and newer keep data under /var/lib/postgresql/18/docker;
+    # mount the parent so data survives recreating the container.
+    volumes:
+      - postgres:/var/lib/postgresql
+
+    # Ready means it accepts TCP connections. The first start runs a
+    # temporary server on a Unix socket only, so a socket check would pass
+    # too early. $$ makes Compose pass $ to the container's shell.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  postgres:
