@@ -9,8 +9,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 	"github.com/gin-gonic/gin"
-
-	"inbok/internal/probe"
 )
 
 const apiPrefix = "/api/v0"
@@ -23,7 +21,7 @@ type API struct {
 
 // New registers every operation. logger receives one line per request.
 // probes may be nil when no request is served, e.g. to export OpenAPI.
-func New(logger *slog.Logger, probes *probe.Service) *API {
+func New(logger *slog.Logger, probes probeService) *API {
 	// Logs written with a request context gain its request_id.
 	logger = slog.New(requestIDHandler{logger.Handler()})
 

@@ -39,8 +39,15 @@ type probeEventCreated struct {
 	Total int64      `json:"total"`
 }
 
+// probeService is what the probe operation calls; [probe.Service] in
+// production. Tests answer with fixed results, so they check only the HTTP
+// mapping, not the probe's rules.
+type probeService interface {
+	Add(ctx context.Context, entry probe.Entry) (probe.Result, error)
+}
+
 // registerProbe adds the probe operation.
-func registerProbe(api huma.API, service *probe.Service) {
+func registerProbe(api huma.API, service probeService) {
 	// Add an amount to the shared counter and record it, in one transaction.
 	huma.Register(api, huma.Operation{
 		OperationID:   "createProbeEvent",

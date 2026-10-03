@@ -15,35 +15,31 @@ import (
 	"inbok/internal/probe"
 )
 
-// fakeStorage keeps the probe counter in memory, saving nothing when the
-// update fails.
-type fakeStorage struct {
+// fakeProbes records each entry and answers with it saved as event 7, or
+// with err, e.g. a domain error or a lost connection.
+type fakeProbes struct {
 	total int64
-	err   error // returned instead of saving, e.g. a lost connection
+	err   error
+	added []probe.Entry
 }
 
-func (f *fakeStorage) UpdateCounter(_ context.Context, update func(c *probe.Counter) (probe.Entry, error)) (probe.Result, error) {
-	counter := probe.Counter{Total: f.total}
-	entry, err := update(&counter)
-	if err != nil {
-		return probe.Result{}, err
-	}
+func (f *fakeProbes) Add(_ context.Context, entry probe.Entry) (probe.Result, error) {
+	f.added = append(f.added, entry)
 	if f.err != nil {
 		return probe.Result{}, f.err
 	}
 
-	f.total = counter.Total
 	createdAt := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
-	return probe.Result{Event: probe.Event{Entry: entry, ID: 7, CreatedAt: createdAt}, Total: counter.Total}, nil
+	return probe.Result{Event: probe.Event{Entry: entry, ID: 7, CreatedAt: createdAt}, Total: f.total}, nil
 }
 
-// postProbe sends body to the probe operation of an API saving to storage.
-func postProbe(logger *slog.Logger, storage *fakeStorage, body string) *httptest.ResponseRecorder {
+// postProbe sends body to the probe operation of an API calling probes.
+func postProbe(logger *slog.Logger, probes *fakeProbes, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 
 	response := httptest.NewRecorder()
-	New(logger, probe.NewService(storage)).Handler().ServeHTTP(response, request)
+	New(logger, probes).Handler().ServeHTTP(response, request)
 	return response
 }
 
@@ -57,7 +53,7 @@ func TestCreateProbeEvent(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		response := postProbe(discard, &fakeStorage{total: 40}, c.body)
+		response := postProbe(discard, &fakeProbes{total: 43}, c.body)
 		if response.Code != http.StatusCreated {
 			t.Fatalf("%s: %d %s", c.name, response.Code, response.Body.String())
 		}
@@ -87,8 +83,8 @@ func TestCreateProbeEventInvalid(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		storage := &fakeStorage{}
-		response := postProbe(discard, storage, c.body)
+		probes := &fakeProbes{}
+		response := postProbe(discard, probes, c.body)
 		if response.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("%s: %d %s", c.name, response.Code, response.Body.String())
 		}
@@ -97,15 +93,15 @@ func TestCreateProbeEventInvalid(t *testing.T) {
 		if len(details) != 1 || details[0].(map[string]any)["location"] != c.location {
 			t.Fatalf("%s: errors = %v, want one at %s", c.name, details, c.location)
 		}
-		if storage.total != 0 {
-			t.Fatalf("%s: saved a rejected body", c.name)
+		if len(probes.added) != 0 {
+			t.Fatalf("%s: added a rejected body", c.name)
 		}
 	}
 }
 
 // The full counter is a 409 with a fixed message.
 func TestCreateProbeEventFull(t *testing.T) {
-	response := postProbe(discard, &fakeStorage{total: 995}, `{"note":"x","amount":6,"highlighted":false}`)
+	response := postProbe(discard, &fakeProbes{err: probe.ErrCounterFull}, `{"note":"x","amount":6,"highlighted":false}`)
 
 	body := decodeJSON(t, response.Body.Bytes())
 	if response.Code != http.StatusConflict || body["detail"] != "counter is full" || body["errors"] != nil {
@@ -116,8 +112,8 @@ func TestCreateProbeEventFull(t *testing.T) {
 // A storage failure is a 500 that logs the cause and hides it.
 func TestCreateProbeEventStorageError(t *testing.T) {
 	var out bytes.Buffer
-	storage := &fakeStorage{err: errors.New("lock probe counter: conn closed")}
-	response := postProbe(slog.New(slog.NewTextHandler(&out, nil)), storage, `{"note":"x","amount":1,"highlighted":false}`)
+	probes := &fakeProbes{err: errors.New("lock probe counter: conn closed")}
+	response := postProbe(slog.New(slog.NewTextHandler(&out, nil)), probes, `{"note":"x","amount":1,"highlighted":false}`)
 
 	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), "conn closed") {
 		t.Fatalf("%d %s", response.Code, response.Body.String())
