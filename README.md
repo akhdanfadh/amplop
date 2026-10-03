@@ -115,6 +115,14 @@ Then open `http://localhost:5173`. The app is a single-page application
 (SPA): the server sends the same HTML page for every path, and the browser
 renders the matching route. There is no server-side rendering.
 
+The development server forwards every `/api` request to the Go server, so
+the browser talks to one address. Start the Go server as well; while it is
+down, `/api` requests get a plain-text 502, not Problem Details.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `INBOK_PROXY_TARGET` | `http://127.0.0.1:8080` | Go server URL that `/api` requests go to. Change it with `INBOK_HTTP_ADDR`, e.g. `http://127.0.0.1:9090`. |
+
 Build and serve the production files locally:
 
 ```sh
@@ -124,7 +132,7 @@ pnpm preview
 
 The build writes the browser files to `dist/client`, where `_shell.html`
 is the page for every path. The rest of `dist` is only used by the build
-and `pnpm preview`.
+and `pnpm preview`, which forwards `/api` the same way.
 
 The app uses [Vite+](https://viteplus.dev), whose `vp` command runs
 Vite. It is installed with the other dependencies, so the `pnpm` scripts

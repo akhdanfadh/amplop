@@ -5,6 +5,11 @@ import viteReact from "@vitejs/plugin-react";
 // Written by the router plugin; it asks to be left unformatted and unlinted.
 const generated = ["src/routeTree.gen.ts"];
 
+// Go server address for the dev proxy; override when it runs elsewhere.
+// Unset or empty uses the default, as in the Go config.
+const defaultProxyTarget = "http://127.0.0.1:8080";
+const proxyTarget = process.env.INBOK_PROXY_TARGET || defaultProxyTarget;
+
 export default defineConfig({
   // lazyPlugins skips loading the plugins when a command only reads
   // settings (lint, fmt); dev, build, and preview still load them.
@@ -15,6 +20,10 @@ export default defineConfig({
     // Must come after tanstackStart.
     viteReact(),
   ]),
+
+  // Forward API calls to Go, so the browser sees one origin. `pnpm preview`
+  // reuses this rule.
+  server: { proxy: { "/api": proxyTarget } },
 
   // Oxfmt defaults, like gofmt: no style options to debate.
   fmt: { ignorePatterns: generated },
