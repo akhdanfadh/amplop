@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"inbok/internal/config"
 	"inbok/internal/httpapi"
+	"inbok/internal/probe"
 	"inbok/internal/repository/postgres"
 )
 
@@ -72,17 +74,34 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 	return errUsage
 }
 
-// serve listens until ctx is cancelled, then lets in-flight requests finish.
+// serve connects to the database, then serves the API until ctx is cancelled.
 func serve(ctx context.Context, logger *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
+	url, err := config.DatabaseURL()
+	if err != nil {
+		return err
+	}
+
+	db, err := postgres.Open(ctx, url)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer db.Close()
+
+	return listen(ctx, cfg.HTTPAddr, httpapi.New(logger, probe.NewService(db)).Handler(), logger)
+}
+
+// listen serves handler on addr until ctx is cancelled, then lets in-flight
+// requests finish.
+func listen(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger) error {
 	// ErrorLog routes net/http's internal errors, e.g. a failed TLS
 	// handshake, into the same log.
 	server := http.Server{
-		Handler:           httpapi.New(logger).Handler(),
+		Handler:           handler,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
@@ -91,7 +110,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	// Bind before logging, so a busy port never logs a false start.
-	listener, err := net.Listen("tcp", cfg.HTTPAddr)
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
@@ -125,7 +144,7 @@ func migrate(ctx context.Context, logger *slog.Logger) error {
 
 // export writes the OpenAPI document to path without starting a listener.
 func export(path string, logger *slog.Logger) error {
-	doc, err := httpapi.New(logger).OpenAPI()
+	doc, err := httpapi.New(logger, nil).OpenAPI()
 	if err != nil {
 		return err
 	}

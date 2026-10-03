@@ -16,7 +16,7 @@ import (
 var discard = slog.New(slog.DiscardHandler)
 
 func TestAPIDocs(t *testing.T) {
-	router := New(discard).Handler()
+	router := New(discard, nil).Handler()
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/docs", nil))
 
@@ -30,7 +30,7 @@ func TestAPIDocs(t *testing.T) {
 }
 
 func TestOpenAPI(t *testing.T) {
-	a := New(discard)
+	a := New(discard, nil)
 	doc, err := a.OpenAPI()
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestNoRoute(t *testing.T) {
 	for _, c := range cases {
 		var out bytes.Buffer
 		response := httptest.NewRecorder()
-		New(slog.New(slog.NewTextHandler(&out, nil))).Handler().ServeHTTP(response, httptest.NewRequest(c.method, c.path, nil))
+		New(slog.New(slog.NewTextHandler(&out, nil)), nil).Handler().ServeHTTP(response, httptest.NewRequest(c.method, c.path, nil))
 
 		name := c.method + " " + c.path
 		if response.Code != c.status {

@@ -2,10 +2,13 @@
 
 Requires Go 1.27.1 or newer.
 
-From the repository root, start the development server:
+`serve` needs PostgreSQL with its migrations applied; see the PostgreSQL
+section below. From the repository root, load `.env` and start the
+development server:
 
 ```sh
 cd backend
+set -a; . ../.env; set +a
 go run ./cmd/inbok serve
 ```
 
@@ -20,7 +23,8 @@ go tool -modfile=tools.mod air
 ```
 
 Edits to `_test.go` files do not trigger a restart. The first run downloads
-Air's dependencies.
+Air's dependencies. Air passes its shell's environment to `serve`, so load
+`.env` there too.
 
 In another terminal, check process health:
 
@@ -56,9 +60,27 @@ server:
 go run ./cmd/inbok export ../api/generated/openapi.json
 ```
 
-The probe will demonstrate Huma's Problem Details errors for field
-validation, application failures, and browser error handling. Map service
-errors in the HTTP layer.
+The probe is an example database write, removed before the first release.
+It adds `amount` to a shared counter and records the entry, both in one
+transaction:
+
+```sh
+curl --fail-with-body -H 'Content-Type: application/json' \
+  -d '{"note": "hello", "amount": 3, "highlighted": false}' \
+  http://127.0.0.1:8080/api/v0/probe/events
+```
+
+Expect HTTP 201 with the saved event and the new total, e.g.
+`{"data": {"event": {"id": 1, "note": "hello", ..., "tag": null}, "total": 3}}`.
+A body that breaks the contract gets a 422 listing each bad field, e.g.
+`{"location": "body.amount", "message": "expected number >= 1"}`. Past a
+total of 1000 it answers 409 `counter is full`; to empty it, run
+`go tool -modfile=tools.mod goose reset`, then `migrate` again.
+
+Handlers map service errors to fixed messages, e.g. `probe.ErrCounterFull`
+to `huma.Error409Conflict("counter is full")`, and never pass a raw error
+to a 4xx helper: only 5xx details are hidden. Any other error is returned
+as is and becomes a 500.
 
 Error responses never echo input values (`errors[].value` is removed), and
 a 5xx response keeps its `detail` but drops `errors[]`: a handler's raw Go
@@ -77,6 +99,7 @@ gives in-flight requests up to 5 seconds to finish.
 | Variable | Default | Meaning |
 |---|---|---|
 | `INBOK_HTTP_ADDR` | `127.0.0.1:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
+| `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL; see the PostgreSQL section. |
 | `GIN_MODE` | `debug` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every

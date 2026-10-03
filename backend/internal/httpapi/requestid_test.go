@@ -16,7 +16,7 @@ import (
 // Every log line of one request carries the ID returned to the client.
 func TestRequestID(t *testing.T) {
 	var out bytes.Buffer
-	a := New(slog.New(slog.NewJSONHandler(&out, nil)))
+	a := New(slog.New(slog.NewJSONHandler(&out, nil)), nil)
 	a.router.GET("/panic", func(*gin.Context) { panic("boom") })
 
 	response := httptest.NewRecorder()
@@ -70,7 +70,7 @@ func requestIDFor(t *testing.T, incoming string) string {
 	request.Header.Set(requestIDHeader, incoming)
 
 	response := httptest.NewRecorder()
-	New(discard).Handler().ServeHTTP(response, request)
+	New(discard, nil).Handler().ServeHTTP(response, request)
 
 	return response.Header().Get(requestIDHeader)
 }

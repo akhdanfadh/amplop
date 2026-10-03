@@ -29,7 +29,7 @@ func TestExport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want, err := httpapi.New(discard).OpenAPI()
+	want, err := httpapi.New(discard, nil).OpenAPI()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,14 +58,24 @@ func TestMigrateNoURL(t *testing.T) {
 	}
 }
 
-// Cancelling the context, as SIGINT or SIGTERM does, stops serve cleanly.
-func TestServeShutdown(t *testing.T) {
+// serve names the missing setting before touching a database or a port.
+func TestServeNoURL(t *testing.T) {
+	t.Setenv("INBOK_DATABASE_URL", "")
+
+	err := run(context.Background(), []string{"serve"}, discard)
+	if err == nil || !strings.Contains(err.Error(), "INBOK_DATABASE_URL") {
+		t.Fatalf("err = %v, want an error naming INBOK_DATABASE_URL", err)
+	}
+}
+
+// Cancelling the context, as SIGINT or SIGTERM does, stops the server
+// cleanly.
+func TestListenShutdown(t *testing.T) {
 	addr := freeAddr(t)
-	t.Setenv("INBOK_HTTP_ADDR", addr)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- run(ctx, []string{"serve"}, discard) }()
+	go func() { done <- listen(ctx, addr, httpapi.New(discard, nil).Handler(), discard) }()
 
 	url := "http://" + addr + "/api/v0/health"
 	if !waitUp(url) {
@@ -77,10 +87,10 @@ func TestServeShutdown(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("serve = %v, want nil", err)
+			t.Fatalf("listen = %v, want nil", err)
 		}
 	case <-time.After(shutdownTimeout + time.Second):
-		t.Fatal("serve did not return after cancel")
+		t.Fatal("listen did not return after cancel")
 	}
 
 	if _, err := http.Get(url); err == nil {
@@ -88,23 +98,23 @@ func TestServeShutdown(t *testing.T) {
 	}
 }
 
-// A busy port fails serve without claiming the server started.
-func TestServeBusyPort(t *testing.T) {
+// A busy port fails listen without claiming the server started.
+func TestListenBusyPort(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer listener.Close()
-	t.Setenv("INBOK_HTTP_ADDR", listener.Addr().String())
 
 	var out bytes.Buffer
-	err = run(context.Background(), []string{"serve"}, slog.New(slog.NewTextHandler(&out, nil)))
+	logger := slog.New(slog.NewTextHandler(&out, nil))
+	err = listen(context.Background(), listener.Addr().String(), httpapi.New(discard, nil).Handler(), logger)
 	if err == nil {
-		t.Fatal("serve on a busy port must fail")
+		t.Fatal("listen on a busy port must fail")
 	}
 
 	if out.Len() != 0 {
-		t.Fatalf("serve logged before failing:\n%s", out.String())
+		t.Fatalf("listen logged before failing:\n%s", out.String())
 	}
 }
 

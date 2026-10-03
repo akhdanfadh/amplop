@@ -15,7 +15,7 @@ import (
 
 func TestRecovery(t *testing.T) {
 	var out bytes.Buffer
-	a := New(slog.New(slog.NewJSONHandler(&out, nil)))
+	a := New(slog.New(slog.NewJSONHandler(&out, nil)), nil)
 	// The handler's own Content-Type must not label the error body.
 	a.router.GET("/panic", func(ctx *gin.Context) {
 		ctx.Header("Content-Type", "text/html")
@@ -68,7 +68,7 @@ func TestRecovery(t *testing.T) {
 
 // net/http uses http.ErrAbortHandler to abort a response on purpose.
 func TestRecoveryAbort(t *testing.T) {
-	a := New(discard)
+	a := New(discard, nil)
 	a.router.GET("/abort", func(*gin.Context) { panic(http.ErrAbortHandler) })
 
 	defer func() {

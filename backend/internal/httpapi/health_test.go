@@ -11,7 +11,7 @@ import (
 )
 
 func TestHealth(t *testing.T) {
-	router := New(discard).Handler()
+	router := New(discard, nil).Handler()
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/health", nil))
 
@@ -43,7 +43,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestHealthOpenAPI(t *testing.T) {
-	a := New(discard)
+	a := New(discard, nil)
 	router, api := a.Handler(), a.api
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/openapi.json", nil))
