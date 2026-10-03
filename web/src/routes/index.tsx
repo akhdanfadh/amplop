@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useGetHealth, type GetHealthQueryResult } from "@/api/generated/inbok";
 import { summarize } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
+import { ProbeForm } from "@/components/probe-form";
 
 export const Route = createFileRoute("/")({ component: Home });
 
@@ -18,6 +19,7 @@ function Home() {
         Check health
       </Button>
       <output>{show(health)}</output>
+      <ProbeForm />
     </main>
   );
 }
