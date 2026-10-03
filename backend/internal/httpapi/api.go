@@ -29,6 +29,10 @@ func New(logger *slog.Logger) *API {
 	// the request log, so a panic is logged as 500.
 	router.Use(withRequestID(), withRequestLog(logger), withRecovery(logger))
 	router.HandleMethodNotAllowed = true
+	// Gin would answer /health/ with a 301 to /health before any
+	// middleware runs: no request ID, no log line, and a Location built
+	// from the client's X-Forwarded-Prefix. A 404 is plain and logged.
+	router.RedirectTrailingSlash = false
 	router.NoRoute(handleNoRoute)
 	router.NoMethod(handleNoMethod)
 	group := router.Group(apiPrefix)

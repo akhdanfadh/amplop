@@ -64,7 +64,8 @@ error is logged as `msg="unexpected error"` with the request ID instead of
 being sent to the client.
 
 Unknown routes (404) and unsupported methods (405, with an `Allow` header)
-return the same Problem Details, never Gin's plain-text bodies.
+return the same Problem Details, never Gin's plain-text bodies. A trailing
+slash is a different route: `/api/v0/health/` is a 404, not a redirect.
 
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and
 gives in-flight requests up to 5 seconds to finish.

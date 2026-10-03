@@ -71,6 +71,7 @@ func TestNoRoute(t *testing.T) {
 		{http.MethodGet, "/", http.StatusNotFound, "route not found", ""},
 		{http.MethodGet, "/api/v0/schemas/HealthResponse.json", http.StatusNotFound, "route not found", ""},
 		{http.MethodGet, "/schemas/HealthResponse.json", http.StatusNotFound, "route not found", ""},
+		{http.MethodGet, "/api/v0/health/", http.StatusNotFound, "route not found", ""},
 		{http.MethodDelete, "/api/v0/health", http.StatusMethodNotAllowed, "method not allowed", "GET, HEAD"},
 	}
 
