@@ -42,8 +42,8 @@ export default defineConfig({
 
   lint: {
     // react-perf flags idiomatic inline handlers; import adds little over
-    // TypeScript at these categories. vitest comes with the first test.
-    plugins: ["eslint", "typescript", "unicorn", "oxc", "react", "jsx-a11y"],
+    // TypeScript at these categories.
+    plugins: ["eslint", "typescript", "unicorn", "oxc", "react", "jsx-a11y", "vitest"],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     // Bug-finding categories fail the check. pedantic and style are
     // taste; restriction and nursery are opt-in or unstable.

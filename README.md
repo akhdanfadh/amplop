@@ -271,9 +271,10 @@ and `pnpm preview`, which forwards `/api` the same way.
 The app uses [Vite+](https://viteplus.dev), whose `vp` command runs
 Vite. It is installed with the other dependencies, so the `pnpm` scripts
 need no global install. Vite+ replaces the `vite` package with its own
-copy; `pnpm-workspace.yaml` pins both, and they must change together.
-To upgrade, change the `vite-plus` version there, run `pnpm install`,
-then `pnpm exec vp migrate` to move the `vite` copy to the same version.
+copy and includes Vitest; `pnpm-workspace.yaml` pins all three, and they
+must change together. To upgrade, change the `vite-plus` version there,
+run `pnpm install`, then `pnpm exec vp migrate` to move `vite` and
+`vitest` to the versions it includes.
 
 Each file in `src/routes` is one route. `pnpm dev` and `pnpm build`
 regenerate `src/routeTree.gen.ts` from them. That file is committed so
@@ -292,6 +293,16 @@ Formatting uses Oxfmt's defaults. Lint rules and their reasons are in the
 error. To format on save and see lint errors while typing, install the
 Oxc extension in your editor (VS Code: `oxc.oxc-vscode`; others:
 <https://viteplus.dev/guide/ide-integration>).
+
+Run the unit tests, files named `*.test.ts` next to the code they test:
+
+```sh
+pnpm test
+```
+
+Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
+functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the
+latter.
 
 The project uses TypeScript 7. If your VS Code still checks types with
 TypeScript 6, install the `TypeScriptTeam.native-preview` extension.

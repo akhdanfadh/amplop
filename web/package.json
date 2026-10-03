@@ -8,6 +8,7 @@
     "preview": "vp preview",
     "check": "vp check",
     "fix": "vp check --fix",
+    "test": "vp test",
     "generate": "orval"
   },
   "dependencies": {
