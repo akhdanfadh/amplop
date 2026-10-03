@@ -84,11 +84,13 @@ func TestHealthOpenAPI(t *testing.T) {
 		t.Fatal("GET must document its JSON success response")
 	}
 
+	// Schema names become generated client type names, so pin them.
 	schemas := api.OpenAPI().Components.Schemas
 	schema := get.Content["application/json"].Schema
-	if schema.Ref != "" {
-		schema = schemas.SchemaFromRef(schema.Ref)
+	if schema.Ref != "#/components/schemas/ResponseHealthStatus" {
+		t.Fatalf("success schema = %q", schema.Ref)
 	}
+	schema = schemas.SchemaFromRef(schema.Ref)
 
 	data := schema.Properties["data"]
 	if data == nil {
@@ -99,9 +101,10 @@ func TestHealthOpenAPI(t *testing.T) {
 		t.Fatal("success schema must not document $schema metadata")
 	}
 
-	if data.Ref != "" {
-		data = schemas.SchemaFromRef(data.Ref)
+	if data.Ref != "#/components/schemas/HealthStatus" {
+		t.Fatalf("data schema = %q", data.Ref)
 	}
+	data = schemas.SchemaFromRef(data.Ref)
 
 	field := data.Properties["status"]
 	if field == nil || field.Type != "string" || !reflect.DeepEqual(field.Enum, []any{"ok"}) {

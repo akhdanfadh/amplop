@@ -73,19 +73,7 @@
         },
         "type": "object"
       },
-      "HealthResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/HealthResponseDataStruct"
-          }
-        },
-        "required": [
-          "data"
-        ],
-        "type": "object"
-      },
-      "HealthResponseDataStruct": {
+      "HealthStatus": {
         "additionalProperties": false,
         "properties": {
           "status": {
@@ -97,6 +85,18 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "ResponseHealthStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HealthStatus"
+          }
+        },
+        "required": [
+          "data"
         ],
         "type": "object"
       }
@@ -116,7 +116,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
+                  "$ref": "#/components/schemas/ResponseHealthStatus"
                 }
               }
             },

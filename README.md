@@ -36,8 +36,10 @@ Expect HTTP 200 with:
 
 JSON success responses put their payload in `data`. Response schemas live
 only in the OpenAPI document: responses carry no `$schema` field or `Link`
-header. Operation IDs use camelCase. A shared typed response helper will be
-added when the probe introduces another payload.
+header. Operation IDs use camelCase. Handlers build success bodies with
+`respondData`. Schema names come from Go type names, e.g.
+`ResponseHealthStatus`, and become the generated client's type names, so
+renaming a payload type is a breaking change.
 
 Huma's operation metadata and Go response types define the API contract.
 The API base path is `/api/v0`; operation paths such as `/health` are

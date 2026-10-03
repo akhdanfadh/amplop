@@ -9,14 +9,8 @@ import (
 
 const healthPath = "/health"
 
-type healthResponse struct {
-	Data struct {
-		Status string `json:"status" enum:"ok"`
-	} `json:"data"`
-}
-
-type healthOutput struct {
-	Body healthResponse
+type healthStatus struct {
+	Status string `json:"status" enum:"ok"`
 }
 
 // registerHealth adds the health operation.
@@ -28,9 +22,7 @@ func registerHealth(api huma.API) {
 		Path:          healthPath,
 		Summary:       "Check process health",
 		DefaultStatus: http.StatusOK,
-	}, func(_ context.Context, _ *struct{}) (*healthOutput, error) {
-		output := &healthOutput{}
-		output.Body.Data.Status = "ok"
-		return output, nil
+	}, func(_ context.Context, _ *struct{}) (*output[healthStatus], error) {
+		return respondData(healthStatus{Status: "ok"}), nil
 	})
 }
