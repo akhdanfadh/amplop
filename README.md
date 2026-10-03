@@ -99,3 +99,40 @@ From `backend`, check the code:
 go test ./...
 go vet ./...
 ```
+
+The browser app in `web` requires pnpm. `package.json` pins the pnpm and
+Node.js versions: another installed pnpm downloads and runs the pinned
+one, and `pnpm install` downloads the pinned Node.js, which the `pnpm`
+scripts then use. From `web`, install dependencies and start the
+development server:
+
+```sh
+pnpm install
+pnpm dev
+```
+
+Then open `http://localhost:5173`. The app is a single-page application
+(SPA): the server sends the same HTML page for every path, and the browser
+renders the matching route. There is no server-side rendering.
+
+Build and serve the production files locally:
+
+```sh
+pnpm build
+pnpm preview
+```
+
+The build writes the browser files to `dist/client`, where `_shell.html`
+is the page for every path. The rest of `dist` is only used by the build
+and `pnpm preview`.
+
+The app uses [Vite+](https://viteplus.dev), whose `vp` command runs
+Vite. It is installed with the other dependencies, so the `pnpm` scripts
+need no global install. Vite+ replaces the `vite` package with its own
+copy; `pnpm-workspace.yaml` pins both, and they must change together.
+To upgrade, change the `vite-plus` version there, run `pnpm install`,
+then `pnpm exec vp migrate` to move the `vite` copy to the same version.
+
+Each file in `src/routes` is one route. `pnpm dev` and `pnpm build`
+regenerate `src/routeTree.gen.ts` from them. That file is committed so
+type checking works on a fresh clone; never edit it by hand.

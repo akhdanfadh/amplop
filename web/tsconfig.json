@@ -1,0 +1,25 @@
+{
+  "include": ["src", "vite.config.ts"],
+  "compilerOptions": {
+    /* Type checking only: Vite builds the app; tsc never writes files. */
+    "noEmit": true,
+    "skipLibCheck": true, // skip type files inside installed packages
+
+    /* Language features and browser APIs the code may use.
+       ES2022 is within the browsers Vite builds for by default. */
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    /* Read imports and JSX the way Vite does. verbatimModuleSyntax stays
+       off: TanStack Start's setup guide advises against it. */
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+
+    /* Strictness. */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  }
+}
