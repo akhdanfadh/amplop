@@ -193,9 +193,10 @@ pnpm generate
 pnpm check
 ```
 
-`pnpm generate` rewrites `src/api/generated/inbok.ts`; commit it, never
-edit it. It holds one function per operation, named by its operation ID,
-plus the types it uses. `getHealth()` returns the success body, e.g.
+`pnpm generate` rewrites `src/api/generated`; commit it, never edit it.
+`inbok.ts` holds one function per operation, named by its operation ID.
+`model` holds each type as a [Zod](https://zod.dev) schema, which checks
+a value while the app runs. `getHealth()` returns the success body, e.g.
 `{ data: { status: "ok" } }`. If a contract change breaks code that uses
 the client, e.g. a renamed field, `pnpm check` reports it there.
 
@@ -203,4 +204,8 @@ A failed call throws `ApiError`. Its `problem` field holds Go's Problem
 Details (`title`, `status`, `detail`, `errors`). When the request never
 reaches Go, `problem` has only a `title` (and `status` for the proxy's
 502). Every generated function sends its request through
-`src/api/transport.ts`, the only code that calls `fetch`.
+`src/api/transport.ts`, the only code that calls `fetch`. It checks each
+response body against its schema. A body that does not match, e.g. after
+Go renamed a field without `pnpm generate`, throws `ApiError` with the
+title `Unexpected response from the server` and logs the mismatched
+fields to the browser console. Extra fields are dropped, not rejected.

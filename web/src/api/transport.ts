@@ -1,4 +1,5 @@
-import type { ErrorModel } from "./generated/inbok";
+import type { ZodError, ZodType } from "zod";
+import { ErrorModel } from "./generated/model";
 
 // Content type of a Problem Details body (RFC 9457), Go's error format.
 const problemType = "application/problem+json";
@@ -17,13 +18,24 @@ export class ApiError extends Error {
 
 // Sends every generated operation's request (see orval.config.ts).
 // Returns the success body; a failed request throws ApiError.
-export async function transport<T>(url: string, init: RequestInit): Promise<T> {
-  const res = await send(url, init);
-  if (!res.ok) throw await failure(res);
+export async function transport<T>(
+  url: string,
+  init: RequestInit & { schema?: ZodType<T> },
+): Promise<T> {
+  // Orval omits the schema only for a body it cannot describe, e.g. none
+  // (204 No Content). No operation has one yet.
+  const { schema, ...rest } = init;
+  if (!schema) throw new Error(`${url}: no response schema`);
 
-  const body: unknown = await res.json();
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- trusted until response validation
-  return body as T;
+  const res = await send(url, rest);
+  if (!res.ok) throw await failure(url, res);
+
+  const result = await parse(res, schema);
+  if (result.success) return result.data;
+
+  // E.g. an HTML page, or a field Go renamed without `pnpm generate`.
+  logMismatch(url, result.error);
+  throw new ApiError({ title: "Unexpected response from the server" });
 }
 
 // fetch throws only when no response arrives, e.g. offline. A request the
@@ -39,13 +51,30 @@ async function send(url: string, init: RequestInit): Promise<Response> {
 
 // Go's Problem Details, or a stand-in for any other body, e.g. the dev
 // proxy's plain-text 502 while Go is down.
-async function failure(res: Response): Promise<ApiError> {
+async function failure(url: string, res: Response): Promise<ApiError> {
+  const standIn = { status: res.status, title: res.statusText };
   const type = res.headers.get("Content-Type") ?? "";
-  if (!type.startsWith(problemType)) {
-    return new ApiError({ status: res.status, title: res.statusText });
-  }
+  if (!type.startsWith(problemType)) return new ApiError(standIn);
 
-  const body: unknown = await res.json();
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- trusted until response validation
-  return new ApiError(body as ErrorModel);
+  const result = await parse(res, ErrorModel);
+  if (result.success) return new ApiError(result.data);
+
+  logMismatch(url, result.error);
+  return new ApiError(standIn);
+}
+
+// Checks the body against schema. A body that is not JSON, e.g. an HTML
+// page, fails like JSON of the wrong shape.
+async function parse<T>(res: Response, schema: ZodType<T>) {
+  const body: unknown = await res.json().catch((err: unknown) => {
+    if (err instanceof SyntaxError) return undefined;
+    throw err;
+  });
+  return schema.safeParse(body);
+}
+
+// Tells the developer which fields broke the contract; the user sees only
+// the error's title.
+function logMismatch(url: string, err: ZodError) {
+  console.error(`${url}: response does not match the API contract`, err);
 }
