@@ -86,4 +86,38 @@ describe("transport", () => {
     expect(err.problem).toEqual({ status: 409, title: "Conflict" });
     expect(log).toHaveBeenCalledOnce();
   });
+
+  it("labels JSON of the wrong shape unexpected", async () => {
+    const log = watchLog();
+    answer(JSON.stringify({ openapi: "3.1.0" }), 200, "application/json");
+
+    const err = await failure();
+    expect(err.kind).toBe("unexpected");
+    expect(log).toHaveBeenCalledOnce();
+  });
+
+  it("drops fields the schema does not know", async () => {
+    answer(JSON.stringify({ data: { status: "ok", uptime: 42 } }), 200, "application/json");
+
+    await expect(transport(url, init)).resolves.toEqual({ data: { status: "ok" } });
+  });
+
+  it("rethrows a request the caller cancelled as is", async () => {
+    const cancelled = new DOMException("The operation was aborted.", "AbortError");
+    vi.stubGlobal("fetch", async () => {
+      throw cancelled;
+    });
+    const caller = new AbortController();
+    caller.abort();
+
+    await expect(transport(url, { ...init, signal: caller.signal })).rejects.toBe(cancelled);
+  });
+
+  it("sends nothing for an operation without a response schema", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(transport(url, {})).rejects.toThrow(`${url}: no response schema`);
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
