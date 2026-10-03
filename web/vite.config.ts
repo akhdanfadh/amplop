@@ -32,7 +32,9 @@ export default defineConfig({
 
   // Oxfmt defaults, like gofmt: no style options to debate.
   fmt: {
-    ignorePatterns: generated,
+    // Also skip the client from `pnpm generate`. It stays linted, so a type
+    // error in it, e.g. a call that no longer fits transport, still fails.
+    ignorePatterns: [...generated, "src/api/generated/**"],
     // Also sorts classes inside cn(...) and cva(...). If the stylesheet
     // moves, update the path: a missing file silently turns sorting off.
     sortTailwindcss: { stylesheet: "src/styles.css", functions: ["cn", "cva"] },

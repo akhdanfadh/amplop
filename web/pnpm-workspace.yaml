@@ -13,3 +13,8 @@ overrides:
 peerDependencyRules:
   allowAny:
     - vite
+
+# Orval needs esbuild. Its install script only checks the binary that
+# pnpm already installs, so it stays off.
+allowBuilds:
+  esbuild: false

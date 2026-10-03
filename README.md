@@ -183,3 +183,24 @@ Imports starting with `@/` point into `src`, e.g.
 `@/components/ui/button` is `src/components/ui/button.tsx`. The `cn` class
 helper comes from the `cn` package; an older component that imports it
 from `@/lib/utils` needs that import changed.
+
+The browser calls Go through a client generated from the committed OpenAPI
+document. After changing `api/generated/openapi.json`, regenerate the
+client from `web`, then check it:
+
+```sh
+pnpm generate
+pnpm check
+```
+
+`pnpm generate` rewrites `src/api/generated/inbok.ts`; commit it, never
+edit it. It holds one function per operation, named by its operation ID,
+plus the types it uses. `getHealth()` returns the success body, e.g.
+`{ data: { status: "ok" } }`. If a contract change breaks code that uses
+the client, e.g. a renamed field, `pnpm check` reports it there.
+
+A failed call throws `ApiError`. Its `problem` field holds Go's Problem
+Details (`title`, `status`, `detail`, `errors`). When the request never
+reaches Go, `problem` has only a `title` (and `status` for the proxy's
+502). Every generated function sends its request through
+`src/api/transport.ts`, the only code that calls `fetch`.
