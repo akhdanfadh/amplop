@@ -148,6 +148,21 @@ go tool -modfile=tools.mod goose create -s add_x sql  # next numbered file
 Never edit a migration a shared database has already applied; add a new
 one. The probe's tables are an exception until the first release.
 
+Queries are SQL files in `backend/internal/repository/postgres/queries`.
+[SQLC](https://sqlc.dev) reads them together with the migrations and
+generates typed Go methods, e.g. `LockCounter`, into
+`backend/internal/repository/postgres/sqlc`; there, `models.go` lists
+every table's columns. Settings are in `backend/sqlc.yaml`. After
+changing a query or a migration, regenerate from `backend` and commit the
+result; never edit it by hand:
+
+```sh
+go tool -modfile=tools.mod sqlc generate
+```
+
+SQLC parses SQL with PostgreSQL's own C code, so it needs a C compiler,
+e.g. gcc. Its first run builds it, which takes about a minute.
+
 The browser app in `web` requires pnpm. `package.json` pins the pnpm and
 Node.js versions: another installed pnpm downloads and runs the pinned
 one, and `pnpm install` downloads the pinned Node.js, which the `pnpm`
