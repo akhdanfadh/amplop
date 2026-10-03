@@ -166,3 +166,20 @@ Styling uses [Tailwind CSS](https://tailwindcss.com): utility classes in
 `className`, generated from `src/styles.css`. `pnpm fix` sorts them in
 Tailwind's recommended order. For class autocomplete, install the
 Tailwind CSS IntelliSense extension (VS Code: `bradlc.vscode-tailwindcss`).
+
+UI components come from [shadcn/ui](https://ui.shadcn.com). Its CLI copies
+each component's source into `src/components/ui`, where it becomes our
+code to edit; there is no component library to upgrade. Settings are in
+`components.json`, and the theme (colors, radius, dark mode) is in
+`src/styles.css`. From `web`, add a component with the pinned CLI, then
+format it:
+
+```sh
+pnpm exec shadcn add dialog
+pnpm fix
+```
+
+Imports starting with `@/` point into `src`, e.g.
+`@/components/ui/button` is `src/components/ui/button.tsx`. The `cn` class
+helper comes from the `cn` package; an older component that imports it
+from `@/lib/utils` needs that import changed.

@@ -23,6 +23,9 @@ export default defineConfig({
     tailwindcss(),
   ]),
 
+  // Resolve the `@/` alias from tsconfig.json `paths`.
+  resolve: { tsconfigPaths: true },
+
   // Forward API calls to Go, so the browser sees one origin. `pnpm preview`
   // reuses this rule.
   server: { proxy: { "/api": proxyTarget } },
@@ -30,9 +33,9 @@ export default defineConfig({
   // Oxfmt defaults, like gofmt: no style options to debate.
   fmt: {
     ignorePatterns: generated,
-    // If this file moves, update the path: a missing file silently turns
-    // sorting off.
-    sortTailwindcss: { stylesheet: "src/styles.css" },
+    // Also sorts classes inside cn(...) and cva(...). If the stylesheet
+    // moves, update the path: a missing file silently turns sorting off.
+    sortTailwindcss: { stylesheet: "src/styles.css", functions: ["cn", "cva"] },
   },
 
   lint: {

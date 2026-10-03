@@ -16,6 +16,9 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
+    // `@/components/ui/button` means `src/components/ui/button`. shadcn's
+    // CLI needs this alias; vite.config.ts reads it via tsconfigPaths.
+    "paths": { "@/*": ["./src/*"] },
 
     /* Type safety. Code-quality checks (unused code, switch fallthrough)
        live in the linter: see `lint` in vite.config.ts. */
