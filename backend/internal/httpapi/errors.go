@@ -61,6 +61,9 @@ func hideInputValues(_ huma.Context, _ string, v any) (any, error) {
 	return &out, nil
 }
 
+// problemContentType is the media type of Problem Details (RFC 9457).
+const problemContentType = "application/problem+json"
+
 // writeProblem answers a request Huma never handles, e.g. a Gin 404 or a
 // recovered panic, with the same Problem Details body Huma writes.
 func writeProblem(ctx *gin.Context, status int, detail string) {
@@ -70,6 +73,9 @@ func writeProblem(ctx *gin.Context, status int, detail string) {
 		return
 	}
 
-	ctx.Data(status, "application/problem+json", body)
+	// Gin keeps a Content-Type the failed handler already set, e.g.
+	// text/html; replace it so clients parse the body as Problem Details.
+	ctx.Header("Content-Type", problemContentType)
+	ctx.Data(status, problemContentType, body)
 	ctx.Abort()
 }

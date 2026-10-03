@@ -16,7 +16,11 @@ import (
 func TestRecovery(t *testing.T) {
 	var out bytes.Buffer
 	a := New(slog.New(slog.NewJSONHandler(&out, nil)))
-	a.router.GET("/panic", func(*gin.Context) { panic("secret detail") })
+	// The handler's own Content-Type must not label the error body.
+	a.router.GET("/panic", func(ctx *gin.Context) {
+		ctx.Header("Content-Type", "text/html")
+		panic("secret detail")
+	})
 
 	response := httptest.NewRecorder()
 	a.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/panic", nil))
