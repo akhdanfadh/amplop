@@ -345,9 +345,11 @@ a value while the app runs. `getHealth()` returns the success body, e.g.
 `{ data: { status: "ok" } }`. If a contract change breaks code that uses
 the client, e.g. a renamed field, `pnpm check` reports it there.
 
-A failed call throws `ApiError`. Its `problem` field holds Go's Problem
-Details (`title`, `status`, `detail`, `errors`). When the request never
-reaches Go, `problem` has only a `title` (and `status` for the proxy's
+A failed call throws `ApiError`. Its `kind` says why: `unreachable` (no
+response arrived), `status` (an error status), or `unexpected` (a body
+that breaks the contract). Its `problem` field holds Go's Problem Details
+(`title`, `status`, `detail`, `errors`). When Go sent none, `problem` has
+only a `title` (and `status` for the proxy's
 502). Every generated function sends its request through
 `src/api/transport.ts`, the only code that calls `fetch`. It checks each
 response body against its schema. A body that does not match, e.g. after
