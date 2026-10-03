@@ -150,3 +150,6 @@ Formatting uses Oxfmt's defaults. Lint rules and their reasons are in the
 error. To format on save and see lint errors while typing, install the
 Oxc extension in your editor (VS Code: `oxc.oxc-vscode`; others:
 <https://viteplus.dev/guide/ide-integration>).
+
+The project uses TypeScript 7. If your VS Code still checks types with
+TypeScript 6, install the `TypeScriptTeam.native-preview` extension.
