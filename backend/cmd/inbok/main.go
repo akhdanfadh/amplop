@@ -13,6 +13,7 @@ import (
 
 	"inbok/internal/config"
 	"inbok/internal/httpapi"
+	"inbok/internal/repository/postgres"
 )
 
 const (
@@ -35,7 +36,7 @@ const (
 	shutdownTimeout = 5 * time.Second
 )
 
-var errUsage = errors.New("usage: inbok serve | inbok export <path>")
+var errUsage = errors.New("usage: inbok serve | inbok migrate | inbok export <path>")
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -63,6 +64,8 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 	switch {
 	case args[0] == "serve" && len(args) == 1:
 		return serve(ctx, logger)
+	case args[0] == "migrate" && len(args) == 1:
+		return migrate(ctx, logger)
 	case args[0] == "export" && len(args) == 2:
 		return export(args[1], logger)
 	}
@@ -108,6 +111,16 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	defer cancel()
 
 	return server.Shutdown(shutdownCtx)
+}
+
+// migrate applies pending database migrations, then exits. serve never
+// migrates: a deploy runs migrate once before starting servers.
+func migrate(ctx context.Context, logger *slog.Logger) error {
+	url, err := config.DatabaseURL()
+	if err != nil {
+		return err
+	}
+	return postgres.Migrate(ctx, url, logger)
 }
 
 // export writes the OpenAPI document to path without starting a listener.

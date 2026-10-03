@@ -100,6 +100,11 @@ go test ./...
 go vet ./...
 ```
 
+Database tests start their own throwaway PostgreSQL in Docker
+([Testcontainers](https://golang.testcontainers.org)), so Docker must be
+running; without it they fail rather than skip. They never touch the
+Compose database.
+
 PostgreSQL runs in Docker Compose (`compose.yaml`). From the repository
 root, create your local settings once, then start it in the background:
 
@@ -113,6 +118,25 @@ docker compose up -d --wait
 volume and survives `docker compose down`. To delete it and start empty,
 e.g. after changing the user or password in `.env`, run
 `docker compose down -v`.
+
+The database schema changes through numbered SQL files, called
+migrations, in `backend/internal/repository/postgres/migrations`. Each
+file has an `Up` part that applies the change and a `Down` part that
+undoes it. `inbok migrate` applies the files the database has not seen
+yet and records them; `serve` never does. Go does not read `.env`, so
+load it into your shell first. From `backend`:
+
+```sh
+set -a; . ../.env; set +a
+go run ./cmd/inbok migrate
+```
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL, e.g. `postgres://inbok:inbok@127.0.0.1:5432/inbok?sslmode=disable`. |
+
+Never edit a migration a shared database has already applied; add a new
+one. The probe's tables are an exception until the first release.
 
 The browser app in `web` requires pnpm. `package.json` pins the pnpm and
 Node.js versions: another installed pnpm downloads and runs the pinned

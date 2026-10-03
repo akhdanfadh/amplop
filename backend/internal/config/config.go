@@ -2,6 +2,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -10,7 +11,13 @@ import (
 const (
 	envHTTPAddr     = "INBOK_HTTP_ADDR"
 	defaultHTTPAddr = "127.0.0.1:8080"
+
+	envDatabaseURL = "INBOK_DATABASE_URL"
 )
+
+// errNoDatabaseURL has no default on purpose: a server deployed without
+// the setting must stop, not try a local database.
+var errNoDatabaseURL = errors.New(envDatabaseURL + " is required, e.g. postgres://user:password@127.0.0.1:5432/inbok")
 
 // Config holds settings for inbok serve.
 type Config struct {
@@ -30,4 +37,13 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// DatabaseURL reads the PostgreSQL connection URL, which has no default.
+func DatabaseURL() (string, error) {
+	url := os.Getenv(envDatabaseURL)
+	if url == "" {
+		return "", errNoDatabaseURL
+	}
+	return url, nil
 }

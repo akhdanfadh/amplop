@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,11 +40,21 @@ func TestExport(t *testing.T) {
 }
 
 func TestRunUsage(t *testing.T) {
-	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"export"}, {"export", "a", "b"}}
+	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"migrate", "extra"}, {"export"}, {"export", "a", "b"}}
 	for _, args := range cases {
 		if err := run(context.Background(), args, discard); !errors.Is(err, errUsage) {
 			t.Fatalf("run(%q) = %v, want usage error", args, err)
 		}
+	}
+}
+
+// migrate names the missing setting instead of guessing a database.
+func TestMigrateNoURL(t *testing.T) {
+	t.Setenv("INBOK_DATABASE_URL", "")
+
+	err := run(context.Background(), []string{"migrate"}, discard)
+	if err == nil || !strings.Contains(err.Error(), "INBOK_DATABASE_URL") {
+		t.Fatalf("err = %v, want an error naming INBOK_DATABASE_URL", err)
 	}
 }
 
