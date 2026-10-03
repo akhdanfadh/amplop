@@ -2,6 +2,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useGetHealth, type GetHealthQueryResult } from "@/api/generated/inbok";
+import { summarize } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -25,12 +26,6 @@ function Home() {
 // shows as current. Then "ok", or the error, e.g. "Bad Gateway".
 function show(health: UseQueryResult<GetHealthQueryResult, ApiError>) {
   if (health.isFetching) return "Checking...";
-  if (health.isError) return describe(health.error);
+  if (health.isError) return summarize(health.error);
   return health.data?.data.status;
-}
-
-// "Not Found: route not found", or the title alone when there is no detail.
-function describe(err: ApiError) {
-  const { title, detail } = err.problem;
-  return [title, detail].filter(Boolean).join(": ");
 }
