@@ -39,7 +39,7 @@ func postProbe(logger *slog.Logger, probes *fakeProbes, body string) *httptest.R
 	request.Header.Set("Content-Type", "application/json")
 
 	response := httptest.NewRecorder()
-	New(logger, probes).Handler().ServeHTTP(response, request)
+	New(logger, Services{Probe: probes}).Handler().ServeHTTP(response, request)
 	return response
 }
 
@@ -125,7 +125,7 @@ func TestCreateProbeEventStorageError(t *testing.T) {
 
 // Schema and operation names become generated client names, so pin them.
 func TestProbeOpenAPI(t *testing.T) {
-	doc := New(discard, nil).api.OpenAPI()
+	doc := New(discard, Services{}).api.OpenAPI()
 
 	path := doc.Paths["/probe/events"]
 	if path == nil || path.Post == nil || path.Post.OperationID != "createProbeEvent" {

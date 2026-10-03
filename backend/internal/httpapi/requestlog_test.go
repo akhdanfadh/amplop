@@ -13,7 +13,7 @@ func TestRequestLog(t *testing.T) {
 	var out bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&out, nil))
 
-	router := New(logger, nil).Handler()
+	router := New(logger, Services{}).Handler()
 	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v0/health?token=secret", nil))
 
 	var entry map[string]any

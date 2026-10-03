@@ -19,9 +19,15 @@ type API struct {
 	api    huma.API
 }
 
+// Services holds what each feature's operations call. Fields may be nil
+// when no request is served, e.g. to export OpenAPI: registering an
+// operation calls none of them.
+type Services struct {
+	Probe probeService
+}
+
 // New registers every operation. logger receives one line per request.
-// probes may be nil when no request is served, e.g. to export OpenAPI.
-func New(logger *slog.Logger, probes probeService) *API {
+func New(logger *slog.Logger, services Services) *API {
 	// Logs written with a request context gain its request_id.
 	logger = slog.New(requestIDHandler{logger.Handler()})
 
@@ -56,7 +62,7 @@ func New(logger *slog.Logger, probes probeService) *API {
 	api := humagin.NewWithGroup(router, group, config)
 
 	registerHealth(api)
-	registerProbe(api, probes)
+	registerProbe(api, services.Probe)
 
 	return &API{router: router, api: api}
 }

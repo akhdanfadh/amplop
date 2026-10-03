@@ -92,7 +92,8 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	}
 	defer db.Close()
 
-	return listen(ctx, cfg.HTTPAddr, httpapi.New(logger, probe.NewService(db)).Handler(), logger)
+	services := httpapi.Services{Probe: probe.NewService(db)}
+	return listen(ctx, cfg.HTTPAddr, httpapi.New(logger, services).Handler(), logger)
 }
 
 // listen serves handler on addr until ctx is cancelled, then lets in-flight
@@ -144,7 +145,7 @@ func migrate(ctx context.Context, logger *slog.Logger) error {
 
 // export writes the OpenAPI document to path without starting a listener.
 func export(path string, logger *slog.Logger) error {
-	doc, err := httpapi.New(logger, nil).OpenAPI()
+	doc, err := httpapi.New(logger, httpapi.Services{}).OpenAPI()
 	if err != nil {
 		return err
 	}

@@ -29,7 +29,7 @@ func TestExport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want, err := httpapi.New(discard, nil).OpenAPI()
+	want, err := httpapi.New(discard, httpapi.Services{}).OpenAPI()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestListenShutdown(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- listen(ctx, addr, httpapi.New(discard, nil).Handler(), discard) }()
+	go func() { done <- listen(ctx, addr, httpapi.New(discard, httpapi.Services{}).Handler(), discard) }()
 
 	url := "http://" + addr + "/api/v0/health"
 	if !waitUp(url) {
@@ -108,7 +108,7 @@ func TestListenBusyPort(t *testing.T) {
 
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&out, nil))
-	err = listen(context.Background(), listener.Addr().String(), httpapi.New(discard, nil).Handler(), logger)
+	err = listen(context.Background(), listener.Addr().String(), httpapi.New(discard, httpapi.Services{}).Handler(), logger)
 	if err == nil {
 		t.Fatal("listen on a busy port must fail")
 	}

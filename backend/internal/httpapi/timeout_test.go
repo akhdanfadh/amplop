@@ -37,7 +37,7 @@ func TestTimeout(t *testing.T) {
 
 // Every Huma operation gets the deadline.
 func TestRequestTimeout(t *testing.T) {
-	a := New(discard, nil)
+	a := New(discard, Services{})
 
 	var deadline time.Time
 	var ok bool

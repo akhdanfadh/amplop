@@ -30,7 +30,7 @@ var (
 
 // errorAPI adds a test operation that fails on request.
 func errorAPI(logger *slog.Logger) *API {
-	a := New(logger, nil)
+	a := New(logger, Services{})
 	huma.Register(a.api, huma.Operation{
 		OperationID: "postProbe",
 		Method:      http.MethodPost,
