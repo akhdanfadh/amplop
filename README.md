@@ -209,3 +209,14 @@ response body against its schema. A body that does not match, e.g. after
 Go renamed a field without `pnpm generate`, throws `ApiError` with the
 title `Unexpected response from the server` and logs the mismatched
 fields to the browser console. Extra fields are dropped, not rejected.
+
+Components call the API through generated
+[TanStack Query](https://tanstack.com/query) hooks, e.g. `useGetHealth()`.
+Query sends the request, caches the result, tracks loading and errors, and
+refetches when the browser tab regains focus. A failed read retries only
+on 502, 503, or 504, at most twice, since Go may be restarting; any other
+error shows at once. Writes never retry. The rule is in `src/router.tsx`.
+
+Under `pnpm dev`, a page sends each read twice and cancels the first:
+React's development mode mounts every component twice to expose bugs.
+The `pnpm build` output sends it once.

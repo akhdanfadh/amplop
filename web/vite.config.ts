@@ -62,6 +62,14 @@ export default defineConfig({
       // as copied from plain-Vite docs; Vite+ wants `vite-plus` instead.
       "vite-plus/prefer-vite-plus-imports": "error",
     },
+    // Orval's hook code casts its own types. Only this rule is off there;
+    // every other rule and the type check still apply.
+    overrides: [
+      {
+        files: ["src/api/generated/**"],
+        rules: { "typescript/no-unsafe-type-assertion": "off" },
+      },
+    ],
     ignorePatterns: generated,
     // Also type-check, so `vp check` is the only static check.
     options: { typeAware: true, typeCheck: true },

@@ -16,6 +16,11 @@ export class ApiError extends Error {
   }
 }
 
+// The error type of every generated hook, e.g. useGetHealth().error.
+// Orval passes the documented error body, but transport throws ApiError for
+// every failed request.
+export type ErrorType<_Body> = ApiError;
+
 // Sends every generated operation's request (see orval.config.ts).
 // Returns the success body; a failed request throws ApiError.
 export async function transport<T>(

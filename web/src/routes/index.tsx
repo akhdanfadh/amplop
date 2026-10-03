@@ -1,38 +1,32 @@
-import { useState } from "react";
+import type { UseQueryResult } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { getHealth } from "@/api/generated/inbok";
-import { ApiError } from "@/api/transport";
+import { useGetHealth, type GetHealthQueryResult } from "@/api/generated/inbok";
+import type { ApiError } from "@/api/transport";
 
 export const Route = createFileRoute("/")({ component: Home });
 
 function Home() {
-  const [pending, setPending] = useState(false);
-  const [result, setResult] = useState("");
-
-  // Shows "ok", or the error, e.g. "Bad Gateway" while Go is down.
-  async function checkHealth() {
-    setPending(true);
-    try {
-      const { data } = await getHealth();
-      setResult(data.status);
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-      setResult(describe(err));
-    } finally {
-      setPending(false);
-    }
-  }
+  // Checks once on load, again on click, and when the tab regains focus.
+  const health = useGetHealth();
 
   return (
     <main className="flex flex-col items-start gap-4 p-8">
       <h1 className="text-3xl font-bold">inbok</h1>
-      <Button type="button" disabled={pending} onClick={() => void checkHealth()}>
+      <Button type="button" disabled={health.isFetching} onClick={() => void health.refetch()}>
         Check health
       </Button>
-      <output>{result}</output>
+      <output>{show(health)}</output>
     </main>
   );
+}
+
+// "Checking..." while a request (or a retry) runs, so an earlier "ok" never
+// shows as current. Then "ok", or the error, e.g. "Bad Gateway".
+function show(health: UseQueryResult<GetHealthQueryResult, ApiError>) {
+  if (health.isFetching) return "Checking...";
+  if (health.isError) return describe(health.error);
+  return health.data?.data.status;
 }
 
 // "Not Found: route not found", or the title alone when there is no detail.

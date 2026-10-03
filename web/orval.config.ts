@@ -1,8 +1,8 @@
 import { defineConfig } from "orval";
 
-// `pnpm generate` writes one TypeScript function per API operation, plus
-// the types they use and a Zod schema for each, from the OpenAPI document
-// that Go exports.
+// `pnpm generate` writes one TypeScript function per API operation, a
+// TanStack Query hook for it, and the types they use with a Zod schema for
+// each, from the OpenAPI document that Go exports.
 export default defineConfig({
   inbok: {
     input: "../api/generated/openapi.json",
@@ -10,7 +10,9 @@ export default defineConfig({
       target: "src/api/generated/inbok.ts",
       // Delete the old output first, so a removed operation disappears.
       clean: true,
-      client: "fetch",
+      // Hooks such as useGetHealth(), on top of plain fetch functions.
+      client: "react-query",
+      httpClient: "fetch",
       // Types as Zod schemas, which check a response at runtime.
       schemas: { path: "src/api/generated/model", type: "zod" },
       // Prefix paths with the document's `servers` URL: `/api/v0/health`.
