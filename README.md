@@ -191,6 +191,49 @@ go tool -modfile=tools.mod sqlc generate
 SQLC parses SQL with PostgreSQL's own C code, so it needs a C compiler,
 e.g. gcc. Its first run builds it, which takes about a minute.
 
+The Go code in `backend/internal` has one package per feature for its
+rules, and one package per technology that connects those rules to the
+outside world. An arrow means "imports":
+
+```text
+httpapi --> probe <-- repository/postgres
+```
+
+- `probe`, like every feature package, holds the feature's types, its
+  rules, its `Service`, and a `Storage` interface listing what it needs
+  saved. It imports no Gin, Huma, pgx, or SQLC, and never imports
+  `httpapi` or `repository/postgres`, so its tests need no server and no
+  database.
+- `httpapi` registers every feature's operations and holds the shared
+  middleware and error handling. For each feature it declares an
+  interface for what its operations call, e.g. `probeService`, so its
+  tests answer with fixed results instead of running the feature's rules.
+- `repository/postgres` implements every feature's `Storage` on one `DB`.
+  A write that must save several features' data together is one `DB`
+  method running one transaction, as `UpdateCounter` does. `DB` method
+  names must be unique across features; when two clash, qualify the newer
+  one.
+- `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
+  in `httpapi.Services`.
+
+ADR021 in the project's decision records explains this layout and the
+alternatives it was chosen over.
+
+To add a feature, e.g. `account`:
+
+1. `internal/account`: types, rules, `Service`, and `Storage`, tested with
+   an in-memory `Storage`.
+2. A migration and `queries/account.sql`; regenerate SQLC.
+3. `repository/postgres/account.go`: the `Storage` methods, tested against
+   PostgreSQL.
+4. `httpapi/account.go`: the operations, an `accountService` interface,
+   and `registerAccount`, tested with a fake `accountService`. Add an
+   `Account` field to `Services` and call `registerAccount` in `New`.
+5. `cmd/inbok/main.go`: set `Account` in `serve`'s `Services`.
+6. Regenerate `api/generated/openapi.json`.
+
+Each step can be its own commit.
+
 The browser app in `web` requires pnpm. `package.json` pins the pnpm and
 Node.js versions: another installed pnpm downloads and runs the pinned
 one, and `pnpm install` downloads the pinned Node.js, which the `pnpm`
