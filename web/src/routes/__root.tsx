@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
+import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -8,6 +9,8 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "inbok" },
     ],
+    // A <link> in the prerendered shell, so the page never shows unstyled.
+    links: [{ rel: "stylesheet", href: appCss }],
   }),
   shellComponent: RootDocument,
   notFoundComponent: NotFound,
@@ -31,5 +34,5 @@ function RootDocument({ children }: { children: ReactNode }) {
 
 // Shown for any URL without a route, e.g. a mistyped path.
 function NotFound() {
-  return <p>Page not found.</p>;
+  return <p className="p-8 text-gray-600">Page not found.</p>;
 }

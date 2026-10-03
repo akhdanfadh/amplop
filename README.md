@@ -161,3 +161,8 @@ Oxc extension in your editor (VS Code: `oxc.oxc-vscode`; others:
 
 The project uses TypeScript 7. If your VS Code still checks types with
 TypeScript 6, install the `TypeScriptTeam.native-preview` extension.
+
+Styling uses [Tailwind CSS](https://tailwindcss.com): utility classes in
+`className`, generated from `src/styles.css`. `pnpm fix` sorts them in
+Tailwind's recommended order. For class autocomplete, install the
+Tailwind CSS IntelliSense extension (VS Code: `bradlc.vscode-tailwindcss`).

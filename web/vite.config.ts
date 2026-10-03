@@ -1,6 +1,7 @@
 import { defineConfig, lazyPlugins } from "vite-plus";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 
 // Written by the router plugin; it asks to be left unformatted and unlinted.
 const generated = ["src/routeTree.gen.ts"];
@@ -19,6 +20,7 @@ export default defineConfig({
     tanstackStart({ spa: { enabled: true } }),
     // Must come after tanstackStart.
     viteReact(),
+    tailwindcss(),
   ]),
 
   // Forward API calls to Go, so the browser sees one origin. `pnpm preview`
@@ -26,7 +28,12 @@ export default defineConfig({
   server: { proxy: { "/api": proxyTarget } },
 
   // Oxfmt defaults, like gofmt: no style options to debate.
-  fmt: { ignorePatterns: generated },
+  fmt: {
+    ignorePatterns: generated,
+    // If this file moves, update the path: a missing file silently turns
+    // sorting off.
+    sortTailwindcss: { stylesheet: "src/styles.css" },
+  },
 
   lint: {
     // react-perf flags idiomatic inline handlers; import adds little over
