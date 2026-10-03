@@ -19,11 +19,7 @@ type healthOutput struct {
 	Body healthResponse
 }
 
-type healthHead struct {
-	ContentType string `header:"Content-Type"`
-}
-
-// registerHealth adds the health GET and HEAD operations.
+// registerHealth adds the health operation.
 func registerHealth(api huma.API) {
 	// Report whether this process can answer HTTP requests.
 	huma.Register(api, huma.Operation{
@@ -36,16 +32,5 @@ func registerHealth(api huma.API) {
 		output := &healthOutput{}
 		output.Body.Data.Status = "ok"
 		return output, nil
-	})
-
-	// HEAD returns GET's status and media type without a response body.
-	huma.Register(api, huma.Operation{
-		OperationID:   "headHealth",
-		Method:        http.MethodHead,
-		Path:          healthPath,
-		Summary:       "Check process health headers",
-		DefaultStatus: http.StatusOK,
-	}, func(_ context.Context, _ *struct{}) (*healthHead, error) {
-		return &healthHead{ContentType: "application/json"}, nil
 	})
 }

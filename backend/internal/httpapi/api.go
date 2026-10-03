@@ -78,7 +78,7 @@ func handleNoRoute(ctx *gin.Context) {
 }
 
 // handleNoMethod replaces Gin's plain-text 405 with Problem Details. Gin
-// still sets the Allow header, e.g. "GET, HEAD".
+// still sets the Allow header, e.g. "GET".
 func handleNoMethod(ctx *gin.Context) {
 	writeProblem(ctx, http.StatusMethodNotAllowed, "method not allowed")
 }

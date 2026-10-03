@@ -134,32 +134,6 @@
           }
         },
         "summary": "Check process health"
-      },
-      "head": {
-        "operationId": "headHealth",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "headers": {
-              "Content-Type": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Check process health headers"
       }
     }
   },

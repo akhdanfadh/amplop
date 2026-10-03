@@ -42,24 +42,6 @@ func TestHealth(t *testing.T) {
 	}
 }
 
-func TestHealthHead(t *testing.T) {
-	router := New(discard).Handler()
-	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodHead, "/api/v0/health", nil))
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
-	}
-
-	if got := response.Header().Get("Content-Type"); got != "application/json" {
-		t.Fatalf("Content-Type = %q", got)
-	}
-
-	if response.Body.Len() != 0 {
-		t.Fatalf("HEAD body = %q", response.Body.String())
-	}
-}
-
 func TestHealthOpenAPI(t *testing.T) {
 	a := New(discard)
 	router, api := a.Handler(), a.api
@@ -88,11 +70,11 @@ func TestHealthOpenAPI(t *testing.T) {
 	}
 
 	path := api.OpenAPI().Paths["/health"]
-	if path == nil || path.Get == nil || path.Head == nil {
-		t.Fatal("health GET and HEAD must be documented")
+	if path == nil || path.Get == nil || path.Head != nil {
+		t.Fatal("health must document GET only")
 	}
 
-	if path.Get.OperationID != "getHealth" || path.Head.OperationID != "headHealth" {
+	if path.Get.OperationID != "getHealth" {
 		t.Fatal("health operation IDs changed")
 	}
 
@@ -124,10 +106,5 @@ func TestHealthOpenAPI(t *testing.T) {
 	field := data.Properties["status"]
 	if field == nil || field.Type != "string" || !reflect.DeepEqual(field.Enum, []any{"ok"}) {
 		t.Fatal("health status must be documented as the string enum ok")
-	}
-
-	head := path.Head.Responses[status]
-	if head == nil || len(head.Content) != 0 {
-		t.Fatal("HEAD must document a bodyless success response")
 	}
 }
