@@ -23,7 +23,7 @@ func (db *DB) UpdateCounter(ctx context.Context, update func(c *probe.Counter) (
 	err := pgx.BeginFunc(ctx, db.pool, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 
-		total, err := queries.LockCounter(ctx)
+		total, err := queries.LockProbeCounter(ctx)
 		if err != nil {
 			return fmt.Errorf("lock probe counter: %w", err)
 		}
@@ -35,7 +35,7 @@ func (db *DB) UpdateCounter(ctx context.Context, update func(c *probe.Counter) (
 		}
 
 		// The API allows an amount of 1 to 10, so int32 cannot overflow.
-		row, err := queries.InsertEvent(ctx, sqlc.InsertEventParams{
+		row, err := queries.InsertProbeEvent(ctx, sqlc.InsertProbeEventParams{
 			Note:        entry.Note,
 			Amount:      int32(entry.Amount),
 			Highlighted: entry.Highlighted,
@@ -45,7 +45,7 @@ func (db *DB) UpdateCounter(ctx context.Context, update func(c *probe.Counter) (
 			return fmt.Errorf("insert probe event: %w", err)
 		}
 
-		if err := queries.UpdateCounter(ctx, counter.Total); err != nil {
+		if err := queries.UpdateProbeCounter(ctx, counter.Total); err != nil {
 			return fmt.Errorf("save probe counter: %w", err)
 		}
 

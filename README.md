@@ -176,9 +176,11 @@ one. The probe's tables are an exception until the first release.
 
 Queries are SQL files in `backend/internal/repository/postgres/queries`.
 [SQLC](https://sqlc.dev) reads them together with the migrations and
-generates typed Go methods, e.g. `LockCounter`, into
+generates typed Go methods, e.g. `LockProbeCounter`, into
 `backend/internal/repository/postgres/sqlc`; there, `models.go` lists
-every table's columns. Settings are in `backend/sqlc.yaml`. After
+every table's columns. Every feature's queries share that one package, so
+a query's name repeats its table's name, e.g. `InsertProbeEvent` for
+`probe_events`. Settings are in `backend/sqlc.yaml`. After
 changing a query or a migration, regenerate from `backend` and commit the
 result; never edit it by hand:
 

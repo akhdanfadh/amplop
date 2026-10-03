@@ -10,54 +10,54 @@ import (
 	"time"
 )
 
-const insertEvent = `-- name: InsertEvent :one
+const insertProbeEvent = `-- name: InsertProbeEvent :one
 INSERT INTO probe_events (note, amount, highlighted, tag)
 VALUES ($1, $2, $3, $4)
 RETURNING id, created_at
 `
 
-type InsertEventParams struct {
+type InsertProbeEventParams struct {
 	Note        string
 	Amount      int32
 	Highlighted bool
 	Tag         *string
 }
 
-type InsertEventRow struct {
+type InsertProbeEventRow struct {
 	ID        int64
 	CreatedAt time.Time
 }
 
-func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) (InsertEventRow, error) {
-	row := q.db.QueryRow(ctx, insertEvent,
+func (q *Queries) InsertProbeEvent(ctx context.Context, arg InsertProbeEventParams) (InsertProbeEventRow, error) {
+	row := q.db.QueryRow(ctx, insertProbeEvent,
 		arg.Note,
 		arg.Amount,
 		arg.Highlighted,
 		arg.Tag,
 	)
-	var i InsertEventRow
+	var i InsertProbeEventRow
 	err := row.Scan(&i.ID, &i.CreatedAt)
 	return i, err
 }
 
-const lockCounter = `-- name: LockCounter :one
+const lockProbeCounter = `-- name: LockProbeCounter :one
 SELECT total FROM probe_counter WHERE id = 1 FOR UPDATE
 `
 
 // FOR UPDATE makes a concurrent write wait until this transaction ends,
 // so both never read the same total and lose an increment.
-func (q *Queries) LockCounter(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, lockCounter)
+func (q *Queries) LockProbeCounter(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, lockProbeCounter)
 	var total int64
 	err := row.Scan(&total)
 	return total, err
 }
 
-const updateCounter = `-- name: UpdateCounter :exec
+const updateProbeCounter = `-- name: UpdateProbeCounter :exec
 UPDATE probe_counter SET total = $1 WHERE id = 1
 `
 
-func (q *Queries) UpdateCounter(ctx context.Context, total int64) error {
-	_, err := q.db.Exec(ctx, updateCounter, total)
+func (q *Queries) UpdateProbeCounter(ctx context.Context, total int64) error {
+	_, err := q.db.Exec(ctx, updateProbeCounter, total)
 	return err
 }
