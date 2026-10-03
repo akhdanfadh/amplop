@@ -8,7 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 
-	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/lock"
 )
@@ -27,10 +27,14 @@ const (
 // Migrate applies every pending migration. A PostgreSQL lock makes a
 // second Migrate on the same database wait, not apply the files twice.
 func Migrate(ctx context.Context, url string, logger *slog.Logger) error {
-	db, err := sql.Open("pgx", url)
+	// Goose needs database/sql; the same settings as Open give it the same
+	// connect timeout.
+	cfg, err := poolConfig(url)
 	if err != nil {
 		return err
 	}
+
+	db := stdlib.OpenDB(*cfg.ConnConfig)
 	defer db.Close()
 
 	provider, err := newProvider(db)
