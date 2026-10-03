@@ -28,8 +28,10 @@ func hideServerErrors(logger *slog.Logger) huma.Transformer {
 			logger.LogAttrs(ctx.Context(), slog.LevelError, "unexpected error", slog.String("err", detail.Message))
 		}
 
-		e.Errors = nil
-		return e, nil
+		// Change a copy: e may be shared, e.g. a package-level var.
+		out := *e
+		out.Errors = nil
+		return &out, nil
 	}
 }
 
@@ -41,19 +43,22 @@ func hideInputValues(_ huma.Context, _ string, v any) (any, error) {
 		return v, nil
 	}
 
+	// Change copies: e may be shared, e.g. a package-level var.
+	out := *e
+	out.Errors = nil
+
 	// A nil error, e.g. Error409Conflict("x", nil), leaves a nil detail that
 	// would reach the client as null; drop it. No details omits errors.
-	var kept []*huma.ErrorDetail
 	for _, detail := range e.Errors {
 		if detail == nil {
 			continue
 		}
-		detail.Value = nil
-		kept = append(kept, detail)
+		hidden := *detail
+		hidden.Value = nil
+		out.Errors = append(out.Errors, &hidden)
 	}
 
-	e.Errors = kept
-	return e, nil
+	return &out, nil
 }
 
 // writeProblem answers a request Huma never handles, e.g. a Gin 404 or a

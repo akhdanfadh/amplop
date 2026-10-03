@@ -21,6 +21,13 @@ type probeInput struct {
 	}
 }
 
+// Errors shared by every request, as a package-level var would be.
+var (
+	sharedServer = huma.Error500InternalServerError("storage failed", errors.New("disk full"))
+	sharedClient = huma.Error422UnprocessableEntity("note rejected",
+		&huma.ErrorDetail{Location: "body.note", Message: "already taken", Value: "hunter2"})
+)
+
 // errorAPI adds a test operation that fails on request.
 func errorAPI(logger *slog.Logger) *API {
 	a := New(logger)
@@ -40,6 +47,10 @@ func errorAPI(logger *slog.Logger) *API {
 			return nil, huma.Error409Conflict("counter changed", nil)
 		case "nil server":
 			return nil, huma.Error500InternalServerError("storage failed", nil)
+		case "shared server":
+			return nil, sharedServer
+		case "shared client":
+			return nil, sharedClient
 		}
 		return nil, nil
 	})
@@ -149,6 +160,29 @@ func TestNilErrorDetail(t *testing.T) {
 		if _, ok := body["errors"]; ok {
 			t.Fatalf("%s: errors present: %s", c.note, response.Body.String())
 		}
+	}
+}
+
+// Hiding details must not change a shared error: the next request would
+// lose its details, and concurrent requests would race.
+func TestSharedErrorUnchanged(t *testing.T) {
+	var out bytes.Buffer
+	a := errorAPI(slog.New(slog.NewJSONHandler(&out, nil)))
+
+	for range 2 {
+		post(a, `{"note":"shared server","password":"x"}`)
+		response := post(a, `{"note":"shared client","password":"x"}`)
+		if strings.Contains(response.Body.String(), "hunter2") {
+			t.Fatalf("body echoes input: %s", response.Body.String())
+		}
+	}
+
+	if n := strings.Count(out.String(), `"err":"disk full"`); n != 2 {
+		t.Fatalf("logged the cause %d times, want 2:\n%s", n, out.String())
+	}
+	details := sharedClient.(*huma.ErrorModel).Errors
+	if len(details) != 1 || details[0].Value != "hunter2" {
+		t.Fatalf("shared client error changed: %+v", details)
 	}
 }
 
