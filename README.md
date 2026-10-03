@@ -136,3 +136,17 @@ then `pnpm exec vp migrate` to move the `vite` copy to the same version.
 Each file in `src/routes` is one route. `pnpm dev` and `pnpm build`
 regenerate `src/routeTree.gen.ts` from them. That file is committed so
 type checking works on a fresh clone; never edit it by hand.
+
+From `web`, check formatting, lint rules, and types in one command, or
+fix what can be fixed automatically:
+
+```sh
+pnpm check
+pnpm fix
+```
+
+Formatting uses Oxfmt's defaults. Lint rules and their reasons are in the
+`lint` block of `vite.config.ts`; unused code is a lint error, not a type
+error. To format on save and see lint errors while typing, install the
+Oxc extension in your editor (VS Code: `oxc.oxc-vscode`; others:
+<https://viteplus.dev/guide/ide-integration>).

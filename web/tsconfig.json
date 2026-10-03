@@ -16,10 +16,8 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
 
-    /* Strictness. */
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    /* Type safety. Code-quality checks (unused code, switch fallthrough)
+       live in the linter: see `lint` in vite.config.ts. */
+    "strict": true
   }
 }
