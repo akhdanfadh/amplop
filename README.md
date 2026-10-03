@@ -357,6 +357,11 @@ Go renamed a field without `pnpm generate`, throws `ApiError` with the
 title `Unexpected response from the server` and logs the mismatched
 fields to the browser console. Extra fields are dropped, not rejected.
 
+Never show Go's text to users: `title`, `detail`, and `errors[].message`
+are written for developers. Show `userMessage(err)` from
+`src/api/problem.ts`, or a screen's own words for a status it expects,
+e.g. a 409.
+
 Components call the API through generated
 [TanStack Query](https://tanstack.com/query) hooks, e.g. `useGetHealth()`.
 Query sends the request, caches the result, tracks loading and errors, and
