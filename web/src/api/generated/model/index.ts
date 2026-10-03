@@ -5,7 +5,12 @@
  * OpenAPI spec version: 0.0.0
  */
 
+export * from './createProbeEventBody.zod';
 export * from './errorDetail.zod';
 export * from './errorModel.zod';
 export * from './healthStatus.zod';
+export * from './newProbeEvent.zod';
+export * from './probeEvent.zod';
+export * from './probeEventCreated.zod';
 export * from './responseHealthStatus.zod';
+export * from './responseProbeEventCreated.zod';

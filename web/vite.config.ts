@@ -62,12 +62,16 @@ export default defineConfig({
       // as copied from plain-Vite docs; Vite+ wants `vite-plus` instead.
       "vite-plus/prefer-vite-plus-imports": "error",
     },
-    // Orval's hook code casts its own types. Only this rule is off there;
-    // every other rule and the type check still apply.
+    // Orval's generated code breaks two rules by design: it casts its own types
+    // and defines a header helper inside each write function. Only these rules
+    // are off there; every other rule and the type check still apply.
     overrides: [
       {
         files: ["src/api/generated/**"],
-        rules: { "typescript/no-unsafe-type-assertion": "off" },
+        rules: {
+          "typescript/no-unsafe-type-assertion": "off",
+          "unicorn/consistent-function-scoping": "off",
+        },
       },
     ],
     ignorePatterns: generated,
