@@ -36,6 +36,10 @@ func errorAPI(logger *slog.Logger) *API {
 			return nil, huma.Error500InternalServerError("storage failed", errors.New("pq: password authentication failed"))
 		case "missing":
 			return nil, huma.Error404NotFound("counter not found")
+		case "nil client":
+			return nil, huma.Error409Conflict("counter changed", nil)
+		case "nil server":
+			return nil, huma.Error500InternalServerError("storage failed", nil)
 		}
 		return nil, nil
 	})
@@ -120,6 +124,30 @@ func TestHideInputValues(t *testing.T) {
 			if _, ok := detail["value"]; ok || detail["location"] == nil || detail["message"] == nil {
 				t.Fatalf("%s: detail = %v", c.name, detail)
 			}
+		}
+	}
+}
+
+// A nil error passed to a Huma helper leaves a nil detail, which must
+// neither turn the response into a 500 nor reach the client as null.
+func TestNilErrorDetail(t *testing.T) {
+	cases := []struct {
+		note, detail string
+		status       int
+	}{
+		{"nil client", "counter changed", http.StatusConflict},
+		{"nil server", "storage failed", http.StatusInternalServerError},
+	}
+
+	for _, c := range cases {
+		response := post(errorAPI(discard), `{"note":"`+c.note+`","password":"x"}`)
+
+		body := decodeJSON(t, response.Body.Bytes())
+		if response.Code != c.status || body["detail"] != c.detail {
+			t.Fatalf("%s: %d %s", c.note, response.Code, response.Body.String())
+		}
+		if _, ok := body["errors"]; ok {
+			t.Fatalf("%s: errors present: %s", c.note, response.Body.String())
 		}
 	}
 }

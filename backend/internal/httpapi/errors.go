@@ -21,6 +21,10 @@ func hideServerErrors(logger *slog.Logger) huma.Transformer {
 		}
 
 		for _, detail := range e.Errors {
+			// A nil error, e.g. Error409Conflict("x", nil), leaves a nil detail.
+			if detail == nil {
+				continue
+			}
 			logger.LogAttrs(ctx.Context(), slog.LevelError, "unexpected error", slog.String("err", detail.Message))
 		}
 
@@ -37,10 +41,18 @@ func hideInputValues(_ huma.Context, _ string, v any) (any, error) {
 		return v, nil
 	}
 
+	// A nil error, e.g. Error409Conflict("x", nil), leaves a nil detail that
+	// would reach the client as null; drop it. No details omits errors.
+	var kept []*huma.ErrorDetail
 	for _, detail := range e.Errors {
+		if detail == nil {
+			continue
+		}
 		detail.Value = nil
+		kept = append(kept, detail)
 	}
 
+	e.Errors = kept
 	return e, nil
 }
 
