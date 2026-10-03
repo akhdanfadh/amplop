@@ -135,6 +135,16 @@ go run ./cmd/inbok migrate
 |---|---|---|
 | `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL, e.g. `postgres://inbok:inbok@127.0.0.1:5432/inbok?sslmode=disable`. |
 
+For development, the [Goose](https://pressly.github.io/goose/) command is
+pinned in `tools.mod` and reads the `GOOSE_*` settings in `.env`. From
+`backend`, after loading `.env`:
+
+```sh
+go tool -modfile=tools.mod goose status               # applied and pending files
+go tool -modfile=tools.mod goose reset                # run every Down part
+go tool -modfile=tools.mod goose create -s add_x sql  # next numbered file
+```
+
 Never edit a migration a shared database has already applied; add a new
 one. The probe's tables are an exception until the first release.
 
