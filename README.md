@@ -2,6 +2,13 @@
 
 Requires Go 1.27.1 or newer.
 
+The `Makefile` runs every command below from the repository root. Run
+`make` to list them, e.g. `make db-start`, `make db-migrate`, then
+`make dev` for Go and the web app together. `make check` runs what a
+commit must pass; `make check-backend` and `make check-web` run one half.
+Commands that need `.env` copy it from `.env.example` when it is missing.
+The sections below explain each command.
+
 `serve` needs PostgreSQL with its migrations applied; see the PostgreSQL
 section below. From the repository root, load `.env` and start the
 development server:
