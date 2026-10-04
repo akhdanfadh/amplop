@@ -1,5 +1,6 @@
 # Development commands. Run from the repository root; `make` alone lists
-# them. README.md explains what each command does and needs.
+# them. CONTRIBUTING.md, backend/README.md, and web/README.md explain
+# what each command does and needs.
 #
 # Naming: when `make <verb>` exists, its parts are `<verb>-backend` and
 # `<verb>-web`, e.g. `make check` runs `check-backend` and `check-web`.
@@ -15,7 +16,8 @@ OPENAPI := api/generated/openapi.json
 
 # Prefix for a command that needs ENV_FILE. Each recipe line runs in its
 # own shell, so the prefix goes on the same line. The shell reads the file,
-# as README.md does; Make would cut a value at #, e.g. p#ss becomes p.
+# as backend/README.md does; Make would cut a value at #, e.g. p#ss
+# becomes p.
 WITH_ENV = set -a; . "$(abspath $(ENV_FILE))"; set +a;
 
 GOOSE := go -C backend tool -modfile=tools.mod goose
