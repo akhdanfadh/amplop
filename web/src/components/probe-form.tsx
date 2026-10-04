@@ -1,6 +1,6 @@
-import { useForm } from "@tanstack/react-form";
+import { useForm, useSelector, type AnyFieldMeta } from "@tanstack/react-form";
 import { useCreateProbeEvent } from "@/api/generated/inbok";
-import type { NewProbeEvent } from "@/api/generated/model";
+import { NewProbeEvent } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,9 @@ export function ProbeForm() {
 
   const form = useForm({
     defaultValues: emptyEvent,
+    // Each edit is checked against the contract's schema; nothing is sent
+    // while a value breaks it.
+    validators: { onChange: NewProbeEvent },
     onSubmit: ({ value, formApi }) => {
       create.mutate({ data: value }, { onSuccess: () => formApi.reset() });
     },
@@ -27,6 +30,7 @@ export function ProbeForm() {
     // form, e.g. "The counter is full." once the amount is lowered.
     listeners: { onChange: () => create.reset() },
   });
+  const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
 
   return (
     <form
@@ -40,65 +44,85 @@ export function ProbeForm() {
           request's state or be lost when success clears the form. */}
       <FieldGroup>
         <form.Field name="note">
-          {(field) => (
-            <Field>
-              <FieldLabel htmlFor={field.name}>Note</FieldLabel>
-              <Input
-                id={field.name}
-                disabled={create.isPending}
-                value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-              />
-            </Field>
-          )}
+          {(field) => {
+            const errors = shown(field.state.meta, submitted);
+            return (
+              <Field data-invalid={errors.length > 0}>
+                <FieldLabel htmlFor={field.name}>Note</FieldLabel>
+                <Input
+                  id={field.name}
+                  disabled={create.isPending}
+                  aria-invalid={errors.length > 0}
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                />
+                <FieldError errors={errors} />
+              </Field>
+            );
+          }}
         </form.Field>
 
         <form.Field name="amount">
-          {(field) => (
-            <Field>
-              <FieldLabel htmlFor={field.name}>Amount</FieldLabel>
-              <Input
-                id={field.name}
-                disabled={create.isPending}
-                type="number"
-                // An emptied box gives NaN; show it as empty, not "NaN".
-                value={Number.isNaN(field.state.value) ? "" : field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.valueAsNumber)}
-              />
-            </Field>
-          )}
+          {(field) => {
+            const errors = shown(field.state.meta, submitted);
+            return (
+              <Field data-invalid={errors.length > 0}>
+                <FieldLabel htmlFor={field.name}>Amount</FieldLabel>
+                <Input
+                  id={field.name}
+                  disabled={create.isPending}
+                  aria-invalid={errors.length > 0}
+                  type="number"
+                  // An emptied box gives NaN; show it as empty, not "NaN".
+                  value={Number.isNaN(field.state.value) ? "" : field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.valueAsNumber)}
+                />
+                <FieldError errors={errors} />
+              </Field>
+            );
+          }}
         </form.Field>
 
         <form.Field name="tag">
-          {(field) => (
-            <Field>
-              <FieldLabel htmlFor={field.name}>Tag (optional)</FieldLabel>
-              <Input
-                id={field.name}
-                disabled={create.isPending}
-                value={field.state.value ?? ""}
-                onBlur={field.handleBlur}
-                // An empty box means no tag (null); Go rejects an empty tag.
-                onChange={(e) => field.handleChange(e.target.value || null)}
-              />
-            </Field>
-          )}
+          {(field) => {
+            const errors = shown(field.state.meta, submitted);
+            return (
+              <Field data-invalid={errors.length > 0}>
+                <FieldLabel htmlFor={field.name}>Tag (optional)</FieldLabel>
+                <Input
+                  id={field.name}
+                  disabled={create.isPending}
+                  aria-invalid={errors.length > 0}
+                  value={field.state.value ?? ""}
+                  onBlur={field.handleBlur}
+                  // An empty box means no tag (null); Go rejects an empty tag.
+                  onChange={(e) => field.handleChange(e.target.value || null)}
+                />
+                <FieldError errors={errors} />
+              </Field>
+            );
+          }}
         </form.Field>
 
         <form.Field name="highlighted">
-          {(field) => (
-            <Field orientation="horizontal">
-              <Checkbox
-                id={field.name}
-                disabled={create.isPending}
-                checked={field.state.value}
-                onCheckedChange={(checked) => field.handleChange(checked)}
-              />
-              <FieldLabel htmlFor={field.name}>Highlighted</FieldLabel>
-            </Field>
-          )}
+          {(field) => {
+            const errors = shown(field.state.meta, submitted);
+            return (
+              <Field orientation="horizontal" data-invalid={errors.length > 0}>
+                <Checkbox
+                  id={field.name}
+                  disabled={create.isPending}
+                  aria-invalid={errors.length > 0}
+                  checked={field.state.value}
+                  onCheckedChange={(checked) => field.handleChange(checked)}
+                />
+                <FieldLabel htmlFor={field.name}>Highlighted</FieldLabel>
+                <FieldError errors={errors} />
+              </Field>
+            );
+          }}
         </form.Field>
       </FieldGroup>
 
@@ -124,4 +148,10 @@ export function ProbeForm() {
 function failureText(err: ApiError) {
   if (err.problem.status === conflict) return "The counter is full.";
   return userMessage(err);
+}
+
+// A field's errors once the user has left it or tried to submit, so a
+// value is not flagged while first typed, e.g. Amount cleared to type 5.
+function shown(meta: AnyFieldMeta, submitted: boolean): AnyFieldMeta["errors"] {
+  return meta.isBlurred || submitted ? meta.errors : [];
 }

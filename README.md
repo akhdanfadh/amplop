@@ -377,6 +377,9 @@ field's value, with shadcn's `Field` components for labels and messages.
 generated mutation hook, `useCreateProbeEvent()`, and locks its inputs
 and button while the request runs. A failed request's message, e.g. "The
 counter is full.", stays below the form until the next edit or submit.
+Before sending, the form checks each edit against the generated schema,
+`NewProbeEvent`, and sends nothing while a value breaks it. A field shows
+its error once the user leaves it or clicks submit, then updates live.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.
