@@ -112,15 +112,25 @@ generate-web: ## Web client from the OpenAPI document
 
 # Checks. Go tests need Docker running.
 
+# Fails if regenerating code would change it, e.g. after editing a query
+# without `make generate`; never edits files.
+FRESH := scripts/check-fresh.sh
+
 check: check-backend check-web ## Everything a commit must pass
 
-check-backend: ## Format, vet, dependencies, and tests
+# Fresh SQLC code first: stale code makes vet fail with confusing errors.
+check-backend: ## Format, generated code, vet, dependencies, and tests
 	gofmt -d backend
+	$(FRESH) backend/internal/repository/postgres/sqlc $(MAKE) generate-sqlc
+	$(FRESH) $(OPENAPI) $(MAKE) generate-api
 	go -C backend vet ./...
 	go -C backend mod tidy -diff
 	go -C backend test ./...
 
-check-web: ## Format, lint, types, and tests
+# web-build also regenerates the route tree.
+check-web: ## Generated code, build, format, lint, types, and tests
+	$(FRESH) web/src/api/generated $(MAKE) generate-web
+	$(FRESH) web/src/routeTree.gen.ts $(MAKE) web-build
 	pnpm -C web check
 	pnpm -C web test
 
