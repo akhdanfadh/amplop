@@ -61,6 +61,9 @@ export default defineConfig({
       // Flags `from "vite"` in this file and `from "vitest"` anywhere,
       // as copied from plain-Vite docs; Vite+ wants `vite-plus` instead.
       "vite-plus/prefer-vite-plus-imports": "error",
+      // A deprecated API still works but will go, e.g. Zod's isInt; the
+      // message names the replacement.
+      "typescript/no-deprecated": "error",
     },
     // Orval's generated code breaks two rules by design: it casts its own types
     // and defines a header helper inside each write function. Only these rules
