@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
+import * as z from "zod";
 import { ApiError } from "@/api/transport";
+import { validationMessage } from "@/api/validation";
 import { routeTree } from "./routeTree.gen";
 
 // Statuses that may pass on their own: Go restarting behind a proxy (502),
@@ -10,6 +12,9 @@ const maxRetries = 2;
 
 // TanStack Start calls getRouter to create the app's router.
 export function getRouter() {
+  // Every Zod check in the app, e.g. a form's, reports in the app's words.
+  z.config({ customError: validationMessage });
+
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: shouldRetry } },
   });

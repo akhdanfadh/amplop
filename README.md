@@ -360,7 +360,9 @@ fields to the browser console. Extra fields are dropped, not rejected.
 Never show Go's text to users: `title`, `detail`, and `errors[].message`
 are written for developers. Show `userMessage(err)` from
 `src/api/problem.ts`, or a screen's own words for a status it expects,
-e.g. a 409.
+e.g. a 409. Zod's messages are developer text too: `src/router.tsx`
+replaces them app-wide with `src/api/validation.ts`, which states the
+field's rule, e.g. "Enter a whole number from 1 to 10.".
 
 Components call the API through generated
 [TanStack Query](https://tanstack.com/query) hooks, e.g. `useGetHealth()`.
