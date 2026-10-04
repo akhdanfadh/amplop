@@ -380,6 +380,9 @@ counter is full.", stays below the form until the next edit or submit.
 Before sending, the form checks each edit against the generated schema,
 `NewProbeEvent`, and sends nothing while a value breaks it. A field shows
 its error once the user leaves it or clicks submit, then updates live.
+If Go still rejects a value, e.g. after a rule changed in Go before
+`pnpm generate`, `fieldErrors` from `src/api/problem.ts` marks that field
+"This value was not accepted." until it is edited.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.

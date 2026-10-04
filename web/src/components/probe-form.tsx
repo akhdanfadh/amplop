@@ -1,7 +1,7 @@
 import { useForm, useSelector, type AnyFieldMeta } from "@tanstack/react-form";
 import { useCreateProbeEvent } from "@/api/generated/inbok";
 import { NewProbeEvent } from "@/api/generated/model";
-import { userMessage } from "@/api/problem";
+import { fieldErrors, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,7 +24,15 @@ export function ProbeForm() {
     // while a value breaks it.
     validators: { onChange: NewProbeEvent },
     onSubmit: ({ value, formApi }) => {
-      create.mutate({ data: value }, { onSuccess: () => formApi.reset() });
+      create.mutate(
+        { data: value },
+        {
+          onSuccess: () => formApi.reset(),
+          // A value Go rejects shows on its field, e.g. after Go changed a
+          // rule before `pnpm generate`. Editing that field clears it.
+          onError: (err) => formApi.setErrorMap({ onSubmit: { fields: fieldErrors(err) } }),
+        },
+      );
     },
     // After an edit, the last request's message no longer describes the
     // form, e.g. "The counter is full." once the amount is lowered.
