@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { summarize, userMessage } from "./problem";
+import { fieldErrors, summarize, userMessage } from "./problem";
 import { ApiError } from "./transport";
 
 describe("summarize", () => {
@@ -59,5 +59,58 @@ describe("userMessage", () => {
     ],
   ])("words %s for the user", (_case, err, message) => {
     expect(userMessage(err)).toBe(message);
+  });
+});
+
+// A 422 from Go with these errors[] entries.
+function unprocessable(errors: { location?: string; message?: string }[]) {
+  return new ApiError("status", { status: 422, title: "Unprocessable Entity", errors });
+}
+
+describe("fieldErrors", () => {
+  const rejected = { message: "This value was not accepted." };
+
+  it("puts each body error on its field, in the app's words", () => {
+    const err = unprocessable([
+      { location: "body.note", message: "expected string to be not blank" },
+      { location: "body.amount", message: "expected number >= 1" },
+    ]);
+
+    expect(fieldErrors(err)).toEqual({ note: rejected, amount: rejected });
+  });
+
+  it("keeps a nested path as the field name", () => {
+    const err = unprocessable([{ location: "body.items[3].tags", message: "expected array" }]);
+
+    expect(fieldErrors(err)).toEqual({ "items[3].tags": rejected });
+  });
+
+  it("gives a field one message for several errors", () => {
+    const err = unprocessable([
+      { location: "body.note", message: "expected string to be not blank" },
+      { location: "body.note", message: "expected length <= 120" },
+    ]);
+
+    expect(fieldErrors(err)).toEqual({ note: rejected });
+  });
+
+  it("skips errors outside the body's fields", () => {
+    const err = unprocessable([
+      { location: "body", message: "expected required property note to be present" },
+      { location: "query.page", message: "expected integer" },
+      { message: "no location" },
+    ]);
+
+    expect(fieldErrors(err)).toEqual({});
+  });
+
+  it("has nothing for a failure without errors", () => {
+    const err = new ApiError("status", {
+      status: 409,
+      title: "Conflict",
+      detail: "counter is full",
+    });
+
+    expect(fieldErrors(err)).toEqual({});
   });
 });

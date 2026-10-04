@@ -29,3 +29,23 @@ export function userMessage(err: ApiError) {
   if (status !== undefined && status >= firstServerError) return serverFailed;
   return failed;
 }
+
+// Go names a rejected request field by where it sits, e.g. "body.note".
+const bodyPrefix = "body.";
+
+// Shaped like a Zod issue, so a form shows it like its own errors.
+const rejected = { message: "This value was not accepted." };
+
+// Go's per-field errors, keyed by form field name, e.g. "body.note" is
+// "note" and "body.items[3].tags" is "items[3].tags". Go's own message is
+// developer text, and the form's rule must be outdated if Go disagrees,
+// so each field gets one plain message. Errors outside the body's fields,
+// e.g. a missing field reported at "body", are left to userMessage.
+export function fieldErrors(err: ApiError): Record<string, typeof rejected> {
+  const fields: Record<string, typeof rejected> = {};
+  for (const { location } of err.problem.errors ?? []) {
+    if (!location?.startsWith(bodyPrefix)) continue;
+    fields[location.slice(bodyPrefix.length)] = rejected;
+  }
+  return fields;
+}
