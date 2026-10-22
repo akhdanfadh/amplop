@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createRouter } from "@tanstack/react-router";
+import { createRouter, type Router } from "@tanstack/react-router";
 import * as z from "zod";
 import { ApiError } from "@/api/transport";
 import { validationMessage } from "@/api/validation";
@@ -11,7 +11,7 @@ const transientStatuses = new Set([502, 503, 504]);
 const maxRetries = 2;
 
 // TanStack Start calls getRouter to create the app's router.
-export function getRouter() {
+export function getRouter(): Router<typeof routeTree> {
   // Every Zod check in the app, e.g. a form's, reports in the app's words.
   z.config({ customError: validationMessage });
 
@@ -31,9 +31,9 @@ export function getRouter() {
 // Query retries every failure 3 times by default, so a 404 or a contract
 // mismatch would show only after about 7 seconds. Mutations (writes) never
 // retry: Query's default, since a write may have landed.
-function shouldRetry(failures: number, err: Error) {
+function shouldRetry(failures: number, err: Error): boolean {
   if (failures >= maxRetries || !(err instanceof ApiError)) return false;
 
-  const { status } = err.problem;
+  const { status } = err;
   return status !== undefined && transientStatuses.has(status);
 }

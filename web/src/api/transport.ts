@@ -1,96 +1,121 @@
 import type { ZodError, ZodType } from "zod";
-import { ErrorModel } from "./generated/model";
+import { ReceivedProblem } from "./received-problem";
 
-// Content type of a Problem Details body (RFC 9457), Go's error format.
 const problemType = "application/problem+json";
+const requestIdHeader = "X-Request-ID";
 
-// Why a request failed, so the app can choose what to tell the user.
 export type ApiErrorKind =
-  // No response arrived, e.g. offline.
-  | "unreachable"
-  // An error status, e.g. Go's 409, or the dev proxy's 502 while Go is down.
-  | "status"
-  // A body that breaks the API contract, e.g. an HTML page.
-  | "unexpected";
+  // Sending or reading failed.
+  | "network"
+  // A complete error response arrived.
+  | "http"
+  // A complete successful reply did not match its expected body.
+  | "response";
 
-// A failed API call. `problem` is Go's Problem Details body, or a stand-in
-// with the same fields when Go sent none.
+// A send failure may provide none of these. An unreadable body can still
+// provide a status and request ID, even when no problem could be read.
+type ErrorFacts = {
+  status?: number;
+  problem?: ReceivedProblem;
+  requestId?: string;
+};
+
+// Keep the actual status separate from the problem's advisory status.
+// A proxy may send HTML, leaving us with a status but no problem.
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
-  readonly problem: ErrorModel;
+  readonly status?: number;
+  readonly problem?: ReceivedProblem;
+  readonly requestId?: string;
 
-  constructor(kind: ApiErrorKind, problem: ErrorModel) {
-    super(problem.title);
+  constructor(kind: ApiErrorKind, facts: ErrorFacts = {}) {
+    super(facts.problem?.detail || facts.problem?.title || "Request failed.");
     this.name = "ApiError";
     this.kind = kind;
-    this.problem = problem;
+    this.status = facts.status;
+    this.problem = facts.problem;
+    this.requestId = facts.requestId;
   }
 }
 
-// The error type of every generated hook, e.g. useGetHealth().error.
-// Orval passes the documented error body, but transport throws ApiError for
-// every failed request.
+// Orval supplies a generated body type, but request failures use ApiError.
 export type ErrorType<_Body> = ApiError;
 
-// Sends every generated operation's request (see orval.config.ts).
-// Returns the success body; a failed request throws ApiError.
+// Generated API calls pass their success schema here. Return checked data
+// or throw an error containing the response facts received so far.
 export async function transport<T>(
   url: string,
   init: RequestInit & { schema?: ZodType<T> },
 ): Promise<T> {
-  // Orval omits the schema only for a body it cannot describe, e.g. none
-  // (204 No Content). No operation has one yet.
+  // schema is our validation setting, not a fetch option. Missing it is a
+  // programming error; reject it before sending a request.
   const { schema, ...rest } = init;
   if (!schema) throw new Error(`${url}: no response schema`);
 
-  const res = await send(url, rest);
-  if (!res.ok) throw await failure(url, res);
-
-  const result = await parse(res, schema);
-  if (result.success) return result.data;
-
-  // E.g. an HTML page, or a field Go renamed without `pnpm generate`.
-  logMismatch(url, result.error);
-  throw new ApiError("unexpected", { title: "Unexpected response from the server" });
-}
-
-// fetch throws only when no response arrives, e.g. offline. A request the
-// caller cancelled keeps its own error, since nothing failed.
-async function send(url: string, init: RequestInit): Promise<Response> {
+  // fetch resolves for HTTP errors too; a rejected call has no response facts.
+  let res: Response;
   try {
-    return await fetch(url, init);
+    res = await fetch(url, rest);
   } catch (err) {
-    if (init.signal?.aborted) throw err;
-    throw new ApiError("unreachable", { title: "Could not reach the server" });
+    if (isCancelled(init.signal)) throw err;
+    throw new ApiError("network");
   }
-}
 
-// Go's Problem Details, or a stand-in for any other body, e.g. the dev
-// proxy's plain-text 502 while Go is down.
-async function failure(url: string, res: Response): Promise<ApiError> {
-  const standIn = { status: res.status, title: res.statusText };
-  const type = res.headers.get("Content-Type") ?? "";
-  if (!type.startsWith(problemType)) return new ApiError("status", standIn);
+  // Headers arrive before the body finishes. Save them now so a later read
+  // failure keeps the actual status and request reference.
+  const facts: ErrorFacts = {
+    status: res.status,
+    requestId: res.headers.get(requestIdHeader) || undefined,
+  };
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (err) {
+    if (isCancelled(init.signal)) throw err;
+    throw new ApiError("network", facts);
+  }
 
-  const result = await parse(res, ErrorModel);
-  if (result.success) return new ApiError("status", result.data);
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // The body arrived completely. Invalid JSON keeps the HTTP status; a
+    // successful status with this body will fail the success schema below.
+    body = undefined;
+  }
+  // An error status stays an HTTP failure even if its body is HTML or invalid.
+  // Parse only the declared problem media type; never invent a problem.
+  if (!res.ok) {
+    const contentType = res.headers.get("Content-Type")?.split(";", 1)[0]?.trim().toLowerCase();
+    if (contentType === problemType) {
+      const result = ReceivedProblem.safeParse(body);
+      if (result.success) facts.problem = result.data;
+    }
+    throw new ApiError("http", facts);
+  }
 
+  // A success status alone is not enough: callers need the promised data.
+  // An incompatible body is a response failure, not interrupted communication.
+  const result = schema.safeParse(body);
+  if (result.success) return result.data;
   logMismatch(url, result.error);
-  return new ApiError("status", standIn);
+  throw new ApiError("response", facts);
 }
 
-// Checks the body against schema. A body that is not JSON, e.g. an HTML
-// page, fails like JSON of the wrong shape.
-async function parse<T>(res: Response, schema: ZodType<T>) {
-  const body: unknown = await res.json().catch((err: unknown) => {
-    if (err instanceof SyntaxError) return undefined;
-    throw err;
-  });
-  return schema.safeParse(body);
+// Preserve deliberate cancellation so obsolete requests are not shown as failures.
+// A signal aborted with TimeoutError still represents a failed request.
+function isCancelled(signal: AbortSignal | null | undefined): boolean {
+  if (!signal?.aborted) return false;
+  const reason: unknown = signal.reason;
+  return !(
+    typeof reason === "object" &&
+    reason !== null &&
+    "name" in reason &&
+    reason.name === "TimeoutError"
+  );
 }
 
-// Tells the developer which fields broke the contract; the user sees only
-// the error's title.
-function logMismatch(url: string, err: ZodError) {
+// Contract mismatches belong in developer diagnostics; screens choose user text.
+function logMismatch(url: string, err: ZodError): void {
   console.error(`${url}: response does not match the API contract`, err);
 }

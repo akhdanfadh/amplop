@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { useForm, useSelector, type AnyFieldMeta } from "@tanstack/react-form";
 import { useCreateProbeEvent } from "@/api/generated/inbok";
 import { NewProbeEvent } from "@/api/generated/model";
@@ -15,7 +16,7 @@ const emptyEvent: NewProbeEvent = { note: "", amount: 1, highlighted: false, tag
 const conflict = 409;
 
 // Adds an event to the probe counter: an example write.
-export function ProbeForm() {
+export function ProbeForm(): ReactElement {
   const create = useCreateProbeEvent();
 
   const form = useForm({
@@ -153,8 +154,8 @@ export function ProbeForm() {
 }
 
 // "The counter is full." for Go's 409; the app's general wording otherwise.
-function failureText(err: ApiError) {
-  if (err.problem.status === conflict) return "The counter is full.";
+function failureText(err: ApiError): string {
+  if (err.status === conflict) return "The counter is full.";
   return userMessage(err);
 }
 

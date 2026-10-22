@@ -1,9 +1,9 @@
 import type { ApiError } from "./transport";
 
 // "Not Found: route not found", or the title alone when there is no detail.
-export function summarize(err: ApiError) {
-  const { title, detail } = err.problem;
-  return [title, detail].filter(Boolean).join(": ");
+export function summarize(err: ApiError): string {
+  const { title, detail } = err.problem ?? {};
+  return [title, detail].filter(Boolean).join(": ") || userMessage(err);
 }
 
 // HTTP statuses (RFC 9110) that change what the user is told.
@@ -20,11 +20,11 @@ const failed = "Something went wrong. Try again.";
 // What to tell the user about a failed request. Go's text is for
 // developers, e.g. "Unprocessable Entity"; a form may word a status it
 // expects better, e.g. 409 "The counter is full.".
-export function userMessage(err: ApiError) {
-  const { status } = err.problem;
+export function userMessage(err: ApiError): string {
+  const { status } = err;
 
   // A 502 comes from a proxy that could not reach Go.
-  if (err.kind === "unreachable" || status === badGateway) return cannotReach;
+  if (err.kind === "network" || status === badGateway) return cannotReach;
   if (status === unprocessable) return checkValues;
   if (status !== undefined && status >= firstServerError) return serverFailed;
   return failed;
@@ -43,7 +43,7 @@ const rejected = { message: "This value was not accepted." };
 // e.g. a missing field reported at "body", are left to userMessage.
 export function fieldErrors(err: ApiError): Record<string, typeof rejected> {
   const fields: Record<string, typeof rejected> = {};
-  for (const { location } of err.problem.errors ?? []) {
+  for (const { location } of err.problem?.errors ?? []) {
     if (!location?.startsWith(bodyPrefix)) continue;
     fields[location.slice(bodyPrefix.length)] = rejected;
   }

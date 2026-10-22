@@ -56,8 +56,8 @@ The web app reads these from the contract; keep them stable:
   web's error messages, so changing one is a contract change.
 - A 422's `errors[].location` is `body.<field>`, e.g.
   `body.items[3].tags`; only that marks the field in a form.
-- Problem Details `type` and `instance` are absolute URIs or absent; the
-  web's schema rejects relative ones.
+- Received Problem Details can omit members and use relative URI references.
+  Parse them with `web/src/api/received-problem.ts`.
 - A second 409 meaning on one operation needs its own `type` URI so the
   web can tell them apart.
 - A 204 response needs transport work first: `web/src/api/transport.ts`
@@ -70,6 +70,9 @@ The web app reads these from the contract; keep them stable:
 - A request failure lives in the mutation (`create.error`); field
   problems live in the form's errors. A request failure in the form's
   error map blocks a retry until the next edit.
+- `ApiError.status` is the actual HTTP status. Its optional `problem` is
+  received data; use `status` for request decisions and preserve missing
+  problems as missing.
 - `src/components/ui` is our code: edit a component to pass lint. Add
   one with `make web-add-ui NAME=dialog`.
 - Before upgrading `vite-plus` or adding a Vite plugin, read the NOTE

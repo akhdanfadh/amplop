@@ -4,58 +4,54 @@ import { ApiError } from "./transport";
 
 describe("summarize", () => {
   it("joins the title and detail", () => {
-    const err = new ApiError("status", {
+    const err = new ApiError("http", {
       status: 404,
-      title: "Not Found",
-      detail: "route not found",
+      problem: { title: "Not Found", detail: "route not found" },
     });
 
     expect(summarize(err)).toBe("Not Found: route not found");
   });
 
   it("shows the title alone without a detail", () => {
-    const err = new ApiError("status", { status: 502, title: "Bad Gateway" });
+    const err = new ApiError("http", { status: 502, problem: { title: "Bad Gateway" } });
 
     expect(summarize(err)).toBe("Bad Gateway");
+  });
+
+  it("uses local wording when no problem arrived", () => {
+    expect(summarize(new ApiError("network"))).toBe("Can't reach the server. Try again.");
   });
 });
 
 describe("userMessage", () => {
   it.each([
-    [
-      "no response",
-      new ApiError("unreachable", { title: "Could not reach the server" }),
-      "Can't reach the server. Try again.",
-    ],
+    ["no response", new ApiError("network"), "Can't reach the server. Try again."],
     [
       "the proxy's 502",
-      new ApiError("status", { status: 502, title: "Bad Gateway" }),
+      new ApiError("http", { status: 502 }),
       "Can't reach the server. Try again.",
     ],
-    [
-      "rejected values",
-      new ApiError("status", { status: 422, title: "Unprocessable Entity" }),
-      "Check the values and try again.",
-    ],
+    ["rejected values", new ApiError("http", { status: 422 }), "Check the values and try again."],
     [
       "a server failure",
-      new ApiError("status", { status: 500, title: "Internal Server Error" }),
+      new ApiError("http", { status: 500 }),
       "Something went wrong on our side. Try again.",
     ],
     [
       "a timeout behind a proxy",
-      new ApiError("status", { status: 504, title: "Gateway Timeout" }),
+      new ApiError("http", { status: 504 }),
       "Something went wrong on our side. Try again.",
     ],
+    ["a contract mismatch", new ApiError("response"), "Something went wrong. Try again."],
     [
-      "a contract mismatch",
-      new ApiError("unexpected", { title: "Unexpected response from the server" }),
+      "any other status",
+      new ApiError("http", { status: 409, problem: { detail: "counter is full" } }),
       "Something went wrong. Try again.",
     ],
     [
-      "any other status",
-      new ApiError("status", { status: 409, title: "Conflict", detail: "counter is full" }),
-      "Something went wrong. Try again.",
+      "actual server status despite a different problem status",
+      new ApiError("http", { status: 503, problem: { status: 422 } }),
+      "Something went wrong on our side. Try again.",
     ],
   ])("words %s for the user", (_case, err, message) => {
     expect(userMessage(err)).toBe(message);
@@ -63,8 +59,8 @@ describe("userMessage", () => {
 });
 
 // A 422 from Go with these errors[] entries.
-function unprocessable(errors: { location?: string; message?: string }[]) {
-  return new ApiError("status", { status: 422, title: "Unprocessable Entity", errors });
+function unprocessable(errors: { location: string; message: string }[]): ApiError {
+  return new ApiError("http", { status: 422, problem: { errors } });
 }
 
 describe("fieldErrors", () => {
@@ -98,18 +94,13 @@ describe("fieldErrors", () => {
     const err = unprocessable([
       { location: "body", message: "expected required property note to be present" },
       { location: "query.page", message: "expected integer" },
-      { message: "no location" },
     ]);
 
     expect(fieldErrors(err)).toEqual({});
   });
 
   it("has nothing for a failure without errors", () => {
-    const err = new ApiError("status", {
-      status: 409,
-      title: "Conflict",
-      detail: "counter is full",
-    });
+    const err = new ApiError("http", { status: 409 });
 
     expect(fieldErrors(err)).toEqual({});
   });

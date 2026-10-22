@@ -5,7 +5,7 @@ const minHttpStatus = 100;
 const maxHttpStatus = 599;
 
 // Hyperjump throws for unsupported IP versions; ignore that member, not the body.
-function uriReference(value: string) {
+function uriReference(value: string): boolean {
   try {
     return isUriReference(value);
   } catch {

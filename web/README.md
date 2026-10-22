@@ -131,17 +131,23 @@ the client, e.g. a renamed field, `pnpm check` reports it there.
 
 ## Errors
 
-A failed call throws `ApiError`. Its `kind` says why: `unreachable` (no
-response arrived), `status` (an error status), or `unexpected` (a body
-that breaks the contract). Its `problem` field holds Go's Problem Details
-(`title`, `status`, `detail`, `errors`). When Go sent none, `problem` has
-only a `title` (and `status` for the proxy's
-502). Every generated function sends its request through
-`src/api/transport.ts`, the only code that calls `fetch`. It checks each
-response body against its schema. A body that does not match, e.g. after
-Go renamed a field without `pnpm generate`, throws `ApiError` with the
-title `Unexpected response from the server` and logs the mismatched
-fields to the browser console. Extra fields are dropped, not rejected.
+A failed call throws `ApiError`. Its `kind` is `network` for communication
+or body-read failures, `http` for an error response, or `response` for a
+complete successful reply that breaks the expected contract. Deliberate
+cancellation keeps its original error; a timeout remains a visible failure.
+
+`status` holds the actual HTTP status whenever received. Optional `problem`
+holds received Problem Details; HTML, unreadable bodies, and local failures
+never produce a stand-in problem. Optional `requestId` holds the received
+`X-Request-ID`. A problem's own status can differ from the actual HTTP
+status; request decisions use `ApiError.status`.
+
+Every generated function uses `src/api/transport.ts`, which checks success
+bodies against generated schemas and logs contract mismatches to the browser
+console. Error bodies with media type `application/problem+json` use
+`src/api/received-problem.ts`: members can be omitted, invalid members are
+ignored, and URI references can be relative or absolute. Extra fields are
+dropped, not rejected.
 
 Never show Go's text to users: `title`, `detail`, and `errors[].message`
 are written for developers. Show `userMessage(err)` from
