@@ -11,6 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const schemaTitle = "inbok"
+const schemaVersion = "0.0.0"
 const apiPrefix = "/api/v0"
 
 // API serves inbok's HTTP operations and describes them as OpenAPI.
@@ -28,6 +30,9 @@ type Services struct {
 
 // New registers every operation. logger receives one line per request.
 func New(logger *slog.Logger, services Services) *API {
+	// Tells Huma to construct errors using our problem model.
+	configureErrors()
+
 	// Logs written with a request context gain its request_id.
 	logger = slog.New(requestIDHandler{logger.Handler()})
 
@@ -45,7 +50,7 @@ func New(logger *slog.Logger, services Services) *API {
 	router.NoMethod(handleNoMethod)
 	group := router.Group(apiPrefix)
 
-	config := huma.DefaultConfig("inbok", "0.0.0")
+	config := huma.DefaultConfig(schemaTitle, schemaVersion)
 	// A relative server URL resolves against wherever the document is
 	// served, e.g. https://mail.example.com/api/v0, with no host config.
 	config.Servers = []*huma.Server{{URL: apiPrefix}}
@@ -56,8 +61,11 @@ func New(logger *slog.Logger, services Services) *API {
 	config.CreateHooks = nil
 	config.SchemasPath = ""
 
-	// Stop error responses leaking internals or user input.
-	config.Transformers = []huma.Transformer{hideServerErrors(logger), hideInputValues}
+	// Stop error responses leaking internals or user input
+	// (before Huma converts them to JSON.)
+	config.Transformers = []huma.Transformer{func(ctx huma.Context, _ string, value any) (any, error) {
+		return normalizeError(logger, ctx, value), nil
+	}}
 
 	api := humagin.NewWithGroup(router, group, config)
 
@@ -83,11 +91,11 @@ func (a *API) OpenAPI() ([]byte, error) {
 
 // handleNoRoute replaces Gin's plain-text 404 with Problem Details.
 func handleNoRoute(ctx *gin.Context) {
-	writeProblem(ctx, http.StatusNotFound, "route not found")
+	writeProblem(ctx, requestProblem(http.StatusNotFound))
 }
 
 // handleNoMethod replaces Gin's plain-text 405 with Problem Details. Gin
 // still sets the Allow header, e.g. "GET".
 func handleNoMethod(ctx *gin.Context) {
-	writeProblem(ctx, http.StatusMethodNotAllowed, "method not allowed")
+	writeProblem(ctx, requestProblem(http.StatusMethodNotAllowed))
 }

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -88,6 +89,10 @@ func TestCreateProbeEventInvalid(t *testing.T) {
 		if response.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("%s: %d %s", c.name, response.Code, response.Body.String())
 		}
+		problem := decodeJSON(t, response.Body.Bytes())
+		if problem["type"] != "/api/v0/problems/validation-error" {
+			t.Fatalf("%s: type = %v", c.name, problem["type"])
+		}
 
 		details, _ := decodeJSON(t, response.Body.Bytes())["errors"].([]any)
 		if len(details) != 1 || details[0].(map[string]any)["location"] != c.location {
@@ -104,7 +109,7 @@ func TestCreateProbeEventFull(t *testing.T) {
 	response := postProbe(discard, &fakeProbes{err: probe.ErrCounterFull}, `{"note":"x","amount":6,"highlighted":false}`)
 
 	body := decodeJSON(t, response.Body.Bytes())
-	if response.Code != http.StatusConflict || body["detail"] != "counter is full" || body["errors"] != nil {
+	if response.Code != http.StatusConflict || body["type"] != "/api/v0/problems/counter-full" || body["detail"] != "The counter is full." || body["errors"] != nil {
 		t.Fatalf("%d %s", response.Code, response.Body.String())
 	}
 }
@@ -144,6 +149,14 @@ func TestProbeOpenAPI(t *testing.T) {
 	}
 	if responses[strconv.Itoa(http.StatusConflict)] == nil {
 		t.Fatal("probe must document the full counter's 409")
+	}
+	conflict := responses[strconv.Itoa(http.StatusConflict)].Content["application/problem+json"]
+	example, err := json.Marshal(conflict.Example)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(example), `"type":"/api/v0/problems/counter-full"`) {
+		t.Fatalf("409 example = %s", example)
 	}
 
 	event := doc.Components.Schemas.Map()["ProbeEvent"]

@@ -28,11 +28,10 @@ the area you change before editing it:
 
 ## Go
 
-- Errors flow outward: storage turns database errors into the feature's
-  errors, e.g. `probe.ErrCounterFull`; handlers turn those into a 4xx
-  with a fixed message, e.g. `huma.Error409Conflict("counter is full")`;
-  anything unexpected is returned as is and becomes a logged, hidden
-  500. Error text holds no user input.
+- Errors flow outward: feature handlers map known errors with `newProblem`,
+  choosing status, type, and safe text. An explicitly mapped 5xx keeps that
+  text. Unexpected errors are returned as is and become a logged, fixed 500.
+  Public error text and input messages contain no rejected values or causes.
 - A write that spans features is one `Storage` method shaped as an
   update function, run in one transaction in `repository/postgres`.
   Feature code receives no transaction, transaction provider, or
@@ -58,6 +57,9 @@ The web app reads these from the contract; keep them stable:
   `body.items[3].tags`; only that marks the field in a form.
 - Received Problem Details can omit members and use relative URI references.
   Parse them with `web/src/api/received-problem.ts`.
+- Inbok problems require `type`, `status`, `title`, and `detail`. Types use
+  versioned URI references, e.g. `/api/v0/problems/validation-error`.
+  `instance` is initially omitted. Tracing uses `X-Request-ID`.
 - A second 409 meaning on one operation needs its own `type` URI so the
   web can tell them apart.
 - A 204 response needs transport work first: `web/src/api/transport.ts`

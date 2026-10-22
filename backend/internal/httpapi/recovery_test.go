@@ -38,7 +38,7 @@ func TestRecovery(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 		t.Fatal(err)
 	}
-	if problem["status"] != float64(http.StatusInternalServerError) || strings.Contains(response.Body.String(), "secret") {
+	if problem["status"] != float64(http.StatusInternalServerError) || problem["type"] != "/api/v0/problems/internal-error" || problem["detail"] != "Something went wrong on our side." || strings.Contains(response.Body.String(), "secret") {
 		t.Fatalf("body = %s", response.Body.String())
 	}
 

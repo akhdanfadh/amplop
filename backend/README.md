@@ -81,22 +81,42 @@ curl --fail-with-body -H 'Content-Type: application/json' \
 
 Expect HTTP 201 with the saved event and the new total, e.g.
 `{"data": {"event": {"id": 1, "note": "hello", ..., "tag": null}, "total": 3}}`.
-A body that breaks the contract gets a 422 listing each bad field, e.g.
-`{"location": "body.amount", "message": "expected number >= 1"}`. Past a
-total of 1000 it answers 409 `counter is full`; to empty it, run
+A body that breaks the contract gets a 422 listing rejected inputs, e.g.
+`{"location": "body.amount", "message": "Enter a valid value."}`. Past a
+total of 1000 it answers 409 with type `/api/v0/problems/counter-full`
+and detail `The counter is full.`; to empty it, run
 `go tool -modfile=tools.mod goose reset`, then `migrate` again.
 
 ## Errors
 
-Handlers map service errors to fixed messages, e.g. `probe.ErrCounterFull`
-to `huma.Error409Conflict("counter is full")`, and never pass a raw error
-to a 4xx helper: only 5xx details are hidden. Any other error is returned
-as is and becomes a 500.
+Error responses use `application/problem+json`. They require `type`,
+`status`, `title`, and `detail`. The body status equals the HTTP status;
+the type identifies the condition, e.g. `/api/v0/problems/counter-full`.
+These versioned paths work on each installation's own origin. `instance`
+is initially omitted; tracing uses the `X-Request-ID` header.
 
-Error responses never echo input values (`errors[].value` is removed), and
-a 5xx response keeps its `detail` but drops `errors[]`: a handler's raw Go
-error is logged as `msg="unexpected error"` with the request ID instead of
-being sent to the client.
+Handlers map known service errors with `newProblem`, choosing safe public
+text and a stable type. This includes expected 5xx failures: an explicitly
+mapped 503 can explain maintenance. Unclassified errors are returned as is,
+become a fixed 500 `internal-error`, and log their technical cause with the
+request ID. Huma status helpers alone do not declare text safe for display.
+
+Optional `errors` is a nonempty list of rejected inputs. Each entry has a
+`location` and safe `message`, without `value`. Huma input errors receive
+generic correction text, because its original messages can include rejected
+values. Explicit business mappings can also identify rejected inputs,
+including on a 409. Public messages contain no raw technical causes.
+
+Huma still validates request rules. `configureErrors` installs its error
+model once before API construction, so runtime responses and the exported
+OpenAPI schema describe the same public fields.
+
+Input failures retain their meanings: malformed requests use 400, body-read
+timeouts 408, body limits 413, unsupported content types 415, and schema
+violations 422. A 406 uses `not-acceptable`, title `Response format not
+supported`, and detail `Ask for a JSON response.` The current configuration
+falls back to JSON for unsupported `Accept` values; it does not enable strict
+response-format rejection.
 
 Unknown routes (404) and unsupported methods (405, with an `Allow` header)
 return the same Problem Details, never Gin's plain-text bodies. A trailing

@@ -28,8 +28,8 @@ import {
   ResponseProbeEventCreated
 } from './model';
 import type {
-  ErrorModel,
-  NewProbeEvent
+  NewProbeEvent,
+  Problem
 } from './model';
 
 import { transport } from '../transport';
@@ -87,7 +87,7 @@ export const getGetHealthQueryKey = () => {
     }
 
 
-export const getGetHealthQueryOptions = <TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<ErrorModel>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+export const getGetHealthQueryOptions = <TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, request?: SecondParameter<typeof transport>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -106,10 +106,10 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetHealthQueryResult = NonNullable<Awaited<ReturnType<typeof getHealth>>>
-export type GetHealthQueryError = ErrorType<ErrorModel>
+export type GetHealthQueryError = ErrorType<Problem>
 
 
-export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<ErrorModel>>(
+export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<Problem>>(
   options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getHealth>>,
@@ -119,7 +119,7 @@ export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TErr
       >, request?: SecondParameter<typeof transport>}
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<ErrorModel>>(
+export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<Problem>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getHealth>>,
@@ -129,7 +129,7 @@ export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TErr
       >, request?: SecondParameter<typeof transport>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<ErrorModel>>(
+export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<Problem>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, request?: SecondParameter<typeof transport>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
@@ -137,7 +137,7 @@ export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TErr
  * @summary Check process health
  */
 
-export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<ErrorModel>>(
+export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<Problem>>(
   options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getHealth>>, TError, TData>>, request?: SecondParameter<typeof transport>}
  , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
@@ -198,7 +198,7 @@ return transport<ResponseProbeEventCreated>(getCreateProbeEventUrl(),
 
 export const getCreateProbeEventMutationKey = () => ['createProbeEvent'] as const;
 
-export const getCreateProbeEventMutationOptions = <TError = ErrorType<ErrorModel>,
+export const getCreateProbeEventMutationOptions = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProbeEvent>>, TError,CreateProbeEventMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createProbeEvent>>, TError,CreateProbeEventMutationVariables, TContext> => {
 
@@ -227,13 +227,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateProbeEventMutationResult = NonNullable<Awaited<ReturnType<typeof createProbeEvent>>>
     export type CreateProbeEventMutationBody = NewProbeEvent
-    export type CreateProbeEventMutationError = ErrorType<ErrorModel>
+    export type CreateProbeEventMutationError = ErrorType<Problem>
     export type CreateProbeEventMutationVariables = {data: NewProbeEvent}
 
     /**
  * @summary Add to the probe counter
  */
-export const useCreateProbeEvent = <TError = ErrorType<ErrorModel>,
+export const useCreateProbeEvent = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProbeEvent>>, TError,CreateProbeEventMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof createProbeEvent>>,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -11,7 +12,10 @@ import (
 	"inbok/internal/probe"
 )
 
-const probeEventsPath = "/probe/events"
+const (
+	probeEventsPath = "/probe/events"
+	counterFullType = problemPrefix + "counter-full"
+)
 
 // newProbeEvent is the request body. Its tags are the contract: Huma
 // rejects a body that breaks them with a 422 naming the field, e.g.
@@ -48,6 +52,8 @@ type probeService interface {
 
 // registerProbe adds the probe operation.
 func registerProbe(api huma.API, service probeService) {
+	counterFull := newProblem(http.StatusConflict, counterFullType, "Counter full", "The counter is full.")
+
 	// Add an amount to the shared counter and record it, in one transaction.
 	huma.Register(api, huma.Operation{
 		OperationID:   "createProbeEvent",
@@ -55,7 +61,7 @@ func registerProbe(api huma.API, service probeService) {
 		Path:          probeEventsPath,
 		Summary:       "Add to the probe counter",
 		DefaultStatus: http.StatusCreated,
-		Errors:        []int{http.StatusConflict},
+		Errors:        bodyErrors(http.StatusConflict),
 	}, func(ctx context.Context, in *struct{ Body newProbeEvent }) (*output[probeEventCreated], error) {
 		result, err := service.Add(ctx, probe.Entry{
 			Note:        in.Body.Note,
@@ -67,7 +73,7 @@ func registerProbe(api huma.API, service probeService) {
 		// Domain errors become fixed messages; any other error is a 500
 		// whose text is logged, never sent.
 		if errors.Is(err, probe.ErrCounterFull) {
-			return nil, huma.Error409Conflict("counter is full")
+			return nil, counterFull
 		}
 		if err != nil {
 			return nil, err
@@ -86,4 +92,9 @@ func registerProbe(api huma.API, service probeService) {
 			Total: result.Total,
 		}), nil
 	})
+
+	// Document the machine identity as well as the generic error envelope.
+	conflict := api.OpenAPI().Paths[probeEventsPath].Post.Responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "The counter is full."
+	conflict.Content[problemContentType].Example = counterFull
 }

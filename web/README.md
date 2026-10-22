@@ -149,10 +149,11 @@ console. Error bodies with media type `application/problem+json` use
 ignored, and URI references can be relative or absolute. Extra fields are
 dropped, not rejected.
 
-Never show Go's text to users: `title`, `detail`, and `errors[].message`
-are written for developers. Show `userMessage(err)` from
-`src/api/problem.ts`, or a screen's own words for a status it expects,
-e.g. a 409. Zod's messages are developer text too: `src/router.tsx`
+The API's `detail` and input `message` are safe user text. Screens currently
+choose their wording with `userMessage(err)` from `src/api/problem.ts` or
+a screen's own message. Different business failures can share a status,
+so use their type when adding different recovery actions.
+Zod's messages are developer text: `src/router.tsx`
 replaces them app-wide with `src/api/validation.ts`, which states the
 field's rule, e.g. "Enter a whole number from 1 to 10.".
 

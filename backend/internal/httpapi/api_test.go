@@ -67,13 +67,13 @@ func TestNoRoute(t *testing.T) {
 		detail       string
 		allow        string
 	}{
-		{http.MethodGet, "/api/v0/nope", http.StatusNotFound, "route not found", ""},
-		{http.MethodGet, "/", http.StatusNotFound, "route not found", ""},
-		{http.MethodGet, "/api/v0/schemas/HealthResponse.json", http.StatusNotFound, "route not found", ""},
-		{http.MethodGet, "/schemas/HealthResponse.json", http.StatusNotFound, "route not found", ""},
-		{http.MethodGet, "/api/v0/health/", http.StatusNotFound, "route not found", ""},
-		{http.MethodDelete, "/api/v0/health", http.StatusMethodNotAllowed, "method not allowed", "GET"},
-		{http.MethodHead, "/api/v0/health", http.StatusMethodNotAllowed, "method not allowed", "GET"},
+		{http.MethodGet, "/api/v0/nope", http.StatusNotFound, "The requested route or resource was not found.", ""},
+		{http.MethodGet, "/", http.StatusNotFound, "The requested route or resource was not found.", ""},
+		{http.MethodGet, "/api/v0/schemas/HealthResponse.json", http.StatusNotFound, "The requested route or resource was not found.", ""},
+		{http.MethodGet, "/schemas/HealthResponse.json", http.StatusNotFound, "The requested route or resource was not found.", ""},
+		{http.MethodGet, "/api/v0/health/", http.StatusNotFound, "The requested route or resource was not found.", ""},
+		{http.MethodDelete, "/api/v0/health", http.StatusMethodNotAllowed, "This route does not support that request method.", "GET"},
+		{http.MethodHead, "/api/v0/health", http.StatusMethodNotAllowed, "This route does not support that request method.", "GET"},
 	}
 
 	for _, c := range cases {
@@ -96,7 +96,7 @@ func TestNoRoute(t *testing.T) {
 		}
 
 		body := decodeJSON(t, response.Body.Bytes())
-		if body["status"] != float64(c.status) || body["title"] != http.StatusText(c.status) || body["detail"] != c.detail {
+		if body["status"] != float64(c.status) || body["type"] == nil || body["title"] == nil || body["detail"] != c.detail {
 			t.Fatalf("%s: body = %s", name, response.Body.String())
 		}
 

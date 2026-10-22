@@ -1,78 +1,6 @@
 {
   "components": {
     "schemas": {
-      "ErrorDetail": {
-        "additionalProperties": false,
-        "properties": {
-          "location": {
-            "description": "Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'",
-            "type": "string"
-          },
-          "message": {
-            "description": "Error message text",
-            "type": "string"
-          },
-          "value": {
-            "description": "The value at the given location"
-          }
-        },
-        "type": "object"
-      },
-      "ErrorModel": {
-        "additionalProperties": false,
-        "properties": {
-          "detail": {
-            "description": "A human-readable explanation specific to this occurrence of the problem.",
-            "examples": [
-              "Property foo is required but is missing."
-            ],
-            "type": "string"
-          },
-          "errors": {
-            "description": "Optional list of individual error details",
-            "items": {
-              "$ref": "#/components/schemas/ErrorDetail"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "instance": {
-            "description": "A URI reference that identifies the specific occurrence of the problem.",
-            "examples": [
-              "https://example.com/error-log/abc123"
-            ],
-            "format": "uri",
-            "type": "string"
-          },
-          "status": {
-            "description": "HTTP status code",
-            "examples": [
-              400
-            ],
-            "format": "int64",
-            "type": "integer"
-          },
-          "title": {
-            "description": "A short, human-readable summary of the problem type. This value should not change between occurrences of the error.",
-            "examples": [
-              "Bad Request"
-            ],
-            "type": "string"
-          },
-          "type": {
-            "default": "about:blank",
-            "description": "A URI reference to human-readable documentation for the error.",
-            "examples": [
-              "https://example.com/errors/example"
-            ],
-            "format": "uri",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "HealthStatus": {
         "additionalProperties": false,
         "properties": {
@@ -85,6 +13,22 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "InputError": {
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "location",
+          "message"
         ],
         "type": "object"
       },
@@ -178,6 +122,45 @@
         ],
         "type": "object"
       },
+      "Problem": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/InputError"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "instance": {
+            "format": "uri-reference",
+            "type": "string"
+          },
+          "status": {
+            "format": "int64",
+            "maximum": 599,
+            "minimum": 100,
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "format": "uri-reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "status",
+          "title",
+          "detail"
+        ],
+        "type": "object"
+      },
       "ResponseHealthStatus": {
         "additionalProperties": false,
         "properties": {
@@ -224,15 +207,15 @@
             },
             "description": "OK"
           },
-          "default": {
+          "500": {
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Error"
+            "description": "Internal Server Error"
           }
         },
         "summary": "Check process health"
@@ -262,21 +245,67 @@
             },
             "description": "Created"
           },
-          "409": {
+          "400": {
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Conflict"
+            "description": "Bad Request"
+          },
+          "408": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Timeout"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/counter-full",
+                  "status": 409,
+                  "title": "Counter full",
+                  "detail": "The counter is full."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The counter is full."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
           },
           "422": {
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
@@ -286,7 +315,7 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },

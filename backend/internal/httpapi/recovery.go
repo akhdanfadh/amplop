@@ -36,7 +36,7 @@ func withRecovery(logger *slog.Logger) gin.HandlerFunc {
 
 			// Same body as Huma's own unexpected errors; the panic value
 			// stays in the log, never in the response.
-			writeProblem(ctx, http.StatusInternalServerError, "unexpected error occurred")
+			writeProblem(ctx, requestProblem(http.StatusInternalServerError))
 		}()
 
 		ctx.Next()
