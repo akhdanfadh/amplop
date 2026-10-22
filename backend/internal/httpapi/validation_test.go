@@ -1,0 +1,109 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/danielgtaylor/huma/v2"
+)
+
+// Required fields stay precise inside objects and arrays, without exposing input.
+func TestRequiredInputs(t *testing.T) {
+	type fields struct {
+		Name    string `json:"name" maxLength:"4"`
+		Enabled bool   `json:"enabled"`
+	}
+
+	a := New(discard, Services{})
+	huma.Register(a.api, huma.Operation{
+		OperationID:   "validateRequiredInputs",
+		Method:        http.MethodPost,
+		Path:          "/required-inputs",
+		DefaultStatus: http.StatusCreated,
+	}, func(_ context.Context, _ *struct {
+		Body struct {
+			Name    string   `json:"name" maxLength:"4"`
+			Enabled bool     `json:"enabled"`
+			Profile *fields  `json:"profile,omitempty"`
+			Items   []fields `json:"items,omitempty"`
+		}
+	}) (*struct{}, error) {
+		return nil, nil
+	})
+
+	cases := []struct {
+		name, body string
+		want       []string
+	}{
+		{"false is present", `{"name":"ok","enabled":false}`, nil},
+		{"case insensitive", `{"name":"ok","ENABLED":false}`, nil},
+		{"missing root fields", `{}`, []string{
+			"body.enabled: This field is required.", "body.name: This field is required.",
+		}},
+		{"missing nested fields", `{"name":"ok","enabled":false,"profile":{}}`, []string{
+			"body.profile.enabled: This field is required.", "body.profile.name: This field is required.",
+		}},
+		{"missing array field", `{"name":"ok","enabled":false,"items":[{"name":"ok","enabled":false},{"name":"ok","enabled":false},{"name":"ok","enabled":false},{"enabled":false}]}`, []string{
+			"body.items[3].name: This field is required.",
+		}},
+		{"wrong type", `{"name":"ok","enabled":"PRIVATE-INPUT"}`, []string{
+			"body.enabled: Enter a valid value.",
+		}},
+		{"marker in rejected value", `{"name":"inbok-internal-required:PRIVATE-INPUT","enabled":false}`, []string{
+			"body.name: Enter a valid value.",
+		}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/v0/required-inputs", strings.NewReader(c.body))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			a.Handler().ServeHTTP(response, request)
+			if c.want == nil {
+				if response.Code != http.StatusCreated {
+					t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+				}
+				return
+			}
+
+			if response.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+			}
+			for _, private := range []string{"PRIVATE-INPUT", "inbok-internal-", `"value"`} {
+				if strings.Contains(response.Body.String(), private) {
+					t.Fatalf("response contains %q: %s", private, response.Body.String())
+				}
+			}
+
+			var body struct {
+				Errors []struct{ Location, Message string }
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for _, detail := range body.Errors {
+				got = append(got, detail.Location+": "+detail.Message)
+			}
+			sort.Strings(got)
+			if !reflect.DeepEqual(got, c.want) {
+				t.Fatalf("errors = %v, want %v", got, c.want)
+			}
+		})
+	}
+
+	doc, err := a.OpenAPI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(doc), "inbok-internal-") {
+		t.Fatal("OpenAPI contains a private validation marker")
+	}
+}

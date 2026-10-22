@@ -75,10 +75,10 @@ func TestCreateProbeEventInvalid(t *testing.T) {
 	}{
 		{"blank note", `{"note":" \t","amount":1,"highlighted":false}`, "body.note"},
 		{"long note", `{"note":"` + strings.Repeat("n", 121) + `","amount":1,"highlighted":false}`, "body.note"},
-		{"no note", `{"amount":1,"highlighted":false}`, "body"},
+		{"no note", `{"amount":1,"highlighted":false}`, "body.note"},
 		{"zero amount", `{"note":"x","amount":0,"highlighted":false}`, "body.amount"},
 		{"large amount", `{"note":"x","amount":11,"highlighted":false}`, "body.amount"},
-		{"no highlighted", `{"note":"x","amount":1}`, "body"},
+		{"no highlighted", `{"note":"x","amount":1}`, "body.highlighted"},
 		{"empty tag", `{"note":"x","amount":1,"highlighted":false,"tag":""}`, "body.tag"},
 		{"long tag", `{"note":"x","amount":1,"highlighted":false,"tag":"` + strings.Repeat("t", 41) + `"}`, "body.tag"},
 	}

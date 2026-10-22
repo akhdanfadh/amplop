@@ -105,6 +105,7 @@ var errorSetup sync.Once
 // Runtime errors and exported schemas then share our public model.
 func configureErrors() {
 	errorSetup.Do(func() {
+		configureValidation()
 		huma.NewError = func(status int, message string, errs ...error) huma.StatusError {
 			out := requestProblem(status)
 			out.mapped = false
@@ -162,12 +163,12 @@ func normalizeError(logger *slog.Logger, ctx huma.Context, value any) any {
 		return &out
 	}
 
-	// Huma messages may contain rejected input; use safe generic text.
+	// Build public input details without Huma's rejected values or raw text.
 	for _, detail := range p.raw.Errors {
 		if detail == nil || detail.Location == "" {
 			continue
 		}
-		out.Errors = append(out.Errors, inputError{Location: detail.Location, Message: "Enter a valid value."})
+		out.Errors = append(out.Errors, publicInputError(detail))
 	}
 
 	return &out
