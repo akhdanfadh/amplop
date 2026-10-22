@@ -104,10 +104,11 @@ request ID. Huma status helpers alone do not declare text safe for display.
 Optional `errors` is a nonempty list of rejected inputs. Each entry has a
 `location` and safe `message`, without `value`. Missing required fields have
 precise locations, e.g. `body.items[3].name`, and "This field is required."
-Other Huma input errors receive generic correction text, because its original
-messages can include rejected values. Explicit business mappings can also
-identify rejected inputs, including on a 409. Public messages contain no raw
-technical causes.
+Numeric bounds, whole numbers, and string lengths receive correction text,
+e.g. "Enter 10 or less." Other Huma input errors remain generic, because its
+original messages can include rejected values. Explicit business mappings
+can also identify rejected inputs, including on a 409. Public messages contain
+no raw technical causes.
 
 Huma still validates request rules. `configureErrors` installs its error
 model once before API construction, so runtime responses and the exported
@@ -118,6 +119,15 @@ its formatter to carry the schema's field name in a private message marker.
 `publicInputError` consumes that marker to build the precise location; the
 marker never appears in public responses or OpenAPI. This relies on Huma's
 required-property formatter arguments, covered by HTTP tests when upgrading.
+
+For numeric and length limits, the formatter records safe text alongside
+Huma's cached message. It uses schema limits, never submitted values. Responses
+look up that text without parsing English messages; unknown messages keep the
+generic fallback.
+
+Create all APIs and finish registering operations before serving requests.
+Schema preparation populates the message lookup at startup; request handling
+only reads it. Tests follow this order while sending requests concurrently.
 
 Input failures retain their meanings: malformed requests use 400, body-read
 timeouts 408, body limits 413, unsupported content types 415, and schema

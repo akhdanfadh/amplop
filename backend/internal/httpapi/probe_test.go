@@ -71,16 +71,17 @@ func TestCreateProbeEvent(t *testing.T) {
 // Bodies that break the contract get a 422 naming the field.
 func TestCreateProbeEventInvalid(t *testing.T) {
 	cases := []struct {
-		name, body, location string
+		name, body, location, message string
 	}{
-		{"blank note", `{"note":" \t","amount":1,"highlighted":false}`, "body.note"},
-		{"long note", `{"note":"` + strings.Repeat("n", 121) + `","amount":1,"highlighted":false}`, "body.note"},
-		{"no note", `{"amount":1,"highlighted":false}`, "body.note"},
-		{"zero amount", `{"note":"x","amount":0,"highlighted":false}`, "body.amount"},
-		{"large amount", `{"note":"x","amount":11,"highlighted":false}`, "body.amount"},
-		{"no highlighted", `{"note":"x","amount":1}`, "body.highlighted"},
-		{"empty tag", `{"note":"x","amount":1,"highlighted":false,"tag":""}`, "body.tag"},
-		{"long tag", `{"note":"x","amount":1,"highlighted":false,"tag":"` + strings.Repeat("t", 41) + `"}`, "body.tag"},
+		{"blank note", `{"note":" \t","amount":1,"highlighted":false}`, "body.note", "Enter a valid value."},
+		{"long note", `{"note":"` + strings.Repeat("n", 121) + `","amount":1,"highlighted":false}`, "body.note", "Use at most 120 characters."},
+		{"no note", `{"amount":1,"highlighted":false}`, "body.note", "This field is required."},
+		{"zero amount", `{"note":"x","amount":0,"highlighted":false}`, "body.amount", "Enter 1 or more."},
+		{"large amount", `{"note":"x","amount":11,"highlighted":false}`, "body.amount", "Enter 10 or less."},
+		{"fraction", `{"note":"x","amount":1.5,"highlighted":false}`, "body.amount", "Enter a whole number."},
+		{"no highlighted", `{"note":"x","amount":1}`, "body.highlighted", "This field is required."},
+		{"empty tag", `{"note":"x","amount":1,"highlighted":false,"tag":""}`, "body.tag", "Use at least 1 character."},
+		{"long tag", `{"note":"x","amount":1,"highlighted":false,"tag":"` + strings.Repeat("t", 41) + `"}`, "body.tag", "Use at most 40 characters."},
 	}
 
 	for _, c := range cases {
@@ -97,6 +98,9 @@ func TestCreateProbeEventInvalid(t *testing.T) {
 		details, _ := decodeJSON(t, response.Body.Bytes())["errors"].([]any)
 		if len(details) != 1 || details[0].(map[string]any)["location"] != c.location {
 			t.Fatalf("%s: errors = %v, want one at %s", c.name, details, c.location)
+		}
+		if got := details[0].(map[string]any)["message"]; got != c.message {
+			t.Fatalf("%s: message = %v, want %q", c.name, got, c.message)
 		}
 		if len(probes.added) != 0 {
 			t.Fatalf("%s: added a rejected body", c.name)

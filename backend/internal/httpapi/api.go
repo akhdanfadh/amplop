@@ -28,7 +28,8 @@ type Services struct {
 	Probe probeService
 }
 
-// New registers every operation. logger receives one line per request.
+// New registers operations; logger receives one line per request.
+// Create all APIs and register all operations before serving requests.
 func New(logger *slog.Logger, services Services) *API {
 	// Tells Huma to construct errors using our problem model.
 	configureErrors()

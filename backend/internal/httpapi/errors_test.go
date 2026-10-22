@@ -314,15 +314,20 @@ func TestProblemSchema(t *testing.T) {
 	}
 }
 
-func TestConcurrentErrorAPIs(t *testing.T) {
+// Requests run concurrently after API construction, matching server startup.
+func TestConcurrentErrors(t *testing.T) {
 	const concurrentAPIs = 8
 	const requestsPerAPI = 10
 
 	a := New(discard, Services{})
+	locals := make([]*API, concurrentAPIs)
+	for i := range locals {
+		locals[i] = New(discard, Services{})
+	}
+
 	var group sync.WaitGroup
-	for range concurrentAPIs {
+	for _, local := range locals {
 		group.Go(func() {
-			local := New(discard, Services{})
 			for _, api := range []*API{a, local} {
 				for range requestsPerAPI {
 					response := httptest.NewRecorder()

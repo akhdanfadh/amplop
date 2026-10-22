@@ -56,7 +56,7 @@ func TestRequiredInputs(t *testing.T) {
 			"body.enabled: Enter a valid value.",
 		}},
 		{"marker in rejected value", `{"name":"inbok-internal-required:PRIVATE-INPUT","enabled":false}`, []string{
-			"body.name: Enter a valid value.",
+			"body.name: Use at most 4 characters.",
 		}},
 	}
 
@@ -105,5 +105,38 @@ func TestRequiredInputs(t *testing.T) {
 	}
 	if strings.Contains(string(doc), "inbok-internal-") {
 		t.Fatal("OpenAPI contains a private validation marker")
+	}
+}
+
+// A fraction beyond a bound keeps both corrections without echoing its value.
+func TestNumericCorrections(t *testing.T) {
+	probes := &fakeProbes{}
+	response := postProbe(discard, probes, `{"note":"ok","amount":11.5,"highlighted":false}`)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Errors []struct{ Location, Message string }
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	var messages []string
+	for _, detail := range body.Errors {
+		if detail.Location != "body.amount" {
+			t.Fatalf("location = %q", detail.Location)
+		}
+		messages = append(messages, detail.Message)
+	}
+	sort.Strings(messages)
+	want := []string{"Enter 10 or less.", "Enter a whole number."}
+	if !reflect.DeepEqual(messages, want) {
+		t.Fatalf("messages = %v, want %v", messages, want)
+	}
+	if strings.Contains(response.Body.String(), "11.5") || strings.Contains(response.Body.String(), `"value"`) {
+		t.Fatalf("response echoes rejected input: %s", response.Body.String())
+	}
+	if len(probes.added) != 0 {
+		t.Fatal("rejected input reached the service")
 	}
 }
