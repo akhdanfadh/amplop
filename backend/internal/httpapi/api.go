@@ -62,13 +62,14 @@ func New(logger *slog.Logger, services Services) *API {
 	config.CreateHooks = nil
 	config.SchemasPath = ""
 
-	// Stop error responses leaking internals or user input
-	// (before Huma converts them to JSON.)
+	// The callback runs after api is assigned; normalization needs its schemas
+	// to format safe input messages before Huma converts the response to JSON.
+	var api huma.API
 	config.Transformers = []huma.Transformer{func(ctx huma.Context, _ string, value any) (any, error) {
-		return normalizeError(logger, ctx, value), nil
+		return normalizeError(logger, api, ctx, value), nil
 	}}
 
-	api := humagin.NewWithGroup(router, group, config)
+	api = humagin.NewWithGroup(router, group, config)
 
 	registerHealth(api)
 	registerProbe(api, services.Probe)

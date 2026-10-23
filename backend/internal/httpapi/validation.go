@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -73,10 +74,13 @@ func inputCorrection(format string, value any) string {
 
 // publicInputError builds safe correction text and precise required-field paths.
 // Unrecognized Huma messages stay generic because they can contain input values.
-func publicInputError(detail *huma.ErrorDetail) inputError {
+func publicInputError(api huma.API, ctx huma.Context, detail *huma.ErrorDetail) inputError {
 	out := inputError{Location: detail.Location, Message: "Enter a valid value."}
 	if message, found := inputMessages[detail.Message]; found {
 		out.Message = message
+		if combined := rangeCorrection(inputSchema(api, ctx.Operation(), detail.Location)); combined != "" {
+			out.Message = combined
+		}
 		return out
 	}
 
@@ -88,4 +92,83 @@ func publicInputError(detail *huma.ErrorDetail) inputError {
 	out.Location += "." + field
 	out.Message = "This field is required."
 	return out
+}
+
+// rangeCorrection combines simple field limits without replacing other rules.
+// More restrictive numeric rules keep their original correction messages.
+func rangeCorrection(schema *huma.Schema) string {
+	if schema == nil || len(schema.Enum) > 0 || schema.Const != nil {
+		return ""
+	}
+
+	switch schema.Type {
+	case huma.TypeInteger, huma.TypeNumber:
+		if schema.Minimum == nil || schema.Maximum == nil {
+			return ""
+		}
+		if schema.MultipleOf != nil || schema.ExclusiveMinimum != nil || schema.ExclusiveMaximum != nil {
+			return ""
+		}
+		kind := "a number"
+		if schema.Type == huma.TypeInteger {
+			kind = "a whole number"
+		}
+		return fmt.Sprintf("Enter %s from %v to %v.", kind, *schema.Minimum, *schema.Maximum)
+	case huma.TypeString:
+		if schema.MinLength == nil || schema.MaxLength == nil {
+			return ""
+		}
+		return fmt.Sprintf("Use %d to %d characters.", *schema.MinLength, *schema.MaxLength)
+	default:
+		return ""
+	}
+}
+
+// inputSchema follows ordinary body field paths, including nested array indexes.
+// Unsupported paths keep the existing correction instead of guessing a range.
+func inputSchema(api huma.API, op *huma.Operation, location string) *huma.Schema {
+	path, bodyField := strings.CutPrefix(location, "body.")
+	if !bodyField || op.RequestBody == nil || op.RequestBody.Content["application/json"] == nil {
+		return nil
+	}
+
+	schema := op.RequestBody.Content["application/json"].Schema
+	parts := strings.FieldsFunc(path, func(r rune) bool { return r == '.' || r == '[' || r == ']' })
+	for _, part := range parts {
+		schema = plainSchema(api, schema)
+		if schema == nil {
+			return nil
+		}
+		if schema.Type == huma.TypeArray {
+			index, err := strconv.Atoi(part)
+			if err != nil || index < 0 {
+				return nil
+			}
+			schema = schema.Items
+			continue
+		}
+
+		for name := range schema.Properties {
+			if strings.ContainsAny(name, ".[]") {
+				return nil
+			}
+		}
+		schema = schema.Properties[part]
+	}
+	return plainSchema(api, schema)
+}
+
+// plainSchema resolves a generated reference and excludes combined schemas.
+// Reference chains and alternative rule sets need more context than we have.
+func plainSchema(api huma.API, schema *huma.Schema) *huma.Schema {
+	if schema != nil && schema.Ref != "" {
+		schema = api.OpenAPI().Components.Schemas.SchemaFromRef(schema.Ref)
+	}
+	if schema == nil || schema.Ref != "" {
+		return nil
+	}
+	if len(schema.OneOf) > 0 || len(schema.AnyOf) > 0 || len(schema.AllOf) > 0 || schema.Not != nil {
+		return nil
+	}
+	return schema
 }

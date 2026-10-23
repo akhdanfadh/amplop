@@ -105,10 +105,11 @@ Optional `errors` is a nonempty list of rejected inputs. Each entry has a
 `location` and safe `message`, without `value`. Missing required fields have
 precise locations, e.g. `body.items[3].name`, and "This field is required."
 Numeric bounds, whole numbers, and string lengths receive correction text,
-e.g. "Enter 10 or less." Other Huma input errors remain generic, because its
-original messages can include rejected values. Explicit business mappings
-can also identify rejected inputs, including on a 409. Public messages contain
-no raw technical causes.
+e.g. "Enter a whole number from 1 to 10." Simple fields with both limits get
+a combined range; other fields keep the individual correction. Other Huma
+input errors remain generic, because its original messages can include
+rejected values. Explicit business mappings can also identify rejected inputs,
+including on a 409. Public messages contain no raw technical causes.
 
 Huma still validates request rules. `configureErrors` installs its error
 model once before API construction, so runtime responses and the exported
@@ -124,6 +125,12 @@ For numeric and length limits, the formatter records safe text alongside
 Huma's cached message. It uses schema limits, never submitted values. Responses
 look up that text without parsing English messages; unknown messages keep the
 generic fallback.
+
+For known numeric and length failures, the response formatter follows the
+operation's body schema to the rejected field. Ordinary object and array paths
+can combine both limits, e.g. "Use 1 to 40 characters." Unsupported paths,
+combined schemas, and extra numeric rules retain the individual correction.
+Identical location/message pairs appear once, even when several rules fail.
 
 Create all APIs and finish registering operations before serving requests.
 Schema preparation populates the message lookup at startup; request handling

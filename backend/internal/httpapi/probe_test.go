@@ -76,12 +76,12 @@ func TestCreateProbeEventInvalid(t *testing.T) {
 		{"blank note", `{"note":" \t","amount":1,"highlighted":false}`, "body.note", "Enter a valid value."},
 		{"long note", `{"note":"` + strings.Repeat("n", 121) + `","amount":1,"highlighted":false}`, "body.note", "Use at most 120 characters."},
 		{"no note", `{"amount":1,"highlighted":false}`, "body.note", "This field is required."},
-		{"zero amount", `{"note":"x","amount":0,"highlighted":false}`, "body.amount", "Enter 1 or more."},
-		{"large amount", `{"note":"x","amount":11,"highlighted":false}`, "body.amount", "Enter 10 or less."},
-		{"fraction", `{"note":"x","amount":1.5,"highlighted":false}`, "body.amount", "Enter a whole number."},
+		{"zero amount", `{"note":"x","amount":0,"highlighted":false}`, "body.amount", "Enter a whole number from 1 to 10."},
+		{"large amount", `{"note":"x","amount":11,"highlighted":false}`, "body.amount", "Enter a whole number from 1 to 10."},
+		{"fraction", `{"note":"x","amount":1.5,"highlighted":false}`, "body.amount", "Enter a whole number from 1 to 10."},
 		{"no highlighted", `{"note":"x","amount":1}`, "body.highlighted", "This field is required."},
-		{"empty tag", `{"note":"x","amount":1,"highlighted":false,"tag":""}`, "body.tag", "Use at least 1 character."},
-		{"long tag", `{"note":"x","amount":1,"highlighted":false,"tag":"` + strings.Repeat("t", 41) + `"}`, "body.tag", "Use at most 40 characters."},
+		{"empty tag", `{"note":"x","amount":1,"highlighted":false,"tag":""}`, "body.tag", "Use 1 to 40 characters."},
+		{"long tag", `{"note":"x","amount":1,"highlighted":false,"tag":"` + strings.Repeat("t", 41) + `"}`, "body.tag", "Use 1 to 40 characters."},
 	}
 
 	for _, c := range cases {

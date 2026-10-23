@@ -13,11 +13,15 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// Required fields stay precise inside objects and arrays, without exposing input.
-func TestRequiredInputs(t *testing.T) {
+// Input details preserve nested paths and use each field's own correction rules.
+func TestValidationDetails(t *testing.T) {
 	type fields struct {
-		Name    string `json:"name" maxLength:"4"`
-		Enabled bool   `json:"enabled"`
+		Name       string   `json:"name" minLength:"1" maxLength:"4"`
+		Enabled    bool     `json:"enabled"`
+		Count      *int     `json:"count,omitempty" minimum:"5" maximum:"10"`
+		Price      *float64 `json:"price,omitempty" minimum:"-0.5" maximum:"1.5"`
+		Restricted *int     `json:"restricted,omitempty" minimum:"1" maximum:"10" multipleOf:"2"`
+		Code       *string  `json:"code,omitempty" minLength:"1" maxLength:"4" pattern:"^ok$"`
 	}
 
 	a := New(discard, Services{})
@@ -28,10 +32,12 @@ func TestRequiredInputs(t *testing.T) {
 		DefaultStatus: http.StatusCreated,
 	}, func(_ context.Context, _ *struct {
 		Body struct {
-			Name    string   `json:"name" maxLength:"4"`
-			Enabled bool     `json:"enabled"`
-			Profile *fields  `json:"profile,omitempty"`
-			Items   []fields `json:"items,omitempty"`
+			Name    string            `json:"name" maxLength:"4"`
+			Enabled bool              `json:"enabled"`
+			Profile *fields           `json:"profile,omitempty"`
+			Items   []fields          `json:"items,omitempty"`
+			Matrix  [][]fields        `json:"matrix,omitempty"`
+			Values  map[string]fields `json:"values,omitempty"`
 		}
 	}) (*struct{}, error) {
 		return nil, nil
@@ -51,6 +57,30 @@ func TestRequiredInputs(t *testing.T) {
 		}},
 		{"missing array field", `{"name":"ok","enabled":false,"items":[{"name":"ok","enabled":false},{"name":"ok","enabled":false},{"name":"ok","enabled":false},{"enabled":false}]}`, []string{
 			"body.items[3].name: This field is required.",
+		}},
+		{"nested length range", `{"name":"ok","enabled":false,"profile":{"name":"","enabled":false}}`, []string{
+			"body.profile.name: Use 1 to 4 characters.",
+		}},
+		{"same maximum different range", `{"name":"ok","enabled":false,"profile":{"name":"ok","enabled":false,"count":11}}`, []string{
+			"body.profile.count: Enter a whole number from 5 to 10.",
+		}},
+		{"decimal range", `{"name":"ok","enabled":false,"profile":{"name":"ok","enabled":false,"price":1.6}}`, []string{
+			"body.profile.price: Enter a number from -0.5 to 1.5.",
+		}},
+		{"array range", `{"name":"ok","enabled":false,"items":[{"name":"ok","enabled":false},{"name":"ok","enabled":false},{"name":"ok","enabled":false},{"name":"ok","enabled":false,"count":11}]}`, []string{
+			"body.items[3].count: Enter a whole number from 5 to 10.",
+		}},
+		{"nested arrays", `{"name":"ok","enabled":false,"matrix":[[{"name":"ok","enabled":false,"count":11}]]}`, []string{
+			"body.matrix[0][0].count: Enter a whole number from 5 to 10.",
+		}},
+		{"map path fallback", `{"name":"ok","enabled":false,"values":{"row":{"name":"ok","enabled":false,"count":11}}}`, []string{
+			"body.values.row.count: Enter 10 or less.",
+		}},
+		{"additional numeric rule", `{"name":"ok","enabled":false,"profile":{"name":"ok","enabled":false,"restricted":12}}`, []string{
+			"body.profile.restricted: Enter 10 or less.",
+		}},
+		{"pattern keeps its fallback", `{"name":"ok","enabled":false,"profile":{"name":"ok","enabled":false,"code":"no"}}`, []string{
+			"body.profile.code: Enter a valid value.",
 		}},
 		{"wrong type", `{"name":"ok","enabled":"PRIVATE-INPUT"}`, []string{
 			"body.enabled: Enter a valid value.",
@@ -108,7 +138,7 @@ func TestRequiredInputs(t *testing.T) {
 	}
 }
 
-// A fraction beyond a bound keeps both corrections without echoing its value.
+// A fraction beyond a bound gets one range correction without echoing its value.
 func TestNumericCorrections(t *testing.T) {
 	probes := &fakeProbes{}
 	response := postProbe(discard, probes, `{"note":"ok","amount":11.5,"highlighted":false}`)
@@ -129,7 +159,7 @@ func TestNumericCorrections(t *testing.T) {
 		messages = append(messages, detail.Message)
 	}
 	sort.Strings(messages)
-	want := []string{"Enter 10 or less.", "Enter a whole number."}
+	want := []string{"Enter a whole number from 1 to 10."}
 	if !reflect.DeepEqual(messages, want) {
 		t.Fatalf("messages = %v, want %v", messages, want)
 	}

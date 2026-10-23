@@ -141,7 +141,7 @@ func errorDetails(errs []error) []*huma.ErrorDetail {
 
 // normalizeError applies our safety policy before Huma serializes a response.
 // It keeps mapped problems, sanitizes others, and passes success bodies through.
-func normalizeError(logger *slog.Logger, ctx huma.Context, value any) any {
+func normalizeError(logger *slog.Logger, api huma.API, ctx huma.Context, value any) any {
 	p, ok := value.(*problem)
 	if !ok {
 		// A helper may have created this error before New installed the hooks.
@@ -164,11 +164,17 @@ func normalizeError(logger *slog.Logger, ctx huma.Context, value any) any {
 	}
 
 	// Build public input details without Huma's rejected values or raw text.
+	seen := map[inputError]struct{}{}
 	for _, detail := range p.raw.Errors {
 		if detail == nil || detail.Location == "" {
 			continue
 		}
-		out.Errors = append(out.Errors, publicInputError(detail))
+		input := publicInputError(api, ctx, detail)
+		if _, duplicate := seen[input]; duplicate {
+			continue
+		}
+		seen[input] = struct{}{}
+		out.Errors = append(out.Errors, input)
 	}
 
 	return &out
