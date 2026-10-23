@@ -149,10 +149,12 @@ console. Error bodies with media type `application/problem+json` use
 ignored, and URI references can be relative or absolute. Extra fields are
 dropped, not rejected.
 
-The API's `detail` and input `message` are safe user text. Screens currently
-choose their wording with `userMessage(err)` from `src/api/problem.ts` or
-a screen's own message. Different business failures can share a status,
-so use their type when adding different recovery actions.
+The API's `detail` and input `message` are safe user text. `userMessage(err)`
+from `src/api/problem.ts` shows the detail, then the title if no detail exists,
+and local fallback text if neither is usable. Unfamiliar problem types still
+show their safe text. Different business failures can share a status, so use
+their type when adding different recovery actions. The probe form displays a
+received request reference for reporting failures.
 Zod's messages are developer text: `src/router.tsx`
 replaces them app-wide with `src/api/validation.ts`, which states the
 field's rule, e.g. "Enter a whole number from 1 to 10.".
@@ -182,5 +184,8 @@ Before sending, the form checks each edit against the generated schema,
 `NewProbeEvent`, and sends nothing while a value breaks it. A field shows
 its error once the user leaves it or clicks submit, then updates live.
 If Go still rejects a value, e.g. after a rule changed in Go before
-`pnpm generate`, `fieldErrors` from `src/api/problem.ts` marks that field
-"This value was not accepted." until it is edited.
+`pnpm generate`, `formErrors` from `src/api/problem.ts` attaches the server's
+safe messages only to fields that the form renders. Editing a field clears its
+server error. Rejected inputs outside those fields stay visible in the request
+summary. Request failures without input errors do not enter form validation
+state, so valid input can be submitted again without an edit.

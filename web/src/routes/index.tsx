@@ -1,14 +1,15 @@
+import type { ReactElement } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { useGetHealth, type GetHealthQueryResult } from "@/api/generated/inbok";
-import { summarize } from "@/api/problem";
+import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { ProbeForm } from "@/components/probe-form";
 
 export const Route = createFileRoute("/")({ component: Home });
 
-function Home() {
+function Home(): ReactElement {
   // Checks once on load, again on click, and when the tab regains focus.
   const health = useGetHealth();
 
@@ -26,8 +27,8 @@ function Home() {
 
 // "Checking..." while a request (or a retry) runs, so an earlier "ok" never
 // shows as current. Then "ok", or the error, e.g. "Bad Gateway".
-function show(health: UseQueryResult<GetHealthQueryResult, ApiError>) {
+function show(health: UseQueryResult<GetHealthQueryResult, ApiError>): string | undefined {
   if (health.isFetching) return "Checking...";
-  if (health.isError) return summarize(health.error);
+  if (health.isError) return userMessage(health.error);
   return health.data?.data.status;
 }

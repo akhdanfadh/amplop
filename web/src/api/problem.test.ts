@@ -1,29 +1,36 @@
 import { describe, expect, it } from "vite-plus/test";
-import { fieldErrors, summarize, userMessage } from "./problem";
+import { formErrors, userMessage } from "./problem";
 import { ApiError } from "./transport";
 
-describe("summarize", () => {
-  it("joins the title and detail", () => {
+describe("userMessage", () => {
+  it("prefers the safe detail over the title", () => {
     const err = new ApiError("http", {
       status: 404,
       problem: { title: "Not Found", detail: "route not found" },
     });
 
-    expect(summarize(err)).toBe("Not Found: route not found");
+    expect(userMessage(err)).toBe("route not found");
   });
 
   it("shows the title alone without a detail", () => {
     const err = new ApiError("http", { status: 502, problem: { title: "Bad Gateway" } });
 
-    expect(summarize(err)).toBe("Bad Gateway");
+    expect(userMessage(err)).toBe("Bad Gateway");
   });
 
   it("uses local wording when no problem arrived", () => {
-    expect(summarize(new ApiError("network"))).toBe("Can't reach the server. Try again.");
+    expect(userMessage(new ApiError("network"))).toBe("Can't reach the server. Try again.");
   });
-});
 
-describe("userMessage", () => {
+  it("uses local wording when the received explanation is blank", () => {
+    const err = new ApiError("http", {
+      status: 422,
+      problem: { title: " ", detail: "\t" },
+    });
+
+    expect(userMessage(err)).toBe("Check the values and try again.");
+  });
+
   it.each([
     ["no response", new ApiError("network"), "Can't reach the server. Try again."],
     [
@@ -44,9 +51,17 @@ describe("userMessage", () => {
     ],
     ["a contract mismatch", new ApiError("response"), "Something went wrong. Try again."],
     [
-      "any other status",
-      new ApiError("http", { status: 409, problem: { detail: "counter is full" } }),
+      "a conflict without an explanation",
+      new ApiError("http", { status: 409 }),
       "Something went wrong. Try again.",
+    ],
+    [
+      "a safe detail for an unfamiliar problem",
+      new ApiError("http", {
+        status: 409,
+        problem: { type: "/api/v0/problems/other-conflict", detail: "Choose another name." },
+      }),
+      "Choose another name.",
     ],
     [
       "actual server status despite a different problem status",
@@ -63,45 +78,72 @@ function unprocessable(errors: { location: string; message: string }[]): ApiErro
   return new ApiError("http", { status: 422, problem: { errors } });
 }
 
-describe("fieldErrors", () => {
-  const rejected = { message: "This value was not accepted." };
-
-  it("puts each body error on its field, in the app's words", () => {
+describe("formErrors", () => {
+  it("keeps safe messages on rendered fields and returns unmatched messages for the summary", () => {
     const err = unprocessable([
-      { location: "body.note", message: "expected string to be not blank" },
-      { location: "body.amount", message: "expected number >= 1" },
+      { location: "body.note", message: "Use at most 120 characters." },
+      { location: "body.amount", message: "Enter a whole number from 1 to 10." },
+      { location: "body.owner", message: "Choose an owner." },
+      { location: "query.page", message: "Enter a whole number." },
     ]);
 
-    expect(fieldErrors(err)).toEqual({ note: rejected, amount: rejected });
+    expect(formErrors(err, ["note", "amount"])).toEqual({
+      fields: {
+        note: [{ message: "Use at most 120 characters." }],
+        amount: [{ message: "Enter a whole number from 1 to 10." }],
+      },
+      unmatched: [{ message: "Choose an owner." }, { message: "Enter a whole number." }],
+    });
   });
 
-  it("keeps a nested path as the field name", () => {
-    const err = unprocessable([{ location: "body.items[3].tags", message: "expected array" }]);
-
-    expect(fieldErrors(err)).toEqual({ "items[3].tags": rejected });
-  });
-
-  it("gives a field one message for several errors", () => {
+  it("matches nested paths exactly and preserves several messages per field", () => {
     const err = unprocessable([
-      { location: "body.note", message: "expected string to be not blank" },
-      { location: "body.note", message: "expected length <= 120" },
+      { location: "body.items[3].tags", message: "Choose at least one tag." },
+      { location: "body.items[3].tags", message: "Choose no more than four tags." },
+      { location: "body.items[3].name", message: "This field is required." },
     ]);
 
-    expect(fieldErrors(err)).toEqual({ note: rejected });
+    expect(formErrors(err, ["items[3].tags"])).toEqual({
+      fields: {
+        "items[3].tags": [
+          { message: "Choose at least one tag." },
+          { message: "Choose no more than four tags." },
+        ],
+      },
+      unmatched: [{ message: "This field is required." }],
+    });
   });
 
-  it("skips errors outside the body's fields", () => {
+  it("keeps whole-body errors in the summary and gives blank messages a fallback", () => {
     const err = unprocessable([
-      { location: "body", message: "expected required property note to be present" },
-      { location: "query.page", message: "expected integer" },
+      { location: "body", message: "Correct the submitted input." },
+      { location: "body.note", message: " " },
     ]);
 
-    expect(fieldErrors(err)).toEqual({});
+    expect(formErrors(err, ["note"])).toEqual({
+      fields: { note: [{ message: "This value was not accepted." }] },
+      unmatched: [{ message: "Correct the submitted input." }],
+    });
   });
 
-  it("has nothing for a failure without errors", () => {
-    const err = new ApiError("http", { status: 409 });
+  it("maps explicit business input errors even on a 409", () => {
+    const err = new ApiError("http", {
+      status: 409,
+      problem: { errors: [{ location: "body.note", message: "Choose another note." }] },
+    });
 
-    expect(fieldErrors(err)).toEqual({});
+    expect(formErrors(err, ["note"])).toEqual({
+      fields: { note: [{ message: "Choose another note." }] },
+      unmatched: [],
+    });
+  });
+
+  it("has no input errors for a temporary request failure", () => {
+    const err = new ApiError("http", {
+      status: 503,
+      problem: { detail: "The service is restarting." },
+    });
+
+    expect(formErrors(err, ["note"])).toEqual({ fields: {}, unmatched: [] });
   });
 });

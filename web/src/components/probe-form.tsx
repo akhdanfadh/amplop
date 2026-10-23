@@ -2,8 +2,7 @@ import type { ReactElement } from "react";
 import { useForm, useSelector, type AnyFieldMeta } from "@tanstack/react-form";
 import { useCreateProbeEvent } from "@/api/generated/inbok";
 import { NewProbeEvent } from "@/api/generated/model";
-import { fieldErrors, userMessage } from "@/api/problem";
-import type { ApiError } from "@/api/transport";
+import { formErrors, userMessage } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -12,8 +11,8 @@ import { Input } from "@/components/ui/input";
 // The form holds exactly the request body, so it is sent as is.
 const emptyEvent: NewProbeEvent = { note: "", amount: 1, highlighted: false, tag: null };
 
-// Go's answer when the event would push the counter past its limit.
-const conflict = 409;
+// Only these inputs are rendered; other rejected inputs belong in the summary.
+const probeFields = ["note", "amount", "highlighted", "tag"] satisfies (keyof NewProbeEvent)[];
 
 // Adds an event to the probe counter: an example write.
 export function ProbeForm(): ReactElement {
@@ -29,9 +28,11 @@ export function ProbeForm(): ReactElement {
         { data: value },
         {
           onSuccess: () => formApi.reset(),
-          // A value Go rejects shows on its field, e.g. after Go changed a
-          // rule before `pnpm generate`. Editing that field clears it.
-          onError: (err) => formApi.setErrorMap({ onSubmit: { fields: fieldErrors(err) } }),
+          // Only input errors enter form state, so request failures allow another submit.
+          onError: (err) => {
+            const { fields } = formErrors(err, probeFields);
+            if (Object.keys(fields).length > 0) formApi.setErrorMap({ onSubmit: { fields } });
+          },
         },
       );
     },
@@ -40,6 +41,7 @@ export function ProbeForm(): ReactElement {
     listeners: { onChange: () => create.reset() },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
+  const inputErrors = create.error ? formErrors(create.error, probeFields) : undefined;
 
   return (
     <form
@@ -143,7 +145,18 @@ export function ProbeForm(): ReactElement {
       {/* The last attempt's error. Kept out of the form's own errors,
           which mean "these values are wrong" and block submitting until an
           edit: a retry after Go restarts would send nothing. */}
-      {create.error && <FieldError>{failureText(create.error)}</FieldError>}
+      {create.error && (
+        <div className="space-y-2">
+          <FieldError
+            errors={[{ message: userMessage(create.error) }, ...(inputErrors?.unmatched ?? [])]}
+          />
+          {create.error.requestId && (
+            <p className="text-sm text-muted-foreground">
+              Request reference: <code className="break-all">{create.error.requestId}</code>
+            </p>
+          )}
+        </div>
+      )}
       {create.data && (
         <output>
           Added {create.data.data.event.amount}. Total: {create.data.data.total}.
@@ -151,12 +164,6 @@ export function ProbeForm(): ReactElement {
       )}
     </form>
   );
-}
-
-// "The counter is full." for Go's 409; the app's general wording otherwise.
-function failureText(err: ApiError): string {
-  if (err.status === conflict) return "The counter is full.";
-  return userMessage(err);
 }
 
 // A field's errors once the user has left it or tried to submit, so a

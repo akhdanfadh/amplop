@@ -1,11 +1,5 @@
 import type { ApiError } from "./transport";
 
-// "Not Found: route not found", or the title alone when there is no detail.
-export function summarize(err: ApiError): string {
-  const { title, detail } = err.problem ?? {};
-  return [title, detail].filter(Boolean).join(": ") || userMessage(err);
-}
-
 // HTTP statuses (RFC 9110) that change what the user is told.
 const unprocessable = 422;
 const firstServerError = 500;
@@ -17,10 +11,11 @@ const checkValues = "Check the values and try again.";
 const serverFailed = "Something went wrong on our side. Try again.";
 const failed = "Something went wrong. Try again.";
 
-// What to tell the user about a failed request. Go's text is for
-// developers, e.g. "Unprocessable Entity"; a form may word a status it
-// expects better, e.g. 409 "The counter is full.".
+// Prefer safe API text, including unfamiliar problem types; otherwise use HTTP facts.
 export function userMessage(err: ApiError): string {
+  const explanation = err.problem?.detail?.trim() || err.problem?.title?.trim();
+  if (explanation) return explanation;
+
   const { status } = err;
 
   // A 502 comes from a proxy that could not reach Go.
@@ -30,22 +25,32 @@ export function userMessage(err: ApiError): string {
   return failed;
 }
 
-// Go names a rejected request field by where it sits, e.g. "body.note".
 const bodyPrefix = "body.";
+const rejected = "This value was not accepted.";
 
-// Shaped like a Zod issue, so a form shows it like its own errors.
-const rejected = { message: "This value was not accepted." };
+type InputMessage = { message: string };
+type FormErrors = {
+  fields: Record<string, InputMessage[]>;
+  unmatched: InputMessage[];
+};
 
-// Go's per-field errors, keyed by form field name, e.g. "body.note" is
-// "note" and "body.items[3].tags" is "items[3].tags". Go's own message is
-// developer text, and the form's rule must be outdated if Go disagrees,
-// so each field gets one plain message. Errors outside the body's fields,
-// e.g. a missing field reported at "body", are left to userMessage.
-export function fieldErrors(err: ApiError): Record<string, typeof rejected> {
-  const fields: Record<string, typeof rejected> = {};
-  for (const { location } of err.problem?.errors ?? []) {
-    if (!location?.startsWith(bodyPrefix)) continue;
-    fields[location.slice(bodyPrefix.length)] = rejected;
+// Match only rendered fields; errors for other inputs stay visible in the summary.
+export function formErrors(err: ApiError, fieldNames: readonly string[]): FormErrors {
+  const fields = new Map<string, InputMessage[]>();
+  const unmatched: InputMessage[] = [];
+
+  for (const { location, message } of err.problem?.errors ?? []) {
+    const input = { message: message.trim() || rejected };
+    const name = location.startsWith(bodyPrefix) ? location.slice(bodyPrefix.length) : undefined;
+    if (!name || !fieldNames.includes(name)) {
+      unmatched.push(input);
+      continue;
+    }
+
+    const messages = fields.get(name) ?? [];
+    messages.push(input);
+    fields.set(name, messages);
   }
-  return fields;
+
+  return { fields: Object.fromEntries(fields), unmatched };
 }
