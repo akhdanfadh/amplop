@@ -4,23 +4,46 @@ import type { ApiError } from "./transport";
 const unprocessable = 422;
 const firstServerError = 500;
 const badGateway = 502;
+const firstSuccess = 200;
+const lastSuccess = 299;
+const firstClientError = 400;
+const writeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 // The app's words for a failed request.
 const cannotReach = "Can't reach the server. Try again.";
 const checkValues = "Check the values and try again.";
 const serverFailed = "Something went wrong on our side. Try again.";
 const failed = "Something went wrong. Try again.";
+const uncertainWrite = "We couldn't confirm whether this was saved. Check before submitting again.";
+const unreadableWrite =
+  "The server reported success, but we couldn't load the result. Check before submitting again.";
 
-// Prefer safe API text, including unfamiliar problem types; otherwise use HTTP facts.
+// Show safe API text and warn when repeating a write could duplicate its effect.
 export function userMessage(err: ApiError): string {
+  const { status } = err;
   const explanation = err.problem?.detail?.trim() || err.problem?.title?.trim();
+
+  // A missing response or 5xx does not prove rollback. Preserve reported success too.
+  if (writeMethods.has(err.method ?? "")) {
+    if (
+      err.kind === "response" ||
+      (status !== undefined && status >= firstSuccess && status <= lastSuccess)
+    ) {
+      return unreadableWrite;
+    }
+    if (status === undefined || status >= firstServerError) {
+      return [explanation, uncertainWrite].filter(Boolean).join(" ");
+    }
+  }
   if (explanation) return explanation;
 
-  const { status } = err;
-
   // A 502 comes from a proxy that could not reach Go.
-  if (err.kind === "network" || status === badGateway) return cannotReach;
   if (status === unprocessable) return checkValues;
+  if (
+    (err.kind === "network" && (status === undefined || status < firstClientError)) ||
+    status === badGateway
+  )
+    return cannotReach;
   if (status !== undefined && status >= firstServerError) return serverFailed;
   return failed;
 }

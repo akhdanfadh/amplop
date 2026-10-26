@@ -2,7 +2,82 @@ import { describe, expect, it } from "vite-plus/test";
 import { formErrors, userMessage } from "./problem";
 import { ApiError } from "./transport";
 
+const httpStatus = {
+  created: 201,
+  conflict: 409,
+  unprocessable: 422,
+  internalServerError: 500,
+  badGateway: 502,
+  unavailable: 503,
+  gatewayTimeout: 504,
+};
+
 describe("userMessage", () => {
+  it.each(["POST", "PUT", "PATCH", "DELETE"])("warns when a %s outcome is unknown", (method) => {
+    const err = new ApiError("network", { method });
+
+    expect(userMessage(err)).toBe(
+      "We couldn't confirm whether this was saved. Check before submitting again.",
+    );
+  });
+
+  it("distinguishes a reported write success from an unreadable result", () => {
+    const err = new ApiError("response", { method: "POST", status: httpStatus.created });
+
+    expect(userMessage(err)).toBe(
+      "The server reported success, but we couldn't load the result. Check before submitting again.",
+    );
+  });
+
+  it("keeps a successful write's status when its body is interrupted", () => {
+    const err = new ApiError("network", { method: "POST", status: httpStatus.created });
+
+    expect(userMessage(err)).toBe(
+      "The server reported success, but we couldn't load the result. Check before submitting again.",
+    );
+  });
+
+  it.each([
+    httpStatus.internalServerError,
+    httpStatus.badGateway,
+    httpStatus.unavailable,
+    httpStatus.gatewayTimeout,
+  ])("does not assume a write rolled back after HTTP %s", (status) => {
+    const err = new ApiError("http", { method: "POST", status });
+
+    expect(userMessage(err)).toBe(
+      "We couldn't confirm whether this was saved. Check before submitting again.",
+    );
+  });
+
+  it("preserves safe server text alongside the uncertain write warning", () => {
+    const err = new ApiError("http", {
+      method: "POST",
+      status: httpStatus.unavailable,
+      problem: { detail: "The service is restarting." },
+    });
+
+    expect(userMessage(err)).toBe(
+      "The service is restarting. We couldn't confirm whether this was saved. Check before submitting again.",
+    );
+  });
+
+  it("keeps a known write rejection's explanation", () => {
+    const err = new ApiError("http", {
+      method: "POST",
+      status: httpStatus.conflict,
+      problem: { detail: "The counter is full." },
+    });
+
+    expect(userMessage(err)).toBe("The counter is full.");
+  });
+
+  it("keeps a write rejection when its body is interrupted", () => {
+    const err = new ApiError("network", { method: "POST", status: httpStatus.unprocessable });
+
+    expect(userMessage(err)).toBe("Check the values and try again.");
+  });
+
   it("prefers the safe detail over the title", () => {
     const err = new ApiError("http", {
       status: 404,

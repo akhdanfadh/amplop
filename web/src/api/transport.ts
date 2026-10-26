@@ -13,9 +13,10 @@ export type ApiErrorKind =
   // A complete successful reply did not match its expected body.
   | "response";
 
-// A send failure may provide none of these. An unreadable body can still
-// provide a status and request ID, even when no problem could be read.
+// The method identifies writes even without a response. An unreadable body
+// can still provide a status and request ID, even when no problem could be read.
 type ErrorFacts = {
+  method?: string;
   status?: number;
   problem?: ReceivedProblem;
   requestId?: string;
@@ -26,6 +27,7 @@ type ErrorFacts = {
 // A proxy may send HTML, leaving us with a status but no problem.
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;
+  readonly method?: string;
   readonly status?: number;
   readonly problem?: ReceivedProblem;
   readonly requestId?: string;
@@ -35,6 +37,7 @@ export class ApiError extends Error {
     super(facts.problem?.detail || facts.problem?.title || "Request failed.");
     this.name = "ApiError";
     this.kind = kind;
+    this.method = facts.method;
     this.status = facts.status;
     this.problem = facts.problem;
     this.requestId = facts.requestId;
@@ -55,6 +58,7 @@ export async function transport<T>(
   // programming error; reject it before sending a request.
   const { schema, ...rest } = init;
   if (!schema) throw new Error(`${url}: no response schema`);
+  const facts: ErrorFacts = { method: init.method?.toUpperCase() ?? "GET" };
 
   // fetch resolves for HTTP errors too; a rejected call has no response facts.
   let res: Response;
@@ -62,16 +66,14 @@ export async function transport<T>(
     res = await fetch(url, rest);
   } catch (err) {
     if (isCancelled(init.signal)) throw err;
-    throw new ApiError("network");
+    throw new ApiError("network", facts);
   }
 
   // Headers arrive before the body finishes. Save them now so a later read
   // failure keeps the actual status and request reference.
-  const facts: ErrorFacts = {
-    status: res.status,
-    requestId: res.headers.get(requestIdHeader) || undefined,
-    retryAfter: res.headers.get(retryAfterHeader) ?? undefined,
-  };
+  facts.status = res.status;
+  facts.requestId = res.headers.get(requestIdHeader) || undefined;
+  facts.retryAfter = res.headers.get(retryAfterHeader) ?? undefined;
   let text: string;
   try {
     text = await res.text();

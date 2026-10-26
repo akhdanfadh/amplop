@@ -142,6 +142,8 @@ never produce a stand-in problem. Optional `requestId` holds the received
 `X-Request-ID`. Optional `retryAfter` holds the received `Retry-After` header,
 even if reading the body fails. A problem's own status can differ from the actual
 HTTP status; request decisions use `ApiError.status`.
+`method` holds the request method so screens can distinguish a failed write
+from a failed read even when no response arrived.
 
 Every generated function uses `src/api/transport.ts`, which checks success
 bodies against generated schemas and logs contract mismatches to the browser
@@ -156,6 +158,14 @@ and local fallback text if neither is usable. Unfamiliar problem types still
 show their safe text. Different business failures can share a status, so use
 their type when adding different recovery actions. The probe form displays a
 received request reference for reporting failures.
+
+For writes, a missing response or HTTP 5xx cannot confirm whether the change
+took effect. The message keeps any safe server explanation and asks the user
+to check before submitting again. An unreadable success response instead says
+the server reported success but its result could not be loaded. A received
+4xx rejection keeps its normal explanation. Failed submissions keep the form's
+values; the request reference remains available when received.
+
 Zod's messages are developer text: `src/router.tsx`
 replaces them app-wide with `src/api/validation.ts`, which states the
 field's rule, e.g. "Enter a whole number from 1 to 10.".

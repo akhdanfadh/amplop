@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi, type MockInstance } from "vite-plus/test";
+import { createProbeEvent } from "./generated/inbok";
 import { ResponseHealthStatus } from "./generated/model";
+import { userMessage } from "./problem";
 import { ApiError, transport } from "./transport";
 
 const url = "/api/v0/health";
 const init = { schema: ResponseHealthStatus };
 const httpStatus = {
   ok: 200,
+  created: 201,
   conflict: 409,
   unprocessable: 422,
   badGateway: 502,
@@ -131,6 +134,51 @@ describe("transport", () => {
 });
 
 describe("received error facts", () => {
+  it("warns after a generated write loses its response", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new TypeError("Connection lost");
+    });
+
+    const err: unknown = await createProbeEvent({
+      note: "Keep this input",
+      amount: 1,
+      highlighted: false,
+      tag: null,
+    }).catch((error: unknown) => error);
+
+    if (!(err instanceof ApiError)) throw new Error("Expected an API failure");
+    expect(err.method).toBe("POST");
+    expect(userMessage(err)).toBe(
+      "We couldn't confirm whether this was saved. Check before submitting again.",
+    );
+  });
+
+  it("keeps a generated write's status and reference with an unreadable success", async () => {
+    watchLog();
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response("{", {
+          status: httpStatus.created,
+          headers: { "X-Request-ID": "write-reference" },
+        }),
+    );
+
+    const err: unknown = await createProbeEvent({
+      note: "Keep this input",
+      amount: 1,
+      highlighted: false,
+      tag: null,
+    }).catch((error: unknown) => error);
+
+    if (!(err instanceof ApiError)) throw new Error("Expected an API failure");
+    expect(err.status).toBe(httpStatus.created);
+    expect(err.requestId).toBe("write-reference");
+    expect(userMessage(err)).toBe(
+      "The server reported success, but we couldn't load the result. Check before submitting again.",
+    );
+  });
+
   it("keeps actual status separate from the received problem and request ID", async () => {
     const problem = {
       type: "/api/v0/problems/counter-full",
