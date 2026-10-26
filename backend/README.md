@@ -191,7 +191,12 @@ From `backend`, check the code:
 ```sh
 go test ./...
 go vet ./...
+go tool -modfile=tools.mod testifylint ./...
 ```
+
+[testifylint](https://github.com/Antonboom/testifylint) checks tests
+against testify's usage rules, e.g. expected value first; `--fix`
+corrects most of them.
 
 Database tests start their own throwaway PostgreSQL in Docker
 ([Testcontainers](https://golang.testcontainers.org)), so Docker must be

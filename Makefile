@@ -22,6 +22,9 @@ WITH_ENV = set -a; . "$(abspath $(ENV_FILE))"; set +a;
 
 GOOSE := go -C backend tool -modfile=tools.mod goose
 
+# Checks tests against testify's usage rules, e.g. require for errors.
+TESTIFYLINT := go -C backend tool -modfile=tools.mod testifylint
+
 .DEFAULT_GOAL := help
 
 .PHONY: help install dev dev-backend dev-web backend-serve \
@@ -121,11 +124,12 @@ FRESH := scripts/check-fresh.sh
 check: check-backend check-web ## Everything a commit must pass
 
 # Fresh SQLC code first: stale code makes vet fail with confusing errors.
-check-backend: ## Format, generated code, vet, dependencies, and tests
+check-backend: ## Format, generated code, vet, lint, dependencies, and tests
 	gofmt -d backend
 	$(FRESH) backend/internal/repository/postgres/sqlc $(MAKE) generate-sqlc
 	$(FRESH) $(OPENAPI) $(MAKE) generate-api
 	go -C backend vet ./...
+	$(TESTIFYLINT) ./...
 	go -C backend mod tidy -diff
 	go -C backend test ./...
 
@@ -146,7 +150,8 @@ test-web: ## Web unit tests
 
 fix: fix-backend fix-web ## Fix formatting and what lint can fix
 
-fix-backend: ## Format Go files
+fix-backend: ## Format Go files and fix test lint
+	$(TESTIFYLINT) --fix ./...
 	gofmt -w backend
 
 fix-web: ## Format and fix lint in web
