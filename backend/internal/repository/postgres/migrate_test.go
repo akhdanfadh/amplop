@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // checkViolation is PostgreSQL's error code for a failed CHECK.
@@ -25,14 +27,10 @@ func migrated(t *testing.T) *pgx.Conn {
 	t.Helper()
 
 	url := newDatabase(t)
-	if err := Migrate(t.Context(), url, discard); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, Migrate(t.Context(), url, discard))
 
 	conn, err := pgx.Connect(t.Context(), url)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close(context.Background()) })
 	return conn
 }
@@ -44,38 +42,33 @@ func TestMigrate(t *testing.T) {
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&out, nil))
 	for range 2 {
-		if err := Migrate(t.Context(), url, logger); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, Migrate(t.Context(), url, logger))
 	}
 
 	logs := out.String()
-	if !strings.Contains(logs, `msg="applied migration" file=00001_create_probe.sql`) ||
-		!strings.Contains(logs, `msg="database up to date"`) {
-		t.Fatalf("logs:\n%s", logs)
-	}
+	assert.Contains(t, logs, `msg="applied migration" file=00001_create_probe.sql`)
+	assert.Contains(t, logs, `msg="database up to date"`)
 
 	conn, err := pgx.Connect(t.Context(), url)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer conn.Close(t.Context())
 
 	var total int64
-	if err := conn.QueryRow(t.Context(), "SELECT total FROM probe_counter WHERE id = 1").Scan(&total); err != nil || total != 0 {
-		t.Fatalf("counter = %d, %v; want 0", total, err)
-	}
+	err = conn.QueryRow(t.Context(), "SELECT total FROM probe_counter WHERE id = 1").Scan(&total)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), total)
 }
 
 // Two migrations at once, e.g. two deploys, must not apply a file twice.
 // Goose's version table must exist first: creating it, Goose retries
 // after a clash, which alone spaces out the runs.
 func TestMigrateConcurrent(t *testing.T) {
+	// Given Goose's version table and two migrations waiting on one start
+	// signal.
 	url := newDatabase(t)
 	provider := migratedProvider(t, url)
-	if _, err := provider.DownTo(t.Context(), 0); err != nil {
-		t.Fatal(err)
-	}
+	_, err := provider.DownTo(t.Context(), 0)
+	require.NoError(t, err)
 
 	var wg sync.WaitGroup
 	start := make(chan struct{})
@@ -86,12 +79,14 @@ func TestMigrateConcurrent(t *testing.T) {
 			errs[i] = Migrate(t.Context(), url, discard)
 		})
 	}
+
+	// When they start together. Each saves its own error: require must not
+	// run outside the test's goroutine.
 	close(start)
 	wg.Wait()
 
-	if err := errors.Join(errs...); err != nil {
-		t.Fatal(err)
-	}
+	// Then both succeed; a file applied twice would fail on its CREATE.
+	require.NoError(t, errors.Join(errs...))
 }
 
 // Every Down section works: undoing all migrations removes the probe
@@ -99,25 +94,20 @@ func TestMigrateConcurrent(t *testing.T) {
 func TestMigrateDown(t *testing.T) {
 	url := newDatabase(t)
 	provider := migratedProvider(t, url)
-	if _, err := provider.DownTo(t.Context(), 0); err != nil {
-		t.Fatal(err)
-	}
+	_, err := provider.DownTo(t.Context(), 0)
+	require.NoError(t, err)
 
 	conn, err := pgx.Connect(t.Context(), url)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer conn.Close(t.Context())
 
 	var tables int
 	err = conn.QueryRow(t.Context(), "SELECT count(*) FROM pg_tables WHERE tablename IN ('probe_counter', 'probe_events')").Scan(&tables)
-	if err != nil || tables != 0 {
-		t.Fatalf("probe tables left = %d, %v", tables, err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, tables)
 
-	if _, err := provider.Up(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	_, err = provider.Up(t.Context())
+	require.NoError(t, err)
 }
 
 // migratedProvider applies every migration to url, then returns a Goose
@@ -125,20 +115,14 @@ func TestMigrateDown(t *testing.T) {
 func migratedProvider(t *testing.T, url string) *goose.Provider {
 	t.Helper()
 
-	if err := Migrate(t.Context(), url, discard); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, Migrate(t.Context(), url, discard))
 
 	db, err := sql.Open("pgx", url)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
 	provider, err := newProvider(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return provider
 }
 
@@ -151,12 +135,8 @@ func TestProbeChecks(t *testing.T) {
 		_, err := conn.Exec(t.Context(), insert, "hello", 1, tag)
 		return err
 	}
-	if err := valid(nil); err != nil {
-		t.Fatalf("no tag: %v", err)
-	}
-	if err := valid(strings.Repeat("t", 40)); err != nil {
-		t.Fatalf("40-character tag: %v", err)
-	}
+	require.NoError(t, valid(nil), "no tag")
+	require.NoError(t, valid(strings.Repeat("t", 40)), "40-character tag")
 
 	cases := []struct {
 		name, sql string
@@ -173,11 +153,12 @@ func TestProbeChecks(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		_, err := conn.Exec(t.Context(), c.sql, c.args...)
+		t.Run(c.name, func(t *testing.T) {
+			_, err := conn.Exec(t.Context(), c.sql, c.args...)
 
-		var pgErr *pgconn.PgError
-		if !errors.As(err, &pgErr) || pgErr.Code != checkViolation {
-			t.Errorf("%s: err = %v, want a CHECK violation", c.name, err)
-		}
+			var pgErr *pgconn.PgError
+			require.ErrorAs(t, err, &pgErr)
+			assert.Equal(t, checkViolation, pgErr.Code)
+		})
 	}
 }

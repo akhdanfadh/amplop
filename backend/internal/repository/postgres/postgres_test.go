@@ -6,6 +6,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Without connect_timeout, pgx waits forever for a server that accepts the
@@ -22,12 +25,9 @@ func TestPoolConfigTimeout(t *testing.T) {
 
 	for _, c := range cases {
 		cfg, err := poolConfig(c.url)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := cfg.ConnConfig.ConnectTimeout; got != c.want {
-			t.Errorf("%s: ConnectTimeout = %v, want %v", c.url, got, c.want)
-		}
+		require.NoError(t, err)
+
+		assert.Equal(t, c.want, cfg.ConnConfig.ConnectTimeout, c.url)
 	}
 }
 
@@ -58,9 +58,10 @@ func TestConnectTimeout(t *testing.T) {
 			defer cancel()
 
 			start := time.Now()
-			if err := c.connect(ctx); err == nil || ctx.Err() != nil {
-				t.Fatalf("err = %v after %v; want a connect timeout before ctx ends", err, time.Since(start))
-			}
+			err := c.connect(ctx)
+
+			require.Error(t, err)
+			require.NoError(t, ctx.Err(), "gave up only when ctx ended, after %v", time.Since(start))
 		})
 	}
 }
@@ -69,9 +70,7 @@ func TestConnectTimeout(t *testing.T) {
 // without connect_timeout.
 func silentServer(t *testing.T) string {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var mu sync.Mutex
 	var conns []net.Conn

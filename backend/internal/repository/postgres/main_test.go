@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
@@ -56,9 +57,7 @@ func newDatabase(t *testing.T) string {
 	t.Cleanup(func() { adminExec(t, "DROP DATABASE "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)") })
 
 	u, err := url.Parse(adminURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	u.Path = "/" + name
 	return u.String()
 }
@@ -70,12 +69,9 @@ func adminExec(t *testing.T, sql string) {
 	// Not t.Context(): it is already cancelled when cleanups run.
 	ctx := context.Background()
 	conn, err := pgx.Connect(ctx, adminURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer conn.Close(ctx)
 
-	if _, err := conn.Exec(ctx, sql); err != nil {
-		t.Fatal(err)
-	}
+	_, err = conn.Exec(ctx, sql)
+	require.NoError(t, err)
 }
