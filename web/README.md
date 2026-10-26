@@ -176,6 +176,13 @@ that break the success contract, and deliberately canceled reads do not retry.
 The default applies to reads; writes have automatic retry explicitly disabled.
 An operation must guarantee safe repetition before opting into write retries.
 
+Writes use `networkMode: "always"` with `retry: false`. Query attempts them even
+when its browser connectivity indicator says offline. That indicator can be
+wrong about whether a self-hosted API is reachable. A failed write reports its
+communication failure instead of waiting for reconnection. Reconnecting never
+submits it again; another attempt requires the user to submit. The form keeps
+entered values after a failed attempt.
+
 Normal retry waits are 1 and 2 seconds. On 429 and 503, a usable `Retry-After`
 can extend that wait, using integer seconds or an HTTP date. Invalid or absent
 headers use normal backoff. Each wait may take at most 5 seconds; a longer

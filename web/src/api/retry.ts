@@ -1,3 +1,4 @@
+import type { DefaultOptions } from "@tanstack/react-query";
 import { retryAfterDelay } from "./retry-after";
 import { ApiError } from "./transport";
 
@@ -24,8 +25,9 @@ const maxDelayMs = 5_000;
 // Query owns retries; writes stay disabled unless an operation opts in deliberately.
 export const retryOptions = {
   queries: { retry: shouldRetry, retryDelay },
-  mutations: { retry: false },
-};
+  // Retry controls repetition; always also prevents queuing writes until reconnection.
+  mutations: { retry: false, networkMode: "always" },
+} satisfies DefaultOptions;
 
 // Only recognized temporary failures qualify for another read attempt.
 function shouldRetry(failures: number, err: Error): boolean {
