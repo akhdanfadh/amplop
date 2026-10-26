@@ -10,13 +10,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
-	"reflect"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type probeInput struct {
@@ -81,9 +81,7 @@ func decodeJSON(t *testing.T, data []byte) map[string]any {
 	t.Helper()
 
 	var v map[string]any
-	if err := json.Unmarshal(data, &v); err != nil {
-		t.Fatalf("json = %s: %v", data, err)
-	}
+	require.NoError(t, json.Unmarshal(data, &v), "json = %s", data)
 	return v
 }
 
@@ -97,23 +95,26 @@ func TestHideServerErrors(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		var out bytes.Buffer
-		response := post(errorAPI(slog.New(slog.NewJSONHandler(&out, nil))), `{"note":"`+c.note+`","password":"x"}`)
+		t.Run(c.note, func(t *testing.T) {
+			var out bytes.Buffer
+			response := post(errorAPI(slog.New(slog.NewJSONHandler(&out, nil))), `{"note":"`+c.note+`","password":"x"}`)
 
-		body := decodeJSON(t, response.Body.Bytes())
-		if response.Code != http.StatusInternalServerError || body["type"] != "/api/v0/problems/internal-error" || body["title"] != "Internal error" || body["status"] != float64(response.Code) || body["detail"] != c.detail || body["errors"] != nil {
-			t.Fatalf("%s: %d %s", c.note, response.Code, response.Body.String())
-		}
-		if strings.Contains(response.Body.String(), "pq:") {
-			t.Fatalf("%s: body leaks the error: %s", c.note, response.Body.String())
-		}
+			require.Equal(t, http.StatusInternalServerError, response.Code)
+			body := decodeJSON(t, response.Body.Bytes())
+			assert.Equal(t, "/api/v0/problems/internal-error", body["type"])
+			assert.Equal(t, "Internal error", body["title"])
+			assert.InDelta(t, http.StatusInternalServerError, body["status"], 0)
+			assert.Equal(t, c.detail, body["detail"])
+			assert.Nil(t, body["errors"])
+			assert.NotContains(t, response.Body.String(), "pq:", "body leaks the error")
 
-		line, _, _ := strings.Cut(out.String(), "\n")
-		entry := decodeJSON(t, []byte(line))
-		if entry["msg"] != "unexpected error" || entry["level"] != "ERROR" || entry["err"] != c.secret ||
-			entry["request_id"] != response.Header().Get(requestIDHeader) {
-			t.Fatalf("%s: log entry = %v", c.note, entry)
-		}
+			line, _, _ := strings.Cut(out.String(), "\n")
+			entry := decodeJSON(t, []byte(line))
+			assert.Equal(t, "unexpected error", entry["msg"])
+			assert.Equal(t, "ERROR", entry["level"])
+			assert.Equal(t, c.secret, entry["err"])
+			assert.Equal(t, response.Header().Get(requestIDHeader), entry["request_id"])
+		})
 	}
 }
 
@@ -130,24 +131,21 @@ func TestHideInputValues(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		response := post(errorAPI(discard), c.body)
-		if response.Code != c.status {
-			t.Fatalf("%s: status = %d, want %d", c.name, response.Code, c.status)
-		}
-		if strings.Contains(response.Body.String(), c.secret) {
-			t.Fatalf("%s: body echoes input: %s", c.name, response.Body.String())
-		}
+		t.Run(c.name, func(t *testing.T) {
+			response := post(errorAPI(discard), c.body)
 
-		details, _ := decodeJSON(t, response.Body.Bytes())["errors"].([]any)
-		if len(details) == 0 {
-			t.Fatalf("%s: details missing: %s", c.name, response.Body.String())
-		}
-		for _, d := range details {
-			detail := d.(map[string]any)
-			if _, ok := detail["value"]; ok || detail["location"] == nil || detail["message"] == nil {
-				t.Fatalf("%s: detail = %v", c.name, detail)
+			require.Equal(t, c.status, response.Code)
+			assert.NotContains(t, response.Body.String(), c.secret, "body echoes input")
+
+			details, _ := decodeJSON(t, response.Body.Bytes())["errors"].([]any)
+			require.NotEmpty(t, details)
+			for _, d := range details {
+				detail := d.(map[string]any)
+				assert.NotContains(t, detail, "value")
+				assert.NotNil(t, detail["location"])
+				assert.NotNil(t, detail["message"])
 			}
-		}
+		})
 	}
 }
 
@@ -163,15 +161,14 @@ func TestNilErrorDetail(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		response := post(errorAPI(discard), `{"note":"`+c.note+`","password":"x"}`)
+		t.Run(c.note, func(t *testing.T) {
+			response := post(errorAPI(discard), `{"note":"`+c.note+`","password":"x"}`)
 
-		body := decodeJSON(t, response.Body.Bytes())
-		if response.Code != c.status || body["detail"] != c.detail {
-			t.Fatalf("%s: %d %s", c.note, response.Code, response.Body.String())
-		}
-		if _, ok := body["errors"]; ok {
-			t.Fatalf("%s: errors present: %s", c.note, response.Body.String())
-		}
+			require.Equal(t, c.status, response.Code)
+			body := decodeJSON(t, response.Body.Bytes())
+			assert.Equal(t, c.detail, body["detail"])
+			assert.NotContains(t, body, "errors")
+		})
 	}
 }
 
@@ -184,64 +181,57 @@ func TestSharedErrorUnchanged(t *testing.T) {
 	for range 2 {
 		post(a, `{"note":"shared server","password":"x"}`)
 		response := post(a, `{"note":"shared client","password":"x"}`)
-		if strings.Contains(response.Body.String(), "hunter2") {
-			t.Fatalf("body echoes input: %s", response.Body.String())
-		}
+		assert.NotContains(t, response.Body.String(), "hunter2", "body echoes input")
 	}
 
-	if n := strings.Count(out.String(), `"err":"disk full"`); n != 2 {
-		t.Fatalf("logged the cause %d times, want 2:\n%s", n, out.String())
-	}
+	assert.Equal(t, 2, strings.Count(out.String(), `"err":"disk full"`), "times the cause was logged:\n%s", out.String())
 	details := sharedClient.(*huma.ErrorModel).Errors
-	if len(details) != 1 || details[0].Value != "hunter2" {
-		t.Fatalf("shared client error changed: %+v", details)
-	}
+	require.Len(t, details, 1, "shared client error changed")
+	assert.Equal(t, "hunter2", details[0].Value, "shared client error changed")
 }
 
 // Other errors pass through unchanged.
 func TestClientErrorUnchanged(t *testing.T) {
 	response := post(errorAPI(discard), `{"note":"missing","password":"x"}`)
 
+	require.Equal(t, http.StatusNotFound, response.Code)
 	body := decodeJSON(t, response.Body.Bytes())
-	if response.Code != http.StatusNotFound || body["detail"] != "The counter was not found." || body["title"] != "Not found" {
-		t.Fatalf("%d %s", response.Code, response.Body.String())
-	}
+	assert.Equal(t, "The counter was not found.", body["detail"])
+	assert.Equal(t, "Not found", body["title"])
 }
 
 func TestMappedServerError(t *testing.T) {
 	var logs bytes.Buffer
 	response := post(errorAPI(slog.New(slog.NewJSONHandler(&logs, nil))), `{"note":"unavailable","password":"x"}`)
+
+	require.Equal(t, http.StatusServiceUnavailable, response.Code)
 	body := decodeJSON(t, response.Body.Bytes())
-	if response.Code != http.StatusServiceUnavailable || body["status"] != float64(http.StatusServiceUnavailable) || body["type"] != "/api/v0/problems/service-unavailable" || body["detail"] != "Maintenance is in progress. Try again later." {
-		t.Fatalf("%d %s", response.Code, response.Body.String())
-	}
-	if response.Header().Get("Retry-After") != "5" || response.Header().Get(requestIDHeader) == "" {
-		t.Fatalf("headers = %v", response.Header())
-	}
-	if strings.Contains(logs.String(), "unexpected error") {
-		t.Fatalf("mapped failure was logged as unexpected: %s", logs.String())
-	}
+	assert.InDelta(t, http.StatusServiceUnavailable, body["status"], 0)
+	assert.Equal(t, "/api/v0/problems/service-unavailable", body["type"])
+	assert.Equal(t, "Maintenance is in progress. Try again later.", body["detail"])
+	assert.Equal(t, "5", response.Header().Get("Retry-After"))
+	assert.NotEmpty(t, response.Header().Get(requestIDHeader))
+	assert.NotContains(t, logs.String(), "unexpected error", "mapped failure was logged as unexpected")
 }
 
 func TestBusinessInputError(t *testing.T) {
 	response := post(errorAPI(discard), `{"note":"conflict","password":"x"}`)
+
+	require.Equal(t, http.StatusConflict, response.Code)
 	body := decodeJSON(t, response.Body.Bytes())
-	if response.Code != http.StatusConflict || body["type"] != "/api/v0/problems/name-conflict" {
-		t.Fatalf("%d %s", response.Code, response.Body.String())
-	}
-	details := body["errors"].([]any)
-	detail := details[0].(map[string]any)
-	if len(details) != 1 || len(detail) != 2 || detail["location"] != "body.note" || detail["message"] != "This name is already used." {
-		t.Fatalf("details = %v", details)
-	}
+	assert.Equal(t, "/api/v0/problems/name-conflict", body["type"])
+	assert.Equal(t, []any{map[string]any{"location": "body.note", "message": "This name is already used."}}, body["errors"])
 }
 
 func TestResponseFormatProblem(t *testing.T) {
 	response := post(errorAPI(discard), `{"note":"format","password":"x"}`)
+
+	require.Equal(t, http.StatusNotAcceptable, response.Code)
 	body := decodeJSON(t, response.Body.Bytes())
-	if response.Code != http.StatusNotAcceptable || body["status"] != float64(http.StatusNotAcceptable) || body["type"] != "/api/v0/problems/not-acceptable" || body["title"] != "Response format not supported" || body["detail"] != "Ask for a JSON response." {
-		t.Fatalf("%d %s", response.Code, response.Body.String())
-	}
+	assert.InDelta(t, http.StatusNotAcceptable, body["status"], 0)
+	assert.Equal(t, "/api/v0/problems/not-acceptable", body["type"])
+	assert.Equal(t, "Response format not supported", body["title"])
+	assert.Equal(t, "Ask for a JSON response.", body["detail"])
 }
 
 type timedOutBody struct{}
@@ -268,12 +258,14 @@ func TestInputStatuses(t *testing.T) {
 			if c.name == "timeout" {
 				request.Body = timedOutBody{}
 			}
+
 			response := httptest.NewRecorder()
 			New(discard, Services{}).Handler().ServeHTTP(response, request)
+
+			require.Equal(t, c.status, response.Code)
 			body := decodeJSON(t, response.Body.Bytes())
-			if response.Code != c.status || body["status"] != float64(c.status) || body["type"] != "/api/v0/problems/"+c.typ {
-				t.Fatalf("%d %s", response.Code, response.Body.String())
-			}
+			assert.InDelta(t, c.status, body["status"], 0)
+			assert.Equal(t, "/api/v0/problems/"+c.typ, body["type"])
 		})
 	}
 }
@@ -281,40 +273,31 @@ func TestInputStatuses(t *testing.T) {
 func TestProblemSchema(t *testing.T) {
 	a := New(discard, Services{})
 	doc, err := a.OpenAPI()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, private := range []string{`"value"`, `"raw"`, `"mapped"`, `"ErrorModel"`} {
-		if strings.Contains(string(doc), private) {
-			t.Fatalf("contract contains private member %q", private)
-		}
+		assert.NotContains(t, string(doc), private, "contract contains a private member")
 	}
+
 	schema := a.api.OpenAPI().Components.Schemas.Map()["Problem"]
-	if schema == nil {
-		t.Fatal("public problem schema missing")
-	}
-	required := append([]string(nil), schema.Required...)
-	sort.Strings(required)
-	if !reflect.DeepEqual(required, []string{"detail", "status", "title", "type"}) || schema.Properties["type"].Format != "uri-reference" {
-		t.Fatalf("schema = %+v", schema)
-	}
+	require.NotNil(t, schema, "public problem schema missing")
+	assert.ElementsMatch(t, []string{"detail", "status", "title", "type"}, schema.Required)
+	assert.Equal(t, "uri-reference", schema.Properties["type"].Format)
+
 	errors := schema.Properties["errors"]
-	if errors.Nullable || errors.MinItems == nil || *errors.MinItems != 1 {
-		t.Fatalf("errors = %+v", errors)
-	}
+	assert.False(t, errors.Nullable)
+	require.NotNil(t, errors.MinItems)
+	assert.Equal(t, 1, *errors.MinItems)
+
 	response := postProbe(discard, &fakeProbes{}, `{"amount":11.5}`)
 	var body any
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	result := &huma.ValidateResult{}
 	huma.Validate(a.api.OpenAPI().Components.Schemas, schema, huma.NewPathBuffer(nil, 0), huma.ModeReadFromServer, body, result)
-	if len(result.Errors) != 0 {
-		t.Fatalf("HTTP response violates exported schema: %v", result.Errors)
-	}
+	assert.Empty(t, result.Errors, "HTTP response violates exported schema")
 }
 
 // Requests run concurrently after API construction, matching server startup.
+// Checks inside the goroutines use assert: require must not run there.
 func TestConcurrentErrors(t *testing.T) {
 	const concurrentAPIs = 8
 	const requestsPerAPI = 10
@@ -332,9 +315,8 @@ func TestConcurrentErrors(t *testing.T) {
 				for range requestsPerAPI {
 					response := httptest.NewRecorder()
 					api.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{}`)))
-					if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "/api/v0/problems/validation-error") {
-						t.Errorf("%d %s", response.Code, response.Body.String())
-					}
+					assert.Equal(t, http.StatusUnprocessableEntity, response.Code)
+					assert.Contains(t, response.Body.String(), "/api/v0/problems/validation-error")
 				}
 			}
 		})
@@ -347,10 +329,14 @@ func TestErrorNegotiation(t *testing.T) {
 	request.Header.Set("Accept", "text/html")
 	response := httptest.NewRecorder()
 	New(discard, Services{}).Handler().ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusUnprocessableEntity, response.Code)
+	assert.Equal(t, problemContentType, response.Header().Get("Content-Type"))
 	body := decodeJSON(t, response.Body.Bytes())
-	if response.Code != http.StatusUnprocessableEntity || response.Header().Get("Content-Type") != problemContentType || body["status"] != float64(response.Code) || body["type"] == nil || body["title"] == nil || body["detail"] == nil {
-		t.Fatalf("%d %s", response.Code, response.Body.String())
-	}
+	assert.InDelta(t, http.StatusUnprocessableEntity, body["status"], 0)
+	assert.NotNil(t, body["type"])
+	assert.NotNil(t, body["title"])
+	assert.NotNil(t, body["detail"])
 }
 
 func TestErrorConstructor(t *testing.T) {
@@ -359,29 +345,28 @@ func TestErrorConstructor(t *testing.T) {
 	// Install the alternate constructor before the first API, in its own process.
 	if os.Getenv(childFlag) == "" {
 		binary, err := os.Executable()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		command := exec.Command(binary, "-test.run=^TestErrorConstructor$")
 		command.Env = append(os.Environ(), childFlag+"=1")
-		if output, err := command.CombinedOutput(); err != nil {
-			t.Fatalf("alternate error constructor: %v\n%s", err, output)
-		}
+		output, err := command.CombinedOutput()
+		require.NoError(t, err, "alternate error constructor:\n%s", output)
 		return
 	}
 
+	// Given, in the child: Huma builds errors with another constructor.
 	huma.NewError = func(status int, message string, _ ...error) huma.StatusError {
 		return newProblem(status, "/alternate-error", "Alternate error", message)
 	}
 
+	// When a handler returns an unexpected error.
 	var logs bytes.Buffer
 	response := post(errorAPI(slog.New(slog.NewJSONHandler(&logs, nil))), `{"note":"raw","password":"x"}`)
+
+	// Then the response is still our fixed 500, and the cause is logged.
+	require.Equal(t, http.StatusInternalServerError, response.Code)
 	body := decodeJSON(t, response.Body.Bytes())
-	if response.Code != http.StatusInternalServerError || body["type"] != "/api/v0/problems/internal-error" || body["detail"] != "Something went wrong on our side." {
-		t.Fatalf("%d %s", response.Code, response.Body.String())
-	}
-	if !strings.Contains(logs.String(), "pq: connection refused to 10.0.0.5:5432") {
-		t.Fatalf("log lacks the cause: %s", logs.String())
-	}
+	assert.Equal(t, "/api/v0/problems/internal-error", body["type"])
+	assert.Equal(t, "Something went wrong on our side.", body["detail"])
+	assert.Contains(t, logs.String(), "pq: connection refused to 10.0.0.5:5432", "log lacks the cause")
 }
