@@ -1,0 +1,24 @@
+# NOTE: Every `vite` import must get the Vite+ build, or TanStack Start
+# returns 404. Every `vitest` import must get the Vitest that `vp test`
+# runs, or tests see two copies of `expect` and mocks.
+# Why: https://viteplus.dev/guide/local-cli
+# Upgrade: `pnpm update vite-plus@<new>`, then `pnpm exec vp migrate`.
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.0.0
+  vite-plus: 1.0.0
+  vitest: 5.0.1
+overrides:
+  vite@*: "catalog:"
+  vitest@*: "catalog:"
+
+# NOTE: The Vite+ build reports version 1.0.0 but contains Vite 8.3.1.
+# This also hides real mismatches: check a new plugin's `vite` range
+# against `bundledVersions` in node_modules/vite/package.json.
+peerDependencyRules:
+  allowAny:
+    - vite
+
+# Orval needs esbuild. Its install script only checks the binary that
+# pnpm already installs, so it stays off.
+allowBuilds:
+  esbuild: false

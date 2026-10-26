@@ -1,0 +1,25 @@
+# SQLC turns the SQL in queries/ into typed Go methods.
+# From backend: go tool -modfile=tools.mod sqlc generate
+version: "2"
+sql:
+  - engine: postgresql
+    # The schema is the migrations Goose applies; SQLC skips Down parts.
+    schema: internal/repository/postgres/migrations
+    queries: internal/repository/postgres/queries
+    gen:
+      go:
+        package: sqlc
+        out: internal/repository/postgres/sqlc
+        sql_package: pgx/v5
+
+        # Keep pgx's own types out of the code that maps rows to domain
+        # types: NULL becomes nil, e.g. a NULL tag is a nil *string.
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: time.Time
+              pointer: true

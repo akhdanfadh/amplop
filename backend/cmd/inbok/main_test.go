@@ -1,0 +1,122 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"inbok/internal/httpapi"
+)
+
+var discard = slog.New(slog.DiscardHandler)
+
+func TestExport(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "openapi.json")
+	require.NoError(t, run(context.Background(), []string{"export", path}, discard))
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	want, err := httpapi.New(discard, httpapi.Services{}).OpenAPI()
+	require.NoError(t, err)
+
+	// Strings, not bytes: a mismatch then prints as a text diff.
+	assert.Equal(t, string(want), string(got))
+}
+
+func TestRunUsage(t *testing.T) {
+	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"migrate", "extra"}, {"export"}, {"export", "a", "b"}}
+	for _, args := range cases {
+		err := run(context.Background(), args, discard)
+		require.ErrorIs(t, err, errUsage, "run(%q)", args)
+	}
+}
+
+// migrate names the missing setting instead of guessing a database.
+func TestMigrateNoURL(t *testing.T) {
+	t.Setenv("INBOK_DATABASE_URL", "")
+
+	err := run(context.Background(), []string{"migrate"}, discard)
+
+	require.ErrorContains(t, err, "INBOK_DATABASE_URL")
+}
+
+// serve names the missing setting before touching a database or a port.
+func TestServeNoURL(t *testing.T) {
+	t.Setenv("INBOK_DATABASE_URL", "")
+
+	err := run(context.Background(), []string{"serve"}, discard)
+
+	require.ErrorContains(t, err, "INBOK_DATABASE_URL")
+}
+
+// Cancelling the context, as SIGINT or SIGTERM does, stops the server
+// cleanly.
+func TestListenShutdown(t *testing.T) {
+	// Given a server started in the background and answering.
+	addr := freeAddr(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- listen(ctx, addr, httpapi.New(discard, httpapi.Services{}).Handler(), discard) }()
+
+	url := "http://" + addr + "/api/v0/health"
+	require.True(t, waitUp(url), "server did not start")
+
+	// When its context is cancelled.
+	cancel()
+
+	// Then listen returns without error in time, and the port closes.
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(shutdownTimeout + time.Second):
+		require.FailNow(t, "listen did not return after cancel")
+	}
+
+	_, err := http.Get(url)
+	require.Error(t, err, "server still accepts requests after shutdown")
+}
+
+// A busy port fails listen without claiming the server started.
+func TestListenBusyPort(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&out, nil))
+	err = listen(context.Background(), listener.Addr().String(), httpapi.New(discard, httpapi.Services{}).Handler(), logger)
+	require.Error(t, err)
+	assert.Empty(t, out.String(), "listen logged before failing")
+}
+
+// freeAddr returns a loopback address with a port nothing listens on.
+func freeAddr(t *testing.T) string {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	return listener.Addr().String()
+}
+
+func waitUp(url string) bool {
+	for range 50 {
+		response, err := http.Get(url)
+		if err == nil {
+			response.Body.Close()
+			return true
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return false
+}

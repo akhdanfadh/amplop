@@ -1,0 +1,27 @@
+{
+  "include": ["src", "vite.config.ts", "orval.config.ts"],
+  "compilerOptions": {
+    /* Type checking only: Vite builds the app; tsc never writes files. */
+    "noEmit": true,
+    "skipLibCheck": true, // skip type files inside installed packages
+    "types": ["vite-plus/client"], // e.g. `import x from "./a.css?url"`
+
+    /* Language features and browser APIs the code may use.
+       ES2022 is within the browsers Vite builds for by default. */
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    /* Read imports and JSX the way Vite does. verbatimModuleSyntax stays
+       off: TanStack Start's setup guide advises against it. */
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    // `@/components/ui/button` means `src/components/ui/button`. shadcn's
+    // CLI needs this alias; vite.config.ts reads it via tsconfigPaths.
+    "paths": { "@/*": ["./src/*"] },
+
+    /* Type safety. Code-quality checks (unused code, switch fallthrough)
+       live in the linter: see `lint` in vite.config.ts. */
+    "strict": true
+  }
+}
