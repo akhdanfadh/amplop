@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"inbok/internal/probe"
 )
 
@@ -54,17 +57,15 @@ func TestCreateProbeEvent(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		response := postProbe(discard, &fakeProbes{total: 43}, c.body)
-		if response.Code != http.StatusCreated {
-			t.Fatalf("%s: %d %s", c.name, response.Code, response.Body.String())
-		}
+		t.Run(c.name, func(t *testing.T) {
+			response := postProbe(discard, &fakeProbes{total: 43}, c.body)
 
-		body := response.Body.String()
-		for _, want := range []string{`"id":7`, `"note":"hello"`, `"amount":3`, c.tag, `"createdAt":"2026-10-04T12:00:00Z"`, `"total":43`} {
-			if !strings.Contains(body, want) {
-				t.Fatalf("%s: body lacks %s: %s", c.name, want, body)
+			require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+			body := response.Body.String()
+			for _, want := range []string{`"id":7`, `"note":"hello"`, `"amount":3`, c.tag, `"createdAt":"2026-10-04T12:00:00Z"`, `"total":43`} {
+				assert.Contains(t, body, want)
 			}
-		}
+		})
 	}
 }
 
@@ -85,26 +86,21 @@ func TestCreateProbeEventInvalid(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		probes := &fakeProbes{}
-		response := postProbe(discard, probes, c.body)
-		if response.Code != http.StatusUnprocessableEntity {
-			t.Fatalf("%s: %d %s", c.name, response.Code, response.Body.String())
-		}
-		problem := decodeJSON(t, response.Body.Bytes())
-		if problem["type"] != "/api/v0/problems/validation-error" {
-			t.Fatalf("%s: type = %v", c.name, problem["type"])
-		}
+		t.Run(c.name, func(t *testing.T) {
+			probes := &fakeProbes{}
+			response := postProbe(discard, probes, c.body)
 
-		details, _ := decodeJSON(t, response.Body.Bytes())["errors"].([]any)
-		if len(details) != 1 || details[0].(map[string]any)["location"] != c.location {
-			t.Fatalf("%s: errors = %v, want one at %s", c.name, details, c.location)
-		}
-		if got := details[0].(map[string]any)["message"]; got != c.message {
-			t.Fatalf("%s: message = %v, want %q", c.name, got, c.message)
-		}
-		if len(probes.added) != 0 {
-			t.Fatalf("%s: added a rejected body", c.name)
-		}
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+			problem := decodeJSON(t, response.Body.Bytes())
+			assert.Equal(t, "/api/v0/problems/validation-error", problem["type"])
+
+			details, _ := problem["errors"].([]any)
+			require.Len(t, details, 1)
+			detail, _ := details[0].(map[string]any)
+			assert.Equal(t, c.location, detail["location"])
+			assert.Equal(t, c.message, detail["message"])
+			assert.Empty(t, probes.added, "added a rejected body")
+		})
 	}
 }
 
@@ -112,10 +108,11 @@ func TestCreateProbeEventInvalid(t *testing.T) {
 func TestCreateProbeEventFull(t *testing.T) {
 	response := postProbe(discard, &fakeProbes{err: probe.ErrCounterFull}, `{"note":"x","amount":6,"highlighted":false}`)
 
+	require.Equal(t, http.StatusConflict, response.Code)
 	body := decodeJSON(t, response.Body.Bytes())
-	if response.Code != http.StatusConflict || body["type"] != "/api/v0/problems/counter-full" || body["detail"] != "The counter is full." || body["errors"] != nil {
-		t.Fatalf("%d %s", response.Code, response.Body.String())
-	}
+	assert.Equal(t, "/api/v0/problems/counter-full", body["type"])
+	assert.Equal(t, "The counter is full.", body["detail"])
+	assert.Nil(t, body["errors"])
 }
 
 // A storage failure is a 500 that logs the cause and hides it.
@@ -124,12 +121,9 @@ func TestCreateProbeEventStorageError(t *testing.T) {
 	probes := &fakeProbes{err: errors.New("lock probe counter: conn closed")}
 	response := postProbe(slog.New(slog.NewTextHandler(&out, nil)), probes, `{"note":"x","amount":1,"highlighted":false}`)
 
-	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), "conn closed") {
-		t.Fatalf("%d %s", response.Code, response.Body.String())
-	}
-	if !strings.Contains(out.String(), `err="lock probe counter: conn closed"`) {
-		t.Fatalf("log lacks the cause:\n%s", out.String())
-	}
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.NotContains(t, response.Body.String(), "conn closed")
+	assert.Contains(t, out.String(), `err="lock probe counter: conn closed"`, "log lacks the cause")
 }
 
 // Schema and operation names become generated client names, so pin them.
@@ -137,34 +131,28 @@ func TestProbeOpenAPI(t *testing.T) {
 	doc := New(discard, Services{}).api.OpenAPI()
 
 	path := doc.Paths["/probe/events"]
-	if path == nil || path.Post == nil || path.Post.OperationID != "createProbeEvent" {
-		t.Fatal("probe must document POST createProbeEvent")
-	}
+	require.NotNil(t, path)
+	require.NotNil(t, path.Post, "probe must document POST")
+	assert.Equal(t, "createProbeEvent", path.Post.OperationID)
 
 	request := path.Post.RequestBody.Content["application/json"].Schema.Ref
-	if request != "#/components/schemas/NewProbeEvent" {
-		t.Fatalf("request schema = %q", request)
-	}
+	assert.Equal(t, "#/components/schemas/NewProbeEvent", request)
 
 	responses := path.Post.Responses
 	created := responses[strconv.Itoa(http.StatusCreated)]
-	if created == nil || created.Content["application/json"].Schema.Ref != "#/components/schemas/ResponseProbeEventCreated" {
-		t.Fatal("probe must document its 201 body")
-	}
-	if responses[strconv.Itoa(http.StatusConflict)] == nil {
-		t.Fatal("probe must document the full counter's 409")
-	}
-	conflict := responses[strconv.Itoa(http.StatusConflict)].Content["application/problem+json"]
+	require.NotNil(t, created, "probe must document its 201 body")
+	assert.Equal(t, "#/components/schemas/ResponseProbeEventCreated", created.Content["application/json"].Schema.Ref)
+
+	full := responses[strconv.Itoa(http.StatusConflict)]
+	require.NotNil(t, full, "probe must document the full counter's 409")
+	conflict := full.Content["application/problem+json"]
+	require.NotNil(t, conflict)
 	example, err := json.Marshal(conflict.Example)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(example), `"type":"/api/v0/problems/counter-full"`) {
-		t.Fatalf("409 example = %s", example)
-	}
+	require.NoError(t, err)
+	assert.Contains(t, string(example), `"type":"/api/v0/problems/counter-full"`)
 
 	event := doc.Components.Schemas.Map()["ProbeEvent"]
-	if event == nil || event.Properties["createdAt"] == nil || event.Properties["tag"] == nil {
-		t.Fatal("ProbeEvent must document createdAt and tag")
-	}
+	require.NotNil(t, event)
+	assert.NotNil(t, event.Properties["createdAt"])
+	assert.NotNil(t, event.Properties["tag"])
 }

@@ -5,16 +5,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
-	"sort"
 	"strings"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Input details preserve nested paths and use each field's own correction rules.
 func TestValidationDetails(t *testing.T) {
+	// Given an operation that repeats the same field rules in a struct, an
+	// array, a nested array, and a map.
 	type fields struct {
 		Name       string   `json:"name" minLength:"1" maxLength:"4"`
 		Enabled    bool     `json:"enabled"`
@@ -92,81 +94,59 @@ func TestValidationDetails(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			// When the body is sent.
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/required-inputs", strings.NewReader(c.body))
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			a.Handler().ServeHTTP(response, request)
+
+			// Then a valid body is created, and an invalid one gets a 422
+			// listing each problem at its path, without echoing input.
 			if c.want == nil {
-				if response.Code != http.StatusCreated {
-					t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-				}
+				assert.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 				return
 			}
 
-			if response.Code != http.StatusUnprocessableEntity {
-				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-			}
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 			for _, private := range []string{"PRIVATE-INPUT", "inbok-internal-", `"value"`} {
-				if strings.Contains(response.Body.String(), private) {
-					t.Fatalf("response contains %q: %s", private, response.Body.String())
-				}
+				assert.NotContains(t, response.Body.String(), private)
 			}
 
 			var body struct {
 				Errors []struct{ Location, Message string }
 			}
-			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 			var got []string
 			for _, detail := range body.Errors {
 				got = append(got, detail.Location+": "+detail.Message)
 			}
-			sort.Strings(got)
-			if !reflect.DeepEqual(got, c.want) {
-				t.Fatalf("errors = %v, want %v", got, c.want)
-			}
+			assert.ElementsMatch(t, c.want, got)
 		})
 	}
 
+	// The private marker never reaches the contract either.
 	doc, err := a.OpenAPI()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(doc), "inbok-internal-") {
-		t.Fatal("OpenAPI contains a private validation marker")
-	}
+	require.NoError(t, err)
+	assert.NotContains(t, string(doc), "inbok-internal-")
 }
 
 // A fraction beyond a bound gets one range correction without echoing its value.
 func TestNumericCorrections(t *testing.T) {
 	probes := &fakeProbes{}
 	response := postProbe(discard, probes, `{"note":"ok","amount":11.5,"highlighted":false}`)
-	if response.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
-	}
+
+	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	var body struct {
 		Errors []struct{ Location, Message string }
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	var messages []string
 	for _, detail := range body.Errors {
-		if detail.Location != "body.amount" {
-			t.Fatalf("location = %q", detail.Location)
-		}
+		assert.Equal(t, "body.amount", detail.Location)
 		messages = append(messages, detail.Message)
 	}
-	sort.Strings(messages)
-	want := []string{"Enter a whole number from 1 to 10."}
-	if !reflect.DeepEqual(messages, want) {
-		t.Fatalf("messages = %v, want %v", messages, want)
-	}
-	if strings.Contains(response.Body.String(), "11.5") || strings.Contains(response.Body.String(), `"value"`) {
-		t.Fatalf("response echoes rejected input: %s", response.Body.String())
-	}
-	if len(probes.added) != 0 {
-		t.Fatal("rejected input reached the service")
-	}
+	assert.Equal(t, []string{"Enter a whole number from 1 to 10."}, messages)
+	assert.NotContains(t, response.Body.String(), "11.5", "response echoes rejected input")
+	assert.NotContains(t, response.Body.String(), `"value"`, "response echoes rejected input")
+	assert.Empty(t, probes.added, "rejected input reached the service")
 }
