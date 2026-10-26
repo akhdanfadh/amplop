@@ -3,6 +3,7 @@ import { ReceivedProblem } from "./received-problem";
 
 const problemType = "application/problem+json";
 const requestIdHeader = "X-Request-ID";
+const retryAfterHeader = "Retry-After";
 
 export type ApiErrorKind =
   // Sending or reading failed.
@@ -18,6 +19,7 @@ type ErrorFacts = {
   status?: number;
   problem?: ReceivedProblem;
   requestId?: string;
+  retryAfter?: string;
 };
 
 // Keep the actual status separate from the problem's advisory status.
@@ -27,6 +29,7 @@ export class ApiError extends Error {
   readonly status?: number;
   readonly problem?: ReceivedProblem;
   readonly requestId?: string;
+  readonly retryAfter?: string;
 
   constructor(kind: ApiErrorKind, facts: ErrorFacts = {}) {
     super(facts.problem?.detail || facts.problem?.title || "Request failed.");
@@ -35,6 +38,7 @@ export class ApiError extends Error {
     this.status = facts.status;
     this.problem = facts.problem;
     this.requestId = facts.requestId;
+    this.retryAfter = facts.retryAfter;
   }
 }
 
@@ -66,6 +70,7 @@ export async function transport<T>(
   const facts: ErrorFacts = {
     status: res.status,
     requestId: res.headers.get(requestIdHeader) || undefined,
+    retryAfter: res.headers.get(retryAfterHeader) ?? undefined,
   };
   let text: string;
   try {

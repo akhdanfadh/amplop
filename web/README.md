@@ -139,8 +139,9 @@ cancellation keeps its original error; a timeout remains a visible failure.
 `status` holds the actual HTTP status whenever received. Optional `problem`
 holds received Problem Details; HTML, unreadable bodies, and local failures
 never produce a stand-in problem. Optional `requestId` holds the received
-`X-Request-ID`. A problem's own status can differ from the actual HTTP
-status; request decisions use `ApiError.status`.
+`X-Request-ID`. Optional `retryAfter` holds the received `Retry-After` header,
+even if reading the body fails. A problem's own status can differ from the actual
+HTTP status; request decisions use `ApiError.status`.
 
 Every generated function uses `src/api/transport.ts`, which checks success
 bodies against generated schemas and logs contract mismatches to the browser
@@ -164,9 +165,24 @@ field's rule, e.g. "Enter a whole number from 1 to 10.".
 Components call the API through generated
 [TanStack Query](https://tanstack.com/query) hooks, e.g. `useGetHealth()`.
 Query sends the request, caches the result, tracks loading and errors, and
-refetches when the browser tab regains focus. A failed read retries only
-on 502, 503, or 504, at most twice, since Go may be restarting; any other
-error shows at once. Writes never retry. The rule is in `src/router.tsx`.
+refetches when the browser tab regains focus. `src/api/retry.ts` supplies Query's
+retry defaults through `src/router.tsx`; transport sends each attempt once.
+`src/api/retry-after.ts` handles header parsing separately from retry policy.
+
+Reads retry connection failures, interrupted successful bodies, and actual HTTP
+408, 429, 502, 503, or 504. They stop after two retries. A received rejection such
+as 422 still prevents retry if reading its body fails. HTTP 500, complete replies
+that break the success contract, and deliberately canceled reads do not retry.
+The default applies to reads; writes have automatic retry explicitly disabled.
+An operation must guarantee safe repetition before opting into write retries.
+
+Normal retry waits are 1 and 2 seconds. On 429 and 503, a usable `Retry-After`
+can extend that wait, using integer seconds or an HTTP date. Invalid or absent
+headers use normal backoff. Each wait may take at most 5 seconds; a longer
+server delay stops retries instead of being shortened. Scheduled waiting totals
+at most 10 seconds. Request execution and offline pauses are outside that
+waiting limit; request deadlines are not configured yet. Canceling an
+obsolete query also prevents its pending retries.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.

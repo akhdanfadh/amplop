@@ -146,6 +146,7 @@ describe("received error facts", () => {
           headers: {
             "Content-Type": "application/problem+json; charset=utf-8",
             "X-Request-ID": "request-reference",
+            "Retry-After": "3",
           },
         }),
     );
@@ -154,6 +155,7 @@ describe("received error facts", () => {
     expect(error.status).toBe(httpStatus.unavailable);
     expect(error.problem).toEqual(problem);
     expect(error.requestId).toBe("request-reference");
+    expect(error.retryAfter).toBe("3");
   });
 
   it("accepts an external problem without fabricating absent members", async () => {
@@ -211,6 +213,7 @@ describe("received error facts", () => {
               headers: {
                 "Content-Type": "application/problem+json",
                 "X-Request-ID": "body-reference",
+                "Retry-After": "3",
               },
             },
           ),
@@ -219,6 +222,7 @@ describe("received error facts", () => {
       expect(error.kind).toBe("network");
       expect(error.status).toBe(status);
       expect(error.requestId).toBe("body-reference");
+      expect(error.retryAfter).toBe("3");
       expect(error.problem).toBeUndefined();
     },
   );
