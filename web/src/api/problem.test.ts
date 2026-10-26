@@ -13,6 +13,32 @@ const httpStatus = {
 };
 
 describe("userMessage", () => {
+  it("explains a read timeout without calling it an unreachable server", () => {
+    expect(userMessage(new ApiError("timeout", { method: "GET" }))).toBe(
+      "The request took too long. Try again.",
+    );
+  });
+
+  it("keeps the write warning when waiting for confirmation times out", () => {
+    expect(userMessage(new ApiError("timeout", { method: "POST" }))).toBe(
+      "We couldn't confirm whether this was saved. Check before submitting again.",
+    );
+  });
+
+  it("preserves reported write success after a body-read timeout", () => {
+    const err = new ApiError("timeout", { method: "POST", status: httpStatus.created });
+
+    expect(userMessage(err)).toBe(
+      "The server reported success, but we couldn't load the result. Check before submitting again.",
+    );
+  });
+
+  it("keeps a known rejection when reading its explanation times out", () => {
+    const err = new ApiError("timeout", { method: "POST", status: httpStatus.unprocessable });
+
+    expect(userMessage(err)).toBe("Check the values and try again.");
+  });
+
   it.each(["POST", "PUT", "PATCH", "DELETE"])("warns when a %s outcome is unknown", (method) => {
     const err = new ApiError("network", { method });
 

@@ -32,6 +32,8 @@ export const retryOptions = {
 // Only recognized temporary failures qualify for another read attempt.
 function shouldRetry(failures: number, err: Error): boolean {
   if (failures >= maxRetries || !(err instanceof ApiError)) return false;
+  // Repeating the same waiting limit does not help a consistently slow response.
+  if (err.kind === "timeout") return false;
   if (err.kind === "response") return false;
   if (retryDelay(failures, err) > maxDelayMs) return false;
 

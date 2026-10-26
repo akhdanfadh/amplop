@@ -132,9 +132,10 @@ the client, e.g. a renamed field, `pnpm check` reports it there.
 ## Errors
 
 A failed call throws `ApiError`. Its `kind` is `network` for communication
-or body-read failures, `http` for an error response, or `response` for a
-complete successful reply that breaks the expected contract. Deliberate
-cancellation keeps its original error; a timeout remains a visible failure.
+or body-read failures, `timeout` when a local waiting limit expires, `http`
+for an error response, or `response` for a complete successful reply that
+breaks the expected contract. Deliberate cancellation keeps its original
+error; a timeout remains a visible failure.
 
 `status` holds the actual HTTP status whenever received. Optional `problem`
 holds received Problem Details; HTML, unreadable bodies, and local failures
@@ -181,8 +182,10 @@ retry defaults through `src/router.tsx`; transport sends each attempt once.
 
 Reads retry connection failures, interrupted successful bodies, and actual HTTP
 408, 429, 502, 503, or 504. They stop after two retries. A received rejection such
-as 422 still prevents retry if reading its body fails. HTTP 500, complete replies
-that break the success contract, and deliberately canceled reads do not retry.
+as 422 still prevents retry if reading its body fails. HTTP 500, local timeouts,
+complete replies that break the success contract, and deliberately canceled
+reads do not retry. HTTP 408 and 504 responses are separate from a local timeout
+and remain eligible for retries.
 The default applies to reads; writes have automatic retry explicitly disabled.
 An operation must guarantee safe repetition before opting into write retries.
 
@@ -198,8 +201,23 @@ can extend that wait, using integer seconds or an HTTP date. Invalid or absent
 headers use normal backoff. Each wait may take at most 5 seconds; a longer
 server delay stops retries instead of being shortened. Scheduled waiting totals
 at most 10 seconds. Request execution and offline pauses are outside that
-waiting limit; request deadlines are not configured yet. Canceling an
-obsolete query also prevents its pending retries.
+waiting limit. Canceling an obsolete query also prevents its pending retries.
+
+Each HTTP attempt has a 15-second timeout covering sending and response body
+reading, leaving room around Go's 10-second work limit. Received status and
+headers survive a body-read timeout. The transport clears its timer when the
+attempt settles. A timeout is recorded as `kind: "timeout"` and stops the read's
+retry sequence, even if headers already supplied an otherwise retryable status.
+Repeating the same limit does not help a consistently slow response. Reads with
+no response show "The request took too long. Try again."; deliberately canceled
+requests keep their original behavior.
+
+Query owns retries for eligible failures; each new attempt has a fresh timeout.
+The timeout does not bound the complete read operation: earlier attempts,
+retry waits, and offline pauses are separate. Later refetches on focus or
+reconnection are separate operations too. Writes are attempted once, so a
+timeout ends the submission and leaves the form's values available with the
+uncertain-outcome message above.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.

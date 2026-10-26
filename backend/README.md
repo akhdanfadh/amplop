@@ -149,11 +149,14 @@ slash is a different route: `/api/v0/health/` is a 404, not a redirect.
 
 ## Timeouts and shutdown
 
-Each request's work, e.g. a database query, is cancelled after 10
-seconds; a request cut off this way answers 500 and logs
-`context deadline exceeded`. Stop the server with Ctrl+C or SIGTERM. It
-stops accepting connections and gives in-flight requests up to 5 seconds
-to finish.
+Each request receives a context with a 10-second deadline. Database queries
+and other calls using that context can stop when it expires. The deadline does
+not forcibly stop handlers or undo completed writes. Returning the context's
+deadline error from a handler produces a safe 500 Problem Details response and
+logs `context deadline exceeded`.
+
+Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and gives
+in-flight requests up to 5 seconds to finish.
 
 ## Configuration
 

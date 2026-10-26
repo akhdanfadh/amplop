@@ -11,6 +11,7 @@ const writeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 // The app's words for a failed request.
 const cannotReach = "Can't reach the server. Try again.";
+const timedOut = "The request took too long. Try again.";
 const checkValues = "Check the values and try again.";
 const serverFailed = "Something went wrong on our side. Try again.";
 const failed = "Something went wrong. Try again.";
@@ -37,8 +38,11 @@ export function userMessage(err: ApiError): string {
   }
   if (explanation) return explanation;
 
-  // A 502 comes from a proxy that could not reach Go.
   if (status === unprocessable) return checkValues;
+  if (err.kind === "timeout" && (status === undefined || status < firstClientError))
+    return timedOut;
+
+  // A 502 comes from a proxy that could not reach Go.
   if (
     (err.kind === "network" && (status === undefined || status < firstClientError)) ||
     status === badGateway

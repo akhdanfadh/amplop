@@ -4,10 +4,14 @@ import { ReceivedProblem } from "./received-problem";
 const problemType = "application/problem+json";
 const requestIdHeader = "X-Request-ID";
 const retryAfterHeader = "Retry-After";
+// Leave room for delivery around the backend's ten-second work limit.
+const requestTimeoutMs = 15_000;
 
 export type ApiErrorKind =
   // Sending or reading failed.
   | "network"
+  // Our waiting limit, or one supplied by the caller, expired.
+  | "timeout"
   // A complete error response arrived.
   | "http"
   // A complete successful reply did not match its expected body.
@@ -60,26 +64,32 @@ export async function transport<T>(
   if (!schema) throw new Error(`${url}: no response schema`);
   const facts: ErrorFacts = { method: init.method?.toUpperCase() ?? "GET" };
 
-  // fetch resolves for HTTP errors too; a rejected call has no response facts.
-  let res: Response;
-  try {
-    res = await fetch(url, rest);
-  } catch (err) {
-    if (isCancelled(init.signal)) throw err;
-    throw new ApiError("network", facts);
-  }
+  // One timer covers sending and body reading. Clear it after reading or a
+  // failure; the caller can still cancel an obsolete attempt sooner.
+  const deadline = new AbortController();
+  const signal = init.signal ? AbortSignal.any([init.signal, deadline.signal]) : deadline.signal;
+  const timer = setTimeout(() => {
+    deadline.abort(new DOMException("Request timed out.", "TimeoutError"));
+  }, requestTimeoutMs);
 
-  // Headers arrive before the body finishes. Save them now so a later read
-  // failure keeps the actual status and request reference.
-  facts.status = res.status;
-  facts.requestId = res.headers.get(requestIdHeader) || undefined;
-  facts.retryAfter = res.headers.get(retryAfterHeader) ?? undefined;
+  let res: Response;
   let text: string;
   try {
+    // fetch resolves for HTTP errors too; a rejected call has no response facts.
+    res = await fetch(url, { ...rest, signal });
+
+    // Headers arrive before the body finishes. Save them now so a later read
+    // failure keeps the actual status and request reference.
+    facts.status = res.status;
+    facts.requestId = res.headers.get(requestIdHeader) || undefined;
+    facts.retryAfter = res.headers.get(retryAfterHeader) ?? undefined;
     text = await res.text();
   } catch (err) {
-    if (isCancelled(init.signal)) throw err;
+    if (isTimeout(signal)) throw new ApiError("timeout", facts);
+    if (signal.aborted) throw err;
     throw new ApiError("network", facts);
+  } finally {
+    clearTimeout(timer);
   }
 
   let body: unknown;
@@ -109,12 +119,11 @@ export async function transport<T>(
   throw new ApiError("response", facts);
 }
 
-// Preserve deliberate cancellation so obsolete requests are not shown as failures.
-// A signal aborted with TimeoutError still represents a failed request.
-function isCancelled(signal: AbortSignal | null | undefined): boolean {
-  if (!signal?.aborted) return false;
+// Recognize a deadline from either our timer or the caller's signal.
+function isTimeout(signal: AbortSignal): boolean {
   const reason: unknown = signal.reason;
-  return !(
+  return (
+    signal.aborted &&
     typeof reason === "object" &&
     reason !== null &&
     "name" in reason &&

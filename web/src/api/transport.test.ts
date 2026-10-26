@@ -305,7 +305,7 @@ describe("received error facts", () => {
       throw timeout;
     });
     await expect(transport(url, { ...init, signal: caller.signal })).rejects.toMatchObject({
-      kind: "network",
+      kind: "timeout",
     });
   });
 
