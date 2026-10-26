@@ -1,59 +1,51 @@
 package config
 
 import (
-	"errors"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLoadDefault(t *testing.T) {
 	t.Setenv(envHTTPAddr, "")
 
 	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if cfg.HTTPAddr != "127.0.0.1:8080" {
-		t.Fatalf("HTTPAddr = %q", cfg.HTTPAddr)
-	}
+	assert.Equal(t, "127.0.0.1:8080", cfg.HTTPAddr)
 }
 
 func TestLoadAddr(t *testing.T) {
 	t.Setenv(envHTTPAddr, "0.0.0.0:9090")
 
 	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if cfg.HTTPAddr != "0.0.0.0:9090" {
-		t.Fatalf("HTTPAddr = %q", cfg.HTTPAddr)
-	}
+	assert.Equal(t, "0.0.0.0:9090", cfg.HTTPAddr)
 }
 
 func TestLoadBadAddr(t *testing.T) {
 	t.Setenv(envHTTPAddr, "localhost")
 
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), envHTTPAddr) {
-		t.Fatalf("err = %v, want an error naming %s", err, envHTTPAddr)
-	}
+
+	require.ErrorContains(t, err, envHTTPAddr)
 }
 
 func TestDatabaseURL(t *testing.T) {
 	t.Setenv(envDatabaseURL, "postgres://u:p@db:5432/inbok")
 
 	url, err := DatabaseURL()
-	if err != nil || url != "postgres://u:p@db:5432/inbok" {
-		t.Fatalf("DatabaseURL() = %q, %v", url, err)
-	}
+	require.NoError(t, err)
+
+	assert.Equal(t, "postgres://u:p@db:5432/inbok", url)
 }
 
 func TestDatabaseURLRequired(t *testing.T) {
 	t.Setenv(envDatabaseURL, "")
 
-	if _, err := DatabaseURL(); !errors.Is(err, errNoDatabaseURL) {
-		t.Fatalf("err = %v, want %v", err, errNoDatabaseURL)
-	}
+	_, err := DatabaseURL()
+
+	require.ErrorIs(t, err, errNoDatabaseURL)
 }

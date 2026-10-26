@@ -198,6 +198,48 @@ Database tests start their own throwaway PostgreSQL in Docker
 running; without it they fail rather than skip. They never touch the
 Compose database.
 
+## Writing tests
+
+Tests check results with testify's `require` and `assert`
+([docs](https://pkg.go.dev/github.com/stretchr/testify)); nothing else
+from testify is used. Both report a failure; they differ in what
+happens next:
+
+- `require` stops the test. Use it for errors and for any value a later
+  line depends on, e.g. a decoded body read by the next check.
+- `assert` lets the test go on. Use it for checks that stand alone, so
+  one run reports every mismatch.
+
+Put the expected value first, with the same type as the actual one:
+`assert.Equal(t, int64(42), total)`; an untyped `42` is an `int` and
+never equals an `int64`. `require` must not run in a goroutine the test
+started; it can only stop the test's own goroutine.
+
+A test reads in three blocks split by blank lines: setup, action, and
+checks. An error check that guards the action sits right under it:
+
+```go
+cfg, err := Load()
+require.NoError(t, err)
+
+assert.Equal(t, "127.0.0.1:8080", cfg.HTTPAddr)
+```
+
+When a block is hard to see from its code, e.g. a fake built over
+several lines or an action that takes several steps, start each block
+with a sentence saying what it does:
+
+```go
+// Given storage that loses its connection after the update runs.
+storage := &fakeStorage{...}
+
+// When an entry is added.
+_, err := service.Add(ctx, entry)
+
+// Then the same error reaches the caller.
+require.ErrorIs(t, err, lost)
+```
+
 ## Migrations
 
 The database schema changes through numbered SQL files, called
