@@ -220,6 +220,10 @@ Put the expected value first, with the same type as the actual one:
 never equals an `int64`. `require` must not run in a goroutine the test
 started; it can only stop the test's own goroutine.
 
+A JSON number decoded into `any` is a `float64`. Check it with
+`assert.InDelta(t, 404, body["status"], 0)`, which is exact. Not
+`assert.EqualValues`: it converts `500.5` to the int `500` and passes.
+
 A test reads in three blocks split by blank lines: setup, action, and
 checks. An error check that guards the action sits right under it:
 

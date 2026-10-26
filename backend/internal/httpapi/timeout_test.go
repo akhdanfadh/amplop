@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +9,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // A handler waiting on slow work sees its context end after the timeout.
@@ -29,10 +30,10 @@ func TestTimeout(t *testing.T) {
 
 	start := time.Now()
 	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/slow", nil))
+	elapsed := time.Since(start)
 
-	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 10*d {
-		t.Fatalf("err = %v after %v, want a deadline after %v", err, time.Since(start), d)
-	}
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.LessOrEqual(t, elapsed, 10*d)
 }
 
 // Every Huma operation gets the deadline.
@@ -56,7 +57,6 @@ func TestRequestTimeout(t *testing.T) {
 
 	// The middleware set it during the request: requestTimeout after a
 	// moment between before and after.
-	if !ok || deadline.Before(before.Add(requestTimeout)) || deadline.After(after.Add(requestTimeout)) {
-		t.Fatalf("deadline = %v (set: %v), want %v after the request started", deadline, ok, requestTimeout)
-	}
+	require.True(t, ok, "no deadline set")
+	assert.WithinRange(t, deadline, before.Add(requestTimeout), after.Add(requestTimeout))
 }

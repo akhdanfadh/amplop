@@ -3,7 +3,6 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRecovery(t *testing.T) {
@@ -25,45 +26,32 @@ func TestRecovery(t *testing.T) {
 	response := httptest.NewRecorder()
 	a.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/panic", nil))
 
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
-	}
-
-	if got := response.Header().Get("Content-Type"); got != "application/problem+json" {
-		t.Fatalf("Content-Type = %q", got)
-	}
+	require.Equal(t, http.StatusInternalServerError, response.Code)
+	assert.Equal(t, "application/problem+json", response.Header().Get("Content-Type"))
 
 	// The client sees Huma's error shape, never the panic value.
 	var problem map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
-		t.Fatal(err)
-	}
-	if problem["status"] != float64(http.StatusInternalServerError) || problem["type"] != "/api/v0/problems/internal-error" || problem["detail"] != "Something went wrong on our side." || strings.Contains(response.Body.String(), "secret") {
-		t.Fatalf("body = %s", response.Body.String())
-	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &problem))
+	assert.InDelta(t, http.StatusInternalServerError, problem["status"], 0)
+	assert.Equal(t, "/api/v0/problems/internal-error", problem["type"])
+	assert.Equal(t, "Something went wrong on our side.", problem["detail"])
+	assert.NotContains(t, response.Body.String(), "secret")
 
 	// Expect the panic entry, then the request entry with status 500.
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("log lines = %d, want 2:\n%s", len(lines), out.String())
-	}
+	require.Len(t, lines, 2)
 
 	var panicked, request map[string]any
-	if err := json.Unmarshal([]byte(lines[0]), &panicked); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal([]byte(lines[1]), &request); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal([]byte(lines[0]), &panicked))
+	require.NoError(t, json.Unmarshal([]byte(lines[1]), &request))
 
-	stack, _ := panicked["stack"].(string)
-	if panicked["msg"] != "panic" || panicked["level"] != "ERROR" || panicked["value"] != "secret detail" || stack == "" {
-		t.Fatalf("panic entry = %v", panicked)
-	}
+	assert.Equal(t, "panic", panicked["msg"])
+	assert.Equal(t, "ERROR", panicked["level"])
+	assert.Equal(t, "secret detail", panicked["value"])
+	assert.NotEmpty(t, panicked["stack"])
 
-	if request["msg"] != "request" || request["status"] != float64(http.StatusInternalServerError) {
-		t.Fatalf("request entry = %v", request)
-	}
+	assert.Equal(t, "request", request["msg"])
+	assert.InDelta(t, http.StatusInternalServerError, request["status"], 0)
 }
 
 // net/http uses http.ErrAbortHandler to abort a response on purpose.
@@ -72,13 +60,12 @@ func TestRecoveryAbort(t *testing.T) {
 	a.router.GET("/abort", func(*gin.Context) { panic(http.ErrAbortHandler) })
 
 	defer func() {
-		if v := recover(); !errors.Is(asError(v), http.ErrAbortHandler) {
-			t.Fatalf("recovered %v, want http.ErrAbortHandler", v)
-		}
+		v := recover()
+		require.ErrorIs(t, asError(v), http.ErrAbortHandler, "recovered %v", v)
 	}()
 
 	a.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/abort", nil))
-	t.Fatal("ErrAbortHandler must reach net/http")
+	require.FailNow(t, "ErrAbortHandler must reach net/http")
 }
 
 func asError(v any) error {

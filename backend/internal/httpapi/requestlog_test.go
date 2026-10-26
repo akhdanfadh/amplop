@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRequestLog(t *testing.T) {
@@ -17,9 +20,7 @@ func TestRequestLog(t *testing.T) {
 	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v0/health?token=secret", nil))
 
 	var entry map[string]any
-	if err := json.Unmarshal(out.Bytes(), &entry); err != nil {
-		t.Fatalf("log = %q: %v", out.String(), err)
-	}
+	require.NoError(t, json.Unmarshal(out.Bytes(), &entry), out.String())
 
 	want := map[string]any{
 		"level":  "INFO",
@@ -28,13 +29,6 @@ func TestRequestLog(t *testing.T) {
 		"path":   "/api/v0/health", // query strings may carry secrets
 		"status": float64(http.StatusOK),
 	}
-	for key, value := range want {
-		if entry[key] != value {
-			t.Fatalf("%s = %v, want %v in %v", key, entry[key], value, entry)
-		}
-	}
-
-	if _, ok := entry["duration"]; !ok {
-		t.Fatalf("duration missing in %v", entry)
-	}
+	assert.Subset(t, entry, want)
+	assert.Contains(t, entry, "duration")
 }

@@ -2,14 +2,14 @@ package httpapi
 
 import (
 	"bytes"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strconv"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // discard silences request logs in tests that do not inspect them.
@@ -20,43 +20,22 @@ func TestAPIDocs(t *testing.T) {
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/docs", nil))
 
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
-	}
-
-	if !strings.Contains(response.Body.String(), "/api/v0/openapi.yaml") {
-		t.Fatal("documentation must load the versioned OpenAPI document")
-	}
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Contains(t, response.Body.String(), "/api/v0/openapi.yaml", "documentation must load the versioned OpenAPI document")
 }
 
 func TestOpenAPI(t *testing.T) {
 	a := New(discard, Services{})
 	doc, err := a.OpenAPI()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if !bytes.HasSuffix(doc, []byte("}\n")) {
-		t.Fatal("document must end with a newline")
-	}
-
-	var exported any
-	if err := json.Unmarshal(doc, &exported); err != nil {
-		t.Fatal(err)
-	}
+	assert.True(t, bytes.HasSuffix(doc, []byte("}\n")), "document must end with a newline")
 
 	// The exported document must match the one the server serves.
 	response := httptest.NewRecorder()
 	a.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/openapi.json", nil))
 
-	var served any
-	if err := json.Unmarshal(response.Body.Bytes(), &served); err != nil {
-		t.Fatal(err)
-	}
-
-	if !reflect.DeepEqual(exported, served) {
-		t.Fatalf("exported document differs from served document:\n%s", doc)
-	}
+	assert.JSONEq(t, string(doc), response.Body.String())
 }
 
 // Gin's own 404 and 405 use the same Problem Details as Huma's errors.
@@ -77,32 +56,25 @@ func TestNoRoute(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		var out bytes.Buffer
-		response := httptest.NewRecorder()
-		New(slog.New(slog.NewTextHandler(&out, nil)), Services{}).Handler().ServeHTTP(response, httptest.NewRequest(c.method, c.path, nil))
+		t.Run(c.method+" "+c.path, func(t *testing.T) {
+			var out bytes.Buffer
+			response := httptest.NewRecorder()
+			New(slog.New(slog.NewTextHandler(&out, nil)), Services{}).Handler().ServeHTTP(response, httptest.NewRequest(c.method, c.path, nil))
 
-		name := c.method + " " + c.path
-		if response.Code != c.status {
-			t.Fatalf("%s: status = %d, want %d", name, response.Code, c.status)
-		}
-		if got := response.Header().Get("Content-Type"); got != "application/problem+json" {
-			t.Fatalf("%s: Content-Type = %q", name, got)
-		}
-		if got := response.Header().Get("Allow"); got != c.allow {
-			t.Fatalf("%s: Allow = %q, want %q", name, got, c.allow)
-		}
-		if response.Header().Get(requestIDHeader) == "" {
-			t.Fatalf("%s: %s missing", name, requestIDHeader)
-		}
+			require.Equal(t, c.status, response.Code)
+			assert.Equal(t, "application/problem+json", response.Header().Get("Content-Type"))
+			assert.Equal(t, c.allow, response.Header().Get("Allow"))
+			assert.NotEmpty(t, response.Header().Get(requestIDHeader))
 
-		body := decodeJSON(t, response.Body.Bytes())
-		if body["status"] != float64(c.status) || body["type"] == nil || body["title"] == nil || body["detail"] != c.detail {
-			t.Fatalf("%s: body = %s", name, response.Body.String())
-		}
+			body := decodeJSON(t, response.Body.Bytes())
+			assert.InDelta(t, c.status, body["status"], 0)
+			assert.NotNil(t, body["type"])
+			assert.NotNil(t, body["title"])
+			assert.Equal(t, c.detail, body["detail"])
 
-		// The request log still records it.
-		if !strings.Contains(out.String(), "msg=request") || !strings.Contains(out.String(), "status="+strconv.Itoa(c.status)) {
-			t.Fatalf("%s: log = %s", name, out.String())
-		}
+			// The request log still records it.
+			assert.Contains(t, out.String(), "msg=request")
+			assert.Contains(t, out.String(), "status="+strconv.Itoa(c.status))
+		})
 	}
 }
