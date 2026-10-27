@@ -21,3 +21,11 @@ type ProbeEvent struct {
 	Tag         *string
 	CreatedAt   time.Time
 }
+
+type User struct {
+	ID           int64
+	Email        string
+	PasswordHash string
+	Role         string
+	CreatedAt    time.Time
+}

@@ -31,7 +31,7 @@ type SetupInput struct {
 	Password string
 }
 
-// NewAdmin is the normalized email and password hash to save.
+// NewAdmin is the delivery email and password hash to save.
 type NewAdmin struct {
 	Email        string
 	PasswordHash string
@@ -78,7 +78,7 @@ func (s *Service) Setup(ctx context.Context, input SetupInput) (User, error) {
 
 	// Argon2id must finish before storage takes the table lock.
 	admin := NewAdmin{
-		Email:        strings.ToLower(strings.TrimSpace(input.Email)),
+		Email:        normalizeEmail(input.Email),
 		PasswordHash: hashPassword(input.Password),
 	}
 	return s.storage.UpdateSetup(ctx, func(state SetupState) (NewAdmin, error) {
@@ -87,4 +87,15 @@ func (s *Service) Setup(ctx context.Context, input SetupInput) (User, error) {
 		}
 		return admin, nil
 	})
+}
+
+// normalizeEmail keeps local-part case for delivery to case-sensitive hosts.
+func normalizeEmail(email string) string {
+	email = strings.TrimSpace(email)
+	at := strings.LastIndexByte(email, '@')
+	if at < 0 {
+		return email
+	}
+
+	return email[:at+1] + strings.ToLower(email[at+1:])
 }

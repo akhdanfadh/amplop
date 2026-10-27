@@ -79,7 +79,7 @@ func TestSetup(t *testing.T) {
 	user, err := service.Setup(t.Context(), input)
 
 	require.NoError(t, err)
-	assert.Equal(t, User{ID: 1, Email: "admin@example.com"}, user)
+	assert.Equal(t, User{ID: 1, Email: "ADMIN@example.com"}, user)
 	require.NotNil(t, storage.saved)
 	assert.Equal(t, user.Email, storage.saved.Email)
 
@@ -90,6 +90,31 @@ func TestSetup(t *testing.T) {
 	status, err := service.SetupStatus(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, SetupDone, status)
+}
+
+func TestSetupEmail(t *testing.T) {
+	cases := []struct {
+		name, input, want string
+	}{
+		{"mixed case", "Mixed.Case+Tag@Example.COM", "Mixed.Case+Tag@example.com"},
+		{"outer whitespace", " \tAdmin@EXAMPLE.COM\n", "Admin@example.com"},
+		{"already normalized", "admin@example.com", "admin@example.com"},
+		{"quoted at sign", `"Ab@CD"@EXAMPLE.COM`, `"Ab@CD"@example.com`},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			storage := &fakeStorage{}
+			input := SetupInput{Token: testSetupToken, Email: c.input, Password: "a long setup password"}
+
+			user, err := NewService(storage, testSetupToken).Setup(t.Context(), input)
+
+			require.NoError(t, err)
+			assert.Equal(t, c.want, user.Email)
+			require.NotNil(t, storage.saved)
+			assert.Equal(t, c.want, storage.saved.Email)
+		})
+	}
 }
 
 func TestSetupClaimedWhileHashing(t *testing.T) {
