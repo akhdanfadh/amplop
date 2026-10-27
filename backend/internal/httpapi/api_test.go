@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,6 +37,43 @@ func TestOpenAPI(t *testing.T) {
 	a.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/openapi.json", nil))
 
 	assert.JSONEq(t, string(doc), response.Body.String())
+}
+
+// Every JSON content type uses the same duplicate-name policy before writes.
+func TestAPIDuplicateFields(t *testing.T) {
+	cases := []struct {
+		name, body string
+		status     int
+	}{
+		{"exact", `{"note":"private-first","note":"private-second","amount":3,"highlighted":false}`, http.StatusBadRequest},
+		{"alias last", `{"note":"private-first","Note":"private-second","amount":3,"highlighted":false}`, http.StatusUnprocessableEntity},
+		{"alias first", `{"Note":"private-first","note":"private-second","amount":3,"highlighted":false}`, http.StatusUnprocessableEntity},
+		{"two aliases", `{"Note":"private-first","NOTE":"private-second","amount":3,"highlighted":false}`, http.StatusUnprocessableEntity},
+	}
+	for _, contentType := range []string{"application/json", "application/vnd.inbok+json"} {
+		for _, c := range cases {
+			t.Run(contentType+"/"+c.name, func(t *testing.T) {
+				probes := &fakeProbes{}
+				var logs bytes.Buffer
+				logger := slog.New(slog.NewTextHandler(&logs, nil))
+				request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(c.body))
+				request.Header.Set("Content-Type", contentType)
+				response := httptest.NewRecorder()
+
+				New(logger, Services{Probe: probes}).Handler().ServeHTTP(response, request)
+
+				require.Equal(t, c.status, response.Code, response.Body.String())
+				assert.Empty(t, probes.added)
+				assert.Equal(t, problemContentType, response.Header().Get("Content-Type"))
+				body := decodeJSON(t, response.Body.Bytes())
+				assert.InDelta(t, c.status, body["status"], 0)
+				for _, secret := range []string{"private-first", "private-second"} {
+					assert.NotContains(t, response.Body.String(), secret)
+					assert.NotContains(t, logs.String(), secret)
+				}
+			})
+		}
+	}
 }
 
 // Gin's own 404 and 405 use the same Problem Details as Huma's errors.

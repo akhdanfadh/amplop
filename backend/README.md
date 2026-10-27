@@ -166,10 +166,40 @@ in-flight requests up to 5 seconds to finish.
 |---|---|---|
 | `INBOK_HTTP_ADDR` | `127.0.0.1:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
 | `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL; see Migrations below. |
+| `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
 | `GIN_MODE` | `debug` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
 machine.
+
+## First administrator setup
+
+After applying migrations, create the first administrator through the web app:
+
+1. Generate a random token with `openssl rand -base64 32`.
+2. Set `INBOK_SETUP_TOKEN` in `.env` to that output, then start or restart
+   the backend. The Make commands load `.env`; direct Go commands need the
+   shell-loading step shown in Run the server.
+3. Open `http://localhost:5173/setup` with the web app running. Enter the
+   token, an email address, and a password of 15 to 128 Unicode code points.
+   Confirm the password in the form.
+4. After setup succeeds, remove the token from `.env` and restart the backend.
+
+An unset or empty token leaves setup unavailable while no administrator
+exists. A nonempty token shorter than 32 Unicode code points stops `serve`
+before it connects to PostgreSQL or opens the HTTP port. Token comparison
+preserves the configured contents, including whitespace. The server never
+logs the token or returns it in an error.
+
+`GET /api/v0/setup` reports `unconfigured`, `open`, or `done`. An existing
+administrator always means `done`, even after the token is removed.
+`POST /api/v0/setup` creates one administrator atomically; concurrent claims
+cannot create a second one. Setup creates no workspace, membership, session,
+or cookie. If the token remains configured after setup, `serve` logs a
+startup warning asking the operator to remove it.
+
+Sign-in and TOTP enrollment are planned for later branches. This branch
+creates the account but does not sign the administrator in.
 
 ## Logs and request IDs
 

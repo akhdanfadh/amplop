@@ -6,8 +6,8 @@ IMAP server.
 
 inbok is in early development and has no email features yet. The code is
 a working skeleton: a Go API backed by PostgreSQL, a React browser app,
-and one example database write, the probe, which is removed before the
-first release.
+first-administrator setup, and one example database write, the probe, which
+is removed before the first release.
 
 ## Requirements
 
@@ -30,6 +30,10 @@ make dev         # Go on 127.0.0.1:8080, the web app on localhost:5173
 
 Open `http://localhost:5173`. Ctrl+C stops both servers; `make db-stop`
 stops PostgreSQL and keeps its data.
+
+To create the first administrator, follow
+[First administrator setup](backend/README.md#first-administrator-setup),
+then open `http://localhost:5173/setup`. Sign-in is not implemented yet.
 
 ## Documentation
 

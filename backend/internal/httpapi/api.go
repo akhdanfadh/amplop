@@ -3,6 +3,8 @@ package httpapi
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"log/slog"
 	"net/http"
 
@@ -25,7 +27,8 @@ type API struct {
 // when no request is served, e.g. to export OpenAPI: registering an
 // operation calls none of them.
 type Services struct {
-	Probe probeService
+	Probe   probeService
+	Account accountService
 }
 
 // New registers operations; logger receives one line per request.
@@ -52,6 +55,15 @@ func New(logger *slog.Logger, services Services) *API {
 	group := router.Group(apiPrefix)
 
 	config := huma.DefaultConfig(schemaTitle, schemaVersion)
+
+	// Reject duplicate names, including case aliases, while keeping other JSON
+	// decoding rules compatible with Huma's default format.
+	jsonFormat := huma.DefaultJSONFormat
+	jsonFormat.Unmarshal = func(data []byte, value any) error {
+		return jsonv2.Unmarshal(data, value, json.DefaultOptionsV1(), jsontext.AllowDuplicateNames(false))
+	}
+	config.Formats = map[string]huma.Format{"application/json": jsonFormat, "json": jsonFormat}
+
 	// A relative server URL resolves against wherever the document is
 	// served, e.g. https://mail.example.com/api/v0, with no host config.
 	config.Servers = []*huma.Server{{URL: apiPrefix}}
@@ -73,6 +85,7 @@ func New(logger *slog.Logger, services Services) *API {
 
 	registerHealth(api)
 	registerProbe(api, services.Probe)
+	registerAccount(api, services.Account)
 
 	return &API{router: router, api: api}
 }

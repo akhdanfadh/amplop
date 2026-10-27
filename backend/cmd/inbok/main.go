@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"inbok/internal/account"
 	"inbok/internal/config"
 	"inbok/internal/httpapi"
 	"inbok/internal/probe"
@@ -92,7 +93,21 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	}
 	defer db.Close()
 
-	services := httpapi.Services{Probe: probe.NewService(db)}
+	accounts := account.NewService(db, cfg.SetupToken)
+	if cfg.SetupToken != "" {
+		status, err := accounts.SetupStatus(ctx)
+		if err != nil {
+			return fmt.Errorf("check setup status: %w", err)
+		}
+		if status == account.SetupDone {
+			logger.Warn("setup is complete; remove INBOK_SETUP_TOKEN from configuration")
+		}
+	}
+
+	services := httpapi.Services{
+		Probe:   probe.NewService(db),
+		Account: accounts,
+	}
 	return listen(ctx, cfg.HTTPAddr, httpapi.New(logger, services).Handler(), logger)
 }
 

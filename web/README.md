@@ -58,6 +58,12 @@ Each file in `src/routes` is one route. `pnpm dev` and `pnpm build`
 regenerate `src/routeTree.gen.ts` from them. That file is committed so
 type checking works on a fresh clone; never edit it by hand.
 
+The `/setup` page reads the setup status from the API. It shows token
+configuration instructions, the first-administrator form, or completion
+instructions. See [First administrator setup](../backend/README.md#first-administrator-setup)
+for the operator steps. Setup does not sign the administrator in; sign-in
+and TOTP enrollment are future work.
+
 ## Checks and tests
 
 From `web`, check formatting, lint rules, and types in one command, or
