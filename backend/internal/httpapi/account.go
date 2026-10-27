@@ -81,7 +81,9 @@ func registerAccount(api huma.API, service accountService) {
 		"setupDone":         {Value: setupProblem(account.ErrSetupDone)},
 		"setupUnconfigured": {Value: setupProblem(account.ErrSetupUnconfigured)},
 	}
-	post.Responses[strconv.Itoa(http.StatusForbidden)].Content[problemContentType].Example = setupProblem(account.ErrSetupTokenInvalid)
+	forbidden := post.Responses[strconv.Itoa(http.StatusForbidden)]
+	forbidden.Description = "The setup token is invalid."
+	forbidden.Content[problemContentType].Example = setupProblem(account.ErrSetupTokenInvalid)
 }
 
 func setupProblem(err error) error {

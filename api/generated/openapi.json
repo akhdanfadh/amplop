@@ -425,7 +425,7 @@
                 }
               }
             },
-            "description": "Forbidden"
+            "description": "The setup token is invalid."
           },
           "409": {
             "content": {
