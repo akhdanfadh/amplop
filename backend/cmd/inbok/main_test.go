@@ -53,10 +53,24 @@ func TestMigrateNoURL(t *testing.T) {
 // serve names the missing setting before touching a database or a port.
 func TestServeNoURL(t *testing.T) {
 	t.Setenv("INBOK_DATABASE_URL", "")
+	t.Setenv("INBOK_SETUP_TOKEN", "")
 
 	err := run(context.Background(), []string{"serve"}, discard)
 
 	require.ErrorContains(t, err, "INBOK_DATABASE_URL")
+}
+
+// An invalid setup token stops serve before it needs a database or a port.
+func TestServeShortSetupToken(t *testing.T) {
+	const token = "short-test-setup-token"
+	t.Setenv("INBOK_HTTP_ADDR", "")
+	t.Setenv("INBOK_DATABASE_URL", "")
+	t.Setenv("INBOK_SETUP_TOKEN", token)
+
+	err := run(context.Background(), []string{"serve"}, discard)
+
+	require.ErrorContains(t, err, "INBOK_SETUP_TOKEN")
+	assert.NotContains(t, err.Error(), token)
 }
 
 // Cancelling the context, as SIGINT or SIGTERM does, stops the server

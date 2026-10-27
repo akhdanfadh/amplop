@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"unicode/utf8"
 )
 
 const (
@@ -13,6 +14,9 @@ const (
 	defaultHTTPAddr = "127.0.0.1:8080"
 
 	envDatabaseURL = "INBOK_DATABASE_URL"
+
+	envSetupToken       = "INBOK_SETUP_TOKEN"
+	minSetupTokenLength = 32
 )
 
 // errNoDatabaseURL has no default on purpose: a server deployed without
@@ -21,12 +25,16 @@ var errNoDatabaseURL = errors.New(envDatabaseURL + " is required, e.g. postgres:
 
 // Config holds settings for inbok serve.
 type Config struct {
-	HTTPAddr string // host:port to listen on, e.g. 0.0.0.0:8080
+	HTTPAddr   string // host:port to listen on, e.g. 0.0.0.0:8080
+	SetupToken string // empty disables first-admin setup
 }
 
 // Load reads the environment. Unset or empty variables use defaults.
 func Load() (Config, error) {
-	cfg := Config{HTTPAddr: os.Getenv(envHTTPAddr)}
+	cfg := Config{
+		HTTPAddr:   os.Getenv(envHTTPAddr),
+		SetupToken: os.Getenv(envSetupToken),
+	}
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = defaultHTTPAddr
 	}
@@ -34,6 +42,11 @@ func Load() (Config, error) {
 	// Fail at startup with the variable name, not later at listen time.
 	if _, _, err := net.SplitHostPort(cfg.HTTPAddr); err != nil {
 		return Config{}, fmt.Errorf("%s: %w", envHTTPAddr, err)
+	}
+
+	// Count characters, not bytes, and keep the token out of errors.
+	if cfg.SetupToken != "" && utf8.RuneCountInString(cfg.SetupToken) < minSetupTokenLength {
+		return Config{}, fmt.Errorf("%s must be at least %d characters", envSetupToken, minSetupTokenLength)
 	}
 
 	return cfg, nil
