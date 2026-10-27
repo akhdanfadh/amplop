@@ -26,9 +26,9 @@ export default defineConfig({
   // Resolve the `@/` alias from tsconfig.json `paths`.
   resolve: { tsconfigPaths: true },
 
-  // Forward API calls to Go, so the browser sees one origin. `pnpm preview`
-  // reuses this rule.
-  server: { proxy: { "/api": proxyTarget } },
+  // Forward API calls to Go and preserve Host for its Origin checks.
+  // `pnpm preview` reuses this rule.
+  server: { proxy: { "/api": { target: proxyTarget, changeOrigin: false } } },
 
   // Oxfmt defaults, like gofmt: no style options to debate.
   fmt: {

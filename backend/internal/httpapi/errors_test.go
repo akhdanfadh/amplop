@@ -70,6 +70,7 @@ func errorAPI(logger *slog.Logger) *API {
 
 func post(a *API, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/probe", strings.NewReader(body))
+	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", "application/json")
 
 	response := httptest.NewRecorder()
@@ -254,6 +255,7 @@ func TestInputStatuses(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(c.body))
+			request.Header.Set("Origin", "http://"+request.Host)
 			request.Header.Set("Content-Type", c.contentType)
 			if c.name == "timeout" {
 				request.Body = timedOutBody{}
@@ -314,8 +316,10 @@ func TestConcurrentErrors(t *testing.T) {
 		group.Go(func() {
 			for _, api := range []*API{a, local} {
 				for range requestsPerAPI {
+					request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{}`))
+					request.Header.Set("Origin", "http://"+request.Host)
 					response := httptest.NewRecorder()
-					api.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{}`)))
+					api.Handler().ServeHTTP(response, request)
 					assert.Equal(t, http.StatusUnprocessableEntity, response.Code)
 					assert.Contains(t, response.Body.String(), "/api/v0/problems/validation-error")
 				}
@@ -327,6 +331,7 @@ func TestConcurrentErrors(t *testing.T) {
 
 func TestErrorNegotiation(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{}`))
+	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Accept", "text/html")
 	response := httptest.NewRecorder()
 	New(discard, Services{}).Handler().ServeHTTP(response, request)

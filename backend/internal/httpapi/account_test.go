@@ -53,6 +53,7 @@ func (f *fakeAccounts) Setup(_ context.Context, input account.SetupInput) (accou
 
 func postSetup(logger *slog.Logger, accounts *fakeAccounts, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(body))
+	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	New(logger, Services{Account: accounts}).Handler().ServeHTTP(response, request)
@@ -296,6 +297,7 @@ func TestSetupBodyErrors(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			accounts := &fakeAccounts{}
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(c.body))
+			request.Header.Set("Origin", "http://"+request.Host)
 			request.Header.Set("Content-Type", c.contentType)
 			if c.name == "timeout" {
 				request.Body = timedOutBody{}
@@ -398,6 +400,7 @@ func TestSetupBodyLimit(t *testing.T) {
 	limit := api.api.OpenAPI().Paths[setupPath].Post.MaxBodyBytes
 	require.Positive(t, limit)
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(strings.Repeat("x", int(limit)+1)))
+	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", jsonContentType)
 	response := httptest.NewRecorder()
 	api.Handler().ServeHTTP(response, request)
@@ -418,6 +421,7 @@ func TestSetupConcurrentValidation(t *testing.T) {
 	for range requests {
 		group.Go(func() {
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(encoded))
+			request.Header.Set("Origin", "http://"+request.Host)
 			request.Header.Set("Content-Type", jsonContentType)
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)

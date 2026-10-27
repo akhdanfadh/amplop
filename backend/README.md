@@ -45,6 +45,14 @@ Expect HTTP 200 with:
 
 ## API contract
 
+GET, HEAD, and OPTIONS must not change application state. Cross-site
+protection always allows these methods; use write methods for changes.
+
+Write requests must include `Sec-Fetch-Site` or `Origin`. Modern browsers
+send these headers. For manual requests to the local API, send
+`Origin: http://127.0.0.1:8080`. Proxies must preserve these headers and
+the original `Host`. Missing source headers receive a 403.
+
 JSON success responses put their payload in `data`. Response schemas live
 only in the OpenAPI document: responses carry no `$schema` field or `Link`
 header. Operation IDs use camelCase. Handlers build success bodies with
@@ -81,6 +89,7 @@ transaction:
 
 ```sh
 curl --fail-with-body -H 'Content-Type: application/json' \
+  -H 'Origin: http://127.0.0.1:8080' \
   -d '{"note": "hello", "amount": 3, "highlighted": false}' \
   http://127.0.0.1:8080/api/v0/probe/events
 ```

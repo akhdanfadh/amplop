@@ -96,6 +96,7 @@ func TestValidationDetails(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			// When the body is sent.
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/required-inputs", strings.NewReader(c.body))
+			request.Header.Set("Origin", "http://"+request.Host)
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			a.Handler().ServeHTTP(response, request)
