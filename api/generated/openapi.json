@@ -273,6 +273,7 @@
     }
   },
   "info": {
+    "description": "## Shared errors\n\nErrors use application/problem+json. The HTTP status describes the broad\nfailure; type identifies the specific problem. The body includes type,\nstatus, title, and detail. Quote the X-Request-ID response header when\nreporting a failure.\n\nEach operation documents its specific failures with examples. Its default\nresponse covers other errors using the same Problem schema, including:\n\n| Status | Meaning |\n| --- | --- |\n| 400 | The request cannot be parsed. |\n| 404 | The route or resource was not found. |\n| 405 | The route does not support this method; see the Allow header. |\n| 408 | Receiving the request body took too long. |\n| 413 | The request body is too large. |\n| 415 | The request content type is unsupported. |\n| 422 | Parsed input violates the request rules. |\n| 500 | An unexpected server failure occurred. |\n\nBody errors apply to operations that accept a body. A default response\ndescribes the body format, not a replacement HTTP status.\n\nInput errors can include an errors list with field locations and safe\ncorrection messages. For example, a 422 response from POST /setup:\n\n    {\n      \"type\": \"/api/v0/problems/validation-error\",\n      \"status\": 422,\n      \"title\": \"Invalid request\",\n      \"detail\": \"Correct the rejected request inputs.\",\n      \"errors\": [\n        {\"location\": \"body.password\", \"message\": \"Use 15 to 128 characters.\"}\n      ]\n    }\n\nUse the actual HTTP status for request decisions. Handle unfamiliar problem\ntypes by showing their safe detail. An intermediary, such as a proxy, may\nreturn an error without a Problem Details body.\n",
     "title": "inbok",
     "version": "0.0.0"
   },
@@ -292,7 +293,7 @@
             },
             "description": "OK"
           },
-          "500": {
+          "default": {
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -300,7 +301,7 @@
                 }
               }
             },
-            "description": "Internal Server Error"
+            "description": "Other errors. See Shared errors in the API overview."
           }
         },
         "summary": "Check process health"
@@ -330,26 +331,6 @@
             },
             "description": "Created"
           },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "408": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Request Timeout"
-          },
           "409": {
             "content": {
               "application/problem+json": {
@@ -366,7 +347,7 @@
             },
             "description": "The counter is full."
           },
-          "413": {
+          "default": {
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -374,37 +355,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
-          },
-          "415": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unsupported Media Type"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Internal Server Error"
+            "description": "Other errors. See Shared errors in the API overview."
           }
         },
         "summary": "Add to the probe counter"
@@ -432,7 +383,7 @@
                 }
               }
             },
-            "description": "Error"
+            "description": "Other errors. See Shared errors in the API overview."
           }
         },
         "summary": "Get first-admin setup status"
@@ -460,16 +411,6 @@
             },
             "description": "Created"
           },
-          "400": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
           "403": {
             "content": {
               "application/problem+json": {
@@ -485,16 +426,6 @@
               }
             },
             "description": "Forbidden"
-          },
-          "408": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Request Timeout"
           },
           "409": {
             "content": {
@@ -524,7 +455,7 @@
             },
             "description": "Setup is complete or no setup token is configured."
           },
-          "413": {
+          "default": {
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -532,37 +463,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
-          },
-          "415": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unsupported Media Type"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Internal Server Error"
+            "description": "Other errors. See Shared errors in the API overview."
           }
         },
         "summary": "Create the first administrator"

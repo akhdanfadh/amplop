@@ -53,6 +53,12 @@ header. Operation IDs use camelCase. Handlers build success bodies with
 renaming a payload type is a breaking change.
 
 Huma's operation metadata and Go response types define the API contract.
+Set `Responses` with `problemResponses(api, statuses...)` to document an
+operation's specific failures, then attach their descriptions and examples.
+The helper includes a `default` Problem response for shared errors. Avoid
+`Operation.Errors`: Huma adds separate 422 and 500 entries to that list.
+The API overview explains shared statuses and shows a field-error example.
+
 The API base path is `/api/v0`; operation paths such as `/health` are
 relative to it. The OpenAPI document advertises this relative base, so it
 works on whatever host serves it. Locally, that is `http://127.0.0.1:8080`.

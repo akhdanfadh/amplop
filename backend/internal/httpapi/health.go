@@ -22,7 +22,7 @@ func registerHealth(api huma.API) {
 		Path:          healthPath,
 		Summary:       "Check process health",
 		DefaultStatus: http.StatusOK,
-		Errors:        []int{http.StatusInternalServerError},
+		Responses:     problemResponses(api),
 	}, func(_ context.Context, _ *struct{}) (*output[healthStatus], error) {
 		return respondData(healthStatus{Status: "ok"}), nil
 	})

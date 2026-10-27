@@ -46,6 +46,7 @@ func registerAccount(api huma.API, service accountService) {
 		Method:      http.MethodGet,
 		Path:        setupPath,
 		Summary:     "Get first-admin setup status",
+		Responses:   problemResponses(api),
 	}, func(ctx context.Context, _ *struct{}) (*output[setupStatus], error) {
 		status, err := service.SetupStatus(ctx)
 		if err != nil {
@@ -60,7 +61,7 @@ func registerAccount(api huma.API, service accountService) {
 		Path:          setupPath,
 		Summary:       "Create the first administrator",
 		DefaultStatus: http.StatusCreated,
-		Errors:        bodyErrors(http.StatusForbidden, http.StatusConflict),
+		Responses:     problemResponses(api, http.StatusForbidden, http.StatusConflict),
 	}, func(ctx context.Context, in *struct{ Body newSetup }) (*output[firstAdmin], error) {
 		user, err := service.Setup(ctx, account.SetupInput{
 			Token:    in.Body.Token,

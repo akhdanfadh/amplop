@@ -344,9 +344,27 @@ func TestSetupOpenAPI(t *testing.T) {
 		assert.Equal(t, limits[1], *field.MaxLength)
 	}
 
-	for _, code := range []int{http.StatusCreated, http.StatusBadRequest, http.StatusForbidden, http.StatusConflict, http.StatusRequestTimeout, http.StatusRequestEntityTooLarge, http.StatusUnsupportedMediaType, http.StatusUnprocessableEntity, http.StatusInternalServerError} {
+	require.Len(t, path.Get.Responses, 2)
+	require.NotNil(t, path.Get.Responses[strconv.Itoa(http.StatusOK)])
+	require.NotNil(t, path.Get.Responses["default"])
+	require.Len(t, path.Post.Responses, 4)
+	for _, code := range []int{http.StatusCreated, http.StatusForbidden, http.StatusConflict} {
 		require.NotNil(t, path.Post.Responses[strconv.Itoa(code)])
 	}
+	fallback := path.Post.Responses["default"]
+	require.NotNil(t, fallback)
+	require.NotNil(t, fallback.Content[problemContentType])
+	assert.Equal(t, "#/components/schemas/Problem", fallback.Content[problemContentType].Schema.Ref)
+	assert.Nil(t, fallback.Content[problemContentType].Example)
+	assert.Empty(t, fallback.Content[problemContentType].Examples)
+
+	forbidden := path.Post.Responses[strconv.Itoa(http.StatusForbidden)].Content[problemContentType]
+	require.NotNil(t, forbidden)
+	invalid, ok := forbidden.Example.(*problem)
+	require.True(t, ok)
+	assert.Equal(t, setupTokenInvalidType, invalid.Type)
+	assert.Empty(t, forbidden.Examples)
+
 	conflict := path.Post.Responses[strconv.Itoa(http.StatusConflict)].Content[problemContentType]
 	require.NotNil(t, conflict)
 	for name, typ := range map[string]string{"setupDone": setupDoneType, "setupUnconfigured": setupUnconfiguredType} {

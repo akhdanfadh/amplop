@@ -55,6 +55,7 @@ func New(logger *slog.Logger, services Services) *API {
 	group := router.Group(apiPrefix)
 
 	config := huma.DefaultConfig(schemaTitle, schemaVersion)
+	config.Info.Description = errorDocs
 
 	// Reject duplicate names, including case aliases, while keeping other JSON
 	// decoding rules compatible with Huma's default format.

@@ -61,7 +61,7 @@ func registerProbe(api huma.API, service probeService) {
 		Path:          probeEventsPath,
 		Summary:       "Add to the probe counter",
 		DefaultStatus: http.StatusCreated,
-		Errors:        bodyErrors(http.StatusConflict),
+		Responses:     problemResponses(api, http.StatusConflict),
 	}, func(ctx context.Context, in *struct{ Body newProbeEvent }) (*output[probeEventCreated], error) {
 		result, err := service.Add(ctx, probe.Entry{
 			Note:        in.Body.Note,

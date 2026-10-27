@@ -48,6 +48,11 @@ func TestHealthOpenAPI(t *testing.T) {
 	require.NotNil(t, path.Get, "health must document GET")
 	assert.Nil(t, path.Head, "health must document GET only")
 	assert.Equal(t, "getHealth", path.Get.OperationID)
+	require.Len(t, path.Get.Responses, 2)
+	fallback := path.Get.Responses["default"]
+	require.NotNil(t, fallback)
+	require.NotNil(t, fallback.Content[problemContentType])
+	assert.Equal(t, "#/components/schemas/Problem", fallback.Content[problemContentType].Schema.Ref)
 
 	status := strconv.Itoa(http.StatusOK)
 	get := path.Get.Responses[status]

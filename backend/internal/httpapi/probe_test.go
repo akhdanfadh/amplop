@@ -139,6 +139,13 @@ func TestProbeOpenAPI(t *testing.T) {
 	assert.Equal(t, "#/components/schemas/NewProbeEvent", request)
 
 	responses := path.Post.Responses
+	require.Len(t, responses, 3)
+	fallback := responses["default"]
+	require.NotNil(t, fallback)
+	require.NotNil(t, fallback.Content[problemContentType])
+	assert.Equal(t, "#/components/schemas/Problem", fallback.Content[problemContentType].Schema.Ref)
+	assert.Nil(t, fallback.Content[problemContentType].Example)
+
 	created := responses[strconv.Itoa(http.StatusCreated)]
 	require.NotNil(t, created, "probe must document its 201 body")
 	assert.Equal(t, "#/components/schemas/ResponseProbeEventCreated", created.Content["application/json"].Schema.Ref)
