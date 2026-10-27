@@ -41,6 +41,9 @@ func New(logger *slog.Logger, services Services) *API {
 	logger = slog.New(requestIDHandler{logger.Handler()})
 
 	router := gin.New()
+	// Disable Gin's trust of all proxies. An empty list cannot fail parsing.
+	router.SetTrustedProxies(nil)
+
 	// Request ID runs first so every log line has it. Recovery runs inside
 	// the request log, so a panic is logged as 500. The timeout wraps only
 	// the handler's own work.
@@ -89,6 +92,12 @@ func New(logger *slog.Logger, services Services) *API {
 	registerAccount(api, services.Account)
 
 	return &API{router: router, api: api}
+}
+
+// SetTrustedProxies sets which peers may supply forwarded client addresses.
+// Call before serving requests; nil trusts no proxies.
+func (a *API) SetTrustedProxies(cidrs []string) error {
+	return a.router.SetTrustedProxies(cidrs)
 }
 
 // Handler returns the handler for every registered route.

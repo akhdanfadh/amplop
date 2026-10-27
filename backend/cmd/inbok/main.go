@@ -108,7 +108,11 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		Probe:   probe.NewService(db),
 		Account: accounts,
 	}
-	return listen(ctx, cfg.HTTPAddr, httpapi.New(logger, services).Handler(), logger)
+	api := httpapi.New(logger, services)
+	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		return fmt.Errorf("configure trusted proxies: %w", err)
+	}
+	return listen(ctx, cfg.HTTPAddr, api.Handler(), logger)
 }
 
 // listen serves handler on addr until ctx is cancelled, then lets in-flight

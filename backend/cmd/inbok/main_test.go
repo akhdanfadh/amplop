@@ -20,6 +20,7 @@ import (
 var discard = slog.New(slog.DiscardHandler)
 
 func TestExport(t *testing.T) {
+	t.Setenv("INBOK_TRUSTED_PROXIES", "invalid")
 	path := filepath.Join(t.TempDir(), "openapi.json")
 	require.NoError(t, run(context.Background(), []string{"export", path}, discard))
 
@@ -54,10 +55,23 @@ func TestMigrateNoURL(t *testing.T) {
 func TestServeNoURL(t *testing.T) {
 	t.Setenv("INBOK_DATABASE_URL", "")
 	t.Setenv("INBOK_SETUP_TOKEN", "")
+	t.Setenv("INBOK_TRUSTED_PROXIES", "")
 
 	err := run(context.Background(), []string{"serve"}, discard)
 
 	require.ErrorContains(t, err, "INBOK_DATABASE_URL")
+}
+
+// Bad proxy settings stop serve before opening a database or listener.
+func TestServeBadTrustedProxies(t *testing.T) {
+	t.Setenv("INBOK_HTTP_ADDR", "")
+	t.Setenv("INBOK_DATABASE_URL", "")
+	t.Setenv("INBOK_SETUP_TOKEN", "")
+	t.Setenv("INBOK_TRUSTED_PROXIES", "invalid")
+
+	err := run(context.Background(), []string{"serve"}, discard)
+
+	require.ErrorContains(t, err, "INBOK_TRUSTED_PROXIES")
 }
 
 // An invalid setup token stops serve before it needs a database or a port.
