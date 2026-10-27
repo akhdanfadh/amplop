@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"inbok/internal/account"
 	"inbok/internal/config"
 	"inbok/internal/httpapi"
 	"inbok/internal/probe"
@@ -92,7 +93,10 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	}
 	defer db.Close()
 
-	services := httpapi.Services{Probe: probe.NewService(db)}
+	services := httpapi.Services{
+		Probe:   probe.NewService(db),
+		Account: account.NewService(db, cfg.SetupToken),
+	}
 	return listen(ctx, cfg.HTTPAddr, httpapi.New(logger, services).Handler(), logger)
 }
 

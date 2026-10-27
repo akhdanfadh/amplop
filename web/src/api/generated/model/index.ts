@@ -5,12 +5,18 @@
  * OpenAPI spec version: 0.0.0
  */
 
+export * from './createFirstAdminBody.zod';
 export * from './createProbeEventBody.zod';
+export * from './firstAdmin.zod';
 export * from './healthStatus.zod';
 export * from './inputError.zod';
 export * from './newProbeEvent.zod';
+export * from './newSetup.zod';
 export * from './probeEvent.zod';
 export * from './probeEventCreated.zod';
 export * from './problem.zod';
+export * from './responseFirstAdmin.zod';
 export * from './responseHealthStatus.zod';
 export * from './responseProbeEventCreated.zod';
+export * from './responseSetupStatus.zod';
+export * from './setupStatus.zod';

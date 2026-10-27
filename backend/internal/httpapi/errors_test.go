@@ -272,7 +272,8 @@ func TestInputStatuses(t *testing.T) {
 
 func TestProblemSchema(t *testing.T) {
 	a := New(discard, Services{})
-	doc, err := a.OpenAPI()
+	// Inspect schema members; OpenAPI response examples also use "value".
+	doc, err := json.Marshal(a.api.OpenAPI().Components.Schemas)
 	require.NoError(t, err)
 	for _, private := range []string{`"value"`, `"raw"`, `"mapped"`, `"ErrorModel"`} {
 		assert.NotContains(t, string(doc), private, "contract contains a private member")

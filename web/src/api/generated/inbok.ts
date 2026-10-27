@@ -24,11 +24,14 @@ import type {
 } from '@tanstack/react-query';
 
 import {
+  ResponseFirstAdmin,
   ResponseHealthStatus,
-  ResponseProbeEventCreated
+  ResponseProbeEventCreated,
+  ResponseSetupStatus
 } from './model';
 import type {
   NewProbeEvent,
+  NewSetup,
   Problem
 } from './model';
 
@@ -242,4 +245,195 @@ export const useCreateProbeEvent = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getCreateProbeEventMutationOptions(options), queryClient);
+    }
+
+export const getGetSetupStatusUrl = () => {
+
+
+
+
+  return `/api/v0/setup`
+}
+
+/**
+ * @summary Get first-admin setup status
+ */
+export const getSetupStatus = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseSetupStatus> => {
+
+  return transport<ResponseSetupStatus>(getGetSetupStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseSetupStatus
+  }
+);}
+
+
+
+
+
+export const getGetSetupStatusQueryKey = () => {
+    return [
+    `/api/v0/setup`
+    ] as const;
+    }
+
+
+export const getGetSetupStatusQueryOptions = <TData = Awaited<ReturnType<typeof getSetupStatus>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSetupStatus>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSetupStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSetupStatus>>> = ({ signal }) => getSetupStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSetupStatus>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSetupStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getSetupStatus>>>
+export type GetSetupStatusQueryError = ErrorType<Problem>
+
+
+export function useGetSetupStatus<TData = Awaited<ReturnType<typeof getSetupStatus>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSetupStatus>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSetupStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getSetupStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSetupStatus<TData = Awaited<ReturnType<typeof getSetupStatus>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSetupStatus>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSetupStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getSetupStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSetupStatus<TData = Awaited<ReturnType<typeof getSetupStatus>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSetupStatus>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get first-admin setup status
+ */
+
+export function useGetSetupStatus<TData = Awaited<ReturnType<typeof getSetupStatus>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSetupStatus>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSetupStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateFirstAdminUrl = () => {
+
+
+
+
+  return `/api/v0/setup`
+}
+
+/**
+ * @summary Create the first administrator
+ */
+export const createFirstAdmin = async (newSetup: NewSetup, options?: Parameters<typeof transport>[1]): Promise<ResponseFirstAdmin> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseFirstAdmin>(getCreateFirstAdminUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newSetup),
+    schema: ResponseFirstAdmin
+  }
+);}
+
+
+
+
+
+export const getCreateFirstAdminMutationKey = () => ['createFirstAdmin'] as const;
+
+export const getCreateFirstAdminMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFirstAdmin>>, TError,CreateFirstAdminMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof createFirstAdmin>>, TError,CreateFirstAdminMutationVariables, TContext> => {
+
+const mutationKey = getCreateFirstAdminMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createFirstAdmin>>, CreateFirstAdminMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createFirstAdmin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateFirstAdminMutationResult = NonNullable<Awaited<ReturnType<typeof createFirstAdmin>>>
+    export type CreateFirstAdminMutationBody = NewSetup
+    export type CreateFirstAdminMutationError = ErrorType<Problem>
+    export type CreateFirstAdminMutationVariables = {data: NewSetup}
+
+    /**
+ * @summary Create the first administrator
+ */
+export const useCreateFirstAdmin = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFirstAdmin>>, TError,CreateFirstAdminMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createFirstAdmin>>,
+        TError,
+        CreateFirstAdminMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateFirstAdminMutationOptions(options), queryClient);
     }
