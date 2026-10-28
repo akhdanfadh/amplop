@@ -13,6 +13,26 @@ import (
 	"inbok/internal/session"
 )
 
+// probeService is what the probe operation calls; [probe.Service] in
+// production. Tests answer with fixed results, so they check only the HTTP
+// mapping, not the probe's rules.
+type probeService interface {
+	Add(ctx context.Context, entry probe.Entry) (probe.Result, error)
+}
+
+type probeHandler struct {
+	service probeService
+}
+
+// registerProbe adds the probe operation.
+func registerProbe(api huma.API, service probeService) {
+	registerProbeEvent(api, probeHandler{service: service})
+}
+
+// ========================
+// Create probe event
+// ========================
+
 const (
 	probeEventsPath = "/probe/events"
 	counterFullType = problemPrefix + "counter-full"
@@ -44,18 +64,8 @@ type probeEventCreated struct {
 	Total int64      `json:"total"`
 }
 
-// probeService is what the probe operation calls; [probe.Service] in
-// production. Tests answer with fixed results, so they check only the HTTP
-// mapping, not the probe's rules.
-type probeService interface {
-	Add(ctx context.Context, entry probe.Entry) (probe.Result, error)
-}
-
-// registerProbe adds the probe operation.
-func registerProbe(api huma.API, service probeService) {
-	counterFull := newProblem(http.StatusConflict, counterFullType, "Counter full", "The counter is full.")
-
-	// Add an amount to the shared counter and record it, in one transaction.
+// registerProbeEvent adds the counter-write operation.
+func registerProbeEvent(api huma.API, handler probeHandler) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "createProbeEvent",
 		Metadata:      map[string]any{accessKey: session.AccessPublic},
@@ -63,40 +73,53 @@ func registerProbe(api huma.API, service probeService) {
 		Path:          probeEventsPath,
 		Summary:       "Add to the probe counter",
 		DefaultStatus: http.StatusCreated,
-		Responses:     problemResponses(api, http.StatusConflict),
-	}, func(ctx context.Context, in *struct{ Body newProbeEvent }) (*output[probeEventCreated], error) {
-		result, err := service.Add(ctx, probe.Entry{
-			Note:        in.Body.Note,
-			Amount:      in.Body.Amount,
-			Highlighted: in.Body.Highlighted,
-			Tag:         in.Body.Tag,
-		})
+		Responses:     probeEventResponses(api),
+	}, handler.handleCreateProbeEvent)
+}
 
-		// Domain errors become fixed messages; any other error is a 500
-		// whose text is logged, never sent.
-		if errors.Is(err, probe.ErrCounterFull) {
-			return nil, counterFull
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		event := result.Event
-		return respondData(probeEventCreated{
-			Event: probeEvent{
-				ID:          event.ID,
-				Note:        event.Note,
-				Amount:      event.Amount,
-				Highlighted: event.Highlighted,
-				Tag:         event.Tag,
-				CreatedAt:   event.CreatedAt,
-			},
-			Total: result.Total,
-		}), nil
+// handleCreateProbeEvent maps the saved event and total to the HTTP response.
+func (h probeHandler) handleCreateProbeEvent(ctx context.Context, in *struct{ Body newProbeEvent }) (*output[probeEventCreated], error) {
+	result, err := h.service.Add(ctx, probe.Entry{
+		Note:        in.Body.Note,
+		Amount:      in.Body.Amount,
+		Highlighted: in.Body.Highlighted,
+		Tag:         in.Body.Tag,
 	})
 
-	// Document the machine identity as well as the generic error envelope.
-	conflict := api.OpenAPI().Paths[probeEventsPath].Post.Responses[strconv.Itoa(http.StatusConflict)]
+	// Domain errors become fixed messages; any other error is a 500
+	// whose text is logged, never sent.
+	if err != nil {
+		return nil, probeEventProblem(err)
+	}
+
+	event := result.Event
+	return respondData(probeEventCreated{
+		Event: probeEvent{
+			ID:          event.ID,
+			Note:        event.Note,
+			Amount:      event.Amount,
+			Highlighted: event.Highlighted,
+			Tag:         event.Tag,
+			CreatedAt:   event.CreatedAt,
+		},
+		Total: result.Total,
+	}), nil
+}
+
+func probeEventResponses(api huma.API) map[string]*huma.Response {
+	responses := problemResponses(api, http.StatusConflict)
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
 	conflict.Description = "The counter is full."
-	conflict.Content[problemContentType].Example = counterFull
+	conflict.Content[problemContentType].Example = probeEventProblem(probe.ErrCounterFull)
+
+	return responses
+}
+
+// probeEventProblem maps counter-limit failures to safe public text.
+func probeEventProblem(err error) error {
+	if errors.Is(err, probe.ErrCounterFull) {
+		return newProblem(http.StatusConflict, counterFullType, "Counter full", "The counter is full.")
+	}
+
+	return err
 }

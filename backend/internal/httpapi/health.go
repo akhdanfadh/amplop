@@ -9,15 +9,23 @@ import (
 	"inbok/internal/session"
 )
 
+// registerHealth adds the health operation.
+func registerHealth(api huma.API) {
+	registerGetHealth(api)
+}
+
+// ========================
+// Health
+// ========================
+
 const healthPath = "/health"
 
 type healthStatus struct {
 	Status string `json:"status" enum:"ok"`
 }
 
-// registerHealth adds the health operation.
-func registerHealth(api huma.API) {
-	// Report whether this process can answer HTTP requests.
+// registerGetHealth adds the process-health check.
+func registerGetHealth(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "getHealth",
 		Metadata:      map[string]any{accessKey: session.AccessPublic},
@@ -25,8 +33,15 @@ func registerHealth(api huma.API) {
 		Path:          healthPath,
 		Summary:       "Check process health",
 		DefaultStatus: http.StatusOK,
-		Responses:     problemResponses(api),
-	}, func(_ context.Context, _ *struct{}) (*output[healthStatus], error) {
-		return respondData(healthStatus{Status: "ok"}), nil
-	})
+		Responses:     healthResponses(api),
+	}, handleGetHealth)
+}
+
+// handleGetHealth reports that this process can answer HTTP requests.
+func handleGetHealth(_ context.Context, _ *struct{}) (*output[healthStatus], error) {
+	return respondData(healthStatus{Status: "ok"}), nil
+}
+
+func healthResponses(api huma.API) map[string]*huma.Response {
+	return problemResponses(api)
 }
