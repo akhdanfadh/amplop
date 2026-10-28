@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"inbok/internal/session"
 )
 
 const healthPath = "/health"
@@ -18,6 +20,7 @@ func registerHealth(api huma.API) {
 	// Report whether this process can answer HTTP requests.
 	huma.Register(api, huma.Operation{
 		OperationID:   "getHealth",
+		Metadata:      map[string]any{accessKey: session.AccessPublic},
 		Method:        http.MethodGet,
 		Path:          healthPath,
 		Summary:       "Check process health",

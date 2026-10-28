@@ -16,10 +16,12 @@ import (
 )
 
 const (
-	sessionsPath           = "/sessions"
-	sessionCookieName      = "__Host-inbok-session"
-	invalidCredentialsType = problemPrefix + "invalid-credentials"
-	signInThrottledType    = problemPrefix + "sign-in-throttled"
+	sessionsPath              = "/sessions"
+	currentSessionPath        = sessionsPath + "/current"
+	sessionSecuritySchemeName = "sessionCookie"
+	sessionCookieName         = "__Host-inbok-session"
+	invalidCredentialsType    = problemPrefix + "invalid-credentials"
+	signInThrottledType       = problemPrefix + "sign-in-throttled"
 )
 
 // signInStep identifies the next step after password verification.
@@ -59,12 +61,21 @@ type sessionOutput struct {
 // sessionService is the session behavior called by these HTTP operations.
 type sessionService interface {
 	SignIn(ctx context.Context, email, password string, addr netip.Addr) (session.Issued, error)
+	Current(ctx context.Context, secret string) (session.Identity, error)
+}
+
+// currentSession is the signed-in account and its TOTP enrollment requirement.
+type currentSession struct {
+	Email        string       `json:"email"`
+	Role         account.Role `json:"role" enum:"member,admin"`
+	TOTPRequired bool         `json:"totpRequired"`
 }
 
 // registerSession adds password sign-in and its documented failures.
 func registerSession(api huma.API, service sessionService) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "createSession",
+		Metadata:      map[string]any{accessKey: session.AccessPublic},
 		Method:        http.MethodPost,
 		Path:          sessionsPath,
 		Summary:       "Sign in with a password",
@@ -76,12 +87,8 @@ func registerSession(api huma.API, service sessionService) {
 			return nil, signInProblem(err)
 		}
 		return &sessionOutput{
-			SetCookie: http.Cookie{
-				Name: sessionCookieName, Value: issued.Secret, Path: "/",
-				Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode,
-				MaxAge: int(time.Until(issued.State.ExpiresAt) / time.Second),
-			},
-			Body: respondData(signInResult{Step: signInComplete}).Body,
+			SetCookie: sessionCookie(issued.Secret, int(time.Until(issued.State.ExpiresAt)/time.Second)),
+			Body:      respondData(signInResult{Step: signInComplete}).Body,
 		}, nil
 	})
 
@@ -92,6 +99,34 @@ func registerSession(api huma.API, service sessionService) {
 	throttled := post.Responses[strconv.Itoa(http.StatusTooManyRequests)]
 	throttled.Description = "Too many recent sign-in failures from this address."
 	throttled.Content[problemContentType].Example = signInProblem(session.ErrThrottled)
+
+	api.OpenAPI().Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+		sessionSecuritySchemeName: {
+			Type: "apiKey", In: "cookie", Name: sessionCookieName,
+			Description: "Browser session cookie issued by POST /sessions. Browsers send it automatically on subsequent requests.",
+		},
+	}
+	huma.Register(api, huma.Operation{
+		OperationID: "getCurrentSession",
+		Method:      http.MethodGet,
+		Path:        currentSessionPath,
+		Summary:     "Get the signed-in account",
+		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:   problemResponses(api, http.StatusUnauthorized),
+	}, func(ctx context.Context, _ *struct{}) (*output[currentSession], error) {
+		identity := ctx.Value(identityKey{}).(session.Identity)
+		return respondData(currentSession{Email: identity.User.Email, Role: identity.User.Role, TOTPRequired: identity.TOTPRequired}), nil
+	})
+	unauthenticated := api.OpenAPI().Paths[currentSessionPath].Get.Responses[strconv.Itoa(http.StatusUnauthorized)]
+	unauthenticated.Description = "No valid session identifies a current account."
+	unauthenticated.Content[problemContentType].Example = unauthenticatedProblem()
+}
+
+// sessionCookie builds a host-only cookie for issuing or clearing a session.
+func sessionCookie(secret string, maxAge int) http.Cookie {
+	return http.Cookie{Name: sessionCookieName, Value: secret, Path: "/", Secure: true,
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: maxAge}
 }
 
 // resolveClientAddr parses the address Gin selected for throttling.

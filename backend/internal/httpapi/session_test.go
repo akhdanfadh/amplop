@@ -23,12 +23,22 @@ import (
 const signInHTTPBody = `{"email":"Admin@Example.COM","password":"a long sign-in password"}`
 
 type fakeSessions struct {
-	issued   session.Issued
-	err      error
-	email    string
-	password string
-	addr     netip.Addr
-	calls    int
+	identity      session.Identity
+	currentErr    error
+	currentCalls  int
+	currentSecret string
+	issued        session.Issued
+	err           error
+	email         string
+	password      string
+	addr          netip.Addr
+	calls         int
+}
+
+func (f *fakeSessions) Current(_ context.Context, secret string) (session.Identity, error) {
+	f.currentCalls++
+	f.currentSecret = secret
+	return f.identity, f.currentErr
 }
 
 func (f *fakeSessions) SignIn(_ context.Context, email, password string, addr netip.Addr) (session.Issued, error) {

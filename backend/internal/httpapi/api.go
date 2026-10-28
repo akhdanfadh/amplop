@@ -88,6 +88,7 @@ func New(logger *slog.Logger, services Services) *API {
 	}}
 
 	api = humagin.NewWithGroup(router, group, config)
+	api.UseMiddleware(withAccess(api, services.Session))
 
 	registerHealth(api)
 	registerProbe(api, services.Probe)

@@ -34,7 +34,8 @@ response covers other errors using the same Problem schema, including:
 | Status | Meaning |
 | --- | --- |
 | 400 | The request cannot be parsed. |
-| 403 | A write request's source is missing or not allowed. |
+| 401 | A valid session is required. |
+| 403 | The write request's source or the account's access is not allowed. |
 | 404 | The route or resource was not found. |
 | 405 | The route does not support this method; see the Allow header. |
 | 408 | Receiving the request body took too long. |

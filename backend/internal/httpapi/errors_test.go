@@ -17,6 +17,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/session"
 )
 
 type probeInput struct {
@@ -38,6 +40,7 @@ func errorAPI(logger *slog.Logger) *API {
 	a := New(logger, Services{})
 	huma.Register(a.api, huma.Operation{
 		OperationID: "postProbe",
+		Metadata:    map[string]any{accessKey: session.AccessPublic},
 		Method:      http.MethodPost,
 		Path:        "/probe",
 	}, func(_ context.Context, in *probeInput) (*struct{}, error) {

@@ -45,8 +45,21 @@ Expect HTTP 200 with:
 
 ## API contract
 
-GET, HEAD, and OPTIONS must not change application state. Cross-site
-protection always allows these methods; use write methods for changes.
+GET, HEAD, and OPTIONS must not perform user actions, such as changing mail.
+Session checks may refresh activity timestamps or delete expired session rows.
+Cross-site protection always allows these methods; use write methods for actions.
+
+Access checks use Huma middleware because it can read the matched operation's
+`Metadata["access"]`. Declare `session.AccessPublic` for public operations,
+`session.AccessMember` for any valid session, or `session.AccessAdmin` for
+administrators with confirmed TOTP. Missing or invalid metadata requires admin
+access. This metadata is shared endpoint configuration; the checked user's
+identity belongs in the context of each request.
+
+Protected responses use `Cache-Control: no-store` so browser and proxy HTTP
+caches do not retain account data or reuse stale authentication responses.
+This does not prevent storing the session cookie or clear the web app's
+TanStack Query cache.
 
 Write requests must include `Sec-Fetch-Site` or `Origin`. Modern browsers
 send these headers. For manual requests to the local API, send

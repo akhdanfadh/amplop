@@ -63,6 +63,7 @@ type accountService interface {
 func registerAccount(api huma.API, service accountService, throttle setupThrottle) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getSetupStatus",
+		Metadata:    map[string]any{accessKey: session.AccessPublic},
 		Method:      http.MethodGet,
 		Path:        setupPath,
 		Summary:     "Get first-admin setup status",
@@ -77,6 +78,7 @@ func registerAccount(api huma.API, service accountService, throttle setupThrottl
 
 	huma.Register(api, huma.Operation{
 		OperationID:   "createFirstAdmin",
+		Metadata:      map[string]any{accessKey: session.AccessPublic},
 		Method:        http.MethodPost,
 		Path:          setupPath,
 		Summary:       "Create the first administrator",

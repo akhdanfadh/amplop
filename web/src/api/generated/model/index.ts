@@ -8,6 +8,7 @@
 export * from './createFirstAdminBody.zod';
 export * from './createProbeEventBody.zod';
 export * from './createSessionBody.zod';
+export * from './currentSession.zod';
 export * from './firstAdmin.zod';
 export * from './healthStatus.zod';
 export * from './inputError.zod';
@@ -17,6 +18,7 @@ export * from './newSetup.zod';
 export * from './probeEvent.zod';
 export * from './probeEventCreated.zod';
 export * from './problem.zod';
+export * from './responseCurrentSession.zod';
 export * from './responseFirstAdmin.zod';
 export * from './responseHealthStatus.zod';
 export * from './responseProbeEventCreated.zod';
