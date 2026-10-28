@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ComponentProps, type ReactElement } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { EyeIcon, EyeOffIcon } from "lucide-react";
 import { useCreateSession, useGetCurrentSession } from "@/api/generated/inbok";
 import { formErrors, userMessage } from "@/api/problem";
 import { sessionMessage, uncertainSession } from "@/api/session-error";
@@ -10,12 +9,7 @@ import { SignInSchema } from "@/components/sign-in-schema";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group";
+import { PasswordInput } from "@/components/password-input";
 
 const emptyCredentials = { email: "", password: "" };
 const unauthorized = 401;
@@ -164,7 +158,7 @@ export function SignInForm({ onDone }: { onDone: () => void }): ReactElement {
                 <Field data-invalid={errors.length > 0} data-disabled={create.isPending}>
                   <FieldLabel htmlFor={id}>{label}</FieldLabel>
                   {name === "password" ? (
-                    <PasswordInput {...inputProps} />
+                    <PasswordInput label="password" {...inputProps} />
                   ) : (
                     <Input
                       className="h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid dark:aria-invalid:border-destructive"
@@ -219,29 +213,5 @@ export function SignInForm({ onDone }: { onDone: () => void }): ReactElement {
         </div>
       )}
     </form>
-  );
-}
-
-// PasswordInput toggles visibility without changing the entered password.
-function PasswordInput(props: ComponentProps<"input">): ReactElement {
-  const [visible, setVisible] = useState(false);
-  const Icon = visible ? EyeOffIcon : EyeIcon;
-
-  return (
-    <InputGroup className="h-auto min-h-11 border-muted-foreground has-[[data-slot=input-group-control]:focus-visible]:outline-2 has-[[data-slot=input-group-control]:focus-visible]:outline-offset-2 has-[[data-slot=input-group-control]:focus-visible]:outline-foreground has-[[data-slot=input-group-control]:focus-visible]:outline-solid">
-      <InputGroupInput {...props} className="h-11" type={visible ? "text" : "password"} />
-      <InputGroupAddon align="inline-end" className="py-0">
-        <InputGroupButton
-          className="size-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-          size="icon-sm"
-          aria-label={`${visible ? "Hide" : "Show"} password`}
-          aria-controls={props.id}
-          disabled={props.disabled}
-          onClick={() => setVisible((previous) => !previous)}
-        >
-          <Icon aria-hidden="true" data-icon="inline-end" />
-        </InputGroupButton>
-      </InputGroupAddon>
-    </InputGroup>
   );
 }

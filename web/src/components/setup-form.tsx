@@ -1,6 +1,5 @@
-import { useRef, useState, type ComponentProps, type ReactElement } from "react";
+import { useRef, type ReactElement } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
-import { EyeIcon, EyeOffIcon } from "lucide-react";
 import { useCreateFirstAdmin } from "@/api/generated/inbok";
 import { newSetupPasswordMin, newSetupPasswordMax } from "@/api/generated/model";
 import { formErrors, userMessage } from "@/api/problem";
@@ -8,12 +7,7 @@ import { SetupSchema } from "@/components/setup-schema";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group";
+import { PasswordInput } from "@/components/password-input";
 
 const emptySetup = { token: "", email: "", password: "", confirmPassword: "" };
 const conflict = 409;
@@ -182,31 +176,5 @@ export function SetupForm({
         </div>
       )}
     </form>
-  );
-}
-
-function PasswordInput({
-  label,
-  ...props
-}: ComponentProps<"input"> & { label: string }): ReactElement {
-  const [visible, setVisible] = useState(false);
-  const Icon = visible ? EyeOffIcon : EyeIcon;
-
-  return (
-    <InputGroup className="h-auto min-h-11 border-muted-foreground has-[[data-slot=input-group-control]:focus-visible]:outline-2 has-[[data-slot=input-group-control]:focus-visible]:outline-offset-2 has-[[data-slot=input-group-control]:focus-visible]:outline-foreground has-[[data-slot=input-group-control]:focus-visible]:outline-solid">
-      <InputGroupInput {...props} className="h-11" type={visible ? "text" : "password"} />
-      <InputGroupAddon align="inline-end" className="py-0">
-        <InputGroupButton
-          className="size-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-          size="icon-sm"
-          aria-label={`${visible ? "Hide" : "Show"} ${label}`}
-          aria-controls={props.id}
-          disabled={props.disabled}
-          onClick={() => setVisible((previous) => !previous)}
-        >
-          <Icon aria-hidden="true" data-icon="inline-end" />
-        </InputGroupButton>
-      </InputGroupAddon>
-    </InputGroup>
   );
 }
