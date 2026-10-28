@@ -52,6 +52,26 @@ must change together. To upgrade, change the `vite-plus` version there,
 run `pnpm install`, then `pnpm exec vp migrate` to move `vite` and
 `vitest` to the versions it includes.
 
+## Source layout
+
+Keep code for one feature together, including its form schemas and tests.
+Put shared code in the folder for its responsibility:
+
+- `src/features/setup`: first-admin form, validation, and installation gate.
+- `src/features/auth`: sign-in form, validation, session messages, and account
+  cache cleanup.
+- `src/features/probe`: the probe demo form.
+- `src/components`: shared controls, such as the password input. `ui/` holds
+  the shadcn components we own.
+- `src/api`: generated client and schemas, transport, shared validation and
+  error messages, and retry handling.
+- `src/routes`: route registration and page composition.
+
+Keep feature folders flat until they need more structure. File names can omit
+what the folder already says, e.g. `features/setup/form.tsx` exports
+`SetupForm`. Keep names that identify a particular operation, such as
+`features/auth/sign-in-form.tsx`. Tests stay beside the code they test.
+
 ## Routes
 
 Each file in `src/routes` is one route. `pnpm dev` and `pnpm build`
@@ -264,7 +284,7 @@ The `pnpm build` output sends it once.
 
 Forms use [TanStack Form](https://tanstack.com/form), which holds each
 field's value, with shadcn's `Field` components for labels and messages.
-`src/components/probe-form.tsx` is the example: it sends a write with its
+`src/features/probe/form.tsx` is the example: it sends a write with its
 generated mutation hook, `useCreateProbeEvent()`, and locks its inputs
 and button while the request runs. A failed request's message, e.g. "The
 counter is full.", stays below the form until the next edit or submit.

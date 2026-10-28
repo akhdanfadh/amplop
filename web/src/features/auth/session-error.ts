@@ -1,5 +1,5 @@
-import type { ApiError } from "./transport";
-import { userMessage } from "./problem";
+import type { ApiError } from "@/api/transport";
+import { userMessage } from "@/api/problem";
 
 const firstSuccess = 200;
 const lastSuccess = 299;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ApiError } from "./transport";
+import { ApiError } from "@/api/transport";
 import { sessionMessage, uncertainSession } from "./session-error";
 
 const httpStatus = { created: 201, unauthorized: 401, internalServerError: 500 };

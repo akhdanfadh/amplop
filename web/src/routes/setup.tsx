@@ -1,8 +1,8 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useSetup } from "@/components/setup-gate";
+import { useSetup } from "@/features/setup/gate";
 import { userMessage } from "@/api/problem";
-import { SetupForm } from "@/components/setup-form";
+import { SetupForm } from "@/features/setup/form";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/setup")({

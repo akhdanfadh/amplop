@@ -1,9 +1,9 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { SignInForm } from "@/components/sign-in-form";
-import { useSetup } from "@/components/setup-gate";
-import { clearAccountCache } from "@/api/session-cache";
+import { SignInForm } from "@/features/auth/sign-in-form";
+import { useSetup } from "@/features/setup/gate";
+import { clearAccountCache } from "@/features/auth/session-cache";
 
 export const Route = createFileRoute("/sign-in")({
   component: SignIn,

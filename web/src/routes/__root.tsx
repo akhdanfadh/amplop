@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import appCss from "../styles.css?url";
-import { SetupGate } from "@/components/setup-gate";
+import { SetupGate } from "@/features/setup/gate";
 
 export const Route = createRootRoute({
   head: () => ({

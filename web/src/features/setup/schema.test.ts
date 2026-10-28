@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { validationMessage } from "@/api/validation";
-import { SetupSchema } from "./setup-schema";
+import { SetupSchema } from "./schema";
 
 const valid = {
   token: "test-only-browser-setup-token-1234567890",

@@ -3,7 +3,7 @@ import { useForm, useSelector } from "@tanstack/react-form";
 import { useCreateFirstAdmin } from "@/api/generated/inbok";
 import { newSetupPasswordMin, newSetupPasswordMax } from "@/api/generated/model";
 import { formErrors, userMessage } from "@/api/problem";
-import { SetupSchema } from "@/components/setup-schema";
+import { SetupSchema } from "./schema";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";

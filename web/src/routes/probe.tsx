@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useGetHealth, type GetHealthQueryResult } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
-import { ProbeForm } from "@/components/probe-form";
+import { ProbeForm } from "@/features/probe/form";
 
 export const Route = createFileRoute("/probe")({ component: Probe });
 

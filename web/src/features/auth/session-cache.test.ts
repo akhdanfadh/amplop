@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query";
 import { expect, it } from "vite-plus/test";
-import { getGetSetupStatusQueryKey, getGetCurrentSessionQueryKey } from "./generated/inbok";
+import { getGetSetupStatusQueryKey, getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
 import { clearAccountCache } from "./session-cache";
 
 it("clears account data and credentials while retaining public setup status", async () => {

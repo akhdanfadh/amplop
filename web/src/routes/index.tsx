@@ -3,8 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useDeleteCurrentSession, useGetCurrentSession } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
-import { sessionMessage, uncertainSession } from "@/api/session-error";
-import { clearAccountCache } from "@/api/session-cache";
+import { sessionMessage, uncertainSession } from "@/features/auth/session-error";
+import { clearAccountCache } from "@/features/auth/session-cache";
 import { Button } from "@/components/ui/button";
 
 const unauthorized = 401;
