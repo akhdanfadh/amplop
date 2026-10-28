@@ -87,7 +87,7 @@ func registerAccount(api huma.API, service accountService, throttle setupThrottl
 	}, func(ctx context.Context, in *setupInput) (*output[firstAdmin], error) {
 		id, err := throttle.BeginSetup(ctx, in.addr)
 		if err != nil {
-			return nil, signInProblem(err)
+			return nil, throttleProblem(err)
 		}
 
 		user, err := service.Setup(ctx, account.SetupInput{
@@ -116,7 +116,7 @@ func registerAccount(api huma.API, service accountService, throttle setupThrottl
 	forbidden.Content[problemContentType].Example = setupProblem(account.ErrSetupTokenInvalid)
 	throttled := post.Responses[strconv.Itoa(http.StatusTooManyRequests)]
 	throttled.Description = "Too many recent failed attempts from this address."
-	throttled.Content[problemContentType].Example = signInProblem(session.ErrThrottled)
+	throttled.Content[problemContentType].Example = throttleProblem(session.ErrThrottled)
 }
 
 func setupProblem(err error) error {

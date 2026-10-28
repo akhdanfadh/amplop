@@ -20,7 +20,6 @@ const (
 	sessionSecuritySchemeName = "sessionCookie"
 	sessionCookieName         = "__Host-inbok-session"
 	invalidCredentialsType    = problemPrefix + "invalid-credentials"
-	signInThrottledType       = problemPrefix + "sign-in-throttled"
 )
 
 // signInStep identifies the next step after password verification.
@@ -103,7 +102,7 @@ func registerSession(api huma.API, service sessionService) {
 	unauthorized.Content[problemContentType].Example = signInProblem(account.ErrInvalidCredentials)
 	throttled := post.Responses[strconv.Itoa(http.StatusTooManyRequests)]
 	throttled.Description = "Too many recent sign-in failures from this address."
-	throttled.Content[problemContentType].Example = signInProblem(session.ErrThrottled)
+	throttled.Content[problemContentType].Example = throttleProblem(session.ErrThrottled)
 
 	api.OpenAPI().Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		sessionSecuritySchemeName: {
@@ -156,12 +155,9 @@ func sessionCookie(secret string, maxAge int) http.Cookie {
 
 // signInProblem maps expected credential and throttle failures to safe text.
 func signInProblem(err error) error {
-	switch {
-	case errors.Is(err, account.ErrInvalidCredentials):
+	if errors.Is(err, account.ErrInvalidCredentials) {
 		return newProblem(http.StatusUnauthorized, invalidCredentialsType, "Sign-in failed", "The email or password is incorrect.")
-	case errors.Is(err, session.ErrThrottled):
-		return newProblem(http.StatusTooManyRequests, signInThrottledType, "Too many attempts", "Too many failed attempts. Try again later.")
-	default:
-		return err
 	}
+
+	return throttleProblem(err)
 }
