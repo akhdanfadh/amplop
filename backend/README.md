@@ -81,10 +81,11 @@ header. Operation IDs use camelCase. Handlers build success bodies with
 renaming a payload type is a breaking change.
 
 Huma's operation metadata and Go response types define the API contract.
-Set `Responses` with `problemResponses(api, statuses...)` to document an
-operation's specific failures, then attach their descriptions and examples.
-The helper includes a `default` Problem response for shared errors. Avoid
-`Operation.Errors`: Huma adds separate 422 and 500 entries to that list.
+Each operation's response helper calls `problemResponses(api, statuses...)`,
+then sets its failure descriptions and examples. Pass that map as `Responses`
+when registering the operation. The shared helper includes a `default`
+Problem response for shared errors. Avoid `Operation.Errors`: Huma adds
+separate 422 and 500 entries to that list.
 The API overview explains shared statuses and shows a field-error example.
 
 The API base path is `/api/v0`; operation paths such as `/health` are
@@ -484,6 +485,25 @@ httpapi --> probe <-- repository/postgres
 ADR021 in the project's decision records explains this layout and the
 alternatives it was chosen over.
 
+### HTTP feature files
+
+Keep shared paths, service interfaces, handler dependencies, and the
+`register<Feature>` entry point at the top. That entry point calls a
+`register<Operation>` function for each operation.
+
+Group each operation under a three-line comment banner:
+
+```go
+// ========================
+// First administrator
+// ========================
+```
+
+Keep its constants, request and response types, input resolvers, registration,
+named handler, response helper, and error mapping together under that banner.
+Helpers used by only one operation stay in its section. Handler types and
+methods are private; operations without dependencies can use plain functions.
+
 ## Adding a feature
 
 To add a feature, e.g. `account`:
@@ -493,9 +513,10 @@ To add a feature, e.g. `account`:
 2. A migration and `queries/account.sql`; regenerate SQLC.
 3. `repository/postgres/account.go`: the `Storage` methods, tested against
    PostgreSQL.
-4. `httpapi/account.go`: the operations, an `accountService` interface,
-   and `registerAccount`, tested with a fake `accountService`. Add an
-   `Account` field to `Services` and call `registerAccount` in `New`.
+4. `httpapi/account.go`: follow [HTTP feature files](#http-feature-files).
+   Declare an `accountService` interface and a `registerAccount` entry point.
+   Test the operations with fake services. Add an `Account` field to
+   `Services` and call `registerAccount` in `New`.
 5. `cmd/inbok/main.go`: set `Account` in `serve`'s `Services`.
 6. Regenerate `api/generated/openapi.json`.
 

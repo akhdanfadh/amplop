@@ -36,9 +36,9 @@ the area you change before editing it:
   update function, run in one transaction in `repository/postgres`.
   Feature code receives no transaction, transaction provider, or
   transaction in `context.Context`.
-- Names: middleware `with<Thing>`, operation registration
-  `register<Feature>`, handlers `handle<Operation>`. One noun per
-  concept across file, function, and test: `requestlog.go`,
+- Names: middleware `with<Thing>`, feature registration `register<Feature>`,
+  operation registration `register<Operation>`, handlers `handle<Operation>`.
+  One noun per concept across file, function, and test: `requestlog.go`,
   `withRequestLog`, `TestRequestLog`.
 - `backend/tools.mod` changes only through
   `go get -modfile=tools.mod -tool`; `go mod tidy` there copies the
