@@ -20,6 +20,14 @@ type fakeStorage struct {
 	writeErr    error
 }
 
+func (f *fakeStorage) ReadCredentials(context.Context, string) (Credentials, error) {
+	return Credentials{}, ErrUserNotFound
+}
+
+func (f *fakeStorage) ReadUser(context.Context, int64) (User, error) {
+	return User{}, ErrUserNotFound
+}
+
 func (f *fakeStorage) ReadSetup(context.Context) (SetupState, error) {
 	return f.state, f.readErr
 }
@@ -39,7 +47,7 @@ func (f *fakeStorage) UpdateSetup(_ context.Context, update func(SetupState) (Ne
 
 	f.saved = &admin
 	f.state.AdminExists = true
-	return User{ID: 1, Email: admin.Email}, nil
+	return User{ID: 1, Email: admin.Email, Role: RoleAdmin}, nil
 }
 
 func TestSetupStatus(t *testing.T) {
@@ -79,7 +87,7 @@ func TestSetup(t *testing.T) {
 	user, err := service.Setup(t.Context(), input)
 
 	require.NoError(t, err)
-	assert.Equal(t, User{ID: 1, Email: "ADMIN@example.com"}, user)
+	assert.Equal(t, User{ID: 1, Email: "ADMIN@example.com", Role: RoleAdmin}, user)
 	require.NotNil(t, storage.saved)
 	assert.Equal(t, user.Email, storage.saved.Email)
 

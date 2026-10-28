@@ -5,15 +5,32 @@ import (
 	"crypto/sha256"
 )
 
+// Role is an account's assigned role, separate from its current access.
+type Role string
+
+const (
+	RoleMember Role = "member"
+	RoleAdmin  Role = "admin"
+)
+
 // User identifies a local account without exposing its credentials.
 type User struct {
 	ID    int64
 	Email string
+	Role  Role
 }
 
 // Storage keeps local users and the first-admin claim.
 type Storage interface {
 	ReadSetup(ctx context.Context) (SetupState, error)
+
+	// ReadCredentials finds an account by case-insensitive email.
+	// A missing account returns ErrUserNotFound.
+	ReadCredentials(ctx context.Context, email string) (Credentials, error)
+
+	// ReadUser loads current account data by ID without reading credentials.
+	// A missing account returns ErrUserNotFound.
+	ReadUser(ctx context.Context, id int64) (User, error)
 
 	// UpdateSetup locks user writes, reads setup state, then calls update.
 	// It saves the returned administrator only if update and the write succeed.
@@ -34,4 +51,10 @@ func NewService(storage Storage, token string) *Service {
 		service.tokenHash = &digest
 	}
 	return service
+}
+
+// UserByID returns the account's current identity and assigned role.
+// A missing account returns ErrUserNotFound.
+func (s *Service) UserByID(ctx context.Context, id int64) (User, error) {
+	return s.storage.ReadUser(ctx, id)
 }

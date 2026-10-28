@@ -57,6 +57,7 @@ func TestAPIDuplicateFields(t *testing.T) {
 				var logs bytes.Buffer
 				logger := slog.New(slog.NewTextHandler(&logs, nil))
 				request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(c.body))
+				request.Header.Set("Origin", "http://"+request.Host)
 				request.Header.Set("Content-Type", contentType)
 				response := httptest.NewRecorder()
 
@@ -96,8 +97,10 @@ func TestNoRoute(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.method+" "+c.path, func(t *testing.T) {
 			var out bytes.Buffer
+			request := httptest.NewRequest(c.method, c.path, nil)
+			request.Header.Set("Origin", "http://"+request.Host)
 			response := httptest.NewRecorder()
-			New(slog.New(slog.NewTextHandler(&out, nil)), Services{}).Handler().ServeHTTP(response, httptest.NewRequest(c.method, c.path, nil))
+			New(slog.New(slog.NewTextHandler(&out, nil)), Services{}).Handler().ServeHTTP(response, request)
 
 			require.Equal(t, c.status, response.Code)
 			assert.Equal(t, "application/problem+json", response.Header().Get("Content-Type"))

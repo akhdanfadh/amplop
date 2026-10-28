@@ -11,6 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/session"
 )
 
 // A handler waiting on slow work sees its context end after the timeout.
@@ -44,6 +46,7 @@ func TestRequestTimeout(t *testing.T) {
 	var ok bool
 	huma.Register(a.api, huma.Operation{
 		OperationID: "getDeadline",
+		Metadata:    map[string]any{accessKey: session.AccessPublic},
 		Method:      http.MethodGet,
 		Path:        "/deadline",
 	}, func(ctx context.Context, _ *struct{}) (*struct{}, error) {

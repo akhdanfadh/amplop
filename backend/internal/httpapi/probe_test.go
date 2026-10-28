@@ -40,6 +40,7 @@ func (f *fakeProbes) Add(_ context.Context, entry probe.Entry) (probe.Result, er
 // postProbe sends body to the probe operation of an API calling probes.
 func postProbe(logger *slog.Logger, probes *fakeProbes, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(body))
+	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", "application/json")
 
 	response := httptest.NewRecorder()

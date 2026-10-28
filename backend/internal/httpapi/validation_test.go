@@ -11,6 +11,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/session"
 )
 
 // Input details preserve nested paths and use each field's own correction rules.
@@ -29,6 +31,7 @@ func TestValidationDetails(t *testing.T) {
 	a := New(discard, Services{})
 	huma.Register(a.api, huma.Operation{
 		OperationID:   "validateRequiredInputs",
+		Metadata:      map[string]any{accessKey: session.AccessPublic},
 		Method:        http.MethodPost,
 		Path:          "/required-inputs",
 		DefaultStatus: http.StatusCreated,
@@ -96,6 +99,7 @@ func TestValidationDetails(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			// When the body is sent.
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/required-inputs", strings.NewReader(c.body))
+			request.Header.Set("Origin", "http://"+request.Host)
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			a.Handler().ServeHTTP(response, request)

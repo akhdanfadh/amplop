@@ -22,6 +22,21 @@ type ProbeEvent struct {
 	CreatedAt   time.Time
 }
 
+type Session struct {
+	TokenHash  []byte
+	UserID     int64
+	CreatedAt  time.Time
+	LastUsedAt time.Time
+	ExpiresAt  time.Time
+}
+
+type SignInAttempt struct {
+	ID         int64
+	Email      *string
+	ClientAddr string
+	CreatedAt  time.Time
+}
+
 type User struct {
 	ID           int64
 	Email        string

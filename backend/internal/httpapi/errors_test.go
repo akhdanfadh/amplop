@@ -17,6 +17,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/session"
 )
 
 type probeInput struct {
@@ -38,6 +40,7 @@ func errorAPI(logger *slog.Logger) *API {
 	a := New(logger, Services{})
 	huma.Register(a.api, huma.Operation{
 		OperationID: "postProbe",
+		Metadata:    map[string]any{accessKey: session.AccessPublic},
 		Method:      http.MethodPost,
 		Path:        "/probe",
 	}, func(_ context.Context, in *probeInput) (*struct{}, error) {
@@ -70,6 +73,7 @@ func errorAPI(logger *slog.Logger) *API {
 
 func post(a *API, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/probe", strings.NewReader(body))
+	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", "application/json")
 
 	response := httptest.NewRecorder()
@@ -254,6 +258,7 @@ func TestInputStatuses(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(c.body))
+			request.Header.Set("Origin", "http://"+request.Host)
 			request.Header.Set("Content-Type", c.contentType)
 			if c.name == "timeout" {
 				request.Body = timedOutBody{}
@@ -314,8 +319,10 @@ func TestConcurrentErrors(t *testing.T) {
 		group.Go(func() {
 			for _, api := range []*API{a, local} {
 				for range requestsPerAPI {
+					request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{}`))
+					request.Header.Set("Origin", "http://"+request.Host)
 					response := httptest.NewRecorder()
-					api.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{}`)))
+					api.Handler().ServeHTTP(response, request)
 					assert.Equal(t, http.StatusUnprocessableEntity, response.Code)
 					assert.Contains(t, response.Body.String(), "/api/v0/problems/validation-error")
 				}
@@ -327,6 +334,7 @@ func TestConcurrentErrors(t *testing.T) {
 
 func TestErrorNegotiation(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{}`))
+	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Accept", "text/html")
 	response := httptest.NewRecorder()
 	New(discard, Services{}).Handler().ServeHTTP(response, request)

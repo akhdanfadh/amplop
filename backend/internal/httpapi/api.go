@@ -27,8 +27,10 @@ type API struct {
 // when no request is served, e.g. to export OpenAPI: registering an
 // operation calls none of them.
 type Services struct {
-	Probe   probeService
-	Account accountService
+	Probe    probeService
+	Account  accountService
+	Session  sessionService
+	Throttle setupThrottle
 }
 
 // New registers operations; logger receives one line per request.
@@ -41,10 +43,13 @@ func New(logger *slog.Logger, services Services) *API {
 	logger = slog.New(requestIDHandler{logger.Handler()})
 
 	router := gin.New()
+	// Disable Gin's trust of all proxies. An empty list cannot fail parsing.
+	router.SetTrustedProxies(nil)
+
 	// Request ID runs first so every log line has it. Recovery runs inside
-	// the request log, so a panic is logged as 500. The timeout wraps only
-	// the handler's own work.
-	router.Use(withRequestID(), withRequestLog(logger), withRecovery(logger), withTimeout(requestTimeout))
+	// the request log, so a panic is logged as 500. Cross-origin rejection
+	// is logged before the timeout wraps the handler's own work.
+	router.Use(withRequestID(), withRequestLog(logger), withRecovery(logger), withCrossOrigin(), withTimeout(requestTimeout))
 	router.HandleMethodNotAllowed = true
 	// Gin would answer /health/ with a 301 to /health before any
 	// middleware runs: no request ID, no log line, and a Location built
@@ -83,12 +88,20 @@ func New(logger *slog.Logger, services Services) *API {
 	}}
 
 	api = humagin.NewWithGroup(router, group, config)
+	api.UseMiddleware(withAccess(api, services.Session))
 
 	registerHealth(api)
 	registerProbe(api, services.Probe)
-	registerAccount(api, services.Account)
+	registerAccount(api, services.Account, services.Throttle)
+	registerSession(api, services.Session)
 
 	return &API{router: router, api: api}
+}
+
+// SetTrustedProxies sets which peers may supply forwarded client addresses.
+// Call before serving requests; nil trusts no proxies.
+func (a *API) SetTrustedProxies(cidrs []string) error {
+	return a.router.SetTrustedProxies(cidrs)
 }
 
 // Handler returns the handler for every registered route.

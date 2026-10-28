@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"inbok/internal/probe"
+	"inbok/internal/session"
 )
 
 const (
@@ -57,6 +58,7 @@ func registerProbe(api huma.API, service probeService) {
 	// Add an amount to the shared counter and record it, in one transaction.
 	huma.Register(api, huma.Operation{
 		OperationID:   "createProbeEvent",
+		Metadata:      map[string]any{accessKey: session.AccessPublic},
 		Method:        http.MethodPost,
 		Path:          probeEventsPath,
 		Summary:       "Add to the probe counter",

@@ -34,6 +34,8 @@ response covers other errors using the same Problem schema, including:
 | Status | Meaning |
 | --- | --- |
 | 400 | The request cannot be parsed. |
+| 401 | A valid session is required. |
+| 403 | The write request's source or the account's access is not allowed. |
 | 404 | The route or resource was not found. |
 | 405 | The route does not support this method; see the Allow header. |
 | 408 | Receiving the request body took too long. |
@@ -44,6 +46,9 @@ response covers other errors using the same Problem schema, including:
 
 Body errors apply to operations that accept a body. A default response
 describes the body format, not a replacement HTTP status.
+
+Write requests require Sec-Fetch-Site or Origin. Command-line clients can
+send an Origin matching the request's target.
 
 Input errors can include an errors list with field locations and safe
 correction messages. For example, a 422 response from POST /setup:

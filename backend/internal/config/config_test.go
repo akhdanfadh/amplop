@@ -12,16 +12,19 @@ import (
 func TestLoadDefault(t *testing.T) {
 	t.Setenv(envHTTPAddr, "")
 	t.Setenv(envSetupToken, "")
+	t.Setenv(envTrustedProxies, "")
 
 	cfg, err := Load()
 	require.NoError(t, err)
 
 	assert.Equal(t, "127.0.0.1:8080", cfg.HTTPAddr)
+	assert.Empty(t, cfg.TrustedProxies)
 }
 
 func TestLoadAddr(t *testing.T) {
 	t.Setenv(envHTTPAddr, "0.0.0.0:9090")
 	t.Setenv(envSetupToken, "")
+	t.Setenv(envTrustedProxies, "")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -32,15 +35,68 @@ func TestLoadAddr(t *testing.T) {
 func TestLoadBadAddr(t *testing.T) {
 	t.Setenv(envHTTPAddr, "localhost")
 	t.Setenv(envSetupToken, "")
+	t.Setenv(envTrustedProxies, "")
 
 	_, err := Load()
 
 	require.ErrorContains(t, err, envHTTPAddr)
 }
 
+func TestLoadTrustedProxiesUnset(t *testing.T) {
+	t.Setenv(envHTTPAddr, "")
+	t.Setenv(envSetupToken, "")
+	t.Setenv(envTrustedProxies, "")
+	require.NoError(t, os.Unsetenv(envTrustedProxies))
+
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	assert.Empty(t, cfg.TrustedProxies)
+}
+
+func TestLoadTrustedProxies(t *testing.T) {
+	cases := []struct {
+		value string
+		want  []string
+	}{
+		{"", nil},
+		{" \t ", nil},
+		{"127.0.0.1/32", []string{"127.0.0.1/32"}},
+		{"::1/128", []string{"::1/128"}},
+		{" 10.0.0.0/8, ::1/128 ", []string{"10.0.0.0/8", "::1/128"}},
+	}
+	for _, c := range cases {
+		t.Run(c.value, func(t *testing.T) {
+			t.Setenv(envHTTPAddr, "")
+			t.Setenv(envSetupToken, "")
+			t.Setenv(envTrustedProxies, c.value)
+
+			cfg, err := Load()
+			require.NoError(t, err)
+
+			assert.Equal(t, c.want, cfg.TrustedProxies)
+		})
+	}
+}
+
+func TestLoadBadTrustedProxies(t *testing.T) {
+	for _, value := range []string{"localhost", "127.0.0.1", "10.0.0.0/33", "::1/129", "10.0.0.0/8,", ",10.0.0.0/8", "10.0.0.0/8, ,::1/128"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(envHTTPAddr, "")
+			t.Setenv(envSetupToken, "")
+			t.Setenv(envTrustedProxies, value)
+
+			_, err := Load()
+
+			require.ErrorContains(t, err, envTrustedProxies)
+		})
+	}
+}
+
 func TestLoadSetupTokenUnset(t *testing.T) {
 	t.Setenv(envHTTPAddr, "")
 	t.Setenv(envSetupToken, "")
+	t.Setenv(envTrustedProxies, "")
 	require.NoError(t, os.Unsetenv(envSetupToken))
 
 	cfg, err := Load()
@@ -65,6 +121,7 @@ func TestLoadSetupToken(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv(envHTTPAddr, "")
 			t.Setenv(envSetupToken, c.token)
+			t.Setenv(envTrustedProxies, "")
 
 			cfg, err := Load()
 			require.NoError(t, err)
@@ -88,6 +145,7 @@ func TestLoadShortSetupToken(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv(envHTTPAddr, "")
 			t.Setenv(envSetupToken, c.token)
+			t.Setenv(envTrustedProxies, "")
 
 			cfg, err := Load()
 

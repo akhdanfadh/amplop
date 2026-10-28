@@ -24,13 +24,16 @@ import type {
 } from '@tanstack/react-query';
 
 import {
+  ResponseCurrentSession,
   ResponseFirstAdmin,
   ResponseHealthStatus,
   ResponseProbeEventCreated,
-  ResponseSetupStatus
+  ResponseSetupStatus,
+  ResponseSignInResult
 } from './model';
 import type {
   NewProbeEvent,
+  NewSession,
   NewSetup,
   Problem
 } from './model';
@@ -246,6 +249,271 @@ export const useCreateProbeEvent = <TError = ErrorType<Problem>,
       > => {
       return useMutation(getCreateProbeEventMutationOptions(options), queryClient);
     }
+
+export const getCreateSessionUrl = () => {
+
+
+
+
+  return `/api/v0/sessions`
+}
+
+/**
+ * @summary Sign in with a password
+ */
+export const createSession = async (newSession: NewSession, options?: Parameters<typeof transport>[1]): Promise<ResponseSignInResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseSignInResult>(getCreateSessionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newSession),
+    schema: ResponseSignInResult
+  }
+);}
+
+
+
+
+
+export const getCreateSessionMutationKey = () => ['createSession'] as const;
+
+export const getCreateSessionMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSession>>, TError,CreateSessionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSession>>, TError,CreateSessionMutationVariables, TContext> => {
+
+const mutationKey = getCreateSessionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSession>>, CreateSessionMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSession(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSessionMutationResult = NonNullable<Awaited<ReturnType<typeof createSession>>>
+    export type CreateSessionMutationBody = NewSession
+    export type CreateSessionMutationError = ErrorType<Problem>
+    export type CreateSessionMutationVariables = {data: NewSession}
+
+    /**
+ * @summary Sign in with a password
+ */
+export const useCreateSession = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSession>>, TError,CreateSessionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createSession>>,
+        TError,
+        CreateSessionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateSessionMutationOptions(options), queryClient);
+    }
+
+export const getDeleteCurrentSessionUrl = () => {
+
+
+
+
+  return `/api/v0/sessions/current`
+}
+
+/**
+ * @summary Sign out of the current session
+ */
+export const deleteCurrentSession = async ( options?: Parameters<typeof transport>[1]): Promise<void> => {
+
+  return transport<void>(getDeleteCurrentSessionUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteCurrentSessionMutationKey = () => ['deleteCurrentSession'] as const;
+
+export const getDeleteCurrentSessionMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCurrentSession>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCurrentSession>>, TError,void, TContext> => {
+
+const mutationKey = getDeleteCurrentSessionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCurrentSession>>, void> = () => {
+
+
+          return  deleteCurrentSession(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCurrentSessionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCurrentSession>>>
+
+    export type DeleteCurrentSessionMutationError = ErrorType<Problem>
+
+
+    /**
+ * @summary Sign out of the current session
+ */
+export const useDeleteCurrentSession = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCurrentSession>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCurrentSession>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteCurrentSessionMutationOptions(options), queryClient);
+    }
+
+export const getGetCurrentSessionUrl = () => {
+
+
+
+
+  return `/api/v0/sessions/current`
+}
+
+/**
+ * @summary Get the signed-in account
+ */
+export const getCurrentSession = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseCurrentSession> => {
+
+  return transport<ResponseCurrentSession>(getGetCurrentSessionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseCurrentSession
+  }
+);}
+
+
+
+
+
+export const getGetCurrentSessionQueryKey = () => {
+    return [
+    `/api/v0/sessions/current`
+    ] as const;
+    }
+
+
+export const getGetCurrentSessionQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentSession>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCurrentSession>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrentSessionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentSession>>> = ({ signal }) => getCurrentSession({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCurrentSession>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCurrentSessionQueryResult = NonNullable<Awaited<ReturnType<typeof getCurrentSession>>>
+export type GetCurrentSessionQueryError = ErrorType<Problem>
+
+
+export function useGetCurrentSession<TData = Awaited<ReturnType<typeof getCurrentSession>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCurrentSession>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCurrentSession>>,
+          TError,
+          Awaited<ReturnType<typeof getCurrentSession>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCurrentSession<TData = Awaited<ReturnType<typeof getCurrentSession>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCurrentSession>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCurrentSession>>,
+          TError,
+          Awaited<ReturnType<typeof getCurrentSession>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCurrentSession<TData = Awaited<ReturnType<typeof getCurrentSession>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCurrentSession>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get the signed-in account
+ */
+
+export function useGetCurrentSession<TData = Awaited<ReturnType<typeof getCurrentSession>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCurrentSession>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCurrentSessionQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetSetupStatusUrl = () => {
 

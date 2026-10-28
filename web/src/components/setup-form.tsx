@@ -51,10 +51,25 @@ const inputs = [
 ] as const;
 const setupFields = inputs.map((input) => input.name);
 
-export function SetupForm({ onDone }: { onDone: () => void }): ReactElement {
+export function SetupForm({
+  onAttempt,
+  onDone,
+}: {
+  onAttempt: () => void;
+  onDone: () => void;
+}): ReactElement {
   const formRef = useRef<HTMLFormElement>(null);
   // Do not retain submitted credentials after the form is unmounted.
-  const create = useCreateFirstAdmin({ mutation: { gcTime: 0 } });
+  const create = useCreateFirstAdmin({
+    mutation: {
+      gcTime: 0,
+      onMutate: onAttempt,
+      onSuccess: onDone,
+      onError: (err) => {
+        if (err.status === conflict && err.problem?.type === setupDoneType) return onDone();
+      },
+    },
+  });
   const form = useForm({
     defaultValues: emptySetup,
     validators: { onChange: SetupSchema },
@@ -71,12 +86,10 @@ export function SetupForm({ onDone }: { onDone: () => void }): ReactElement {
         {
           onSuccess: () => {
             formApi.reset();
-            onDone();
           },
           onError: (err) => {
             if (err.status === conflict && err.problem?.type === setupDoneType) {
               formApi.reset();
-              onDone();
               return;
             }
             const { fields } = formErrors(err, setupFields);
