@@ -7,10 +7,12 @@
 
 export * from './createFirstAdminBody.zod';
 export * from './createProbeEventBody.zod';
+export * from './createSessionBody.zod';
 export * from './firstAdmin.zod';
 export * from './healthStatus.zod';
 export * from './inputError.zod';
 export * from './newProbeEvent.zod';
+export * from './newSession.zod';
 export * from './newSetup.zod';
 export * from './probeEvent.zod';
 export * from './probeEventCreated.zod';
@@ -19,4 +21,6 @@ export * from './responseFirstAdmin.zod';
 export * from './responseHealthStatus.zod';
 export * from './responseProbeEventCreated.zod';
 export * from './responseSetupStatus.zod';
+export * from './responseSignInResult.zod';
 export * from './setupStatus.zod';
+export * from './signInResult.zod';

@@ -84,6 +84,27 @@
         ],
         "type": "object"
       },
+      "NewSession": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "maxLength": 254,
+            "minLength": 3,
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "type": "object"
+      },
       "NewSetup": {
         "additionalProperties": false,
         "properties": {
@@ -253,6 +274,18 @@
         ],
         "type": "object"
       },
+      "ResponseSignInResult": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SignInResult"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "SetupStatus": {
         "additionalProperties": false,
         "properties": {
@@ -267,6 +300,21 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "SignInResult": {
+        "additionalProperties": false,
+        "properties": {
+          "step": {
+            "enum": [
+              "complete"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "step"
         ],
         "type": "object"
       }
@@ -359,6 +407,83 @@
           }
         },
         "summary": "Add to the probe counter"
+      }
+    },
+    "/sessions": {
+      "post": {
+        "operationId": "createSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSignInResult"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/invalid-credentials",
+                  "status": 401,
+                  "title": "Sign-in failed",
+                  "detail": "The email or password is incorrect."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The email or password is incorrect."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/sign-in-throttled",
+                  "status": 429,
+                  "title": "Too many attempts",
+                  "detail": "Too many failed attempts. Try again later."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too many recent sign-in failures from this address."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "summary": "Sign in with a password"
       }
     },
     "/setup": {
@@ -454,6 +579,22 @@
               }
             },
             "description": "Setup is complete or no setup token is configured."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/sign-in-throttled",
+                  "status": 429,
+                  "title": "Too many attempts",
+                  "detail": "Too many failed attempts. Try again later."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too many recent failed attempts from this address."
           },
           "default": {
             "content": {

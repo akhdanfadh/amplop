@@ -56,7 +56,7 @@ func postSetup(logger *slog.Logger, accounts *fakeAccounts, body string) *httpte
 	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
-	New(logger, Services{Account: accounts}).Handler().ServeHTTP(response, request)
+	New(logger, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler().ServeHTTP(response, request)
 	return response
 }
 
@@ -64,7 +64,7 @@ func TestGetSetupStatus(t *testing.T) {
 	for _, status := range []account.SetupStatus{account.SetupUnconfigured, account.SetupOpen, account.SetupDone} {
 		t.Run(string(status), func(t *testing.T) {
 			accounts := &fakeAccounts{status: status}
-			router := New(discard, Services{Account: accounts}).Handler()
+			router := New(discard, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler()
 			response := httptest.NewRecorder()
 
 			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/setup", nil))
@@ -268,7 +268,7 @@ func TestSetupUnexpectedError(t *testing.T) {
 			case "status":
 				accounts.err = lost
 				response = httptest.NewRecorder()
-				New(logger, Services{Account: accounts}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/setup", nil))
+				New(logger, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/setup", nil))
 			case "claim":
 				accounts.setupErr = lost
 				response = postSetup(logger, accounts, setupBody(t, setupFields()))
@@ -304,7 +304,7 @@ func TestSetupBodyErrors(t *testing.T) {
 			}
 			response := httptest.NewRecorder()
 
-			New(discard, Services{Account: accounts}).Handler().ServeHTTP(response, request)
+			New(discard, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler().ServeHTTP(response, request)
 
 			require.Equal(t, c.code, response.Code, response.Body.String())
 			assert.NotContains(t, response.Body.String(), "private-token")
@@ -349,8 +349,8 @@ func TestSetupOpenAPI(t *testing.T) {
 	require.Len(t, path.Get.Responses, 2)
 	require.NotNil(t, path.Get.Responses[strconv.Itoa(http.StatusOK)])
 	require.NotNil(t, path.Get.Responses["default"])
-	require.Len(t, path.Post.Responses, 4)
-	for _, code := range []int{http.StatusCreated, http.StatusForbidden, http.StatusConflict} {
+	require.Len(t, path.Post.Responses, 5)
+	for _, code := range []int{http.StatusCreated, http.StatusForbidden, http.StatusConflict, http.StatusTooManyRequests} {
 		require.NotNil(t, path.Post.Responses[strconv.Itoa(code)])
 	}
 	fallback := path.Post.Responses["default"]
@@ -396,7 +396,7 @@ func TestSetupBodyShape(t *testing.T) {
 
 func TestSetupBodyLimit(t *testing.T) {
 	accounts := &fakeAccounts{}
-	api := New(discard, Services{Account: accounts})
+	api := New(discard, Services{Account: accounts, Throttle: &fakeThrottle{}})
 	limit := api.api.OpenAPI().Paths[setupPath].Post.MaxBodyBytes
 	require.Positive(t, limit)
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(strings.Repeat("x", int(limit)+1)))
@@ -412,7 +412,7 @@ func TestSetupBodyLimit(t *testing.T) {
 func TestSetupConcurrentValidation(t *testing.T) {
 	const requests = 20
 	accounts := &fakeAccounts{}
-	router := New(discard, Services{Account: accounts}).Handler()
+	router := New(discard, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler()
 	body := setupFields()
 	body["password"] = "private-short"
 	encoded := setupBody(t, body)

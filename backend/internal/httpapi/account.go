@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/netip"
 	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"inbok/internal/account"
+	"inbok/internal/session"
 )
 
 const (
@@ -23,6 +25,24 @@ type newSetup struct {
 	Token    string `json:"token" writeOnly:"true"`
 	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254"`
 	Password string `json:"password" writeOnly:"true" minLength:"15" maxLength:"128"`
+}
+
+// setupInput combines setup fields with the resolved client address.
+type setupInput struct {
+	Body newSetup
+	addr netip.Addr
+}
+
+// Resolve fills the client address for throttling using Gin's proxy rules.
+// Huma calls it automatically after parsing the request, before the handler.
+func (in *setupInput) Resolve(ctx huma.Context) []error {
+	return resolveClientAddr(ctx, &in.addr)
+}
+
+// setupThrottle reserves setup failures against the shared address limit.
+type setupThrottle interface {
+	BeginSetup(ctx context.Context, addr netip.Addr) (int64, error)
+	Succeed(ctx context.Context, id int64) error
 }
 
 type setupStatus struct {
@@ -40,7 +60,7 @@ type accountService interface {
 	Setup(ctx context.Context, input account.SetupInput) (account.User, error)
 }
 
-func registerAccount(api huma.API, service accountService) {
+func registerAccount(api huma.API, service accountService, throttle setupThrottle) {
 	huma.Register(api, huma.Operation{
 		OperationID: "getSetupStatus",
 		Method:      http.MethodGet,
@@ -61,8 +81,13 @@ func registerAccount(api huma.API, service accountService) {
 		Path:          setupPath,
 		Summary:       "Create the first administrator",
 		DefaultStatus: http.StatusCreated,
-		Responses:     problemResponses(api, http.StatusForbidden, http.StatusConflict),
-	}, func(ctx context.Context, in *struct{ Body newSetup }) (*output[firstAdmin], error) {
+		Responses:     problemResponses(api, http.StatusForbidden, http.StatusConflict, http.StatusTooManyRequests),
+	}, func(ctx context.Context, in *setupInput) (*output[firstAdmin], error) {
+		id, err := throttle.BeginSetup(ctx, in.addr)
+		if err != nil {
+			return nil, signInProblem(err)
+		}
+
 		user, err := service.Setup(ctx, account.SetupInput{
 			Token:    in.Body.Token,
 			Email:    in.Body.Email,
@@ -70,6 +95,9 @@ func registerAccount(api huma.API, service accountService) {
 		})
 		if err != nil {
 			return nil, setupProblem(err)
+		}
+		if err := throttle.Succeed(ctx, id); err != nil {
+			return nil, err
 		}
 		return respondData(firstAdmin{ID: user.ID, Email: user.Email}), nil
 	})
@@ -84,6 +112,9 @@ func registerAccount(api huma.API, service accountService) {
 	forbidden := post.Responses[strconv.Itoa(http.StatusForbidden)]
 	forbidden.Description = "The setup token is invalid."
 	forbidden.Content[problemContentType].Example = setupProblem(account.ErrSetupTokenInvalid)
+	throttled := post.Responses[strconv.Itoa(http.StatusTooManyRequests)]
+	throttled.Description = "Too many recent failed attempts from this address."
+	throttled.Content[problemContentType].Example = signInProblem(session.ErrThrottled)
 }
 
 func setupProblem(err error) error {

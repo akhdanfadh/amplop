@@ -27,10 +27,12 @@ import {
   ResponseFirstAdmin,
   ResponseHealthStatus,
   ResponseProbeEventCreated,
-  ResponseSetupStatus
+  ResponseSetupStatus,
+  ResponseSignInResult
 } from './model';
 import type {
   NewProbeEvent,
+  NewSession,
   NewSetup,
   Problem
 } from './model';
@@ -245,6 +247,95 @@ export const useCreateProbeEvent = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getCreateProbeEventMutationOptions(options), queryClient);
+    }
+
+export const getCreateSessionUrl = () => {
+
+
+
+
+  return `/api/v0/sessions`
+}
+
+/**
+ * @summary Sign in with a password
+ */
+export const createSession = async (newSession: NewSession, options?: Parameters<typeof transport>[1]): Promise<ResponseSignInResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseSignInResult>(getCreateSessionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newSession),
+    schema: ResponseSignInResult
+  }
+);}
+
+
+
+
+
+export const getCreateSessionMutationKey = () => ['createSession'] as const;
+
+export const getCreateSessionMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSession>>, TError,CreateSessionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSession>>, TError,CreateSessionMutationVariables, TContext> => {
+
+const mutationKey = getCreateSessionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSession>>, CreateSessionMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSession(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSessionMutationResult = NonNullable<Awaited<ReturnType<typeof createSession>>>
+    export type CreateSessionMutationBody = NewSession
+    export type CreateSessionMutationError = ErrorType<Problem>
+    export type CreateSessionMutationVariables = {data: NewSession}
+
+    /**
+ * @summary Sign in with a password
+ */
+export const useCreateSession = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSession>>, TError,CreateSessionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createSession>>,
+        TError,
+        CreateSessionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateSessionMutationOptions(options), queryClient);
     }
 
 export const getGetSetupStatusUrl = () => {

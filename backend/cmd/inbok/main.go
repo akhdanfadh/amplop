@@ -17,6 +17,7 @@ import (
 	"inbok/internal/httpapi"
 	"inbok/internal/probe"
 	"inbok/internal/repository/postgres"
+	"inbok/internal/session"
 )
 
 const (
@@ -104,9 +105,12 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		}
 	}
 
+	throttle := session.NewThrottle(db, time.Now)
 	services := httpapi.Services{
-		Probe:   probe.NewService(db),
-		Account: accounts,
+		Probe:    probe.NewService(db),
+		Account:  accounts,
+		Session:  session.NewService(db, accounts, throttle, time.Now),
+		Throttle: throttle,
 	}
 	api := httpapi.New(logger, services)
 	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {
