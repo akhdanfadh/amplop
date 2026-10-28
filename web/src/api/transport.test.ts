@@ -6,9 +6,12 @@ import { ApiError, transport } from "./transport";
 
 const url = "/api/v0/health";
 const init = { schema: ResponseHealthStatus };
+const deleteMethod = "DELETE";
 const httpStatus = {
   ok: 200,
   created: 201,
+  noContent: 204,
+  unauthorized: 401,
   conflict: 409,
   unprocessable: 422,
   badGateway: 502,
@@ -124,12 +127,80 @@ describe("transport", () => {
     await expect(transport(url, { ...init, signal: caller.signal })).rejects.toBe(cancelled);
   });
 
-  it("sends nothing for an operation without a response schema", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>();
-    vi.stubGlobal("fetch", fetch);
+  it("returns no data for a schema-less 204 operation", async () => {
+    answer(null, httpStatus.noContent, "");
 
-    await expect(transport(url, {})).rejects.toThrow(`${url}: no response schema`);
-    expect(fetch).not.toHaveBeenCalled();
+    await expect(transport(url, { method: deleteMethod })).resolves.toBeUndefined();
+  });
+
+  it("does not read a body for a 204 operation", async () => {
+    const response = new Response(null, { status: httpStatus.noContent });
+    const read = vi.spyOn(response, "text");
+    vi.stubGlobal("fetch", async () => response);
+
+    await expect(transport(url, { method: deleteMethod })).resolves.toBeUndefined();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("rejects 204 when the operation promises JSON data", async () => {
+    const log = watchLog();
+    answer(null, httpStatus.noContent, "");
+
+    const err = await failure();
+
+    expect(err.kind).toBe("response");
+    expect(err.status).toBe(httpStatus.noContent);
+    expect(log).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { status: httpStatus.ok, body: "" },
+    { status: httpStatus.ok, body: JSON.stringify({ data: { status: "ok" } }) },
+    { status: httpStatus.created, body: "" },
+  ])(
+    "rejects status $status with body '$body' for a bodyless operation",
+    async ({ status, body }) => {
+      const log = watchLog();
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(body, {
+            status,
+            headers: { "X-Request-ID": "unexpected-response-reference" },
+          }),
+      );
+
+      await expect(transport(url, { method: deleteMethod })).rejects.toMatchObject({
+        kind: "response",
+        status,
+        method: deleteMethod,
+        requestId: "unexpected-response-reference",
+      });
+      expect(log).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("preserves HTTP errors for a bodyless operation", async () => {
+    const problem = { type: "/api/v0/problems/unauthenticated", detail: "Sign in to continue." };
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify(problem), {
+          status: httpStatus.unauthorized,
+          headers: {
+            "Content-Type": "application/problem+json",
+            "X-Request-ID": "sign-out-reference",
+          },
+        }),
+    );
+
+    await expect(transport(url, { method: deleteMethod })).rejects.toMatchObject({
+      kind: "http",
+      status: httpStatus.unauthorized,
+      method: deleteMethod,
+      problem,
+      requestId: "sign-out-reference",
+    });
   });
 });
 

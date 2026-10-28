@@ -4,6 +4,7 @@ import { ReceivedProblem } from "./received-problem";
 const problemType = "application/problem+json";
 const requestIdHeader = "X-Request-ID";
 const retryAfterHeader = "Retry-After";
+const noContentStatus = 204;
 // Leave room for delivery around the backend's ten-second work limit.
 const requestTimeoutMs = 15_000;
 
@@ -52,16 +53,19 @@ export class ApiError extends Error {
 // Orval supplies a generated body type, but request failures use ApiError.
 export type ErrorType<_Body> = ApiError;
 
-// Generated API calls pass their success schema here. Return checked data
-// or throw an error containing the response facts received so far.
-export async function transport<T>(
+// transport checks JSON responses against their generated success schema.
+export function transport<T>(url: string, init: RequestInit & { schema: ZodType<T> }): Promise<T>;
+// transport accepts a schema-less 204 response for bodyless operations.
+export function transport<T extends void = void>(
   url: string,
-  init: RequestInit & { schema?: ZodType<T> },
-): Promise<T> {
-  // schema is our validation setting, not a fetch option. Missing it is a
-  // programming error; reject it before sending a request.
+  init: RequestInit & { schema?: undefined },
+): Promise<T>;
+export async function transport(
+  url: string,
+  init: RequestInit & { schema?: ZodType },
+): Promise<unknown> {
+  // schema is our validation setting, not a fetch option.
   const { schema, ...rest } = init;
-  if (!schema) throw new Error(`${url}: no response schema`);
   const facts: ErrorFacts = { method: init.method?.toUpperCase() ?? "GET" };
 
   // One timer covers sending and body reading. Clear it after reading or a
@@ -83,7 +87,7 @@ export async function transport<T>(
     facts.status = res.status;
     facts.requestId = res.headers.get(requestIdHeader) || undefined;
     facts.retryAfter = res.headers.get(retryAfterHeader) ?? undefined;
-    text = await res.text();
+    text = res.status === noContentStatus ? "" : await res.text();
   } catch (err) {
     if (isTimeout(signal)) throw new ApiError("timeout", facts);
     if (signal.aborted) throw err;
@@ -111,6 +115,16 @@ export async function transport<T>(
     throw new ApiError("http", facts);
   }
 
+  // Orval omits the schema for bodyless operations; accept only 204 there.
+  if (!schema || res.status === noContentStatus) {
+    if (!schema && res.status === noContentStatus) return undefined;
+    logMismatch(
+      url,
+      schema ? "Expected a response body." : "Expected a 204 response without a body.",
+    );
+    throw new ApiError("response", facts);
+  }
+
   // A success status alone is not enough: callers need the promised data.
   // An incompatible body is a response failure, not interrupted communication.
   const result = schema.safeParse(body);
@@ -132,6 +146,6 @@ function isTimeout(signal: AbortSignal): boolean {
 }
 
 // Contract mismatches belong in developer diagnostics; screens choose user text.
-function logMismatch(url: string, err: ZodError): void {
+function logMismatch(url: string, err: ZodError | string): void {
   console.error(`${url}: response does not match the API contract`, err);
 }

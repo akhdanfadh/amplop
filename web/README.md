@@ -154,7 +154,12 @@ from a failed read even when no response arrived.
 
 Every generated function uses `src/api/transport.ts`, which checks success
 bodies against generated schemas and logs contract mismatches to the browser
-console. Error bodies with media type `application/problem+json` use
+console. For bodyless operations, Orval omits the schema; transport accepts only
+HTTP 204 and returns `undefined`. JSON operations still require their promised
+body, so an unexpected 204 is a contract mismatch. Error responses keep the same
+`ApiError` handling for both kinds of operation.
+
+Error bodies with media type `application/problem+json` use
 `src/api/received-problem.ts`: members can be omitted, invalid members are
 ignored, and URI references can be relative or absolute. Extra fields are
 dropped, not rejected.
