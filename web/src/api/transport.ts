@@ -56,7 +56,7 @@ export type ErrorType<_Body> = ApiError;
 // transport checks JSON responses against their generated success schema.
 export function transport<T>(url: string, init: RequestInit & { schema: ZodType<T> }): Promise<T>;
 // transport accepts a schema-less 204 response for bodyless operations.
-export function transport<T extends void = void>(
+export function transport<T extends void>(
   url: string,
   init: RequestInit & { schema?: undefined },
 ): Promise<T>;

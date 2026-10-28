@@ -14,7 +14,7 @@ type accountService interface {
 	UserByID(ctx context.Context, id int64) (account.User, error)
 }
 
-// Service creates browser sessions and resolves their current identity.
+// Service manages browser sessions and resolves their current identity.
 type Service struct {
 	storage  Storage
 	accounts accountService

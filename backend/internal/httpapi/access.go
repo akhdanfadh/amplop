@@ -14,8 +14,8 @@ import (
 // accessKey names the shared operation metadata entry for required access.
 const accessKey = "access"
 
-// identityKey identifies the checked user stored in the request context.
-type identityKey struct{}
+// sessionKey identifies the checked session and identity in the request context.
+type sessionKey struct{}
 
 // withAccess enforces each operation's access level before parsing its inputs.
 // Missing or invalid access metadata requires admin access.
@@ -33,10 +33,10 @@ func withAccess(api huma.API, service sessionService) func(huma.Context, func(hu
 		// Keep account-specific responses out of browser and proxy HTTP caches.
 		ctx.SetHeader("Cache-Control", "no-store")
 		cookie, cookieErr := huma.ReadCookie(ctx, sessionCookieName)
-		var identity session.Identity
+		var current session.Authenticated
 		err := session.ErrUnauthenticated
 		if cookieErr == nil && cookie.Value != "" {
-			identity, err = service.Current(ctx.Context(), cookie.Value)
+			current, err = service.Current(ctx.Context(), cookie.Value)
 		}
 		if errors.Is(err, session.ErrUnauthenticated) {
 			cleared := sessionCookie("", -1)
@@ -49,6 +49,7 @@ func withAccess(api huma.API, service sessionService) func(huma.Context, func(hu
 			return
 		}
 
+		identity := current.Identity
 		allowed := identity.Access >= session.AccessMember && identity.Access <= session.AccessAdmin &&
 			(identity.User.Role == account.RoleMember || identity.User.Role == account.RoleAdmin)
 		if level == session.AccessAdmin && identity.User.Role == account.RoleAdmin && identity.TOTPRequired {
@@ -61,7 +62,7 @@ func withAccess(api huma.API, service sessionService) func(huma.Context, func(hu
 				"Access denied", "You do not have access to this operation."))
 			return
 		}
-		next(huma.WithValue(ctx, identityKey{}, identity))
+		next(huma.WithValue(ctx, sessionKey{}, current))
 	}
 }
 

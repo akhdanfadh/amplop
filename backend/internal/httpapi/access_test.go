@@ -52,7 +52,7 @@ func TestAccessGate(t *testing.T) {
 			huma.Register(api.api, huma.Operation{OperationID: "testAccess", Method: http.MethodGet, Path: "/test-access", Metadata: map[string]any{accessKey: c.level}}, func(ctx context.Context, _ *struct{}) (*output[healthStatus], error) {
 				called = true
 				if c.level != session.AccessPublic {
-					assert.Equal(t, c.identity, ctx.Value(identityKey{}))
+					assert.Equal(t, c.identity, ctx.Value(sessionKey{}).(session.Authenticated).Identity)
 				}
 				return respondData(healthStatus{Status: "ok"}), nil
 			})

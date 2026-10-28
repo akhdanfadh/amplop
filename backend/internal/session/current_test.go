@@ -62,23 +62,24 @@ func TestCurrent(t *testing.T) {
 	}}
 	service := NewService(store, accounts, nil, clock.Now)
 
-	identity, err := service.Current(t.Context(), issued.Secret)
+	current, err := service.Current(t.Context(), issued.Secret)
 
 	require.NoError(t, err)
-	assert.Equal(t, user, identity.User)
-	assert.Equal(t, AccessMember, identity.Access, "an admin without TOTP acts as a member")
-	assert.True(t, identity.TOTPRequired)
+	assert.Equal(t, user, current.Identity.User)
+	assert.Equal(t, AccessMember, current.Identity.Access, "an admin without TOTP acts as a member")
+	assert.True(t, current.Identity.TOTPRequired)
+	assert.NotZero(t, current.Session)
 	require.Len(t, store.changes, 1)
 	assert.Equal(t, Keep, store.changes[0].Action)
 
 	// Later checks must use current user data, including a changed role.
 	user.Email, user.Role = "member@example.com", account.RoleMember
 	clock.Advance(time.Hour)
-	identity, err = service.Current(t.Context(), issued.Secret)
+	current, err = service.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
-	assert.Equal(t, user, identity.User)
-	assert.Equal(t, AccessMember, identity.Access)
-	assert.False(t, identity.TOTPRequired)
+	assert.Equal(t, user, current.Identity.User)
+	assert.Equal(t, AccessMember, current.Identity.Access)
+	assert.False(t, current.Identity.TOTPRequired)
 	assert.Equal(t, 2, reads)
 	assert.Equal(t, clock.Now(), store.row.LastUsedAt)
 	assert.Equal(t, issued.State.CreatedAt.Add(30*24*time.Hour), store.row.ExpiresAt)

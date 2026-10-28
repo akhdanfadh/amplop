@@ -61,7 +61,13 @@ type sessionOutput struct {
 // sessionService is the session behavior called by these HTTP operations.
 type sessionService interface {
 	SignIn(ctx context.Context, email, password string, addr netip.Addr) (session.Issued, error)
-	Current(ctx context.Context, secret string) (session.Identity, error)
+	Current(ctx context.Context, secret string) (session.Authenticated, error)
+	SignOut(ctx context.Context, ref session.Reference) error
+}
+
+// signOutOutput clears the browser cookie without a response body.
+type signOutOutput struct {
+	SetCookie http.Cookie `header:"Set-Cookie"`
 }
 
 // currentSession is the signed-in account and its TOTP enrollment requirement.
@@ -71,7 +77,7 @@ type currentSession struct {
 	TOTPRequired bool         `json:"totpRequired"`
 }
 
-// registerSession adds password sign-in and its documented failures.
+// registerSession adds sign-in, current account, and sign-out operations.
 func registerSession(api huma.API, service sessionService) {
 	huma.Register(api, huma.Operation{
 		OperationID:   "createSession",
@@ -115,11 +121,31 @@ func registerSession(api huma.API, service sessionService) {
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   problemResponses(api, http.StatusUnauthorized),
 	}, func(ctx context.Context, _ *struct{}) (*output[currentSession], error) {
-		identity := ctx.Value(identityKey{}).(session.Identity)
+		identity := ctx.Value(sessionKey{}).(session.Authenticated).Identity
 		return respondData(currentSession{Email: identity.User.Email, Role: identity.User.Role, TOTPRequired: identity.TOTPRequired}), nil
 	})
 	unauthenticated := api.OpenAPI().Paths[currentSessionPath].Get.Responses[strconv.Itoa(http.StatusUnauthorized)]
 	unauthenticated.Description = "No valid session identifies a current account."
+	unauthenticated.Content[problemContentType].Example = unauthenticatedProblem()
+
+	huma.Register(api, huma.Operation{
+		OperationID:   "deleteCurrentSession",
+		Method:        http.MethodDelete,
+		Path:          currentSessionPath,
+		Summary:       "Sign out of the current session",
+		DefaultStatus: http.StatusNoContent,
+		Metadata:      map[string]any{accessKey: session.AccessMember},
+		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:     problemResponses(api, http.StatusUnauthorized),
+	}, func(ctx context.Context, _ *struct{}) (*signOutOutput, error) {
+		current := ctx.Value(sessionKey{}).(session.Authenticated)
+		if err := service.SignOut(ctx, current.Session); err != nil {
+			return nil, err
+		}
+		return &signOutOutput{SetCookie: sessionCookie("", -1)}, nil
+	})
+	unauthenticated = api.OpenAPI().Paths[currentSessionPath].Delete.Responses[strconv.Itoa(http.StatusUnauthorized)]
+	unauthenticated.Description = "No valid session identifies a current account. The session cookie is cleared."
 	unauthenticated.Content[problemContentType].Example = unauthenticatedProblem()
 }
 

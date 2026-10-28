@@ -53,8 +53,9 @@ Access checks use Huma middleware because it can read the matched operation's
 `Metadata["access"]`. Declare `session.AccessPublic` for public operations,
 `session.AccessMember` for any valid session, or `session.AccessAdmin` for
 administrators with confirmed TOTP. Missing or invalid metadata requires admin
-access. This metadata is shared endpoint configuration; the checked user's
-identity belongs in the context of each request.
+access. This metadata is shared endpoint configuration. Each request's context
+holds the checked session reference and user's identity. Handlers pass the
+reference to session operations without reading its hash.
 
 Protected responses use `Cache-Control: no-store` so browser and proxy HTTP
 caches do not retain account data or reuse stale authentication responses.

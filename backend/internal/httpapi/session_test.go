@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -20,9 +21,16 @@ import (
 	"inbok/internal/session"
 )
 
-const signInHTTPBody = `{"email":"Admin@Example.COM","password":"a long sign-in password"}`
+const (
+	signInHTTPBody      = `{"email":"Admin@Example.COM","password":"a long sign-in password"}`
+	encodedSecretLength = 43
+)
 
 type fakeSessions struct {
+	signOutErr    error
+	signOutCalls  int
+	signedOut     session.Reference
+	reference     session.Reference
 	identity      session.Identity
 	currentErr    error
 	currentCalls  int
@@ -35,16 +43,46 @@ type fakeSessions struct {
 	calls         int
 }
 
-func (f *fakeSessions) Current(_ context.Context, secret string) (session.Identity, error) {
+func (f *fakeSessions) SignOut(_ context.Context, ref session.Reference) error {
+	f.signOutCalls++
+	f.signedOut = ref
+	return f.signOutErr
+}
+
+func (f *fakeSessions) Current(_ context.Context, secret string) (session.Authenticated, error) {
 	f.currentCalls++
 	f.currentSecret = secret
-	return f.identity, f.currentErr
+	return session.Authenticated{Identity: f.identity, Session: f.reference}, f.currentErr
 }
 
 func (f *fakeSessions) SignIn(_ context.Context, email, password string, addr netip.Addr) (session.Issued, error) {
 	f.calls++
 	f.email, f.password, f.addr = email, password, addr
 	return f.issued, f.err
+}
+
+// referenceStorage supplies a session row for issuing test references through Current.
+type referenceStorage struct{ session.Storage }
+
+func (referenceStorage) UpdateSession(_ context.Context, hash [sha256.Size]byte, update func(session.State) (session.Change, error)) error {
+	now := time.Now()
+	_, err := update(session.State{TokenHash: hash, UserID: 42, CreatedAt: now, LastUsedAt: now, ExpiresAt: now.Add(time.Hour)})
+	return err
+}
+
+type referenceAccounts struct{ *account.Service }
+
+func (referenceAccounts) UserByID(context.Context, int64) (account.User, error) {
+	return account.User{ID: 42, Role: account.RoleMember}, nil
+}
+
+func checkedReference(t *testing.T) session.Reference {
+	t.Helper()
+	service := session.NewService(referenceStorage{}, referenceAccounts{}, nil, time.Now)
+	current, err := service.Current(t.Context(), strings.Repeat("A", encodedSecretLength))
+	require.NoError(t, err)
+	require.NotZero(t, current.Session)
+	return current.Session
 }
 
 func postSession(api *API, body string) *httptest.ResponseRecorder {
@@ -59,7 +97,7 @@ func postSession(api *API, body string) *httptest.ResponseRecorder {
 
 func TestCreateSession(t *testing.T) {
 	service := &fakeSessions{issued: session.Issued{
-		Secret: strings.Repeat("A", 43), State: session.State{ExpiresAt: time.Now().Add(2 * time.Hour)},
+		Secret: strings.Repeat("A", encodedSecretLength), State: session.State{ExpiresAt: time.Now().Add(2 * time.Hour)},
 	}}
 
 	response := postSession(New(discard, Services{Session: service}), signInHTTPBody)
@@ -237,4 +275,145 @@ func TestInvalidClientAddress(t *testing.T) {
 		assert.Empty(t, accounts.created)
 		assert.Empty(t, response.Result().Cookies())
 	}
+}
+
+func TestDeleteCurrentSession(t *testing.T) {
+	ref := checkedReference(t)
+	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
+		t.Run(string(role), func(t *testing.T) {
+			service := &fakeSessions{identity: session.Identity{
+				User: account.User{ID: 42, Role: role}, Access: session.AccessMember, TOTPRequired: role == account.RoleAdmin,
+			}, reference: ref}
+			api := New(discard, Services{Session: service})
+			request := httptest.NewRequest(http.MethodDelete, "/api/v0/sessions/current", nil)
+			request.Header.Set("Origin", "http://"+request.Host)
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "private-cookie-secret"})
+			response := httptest.NewRecorder()
+
+			api.Handler().ServeHTTP(response, request)
+
+			require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+			assert.Empty(t, response.Body.String())
+			assert.Equal(t, 1, service.signOutCalls)
+			assert.Equal(t, ref, service.signedOut)
+			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+			cookies := response.Result().Cookies()
+			require.Len(t, cookies, 1)
+			assert.Equal(t, sessionCookieName, cookies[0].Name)
+			assert.Empty(t, cookies[0].Value)
+			assert.Negative(t, cookies[0].MaxAge)
+			assert.Equal(t, "/", cookies[0].Path)
+			assert.Empty(t, cookies[0].Domain)
+			assert.True(t, cookies[0].Secure)
+			assert.True(t, cookies[0].HttpOnly)
+			assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite)
+		})
+	}
+}
+
+func TestSignOutUnauthenticated(t *testing.T) {
+	for _, secret := range []string{"", "expired-secret", "missing-secret", "invalid-secret"} {
+		t.Run(secret, func(t *testing.T) {
+			service := &fakeSessions{currentErr: session.ErrUnauthenticated}
+			api := New(discard, Services{Session: service})
+			request := httptest.NewRequest(http.MethodDelete, "/api/v0/sessions/current", nil)
+			request.Header.Set("Origin", "http://"+request.Host)
+			if secret != "" {
+				request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: secret})
+			}
+			response := httptest.NewRecorder()
+
+			api.Handler().ServeHTTP(response, request)
+
+			require.Equal(t, http.StatusUnauthorized, response.Code, response.Body.String())
+			assert.Equal(t, problemPrefix+"unauthenticated", decodeJSON(t, response.Body.Bytes())["type"])
+			assert.Zero(t, service.signOutCalls)
+			cookies := response.Result().Cookies()
+			require.Len(t, cookies, 1)
+			assert.Equal(t, sessionCookieName, cookies[0].Name)
+			assert.Empty(t, cookies[0].Value)
+			assert.Negative(t, cookies[0].MaxAge)
+		})
+	}
+}
+
+func TestSignOutDuplicateCookies(t *testing.T) {
+	ref := checkedReference(t)
+	service := &fakeSessions{identity: session.Identity{
+		User: account.User{ID: 42, Role: account.RoleMember}, Access: session.AccessMember,
+	}, reference: ref}
+	api := New(discard, Services{Session: service})
+	request := httptest.NewRequest(http.MethodDelete, "/api/v0/sessions/current", nil)
+	request.Header.Set("Origin", "http://"+request.Host)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "checked-session"})
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "different-session"})
+	response := httptest.NewRecorder()
+
+	api.Handler().ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+	assert.Equal(t, "checked-session", service.currentSecret)
+	assert.Equal(t, 1, service.currentCalls)
+	assert.Equal(t, 1, service.signOutCalls)
+	assert.Equal(t, ref, service.signedOut)
+}
+
+func TestSignOutStorageFailure(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	lost := errors.New("session storage unavailable")
+	service := &fakeSessions{identity: session.Identity{
+		User: account.User{ID: 42, Role: account.RoleMember}, Access: session.AccessMember,
+	}, signOutErr: lost}
+	api := New(logger, Services{Session: service})
+	request := httptest.NewRequest(http.MethodDelete, "/api/v0/sessions/current", nil)
+	request.Header.Set("Origin", "http://"+request.Host)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "private-cookie-secret"})
+	response := httptest.NewRecorder()
+
+	api.Handler().ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
+	assert.Equal(t, problemPrefix+"internal-error", decodeJSON(t, response.Body.Bytes())["type"])
+	assert.Empty(t, response.Result().Cookies(), "keep the cookie so deletion can be retried")
+	assert.NotContains(t, response.Body.String(), lost.Error())
+	assert.NotContains(t, response.Body.String(), "private-cookie-secret")
+	assert.NotContains(t, logs.String(), "private-cookie-secret")
+}
+
+func TestSignOutSourceRequired(t *testing.T) {
+	for _, site := range []string{"cross-site", ""} {
+		service := &fakeSessions{}
+		api := New(discard, Services{Session: service})
+		request := httptest.NewRequest(http.MethodDelete, "/api/v0/sessions/current", nil)
+		request.Header.Set("Sec-Fetch-Site", site)
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "private-cookie-secret"})
+		response := httptest.NewRecorder()
+
+		api.Handler().ServeHTTP(response, request)
+
+		require.Equal(t, http.StatusForbidden, response.Code)
+		assert.Zero(t, service.currentCalls)
+		assert.Zero(t, service.signOutCalls)
+		assert.Empty(t, response.Result().Cookies())
+	}
+}
+
+func TestSignOutOpenAPI(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+	path := doc.Paths["/sessions/current"]
+	require.NotNil(t, path)
+	require.NotNil(t, path.Delete)
+	op := path.Delete
+	assert.Equal(t, "deleteCurrentSession", op.OperationID)
+	assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
+	assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
+	assert.Empty(t, op.Parameters, "the cookie is documented by the security scheme")
+	require.Len(t, op.Responses, 3)
+	noContent := op.Responses[strconv.Itoa(http.StatusNoContent)]
+	require.NotNil(t, noContent)
+	assert.Empty(t, noContent.Content)
+	assert.NotNil(t, noContent.Headers["Set-Cookie"])
+	assert.NotNil(t, op.Responses[strconv.Itoa(http.StatusUnauthorized)])
+	assert.NotNil(t, op.Responses["default"])
 }

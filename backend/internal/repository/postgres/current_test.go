@@ -27,22 +27,22 @@ func TestCurrentPersistence(t *testing.T) {
 	issued, err := service.SignIn(t.Context(), user.Email, password, netip.MustParseAddr("192.0.2.1"))
 	require.NoError(t, err)
 
-	identity, err := service.Current(t.Context(), issued.Secret)
+	current, err := service.Current(t.Context(), issued.Secret)
 
 	require.NoError(t, err)
-	assert.Equal(t, user, identity.User)
-	assert.Equal(t, session.AccessMember, identity.Access)
-	assert.True(t, identity.TOTPRequired)
+	assert.Equal(t, user, current.Identity.User)
+	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.True(t, current.Identity.TOTPRequired)
 	assert.Equal(t, now, readSession(t, db, issued.State.TokenHash).LastUsedAt)
 
 	_, err = conn.Exec(t.Context(), "UPDATE users SET email = $1, role = $2 WHERE id = $3", "member@example.com", account.RoleMember, user.ID)
 	require.NoError(t, err)
 	now = now.Add(time.Hour)
-	identity, err = service.Current(t.Context(), issued.Secret)
+	current, err = service.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
-	assert.Equal(t, account.User{ID: user.ID, Email: "member@example.com", Role: account.RoleMember}, identity.User)
-	assert.Equal(t, session.AccessMember, identity.Access)
-	assert.False(t, identity.TOTPRequired)
+	assert.Equal(t, account.User{ID: user.ID, Email: "member@example.com", Role: account.RoleMember}, current.Identity.User)
+	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.False(t, current.Identity.TOTPRequired)
 	state := readSession(t, db, issued.State.TokenHash)
 	assert.Equal(t, now, state.LastUsedAt)
 	assert.Equal(t, issued.State.ExpiresAt, state.ExpiresAt)
@@ -53,9 +53,9 @@ func TestCurrentPersistence(t *testing.T) {
 	assert.Equal(t, state.LastUsedAt, readSession(t, db, issued.State.TokenHash).LastUsedAt)
 
 	now = state.LastUsedAt.Add(7 * 24 * time.Hour)
-	identity, err = service.Current(t.Context(), issued.Secret)
+	current, err = service.Current(t.Context(), issued.Secret)
 	require.ErrorIs(t, err, session.ErrUnauthenticated)
-	assert.Zero(t, identity)
+	assert.Zero(t, current)
 	err = db.UpdateSession(t.Context(), issued.State.TokenHash, func(session.State) (session.Change, error) {
 		t.Error("expired session row survived its check")
 		return session.Change{Action: session.Keep}, nil

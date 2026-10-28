@@ -29,12 +29,18 @@ type Identity struct {
 	TOTPRequired bool
 }
 
-// Current validates a session and loads the user's current account data.
+// Authenticated is a checked session and the user's current identity.
+type Authenticated struct {
+	Identity Identity
+	Session  Reference
+}
+
+// Current returns a checked session reference and current account identity.
 // It deletes expired sessions and writes last-use time at most once an hour.
-func (s *Service) Current(ctx context.Context, secret string) (Identity, error) {
+func (s *Service) Current(ctx context.Context, secret string) (Authenticated, error) {
 	hash, err := hashSecret(secret)
 	if err != nil {
-		return Identity{}, ErrUnauthenticated
+		return Authenticated{}, ErrUnauthenticated
 	}
 
 	var userID int64
@@ -57,26 +63,29 @@ func (s *Service) Current(ctx context.Context, secret string) (Identity, error) 
 		return Change{Action: Keep}, nil
 	})
 	if errors.Is(err, ErrNotFound) {
-		return Identity{}, ErrUnauthenticated
+		return Authenticated{}, ErrUnauthenticated
 	}
 	if err != nil {
-		return Identity{}, err
+		return Authenticated{}, err
 	}
 	if expired {
-		return Identity{}, ErrUnauthenticated
+		return Authenticated{}, ErrUnauthenticated
 	}
 
 	user, err := s.accounts.UserByID(ctx, userID)
 	if errors.Is(err, account.ErrUserNotFound) {
-		return Identity{}, ErrUnauthenticated
+		return Authenticated{}, ErrUnauthenticated
 	}
 	if err != nil {
-		return Identity{}, err
+		return Authenticated{}, err
 	}
 	if user.Role != account.RoleMember && user.Role != account.RoleAdmin {
-		return Identity{}, errInvalidRole
+		return Authenticated{}, errInvalidRole
 	}
 
 	// TOTP is not implemented yet, so neither role receives admin access.
-	return Identity{User: user, Access: AccessMember, TOTPRequired: user.Role == account.RoleAdmin}, nil
+	return Authenticated{
+		Identity: Identity{User: user, Access: AccessMember, TOTPRequired: user.Role == account.RoleAdmin},
+		Session:  Reference{hash: hash},
+	}, nil
 }

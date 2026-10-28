@@ -339,6 +339,80 @@ export const useCreateSession = <TError = ErrorType<Problem>,
       return useMutation(getCreateSessionMutationOptions(options), queryClient);
     }
 
+export const getDeleteCurrentSessionUrl = () => {
+
+
+
+
+  return `/api/v0/sessions/current`
+}
+
+/**
+ * @summary Sign out of the current session
+ */
+export const deleteCurrentSession = async ( options?: Parameters<typeof transport>[1]): Promise<void> => {
+
+  return transport<void>(getDeleteCurrentSessionUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteCurrentSessionMutationKey = () => ['deleteCurrentSession'] as const;
+
+export const getDeleteCurrentSessionMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCurrentSession>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCurrentSession>>, TError,void, TContext> => {
+
+const mutationKey = getDeleteCurrentSessionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCurrentSession>>, void> = () => {
+
+
+          return  deleteCurrentSession(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCurrentSessionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCurrentSession>>>
+
+    export type DeleteCurrentSessionMutationError = ErrorType<Problem>
+
+
+    /**
+ * @summary Sign out of the current session
+ */
+export const useDeleteCurrentSession = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCurrentSession>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCurrentSession>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteCurrentSessionMutationOptions(options), queryClient);
+    }
+
 export const getGetCurrentSessionUrl = () => {
 
 
