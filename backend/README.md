@@ -67,6 +67,12 @@ send these headers. For manual requests to the local API, send
 `Origin: http://127.0.0.1:8080`. Proxies must preserve these headers and
 the original `Host`. Missing source headers receive a 403.
 
+The server uses Go's [CrossOriginProtection](https://pkg.go.dev/net/http#CrossOriginProtection)
+for Fetch Metadata and Origin checks, including setup and sign-in. It adds
+the missing-header rejection above; Go alone permits requests without both
+headers. There is no CSRF token or configured cross-origin exception. Keep the
+web app and API on the same origin, including the scheme, host, and port.
+
 JSON success responses put their payload in `data`. Response schemas live
 only in the OpenAPI document: responses carry no `$schema` field or `Link`
 header. Operation IDs use camelCase. Handlers build success bodies with
@@ -195,11 +201,50 @@ in-flight requests up to 5 seconds to finish.
 |---|---|---|
 | `INBOK_HTTP_ADDR` | `127.0.0.1:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
 | `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL; see Migrations below. |
+| `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
 | `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
 | `GIN_MODE` | `debug` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
 machine.
+
+## Reverse proxies
+
+`INBOK_TRUSTED_PROXIES` controls which peers may supply a forwarded client
+address for sign-in and setup throttling. Empty ignores forwarded addresses
+and uses the connection's address. Trust only the proxy's address ranges;
+trusting all addresses lets a caller forge their throttling address.
+
+For one nginx proxy on the same host as Go, keep Go on `127.0.0.1:8080` and
+set `INBOK_TRUSTED_PROXIES=127.0.0.1/32`. Build the web app first. Adapt the
+domain and file paths in this HTTPS server block:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name inbok.example.com;
+    ssl_certificate /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+    root /path/to/inbok/web/dist/client;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+    }
+
+    location / {
+        try_files $uri /_shell.html;
+    }
+}
+```
+
+The example overwrites `X-Forwarded-For` with nginx's client address and
+preserves the browser's Host, including its port. nginx forwards `Origin`
+and `Sec-Fetch-Site` unchanged. Its [proxy header documentation](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header)
+explains the Host override. Keep the Go listener inaccessible to remote
+clients. A container proxy has a different connection address; trust its
+actual range rather than copying the loopback range.
 
 ## First administrator setup
 
@@ -227,8 +272,59 @@ cannot create a second one. Setup creates no workspace, membership, session,
 or cookie. If the token remains configured after setup, `serve` logs a
 startup warning asking the operator to remove it.
 
-Sign-in and TOTP enrollment are planned for later branches. This branch
-creates the account but does not sign the administrator in.
+Setup does not sign the administrator in. The web app opens sign-in after
+completion and shows the token-removal instructions there. Before setup is
+complete, every web page leads to setup. After completion, `/setup` returns
+to the normal entry page. The API's database claim enforces setup completion
+independently of these browser redirects.
+
+## Sign-in and browser sessions
+
+`POST /api/v0/sessions` accepts email and password, creates a fresh session,
+and returns HTTP 201 with `{"data":{"step":"complete"}}`. The session
+secret travels only in the cookie. Unknown email and wrong password return
+the same HTTP 401; unknown users still incur an Argon2id password check.
+
+`GET /api/v0/sessions/current` returns the current email, role, and
+`totpRequired`. Every administrator currently has `totpRequired: true` and
+member-level access. TOTP enrollment, sign-in challenges, and backup codes
+belong to the next branch. No production operation currently requires admin
+access; the default-deny admin level is covered by HTTP tests.
+
+`DELETE /api/v0/sessions/current` deletes the checked session and clears its
+cookie, returning HTTP 204. A missing or expired session returns HTTP 401
+and also clears the cookie; the web app treats that as signed out. Signing
+out clears account data and submitted credentials from the web app's Query
+cache while retaining the public setup status. Session listing, revoking
+other sessions, deactivation, and recovery are not implemented yet.
+
+The cookie is `__Host-inbok-session`, with `Secure`, `HttpOnly`,
+`SameSite=Lax`, `Path=/`, and no `Domain`. `Max-Age` is the remaining maximum
+session lifetime. Go sets these attributes explicitly; the name alone does
+not configure them. See the [cookie attribute reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie).
+Use HTTPS for deployed instances. For local development, use
+`http://localhost:5173`; browsers provide a localhost exception for Secure
+cookies. If the browser rejects the cookie on plain HTTP, use local HTTPS
+rather than disabling Secure or changing the cookie name.
+
+Session rules are constants, not environment settings:
+
+- Idle expiry is 7 days since the stored last-use time; maximum lifetime is
+  30 days from sign-in and is never extended.
+- Each authenticated request loads the session and current user from
+  PostgreSQL. It updates last-use time only when at least an hour has passed
+  since the stored value. This reduces writes, not reads.
+- Expiry is checked before that update. An expired row is deleted when used;
+  there is no cleanup job. Sign-out deletes the current row.
+- Every sign-in creates a new 32-byte random secret. PostgreSQL stores only
+  its SHA-256 hash. Cookie secrets, passwords, and hashes must not be logged.
+
+Throttling uses PostgreSQL across API instances. Within 15 minutes, at most
+5 failed sign-ins are allowed for one normalized email and client address,
+and 50 failures for one address across all emails. Setup attempts share the
+address limit. A pending attempt counts until a successful verification
+removes it, so parallel password checks cannot bypass the limits. A blocked
+attempt returns HTTP 429. These limits are constants too.
 
 ## Logs and request IDs
 
