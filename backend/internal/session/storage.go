@@ -10,7 +10,7 @@ import (
 // ErrNotFound means the session row does not exist.
 var ErrNotFound = errors.New("session not found")
 
-// Action is the change decided while a session row is locked.
+// Action identifies whether to keep, touch, or delete a session.
 type Action int
 
 const (
@@ -19,18 +19,21 @@ const (
 	Delete
 )
 
-// Change only permits a last-use update or deletion, never expiry extension.
+// Change is the storage action chosen by a session check.
+// It permits a last-use update or deletion, never expiry extension.
 type Change struct {
 	Action     Action
 	LastUsedAt time.Time
 }
 
-// Storage saves session hashes and serializes decisions for each session.
+// Storage stores session hashes and lifetimes.
+// Updates serialize decisions for each session.
 type Storage interface {
 	InsertSession(ctx context.Context, state State) error
 
-	// UpdateSession locks and loads the row, calls update, then saves its
-	// decision in one transaction. An error rolls back the change.
+	// UpdateSession applies a Go decision to a session in one transaction.
+	// It locks and loads the row, calls update, then saves its decision.
+	// An error rolls back the change.
 	// Keep performs no write. A missing row returns ErrNotFound.
 	UpdateSession(ctx context.Context, hash [sha256.Size]byte, update func(State) (Change, error)) error
 

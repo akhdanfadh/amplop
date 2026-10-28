@@ -45,7 +45,8 @@ func TestNewSessionSecrets(t *testing.T) {
 	assert.Equal(t, first.State.TokenHash, hash)
 }
 
-// SHA-256 of 32 zero bytes, checked independently with Python's hashlib.
+// TestHashSecret checks SHA-256 against a known vector of 32 zero bytes.
+// The digest was checked independently with Python's hashlib.
 func TestHashSecret(t *testing.T) {
 	hash, err := hashSecret(strings.Repeat("A", 43))
 

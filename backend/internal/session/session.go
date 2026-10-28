@@ -30,7 +30,7 @@ type State struct {
 	ExpiresAt  time.Time
 }
 
-// Issued separates the browser's secret from the state saved by storage.
+// Issued is a new session's cookie secret and the state to save in storage.
 type Issued struct {
 	Secret string
 	State  State

@@ -12,6 +12,7 @@ import (
 	"inbok/internal/session"
 )
 
+// Compile-time check that *DB implements session.Storage.
 var _ session.Storage = (*DB)(nil)
 
 // InsertSession saves the hash and fixed lifetime chosen by the session rules.
@@ -26,7 +27,8 @@ func (db *DB) InsertSession(ctx context.Context, state session.State) error {
 	return nil
 }
 
-// UpdateSession keeps the row locked through the decision and its commit.
+// UpdateSession applies the callback's session change in one transaction.
+// It keeps the row locked through the decision and its commit.
 // Waiting requests then see refreshed activity or a deleted row.
 func (db *DB) UpdateSession(ctx context.Context, hash [sha256.Size]byte, update func(session.State) (session.Change, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {

@@ -30,6 +30,13 @@ type Session struct {
 	ExpiresAt  time.Time
 }
 
+type SignInAttempt struct {
+	ID         int64
+	Email      *string
+	ClientAddr string
+	CreatedAt  time.Time
+}
+
 type User struct {
 	ID           int64
 	Email        string
