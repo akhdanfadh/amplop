@@ -8,12 +8,13 @@ import (
 	"inbok/internal/account"
 )
 
-// accountService verifies account credentials without exposing stored hashes.
+// accountService verifies credentials and reads current account data.
 type accountService interface {
 	Authenticate(ctx context.Context, email, password string) (account.User, error)
+	UserByID(ctx context.Context, id int64) (account.User, error)
 }
 
-// Service creates browser sessions after throttled credential verification.
+// Service creates browser sessions and resolves their current identity.
 type Service struct {
 	storage  Storage
 	accounts accountService

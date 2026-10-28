@@ -8,8 +8,12 @@ SELECT EXISTS (SELECT 1 FROM users WHERE role = 'admin');
 -- name: InsertAdminUser :one
 INSERT INTO users (email, password_hash, role)
 VALUES (@email, @password_hash, 'admin')
-RETURNING id, email;
+RETURNING id, email, role;
 
 -- name: ReadUserCredentials :one
-SELECT id, email, password_hash FROM users
+SELECT id, email, role, password_hash FROM users
 WHERE lower(email) = lower(@email);
+
+-- name: ReadUserByID :one
+SELECT id, email, role FROM users
+WHERE id = @id;

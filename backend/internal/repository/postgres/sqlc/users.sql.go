@@ -23,7 +23,7 @@ func (q *Queries) HasAdminUser(ctx context.Context) (bool, error) {
 const insertAdminUser = `-- name: InsertAdminUser :one
 INSERT INTO users (email, password_hash, role)
 VALUES ($1, $2, 'admin')
-RETURNING id, email
+RETURNING id, email, role
 `
 
 type InsertAdminUserParams struct {
@@ -34,12 +34,13 @@ type InsertAdminUserParams struct {
 type InsertAdminUserRow struct {
 	ID    int64
 	Email string
+	Role  string
 }
 
 func (q *Queries) InsertAdminUser(ctx context.Context, arg InsertAdminUserParams) (InsertAdminUserRow, error) {
 	row := q.db.QueryRow(ctx, insertAdminUser, arg.Email, arg.PasswordHash)
 	var i InsertAdminUserRow
-	err := row.Scan(&i.ID, &i.Email)
+	err := row.Scan(&i.ID, &i.Email, &i.Role)
 	return i, err
 }
 
@@ -53,20 +54,44 @@ func (q *Queries) LockUsers(ctx context.Context) error {
 	return err
 }
 
+const readUserByID = `-- name: ReadUserByID :one
+SELECT id, email, role FROM users
+WHERE id = $1
+`
+
+type ReadUserByIDRow struct {
+	ID    int64
+	Email string
+	Role  string
+}
+
+func (q *Queries) ReadUserByID(ctx context.Context, id int64) (ReadUserByIDRow, error) {
+	row := q.db.QueryRow(ctx, readUserByID, id)
+	var i ReadUserByIDRow
+	err := row.Scan(&i.ID, &i.Email, &i.Role)
+	return i, err
+}
+
 const readUserCredentials = `-- name: ReadUserCredentials :one
-SELECT id, email, password_hash FROM users
+SELECT id, email, role, password_hash FROM users
 WHERE lower(email) = lower($1)
 `
 
 type ReadUserCredentialsRow struct {
 	ID           int64
 	Email        string
+	Role         string
 	PasswordHash string
 }
 
 func (q *Queries) ReadUserCredentials(ctx context.Context, email string) (ReadUserCredentialsRow, error) {
 	row := q.db.QueryRow(ctx, readUserCredentials, email)
 	var i ReadUserCredentialsRow
-	err := row.Scan(&i.ID, &i.Email, &i.PasswordHash)
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Role,
+		&i.PasswordHash,
+	)
 	return i, err
 }

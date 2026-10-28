@@ -45,3 +45,27 @@ func TestAccountAuthentication(t *testing.T) {
 	require.ErrorIs(t, err, account.ErrInvalidCredentials)
 	assert.Zero(t, got)
 }
+
+func TestReadUser(t *testing.T) {
+	db, conn := setupStorage(t)
+	accounts := account.NewService(db, setupTestToken)
+	user, err := accounts.Setup(t.Context(), account.SetupInput{
+		Token: setupTestToken, Email: "Admin@example.com", Password: "a long setup password",
+	})
+	require.NoError(t, err)
+
+	got, err := accounts.UserByID(t.Context(), user.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, account.User{ID: user.ID, Email: "Admin@example.com", Role: account.RoleAdmin}, got)
+
+	// Identity reads must reflect later changes without requiring a new session.
+	_, err = conn.Exec(t.Context(), "UPDATE users SET email = $1, role = $2 WHERE id = $3", "member@example.com", account.RoleMember, user.ID)
+	require.NoError(t, err)
+	got, err = accounts.UserByID(t.Context(), user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, account.User{ID: user.ID, Email: "member@example.com", Role: account.RoleMember}, got)
+	got, err = accounts.UserByID(t.Context(), user.ID+1)
+	require.ErrorIs(t, err, account.ErrUserNotFound)
+	assert.Zero(t, got)
+}

@@ -53,7 +53,7 @@ func (db *DB) UpdateSetup(ctx context.Context, update func(account.SetupState) (
 		if err != nil {
 			return fmt.Errorf("insert admin user: %w", err)
 		}
-		user = account.User{ID: row.ID, Email: row.Email}
+		user = account.User{ID: row.ID, Email: row.Email, Role: account.Role(row.Role)}
 		return nil
 	})
 	if err != nil {
