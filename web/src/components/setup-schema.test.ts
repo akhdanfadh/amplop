@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { validationMessage } from "@/api/validation";
 import { SetupSchema } from "./setup-schema";
 
 const valid = {
@@ -24,11 +25,14 @@ describe("SetupSchema", () => {
   it.each(["p".repeat(14), "p".repeat(129), "\u{1f512}".repeat(14), "\u{1f512}".repeat(129)])(
     "rejects passwords outside the code-point bounds",
     (password) => {
-      const result = SetupSchema.safeParse({
-        ...valid,
-        password,
-        confirmPassword: password,
-      });
+      const result = SetupSchema.safeParse(
+        {
+          ...valid,
+          password,
+          confirmPassword: password,
+        },
+        { error: validationMessage },
+      );
 
       expect(result.success).toBe(false);
       expect(result.error?.issues).toMatchObject([

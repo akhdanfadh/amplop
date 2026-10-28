@@ -28,16 +28,22 @@ describe("sign-in input", () => {
       SignInSchema.safeParse({ email, password: "\u{1f512}".repeat(newSessionPasswordMax) })
         .success,
     ).toBe(true);
-    expect(
-      SignInSchema.safeParse({ email, password: "\u{1f512}".repeat(newSessionPasswordMax + 1) })
-        .success,
-    ).toBe(false);
+    const result = SignInSchema.safeParse({
+      email,
+      password: "\u{1f512}".repeat(newSessionPasswordMax + 1),
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toMatchObject([
+      { path: ["password"], message: `Use at most ${newSessionPasswordMax} characters.` },
+    ]);
   });
 
   it("requires an email address and a password", () => {
     expect(SignInSchema.safeParse({ email: "", password: "password" }).success).toBe(false);
-    expect(SignInSchema.safeParse({ email: "admin@example.com", password: "" }).success).toBe(
-      false,
-    );
+    const result = SignInSchema.safeParse({ email: "admin@example.com", password: "" });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toMatchObject([
+      { path: ["password"], message: "Enter your password." },
+    ]);
   });
 });
