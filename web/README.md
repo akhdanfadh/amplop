@@ -61,8 +61,23 @@ type checking works on a fresh clone; never edit it by hand.
 The `/setup` page reads the setup status from the API. It shows token
 configuration instructions, the first-administrator form, or completion
 instructions. See [First administrator setup](../backend/README.md#first-administrator-setup)
-for the operator steps. Setup does not sign the administrator in; sign-in
-and TOTP enrollment are future work.
+for the operator steps. Setup does not sign the administrator in; its completed
+state links to `/sign-in`.
+
+The `/sign-in` page submits credentials through the generated mutation hook.
+The `/` page reads the current account and redirects to sign-in on HTTP 401.
+Other failures keep a retry action. Administrators see that TOTP enrollment
+comes next; it is not implemented yet.
+
+Signing out deletes the current session, clears the Query caches, and opens
+sign-in. A 401 also completes sign-out because that session is already absent
+or expired. Other failures stay visible and can be retried. Signing in also
+clears cached data when the request settles, even if the sign-in page has closed,
+so another account cannot inherit it. Account actions wait for a fresh session
+check when cached identity is being refreshed. Manual session checks attempt
+immediately despite the browser's offline indicator; editing or leaving the
+form invalidates their result. The original health
+and probe demo remains available at `/probe`.
 
 ## Checks and tests
 

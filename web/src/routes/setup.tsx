@@ -1,5 +1,5 @@
 import { useState, type ReactElement } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useGetSetupStatus } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
 import { SetupForm } from "@/components/setup-form";
@@ -61,9 +61,9 @@ function Setup(): ReactElement {
             Remove <code className="break-all">INBOK_SETUP_TOKEN</code> from the server
             configuration and restart the server.
           </p>
-          <p className="leading-relaxed text-muted-foreground">
-            Sign-in will be available in a later version.
-          </p>
+          <Link className="inline-block py-3 underline underline-offset-4" to="/sign-in">
+            Sign in
+          </Link>
         </section>
       )}
 
