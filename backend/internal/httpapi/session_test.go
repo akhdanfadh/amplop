@@ -21,6 +21,10 @@ import (
 	"inbok/internal/session"
 )
 
+// ========================
+// Test helpers
+// ========================
+
 const (
 	signInHTTPBody      = `{"email":"Admin@Example.COM","password":"a long sign-in password"}`
 	encodedSecretLength = 43
@@ -94,6 +98,10 @@ func postSession(api *API, body string) *httptest.ResponseRecorder {
 	api.Handler().ServeHTTP(response, request)
 	return response
 }
+
+// ========================
+// Sign-in
+// ========================
 
 func TestCreateSession(t *testing.T) {
 	service := &fakeSessions{issued: session.Issued{
@@ -249,6 +257,10 @@ func TestSignInSourceRequired(t *testing.T) {
 		assert.Empty(t, response.Result().Cookies())
 	}
 }
+
+// ========================
+// Sign-out
+// ========================
 
 func TestDeleteCurrentSession(t *testing.T) {
 	ref := checkedReference(t)

@@ -19,6 +19,10 @@ import (
 	"inbok/internal/account"
 )
 
+// ========================
+// Test helpers
+// ========================
+
 const (
 	setupHTTPToken  = "test-only-setup-token-for-http-tests"
 	jsonContentType = "application/json"
@@ -59,6 +63,10 @@ func postSetup(logger *slog.Logger, accounts *fakeAccounts, body string) *httpte
 	New(logger, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler().ServeHTTP(response, request)
 	return response
 }
+
+// ========================
+// Setup behavior
+// ========================
 
 func TestGetSetupStatus(t *testing.T) {
 	for _, status := range []account.SetupStatus{account.SetupUnconfigured, account.SetupOpen, account.SetupDone} {
@@ -124,6 +132,47 @@ func TestSetupProblems(t *testing.T) {
 	}
 }
 
+func TestSetupClaimDone(t *testing.T) {
+	accounts := &fakeAccounts{setupErr: account.ErrSetupDone}
+
+	response := postSetup(discard, accounts, setupBody(t, setupFields()))
+
+	require.Equal(t, http.StatusConflict, response.Code)
+	body := decodeJSON(t, response.Body.Bytes())
+	assert.Equal(t, "/api/v0/problems/setup-done", body["type"])
+}
+
+func TestSetupUnexpectedError(t *testing.T) {
+	for _, stage := range []string{"status", "claim"} {
+		t.Run(stage, func(t *testing.T) {
+			lost := errors.New("database connection lost")
+			accounts := &fakeAccounts{}
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&logs, nil))
+			var response *httptest.ResponseRecorder
+			switch stage {
+			case "status":
+				accounts.err = lost
+				response = httptest.NewRecorder()
+				New(logger, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/setup", nil))
+			case "claim":
+				accounts.setupErr = lost
+				response = postSetup(logger, accounts, setupBody(t, setupFields()))
+			}
+
+			require.Equal(t, http.StatusInternalServerError, response.Code)
+			assert.NotContains(t, response.Body.String(), lost.Error())
+			assert.Contains(t, logs.String(), lost.Error())
+			assert.NotContains(t, logs.String(), setupHTTPToken)
+			assert.NotContains(t, logs.String(), "a long setup password")
+		})
+	}
+}
+
+// ========================
+// Input validation
+// ========================
+
 func TestSetupFieldsFirst(t *testing.T) {
 	for _, err := range []error{account.ErrSetupDone, account.ErrSetupUnconfigured, account.ErrSetupTokenInvalid} {
 		t.Run(err.Error(), func(t *testing.T) {
@@ -139,16 +188,6 @@ func TestSetupFieldsFirst(t *testing.T) {
 			assert.Empty(t, accounts.created)
 		})
 	}
-}
-
-func TestSetupClaimDone(t *testing.T) {
-	accounts := &fakeAccounts{setupErr: account.ErrSetupDone}
-
-	response := postSetup(discard, accounts, setupBody(t, setupFields()))
-
-	require.Equal(t, http.StatusConflict, response.Code)
-	body := decodeJSON(t, response.Body.Bytes())
-	assert.Equal(t, "/api/v0/problems/setup-done", body["type"])
 }
 
 func TestSetupValidation(t *testing.T) {
@@ -256,33 +295,6 @@ func TestSetupDuplicateFields(t *testing.T) {
 	}
 }
 
-func TestSetupUnexpectedError(t *testing.T) {
-	for _, stage := range []string{"status", "claim"} {
-		t.Run(stage, func(t *testing.T) {
-			lost := errors.New("database connection lost")
-			accounts := &fakeAccounts{}
-			var logs bytes.Buffer
-			logger := slog.New(slog.NewTextHandler(&logs, nil))
-			var response *httptest.ResponseRecorder
-			switch stage {
-			case "status":
-				accounts.err = lost
-				response = httptest.NewRecorder()
-				New(logger, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v0/setup", nil))
-			case "claim":
-				accounts.setupErr = lost
-				response = postSetup(logger, accounts, setupBody(t, setupFields()))
-			}
-
-			require.Equal(t, http.StatusInternalServerError, response.Code)
-			assert.NotContains(t, response.Body.String(), lost.Error())
-			assert.Contains(t, logs.String(), lost.Error())
-			assert.NotContains(t, logs.String(), setupHTTPToken)
-			assert.NotContains(t, logs.String(), "a long setup password")
-		})
-	}
-}
-
 func TestSetupBodyErrors(t *testing.T) {
 	cases := []struct {
 		name, body, contentType string
@@ -312,6 +324,62 @@ func TestSetupBodyErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestSetupBodyShape(t *testing.T) {
+	for _, body := range []string{`null`, `[]`, `{"token":7,"email":false,"password":null}`} {
+		accounts := &fakeAccounts{setupErr: account.ErrSetupDone}
+
+		response := postSetup(discard, accounts, body)
+
+		require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+		assert.Empty(t, accounts.created)
+	}
+}
+
+func TestSetupBodyLimit(t *testing.T) {
+	accounts := &fakeAccounts{}
+	api := New(discard, Services{Account: accounts, Throttle: &fakeThrottle{}})
+	limit := api.api.OpenAPI().Paths[setupPath].Post.MaxBodyBytes
+	require.Positive(t, limit)
+	request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(strings.Repeat("x", int(limit)+1)))
+	request.Header.Set("Origin", "http://"+request.Host)
+	request.Header.Set("Content-Type", jsonContentType)
+	response := httptest.NewRecorder()
+	api.Handler().ServeHTTP(response, request)
+	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
+	assert.Empty(t, accounts.created)
+}
+
+// Requests share the registered API while Huma validates each body separately.
+func TestSetupConcurrentValidation(t *testing.T) {
+	const requests = 20
+	accounts := &fakeAccounts{}
+	router := New(discard, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler()
+	body := setupFields()
+	body["password"] = "private-short"
+	encoded := setupBody(t, body)
+
+	var group sync.WaitGroup
+	for range requests {
+		group.Go(func() {
+			request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(encoded))
+			request.Header.Set("Origin", "http://"+request.Host)
+			request.Header.Set("Content-Type", jsonContentType)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+
+			assert.Equal(t, http.StatusUnprocessableEntity, response.Code)
+			assert.Contains(t, response.Body.String(), "Use 15 to 128 characters.")
+			assert.NotContains(t, response.Body.String(), "private-short")
+		})
+	}
+	group.Wait()
+	assert.Empty(t, accounts.created)
+}
+
+// ========================
+// OpenAPI contract
+// ========================
 
 func TestSetupOpenAPI(t *testing.T) {
 	doc := New(discard, Services{}).api.OpenAPI()
@@ -381,56 +449,4 @@ func TestSetupOpenAPI(t *testing.T) {
 	statusSchema := status.Properties["status"]
 	require.NotNil(t, statusSchema)
 	assert.ElementsMatch(t, []any{"unconfigured", "open", "done"}, statusSchema.Enum)
-}
-
-func TestSetupBodyShape(t *testing.T) {
-	for _, body := range []string{`null`, `[]`, `{"token":7,"email":false,"password":null}`} {
-		accounts := &fakeAccounts{setupErr: account.ErrSetupDone}
-
-		response := postSetup(discard, accounts, body)
-
-		require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
-		assert.Empty(t, accounts.created)
-	}
-}
-
-func TestSetupBodyLimit(t *testing.T) {
-	accounts := &fakeAccounts{}
-	api := New(discard, Services{Account: accounts, Throttle: &fakeThrottle{}})
-	limit := api.api.OpenAPI().Paths[setupPath].Post.MaxBodyBytes
-	require.Positive(t, limit)
-	request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(strings.Repeat("x", int(limit)+1)))
-	request.Header.Set("Origin", "http://"+request.Host)
-	request.Header.Set("Content-Type", jsonContentType)
-	response := httptest.NewRecorder()
-	api.Handler().ServeHTTP(response, request)
-	require.Equal(t, http.StatusRequestEntityTooLarge, response.Code)
-	assert.Empty(t, accounts.created)
-}
-
-// Requests share the registered API while Huma validates each body separately.
-func TestSetupConcurrentValidation(t *testing.T) {
-	const requests = 20
-	accounts := &fakeAccounts{}
-	router := New(discard, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler()
-	body := setupFields()
-	body["password"] = "private-short"
-	encoded := setupBody(t, body)
-
-	var group sync.WaitGroup
-	for range requests {
-		group.Go(func() {
-			request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(encoded))
-			request.Header.Set("Origin", "http://"+request.Host)
-			request.Header.Set("Content-Type", jsonContentType)
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, request)
-
-			assert.Equal(t, http.StatusUnprocessableEntity, response.Code)
-			assert.Contains(t, response.Body.String(), "Use 15 to 128 characters.")
-			assert.NotContains(t, response.Body.String(), "private-short")
-		})
-	}
-	group.Wait()
-	assert.Empty(t, accounts.created)
 }

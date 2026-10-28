@@ -9,6 +9,10 @@ import (
 	"github.com/danielgtaylor/huma/v2/validation"
 )
 
+// ========================
+// Message preparation
+// ========================
+
 const requiredFieldPrefix = "inbok-internal-required:"
 
 // Schema preparation fills this map before requests start; requests only read it.
@@ -72,6 +76,10 @@ func inputCorrection(format string, value any) string {
 	}
 }
 
+// ========================
+// Public input errors
+// ========================
+
 // publicInputError builds safe correction text and precise required-field paths.
 // Unrecognized Huma messages stay generic because they can contain input values.
 func publicInputError(api huma.API, ctx huma.Context, detail *huma.ErrorDetail) inputError {
@@ -123,6 +131,10 @@ func rangeCorrection(schema *huma.Schema) string {
 		return ""
 	}
 }
+
+// ========================
+// Schema lookup
+// ========================
 
 // inputSchema follows ordinary body field paths, including nested array indexes.
 // Unsupported paths keep the existing correction instead of guessing a range.
