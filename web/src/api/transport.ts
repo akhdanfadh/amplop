@@ -8,6 +8,10 @@ const noContentStatus = 204;
 // Leave room for delivery around the backend's ten-second work limit.
 const requestTimeoutMs = 15_000;
 
+// ===============================================
+// Request failures
+// ===============================================
+
 export type ApiErrorKind =
   // Sending or reading failed.
   | "network"
@@ -52,6 +56,10 @@ export class ApiError extends Error {
 
 // Orval supplies a generated body type, but request failures use ApiError.
 export type ErrorType<_Body> = ApiError;
+
+// ===============================================
+// HTTP transport
+// ===============================================
 
 // transport checks JSON responses against their generated success schema.
 export function transport<T>(url: string, init: RequestInit & { schema: ZodType<T> }): Promise<T>;

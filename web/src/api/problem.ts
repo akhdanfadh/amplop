@@ -1,5 +1,9 @@
 import type { ApiError } from "./transport";
 
+// ===============================================
+// Request messages
+// ===============================================
+
 // HTTP statuses (RFC 9110) that change what the user is told.
 const unprocessable = 422;
 const firstServerError = 500;
@@ -51,6 +55,10 @@ export function userMessage(err: ApiError): string {
   if (status !== undefined && status >= firstServerError) return serverFailed;
   return failed;
 }
+
+// ===============================================
+// Field error mapping
+// ===============================================
 
 const bodyPrefix = "body.";
 const rejected = "This value was not accepted.";
