@@ -9,3 +9,7 @@ SELECT EXISTS (SELECT 1 FROM users WHERE role = 'admin');
 INSERT INTO users (email, password_hash, role)
 VALUES (@email, @password_hash, 'admin')
 RETURNING id, email;
+
+-- name: ReadUserCredentials :one
+SELECT id, email, password_hash FROM users
+WHERE lower(email) = lower(@email);

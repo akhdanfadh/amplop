@@ -52,3 +52,21 @@ func (q *Queries) LockUsers(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, lockUsers)
 	return err
 }
+
+const readUserCredentials = `-- name: ReadUserCredentials :one
+SELECT id, email, password_hash FROM users
+WHERE lower(email) = lower($1)
+`
+
+type ReadUserCredentialsRow struct {
+	ID           int64
+	Email        string
+	PasswordHash string
+}
+
+func (q *Queries) ReadUserCredentials(ctx context.Context, email string) (ReadUserCredentialsRow, error) {
+	row := q.db.QueryRow(ctx, readUserCredentials, email)
+	var i ReadUserCredentialsRow
+	err := row.Scan(&i.ID, &i.Email, &i.PasswordHash)
+	return i, err
+}

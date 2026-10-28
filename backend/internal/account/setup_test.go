@@ -20,6 +20,10 @@ type fakeStorage struct {
 	writeErr    error
 }
 
+func (f *fakeStorage) ReadCredentials(context.Context, string) (Credentials, error) {
+	return Credentials{}, ErrUserNotFound
+}
+
 func (f *fakeStorage) ReadSetup(context.Context) (SetupState, error) {
 	return f.state, f.readErr
 }

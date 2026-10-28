@@ -15,6 +15,10 @@ type User struct {
 type Storage interface {
 	ReadSetup(ctx context.Context) (SetupState, error)
 
+	// ReadCredentials finds an account by case-insensitive email.
+	// A missing account returns ErrUserNotFound.
+	ReadCredentials(ctx context.Context, email string) (Credentials, error)
+
 	// UpdateSetup locks user writes, reads setup state, then calls update.
 	// It saves the returned administrator only if update and the write succeed.
 	UpdateSetup(ctx context.Context, update func(SetupState) (NewAdmin, error)) (User, error)
