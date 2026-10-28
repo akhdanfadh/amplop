@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 
 	"inbok/internal/account"
 	"inbok/internal/session"
@@ -153,16 +152,6 @@ func registerSession(api huma.API, service sessionService) {
 func sessionCookie(secret string, maxAge int) http.Cookie {
 	return http.Cookie{Name: sessionCookieName, Value: secret, Path: "/", Secure: true,
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: maxAge}
-}
-
-// resolveClientAddr parses the address Gin selected for throttling.
-func resolveClientAddr(ctx huma.Context, addr *netip.Addr) []error {
-	parsed, err := netip.ParseAddr(humagin.Unwrap(ctx).ClientIP())
-	if err != nil {
-		return []error{huma.Error500InternalServerError("Cannot determine the client address.", err)}
-	}
-	*addr = parsed
-	return nil
 }
 
 // signInProblem maps expected credential and throttle failures to safe text.
