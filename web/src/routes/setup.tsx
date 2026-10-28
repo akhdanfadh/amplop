@@ -1,6 +1,6 @@
-import { useState, type ReactElement } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useGetSetupStatus } from "@/api/generated/inbok";
+import { useEffect, useRef, type ReactElement } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useSetup } from "@/components/setup-gate";
 import { userMessage } from "@/api/problem";
 import { SetupForm } from "@/components/setup-form";
 import { Button } from "@/components/ui/button";
@@ -11,16 +11,18 @@ export const Route = createFileRoute("/setup")({
 });
 
 function Setup(): ReactElement {
-  // A successful claim stays done even if an older status request finishes later.
-  const [completed, setCompleted] = useState(false);
-  const status = useGetSetupStatus({ query: { enabled: !completed } });
-  const current = completed ? "done" : status.data?.data.status;
+  const { status, attempt, complete } = useSetup();
+  const current = status.data?.data.status;
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
 
   return (
     <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-      <h1 className="text-3xl font-bold tracking-tight">Set up inbok</h1>
-
-      {status.isPending && !completed && <output>Checking setup status...</output>}
+      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
+        Set up inbok
+      </h1>
 
       {current === "unconfigured" && (
         <section className="space-y-4" aria-labelledby="setup-unconfigured">
@@ -47,27 +49,11 @@ function Setup(): ReactElement {
               Use the setup token from the server configuration to create the account.
             </p>
           </div>
-          <SetupForm onDone={() => setCompleted(true)} />
+          <SetupForm onAttempt={attempt} onDone={complete} />
         </section>
       )}
 
-      {current === "done" && (
-        <section className="space-y-4" aria-live="polite" aria-labelledby="setup-done">
-          <h2 id="setup-done" className="text-xl font-semibold">
-            Setup complete
-          </h2>
-          <p>An administrator account has been created.</p>
-          <p className="leading-relaxed">
-            Remove <code className="break-all">INBOK_SETUP_TOKEN</code> from the server
-            configuration and restart the server.
-          </p>
-          <Link className="inline-block py-3 underline underline-offset-4" to="/sign-in">
-            Sign in
-          </Link>
-        </section>
-      )}
-
-      {status.isError && current !== "done" && (
+      {status.isError && (
         <div className="space-y-2" role="alert">
           <p>Could not check setup status. {userMessage(status.error)}</p>
           {status.error.requestId && (
@@ -86,7 +72,11 @@ function Setup(): ReactElement {
           disabled={status.isFetching}
           onClick={() => void status.refetch()}
         >
-          {status.isFetching ? "Checking setup status..." : "Check setup status"}
+          {status.isFetching
+            ? "Checking setup status..."
+            : status.isError
+              ? "Try again"
+              : "Check setup status"}
         </Button>
       )}
     </main>

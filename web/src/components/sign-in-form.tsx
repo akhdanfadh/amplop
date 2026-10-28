@@ -5,6 +5,7 @@ import { EyeIcon, EyeOffIcon } from "lucide-react";
 import { useCreateSession, useGetCurrentSession } from "@/api/generated/inbok";
 import { formErrors, userMessage } from "@/api/problem";
 import { sessionMessage, uncertainSession } from "@/api/session-error";
+import { clearAccountCache } from "@/api/session-cache";
 import { SignInSchema } from "@/components/sign-in-schema";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -41,7 +42,7 @@ export function SignInForm({ onDone }: { onDone: () => void }): ReactElement {
     mutation: {
       gcTime: 0,
       // The response may change the cookie even after this form unmounts.
-      onSettled: () => queryClient.clear(),
+      onSettled: () => clearAccountCache(queryClient),
     },
   });
   const form = useForm({

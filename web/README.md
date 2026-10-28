@@ -58,22 +58,33 @@ Each file in `src/routes` is one route. `pnpm dev` and `pnpm build`
 regenerate `src/routeTree.gen.ts` from them. That file is committed so
 type checking works on a fresh clone; never edit it by hand.
 
-The `/setup` page reads the setup status from the API. It shows token
-configuration instructions, the first-administrator form, or completion
-instructions. See [First administrator setup](../backend/README.md#first-administrator-setup)
-for the operator steps. Setup does not sign the administrator in; its completed
-state links to `/sign-in`.
+The application checks setup status once per fresh page load and shares the
+result during navigation. Before setup is complete, every page redirects to
+`/setup`, including direct sign-in, demo, and unknown URLs. The check attempts
+the API even when the browser reports offline. Initial status failures block
+the page with an error and retry action; a failed recheck keeps entered setup
+values and shows the error beside the form.
+
+The `/setup` page shows token configuration instructions or the first-admin
+form. See [First administrator setup](../backend/README.md#first-administrator-setup)
+for the operator steps. Completing setup updates the shared status and opens
+`/sign-in`, with instructions to remove the setup token and restart the server.
+Setup does not sign the administrator in. Later visits to `/setup` redirect to
+`/`, where the session check chooses home or sign-in.
+The browser remembers a local setup attempt until reload, so a status check
+that confirms completion after a lost response also shows the instructions.
 
 The `/sign-in` page submits credentials through the generated mutation hook.
 The `/` page reads the current account and redirects to sign-in on HTTP 401.
 Other failures keep a retry action. Administrators see that TOTP enrollment
 comes next; it is not implemented yet.
 
-Signing out deletes the current session, clears the Query caches, and opens
+Signing out deletes the current session, clears account caches, and opens
 sign-in. A 401 also completes sign-out because that session is already absent
 or expired. Other failures stay visible and can be retried. Signing in also
-clears cached data when the request settles, even if the sign-in page has closed,
-so another account cannot inherit it. Account actions wait for a fresh session
+clears account data and mutation variables when the request settles, even if the
+sign-in page has closed, so another account cannot inherit them. The public
+setup status survives authentication cache cleanup. Account actions wait for a fresh session
 check when cached identity is being refreshed. Manual session checks attempt
 immediately despite the browser's offline indicator; editing or leaving the
 form invalidates their result. The original health

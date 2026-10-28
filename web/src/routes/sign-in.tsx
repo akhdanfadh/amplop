@@ -1,7 +1,9 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { SignInForm } from "@/components/sign-in-form";
+import { useSetup } from "@/components/setup-gate";
+import { clearAccountCache } from "@/api/session-cache";
 
 export const Route = createFileRoute("/sign-in")({
   component: SignIn,
@@ -11,6 +13,7 @@ export const Route = createFileRoute("/sign-in")({
 function SignIn(): ReactElement {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { completedHere } = useSetup();
   const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     headingRef.current?.focus();
@@ -21,16 +24,27 @@ function SignIn(): ReactElement {
       <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
         Sign in to inbok
       </h1>
+      <div aria-live="polite" aria-atomic="true" className={completedHere ? undefined : "sr-only"}>
+        {completedHere && (
+          <section className="flex flex-col gap-3" aria-labelledby="setup-done">
+            <h2 id="setup-done" className="text-xl font-semibold">
+              Setup complete
+            </h2>
+            <p>An administrator account has been created.</p>
+            <p>
+              Remove <code>INBOK_SETUP_TOKEN</code> from the server configuration and restart the
+              server.
+            </p>
+          </section>
+        )}
+      </div>
       <SignInForm
         onDone={() => {
           // A different account must not inherit the previous account's cached data.
-          queryClient.clear();
+          clearAccountCache(queryClient);
           void navigate({ to: "/", replace: true });
         }}
       />
-      <Link className="w-fit py-3 underline underline-offset-4" to="/setup">
-        Set up a new installation
-      </Link>
     </main>
   );
 }

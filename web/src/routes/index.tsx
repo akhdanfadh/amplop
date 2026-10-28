@@ -4,6 +4,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useDeleteCurrentSession, useGetCurrentSession } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
 import { sessionMessage, uncertainSession } from "@/api/session-error";
+import { clearAccountCache } from "@/api/session-cache";
 import { Button } from "@/components/ui/button";
 
 const unauthorized = 401;
@@ -39,13 +40,13 @@ function Home(): ReactElement {
   }, [signOut.error, signOut.isPending, current.error, current.isFetching]);
 
   function finishSignOut(): void {
-    queryClient.clear();
+    clearAccountCache(queryClient);
     void navigate({ to: "/sign-in", replace: true });
   }
 
   useEffect(() => {
     if (current.error?.status !== unauthorized || signOut.isPending) return;
-    queryClient.clear();
+    clearAccountCache(queryClient);
     void navigate({ to: "/sign-in", replace: true });
   }, [current.error, signOut.isPending, queryClient, navigate]);
 

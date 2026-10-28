@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import appCss from "../styles.css?url";
+import { SetupGate } from "@/components/setup-gate";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -25,7 +26,7 @@ function RootDocument({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children}
+        <SetupGate>{children}</SetupGate>
         <Scripts />
       </body>
     </html>
