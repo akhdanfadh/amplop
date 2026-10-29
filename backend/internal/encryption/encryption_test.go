@@ -3,7 +3,6 @@ package encryption_test
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -72,7 +71,6 @@ func TestKeyRotation(t *testing.T) {
 	newID, _, err := rotated.Seal(opened, "totp:42")
 	require.NoError(t, err)
 	assert.Equal(t, "2", newID)
-	assert.Equal(t, newID, rotated.CurrentID())
 }
 
 func TestInvalidKeys(t *testing.T) {
@@ -85,27 +83,4 @@ func TestInvalidKeys(t *testing.T) {
 			assert.NotContains(t, err.Error(), "invalid-key")
 		})
 	}
-}
-
-func TestHash(t *testing.T) {
-	ring, err := encryption.New("2:" + key(2) + ",1:" + key(1))
-	require.NoError(t, err)
-	first, err := ring.Hash("1", []byte("ABCDE12345"))
-	require.NoError(t, err)
-	assert.Len(t, first, 32)
-	// Fixed vector independently derived from HKDF-SHA256 then HMAC-SHA256.
-	assert.Equal(t, "4ceed0d0e044525b2f80939ab10e94776465d6ed4ed50181e58b1c93f5d40396", hex.EncodeToString(first))
-	old, err := encryption.New("1:" + key(1))
-	require.NoError(t, err)
-	same, err := old.Hash("1", []byte("ABCDE12345"))
-	require.NoError(t, err)
-	assert.Equal(t, first, same, "rotation preserves existing hashes")
-	otherKey, err := ring.Hash("2", []byte("ABCDE12345"))
-	require.NoError(t, err)
-	assert.NotEqual(t, first, otherKey)
-	otherCode, err := ring.Hash("1", []byte("ABCDE12346"))
-	require.NoError(t, err)
-	assert.NotEqual(t, first, otherCode)
-	_, err = ring.Hash("3", []byte("ABCDE12345"))
-	require.Error(t, err)
 }

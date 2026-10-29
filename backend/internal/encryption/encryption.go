@@ -4,42 +4,30 @@ package encryption
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hkdf"
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"strconv"
 	"strings"
 )
 
-const (
-	keySize        = 32
-	backupHashInfo = "inbok:totp-backup-codes:v1"
-)
+const keySize = 32
 
 var (
 	errKeys = errors.New("keys must be a comma-separated list of unique positive numeric IDs and base64-encoded 32-byte keys")
 	errOpen = errors.New("cannot decrypt stored value")
-	errKey  = errors.New("unknown hash key ID")
 )
-
-type key struct {
-	cipher cipher.AEAD
-	hash   []byte
-}
 
 // Keyring keeps the first key active and older keys available for reads.
 // It is immutable after construction and safe for concurrent use.
 type Keyring struct {
 	current string
-	keys    map[string]key
+	keys    map[string]cipher.AEAD
 }
 
 // New parses entries such as "2:<base64 key>,1:<base64 key>".
 // IDs are canonical positive 32-bit decimal numbers. Errors omit key material.
 func New(value string) (*Keyring, error) {
-	ring := &Keyring{keys: make(map[string]key)}
+	ring := &Keyring{keys: make(map[string]cipher.AEAD)}
 	for entry := range strings.SplitSeq(value, ",") {
 		id, encoded, ok := strings.Cut(strings.TrimSpace(entry), ":")
 		number, err := strconv.ParseUint(id, 10, 32)
@@ -61,13 +49,7 @@ func New(value string) (*Keyring, error) {
 		if err != nil {
 			return nil, errKeys
 		}
-
-		// A dedicated derivation keeps backup-code hashes separate from encryption.
-		hashKey, err := hkdf.Key(sha256.New, raw, nil, backupHashInfo, keySize)
-		if err != nil {
-			return nil, errKeys
-		}
-		ring.keys[id] = key{cipher: aead, hash: hashKey}
+		ring.keys[id] = aead
 		if ring.current == "" {
 			ring.current = id
 		}
@@ -75,40 +57,22 @@ func New(value string) (*Keyring, error) {
 	return ring, nil
 }
 
-// CurrentID identifies the key for new backup-code hashes.
-func (r *Keyring) CurrentID() string {
-	return r.current
-}
-
 // Seal returns a key ID and ciphertext containing its random nonce and tag.
 // Store both together. Owner binds the value to its purpose and user, e.g. totp:42.
 // Rotate keys before encrypting 2^32 values under any one key.
 func (r *Keyring) Seal(plaintext []byte, owner string) (string, []byte, error) {
-	k := r.keys[r.current]
-	return r.current, k.cipher.Seal(nil, nil, plaintext, []byte(owner)), nil
+	return r.current, r.keys[r.current].Seal(nil, nil, plaintext, []byte(owner)), nil
 }
 
 // Open authenticates the owner and ciphertext before returning plaintext.
 func (r *Keyring) Open(id string, ciphertext []byte, owner string) ([]byte, error) {
-	k, ok := r.keys[id]
+	aead, ok := r.keys[id]
 	if !ok {
 		return nil, errOpen
 	}
-	plaintext, err := k.cipher.Open(nil, nil, ciphertext, []byte(owner))
+	plaintext, err := aead.Open(nil, nil, ciphertext, []byte(owner))
 	if err != nil {
 		return nil, errOpen
 	}
 	return plaintext, nil
-}
-
-// Hash returns an HMAC-SHA256 of an already normalized backup code.
-// Keep its key ID with the hash so rotation preserves existing codes.
-func (r *Keyring) Hash(id string, value []byte) ([]byte, error) {
-	k, ok := r.keys[id]
-	if !ok {
-		return nil, errKey
-	}
-	mac := hmac.New(sha256.New, k.hash)
-	mac.Write(value)
-	return mac.Sum(nil), nil
 }

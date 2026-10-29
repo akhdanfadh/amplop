@@ -207,6 +207,8 @@ func TestLoadEncryptionKeys(t *testing.T) {
 		cfg, err := Load()
 		require.NoError(t, err)
 		require.NotNil(t, cfg.Encryption)
-		assert.Equal(t, "1", cfg.Encryption.CurrentID())
+		id, _, err := cfg.Encryption.Seal([]byte("secret"), "totp:1")
+		require.NoError(t, err)
+		assert.Equal(t, "1", id)
 	})
 }
