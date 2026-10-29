@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import type { ApiError } from "@/api/transport";
 import { formErrors, userMessage } from "@/api/problem";
-import { codeFormats, type CodeKind } from "@/features/auth/code-schema";
+import { codeFormats, codePaste, type CodeKind } from "@/features/auth/code-schema";
 import { uncertainSession } from "@/features/auth/session-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -12,7 +12,7 @@ import {
   InputOTPSeparator,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
-import { ConfirmationSchema, RegenerationSchema, pasteCode, turnOffSchema } from "./schema";
+import { ConfirmationSchema, RegenerationSchema, turnOffSchema } from "./schema";
 
 const fieldNames = ["code"] as const;
 const purposes = {
@@ -152,7 +152,7 @@ export function ConfirmForm({
                   autoComplete="one-time-code"
                   autoCapitalize="none"
                   spellCheck={false}
-                  pasteTransformer={pasteCode}
+                  pasteTransformer={codePaste}
                   disabled={pending || locked}
                   aria-invalid={errors.length > 0}
                   aria-describedby={errors.length ? `${inputId}-error` : undefined}

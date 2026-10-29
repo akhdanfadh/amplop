@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ConfirmationSchema, RegenerationSchema, pasteCode, turnOffSchema } from "./schema";
+import { ConfirmationSchema, RegenerationSchema, turnOffSchema } from "./schema";
 
 describe("enrollment confirmation", () => {
   it("keeps leading zeros", () => {
@@ -12,11 +12,6 @@ describe("enrollment confirmation", () => {
       expect(ConfirmationSchema.safeParse({ code }).success).toBe(false);
     },
   );
-
-  it("accepts pasted separators without discarding unrelated characters", () => {
-    expect(pasteCode(" 012-345\u0085")).toBe("012345");
-    expect(pasteCode("012!345")).toBe("012!345");
-  });
 });
 
 describe("backup-code regeneration", () => {

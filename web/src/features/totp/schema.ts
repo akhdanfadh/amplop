@@ -27,7 +27,3 @@ export const RegenerationSchema = TotpRegenerationCode.extend({
 export function turnOffSchema(kind: CodeKind) {
   return TotpDisableCode.extend({ code: completeCode(TotpDisableCode.shape.code, kind) });
 }
-
-export function pasteCode(value: string): string {
-  return value.replace(/[\p{White_Space}-]/gu, "");
-}
