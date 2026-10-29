@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"inbok/internal/passwordhash"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -91,7 +93,7 @@ func TestSetup(t *testing.T) {
 	require.NotNil(t, storage.saved)
 	assert.Equal(t, user.Email, storage.saved.Email)
 
-	match, err := verifyPassword(input.Password, storage.saved.PasswordHash)
+	match, err := passwordhash.Verify(input.Password, storage.saved.PasswordHash)
 	require.NoError(t, err)
 	assert.True(t, match)
 

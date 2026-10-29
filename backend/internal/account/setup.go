@@ -6,6 +6,8 @@ import (
 	"crypto/subtle"
 	"errors"
 	"strings"
+
+	"inbok/internal/passwordhash"
 )
 
 // SetupStatus describes whether the first administrator can be created.
@@ -79,7 +81,7 @@ func (s *Service) Setup(ctx context.Context, input SetupInput) (User, error) {
 	// Argon2id must finish before storage takes the table lock.
 	admin := NewAdmin{
 		Email:        normalizeEmail(input.Email),
-		PasswordHash: hashPassword(input.Password),
+		PasswordHash: passwordhash.Hash(input.Password),
 	}
 	return s.storage.UpdateSetup(ctx, func(state SetupState) (NewAdmin, error) {
 		if state.AdminExists {

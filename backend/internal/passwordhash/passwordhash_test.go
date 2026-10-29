@@ -1,4 +1,4 @@
-package account
+package passwordhash
 
 import (
 	"strings"
@@ -8,36 +8,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHashPassword(t *testing.T) {
+func TestHash(t *testing.T) {
 	const password = "a long password with spaces"
 
-	encoded := hashPassword(password)
-	match, err := verifyPassword(password, encoded)
+	encoded := Hash(password)
+	match, err := Verify(password, encoded)
 
 	require.NoError(t, err)
 	assert.True(t, match)
 	assert.Regexp(t, `^\$argon2id\$v=19\$m=19456,t=2,p=1\$[A-Za-z0-9+/]{22}\$[A-Za-z0-9+/]{43}$`, encoded)
 }
 
-func TestHashPasswordSalt(t *testing.T) {
+func TestHashSalt(t *testing.T) {
 	const password = "a long password with spaces"
 
-	first := hashPassword(password)
-	second := hashPassword(password)
+	first := Hash(password)
+	second := Hash(password)
 
 	firstParts := strings.Split(first, "$")
 	secondParts := strings.Split(second, "$")
 	require.Len(t, firstParts, 6)
 	require.Len(t, secondParts, 6)
 	assert.NotEqual(t, firstParts[4], secondParts[4])
-	match, err := verifyPassword(password, second)
+	match, err := Verify(password, second)
 	require.NoError(t, err)
 	assert.True(t, match)
 }
 
-func TestVerifyPassword(t *testing.T) {
+func TestVerify(t *testing.T) {
 	const password = " a long password \u00e9\U0001f512\x00 "
-	encoded := hashPassword(password)
+	encoded := Hash(password)
 	cases := []struct {
 		name     string
 		password string
@@ -52,7 +52,7 @@ func TestVerifyPassword(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			match, err := verifyPassword(c.password, encoded)
+			match, err := Verify(c.password, encoded)
 
 			require.NoError(t, err)
 			assert.Equal(t, c.match, match)
@@ -62,21 +62,21 @@ func TestVerifyPassword(t *testing.T) {
 
 // These reference-CLI vectors come from x/crypto/argon2's TestVectors.
 // They also check that verification uses stored costs and lengths.
-func TestVerifyPasswordVectors(t *testing.T) {
+func TestVerifyVectors(t *testing.T) {
 	encoded := []string{
 		"$argon2id$v=19$m=64,t=1,p=1$c29tZXNhbHQ$ZVrRXqxlLcWfcXCnMyv0m4Rpvh/bnCi7",
 		"$argon2id$v=19$m=256,t=3,p=2$c29tZXNhbHQ$RmjTCsQYfmh47t6s8P2DxaCjDbLMFu8L",
 	}
 
 	for _, hash := range encoded {
-		match, err := verifyPassword("password", hash)
+		match, err := Verify("password", hash)
 
 		require.NoError(t, err)
 		assert.True(t, match)
 	}
 }
 
-func TestVerifyPasswordMalformed(t *testing.T) {
+func TestVerifyMalformed(t *testing.T) {
 	const encoded = "$argon2id$v=19$m=64,t=1,p=1$c29tZXNhbHQ$ZVrRXqxlLcWfcXCnMyv0m4Rpvh/bnCi7"
 	cases := []struct {
 		name string
@@ -117,9 +117,9 @@ func TestVerifyPasswordMalformed(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			match, err := verifyPassword("password", c.hash)
+			match, err := Verify("password", c.hash)
 
-			require.ErrorIs(t, err, errInvalidPasswordHash)
+			require.ErrorIs(t, err, ErrInvalidHash)
 			require.EqualError(t, err, "invalid password hash")
 			assert.False(t, match)
 		})

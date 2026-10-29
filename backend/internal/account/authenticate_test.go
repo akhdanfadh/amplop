@@ -3,7 +3,10 @@ package account
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+
+	"inbok/internal/passwordhash"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +27,7 @@ func (f *credentialStorage) ReadCredentials(_ context.Context, email string) (Cr
 func TestAuthenticate(t *testing.T) {
 	const password = "a long sign-in password "
 	user := User{ID: 42, Email: "Admin@example.com"}
-	storage := &credentialStorage{credentials: Credentials{User: user, PasswordHash: hashPassword(password)}}
+	storage := &credentialStorage{credentials: Credentials{User: user, PasswordHash: passwordhash.Hash(password)}}
 	service := NewService(storage, "")
 
 	got, err := service.Authenticate(t.Context(), " \tADMIN@Example.COM\n", password)
@@ -40,7 +43,7 @@ func TestAuthenticate(t *testing.T) {
 
 func TestAuthenticateRejected(t *testing.T) {
 	user := User{ID: 42, Email: "admin@example.com"}
-	hash := hashPassword("the correct password")
+	hash := passwordhash.Hash("the correct password")
 	cases := []struct {
 		name     string
 		row      Credentials
@@ -72,7 +75,7 @@ func TestAuthenticateErrors(t *testing.T) {
 		want error
 	}{
 		{"storage", Credentials{}, lost, lost},
-		{"damaged hash", Credentials{PasswordHash: "damaged"}, nil, errInvalidPasswordHash},
+		{"damaged hash", Credentials{PasswordHash: "damaged"}, nil, passwordhash.ErrInvalidHash},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -87,14 +90,16 @@ func TestAuthenticateErrors(t *testing.T) {
 }
 
 func TestDummyPasswordHash(t *testing.T) {
-	hash, err := decodePasswordHash(dummyPasswordHash)
-	require.NoError(t, err)
-	assert.Equal(t, uint32(passwordMemory), hash.memory)
-	assert.Equal(t, uint32(passwordIterations), hash.iterations)
-	assert.Equal(t, uint8(passwordParallelism), hash.parallelism)
-	assert.Len(t, hash.salt, passwordSaltLength)
-	assert.Len(t, hash.key, passwordKeyLength)
-	match, err := verifyPassword("inbok dummy password", dummyPasswordHash)
+	// The dummy must keep pace with the work settings used for new passwords.
+	dummy := strings.Split(dummyPasswordHash, "$")
+	current := strings.Split(passwordhash.Hash("inbok dummy password"), "$")
+	require.Len(t, dummy, 6)
+	require.Len(t, current, 6)
+	assert.Equal(t, current[:4], dummy[:4])
+	assert.Len(t, dummy[4], len(current[4]))
+	assert.Len(t, dummy[5], len(current[5]))
+
+	match, err := passwordhash.Verify("inbok dummy password", dummyPasswordHash)
 	require.NoError(t, err)
 	assert.True(t, match)
 }

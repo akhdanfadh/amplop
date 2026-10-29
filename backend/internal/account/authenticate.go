@@ -3,6 +3,8 @@ package account
 import (
 	"context"
 	"errors"
+
+	"inbok/internal/passwordhash"
 )
 
 // dummyPasswordHash is the fixed Argon2id hash checked for unknown accounts.
@@ -35,7 +37,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (Use
 		credentials.PasswordHash = dummyPasswordHash
 	}
 
-	match, err := verifyPassword(password, credentials.PasswordHash)
+	match, err := passwordhash.Verify(password, credentials.PasswordHash)
 	if err != nil {
 		return User{}, err
 	}
