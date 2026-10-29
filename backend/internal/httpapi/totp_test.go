@@ -91,10 +91,14 @@ func TestStartTOTPEnrollment(t *testing.T) {
 func TestGetTOTPStatus(t *testing.T) {
 	for _, state := range []totp.State{totp.StateOff, totp.StatePending, totp.StateOn} {
 		t.Run(string(state), func(t *testing.T) {
-			service := &fakeTOTP{status: totp.Status{State: state}}
+			count := 0
+			if state == totp.StateOn {
+				count = 7
+			}
+			service := &fakeTOTP{status: totp.Status{State: state, BackupCodesLeft: count}}
 			response := requestTOTP(New(discard, Services{TOTP: service, Session: totpSessions(account.RoleMember)}), http.MethodGet, totpAuthAuthenticated)
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-			assert.JSONEq(t, `{"data":{"status":"`+string(state)+`","backupCodesLeft":0}}`, response.Body.String())
+			assert.JSONEq(t, fmt.Sprintf(`{"data":{"status":"%s","backupCodesLeft":%d}}`, state, count), response.Body.String())
 			assert.Equal(t, int64(42), service.userID)
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 		})

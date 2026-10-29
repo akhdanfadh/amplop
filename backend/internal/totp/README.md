@@ -169,4 +169,6 @@ returns HTTP 429 (`totp-throttled`). A session revoked between middleware and
 the confirmation transaction returns HTTP 401.
 
 Administrator access remains gated until the TOTP sign-in step is implemented.
-The remaining backup-code count in status is not implemented yet.
+`GET /api/v0/totp` reads confirmation metadata and the remaining backup-code
+count in one database snapshot. It reports usable codes only for a confirmed
+factor. Status reads load neither the encrypted secret nor backup-code hashes.

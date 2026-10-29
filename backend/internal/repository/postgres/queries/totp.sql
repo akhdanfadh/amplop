@@ -6,6 +6,12 @@ SELECT id FROM users WHERE id = @user_id FOR UPDATE;
 SELECT key_id, secret_ciphertext, confirmed_at, last_step
 FROM user_totp WHERE user_id = @user_id;
 
+-- name: ReadUserTOTPStatus :one
+-- One statement keeps the factor and count consistent during concurrent writes.
+SELECT factor.confirmed_at,
+    (SELECT count(*) FROM totp_backup_codes AS codes WHERE codes.user_id = @user_id) AS backup_codes_left
+FROM user_totp AS factor WHERE factor.user_id = @user_id;
+
 -- name: UpsertUserTOTP :exec
 INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, last_step)
 VALUES (@user_id, @key_id, @secret_ciphertext, @confirmed_at, @last_step)

@@ -13,11 +13,17 @@ import (
 )
 
 type memoryFactors struct {
-	factor *Factor
-	err    error
+	factor          *Factor
+	backupCodesLeft int
+	err             error
 }
 
-func (m *memoryFactors) ReadTOTP(context.Context, int64) (*Factor, error) { return m.factor, m.err }
+func (m *memoryFactors) ReadTOTPStatus(context.Context, int64) (*StatusRecord, error) {
+	if m.err != nil || m.factor == nil {
+		return nil, m.err
+	}
+	return &StatusRecord{ConfirmedAt: m.factor.ConfirmedAt, BackupCodesLeft: m.backupCodesLeft}, nil
+}
 func (m *memoryFactors) UpdateTOTP(_ context.Context, _ int64, update func(*Factor) (Factor, error)) error {
 	if m.err != nil {
 		return m.err
@@ -79,20 +85,25 @@ func TestStartEnrollmentAlreadyOn(t *testing.T) {
 func TestEnrollmentStatus(t *testing.T) {
 	now := time.Now()
 	for _, c := range []struct {
-		name   string
-		factor *Factor
-		want   State
+		name      string
+		factor    *Factor
+		want      State
+		count     int
+		wantCount int
 	}{
-		{"off", nil, StateOff},
-		{"pending", &Factor{LastStep: -1}, StatePending},
-		{"on", &Factor{ConfirmedAt: &now}, StateOn},
+		{"off", nil, StateOff, 0, 0},
+		{"pending", &Factor{LastStep: -1}, StatePending, 0, 0},
+		{"pending hides codes", &Factor{LastStep: -1}, StatePending, 10, 0},
+		{"on with all codes", &Factor{ConfirmedAt: &now}, StateOn, 10, 10},
+		{"on with some codes", &Factor{ConfirmedAt: &now}, StateOn, 3, 3},
+		{"on without codes", &Factor{ConfirmedAt: &now}, StateOn, 0, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			service := NewService(&memoryFactors{factor: c.factor}, &fakeSealer{})
+			service := NewService(&memoryFactors{factor: c.factor, backupCodesLeft: c.count}, &fakeSealer{})
 			status, err := service.Status(t.Context(), 42)
 			require.NoError(t, err)
 			assert.Equal(t, c.want, status.State)
-			assert.Zero(t, status.BackupCodesLeft)
+			assert.Equal(t, c.wantCount, status.BackupCodesLeft)
 		})
 	}
 }

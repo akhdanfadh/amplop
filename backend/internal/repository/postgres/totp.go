@@ -12,6 +12,19 @@ import (
 	"inbok/internal/totp"
 )
 
+// ReadTOTPStatus reads only the metadata needed for display, nil if absent.
+func (db *DB) ReadTOTPStatus(ctx context.Context, userID int64) (*totp.StatusRecord, error) {
+	row, err := sqlc.New(db.pool).ReadUserTOTPStatus(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read TOTP status: %w", err)
+	}
+
+	return &totp.StatusRecord{ConfirmedAt: row.ConfirmedAt, BackupCodesLeft: int(row.BackupCodesLeft)}, nil
+}
+
 // ReadTOTP returns nil when the user has no factor.
 func (db *DB) ReadTOTP(ctx context.Context, userID int64) (*totp.Factor, error) {
 	return readTOTP(ctx, sqlc.New(db.pool), userID)

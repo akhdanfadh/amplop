@@ -13,6 +13,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/encryption"
+	"inbok/internal/repository/postgres/sqlc"
 	"inbok/internal/totp"
 )
 
@@ -166,4 +167,52 @@ func TestTOTPCommitFailure(t *testing.T) {
 	factor, err := db.ReadTOTP(t.Context(), id)
 	require.NoError(t, err)
 	assert.Nil(t, factor)
+}
+
+func TestTOTPStatusBackupCodes(t *testing.T) {
+	db, conn := setupStorage(t)
+	alice := backupCodeUser(t, conn, "alice@example.com")
+	bob := backupCodeUser(t, conn, "bob@example.com")
+	service := totp.NewService(db, nil)
+	queries := sqlc.New(conn)
+
+	// Count rows, not hash contents; another user's codes must stay separate.
+	_, err := conn.Exec(t.Context(), `INSERT INTO totp_backup_codes (user_id, code_hash)
+ SELECT $1, 'unused-hash' FROM generate_series(1, 10)`, alice)
+	require.NoError(t, err)
+	require.NoError(t, queries.InsertTOTPBackupCode(t.Context(), sqlc.InsertTOTPBackupCodeParams{UserID: bob, CodeHash: "other-hash"}))
+
+	status, err := service.Status(t.Context(), alice)
+	require.NoError(t, err)
+	assert.Equal(t, totp.Status{State: totp.StateOn, BackupCodesLeft: 10}, status)
+	other, err := service.Status(t.Context(), bob)
+	require.NoError(t, err)
+	assert.Equal(t, totp.Status{State: totp.StateOn, BackupCodesLeft: 1}, other)
+
+	// Committed consumption reduces the count without changing factor status.
+	codes, err := queries.ReadTOTPBackupCodes(t.Context(), alice)
+	require.NoError(t, err)
+	require.Len(t, codes, 10)
+	_, err = queries.ConsumeTOTPBackupCode(t.Context(), sqlc.ConsumeTOTPBackupCodeParams{UserID: alice, ID: codes[0].ID})
+	require.NoError(t, err)
+	status, err = service.Status(t.Context(), alice)
+	require.NoError(t, err)
+	assert.Equal(t, totp.Status{State: totp.StateOn, BackupCodesLeft: 9}, status)
+
+	require.NoError(t, queries.DeleteTOTPBackupCodes(t.Context(), alice))
+	status, err = service.Status(t.Context(), alice)
+	require.NoError(t, err)
+	assert.Equal(t, totp.Status{State: totp.StateOn}, status)
+
+	// Pending and missing factors report no usable backup codes.
+	_, err = conn.Exec(t.Context(), "UPDATE user_totp SET confirmed_at = NULL WHERE user_id = $1", bob)
+	require.NoError(t, err)
+	status, err = service.Status(t.Context(), bob)
+	require.NoError(t, err)
+	assert.Equal(t, totp.Status{State: totp.StatePending}, status)
+	_, err = conn.Exec(t.Context(), "DELETE FROM user_totp WHERE user_id = $1", bob)
+	require.NoError(t, err)
+	status, err = service.Status(t.Context(), bob)
+	require.NoError(t, err)
+	assert.Equal(t, totp.Status{State: totp.StateOff}, status)
 }

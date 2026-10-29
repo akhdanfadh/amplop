@@ -46,6 +46,25 @@ func (q *Queries) ReadUserTOTP(ctx context.Context, userID int64) (ReadUserTOTPR
 	return i, err
 }
 
+const readUserTOTPStatus = `-- name: ReadUserTOTPStatus :one
+SELECT factor.confirmed_at,
+    (SELECT count(*) FROM totp_backup_codes AS codes WHERE codes.user_id = $1) AS backup_codes_left
+FROM user_totp AS factor WHERE factor.user_id = $1
+`
+
+type ReadUserTOTPStatusRow struct {
+	ConfirmedAt     *time.Time
+	BackupCodesLeft int64
+}
+
+// One statement keeps the factor and count consistent during concurrent writes.
+func (q *Queries) ReadUserTOTPStatus(ctx context.Context, userID int64) (ReadUserTOTPStatusRow, error) {
+	row := q.db.QueryRow(ctx, readUserTOTPStatus, userID)
+	var i ReadUserTOTPStatusRow
+	err := row.Scan(&i.ConfirmedAt, &i.BackupCodesLeft)
+	return i, err
+}
+
 const upsertUserTOTP = `-- name: UpsertUserTOTP :exec
 INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, last_step)
 VALUES ($1, $2, $3, $4, $5)

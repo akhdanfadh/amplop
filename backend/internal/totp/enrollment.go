@@ -34,7 +34,8 @@ type Factor struct {
 
 // Storage serializes factor changes, including when a user has no factor yet.
 type Storage interface {
-	ReadTOTP(ctx context.Context, userID int64) (*Factor, error)
+	// ReadTOTPStatus returns metadata and count from one snapshot, nil if absent.
+	ReadTOTPStatus(ctx context.Context, userID int64) (*StatusRecord, error)
 
 	// UpdateTOTP locks the user, loads the factor (nil if absent), calls update,
 	// and saves its result in one transaction. An error rolls back the write.
@@ -68,6 +69,12 @@ type Status struct {
 	BackupCodesLeft int
 }
 
+// StatusRecord contains stored display metadata, without secrets or hashes.
+type StatusRecord struct {
+	ConfirmedAt     *time.Time
+	BackupCodesLeft int
+}
+
 // Start replaces a pending secret but cannot replace a confirmed factor.
 func (s *Service) Start(ctx context.Context, user account.User) (Started, error) {
 	value, err := newEnrollment(user.Email)
@@ -93,15 +100,15 @@ func (s *Service) Start(ctx context.Context, user account.User) (Started, error)
 
 // Status reports off for a missing factor; generation alone leaves it pending.
 func (s *Service) Status(ctx context.Context, userID int64) (Status, error) {
-	factor, err := s.storage.ReadTOTP(ctx, userID)
+	record, err := s.storage.ReadTOTPStatus(ctx, userID)
 	if err != nil {
 		return Status{}, err
 	}
-	if factor == nil {
+	if record == nil {
 		return Status{State: StateOff}, nil
 	}
-	if factor.ConfirmedAt == nil {
+	if record.ConfirmedAt == nil {
 		return Status{State: StatePending}, nil
 	}
-	return Status{State: StateOn}, nil
+	return Status{State: StateOn, BackupCodesLeft: record.BackupCodesLeft}, nil
 }
