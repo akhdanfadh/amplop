@@ -82,6 +82,7 @@ function Security() {
             )}
             <Enrollment
               key={current.data.data.email}
+              role={current.data.data.role}
               locked={!ready}
               onWritingChange={setWriting}
               onCodesChange={setHasCodes}

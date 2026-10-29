@@ -61,7 +61,8 @@ Put shared code in the folder for its responsibility:
 - `src/features/auth`: sign-in form, validation, session messages, and account
   cache cleanup.
 - `src/features/probe`: the probe demo form.
-- `src/features/totp`: authenticator enrollment, confirmation, and backup-code management.
+- `src/features/totp`: authenticator enrollment, confirmation, backup-code
+  management, and turning TOTP off.
 - `src/components`: shared controls, such as the password input. `ui/` holds
   the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -128,6 +129,15 @@ enrollment. An uncertain replacement blocks another attempt until status is
 checked. A count cannot recover lost codes or prove which set is current;
 the page directs the user to generate another set with a fresh authenticator
 code.
+
+Members can turn TOTP off with a fresh authenticator code or an unused backup
+code; the same control switches between them as at sign-in. Turning off removes
+the authenticator and every backup code, and sessions stay signed in.
+Administrators see that they must keep TOTP instead. If the account became an
+administrator after the page loaded, the HTTP 403 refreshes the session and the
+page switches to that notice. An HTTP 409 means TOTP is already off, so the
+page offers enrollment again. An uncertain turn-off blocks another attempt until
+status is checked.
 
 Signing out deletes the current session, clears account caches, and opens
 sign-in. A 401 also completes sign-out because that session is already absent

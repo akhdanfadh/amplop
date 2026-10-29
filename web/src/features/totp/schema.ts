@@ -1,12 +1,14 @@
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 import {
   TotpConfirmationCode,
+  TotpDisableCode,
   totpConfirmationCodeCodeMax,
   TotpRegenerationCode,
   totpRegenerationCodeCodeMax,
 } from "@/api/generated/model";
+import { completeCode, type CodeKind } from "@/features/auth/code-schema";
 
-export const authenticatorDigits = totpConfirmationCodeCodeMax;
+const authenticatorDigits = totpConfirmationCodeCodeMax;
 export const ConfirmationSchema = TotpConfirmationCode.extend({
   code: TotpConfirmationCode.shape.code
     .length(authenticatorDigits, { error: `Enter all ${authenticatorDigits} digits.` })
@@ -20,6 +22,11 @@ export const RegenerationSchema = TotpRegenerationCode.extend({
     })
     .regex(new RegExp(REGEXP_ONLY_DIGITS), { error: "Use digits only." }),
 });
+
+// Turning off accepts either proof, so the field follows the selected kind.
+export function turnOffSchema(kind: CodeKind) {
+  return TotpDisableCode.extend({ code: completeCode(TotpDisableCode.shape.code, kind) });
+}
 
 export function pasteCode(value: string): string {
   return value.replace(/[\p{White_Space}-]/gu, "");

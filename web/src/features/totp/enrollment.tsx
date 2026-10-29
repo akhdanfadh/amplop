@@ -10,8 +10,9 @@ import {
   useConfirmTOTPEnrollment,
   useCancelTOTPEnrollment,
   useRegenerateTOTPBackupCodes,
+  useDisableTOTP,
 } from "@/api/generated/inbok";
-import type { TotpEnrollment } from "@/api/generated/model";
+import type { CurrentSession, TotpEnrollment } from "@/api/generated/model";
 import type { ApiError } from "@/api/transport";
 import { userMessage } from "@/api/problem";
 import { uncertainSession } from "@/features/auth/session-error";
@@ -21,16 +22,23 @@ import { FieldError } from "@/components/ui/field";
 import { BackupCodes } from "./backup-codes";
 import { ConfirmForm } from "./confirm-form";
 import { BackupSettings } from "./backup-settings";
+import { TurnOff } from "./turn-off";
 
 const unauthorized = 401;
+const forbidden = 403;
+const conflict = 409;
+const turnedOffNotice =
+  "Two-factor authentication is off. Remove inbok from your authenticator app.";
 // QR codes require a clear border of four modules for scanners.
 const qrQuietZone = 4;
 
 export function Enrollment({
+  role,
   locked,
   onWritingChange,
   onCodesChange,
 }: {
+  role: CurrentSession["role"];
   locked: boolean;
   onWritingChange: (pending: boolean) => void;
   onCodesChange: (present: boolean) => void;
@@ -46,6 +54,8 @@ export function Enrollment({
   const cancelRef = useRef<HTMLButtonElement>(null);
   const checkRef = useRef<HTMLButtonElement>(null);
   const focusStart = useRef(false);
+  const adminRef = useRef<HTMLParagraphElement>(null);
+  const focusAdmin = useRef(false);
   const focusCancel = useRef(false);
   const setupRef = useRef<HTMLHeadingElement>(null);
   const setupFocused = useRef(false);
@@ -91,20 +101,45 @@ export function Enrollment({
       },
     },
   });
-  const pending = start.isPending || confirm.isPending || cancel.isPending || regenerate.isPending;
+  const disable = useDisableTOTP({
+    mutation: {
+      gcTime: 0,
+      onMutate: prepareWrite,
+      onSettled: () => {
+        onWritingChange(false);
+        refreshStatus();
+      },
+    },
+  });
+  const pending =
+    start.isPending ||
+    confirm.isPending ||
+    cancel.isPending ||
+    regenerate.isPending ||
+    disable.isPending;
   const status = useGetTOTPStatus({
     query: { enabled: !locked && !pending, gcTime: 0, networkMode: "always" },
   });
-  const expired = [status.error, start.error, confirm.error, cancel.error, regenerate.error].some(
-    (error) => error?.status === unauthorized,
-  );
+  const expired = [
+    status.error,
+    start.error,
+    confirm.error,
+    cancel.error,
+    regenerate.error,
+    disable.error,
+  ].some((error) => error?.status === unauthorized);
   const confirmationUncertain = Boolean(confirm.error && uncertainSession(confirm.error));
   const regenerationUncertain = Boolean(regenerate.error && uncertainSession(regenerate.error));
+  const turnOffUncertain = Boolean(disable.error && uncertainSession(disable.error));
+  const resetTurnOff = disable.reset;
   const uncertain =
     confirmationUncertain ||
     regenerationUncertain ||
     Boolean(cancel.error && uncertainSession(cancel.error));
   const factor = status.data?.data;
+  // A status read can show that a turn-off with a lost response committed.
+  const turnedOff = turnOffUncertain && factor?.status === "off";
+  const shownNotice = turnedOff ? turnedOffNotice : notice;
   const enabled = factor?.status === "on";
   const blocked = pending || Boolean(codes);
 
@@ -135,10 +170,25 @@ export function Enrollment({
   }, [enrollment, locked]);
 
   useEffect(() => {
+    if (turnedOff) focusStart.current = true;
+  }, [turnedOff]);
+
+  useEffect(() => {
     if (!focusStart.current || locked || status.isFetching || !startRef.current) return;
     startRef.current.focus();
     focusStart.current = false;
-  }, [notice, locked, status.isFetching]);
+  }, [shownNotice, locked, status.isFetching]);
+
+  useEffect(() => {
+    // Administrators cannot turn off; drop a stale attempt and its code.
+    if (role !== "member") resetTurnOff();
+  }, [role, resetTurnOff]);
+
+  useEffect(() => {
+    if (role === "member" || !focusAdmin.current || locked) return;
+    adminRef.current?.focus();
+    focusAdmin.current = false;
+  }, [role, locked]);
 
   useEffect(() => {
     if (!cancel.error || !focusCancel.current || pending || locked || status.isFetching) return;
@@ -171,6 +221,7 @@ export function Enrollment({
         setNotice("");
         cancel.reset();
         regenerate.reset();
+        disable.reset();
         start.reset();
       },
     });
@@ -221,6 +272,51 @@ export function Enrollment({
     );
   }
 
+  function turnOff(code: string, reject: (err: ApiError) => void): void {
+    if (
+      locked ||
+      pending ||
+      turnOffUncertain ||
+      status.isFetching ||
+      status.isError ||
+      !enabled ||
+      role !== "member"
+    )
+      return;
+    setNotice("");
+    disable.mutate(
+      { data: { code } },
+      {
+        onSuccess: (result) => {
+          client.setQueryData(status.queryKey, result);
+          focusStart.current = true;
+          setNotice(turnedOffNotice);
+          confirm.reset();
+          regenerate.reset();
+          disable.reset();
+        },
+        onError: (err) => {
+          if (err.status === forbidden) {
+            // The role may have changed since this page read the session.
+            focusAdmin.current = true;
+            void client.invalidateQueries({ queryKey: getGetCurrentSessionQueryKey() });
+          }
+          if (err.status === conflict) {
+            disable.reset();
+            // Announce only what a fresh status read confirms.
+            void status.refetch().then((result) => {
+              if (!result.isSuccess || result.data.data.status === "on") return;
+              focusStart.current = true;
+              setNotice("Two-factor authentication is already off.");
+            });
+            return;
+          }
+          reject(err);
+        },
+      },
+    );
+  }
+
   function cancelEnrollment(): void {
     if (locked || pending || uncertain) return;
     focusCancel.current = true;
@@ -253,6 +349,7 @@ export function Enrollment({
     const result = await status.refetch();
     if (!result.isSuccess) return;
     cancel.reset();
+    disable.reset();
     if (regenerationUncertain) {
       // A count cannot recover a lost code set, even when it says ten remain.
       regenerate.reset();
@@ -260,7 +357,11 @@ export function Enrollment({
         "Replacement codes could not be retrieved. Your old codes may no longer work. Generate a new set with a fresh authenticator code.",
       );
     }
-    if (result.data.data.status === "on") return;
+    if (result.data.data.status === "on") {
+      if (turnOffUncertain)
+        setNotice("Two-factor authentication is still on. Try again with a new code.");
+      return;
+    }
     // A confirmed pending state permits another deliberate attempt.
     confirm.reset();
     if (result.data.data.status === "off") {
@@ -268,9 +369,11 @@ export function Enrollment({
       setCopyMessage("");
       focusStart.current = true;
       setNotice(
-        regenerationUncertain
-          ? "Two-factor authentication is no longer enabled."
-          : "Enrollment canceled.",
+        turnOffUncertain
+          ? turnedOffNotice
+          : regenerationUncertain
+            ? "Two-factor authentication is no longer enabled."
+            : "Enrollment canceled.",
       );
     }
   }
@@ -295,7 +398,8 @@ export function Enrollment({
       aria-label="Two-factor authentication"
       aria-busy={pending}
     >
-      {notice && <output>{notice}</output>}
+      {/* Stay mounted so screen readers announce changed text. */}
+      <output className={shownNotice ? undefined : "sr-only"}>{shownNotice}</output>
       {status.isFetching && <output>Checking two-factor authentication...</output>}
       {status.error && (
         <div className="flex flex-col gap-3" role="alert">
@@ -306,7 +410,7 @@ export function Enrollment({
             className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
             disabled={locked || status.isFetching}
             onClick={() => {
-              if (regenerationUncertain) void checkStatus();
+              if (regenerationUncertain || turnOffUncertain) void checkStatus();
               else void status.refetch();
             }}
           >
@@ -322,7 +426,7 @@ export function Enrollment({
           )}
           <BackupSettings
             left={factor.backupCodesLeft}
-            locked={locked || pending || status.isError}
+            locked={locked || pending || status.isError || (turnOffUncertain && role === "member")}
             pending={regenerate.isPending}
             checking={status.isFetching}
             error={regenerate.error}
@@ -332,6 +436,23 @@ export function Enrollment({
             onReplace={replaceCodes}
             onCheck={() => void checkStatus()}
           />
+          {role === "member" ? (
+            <TurnOff
+              locked={locked || pending || status.isError || regenerationUncertain}
+              pending={disable.isPending}
+              checking={status.isFetching}
+              error={disable.error}
+              onEdit={() => {
+                if (!turnOffUncertain) disable.reset();
+              }}
+              onTurnOff={turnOff}
+              onCheck={() => void checkStatus()}
+            />
+          ) : (
+            <p ref={adminRef} tabIndex={-1}>
+              Administrators must keep two-factor authentication enabled.
+            </p>
+          )}
         </>
       ) : enrollment ? (
         <>

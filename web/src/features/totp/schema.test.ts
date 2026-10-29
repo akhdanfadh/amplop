@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ConfirmationSchema, RegenerationSchema, pasteCode } from "./schema";
+import { ConfirmationSchema, RegenerationSchema, pasteCode, turnOffSchema } from "./schema";
 
 describe("enrollment confirmation", () => {
   it("keeps leading zeros", () => {
@@ -30,4 +30,20 @@ describe("backup-code regeneration", () => {
       expect(RegenerationSchema.safeParse({ code }).success).toBe(false);
     },
   );
+});
+
+describe("turning off two-factor authentication", () => {
+  it("accepts an authenticator code or a backup code as entered", () => {
+    expect(turnOffSchema("authenticator").parse({ code: "012345" })).toEqual({ code: "012345" });
+    expect(turnOffSchema("backup").parse({ code: "aBcDefGhJk" })).toEqual({ code: "aBcDefGhJk" });
+  });
+
+  it.each([
+    ["authenticator", "abcdef"],
+    ["authenticator", "12345"],
+    ["backup", "012345"],
+    ["backup", "abcde!ghjk"],
+  ] as const)("rejects %s input %s", (kind, code) => {
+    expect(turnOffSchema(kind).safeParse({ code }).success).toBe(false);
+  });
 });
