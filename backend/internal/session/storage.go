@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"errors"
 	"time"
+
+	"inbok/internal/totp"
 )
 
 // ErrNotFound means the session row does not exist.
@@ -30,6 +32,10 @@ type Change struct {
 // Updates serialize decisions for each session.
 type Storage interface {
 	InsertSession(ctx context.Context, state State) error
+
+	// StartSignIn locks the owner, reads the latest factor, then saves the chosen
+	// session or challenge and prunes that owner's expired challenges atomically.
+	StartSignIn(ctx context.Context, userID int64, update func(*totp.Factor) (SignInChange, error)) error
 
 	// UpdateSession applies a Go decision to a session in one transaction.
 	// It locks and loads the row, calls update, then saves its decision.

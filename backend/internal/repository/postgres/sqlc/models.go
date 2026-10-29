@@ -37,6 +37,13 @@ type SignInAttempt struct {
 	CreatedAt  time.Time
 }
 
+type SignInChallenge struct {
+	TokenHash []byte
+	UserID    int64
+	ExpiresAt time.Time
+	Failures  int32
+}
+
 type TotpAttempt struct {
 	ID        int64
 	UserID    int64

@@ -187,6 +187,35 @@ challenge at its expiry or after its fifth failure. Retrying does not extend
 its lifetime or reset failures. Storage must check and update it under one
 lock; the code operation must delete it after five wrong codes or success.
 
-Only the challenge data and check rules are implemented. Password sign-in
-still issues sessions as before; challenge storage, code verification, and
-HTTP wiring are not implemented yet.
+The data, check rules, and PostgreSQL storage queries are implemented.
+`sign_in_challenges` stores only the hash, owner, expiry, and failure count;
+it has no row in `sessions`. Deleting an account removes its challenges.
+A user-and-expiry index supports pruning that user's expired challenges.
+
+The owner lookup does not authorize a request. Code verification must lock
+the user first, then reload the owned challenge with `FOR UPDATE`. Counter
+changes and challenge deletion belong in that transaction. Deletion uses
+`RETURNING`, so concurrent consumers can succeed only once; rollback keeps
+the challenge usable. The expiry cleanup query uses `expires_at <= cutoff`
+and never removes another user's challenges.
+
+`session.Service.StartSignIn` calls `StartSignIn`, whose transaction locks the
+owner and reads the current factor before choosing a session or challenge.
+It also prunes that user's expired challenges. This shares enrollment's lock
+order: a password-only session created first is revoked by confirmation;
+a sign-in waiting behind confirmation sees the confirmed factor instead.
+
+`session.CodeSignIn.Complete` locates the challenge owner, reserves a shared
+code attempt, and calls `CompleteSignIn`. Its locked callback checks expiry,
+failure count, and the current confirmed factor. Six ASCII digits select
+TOTP; other inputs try the remaining salted backup hashes. A wrong code
+commits its counter before returning an error. The fifth wrong code or an
+expired challenge commits deletion before asking for password sign-in again.
+
+Success saves the new session while consuming the challenge and the matched
+TOTP step or backup row. It removes the successful attempt in that same
+transaction. Storage failure rolls back all changes and returns no cookie
+secret. Earlier failed attempts remain counted.
+
+The challenge-aware services are not connected to HTTP yet. The existing
+HTTP password entry point remains until the handlers switch to `StartSignIn`.
