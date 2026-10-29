@@ -95,3 +95,42 @@ func TestCurrentDeleteFailure(t *testing.T) {
 	require.ErrorIs(t, err, session.ErrUnauthenticated)
 	assert.Zero(t, identity)
 }
+
+func TestCurrentConfirmedAccess(t *testing.T) {
+	f := newConfirmation(t)
+
+	issued, err := f.service.Confirm(t.Context(), f.current, "287082")
+	require.NoError(t, err)
+	current, err := f.sessions.Current(t.Context(), issued.Session.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, session.AccessAdmin, current.Identity.Access)
+	assert.False(t, current.Identity.TOTPRequired)
+
+	// The earlier check must not let a revoked password-only session gain access.
+	_, err = f.db.ReadSessionIdentity(t.Context(), f.state.TokenHash)
+	require.ErrorIs(t, err, session.ErrNotFound)
+
+	// Identity always uses the current role and factor rather than cookie claims.
+	_, err = f.conn.Exec(t.Context(), "UPDATE users SET role='member' WHERE id=$1", f.state.UserID)
+	require.NoError(t, err)
+	current, err = f.sessions.Current(t.Context(), issued.Session.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.False(t, current.Identity.TOTPRequired)
+
+	_, err = f.conn.Exec(t.Context(), "UPDATE users SET role='admin' WHERE id=$1", f.state.UserID)
+	require.NoError(t, err)
+	_, err = f.conn.Exec(t.Context(), "UPDATE user_totp SET confirmed_at=NULL WHERE user_id=$1", f.state.UserID)
+	require.NoError(t, err)
+	current, err = f.sessions.Current(t.Context(), issued.Session.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.True(t, current.Identity.TOTPRequired)
+
+	_, err = f.conn.Exec(t.Context(), "DELETE FROM user_totp WHERE user_id=$1", f.state.UserID)
+	require.NoError(t, err)
+	current, err = f.sessions.Current(t.Context(), issued.Session.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.True(t, current.Identity.TOTPRequired)
+}

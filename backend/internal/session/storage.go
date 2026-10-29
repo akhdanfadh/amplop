@@ -31,6 +31,10 @@ type Change struct {
 // Storage stores session hashes and lifetimes.
 // Updates serialize decisions for each session.
 type Storage interface {
+	// ReadSessionIdentity loads account and factor metadata in one snapshot,
+	// rechecking the session so enrollment revocation cannot grant old proof access.
+	ReadSessionIdentity(ctx context.Context, hash [sha256.Size]byte) (IdentityState, error)
+
 	// StartSignIn locks the owner, reads the latest factor, then saves the chosen
 	// session or challenge and prunes that owner's expired challenges atomically.
 	StartSignIn(ctx context.Context, userID int64, update func(*totp.Factor) (SignInChange, error)) error

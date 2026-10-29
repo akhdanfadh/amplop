@@ -106,6 +106,35 @@ func (q *Queries) LockUserSession(ctx context.Context, arg LockUserSessionParams
 	return i, err
 }
 
+const readSessionIdentity = `-- name: ReadSessionIdentity :one
+SELECT users.id, users.email, users.role,
+    (user_totp.confirmed_at IS NOT NULL)::boolean AS totp_confirmed
+FROM sessions
+JOIN users ON users.id = sessions.user_id
+LEFT JOIN user_totp ON user_totp.user_id = users.id
+WHERE sessions.token_hash = $1
+`
+
+type ReadSessionIdentityRow struct {
+	ID            int64
+	Email         string
+	Role          string
+	TotpConfirmed bool
+}
+
+// Recheck the session together with the account and factor used for access.
+func (q *Queries) ReadSessionIdentity(ctx context.Context, tokenHash []byte) (ReadSessionIdentityRow, error) {
+	row := q.db.QueryRow(ctx, readSessionIdentity, tokenHash)
+	var i ReadSessionIdentityRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Role,
+		&i.TotpConfirmed,
+	)
+	return i, err
+}
+
 const touchSession = `-- name: TouchSession :exec
 UPDATE sessions SET last_used_at = $1 WHERE token_hash = $2
 `

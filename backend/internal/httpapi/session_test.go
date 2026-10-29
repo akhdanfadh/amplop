@@ -68,21 +68,19 @@ func (f *fakeSessions) StartSignIn(_ context.Context, email, password string, ad
 // referenceStorage supplies a session row for issuing test references through Current.
 type referenceStorage struct{ session.Storage }
 
+func (referenceStorage) ReadSessionIdentity(context.Context, [sha256.Size]byte) (session.IdentityState, error) {
+	return session.IdentityState{User: account.User{ID: 42, Role: account.RoleMember}}, nil
+}
+
 func (referenceStorage) UpdateSession(_ context.Context, hash [sha256.Size]byte, update func(session.State) (session.Change, error)) error {
 	now := time.Now()
 	_, err := update(session.State{TokenHash: hash, UserID: 42, CreatedAt: now, LastUsedAt: now, ExpiresAt: now.Add(time.Hour)})
 	return err
 }
 
-type referenceAccounts struct{ *account.Service }
-
-func (referenceAccounts) UserByID(context.Context, int64) (account.User, error) {
-	return account.User{ID: 42, Role: account.RoleMember}, nil
-}
-
 func checkedReference(t *testing.T) session.Reference {
 	t.Helper()
-	service := session.NewService(referenceStorage{}, referenceAccounts{}, nil, time.Now)
+	service := session.NewService(referenceStorage{}, nil, nil, time.Now)
 	current, err := service.Current(t.Context(), strings.Repeat("A", encodedSecretLength))
 	require.NoError(t, err)
 	require.NotZero(t, current.Session)

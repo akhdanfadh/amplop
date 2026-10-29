@@ -16,11 +16,6 @@ import (
 
 type signInAccounts struct {
 	authenticate func(context.Context, string, string) (account.User, error)
-	userByID     func(context.Context, int64) (account.User, error)
-}
-
-func (f signInAccounts) UserByID(ctx context.Context, id int64) (account.User, error) {
-	return f.userByID(ctx, id)
 }
 
 func (f signInAccounts) Authenticate(ctx context.Context, email, password string) (account.User, error) {

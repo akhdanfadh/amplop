@@ -20,6 +20,7 @@ type currentStorage struct {
 	changes   []Change
 	readErr   error
 	commitErr error
+	identity  func(context.Context, int64) (IdentityState, error)
 }
 
 func (f *currentStorage) UpdateSession(_ context.Context, hash [sha256.Size]byte, update func(State) (Change, error)) error {
@@ -49,18 +50,28 @@ func (f *currentStorage) UpdateSession(_ context.Context, hash [sha256.Size]byte
 	return nil
 }
 
+func (f *currentStorage) ReadSessionIdentity(ctx context.Context, hash [sha256.Size]byte) (IdentityState, error) {
+	if f.row == nil || f.row.TokenHash != hash {
+		return IdentityState{}, ErrNotFound
+	}
+	if f.identity != nil {
+		return f.identity(ctx, f.row.UserID)
+	}
+	return IdentityState{User: account.User{ID: f.row.UserID, Role: account.RoleMember}}, nil
+}
+
 func TestCurrent(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, time.October, 28, 12, 0, 0, 0, time.UTC)}
 	issued := newSession(42, clock.Now)
 	store := &currentStorage{row: &issued.State}
 	user := account.User{ID: 42, Email: "admin@example.com", Role: account.RoleAdmin}
 	reads := 0
-	accounts := signInAccounts{userByID: func(_ context.Context, id int64) (account.User, error) {
+	store.identity = func(_ context.Context, id int64) (IdentityState, error) {
 		reads++
 		assert.Equal(t, int64(42), id)
-		return user, nil
-	}}
-	service := NewService(store, accounts, nil, clock.Now)
+		return IdentityState{User: user}, nil
+	}
+	service := NewService(store, nil, nil, clock.Now)
 
 	current, err := service.Current(t.Context(), issued.Secret)
 
@@ -105,12 +116,12 @@ func TestCurrentExpired(t *testing.T) {
 				issued.State.LastUsedAt = clock.Now().Add(-time.Hour)
 			}
 			store := &currentStorage{row: &issued.State}
-			accounts := signInAccounts{userByID: func(context.Context, int64) (account.User, error) {
+			store.identity = func(context.Context, int64) (IdentityState, error) {
 				t.Error("expired session reached account lookup")
-				return account.User{}, nil
-			}}
+				return IdentityState{}, nil
+			}
 
-			identity, err := NewService(store, accounts, nil, clock.Now).Current(t.Context(), issued.Secret)
+			identity, err := NewService(store, nil, nil, clock.Now).Current(t.Context(), issued.Secret)
 
 			require.ErrorIs(t, err, ErrUnauthenticated)
 			assert.Zero(t, identity)
@@ -125,12 +136,12 @@ func TestCurrentMissing(t *testing.T) {
 	issued := newSession(42, time.Now)
 	for _, secret := range []string{"", "invalid-secret", strings.Repeat("A", 43)} {
 		store := &currentStorage{row: &issued.State}
-		accounts := signInAccounts{userByID: func(context.Context, int64) (account.User, error) {
+		store.identity = func(context.Context, int64) (IdentityState, error) {
 			t.Error("invalid or unknown secret reached account lookup")
-			return account.User{}, nil
-		}}
+			return IdentityState{}, nil
+		}
 
-		identity, err := NewService(store, accounts, nil, time.Now).Current(t.Context(), secret)
+		identity, err := NewService(store, nil, nil, time.Now).Current(t.Context(), secret)
 
 		require.ErrorIs(t, err, ErrUnauthenticated)
 		assert.Zero(t, identity)
@@ -154,12 +165,12 @@ func TestCurrentStorageErrors(t *testing.T) {
 			case "delete commit":
 				clock.Advance(7 * 24 * time.Hour)
 			}
-			accounts := signInAccounts{userByID: func(context.Context, int64) (account.User, error) {
+			store.identity = func(context.Context, int64) (IdentityState, error) {
 				t.Error("uncommitted session check reached account lookup")
-				return account.User{}, nil
-			}}
+				return IdentityState{}, nil
+			}
 
-			identity, err := NewService(store, accounts, nil, clock.Now).Current(t.Context(), issued.Secret)
+			identity, err := NewService(store, nil, nil, clock.Now).Current(t.Context(), issued.Secret)
 
 			require.ErrorIs(t, err, lost)
 			assert.Zero(t, identity)
@@ -169,7 +180,7 @@ func TestCurrentStorageErrors(t *testing.T) {
 	}
 }
 
-func TestCurrentAccountErrors(t *testing.T) {
+func TestCurrentIdentityErrors(t *testing.T) {
 	lost := errors.New("account storage unavailable")
 	for _, c := range []struct {
 		name string
@@ -177,21 +188,49 @@ func TestCurrentAccountErrors(t *testing.T) {
 		err  error
 		want error
 	}{
-		{"missing user", account.User{}, account.ErrUserNotFound, ErrUnauthenticated},
+		{"revoked session", account.User{}, ErrNotFound, ErrUnauthenticated},
 		{"lookup failure", account.User{}, lost, lost},
 		{"unknown role", account.User{ID: 42, Role: "unknown"}, nil, errInvalidRole},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			issued := newSession(42, time.Now)
 			store := &currentStorage{row: &issued.State}
-			accounts := signInAccounts{userByID: func(context.Context, int64) (account.User, error) {
-				return c.user, c.err
-			}}
+			store.identity = func(context.Context, int64) (IdentityState, error) {
+				return IdentityState{User: c.user}, c.err
+			}
 
-			identity, err := NewService(store, accounts, nil, time.Now).Current(t.Context(), issued.Secret)
+			identity, err := NewService(store, nil, nil, time.Now).Current(t.Context(), issued.Secret)
 
 			require.ErrorIs(t, err, c.want)
 			assert.Zero(t, identity)
+		})
+	}
+}
+
+func TestCurrentAccess(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		role      account.Role
+		confirmed bool
+		access    Access
+		required  bool
+	}{
+		{"admin off", account.RoleAdmin, false, AccessMember, true},
+		{"admin on", account.RoleAdmin, true, AccessAdmin, false},
+		{"member off", account.RoleMember, false, AccessMember, false},
+		{"member on", account.RoleMember, true, AccessMember, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			issued := newSession(42, time.Now)
+			store := &currentStorage{row: &issued.State, identity: func(context.Context, int64) (IdentityState, error) {
+				return IdentityState{User: account.User{ID: 42, Role: c.role}, TOTPConfirmed: c.confirmed}, nil
+			}}
+
+			current, err := NewService(store, nil, nil, time.Now).Current(t.Context(), issued.Secret)
+
+			require.NoError(t, err)
+			assert.Equal(t, c.access, current.Identity.Access)
+			assert.Equal(t, c.required, current.Identity.TOTPRequired)
 		})
 	}
 }

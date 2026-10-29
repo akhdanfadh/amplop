@@ -29,6 +29,12 @@ type Identity struct {
 	TOTPRequired bool
 }
 
+// IdentityState is current account and factor metadata for an existing session.
+type IdentityState struct {
+	User          account.User
+	TOTPConfirmed bool
+}
+
 // Authenticated is a checked session and the user's current identity.
 type Authenticated struct {
 	Identity Identity
@@ -43,7 +49,6 @@ func (s *Service) Current(ctx context.Context, secret string) (Authenticated, er
 		return Authenticated{}, ErrUnauthenticated
 	}
 
-	var userID int64
 	var expired bool
 	err = s.storage.UpdateSession(ctx, hash, func(state State) (Change, error) {
 		checked, err := checkSession(state, s.now)
@@ -56,7 +61,6 @@ func (s *Service) Current(ctx context.Context, secret string) (Authenticated, er
 			return Change{}, err
 		}
 
-		userID = checked.UserID
 		if !checked.LastUsedAt.Equal(state.LastUsedAt) {
 			return Change{Action: Touch, LastUsedAt: checked.LastUsedAt}, nil
 		}
@@ -72,20 +76,26 @@ func (s *Service) Current(ctx context.Context, secret string) (Authenticated, er
 		return Authenticated{}, ErrUnauthenticated
 	}
 
-	user, err := s.accounts.UserByID(ctx, userID)
-	if errors.Is(err, account.ErrUserNotFound) {
+	state, err := s.storage.ReadSessionIdentity(ctx, hash)
+	if errors.Is(err, ErrNotFound) {
 		return Authenticated{}, ErrUnauthenticated
 	}
 	if err != nil {
 		return Authenticated{}, err
 	}
+	user := state.User
 	if user.Role != account.RoleMember && user.Role != account.RoleAdmin {
 		return Authenticated{}, errInvalidRole
 	}
 
-	// TOTP is not implemented yet, so neither role receives admin access.
-	return Authenticated{
-		Identity: Identity{User: user, Access: AccessMember, TOTPRequired: user.Role == account.RoleAdmin},
-		Session:  Reference{hash: hash},
-	}, nil
+	// Role alone is insufficient; a confirmed factor is also required.
+	identity := Identity{User: user, Access: AccessMember}
+	if user.Role == account.RoleAdmin {
+		identity.TOTPRequired = !state.TOTPConfirmed
+		if state.TOTPConfirmed {
+			identity.Access = AccessAdmin
+		}
+	}
+
+	return Authenticated{Identity: identity, Session: Reference{hash: hash}}, nil
 }

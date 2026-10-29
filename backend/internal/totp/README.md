@@ -168,7 +168,11 @@ enrollment return distinct HTTP 409 problems. The shared per-user limiter
 returns HTTP 429 (`totp-throttled`). A session revoked between middleware and
 the confirmation transaction returns HTTP 401.
 
-Administrator access remains gated until identity reads confirmed TOTP.
+Session identity grants admin access only to an administrator with confirmed
+TOTP. Administrators without it keep member access and `totpRequired: true`.
+Members keep member access and `totpRequired: false` regardless of TOTP.
+Identity reads account and factor metadata through the session row in one
+snapshot, rejecting proof revoked since the earlier lifetime check.
 `GET /api/v0/totp` reads confirmation metadata and the remaining backup-code
 count in one database snapshot. It reports usable codes only for a confirmed
 factor. Status reads load neither the encrypted secret nor backup-code hashes.

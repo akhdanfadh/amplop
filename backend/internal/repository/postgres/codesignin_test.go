@@ -118,6 +118,8 @@ func TestCodeSignInHTTP(t *testing.T) {
 	current, err := f.sessions.Current(t.Context(), cookies[0].Value)
 	require.NoError(t, err)
 	assert.Equal(t, f.userID, current.Identity.User.ID)
+	assert.Equal(t, session.AccessAdmin, current.Identity.Access)
+	assert.False(t, current.Identity.TOTPRequired)
 	assert.NotContains(t, completed.Body.String(), cookies[0].Value)
 
 	reused := codePost(f, "/sessions/totp", `{"code":"`+f.code+`"}`, challenge)

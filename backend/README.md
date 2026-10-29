@@ -309,11 +309,15 @@ unusable until removed. Both cookies use Secure, HttpOnly, SameSite=Lax, and
 Path=/, without Domain. Authentication responses use Cache-Control: no-store.
 
 `GET /api/v0/sessions/current` returns the current email, role, and
-`totpRequired`. Every administrator currently has `totpRequired: true` and
-member-level access. Administrator access is still restricted until identity
-resolution checks confirmed TOTP. The backend supports enrollment and code
-sign-in; their browser screens are not implemented yet. No production
-operation currently requires admin access.
+`totpRequired`. An administrator with confirmed TOTP receives admin access
+and `totpRequired: false`. An administrator without confirmed TOTP receives
+member access and `totpRequired: true`. Members always receive member access
+and `totpRequired: false`, whether or not they enable TOTP.
+
+Identity reads the current account and factor through the session row in one
+query. A session revoked by enrollment confirmation cannot gain admin access
+from a previous session check. The backend supports enrollment and code
+sign-in; their browser screens are not implemented yet.
 
 `DELETE /api/v0/sessions/current` deletes the checked session and clears its
 cookie, returning HTTP 204. A missing or expired session returns HTTP 401

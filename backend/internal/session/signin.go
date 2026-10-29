@@ -33,10 +33,9 @@ type SignInChange struct {
 	Cutoff    time.Time
 }
 
-// accountService verifies credentials and reads current account data.
+// accountService verifies password credentials.
 type accountService interface {
 	Authenticate(ctx context.Context, email, password string) (account.User, error)
-	UserByID(ctx context.Context, id int64) (account.User, error)
 }
 
 // Service manages browser sessions and resolves their current identity.

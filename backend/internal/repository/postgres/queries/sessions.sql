@@ -19,3 +19,12 @@ FROM sessions WHERE user_id = @user_id AND token_hash = @token_hash FOR UPDATE;
 
 -- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = @user_id;
+
+-- name: ReadSessionIdentity :one
+-- Recheck the session together with the account and factor used for access.
+SELECT users.id, users.email, users.role,
+    (user_totp.confirmed_at IS NOT NULL)::boolean AS totp_confirmed
+FROM sessions
+JOIN users ON users.id = sessions.user_id
+LEFT JOIN user_totp ON user_totp.user_id = users.id
+WHERE sessions.token_hash = @token_hash;
