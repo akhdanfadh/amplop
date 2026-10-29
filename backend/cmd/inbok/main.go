@@ -109,6 +109,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	services := httpapi.Services{
+		Backups:    totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		CodeSignIn: session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
 		Enrollment: session.NewEnrollment(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
 		TOTP:       totp.NewService(db, cfg.Encryption),

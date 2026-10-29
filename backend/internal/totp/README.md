@@ -107,8 +107,8 @@ preserve their bytes; backup codes are normalized by `totp` before hashing.
 `NewBackupCodes` keeps display codes separate from storage hashes. Generate
 these hashes before taking a database write lock. Return display codes only
 after the operation saving their hashes commits. `CheckBackupCode` performs
-comparison only. Confirmation stores the hashes; code consumption is not
-implemented yet.
+comparison only. Confirmation and regeneration store the hashes; code sign-in
+consumes matched rows atomically.
 
 Salted hashes require checking the user's remaining hashes, up to ten, rather
 than looking up a fast hash. A fast lookup digest would also let an attacker
@@ -245,5 +245,12 @@ Earlier failed attempts remain counted, and existing sessions stay unchanged.
 
 The service returns display codes only after commit. It does not perform
 cleanup afterward, so a cleanup error cannot hide the only copy of the new
-codes after invalidating the old set. These service and repository methods
-are not connected to HTTP yet.
+codes after invalidating the old set.
+
+Signed-in members and administrators can call `POST /api/v0/totp/backup-codes`
+with `code`. HTTP 200 returns `data.backupCodes`, exactly ten strings, without
+changing session cookies. The response is marked `Cache-Control: no-store`.
+Missing or pending TOTP returns HTTP 409 (`totp-not-on`). Invalid or reused
+codes return HTTP 422 (`invalid-totp-code`) with field location `body.code`;
+shared throttling returns HTTP 429 (`totp-throttled`). Failed requests return
+no backup codes. Unexpected causes stay private behind the shared 500 error.

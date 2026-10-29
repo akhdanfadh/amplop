@@ -27,6 +27,7 @@ type API struct {
 // when no request is served, e.g. to export OpenAPI: registering an
 // operation calls none of them.
 type Services struct {
+	Backups    backupService
 	CodeSignIn codeSignInService
 	Enrollment enrollmentService
 	TOTP       totpService
@@ -97,7 +98,7 @@ func New(logger *slog.Logger, services Services) *API {
 	registerProbe(api, services.Probe)
 	registerAccount(api, services.Account, services.Throttle)
 	registerSession(api, services.Session, services.CodeSignIn)
-	registerTOTP(api, services.TOTP, services.Enrollment)
+	registerTOTP(api, services.TOTP, services.Enrollment, services.Backups)
 
 	return &API{router: router, api: api}
 }

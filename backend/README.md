@@ -354,6 +354,12 @@ address limit. A pending attempt counts until a successful verification
 removes it, so parallel password checks cannot bypass the limits. A blocked
 attempt returns HTTP 429. These limits are constants too.
 
+`POST /api/v0/totp/backup-codes` requires a signed-in account and a fresh
+six-digit authenticator `code`. It replaces all old backup codes and returns
+HTTP 200 with `data.backupCodes`, containing ten replacement codes shown once.
+Backup codes cannot authorize this operation. Existing sessions stay signed
+in, and failure preserves the old set. The shared code-attempt limits apply.
+
 ## Logs and request IDs
 
 `serve` writes text logs to stderr, one line per request with its method,

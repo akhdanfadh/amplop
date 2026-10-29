@@ -15,7 +15,10 @@ import (
 	"inbok/internal/totp"
 )
 
-const totpPath = "/totp"
+const (
+	totpPath            = "/totp"
+	invalidTOTPCodeType = problemPrefix + "invalid-totp-code"
+)
 
 type totpService interface {
 	Status(ctx context.Context, userID int64) (totp.Status, error)
@@ -26,16 +29,22 @@ type enrollmentService interface {
 	Confirm(ctx context.Context, current session.Authenticated, code string) (session.Confirmed, error)
 }
 
+type backupService interface {
+	Regenerate(ctx context.Context, userID int64, code string) ([]string, error)
+}
+
 type totpHandler struct {
 	service    totpService
 	enrollment enrollmentService
+	backups    backupService
 }
 
-func registerTOTP(api huma.API, service totpService, enrollment enrollmentService) {
-	handler := totpHandler{service: service, enrollment: enrollment}
+func registerTOTP(api huma.API, service totpService, enrollment enrollmentService, backups backupService) {
+	handler := totpHandler{service: service, enrollment: enrollment, backups: backups}
 	registerTOTPStatus(api, handler)
 	registerTOTPEnrollment(api, handler)
 	registerTOTPConfirmation(api, handler)
+	registerBackupRegeneration(api, handler)
 }
 
 // ========================
@@ -129,10 +138,7 @@ func totpEnrollmentProblem(err error) error {
 // TOTP confirmation
 // ========================
 
-const (
-	totpNotPendingType  = problemPrefix + "totp-not-pending"
-	invalidTOTPCodeType = problemPrefix + "invalid-totp-code"
-)
+const totpNotPendingType = problemPrefix + "totp-not-pending"
 
 type totpConfirmationCode struct {
 	// Keep leading zeros; malformed codes within this bound count as attempts.
@@ -212,5 +218,88 @@ func totpConfirmationProblem(err error) error {
 		return totpThrottleProblem(err)
 	default:
 		return totpEnrollmentProblem(err)
+	}
+}
+
+// ========================
+// Backup-code regeneration
+// ========================
+
+const totpNotOnType = problemPrefix + "totp-not-on"
+
+type totpRegenerationCode struct {
+	Code string `json:"code" writeOnly:"true" maxLength:"6" doc:"Fresh six-digit code from the confirmed authenticator."`
+}
+
+type totpBackupCodes struct {
+	BackupCodes []string `json:"backupCodes" nullable:"false" minItems:"10" maxItems:"10" doc:"Shown once. Save these replacement codes before leaving this page."`
+}
+
+func registerBackupRegeneration(api huma.API, handler totpHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "regenerateTOTPBackupCodes",
+		Method:      http.MethodPost,
+		Path:        totpPath + "/backup-codes",
+		Summary:     "Replace two-factor authentication backup codes",
+		Description: "Requires a fresh authenticator code. Invalidates the old backup codes and returns ten replacements once. Existing sessions stay signed in.",
+		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:   backupRegenerationResponses(api),
+	}, handler.handleRegenerateBackupCodes)
+}
+
+func (h totpHandler) handleRegenerateBackupCodes(ctx context.Context, in *struct{ Body totpRegenerationCode }) (*output[totpBackupCodes], error) {
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	codes, err := h.backups.Regenerate(ctx, user.ID, in.Body.Code)
+	if err != nil {
+		return nil, backupRegenerationProblem(err)
+	}
+
+	// The service exposes these codes only after replacement commits.
+	return respondData(totpBackupCodes{BackupCodes: codes}), nil
+}
+
+func backupRegenerationResponses(api huma.API) map[string]*huma.Response {
+	responses := totpStatusResponses(api)
+	maps.Copy(responses, problemResponses(api, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests))
+
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "No confirmed authenticator is available."
+	conflict.Content[problemContentType].Example = backupRegenerationProblem(totp.ErrNotOn)
+
+	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
+	invalid.Description = "The request inputs or authenticator code are invalid."
+	invalid.Content[problemContentType].Examples = map[string]*huma.Example{
+		"invalidCode":  {Value: backupRegenerationProblem(totp.ErrInvalidCode)},
+		"invalidInput": {Value: requestProblem(http.StatusUnprocessableEntity)},
+	}
+
+	throttled := responses[strconv.Itoa(http.StatusTooManyRequests)]
+	throttled.Description = "Too many recent failed code attempts for this account."
+	throttled.Content[problemContentType].Example = totpThrottleProblem(totp.ErrThrottled)
+
+	return responses
+}
+
+func backupRegenerationProblem(err error) error {
+	switch {
+	case errors.Is(err, account.ErrUserNotFound):
+		return unauthenticatedProblem()
+
+	case errors.Is(err, totp.ErrNotOn):
+		return newProblem(
+			http.StatusConflict, totpNotOnType,
+			"Authenticator not enabled", "Confirm an authenticator before replacing backup codes.",
+		)
+
+	case errors.Is(err, totp.ErrInvalidCode):
+		return newProblem(
+			http.StatusUnprocessableEntity, invalidTOTPCodeType,
+			"Invalid authenticator code", "Enter a current code from your confirmed authenticator.",
+			inputError{Location: "body.code", Message: "Enter a current authenticator code."},
+		)
+
+	default:
+		return totpThrottleProblem(err)
 	}
 }

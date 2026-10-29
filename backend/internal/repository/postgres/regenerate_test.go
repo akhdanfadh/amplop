@@ -2,8 +2,12 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/encryption"
+	"inbok/internal/httpapi"
 	"inbok/internal/passwordhash"
 	"inbok/internal/repository/postgres/sqlc"
 	"inbok/internal/totp"
@@ -153,4 +158,31 @@ func TestRegenerateParallel(t *testing.T) {
 	for i, row := range rows {
 		require.NoError(t, totp.CheckBackupCode(winner[i], row.CodeHash))
 	}
+}
+
+func TestRegenerateHTTP(t *testing.T) {
+	f, backups := newRegeneration(t)
+	api := httpapi.New(slog.New(slog.DiscardHandler), httpapi.Services{Session: f.sessions, Backups: backups})
+	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/backup-codes", strings.NewReader(`{"code":"287082"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://example.com")
+	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"})
+	response := httptest.NewRecorder()
+
+	api.Handler().ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+	assert.Empty(t, response.Result().Cookies())
+	var body struct {
+		Data struct {
+			BackupCodes []string `json:"backupCodes"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.Len(t, body.Data.BackupCodes, 10)
+	rows, err := sqlc.New(f.conn).ReadTOTPBackupCodes(t.Context(), f.state.UserID)
+	require.NoError(t, err)
+	require.Len(t, rows, 10)
+	require.NoError(t, totp.CheckBackupCode(body.Data.BackupCodes[0], rows[0].CodeHash))
 }

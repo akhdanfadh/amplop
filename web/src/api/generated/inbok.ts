@@ -30,6 +30,7 @@ import {
   ResponseProbeEventCreated,
   ResponseSetupStatus,
   ResponseSignInResult,
+  ResponseTotpBackupCodes,
   ResponseTotpConfirmation,
   ResponseTotpEnrollment,
   ResponseTotpStatus
@@ -40,7 +41,8 @@ import type {
   NewSession,
   NewSetup,
   Problem,
-  TotpConfirmationCode
+  TotpConfirmationCode,
+  TotpRegenerationCode
 } from './model';
 
 import { transport } from '../transport';
@@ -975,6 +977,96 @@ export const useStartTOTPEnrollment = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getStartTOTPEnrollmentMutationOptions(options), queryClient);
+    }
+
+export const getRegenerateTOTPBackupCodesUrl = () => {
+
+
+
+
+  return `/api/v0/totp/backup-codes`
+}
+
+/**
+ * Requires a fresh authenticator code. Invalidates the old backup codes and returns ten replacements once. Existing sessions stay signed in.
+ * @summary Replace two-factor authentication backup codes
+ */
+export const regenerateTOTPBackupCodes = async (totpRegenerationCode: TotpRegenerationCode, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpBackupCodes> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseTotpBackupCodes>(getRegenerateTOTPBackupCodesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(totpRegenerationCode),
+    schema: ResponseTotpBackupCodes
+  }
+);}
+
+
+
+
+
+export const getRegenerateTOTPBackupCodesMutationKey = () => ['regenerateTOTPBackupCodes'] as const;
+
+export const getRegenerateTOTPBackupCodesMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>, TError,RegenerateTOTPBackupCodesMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>, TError,RegenerateTOTPBackupCodesMutationVariables, TContext> => {
+
+const mutationKey = getRegenerateTOTPBackupCodesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>, RegenerateTOTPBackupCodesMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  regenerateTOTPBackupCodes(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegenerateTOTPBackupCodesMutationResult = NonNullable<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>>
+    export type RegenerateTOTPBackupCodesMutationBody = TotpRegenerationCode
+    export type RegenerateTOTPBackupCodesMutationError = ErrorType<Problem>
+    export type RegenerateTOTPBackupCodesMutationVariables = {data: TotpRegenerationCode}
+
+    /**
+ * @summary Replace two-factor authentication backup codes
+ */
+export const useRegenerateTOTPBackupCodes = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>, TError,RegenerateTOTPBackupCodesMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>,
+        TError,
+        RegenerateTOTPBackupCodesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRegenerateTOTPBackupCodesMutationOptions(options), queryClient);
     }
 
 export const getConfirmTOTPEnrollmentUrl = () => {
