@@ -61,7 +61,7 @@ Put shared code in the folder for its responsibility:
 - `src/features/auth`: sign-in form, validation, session messages, and account
   cache cleanup.
 - `src/features/probe`: the probe demo form.
-- `src/features/totp`: authenticator enrollment, confirmation, and backup-code display.
+- `src/features/totp`: authenticator enrollment, confirmation, and backup-code management.
 - `src/components`: shared controls, such as the password input. `ui/` holds
   the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -119,6 +119,15 @@ Starting again replaces a pending setup key.
 An uncertain confirmation requires checking status before another attempt. If
 confirmation succeeded but its response was lost, backup codes cannot be read
 again; the page explains that the authenticator must remain available.
+
+Enabled accounts see how many backup codes remain, with a warning at two or
+fewer. Replacing codes requires a fresh authenticator code and invalidates
+every old backup code; existing sessions stay signed in. The replacement set
+has the same one-time display, copy, download, and save acknowledgment as
+enrollment. An uncertain replacement blocks another attempt until status is
+checked. A count cannot recover lost codes or prove which set is current;
+the page directs the user to generate another set with a fresh authenticator
+code.
 
 Signing out deletes the current session, clears account caches, and opens
 sign-in. A 401 also completes sign-out because that session is already absent

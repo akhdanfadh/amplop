@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ConfirmationSchema, pasteCode } from "./schema";
+import { ConfirmationSchema, RegenerationSchema, pasteCode } from "./schema";
 
 describe("enrollment confirmation", () => {
   it("keeps leading zeros", () => {
@@ -17,4 +17,17 @@ describe("enrollment confirmation", () => {
     expect(pasteCode(" 012-345\u0085")).toBe("012345");
     expect(pasteCode("012!345")).toBe("012!345");
   });
+});
+
+describe("backup-code regeneration", () => {
+  it("keeps an authenticator code's leading zero", () => {
+    expect(RegenerationSchema.parse({ code: "012345" })).toEqual({ code: "012345" });
+  });
+
+  it.each(["", "12345", "1234567", "abcdef", "abcde-fghjk"])(
+    "rejects incomplete or non-authenticator proof %s",
+    (code) => {
+      expect(RegenerationSchema.safeParse({ code }).success).toBe(false);
+    },
+  );
 });

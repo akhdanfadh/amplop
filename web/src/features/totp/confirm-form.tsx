@@ -3,6 +3,7 @@ import { useForm, useSelector } from "@tanstack/react-form";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 import type { ApiError } from "@/api/transport";
 import { formErrors, userMessage } from "@/api/problem";
+import { uncertainSession } from "@/features/auth/session-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
@@ -11,31 +12,49 @@ import {
   InputOTPSeparator,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
-import { authenticatorDigits, ConfirmationSchema, pasteCode } from "./schema";
+import { authenticatorDigits, ConfirmationSchema, RegenerationSchema, pasteCode } from "./schema";
 
 const fieldNames = ["code"] as const;
 const halfDigits = authenticatorDigits / 2;
 const indices = Array.from({ length: halfDigits }, (_, index) => index);
+const purposes = {
+  enrollment: {
+    schema: ConfirmationSchema,
+    label: "Confirm authenticator",
+    action: "Enable two-factor authentication",
+    pending: "Enabling...",
+  },
+  regeneration: {
+    schema: RegenerationSchema,
+    label: "Replace backup codes",
+    action: "Generate new backup codes",
+    pending: "Generating backup codes...",
+  },
+} as const;
 
 export function ConfirmForm({
+  purpose,
   pending,
   locked,
   error,
   onEdit,
   onConfirm,
 }: {
+  purpose: keyof typeof purposes;
   pending: boolean;
   locked: boolean;
   error: ApiError | null;
   onEdit: () => void;
   onConfirm: (code: string, reject: (err: ApiError) => void) => void;
 }) {
+  const config = purposes[purpose];
+  const inputId = `${purpose}-code`;
   const inputRef = useRef<HTMLInputElement>(null);
   const focused = useRef(false);
   const submitRef = useRef<HTMLButtonElement>(null);
   const form = useForm({
     defaultValues: { code: "" },
-    validators: { onChange: ConfirmationSchema },
+    validators: { onChange: config.schema },
     listeners: { onChange: onEdit },
     onSubmitInvalid: () => inputRef.current?.focus(),
     onSubmit: ({ value, formApi }) => {
@@ -51,10 +70,12 @@ export function ConfirmForm({
   const codeRejected = Boolean(inputs?.fields.code);
 
   useEffect(() => {
+    // Recovery removes the status-check button; return focus to the unlocked proof field.
+    if (error && uncertainSession(error)) focused.current = false;
     if (locked || focused.current) return;
     focused.current = true;
     inputRef.current?.focus();
-  }, [locked]);
+  }, [locked, error]);
   useEffect(() => {
     if (!error || pending || locked) return;
     (codeRejected ? inputRef.current : submitRef.current)?.focus();
@@ -63,7 +84,7 @@ export function ConfirmForm({
   return (
     <form
       className="flex flex-col gap-6"
-      aria-label="Confirm authenticator"
+      aria-label={config.label}
       aria-busy={pending}
       noValidate
       onSubmit={(event) => {
@@ -77,10 +98,10 @@ export function ConfirmForm({
             const errors = submitted || field.state.meta.isBlurred ? field.state.meta.errors : [];
             return (
               <Field data-invalid={errors.length > 0} data-disabled={pending || locked}>
-                <FieldLabel htmlFor="enrollment-code">Authenticator code</FieldLabel>
+                <FieldLabel htmlFor={inputId}>Authenticator code</FieldLabel>
                 <InputOTP
                   ref={inputRef}
-                  id="enrollment-code"
+                  id={inputId}
                   name="code"
                   value={field.state.value}
                   onChange={field.handleChange}
@@ -92,7 +113,7 @@ export function ConfirmForm({
                   pasteTransformer={pasteCode}
                   disabled={pending || locked}
                   aria-invalid={errors.length > 0}
-                  aria-describedby={errors.length ? "enrollment-code-error" : undefined}
+                  aria-describedby={errors.length ? `${inputId}-error` : undefined}
                   containerClassName="max-w-full gap-2"
                 >
                   <InputOTPGroup className="min-w-0 flex-1">
@@ -111,7 +132,7 @@ export function ConfirmForm({
                     ))}
                   </InputOTPGroup>
                 </InputOTP>
-                <FieldError id="enrollment-code-error" errors={errors} />
+                <FieldError id={`${inputId}-error`} errors={errors} />
               </Field>
             );
           }}
@@ -123,7 +144,7 @@ export function ConfirmForm({
         className="h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
         disabled={pending || locked}
       >
-        {pending ? "Enabling..." : "Enable two-factor authentication"}
+        {pending ? config.pending : config.action}
       </Button>
       {error && (
         <div className="flex flex-col gap-2">

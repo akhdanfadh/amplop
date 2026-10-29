@@ -9,6 +9,7 @@ import {
   useStartTOTPEnrollment,
   useConfirmTOTPEnrollment,
   useCancelTOTPEnrollment,
+  useRegenerateTOTPBackupCodes,
 } from "@/api/generated/inbok";
 import type { TotpEnrollment } from "@/api/generated/model";
 import type { ApiError } from "@/api/transport";
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field";
 import { BackupCodes } from "./backup-codes";
 import { ConfirmForm } from "./confirm-form";
+import { BackupSettings } from "./backup-settings";
 
 const unauthorized = 401;
 // QR codes require a clear border of four modules for scanners.
@@ -37,6 +39,7 @@ export function Enrollment({
   const navigate = useNavigate();
   const [enrollment, setEnrollment] = useState<TotpEnrollment>();
   const [codes, setCodes] = useState<string[]>();
+  const [codeSource, setCodeSource] = useState<"enrollment" | "regeneration">("enrollment");
   const [copyMessage, setCopyMessage] = useState("");
   const [notice, setNotice] = useState("");
   const startRef = useRef<HTMLButtonElement>(null);
@@ -78,17 +81,31 @@ export function Enrollment({
       },
     },
   });
-  const pending = start.isPending || confirm.isPending || cancel.isPending;
+  const regenerate = useRegenerateTOTPBackupCodes({
+    mutation: {
+      gcTime: 0,
+      onMutate: prepareWrite,
+      onSettled: () => {
+        onWritingChange(false);
+        refreshStatus();
+      },
+    },
+  });
+  const pending = start.isPending || confirm.isPending || cancel.isPending || regenerate.isPending;
   const status = useGetTOTPStatus({
     query: { enabled: !locked && !pending, gcTime: 0, networkMode: "always" },
   });
-  const expired = [status.error, start.error, confirm.error, cancel.error].some(
+  const expired = [status.error, start.error, confirm.error, cancel.error, regenerate.error].some(
     (error) => error?.status === unauthorized,
   );
   const confirmationUncertain = Boolean(confirm.error && uncertainSession(confirm.error));
+  const regenerationUncertain = Boolean(regenerate.error && uncertainSession(regenerate.error));
   const uncertain =
-    confirmationUncertain || Boolean(cancel.error && uncertainSession(cancel.error));
-  const enabled = status.data?.data.status === "on";
+    confirmationUncertain ||
+    regenerationUncertain ||
+    Boolean(cancel.error && uncertainSession(cancel.error));
+  const factor = status.data?.data;
+  const enabled = factor?.status === "on";
   const blocked = pending || Boolean(codes);
 
   useEffect(() => () => onCodesChange(false), [onCodesChange]);
@@ -99,7 +116,7 @@ export function Enrollment({
       return !window.confirm(
         codes
           ? "These backup codes will not be shown again. Leave this page?"
-          : "An enrollment request is still running. Leave this page?",
+          : "A two-factor authentication request is still running. Leave this page?",
       );
     },
     enableBeforeUnload: blocked && !expired,
@@ -153,6 +170,7 @@ export function Enrollment({
         setCopyMessage("");
         setNotice("");
         cancel.reset();
+        regenerate.reset();
         start.reset();
       },
     });
@@ -166,9 +184,37 @@ export function Enrollment({
       {
         onSuccess: (result) => {
           onCodesChange(true);
+          setCodeSource("enrollment");
           setCodes(result.data.backupCodes);
           setEnrollment(undefined);
           confirm.reset();
+        },
+        onError: reject,
+      },
+    );
+  }
+
+  function replaceCodes(code: string, reject: (err: ApiError) => void): void {
+    if (
+      locked ||
+      pending ||
+      regenerationUncertain ||
+      status.isFetching ||
+      status.isError ||
+      !enabled
+    )
+      return;
+    regenerate.mutate(
+      { data: { code } },
+      {
+        onSuccess: (result) => {
+          setNotice("");
+          onCodesChange(true);
+          setCodeSource("regeneration");
+          setCodes(result.data.backupCodes);
+          setEnrollment(undefined);
+          confirm.reset();
+          regenerate.reset();
         },
         onError: reject,
       },
@@ -203,10 +249,17 @@ export function Enrollment({
     }
   }
 
-  async function checkEnrollment(): Promise<void> {
+  async function checkStatus(): Promise<void> {
     const result = await status.refetch();
     if (!result.isSuccess) return;
     cancel.reset();
+    if (regenerationUncertain) {
+      // A count cannot recover a lost code set, even when it says ten remain.
+      regenerate.reset();
+      setNotice(
+        "Replacement codes could not be retrieved. Your old codes may no longer work. Generate a new set with a fresh authenticator code.",
+      );
+    }
     if (result.data.data.status === "on") return;
     // A confirmed pending state permits another deliberate attempt.
     confirm.reset();
@@ -214,7 +267,11 @@ export function Enrollment({
       setEnrollment(undefined);
       setCopyMessage("");
       focusStart.current = true;
-      setNotice("Enrollment canceled.");
+      setNotice(
+        regenerationUncertain
+          ? "Two-factor authentication is no longer enabled."
+          : "Enrollment canceled.",
+      );
     }
   }
 
@@ -223,6 +280,7 @@ export function Enrollment({
       <BackupCodes
         active={!locked}
         codes={codes}
+        source={codeSource}
         onDone={() => {
           setCodes(undefined);
           onCodesChange(false);
@@ -247,7 +305,10 @@ export function Enrollment({
             variant="outline"
             className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
             disabled={locked || status.isFetching}
-            onClick={() => void status.refetch()}
+            onClick={() => {
+              if (regenerationUncertain) void checkStatus();
+              else void status.refetch();
+            }}
           >
             Check status
           </Button>
@@ -259,6 +320,18 @@ export function Enrollment({
           {confirmationUncertain && (
             <p>We could not retrieve your backup codes. Keep access to your authenticator app.</p>
           )}
+          <BackupSettings
+            left={factor.backupCodesLeft}
+            locked={locked || pending || status.isError}
+            pending={regenerate.isPending}
+            checking={status.isFetching}
+            error={regenerate.error}
+            onEdit={() => {
+              if (!regenerationUncertain) regenerate.reset();
+            }}
+            onReplace={replaceCodes}
+            onCheck={() => void checkStatus()}
+          />
         </>
       ) : enrollment ? (
         <>
@@ -292,6 +365,7 @@ export function Enrollment({
             your other sessions.
           </p>
           <ConfirmForm
+            purpose="enrollment"
             locked={locked || uncertain || status.isError || cancel.isPending}
             pending={confirm.isPending}
             error={confirm.error}
@@ -307,7 +381,7 @@ export function Enrollment({
               variant="outline"
               className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
               disabled={locked || status.isFetching}
-              onClick={() => void checkEnrollment()}
+              onClick={() => void checkStatus()}
             >
               Check enrollment status
             </Button>

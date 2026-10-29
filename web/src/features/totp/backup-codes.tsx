@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 export function BackupCodes({
   codes,
   active,
+  source,
   onDone,
 }: {
   codes: string[];
   active: boolean;
+  source: "enrollment" | "regeneration";
   onDone: () => void;
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -51,7 +53,11 @@ export function BackupCodes({
       >
         Save your backup codes
       </h2>
-      <p>Two-factor authentication is enabled. Your other sessions have ended.</p>
+      <p>
+        {source === "enrollment"
+          ? "Two-factor authentication is enabled. Your other sessions have ended."
+          : "Your old backup codes no longer work. Your sessions stay signed in."}
+      </p>
       <p>
         Each code can sign you in once if you lose access to your authenticator. These codes will
         not be shown again. Save them somewhere private before leaving.
