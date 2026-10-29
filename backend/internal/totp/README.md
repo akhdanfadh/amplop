@@ -13,7 +13,7 @@ The verifier reads a supplied clock and returns the matched 30-second step.
 A successful check alone does not consume a code: the caller must save that
 step atomically with its action.
 
-## Planned service ownership
+## Service ownership
 
 - `totp` owns factor state, code rules, backup-code rules, enrollment start
   and status, backup-code regeneration, and member turn-off. Its service
@@ -59,8 +59,8 @@ for v1.5.0. These checks do not establish that the package has no defects.
 
 `Throttle` defines the per-user limits. PostgreSQL locks the user while it
 cleans that user's expired attempts, inserts a reservation, and checks counts
-in one transaction. Enrollment confirmation uses this limiter; the other
-code-checking endpoints are not implemented yet.
+in one transaction. Enrollment confirmation, code sign-in, backup-code
+regeneration, and turn-off use this limiter.
 
 Reserve an attempt with `Begin` before checking a code. Pending checks count
 against both limits, so parallel requests cannot all pass an earlier count.
@@ -70,9 +70,9 @@ A rejected reservation rolls back and must not trigger code verification.
 
 The policy allows 5 failed or pending attempts per 15 minutes and 20 per 24
 hours. Attempts exactly at a window's cutoff no longer count. TOTP codes,
-backup codes, and replayed codes will share the same allowance across sign-in,
+backup codes, and replayed codes share the same allowance across sign-in,
 enrollment confirmation, backup-code regeneration, and turn-off. Restarting
-enrollment will not reset that allowance.
+enrollment does not reset that allowance.
 
 These values are product policy. OWASP recommends strict OTP attempt limits
 and account-based counters but does not prescribe these two thresholds:
@@ -81,8 +81,8 @@ and account-based counters but does not prescribe these two thresholds:
 - https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#login-throttling
 
 A blocked attempt returns `ErrThrottled` and logs a warning containing the user
-ID. The limiter receives no code or secret. Enrollment confirmation maps this
-error to HTTP 429 with problem type `/api/v0/problems/totp-throttled`.
+ID. The limiter receives no code or secret. Every code-checking endpoint maps
+this error to HTTP 429 with problem type `/api/v0/problems/totp-throttled`.
 
 ## Backup-code rules
 
@@ -250,7 +250,6 @@ and clears the challenge cookie. Missing, expired, consumed, or exhausted
 proof returns HTTP 401 and clears the challenge cookie. A wrong code returns
 HTTP 422 with `body.code`; shared throttling returns HTTP 429. Retryable
 errors preserve the challenge. Neither endpoint logs codes or cookie secrets.
-The browser code-entry screen is not implemented yet.
 
 ## Backup-code regeneration
 

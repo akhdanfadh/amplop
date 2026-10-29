@@ -204,10 +204,43 @@ in-flight requests up to 5 seconds to finish.
 | `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL; see Migrations below. |
 | `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
 | `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
+| `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets; see Encryption keys below. Invalid entries stop startup. |
 | `GIN_MODE` | `debug` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
 machine.
+
+### Encryption keys
+
+`INBOK_ENCRYPTION_KEYS` is a comma-separated list of `<id>:<key>` entries,
+e.g. `2:<base64 key>,1:<base64 key>`. Each ID is a positive whole number
+without leading zeros; each key is 32 random bytes in standard base64, from
+`openssl rand -base64 32`. Startup fails, without printing key material, if
+the list is empty or an entry is malformed or repeated.
+
+The first entry encrypts new TOTP secrets with AES-256-GCM. Every entry can
+decrypt. Each stored secret records its key ID and is bound to its user, so
+a ciphertext copied to another user does not decrypt. Backup codes and
+passwords use Argon2id hashes and do not depend on these keys.
+
+To rotate, generate a key, put it first under an unused ID, keep the old
+entries, and restart every API instance with the same list. Existing secrets
+are not re-encrypted; each keeps its original key until that factor is
+removed and enrolled again. Administrators cannot turn TOTP off, so their
+factors can need an old key indefinitely. Remove an old key only when no
+`user_totp` row uses its ID:
+
+```sql
+SELECT key_id, count(*) FROM user_totp GROUP BY key_id;
+```
+
+Back up the key list separately from database backups, so one stolen backup
+does not contain both the encrypted secrets and their keys, and so the keys
+survive losing the database host. A database restore needs every key its
+rows use. If a key is lost, authenticator codes for its users fail with
+HTTP 500. Their unused backup codes still sign in, and members can use one to
+turn TOTP off and enroll again. Administrators cannot remove the factor
+themselves; they need host-operator recovery, which is not implemented yet.
 
 ## Reverse proxies
 
@@ -316,8 +349,8 @@ and `totpRequired: false`, whether or not they enable TOTP.
 
 Identity reads the current account and factor through the session row in one
 query. A session revoked by enrollment confirmation cannot gain admin access
-from a previous session check. The backend supports enrollment and code
-sign-in; their browser screens are not implemented yet.
+from a previous session check. The web app's `/security` page handles
+enrollment, backup codes, and turn-off; sign-in shows the code step.
 
 `DELETE /api/v0/sessions/current` deletes the checked session and clears its
 cookie, returning HTTP 204. A missing or expired session returns HTTP 401
