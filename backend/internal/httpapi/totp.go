@@ -24,6 +24,7 @@ const (
 type totpService interface {
 	Status(ctx context.Context, userID int64) (totp.Status, error)
 	Start(ctx context.Context, user account.User) (totp.Started, error)
+	Cancel(ctx context.Context, userID int64) error
 }
 
 type enrollmentService interface {
@@ -55,6 +56,7 @@ func registerTOTP(api huma.API, service totpService, enrollment enrollmentServic
 
 	registerTOTPStatus(api, handler)
 	registerTOTPEnrollment(api, handler)
+	registerTOTPCancellation(api, handler)
 	registerTOTPConfirmation(api, handler)
 	registerBackupRegeneration(api, handler)
 	registerTOTPDisable(api, handler)
@@ -145,6 +147,41 @@ func totpEnrollmentProblem(err error) error {
 		return newProblem(http.StatusConflict, totpAlreadyOnType, "Two-factor authentication already on", "An authenticator is already confirmed for this account.")
 	}
 	return err
+}
+
+// ========================
+// TOTP enrollment cancellation
+// ========================
+
+func registerTOTPCancellation(api huma.API, handler totpHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "cancelTOTPEnrollment",
+		Method:        http.MethodDelete,
+		Path:          totpPath + "/enrollment",
+		Summary:       "Cancel pending two-factor authentication enrollment",
+		Description:   "Removes unconfirmed enrollment. Repeating cancellation succeeds if no factor remains. Confirmed authenticators cannot be canceled; existing sessions stay signed in.",
+		DefaultStatus: http.StatusOK,
+		Metadata:      map[string]any{accessKey: session.AccessMember},
+		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:     totpEnrollmentResponses(api),
+	}, handler.handleCancelTOTPEnrollment)
+}
+
+func (h totpHandler) handleCancelTOTPEnrollment(ctx context.Context, _ *struct{}) (*output[totpStatus], error) {
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	if err := h.service.Cancel(ctx, user.ID); err != nil {
+		return nil, totpCancellationProblem(err)
+	}
+
+	// The transaction already established off; avoid a second read after commit.
+	return respondData(totpStatus{Status: totp.StateOff, BackupCodesLeft: 0}), nil
+}
+
+func totpCancellationProblem(err error) error {
+	if errors.Is(err, account.ErrUserNotFound) {
+		return unauthenticatedProblem()
+	}
+	return totpEnrollmentProblem(err)
 }
 
 // ========================

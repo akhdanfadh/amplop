@@ -133,3 +133,59 @@ func TestEnrollmentStatusFailure(t *testing.T) {
 	require.ErrorIs(t, err, failure)
 	assert.Empty(t, status)
 }
+
+func (m *memoryFactors) CancelTOTP(_ context.Context, _ int64, check func(*Factor) error) error {
+	if m.err != nil {
+		return m.err
+	}
+	if err := check(m.factor); err != nil {
+		return err
+	}
+	m.factor = nil
+	return nil
+}
+
+func TestCancelEnrollment(t *testing.T) {
+	now := time.Now()
+	for _, c := range []struct {
+		name    string
+		factor  *Factor
+		wantErr error
+	}{
+		{"pending", &Factor{KeyID: "1", Ciphertext: []byte("pending"), LastStep: -1}, nil},
+		{"already absent", nil, nil},
+		{"confirmed", &Factor{KeyID: "1", Ciphertext: []byte("confirmed"), ConfirmedAt: &now}, ErrAlreadyOn},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			storage := &memoryFactors{factor: c.factor}
+			service := NewService(storage, nil)
+
+			err := service.Cancel(t.Context(), 42)
+
+			require.ErrorIs(t, err, c.wantErr)
+			if c.wantErr != nil {
+				assert.Equal(t, c.factor, storage.factor)
+				return
+			}
+			assert.Nil(t, storage.factor)
+		})
+	}
+}
+
+func TestCancelEnrollmentFailure(t *testing.T) {
+	failure := errors.New("cancellation storage unavailable")
+	original := &Factor{Ciphertext: []byte("pending")}
+	storage := &memoryFactors{factor: original, err: failure}
+
+	err := NewService(storage, nil).Cancel(t.Context(), 42)
+
+	require.ErrorIs(t, err, failure)
+	assert.Equal(t, original, storage.factor)
+}
+
+func TestCancelEnrollmentInvalidUser(t *testing.T) {
+	for _, userID := range []int64{0, -1} {
+		err := NewService(nil, nil).Cancel(t.Context(), userID)
+		require.ErrorIs(t, err, account.ErrUserNotFound)
+	}
+}

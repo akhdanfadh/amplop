@@ -40,6 +40,10 @@ type Storage interface {
 	// UpdateTOTP locks the user, loads the factor (nil if absent), calls update,
 	// and saves its result in one transaction. An error rolls back the write.
 	UpdateTOTP(ctx context.Context, userID int64, update func(*Factor) (Factor, error)) error
+
+	// CancelTOTP locks the owner, checks the current factor, and deletes it in
+	// one transaction. A missing factor is passed to check as nil.
+	CancelTOTP(ctx context.Context, userID int64, check func(*Factor) error) error
 }
 
 type sealer interface {
@@ -96,6 +100,21 @@ func (s *Service) Start(ctx context.Context, user account.User) (Started, error)
 		return Started{}, err
 	}
 	return Started{Secret: value.secret, URI: value.uri}, nil
+}
+
+// Cancel discards pending enrollment. Repeating a completed cancellation is safe.
+func (s *Service) Cancel(ctx context.Context, userID int64) error {
+	if userID <= 0 {
+		return account.ErrUserNotFound
+	}
+
+	return s.storage.CancelTOTP(ctx, userID, func(current *Factor) error {
+		// Check under the owner lock so confirmation cannot race this deletion.
+		if current != nil && current.ConfirmedAt != nil {
+			return ErrAlreadyOn
+		}
+		return nil
+	})
 }
 
 // Status reports off for a missing factor; generation alone leaves it pending.

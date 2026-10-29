@@ -1249,3 +1249,79 @@ export const useDisableTOTP = <TError = ErrorType<Problem>,
       > => {
       return useMutation(getDisableTOTPMutationOptions(options), queryClient);
     }
+
+export const getCancelTOTPEnrollmentUrl = () => {
+
+
+
+
+  return `/api/v0/totp/enrollment`
+}
+
+/**
+ * Removes unconfirmed enrollment. Repeating cancellation succeeds if no factor remains. Confirmed authenticators cannot be canceled; existing sessions stay signed in.
+ * @summary Cancel pending two-factor authentication enrollment
+ */
+export const cancelTOTPEnrollment = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseTotpStatus> => {
+
+  return transport<ResponseTotpStatus>(getCancelTOTPEnrollmentUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+    ,
+    schema: ResponseTotpStatus
+  }
+);}
+
+
+
+
+
+export const getCancelTOTPEnrollmentMutationKey = () => ['cancelTOTPEnrollment'] as const;
+
+export const getCancelTOTPEnrollmentMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelTOTPEnrollment>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelTOTPEnrollment>>, TError,void, TContext> => {
+
+const mutationKey = getCancelTOTPEnrollmentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelTOTPEnrollment>>, void> = () => {
+
+
+          return  cancelTOTPEnrollment(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelTOTPEnrollmentMutationResult = NonNullable<Awaited<ReturnType<typeof cancelTOTPEnrollment>>>
+
+    export type CancelTOTPEnrollmentMutationError = ErrorType<Problem>
+
+
+    /**
+ * @summary Cancel pending two-factor authentication enrollment
+ */
+export const useCancelTOTPEnrollment = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelTOTPEnrollment>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof cancelTOTPEnrollment>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCancelTOTPEnrollmentMutationOptions(options), queryClient);
+    }

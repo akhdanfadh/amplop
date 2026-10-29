@@ -43,6 +43,12 @@ func (f *fakeTOTP) Start(_ context.Context, user account.User) (totp.Started, er
 	return f.started, f.err
 }
 
+func (f *fakeTOTP) Cancel(_ context.Context, userID int64) error {
+	f.calls++
+	f.userID = userID
+	return f.err
+}
+
 type totpAuth int
 
 const (
@@ -602,5 +608,105 @@ func TestDisableTOTPOpenAPI(t *testing.T) {
 	require.NotNil(t, input)
 	require.NotNil(t, input.Properties["code"])
 	assert.True(t, input.Properties["code"].WriteOnly)
+	assert.Nil(t, op.Responses["200"].Headers["Set-Cookie"])
+}
+
+func deleteTOTPEnrollment(api *API, origin string, auth totpAuth) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodDelete, "/api/v0/totp/enrollment", nil)
+	request.Header.Set("Origin", origin)
+	if auth == totpAuthAuthenticated {
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "private-session-secret"})
+	}
+	response := httptest.NewRecorder()
+	api.Handler().ServeHTTP(response, request)
+	return response
+}
+
+func TestCancelTOTPEnrollment(t *testing.T) {
+	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
+		t.Run(string(role), func(t *testing.T) {
+			service := &fakeTOTP{}
+			var logs bytes.Buffer
+			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{TOTP: service, Session: totpSessions(role)})
+
+			response := deleteTOTPEnrollment(api, "http://example.com", totpAuthAuthenticated)
+
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0}}`, response.Body.String())
+			assert.Equal(t, int64(42), service.userID, "use the checked account")
+			assert.Equal(t, 1, service.calls, "success must not perform another status read")
+			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+			assert.Empty(t, response.Result().Cookies())
+			assert.NotContains(t, logs.String(), "private-session-secret")
+		})
+	}
+}
+
+func TestCancelTOTPFailures(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		err     error
+		status  int
+		problem string
+	}{
+		{"confirmed", totp.ErrAlreadyOn, http.StatusConflict, "totp-already-on"},
+		{"wrapped confirmed", fmt.Errorf("wrapped: %w", totp.ErrAlreadyOn), http.StatusConflict, "totp-already-on"},
+		{"removed account", account.ErrUserNotFound, http.StatusUnauthorized, "unauthenticated"},
+		{"wrapped removed account", fmt.Errorf("wrapped: %w", account.ErrUserNotFound), http.StatusUnauthorized, "unauthenticated"},
+		{"storage failure", errors.New("private cancellation cause"), http.StatusInternalServerError, "internal-error"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			service := &fakeTOTP{err: c.err}
+			api := New(discard, Services{TOTP: service, Session: totpSessions(account.RoleMember)})
+
+			response := deleteTOTPEnrollment(api, "http://example.com", totpAuthAuthenticated)
+
+			require.Equal(t, c.status, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/`+c.problem+`"`)
+			assert.Equal(t, 1, service.calls)
+			assert.NotContains(t, response.Body.String(), "private cancellation cause")
+			assert.NotContains(t, response.Body.String(), `"status":"off"`)
+			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+			assert.Empty(t, response.Result().Cookies())
+		})
+	}
+}
+
+func TestCancelTOTPRequestGate(t *testing.T) {
+	for _, c := range []struct {
+		name, origin string
+		auth         totpAuth
+		status       int
+	}{
+		{"anonymous", "http://example.com", totpAuthAnonymous, http.StatusUnauthorized},
+		{"cross origin", "https://untrusted.example", totpAuthAuthenticated, http.StatusForbidden},
+		{"missing source", "", totpAuthAuthenticated, http.StatusForbidden},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			service := &fakeTOTP{}
+			api := New(discard, Services{TOTP: service, Session: totpSessions(account.RoleMember)})
+
+			response := deleteTOTPEnrollment(api, c.origin, c.auth)
+
+			require.Equal(t, c.status, response.Code, response.Body.String())
+			assert.Zero(t, service.calls)
+		})
+	}
+}
+
+func TestCancelTOTPOpenAPI(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+	path := doc.Paths["/totp/enrollment"]
+	require.NotNil(t, path)
+	op := path.Delete
+	require.NotNil(t, op)
+	assert.Equal(t, "cancelTOTPEnrollment", op.OperationID)
+	assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
+	assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
+	assert.Nil(t, op.RequestBody, "cancellation needs no code or account selector")
+	assert.Empty(t, op.Parameters)
+	for _, status := range []int{http.StatusOK, http.StatusUnauthorized, http.StatusConflict} {
+		require.NotNil(t, op.Responses[strconv.Itoa(status)])
+	}
 	assert.Nil(t, op.Responses["200"].Headers["Set-Cookie"])
 }

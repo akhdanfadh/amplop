@@ -354,6 +354,12 @@ address limit. A pending attempt counts until a successful verification
 removes it, so parallel password checks cannot bypass the limits. A blocked
 attempt returns HTTP 429. These limits are constants too.
 
+`DELETE /api/v0/totp/enrollment` cancels a signed-in account's pending
+enrollment without a code. Success returns HTTP 200 with `data.status:
+"off"` and `data.backupCodesLeft: 0`; repeating it when no factor remains
+also succeeds. A confirmed authenticator returns HTTP 409 (`totp-already-on`).
+Existing sessions and their cookies stay unchanged.
+
 `POST /api/v0/totp/backup-codes` requires a signed-in account and a fresh
 six-digit authenticator `code`. It replaces all old backup codes and returns
 HTTP 200 with `data.backupCodes`, containing ten replacement codes shown once.

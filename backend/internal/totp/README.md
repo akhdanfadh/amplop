@@ -134,6 +134,28 @@ Concurrent deletion of the same row can succeed only once.
 These queries are storage primitives. Feature operations will use them inside
 their update-function storage methods; handlers never call SQL queries.
 
+## Enrollment cancellation
+
+`Service.Cancel` discards an unconfirmed enrollment. An absent factor is
+already canceled, so repeating the request succeeds. A confirmed factor
+returns `ErrAlreadyOn`; turning off an active authenticator requires the
+separate proof-checked operation.
+
+Storage locks the owner before loading the factor and calling the service's
+check. It deletes the factor only after that check succeeds, in the same
+transaction. This shares the lock used by start and confirmation: if
+confirmation wins, cancellation cannot remove the active authenticator;
+if cancellation wins, confirmation finds no pending enrollment. Existing
+sessions and code-attempt records stay unchanged. Cancellation needs no code
+or encryption key because it cannot remove a confirmed authenticator.
+
+`DELETE /api/v0/totp/enrollment` exposes cancellation to signed-in members
+and administrators. It takes no body and selects the owner from the checked
+session. HTTP 200 returns `data.status: "off"` and `data.backupCodesLeft: 0`,
+including repeated cancellation. A confirmed authenticator returns HTTP 409
+(`totp-already-on`); a missing account returns HTTP 401. Responses use
+`Cache-Control: no-store` and do not replace the session cookie.
+
 ## Enrollment confirmation rules
 
 `session.Enrollment` owns confirmation because it must generate a replacement

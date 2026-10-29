@@ -70,3 +70,29 @@ func (db *DB) UpdateTOTP(ctx context.Context, userID int64, update func(*totp.Fa
 		return nil
 	})
 }
+
+// CancelTOTP shares enrollment and confirmation's owner lock before deletion.
+func (db *DB) CancelTOTP(ctx context.Context, userID int64, check func(*totp.Factor) error) error {
+	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+		if _, err := queries.LockTOTPUser(ctx, userID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return account.ErrUserNotFound
+			}
+			return fmt.Errorf("lock TOTP cancellation owner: %w", err)
+		}
+
+		current, err := readTOTP(ctx, queries, userID)
+		if err != nil {
+			return err
+		}
+		if err := check(current); err != nil {
+			return err
+		}
+
+		if err := queries.DeleteUserTOTP(ctx, userID); err != nil {
+			return fmt.Errorf("cancel TOTP enrollment: %w", err)
+		}
+		return nil
+	})
+}
