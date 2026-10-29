@@ -18,6 +18,7 @@ import (
 const (
 	totpPath            = "/totp"
 	invalidTOTPCodeType = problemPrefix + "invalid-totp-code"
+	totpNotOnType       = problemPrefix + "totp-not-on"
 )
 
 type totpService interface {
@@ -33,18 +34,30 @@ type backupService interface {
 	Regenerate(ctx context.Context, userID int64, code string) ([]string, error)
 }
 
+type disableService interface {
+	Disable(ctx context.Context, userID int64, code string) error
+}
+
 type totpHandler struct {
 	service    totpService
 	enrollment enrollmentService
 	backups    backupService
+	disabler   disableService
 }
 
-func registerTOTP(api huma.API, service totpService, enrollment enrollmentService, backups backupService) {
-	handler := totpHandler{service: service, enrollment: enrollment, backups: backups}
+func registerTOTP(api huma.API, service totpService, enrollment enrollmentService, backups backupService, disabler disableService) {
+	handler := totpHandler{
+		service:    service,
+		enrollment: enrollment,
+		backups:    backups,
+		disabler:   disabler,
+	}
+
 	registerTOTPStatus(api, handler)
 	registerTOTPEnrollment(api, handler)
 	registerTOTPConfirmation(api, handler)
 	registerBackupRegeneration(api, handler)
+	registerTOTPDisable(api, handler)
 }
 
 // ========================
@@ -225,8 +238,6 @@ func totpConfirmationProblem(err error) error {
 // Backup-code regeneration
 // ========================
 
-const totpNotOnType = problemPrefix + "totp-not-on"
-
 type totpRegenerationCode struct {
 	Code string `json:"code" writeOnly:"true" maxLength:"6" doc:"Fresh six-digit code from the confirmed authenticator."`
 }
@@ -297,6 +308,99 @@ func backupRegenerationProblem(err error) error {
 			http.StatusUnprocessableEntity, invalidTOTPCodeType,
 			"Invalid authenticator code", "Enter a current code from your confirmed authenticator.",
 			inputError{Location: "body.code", Message: "Enter a current authenticator code."},
+		)
+
+	default:
+		return totpThrottleProblem(err)
+	}
+}
+
+// ========================
+// TOTP turn-off
+// ========================
+
+const (
+	totpDisableForbiddenType = problemPrefix + "totp-disable-forbidden"
+	invalidTOTPProofType     = problemPrefix + "invalid-totp-proof"
+	invalidTOTPProofMessage  = "Enter a current authenticator code or an unused backup code."
+)
+
+type totpDisableCode struct {
+	Code string `json:"code" writeOnly:"true" maxLength:"128" doc:"Fresh authenticator code or unused backup code."`
+}
+
+func registerTOTPDisable(api huma.API, handler totpHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "disableTOTP",
+		Method:        http.MethodPost,
+		Path:          totpPath + "/disable",
+		Summary:       "Turn off optional two-factor authentication",
+		Description:   "Members only. Requires a fresh authenticator code or an unused backup code. Removes the authenticator and all backup codes; existing sessions stay signed in.",
+		DefaultStatus: http.StatusOK,
+		Metadata:      map[string]any{accessKey: session.AccessMember},
+		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:     totpDisableResponses(api),
+	}, handler.handleDisableTOTP)
+}
+
+func (h totpHandler) handleDisableTOTP(ctx context.Context, in *struct{ Body totpDisableCode }) (*output[totpStatus], error) {
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	if err := h.disabler.Disable(ctx, user.ID, in.Body.Code); err != nil {
+		return nil, totpDisableProblem(err)
+	}
+
+	// Deletion committed; a second status read could fail after a successful action.
+	return respondData(totpStatus{Status: totp.StateOff, BackupCodesLeft: 0}), nil
+}
+
+func totpDisableResponses(api huma.API) map[string]*huma.Response {
+	responses := totpStatusResponses(api)
+	maps.Copy(responses, problemResponses(api, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests))
+
+	forbidden := responses[strconv.Itoa(http.StatusForbidden)]
+	forbidden.Description = "Administrators cannot turn off two-factor authentication."
+	forbidden.Content[problemContentType].Example = totpDisableProblem(totp.ErrDisableForbidden)
+
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "No confirmed authenticator is available."
+	conflict.Content[problemContentType].Example = totpDisableProblem(totp.ErrNotOn)
+
+	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
+	invalid.Description = "The request inputs or second-factor proof are invalid."
+	invalid.Content[problemContentType].Examples = map[string]*huma.Example{
+		"invalidProof": {Value: totpDisableProblem(totp.ErrInvalidCode)},
+		"invalidInput": {Value: requestProblem(http.StatusUnprocessableEntity)},
+	}
+
+	throttled := responses[strconv.Itoa(http.StatusTooManyRequests)]
+	throttled.Description = "Too many recent failed code attempts for this account."
+	throttled.Content[problemContentType].Example = totpThrottleProblem(totp.ErrThrottled)
+
+	return responses
+}
+
+func totpDisableProblem(err error) error {
+	switch {
+	case errors.Is(err, account.ErrUserNotFound):
+		return unauthenticatedProblem()
+
+	case errors.Is(err, totp.ErrDisableForbidden):
+		return newProblem(
+			http.StatusForbidden, totpDisableForbiddenType,
+			"Two-factor authentication required", "Administrators must keep two-factor authentication enabled.",
+		)
+
+	case errors.Is(err, totp.ErrNotOn):
+		return newProblem(
+			http.StatusConflict, totpNotOnType,
+			"Authenticator not enabled", "Two-factor authentication is not enabled for this account.",
+		)
+
+	case errors.Is(err, totp.ErrInvalidCode):
+		return newProblem(
+			http.StatusUnprocessableEntity, invalidTOTPProofType,
+			"Invalid second-factor proof", invalidTOTPProofMessage,
+			inputError{Location: "body.code", Message: invalidTOTPProofMessage},
 		)
 
 	default:

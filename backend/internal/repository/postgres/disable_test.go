@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/encryption"
+	"inbok/internal/httpapi"
 	"inbok/internal/repository/postgres/sqlc"
 	"inbok/internal/totp"
 )
@@ -159,6 +163,60 @@ func TestDisablePromotion(t *testing.T) {
 	}, 3*time.Second, 10*time.Millisecond)
 	require.NoError(t, tx.Commit(ctx))
 	require.ErrorIs(t, <-results, totp.ErrDisableForbidden)
+	factor, err := f.db.ReadTOTP(t.Context(), f.state.UserID)
+	require.NoError(t, err)
+	assert.Equal(t, f.factor, factor)
+}
+
+func TestDisableHTTP(t *testing.T) {
+	for _, code := range []string{"287082", "abcde-fghjk"} {
+		t.Run(code, func(t *testing.T) {
+			f, disabler := newTurnOff(t)
+			api := httpapi.New(slog.New(slog.DiscardHandler), httpapi.Services{
+				Session: f.sessions, Disabler: disabler, TOTP: totp.NewService(f.db, nil),
+			})
+			request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/disable", strings.NewReader(`{"code":"`+code+`"}`))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", "http://example.com")
+			// The fixture's session secret encodes 32 zero bytes.
+			cookie := &http.Cookie{Name: "__Host-inbok-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+			request.AddCookie(cookie)
+			response := httptest.NewRecorder()
+
+			api.Handler().ServeHTTP(response, request)
+
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0}}`, response.Body.String())
+			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+			assert.Empty(t, response.Result().Cookies())
+
+			// The same cookie still authorizes status reads after factor deletion.
+			current := httptest.NewRequest(http.MethodGet, "/api/v0/totp", nil)
+			current.AddCookie(cookie)
+			status := httptest.NewRecorder()
+			api.Handler().ServeHTTP(status, current)
+			require.Equal(t, http.StatusOK, status.Code, status.Body.String())
+			assert.JSONEq(t, response.Body.String(), status.Body.String())
+		})
+	}
+}
+
+func TestDisableHTTPAdmin(t *testing.T) {
+	f, disabler := newTurnOff(t)
+	_, err := f.conn.Exec(t.Context(), "UPDATE users SET role='admin' WHERE id=$1", f.state.UserID)
+	require.NoError(t, err)
+	api := httpapi.New(slog.New(slog.DiscardHandler), httpapi.Services{Session: f.sessions, Disabler: disabler})
+	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/disable", strings.NewReader(`{"code":"287082"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://example.com")
+	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"})
+	response := httptest.NewRecorder()
+
+	api.Handler().ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/totp-disable-forbidden"`)
+	assert.Empty(t, response.Result().Cookies())
 	factor, err := f.db.ReadTOTP(t.Context(), f.state.UserID)
 	require.NoError(t, err)
 	assert.Equal(t, f.factor, factor)

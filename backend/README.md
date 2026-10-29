@@ -360,6 +360,12 @@ HTTP 200 with `data.backupCodes`, containing ten replacement codes shown once.
 Backup codes cannot authorize this operation. Existing sessions stay signed
 in, and failure preserves the old set. The shared code-attempt limits apply.
 
+`POST /api/v0/totp/disable` lets a signed-in member turn off TOTP with a
+fresh authenticator code or an unused backup code in `code`. Success returns
+HTTP 200 with `data.status: "off"` and `data.backupCodesLeft: 0`. The factor
+and every backup code are removed together; existing sessions stay signed
+in. Administrators receive HTTP 403 and must keep TOTP enabled.
+
 ## Logs and request IDs
 
 `serve` writes text logs to stderr, one line per request with its method,

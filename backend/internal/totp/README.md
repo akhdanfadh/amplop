@@ -274,4 +274,12 @@ It also removes only the successful attempt. Earlier failures and all existing
 sessions remain. An error, including commit failure, rolls everything back.
 The owner lock serializes proof checks with sign-in and regeneration.
 
-These service and repository methods are not connected to HTTP yet.
+Signed-in members can call `POST /api/v0/totp/disable` with `code`. HTTP 200
+returns `data.status: "off"` and `data.backupCodesLeft: 0`, without changing
+session cookies. The response uses `Cache-Control: no-store`.
+
+Administrators receive HTTP 403 (`totp-disable-forbidden`), based on the role
+loaded by the transaction. Missing or pending TOTP returns HTTP 409
+(`totp-not-on`). Invalid or reused proof returns HTTP 422 (`invalid-totp-proof`)
+with field location `body.code`; shared throttling returns HTTP 429
+(`totp-throttled`). Unexpected errors use the shared safe 500 response.

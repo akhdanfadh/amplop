@@ -42,6 +42,7 @@ import type {
   NewSetup,
   Problem,
   TotpConfirmationCode,
+  TotpDisableCode,
   TotpRegenerationCode
 } from './model';
 
@@ -1157,4 +1158,94 @@ export const useConfirmTOTPEnrollment = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getConfirmTOTPEnrollmentMutationOptions(options), queryClient);
+    }
+
+export const getDisableTOTPUrl = () => {
+
+
+
+
+  return `/api/v0/totp/disable`
+}
+
+/**
+ * Members only. Requires a fresh authenticator code or an unused backup code. Removes the authenticator and all backup codes; existing sessions stay signed in.
+ * @summary Turn off optional two-factor authentication
+ */
+export const disableTOTP = async (totpDisableCode: TotpDisableCode, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpStatus> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseTotpStatus>(getDisableTOTPUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(totpDisableCode),
+    schema: ResponseTotpStatus
+  }
+);}
+
+
+
+
+
+export const getDisableTOTPMutationKey = () => ['disableTOTP'] as const;
+
+export const getDisableTOTPMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disableTOTP>>, TError,DisableTOTPMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof disableTOTP>>, TError,DisableTOTPMutationVariables, TContext> => {
+
+const mutationKey = getDisableTOTPMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disableTOTP>>, DisableTOTPMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  disableTOTP(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisableTOTPMutationResult = NonNullable<Awaited<ReturnType<typeof disableTOTP>>>
+    export type DisableTOTPMutationBody = TotpDisableCode
+    export type DisableTOTPMutationError = ErrorType<Problem>
+    export type DisableTOTPMutationVariables = {data: TotpDisableCode}
+
+    /**
+ * @summary Turn off optional two-factor authentication
+ */
+export const useDisableTOTP = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disableTOTP>>, TError,DisableTOTPMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof disableTOTP>>,
+        TError,
+        DisableTOTPMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDisableTOTPMutationOptions(options), queryClient);
     }

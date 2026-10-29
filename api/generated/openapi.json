@@ -469,6 +469,21 @@
         ],
         "type": "object"
       },
+      "TotpDisableCode": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Fresh authenticator code or unused backup code.",
+            "maxLength": 128,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
       "TotpEnrollment": {
         "additionalProperties": false,
         "properties": {
@@ -1413,6 +1428,148 @@
           }
         ],
         "summary": "Confirm two-factor authentication enrollment"
+      }
+    },
+    "/totp/disable": {
+      "post": {
+        "description": "Members only. Requires a fresh authenticator code or an unused backup code. Removes the authenticator and all backup codes; existing sessions stay signed in.",
+        "operationId": "disableTOTP",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotpDisableCode"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseTotpStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/totp-disable-forbidden",
+                  "status": 403,
+                  "title": "Two-factor authentication required",
+                  "detail": "Administrators must keep two-factor authentication enabled."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Administrators cannot turn off two-factor authentication."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/totp-not-on",
+                  "status": 409,
+                  "title": "Authenticator not enabled",
+                  "detail": "Two-factor authentication is not enabled for this account."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No confirmed authenticator is available."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "invalidInput": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs."
+                    }
+                  },
+                  "invalidProof": {
+                    "value": {
+                      "type": "/api/v0/problems/invalid-totp-proof",
+                      "status": 422,
+                      "title": "Invalid second-factor proof",
+                      "detail": "Enter a current authenticator code or an unused backup code.",
+                      "errors": [
+                        {
+                          "location": "body.code",
+                          "message": "Enter a current authenticator code or an unused backup code."
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request inputs or second-factor proof are invalid."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/totp-throttled",
+                  "status": 429,
+                  "title": "Too many code attempts",
+                  "detail": "Too many failed code attempts. Try again later."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too many recent failed code attempts for this account."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Turn off optional two-factor authentication"
       }
     }
   },

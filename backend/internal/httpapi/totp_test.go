@@ -467,3 +467,140 @@ func TestRegenerateOpenAPI(t *testing.T) {
 	assert.Equal(t, 10, *codes.MinItems)
 	assert.Equal(t, 10, *codes.MaxItems)
 }
+
+// ========================
+// TOTP turn-off
+// ========================
+
+type fakeDisabler struct {
+	err    error
+	calls  int
+	userID int64
+	code   string
+}
+
+func (f *fakeDisabler) Disable(_ context.Context, userID int64, code string) error {
+	f.calls++
+	f.userID, f.code = userID, code
+	return f.err
+}
+
+func postDisableTOTP(api *API, body, origin string, auth totpAuth) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/disable", strings.NewReader(body))
+	request.Header.Set("Content-Type", jsonContentType)
+	request.Header.Set("Origin", origin)
+	if auth == totpAuthAuthenticated {
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
+	}
+
+	response := httptest.NewRecorder()
+	api.Handler().ServeHTTP(response, request)
+	return response
+}
+
+func TestDisableTOTP(t *testing.T) {
+	for _, code := range []string{"012345", "abcde-fghjk"} {
+		t.Run(code, func(t *testing.T) {
+			service := &fakeDisabler{}
+			var logs bytes.Buffer
+			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{Session: totpSessions(account.RoleMember), Disabler: service})
+
+			response := postDisableTOTP(api, `{"code":"`+code+`"}`, "http://example.com", totpAuthAuthenticated)
+
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0}}`, response.Body.String())
+			assert.Equal(t, int64(42), service.userID)
+			assert.Equal(t, code, service.code)
+			assert.Equal(t, 1, service.calls)
+			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+			assert.Empty(t, response.Result().Cookies())
+			assert.NotContains(t, response.Body.String(), code)
+			assert.NotContains(t, logs.String(), code)
+			assert.NotContains(t, logs.String(), "session-secret")
+		})
+	}
+}
+
+func TestDisableTOTPProblems(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		err     error
+		status  int
+		problem string
+	}{
+		{"admin", totp.ErrDisableForbidden, http.StatusForbidden, "totp-disable-forbidden"},
+		{"not on", totp.ErrNotOn, http.StatusConflict, "totp-not-on"},
+		{"invalid proof", totp.ErrInvalidCode, http.StatusUnprocessableEntity, "invalid-totp-proof"},
+		{"throttled", totp.ErrThrottled, http.StatusTooManyRequests, "totp-throttled"},
+		{"deleted user", account.ErrUserNotFound, http.StatusUnauthorized, "unauthenticated"},
+		{"commit failure", errors.New("private turn-off cause"), http.StatusInternalServerError, "internal-error"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			service := &fakeDisabler{err: fmt.Errorf("turn off: %w", c.err)}
+			sessions := totpSessions(account.RoleMember)
+			if c.err == totp.ErrDisableForbidden {
+				sessions = totpSessions(account.RoleAdmin)
+				sessions.identity.Access = session.AccessAdmin
+				sessions.identity.TOTPRequired = false
+			}
+			api := New(discard, Services{Session: sessions, Disabler: service})
+
+			response := postDisableTOTP(api, `{"code":"012345"}`, "http://example.com", totpAuthAuthenticated)
+
+			require.Equal(t, c.status, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/`+c.problem+`"`)
+			assert.Equal(t, 1, service.calls, "the service owns the locked role check")
+			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+			assert.Empty(t, response.Result().Cookies())
+			assert.NotContains(t, response.Body.String(), "private turn-off cause")
+			assert.NotContains(t, response.Body.String(), "012345")
+			assert.NotContains(t, response.Body.String(), `"status":"off"`)
+			if c.err == totp.ErrInvalidCode {
+				assert.Contains(t, response.Body.String(), `"location":"body.code"`)
+			}
+		})
+	}
+}
+
+func TestDisableTOTPRequestGate(t *testing.T) {
+	for _, c := range []struct {
+		name, body, origin string
+		auth               totpAuth
+		status             int
+	}{
+		{"anonymous before parsing", `{`, "http://example.com", totpAuthAnonymous, http.StatusUnauthorized},
+		{"cross origin", `{"code":"012345"}`, "https://untrusted.example", totpAuthAuthenticated, http.StatusForbidden},
+		{"missing code", `{}`, "http://example.com", totpAuthAuthenticated, http.StatusUnprocessableEntity},
+		{"wrong type", `{"code":123456}`, "http://example.com", totpAuthAuthenticated, http.StatusUnprocessableEntity},
+		{"oversized", `{"code":"` + strings.Repeat("A", 129) + `"}`, "http://example.com", totpAuthAuthenticated, http.StatusUnprocessableEntity},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			service := &fakeDisabler{}
+			api := New(discard, Services{Session: totpSessions(account.RoleMember), Disabler: service})
+
+			response := postDisableTOTP(api, c.body, c.origin, c.auth)
+
+			require.Equal(t, c.status, response.Code, response.Body.String())
+			assert.Zero(t, service.calls)
+		})
+	}
+}
+
+func TestDisableTOTPOpenAPI(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+	path := doc.Paths["/totp/disable"]
+	require.NotNil(t, path)
+	op := path.Post
+	require.NotNil(t, op)
+	assert.Equal(t, "disableTOTP", op.OperationID)
+	assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
+	assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
+	for _, status := range []int{http.StatusOK, http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests} {
+		require.NotNil(t, op.Responses[strconv.Itoa(status)])
+	}
+	input := doc.Components.Schemas.Map()["TotpDisableCode"]
+	require.NotNil(t, input)
+	require.NotNil(t, input.Properties["code"])
+	assert.True(t, input.Properties["code"].WriteOnly)
+	assert.Nil(t, op.Responses["200"].Headers["Set-Cookie"])
+}
