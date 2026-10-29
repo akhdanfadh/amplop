@@ -43,6 +43,12 @@ type TotpAttempt struct {
 	CreatedAt time.Time
 }
 
+type TotpBackupCode struct {
+	ID       int64
+	UserID   int64
+	CodeHash string
+}
+
 type User struct {
 	ID           int64
 	Email        string

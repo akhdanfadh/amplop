@@ -105,7 +105,7 @@ preserve their bytes; backup codes are normalized by `totp` before hashing.
 `NewBackupCodes` keeps display codes separate from storage hashes. Generate
 these hashes before taking a database write lock. Return display codes only
 after the operation saving their hashes commits. `CheckBackupCode` performs
-comparison only; code consumption and set replacement are not implemented yet.
+comparison only; no endpoint stores or consumes backup codes yet.
 
 Salted hashes require checking the user's remaining hashes, up to ten, rather
 than looking up a fast hash. A fast lookup digest would also let an attacker
@@ -115,3 +115,18 @@ on deployment encryption keys.
 
 - NIST look-up secrets: https://pages.nist.gov/800-63-4/sp800-63b.html#look-up-secret-verifiers
 - OWASP Argon2id profile: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
+
+## Backup-code storage
+
+`totp_backup_codes` holds one independently salted hash per row. Each row
+belongs to a factor through `user_id`; deleting the factor deletes its codes.
+An index on `user_id` supports loading the remaining codes for verification.
+
+After a hash matches, consume its row by both ID and owner with
+`DELETE ... RETURNING`. No returned row means it has already been consumed
+or does not belong to that user. Run this query in the protected action's
+transaction: commit consumes the code, and rollback leaves it usable.
+Concurrent deletion of the same row can succeed only once.
+
+These queries are storage primitives. Feature operations will use them inside
+their update-function storage methods; handlers never call SQL queries.
