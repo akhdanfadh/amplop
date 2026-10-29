@@ -73,6 +73,21 @@
         ],
         "type": "object"
       },
+      "NewCodeSession": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Authenticator code or unused backup code.",
+            "maxLength": 128,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
       "NewProbeEvent": {
         "additionalProperties": false,
         "properties": {
@@ -380,7 +395,8 @@
         "properties": {
           "step": {
             "enum": [
-              "complete"
+              "complete",
+              "totp"
             ],
             "type": "string"
           }
@@ -467,8 +483,14 @@
       }
     },
     "securitySchemes": {
+      "challengeCookie": {
+        "description": "Temporary password proof. Grants no session access.",
+        "in": "cookie",
+        "name": "__Host-inbok-challenge",
+        "type": "apiKey"
+      },
       "sessionCookie": {
-        "description": "Browser session cookie issued by POST /sessions. Browsers send it automatically on subsequent requests.",
+        "description": "Browser session cookie issued after complete sign-in. Browsers send it automatically on subsequent requests.",
         "in": "cookie",
         "name": "__Host-inbok-session",
         "type": "apiKey"
@@ -735,6 +757,110 @@
           }
         ],
         "summary": "Get the signed-in account"
+      }
+    },
+    "/sessions/totp": {
+      "post": {
+        "operationId": "createSessionWithCode",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewCodeSession"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSignInResult"
+                }
+              }
+            },
+            "description": "Created",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/sign-in-challenge-invalid",
+                  "status": 401,
+                  "title": "Sign in again",
+                  "detail": "Enter your email and password to start sign-in again."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The challenge is missing, expired, consumed, or exhausted. Enter the password again."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/invalid-sign-in-code",
+                  "status": 422,
+                  "title": "Invalid sign-in code",
+                  "detail": "Enter a current authenticator code or an unused backup code.",
+                  "errors": [
+                    {
+                      "location": "body.code",
+                      "message": "Enter a current authenticator code or an unused backup code."
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request inputs or second-factor code are invalid."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/totp-throttled",
+                  "status": 429,
+                  "title": "Too many code attempts",
+                  "detail": "Too many failed code attempts. Try again later."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too many recent failed code attempts for this account."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "challengeCookie": []
+          }
+        ],
+        "summary": "Complete sign-in with an authenticator or backup code"
       }
     },
     "/setup": {

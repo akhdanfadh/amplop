@@ -132,7 +132,6 @@ func totpEnrollmentProblem(err error) error {
 const (
 	totpNotPendingType  = problemPrefix + "totp-not-pending"
 	invalidTOTPCodeType = problemPrefix + "invalid-totp-code"
-	totpThrottledType   = problemPrefix + "totp-throttled"
 )
 
 type totpConfirmationCode struct {
@@ -210,7 +209,7 @@ func totpConfirmationProblem(err error) error {
 		return newProblem(http.StatusUnprocessableEntity, invalidTOTPCodeType, "Invalid authenticator code", "Enter a current code from the pending authenticator.",
 			inputError{Location: "body.code", Message: "Enter a current authenticator code."})
 	case errors.Is(err, totp.ErrThrottled):
-		return newProblem(http.StatusTooManyRequests, totpThrottledType, "Too many code attempts", "Too many failed code attempts. Try again later.")
+		return totpThrottleProblem(err)
 	default:
 		return totpEnrollmentProblem(err)
 	}

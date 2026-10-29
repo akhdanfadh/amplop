@@ -281,16 +281,39 @@ independently of these browser redirects.
 
 ## Sign-in and browser sessions
 
-`POST /api/v0/sessions` accepts email and password, creates a fresh session,
-and returns HTTP 201 with `{"data":{"step":"complete"}}`. The session
-secret travels only in the cookie. Unknown email and wrong password return
-the same HTTP 401; unknown users still incur an Argon2id password check.
+`POST /api/v0/sessions` accepts email and password. Without confirmed TOTP,
+it creates a fresh session and returns HTTP 201 with
+`{"data":{"step":"complete"}}`. With confirmed TOTP, it returns
+`{"data":{"step":"totp"}}` and a temporary `__Host-inbok-challenge` cookie;
+no session is created. The factor check and the chosen write share one user
+lock, so enrollment confirmation cannot race a password-only session into
+existence afterward. Unknown email and wrong password return the same HTTP
+401; unknown users still incur an Argon2id password check.
+
+`POST /api/v0/sessions/totp` accepts a string `code` and the challenge cookie.
+Six ASCII digits select an authenticator code; other input is checked as a
+backup code. Success atomically consumes the challenge and the TOTP step or
+backup code, creates a session, and clears the challenge cookie. Only then
+does the response issue the session cookie. A failed commit reveals no
+session secret and leaves the challenge and code usable.
+
+Challenges expire after five minutes. Wrong codes update their saved failure
+count; the fifth deletes the challenge and requires password sign-in again.
+Starting a new challenge does not reset the shared per-user code allowance:
+5 failed or pending attempts per 15 minutes and 20 per 24 hours. Successful
+code sign-in removes only its own attempt in the same transaction.
+
+Expired challenges are pruned for that user during a successful password
+sign-in. There is no scheduled cleanup; idle users' expired rows remain
+unusable until removed. Both cookies use Secure, HttpOnly, SameSite=Lax, and
+Path=/, without Domain. Authentication responses use Cache-Control: no-store.
 
 `GET /api/v0/sessions/current` returns the current email, role, and
 `totpRequired`. Every administrator currently has `totpRequired: true` and
-member-level access. TOTP enrollment, sign-in challenges, and backup codes
-belong to the next branch. No production operation currently requires admin
-access; the default-deny admin level is covered by HTTP tests.
+member-level access. Administrator access is still restricted until identity
+resolution checks confirmed TOTP. The backend supports enrollment and code
+sign-in; their browser screens are not implemented yet. No production
+operation currently requires admin access.
 
 `DELETE /api/v0/sessions/current` deletes the checked session and clears its
 cookie, returning HTTP 204. A missing or expired session returns HTTP 401

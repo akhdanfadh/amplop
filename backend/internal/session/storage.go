@@ -31,8 +31,6 @@ type Change struct {
 // Storage stores session hashes and lifetimes.
 // Updates serialize decisions for each session.
 type Storage interface {
-	InsertSession(ctx context.Context, state State) error
-
 	// StartSignIn locks the owner, reads the latest factor, then saves the chosen
 	// session or challenge and prunes that owner's expired challenges atomically.
 	StartSignIn(ctx context.Context, userID int64, update func(*totp.Factor) (SignInChange, error)) error

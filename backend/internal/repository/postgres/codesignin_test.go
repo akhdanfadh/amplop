@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +19,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/encryption"
+	"inbok/internal/httpapi"
 	"inbok/internal/passwordhash"
 	"inbok/internal/repository/postgres/sqlc"
 	"inbok/internal/session"
@@ -29,6 +33,7 @@ type codeFixture struct {
 	conn     *pgx.Conn
 	sessions *session.Service
 	codes    *session.CodeSignIn
+	api      *httpapi.API
 	userID   int64
 	now      time.Time
 	code     string
@@ -55,6 +60,7 @@ func newCodeFixture(t *testing.T) *codeFixture {
 	logger := slog.New(slog.DiscardHandler)
 	f.sessions = session.NewService(db, accounts, session.NewThrottle(db, clock), clock)
 	f.codes = session.NewCodeSignIn(db, ring, totp.NewVerifier(clock), totp.NewThrottle(db, clock, logger), clock)
+	f.api = httpapi.New(logger, httpapi.Services{Session: f.sessions, CodeSignIn: f.codes})
 	return f
 }
 
@@ -66,22 +72,60 @@ func startCodeSignIn(t *testing.T, f *codeFixture) session.SignedIn {
 	return result
 }
 
-func TestCodeSignInService(t *testing.T) {
+func codePost(f *codeFixture, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, "/api/v0"+path, strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://example.com")
+	if cookie != nil {
+		request.AddCookie(cookie)
+	}
+	response := httptest.NewRecorder()
+	f.api.Handler().ServeHTTP(response, request)
+	return response
+}
+
+func TestCodeSignInHTTP(t *testing.T) {
 	f := newCodeFixture(t)
-	challenge := startCodeSignIn(t, f)
 
-	_, err := f.sessions.Current(t.Context(), challenge.Secret)
+	password := codePost(f, "/sessions", `{"email":"alice@example.com","password":"a long sign-in password"}`, nil)
+
+	require.Equal(t, http.StatusCreated, password.Code, password.Body.String())
+	assert.JSONEq(t, `{"data":{"step":"totp"}}`, password.Body.String())
+	assert.Equal(t, "no-store", password.Header().Get("Cache-Control"))
+	cookies := password.Result().Cookies()
+	require.Len(t, cookies, 2)
+	challenge := cookies[0]
+	assert.Equal(t, "__Host-inbok-challenge", challenge.Name)
+	assert.Positive(t, challenge.MaxAge)
+	assert.True(t, challenge.Secure)
+	assert.True(t, challenge.HttpOnly)
+	assert.Equal(t, http.SameSiteLaxMode, challenge.SameSite)
+	assert.Negative(t, cookies[1].MaxAge)
+	_, err := f.sessions.Current(t.Context(), challenge.Value)
 	require.ErrorIs(t, err, session.ErrUnauthenticated, "a challenge cannot authorize a session")
-	_, err = f.codes.Complete(t.Context(), challenge.Secret, "wrong")
-	require.ErrorIs(t, err, totp.ErrInvalidCode)
-	issued, err := f.codes.Complete(t.Context(), challenge.Secret, f.code)
-	require.NoError(t, err)
 
-	current, err := f.sessions.Current(t.Context(), issued.Secret)
+	wrong := codePost(f, "/sessions/totp", `{"code":"wrong"}`, challenge)
+	require.Equal(t, http.StatusUnprocessableEntity, wrong.Code, wrong.Body.String())
+	assert.Contains(t, wrong.Body.String(), `"location":"body.code"`)
+	assert.Empty(t, wrong.Result().Cookies())
+	completed := codePost(f, "/sessions/totp", `{"code":"`+f.code+`"}`, challenge)
+	require.Equal(t, http.StatusCreated, completed.Code, completed.Body.String())
+	assert.JSONEq(t, `{"data":{"step":"complete"}}`, completed.Body.String())
+	cookies = completed.Result().Cookies()
+	require.Len(t, cookies, 2)
+	assert.Equal(t, "__Host-inbok-session", cookies[0].Name)
+	assert.Negative(t, cookies[1].MaxAge)
+	current, err := f.sessions.Current(t.Context(), cookies[0].Value)
 	require.NoError(t, err)
 	assert.Equal(t, f.userID, current.Identity.User.ID)
-	_, err = f.codes.Complete(t.Context(), challenge.Secret, f.code)
-	require.ErrorIs(t, err, session.ErrInvalidChallenge, "a consumed challenge cannot create another session")
+	assert.NotContains(t, completed.Body.String(), cookies[0].Value)
+
+	reused := codePost(f, "/sessions/totp", `{"code":"`+f.code+`"}`, challenge)
+	require.Equal(t, http.StatusUnauthorized, reused.Code, reused.Body.String())
+	cookies = reused.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.Equal(t, "__Host-inbok-challenge", cookies[0].Name)
+	assert.Negative(t, cookies[0].MaxAge)
 	var attempts int
 	require.NoError(t, f.conn.QueryRow(t.Context(), "SELECT count(*) FROM totp_attempts WHERE user_id=$1", f.userID).Scan(&attempts))
 	assert.Equal(t, 1, attempts, "success removes only its own reservation")

@@ -53,29 +53,6 @@ func NewService(storage Storage, accounts accountService, throttle *Throttle, no
 	return &Service{storage: storage, accounts: accounts, throttle: throttle, now: now}
 }
 
-// SignIn checks credentials within the failure limits and saves a new session.
-// The returned secret is for the browser; storage receives only its hash.
-func (s *Service) SignIn(ctx context.Context, email, password string, addr netip.Addr) (Issued, error) {
-	id, err := s.throttle.Begin(ctx, email, addr)
-	if err != nil {
-		return Issued{}, err
-	}
-
-	user, err := s.accounts.Authenticate(ctx, email, password)
-	if err != nil {
-		return Issued{}, err
-	}
-	if err := s.throttle.Succeed(ctx, id); err != nil {
-		return Issued{}, err
-	}
-
-	issued := newSession(user.ID, s.now)
-	if err := s.storage.InsertSession(ctx, issued.State); err != nil {
-		return Issued{}, err
-	}
-	return issued, nil
-}
-
 // StartSignIn checks the password and chooses a session or second-factor challenge.
 // The returned secret is for the browser; storage receives only its hash.
 func (s *Service) StartSignIn(ctx context.Context, email, password string, addr netip.Addr) (SignedIn, error) {

@@ -168,7 +168,7 @@ enrollment return distinct HTTP 409 problems. The shared per-user limiter
 returns HTTP 429 (`totp-throttled`). A session revoked between middleware and
 the confirmation transaction returns HTTP 401.
 
-Administrator access remains gated until the TOTP sign-in step is implemented.
+Administrator access remains gated until identity reads confirmed TOTP.
 `GET /api/v0/totp` reads confirmation metadata and the remaining backup-code
 count in one database snapshot. It reports usable codes only for a confirmed
 factor. Status reads load neither the encrypted secret nor backup-code hashes.
@@ -179,7 +179,7 @@ factor. Status reads load neither the encrypted secret nor backup-code hashes.
 `session.Challenge` represents password proof awaiting a second factor. It
 contains a hash of a fresh 32-byte random secret, the user ID, a fixed
 five-minute expiry, and a wrong-code count. The secret uses the same format
-as a session secret; separate storage tables will keep their authority apart.
+as a session secret; separate storage tables keep their authority apart.
 A challenge is never an authenticated session.
 
 Five minutes and five wrong codes are product policy. The check rejects a
@@ -217,5 +217,11 @@ TOTP step or backup row. It removes the successful attempt in that same
 transaction. Storage failure rolls back all changes and returns no cookie
 secret. Earlier failed attempts remain counted.
 
-The challenge-aware services are not connected to HTTP yet. The existing
-HTTP password entry point remains until the handlers switch to `StartSignIn`.
+`POST /api/v0/sessions` returns `step: "totp"` and a challenge cookie for a
+confirmed factor, clearing any session cookie. `POST /api/v0/sessions/totp`
+accepts `code`; success returns `step: "complete"`, sets a session cookie,
+and clears the challenge cookie. Missing, expired, consumed, or exhausted
+proof returns HTTP 401 and clears the challenge cookie. A wrong code returns
+HTTP 422 with `body.code`; shared throttling returns HTTP 429. Retryable
+errors preserve the challenge. Neither endpoint logs codes or cookie secrets.
+The browser code-entry screen is not implemented yet.
