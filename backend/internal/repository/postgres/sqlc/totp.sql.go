@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+const deleteUserTOTP = `-- name: DeleteUserTOTP :exec
+DELETE FROM user_totp WHERE user_id = $1
+`
+
+func (q *Queries) DeleteUserTOTP(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, deleteUserTOTP, userID)
+	return err
+}
+
 const lockTOTPUser = `-- name: LockTOTPUser :one
 SELECT id FROM users WHERE id = $1 FOR UPDATE
 `
@@ -20,6 +29,18 @@ func (q *Queries) LockTOTPUser(ctx context.Context, userID int64) (int64, error)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const lockTOTPUserRole = `-- name: LockTOTPUserRole :one
+SELECT role FROM users WHERE id = $1 FOR UPDATE
+`
+
+// Role checks must share the owner lock with factor deletion and promotion.
+func (q *Queries) LockTOTPUserRole(ctx context.Context, userID int64) (string, error) {
+	row := q.db.QueryRow(ctx, lockTOTPUserRole, userID)
+	var role string
+	err := row.Scan(&role)
+	return role, err
 }
 
 const readUserTOTP = `-- name: ReadUserTOTP :one

@@ -254,3 +254,24 @@ Missing or pending TOTP returns HTTP 409 (`totp-not-on`). Invalid or reused
 codes return HTTP 422 (`invalid-totp-code`) with field location `body.code`;
 shared throttling returns HTTP 429 (`totp-throttled`). Failed requests return
 no backup codes. Unexpected causes stay private behind the shared 500 error.
+
+## Turning TOTP off
+
+`Disabler.Disable` takes a checked user's ID and either a fresh authenticator
+code or an unused backup code. The repository locks the user and loads the
+current role with the factor and remaining backup hashes. Only the member
+role is allowed; administrators and unknown roles return `ErrDisableForbidden`.
+A missing or pending factor returns `ErrNotOn`.
+
+The role is checked inside the transaction, so a concurrent promotion cannot
+make a stale member check authorize deletion. Six ASCII digits select TOTP;
+other input is tried as a normalized backup code. Backup proof does not need
+the authenticator's encryption key.
+
+After proof succeeds, one transaction deletes the factor and its backup codes
+through the foreign-key cascade, including any backup code used as proof.
+It also removes only the successful attempt. Earlier failures and all existing
+sessions remain. An error, including commit failure, rolls everything back.
+The owner lock serializes proof checks with sign-in and regeneration.
+
+These service and repository methods are not connected to HTTP yet.

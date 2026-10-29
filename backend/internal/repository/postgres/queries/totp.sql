@@ -2,6 +2,10 @@
 -- Lock the existing owner even before their first factor row exists.
 SELECT id FROM users WHERE id = @user_id FOR UPDATE;
 
+-- name: LockTOTPUserRole :one
+-- Role checks must share the owner lock with factor deletion and promotion.
+SELECT role FROM users WHERE id = @user_id FOR UPDATE;
+
 -- name: ReadUserTOTP :one
 SELECT key_id, secret_ciphertext, confirmed_at, last_step
 FROM user_totp WHERE user_id = @user_id;
@@ -20,3 +24,6 @@ ON CONFLICT (user_id) DO UPDATE SET
     secret_ciphertext = EXCLUDED.secret_ciphertext,
     confirmed_at = EXCLUDED.confirmed_at,
     last_step = EXCLUDED.last_step;
+
+-- name: DeleteUserTOTP :exec
+DELETE FROM user_totp WHERE user_id = @user_id;
