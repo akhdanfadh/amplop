@@ -29,7 +29,9 @@ import {
   ResponseHealthStatus,
   ResponseProbeEventCreated,
   ResponseSetupStatus,
-  ResponseSignInResult
+  ResponseSignInResult,
+  ResponseTotpEnrollment,
+  ResponseTotpStatus
 } from './model';
 import type {
   NewProbeEvent,
@@ -704,4 +706,181 @@ export const useCreateFirstAdmin = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getCreateFirstAdminMutationOptions(options), queryClient);
+    }
+
+export const getGetTOTPStatusUrl = () => {
+
+
+
+
+  return `/api/v0/totp`
+}
+
+/**
+ * @summary Get two-factor authentication status
+ */
+export const getTOTPStatus = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseTotpStatus> => {
+
+  return transport<ResponseTotpStatus>(getGetTOTPStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseTotpStatus
+  }
+);}
+
+
+
+
+
+export const getGetTOTPStatusQueryKey = () => {
+    return [
+    `/api/v0/totp`
+    ] as const;
+    }
+
+
+export const getGetTOTPStatusQueryOptions = <TData = Awaited<ReturnType<typeof getTOTPStatus>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getTOTPStatus>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTOTPStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTOTPStatus>>> = ({ signal }) => getTOTPStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTOTPStatus>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetTOTPStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getTOTPStatus>>>
+export type GetTOTPStatusQueryError = ErrorType<Problem>
+
+
+export function useGetTOTPStatus<TData = Awaited<ReturnType<typeof getTOTPStatus>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getTOTPStatus>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTOTPStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getTOTPStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetTOTPStatus<TData = Awaited<ReturnType<typeof getTOTPStatus>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getTOTPStatus>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTOTPStatus>>,
+          TError,
+          Awaited<ReturnType<typeof getTOTPStatus>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetTOTPStatus<TData = Awaited<ReturnType<typeof getTOTPStatus>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getTOTPStatus>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get two-factor authentication status
+ */
+
+export function useGetTOTPStatus<TData = Awaited<ReturnType<typeof getTOTPStatus>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getTOTPStatus>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetTOTPStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getStartTOTPEnrollmentUrl = () => {
+
+
+
+
+  return `/api/v0/totp`
+}
+
+/**
+ * @summary Start or restart two-factor authentication enrollment
+ */
+export const startTOTPEnrollment = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseTotpEnrollment> => {
+
+  return transport<ResponseTotpEnrollment>(getStartTOTPEnrollmentUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+    ,
+    schema: ResponseTotpEnrollment
+  }
+);}
+
+
+
+
+
+export const getStartTOTPEnrollmentMutationKey = () => ['startTOTPEnrollment'] as const;
+
+export const getStartTOTPEnrollmentMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTOTPEnrollment>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof startTOTPEnrollment>>, TError,void, TContext> => {
+
+const mutationKey = getStartTOTPEnrollmentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startTOTPEnrollment>>, void> = () => {
+
+
+          return  startTOTPEnrollment(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartTOTPEnrollmentMutationResult = NonNullable<Awaited<ReturnType<typeof startTOTPEnrollment>>>
+
+    export type StartTOTPEnrollmentMutationError = ErrorType<Problem>
+
+
+    /**
+ * @summary Start or restart two-factor authentication enrollment
+ */
+export const useStartTOTPEnrollment = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTOTPEnrollment>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof startTOTPEnrollment>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getStartTOTPEnrollmentMutationOptions(options), queryClient);
     }

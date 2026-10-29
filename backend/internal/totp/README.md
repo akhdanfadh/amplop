@@ -4,7 +4,9 @@ This package generates enrollment secrets and verifies time-based codes.
 The enrollment service encrypts secrets before passing them to storage.
 Starting enrollment creates a pending factor; restarting replaces only a
 pending factor. PostgreSQL stores the encrypted factor and serializes
-updates by locking its user. The HTTP adapter is not implemented yet.
+updates by locking its user. Signed-in users can start or restart enrollment
+with `POST /api/v0/totp` and read status with `GET /api/v0/totp`. Starting
+enrollment does not activate TOTP; code confirmation is not implemented yet.
 
 The verifier reads a supplied clock and returns the matched 30-second step.
 A successful check alone does not consume a code: the caller must save that
