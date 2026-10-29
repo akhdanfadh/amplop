@@ -56,8 +56,9 @@ for v1.5.0. These checks do not establish that the package has no defects.
 
 ## Code-attempt limits
 
-`Throttle` defines the per-user limits and a storage contract. Its PostgreSQL
-adapter and the code-checking endpoints are not implemented yet.
+`Throttle` defines the per-user limits. PostgreSQL locks the user while it
+cleans that user's expired attempts, inserts a reservation, and checks counts
+in one transaction. The code-checking endpoints are not implemented yet.
 
 Reserve an attempt with `Begin` before checking a code. Pending checks count
 against both limits, so parallel requests cannot all pass an earlier count.

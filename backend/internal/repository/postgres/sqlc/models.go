@@ -37,6 +37,12 @@ type SignInAttempt struct {
 	CreatedAt  time.Time
 }
 
+type TotpAttempt struct {
+	ID        int64
+	UserID    int64
+	CreatedAt time.Time
+}
+
 type User struct {
 	ID           int64
 	Email        string
