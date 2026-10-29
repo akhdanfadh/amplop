@@ -96,6 +96,13 @@ The browser remembers a local setup attempt until reload, so a status check
 that confirms completion after a lost response also shows the instructions.
 
 The `/sign-in` page submits credentials through the generated mutation hook.
+Accounts with TOTP then enter six authenticator digits in two groups of three.
+"Use a backup code" switches the same control to ten characters in two groups
+of five. Pasting ignores spaces and dashes. Switching clears the previous entry.
+Codes stay in memory and are released when the form closes.
+A rejected code can be retried; an expired or exhausted challenge requires
+starting sign-in again. Reloading also returns to the password step.
+An uncertain response offers a session check before another attempt.
 The `/` page reads the current account and redirects to sign-in on HTTP 401.
 Other failures keep a retry action. Administrators without confirmed TOTP open
 `/security` to enroll. Members can reach the same page through the Security link.
