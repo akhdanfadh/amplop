@@ -21,6 +21,9 @@ const (
 // ErrAlreadyOn prevents replacing a confirmed authenticator through enrollment.
 var ErrAlreadyOn = errors.New("TOTP is already on")
 
+// ErrNotPending means confirmation has no pending factor to activate.
+var ErrNotPending = errors.New("TOTP enrollment is not pending")
+
 // Factor is the encrypted factor and the last accepted step saved by storage.
 type Factor struct {
 	KeyID       string

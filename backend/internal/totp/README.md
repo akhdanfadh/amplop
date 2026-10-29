@@ -23,7 +23,7 @@ step atomically with its action.
   confirmation. Confirmation belongs here because it replaces the current
   session and ends the other sessions. Session-secret generation stays
   private to this package.
-- `session.Storage` will declare an update-function method for confirmation:
+- `session.Enrollment` declares an update-function storage method for confirmation:
   storage locks and loads the factor, user, and current session, calls the
   feature's decision, then saves the factor and backup codes, ends other
   sessions, and replaces the current session in one transaction.
@@ -130,3 +130,23 @@ Concurrent deletion of the same row can succeed only once.
 
 These queries are storage primitives. Feature operations will use them inside
 their update-function storage methods; handlers never call SQL queries.
+
+## Enrollment confirmation rules
+
+`session.Enrollment` owns confirmation because it must generate a replacement
+session secret. It reserves a code attempt, prepares the ten backup hashes
+before taking a write lock, and asks storage to confirm in one transaction.
+Inside the storage callback it rechecks the current session and verifies a
+TOTP code against the pending factor. A missing factor, a confirmed factor,
+or an invalid or replayed code leaves enrollment unchanged.
+
+The returned change activates the factor, records the accepted step, supplies
+backup hashes, and replaces every existing session with the new one. This
+ends other password-only sessions before they could gain administrator access.
+The same transaction must delete only the successful attempt's reservation.
+Do not run `Succeed` afterward: a cleanup error after commit could hide the
+new cookie and the only copy of the backup codes from the user.
+
+Confirmation returns the cookie secret and display codes only after storage
+commits. Its PostgreSQL implementation and HTTP endpoint are not implemented
+yet; these rules alone do not activate enrollment in the running application.
