@@ -6,6 +6,7 @@ import { userMessage } from "@/api/problem";
 import { sessionMessage, uncertainSession } from "@/features/auth/session-error";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { Button } from "@/components/ui/button";
+import { AccountNav } from "@/components/account-nav";
 
 const unauthorized = 401;
 
@@ -50,89 +51,90 @@ function Home(): ReactElement {
     void navigate({ to: "/sign-in", replace: true });
   }, [current.error, signOut.isPending, queryClient, navigate]);
 
+  useEffect(() => {
+    if (account?.totpRequired) void navigate({ to: "/security", replace: true });
+  }, [account?.totpRequired, navigate]);
+
   return (
-    <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-        inbok
-      </h1>
+    <>
+      <AccountNav />
+      <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
+        <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
+          inbok
+        </h1>
 
-      <output aria-atomic="true">
-        {current.isPending && <span>Checking your session...</span>}
-        {current.isPaused && <span>Waiting for a connection to check your session...</span>}
-        {current.isFetching && !current.isPending && <span>Checking your session... </span>}
-        {current.error?.status === unauthorized && <span>Opening sign-in...</span>}
-        {account && (
-          <span>
-            Signed in as <span className="font-medium">{account.email}</span>
-          </span>
-        )}
-      </output>
-
-      {current.error && current.error.status !== unauthorized && (
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2" role="alert">
-            <p>Could not check your session. {userMessage(current.error)}</p>
-            {current.error.requestId && (
-              <p className="text-sm text-muted-foreground">
-                Request reference: <code className="break-all">{current.error.requestId}</code>
-              </p>
-            )}
-          </div>
-          <Button
-            ref={retryRef}
-            className="h-auto min-h-11 border-muted-foreground whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            type="button"
-            variant="outline"
-            disabled={current.isFetching}
-            onClick={() => void current.refetch()}
-          >
-            {current.isFetching ? "Checking your session..." : "Try again"}
-          </Button>
-        </div>
-      )}
-
-      {account && (
-        <section className="flex flex-col gap-6" aria-label="Your account">
-          {account.totpRequired && (
-            <p className="leading-relaxed">
-              Two-factor authentication enrollment comes next. Your account has member access until
-              it is set up.
-            </p>
+        <output aria-atomic="true">
+          {current.isPending && <span>Checking your session...</span>}
+          {current.isPaused && <span>Waiting for a connection to check your session...</span>}
+          {current.isFetching && !current.isPending && <span>Checking your session... </span>}
+          {current.error?.status === unauthorized && <span>Opening sign-in...</span>}
+          {account && (
+            <span>
+              Signed in as <span className="font-medium">{account.email}</span>
+            </span>
           )}
-          <Button
-            ref={signOutRef}
-            className="h-auto min-h-11 w-fit whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            type="button"
-            variant="outline"
-            disabled={signOut.isPending}
-            onClick={() => signOut.mutate()}
-          >
-            {signOut.isPending ? "Signing out..." : "Sign out"}
-          </Button>
-        </section>
-      )}
+        </output>
 
-      {signOut.error && signOut.error.status !== unauthorized && (
-        <div className="flex flex-col gap-2" role="alert">
-          <p>{sessionMessage(signOut.error, "sign-out")}</p>
-          {uncertainSession(signOut.error) && (
+        {current.error && current.error.status !== unauthorized && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2" role="alert">
+              <p>Could not check your session. {userMessage(current.error)}</p>
+              {current.error.requestId && (
+                <p className="text-sm text-muted-foreground">
+                  Request reference: <code className="break-all">{current.error.requestId}</code>
+                </p>
+              )}
+            </div>
             <Button
+              ref={retryRef}
+              className="h-auto min-h-11 border-muted-foreground whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
               type="button"
               variant="outline"
               disabled={current.isFetching}
-              className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
               onClick={() => void current.refetch()}
             >
-              {current.isFetching ? "Checking your session..." : "Check session"}
+              {current.isFetching ? "Checking your session..." : "Try again"}
             </Button>
-          )}
-          {signOut.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{signOut.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
-    </main>
+          </div>
+        )}
+
+        {account && (
+          <section className="flex flex-col gap-6" aria-label="Your account">
+            <Button
+              ref={signOutRef}
+              className="h-auto min-h-11 w-fit whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
+              type="button"
+              variant="outline"
+              disabled={signOut.isPending}
+              onClick={() => signOut.mutate()}
+            >
+              {signOut.isPending ? "Signing out..." : "Sign out"}
+            </Button>
+          </section>
+        )}
+
+        {signOut.error && signOut.error.status !== unauthorized && (
+          <div className="flex flex-col gap-2" role="alert">
+            <p>{sessionMessage(signOut.error, "sign-out")}</p>
+            {uncertainSession(signOut.error) && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={current.isFetching}
+                className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
+                onClick={() => void current.refetch()}
+              >
+                {current.isFetching ? "Checking your session..." : "Check session"}
+              </Button>
+            )}
+            {signOut.error.requestId && (
+              <p className="text-sm text-muted-foreground">
+                Request reference: <code className="break-all">{signOut.error.requestId}</code>
+              </p>
+            )}
+          </div>
+        )}
+      </main>
+    </>
   );
 }
