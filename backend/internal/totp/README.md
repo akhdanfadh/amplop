@@ -229,3 +229,21 @@ proof returns HTTP 401 and clears the challenge cookie. A wrong code returns
 HTTP 422 with `body.code`; shared throttling returns HTTP 429. Retryable
 errors preserve the challenge. Neither endpoint logs codes or cookie secrets.
 The browser code-entry screen is not implemented yet.
+
+## Backup-code regeneration
+
+`Backups.Regenerate` takes a checked user's ID and a fresh authenticator
+code. Backup codes cannot authorize regeneration. Missing or pending factors
+return `ErrNotOn`; invalid or reused TOTP codes return `ErrInvalidCode`.
+
+The service reserves a shared code attempt and prepares ten salted hashes
+before taking a write lock. PostgreSQL locks the owner, loads the latest
+factor, and calls the service's decision. The transaction records the accepted
+step, replaces the entire backup set, and deletes only the successful attempt.
+A failure rolls back every write, preserving the old set and replay state.
+Earlier failed attempts remain counted, and existing sessions stay unchanged.
+
+The service returns display codes only after commit. It does not perform
+cleanup afterward, so a cleanup error cannot hide the only copy of the new
+codes after invalidating the old set. These service and repository methods
+are not connected to HTTP yet.
