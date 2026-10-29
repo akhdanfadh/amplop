@@ -53,3 +53,30 @@ for v1.5.0. These checks do not establish that the package has no defects.
 - Version query: https://api.osv.dev/v1/query
 - Counter verification: https://pkg.go.dev/github.com/pquerna/otp@v1.5.0/hotp#ValidateCustom
 - Test vectors: https://www.rfc-editor.org/rfc/rfc6238#appendix-B
+
+## Code-attempt limits
+
+`Throttle` defines the per-user limits and a storage contract. Its PostgreSQL
+adapter and the code-checking endpoints are not implemented yet.
+
+Reserve an attempt with `Begin` before checking a code. Pending checks count
+against both limits, so parallel requests cannot all pass an earlier count.
+Leave the attempt saved on failure; call `Succeed` only after the protected
+action succeeds. Success removes its own attempt, preserving earlier failures.
+A rejected reservation rolls back and must not trigger code verification.
+
+The policy allows 5 failed or pending attempts per 15 minutes and 20 per 24
+hours. Attempts exactly at a window's cutoff no longer count. TOTP codes,
+backup codes, and replayed codes will share the same allowance across sign-in,
+enrollment confirmation, backup-code regeneration, and turn-off. Restarting
+enrollment will not reset that allowance.
+
+These values are product policy. OWASP recommends strict OTP attempt limits
+and account-based counters but does not prescribe these two thresholds:
+
+- https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html#one-time-password-otp-handling-and-storage
+- https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#login-throttling
+
+A blocked attempt returns `ErrThrottled` and logs a warning containing the user
+ID. The limiter receives no code or secret. Code-checking HTTP operations will
+map this error to HTTP 429 with problem type `/api/v0/problems/totp-throttled`.
