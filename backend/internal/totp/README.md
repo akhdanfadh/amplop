@@ -81,3 +81,37 @@ and account-based counters but does not prescribe these two thresholds:
 A blocked attempt returns `ErrThrottled` and logs a warning containing the user
 ID. The limiter receives no code or secret. Code-checking HTTP operations will
 map this error to HTTP 429 with problem type `/api/v0/problems/totp-throttled`.
+
+## Backup-code rules
+
+A set contains ten distinct codes, each displayed as `xxxxx-xxxxx`. The
+31-symbol alphabet omits `0`, `O`, `1`, `I`, and `L`. Generation uses uniform
+cryptographic randomness. Entry ignores ASCII letter case, whitespace, and
+ASCII dashes; other characters and lengths are rejected.
+
+Backup codes serve as an alternate second factor. Their roughly 50 bits of
+randomness fall below NIST's 112-bit threshold for look-up secrets, so each
+code uses a fresh salt and password hashing instead of HMAC-only storage.
+
+Account passwords and backup codes share `internal/passwordhash`. It stores
+Argon2id PHC strings containing the algorithm, version, work settings, salt,
+and digest. Current generation uses 19 MiB, two passes, one lane, a 16-byte
+salt, and a 32-byte digest, matching OWASP's minimum Argon2id profile.
+Verification reads the stored settings and bounds their cost before hashing,
+so generation defaults can change without breaking existing hashes. Store
+one PHC string per code; no separate profile ID is needed. Account passwords
+preserve their bytes; backup codes are normalized by `totp` before hashing.
+
+`NewBackupCodes` keeps display codes separate from storage hashes. Generate
+these hashes before taking a database write lock. Return display codes only
+after the operation saving their hashes commits. `CheckBackupCode` performs
+comparison only; code consumption and set replacement are not implemented yet.
+
+Salted hashes require checking the user's remaining hashes, up to ten, rather
+than looking up a fast hash. A fast lookup digest would also let an attacker
+test guesses cheaply. Call the shared limiter before verification, and delete
+the matched row atomically with the action. Backup-code hashes do not depend
+on deployment encryption keys.
+
+- NIST look-up secrets: https://pages.nist.gov/800-63-4/sp800-63b.html#look-up-secret-verifiers
+- OWASP Argon2id profile: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
