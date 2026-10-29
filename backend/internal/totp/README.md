@@ -172,3 +172,21 @@ Administrator access remains gated until the TOTP sign-in step is implemented.
 `GET /api/v0/totp` reads confirmation metadata and the remaining backup-code
 count in one database snapshot. It reports usable codes only for a confirmed
 factor. Status reads load neither the encrypted secret nor backup-code hashes.
+
+
+## Sign-in challenge rules
+
+`session.Challenge` represents password proof awaiting a second factor. It
+contains a hash of a fresh 32-byte random secret, the user ID, a fixed
+five-minute expiry, and a wrong-code count. The secret uses the same format
+as a session secret; separate storage tables will keep their authority apart.
+A challenge is never an authenticated session.
+
+Five minutes and five wrong codes are product policy. The check rejects a
+challenge at its expiry or after its fifth failure. Retrying does not extend
+its lifetime or reset failures. Storage must check and update it under one
+lock; the code operation must delete it after five wrong codes or success.
+
+Only the challenge data and check rules are implemented. Password sign-in
+still issues sessions as before; challenge storage, code verification, and
+HTTP wiring are not implemented yet.
