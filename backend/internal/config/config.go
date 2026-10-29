@@ -8,11 +8,15 @@ import (
 	"os"
 	"strings"
 	"unicode/utf8"
+
+	"inbok/internal/encryption"
 )
 
 const (
 	envHTTPAddr     = "INBOK_HTTP_ADDR"
 	defaultHTTPAddr = "127.0.0.1:8080"
+
+	envEncryptionKeys = "INBOK_ENCRYPTION_KEYS"
 
 	envDatabaseURL    = "INBOK_DATABASE_URL"
 	envTrustedProxies = "INBOK_TRUSTED_PROXIES"
@@ -27,12 +31,13 @@ var errNoDatabaseURL = errors.New(envDatabaseURL + " is required, e.g. postgres:
 
 // Config holds settings for inbok serve.
 type Config struct {
-	HTTPAddr       string   // host:port to listen on, e.g. 0.0.0.0:8080
-	SetupToken     string   // empty disables first-admin setup
-	TrustedProxies []string // CIDRs; empty ignores forwarded client addresses
+	Encryption     *encryption.Keyring // validated keys for stored secrets
+	HTTPAddr       string              // host:port to listen on, e.g. 0.0.0.0:8080
+	SetupToken     string              // empty disables first-admin setup
+	TrustedProxies []string            // CIDRs; empty ignores forwarded client addresses
 }
 
-// Load reads the environment. Unset or empty variables use defaults.
+// Load reads the environment. Encryption keys are required; optional settings use defaults.
 func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:   os.Getenv(envHTTPAddr),
@@ -61,6 +66,17 @@ func Load() (Config, error) {
 			cfg.TrustedProxies = append(cfg.TrustedProxies, cidr)
 		}
 	}
+
+	value := os.Getenv(envEncryptionKeys)
+	if strings.TrimSpace(value) == "" {
+		return Config{}, fmt.Errorf("%s is required", envEncryptionKeys)
+	}
+
+	keys, err := encryption.New(value)
+	if err != nil {
+		return Config{}, fmt.Errorf("%s: %w", envEncryptionKeys, err)
+	}
+	cfg.Encryption = keys
 
 	return cfg, nil
 }

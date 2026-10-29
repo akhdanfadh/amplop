@@ -20,6 +20,7 @@ import (
 var discard = slog.New(slog.DiscardHandler)
 
 func TestExport(t *testing.T) {
+	t.Setenv("INBOK_ENCRYPTION_KEYS", "invalid")
 	t.Setenv("INBOK_TRUSTED_PROXIES", "invalid")
 	path := filepath.Join(t.TempDir(), "openapi.json")
 	require.NoError(t, run(context.Background(), []string{"export", path}, discard))
@@ -44,6 +45,7 @@ func TestRunUsage(t *testing.T) {
 
 // migrate names the missing setting instead of guessing a database.
 func TestMigrateNoURL(t *testing.T) {
+	t.Setenv("INBOK_ENCRYPTION_KEYS", "invalid")
 	t.Setenv("INBOK_DATABASE_URL", "")
 
 	err := run(context.Background(), []string{"migrate"}, discard)
@@ -53,6 +55,7 @@ func TestMigrateNoURL(t *testing.T) {
 
 // serve names the missing setting before touching a database or a port.
 func TestServeNoURL(t *testing.T) {
+	t.Setenv("INBOK_ENCRYPTION_KEYS", "1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	t.Setenv("INBOK_DATABASE_URL", "")
 	t.Setenv("INBOK_SETUP_TOKEN", "")
 	t.Setenv("INBOK_TRUSTED_PROXIES", "")
@@ -147,4 +150,22 @@ func waitUp(url string) bool {
 		time.Sleep(20 * time.Millisecond)
 	}
 	return false
+}
+
+// Missing or malformed keys stop serve before database or listener startup.
+func TestServeEncryptionKeys(t *testing.T) {
+	for _, value := range []string{"", "invalid-private-key"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("INBOK_HTTP_ADDR", "")
+			t.Setenv("INBOK_SETUP_TOKEN", "")
+			t.Setenv("INBOK_TRUSTED_PROXIES", "")
+			t.Setenv("INBOK_DATABASE_URL", "")
+			t.Setenv("INBOK_ENCRYPTION_KEYS", value)
+			err := run(context.Background(), []string{"serve"}, discard)
+			require.ErrorContains(t, err, "INBOK_ENCRYPTION_KEYS")
+			if value != "" {
+				assert.NotContains(t, err.Error(), value)
+			}
+		})
+	}
 }
