@@ -3,7 +3,8 @@
 This package generates enrollment secrets and verifies time-based codes.
 The enrollment service encrypts secrets before passing them to storage.
 Starting enrollment creates a pending factor; restarting replaces only a
-pending factor. The PostgreSQL and HTTP adapters are not implemented yet.
+pending factor. PostgreSQL stores the encrypted factor and serializes
+updates by locking its user. The HTTP adapter is not implemented yet.
 
 The verifier reads a supplied clock and returns the matched 30-second step.
 A successful check alone does not consume a code: the caller must save that

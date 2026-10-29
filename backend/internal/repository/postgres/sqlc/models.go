@@ -44,3 +44,11 @@ type User struct {
 	Role         string
 	CreatedAt    time.Time
 }
+
+type UserTotp struct {
+	UserID           int64
+	KeyID            string
+	SecretCiphertext []byte
+	ConfirmedAt      *time.Time
+	LastStep         int64
+}
