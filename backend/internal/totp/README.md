@@ -6,7 +6,8 @@ Starting enrollment creates a pending factor; restarting replaces only a
 pending factor. PostgreSQL stores the encrypted factor and serializes
 updates by locking its user. Signed-in users can start or restart enrollment
 with `POST /api/v0/totp` and read status with `GET /api/v0/totp`. Starting
-enrollment does not activate TOTP; code confirmation is not implemented yet.
+enrollment does not activate TOTP. Confirm with `POST /api/v0/totp/confirm`
+and a code from the pending authenticator.
 
 The verifier reads a supplied clock and returns the matched 30-second step.
 A successful check alone does not consume a code: the caller must save that
@@ -58,7 +59,8 @@ for v1.5.0. These checks do not establish that the package has no defects.
 
 `Throttle` defines the per-user limits. PostgreSQL locks the user while it
 cleans that user's expired attempts, inserts a reservation, and checks counts
-in one transaction. The code-checking endpoints are not implemented yet.
+in one transaction. Enrollment confirmation uses this limiter; the other
+code-checking endpoints are not implemented yet.
 
 Reserve an attempt with `Begin` before checking a code. Pending checks count
 against both limits, so parallel requests cannot all pass an earlier count.
@@ -79,8 +81,8 @@ and account-based counters but does not prescribe these two thresholds:
 - https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#login-throttling
 
 A blocked attempt returns `ErrThrottled` and logs a warning containing the user
-ID. The limiter receives no code or secret. Code-checking HTTP operations will
-map this error to HTTP 429 with problem type `/api/v0/problems/totp-throttled`.
+ID. The limiter receives no code or secret. Enrollment confirmation maps this
+error to HTTP 429 with problem type `/api/v0/problems/totp-throttled`.
 
 ## Backup-code rules
 
@@ -105,7 +107,8 @@ preserve their bytes; backup codes are normalized by `totp` before hashing.
 `NewBackupCodes` keeps display codes separate from storage hashes. Generate
 these hashes before taking a database write lock. Return display codes only
 after the operation saving their hashes commits. `CheckBackupCode` performs
-comparison only; no endpoint stores or consumes backup codes yet.
+comparison only. Confirmation stores the hashes; code consumption is not
+implemented yet.
 
 Salted hashes require checking the user's remaining hashes, up to ten, rather
 than looking up a fast hash. A fast lookup digest would also let an attacker
@@ -153,5 +156,17 @@ session, matching enrollment restart and attempt reservation's lock order.
 It saves the whole change in one transaction. The `sessions(user_id)` index
 supports ending the old sessions without scanning every user's sessions.
 
-The confirmation HTTP endpoint is not implemented yet; confirmation is not
-available through the running API.
+`POST /api/v0/totp/confirm` accepts a string `code`, preserving leading zeros.
+It uses the checked session from access middleware. A successful response
+sets a replacement session cookie and returns `data.backupCodes` once.
+Account-specific responses use `Cache-Control: no-store`. Errors never
+return a replacement cookie or backup codes.
+
+An invalid, expired, or reused code returns HTTP 422 (`invalid-totp-code`)
+with the field location `body.code`. Missing enrollment and already confirmed
+enrollment return distinct HTTP 409 problems. The shared per-user limiter
+returns HTTP 429 (`totp-throttled`). A session revoked between middleware and
+the confirmation transaction returns HTTP 401.
+
+Administrator access remains gated until the TOTP sign-in step is implemented.
+The remaining backup-code count in status is not implemented yet.

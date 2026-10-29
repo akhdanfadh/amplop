@@ -5,6 +5,7 @@
  * OpenAPI spec version: 0.0.0
  */
 
+export * from './confirmTOTPEnrollmentBody.zod';
 export * from './createFirstAdminBody.zod';
 export * from './createProbeEventBody.zod';
 export * from './createSessionBody.zod';
@@ -24,9 +25,12 @@ export * from './responseHealthStatus.zod';
 export * from './responseProbeEventCreated.zod';
 export * from './responseSetupStatus.zod';
 export * from './responseSignInResult.zod';
+export * from './responseTotpConfirmation.zod';
 export * from './responseTotpEnrollment.zod';
 export * from './responseTotpStatus.zod';
 export * from './setupStatus.zod';
 export * from './signInResult.zod';
+export * from './totpConfirmation.zod';
+export * from './totpConfirmationCode.zod';
 export * from './totpEnrollment.zod';
 export * from './totpStatus.zod';

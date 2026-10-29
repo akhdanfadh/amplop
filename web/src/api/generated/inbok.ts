@@ -30,6 +30,7 @@ import {
   ResponseProbeEventCreated,
   ResponseSetupStatus,
   ResponseSignInResult,
+  ResponseTotpConfirmation,
   ResponseTotpEnrollment,
   ResponseTotpStatus
 } from './model';
@@ -37,7 +38,8 @@ import type {
   NewProbeEvent,
   NewSession,
   NewSetup,
-  Problem
+  Problem,
+  TotpConfirmationCode
 } from './model';
 
 import { transport } from '../transport';
@@ -883,4 +885,94 @@ export const useStartTOTPEnrollment = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getStartTOTPEnrollmentMutationOptions(options), queryClient);
+    }
+
+export const getConfirmTOTPEnrollmentUrl = () => {
+
+
+
+
+  return `/api/v0/totp/confirm`
+}
+
+/**
+ * Activates the authenticator, ends all existing sessions, and issues a replacement session cookie. Backup codes are returned once.
+ * @summary Confirm two-factor authentication enrollment
+ */
+export const confirmTOTPEnrollment = async (totpConfirmationCode: TotpConfirmationCode, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpConfirmation> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseTotpConfirmation>(getConfirmTOTPEnrollmentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(totpConfirmationCode),
+    schema: ResponseTotpConfirmation
+  }
+);}
+
+
+
+
+
+export const getConfirmTOTPEnrollmentMutationKey = () => ['confirmTOTPEnrollment'] as const;
+
+export const getConfirmTOTPEnrollmentMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmTOTPEnrollment>>, TError,ConfirmTOTPEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmTOTPEnrollment>>, TError,ConfirmTOTPEnrollmentMutationVariables, TContext> => {
+
+const mutationKey = getConfirmTOTPEnrollmentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmTOTPEnrollment>>, ConfirmTOTPEnrollmentMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  confirmTOTPEnrollment(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmTOTPEnrollmentMutationResult = NonNullable<Awaited<ReturnType<typeof confirmTOTPEnrollment>>>
+    export type ConfirmTOTPEnrollmentMutationBody = TotpConfirmationCode
+    export type ConfirmTOTPEnrollmentMutationError = ErrorType<Problem>
+    export type ConfirmTOTPEnrollmentMutationVariables = {data: TotpConfirmationCode}
+
+    /**
+ * @summary Confirm two-factor authentication enrollment
+ */
+export const useConfirmTOTPEnrollment = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmTOTPEnrollment>>, TError,ConfirmTOTPEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof confirmTOTPEnrollment>>,
+        TError,
+        ConfirmTOTPEnrollmentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getConfirmTOTPEnrollmentMutationOptions(options), queryClient);
     }

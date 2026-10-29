@@ -322,6 +322,18 @@
         ],
         "type": "object"
       },
+      "ResponseTotpConfirmation": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TotpConfirmation"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "ResponseTotpEnrollment": {
         "additionalProperties": false,
         "properties": {
@@ -375,6 +387,39 @@
         },
         "required": [
           "step"
+        ],
+        "type": "object"
+      },
+      "TotpConfirmation": {
+        "additionalProperties": false,
+        "properties": {
+          "backupCodes": {
+            "description": "Shown once. Save these codes before leaving this page.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 10,
+            "type": "array"
+          }
+        },
+        "required": [
+          "backupCodes"
+        ],
+        "type": "object"
+      },
+      "TotpConfirmationCode": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Six-digit code from the pending authenticator.",
+            "maxLength": 6,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "code"
         ],
         "type": "object"
       },
@@ -926,6 +971,151 @@
           }
         ],
         "summary": "Start or restart two-factor authentication enrollment"
+      }
+    },
+    "/totp/confirm": {
+      "post": {
+        "description": "Activates the authenticator, ends all existing sessions, and issues a replacement session cookie. Backup codes are returned once.",
+        "operationId": "confirmTOTPEnrollment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotpConfirmationCode"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseTotpConfirmation"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "alreadyOn": {
+                    "value": {
+                      "type": "/api/v0/problems/totp-already-on",
+                      "status": 409,
+                      "title": "Two-factor authentication already on",
+                      "detail": "An authenticator is already confirmed for this account."
+                    }
+                  },
+                  "notPending": {
+                    "value": {
+                      "type": "/api/v0/problems/totp-not-pending",
+                      "status": 409,
+                      "title": "Enrollment not started",
+                      "detail": "Start authenticator enrollment before confirming a code."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Enrollment has not started or the authenticator is already confirmed."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "invalidCode": {
+                    "value": {
+                      "type": "/api/v0/problems/invalid-totp-code",
+                      "status": 422,
+                      "title": "Invalid authenticator code",
+                      "detail": "Enter a current code from the pending authenticator.",
+                      "errors": [
+                        {
+                          "location": "body.code",
+                          "message": "Enter a current authenticator code."
+                        }
+                      ]
+                    }
+                  },
+                  "invalidInput": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request inputs or authenticator code are invalid."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/totp-throttled",
+                  "status": 429,
+                  "title": "Too many code attempts",
+                  "detail": "Too many failed code attempts. Try again later."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too many recent failed code attempts for this account."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Confirm two-factor authentication enrollment"
       }
     }
   },

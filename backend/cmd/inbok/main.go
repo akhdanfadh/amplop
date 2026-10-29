@@ -107,12 +107,14 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	throttle := session.NewThrottle(db, time.Now)
+	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	services := httpapi.Services{
-		TOTP:     totp.NewService(db, cfg.Encryption),
-		Probe:    probe.NewService(db),
-		Account:  accounts,
-		Session:  session.NewService(db, accounts, throttle, time.Now),
-		Throttle: throttle,
+		Enrollment: session.NewEnrollment(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
+		TOTP:       totp.NewService(db, cfg.Encryption),
+		Probe:      probe.NewService(db),
+		Account:    accounts,
+		Session:    session.NewService(db, accounts, throttle, time.Now),
+		Throttle:   throttle,
 	}
 	api := httpapi.New(logger, services)
 	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {
