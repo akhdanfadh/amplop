@@ -28,6 +28,15 @@ func (q *Queries) ConsumeTOTPBackupCode(ctx context.Context, arg ConsumeTOTPBack
 	return id, err
 }
 
+const deleteTOTPBackupCodes = `-- name: DeleteTOTPBackupCodes :exec
+DELETE FROM totp_backup_codes WHERE user_id = $1
+`
+
+func (q *Queries) DeleteTOTPBackupCodes(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, deleteTOTPBackupCodes, userID)
+	return err
+}
+
 const insertTOTPBackupCode = `-- name: InsertTOTPBackupCode :exec
 INSERT INTO totp_backup_codes (user_id, code_hash)
 VALUES ($1, $2)

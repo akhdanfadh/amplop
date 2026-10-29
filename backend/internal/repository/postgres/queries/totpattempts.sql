@@ -12,3 +12,7 @@ SELECT user_id, created_at FROM totp_attempts WHERE user_id = @user_id;
 
 -- name: DeleteTOTPAttempt :exec
 DELETE FROM totp_attempts WHERE id = @id;
+
+-- name: DeleteUserTOTPAttempt :exec
+-- Confirmation removes only its owner's successful reservation.
+DELETE FROM totp_attempts WHERE user_id = @user_id AND id = @id;

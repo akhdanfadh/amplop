@@ -12,3 +12,10 @@ UPDATE sessions SET last_used_at = @last_used_at WHERE token_hash = @token_hash;
 
 -- name: DeleteSession :exec
 DELETE FROM sessions WHERE token_hash = @token_hash;
+
+-- name: LockUserSession :one
+SELECT user_id, created_at, last_used_at, expires_at
+FROM sessions WHERE user_id = @user_id AND token_hash = @token_hash FOR UPDATE;
+
+-- name: DeleteUserSessions :exec
+DELETE FROM sessions WHERE user_id = @user_id;

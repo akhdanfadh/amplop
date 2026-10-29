@@ -34,6 +34,21 @@ func (q *Queries) DeleteTOTPAttempt(ctx context.Context, id int64) error {
 	return err
 }
 
+const deleteUserTOTPAttempt = `-- name: DeleteUserTOTPAttempt :exec
+DELETE FROM totp_attempts WHERE user_id = $1 AND id = $2
+`
+
+type DeleteUserTOTPAttemptParams struct {
+	UserID int64
+	ID     int64
+}
+
+// Confirmation removes only its owner's successful reservation.
+func (q *Queries) DeleteUserTOTPAttempt(ctx context.Context, arg DeleteUserTOTPAttemptParams) error {
+	_, err := q.db.Exec(ctx, deleteUserTOTPAttempt, arg.UserID, arg.ID)
+	return err
+}
+
 const insertTOTPAttempt = `-- name: InsertTOTPAttempt :one
 INSERT INTO totp_attempts (user_id, created_at)
 VALUES ($1, $2)

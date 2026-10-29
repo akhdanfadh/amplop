@@ -19,6 +19,15 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	return err
 }
 
+const deleteUserSessions = `-- name: DeleteUserSessions :exec
+DELETE FROM sessions WHERE user_id = $1
+`
+
+func (q *Queries) DeleteUserSessions(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, deleteUserSessions, userID)
+	return err
+}
+
 const insertSession = `-- name: InsertSession :exec
 INSERT INTO sessions (token_hash, user_id, created_at, last_used_at, expires_at)
 VALUES ($1, $2, $3, $4, $5)
@@ -59,6 +68,35 @@ type LockSessionRow struct {
 func (q *Queries) LockSession(ctx context.Context, tokenHash []byte) (LockSessionRow, error) {
 	row := q.db.QueryRow(ctx, lockSession, tokenHash)
 	var i LockSessionRow
+	err := row.Scan(
+		&i.UserID,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const lockUserSession = `-- name: LockUserSession :one
+SELECT user_id, created_at, last_used_at, expires_at
+FROM sessions WHERE user_id = $1 AND token_hash = $2 FOR UPDATE
+`
+
+type LockUserSessionParams struct {
+	UserID    int64
+	TokenHash []byte
+}
+
+type LockUserSessionRow struct {
+	UserID     int64
+	CreatedAt  time.Time
+	LastUsedAt time.Time
+	ExpiresAt  time.Time
+}
+
+func (q *Queries) LockUserSession(ctx context.Context, arg LockUserSessionParams) (LockUserSessionRow, error) {
+	row := q.db.QueryRow(ctx, lockUserSession, arg.UserID, arg.TokenHash)
+	var i LockUserSessionRow
 	err := row.Scan(
 		&i.UserID,
 		&i.CreatedAt,

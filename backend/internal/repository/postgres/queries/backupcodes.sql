@@ -11,3 +11,6 @@ WHERE user_id = @user_id ORDER BY id;
 DELETE FROM totp_backup_codes
 WHERE user_id = @user_id AND id = @id
 RETURNING id;
+
+-- name: DeleteTOTPBackupCodes :exec
+DELETE FROM totp_backup_codes WHERE user_id = @user_id;

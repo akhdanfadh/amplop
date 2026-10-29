@@ -148,5 +148,10 @@ Do not run `Succeed` afterward: a cleanup error after commit could hide the
 new cookie and the only copy of the backup codes from the user.
 
 Confirmation returns the cookie secret and display codes only after storage
-commits. Its PostgreSQL implementation and HTTP endpoint are not implemented
-yet; these rules alone do not activate enrollment in the running application.
+commits. PostgreSQL locks the owner before reading the factor and the owned
+session, matching enrollment restart and attempt reservation's lock order.
+It saves the whole change in one transaction. The `sessions(user_id)` index
+supports ending the old sessions without scanning every user's sessions.
+
+The confirmation HTTP endpoint is not implemented yet; confirmation is not
+available through the running API.
