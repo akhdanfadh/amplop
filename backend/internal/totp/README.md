@@ -1,10 +1,13 @@
 # TOTP rules and ownership
 
 This package generates enrollment secrets and verifies time-based codes.
-It currently provides no HTTP endpoint or database write. The verifier reads
-a supplied clock and returns the matched 30-second step. A successful check
-alone does not consume a code: the caller must save that step atomically
-with its action.
+The enrollment service encrypts secrets before passing them to storage.
+Starting enrollment creates a pending factor; restarting replaces only a
+pending factor. The PostgreSQL and HTTP adapters are not implemented yet.
+
+The verifier reads a supplied clock and returns the matched 30-second step.
+A successful check alone does not consume a code: the caller must save that
+step atomically with its action.
 
 ## Planned service ownership
 
@@ -21,7 +24,7 @@ with its action.
   storage locks and loads the factor, user, and current session, calls the
   feature's decision, then saves the factor and backup codes, ends other
   sessions, and replaces the current session in one transaction.
-- `totp.Storage` will use the same update-function pattern for factor-only
+- `totp.Storage` uses the same update-function pattern for factor-only
   writes. Turn-off checks the role from the locked user row. Every code
   acceptance checks and records the last step in that transaction.
 - `repository/postgres` implements both storage interfaces. Feature code
