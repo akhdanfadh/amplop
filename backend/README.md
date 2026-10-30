@@ -490,7 +490,7 @@ If the command reports unconfirmed success after interruption or a database
 error, inspect the audit table before retrying. It contains no credentials:
 
 ```sql
-SELECT id, occurred_at, action, user_id
+SELECT id, occurred_at, action, target_user_id
 FROM audit_events
 WHERE action = 'admin-recovered'
 ORDER BY id DESC;

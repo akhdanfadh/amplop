@@ -42,9 +42,12 @@ func readSystemEmail(ctx context.Context, queries *sqlc.Queries) (*systememail.R
 	return record, nil
 }
 
+const systemEmailSavedAction = "system-email-saved"
+
 // UpdateSystemEmail locks the table rather than the row, so two first saves
-// serialize even though neither has a row to lock yet.
-func (db *DB) UpdateSystemEmail(ctx context.Context, update func(*systememail.Record) (systememail.Record, error)) error {
+// serialize even though neither has a row to lock yet. The audit event names
+// only the actor; it affects no account and records no setting values.
+func (db *DB) UpdateSystemEmail(ctx context.Context, actorID int64, update func(*systememail.Record) (systememail.Record, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 		if err := queries.LockSystemEmail(ctx); err != nil {
@@ -75,6 +78,9 @@ func (db *DB) UpdateSystemEmail(ctx context.Context, update func(*systememail.Re
 		}
 		if err := queries.UpsertSystemEmail(ctx, params); err != nil {
 			return fmt.Errorf("save system email: %w", err)
+		}
+		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{Action: systemEmailSavedAction, ActorUserID: &actorID}); err != nil {
+			return fmt.Errorf("record system email save: %w", err)
 		}
 		return nil
 	})

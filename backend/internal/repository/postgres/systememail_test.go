@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,6 +17,38 @@ import (
 
 // uniqueViolation is PostgreSQL's error code for a duplicate key.
 const uniqueViolation = "23505"
+
+// systemEmailAdmin adds the administrator who saves settings in a test.
+func systemEmailAdmin(t *testing.T, conn *pgx.Conn) int64 {
+	t.Helper()
+
+	var id int64
+	require.NoError(t, conn.QueryRow(t.Context(), "INSERT INTO users (email, password_hash, role) VALUES ('admin@example.com', 'unused', 'admin') RETURNING id").Scan(&id))
+	return id
+}
+
+// auditEvent is one audit_events row without its time.
+type auditEvent struct {
+	Action string
+	Actor  *int64
+	Target *int64
+}
+
+// auditEvents lists every audit event, oldest first.
+func auditEvents(t *testing.T, conn *pgx.Conn) []auditEvent {
+	t.Helper()
+
+	rows, err := conn.Query(t.Context(), "SELECT action, actor_user_id, target_user_id FROM audit_events ORDER BY id")
+	require.NoError(t, err)
+	events, err := pgx.CollectRows(rows, pgx.RowToStructByPos[auditEvent])
+	require.NoError(t, err)
+	return events
+}
+
+// savedBy is the event a settings save records: an actor and no account.
+func savedBy(actor int64) auditEvent {
+	return auditEvent{Action: "system-email-saved", Actor: &actor}
+}
 
 func systemEmailInput() systememail.Input {
 	return systememail.Input{
@@ -31,6 +64,7 @@ func systemEmailInput() systememail.Input {
 
 func TestSystemEmailStorage(t *testing.T) {
 	db, conn := setupStorage(t)
+	admin := systemEmailAdmin(t, conn)
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	require.NoError(t, err)
 	service := systememail.NewService(db, ring)
@@ -41,7 +75,7 @@ func TestSystemEmailStorage(t *testing.T) {
 	assert.Nil(t, settings)
 
 	// The first save stores the password encrypted for this server and account.
-	saved, err := service.Save(t.Context(), systemEmailInput())
+	saved, err := service.Save(t.Context(), admin, systemEmailInput())
 	require.NoError(t, err)
 	record, err := db.ReadSystemEmail(t.Context())
 	require.NoError(t, err)
@@ -62,7 +96,7 @@ func TestSystemEmailStorage(t *testing.T) {
 	require.NoError(t, err)
 	input := systemEmailInput()
 	input.Password, input.FromName = "", "Mail"
-	_, err = service.Save(t.Context(), input)
+	_, err = service.Save(t.Context(), admin, input)
 	require.NoError(t, err)
 	kept, err := db.ReadSystemEmail(t.Context())
 	require.NoError(t, err)
@@ -73,7 +107,7 @@ func TestSystemEmailStorage(t *testing.T) {
 
 	// Removing the username removes the password.
 	input.Username = ""
-	saved, err = service.Save(t.Context(), input)
+	saved, err = service.Save(t.Context(), admin, input)
 	require.NoError(t, err)
 	assert.False(t, saved.HasPassword)
 	cleared, err := db.ReadSystemEmail(t.Context())
@@ -81,10 +115,14 @@ func TestSystemEmailStorage(t *testing.T) {
 	require.NotNil(t, cleared)
 	assert.Empty(t, cleared.Username)
 	assert.Nil(t, cleared.Password)
+
+	// Each save is audited with its administrator.
+	assert.Equal(t, []auditEvent{savedBy(admin), savedBy(admin), savedBy(admin)}, auditEvents(t, conn))
 }
 
 func TestSystemEmailUpdate(t *testing.T) {
 	db, conn := setupStorage(t)
+	admin := systemEmailAdmin(t, conn)
 	tested := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 	want := systememail.Record{
 		Host: "smtp.example.com", Port: 465, Security: systememail.SecurityTLS,
@@ -92,12 +130,12 @@ func TestSystemEmailUpdate(t *testing.T) {
 		FromAddress: "inbok@example.com", FromName: "inbok", TestedAt: &tested,
 	}
 
-	require.NoError(t, db.UpdateSystemEmail(t.Context(), func(current *systememail.Record) (systememail.Record, error) {
+	require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(current *systememail.Record) (systememail.Record, error) {
 		assert.Nil(t, current)
 		return want, nil
 	}))
 	var got *systememail.Record
-	require.NoError(t, db.UpdateSystemEmail(t.Context(), func(current *systememail.Record) (systememail.Record, error) {
+	require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(current *systememail.Record) (systememail.Record, error) {
 		got = current
 		return systememail.Record{Host: "localhost", Port: 1025, Security: systememail.SecurityNone, FromAddress: "inbok@localhost", FromName: "inbok"}, nil
 	}))
@@ -121,6 +159,7 @@ func TestSystemEmailUpdate(t *testing.T) {
 // wait and then see the first one's record.
 func TestSystemEmailUpdateSerializes(t *testing.T) {
 	db, conn := setupStorage(t)
+	admin := systemEmailAdmin(t, conn)
 	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
 	defer cancel()
 	ready, release := make(chan struct{}), make(chan struct{})
@@ -131,7 +170,7 @@ func TestSystemEmailUpdateSerializes(t *testing.T) {
 	var seen *systememail.Record
 
 	go func() {
-		firstDone <- db.UpdateSystemEmail(ctx, func(*systememail.Record) (systememail.Record, error) {
+		firstDone <- db.UpdateSystemEmail(ctx, admin, func(*systememail.Record) (systememail.Record, error) {
 			close(ready)
 			select {
 			case <-release:
@@ -150,7 +189,7 @@ func TestSystemEmailUpdateSerializes(t *testing.T) {
 	require.NoError(t, err, "reads stay available while a save holds the lock")
 	assert.Nil(t, read)
 	go func() {
-		secondDone <- db.UpdateSystemEmail(ctx, func(current *systememail.Record) (systememail.Record, error) {
+		secondDone <- db.UpdateSystemEmail(ctx, admin, func(current *systememail.Record) (systememail.Record, error) {
 			seen = current
 			return first, nil
 		})
@@ -170,14 +209,17 @@ func TestSystemEmailUpdateSerializes(t *testing.T) {
 	require.NoError(t, <-firstDone)
 	require.NoError(t, <-secondDone)
 	assert.Equal(t, &first, seen)
+	assert.Equal(t, []auditEvent{savedBy(admin), savedBy(admin)}, auditEvents(t, conn))
 }
 
-func TestSystemEmailUpdateRejected(t *testing.T) {
-	db, _ := setupStorage(t)
+// A rejected save changes nothing and writes no audit event.
+func TestSystemEmailSaveRejected(t *testing.T) {
+	db, conn := setupStorage(t)
+	admin := systemEmailAdmin(t, conn)
 	original := systememail.Record{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone, FromAddress: "inbok@example.com", FromName: "inbok"}
-	require.NoError(t, db.UpdateSystemEmail(t.Context(), func(*systememail.Record) (systememail.Record, error) { return original, nil }))
+	require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) { return original, nil }))
 
-	err := db.UpdateSystemEmail(t.Context(), func(*systememail.Record) (systememail.Record, error) {
+	err := db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) {
 		return systememail.Record{}, systememail.ErrPasswordRequired
 	})
 	require.ErrorIs(t, err, systememail.ErrPasswordRequired)
@@ -185,30 +227,40 @@ func TestSystemEmailUpdateRejected(t *testing.T) {
 	got, err := db.ReadSystemEmail(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, &original, got)
+	assert.Equal(t, []auditEvent{savedBy(admin)}, auditEvents(t, conn), "only the first save is audited")
 }
 
-// A failed commit returns an error and leaves the earlier settings.
-func TestSystemEmailCommitFailure(t *testing.T) {
-	db, conn := setupStorage(t)
-	original := systememail.Record{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone, FromAddress: "inbok@example.com", FromName: "inbok"}
-	require.NoError(t, db.UpdateSystemEmail(t.Context(), func(*systememail.Record) (systememail.Record, error) { return original, nil }))
-	_, err := conn.Exec(t.Context(), `
-  CREATE FUNCTION reject_system_email() RETURNS trigger LANGUAGE plpgsql AS
-  $$ BEGIN RAISE EXCEPTION 'forced system email failure'; END $$;
-  CREATE CONSTRAINT TRIGGER reject_system_email AFTER UPDATE ON system_email
-  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_system_email();`)
-	require.NoError(t, err)
+// The settings and their audit event commit together: when either write or
+// the commit fails, the earlier settings stay and no new event is recorded.
+func TestSystemEmailSaveFailure(t *testing.T) {
+	for _, c := range []struct{ name, trigger string }{
+		{"audit", "CREATE TRIGGER reject_write BEFORE INSERT ON audit_events FOR EACH ROW EXECUTE FUNCTION reject_system_email()"},
+		{"commit", "CREATE CONSTRAINT TRIGGER reject_write AFTER UPDATE ON system_email DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_system_email()"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			db, conn := setupStorage(t)
+			admin := systemEmailAdmin(t, conn)
+			original := systememail.Record{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone, FromAddress: "inbok@example.com", FromName: "inbok"}
+			require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) { return original, nil }))
+			_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_system_email() RETURNS trigger LANGUAGE plpgsql AS
+  $$ BEGIN RAISE EXCEPTION 'forced system email failure'; END $$`)
+			require.NoError(t, err)
+			_, err = conn.Exec(t.Context(), c.trigger)
+			require.NoError(t, err)
 
-	err = db.UpdateSystemEmail(t.Context(), func(current *systememail.Record) (systememail.Record, error) {
-		next := *current
-		next.Host = "mail.example.com"
-		return next, nil
-	})
-	require.ErrorContains(t, err, "forced system email failure")
+			err = db.UpdateSystemEmail(t.Context(), admin, func(current *systememail.Record) (systememail.Record, error) {
+				next := *current
+				next.Host = "mail.example.com"
+				return next, nil
+			})
+			require.ErrorContains(t, err, "forced system email failure")
 
-	got, err := db.ReadSystemEmail(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, &original, got)
+			got, err := db.ReadSystemEmail(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, &original, got)
+			assert.Equal(t, []auditEvent{savedBy(admin)}, auditEvents(t, conn))
+		})
+	}
 }
 
 // The table repeats the feature's consistency rules for writes that skip it.

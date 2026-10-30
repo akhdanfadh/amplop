@@ -22,6 +22,3 @@ DELETE FROM totp_attempts WHERE user_id = @user_id;
 
 -- name: DeleteRecoverySignInAttempts :execrows
 DELETE FROM sign_in_attempts WHERE email = @email;
-
--- name: InsertAuditEvent :exec
-INSERT INTO audit_events (action, user_id) VALUES (@action, @user_id);

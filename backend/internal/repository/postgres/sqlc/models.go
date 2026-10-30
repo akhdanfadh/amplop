@@ -12,10 +12,11 @@ import (
 )
 
 type AuditEvent struct {
-	ID         int64
-	OccurredAt time.Time
-	Action     string
-	UserID     int64
+	ID           int64
+	OccurredAt   time.Time
+	Action       string
+	TargetUserID *int64
+	ActorUserID  *int64
 }
 
 type ProbeCounter struct {

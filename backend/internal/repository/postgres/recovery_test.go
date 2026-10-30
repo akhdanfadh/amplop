@@ -44,7 +44,7 @@ func recoverySnapshot(t *testing.T, conn *pgx.Conn, userID int64) string {
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM sign_in_challenges t WHERE user_id=$1),
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM totp_attempts t WHERE user_id=$1),
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sign_in_attempts t WHERE email=(SELECT lower(email) FROM users WHERE id=$1) OR email IS NULL),
- (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_events t WHERE user_id=$1)
+ (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_events t WHERE target_user_id=$1)
  )::text`, userID).Scan(&snapshot)
 	require.NoError(t, err)
 	return snapshot
@@ -72,7 +72,7 @@ func TestRecoveryPersistence(t *testing.T) {
 	var attempts, events int
 	require.NoError(t, f.conn.QueryRow(t.Context(), "SELECT count(*) FROM sign_in_attempts WHERE email='admin@example.com'").Scan(&attempts))
 	assert.Zero(t, attempts)
-	require.NoError(t, f.conn.QueryRow(t.Context(), "SELECT count(*) FROM audit_events WHERE user_id=$1 AND action='admin-recovered' AND occurred_at <= now()", f.state.UserID).Scan(&events))
+	require.NoError(t, f.conn.QueryRow(t.Context(), "SELECT count(*) FROM audit_events WHERE target_user_id=$1 AND actor_user_id IS NULL AND action='admin-recovered' AND occurred_at <= now()", f.state.UserID).Scan(&events))
 	assert.Equal(t, 1, events)
 	assert.Equal(t, foreign, recoverySnapshot(t, f.conn, f.foreign.UserID))
 

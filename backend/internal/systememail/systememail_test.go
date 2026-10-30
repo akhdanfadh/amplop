@@ -12,6 +12,7 @@ import (
 
 type memoryStorage struct {
 	record *Record
+	actors []int64 // one per committed save
 	err    error
 }
 
@@ -19,7 +20,7 @@ func (m *memoryStorage) ReadSystemEmail(context.Context) (*Record, error) {
 	return m.record, m.err
 }
 
-func (m *memoryStorage) UpdateSystemEmail(_ context.Context, update func(*Record) (Record, error)) error {
+func (m *memoryStorage) UpdateSystemEmail(_ context.Context, actorID int64, update func(*Record) (Record, error)) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -28,8 +29,12 @@ func (m *memoryStorage) UpdateSystemEmail(_ context.Context, update func(*Record
 		return err
 	}
 	m.record = &next
+	m.actors = append(m.actors, actorID)
 	return nil
 }
+
+// adminID is the administrator saving settings in these tests.
+const adminID int64 = 7
 
 type fakeSealer struct {
 	owner     string
@@ -78,7 +83,7 @@ func TestSystemEmailSave(t *testing.T) {
 	storage, sealer := &memoryStorage{}, &fakeSealer{}
 	service := NewService(storage, sealer)
 
-	saved, err := service.Save(t.Context(), inputWithSignIn())
+	saved, err := service.Save(t.Context(), adminID, inputWithSignIn())
 	require.NoError(t, err)
 
 	assert.Equal(t, Settings{
@@ -90,6 +95,7 @@ func TestSystemEmailSave(t *testing.T) {
 	assert.Equal(t, []byte("app password"), sealer.plaintext)
 	require.NotNil(t, storage.record)
 	assert.Equal(t, &Password{KeyID: "1", Ciphertext: []byte("sealed:app password")}, storage.record.Password)
+	assert.Equal(t, []int64{adminID}, storage.actors, "the save names its administrator")
 	read, err := service.Settings(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, &saved, read)
@@ -107,7 +113,7 @@ func TestSystemEmailSaveWithoutSignIn(t *testing.T) {
 			storage := &memoryStorage{record: storedSignIn()}
 			input := Input{Host: "smtp.example.com", Port: 587, Security: security, FromAddress: "inbok@example.com", FromName: "inbok"}
 
-			saved, err := NewService(storage, &fakeSealer{}).Save(t.Context(), input)
+			saved, err := NewService(storage, &fakeSealer{}).Save(t.Context(), adminID, input)
 			require.NoError(t, err)
 
 			assert.False(t, saved.HasPassword)
@@ -125,7 +131,7 @@ func TestSystemEmailSaveKeepsPassword(t *testing.T) {
 	input := inputWithSignIn()
 	input.Password, input.Security, input.FromName = "", SecurityTLS, "Mail"
 
-	saved, err := NewService(storage, sealer).Save(t.Context(), input)
+	saved, err := NewService(storage, sealer).Save(t.Context(), adminID, input)
 	require.NoError(t, err)
 
 	assert.True(t, saved.HasPassword)
@@ -138,7 +144,7 @@ func TestSystemEmailSaveKeepsPassword(t *testing.T) {
 func TestSystemEmailSaveReplacesPassword(t *testing.T) {
 	storage := &memoryStorage{record: storedSignIn()}
 
-	_, err := NewService(storage, &fakeSealer{}).Save(t.Context(), inputWithSignIn())
+	_, err := NewService(storage, &fakeSealer{}).Save(t.Context(), adminID, inputWithSignIn())
 	require.NoError(t, err)
 
 	require.NotNil(t, storage.record)
@@ -150,7 +156,7 @@ func TestSystemEmailSaveClearsTested(t *testing.T) {
 	input := inputWithSignIn()
 	input.Password = ""
 
-	saved, err := NewService(storage, &fakeSealer{}).Save(t.Context(), input)
+	saved, err := NewService(storage, &fakeSealer{}).Save(t.Context(), adminID, input)
 	require.NoError(t, err)
 
 	assert.Nil(t, saved.TestedAt)
@@ -181,11 +187,12 @@ func TestSystemEmailSaveRejected(t *testing.T) {
 			stored := storedSignIn()
 			storage, sealer := &memoryStorage{record: stored}, &fakeSealer{}
 
-			saved, err := NewService(storage, sealer).Save(t.Context(), c.input)
+			saved, err := NewService(storage, sealer).Save(t.Context(), adminID, c.input)
 			require.ErrorIs(t, err, c.want)
 
 			assert.Empty(t, saved)
 			assert.Same(t, stored, storage.record)
+			assert.Empty(t, storage.actors, "a rejected save is not audited")
 			assert.Nil(t, sealer.plaintext, "rejected settings are not encrypted")
 		})
 	}
@@ -212,11 +219,12 @@ func TestSystemEmailSavePasswordRequired(t *testing.T) {
 			input.Password = ""
 			c.change(&input)
 
-			saved, err := NewService(storage, &fakeSealer{}).Save(t.Context(), input)
+			saved, err := NewService(storage, &fakeSealer{}).Save(t.Context(), adminID, input)
 			require.ErrorIs(t, err, ErrPasswordRequired)
 
 			assert.Empty(t, saved)
 			assert.Same(t, c.stored, storage.record)
+			assert.Empty(t, storage.actors, "a rejected save is not audited")
 		})
 	}
 }
@@ -232,7 +240,7 @@ func TestSystemEmailSaveFailure(t *testing.T) {
 		{"encryption", &memoryStorage{}, &fakeSealer{err: failure}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			saved, err := NewService(c.storage, c.sealer).Save(t.Context(), inputWithSignIn())
+			saved, err := NewService(c.storage, c.sealer).Save(t.Context(), adminID, inputWithSignIn())
 			require.ErrorIs(t, err, failure)
 
 			assert.Empty(t, saved)

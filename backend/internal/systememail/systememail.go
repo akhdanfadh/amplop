@@ -84,9 +84,10 @@ type Storage interface {
 	ReadSystemEmail(ctx context.Context) (*Record, error)
 
 	// UpdateSystemEmail serializes writers, loads the record (nil if absent),
-	// calls update, and saves its result in one transaction. An error from
-	// update rolls back and is returned unchanged.
-	UpdateSystemEmail(ctx context.Context, update func(*Record) (Record, error)) error
+	// calls update, saves its result, and records that actorID saved the
+	// settings, all in one transaction. The event holds no setting values.
+	// An error from update rolls back and is returned unchanged.
+	UpdateSystemEmail(ctx context.Context, actorID int64, update func(*Record) (Record, error)) error
 }
 
 type sealer interface {
@@ -114,9 +115,11 @@ func (s *Service) Settings(ctx context.Context) (*Settings, error) {
 	return &settings, nil
 }
 
-// Save replaces the settings and clears their tested state, since a test
-// of the old settings says nothing about the new ones.
-func (s *Service) Save(ctx context.Context, input Input) (Settings, error) {
+// Save replaces the settings, records actorID as the administrator who saved
+// them, and clears their tested state, since a test of the old settings says
+// nothing about the new ones. Every successful save is audited, even one that
+// changes nothing.
+func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Settings, error) {
 	if err := checkInput(input); err != nil {
 		return Settings{}, err
 	}
@@ -132,7 +135,7 @@ func (s *Service) Save(ctx context.Context, input Input) (Settings, error) {
 	}
 
 	var saved Record
-	err := s.storage.UpdateSystemEmail(ctx, func(current *Record) (Record, error) {
+	err := s.storage.UpdateSystemEmail(ctx, actorID, func(current *Record) (Record, error) {
 		// Keeping the password for another server would let an administrator
 		// send it there and read it, so a moved account needs it again.
 		password := sealed
