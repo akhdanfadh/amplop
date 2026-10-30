@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
@@ -184,7 +185,11 @@ func TestTOTPConfirmationRejected(t *testing.T) {
 	f := newConfirmation(t)
 	rejected := errors.New("confirmation rejected")
 	err := f.db.ConfirmTOTP(t.Context(), f.state.UserID, f.state.TokenHash, func(state session.EnrollmentState) (session.EnrollmentChange, error) {
-		assert.Equal(t, f.state, state.Session)
+		// Storage assigns the ID; the rest is the inserted state.
+		got := state.Session
+		assert.NotEqual(t, uuid.Nil(), got.ID)
+		got.ID = uuid.Nil()
+		assert.Equal(t, f.state, got)
 		assert.Equal(t, f.factor, state.Factor)
 		return session.EnrollmentChange{}, rejected
 	})

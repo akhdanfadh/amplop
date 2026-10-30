@@ -25,6 +25,7 @@ func (db *DB) InsertSession(ctx context.Context, state session.State) error {
 }
 
 // insertSessionParams saves an empty User-Agent or invalid address as NULL.
+// Storage assigns the public ID, so state.ID is ignored.
 func insertSessionParams(state session.State) sqlc.InsertSessionParams {
 	params := sqlc.InsertSessionParams{
 		TokenHash: state.TokenHash[:], UserID: state.UserID,
@@ -45,7 +46,7 @@ func sessionState(row sqlc.Session) (session.State, error) {
 		return session.State{}, errors.New("invalid stored session hash")
 	}
 	state := session.State{
-		TokenHash: [sha256.Size]byte(row.TokenHash), UserID: row.UserID,
+		TokenHash: [sha256.Size]byte(row.TokenHash), ID: row.ID, UserID: row.UserID,
 		CreatedAt: row.CreatedAt.UTC(), LastUsedAt: row.LastUsedAt.UTC(), ExpiresAt: row.ExpiresAt.UTC(),
 	}
 	if row.UserAgent != nil {
@@ -105,6 +106,23 @@ func (db *DB) DeleteSession(ctx context.Context, hash [sha256.Size]byte) error {
 		return fmt.Errorf("delete session: %w", err)
 	}
 	return nil
+}
+
+// ReadUserSessions returns the user's rows; the session rules decide which are live.
+func (db *DB) ReadUserSessions(ctx context.Context, userID int64) ([]session.State, error) {
+	rows, err := sqlc.New(db.pool).ReadUserSessions(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("read user sessions: %w", err)
+	}
+	states := make([]session.State, 0, len(rows))
+	for _, row := range rows {
+		state, err := sessionState(row)
+		if err != nil {
+			return nil, err
+		}
+		states = append(states, state)
+	}
+	return states, nil
 }
 
 // ReadSessionIdentity never derives access from a session that no longer exists.

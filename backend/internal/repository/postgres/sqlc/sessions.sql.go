@@ -58,7 +58,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 }
 
 const lockSession = `-- name: LockSession :one
-SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
 FROM sessions WHERE token_hash = $1 FOR UPDATE
 `
 
@@ -74,12 +74,13 @@ func (q *Queries) LockSession(ctx context.Context, tokenHash []byte) (Session, e
 		&i.ExpiresAt,
 		&i.UserAgent,
 		&i.SignedInFrom,
+		&i.ID,
 	)
 	return i, err
 }
 
 const lockUserSession = `-- name: LockUserSession :one
-SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
 FROM sessions WHERE user_id = $1 AND token_hash = $2 FOR UPDATE
 `
 
@@ -99,6 +100,7 @@ func (q *Queries) LockUserSession(ctx context.Context, arg LockUserSessionParams
 		&i.ExpiresAt,
 		&i.UserAgent,
 		&i.SignedInFrom,
+		&i.ID,
 	)
 	return i, err
 }
@@ -130,6 +132,43 @@ func (q *Queries) ReadSessionIdentity(ctx context.Context, tokenHash []byte) (Re
 		&i.TotpConfirmed,
 	)
 	return i, err
+}
+
+const readUserSessions = `-- name: ReadUserSessions :many
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
+FROM sessions WHERE user_id = $1
+ORDER BY created_at DESC, id DESC
+`
+
+// Expiry is a Go rule, so expired rows are returned too. Random ids only
+// keep rows with equal sign-in times in one order.
+func (q *Queries) ReadUserSessions(ctx context.Context, userID int64) ([]Session, error) {
+	rows, err := q.db.Query(ctx, readUserSessions, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Session
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.TokenHash,
+			&i.UserID,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+			&i.ExpiresAt,
+			&i.UserAgent,
+			&i.SignedInFrom,
+			&i.ID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const touchSession = `-- name: TouchSession :exec

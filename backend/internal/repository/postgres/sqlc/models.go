@@ -7,6 +7,8 @@ package sqlc
 import (
 	"net/netip"
 	"time"
+
+	"uuid"
 )
 
 type AuditEvent struct {
@@ -38,6 +40,7 @@ type Session struct {
 	ExpiresAt    time.Time
 	UserAgent    *string
 	SignedInFrom *netip.Addr
+	ID           uuid.UUID
 }
 
 type SignInAttempt struct {

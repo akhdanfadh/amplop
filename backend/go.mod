@@ -6,6 +6,7 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/medama-io/go-useragent v1.2.5
 	github.com/pquerna/otp v1.5.0
 	github.com/pressly/goose/v3 v3.28.0 // keep equal to tools.mod's goose
 	github.com/stretchr/testify v1.12.1
@@ -20,6 +21,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
+	github.com/boyter/go-string v1.0.5 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.2 // indirect
 	github.com/bytedance/sonic/loader v0.5.1 // indirect

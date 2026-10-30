@@ -4,7 +4,7 @@ VALUES (@token_hash, @user_id, @created_at, @last_used_at, @expires_at, @user_ag
 
 -- name: LockSession :one
 -- Decisions in Go use the latest state after any previous update commits.
-SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
 FROM sessions WHERE token_hash = @token_hash FOR UPDATE;
 
 -- name: TouchSession :exec
@@ -14,8 +14,15 @@ UPDATE sessions SET last_used_at = @last_used_at WHERE token_hash = @token_hash;
 DELETE FROM sessions WHERE token_hash = @token_hash;
 
 -- name: LockUserSession :one
-SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
 FROM sessions WHERE user_id = @user_id AND token_hash = @token_hash FOR UPDATE;
+
+-- name: ReadUserSessions :many
+-- Expiry is a Go rule, so expired rows are returned too. Random ids only
+-- keep rows with equal sign-in times in one order.
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
+FROM sessions WHERE user_id = @user_id
+ORDER BY created_at DESC, id DESC;
 
 -- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = @user_id;

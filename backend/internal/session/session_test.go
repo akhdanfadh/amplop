@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,6 +29,7 @@ func TestNewSession(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, secret, 32)
 	assert.Equal(t, int64(7), issued.State.UserID)
+	assert.Equal(t, uuid.Nil(), issued.State.ID, "storage assigns the public ID")
 	assert.Equal(t, clock.now, issued.State.CreatedAt)
 	assert.Equal(t, clock.now, issued.State.LastUsedAt)
 	assert.Equal(t, time.Date(2026, time.November, 26, 12, 0, 0, 0, time.UTC), issued.State.ExpiresAt)

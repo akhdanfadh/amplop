@@ -45,4 +45,8 @@ type Storage interface {
 
 	// DeleteSession succeeds even when the row is already missing.
 	DeleteSession(ctx context.Context, hash [sha256.Size]byte) error
+
+	// ReadUserSessions returns every session row the user owns, newest
+	// sign-in first, including expired rows the Go rules have not deleted yet.
+	ReadUserSessions(ctx context.Context, userID int64) ([]State, error)
 }

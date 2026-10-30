@@ -16,6 +16,8 @@ sql:
         # types: NULL becomes nil, e.g. a NULL tag is a nil *string.
         emit_pointers_for_null_types: true
         overrides:
+          - db_type: uuid
+            go_type: uuid.UUID
           - db_type: timestamptz
             go_type: time.Time
           - db_type: timestamptz

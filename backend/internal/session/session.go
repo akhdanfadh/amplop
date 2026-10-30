@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"time"
+	"uuid"
 )
 
 const (
@@ -22,8 +23,10 @@ var (
 )
 
 // State is the session data saved by storage, without the cookie secret.
+// ID is the public identifier storage assigns; it is the nil UUID before insert.
 type State struct {
 	TokenHash  [sha256.Size]byte
+	ID         uuid.UUID
 	UserID     int64
 	CreatedAt  time.Time
 	LastUsedAt time.Time
