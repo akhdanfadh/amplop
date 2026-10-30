@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+type AuditEvent struct {
+	ID         int64
+	OccurredAt time.Time
+	Action     string
+	UserID     int64
+}
+
 type ProbeCounter struct {
 	ID    int32
 	Total int64
