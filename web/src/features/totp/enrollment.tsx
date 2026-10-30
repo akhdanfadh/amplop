@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import {
   getGetCurrentSessionQueryKey,
   getGetTOTPStatusQueryKey,
+  getListSessionsQueryKey,
   useGetTOTPStatus,
   useStartTOTPEnrollment,
   useConfirmTOTPEnrollment,
@@ -76,8 +77,9 @@ export function Enrollment({
       onSettled: () => {
         onWritingChange(false);
         refreshStatus();
-        // Confirmation renews the session and may grant admin access.
+        // Confirmation renews the session, ends the others, and may grant admin access.
         void client.invalidateQueries({ queryKey: getGetCurrentSessionQueryKey() });
+        void client.invalidateQueries({ queryKey: getListSessionsQueryKey() });
       },
     },
   });
@@ -204,6 +206,7 @@ export function Enrollment({
     await Promise.all([
       client.cancelQueries({ queryKey: getGetCurrentSessionQueryKey(), exact: true }),
       client.cancelQueries({ queryKey: getGetTOTPStatusQueryKey(), exact: true }),
+      client.cancelQueries({ queryKey: getListSessionsQueryKey(), exact: true }),
     ]);
   }
 

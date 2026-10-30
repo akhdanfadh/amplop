@@ -5,6 +5,7 @@ import { useGetCurrentSession, useDeleteCurrentSession } from "@/api/generated/i
 import { userMessage } from "@/api/problem";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { sessionMessage } from "@/features/auth/session-error";
+import { SessionList } from "@/features/sessions/list";
 import { Enrollment } from "@/features/totp/enrollment";
 import { AccountNav } from "@/components/account-nav";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ function Security() {
   const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [writing, setWriting] = useState(false);
+  const [ending, setEnding] = useState(false);
   const [hasCodes, setHasCodes] = useState(false);
   const signOut = useDeleteCurrentSession({
     mutation: {
@@ -74,19 +76,27 @@ function Security() {
         )}
         {current.data && current.error?.status !== unauthorized && (
           // Stay mounted to keep one-time codes; stay shown during background
-          // checks so a code field keeps focus.
-          <div hidden={!current.isSuccess}>
-            {current.data.data.totpRequired && (
-              <p className="mb-6">
-                Set up two-factor authentication to unlock administrator access.
-              </p>
-            )}
-            <Enrollment
-              key={current.data.data.email}
-              role={current.data.data.role}
-              locked={!ready}
-              onWritingChange={setWriting}
-              onCodesChange={setHasCodes}
+          // checks so a code field keeps focus. Enrollment and SessionList lock
+          // each other: confirming TOTP replaces this session's cookie.
+          <div className="flex flex-col gap-8" hidden={!current.isSuccess}>
+            <div>
+              {current.data.data.totpRequired && (
+                <p className="mb-6">
+                  Set up two-factor authentication to unlock administrator access.
+                </p>
+              )}
+              <Enrollment
+                key={current.data.data.email}
+                role={current.data.data.role}
+                locked={!ready || ending}
+                onWritingChange={setWriting}
+                onCodesChange={setHasCodes}
+              />
+            </div>
+            <SessionList
+              locked={!ready || writing || signOut.isPending}
+              paused={writing || signOut.isPending}
+              onWritingChange={setEnding}
             />
           </div>
         )}
@@ -95,10 +105,10 @@ function Security() {
             type="button"
             variant="outline"
             className="min-h-11 w-fit border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            disabled={!ready || writing || hasCodes || signOut.isPending}
+            disabled={!ready || writing || ending || hasCodes || signOut.isPending}
             onClick={() => signOut.mutate()}
           >
-            {signOut.isPending ? "Signing out..." : "Sign out"}
+            {signOut.isPending ? "Signing out..." : "Sign out of this browser"}
           </Button>
         )}
         {signOut.error && <p role="alert">{sessionMessage(signOut.error, "sign-out")}</p>}
