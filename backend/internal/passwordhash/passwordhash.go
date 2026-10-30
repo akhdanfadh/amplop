@@ -1,5 +1,5 @@
-// Package account owns local users and their credentials.
-package account
+// Package passwordhash hashes secrets as Argon2id PHC strings.
+package passwordhash
 
 import (
 	"crypto/rand"
@@ -32,7 +32,8 @@ const (
 	minPasswordKeyLength   = 4
 )
 
-var errInvalidPasswordHash = errors.New("invalid password hash")
+// ErrInvalidHash means the saved PHC string is malformed or exceeds work limits.
+var ErrInvalidHash = errors.New("invalid password hash")
 
 type passwordHash struct {
 	memory      uint32
@@ -42,9 +43,9 @@ type passwordHash struct {
 	key         []byte
 }
 
-// hashPassword stores the work parameters and a fresh salt with the hash.
-// Password validation belongs to the caller; hashing preserves the input.
-func hashPassword(password string) string {
+// Hash stores the work parameters and a fresh salt with the hash.
+// Callers own input validation and normalization; hashing preserves the input.
+func Hash(password string) string {
 	salt := make([]byte, passwordSaltLength)
 	rand.Read(salt)
 	key := argon2.IDKey([]byte(password), salt, passwordIterations, passwordMemory, passwordParallelism, passwordKeyLength)
@@ -54,9 +55,9 @@ func hashPassword(password string) string {
 		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key))
 }
 
-// verifyPassword uses the stored parameters so changing defaults keeps old
+// Verify uses the stored parameters so changing defaults keeps old
 // passwords usable. A mismatch is distinct from an unreadable stored hash.
-func verifyPassword(password, encoded string) (bool, error) {
+func Verify(password, encoded string) (bool, error) {
 	hash, err := decodePasswordHash(encoded)
 	if err != nil {
 		return false, err
@@ -68,34 +69,34 @@ func verifyPassword(password, encoded string) (bool, error) {
 
 func decodePasswordHash(encoded string) (passwordHash, error) {
 	if len(encoded) > maxPasswordHashLength || strings.ContainsAny(encoded, "\r\n") {
-		return passwordHash{}, errInvalidPasswordHash
+		return passwordHash{}, ErrInvalidHash
 	}
 
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" || parts[2] != fmt.Sprintf("v=%d", argon2.Version) {
-		return passwordHash{}, errInvalidPasswordHash
+		return passwordHash{}, ErrInvalidHash
 	}
 
 	var hash passwordHash
 	_, err := fmt.Sscanf(parts[3], passwordParams, &hash.memory, &hash.iterations, &hash.parallelism)
 	if err != nil || parts[3] != fmt.Sprintf(passwordParams, hash.memory, hash.iterations, hash.parallelism) {
-		return passwordHash{}, errInvalidPasswordHash
+		return passwordHash{}, ErrInvalidHash
 	}
 	if hash.iterations == 0 || hash.parallelism == 0 || hash.memory < minMemoryPerLane*uint32(hash.parallelism) {
-		return passwordHash{}, errInvalidPasswordHash
+		return passwordHash{}, ErrInvalidHash
 	}
 	if hash.memory > maxPasswordMemory || hash.iterations > maxPasswordIterations || hash.parallelism > maxPasswordParallelism {
-		return passwordHash{}, errInvalidPasswordHash
+		return passwordHash{}, ErrInvalidHash
 	}
 
 	encoding := base64.RawStdEncoding.Strict()
 	hash.salt, err = encoding.DecodeString(parts[4])
 	if err != nil || len(hash.salt) < minPasswordSaltLength {
-		return passwordHash{}, errInvalidPasswordHash
+		return passwordHash{}, ErrInvalidHash
 	}
 	hash.key, err = encoding.DecodeString(parts[5])
 	if err != nil || len(hash.key) < minPasswordKeyLength {
-		return passwordHash{}, errInvalidPasswordHash
+		return passwordHash{}, ErrInvalidHash
 	}
 
 	return hash, nil

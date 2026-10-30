@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"net/netip"
 	"testing"
 	"time"
@@ -24,8 +25,11 @@ func TestCurrentPersistence(t *testing.T) {
 	now := time.Date(2026, time.October, 28, 12, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
 	service := session.NewService(db, accounts, session.NewThrottle(db, clock), clock)
-	issued, err := service.SignIn(t.Context(), user.Email, password, netip.MustParseAddr("192.0.2.1"))
+	issued, err := service.StartSignIn(t.Context(), user.Email, password, netip.MustParseAddr("192.0.2.1"))
 	require.NoError(t, err)
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(issued.Secret)
+	require.NoError(t, err)
+	tokenHash := sha256.Sum256(raw)
 
 	current, err := service.Current(t.Context(), issued.Secret)
 
@@ -33,7 +37,7 @@ func TestCurrentPersistence(t *testing.T) {
 	assert.Equal(t, user, current.Identity.User)
 	assert.Equal(t, session.AccessMember, current.Identity.Access)
 	assert.True(t, current.Identity.TOTPRequired)
-	assert.Equal(t, now, readSession(t, db, issued.State.TokenHash).LastUsedAt)
+	assert.Equal(t, now, readSession(t, db, tokenHash).LastUsedAt)
 
 	_, err = conn.Exec(t.Context(), "UPDATE users SET email = $1, role = $2 WHERE id = $3", "member@example.com", account.RoleMember, user.ID)
 	require.NoError(t, err)
@@ -43,20 +47,20 @@ func TestCurrentPersistence(t *testing.T) {
 	assert.Equal(t, account.User{ID: user.ID, Email: "member@example.com", Role: account.RoleMember}, current.Identity.User)
 	assert.Equal(t, session.AccessMember, current.Identity.Access)
 	assert.False(t, current.Identity.TOTPRequired)
-	state := readSession(t, db, issued.State.TokenHash)
+	state := readSession(t, db, tokenHash)
 	assert.Equal(t, now, state.LastUsedAt)
-	assert.Equal(t, issued.State.ExpiresAt, state.ExpiresAt)
+	assert.Equal(t, issued.ExpiresAt, state.ExpiresAt)
 
 	now = now.Add(time.Minute)
 	_, err = service.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
-	assert.Equal(t, state.LastUsedAt, readSession(t, db, issued.State.TokenHash).LastUsedAt)
+	assert.Equal(t, state.LastUsedAt, readSession(t, db, tokenHash).LastUsedAt)
 
 	now = state.LastUsedAt.Add(7 * 24 * time.Hour)
 	current, err = service.Current(t.Context(), issued.Secret)
 	require.ErrorIs(t, err, session.ErrUnauthenticated)
 	assert.Zero(t, current)
-	err = db.UpdateSession(t.Context(), issued.State.TokenHash, func(session.State) (session.Change, error) {
+	err = db.UpdateSession(t.Context(), tokenHash, func(session.State) (session.Change, error) {
 		t.Error("expired session row survived its check")
 		return session.Change{Action: session.Keep}, nil
 	})
@@ -90,4 +94,43 @@ func TestCurrentDeleteFailure(t *testing.T) {
 	identity, err = service.Current(t.Context(), secret)
 	require.ErrorIs(t, err, session.ErrUnauthenticated)
 	assert.Zero(t, identity)
+}
+
+func TestCurrentConfirmedAccess(t *testing.T) {
+	f := newConfirmation(t)
+
+	issued, err := f.service.Confirm(t.Context(), f.current, "287082")
+	require.NoError(t, err)
+	current, err := f.sessions.Current(t.Context(), issued.Session.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, session.AccessAdmin, current.Identity.Access)
+	assert.False(t, current.Identity.TOTPRequired)
+
+	// The earlier check must not let a revoked password-only session gain access.
+	_, err = f.db.ReadSessionIdentity(t.Context(), f.state.TokenHash)
+	require.ErrorIs(t, err, session.ErrNotFound)
+
+	// Identity always uses the current role and factor rather than cookie claims.
+	_, err = f.conn.Exec(t.Context(), "UPDATE users SET role='member' WHERE id=$1", f.state.UserID)
+	require.NoError(t, err)
+	current, err = f.sessions.Current(t.Context(), issued.Session.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.False(t, current.Identity.TOTPRequired)
+
+	_, err = f.conn.Exec(t.Context(), "UPDATE users SET role='admin' WHERE id=$1", f.state.UserID)
+	require.NoError(t, err)
+	_, err = f.conn.Exec(t.Context(), "UPDATE user_totp SET confirmed_at=NULL WHERE user_id=$1", f.state.UserID)
+	require.NoError(t, err)
+	current, err = f.sessions.Current(t.Context(), issued.Session.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.True(t, current.Identity.TOTPRequired)
+
+	_, err = f.conn.Exec(t.Context(), "DELETE FROM user_totp WHERE user_id=$1", f.state.UserID)
+	require.NoError(t, err)
+	current, err = f.sessions.Current(t.Context(), issued.Session.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.True(t, current.Identity.TOTPRequired)
 }

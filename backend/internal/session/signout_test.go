@@ -9,8 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"inbok/internal/account"
 )
 
 type signOutStorage struct {
@@ -32,14 +30,11 @@ func TestSignOut(t *testing.T) {
 	issued := newSession(42, time.Now)
 	other := newSession(42, time.Now)
 	store := &signOutStorage{currentStorage: &currentStorage{row: &issued.State}}
-	accounts := signInAccounts{userByID: func(context.Context, int64) (account.User, error) {
-		return account.User{ID: 42, Role: account.RoleMember}, nil
-	}}
-	service := NewService(store, accounts, nil, time.Now)
+	service := NewService(store, nil, nil, time.Now)
 	current, err := service.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
 	otherStore := &signOutStorage{currentStorage: &currentStorage{row: &other.State}}
-	otherCurrent, err := NewService(otherStore, accounts, nil, time.Now).Current(t.Context(), other.Secret)
+	otherCurrent, err := NewService(otherStore, nil, nil, time.Now).Current(t.Context(), other.Secret)
 	require.NoError(t, err)
 
 	// Signing out another session must leave this session usable.
@@ -65,10 +60,7 @@ func TestSignOutStorageFailure(t *testing.T) {
 	issued := newSession(42, time.Now)
 	lost := errors.New("session storage unavailable")
 	store := &signOutStorage{currentStorage: &currentStorage{row: &issued.State}, err: lost}
-	accounts := signInAccounts{userByID: func(context.Context, int64) (account.User, error) {
-		return account.User{ID: 42, Role: account.RoleMember}, nil
-	}}
-	service := NewService(store, accounts, nil, time.Now)
+	service := NewService(store, nil, nil, time.Now)
 	current, err := service.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
 

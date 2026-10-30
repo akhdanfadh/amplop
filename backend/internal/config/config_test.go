@@ -9,7 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testEncryptionKeys = "1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+
 func TestLoadDefault(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envHTTPAddr, "")
 	t.Setenv(envSetupToken, "")
 	t.Setenv(envTrustedProxies, "")
@@ -22,6 +25,7 @@ func TestLoadDefault(t *testing.T) {
 }
 
 func TestLoadAddr(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envHTTPAddr, "0.0.0.0:9090")
 	t.Setenv(envSetupToken, "")
 	t.Setenv(envTrustedProxies, "")
@@ -33,6 +37,7 @@ func TestLoadAddr(t *testing.T) {
 }
 
 func TestLoadBadAddr(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envHTTPAddr, "localhost")
 	t.Setenv(envSetupToken, "")
 	t.Setenv(envTrustedProxies, "")
@@ -43,6 +48,7 @@ func TestLoadBadAddr(t *testing.T) {
 }
 
 func TestLoadTrustedProxiesUnset(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envHTTPAddr, "")
 	t.Setenv(envSetupToken, "")
 	t.Setenv(envTrustedProxies, "")
@@ -55,6 +61,7 @@ func TestLoadTrustedProxiesUnset(t *testing.T) {
 }
 
 func TestLoadTrustedProxies(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	cases := []struct {
 		value string
 		want  []string
@@ -80,6 +87,7 @@ func TestLoadTrustedProxies(t *testing.T) {
 }
 
 func TestLoadBadTrustedProxies(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	for _, value := range []string{"localhost", "127.0.0.1", "10.0.0.0/33", "::1/129", "10.0.0.0/8,", ",10.0.0.0/8", "10.0.0.0/8, ,::1/128"} {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv(envHTTPAddr, "")
@@ -94,6 +102,7 @@ func TestLoadBadTrustedProxies(t *testing.T) {
 }
 
 func TestLoadSetupTokenUnset(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envHTTPAddr, "")
 	t.Setenv(envSetupToken, "")
 	t.Setenv(envTrustedProxies, "")
@@ -106,6 +115,7 @@ func TestLoadSetupTokenUnset(t *testing.T) {
 }
 
 func TestLoadSetupToken(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	cases := []struct {
 		name  string
 		token string
@@ -132,6 +142,7 @@ func TestLoadSetupToken(t *testing.T) {
 }
 
 func TestLoadShortSetupToken(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	cases := []struct {
 		name  string
 		token string
@@ -171,4 +182,33 @@ func TestDatabaseURLRequired(t *testing.T) {
 	_, err := DatabaseURL()
 
 	require.ErrorIs(t, err, errNoDatabaseURL)
+}
+
+func TestLoadEncryptionKeys(t *testing.T) {
+	for _, value := range []string{"", "invalid-private-key", "1:bad-base64"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(envHTTPAddr, "")
+			t.Setenv(envSetupToken, "")
+			t.Setenv(envTrustedProxies, "")
+			t.Setenv(envEncryptionKeys, value)
+			cfg, err := Load()
+			require.ErrorContains(t, err, envEncryptionKeys)
+			assert.Nil(t, cfg.Encryption)
+			if value != "" {
+				assert.NotContains(t, err.Error(), value)
+			}
+		})
+	}
+	t.Run("valid", func(t *testing.T) {
+		t.Setenv(envHTTPAddr, "")
+		t.Setenv(envSetupToken, "")
+		t.Setenv(envTrustedProxies, "")
+		t.Setenv(envEncryptionKeys, testEncryptionKeys)
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.NotNil(t, cfg.Encryption)
+		id, _, err := cfg.Encryption.Seal([]byte("secret"), "totp:1")
+		require.NoError(t, err)
+		assert.Equal(t, "1", id)
+	})
 }

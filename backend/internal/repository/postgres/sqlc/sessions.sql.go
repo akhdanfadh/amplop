@@ -19,6 +19,15 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	return err
 }
 
+const deleteUserSessions = `-- name: DeleteUserSessions :exec
+DELETE FROM sessions WHERE user_id = $1
+`
+
+func (q *Queries) DeleteUserSessions(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, deleteUserSessions, userID)
+	return err
+}
+
 const insertSession = `-- name: InsertSession :exec
 INSERT INTO sessions (token_hash, user_id, created_at, last_used_at, expires_at)
 VALUES ($1, $2, $3, $4, $5)
@@ -64,6 +73,64 @@ func (q *Queries) LockSession(ctx context.Context, tokenHash []byte) (LockSessio
 		&i.CreatedAt,
 		&i.LastUsedAt,
 		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const lockUserSession = `-- name: LockUserSession :one
+SELECT user_id, created_at, last_used_at, expires_at
+FROM sessions WHERE user_id = $1 AND token_hash = $2 FOR UPDATE
+`
+
+type LockUserSessionParams struct {
+	UserID    int64
+	TokenHash []byte
+}
+
+type LockUserSessionRow struct {
+	UserID     int64
+	CreatedAt  time.Time
+	LastUsedAt time.Time
+	ExpiresAt  time.Time
+}
+
+func (q *Queries) LockUserSession(ctx context.Context, arg LockUserSessionParams) (LockUserSessionRow, error) {
+	row := q.db.QueryRow(ctx, lockUserSession, arg.UserID, arg.TokenHash)
+	var i LockUserSessionRow
+	err := row.Scan(
+		&i.UserID,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const readSessionIdentity = `-- name: ReadSessionIdentity :one
+SELECT users.id, users.email, users.role,
+    (user_totp.confirmed_at IS NOT NULL)::boolean AS totp_confirmed
+FROM sessions
+JOIN users ON users.id = sessions.user_id
+LEFT JOIN user_totp ON user_totp.user_id = users.id
+WHERE sessions.token_hash = $1
+`
+
+type ReadSessionIdentityRow struct {
+	ID            int64
+	Email         string
+	Role          string
+	TotpConfirmed bool
+}
+
+// Recheck the session together with the account and factor used for access.
+func (q *Queries) ReadSessionIdentity(ctx context.Context, tokenHash []byte) (ReadSessionIdentityRow, error) {
+	row := q.db.QueryRow(ctx, readSessionIdentity, tokenHash)
+	var i ReadSessionIdentityRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Role,
+		&i.TotpConfirmed,
 	)
 	return i, err
 }

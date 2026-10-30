@@ -27,10 +27,15 @@ type API struct {
 // when no request is served, e.g. to export OpenAPI: registering an
 // operation calls none of them.
 type Services struct {
-	Probe    probeService
-	Account  accountService
-	Session  sessionService
-	Throttle setupThrottle
+	Disabler   disableService
+	Backups    backupService
+	CodeSignIn codeSignInService
+	Enrollment enrollmentService
+	TOTP       totpService
+	Probe      probeService
+	Account    accountService
+	Session    sessionService
+	Throttle   setupThrottle
 }
 
 // New registers operations; logger receives one line per request.
@@ -93,7 +98,8 @@ func New(logger *slog.Logger, services Services) *API {
 	registerHealth(api)
 	registerProbe(api, services.Probe)
 	registerAccount(api, services.Account, services.Throttle)
-	registerSession(api, services.Session)
+	registerSession(api, services.Session, services.CodeSignIn)
+	registerTOTP(api, services.TOTP, services.Enrollment, services.Backups, services.Disabler)
 
 	return &API{router: router, api: api}
 }

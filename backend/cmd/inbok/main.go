@@ -18,6 +18,7 @@ import (
 	"inbok/internal/probe"
 	"inbok/internal/repository/postgres"
 	"inbok/internal/session"
+	"inbok/internal/totp"
 )
 
 const (
@@ -106,11 +107,17 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	throttle := session.NewThrottle(db, time.Now)
+	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	services := httpapi.Services{
-		Probe:    probe.NewService(db),
-		Account:  accounts,
-		Session:  session.NewService(db, accounts, throttle, time.Now),
-		Throttle: throttle,
+		Disabler:   totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
+		Backups:    totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
+		CodeSignIn: session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
+		Enrollment: session.NewEnrollment(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
+		TOTP:       totp.NewService(db, cfg.Encryption),
+		Probe:      probe.NewService(db),
+		Account:    accounts,
+		Session:    session.NewService(db, accounts, throttle, time.Now),
+		Throttle:   throttle,
 	}
 	api := httpapi.New(logger, services)
 	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {

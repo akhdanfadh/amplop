@@ -61,6 +61,8 @@ Put shared code in the folder for its responsibility:
 - `src/features/auth`: sign-in form, validation, session messages, and account
   cache cleanup.
 - `src/features/probe`: the probe demo form.
+- `src/features/totp`: authenticator enrollment, confirmation, backup-code
+  management, and turning TOTP off.
 - `src/components`: shared controls, such as the password input. `ui/` holds
   the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -95,9 +97,47 @@ The browser remembers a local setup attempt until reload, so a status check
 that confirms completion after a lost response also shows the instructions.
 
 The `/sign-in` page submits credentials through the generated mutation hook.
+Accounts with TOTP then enter six authenticator digits in two groups of three.
+"Use a backup code" switches the same control to ten characters in two groups
+of five. Pasting ignores spaces and dashes. Switching clears the previous entry.
+Codes stay in memory and are released when the form closes.
+A rejected code can be retried; an expired or exhausted challenge requires
+starting sign-in again. Reloading also returns to the password step.
+An uncertain response offers a session check before another attempt.
 The `/` page reads the current account and redirects to sign-in on HTTP 401.
-Other failures keep a retry action. Administrators see that TOTP enrollment
-comes next; it is not implemented yet.
+Other failures keep a retry action. Administrators without confirmed TOTP open
+`/security` to enroll. Members can reach the same page through the Security link.
+
+Security starts enrollment on request and renders the QR code locally, with a
+manual setup key as an alternative. A six-digit authenticator code confirms it,
+renews this session, and ends other sessions. Backup codes are shown once with
+copy and download actions. Leaving before saving them prompts for confirmation.
+The secret and codes stay in memory; closing or reloading loses them and may
+leave an inactive pending enrollment. Canceling sends a deletion request and
+clears the setup key only after success. A rejected cancellation keeps setup
+available; an uncertain outcome requires checking status before continuing.
+Starting again replaces a pending setup key.
+An uncertain confirmation requires checking status before another attempt. If
+confirmation succeeded but its response was lost, backup codes cannot be read
+again; the page explains that the authenticator must remain available.
+
+Enabled accounts see how many backup codes remain, with a warning at two or
+fewer. Replacing codes requires a fresh authenticator code and invalidates
+every old backup code; existing sessions stay signed in. The replacement set
+has the same one-time display, copy, download, and save acknowledgment as
+enrollment. An uncertain replacement blocks another attempt until status is
+checked. A count cannot recover lost codes or prove which set is current;
+the page directs the user to generate another set with a fresh authenticator
+code.
+
+Members can turn TOTP off with a fresh authenticator code or an unused backup
+code; the same control switches between them as at sign-in. Turning off removes
+the authenticator and every backup code, and sessions stay signed in.
+Administrators see that they must keep TOTP instead. If the account became an
+administrator after the page loaded, the HTTP 403 refreshes the session and the
+page switches to that notice. An HTTP 409 means TOTP is already off, so the
+page offers enrollment again. An uncertain turn-off blocks another attempt until
+status is checked.
 
 Signing out deletes the current session, clears account caches, and opens
 sign-in. A 401 also completes sign-out because that session is already absent

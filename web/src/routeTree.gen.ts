@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProbeRouteImport } from './routes/probe'
+import { Route as SecurityRouteImport } from './routes/security'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
 
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 const ProbeRoute = ProbeRouteImport.update({
   id: '/probe',
   path: '/probe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SecurityRoute = SecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SetupRoute = SetupRouteImport.update({
@@ -38,12 +44,14 @@ const SignInRoute = SignInRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/probe': typeof ProbeRoute
+  '/security': typeof SecurityRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/probe': typeof ProbeRoute
+  '/security': typeof SecurityRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
 }
@@ -51,20 +59,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/probe': typeof ProbeRoute
+  '/security': typeof SecurityRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/probe' | '/setup' | '/sign-in'
+  fullPaths: '/' | '/probe' | '/security' | '/setup' | '/sign-in'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/probe' | '/setup' | '/sign-in'
-  id: '__root__' | '/' | '/probe' | '/setup' | '/sign-in'
+  to: '/' | '/probe' | '/security' | '/setup' | '/sign-in'
+  id: '__root__' | '/' | '/probe' | '/security' | '/setup' | '/sign-in'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProbeRoute: typeof ProbeRoute
+  SecurityRoute: typeof SecurityRoute
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
 }
@@ -83,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/probe'
       fullPath: '/probe'
       preLoaderRoute: typeof ProbeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/security': {
+      id: '/security'
+      path: '/security'
+      fullPath: '/security'
+      preLoaderRoute: typeof SecurityRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/setup': {
@@ -105,6 +122,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProbeRoute: ProbeRoute,
+  SecurityRoute: SecurityRoute,
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
 }

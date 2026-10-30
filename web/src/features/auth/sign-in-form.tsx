@@ -20,7 +20,13 @@ const inputs = [
 const signInFields = inputs.map((input) => input.name);
 
 // SignInForm submits credentials and reports the completed sign-in step.
-export function SignInForm({ onDone }: { onDone: () => void }): ReactElement {
+export function SignInForm({
+  onDone,
+  onCodeRequired,
+}: {
+  onDone: () => void;
+  onCodeRequired: () => void;
+}): ReactElement {
   const queryClient = useQueryClient();
   const formRef = useRef<HTMLFormElement>(null);
   const submitRef = useRef<HTMLButtonElement>(null);
@@ -56,6 +62,10 @@ export function SignInForm({ onDone }: { onDone: () => void }): ReactElement {
               case "complete":
                 formApi.reset();
                 onDone();
+                break;
+              case "totp":
+                formApi.reset();
+                onCodeRequired();
                 break;
             }
           },

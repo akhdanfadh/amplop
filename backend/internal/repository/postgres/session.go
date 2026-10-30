@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"inbok/internal/account"
 	"inbok/internal/repository/postgres/sqlc"
 	"inbok/internal/session"
 )
@@ -74,4 +75,20 @@ func (db *DB) DeleteSession(ctx context.Context, hash [sha256.Size]byte) error {
 		return fmt.Errorf("delete session: %w", err)
 	}
 	return nil
+}
+
+// ReadSessionIdentity never derives access from a session that no longer exists.
+func (db *DB) ReadSessionIdentity(ctx context.Context, hash [sha256.Size]byte) (session.IdentityState, error) {
+	row, err := sqlc.New(db.pool).ReadSessionIdentity(ctx, hash[:])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return session.IdentityState{}, session.ErrNotFound
+	}
+	if err != nil {
+		return session.IdentityState{}, fmt.Errorf("read session identity: %w", err)
+	}
+
+	return session.IdentityState{
+		User:          account.User{ID: row.ID, Email: row.Email, Role: account.Role(row.Role)},
+		TOTPConfirmed: row.TotpConfirmed,
+	}, nil
 }

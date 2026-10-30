@@ -39,7 +39,7 @@ type fakeSessions struct {
 	currentErr    error
 	currentCalls  int
 	currentSecret string
-	issued        session.Issued
+	issued        session.SignedIn
 	err           error
 	email         string
 	password      string
@@ -59,7 +59,7 @@ func (f *fakeSessions) Current(_ context.Context, secret string) (session.Authen
 	return session.Authenticated{Identity: f.identity, Session: f.reference}, f.currentErr
 }
 
-func (f *fakeSessions) SignIn(_ context.Context, email, password string, addr netip.Addr) (session.Issued, error) {
+func (f *fakeSessions) StartSignIn(_ context.Context, email, password string, addr netip.Addr) (session.SignedIn, error) {
 	f.calls++
 	f.email, f.password, f.addr = email, password, addr
 	return f.issued, f.err
@@ -68,21 +68,19 @@ func (f *fakeSessions) SignIn(_ context.Context, email, password string, addr ne
 // referenceStorage supplies a session row for issuing test references through Current.
 type referenceStorage struct{ session.Storage }
 
+func (referenceStorage) ReadSessionIdentity(context.Context, [sha256.Size]byte) (session.IdentityState, error) {
+	return session.IdentityState{User: account.User{ID: 42, Role: account.RoleMember}}, nil
+}
+
 func (referenceStorage) UpdateSession(_ context.Context, hash [sha256.Size]byte, update func(session.State) (session.Change, error)) error {
 	now := time.Now()
 	_, err := update(session.State{TokenHash: hash, UserID: 42, CreatedAt: now, LastUsedAt: now, ExpiresAt: now.Add(time.Hour)})
 	return err
 }
 
-type referenceAccounts struct{ *account.Service }
-
-func (referenceAccounts) UserByID(context.Context, int64) (account.User, error) {
-	return account.User{ID: 42, Role: account.RoleMember}, nil
-}
-
 func checkedReference(t *testing.T) session.Reference {
 	t.Helper()
-	service := session.NewService(referenceStorage{}, referenceAccounts{}, nil, time.Now)
+	service := session.NewService(referenceStorage{}, nil, nil, time.Now)
 	current, err := service.Current(t.Context(), strings.Repeat("A", encodedSecretLength))
 	require.NoError(t, err)
 	require.NotZero(t, current.Session)
@@ -104,8 +102,9 @@ func postSession(api *API, body string) *httptest.ResponseRecorder {
 // ========================
 
 func TestCreateSession(t *testing.T) {
-	service := &fakeSessions{issued: session.Issued{
-		Secret: strings.Repeat("A", encodedSecretLength), State: session.State{ExpiresAt: time.Now().Add(2 * time.Hour)},
+	service := &fakeSessions{issued: session.SignedIn{
+		Step:   session.SignInStepComplete,
+		Secret: strings.Repeat("A", encodedSecretLength), ExpiresAt: time.Now().Add(2 * time.Hour),
 	}}
 
 	response := postSession(New(discard, Services{Session: service}), signInHTTPBody)
@@ -116,7 +115,9 @@ func TestCreateSession(t *testing.T) {
 	assert.Equal(t, "a long sign-in password", service.password)
 	assert.Equal(t, netip.MustParseAddr("192.0.2.1"), service.addr)
 	cookies := response.Result().Cookies()
-	require.Len(t, cookies, 1)
+	require.Len(t, cookies, 2)
+	assert.Equal(t, challengeCookieName, cookies[1].Name)
+	assert.Negative(t, cookies[1].MaxAge)
 	cookie := cookies[0]
 	assert.Equal(t, "__Host-inbok-session", cookie.Name)
 	assert.Equal(t, service.issued.Secret, cookie.Value)
@@ -233,7 +234,7 @@ func TestSessionOpenAPI(t *testing.T) {
 	result := doc.Components.Schemas.Map()["SignInResult"]
 	require.NotNil(t, result)
 	require.NotNil(t, result.Properties["step"])
-	assert.Equal(t, []any{"complete"}, result.Properties["step"].Enum)
+	assert.Equal(t, []any{"complete", "totp"}, result.Properties["step"].Enum)
 	input := doc.Components.Schemas.Map()["NewSession"]
 	require.NotNil(t, input)
 	assert.True(t, input.Properties["password"].WriteOnly)

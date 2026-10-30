@@ -11,15 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/totp"
 )
 
 type signInAccounts struct {
 	authenticate func(context.Context, string, string) (account.User, error)
-	userByID     func(context.Context, int64) (account.User, error)
-}
-
-func (f signInAccounts) UserByID(ctx context.Context, id int64) (account.User, error) {
-	return f.userByID(ctx, id)
 }
 
 func (f signInAccounts) Authenticate(ctx context.Context, email, password string) (account.User, error) {
@@ -28,15 +24,25 @@ func (f signInAccounts) Authenticate(ctx context.Context, email, password string
 
 type signInStorage struct {
 	Storage
-	states []State
-	err    error
+	states     []State
+	challenges []Challenge
+	factor     *totp.Factor
+	err        error
 }
 
-func (f *signInStorage) InsertSession(_ context.Context, state State) error {
+func (f *signInStorage) StartSignIn(_ context.Context, _ int64, update func(*totp.Factor) (SignInChange, error)) error {
+	next, err := update(f.factor)
+	if err != nil {
+		return err
+	}
 	if f.err != nil {
 		return f.err
 	}
-	f.states = append(f.states, state)
+	if next.Step == SignInStepComplete {
+		f.states = append(f.states, next.Session)
+	} else {
+		f.challenges = append(f.challenges, next.Challenge)
+	}
 	return nil
 }
 
@@ -60,7 +66,7 @@ func (f *signInAttempts) DeleteAttempt(ctx context.Context, id int64) error {
 	return f.memoryAttempts.DeleteAttempt(ctx, id)
 }
 
-func TestSignIn(t *testing.T) {
+func TestStartSignIn(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, time.October, 28, 12, 0, 0, 0, time.UTC)}
 	store := &signInStorage{}
 	attempts := &memoryAttempts{rows: map[int64]Attempt{}}
@@ -79,25 +85,26 @@ func TestSignIn(t *testing.T) {
 	}}
 	service := NewService(store, accounts, throttle, clock.Now)
 
-	first, err := service.SignIn(t.Context(), "ADMIN@Example.COM", " password with spaces ", addr)
+	first, err := service.StartSignIn(t.Context(), "ADMIN@Example.COM", " password with spaces ", addr)
 
 	require.NoError(t, err)
 	require.Len(t, store.states, 1)
-	assert.Equal(t, first.State, store.states[0])
-	assert.Equal(t, int64(42), first.State.UserID)
-	assert.Equal(t, clock.Now(), first.State.CreatedAt, "lifetime starts after credential verification")
+	assert.Equal(t, SignInStepComplete, first.Step)
+	assert.Equal(t, first.ExpiresAt, store.states[0].ExpiresAt)
+	assert.Equal(t, int64(42), store.states[0].UserID)
+	assert.Equal(t, clock.Now(), store.states[0].CreatedAt, "lifetime starts after credential verification")
 	hash, err := hashSecret(first.Secret)
 	require.NoError(t, err)
-	assert.Equal(t, hash, first.State.TokenHash)
+	assert.Equal(t, hash, store.states[0].TokenHash)
 	assert.Len(t, attempts.rows, 4, "remove only the successful reservation")
 
-	second, err := service.SignIn(t.Context(), "ADMIN@Example.COM", " password with spaces ", addr)
+	second, err := service.StartSignIn(t.Context(), "ADMIN@Example.COM", " password with spaces ", addr)
 	require.NoError(t, err)
 	assert.NotEqual(t, first.Secret, second.Secret)
 	assert.Len(t, store.states, 2)
 }
 
-func TestSignInThrottled(t *testing.T) {
+func TestStartSignInThrottled(t *testing.T) {
 	attempts := &memoryAttempts{rows: map[int64]Attempt{}}
 	throttle := NewThrottle(attempts, time.Now)
 	addr := netip.MustParseAddr("192.0.2.1")
@@ -111,7 +118,7 @@ func TestSignInThrottled(t *testing.T) {
 	}}
 	store := &signInStorage{}
 
-	issued, err := NewService(store, accounts, throttle, time.Now).SignIn(t.Context(), "admin@example.com", "password", addr)
+	issued, err := NewService(store, accounts, throttle, time.Now).StartSignIn(t.Context(), "admin@example.com", "password", addr)
 
 	require.ErrorIs(t, err, ErrThrottled)
 	assert.Zero(t, issued)
@@ -119,7 +126,7 @@ func TestSignInThrottled(t *testing.T) {
 	assert.Len(t, attempts.rows, 5)
 }
 
-func TestSignInErrors(t *testing.T) {
+func TestStartSignInErrors(t *testing.T) {
 	lost := errors.New("connection lost")
 	cases := []struct {
 		name        string
@@ -151,13 +158,49 @@ func TestSignInErrors(t *testing.T) {
 			store := &signInStorage{err: c.insertErr}
 			service := NewService(store, accounts, NewThrottle(attempts, time.Now), time.Now)
 
-			issued, err := service.SignIn(t.Context(), "admin@example.com", "password", netip.MustParseAddr("192.0.2.1"))
+			issued, err := service.StartSignIn(t.Context(), "admin@example.com", "password", netip.MustParseAddr("192.0.2.1"))
 
 			require.ErrorIs(t, err, c.want)
 			assert.Zero(t, issued)
 			assert.Empty(t, store.states)
 			assert.Equal(t, c.wantChecks, checks)
 			assert.Len(t, attempts.rows, c.wantPending)
+		})
+	}
+}
+
+func TestPasswordRequiresTOTP(t *testing.T) {
+	clock := &fakeClock{now: time.Date(2026, time.October, 29, 12, 0, 0, 0, time.UTC)}
+	for _, c := range []struct {
+		name   string
+		factor *totp.Factor
+		step   SignInStep
+	}{
+		{"missing", nil, SignInStepComplete},
+		{"pending", &totp.Factor{}, SignInStepComplete},
+		{"confirmed", &totp.Factor{ConfirmedAt: &clock.now}, SignInStepTOTP},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			store := &signInStorage{factor: c.factor}
+			accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.User, error) { return account.User{ID: 42}, nil }}
+			throttle := NewThrottle(&memoryAttempts{rows: map[int64]Attempt{}}, clock.Now)
+			service := NewService(store, accounts, throttle, clock.Now)
+
+			result, err := service.StartSignIn(t.Context(), "alice@example.com", "password", netip.MustParseAddr("192.0.2.1"))
+
+			require.NoError(t, err)
+			assert.Equal(t, c.step, result.Step)
+			if c.step == SignInStepComplete {
+				assert.Empty(t, store.challenges)
+				require.Len(t, store.states, 1)
+				return
+			}
+			assert.Empty(t, store.states)
+			require.Len(t, store.challenges, 1)
+			hash, err := hashSecret(result.Secret)
+			require.NoError(t, err)
+			assert.Equal(t, hash, store.challenges[0].TokenHash)
+			assert.Equal(t, clock.Now().Add(5*time.Minute), result.ExpiresAt)
 		})
 	}
 }

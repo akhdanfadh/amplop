@@ -8,7 +8,7 @@ import * as zod from 'zod';
 
 export const ResponseSignInResult = zod.object({
   "data": zod.object({
-  "step": zod.enum(['complete'])
+  "step": zod.enum(['complete', 'totp'])
 })
 })
 

@@ -7,7 +7,7 @@
 import * as zod from 'zod';
 
 export const SignInResult = zod.object({
-  "step": zod.enum(['complete'])
+  "step": zod.enum(['complete', 'totp'])
 })
 
 export type SignInResult = zod.input<typeof SignInResult>;

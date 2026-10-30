@@ -204,10 +204,43 @@ in-flight requests up to 5 seconds to finish.
 | `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL; see Migrations below. |
 | `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
 | `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
+| `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets; see Encryption keys below. Invalid entries stop startup. |
 | `GIN_MODE` | `debug` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
 machine.
+
+### Encryption keys
+
+`INBOK_ENCRYPTION_KEYS` is a comma-separated list of `<id>:<key>` entries,
+e.g. `2:<base64 key>,1:<base64 key>`. Each ID is a positive whole number
+without leading zeros; each key is 32 random bytes in standard base64, from
+`openssl rand -base64 32`. Startup fails, without printing key material, if
+the list is empty or an entry is malformed or repeated.
+
+The first entry encrypts new TOTP secrets with AES-256-GCM. Every entry can
+decrypt. Each stored secret records its key ID and is bound to its user, so
+a ciphertext copied to another user does not decrypt. Backup codes and
+passwords use Argon2id hashes and do not depend on these keys.
+
+To rotate, generate a key, put it first under an unused ID, keep the old
+entries, and restart every API instance with the same list. Existing secrets
+are not re-encrypted; each keeps its original key until that factor is
+removed and enrolled again. Administrators cannot turn TOTP off, so their
+factors can need an old key indefinitely. Remove an old key only when no
+`user_totp` row uses its ID:
+
+```sql
+SELECT key_id, count(*) FROM user_totp GROUP BY key_id;
+```
+
+Back up the key list separately from database backups, so one stolen backup
+does not contain both the encrypted secrets and their keys, and so the keys
+survive losing the database host. A database restore needs every key its
+rows use. If a key is lost, authenticator codes for its users fail with
+HTTP 500. Their unused backup codes still sign in, and members can use one to
+turn TOTP off and enroll again. Administrators cannot remove the factor
+themselves; they need host-operator recovery, which is not implemented yet.
 
 ## Reverse proxies
 
@@ -281,16 +314,43 @@ independently of these browser redirects.
 
 ## Sign-in and browser sessions
 
-`POST /api/v0/sessions` accepts email and password, creates a fresh session,
-and returns HTTP 201 with `{"data":{"step":"complete"}}`. The session
-secret travels only in the cookie. Unknown email and wrong password return
-the same HTTP 401; unknown users still incur an Argon2id password check.
+`POST /api/v0/sessions` accepts email and password. Without confirmed TOTP,
+it creates a fresh session and returns HTTP 201 with
+`{"data":{"step":"complete"}}`. With confirmed TOTP, it returns
+`{"data":{"step":"totp"}}` and a temporary `__Host-inbok-challenge` cookie;
+no session is created. The factor check and the chosen write share one user
+lock, so enrollment confirmation cannot race a password-only session into
+existence afterward. Unknown email and wrong password return the same HTTP
+401; unknown users still incur an Argon2id password check.
+
+`POST /api/v0/sessions/totp` accepts a string `code` and the challenge cookie.
+Six ASCII digits select an authenticator code; other input is checked as a
+backup code. Success atomically consumes the challenge and the TOTP step or
+backup code, creates a session, and clears the challenge cookie. Only then
+does the response issue the session cookie. A failed commit reveals no
+session secret and leaves the challenge and code usable.
+
+Challenges expire after five minutes. Wrong codes update their saved failure
+count; the fifth deletes the challenge and requires password sign-in again.
+Starting a new challenge does not reset the shared per-user code allowance:
+5 failed or pending attempts per 15 minutes and 20 per 24 hours. Successful
+code sign-in removes only its own attempt in the same transaction.
+
+Expired challenges are pruned for that user during a successful password
+sign-in. There is no scheduled cleanup; idle users' expired rows remain
+unusable until removed. Both cookies use Secure, HttpOnly, SameSite=Lax, and
+Path=/, without Domain. Authentication responses use Cache-Control: no-store.
 
 `GET /api/v0/sessions/current` returns the current email, role, and
-`totpRequired`. Every administrator currently has `totpRequired: true` and
-member-level access. TOTP enrollment, sign-in challenges, and backup codes
-belong to the next branch. No production operation currently requires admin
-access; the default-deny admin level is covered by HTTP tests.
+`totpRequired`. An administrator with confirmed TOTP receives admin access
+and `totpRequired: false`. An administrator without confirmed TOTP receives
+member access and `totpRequired: true`. Members always receive member access
+and `totpRequired: false`, whether or not they enable TOTP.
+
+Identity reads the current account and factor through the session row in one
+query. A session revoked by enrollment confirmation cannot gain admin access
+from a previous session check. The web app's `/security` page handles
+enrollment, backup codes, and turn-off; sign-in shows the code step.
 
 `DELETE /api/v0/sessions/current` deletes the checked session and clears its
 cookie, returning HTTP 204. A missing or expired session returns HTTP 401
@@ -326,6 +386,24 @@ and 50 failures for one address across all emails. Setup attempts share the
 address limit. A pending attempt counts until a successful verification
 removes it, so parallel password checks cannot bypass the limits. A blocked
 attempt returns HTTP 429. These limits are constants too.
+
+`DELETE /api/v0/totp/enrollment` cancels a signed-in account's pending
+enrollment without a code. Success returns HTTP 200 with `data.status:
+"off"` and `data.backupCodesLeft: 0`; repeating it when no factor remains
+also succeeds. A confirmed authenticator returns HTTP 409 (`totp-already-on`).
+Existing sessions and their cookies stay unchanged.
+
+`POST /api/v0/totp/backup-codes` requires a signed-in account and a fresh
+six-digit authenticator `code`. It replaces all old backup codes and returns
+HTTP 200 with `data.backupCodes`, containing ten replacement codes shown once.
+Backup codes cannot authorize this operation. Existing sessions stay signed
+in, and failure preserves the old set. The shared code-attempt limits apply.
+
+`POST /api/v0/totp/disable` lets a signed-in member turn off TOTP with a
+fresh authenticator code or an unused backup code in `code`. Success returns
+HTTP 200 with `data.status: "off"` and `data.backupCodesLeft: 0`. The factor
+and every backup code are removed together; existing sessions stay signed
+in. Administrators receive HTTP 403 and must keep TOTP enabled.
 
 ## Logs and request IDs
 

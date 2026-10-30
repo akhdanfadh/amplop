@@ -1,3 +1,4 @@
+// Package account owns local users and their credentials.
 package account
 
 import (

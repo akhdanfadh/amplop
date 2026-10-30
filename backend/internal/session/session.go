@@ -38,19 +38,26 @@ type Issued struct {
 
 // newSession creates a fresh secret and fixes the maximum lifetime.
 func newSession(userID int64, now func() time.Time) Issued {
-	secret := make([]byte, secretSize)
-	rand.Read(secret)
+	secret, hash := newSecret()
 	createdAt := now().UTC()
 	return Issued{
-		Secret: base64.RawURLEncoding.EncodeToString(secret),
+		Secret: secret,
 		State: State{
-			TokenHash:  sha256.Sum256(secret),
+			TokenHash:  hash,
 			UserID:     userID,
 			CreatedAt:  createdAt,
 			LastUsedAt: createdAt,
 			ExpiresAt:  createdAt.Add(maxLifetime),
 		},
 	}
+}
+
+// newSecret uses the same random-secret format for sessions and challenges.
+// Their separate storage tables determine what each secret can authorize.
+func newSecret() (string, [sha256.Size]byte) {
+	secret := make([]byte, secretSize)
+	rand.Read(secret)
+	return base64.RawURLEncoding.EncodeToString(secret), sha256.Sum256(secret)
 }
 
 // hashSecret derives the lookup key from the browser's encoded secret.
