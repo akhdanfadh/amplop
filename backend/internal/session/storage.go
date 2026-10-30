@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"errors"
 	"time"
+	"uuid"
 )
 
-// ErrNotFound means the session row does not exist.
+// ErrNotFound means no session row matches. Ending a session by ID also
+// returns it for an expired row or another user's row.
 var ErrNotFound = errors.New("session not found")
 
 // Action identifies whether to keep, touch, or delete a session.
@@ -49,4 +51,8 @@ type Storage interface {
 	// ReadUserSessions returns every session row the user owns, newest
 	// sign-in first, including expired rows the Go rules have not deleted yet.
 	ReadUserSessions(ctx context.Context, userID int64) ([]State, error)
+
+	// UpdateUserSession is UpdateSession for the user's session with this
+	// public ID. Another user's session returns ErrNotFound, like a missing one.
+	UpdateUserSession(ctx context.Context, userID int64, id uuid.UUID, update func(State) (Change, error)) error
 }

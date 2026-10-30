@@ -22,12 +22,13 @@ const (
 	safariOnIPhone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
 )
 
-// memorySessions keeps session rows for the list rules.
+// memorySessions keeps session rows for the list and end rules.
 type memorySessions struct {
 	Storage
-	rows   []State
-	err    error
-	userID int64
+	rows    []State
+	err     error
+	userID  int64
+	deleted []State
 }
 
 func (f *memorySessions) ReadUserSessions(_ context.Context, userID int64) ([]State, error) {
@@ -39,6 +40,28 @@ func (f *memorySessions) ReadUserSessions(_ context.Context, userID int64) ([]St
 		}
 	}
 	return owned, f.err
+}
+
+func (f *memorySessions) UpdateUserSession(_ context.Context, userID int64, id uuid.UUID, update func(State) (Change, error)) error {
+	f.userID = userID
+	if f.err != nil {
+		return f.err
+	}
+	for i, row := range f.rows {
+		if row.UserID != userID || row.ID != id {
+			continue
+		}
+		change, err := update(row)
+		if err != nil {
+			return err
+		}
+		if change.Action == Delete {
+			f.deleted = append(f.deleted, row)
+			f.rows = append(f.rows[:i:i], f.rows[i+1:]...)
+		}
+		return nil
+	}
+	return ErrNotFound
 }
 
 // sessionsFixture holds the current session, a live and an expired other

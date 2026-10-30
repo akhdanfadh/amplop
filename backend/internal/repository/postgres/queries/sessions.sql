@@ -17,6 +17,11 @@ DELETE FROM sessions WHERE token_hash = @token_hash;
 SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
 FROM sessions WHERE user_id = @user_id AND token_hash = @token_hash FOR UPDATE;
 
+-- name: LockUserSessionByID :one
+-- The owner is part of the lookup, so another user's id finds nothing.
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
+FROM sessions WHERE user_id = @user_id AND id = @id FOR UPDATE;
+
 -- name: ReadUserSessions :many
 -- Expiry is a Go rule, so expired rows are returned too. Random ids only
 -- keep rows with equal sign-in times in one order.

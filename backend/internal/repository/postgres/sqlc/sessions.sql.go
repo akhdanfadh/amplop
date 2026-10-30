@@ -9,6 +9,8 @@ import (
 	"context"
 	"net/netip"
 	"time"
+
+	"uuid"
 )
 
 const deleteSession = `-- name: DeleteSession :exec
@@ -91,6 +93,33 @@ type LockUserSessionParams struct {
 
 func (q *Queries) LockUserSession(ctx context.Context, arg LockUserSessionParams) (Session, error) {
 	row := q.db.QueryRow(ctx, lockUserSession, arg.UserID, arg.TokenHash)
+	var i Session
+	err := row.Scan(
+		&i.TokenHash,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.ExpiresAt,
+		&i.UserAgent,
+		&i.SignedInFrom,
+		&i.ID,
+	)
+	return i, err
+}
+
+const lockUserSessionByID = `-- name: LockUserSessionByID :one
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
+FROM sessions WHERE user_id = $1 AND id = $2 FOR UPDATE
+`
+
+type LockUserSessionByIDParams struct {
+	UserID int64
+	ID     uuid.UUID
+}
+
+// The owner is part of the lookup, so another user's id finds nothing.
+func (q *Queries) LockUserSessionByID(ctx context.Context, arg LockUserSessionByIDParams) (Session, error) {
+	row := q.db.QueryRow(ctx, lockUserSessionByID, arg.UserID, arg.ID)
 	var i Session
 	err := row.Scan(
 		&i.TokenHash,

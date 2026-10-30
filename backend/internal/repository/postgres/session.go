@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 
@@ -71,33 +72,53 @@ func (db *DB) UpdateSession(ctx context.Context, hash [sha256.Size]byte, update 
 		if err != nil {
 			return fmt.Errorf("lock session: %w", err)
 		}
-
-		state, err := sessionState(row)
-		if err != nil {
-			return err
-		}
-		change, err := update(state)
-		if err != nil {
-			return err
-		}
-
-		switch change.Action {
-		case session.Keep:
-			return nil
-		case session.Touch:
-			if err := queries.TouchSession(ctx, sqlc.TouchSessionParams{TokenHash: hash[:], LastUsedAt: change.LastUsedAt}); err != nil {
-				return fmt.Errorf("touch session: %w", err)
-			}
-			return nil
-		case session.Delete:
-			if err := queries.DeleteSession(ctx, hash[:]); err != nil {
-				return fmt.Errorf("delete session: %w", err)
-			}
-			return nil
-		default:
-			return errors.New("invalid session action")
-		}
+		return applySessionChange(ctx, queries, row, update)
 	})
+}
+
+// UpdateUserSession locks the session by owner and public ID, then applies
+// the callback's change like UpdateSession.
+func (db *DB) UpdateUserSession(ctx context.Context, userID int64, id uuid.UUID, update func(session.State) (session.Change, error)) error {
+	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+		row, err := queries.LockUserSessionByID(ctx, sqlc.LockUserSessionByIDParams{UserID: userID, ID: id})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return session.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock user session: %w", err)
+		}
+		return applySessionChange(ctx, queries, row, update)
+	})
+}
+
+// applySessionChange runs inside the transaction holding the row's lock.
+func applySessionChange(ctx context.Context, queries *sqlc.Queries, row sqlc.Session, update func(session.State) (session.Change, error)) error {
+	state, err := sessionState(row)
+	if err != nil {
+		return err
+	}
+	change, err := update(state)
+	if err != nil {
+		return err
+	}
+
+	switch change.Action {
+	case session.Keep:
+		return nil
+	case session.Touch:
+		if err := queries.TouchSession(ctx, sqlc.TouchSessionParams{TokenHash: row.TokenHash, LastUsedAt: change.LastUsedAt}); err != nil {
+			return fmt.Errorf("touch session: %w", err)
+		}
+		return nil
+	case session.Delete:
+		if err := queries.DeleteSession(ctx, row.TokenHash); err != nil {
+			return fmt.Errorf("delete session: %w", err)
+		}
+		return nil
+	default:
+		return errors.New("invalid session action")
+	}
 }
 
 // DeleteSession ends a session; deleting an absent row is harmless.

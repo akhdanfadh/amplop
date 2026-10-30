@@ -295,6 +295,51 @@ func TestListPersistence(t *testing.T) {
 	assert.ElementsMatch(t, []uuid.UUID{f.current.ID, f.other.ID, f.expired.ID}, f.ids(t, f.current.UserID), "listing deletes nothing")
 }
 
+func TestUpdateUserSession(t *testing.T) {
+	f := newUserSessions(t)
+
+	// Another user's ID and a missing ID never reach the callback.
+	for _, id := range []uuid.UUID{f.foreign.ID, uuid.New()} {
+		err := f.db.UpdateUserSession(t.Context(), f.current.UserID, id, func(session.State) (session.Change, error) {
+			t.Error("another user's or a missing session reached update")
+			return session.Change{Action: session.Delete}, nil
+		})
+		require.ErrorIs(t, err, session.ErrNotFound)
+	}
+
+	err := f.db.UpdateUserSession(t.Context(), f.current.UserID, f.other.ID, func(stored session.State) (session.Change, error) {
+		assert.Equal(t, f.other, stored)
+		return session.Change{Action: session.Delete}, nil
+	})
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []uuid.UUID{f.current.ID, f.expired.ID}, f.ids(t, f.current.UserID))
+	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
+}
+
+func TestEndPersistence(t *testing.T) {
+	f := newUserSessions(t)
+	service := session.NewService(f.db, nil, nil, time.Now)
+	current, err := service.Current(t.Context(), currentCookie)
+	require.NoError(t, err)
+
+	// When the user ends sessions one at a time.
+	foreign := service.End(t.Context(), current, f.foreign.ID)
+	own := service.End(t.Context(), current, f.current.ID)
+	expired := service.End(t.Context(), current, f.expired.ID)
+	other := service.End(t.Context(), current, f.other.ID)
+	again := service.End(t.Context(), current, f.other.ID)
+
+	// Then only the other live session ends, and the expired row is cleared.
+	require.ErrorIs(t, foreign, session.ErrNotFound)
+	require.ErrorIs(t, own, session.ErrCurrentSession)
+	require.ErrorIs(t, expired, session.ErrNotFound)
+	require.NoError(t, other)
+	require.ErrorIs(t, again, session.ErrNotFound, "ending twice finds nothing")
+	assert.Equal(t, []uuid.UUID{f.current.ID}, f.ids(t, f.current.UserID))
+	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
+}
+
 func TestSessionDevicesMigration(t *testing.T) {
 	// Renumber with the migration if another branch takes 00011 first.
 	const beforeDevices = 10
