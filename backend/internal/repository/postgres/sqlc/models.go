@@ -57,6 +57,19 @@ type SignInChallenge struct {
 	Failures  int32
 }
 
+type SystemEmail struct {
+	ID                 bool
+	Host               string
+	Port               int32
+	Security           string
+	Username           *string
+	PasswordKeyID      *string
+	PasswordCiphertext []byte
+	FromAddress        string
+	FromName           string
+	TestedAt           *time.Time
+}
+
 type TotpAttempt struct {
 	ID        int64
 	UserID    int64
