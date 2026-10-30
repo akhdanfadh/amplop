@@ -25,6 +25,20 @@
         ],
         "type": "object"
       },
+      "EndedSessions": {
+        "additionalProperties": false,
+        "properties": {
+          "ended": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ended"
+        ],
+        "type": "object"
+      },
       "FirstAdmin": {
         "additionalProperties": false,
         "properties": {
@@ -70,6 +84,64 @@
         "required": [
           "location",
           "message"
+        ],
+        "type": "object"
+      },
+      "ListedSession": {
+        "additionalProperties": false,
+        "properties": {
+          "browser": {
+            "type": "string"
+          },
+          "current": {
+            "description": "True for the session that made this request.",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastActiveAt": {
+            "description": "Updated at most once an hour.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "signedInAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "signedInFrom": {
+            "description": "Client address at sign-in. Empty when unknown.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "browser",
+          "os",
+          "signedInAt",
+          "lastActiveAt",
+          "signedInFrom",
+          "current"
+        ],
+        "type": "object"
+      },
+      "ListedSessions": {
+        "additionalProperties": false,
+        "properties": {
+          "sessions": {
+            "description": "Live sessions, newest sign-in first.",
+            "items": {
+              "$ref": "#/components/schemas/ListedSession"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
         ],
         "type": "object"
       },
@@ -277,6 +349,18 @@
         ],
         "type": "object"
       },
+      "ResponseEndedSessions": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EndedSessions"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "ResponseFirstAdmin": {
         "additionalProperties": false,
         "properties": {
@@ -294,6 +378,18 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/HealthStatus"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponseListedSessions": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ListedSessions"
           }
         },
         "required": [
@@ -647,6 +743,53 @@
       }
     },
     "/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseListedSessions"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List the signed-in account's sessions"
+      },
       "post": {
         "operationId": "createSession",
         "requestBody": {
@@ -819,6 +962,56 @@
         "summary": "Get the signed-in account"
       }
     },
+    "/sessions/others": {
+      "delete": {
+        "description": "Keeps the current session. The count excludes sessions that had already expired.",
+        "operationId": "deleteOtherSessions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEndedSessions"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "End every other session of the signed-in account"
+      }
+    },
     "/sessions/totp": {
       "post": {
         "operationId": "createSessionWithCode",
@@ -921,6 +1114,101 @@
           }
         ],
         "summary": "Complete sign-in with an authenticator or backup code"
+      }
+    },
+    "/sessions/{id}": {
+      "delete": {
+        "description": "To end the current session, sign out instead.",
+        "operationId": "deleteSession",
+        "parameters": [
+          {
+            "description": "Session ID from the session list.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Session ID from the session list.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseEndedSessions"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/session-not-found",
+                  "status": 404,
+                  "title": "Session not found",
+                  "detail": "The session has already ended or does not exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The session has ended, expired, or is not one of this account's."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/session-is-current",
+                  "status": 409,
+                  "title": "Session is current",
+                  "detail": "Sign out to end this browser's session."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The session is the one making this request. Sign out instead."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "End another session of the signed-in account"
       }
     },
     "/setup": {

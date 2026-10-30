@@ -3,9 +3,11 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"maps"
 	"net/http"
 	"strconv"
 	"time"
+	"uuid"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -17,6 +19,7 @@ import (
 const (
 	sessionsPath                = "/sessions"
 	currentSessionPath          = sessionsPath + "/current"
+	otherSessionsPath           = sessionsPath + "/others"
 	sessionSecuritySchemeName   = "sessionCookie"
 	sessionCookieName           = "__Host-inbok-session"
 	challengeCookieName         = "__Host-inbok-challenge"
@@ -28,6 +31,9 @@ type sessionService interface {
 	StartSignIn(ctx context.Context, email, password string, device session.Device) (session.SignedIn, error)
 	Current(ctx context.Context, secret string) (session.Authenticated, error)
 	SignOut(ctx context.Context, ref session.Reference) error
+	List(ctx context.Context, current session.Authenticated) ([]session.Listed, error)
+	End(ctx context.Context, current session.Authenticated, id uuid.UUID) error
+	EndOthers(ctx context.Context, current session.Authenticated) (int, error)
 }
 
 type codeSignInService interface {
@@ -40,7 +46,8 @@ type sessionHandler struct {
 	codes   codeSignInService
 }
 
-// registerSession adds sign-in, current account, and sign-out operations.
+// registerSession adds sign-in, current account, sign-out, and the operations
+// that list and end the user's sessions.
 func registerSession(api huma.API, service sessionService, codes codeSignInService) {
 	api.OpenAPI().Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		sessionSecuritySchemeName: {
@@ -59,6 +66,9 @@ func registerSession(api huma.API, service sessionService, codes codeSignInServi
 	registerCodeSignIn(api, handler)
 	registerCurrentSession(api, handler)
 	registerSignOut(api, handler)
+	registerSessionList(api, handler)
+	registerSessionEnd(api, handler)
+	registerOtherSessionsEnd(api, handler)
 }
 
 // sessionCookie builds a host-only cookie for issuing or clearing a session.
@@ -362,4 +372,156 @@ func signOutResponses(api huma.API) map[string]*huma.Response {
 	unauthenticated.Content[problemContentType].Example = unauthenticatedProblem()
 
 	return responses
+}
+
+// ========================
+// Session list
+// ========================
+
+// listedSession is one of the user's live sessions. Browser and OS are empty
+// when the User-Agent does not name them.
+type listedSession struct {
+	ID           uuid.UUID `json:"id" format:"uuid"`
+	Browser      string    `json:"browser"`
+	OS           string    `json:"os"`
+	SignedInAt   time.Time `json:"signedInAt"`
+	LastActiveAt time.Time `json:"lastActiveAt" doc:"Updated at most once an hour."`
+	SignedInFrom string    `json:"signedInFrom" doc:"Client address at sign-in. Empty when unknown."`
+	Current      bool      `json:"current" doc:"True for the session that made this request."`
+}
+
+type listedSessions struct {
+	Sessions []listedSession `json:"sessions" nullable:"false" doc:"Live sessions, newest sign-in first."`
+}
+
+func registerSessionList(api huma.API, handler sessionHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "listSessions",
+		Method:      http.MethodGet,
+		Path:        sessionsPath,
+		Summary:     "List the signed-in account's sessions",
+		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:   currentSessionResponses(api),
+	}, handler.handleListSessions)
+}
+
+func (h sessionHandler) handleListSessions(ctx context.Context, _ *struct{}) (*output[listedSessions], error) {
+	current := ctx.Value(sessionKey{}).(session.Authenticated)
+	sessions, err := h.service.List(ctx, current)
+	if errors.Is(err, session.ErrUnauthenticated) {
+		return nil, unauthenticatedProblem()
+	}
+	if err != nil {
+		return nil, err
+	}
+	listed := listedSessions{Sessions: make([]listedSession, 0, len(sessions))}
+	for _, l := range sessions {
+		item := listedSession{
+			ID: l.ID, Browser: l.Browser, OS: l.OS,
+			SignedInAt: l.CreatedAt, LastActiveAt: l.LastUsedAt, Current: l.Current,
+		}
+		if l.SignedInFrom.IsValid() {
+			item.SignedInFrom = l.SignedInFrom.String()
+		}
+		listed.Sessions = append(listed.Sessions, item)
+	}
+	return respondData(listed), nil
+}
+
+// ========================
+// Session end
+// ========================
+
+const (
+	sessionNotFoundType  = problemPrefix + "session-not-found"
+	sessionIsCurrentType = problemPrefix + "session-is-current"
+)
+
+// endedSessions counts the sessions a request ended.
+type endedSessions struct {
+	Ended int `json:"ended" minimum:"0"`
+}
+
+type sessionEndInput struct {
+	ID uuid.UUID `path:"id" format:"uuid" doc:"Session ID from the session list."`
+}
+
+func registerSessionEnd(api huma.API, handler sessionHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "deleteSession",
+		Method:      http.MethodDelete,
+		Path:        sessionsPath + "/{id}",
+		Summary:     "End another session of the signed-in account",
+		Description: "To end the current session, sign out instead.",
+		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:   sessionEndResponses(api),
+	}, handler.handleDeleteSession)
+}
+
+func (h sessionHandler) handleDeleteSession(ctx context.Context, in *sessionEndInput) (*output[endedSessions], error) {
+	current := ctx.Value(sessionKey{}).(session.Authenticated)
+	if err := h.service.End(ctx, current, in.ID); err != nil {
+		return nil, sessionEndProblem(err)
+	}
+	return respondData(endedSessions{Ended: 1}), nil
+}
+
+func sessionEndResponses(api huma.API) map[string]*huma.Response {
+	responses := currentSessionResponses(api)
+	maps.Copy(responses, problemResponses(api, http.StatusNotFound, http.StatusConflict))
+
+	notFound := responses[strconv.Itoa(http.StatusNotFound)]
+	notFound.Description = "The session has ended, expired, or is not one of this account's."
+	notFound.Content[problemContentType].Example = sessionEndProblem(session.ErrNotFound)
+
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "The session is the one making this request. Sign out instead."
+	conflict.Content[problemContentType].Example = sessionEndProblem(session.ErrCurrentSession)
+
+	return responses
+}
+
+// sessionEndProblem maps the errors of ending one session.
+func sessionEndProblem(err error) error {
+	switch {
+	case errors.Is(err, session.ErrUnauthenticated):
+		return unauthenticatedProblem()
+	case errors.Is(err, session.ErrNotFound):
+		return newProblem(http.StatusNotFound, sessionNotFoundType, "Session not found", "The session has already ended or does not exist.")
+	case errors.Is(err, session.ErrCurrentSession):
+		return newProblem(http.StatusConflict, sessionIsCurrentType, "Session is current", "Sign out to end this browser's session.")
+	default:
+		return err
+	}
+}
+
+// ========================
+// Other sessions end
+// ========================
+
+func registerOtherSessionsEnd(api huma.API, handler sessionHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "deleteOtherSessions",
+		Method:      http.MethodDelete,
+		Path:        otherSessionsPath,
+		Summary:     "End every other session of the signed-in account",
+		Description: "Keeps the current session. The count excludes sessions that had already expired.",
+		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:   currentSessionResponses(api),
+	}, handler.handleDeleteOtherSessions)
+}
+
+func (h sessionHandler) handleDeleteOtherSessions(ctx context.Context, _ *struct{}) (*output[endedSessions], error) {
+	current := ctx.Value(sessionKey{}).(session.Authenticated)
+	ended, err := h.service.EndOthers(ctx, current)
+	if errors.Is(err, session.ErrUnauthenticated) {
+		return nil, unauthenticatedProblem()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return respondData(endedSessions{Ended: ended}), nil
 }

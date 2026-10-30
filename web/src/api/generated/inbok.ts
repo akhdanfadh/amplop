@@ -25,8 +25,10 @@ import type {
 
 import {
   ResponseCurrentSession,
+  ResponseEndedSessions,
   ResponseFirstAdmin,
   ResponseHealthStatus,
+  ResponseListedSessions,
   ResponseProbeEventCreated,
   ResponseSetupStatus,
   ResponseSignInResult,
@@ -257,6 +259,108 @@ export const useCreateProbeEvent = <TError = ErrorType<Problem>,
       > => {
       return useMutation(getCreateProbeEventMutationOptions(options), queryClient);
     }
+
+export const getListSessionsUrl = () => {
+
+
+
+
+  return `/api/v0/sessions`
+}
+
+/**
+ * @summary List the signed-in account's sessions
+ */
+export const listSessions = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseListedSessions> => {
+
+  return transport<ResponseListedSessions>(getListSessionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseListedSessions
+  }
+);}
+
+
+
+
+
+export const getListSessionsQueryKey = () => {
+    return [
+    `/api/v0/sessions`
+    ] as const;
+    }
+
+
+export const getListSessionsQueryOptions = <TData = Awaited<ReturnType<typeof listSessions>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listSessions>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSessionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSessions>>> = ({ signal }) => listSessions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSessions>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListSessionsQueryResult = NonNullable<Awaited<ReturnType<typeof listSessions>>>
+export type ListSessionsQueryError = ErrorType<Problem>
+
+
+export function useListSessions<TData = Awaited<ReturnType<typeof listSessions>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listSessions>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listSessions>>,
+          TError,
+          Awaited<ReturnType<typeof listSessions>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListSessions<TData = Awaited<ReturnType<typeof listSessions>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listSessions>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listSessions>>,
+          TError,
+          Awaited<ReturnType<typeof listSessions>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListSessions<TData = Awaited<ReturnType<typeof listSessions>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listSessions>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List the signed-in account's sessions
+ */
+
+export function useListSessions<TData = Awaited<ReturnType<typeof listSessions>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listSessions>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListSessionsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getCreateSessionUrl = () => {
 
@@ -523,6 +627,82 @@ export function useGetCurrentSession<TData = Awaited<ReturnType<typeof getCurren
 
 
 
+export const getDeleteOtherSessionsUrl = () => {
+
+
+
+
+  return `/api/v0/sessions/others`
+}
+
+/**
+ * Keeps the current session. The count excludes sessions that had already expired.
+ * @summary End every other session of the signed-in account
+ */
+export const deleteOtherSessions = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseEndedSessions> => {
+
+  return transport<ResponseEndedSessions>(getDeleteOtherSessionsUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+    ,
+    schema: ResponseEndedSessions
+  }
+);}
+
+
+
+
+
+export const getDeleteOtherSessionsMutationKey = () => ['deleteOtherSessions'] as const;
+
+export const getDeleteOtherSessionsMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteOtherSessions>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteOtherSessions>>, TError,void, TContext> => {
+
+const mutationKey = getDeleteOtherSessionsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteOtherSessions>>, void> = () => {
+
+
+          return  deleteOtherSessions(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteOtherSessionsMutationResult = NonNullable<Awaited<ReturnType<typeof deleteOtherSessions>>>
+
+    export type DeleteOtherSessionsMutationError = ErrorType<Problem>
+
+
+    /**
+ * @summary End every other session of the signed-in account
+ */
+export const useDeleteOtherSessions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteOtherSessions>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteOtherSessions>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteOtherSessionsMutationOptions(options), queryClient);
+    }
+
 export const getCreateSessionWithCodeUrl = () => {
 
 
@@ -610,6 +790,82 @@ export const useCreateSessionWithCode = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getCreateSessionWithCodeMutationOptions(options), queryClient);
+    }
+
+export const getDeleteSessionUrl = (id: string,) => {
+
+
+
+
+  return `/api/v0/sessions/${id}`
+}
+
+/**
+ * To end the current session, sign out instead.
+ * @summary End another session of the signed-in account
+ */
+export const deleteSession = async (id: string, options?: Parameters<typeof transport>[1]): Promise<ResponseEndedSessions> => {
+
+  return transport<ResponseEndedSessions>(getDeleteSessionUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+    ,
+    schema: ResponseEndedSessions
+  }
+);}
+
+
+
+
+
+export const getDeleteSessionMutationKey = () => ['deleteSession'] as const;
+
+export const getDeleteSessionMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSession>>, TError,DeleteSessionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSession>>, TError,DeleteSessionMutationVariables, TContext> => {
+
+const mutationKey = getDeleteSessionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSession>>, DeleteSessionMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteSession(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSessionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSession>>>
+
+    export type DeleteSessionMutationError = ErrorType<Problem>
+    export type DeleteSessionMutationVariables = {id: string}
+
+    /**
+ * @summary End another session of the signed-in account
+ */
+export const useDeleteSession = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSession>>, TError,DeleteSessionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSession>>,
+        TError,
+        DeleteSessionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteSessionMutationOptions(options), queryClient);
     }
 
 export const getGetSetupStatusUrl = () => {
