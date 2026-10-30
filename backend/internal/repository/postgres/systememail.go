@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -32,6 +33,7 @@ func readSystemEmail(ctx context.Context, queries *sqlc.Queries) (*systememail.R
 		FromAddress: row.FromAddress,
 		FromName:    row.FromName,
 		TestedAt:    row.TestedAt,
+		Revision:    row.Revision,
 	}
 	if row.Username != nil {
 		record.Username = *row.Username
@@ -44,12 +46,14 @@ func readSystemEmail(ctx context.Context, queries *sqlc.Queries) (*systememail.R
 
 const systemEmailSavedAction = "system-email-saved"
 
-// UpdateSystemEmail locks the table rather than the row, so two first saves
-// serialize even though neither has a row to lock yet. The audit event names
-// only the actor; it affects no account and records no setting values.
+// UpdateSystemEmail locks the settings, loads them, calls update, saves its
+// result, and records a system-email-saved event for actorID, in one
+// transaction.
 func (db *DB) UpdateSystemEmail(ctx context.Context, actorID int64, update func(*systememail.Record) (systememail.Record, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+		// Lock the table, not the row: the keep-password decision reads the stored
+		// row, so saves must not interleave, and the first save has no row to lock.
 		if err := queries.LockSystemEmail(ctx); err != nil {
 			return fmt.Errorf("lock system email: %w", err)
 		}
@@ -68,7 +72,6 @@ func (db *DB) UpdateSystemEmail(ctx context.Context, actorID int64, update func(
 			Security:    string(next.Security),
 			FromAddress: next.FromAddress,
 			FromName:    next.FromName,
-			TestedAt:    next.TestedAt,
 		}
 		if next.Username != "" {
 			params.Username = &next.Username
@@ -79,9 +82,21 @@ func (db *DB) UpdateSystemEmail(ctx context.Context, actorID int64, update func(
 		if err := queries.UpsertSystemEmail(ctx, params); err != nil {
 			return fmt.Errorf("save system email: %w", err)
 		}
+		// The event names only the actor: no account is affected, and setting
+		// values are not recorded.
 		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{Action: systemEmailSavedAction, ActorUserID: &actorID}); err != nil {
 			return fmt.Errorf("record system email save: %w", err)
 		}
 		return nil
 	})
+}
+
+// UpdateSystemEmailTestedAt saves testedAt as the tested time if the settings
+// still have revision; otherwise it changes nothing.
+func (db *DB) UpdateSystemEmailTestedAt(ctx context.Context, revision int64, testedAt *time.Time) error {
+	err := sqlc.New(db.pool).UpdateSystemEmailTestedAt(ctx, sqlc.UpdateSystemEmailTestedAtParams{TestedAt: testedAt, Revision: revision})
+	if err != nil {
+		return fmt.Errorf("record system email test: %w", err)
+	}
+	return nil
 }

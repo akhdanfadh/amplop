@@ -3,6 +3,7 @@ package systememail
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,23 +29,53 @@ func (m *memoryStorage) UpdateSystemEmail(_ context.Context, actorID int64, upda
 	if err != nil {
 		return err
 	}
+	// Like the table: a save clears the tested time and is a new revision.
+	next.TestedAt, next.Revision = nil, 1
+	if m.record != nil {
+		next.Revision = m.record.Revision + 1
+	}
 	m.record = &next
 	m.actors = append(m.actors, actorID)
+	return nil
+}
+
+func (m *memoryStorage) UpdateSystemEmailTestedAt(_ context.Context, revision int64, testedAt *time.Time) error {
+	if m.err != nil {
+		return m.err
+	}
+	if m.record == nil || m.record.Revision != revision {
+		return nil
+	}
+	next := *m.record
+	next.TestedAt = testedAt
+	m.record = &next
 	return nil
 }
 
 // adminID is the administrator saving settings in these tests.
 const adminID int64 = 7
 
-type fakeSealer struct {
+// signInOwner is the password owner for inputWithSignIn's server and account.
+const signInOwner = `system-email:"smtp.example.com":587:"inbok@example.com"`
+
+// fakeKeyring seals by prefixing "sealed:" and opens only for the sealing owner.
+type fakeKeyring struct {
 	owner     string
 	plaintext []byte
 	err       error
 }
 
-func (f *fakeSealer) Seal(plaintext []byte, owner string) (string, []byte, error) {
+func (f *fakeKeyring) Seal(plaintext []byte, owner string) (string, []byte, error) {
 	f.owner, f.plaintext = owner, plaintext
-	return "1", []byte("sealed:" + string(plaintext)), f.err
+	return "1", []byte("sealed:" + owner + ":" + string(plaintext)), f.err
+}
+
+func (f *fakeKeyring) Open(id string, ciphertext []byte, owner string) ([]byte, error) {
+	plaintext, ok := strings.CutPrefix(string(ciphertext), "sealed:"+owner+":")
+	if f.err != nil || id != "1" || !ok {
+		return nil, errors.Join(f.err, errors.New("cannot open"))
+	}
+	return []byte(plaintext), nil
 }
 
 // inputWithSignIn is a typical provider's settings with a username and password.
@@ -66,12 +97,12 @@ func storedSignIn() *Record {
 	return &Record{
 		Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS,
 		Username: "inbok@example.com", Password: &Password{KeyID: "1", Ciphertext: []byte("stored")},
-		FromAddress: "inbok@example.com", FromName: "inbok", TestedAt: &tested,
+		FromAddress: "inbok@example.com", FromName: "inbok", TestedAt: &tested, Revision: 3,
 	}
 }
 
 func TestSystemEmailNotConfigured(t *testing.T) {
-	service := NewService(&memoryStorage{}, &fakeSealer{})
+	service := NewService(&memoryStorage{}, &fakeKeyring{})
 
 	settings, err := service.Settings(t.Context())
 	require.NoError(t, err)
@@ -80,7 +111,7 @@ func TestSystemEmailNotConfigured(t *testing.T) {
 }
 
 func TestSystemEmailSave(t *testing.T) {
-	storage, sealer := &memoryStorage{}, &fakeSealer{}
+	storage, sealer := &memoryStorage{}, &fakeKeyring{}
 	service := NewService(storage, sealer)
 
 	saved, err := service.Save(t.Context(), adminID, inputWithSignIn())
@@ -91,10 +122,10 @@ func TestSystemEmailSave(t *testing.T) {
 		Username: "inbok@example.com", HasPassword: true,
 		FromAddress: "inbok@example.com", FromName: "inbok",
 	}, saved)
-	assert.Equal(t, `system-email:"smtp.example.com":587:"inbok@example.com"`, sealer.owner)
+	assert.Equal(t, signInOwner, sealer.owner)
 	assert.Equal(t, []byte("app password"), sealer.plaintext)
 	require.NotNil(t, storage.record)
-	assert.Equal(t, &Password{KeyID: "1", Ciphertext: []byte("sealed:app password")}, storage.record.Password)
+	assert.Equal(t, &Password{KeyID: "1", Ciphertext: []byte("sealed:" + signInOwner + ":app password")}, storage.record.Password)
 	assert.Equal(t, []int64{adminID}, storage.actors, "the save names its administrator")
 	read, err := service.Settings(t.Context())
 	require.NoError(t, err)
@@ -113,7 +144,7 @@ func TestSystemEmailSaveWithoutSignIn(t *testing.T) {
 			storage := &memoryStorage{record: storedSignIn()}
 			input := Input{Host: "smtp.example.com", Port: 587, Security: security, FromAddress: "inbok@example.com", FromName: "inbok"}
 
-			saved, err := NewService(storage, &fakeSealer{}).Save(t.Context(), adminID, input)
+			saved, err := NewService(storage, &fakeKeyring{}).Save(t.Context(), adminID, input)
 			require.NoError(t, err)
 
 			assert.False(t, saved.HasPassword)
@@ -127,7 +158,7 @@ func TestSystemEmailSaveWithoutSignIn(t *testing.T) {
 
 func TestSystemEmailSaveKeepsPassword(t *testing.T) {
 	stored := storedSignIn()
-	storage, sealer := &memoryStorage{record: stored}, &fakeSealer{}
+	storage, sealer := &memoryStorage{record: stored}, &fakeKeyring{}
 	input := inputWithSignIn()
 	input.Password, input.Security, input.FromName = "", SecurityTLS, "Mail"
 
@@ -144,11 +175,11 @@ func TestSystemEmailSaveKeepsPassword(t *testing.T) {
 func TestSystemEmailSaveReplacesPassword(t *testing.T) {
 	storage := &memoryStorage{record: storedSignIn()}
 
-	_, err := NewService(storage, &fakeSealer{}).Save(t.Context(), adminID, inputWithSignIn())
+	_, err := NewService(storage, &fakeKeyring{}).Save(t.Context(), adminID, inputWithSignIn())
 	require.NoError(t, err)
 
 	require.NotNil(t, storage.record)
-	assert.Equal(t, &Password{KeyID: "1", Ciphertext: []byte("sealed:app password")}, storage.record.Password)
+	assert.Equal(t, &Password{KeyID: "1", Ciphertext: []byte("sealed:" + signInOwner + ":app password")}, storage.record.Password)
 }
 
 func TestSystemEmailSaveClearsTested(t *testing.T) {
@@ -156,7 +187,7 @@ func TestSystemEmailSaveClearsTested(t *testing.T) {
 	input := inputWithSignIn()
 	input.Password = ""
 
-	saved, err := NewService(storage, &fakeSealer{}).Save(t.Context(), adminID, input)
+	saved, err := NewService(storage, &fakeKeyring{}).Save(t.Context(), adminID, input)
 	require.NoError(t, err)
 
 	assert.Nil(t, saved.TestedAt)
@@ -185,7 +216,7 @@ func TestSystemEmailSaveRejected(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			stored := storedSignIn()
-			storage, sealer := &memoryStorage{record: stored}, &fakeSealer{}
+			storage, sealer := &memoryStorage{record: stored}, &fakeKeyring{}
 
 			saved, err := NewService(storage, sealer).Save(t.Context(), adminID, c.input)
 			require.ErrorIs(t, err, c.want)
@@ -219,7 +250,7 @@ func TestSystemEmailSavePasswordRequired(t *testing.T) {
 			input.Password = ""
 			c.change(&input)
 
-			saved, err := NewService(storage, &fakeSealer{}).Save(t.Context(), adminID, input)
+			saved, err := NewService(storage, &fakeKeyring{}).Save(t.Context(), adminID, input)
 			require.ErrorIs(t, err, ErrPasswordRequired)
 
 			assert.Empty(t, saved)
@@ -234,10 +265,10 @@ func TestSystemEmailSaveFailure(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		storage *memoryStorage
-		sealer  *fakeSealer
+		sealer  *fakeKeyring
 	}{
-		{"storage", &memoryStorage{err: failure}, &fakeSealer{}},
-		{"encryption", &memoryStorage{}, &fakeSealer{err: failure}},
+		{"storage", &memoryStorage{err: failure}, &fakeKeyring{}},
+		{"encryption", &memoryStorage{}, &fakeKeyring{err: failure}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			saved, err := NewService(c.storage, c.sealer).Save(t.Context(), adminID, inputWithSignIn())
@@ -252,7 +283,7 @@ func TestSystemEmailSaveFailure(t *testing.T) {
 func TestSystemEmailSettingsFailure(t *testing.T) {
 	failure := errors.New("storage unavailable")
 
-	settings, err := NewService(&memoryStorage{err: failure}, &fakeSealer{}).Settings(t.Context())
+	settings, err := NewService(&memoryStorage{err: failure}, &fakeKeyring{}).Settings(t.Context())
 	require.ErrorIs(t, err, failure)
 
 	assert.Nil(t, settings)

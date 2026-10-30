@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -128,6 +129,7 @@ func TestSystemEmailUpdate(t *testing.T) {
 		Host: "smtp.example.com", Port: 465, Security: systememail.SecurityTLS,
 		Username: "inbok", Password: &systememail.Password{KeyID: "1", Ciphertext: []byte("sealed")},
 		FromAddress: "inbok@example.com", FromName: "inbok", TestedAt: &tested,
+		Revision: 99, // Storage clears the tested time and numbers the revisions.
 	}
 
 	require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(current *systememail.Record) (systememail.Record, error) {
@@ -143,16 +145,15 @@ func TestSystemEmailUpdate(t *testing.T) {
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM system_email").Scan(&rows))
 
 	require.NotNil(t, got)
-	require.NotNil(t, got.TestedAt)
-	assert.True(t, tested.Equal(*got.TestedAt))
-	got.TestedAt = want.TestedAt
-	assert.Equal(t, &want, got, "the update sees the saved record")
+	want.TestedAt, want.Revision = nil, 1
+	assert.Equal(t, &want, got, "the update sees the saved record, untested, as the first revision")
 	assert.Equal(t, 1, rows, "saves replace the one row")
 	replaced, err := db.ReadSystemEmail(t.Context())
 	require.NoError(t, err)
 	require.NotNil(t, replaced)
 	assert.Equal(t, "localhost", replaced.Host)
 	assert.Nil(t, replaced.Password)
+	assert.Equal(t, int64(2), replaced.Revision)
 }
 
 // Two first saves have no row to lock; the table lock still makes the second
@@ -208,6 +209,7 @@ func TestSystemEmailUpdateSerializes(t *testing.T) {
 
 	require.NoError(t, <-firstDone)
 	require.NoError(t, <-secondDone)
+	first.Revision = 1
 	assert.Equal(t, &first, seen)
 	assert.Equal(t, []auditEvent{savedBy(admin), savedBy(admin)}, auditEvents(t, conn))
 }
@@ -226,7 +228,8 @@ func TestSystemEmailSaveRejected(t *testing.T) {
 
 	got, err := db.ReadSystemEmail(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, &original, got)
+	original.Revision = 1
+	assert.Equal(t, &original, got, "a rejected save is not a revision")
 	assert.Equal(t, []auditEvent{savedBy(admin)}, auditEvents(t, conn), "only the first save is audited")
 }
 
@@ -257,7 +260,8 @@ func TestSystemEmailSaveFailure(t *testing.T) {
 
 			got, err := db.ReadSystemEmail(t.Context())
 			require.NoError(t, err)
-			assert.Equal(t, &original, got)
+			original.Revision = 1
+			assert.Equal(t, &original, got, "a failed save is not a revision")
 			assert.Equal(t, []auditEvent{savedBy(admin)}, auditEvents(t, conn))
 		})
 	}
@@ -320,4 +324,86 @@ func TestSystemEmailMigrationDown(t *testing.T) {
 	require.NoError(t, err)
 	_, err = provider.Up(t.Context())
 	require.NoError(t, err)
+}
+
+// recordingSender accepts every message and keeps the password it was given.
+type recordingSender struct{ password string }
+
+func (r *recordingSender) Send(_ context.Context, _ systememail.Server, password string, _ systememail.Message) error {
+	r.password = password
+	return nil
+}
+
+// A test message decrypts the saved password and records the pass without
+// an audit event.
+func TestSystemEmailSendTestMessage(t *testing.T) {
+	db, conn := setupStorage(t)
+	admin := systemEmailAdmin(t, conn)
+	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
+	require.NoError(t, err)
+	_, err = systememail.NewService(db, ring).Save(t.Context(), admin, systemEmailInput())
+	require.NoError(t, err)
+	sender := &recordingSender{}
+	tested := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	messages := systememail.NewTestMessages(db, ring, sender, func() time.Time { return tested }, slog.New(slog.DiscardHandler))
+
+	result, err := messages.Send(t.Context(), "admin@example.org")
+	require.NoError(t, err)
+
+	assert.True(t, result.Accepted)
+	assert.Equal(t, "app password", sender.password)
+	record, err := db.ReadSystemEmail(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, record)
+	require.NotNil(t, record.TestedAt)
+	assert.True(t, tested.Equal(*record.TestedAt))
+	assert.Equal(t, []auditEvent{savedBy(admin)}, auditEvents(t, conn), "a test message is not audited")
+}
+
+// The tested time is saved only for the revision that was tested; a save
+// since then makes the update change nothing.
+func TestSystemEmailUpdateTestedAt(t *testing.T) {
+	db, conn := setupStorage(t)
+	admin := systemEmailAdmin(t, conn)
+	original := systememail.Record{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone, FromAddress: "inbok@example.com", FromName: "inbok"}
+	save := func() {
+		require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) { return original, nil }))
+	}
+	tested := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+	save()
+	first, err := db.ReadSystemEmail(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, first)
+
+	// The tested revision records its time and stays the same revision.
+	require.NoError(t, db.UpdateSystemEmailTestedAt(t.Context(), first.Revision, &tested))
+	got, err := db.ReadSystemEmail(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.NotNil(t, got.TestedAt)
+	assert.True(t, tested.Equal(*got.TestedAt))
+	assert.Equal(t, first.Revision, got.Revision)
+	assert.Equal(t, []auditEvent{savedBy(admin)}, auditEvents(t, conn), "recording is not audited")
+
+	// A save, even of the same values, is a new revision; the old one records nothing.
+	save()
+	require.NoError(t, db.UpdateSystemEmailTestedAt(t.Context(), first.Revision, &tested))
+	got, err = db.ReadSystemEmail(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, first.Revision+1, got.Revision)
+	assert.Nil(t, got.TestedAt)
+}
+
+// With nothing saved, recording a tested time writes nothing.
+func TestSystemEmailUpdateTestedAtNotConfigured(t *testing.T) {
+	db, conn := setupStorage(t)
+	tested := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+
+	err := db.UpdateSystemEmailTestedAt(t.Context(), 1, &tested)
+	require.NoError(t, err)
+
+	var rows int
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM system_email").Scan(&rows))
+	assert.Zero(t, rows)
 }

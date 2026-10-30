@@ -14,6 +14,7 @@ CREATE TABLE system_email (
     from_address        text NOT NULL,
     from_name           text NOT NULL,
     tested_at           timestamptz, -- NULL: the current settings have not passed a test
+    revision            bigint NOT NULL DEFAULT 1, -- every save adds one; a test records only if unchanged
     CONSTRAINT system_email_password_sealed
         CHECK ((password_key_id IS NULL) = (password_ciphertext IS NULL)),
     CONSTRAINT system_email_sign_in_paired

@@ -66,7 +66,8 @@ type Password struct {
 }
 
 // Record is the saved configuration. Username is empty, and Password nil,
-// when the server needs no sign-in.
+// when the server needs no sign-in. Storage sets TestedAt and Revision: a
+// save clears TestedAt and adds one to Revision, ignoring the Record's values.
 type Record struct {
 	Host        string
 	Port        int
@@ -76,6 +77,7 @@ type Record struct {
 	FromAddress string
 	FromName    string
 	TestedAt    *time.Time
+	Revision    int64
 }
 
 // Storage keeps the one configuration row.

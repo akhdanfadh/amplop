@@ -22,7 +22,7 @@ func (q *Queries) LockSystemEmail(ctx context.Context) error {
 
 const readSystemEmail = `-- name: ReadSystemEmail :one
 SELECT host, port, security, username, password_key_id, password_ciphertext,
-    from_address, from_name, tested_at
+    from_address, from_name, tested_at, revision
 FROM system_email
 `
 
@@ -36,6 +36,7 @@ type ReadSystemEmailRow struct {
 	FromAddress        string
 	FromName           string
 	TestedAt           *time.Time
+	Revision           int64
 }
 
 func (q *Queries) ReadSystemEmail(ctx context.Context) (ReadSystemEmailRow, error) {
@@ -51,15 +52,32 @@ func (q *Queries) ReadSystemEmail(ctx context.Context) (ReadSystemEmailRow, erro
 		&i.FromAddress,
 		&i.FromName,
 		&i.TestedAt,
+		&i.Revision,
 	)
 	return i, err
 }
 
+const updateSystemEmailTestedAt = `-- name: UpdateSystemEmailTestedAt :exec
+UPDATE system_email SET tested_at = $1
+    -- A save since the read changed the revision, so this matches no row.
+    WHERE revision = $2
+`
+
+type UpdateSystemEmailTestedAtParams struct {
+	TestedAt *time.Time
+	Revision int64
+}
+
+func (q *Queries) UpdateSystemEmailTestedAt(ctx context.Context, arg UpdateSystemEmailTestedAtParams) error {
+	_, err := q.db.Exec(ctx, updateSystemEmailTestedAt, arg.TestedAt, arg.Revision)
+	return err
+}
+
 const upsertSystemEmail = `-- name: UpsertSystemEmail :exec
 INSERT INTO system_email (host, port, security, username, password_key_id,
-    password_ciphertext, from_address, from_name, tested_at)
+    password_ciphertext, from_address, from_name)
 VALUES ($1, $2, $3, $4, $5,
-    $6, $7, $8, $9)
+    $6, $7, $8)
 ON CONFLICT (id) DO UPDATE SET
     host = EXCLUDED.host,
     port = EXCLUDED.port,
@@ -69,7 +87,10 @@ ON CONFLICT (id) DO UPDATE SET
     password_ciphertext = EXCLUDED.password_ciphertext,
     from_address = EXCLUDED.from_address,
     from_name = EXCLUDED.from_name,
-    tested_at = EXCLUDED.tested_at
+    -- New settings have not passed a test, and a test of the old revision
+    -- must not be recorded for them.
+    tested_at = NULL,
+    revision = system_email.revision + 1
 `
 
 type UpsertSystemEmailParams struct {
@@ -81,7 +102,6 @@ type UpsertSystemEmailParams struct {
 	PasswordCiphertext []byte
 	FromAddress        string
 	FromName           string
-	TestedAt           *time.Time
 }
 
 func (q *Queries) UpsertSystemEmail(ctx context.Context, arg UpsertSystemEmailParams) error {
@@ -94,7 +114,6 @@ func (q *Queries) UpsertSystemEmail(ctx context.Context, arg UpsertSystemEmailPa
 		arg.PasswordCiphertext,
 		arg.FromAddress,
 		arg.FromName,
-		arg.TestedAt,
 	)
 	return err
 }

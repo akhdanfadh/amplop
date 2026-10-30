@@ -69,6 +69,7 @@ type SystemEmail struct {
 	FromAddress        string
 	FromName           string
 	TestedAt           *time.Time
+	Revision           int64
 }
 
 type TotpAttempt struct {
