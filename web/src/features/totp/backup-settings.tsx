@@ -35,10 +35,10 @@ export function BackupSettings({
   const uncertain = Boolean(error && uncertainSession(error));
 
   useEffect(() => {
-    if (replacing || !restoreFocus.current || locked) return;
+    if (replacing || !restoreFocus.current || locked || checking) return;
     replaceRef.current?.focus();
     restoreFocus.current = false;
-  }, [replacing, locked]);
+  }, [replacing, locked, checking]);
 
   useEffect(() => {
     if (!uncertain || focusedError.current === error || locked || checking) return;
@@ -69,7 +69,8 @@ export function BackupSettings({
           </p>
           <ConfirmForm
             purpose="regeneration"
-            locked={locked || checking || uncertain}
+            locked={locked || uncertain}
+            checking={checking}
             pending={pending}
             error={error}
             onEdit={onEdit}

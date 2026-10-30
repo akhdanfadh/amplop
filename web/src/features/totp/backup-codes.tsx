@@ -14,10 +14,14 @@ export function BackupCodes({
   onDone: () => void;
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const focused = useRef(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    if (active) headingRef.current?.focus();
+    // Once: later background checks toggle active and must not move focus.
+    if (!active || focused.current) return;
+    focused.current = true;
+    headingRef.current?.focus();
   }, [active]);
 
   async function copyCodes(): Promise<void> {

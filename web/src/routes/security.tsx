@@ -73,8 +73,9 @@ function Security() {
           </div>
         )}
         {current.data && current.error?.status !== unauthorized && (
-          // Preserve one-time codes while the renewed session is being checked.
-          <div hidden={!ready}>
+          // Stay mounted to keep one-time codes; stay shown during background
+          // checks so a code field keeps focus.
+          <div hidden={!current.isSuccess}>
             {current.data.data.totpRequired && (
               <p className="mb-6">
                 Set up two-factor authentication to unlock administrator access.

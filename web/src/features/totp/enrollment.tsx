@@ -426,9 +426,9 @@ export function Enrollment({
           )}
           <BackupSettings
             left={factor.backupCodesLeft}
-            locked={locked || pending || status.isError || (turnOffUncertain && role === "member")}
+            locked={pending || status.isError || (turnOffUncertain && role === "member")}
             pending={regenerate.isPending}
-            checking={status.isFetching}
+            checking={locked || status.isFetching}
             error={regenerate.error}
             onEdit={() => {
               if (!regenerationUncertain) regenerate.reset();
@@ -438,9 +438,9 @@ export function Enrollment({
           />
           {role === "member" ? (
             <TurnOff
-              locked={locked || pending || status.isError || regenerationUncertain}
+              locked={pending || status.isError || regenerationUncertain}
               pending={disable.isPending}
-              checking={status.isFetching}
+              checking={locked || status.isFetching}
               error={disable.error}
               onEdit={() => {
                 if (!turnOffUncertain) disable.reset();
@@ -487,7 +487,8 @@ export function Enrollment({
           </p>
           <ConfirmForm
             purpose="enrollment"
-            locked={locked || uncertain || status.isError || cancel.isPending}
+            locked={uncertain || status.isError || cancel.isPending}
+            checking={locked}
             pending={confirm.isPending}
             error={confirm.error}
             onEdit={() => {
