@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
@@ -53,13 +54,11 @@ func withAccess(api huma.API, service sessionService) func(huma.Context, func(hu
 		allowed := identity.Access >= session.AccessMember && identity.Access <= session.AccessAdmin &&
 			(identity.User.Role == account.RoleMember || identity.User.Role == account.RoleAdmin)
 		if level == session.AccessAdmin && identity.User.Role == account.RoleAdmin && identity.TOTPRequired {
-			writeProblem(humagin.Unwrap(ctx), newProblem(http.StatusForbidden, problemPrefix+"totp-required",
-				"TOTP required", "Set up two-factor authentication to use administrator features."))
+			writeProblem(humagin.Unwrap(ctx), totpRequiredProblem())
 			return
 		}
 		if !allowed || identity.Access < level || (level == session.AccessAdmin && identity.User.Role != account.RoleAdmin) {
-			writeProblem(humagin.Unwrap(ctx), newProblem(http.StatusForbidden, problemPrefix+"forbidden",
-				"Access denied", "You do not have access to this operation."))
+			writeProblem(humagin.Unwrap(ctx), forbiddenProblem())
 			return
 		}
 		next(huma.WithValue(ctx, sessionKey{}, current))
@@ -69,4 +68,33 @@ func withAccess(api huma.API, service sessionService) func(huma.Context, func(hu
 // unauthenticatedProblem is the safe response for a missing or invalid session.
 func unauthenticatedProblem() *problem {
 	return newProblem(http.StatusUnauthorized, problemPrefix+"unauthenticated", "Sign-in required", "Sign in to continue.")
+}
+
+// totpRequiredProblem is the response for an administrator without confirmed TOTP.
+func totpRequiredProblem() *problem {
+	return newProblem(http.StatusForbidden, problemPrefix+"totp-required",
+		"TOTP required", "Set up two-factor authentication to use administrator features.")
+}
+
+// forbiddenProblem is the response for an account without the required access.
+func forbiddenProblem() *problem {
+	return newProblem(http.StatusForbidden, problemPrefix+"forbidden",
+		"Access denied", "You do not have access to this operation.")
+}
+
+// adminResponses documents the failures every administrator operation shares.
+func adminResponses(api huma.API, statuses ...int) map[string]*huma.Response {
+	responses := problemResponses(api, append([]int{http.StatusUnauthorized, http.StatusForbidden}, statuses...)...)
+
+	unauthorized := responses[strconv.Itoa(http.StatusUnauthorized)]
+	unauthorized.Description = "No valid session identifies a current account."
+	unauthorized.Content[problemContentType].Example = unauthenticatedProblem()
+
+	forbidden := responses[strconv.Itoa(http.StatusForbidden)]
+	forbidden.Description = "The account is not an administrator, or has not set up two-factor authentication."
+	forbidden.Content[problemContentType].Examples = map[string]*huma.Example{
+		"forbidden":    {Value: forbiddenProblem()},
+		"totpRequired": {Value: totpRequiredProblem()},
+	}
+	return responses
 }

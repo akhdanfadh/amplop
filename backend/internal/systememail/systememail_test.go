@@ -195,6 +195,18 @@ func TestSystemEmailSaveClearsTested(t *testing.T) {
 	assert.Nil(t, storage.record.TestedAt, "even unchanged settings need a new test")
 }
 
+// A password of exactly 255 bytes fits SASL PLAIN, whatever its characters.
+func TestSystemEmailSaveLongestPassword(t *testing.T) {
+	storage, sealer := &memoryStorage{}, &fakeKeyring{}
+	input := inputWithSignIn()
+	input.Password = strings.Repeat("é", 127) + "a" // 255 bytes
+
+	_, err := NewService(storage, sealer).Save(t.Context(), adminID, input)
+	require.NoError(t, err)
+
+	assert.Equal(t, []byte(input.Password), sealer.plaintext)
+}
+
 func TestSystemEmailSaveRejected(t *testing.T) {
 	cleartext := inputWithSignIn()
 	cleartext.Security = SecurityNone
@@ -204,6 +216,16 @@ func TestSystemEmailSaveRejected(t *testing.T) {
 	unknown.Security = "ssl"
 	port := inputWithSignIn()
 	port.Port = 65536
+	host := inputWithSignIn()
+	host.Host = "smtp.example.com\r\nRCPT TO:<x@example.net>"
+	username := inputWithSignIn()
+	username.Username = "inbok\x00admin"
+	nulPassword := inputWithSignIn()
+	nulPassword.Password = "app\x00password"
+	longPassword := inputWithSignIn()
+	longPassword.Password = strings.Repeat("é", 128) // 128 characters, 256 bytes
+	fromName := inputWithSignIn()
+	fromName.FromName = "inbok\u0085"
 	for _, c := range []struct {
 		name  string
 		input Input
@@ -213,6 +235,11 @@ func TestSystemEmailSaveRejected(t *testing.T) {
 		{"password without username", orphan, ErrPasswordWithoutUsername},
 		{"unknown security", unknown, errSecurity},
 		{"port out of range", port, errPort},
+		{"control in host", host, ErrInvalidHost},
+		{"control in username", username, ErrInvalidUsername},
+		{"control in password", nulPassword, ErrInvalidPassword},
+		{"password over 255 bytes", longPassword, ErrInvalidPassword},
+		{"control in from name", fromName, ErrInvalidFromName},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			stored := storedSignIn()

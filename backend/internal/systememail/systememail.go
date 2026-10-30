@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
 )
 
 // Security selects how the connection to the mail server is protected.
@@ -25,7 +27,15 @@ var (
 	// ErrPasswordRequired also covers a new host, port, or username: the stored
 	// password is only for the server and account it was entered for.
 	ErrPasswordRequired = errors.New("a username needs a password")
+
+	ErrInvalidHost     = errors.New("host contains a control character")
+	ErrInvalidUsername = errors.New("username contains a control character")
+	ErrInvalidPassword = errors.New("password contains a control character or is longer than 255 bytes")
+	ErrInvalidFromName = errors.New("from name contains a control character")
 )
+
+// maxPasswordBytes is the longest password every SASL PLAIN server accepts.
+const maxPasswordBytes = 255
 
 // HTTP validation rejects these first; they guard other callers.
 var (
@@ -186,6 +196,21 @@ func checkInput(input Input) error {
 		}
 	default:
 		return errSecurity
+	}
+	// SMTP commands end at CRLF and headers cannot hold control characters.
+	if strings.ContainsFunc(input.Host, unicode.IsControl) {
+		return ErrInvalidHost
+	}
+	if strings.ContainsFunc(input.Username, unicode.IsControl) {
+		return ErrInvalidUsername
+	}
+	// SASL PLAIN separates its fields with NUL and guarantees only 255 octets
+	// (RFC 4616).
+	if strings.ContainsFunc(input.Password, unicode.IsControl) || len(input.Password) > maxPasswordBytes {
+		return ErrInvalidPassword
+	}
+	if strings.ContainsFunc(input.FromName, unicode.IsControl) {
+		return ErrInvalidFromName
 	}
 	if input.Username == "" && input.Password != "" {
 		return ErrPasswordWithoutUsername
