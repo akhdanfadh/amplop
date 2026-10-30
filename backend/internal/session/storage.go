@@ -36,7 +36,8 @@ type Storage interface {
 	ReadSessionIdentity(ctx context.Context, hash [sha256.Size]byte) (IdentityState, error)
 
 	// StartSignIn locks the owner and reads the current password hash and factor.
-	// It saves the chosen session or challenge and prunes expired challenges atomically.
+	// It saves the chosen session or challenge and deletes expired challenges
+	// atomically; saving a session also deletes the user's expired sessions.
 	StartSignIn(ctx context.Context, userID int64, update func(SignInState) (SignInChange, error)) error
 
 	// UpdateSession applies a Go decision to a session in one transaction.

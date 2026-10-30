@@ -93,6 +93,9 @@ func (db *DB) CompleteSignIn(ctx context.Context, userID int64, hash [sha256.Siz
 				return fmt.Errorf("consume sign-in backup code: %w", err)
 			}
 		}
+		if err := deleteUserExpiredSessions(ctx, queries, userID, next.Expiry); err != nil {
+			return err
+		}
 		if err := queries.InsertSession(ctx, insertSessionParams(next.Session)); err != nil {
 			return fmt.Errorf("save code sign-in session: %w", err)
 		}

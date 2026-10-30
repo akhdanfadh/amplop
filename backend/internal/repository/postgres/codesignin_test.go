@@ -90,6 +90,11 @@ func codePost(f *codeFixture, path, body string, cookie *http.Cookie) *httptest.
 
 func TestCodeSignInHTTP(t *testing.T) {
 	f := newCodeFixture(t)
+	idle := f.now.Add(-8 * 24 * time.Hour)
+	require.NoError(t, f.db.InsertSession(t.Context(), session.State{
+		TokenHash: sha256.Sum256([]byte("abandoned")), UserID: f.userID,
+		CreatedAt: idle, LastUsedAt: idle, ExpiresAt: idle.Add(30 * 24 * time.Hour),
+	}))
 
 	password := codePost(f, "/sessions", `{"email":"alice@example.com","password":"a long sign-in password"}`, nil)
 
@@ -130,6 +135,10 @@ func TestCodeSignInHTTP(t *testing.T) {
 	stored := readSession(t, f.db, sha256.Sum256(raw))
 	assert.Equal(t, session.Device{UserAgent: "browser for /sessions/totp", Addr: netip.MustParseAddr("192.0.2.1")}, stored.Device,
 		"the session keeps the code request's details")
+	sessions, err := f.db.ReadUserSessions(t.Context(), f.userID)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1, "completing sign-in deleted the expired session")
+	assert.Equal(t, stored.TokenHash, sessions[0].TokenHash)
 
 	reused := codePost(f, "/sessions/totp", `{"code":"`+f.code+`"}`, challenge)
 	require.Equal(t, http.StatusUnauthorized, reused.Code, reused.Body.String())

@@ -41,6 +41,7 @@ type CodeSignInChange struct {
 	Failures     int
 	Factor       *totp.Factor
 	Session      State
+	Expiry       Expiry
 	BackupCodeID int64
 	AttemptID    int64
 }
@@ -49,7 +50,8 @@ type codeSignInStore interface {
 	ChallengeUser(ctx context.Context, hash [sha256.Size]byte) (int64, error)
 	// CompleteSignIn locks the user before the owned challenge, then calls update.
 	// Completion consumes the challenge and optional backup code, saves the step
-	// and session, and removes only the successful attempt in one transaction.
+	// and session, deletes the user's expired sessions, and removes only the
+	// successful attempt in one transaction.
 	CompleteSignIn(ctx context.Context, userID int64, hash [sha256.Size]byte, update func(CodeSignInState) (CodeSignInChange, error)) error
 }
 
@@ -118,7 +120,7 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 		issued = newSession(userID, device, s.now)
 		outcome = nil
 		return CodeSignInChange{
-			Action: CodeActionComplete, Factor: factor, Session: issued.State,
+			Action: CodeActionComplete, Factor: factor, Session: issued.State, Expiry: expiryAt(s.now()),
 			BackupCodeID: backupID, AttemptID: attemptID,
 		}, nil
 	})

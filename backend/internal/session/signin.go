@@ -34,6 +34,7 @@ type SignInState struct {
 type SignInChange struct {
 	Step      SignInStep
 	Session   State
+	Expiry    Expiry
 	Challenge Challenge
 	Cutoff    time.Time
 }
@@ -90,7 +91,8 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, devic
 
 		issued := newSession(credentials.User.ID, device, s.now)
 		result = SignedIn{Step: SignInStepComplete, Secret: issued.Secret, ExpiresAt: issued.State.ExpiresAt}
-		return SignInChange{Step: result.Step, Session: issued.State, Cutoff: s.now().UTC()}, nil
+		now := s.now()
+		return SignInChange{Step: result.Step, Session: issued.State, Expiry: expiryAt(now), Cutoff: now.UTC()}, nil
 	})
 	if errors.Is(err, ErrNotFound) {
 		return SignedIn{}, account.ErrInvalidCredentials

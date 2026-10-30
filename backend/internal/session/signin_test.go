@@ -25,6 +25,7 @@ func (f signInAccounts) Authenticate(ctx context.Context, email, password string
 type signInStorage struct {
 	Storage
 	states       []State
+	expiries     []Expiry
 	challenges   []Challenge
 	factor       *totp.Factor
 	passwordHash string
@@ -41,6 +42,7 @@ func (f *signInStorage) StartSignIn(_ context.Context, _ int64, update func(Sign
 	}
 	if next.Step == SignInStepComplete {
 		f.states = append(f.states, next.Session)
+		f.expiries = append(f.expiries, next.Expiry)
 	} else {
 		f.challenges = append(f.challenges, next.Challenge)
 	}
@@ -96,6 +98,8 @@ func TestStartSignIn(t *testing.T) {
 	assert.Equal(t, first.ExpiresAt, store.states[0].ExpiresAt)
 	assert.Equal(t, int64(42), store.states[0].UserID)
 	assert.Equal(t, clock.Now(), store.states[0].CreatedAt, "lifetime starts after credential verification")
+	assert.Equal(t, []Expiry{{ExpiresBy: clock.Now(), LastUsedBy: clock.Now().Add(-idleTimeout)}}, store.expiries,
+		"the new session clears the user's expired ones")
 	hash, err := hashSecret(first.Secret)
 	require.NoError(t, err)
 	assert.Equal(t, hash, store.states[0].TokenHash)

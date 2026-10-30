@@ -238,12 +238,17 @@ func newUserSessions(t *testing.T) userSessions {
 	f.expired.LastUsedAt = now.Add(-8 * 24 * time.Hour)
 	f.foreign.TokenHash, f.foreign.UserID = sha256.Sum256([]byte("foreign")), otherUser
 	for _, row := range []*session.State{&f.current, &f.other, &f.expired, &f.foreign} {
-		require.NoError(t, db.InsertSession(t.Context(), *row))
-		var id uuid.UUID
-		require.NoError(t, db.pool.QueryRow(t.Context(), "SELECT id FROM sessions WHERE token_hash = $1", row.TokenHash[:]).Scan(&id))
-		row.ID = id
+		*row = f.insert(t, *row)
 	}
 	return f
+}
+
+// insert stores state and returns it with the ID storage assigned.
+func (f userSessions) insert(t *testing.T, state session.State) session.State {
+	t.Helper()
+	require.NoError(t, f.db.InsertSession(t.Context(), state))
+	require.NoError(t, f.db.pool.QueryRow(t.Context(), "SELECT id FROM sessions WHERE token_hash = $1", state.TokenHash[:]).Scan(&state.ID))
+	return state
 }
 
 // ids lists the user's stored session IDs.

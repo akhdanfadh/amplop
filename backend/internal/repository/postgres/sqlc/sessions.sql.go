@@ -22,6 +22,23 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	return err
 }
 
+const deleteUserExpiredSessions = `-- name: DeleteUserExpiredSessions :exec
+DELETE FROM sessions
+WHERE user_id = $1 AND (expires_at <= $2 OR last_used_at <= $3)
+`
+
+type DeleteUserExpiredSessionsParams struct {
+	UserID     int64
+	ExpiresBy  time.Time
+	LastUsedBy time.Time
+}
+
+// Go supplies both limits, so the expiry rule stays in one place.
+func (q *Queries) DeleteUserExpiredSessions(ctx context.Context, arg DeleteUserExpiredSessionsParams) error {
+	_, err := q.db.Exec(ctx, deleteUserExpiredSessions, arg.UserID, arg.ExpiresBy, arg.LastUsedBy)
+	return err
+}
+
 const deleteUserOtherSessions = `-- name: DeleteUserOtherSessions :many
 DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2
 RETURNING token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id

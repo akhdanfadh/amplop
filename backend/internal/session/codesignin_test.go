@@ -61,6 +61,9 @@ func TestCodeSignInTOTP(t *testing.T) {
 	assert.Equal(t, CodeActionComplete, store.change.Action)
 	assert.Equal(t, issued.State, store.change.Session)
 	assert.Equal(t, device, store.change.Session.Device)
+	now := issued.State.CreatedAt
+	assert.Equal(t, Expiry{ExpiresBy: now, LastUsedBy: now.Add(-idleTimeout)}, store.change.Expiry,
+		"the new session clears the user's expired ones")
 	require.NotNil(t, store.change.Factor)
 	assert.Equal(t, int64(1), store.change.Factor.LastStep)
 	assert.Equal(t, int64(-1), store.state.Factor.LastStep, "do not mutate the loaded factor before commit")

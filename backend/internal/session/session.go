@@ -80,10 +80,27 @@ func hashSecret(secret string) ([sha256.Size]byte, error) {
 	return sha256.Sum256(raw), nil
 }
 
+// Expiry is the expiry rule at one moment, as two limits storage can
+// compare in SQL: a session is expired when ExpiresAt is at or before
+// ExpiresBy, or LastUsedAt is at or before LastUsedBy.
+type Expiry struct {
+	ExpiresBy  time.Time
+	LastUsedBy time.Time
+}
+
+func expiryAt(now time.Time) Expiry {
+	now = now.UTC()
+	return Expiry{ExpiresBy: now, LastUsedBy: now.Add(-idleTimeout)}
+}
+
+func (e Expiry) expired(state State) bool {
+	return !state.ExpiresAt.After(e.ExpiresBy) || !state.LastUsedAt.After(e.LastUsedBy)
+}
+
 // checkSession rejects expired state before any last-use update.
 func checkSession(state State, now func() time.Time) (State, error) {
 	checkedAt := now()
-	if !checkedAt.Before(state.ExpiresAt) || !checkedAt.Before(state.LastUsedAt.Add(idleTimeout)) {
+	if expiryAt(checkedAt).expired(state) {
 		return State{}, errExpired
 	}
 

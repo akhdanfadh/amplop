@@ -32,6 +32,11 @@ ORDER BY created_at DESC, id DESC;
 -- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = @user_id;
 
+-- name: DeleteUserExpiredSessions :exec
+-- Go supplies both limits, so the expiry rule stays in one place.
+DELETE FROM sessions
+WHERE user_id = @user_id AND (expires_at <= @expires_by OR last_used_at <= @last_used_by);
+
 -- name: LockSessionUser :one
 -- The owner lock comes first, as in enrollment confirmation, so deleting
 -- several of the user's sessions cannot deadlock with it.

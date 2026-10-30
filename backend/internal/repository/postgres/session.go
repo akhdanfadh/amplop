@@ -178,6 +178,19 @@ func (db *DB) DeleteUserOtherSessions(ctx context.Context, userID int64, keep [s
 	return deleted, nil
 }
 
+// deleteUserExpiredSessions runs in a sign-in transaction that holds the user's lock.
+// Its error fails the sign-in: after a failed statement PostgreSQL aborts the
+// transaction, so the session insert could not succeed anyway.
+func deleteUserExpiredSessions(ctx context.Context, queries *sqlc.Queries, userID int64, expiry session.Expiry) error {
+	err := queries.DeleteUserExpiredSessions(ctx, sqlc.DeleteUserExpiredSessionsParams{
+		UserID: userID, ExpiresBy: expiry.ExpiresBy, LastUsedBy: expiry.LastUsedBy,
+	})
+	if err != nil {
+		return fmt.Errorf("delete expired sessions: %w", err)
+	}
+	return nil
+}
+
 func sessionStates(rows []sqlc.Session) ([]session.State, error) {
 	states := make([]session.State, 0, len(rows))
 	for _, row := range rows {

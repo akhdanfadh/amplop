@@ -36,6 +36,9 @@ func (db *DB) StartSignIn(ctx context.Context, userID int64, update func(session
 		}
 		switch next.Step {
 		case session.SignInStepComplete:
+			if err := deleteUserExpiredSessions(ctx, queries, userID, next.Expiry); err != nil {
+				return err
+			}
 			err = queries.InsertSession(ctx, insertSessionParams(next.Session))
 		case session.SignInStepTOTP:
 			err = queries.InsertSignInChallenge(ctx, sqlc.InsertSignInChallengeParams{
