@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -449,4 +450,12 @@ func TestSetupOpenAPI(t *testing.T) {
 	statusSchema := status.Properties["status"]
 	require.NotNil(t, statusSchema)
 	assert.ElementsMatch(t, []any{"unconfigured", "open", "done"}, statusSchema.Enum)
+}
+
+// Keep the HTTP contract's literal tags tied to the password rule used by recovery.
+func TestSetupPasswordRule(t *testing.T) {
+	field, ok := reflect.TypeFor[newSetup]().FieldByName("Password")
+	require.True(t, ok)
+	assert.Equal(t, strconv.Itoa(account.PasswordMinLength), field.Tag.Get("minLength"))
+	assert.Equal(t, strconv.Itoa(account.PasswordMaxLength), field.Tag.Get("maxLength"))
 }

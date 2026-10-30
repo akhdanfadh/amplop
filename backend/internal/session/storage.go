@@ -5,8 +5,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"time"
-
-	"inbok/internal/totp"
 )
 
 // ErrNotFound means the session row does not exist.
@@ -35,9 +33,9 @@ type Storage interface {
 	// rechecking the session so enrollment revocation cannot grant old proof access.
 	ReadSessionIdentity(ctx context.Context, hash [sha256.Size]byte) (IdentityState, error)
 
-	// StartSignIn locks the owner, reads the latest factor, then saves the chosen
-	// session or challenge and prunes that owner's expired challenges atomically.
-	StartSignIn(ctx context.Context, userID int64, update func(*totp.Factor) (SignInChange, error)) error
+	// StartSignIn locks the owner and reads the current password hash and factor.
+	// It saves the chosen session or challenge and prunes expired challenges atomically.
+	StartSignIn(ctx context.Context, userID int64, update func(SignInState) (SignInChange, error)) error
 
 	// UpdateSession applies a Go decision to a session in one transaction.
 	// It locks and loads the row, calls update, then saves its decision.

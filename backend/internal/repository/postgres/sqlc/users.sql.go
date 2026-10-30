@@ -44,6 +44,18 @@ func (q *Queries) InsertAdminUser(ctx context.Context, arg InsertAdminUserParams
 	return i, err
 }
 
+const lockSignInUser = `-- name: LockSignInUser :one
+SELECT password_hash FROM users WHERE id = $1 FOR UPDATE
+`
+
+// Compare password proof with the current hash while recovery shares this lock.
+func (q *Queries) LockSignInUser(ctx context.Context, userID int64) (string, error) {
+	row := q.db.QueryRow(ctx, lockSignInUser, userID)
+	var password_hash string
+	err := row.Scan(&password_hash)
+	return password_hash, err
+}
+
 const lockUsers = `-- name: LockUsers :exec
 LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE
 `

@@ -15,23 +15,24 @@ import (
 )
 
 type signInAccounts struct {
-	authenticate func(context.Context, string, string) (account.User, error)
+	authenticate func(context.Context, string, string) (account.Credentials, error)
 }
 
-func (f signInAccounts) Authenticate(ctx context.Context, email, password string) (account.User, error) {
+func (f signInAccounts) Authenticate(ctx context.Context, email, password string) (account.Credentials, error) {
 	return f.authenticate(ctx, email, password)
 }
 
 type signInStorage struct {
 	Storage
-	states     []State
-	challenges []Challenge
-	factor     *totp.Factor
-	err        error
+	states       []State
+	challenges   []Challenge
+	factor       *totp.Factor
+	passwordHash string
+	err          error
 }
 
-func (f *signInStorage) StartSignIn(_ context.Context, _ int64, update func(*totp.Factor) (SignInChange, error)) error {
-	next, err := update(f.factor)
+func (f *signInStorage) StartSignIn(_ context.Context, _ int64, update func(SignInState) (SignInChange, error)) error {
+	next, err := update(SignInState{PasswordHash: f.passwordHash, Factor: f.factor})
 	if err != nil {
 		return err
 	}
@@ -76,12 +77,12 @@ func TestStartSignIn(t *testing.T) {
 		_, err := throttle.Begin(t.Context(), "admin@example.com", addr)
 		require.NoError(t, err)
 	}
-	accounts := signInAccounts{authenticate: func(_ context.Context, email, password string) (account.User, error) {
+	accounts := signInAccounts{authenticate: func(_ context.Context, email, password string) (account.Credentials, error) {
 		assert.Len(t, attempts.rows, 5, "reserve before checking credentials")
 		assert.Equal(t, "ADMIN@Example.COM", email)
 		assert.Equal(t, " password with spaces ", password)
 		clock.Advance(time.Second)
-		return account.User{ID: 42, Email: "Admin@example.com"}, nil
+		return account.Credentials{User: account.User{ID: 42, Email: "Admin@example.com"}}, nil
 	}}
 	service := NewService(store, accounts, throttle, clock.Now)
 
@@ -112,9 +113,9 @@ func TestStartSignInThrottled(t *testing.T) {
 		_, err := throttle.Begin(t.Context(), "admin@example.com", addr)
 		require.NoError(t, err)
 	}
-	accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.User, error) {
+	accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
 		t.Error("throttled attempt reached password verification")
-		return account.User{ID: 42}, nil
+		return account.Credentials{User: account.User{ID: 42}}, nil
 	}}
 	store := &signInStorage{}
 
@@ -151,9 +152,9 @@ func TestStartSignInErrors(t *testing.T) {
 				reserveErr:     c.reserveErr, deleteErr: c.deleteErr,
 			}
 			checks := 0
-			accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.User, error) {
+			accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
 				checks++
-				return account.User{ID: 42}, c.authErr
+				return account.Credentials{User: account.User{ID: 42}}, c.authErr
 			}}
 			store := &signInStorage{err: c.insertErr}
 			service := NewService(store, accounts, NewThrottle(attempts, time.Now), time.Now)
@@ -182,7 +183,9 @@ func TestPasswordRequiresTOTP(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			store := &signInStorage{factor: c.factor}
-			accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.User, error) { return account.User{ID: 42}, nil }}
+			accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
+				return account.Credentials{User: account.User{ID: 42}}, nil
+			}}
 			throttle := NewThrottle(&memoryAttempts{rows: map[int64]Attempt{}}, clock.Now)
 			service := NewService(store, accounts, throttle, clock.Now)
 
@@ -201,6 +204,32 @@ func TestPasswordRequiresTOTP(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, hash, store.challenges[0].TokenHash)
 			assert.Equal(t, clock.Now().Add(5*time.Minute), result.ExpiresAt)
+		})
+	}
+}
+
+func TestStartSignInStalePassword(t *testing.T) {
+	now := time.Now()
+	for _, c := range []struct {
+		name   string
+		factor *totp.Factor
+	}{
+		{"session", nil},
+		{"challenge", &totp.Factor{ConfirmedAt: &now}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			store := &signInStorage{passwordHash: "replacement hash", factor: c.factor}
+			accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
+				return account.Credentials{User: account.User{ID: 42}, PasswordHash: "verified earlier hash"}, nil
+			}}
+			throttle := NewThrottle(&memoryAttempts{rows: map[int64]Attempt{}}, time.Now)
+
+			issued, err := NewService(store, accounts, throttle, time.Now).StartSignIn(t.Context(), "admin@example.com", "password", netip.MustParseAddr("192.0.2.1"))
+
+			require.ErrorIs(t, err, account.ErrInvalidCredentials)
+			assert.Zero(t, issued)
+			assert.Empty(t, store.states)
+			assert.Empty(t, store.challenges)
 		})
 	}
 }

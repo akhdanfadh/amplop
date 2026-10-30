@@ -37,7 +37,7 @@ func TestAccountAuthentication(t *testing.T) {
 	got, err := service.Authenticate(t.Context(), " \tADMIN@example.com\n", password)
 
 	require.NoError(t, err)
-	assert.Equal(t, user, got)
+	assert.Equal(t, user, got.User)
 	got, err = service.Authenticate(t.Context(), user.Email, "wrong password")
 	require.ErrorIs(t, err, account.ErrInvalidCredentials)
 	assert.Zero(t, got)

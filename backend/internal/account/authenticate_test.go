@@ -33,7 +33,7 @@ func TestAuthenticate(t *testing.T) {
 	got, err := service.Authenticate(t.Context(), " \tADMIN@Example.COM\n", password)
 
 	require.NoError(t, err)
-	assert.Equal(t, user, got)
+	assert.Equal(t, storage.credentials, got)
 	assert.Equal(t, "ADMIN@example.com", storage.email)
 
 	got, err = service.Authenticate(t.Context(), user.Email, "a long sign-in password")

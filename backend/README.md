@@ -1,6 +1,7 @@
 # inbok backend
 
-The Go server: the `inbok` command (`serve`, `migrate`, `export`), its
+The Go server: the `inbok` command (`serve`, `migrate`, `export`,
+`recover-admin`), its
 HTTP API, and its database code. Running `make` in the repository root
 lists a shortcut for most commands here.
 
@@ -240,7 +241,7 @@ survive losing the database host. A database restore needs every key its
 rows use. If a key is lost, authenticator codes for its users fail with
 HTTP 500. Their unused backup codes still sign in, and members can use one to
 turn TOTP off and enroll again. Administrators cannot remove the factor
-themselves; they need host-operator recovery, which is not implemented yet.
+themselves; use host-operator recovery below.
 
 ## Reverse proxies
 
@@ -357,7 +358,8 @@ cookie, returning HTTP 204. A missing or expired session returns HTTP 401
 and also clears the cookie; the web app treats that as signed out. Signing
 out clears account data and submitted credentials from the web app's Query
 cache while retaining the public setup status. Session listing, revoking
-other sessions, deactivation, and recovery are not implemented yet.
+other sessions, deactivation, and member recovery are not implemented yet.
+Host-operator administrator recovery is described below.
 
 The cookie is `__Host-inbok-session`, with `Secure`, `HttpOnly`,
 `SameSite=Lax`, `Path=/`, and no `Domain`. `Max-Age` is the remaining maximum
@@ -404,6 +406,63 @@ fresh authenticator code or an unused backup code in `code`. Success returns
 HTTP 200 with `data.status: "off"` and `data.backupCodesLeft: 0`. The factor
 and every backup code are removed together; existing sessions stay signed
 in. Administrators receive HTTP 403 and must keep TOTP enabled.
+
+## Administrator recovery
+
+Only a trusted host operator should run this command for an administrator
+who lost their password, authenticator, and backup codes. Before recovering
+another administrator, verify their identity through your deployment's
+operator process. The command trusts database write access; it does not ask
+for an inbok session, old password, TOTP code, or setup token, and it does not
+check which machine runs it. Members cannot be recovered this way.
+
+Apply migrations first. The server may keep running. From the repository root:
+
+```sh
+set -a; . ./.env; set +a
+go -C backend run ./cmd/inbok recover-admin admin@example.com
+```
+
+Only `INBOK_DATABASE_URL` is required. Terminal input prompts twice for a
+password of 15 to 128 Unicode code points without echo, then asks
+`Continue? [y/N]`. Only `y` or `yes` proceeds. With piped input, the command
+reads the first line and skips confirmation. Password spaces are preserved.
+Use a password manager or another trusted program to supply that line; never
+put the password in arguments, environment variables, or shell history.
+
+For a deployment container, replace the container name and binary path with
+yours. The container must have `INBOK_DATABASE_URL` configured:
+
+```sh
+docker exec -it inbok /app/inbok recover-admin admin@example.com
+```
+
+For piped input, use `docker exec -i` without `-t` so it uses the one-line
+input mode. This repository's Compose file starts only PostgreSQL; it does
+not provide an application container.
+
+Recovery checks that the account is an administrator, then replaces the
+password, removes TOTP and every backup code, ends all sessions and sign-in
+challenges, clears that account's code and sign-in attempt rows, and records
+an `admin-recovered` event in `audit_events`. These writes commit together.
+Counts are printed without secrets. Notification email is deferred until
+system email exists.
+
+The administrator signs in with the new password and has member access until
+they enroll TOTP on the Security page. Confirmation restores administrator
+access. Enrollment happens in the web app. A sign-in that verified the old
+password before recovery cannot create a session afterward, even if recovery
+sets the same password again.
+
+If the command reports unconfirmed success after interruption or a database
+error, inspect the audit table before retrying. It contains no credentials:
+
+```sql
+SELECT id, occurred_at, action, user_id
+FROM audit_events
+WHERE action = 'admin-recovered'
+ORDER BY id DESC;
+```
 
 ## Logs and request IDs
 
