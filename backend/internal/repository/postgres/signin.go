@@ -36,10 +36,7 @@ func (db *DB) StartSignIn(ctx context.Context, userID int64, update func(session
 		}
 		switch next.Step {
 		case session.SignInStepComplete:
-			err = queries.InsertSession(ctx, sqlc.InsertSessionParams{
-				UserID: userID, TokenHash: next.Session.TokenHash[:], CreatedAt: next.Session.CreatedAt,
-				LastUsedAt: next.Session.LastUsedAt, ExpiresAt: next.Session.ExpiresAt,
-			})
+			err = queries.InsertSession(ctx, insertSessionParams(next.Session))
 		case session.SignInStepTOTP:
 			err = queries.InsertSignInChallenge(ctx, sqlc.InsertSignInChallengeParams{
 				UserID: userID, TokenHash: next.Challenge.TokenHash[:], ExpiresAt: next.Challenge.ExpiresAt,

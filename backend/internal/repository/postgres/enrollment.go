@@ -38,13 +38,11 @@ func (db *DB) ConfirmTOTP(ctx context.Context, userID int64, hash [sha256.Size]b
 			return err
 		}
 
-		next, err := update(session.EnrollmentState{
-			Session: session.State{
-				TokenHash: hash, UserID: row.UserID, CreatedAt: row.CreatedAt.UTC(),
-				LastUsedAt: row.LastUsedAt.UTC(), ExpiresAt: row.ExpiresAt.UTC(),
-			},
-			Factor: factor,
-		})
+		state, err := sessionState(row)
+		if err != nil {
+			return err
+		}
+		next, err := update(session.EnrollmentState{Session: state, Factor: factor})
 		if err != nil {
 			return err
 		}
@@ -72,10 +70,7 @@ func (db *DB) ConfirmTOTP(ctx context.Context, userID int64, hash [sha256.Size]b
 		if err := queries.DeleteUserSessions(ctx, userID); err != nil {
 			return fmt.Errorf("end confirmation sessions: %w", err)
 		}
-		err = queries.InsertSession(ctx, sqlc.InsertSessionParams{
-			TokenHash: next.Session.TokenHash[:], UserID: userID,
-			CreatedAt: next.Session.CreatedAt, LastUsedAt: next.Session.LastUsedAt, ExpiresAt: next.Session.ExpiresAt,
-		})
+		err = queries.InsertSession(ctx, insertSessionParams(next.Session))
 		if err != nil {
 			return fmt.Errorf("save confirmation session: %w", err)
 		}

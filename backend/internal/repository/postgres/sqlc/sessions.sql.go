@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"net/netip"
 	"time"
 )
 
@@ -29,16 +30,18 @@ func (q *Queries) DeleteUserSessions(ctx context.Context, userID int64) error {
 }
 
 const insertSession = `-- name: InsertSession :exec
-INSERT INTO sessions (token_hash, user_id, created_at, last_used_at, expires_at)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO sessions (token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type InsertSessionParams struct {
-	TokenHash  []byte
-	UserID     int64
-	CreatedAt  time.Time
-	LastUsedAt time.Time
-	ExpiresAt  time.Time
+	TokenHash    []byte
+	UserID       int64
+	CreatedAt    time.Time
+	LastUsedAt   time.Time
+	ExpiresAt    time.Time
+	UserAgent    *string
+	SignedInFrom *netip.Addr
 }
 
 func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) error {
@@ -48,37 +51,35 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.CreatedAt,
 		arg.LastUsedAt,
 		arg.ExpiresAt,
+		arg.UserAgent,
+		arg.SignedInFrom,
 	)
 	return err
 }
 
 const lockSession = `-- name: LockSession :one
-SELECT user_id, created_at, last_used_at, expires_at
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from
 FROM sessions WHERE token_hash = $1 FOR UPDATE
 `
 
-type LockSessionRow struct {
-	UserID     int64
-	CreatedAt  time.Time
-	LastUsedAt time.Time
-	ExpiresAt  time.Time
-}
-
 // Decisions in Go use the latest state after any previous update commits.
-func (q *Queries) LockSession(ctx context.Context, tokenHash []byte) (LockSessionRow, error) {
+func (q *Queries) LockSession(ctx context.Context, tokenHash []byte) (Session, error) {
 	row := q.db.QueryRow(ctx, lockSession, tokenHash)
-	var i LockSessionRow
+	var i Session
 	err := row.Scan(
+		&i.TokenHash,
 		&i.UserID,
 		&i.CreatedAt,
 		&i.LastUsedAt,
 		&i.ExpiresAt,
+		&i.UserAgent,
+		&i.SignedInFrom,
 	)
 	return i, err
 }
 
 const lockUserSession = `-- name: LockUserSession :one
-SELECT user_id, created_at, last_used_at, expires_at
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from
 FROM sessions WHERE user_id = $1 AND token_hash = $2 FOR UPDATE
 `
 
@@ -87,21 +88,17 @@ type LockUserSessionParams struct {
 	TokenHash []byte
 }
 
-type LockUserSessionRow struct {
-	UserID     int64
-	CreatedAt  time.Time
-	LastUsedAt time.Time
-	ExpiresAt  time.Time
-}
-
-func (q *Queries) LockUserSession(ctx context.Context, arg LockUserSessionParams) (LockUserSessionRow, error) {
+func (q *Queries) LockUserSession(ctx context.Context, arg LockUserSessionParams) (Session, error) {
 	row := q.db.QueryRow(ctx, lockUserSession, arg.UserID, arg.TokenHash)
-	var i LockUserSessionRow
+	var i Session
 	err := row.Scan(
+		&i.TokenHash,
 		&i.UserID,
 		&i.CreatedAt,
 		&i.LastUsedAt,
 		&i.ExpiresAt,
+		&i.UserAgent,
+		&i.SignedInFrom,
 	)
 	return i, err
 }

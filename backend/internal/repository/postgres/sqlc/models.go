@@ -5,6 +5,7 @@
 package sqlc
 
 import (
+	"net/netip"
 	"time"
 )
 
@@ -30,11 +31,13 @@ type ProbeEvent struct {
 }
 
 type Session struct {
-	TokenHash  []byte
-	UserID     int64
-	CreatedAt  time.Time
-	LastUsedAt time.Time
-	ExpiresAt  time.Time
+	TokenHash    []byte
+	UserID       int64
+	CreatedAt    time.Time
+	LastUsedAt   time.Time
+	ExpiresAt    time.Time
+	UserAgent    *string
+	SignedInFrom *netip.Addr
 }
 
 type SignInAttempt struct {

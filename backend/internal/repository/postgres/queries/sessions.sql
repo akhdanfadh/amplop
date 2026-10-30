@@ -1,10 +1,10 @@
 -- name: InsertSession :exec
-INSERT INTO sessions (token_hash, user_id, created_at, last_used_at, expires_at)
-VALUES (@token_hash, @user_id, @created_at, @last_used_at, @expires_at);
+INSERT INTO sessions (token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from)
+VALUES (@token_hash, @user_id, @created_at, @last_used_at, @expires_at, @user_agent, @signed_in_from);
 
 -- name: LockSession :one
 -- Decisions in Go use the latest state after any previous update commits.
-SELECT user_id, created_at, last_used_at, expires_at
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from
 FROM sessions WHERE token_hash = @token_hash FOR UPDATE;
 
 -- name: TouchSession :exec
@@ -14,7 +14,7 @@ UPDATE sessions SET last_used_at = @last_used_at WHERE token_hash = @token_hash;
 DELETE FROM sessions WHERE token_hash = @token_hash;
 
 -- name: LockUserSession :one
-SELECT user_id, created_at, last_used_at, expires_at
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from
 FROM sessions WHERE user_id = @user_id AND token_hash = @token_hash FOR UPDATE;
 
 -- name: DeleteUserSessions :exec

@@ -28,6 +28,7 @@ type State struct {
 	CreatedAt  time.Time
 	LastUsedAt time.Time
 	ExpiresAt  time.Time
+	Device     Device
 }
 
 // Issued is a new session's cookie secret and the state to save in storage.
