@@ -119,3 +119,21 @@ func TestRecoveryPasswordBounds(t *testing.T) {
 		})
 	}
 }
+
+func TestRecoveryAdministrator(t *testing.T) {
+	storage := &recoveryStorage{user: User{ID: 1, Email: "ADMIN@example.com", Role: RoleAdmin}}
+	service := NewRecovery(storage)
+
+	user, err := service.Administrator(t.Context(), " \tADMIN@Example.COM\n")
+
+	require.NoError(t, err)
+	assert.Equal(t, storage.user, user)
+	assert.Equal(t, "ADMIN@example.com", storage.email)
+	assert.Empty(t, storage.hash)
+	storage.user.Role = RoleMember
+	_, err = service.Administrator(t.Context(), "admin@example.com")
+	require.ErrorIs(t, err, ErrRecoveryForbidden)
+	storage.readErr = ErrUserNotFound
+	_, err = service.Administrator(t.Context(), "admin@example.com")
+	require.ErrorIs(t, err, ErrUserNotFound)
+}
