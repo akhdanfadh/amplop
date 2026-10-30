@@ -28,6 +28,7 @@ type memorySessions struct {
 	rows    []State
 	err     error
 	userID  int64
+	keep    [sha256.Size]byte
 	deleted []State
 }
 
@@ -62,6 +63,30 @@ func (f *memorySessions) UpdateUserSession(_ context.Context, userID int64, id u
 		return nil
 	}
 	return ErrNotFound
+}
+
+func (f *memorySessions) DeleteUserOtherSessions(_ context.Context, userID int64, keep [sha256.Size]byte, check func(State) error) ([]State, error) {
+	f.userID, f.keep = userID, keep
+	if f.err != nil {
+		return nil, f.err
+	}
+	i := slices.IndexFunc(f.rows, func(row State) bool { return row.UserID == userID && row.TokenHash == keep })
+	if i < 0 {
+		return nil, ErrNotFound
+	}
+	if err := check(f.rows[i]); err != nil {
+		return nil, err
+	}
+	var kept, deleted []State
+	for _, row := range f.rows {
+		if row.UserID == userID && row.TokenHash != keep {
+			deleted = append(deleted, row)
+		} else {
+			kept = append(kept, row)
+		}
+	}
+	f.rows, f.deleted = kept, deleted
+	return deleted, nil
 }
 
 // sessionsFixture holds the current session, a live and an expired other

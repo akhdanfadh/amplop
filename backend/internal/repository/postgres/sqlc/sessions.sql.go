@@ -22,6 +22,46 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	return err
 }
 
+const deleteUserOtherSessions = `-- name: DeleteUserOtherSessions :many
+DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2
+RETURNING token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
+`
+
+type DeleteUserOtherSessionsParams struct {
+	UserID int64
+	Keep   []byte
+}
+
+// Returns the deleted rows so Go can count the ones that were still live.
+func (q *Queries) DeleteUserOtherSessions(ctx context.Context, arg DeleteUserOtherSessionsParams) ([]Session, error) {
+	rows, err := q.db.Query(ctx, deleteUserOtherSessions, arg.UserID, arg.Keep)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Session
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.TokenHash,
+			&i.UserID,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+			&i.ExpiresAt,
+			&i.UserAgent,
+			&i.SignedInFrom,
+			&i.ID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteUserSessions = `-- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = $1
 `
@@ -79,6 +119,19 @@ func (q *Queries) LockSession(ctx context.Context, tokenHash []byte) (Session, e
 		&i.ID,
 	)
 	return i, err
+}
+
+const lockSessionUser = `-- name: LockSessionUser :one
+SELECT id FROM users WHERE id = $1 FOR UPDATE
+`
+
+// The owner lock comes first, as in enrollment confirmation, so deleting
+// several of the user's sessions cannot deadlock with it.
+func (q *Queries) LockSessionUser(ctx context.Context, userID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, lockSessionUser, userID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const lockUserSession = `-- name: LockUserSession :one

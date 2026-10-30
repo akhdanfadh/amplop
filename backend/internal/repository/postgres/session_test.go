@@ -340,6 +340,100 @@ func TestEndPersistence(t *testing.T) {
 	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
 }
 
+func TestDeleteUserOtherSessions(t *testing.T) {
+	f := newUserSessions(t)
+
+	deleted, err := f.db.DeleteUserOtherSessions(t.Context(), f.current.UserID, f.current.TokenHash, func(kept session.State) error {
+		assert.Equal(t, f.current, kept)
+		return nil
+	})
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []session.State{f.other, f.expired}, deleted)
+	assert.Equal(t, []uuid.UUID{f.current.ID}, f.ids(t, f.current.UserID))
+	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
+}
+
+func TestDeleteUserOtherSessionsRejected(t *testing.T) {
+	f := newUserSessions(t)
+	rejected := errors.New("kept session rejected")
+	all := []uuid.UUID{f.current.ID, f.other.ID, f.expired.ID}
+
+	deleted, err := f.db.DeleteUserOtherSessions(t.Context(), f.current.UserID, f.current.TokenHash, func(session.State) error {
+		return rejected
+	})
+
+	require.ErrorIs(t, err, rejected)
+	assert.Nil(t, deleted)
+	assert.ElementsMatch(t, all, f.ids(t, f.current.UserID))
+
+	// A kept session that is missing or another user's deletes nothing.
+	for _, c := range []struct {
+		userID int64
+		keep   [sha256.Size]byte
+	}{
+		{f.current.UserID, sha256.Sum256([]byte("missing"))},
+		{f.current.UserID, f.foreign.TokenHash},
+		{f.foreign.UserID + 1000, f.current.TokenHash},
+	} {
+		deleted, err := f.db.DeleteUserOtherSessions(t.Context(), c.userID, c.keep, func(session.State) error {
+			t.Error("a missing kept session reached check")
+			return nil
+		})
+		require.ErrorIs(t, err, session.ErrNotFound)
+		assert.Nil(t, deleted)
+	}
+	assert.ElementsMatch(t, all, f.ids(t, f.current.UserID))
+	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
+}
+
+// TestDeleteUserOtherSessionsLockOrder holds the locks enrollment
+// confirmation takes before it replaces every session: the owner, then the
+// newest session. Deleting the other sessions must wait for the owner
+// instead of locking some rows first and deadlocking.
+func TestDeleteUserOtherSessionsLockOrder(t *testing.T) {
+	f := newUserSessions(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	tx, err := f.db.pool.Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(t.Context())
+	_, err = tx.Exec(ctx, "SELECT id FROM users WHERE id = $1 FOR UPDATE", f.current.UserID)
+	require.NoError(t, err)
+	_, err = tx.Exec(ctx, "SELECT 1 FROM sessions WHERE token_hash = $1 FOR UPDATE", f.other.TokenHash[:])
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := f.db.DeleteUserOtherSessions(ctx, f.current.UserID, f.current.TokenHash, func(session.State) error { return nil })
+		done <- err
+	}()
+	require.Eventually(t, func() bool {
+		var blocked bool
+		err := f.db.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%LockSessionUser%')").Scan(&blocked)
+		return err == nil && blocked
+	}, 3*time.Second, 10*time.Millisecond)
+	_, err = tx.Exec(ctx, "DELETE FROM sessions WHERE user_id = $1", f.current.UserID)
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit(ctx))
+
+	require.ErrorIs(t, <-done, session.ErrNotFound, "the kept session was replaced meanwhile")
+}
+
+func TestEndOthersPersistence(t *testing.T) {
+	f := newUserSessions(t)
+	service := session.NewService(f.db, nil, nil, time.Now)
+	current, err := service.Current(t.Context(), currentCookie)
+	require.NoError(t, err)
+
+	ended, err := service.EndOthers(t.Context(), current)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, ended, "the expired row is deleted but not counted")
+	assert.Equal(t, []uuid.UUID{f.current.ID}, f.ids(t, f.current.UserID))
+	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
+}
+
 func TestSessionDevicesMigration(t *testing.T) {
 	// Renumber with the migration if another branch takes 00011 first.
 	const beforeDevices = 10

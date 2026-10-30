@@ -55,4 +55,10 @@ type Storage interface {
 	// UpdateUserSession is UpdateSession for the user's session with this
 	// public ID. Another user's session returns ErrNotFound, like a missing one.
 	UpdateUserSession(ctx context.Context, userID int64, id uuid.UUID, update func(State) (Change, error)) error
+
+	// DeleteUserOtherSessions locks the user, then the session keep, and calls
+	// check with keep's state. If check accepts it, one statement deletes the
+	// user's other sessions, and they are returned, expired ones included.
+	// A missing user or keep returns ErrNotFound. An error deletes nothing.
+	DeleteUserOtherSessions(ctx context.Context, userID int64, keep [sha256.Size]byte, check func(State) error) ([]State, error)
 }

@@ -37,3 +37,35 @@ func (s *Service) End(ctx context.Context, current Authenticated, id uuid.UUID) 
 	}
 	return nil
 }
+
+// EndOthers ends every session of the user except the current one.
+// It returns how many of them were still live; expired rows go uncounted.
+func (s *Service) EndOthers(ctx context.Context, current Authenticated) (int, error) {
+	userID := current.Identity.User.ID
+	if current.Session == (Reference{}) || userID <= 0 {
+		return 0, ErrUnauthenticated
+	}
+
+	deleted, err := s.storage.DeleteUserOtherSessions(ctx, userID, current.Session.hash, func(state State) error {
+		// Current's earlier check can become stale: a session that expired
+		// since then must not end the others.
+		if _, err := checkSession(state, s.now); err != nil {
+			return ErrUnauthenticated
+		}
+		return nil
+	})
+	// The current session was ended since Current checked it.
+	if errors.Is(err, ErrNotFound) {
+		return 0, ErrUnauthenticated
+	}
+	if err != nil {
+		return 0, err
+	}
+	ended := 0
+	for _, state := range deleted {
+		if _, err := checkSession(state, s.now); err == nil {
+			ended++
+		}
+	}
+	return ended, nil
+}

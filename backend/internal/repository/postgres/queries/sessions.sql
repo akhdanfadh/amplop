@@ -32,6 +32,16 @@ ORDER BY created_at DESC, id DESC;
 -- name: DeleteUserSessions :exec
 DELETE FROM sessions WHERE user_id = @user_id;
 
+-- name: LockSessionUser :one
+-- The owner lock comes first, as in enrollment confirmation, so deleting
+-- several of the user's sessions cannot deadlock with it.
+SELECT id FROM users WHERE id = @user_id FOR UPDATE;
+
+-- name: DeleteUserOtherSessions :many
+-- Returns the deleted rows so Go can count the ones that were still live.
+DELETE FROM sessions WHERE user_id = @user_id AND token_hash <> @keep
+RETURNING token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id;
+
 -- name: ReadSessionIdentity :one
 -- Recheck the session together with the account and factor used for access.
 SELECT users.id, users.email, users.role,

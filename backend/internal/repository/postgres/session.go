@@ -135,6 +135,50 @@ func (db *DB) ReadUserSessions(ctx context.Context, userID int64) ([]session.Sta
 	if err != nil {
 		return nil, fmt.Errorf("read user sessions: %w", err)
 	}
+	return sessionStates(rows)
+}
+
+// DeleteUserOtherSessions takes the owner lock before the kept session's,
+// as ConfirmTOTP does, then deletes the other sessions in one statement.
+func (db *DB) DeleteUserOtherSessions(ctx context.Context, userID int64, keep [sha256.Size]byte, check func(session.State) error) ([]session.State, error) {
+	var deleted []session.State
+	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+		if _, err := queries.LockSessionUser(ctx, userID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return session.ErrNotFound
+			}
+			return fmt.Errorf("lock session owner: %w", err)
+		}
+		row, err := queries.LockUserSession(ctx, sqlc.LockUserSessionParams{UserID: userID, TokenHash: keep[:]})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return session.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock kept session: %w", err)
+		}
+		state, err := sessionState(row)
+		if err != nil {
+			return err
+		}
+		if err := check(state); err != nil {
+			return err
+		}
+
+		rows, err := queries.DeleteUserOtherSessions(ctx, sqlc.DeleteUserOtherSessionsParams{UserID: userID, Keep: keep[:]})
+		if err != nil {
+			return fmt.Errorf("delete other sessions: %w", err)
+		}
+		deleted, err = sessionStates(rows)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return deleted, nil
+}
+
+func sessionStates(rows []sqlc.Session) ([]session.State, error) {
 	states := make([]session.State, 0, len(rows))
 	for _, row := range rows {
 		state, err := sessionState(row)
