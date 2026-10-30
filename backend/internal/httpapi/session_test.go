@@ -43,7 +43,7 @@ type fakeSessions struct {
 	err           error
 	email         string
 	password      string
-	addr          netip.Addr
+	device        session.Device
 	calls         int
 }
 
@@ -59,9 +59,9 @@ func (f *fakeSessions) Current(_ context.Context, secret string) (session.Authen
 	return session.Authenticated{Identity: f.identity, Session: f.reference}, f.currentErr
 }
 
-func (f *fakeSessions) StartSignIn(_ context.Context, email, password string, addr netip.Addr) (session.SignedIn, error) {
+func (f *fakeSessions) StartSignIn(_ context.Context, email, password string, device session.Device) (session.SignedIn, error) {
 	f.calls++
-	f.email, f.password, f.addr = email, password, addr
+	f.email, f.password, f.device = email, password, device
 	return f.issued, f.err
 }
 
@@ -91,6 +91,7 @@ func postSession(api *API, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/sessions", strings.NewReader(body))
 	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", jsonContentType)
+	request.Header.Set("User-Agent", "inbok-test/1.0")
 	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: "old-browser-secret"})
 	response := httptest.NewRecorder()
 	api.Handler().ServeHTTP(response, request)
@@ -113,7 +114,7 @@ func TestCreateSession(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"step":"complete"}}`, response.Body.String())
 	assert.Equal(t, "Admin@Example.COM", service.email)
 	assert.Equal(t, "a long sign-in password", service.password)
-	assert.Equal(t, netip.MustParseAddr("192.0.2.1"), service.addr)
+	assert.Equal(t, session.Device{UserAgent: "inbok-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
 	cookies := response.Result().Cookies()
 	require.Len(t, cookies, 2)
 	assert.Equal(t, challengeCookieName, cookies[1].Name)
@@ -215,7 +216,7 @@ func TestSignInClientAddress(t *testing.T) {
 			api.Handler().ServeHTTP(response, request)
 
 			require.Equal(t, http.StatusUnauthorized, response.Code)
-			assert.Equal(t, netip.MustParseAddr(c.want), service.addr)
+			assert.Equal(t, netip.MustParseAddr(c.want), service.device.Addr)
 		})
 	}
 }

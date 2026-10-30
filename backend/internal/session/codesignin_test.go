@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -52,12 +53,14 @@ func codeSignInFixture() (*CodeSignIn, *codeSignInStorage, *enrollmentAttempts, 
 func TestCodeSignInTOTP(t *testing.T) {
 	service, store, attempts, secret := codeSignInFixture()
 
-	issued, err := service.Complete(t.Context(), secret, "287082")
+	device := Device{UserAgent: "code request", Addr: netip.MustParseAddr("2001:db8::7")}
+	issued, err := service.Complete(t.Context(), secret, "287082", device)
 
 	require.NoError(t, err)
 	require.NotNil(t, store.change)
 	assert.Equal(t, CodeActionComplete, store.change.Action)
 	assert.Equal(t, issued.State, store.change.Session)
+	assert.Equal(t, device, store.change.Session.Device)
 	require.NotNil(t, store.change.Factor)
 	assert.Equal(t, int64(1), store.change.Factor.LastStep)
 	assert.Equal(t, int64(-1), store.state.Factor.LastStep, "do not mutate the loaded factor before commit")
@@ -73,7 +76,7 @@ func TestCodeSignInBackup(t *testing.T) {
 	service, store, _, secret := codeSignInFixture()
 	store.state.BackupCodes = []BackupCode{{ID: 9, Hash: passwordhash.Hash("ZZZZZZZZZZ")}, {ID: 10, Hash: passwordhash.Hash("ABCDEFGHJK")}}
 
-	issued, err := service.Complete(t.Context(), secret, "abcde-fghjk")
+	issued, err := service.Complete(t.Context(), secret, "abcde-fghjk", Device{})
 
 	require.NoError(t, err)
 	assert.NotEmpty(t, issued.Secret)
@@ -102,7 +105,7 @@ func TestCodeSignInRejected(t *testing.T) {
 			service, store, _, secret := codeSignInFixture()
 			c.edit(&store.state)
 
-			issued, err := service.Complete(t.Context(), secret, c.code)
+			issued, err := service.Complete(t.Context(), secret, c.code, Device{})
 
 			require.ErrorIs(t, err, c.want)
 			assert.Empty(t, issued)
@@ -132,7 +135,7 @@ func TestCodeSignInErrors(t *testing.T) {
 			service, store, attempts, secret := codeSignInFixture()
 			store.lookupErr, store.writeErr, attempts.err = c.lookup, c.write, c.throttle
 
-			issued, err := service.Complete(t.Context(), secret, "287082")
+			issued, err := service.Complete(t.Context(), secret, "287082", Device{})
 
 			require.ErrorIs(t, err, c.want)
 			assert.Empty(t, issued)
@@ -143,7 +146,7 @@ func TestCodeSignInErrors(t *testing.T) {
 		})
 	}
 	service, store, attempts, _ := codeSignInFixture()
-	_, err := service.Complete(t.Context(), "malformed cookie", "287082")
+	_, err := service.Complete(t.Context(), "malformed cookie", "287082", Device{})
 	require.ErrorIs(t, err, ErrInvalidChallenge)
 	assert.Zero(t, attempts.calls)
 	assert.Zero(t, store.calls)

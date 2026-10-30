@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/netip"
 	"strconv"
 	"time"
 
@@ -26,13 +25,13 @@ const (
 
 // sessionService is the session behavior called by these HTTP operations.
 type sessionService interface {
-	StartSignIn(ctx context.Context, email, password string, addr netip.Addr) (session.SignedIn, error)
+	StartSignIn(ctx context.Context, email, password string, device session.Device) (session.SignedIn, error)
 	Current(ctx context.Context, secret string) (session.Authenticated, error)
 	SignOut(ctx context.Context, ref session.Reference) error
 }
 
 type codeSignInService interface {
-	Complete(ctx context.Context, secret, code string) (session.Issued, error)
+	Complete(ctx context.Context, secret, code string, device session.Device) (session.Issued, error)
 }
 
 // sessionHandler holds the session operations' service dependencies.
@@ -93,16 +92,17 @@ type newSession struct {
 	Password string `json:"password" writeOnly:"true" maxLength:"128"`
 }
 
-// sessionInput combines credentials with the resolved client address.
+// sessionInput combines credentials with the requesting browser's details.
 type sessionInput struct {
-	Body newSession
-	addr netip.Addr
+	Body   newSession
+	device session.Device
 }
 
-// Resolve fills the client address for throttling using Gin's proxy rules.
+// Resolve reads the device details: the User-Agent and the client address
+// Gin's proxy rules select, used for throttling and kept by a new session.
 // Huma calls it automatically after parsing the request, before the handler.
 func (in *sessionInput) Resolve(ctx huma.Context) []error {
-	return resolveClientAddr(ctx, &in.addr)
+	return resolveDevice(ctx, &in.device)
 }
 
 // signInResult tells the browser which sign-in step to display next.
@@ -132,7 +132,7 @@ func registerSignIn(api huma.API, handler sessionHandler) {
 
 // handleCreateSession issues the cookie for the next sign-in step.
 func (h sessionHandler) handleCreateSession(ctx context.Context, in *sessionInput) (*sessionOutput, error) {
-	issued, err := h.service.StartSignIn(ctx, in.Body.Email, in.Body.Password, in.addr)
+	issued, err := h.service.StartSignIn(ctx, in.Body.Email, in.Body.Password, in.device)
 	if err != nil {
 		return nil, signInProblem(err)
 	}
@@ -195,16 +195,18 @@ type newCodeSession struct {
 
 type codeSessionInput struct {
 	challenge string
+	device    session.Device
 	Body      newCodeSession
 }
 
 // Resolve reads the HttpOnly proof cookie without making it a client argument.
+// The new session keeps this request's device details, not the password step's.
 func (in *codeSessionInput) Resolve(ctx huma.Context) []error {
 	cookie, err := huma.ReadCookie(ctx, challengeCookieName)
 	if err == nil {
 		in.challenge = cookie.Value
 	}
-	return nil
+	return resolveDevice(ctx, &in.device)
 }
 
 func registerCodeSignIn(api huma.API, handler sessionHandler) {
@@ -222,7 +224,7 @@ func registerCodeSignIn(api huma.API, handler sessionHandler) {
 }
 
 func (h sessionHandler) handleCreateSessionWithCode(ctx context.Context, in *codeSessionInput) (*sessionOutput, error) {
-	issued, err := h.codes.Complete(ctx, in.challenge, in.Body.Code)
+	issued, err := h.codes.Complete(ctx, in.challenge, in.Body.Code, in.device)
 	if err != nil {
 		problem := codeSignInProblem(err)
 		if errors.Is(err, session.ErrInvalidChallenge) {

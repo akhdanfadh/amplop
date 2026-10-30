@@ -38,7 +38,8 @@ type Issued struct {
 }
 
 // newSession creates a fresh secret and fixes the maximum lifetime.
-func newSession(userID int64, now func() time.Time) Issued {
+// It keeps the device details of the request that creates the session.
+func newSession(userID int64, device Device, now func() time.Time) Issued {
 	secret, hash := newSecret()
 	createdAt := now().UTC()
 	return Issued{
@@ -49,6 +50,7 @@ func newSession(userID int64, now func() time.Time) Issued {
 			CreatedAt:  createdAt,
 			LastUsedAt: createdAt,
 			ExpiresAt:  createdAt.Add(maxLifetime),
+			Device:     cleanDevice(device),
 		},
 	}
 }

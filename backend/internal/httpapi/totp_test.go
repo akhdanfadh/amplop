@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strconv"
 	"strings"
 	"testing"
@@ -162,12 +163,13 @@ type fakeEnrollment struct {
 	err     error
 	current session.Authenticated
 	code    string
+	device  session.Device
 	calls   int
 }
 
-func (f *fakeEnrollment) Confirm(_ context.Context, current session.Authenticated, code string) (session.Confirmed, error) {
+func (f *fakeEnrollment) Confirm(_ context.Context, current session.Authenticated, code string, device session.Device) (session.Confirmed, error) {
 	f.calls++
-	f.current, f.code = current, code
+	f.current, f.code, f.device = current, code, device
 	return f.result, f.err
 }
 
@@ -175,6 +177,7 @@ func postTOTPConfirm(api *API, body, origin string, auth totpAuth) *httptest.Res
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/confirm", strings.NewReader(body))
 	request.Header.Set("Content-Type", jsonContentType)
 	request.Header.Set("Origin", origin)
+	request.Header.Set("User-Agent", "inbok-confirm-test/1.0")
 	if auth == totpAuthAuthenticated {
 		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "old-cookie-secret"})
 	}
@@ -209,6 +212,7 @@ func TestConfirmTOTPEnrollment(t *testing.T) {
 			assert.Equal(t, service.result.BackupCodes, body.Data.BackupCodes)
 			assert.Equal(t, session.Authenticated{Identity: sessions.identity, Session: sessions.reference}, service.current)
 			assert.Equal(t, "287082", service.code)
+			assert.Equal(t, session.Device{UserAgent: "inbok-confirm-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
 			assert.Equal(t, 1, service.calls)
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 			cookies := response.Result().Cookies()

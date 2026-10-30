@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -22,12 +23,13 @@ type fakeCodeSignIn struct {
 	issued       session.Issued
 	err          error
 	secret, code string
+	device       session.Device
 	calls        int
 }
 
-func (f *fakeCodeSignIn) Complete(_ context.Context, secret, code string) (session.Issued, error) {
+func (f *fakeCodeSignIn) Complete(_ context.Context, secret, code string, device session.Device) (session.Issued, error) {
 	f.calls++
-	f.secret, f.code = secret, code
+	f.secret, f.code, f.device = secret, code, device
 	return f.issued, f.err
 }
 
@@ -35,6 +37,7 @@ func postCode(api *API, body, origin string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/sessions/totp", strings.NewReader(body))
 	request.Header.Set("Content-Type", jsonContentType)
 	request.Header.Set("Origin", origin)
+	request.Header.Set("User-Agent", "inbok-code-test/1.0")
 	request.AddCookie(&http.Cookie{Name: challengeCookieName, Value: "private-challenge"})
 
 	response := httptest.NewRecorder()
@@ -57,6 +60,7 @@ func TestCreateSessionWithCode(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"step":"complete"}}`, response.Body.String())
 	assert.Equal(t, "012345", service.code)
 	assert.Equal(t, "private-challenge", service.secret)
+	assert.Equal(t, session.Device{UserAgent: "inbok-code-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
 	assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 
 	cookies := response.Result().Cookies()

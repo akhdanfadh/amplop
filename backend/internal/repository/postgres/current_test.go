@@ -25,7 +25,7 @@ func TestCurrentPersistence(t *testing.T) {
 	now := time.Date(2026, time.October, 28, 12, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
 	service := session.NewService(db, accounts, session.NewThrottle(db, clock), clock)
-	issued, err := service.StartSignIn(t.Context(), user.Email, password, netip.MustParseAddr("192.0.2.1"))
+	issued, err := service.StartSignIn(t.Context(), user.Email, password, session.Device{Addr: netip.MustParseAddr("192.0.2.1")})
 	require.NoError(t, err)
 	raw, err := base64.RawURLEncoding.Strict().DecodeString(issued.Secret)
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestCurrentDeleteFailure(t *testing.T) {
 func TestCurrentConfirmedAccess(t *testing.T) {
 	f := newConfirmation(t)
 
-	issued, err := f.service.Confirm(t.Context(), f.current, "287082")
+	issued, err := f.service.Confirm(t.Context(), f.current, "287082", session.Device{})
 	require.NoError(t, err)
 	current, err := f.sessions.Current(t.Context(), issued.Session.Secret)
 	require.NoError(t, err)

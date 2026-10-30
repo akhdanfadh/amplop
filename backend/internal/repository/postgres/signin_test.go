@@ -25,12 +25,13 @@ func TestStartSignInPersistence(t *testing.T) {
 	service := session.NewService(db, accounts, session.NewThrottle(db, time.Now), time.Now)
 	addr := netip.MustParseAddr("192.0.2.1")
 	for range 4 {
-		issued, err := service.StartSignIn(t.Context(), "admin@example.com", "wrong password", addr)
+		issued, err := service.StartSignIn(t.Context(), "admin@example.com", "wrong password", session.Device{Addr: addr})
 		require.ErrorIs(t, err, account.ErrInvalidCredentials)
 		assert.Zero(t, issued)
 	}
 
-	issued, err := service.StartSignIn(t.Context(), " \tADMIN@example.com\n", password, addr)
+	device := session.Device{UserAgent: "Mozilla/5.0 Firefox/131.0", Addr: addr}
+	issued, err := service.StartSignIn(t.Context(), " \tADMIN@example.com\n", password, device)
 
 	require.NoError(t, err)
 	assert.Equal(t, session.SignInStepComplete, issued.Step)
@@ -38,15 +39,16 @@ func TestStartSignInPersistence(t *testing.T) {
 	require.NoError(t, err)
 	stored := readSession(t, db, sha256.Sum256(raw))
 	assert.Equal(t, user.ID, stored.UserID)
+	assert.Equal(t, device, stored.Device)
 	assert.Equal(t, stored.CreatedAt, stored.LastUsedAt)
 	assert.WithinDuration(t, issued.ExpiresAt, stored.ExpiresAt, time.Microsecond)
 	var count int64
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM sign_in_attempts").Scan(&count))
 	assert.Equal(t, int64(4), count, "success keeps earlier failures")
 
-	_, err = service.StartSignIn(t.Context(), "admin@example.com", "wrong password", addr)
+	_, err = service.StartSignIn(t.Context(), "admin@example.com", "wrong password", session.Device{Addr: addr})
 	require.ErrorIs(t, err, account.ErrInvalidCredentials)
-	issued, err = service.StartSignIn(t.Context(), "admin@example.com", password, addr)
+	issued, err = service.StartSignIn(t.Context(), "admin@example.com", password, session.Device{Addr: addr})
 	require.ErrorIs(t, err, session.ErrThrottled)
 	assert.Zero(t, issued)
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM sessions").Scan(&count))

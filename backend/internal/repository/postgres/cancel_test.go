@@ -16,6 +16,7 @@ import (
 	"inbok/internal/account"
 	"inbok/internal/httpapi"
 	"inbok/internal/repository/postgres/sqlc"
+	"inbok/internal/session"
 	"inbok/internal/totp"
 )
 
@@ -52,7 +53,7 @@ func TestCancelEnrollmentStorage(t *testing.T) {
 
 func TestCancelConfirmedEnrollment(t *testing.T) {
 	f := newConfirmation(t)
-	_, err := f.service.Confirm(t.Context(), f.current, "287082")
+	_, err := f.service.Confirm(t.Context(), f.current, "287082", session.Device{})
 	require.NoError(t, err)
 	before, err := f.db.ReadTOTP(t.Context(), f.state.UserID)
 	require.NoError(t, err)
@@ -163,7 +164,7 @@ func TestCancelBeforeConfirmation(t *testing.T) {
 		require.FailNow(t, "cancellation did not acquire the owner lock")
 	}
 	go func() {
-		_, err := f.service.Confirm(ctx, f.current, "287082")
+		_, err := f.service.Confirm(ctx, f.current, "287082", session.Device{})
 		confirmed <- err
 	}()
 	require.Eventually(t, func() bool {
@@ -220,7 +221,7 @@ func TestCancelEnrollmentHTTP(t *testing.T) {
 
 func TestCancelConfirmedHTTP(t *testing.T) {
 	f := newConfirmation(t)
-	confirmed, err := f.service.Confirm(t.Context(), f.current, "287082")
+	confirmed, err := f.service.Confirm(t.Context(), f.current, "287082", session.Device{})
 	require.NoError(t, err)
 	queries := sqlc.New(f.conn)
 	before, err := f.db.ReadTOTP(t.Context(), f.state.UserID)

@@ -86,10 +86,12 @@ func TestStartSignIn(t *testing.T) {
 	}}
 	service := NewService(store, accounts, throttle, clock.Now)
 
-	first, err := service.StartSignIn(t.Context(), "ADMIN@Example.COM", " password with spaces ", addr)
+	device := Device{UserAgent: "Mozilla/5.0 (X11; Linux x86_64) Firefox/131.0", Addr: addr}
+	first, err := service.StartSignIn(t.Context(), "ADMIN@Example.COM", " password with spaces ", device)
 
 	require.NoError(t, err)
 	require.Len(t, store.states, 1)
+	assert.Equal(t, device, store.states[0].Device)
 	assert.Equal(t, SignInStepComplete, first.Step)
 	assert.Equal(t, first.ExpiresAt, store.states[0].ExpiresAt)
 	assert.Equal(t, int64(42), store.states[0].UserID)
@@ -99,7 +101,7 @@ func TestStartSignIn(t *testing.T) {
 	assert.Equal(t, hash, store.states[0].TokenHash)
 	assert.Len(t, attempts.rows, 4, "remove only the successful reservation")
 
-	second, err := service.StartSignIn(t.Context(), "ADMIN@Example.COM", " password with spaces ", addr)
+	second, err := service.StartSignIn(t.Context(), "ADMIN@Example.COM", " password with spaces ", Device{Addr: addr})
 	require.NoError(t, err)
 	assert.NotEqual(t, first.Secret, second.Secret)
 	assert.Len(t, store.states, 2)
@@ -119,7 +121,7 @@ func TestStartSignInThrottled(t *testing.T) {
 	}}
 	store := &signInStorage{}
 
-	issued, err := NewService(store, accounts, throttle, time.Now).StartSignIn(t.Context(), "admin@example.com", "password", addr)
+	issued, err := NewService(store, accounts, throttle, time.Now).StartSignIn(t.Context(), "admin@example.com", "password", Device{Addr: addr})
 
 	require.ErrorIs(t, err, ErrThrottled)
 	assert.Zero(t, issued)
@@ -159,7 +161,7 @@ func TestStartSignInErrors(t *testing.T) {
 			store := &signInStorage{err: c.insertErr}
 			service := NewService(store, accounts, NewThrottle(attempts, time.Now), time.Now)
 
-			issued, err := service.StartSignIn(t.Context(), "admin@example.com", "password", netip.MustParseAddr("192.0.2.1"))
+			issued, err := service.StartSignIn(t.Context(), "admin@example.com", "password", Device{Addr: netip.MustParseAddr("192.0.2.1")})
 
 			require.ErrorIs(t, err, c.want)
 			assert.Zero(t, issued)
@@ -189,7 +191,7 @@ func TestPasswordRequiresTOTP(t *testing.T) {
 			throttle := NewThrottle(&memoryAttempts{rows: map[int64]Attempt{}}, clock.Now)
 			service := NewService(store, accounts, throttle, clock.Now)
 
-			result, err := service.StartSignIn(t.Context(), "alice@example.com", "password", netip.MustParseAddr("192.0.2.1"))
+			result, err := service.StartSignIn(t.Context(), "alice@example.com", "password", Device{Addr: netip.MustParseAddr("192.0.2.1")})
 
 			require.NoError(t, err)
 			assert.Equal(t, c.step, result.Step)
@@ -224,7 +226,7 @@ func TestStartSignInStalePassword(t *testing.T) {
 			}}
 			throttle := NewThrottle(&memoryAttempts{rows: map[int64]Attempt{}}, time.Now)
 
-			issued, err := NewService(store, accounts, throttle, time.Now).StartSignIn(t.Context(), "admin@example.com", "password", netip.MustParseAddr("192.0.2.1"))
+			issued, err := NewService(store, accounts, throttle, time.Now).StartSignIn(t.Context(), "admin@example.com", "password", Device{Addr: netip.MustParseAddr("192.0.2.1")})
 
 			require.ErrorIs(t, err, account.ErrInvalidCredentials)
 			assert.Zero(t, issued)

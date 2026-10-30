@@ -68,7 +68,8 @@ func NewCodeSignIn(storage codeSignInStore, encryption secretOpener, verifier *t
 }
 
 // Complete returns a session secret only after consuming both proofs commits.
-func (s *CodeSignIn) Complete(ctx context.Context, secret, code string) (Issued, error) {
+// The new session keeps the device details of this code request.
+func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device Device) (Issued, error) {
 	hash, err := hashSecret(secret)
 	if err != nil {
 		return Issued{}, ErrInvalidChallenge
@@ -114,7 +115,7 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string) (Issued,
 			return CodeSignInChange{}, err
 		}
 
-		issued = newSession(userID, s.now)
+		issued = newSession(userID, device, s.now)
 		outcome = nil
 		return CodeSignInChange{
 			Action: CodeActionComplete, Factor: factor, Session: issued.State,

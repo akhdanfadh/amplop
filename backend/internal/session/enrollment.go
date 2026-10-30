@@ -63,7 +63,8 @@ type Confirmed struct {
 }
 
 // Confirm requires a current TOTP code for the pending factor.
-func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code string) (Confirmed, error) {
+// The replacement session keeps the device details of this request.
+func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code string, device Device) (Confirmed, error) {
 	// Go permits an empty Authenticated value; reject it before reserving an attempt.
 	userID := current.Identity.User.ID
 	if current.Session == (Reference{}) || userID <= 0 {
@@ -80,7 +81,7 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 	if err != nil {
 		return Confirmed{}, err
 	}
-	issued := newSession(userID, e.now)
+	issued := newSession(userID, device, e.now)
 
 	err = e.storage.ConfirmTOTP(ctx, userID, current.Session.hash, func(state EnrollmentState) (EnrollmentChange, error) {
 		// Current's earlier session check can become stale; recheck under the lock.
