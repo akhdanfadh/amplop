@@ -24,14 +24,15 @@ type Credentials struct {
 	PasswordHash string
 }
 
-// Authenticate verifies credentials and returns the account on success.
+// Authenticate returns the verified credentials so sign-in can detect a
+// password replacement before issuing a session or challenge.
 // Unknown accounts do the same password work and receive the same error as
 // wrong passwords. Callers must reserve a throttle attempt before calling it.
-func (s *Service) Authenticate(ctx context.Context, email, password string) (User, error) {
+func (s *Service) Authenticate(ctx context.Context, email, password string) (Credentials, error) {
 	credentials, err := s.storage.ReadCredentials(ctx, normalizeEmail(email))
 	missing := errors.Is(err, ErrUserNotFound)
 	if err != nil && !missing {
-		return User{}, err
+		return Credentials{}, err
 	}
 	if missing {
 		credentials.PasswordHash = dummyPasswordHash
@@ -39,10 +40,10 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (Use
 
 	match, err := passwordhash.Verify(password, credentials.PasswordHash)
 	if err != nil {
-		return User{}, err
+		return Credentials{}, err
 	}
 	if missing || !match {
-		return User{}, ErrInvalidCredentials
+		return Credentials{}, ErrInvalidCredentials
 	}
-	return credentials.User, nil
+	return credentials, nil
 }

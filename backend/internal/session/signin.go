@@ -25,6 +25,12 @@ type SignedIn struct {
 	ExpiresAt time.Time
 }
 
+// SignInState is the current password hash and factor, read with the user locked.
+type SignInState struct {
+	PasswordHash string
+	Factor       *totp.Factor
+}
+
 // SignInChange saves exactly one of Session or Challenge, selected by Step.
 type SignInChange struct {
 	Step      SignInStep
@@ -35,7 +41,7 @@ type SignInChange struct {
 
 // accountService verifies password credentials.
 type accountService interface {
-	Authenticate(ctx context.Context, email, password string) (account.User, error)
+	Authenticate(ctx context.Context, email, password string) (account.Credentials, error)
 }
 
 // Service manages browser sessions and resolves their current identity.
@@ -60,7 +66,7 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, addr 
 		return SignedIn{}, err
 	}
 
-	user, err := s.accounts.Authenticate(ctx, email, password)
+	credentials, err := s.accounts.Authenticate(ctx, email, password)
 	if err != nil {
 		return SignedIn{}, err
 	}
@@ -69,15 +75,20 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, addr 
 	}
 
 	var result SignedIn
-	err = s.storage.StartSignIn(ctx, user.ID, func(factor *totp.Factor) (SignInChange, error) {
-		// Read under the owner lock so enrollment cannot race a password-only session.
-		if factor != nil && factor.ConfirmedAt != nil {
-			secret, challenge := newChallenge(user.ID, s.now)
+	err = s.storage.StartSignIn(ctx, credentials.User.ID, func(state SignInState) (SignInChange, error) {
+		// A recovery invalidates password proof even when the plaintext is unchanged.
+		if state.PasswordHash != credentials.PasswordHash {
+			return SignInChange{}, account.ErrInvalidCredentials
+		}
+
+		// The current factor determines whether a second sign-in step is required.
+		if state.Factor != nil && state.Factor.ConfirmedAt != nil {
+			secret, challenge := newChallenge(credentials.User.ID, s.now)
 			result = SignedIn{Step: SignInStepTOTP, Secret: secret, ExpiresAt: challenge.ExpiresAt}
 			return SignInChange{Step: result.Step, Challenge: challenge, Cutoff: s.now().UTC()}, nil
 		}
 
-		issued := newSession(user.ID, s.now)
+		issued := newSession(credentials.User.ID, s.now)
 		result = SignedIn{Step: SignInStepComplete, Secret: issued.Secret, ExpiresAt: issued.State.ExpiresAt}
 		return SignInChange{Step: result.Step, Session: issued.State, Cutoff: s.now().UTC()}, nil
 	})

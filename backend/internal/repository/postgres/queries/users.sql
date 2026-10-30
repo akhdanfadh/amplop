@@ -17,3 +17,7 @@ WHERE lower(email) = lower(@email);
 -- name: ReadUserByID :one
 SELECT id, email, role FROM users
 WHERE id = @id;
+
+-- name: LockSignInUser :one
+-- Compare password proof with the current hash while recovery shares this lock.
+SELECT password_hash FROM users WHERE id = @user_id FOR UPDATE;

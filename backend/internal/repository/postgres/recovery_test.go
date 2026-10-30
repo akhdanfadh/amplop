@@ -2,11 +2,13 @@ package postgres
 
 import (
 	"context"
+	"net/netip"
 	"testing"
 	"time"
 
 	"inbok/internal/account"
 	"inbok/internal/passwordhash"
+	"inbok/internal/session"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
@@ -139,4 +141,67 @@ func TestRecoveryMissingUser(t *testing.T) {
 	require.ErrorIs(t, err, account.ErrUserNotFound)
 	assert.False(t, called)
 	assert.Zero(t, result)
+}
+
+type recoveryAccounts struct {
+	service *account.Service
+	checked chan struct{}
+	resume  chan struct{}
+}
+
+func (p *recoveryAccounts) Authenticate(ctx context.Context, email, password string) (account.Credentials, error) {
+	credentials, err := p.service.Authenticate(ctx, email, password)
+	close(p.checked)
+	select {
+	case <-p.resume:
+	case <-ctx.Done():
+		return account.Credentials{}, ctx.Err()
+	}
+	return credentials, err
+}
+
+func TestRecoveryStaleSignIn(t *testing.T) {
+	for _, password := range []string{"the new recovery password", "the old recovery password"} {
+		t.Run(password, func(t *testing.T) {
+			f := newRecovery(t)
+			ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+			defer cancel()
+			_, err := f.conn.Exec(ctx, "UPDATE users SET password_hash=$1 WHERE id=$2", passwordhash.Hash("the old recovery password"), f.state.UserID)
+			require.NoError(t, err)
+			accounts := &recoveryAccounts{service: account.NewService(f.db, ""), checked: make(chan struct{}), resume: make(chan struct{})}
+			clock := time.Now
+			service := session.NewService(f.db, accounts, session.NewThrottle(f.db, clock), clock)
+			type outcome struct {
+				result session.SignedIn
+				err    error
+			}
+			results := make(chan outcome, 1)
+			go func() {
+				result, err := service.StartSignIn(ctx, "admin@example.com", "the old recovery password", netip.MustParseAddr("127.0.0.1"))
+				results <- outcome{result, err}
+			}()
+			select {
+			case <-accounts.checked:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+
+			_, err = account.NewRecovery(f.db).Recover(ctx, "admin@example.com", password)
+			close(accounts.resume)
+			require.NoError(t, err)
+			got := <-results
+
+			require.ErrorIs(t, got.err, account.ErrInvalidCredentials)
+			assert.Zero(t, got.result)
+			for _, table := range []string{"sessions", "sign_in_challenges"} {
+				var count int
+				require.NoError(t, f.conn.QueryRow(ctx, "SELECT count(*) FROM "+table+" WHERE user_id=$1", f.state.UserID).Scan(&count))
+				assert.Zero(t, count, table)
+			}
+			fresh := session.NewService(f.db, account.NewService(f.db, ""), session.NewThrottle(f.db, clock), clock)
+			issued, err := fresh.StartSignIn(ctx, "admin@example.com", password, netip.MustParseAddr("127.0.0.1"))
+			require.NoError(t, err)
+			assert.Equal(t, session.SignInStepComplete, issued.Step)
+		})
+	}
 }

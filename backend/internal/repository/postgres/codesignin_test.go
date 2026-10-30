@@ -264,7 +264,7 @@ func TestPasswordEnrollmentRace(t *testing.T) {
 	}()
 	require.Eventually(t, func() bool {
 		var blocked bool
-		err := f.db.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%LockTOTPUser%')").Scan(&blocked)
+		err := f.db.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%LockSignInUser%')").Scan(&blocked)
 		return err == nil && blocked
 	}, 3*time.Second, 10*time.Millisecond)
 	require.NoError(t, tx.Commit(ctx))
