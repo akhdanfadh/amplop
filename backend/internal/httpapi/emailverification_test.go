@@ -120,6 +120,7 @@ func TestRequestEmailVerificationRefused(t *testing.T) {
 			assert.Equal(t, problemPrefix+c.typ, problem["type"])
 			assert.Equal(t, c.detail, problem["detail"])
 			assert.NotContains(t, response.Body.String(), "private reply")
+			assertSessionCookieCleared(t, response, c.typ == "unauthenticated")
 		})
 	}
 }

@@ -415,7 +415,8 @@ enrollment, backup codes, and turn-off; sign-in shows the code step.
 
 `DELETE /api/v0/sessions/current` deletes the checked session and clears its
 cookie, returning HTTP 204. A missing or expired session returns HTTP 401
-and also clears the cookie; the web app treats that as signed out. Signing
+and clears the cookie, also when a handler finds the session ended after
+the access check; the web app treats that as signed out. Signing
 out clears account data and submitted credentials from the web app's Query
 cache while retaining the public setup status.
 

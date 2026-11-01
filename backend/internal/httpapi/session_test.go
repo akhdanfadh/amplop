@@ -129,6 +129,25 @@ func memberSessions(role account.Role) *fakeSessions {
 	}}
 }
 
+// assertSessionCookieCleared checks that response clears the session cookie
+// when cleared is true, and sets no cookie otherwise.
+func assertSessionCookieCleared(t *testing.T, response *httptest.ResponseRecorder, cleared bool) {
+	t.Helper()
+	cookies := response.Result().Cookies()
+	if !cleared {
+		assert.Empty(t, cookies)
+		return
+	}
+	require.Len(t, cookies, 1)
+	assert.Equal(t, sessionCookieName, cookies[0].Name)
+	assert.Empty(t, cookies[0].Value)
+	assert.Negative(t, cookies[0].MaxAge)
+	// A __Host- cookie is cleared only by one with the same attributes.
+	assert.Equal(t, "/", cookies[0].Path)
+	assert.True(t, cookies[0].Secure)
+	assert.True(t, cookies[0].HttpOnly)
+}
+
 // sendSessionRequest sends a same-origin request carrying a session cookie.
 func sendSessionRequest(api *API, method, path string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(method, "/api/v0"+path, nil)
@@ -380,11 +399,7 @@ func TestSignOutUnauthenticated(t *testing.T) {
 			require.Equal(t, http.StatusUnauthorized, response.Code, response.Body.String())
 			assert.Equal(t, problemPrefix+"unauthenticated", decodeJSON(t, response.Body.Bytes())["type"])
 			assert.Zero(t, service.signOutCalls)
-			cookies := response.Result().Cookies()
-			require.Len(t, cookies, 1)
-			assert.Equal(t, sessionCookieName, cookies[0].Name)
-			assert.Empty(t, cookies[0].Value)
-			assert.Negative(t, cookies[0].MaxAge)
+			assertSessionCookieCleared(t, response, true)
 		})
 	}
 }
@@ -674,6 +689,7 @@ func TestSessionListAndEndErrors(t *testing.T) {
 				assert.Contains(t, response.Body.String(), `"type":"`+c.typ+`"`)
 				assert.NotContains(t, response.Body.String(), "connection lost")
 				assert.Equal(t, 1, service.listCalls+service.endCalls+service.endOtherCalls)
+				assertSessionCookieCleared(t, response, c.status == http.StatusUnauthorized)
 			})
 		}
 	}

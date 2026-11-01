@@ -65,9 +65,21 @@ func withAccess(api huma.API, service sessionService) func(huma.Context, func(hu
 	}
 }
 
-// unauthenticatedProblem is the safe response for a missing or invalid session.
+const unauthenticatedType = problemPrefix + "unauthenticated"
+
+// unauthenticatedDescription documents every 401 unauthenticated response.
+const unauthenticatedDescription = "No valid session identifies a current account. The session cookie is cleared."
+
+// unauthenticatedProblem is the safe response for a missing or invalid
+// session.
+//
+// NOTE: every response with it clears the session cookie. withAccess sets
+// the header itself, and normalizeError sets it on a handler's response, so
+// a new handler gets it without asking. The alternative, a helper each
+// handler returns instead, makes a handler that forgets it leave a dead
+// cookie behind.
 func unauthenticatedProblem() *problem {
-	return newProblem(http.StatusUnauthorized, problemPrefix+"unauthenticated", "Sign-in required", "Sign in to continue.")
+	return newProblem(http.StatusUnauthorized, unauthenticatedType, "Sign-in required", "Sign in to continue.")
 }
 
 // totpRequiredProblem is the response for an administrator without confirmed TOTP.
@@ -87,7 +99,7 @@ func adminResponses(api huma.API, statuses ...int) map[string]*huma.Response {
 	responses := problemResponses(api, append([]int{http.StatusUnauthorized, http.StatusForbidden}, statuses...)...)
 
 	unauthorized := responses[strconv.Itoa(http.StatusUnauthorized)]
-	unauthorized.Description = "No valid session identifies a current account."
+	unauthorized.Description = unauthenticatedDescription
 	unauthorized.Content[problemContentType].Example = unauthenticatedProblem()
 
 	forbidden := responses[strconv.Itoa(http.StatusForbidden)]

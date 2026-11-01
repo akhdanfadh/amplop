@@ -95,7 +95,7 @@ func (h totpHandler) handleGetTOTPStatus(ctx context.Context, _ *struct{}) (*out
 func totpStatusResponses(api huma.API) map[string]*huma.Response {
 	responses := problemResponses(api, http.StatusUnauthorized)
 	unauthorized := responses[strconv.Itoa(http.StatusUnauthorized)]
-	unauthorized.Description = "No valid session identifies a current account."
+	unauthorized.Description = unauthenticatedDescription
 	unauthorized.Content[problemContentType].Example = unauthenticatedProblem()
 	return responses
 }

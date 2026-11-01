@@ -79,6 +79,7 @@ func errorDetails(errs []error) []*huma.ErrorDetail {
 
 // normalizeError applies our safety policy before Huma serializes a response.
 // It keeps mapped problems, sanitizes others, and passes success bodies through.
+// An unauthenticated problem also clears the session cookie.
 func normalizeError(logger *slog.Logger, api huma.API, ctx huma.Context, value any) any {
 	p, ok := value.(*problem)
 	if !ok {
@@ -89,6 +90,13 @@ func normalizeError(logger *slog.Logger, api huma.API, ctx huma.Context, value a
 		}
 		p = requestProblem(raw.Status)
 		p.mapped, p.raw = false, raw
+	}
+	// A session that ended after withAccess checked it, e.g. from another
+	// browser, is cleared like one it refused. Huma sends the headers after
+	// this hook runs.
+	if p.Type == unauthenticatedType {
+		cleared := sessionCookie("", -1)
+		ctx.AppendHeader("Set-Cookie", cleared.String())
 	}
 	if p.mapped {
 		return p

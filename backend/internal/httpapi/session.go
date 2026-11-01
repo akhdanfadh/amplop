@@ -336,7 +336,7 @@ func (h sessionHandler) handleGetCurrentSession(ctx context.Context, _ *struct{}
 func currentSessionResponses(api huma.API) map[string]*huma.Response {
 	responses := problemResponses(api, http.StatusUnauthorized)
 	unauthenticated := responses[strconv.Itoa(http.StatusUnauthorized)]
-	unauthenticated.Description = "No valid session identifies a current account."
+	unauthenticated.Description = unauthenticatedDescription
 	unauthenticated.Content[problemContentType].Example = unauthenticatedProblem()
 
 	return responses
@@ -377,7 +377,7 @@ func (h sessionHandler) handleDeleteCurrentSession(ctx context.Context, _ *struc
 func signOutResponses(api huma.API) map[string]*huma.Response {
 	responses := problemResponses(api, http.StatusUnauthorized)
 	unauthenticated := responses[strconv.Itoa(http.StatusUnauthorized)]
-	unauthenticated.Description = "No valid session identifies a current account. The session cookie is cleared."
+	unauthenticated.Description = unauthenticatedDescription
 	unauthenticated.Content[problemContentType].Example = unauthenticatedProblem()
 
 	return responses

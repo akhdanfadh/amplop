@@ -997,7 +997,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "409": {
             "content": {
@@ -1269,7 +1269,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "default": {
             "content": {
@@ -1450,7 +1450,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "default": {
             "content": {
@@ -1500,7 +1500,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "default": {
             "content": {
@@ -1677,7 +1677,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "404": {
             "content": {
@@ -1893,7 +1893,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "403": {
             "content": {
@@ -1979,7 +1979,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "403": {
             "content": {
@@ -2129,7 +2129,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "403": {
             "content": {
@@ -2238,7 +2238,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "default": {
             "content": {
@@ -2285,7 +2285,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "409": {
             "content": {
@@ -2361,7 +2361,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "409": {
             "content": {
@@ -2504,7 +2504,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "409": {
             "content": {
@@ -2652,7 +2652,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "403": {
             "content": {
@@ -2794,7 +2794,7 @@
                 }
               }
             },
-            "description": "No valid session identifies a current account."
+            "description": "No valid session identifies a current account. The session cookie is cleared."
           },
           "409": {
             "content": {

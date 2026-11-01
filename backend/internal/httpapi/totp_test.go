@@ -252,7 +252,7 @@ func TestConfirmTOTPFailures(t *testing.T) {
 
 			require.Equal(t, c.status, response.Code, response.Body.String())
 			assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/`+c.problem+`"`)
-			assert.Empty(t, response.Result().Cookies())
+			assertSessionCookieCleared(t, response, c.problem == "unauthenticated")
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 			for _, secret := range []string{"287082", "must-not-issue", "must-not-reveal"} {
 				assert.NotContains(t, response.Body.String(), secret)
@@ -409,7 +409,7 @@ func TestRegenerateProblems(t *testing.T) {
 			require.Equal(t, c.status, response.Code, response.Body.String())
 			assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/`+c.problem+`"`)
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
-			assert.Empty(t, response.Result().Cookies())
+			assertSessionCookieCleared(t, response, c.problem == "unauthenticated")
 			for _, secret := range []string{"012345", "must-not-reveal", "private storage cause"} {
 				assert.NotContains(t, response.Body.String(), secret)
 			}
@@ -554,7 +554,7 @@ func TestDisableTOTPProblems(t *testing.T) {
 			assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/`+c.problem+`"`)
 			assert.Equal(t, 1, service.calls, "the service owns the locked role check")
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
-			assert.Empty(t, response.Result().Cookies())
+			assertSessionCookieCleared(t, response, c.problem == "unauthenticated")
 			assert.NotContains(t, response.Body.String(), "private turn-off cause")
 			assert.NotContains(t, response.Body.String(), "012345")
 			assert.NotContains(t, response.Body.String(), `"status":"off"`)
@@ -664,7 +664,7 @@ func TestCancelTOTPFailures(t *testing.T) {
 			assert.NotContains(t, response.Body.String(), "private cancellation cause")
 			assert.NotContains(t, response.Body.String(), `"status":"off"`)
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
-			assert.Empty(t, response.Result().Cookies())
+			assertSessionCookieCleared(t, response, c.problem == "unauthenticated")
 		})
 	}
 }
