@@ -23,6 +23,7 @@ import (
 	"inbok/internal/smtp"
 	"inbok/internal/systememail"
 	"inbok/internal/totp"
+	"inbok/internal/webapp"
 )
 
 const (
@@ -133,6 +134,12 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	api := httpapi.New(logger, services)
 	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {
 		return fmt.Errorf("configure trusted proxies: %w", err)
+	}
+	err = api.ServeWebApp(webapp.Files())
+	if errors.Is(err, httpapi.ErrNoWebApp) {
+		logger.Warn("this build has no web app; paths outside /api answer 404")
+	} else if err != nil {
+		return fmt.Errorf("load web app: %w", err)
 	}
 	return listen(ctx, cfg.HTTPAddr, api.Handler(), logger)
 }

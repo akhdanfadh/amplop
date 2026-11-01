@@ -40,8 +40,8 @@ then open `http://localhost:5173/setup`. After setup, sign in at
 
 - `CONTRIBUTING.md`: Make commands, the local database, and changing the
   API.
-- `backend/README.md`: the Go server, its API conventions, configuration,
-  migrations, queries, and package layout.
+- `backend/README.md`: the Go server, the web app it serves, its API
+  conventions, configuration, migrations, queries, and package layout.
 - `web/README.md`: the browser app, its generated API client, error
   messages, data loading, and forms.
 

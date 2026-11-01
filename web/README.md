@@ -42,6 +42,13 @@ The build writes the browser files to `dist/client`, where `_shell.html`
 is the page for every path. The rest of `dist` is only used by the build
 and `pnpm preview`, which forwards `/api` the same way.
 
+A deployed server does not use `pnpm preview`: the Go binary embeds
+`dist/client` and serves it. From the repository root, `make backend-build`
+builds both; [The web app](../backend/README.md#the-web-app) describes
+how Go answers each path. Go caches every file under `assets/` for a year,
+so only the build's hashed files may go there; a `public/assets` folder
+would be cached the same way and its changes not seen.
+
 ## Vite+
 
 The app uses [Vite+](https://viteplus.dev), whose `vp` command runs

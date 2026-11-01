@@ -1,9 +1,9 @@
 # inbok backend
 
 The Go server: the `inbok` command (`serve`, `migrate`, `export`,
-`recover-admin`), its
-HTTP API, and its database code. Running `make` in the repository root
-lists a shortcut for most commands here.
+`recover-admin`), its HTTP API, the built web app it serves, and its
+database code. Running `make` in the repository root lists a shortcut for
+most commands here.
 
 ## Run the server
 
@@ -43,6 +43,50 @@ Expect HTTP 200 with:
 ```json
 {"data": {"status": "ok"}}
 ```
+
+## The web app
+
+`serve` also serves the built web app on every path outside `/api`, so the
+page and the API share one origin and one version. During development
+Vite serves the page instead (`make dev`), and a `go build` or `go run`
+from a fresh checkout includes no web app: `serve` logs
+`this build has no web app; paths outside /api answer 404` and does
+exactly that. To build one binary with the web app inside, from the
+repository root:
+
+```sh
+make backend-build
+```
+
+It builds the web app, copies `web/dist/client` into
+`backend/internal/webapp/dist`, and writes `backend/bin/inbok`. Go embeds
+that folder when it compiles, so rebuild after any web change. Only the
+folder's `.gitkeep` is committed. The copy stays after the build, so later
+`go build`, `go run`, and Air also include it until you empty the folder:
+
+```sh
+find backend/internal/webapp/dist -mindepth 1 ! -path backend/internal/webapp/dist/.gitkeep -delete
+```
+
+For a GET or HEAD outside `/api`:
+
+- A built file's exact path sends it, e.g. `/assets/index-BrBO-kCw.js`.
+  Files under `/assets/` have hashed names and get
+  `Cache-Control: public, max-age=31536000, immutable`; other files, and
+  the shell, get `no-cache` and an `ETag` so the browser rechecks them.
+  A `Range` header is ignored.
+- Any other path gets `_shell.html` with 200, e.g. `/security`, and the
+  browser renders the route.
+- A path under `/assets/`, a path with a file extension, e.g.
+  `/favicon.ico`, and a path with a segment starting with `.` get the
+  API's Problem Details 404 (see Errors) instead: a browser that asks for
+  a script never receives the page.
+
+Other methods outside `/api` get a 405 with `Allow: GET, HEAD`, after the
+same cross-origin check as the API: a write without `Origin` or
+`Sec-Fetch-Site` gets its 403 first. `/api` and every path under `/api/`
+belong to the API, so `/api/v1/x` is an API 404, not the shell. There are
+no directory listings, and only the files in the build can be sent.
 
 ## API contract
 
@@ -189,8 +233,10 @@ falls back to JSON for unsupported `Accept` values; it does not enable strict
 response-format rejection.
 
 Unknown routes (404) and unsupported methods (405, with an `Allow` header)
-return the same Problem Details, never Gin's plain-text bodies. A trailing
-slash is a different route: `/api/v0/health/` is a 404, not a redirect.
+return the same Problem Details, never Gin's plain-text bodies. This
+includes the web app's missing files and its other methods; see The web
+app. A trailing slash is a different route: `/api/v0/health/` is a 404,
+not a redirect.
 
 ## Timeouts and shutdown
 
@@ -287,8 +333,9 @@ only the proxy's address ranges; trusting all addresses lets a caller forge
 their throttling address and the sign-in address shown in the session list.
 
 For one nginx proxy on the same host as Go, keep Go on `127.0.0.1:8080` and
-set `INBOK_TRUSTED_PROXIES=127.0.0.1/32`. Build the web app first. Adapt the
-domain and file paths in this HTTPS server block:
+set `INBOK_TRUSTED_PROXIES=127.0.0.1/32`. Go serves the web app too (see
+The web app), so nginx forwards every path. Adapt the domain and
+certificate paths in this HTTPS server block:
 
 ```nginx
 server {
@@ -296,16 +343,11 @@ server {
     server_name inbok.example.com;
     ssl_certificate /path/to/fullchain.pem;
     ssl_certificate_key /path/to/privkey.pem;
-    root /path/to/inbok/web/dist/client;
 
-    location /api/ {
+    location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $remote_addr;
-    }
-
-    location / {
-        try_files $uri /_shell.html;
     }
 }
 ```
@@ -861,8 +903,10 @@ httpapi --> emailverification <-- repository/postgres
 - A feature can use another feature through an interface it declares:
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`
   fills with `systememail`'s `Mailer`.
+- `webapp` embeds the built web app; `httpapi` serves whatever files it
+  is given, so its tests pass small in-memory builds.
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
-  in `httpapi.Services`.
+  in `httpapi.Services`, and hands it `webapp`'s files.
 
 ADR021 in the project's decision records explains this layout and the
 alternatives it was chosen over.
