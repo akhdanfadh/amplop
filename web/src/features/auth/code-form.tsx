@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactElement } from "react"
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateSessionWithCode, useGetCurrentSession } from "@/api/generated/inbok";
-import { formErrors, userMessage } from "@/api/problem";
+import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
@@ -12,7 +12,7 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { clearAccountCache } from "./session-cache";
-import { sessionMessage, uncertainSession } from "./session-error";
+import { sessionMessage } from "./session-error";
 import { codeFormats, codePaste, codeSchema, type CodeKind } from "./code-schema";
 
 const codeFields = ["code"] as const;
@@ -232,7 +232,7 @@ export function CodeForm({
           )}
         </div>
       )}
-      {create.error && uncertainSession(create.error) && (
+      {create.error && uncertainOutcome(create.error) && (
         <div className="flex flex-col gap-3">
           <Button
             ref={checkRef}

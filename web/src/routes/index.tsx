@@ -2,8 +2,8 @@ import { useEffect, useRef, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useDeleteCurrentSession, useGetCurrentSession } from "@/api/generated/inbok";
-import { userMessage } from "@/api/problem";
-import { sessionMessage, uncertainSession } from "@/features/auth/session-error";
+import { uncertainOutcome, userMessage } from "@/api/problem";
+import { sessionMessage } from "@/features/auth/session-error";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { Button } from "@/components/ui/button";
 import { AccountNav } from "@/components/account-nav";
@@ -128,7 +128,7 @@ function Home(): ReactElement {
         {signOut.error && signOut.error.status !== unauthorized && (
           <div className="flex flex-col gap-2" role="alert">
             <p>{sessionMessage(signOut.error, "sign-out")}</p>
-            {uncertainSession(signOut.error) && (
+            {uncertainOutcome(signOut.error) && (
               <Button
                 type="button"
                 variant="outline"

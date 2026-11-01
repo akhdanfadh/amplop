@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type ComponentProps, type ReactElement } f
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateSession, useGetCurrentSession } from "@/api/generated/inbok";
-import { formErrors, userMessage } from "@/api/problem";
-import { sessionMessage, uncertainSession } from "./session-error";
+import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
+import { sessionMessage } from "./session-error";
 import { clearAccountCache } from "./session-cache";
 import { SignInSchema } from "./sign-in-schema";
 import { Button } from "@/components/ui/button";
@@ -207,7 +207,7 @@ export function SignInForm({
           )}
         </div>
       )}
-      {create.error && uncertainSession(create.error) && (
+      {create.error && uncertainOutcome(create.error) && (
         <div className="flex flex-col gap-3">
           <Button
             ref={checkRef}

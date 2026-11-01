@@ -15,8 +15,7 @@ import {
 } from "@/api/generated/inbok";
 import type { CurrentSession, TotpEnrollment } from "@/api/generated/model";
 import type { ApiError } from "@/api/transport";
-import { userMessage } from "@/api/problem";
-import { uncertainSession } from "@/features/auth/session-error";
+import { uncertainOutcome, userMessage } from "@/api/problem";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field";
@@ -130,14 +129,14 @@ export function Enrollment({
     regenerate.error,
     disable.error,
   ].some((error) => error?.status === unauthorized);
-  const confirmationUncertain = Boolean(confirm.error && uncertainSession(confirm.error));
-  const regenerationUncertain = Boolean(regenerate.error && uncertainSession(regenerate.error));
-  const turnOffUncertain = Boolean(disable.error && uncertainSession(disable.error));
+  const confirmationUncertain = Boolean(confirm.error && uncertainOutcome(confirm.error));
+  const regenerationUncertain = Boolean(regenerate.error && uncertainOutcome(regenerate.error));
+  const turnOffUncertain = Boolean(disable.error && uncertainOutcome(disable.error));
   const resetTurnOff = disable.reset;
   const uncertain =
     confirmationUncertain ||
     regenerationUncertain ||
-    Boolean(cancel.error && uncertainSession(cancel.error));
+    Boolean(cancel.error && uncertainOutcome(cancel.error));
   const factor = status.data?.data;
   // A status read can show that a turn-off with a lost response committed.
   const turnedOff = turnOffUncertain && factor?.status === "off";

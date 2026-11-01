@@ -8,8 +8,7 @@ import {
 } from "@/api/generated/inbok";
 import type { ResponseSystemEmail, SystemEmailSettings } from "@/api/generated/model";
 import type { ApiError } from "@/api/transport";
-import { formErrors, userMessage } from "@/api/problem";
-import { uncertainSession } from "@/features/auth/session-error";
+import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
 import { PasswordInput } from "@/components/password-input";
 import { Button } from "@/components/ui/button";
 import {
@@ -121,11 +120,11 @@ export function SettingsForm({
       onError: (err) => {
         onAccessError(err);
         // The settings may have been replaced.
-        if (uncertainSession(err)) onSaved();
+        if (uncertainOutcome(err)) onSaved();
       },
     },
   });
-  const uncertain = Boolean(save.error && uncertainSession(save.error));
+  const uncertain = Boolean(save.error && uncertainOutcome(save.error));
   const locked = save.isPending || uncertain || checking;
   const schema = useMemo(() => settingsSchema(saved), [saved]);
 

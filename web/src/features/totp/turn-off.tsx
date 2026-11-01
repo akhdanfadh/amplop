@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ApiError } from "@/api/transport";
-import { uncertainSession } from "@/features/auth/session-error";
+import { uncertainOutcome } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { ConfirmForm } from "./confirm-form";
 
@@ -26,7 +26,7 @@ export function TurnOff({
   const checkRef = useRef<HTMLButtonElement>(null);
   const restoreFocus = useRef(false);
   const focusedError = useRef<ApiError | null>(null);
-  const uncertain = Boolean(error && uncertainSession(error));
+  const uncertain = Boolean(error && uncertainOutcome(error));
 
   useEffect(() => {
     if (confirming || !restoreFocus.current || locked || checking) return;

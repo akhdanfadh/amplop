@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
-import { formErrors, userMessage } from "./problem";
+import {
+  formErrors,
+  problemExplanation,
+  uncertainMessage,
+  uncertainOutcome,
+  userMessage,
+} from "./problem";
 import { ApiError } from "./transport";
 
 const httpStatus = {
@@ -11,6 +17,77 @@ const httpStatus = {
   unavailable: 503,
   gatewayTimeout: 504,
 };
+
+describe("uncertainOutcome", () => {
+  it.each([
+    ["no response", new ApiError("network", { method: "POST" })],
+    ["no response and no known method", new ApiError("network")],
+    ["a timeout before any status", new ApiError("timeout", { method: "PUT" })],
+    ["a 5xx", new ApiError("http", { method: "DELETE", status: httpStatus.unavailable })],
+    [
+      "an unreadable success",
+      new ApiError("response", { method: "POST", status: httpStatus.created }),
+    ],
+    [
+      "a success cut off mid-body",
+      new ApiError("network", { method: "PATCH", status: httpStatus.created }),
+    ],
+  ])("is true for a write with %s", (_, err) => {
+    expect(uncertainOutcome(err)).toBe(true);
+  });
+
+  it.each([
+    ["a received rejection", new ApiError("http", { method: "POST", status: httpStatus.conflict })],
+    [
+      "a rejection whose body timed out",
+      new ApiError("timeout", { method: "POST", status: httpStatus.unprocessable }),
+    ],
+    ["a read with no response", new ApiError("network", { method: "GET" })],
+    [
+      "a read's 5xx",
+      new ApiError("http", { method: "GET", status: httpStatus.internalServerError }),
+    ],
+  ])("is false for %s", (_, err) => {
+    expect(uncertainOutcome(err)).toBe(false);
+  });
+});
+
+describe("problemExplanation", () => {
+  it("prefers the detail, trimmed", () => {
+    const err = new ApiError("http", {
+      problem: { title: "Conflict", detail: " The counter is full. " },
+    });
+
+    expect(problemExplanation(err)).toBe("The counter is full.");
+  });
+
+  it("falls back to the title", () => {
+    const err = new ApiError("http", { problem: { title: "Conflict", detail: "  " } });
+
+    expect(problemExplanation(err)).toBe("Conflict");
+  });
+
+  it("is undefined without a problem or any text in it", () => {
+    expect(problemExplanation(new ApiError("network"))).toBeUndefined();
+    expect(problemExplanation(new ApiError("http", { problem: { title: " " } }))).toBeUndefined();
+  });
+});
+
+describe("uncertainMessage", () => {
+  it("puts the explanation before the advice", () => {
+    const err = new ApiError("http", { problem: { detail: "The service is restarting." } });
+
+    expect(uncertainMessage(err, "Check before trying again.")).toBe(
+      "The service is restarting. Check before trying again.",
+    );
+  });
+
+  it("gives only the advice without an explanation", () => {
+    expect(uncertainMessage(new ApiError("network"), "Check before trying again.")).toBe(
+      "Check before trying again.",
+    );
+  });
+});
 
 describe("userMessage", () => {
   it("explains a read timeout without calling it an unreachable server", () => {
@@ -106,6 +183,7 @@ describe("userMessage", () => {
 
   it("prefers the safe detail over the title", () => {
     const err = new ApiError("http", {
+      method: "GET",
       status: 404,
       problem: { title: "Not Found", detail: "route not found" },
     });
@@ -114,17 +192,24 @@ describe("userMessage", () => {
   });
 
   it("shows the title alone without a detail", () => {
-    const err = new ApiError("http", { status: 502, problem: { title: "Bad Gateway" } });
+    const err = new ApiError("http", {
+      method: "GET",
+      status: 502,
+      problem: { title: "Bad Gateway" },
+    });
 
     expect(userMessage(err)).toBe("Bad Gateway");
   });
 
   it("uses local wording when no problem arrived", () => {
-    expect(userMessage(new ApiError("network"))).toBe("Can't reach the server. Try again.");
+    expect(userMessage(new ApiError("network", { method: "GET" }))).toBe(
+      "Can't reach the server. Try again.",
+    );
   });
 
   it("uses local wording when the received explanation is blank", () => {
     const err = new ApiError("http", {
+      method: "GET",
       status: 422,
       problem: { title: " ", detail: "\t" },
     });
@@ -133,32 +218,45 @@ describe("userMessage", () => {
   });
 
   it.each([
-    ["no response", new ApiError("network"), "Can't reach the server. Try again."],
     [
-      "the proxy's 502",
-      new ApiError("http", { status: 502 }),
+      "no response",
+      new ApiError("network", { method: "GET" }),
       "Can't reach the server. Try again.",
     ],
-    ["rejected values", new ApiError("http", { status: 422 }), "Check the values and try again."],
+    [
+      "the proxy's 502",
+      new ApiError("http", { method: "GET", status: 502 }),
+      "Can't reach the server. Try again.",
+    ],
+    [
+      "rejected values",
+      new ApiError("http", { method: "GET", status: 422 }),
+      "Check the values and try again.",
+    ],
     [
       "a server failure",
-      new ApiError("http", { status: 500 }),
+      new ApiError("http", { method: "GET", status: 500 }),
       "Something went wrong on our side. Try again.",
     ],
     [
       "a timeout behind a proxy",
-      new ApiError("http", { status: 504 }),
+      new ApiError("http", { method: "GET", status: 504 }),
       "Something went wrong on our side. Try again.",
     ],
-    ["a contract mismatch", new ApiError("response"), "Something went wrong. Try again."],
+    [
+      "a contract mismatch",
+      new ApiError("response", { method: "GET" }),
+      "Something went wrong. Try again.",
+    ],
     [
       "a conflict without an explanation",
-      new ApiError("http", { status: 409 }),
+      new ApiError("http", { method: "GET", status: 409 }),
       "Something went wrong. Try again.",
     ],
     [
       "a safe detail for an unfamiliar problem",
       new ApiError("http", {
+        method: "GET",
         status: 409,
         problem: { type: "/api/v0/problems/other-conflict", detail: "Choose another name." },
       }),
@@ -166,7 +264,7 @@ describe("userMessage", () => {
     ],
     [
       "actual server status despite a different problem status",
-      new ApiError("http", { status: 503, problem: { status: 422 } }),
+      new ApiError("http", { method: "GET", status: 503, problem: { status: 422 } }),
       "Something went wrong on our side. Try again.",
     ],
   ])("words %s for the user", (_case, err, message) => {
@@ -176,7 +274,7 @@ describe("userMessage", () => {
 
 // A 422 from Go with these errors[] entries.
 function unprocessable(errors: { location: string; message: string }[]): ApiError {
-  return new ApiError("http", { status: 422, problem: { errors } });
+  return new ApiError("http", { method: "GET", status: 422, problem: { errors } });
 }
 
 describe("formErrors", () => {

@@ -7,9 +7,8 @@ import {
   useSendSystemEmailTestMessage,
 } from "@/api/generated/inbok";
 import { SystemEmailTestMessageRecipient, type SystemEmailSettings } from "@/api/generated/model";
-import { formErrors } from "@/api/problem";
+import { formErrors, uncertainOutcome } from "@/api/problem";
 import { ApiError } from "@/api/transport";
-import { uncertainSession } from "@/features/auth/session-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -49,7 +48,7 @@ export function TestMessageForm({
     filters: { mutationKey: getSaveSystemEmailMutationKey() },
     select: ({ state }) =>
       state.status === "pending" ||
-      (state.error instanceof ApiError && uncertainSession(state.error)),
+      (state.error instanceof ApiError && uncertainOutcome(state.error)),
   }).some(Boolean);
   const send = useSendSystemEmailTestMessage({
     mutation: {

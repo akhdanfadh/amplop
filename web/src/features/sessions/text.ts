@@ -1,7 +1,6 @@
 import type { ListedSession } from "@/api/generated/model";
-import { userMessage } from "@/api/problem";
+import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
-import { uncertainSession } from "@/features/auth/session-error";
 
 const notFound = 404;
 const sessionNotFoundType = "/api/v0/problems/session-not-found";
@@ -33,11 +32,11 @@ export function endMessage(err: ApiError, name?: string): string {
   // Only the API's own 404 says the session is gone; a missing route says nothing.
   if (name && err.status === notFound && err.problem?.type === sessionNotFoundType)
     return `${name} was already signed out.`;
-  if (!uncertainSession(err)) return userMessage(err);
-  const explanation = err.problem?.detail?.trim() || err.problem?.title?.trim();
-  return [explanation, "Could not confirm the sign-out. Check the list before trying again."]
-    .filter(Boolean)
-    .join(" ");
+  if (!uncertainOutcome(err)) return userMessage(err);
+  return uncertainMessage(
+    err,
+    "Could not confirm the sign-out. Check the list before trying again.",
+  );
 }
 
 // endedOthersMessage reports how many other browsers a sign-out ended.

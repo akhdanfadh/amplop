@@ -23,23 +23,52 @@ const uncertainWrite = "We couldn't confirm whether this was saved. Check before
 const unreadableWrite =
   "The server reported success, but we couldn't load the result. Check before submitting again.";
 
-// Show safe API text and warn when repeating a write could duplicate its effect.
+// uncertainOutcome reports whether err leaves it unknown whether its write
+// took effect: a write that got no status, a 5xx, or a success whose result
+// could not be read. Reads and received rejections are never uncertain; an
+// error without a method counts as a write.
+export function uncertainOutcome(err: ApiError): boolean {
+  // An unknown method might be a write, so it counts as one.
+  if (err.method !== undefined && !writeMethods.has(err.method)) return false;
+  // Neither a missing response, a 5xx, nor an unreadable success shows the
+  // write was rolled back.
+  return (
+    err.kind === "response" ||
+    err.status === undefined ||
+    err.status >= firstServerError ||
+    reportedSuccess(err.status)
+  );
+}
+
+// problemExplanation returns the received problem's detail, else its title,
+// trimmed, or undefined when neither has text.
+export function problemExplanation(err: ApiError): string | undefined {
+  return err.problem?.detail?.trim() || err.problem?.title?.trim() || undefined;
+}
+
+// uncertainMessage returns the received problem's explanation, if any,
+// followed by advice on what to check before trying again.
+export function uncertainMessage(err: ApiError, advice: string): string {
+  return [problemExplanation(err), advice].filter(Boolean).join(" ");
+}
+
+// reportedSuccess reports whether status is a 2xx.
+function reportedSuccess(status: number | undefined): boolean {
+  return status !== undefined && status >= firstSuccess && status <= lastSuccess;
+}
+
+// userMessage returns safe text for err, warning when repeating a write could
+// duplicate its effect.
 export function userMessage(err: ApiError): string {
   const { status } = err;
-  const explanation = err.problem?.detail?.trim() || err.problem?.title?.trim();
 
-  // A missing response or 5xx does not prove rollback. Preserve reported success too.
-  if (writeMethods.has(err.method ?? "")) {
-    if (
-      err.kind === "response" ||
-      (status !== undefined && status >= firstSuccess && status <= lastSuccess)
-    ) {
-      return unreadableWrite;
-    }
-    if (status === undefined || status >= firstServerError) {
-      return [explanation, uncertainWrite].filter(Boolean).join(" ");
-    }
+  if (uncertainOutcome(err)) {
+    // Preserve reported success: the server said the write happened; only its
+    // result is lost.
+    if (err.kind === "response" || reportedSuccess(status)) return unreadableWrite;
+    return uncertainMessage(err, uncertainWrite);
   }
+  const explanation = problemExplanation(err);
   if (explanation) return explanation;
 
   if (status === unprocessable) return checkValues;

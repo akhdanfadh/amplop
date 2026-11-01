@@ -1,9 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import type { ApiError } from "@/api/transport";
-import { formErrors, userMessage } from "@/api/problem";
+import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
 import { codeFormats, codePaste, type CodeKind } from "@/features/auth/code-schema";
-import { uncertainSession } from "@/features/auth/session-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
@@ -87,7 +86,7 @@ export function ConfirmForm({
 
   useEffect(() => {
     // Recovery removes the status-check button; return focus to the unlocked proof field.
-    if (error && uncertainSession(error)) focused.current = false;
+    if (error && uncertainOutcome(error)) focused.current = false;
     if (locked || focused.current) return;
     focused.current = true;
     inputRef.current?.focus();

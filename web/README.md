@@ -322,6 +322,13 @@ reported success but its result could not be loaded. A received 4xx
 rejection keeps its normal explanation. Failed submissions keep the form's
 values; the request reference remains available when received.
 
+A feature with its own advice for that case uses the helpers in
+`src/api/problem.ts` instead of repeating the rules. `uncertainOutcome(err)`
+says whether a write's outcome is unknown; a read's never is, so a failed
+query never asks for a check. `problemExplanation(err)` returns the
+detail-else-title text, and `uncertainMessage(err, advice)` puts that text
+before the feature's advice, e.g. "Check the list before trying again."
+
 Zod's messages are developer text: `src/router.tsx`
 replaces them app-wide with `src/api/validation.ts`, which states the
 field's rule, e.g. "Enter a whole number from 1 to 10.".

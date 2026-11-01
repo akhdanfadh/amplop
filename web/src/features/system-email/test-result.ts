@@ -1,7 +1,6 @@
 import type { SystemEmailTestMessageResult } from "@/api/generated/model";
 import type { ApiError } from "@/api/transport";
-import { userMessage } from "@/api/problem";
-import { uncertainSession } from "@/features/auth/session-error";
+import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 
 type Reason = NonNullable<SystemEmailTestMessageResult["reason"]>;
 
@@ -27,9 +26,8 @@ export function testResultMessage(result: SystemEmailTestMessageResult, recipien
 
 // testErrorMessage words a failed test request.
 export function testErrorMessage(err: ApiError): string {
-  if (!uncertainSession(err)) return userMessage(err);
+  if (!uncertainOutcome(err)) return userMessage(err);
   // A lost response may hide a sent message, but sending another only sends
   // another test, so no check is needed first.
-  const explanation = err.problem?.detail?.trim() || err.problem?.title?.trim();
-  return [explanation, lostResult].filter(Boolean).join(" ");
+  return uncertainMessage(err, lostResult);
 }

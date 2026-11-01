@@ -1,6 +1,5 @@
-import { userMessage } from "@/api/problem";
+import { problemExplanation, uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
-import { uncertainSession } from "@/features/auth/session-error";
 
 const notFound = 404;
 const conflict = 409;
@@ -20,10 +19,10 @@ export function alreadyVerified(err: ApiError): boolean {
 
 // sendErrorMessage words a failed request for a verification link.
 export function sendErrorMessage(err: ApiError): string {
-  if (!uncertainSession(err)) return userMessage(err);
+  if (!uncertainOutcome(err)) return userMessage(err);
   // Go saves a link before sending it, so even a reported failure may deliver
   // one, and every unexpired link works.
-  const explanation = err.problem?.detail?.trim() || err.problem?.title?.trim();
+  const explanation = problemExplanation(err);
   if (explanation) return `${explanation} If an email still arrives, its link works.`;
   // Asking again is safe: the limit bounds it.
   return "We couldn't confirm whether the link was sent. If no email arrives in a few minutes, send another link.";
@@ -42,9 +41,9 @@ export function redeemErrorMessage(err: ApiError, verified: boolean): string {
   // second visit.
   if (linkInvalid(err) && verified)
     return "This link is no longer valid, but your email address is already verified.";
-  if (!uncertainSession(err)) return userMessage(err);
-  const explanation = err.problem?.detail?.trim() || err.problem?.title?.trim();
-  return [explanation, "We couldn't confirm whether your email address was verified. Try again."]
-    .filter(Boolean)
-    .join(" ");
+  if (!uncertainOutcome(err)) return userMessage(err);
+  return uncertainMessage(
+    err,
+    "We couldn't confirm whether your email address was verified. Try again.",
+  );
 }
