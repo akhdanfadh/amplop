@@ -542,14 +542,14 @@ A test answers `accepted` or `failed` with the step that failed: `connect`,
 `tls`, `auth`, `sender`, `recipient`, or `timeout`. Accepted means the server
 took the message for delivery, not that it arrived. One send, from dialing to
 the server's last reply, has at most 8 seconds, inside the 10-second request
-limit. A
-failed test logs a warning with the reason, host, port, security, username,
-and the first 512 bytes of the error. inbok never adds the password; the
-text can include the server's own reply. Only the request's own log line carries its
-`request_id`, so match the two by time:
+limit. A failed send logs a warning with its purpose, e.g. `test message`,
+the reason, host, port, security, username, and the first 512 bytes of the
+error. inbok never adds the password; the text can include the server's own
+reply. Only the request's own log line carries its `request_id`, so match the
+two by time:
 
 ```text
-time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email test message failed" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="..."
+time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="..."
 ```
 
 To list saves, with no setting values:

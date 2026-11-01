@@ -112,9 +112,10 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
+	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(), logger)
 	services := httpapi.Services{
 		SystemEmail:  systememail.NewService(db, cfg.Encryption),
-		TestMessages: systememail.NewTestMessages(db, cfg.Encryption, smtp.NewSender(), time.Now, logger),
+		TestMessages: systememail.NewTestMessages(db, mailer, time.Now),
 		Disabler:     totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		Backups:      totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		CodeSignIn:   session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),

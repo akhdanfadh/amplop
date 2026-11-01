@@ -1,5 +1,6 @@
-// Package systememail owns the instance's own mail sender: its settings and
-// test messages. It is separate from the mailboxes members connect.
+// Package systememail owns the instance's own mail sender: its settings, test
+// messages, and the Mailer that sends inbok's messages with them. It is
+// separate from the mailboxes members connect.
 package systememail
 
 import (

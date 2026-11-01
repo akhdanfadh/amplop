@@ -347,7 +347,8 @@ func TestSystemEmailSendTestMessage(t *testing.T) {
 	require.NoError(t, err)
 	sender := &recordingSender{}
 	tested := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
-	messages := systememail.NewTestMessages(db, ring, sender, func() time.Time { return tested }, slog.New(slog.DiscardHandler))
+	mailer := systememail.NewMailer(db, ring, sender, slog.New(slog.DiscardHandler))
+	messages := systememail.NewTestMessages(db, mailer, func() time.Time { return tested })
 
 	result, err := messages.Send(t.Context(), "admin@example.org")
 	require.NoError(t, err)
