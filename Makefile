@@ -27,7 +27,7 @@ TESTIFYLINT := go -C backend tool -modfile=tools.mod testifylint
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install dev dev-backend dev-web backend-serve \
+.PHONY: help install image dev dev-backend dev-web backend-serve backend-build \
 	web-build web-preview web-add-ui \
 	db-start db-stop db-wipe db-migrate db-status db-rollback \
 	db-reset db-migration \
@@ -46,6 +46,14 @@ $(ENV_FILE):
 install: ## Install web dependencies (Go downloads its own)
 	pnpm -C web install
 
+# Container image, built from the Dockerfile on this machine; nothing is
+# pushed. Another name keeps a second image beside this one, e.g.
+# make image IMAGE=inbok:trial
+IMAGE ?= inbok:local
+
+image: ## Build the inbok container image, tagged IMAGE (inbok:local)
+	docker build --tag $(IMAGE) .
+
 # Development servers
 
 # -j2 runs both at once; Ctrl+C stops both.
@@ -61,6 +69,14 @@ dev-web: $(ENV_FILE) ## Run Vite on http://localhost:5173
 
 backend-serve: $(ENV_FILE) ## Run Go once, without restarts
 	$(WITH_ENV) go -C backend run ./cmd/inbok serve
+
+# The binary embeds what backend/internal/webapp/dist holds when it is
+# built, so replace that copy first; a file left from an older build would
+# be served too.
+backend-build: web-build ## Build backend/bin/inbok with the web app built in
+	find backend/internal/webapp/dist -mindepth 1 ! -path backend/internal/webapp/dist/.gitkeep -delete
+	cp -R web/dist/client/. backend/internal/webapp/dist/
+	go -C backend build -o bin/inbok ./cmd/inbok
 
 web-build: ## Build the browser files into web/dist
 	pnpm -C web build

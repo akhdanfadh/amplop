@@ -1,2 +1,4 @@
 # Air build output
 /tmp/
+# make backend-build output
+/bin/

@@ -23,6 +23,12 @@ export default defineConfig({
     tailwindcss(),
   ]),
 
+  // Run modules in import order even when the bundle merges them into
+  // shared chunks; without it, a chunk's top-level code can run before
+  // code imported earlier, e.g. src/zod-config.ts. Costs about 5% more
+  // JavaScript for the wrappers that enforce the order.
+  build: { rolldownOptions: { output: { strictExecutionOrder: true } } },
+
   // Resolve the `@/` alias from tsconfig.json `paths`.
   resolve: { tsconfigPaths: true },
 

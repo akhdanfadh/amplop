@@ -1,9 +1,9 @@
 # inbok backend
 
-The Go server: the `inbok` command (`serve`, `migrate`, `export`,
-`recover-admin`), its
-HTTP API, and its database code. Running `make` in the repository root
-lists a shortcut for most commands here.
+The Go server: the `inbok` command (`serve`, `migrate`, `health`,
+`export`, `recover-admin`), its HTTP API, the built web app it serves,
+and its database code. Running `make` in the repository root lists a
+shortcut for most commands here.
 
 ## Run the server
 
@@ -43,6 +43,102 @@ Expect HTTP 200 with:
 ```json
 {"data": {"status": "ok"}}
 ```
+
+`inbok health` makes the same request to the address `serve` listens on
+(`INBOK_HTTP_ADDR`; an all-interfaces address such as `0.0.0.0:8080`
+reaches this machine), with a 3-second limit and no proxy. It exits 0 if the
+answer is HTTP 200 and 1 otherwise, printing the reason. It reads no other
+setting, so it needs no secrets. The container image runs it as its health
+check, since the image has no `curl`.
+
+## Container image
+
+From the repository root, `make image` builds the `inbok:local` image
+from the `Dockerfile`; `IMAGE=name:tag` picks another name. Nothing is
+pushed to a registry. It holds the binary, with the web app built in, on
+distroless's `static` base: no shell, no package manager, and the
+`nonroot` user (65532). It sets `GIN_MODE=release` and
+`INBOK_HTTP_ADDR=0.0.0.0:8080`, since a container's loopback is
+unreachable from other containers. Containers on the same Docker network
+can then reach it, and the host's network only if the port is published.
+To publish it for a proxy on the same host, bind loopback, e.g.
+`-p 127.0.0.1:8080:8080`: a bare `-p 8080:8080` listens on every host
+interface, and Docker's rules bypass host firewalls such as ufw. Its entry point is `inbok`, and its default command is
+`serve`, so `docker run inbok:local migrate` runs a migration.
+
+The base images are pinned by version and digest; the `Dockerfile` says
+how to update one. Builds cache downloaded Go modules and pnpm packages
+between runs, and a change under `backend/` reuses the cached web build.
+`deploy/README.md` runs the image with Docker Compose on a server.
+
+## The web app
+
+`serve` also serves the built web app on every path outside `/api`, so the
+page and the API share one origin and one version. During development
+Vite serves the page instead (`make dev`), and a `go build` or `go run`
+from a fresh checkout includes no web app: `serve` logs
+`this build has no web app; paths outside /api answer 404` and does
+exactly that. To build one binary with the web app inside, from the
+repository root:
+
+```sh
+make backend-build
+```
+
+It builds the web app, copies `web/dist/client` into
+`backend/internal/webapp/dist`, and writes `backend/bin/inbok`. Go embeds
+that folder when it compiles, so rebuild after any web change. Only the
+folder's `.gitkeep` is committed. The copy stays after the build, so later
+`go build`, `go run`, and Air also include it until you empty the folder:
+
+```sh
+find backend/internal/webapp/dist -mindepth 1 ! -path backend/internal/webapp/dist/.gitkeep -delete
+```
+
+For a GET or HEAD outside `/api`:
+
+- A built file's exact path sends it, e.g. `/assets/index-BrBO-kCw.js`.
+  Files under `/assets/` have hashed names and get
+  `Cache-Control: public, max-age=31536000, immutable`; other files, and
+  the shell, get `no-cache` and an `ETag` so the browser rechecks them.
+  A `Range` header is ignored.
+- Any other path gets `_shell.html` with 200, e.g. `/security`, and the
+  browser renders the route.
+- A path under `/assets/`, a path with a file extension, e.g.
+  `/favicon.ico`, and a path with a segment starting with `.` get the
+  API's Problem Details 404 (see Errors) instead: a browser that asks for
+  a script never receives the page.
+
+Other methods outside `/api` get a 405 with `Allow: GET, HEAD`, after the
+same cross-origin check as the API: a write without `Origin` or
+`Sec-Fetch-Site` gets its 403 first. `/api` and every path under `/api/`
+belong to the API, so `/api/v1/x` is an API 404, not the shell. There are
+no directory listings, and only the files in the build can be sent.
+
+### Security headers
+
+Every response from inbok's handlers, the API's and the web app's,
+carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
+and `X-Frame-Options: DENY`. The web app's files and shell also carry this
+`Content-Security-Policy`:
+
+```text
+default-src 'self'; script-src 'self' <shell hashes>; object-src 'none';
+base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+```
+
+Pages load only inbok's own files and call only its own API. No `<style>`
+element or `style` attribute in the HTML applies; styles set from script,
+e.g. React's `style` props, still do. The build's shell has inline
+scripts, and their text changes with every build, so `serve` reads the
+embedded shell at startup and allows each one by its SHA-256 hash; no
+other inline script runs. Nothing in the policy names a part of the web
+app's code: whatever the build's shell holds is allowed, and the web app
+keeps to the rest. API responses get no Content-Security-Policy; Huma's
+docs page at `/api/v0/docs` sets its own, since it loads scripts from
+unpkg.com. HTTPS-only (HSTS) is the proxy's header, because Go itself
+serves plain HTTP. `web/README.md` lists what the policy means for web
+code.
 
 ## API contract
 
@@ -189,8 +285,10 @@ falls back to JSON for unsupported `Accept` values; it does not enable strict
 response-format rejection.
 
 Unknown routes (404) and unsupported methods (405, with an `Allow` header)
-return the same Problem Details, never Gin's plain-text bodies. A trailing
-slash is a different route: `/api/v0/health/` is a 404, not a redirect.
+return the same Problem Details, never Gin's plain-text bodies. This
+includes the web app's missing files and its other methods; see The web
+app. A trailing slash is a different route: `/api/v0/health/` is a 404,
+not a redirect.
 
 ## Timeouts and shutdown
 
@@ -209,13 +307,13 @@ in-flight requests up to 5 seconds to finish.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `INBOK_HTTP_ADDR` | `127.0.0.1:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
+| `INBOK_HTTP_ADDR` | `127.0.0.1:8080`; the image sets `0.0.0.0:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
 | `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL; see Migrations below. |
 | `INBOK_PUBLIC_URL` | none, required | The address users open inbok at, e.g. `https://mail.example.com`; see Public URL below. Invalid values stop startup. |
 | `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
 | `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
 | `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets and the system email password; see Encryption keys below. Invalid entries stop startup. |
-| `GIN_MODE` | `debug` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
+| `GIN_MODE` | `debug`; the image sets `release` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
 machine.
@@ -287,8 +385,9 @@ only the proxy's address ranges; trusting all addresses lets a caller forge
 their throttling address and the sign-in address shown in the session list.
 
 For one nginx proxy on the same host as Go, keep Go on `127.0.0.1:8080` and
-set `INBOK_TRUSTED_PROXIES=127.0.0.1/32`. Build the web app first. Adapt the
-domain and file paths in this HTTPS server block:
+set `INBOK_TRUSTED_PROXIES=127.0.0.1/32`. Go serves the web app too (see
+The web app), so nginx forwards every path. Adapt the domain and
+certificate paths in this HTTPS server block:
 
 ```nginx
 server {
@@ -296,16 +395,11 @@ server {
     server_name inbok.example.com;
     ssl_certificate /path/to/fullchain.pem;
     ssl_certificate_key /path/to/privkey.pem;
-    root /path/to/inbok/web/dist/client;
 
-    location /api/ {
+    location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-For $remote_addr;
-    }
-
-    location / {
-        try_files $uri /_shell.html;
     }
 }
 ```
@@ -315,7 +409,9 @@ preserves the browser's Host, including its port. nginx forwards `Origin`
 and `Sec-Fetch-Site` unchanged. Its [proxy header documentation](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header)
 explains the Host override. Keep the Go listener inaccessible to remote
 clients. A container proxy has a different connection address; trust its
-actual range rather than copying the loopback range.
+actual range rather than copying the loopback range. With the Compose
+files in `deploy/`, [Using your own proxy](../deploy/README.md#using-your-own-proxy-instead-of-caddy)
+gives the address to trust.
 
 ## Email addresses
 
@@ -529,16 +625,17 @@ reads the first line and skips confirmation. Password spaces are preserved.
 Use a password manager or another trusted program to supply that line; never
 put the password in arguments, environment variables, or shell history.
 
-For a deployment container, replace the container name and binary path with
-yours. The container must have `INBOK_DATABASE_URL` configured:
+In a container from the image, the binary is on the `PATH`. The
+container must have `INBOK_DATABASE_URL` set, as one running `serve` does.
+Replace the container name with yours:
 
 ```sh
-docker exec -it inbok /app/inbok recover-admin admin@example.com
+docker exec -it inbok inbok recover-admin admin@example.com
 ```
 
 For piped input, use `docker exec -i` without `-t` so it uses the one-line
-input mode. This repository's Compose file starts PostgreSQL and Mailpit; it
-does not provide an application container.
+input mode. This repository's development Compose file starts PostgreSQL
+and Mailpit; it does not run inbok itself.
 
 Recovery checks that the account is an administrator, then replaces the
 password, removes TOTP and every backup code, ends all sessions and sign-in
@@ -861,8 +958,13 @@ httpapi --> emailverification <-- repository/postgres
 - A feature can use another feature through an interface it declares:
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`
   fills with `systememail`'s `Mailer`.
+- `webapp` embeds the built web app and serves it as a static site:
+  files, the shell for browser routes, caching, and the CSP. It knows the
+  build's layout, not the web app's code. `httpapi` declares a `webApp`
+  interface and sends it the reads outside `/api`, keeping the API's 404
+  and 405 for the rest, so its tests use a fake.
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
-  in `httpapi.Services`.
+  in `httpapi.Services`, and loads `webapp`'s build for `ServeWebApp`.
 
 ADR021 in the project's decision records explains this layout and the
 alternatives it was chosen over.

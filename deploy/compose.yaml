@@ -1,0 +1,158 @@
+# A self-hosted inbok: PostgreSQL, a one-off migration, the inbok server,
+# and Caddy for HTTPS. Values come from deploy/.env; copy .env.example.
+# From deploy/, start it with docker compose up -d --build, and upgrade it
+# with ./upgrade.sh. The repository root's compose.yaml is for development.
+#
+# NOTE: The images below are pinned by version and digest, like the
+# Dockerfile's base images; the Dockerfile says how to update a digest.
+
+# Not "inbok": the development stack in a checkout named inbok has that
+# name, and sharing it would share its database volume.
+name: inbok-deploy
+
+# migrate and inbok connect with this URL. The password is hex, so it needs
+# no escaping here.
+x-database-url: &database-url postgres://inbok:${INBOK_POSTGRES_PASSWORD:?set it in deploy/.env}@postgres:5432/inbok?sslmode=disable
+
+services:
+  postgres:
+    image: postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: inbok
+      POSTGRES_PASSWORD: ${INBOK_POSTGRES_PASSWORD:?set it in deploy/.env}
+      POSTGRES_DB: inbok
+
+    # PostgreSQL 18 and newer keep data under /var/lib/postgresql/18/docker;
+    # mount the parent so data survives recreating the container.
+    volumes:
+      - postgres:/var/lib/postgresql
+
+    # Ready means it accepts TCP connections. The first start runs a
+    # temporary server on a Unix socket only, so a socket check would pass
+    # too early. $$ makes Compose pass $ to the container's shell.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # The first start creates the database first, which can take a while
+      # on a slow disk; failures in this time do not count.
+      start_period: 60s
+      start_interval: 2s
+
+    # No published port, and on db only.
+    networks:
+      - db
+
+  # Applies pending migrations, then exits. Every docker compose up or
+  # start runs it again, which does nothing once the database is current.
+  migrate:
+    # The image the inbok service builds, so an upgrade migrates with the
+    # code it then serves. Only inbok builds it: Compose would otherwise
+    # build it once per service.
+    image: ${INBOK_IMAGE:-inbok:local}
+    pull_policy: never
+    command: migrate
+    restart: "no"
+    environment:
+      INBOK_DATABASE_URL: *database-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    # The image's check asks a server that migrate never starts.
+    healthcheck:
+      disable: true
+    networks:
+      - db
+
+  inbok:
+    # Built from the repository's Dockerfile. The image's own health check
+    # runs inbok health, which caddy waits for below. Only upgrade.sh sets
+    # INBOK_IMAGE, to build and migrate with a candidate image first.
+    image: ${INBOK_IMAGE:-inbok:local}
+    build:
+      context: ..
+    restart: unless-stopped
+    environment:
+      INBOK_DATABASE_URL: *database-url
+      INBOK_ENCRYPTION_KEYS: ${INBOK_ENCRYPTION_KEYS:?set it in deploy/.env}
+      INBOK_PUBLIC_URL: ${INBOK_PUBLIC_URL:?set it in deploy/.env}
+      INBOK_SETUP_TOKEN: ${INBOK_SETUP_TOKEN:-}
+      # Caddy's own addresses below, and nothing else: a forwarded client
+      # address from any other peer is ignored.
+      INBOK_TRUSTED_PROXIES: 10.83.70.2/32,fd24:44bd:915f::2/128
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+    # The image listens on 0.0.0.0:8080 with no published port. From
+    # outside, only Caddy reaches it, on edge.
+    networks:
+      - edge
+      - db
+
+  caddy:
+    image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
+    restart: unless-stopped
+    environment:
+      INBOK_DOMAIN: ${INBOK_DOMAIN:?set it in deploy/.env}
+
+    # 80 answers certificate checks and redirects to HTTPS; 443/udp carries
+    # HTTP/3.
+    ports:
+      - ${INBOK_CADDY_HTTP_PORT:-80}:80
+      - ${INBOK_CADDY_HTTPS_PORT:-443}:443
+      - ${INBOK_CADDY_HTTPS_PORT:-443}:443/udp
+
+    # Caddy's image asks for its config folder, not the single file, so a
+    # reload sees edits: docker compose exec -w /etc/caddy caddy caddy reload
+    # /data holds the certificates and their keys: keep it, or Caddy asks
+    # for new ones on every start and can hit the CA's rate limits.
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      inbok:
+        condition: service_healthy
+    networks:
+      edge:
+        ipv4_address: 10.83.70.2
+        ipv6_address: fd24:44bd:915f::2
+
+networks:
+  # Caddy and inbok, with internet access for certificates and system
+  # email. The subnets are fixed so inbok can trust exactly Caddy's
+  # addresses. If one collides with a network on the host, change it, its
+  # ip_range, and Caddy's addresses in both places above.
+  edge:
+    # With IPv6 here, Docker routes IPv6 visitors to Caddy directly and
+    # keeps their addresses; on an IPv4-only network it relays them through
+    # its own proxy, and they all arrive from one address. Direct routing
+    # needs Docker's ip6tables setting, which is on by default.
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 10.83.70.0/28
+          # Docker gives other containers addresses from here only, so none
+          # takes Caddy's.
+          ip_range: 10.83.70.8/29
+        # A private IPv6 prefix, picked at random as RFC 4193 asks.
+        - subnet: fd24:44bd:915f::/64
+          ip_range: fd24:44bd:915f::1:0/112
+
+  # PostgreSQL, migrate, and inbok, with no internet access. Caddy is not
+  # on it, so the service facing the internet cannot reach the database.
+  db:
+    internal: true
+
+# docker compose down -v deletes these: postgres holds the only copy of the
+# database, and caddy-data the certificates. Plain down keeps them.
+volumes:
+  postgres:
+  caddy-data:
+  caddy-config:

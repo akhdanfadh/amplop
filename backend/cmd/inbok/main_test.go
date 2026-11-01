@@ -36,7 +36,7 @@ func TestExport(t *testing.T) {
 }
 
 func TestRunUsage(t *testing.T) {
-	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"migrate", "extra"}, {"export"}, {"export", "a", "b"}}
+	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"migrate", "extra"}, {"health", "extra"}, {"export"}, {"export", "a", "b"}}
 	for _, args := range cases {
 		err := run(context.Background(), args, discard)
 		require.ErrorIs(t, err, errUsage, "run(%q)", args)

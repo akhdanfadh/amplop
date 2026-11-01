@@ -1,0 +1,42 @@
+/*
+ * WORKAROUND: input-otp's own rules, copied from input-otp 1.5.0's
+ * dist/index.mjs, where the library adds them through an inline <style>
+ * that the server's Content-Security-Policy blocks. input-otp.tsx explains
+ * how the library is kept from adding them; after upgrading input-otp,
+ * compare these with its rules.
+ *
+ * The library types into one transparent input laid over the slots; these
+ * keep the browser's selection and autofill colors off it.
+ */
+[data-input-otp]::selection {
+  background: transparent !important;
+  color: transparent !important;
+}
+
+/* The library also writes this for :-webkit-autofill; the build rewrites
+ * that as :autofill, which every browser the build targets knows. */
+[data-input-otp]:autofill {
+  background: transparent !important;
+  color: transparent !important;
+  border-color: transparent !important;
+  opacity: 0 !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* iOS Safari: keep the caret and text inside the overlaid input. */
+@supports (-webkit-touch-callout: none) {
+  [data-input-otp] {
+    letter-spacing: -0.6em !important;
+    font-weight: 100 !important;
+    font-stretch: ultra-condensed;
+    font-optical-sizing: none !important;
+    left: -1px !important;
+    right: 1px !important;
+  }
+}
+
+[data-input-otp] + * {
+  pointer-events: all !important;
+}

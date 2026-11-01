@@ -1,0 +1,4 @@
+# Copied from web/dist/client by `make backend-build`; never committed.
+# The placeholder keeps the folder for go:embed.
+dist/*
+!dist/.gitkeep

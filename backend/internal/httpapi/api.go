@@ -53,10 +53,12 @@ func New(logger *slog.Logger, services Services) *API {
 	// Disable Gin's trust of all proxies. An empty list cannot fail parsing.
 	router.SetTrustedProxies(nil)
 
-	// Request ID runs first so every log line has it. Recovery runs inside
-	// the request log, so a panic is logged as 500. Cross-origin rejection
-	// is logged before the timeout wraps the handler's own work.
-	router.Use(withRequestID(), withRequestLog(logger), withRecovery(logger), withCrossOrigin(), withTimeout(requestTimeout))
+	// Request ID runs first so every log line has it. Security headers
+	// come next, so even a rejected or failed request carries them.
+	// Recovery runs inside the request log, so a panic is logged as 500.
+	// Cross-origin rejection is logged before the timeout wraps the
+	// handler's own work.
+	router.Use(withRequestID(), withSecurityHeaders(), withRequestLog(logger), withRecovery(logger), withCrossOrigin(), withTimeout(requestTimeout))
 	router.HandleMethodNotAllowed = true
 	// Gin would answer /health/ with a 301 to /health before any
 	// middleware runs: no request ID, no log line, and a Location built

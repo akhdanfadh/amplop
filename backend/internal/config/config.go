@@ -54,17 +54,13 @@ type Config struct {
 
 // Load reads the environment. Encryption keys are required; optional settings use defaults.
 func Load() (Config, error) {
+	addr, err := HTTPAddr()
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
-		HTTPAddr:   os.Getenv(envHTTPAddr),
+		HTTPAddr:   addr,
 		SetupToken: os.Getenv(envSetupToken),
-	}
-	if cfg.HTTPAddr == "" {
-		cfg.HTTPAddr = defaultHTTPAddr
-	}
-
-	// Fail at startup with the variable name, not later at listen time.
-	if _, _, err := net.SplitHostPort(cfg.HTTPAddr); err != nil {
-		return Config{}, fmt.Errorf("%s: %w", envHTTPAddr, err)
 	}
 
 	// Count characters, not bytes, and keep the token out of errors.
@@ -100,6 +96,20 @@ func Load() (Config, error) {
 	cfg.Encryption = keys
 
 	return cfg, nil
+}
+
+// HTTPAddr reads the host:port serve listens on, or its default. Returns an
+// error naming the setting if the value is not host:port.
+func HTTPAddr() (string, error) {
+	addr := os.Getenv(envHTTPAddr)
+	if addr == "" {
+		addr = defaultHTTPAddr
+	}
+	// Fail with the variable name, not later at listen or dial time.
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		return "", fmt.Errorf("%s: %w", envHTTPAddr, err)
+	}
+	return addr, nil
 }
 
 // DatabaseURL reads the PostgreSQL connection URL, which has no default.
