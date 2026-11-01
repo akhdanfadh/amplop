@@ -55,10 +55,10 @@ func NewThrottle(storage AttemptStorage, now func() time.Time, logger *slog.Logg
 }
 
 // Begin reserves an attempt for userID before verification and returns its
-// ID, or [ErrThrottled] when one more does not fit. Leave it saved when a code
-// fails. Success removes only its own reservation, in the operation's storage
-// transaction or with Succeed; a request that fails before checking a code
-// removes it with Release.
+// ID, or an [*attemptlimit.Error] wrapping [ErrThrottled] when one more does
+// not fit. Leave it saved when a code fails. Success removes only its own
+// reservation, in the operation's storage transaction or with Succeed; a
+// request that fails before checking a code removes it with Release.
 func (t *Throttle) Begin(ctx context.Context, userID int64) (int64, error) {
 	if userID <= 0 {
 		return 0, errAttemptUserID
@@ -72,8 +72,8 @@ func (t *Throttle) Begin(ctx context.Context, userID int64) (int64, error) {
 				times = append(times, row.CreatedAt)
 			}
 		}
-		if attemptlimit.Wait(times, now, shortLimit, longLimit) > 0 {
-			return ErrThrottled
+		if wait := attemptlimit.Wait(times, now, shortLimit, longLimit); wait > 0 {
+			return &attemptlimit.Error{Err: ErrThrottled, Wait: wait}
 		}
 		return nil
 	})

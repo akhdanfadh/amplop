@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"sync"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"inbok/internal/attemptlimit"
 	"inbok/internal/emailaddress"
 )
 
@@ -59,6 +61,9 @@ func TestThrottlePair(t *testing.T) {
 	}
 	_, err := limiter.Begin(t.Context(), " admin@example.com ", addr)
 	require.ErrorIs(t, err, ErrThrottled)
+	refusal, ok := errors.AsType[*attemptlimit.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, 15*time.Minute, refusal.Wait, "the wait runs until the oldest attempt leaves the window")
 	_, err = limiter.Begin(t.Context(), "admin@example.com", netip.MustParseAddr("192.0.2.2"))
 	require.NoError(t, err)
 	clock.Advance(15*time.Minute - time.Nanosecond)

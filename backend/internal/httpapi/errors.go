@@ -20,6 +20,14 @@ func problemResponses(api huma.API, statuses ...int) map[string]*huma.Response {
 	for _, status := range statuses {
 		responses[strconv.Itoa(status)] = &huma.Response{Description: http.StatusText(status)}
 	}
+	// A 429 is a refused attempt, which says when to retry.
+	if throttled, ok := responses[strconv.Itoa(http.StatusTooManyRequests)]; ok {
+		throttled.Headers = map[string]*huma.Param{retryAfterHeader: {
+			Description: "Seconds until one more attempt fits every limit, rounded up.",
+			Required:    true,
+			Schema:      &huma.Schema{Type: huma.TypeInteger, Minimum: new(1.0)},
+		}}
+	}
 	for _, response := range responses {
 		response.Content = map[string]*huma.MediaType{
 			problemContentType: {Schema: schema},

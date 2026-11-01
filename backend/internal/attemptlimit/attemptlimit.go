@@ -11,6 +11,19 @@ import (
 	"time"
 )
 
+// Error is a throttle's refusal: Err is the feature's error, such as
+// session.ErrThrottled, and Wait is how long until one more attempt fits.
+type Error struct {
+	Err  error
+	Wait time.Duration
+}
+
+// Error returns Err's text.
+func (e *Error) Error() string { return e.Err.Error() }
+
+// Unwrap returns Err, so errors.Is matches the feature's error.
+func (e *Error) Unwrap() error { return e.Err }
+
 // Limit allows at most Max attempts in any period of length Window. Max must
 // be at least 1.
 type Limit struct {

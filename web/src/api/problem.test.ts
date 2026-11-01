@@ -277,6 +277,118 @@ function unprocessable(errors: { location: string; message: string }[]): ApiErro
   return new ApiError("http", { method: "GET", status: 422, problem: { errors } });
 }
 
+// clock words a local time on a day of November 2026 as the app does, in
+// the test's locale.
+function clock(day: number, hour: number, minute: number): string {
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
+    new Date(2026, 10, day, hour, minute),
+  );
+}
+
+// weekdayOf words a day of November 2026 as a weekday, in the test's locale.
+function weekdayOf(date: number): string {
+  return new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(new Date(2026, 10, date));
+}
+
+describe("throttled requests", () => {
+  const tooManyRequests = 429;
+  // 14:30:20 local time on Sunday 1 November 2026.
+  const receivedAt = new Date(2026, 10, 1, 14, 30, 20).getTime();
+  const throttled = (retryAfter?: string, detail?: string, problem = detail !== undefined) =>
+    new ApiError("http", {
+      method: "POST",
+      status: tooManyRequests,
+      retryAfter,
+      receivedAt,
+      problem: problem ? { detail } : undefined,
+    });
+  it.each([
+    ["0", 14, 31],
+    ["40", 14, 31],
+    ["41", 14, 32],
+    ["180", 14, 34],
+    ["5400", 16, 1],
+  ])("rounds a wait of %s seconds up to the minute", (retryAfter, hour, minute) => {
+    expect(userMessage(throttled(retryAfter, "Too many failed attempts."))).toBe(
+      `Too many failed attempts. Try again after ${clock(1, hour, minute)}.`,
+    );
+  });
+
+  it("names the day when the time is on another day", () => {
+    expect(userMessage(throttled("86400", "Too many failed code attempts."))).toBe(
+      `Too many failed code attempts. Try again after ${clock(2, 14, 31)} on ${weekdayOf(2)}.`,
+    );
+  });
+
+  it("crosses midnight to the next day's name", () => {
+    const err = new ApiError("http", {
+      method: "POST",
+      status: tooManyRequests,
+      retryAfter: "0",
+      receivedAt: new Date(2026, 10, 1, 23, 59, 30).getTime(),
+      problem: { detail: "Too many failed attempts." },
+    });
+    expect(userMessage(err)).toBe(
+      `Too many failed attempts. Try again after ${clock(2, 0, 0)} on ${weekdayOf(2)}.`,
+    );
+  });
+
+  it("counts a past HTTP date from when the response arrived", () => {
+    const header = new Date(2026, 9, 31, 14, 0, 0).toUTCString();
+    expect(userMessage(throttled(header, "Too many failed attempts."))).toBe(
+      `Too many failed attempts. Try again after ${clock(1, 14, 31)}.`,
+    );
+  });
+
+  it.each(["518401", "99999999999999", "9".repeat(400)])(
+    "says later for a wait over six days (%s seconds)",
+    (retryAfter) => {
+      expect(userMessage(throttled(retryAfter, "Too many failed attempts."))).toBe(
+        "Too many failed attempts. Try again later.",
+      );
+    },
+  );
+
+  it("reads an HTTP date as the time itself", () => {
+    const header = new Date(2026, 10, 1, 15, 0, 0).toUTCString();
+    expect(userMessage(throttled(header, "Too many failed attempts."))).toBe(
+      `Too many failed attempts. Try again after ${clock(1, 15, 0)}.`,
+    );
+  });
+
+  it.each([undefined, "", "soon"])("says later without a usable wait (%s)", (retryAfter) => {
+    expect(userMessage(throttled(retryAfter, "Too many failed attempts."))).toBe(
+      "Too many failed attempts. Try again later.",
+    );
+  });
+
+  it("says later when no response time was recorded", () => {
+    const err = new ApiError("http", {
+      method: "POST",
+      status: tooManyRequests,
+      retryAfter: "180",
+    });
+    expect(userMessage(err)).toBe("Too many attempts. Try again later.");
+  });
+
+  it("uses local wording when no problem arrived", () => {
+    expect(userMessage(throttled("180"))).toBe(
+      `Too many attempts. Try again after ${clock(1, 14, 34)}.`,
+    );
+  });
+
+  it("ends a title-only problem with a full stop", () => {
+    const err = new ApiError("http", {
+      method: "POST",
+      status: tooManyRequests,
+      retryAfter: "180",
+      receivedAt,
+      problem: { title: "Too many code attempts" },
+    });
+    expect(userMessage(err)).toBe(`Too many code attempts. Try again after ${clock(1, 14, 34)}.`);
+  });
+});
+
 describe("formErrors", () => {
   it("keeps safe messages on rendered fields and returns unmatched messages for the summary", () => {
     const err = unprocessable([

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"inbok/internal/attemptlimit"
 	"inbok/internal/systememail"
 )
 
@@ -167,4 +168,16 @@ func TestRequestStorageFailure(t *testing.T) {
 	require.ErrorIs(t, err, failure)
 
 	assert.Empty(t, mailer.sent)
+}
+
+// A refusal says how long until one more link fits.
+func TestRequestThrottledWait(t *testing.T) {
+	storage := &memoryStorage{state: RequestState{Email: "admin@example.org", MailConfigured: true}, links: recentLinks(3, time.Minute)}
+
+	_, err := testService(storage, &fakeMailer{}).Request(t.Context(), testUserID)
+
+	require.ErrorIs(t, err, ErrThrottled)
+	refusal, ok := errors.AsType[*attemptlimit.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, 14*time.Minute, refusal.Wait)
 }

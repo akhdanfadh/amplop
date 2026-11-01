@@ -59,6 +59,7 @@ describe("transport", () => {
     expect(err.kind).toBe("network");
     expect(err.problem).toBeUndefined();
     expect(err.status).toBeUndefined();
+    expect(err.receivedAt).toBeUndefined();
   });
 
   it("labels Go's Problem Details with their status", async () => {
@@ -269,12 +270,16 @@ describe("received error facts", () => {
           },
         }),
     );
+    const before = Date.now();
     const error = await failure();
     expect(error.kind).toBe("http");
     expect(error.status).toBe(httpStatus.unavailable);
     expect(error.problem).toEqual(problem);
     expect(error.requestId).toBe("request-reference");
     expect(error.retryAfter).toBe("3");
+    // Retry advice counts from when the headers arrived.
+    expect(error.receivedAt).toBeGreaterThanOrEqual(before);
+    expect(error.receivedAt).toBeLessThanOrEqual(Date.now());
   });
 
   it("accepts an external problem without fabricating absent members", async () => {

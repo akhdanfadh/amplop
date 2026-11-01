@@ -56,8 +56,8 @@ func NewThrottle(storage AttemptStorage, now func() time.Time) *Throttle {
 
 // Begin reserves a sign-in attempt for email from addr and returns its ID if
 // the limits allow it. Call it before checking the password. Leave the row on
-// failure. It returns [emailaddress.ErrInvalid] for an invalid email and
-// [ErrThrottled] when a limit is reached.
+// failure. It returns [emailaddress.ErrInvalid] for an invalid email, and an
+// [*attemptlimit.Error] wrapping [ErrThrottled] when a limit is reached.
 func (t *Throttle) Begin(ctx context.Context, email string, addr netip.Addr) (int64, error) {
 	key, err := emailaddress.Parse(email)
 	if err != nil {
@@ -66,7 +66,8 @@ func (t *Throttle) Begin(ctx context.Context, email string, addr netip.Addr) (in
 	return t.begin(ctx, &key, addr)
 }
 
-// BeginSetup reserves a setup attempt and returns its ID.
+// BeginSetup reserves a setup attempt and returns its ID, or an
+// [*attemptlimit.Error] wrapping [ErrThrottled] when the limit is reached.
 // Only the address limit applies; setup attempts have no email key.
 func (t *Throttle) BeginSetup(ctx context.Context, addr netip.Addr) (int64, error) {
 	return t.begin(ctx, nil, addr)
@@ -93,8 +94,8 @@ func (t *Throttle) begin(ctx context.Context, email *string, addr netip.Addr) (i
 				pair = append(pair, row.CreatedAt)
 			}
 		}
-		if attemptlimit.Wait(address, now, addressLimit) > 0 || attemptlimit.Wait(pair, now, pairLimit) > 0 {
-			return ErrThrottled
+		if wait := max(attemptlimit.Wait(address, now, addressLimit), attemptlimit.Wait(pair, now, pairLimit)); wait > 0 {
+			return &attemptlimit.Error{Err: ErrThrottled, Wait: wait}
 		}
 		return nil
 	})

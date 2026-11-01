@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/attemptlimit"
 )
 
 type memoryCodeAttempts struct {
@@ -95,6 +97,9 @@ func TestThrottleLongWindow(t *testing.T) {
 	}
 	_, err := limiter.Begin(t.Context(), 42)
 	require.ErrorIs(t, err, ErrThrottled, "the daily limit still applies after the short window expires")
+	refusal, ok := errors.AsType[*attemptlimit.Error](err)
+	require.True(t, ok)
+	assert.Equal(t, start.Add(24*time.Hour).Sub(clock.now), refusal.Wait, "the wait runs until the first attempt leaves the daily window")
 	clock.now = start.Add(24*time.Hour - time.Nanosecond)
 	_, err = limiter.Begin(t.Context(), 42)
 	require.ErrorIs(t, err, ErrThrottled)

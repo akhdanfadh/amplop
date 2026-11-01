@@ -44,9 +44,10 @@ type RequestChange struct {
 }
 
 // Request saves a verification link for userID's current address and emails
-// it there. It returns the address. It returns [ErrAlreadyVerified],
-// [ErrThrottled], or [systememail.ErrNotConfigured] without saving or
-// sending, and the error from [systememail.Mailer.Send] after saving.
+// it there. It returns the address. It returns [ErrAlreadyVerified], an
+// [*attemptlimit.Error] wrapping [ErrThrottled], or
+// [systememail.ErrNotConfigured] without saving or sending, and the error
+// from [systememail.Mailer.Send] after saving.
 func (s *Service) Request(ctx context.Context, userID int64) (string, error) {
 	secret, hash := newSecret()
 	var link Link
@@ -55,11 +56,12 @@ func (s *Service) Request(ctx context.Context, userID int64) (string, error) {
 	err := s.storage.RequestEmailVerification(ctx, userID, func(state RequestState) (RequestChange, error) {
 		// Read under the user's lock, so a request that waited counts from now.
 		now := s.now().UTC()
+		wait := attemptlimit.Wait(state.LinksCreatedAt, now, shortLimit, longLimit)
 		switch {
 		case state.Verified:
 			return RequestChange{}, ErrAlreadyVerified
-		case attemptlimit.Wait(state.LinksCreatedAt, now, shortLimit, longLimit) > 0:
-			return RequestChange{}, ErrThrottled
+		case wait > 0:
+			return RequestChange{}, &attemptlimit.Error{Err: ErrThrottled, Wait: wait}
 		case !state.MailConfigured:
 			return RequestChange{}, systememail.ErrNotConfigured
 		}

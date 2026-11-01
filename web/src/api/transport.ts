@@ -30,6 +30,7 @@ type ErrorFacts = {
   problem?: ReceivedProblem;
   requestId?: string;
   retryAfter?: string;
+  receivedAt?: number;
 };
 
 // Keep the actual status separate from the problem's advisory status.
@@ -41,6 +42,8 @@ export class ApiError extends Error {
   readonly problem?: ReceivedProblem;
   readonly requestId?: string;
   readonly retryAfter?: string;
+  // When the response headers arrived, in milliseconds since the epoch.
+  readonly receivedAt?: number;
 
   constructor(kind: ApiErrorKind, facts: ErrorFacts = {}) {
     super(facts.problem?.detail || facts.problem?.title || "Request failed.");
@@ -51,6 +54,7 @@ export class ApiError extends Error {
     this.problem = facts.problem;
     this.requestId = facts.requestId;
     this.retryAfter = facts.retryAfter;
+    this.receivedAt = facts.receivedAt;
   }
 }
 
@@ -95,6 +99,7 @@ export async function transport(
     facts.status = res.status;
     facts.requestId = res.headers.get(requestIdHeader) || undefined;
     facts.retryAfter = res.headers.get(retryAfterHeader) ?? undefined;
+    facts.receivedAt = Date.now();
     text = res.status === noContentStatus ? "" : await res.text();
   } catch (err) {
     if (isTimeout(signal)) throw new ApiError("timeout", facts);

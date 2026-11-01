@@ -475,12 +475,17 @@ Throttling uses PostgreSQL across API instances. Within 15 minutes, at most
 and 50 failures for one address across all emails. Setup attempts share the
 address limit. A pending attempt counts until a successful verification
 removes it, so parallel password checks cannot bypass the limits. A blocked
-attempt returns HTTP 429. These limits are constants too.
+attempt returns HTTP 429 with `Retry-After`: the seconds until one more
+attempt fits, rounded up. These limits are constants too.
 
 Every throttle (sign-in, setup, TOTP codes, and verification links) counts
 with `attemptlimit.Wait`, which says how long until one more attempt fits; a
 new throttle uses it too. Each keeps its own key, storage, and lock: under the
-lock it counts the earlier attempts, then saves this one only if it fits.
+lock it counts the earlier attempts, then saves this one only if it fits. A
+refusal is an `*attemptlimit.Error` that wraps the feature's `ErrThrottled`
+and carries the wait; `retryAfterProblem` in `httpapi` turns it into the
+header. Every documented 429 lists the header as required, so a new 429 must
+send it.
 
 `DELETE /api/v0/totp/enrollment` cancels a signed-in account's pending
 enrollment without a code. Success returns HTTP 200 with `data.status:
@@ -643,7 +648,7 @@ works as before; `GET /api/v0/sessions/current` reports `emailVerified`.
 account and returns the address it went to. It answers 409
 `email-already-verified`, 409 `system-email-not-configured` before system
 email is saved, or 429 `email-verification-throttled` after 3 links in 15
-minutes or 10 in 24 hours, without `Retry-After`, like the other limits. The
+minutes or 10 in 24 hours, with `Retry-After`, like the other limits. The
 limit counts the account's saved links, so anything that deletes them, such
 as a redeem, starts it over. The link is saved before the send, so a 502
 `email-not-sent` still counts toward the limit, and a timed-out message may

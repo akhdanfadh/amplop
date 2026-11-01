@@ -1034,14 +1034,24 @@
                   "type": "/api/v0/problems/email-verification-throttled",
                   "status": 429,
                   "title": "Too many links",
-                  "detail": "Too many verification links were sent recently. Try again later."
+                  "detail": "Too many verification links were sent recently."
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Too many links were sent recently."
+            "description": "Too many links were sent recently.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "502": {
             "content": {
@@ -1332,14 +1342,24 @@
                   "type": "/api/v0/problems/sign-in-throttled",
                   "status": 429,
                   "title": "Too many attempts",
-                  "detail": "Too many failed attempts. Try again later."
+                  "detail": "Too many failed attempts."
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Too many recent sign-in failures from this address."
+            "description": "Too many recent sign-in failures from this address.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "default": {
             "content": {
@@ -1577,14 +1597,24 @@
                   "type": "/api/v0/problems/totp-throttled",
                   "status": 429,
                   "title": "Too many code attempts",
-                  "detail": "Too many failed code attempts. Try again later."
+                  "detail": "Too many failed code attempts."
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Too many recent failed code attempts for this account."
+            "description": "Too many recent failed code attempts for this account.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "default": {
             "content": {
@@ -1801,14 +1831,24 @@
                   "type": "/api/v0/problems/sign-in-throttled",
                   "status": 429,
                   "title": "Too many attempts",
-                  "detail": "Too many failed attempts. Try again later."
+                  "detail": "Too many failed attempts."
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Too many recent failed attempts from this address."
+            "description": "Too many recent failed attempts from this address.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "default": {
             "content": {
@@ -2380,14 +2420,24 @@
                   "type": "/api/v0/problems/totp-throttled",
                   "status": 429,
                   "title": "Too many code attempts",
-                  "detail": "Too many failed code attempts. Try again later."
+                  "detail": "Too many failed code attempts."
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Too many recent failed code attempts for this account."
+            "description": "Too many recent failed code attempts for this account.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "default": {
             "content": {
@@ -2525,14 +2575,24 @@
                   "type": "/api/v0/problems/totp-throttled",
                   "status": 429,
                   "title": "Too many code attempts",
-                  "detail": "Too many failed code attempts. Try again later."
+                  "detail": "Too many failed code attempts."
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Too many recent failed code attempts for this account."
+            "description": "Too many recent failed code attempts for this account.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "default": {
             "content": {
@@ -2667,14 +2727,24 @@
                   "type": "/api/v0/problems/totp-throttled",
                   "status": 429,
                   "title": "Too many code attempts",
-                  "detail": "Too many failed code attempts. Try again later."
+                  "detail": "Too many failed code attempts."
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Too many recent failed code attempts for this account."
+            "description": "Too many recent failed code attempts for this account.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           },
           "default": {
             "content": {

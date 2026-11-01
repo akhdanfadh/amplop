@@ -32,6 +32,8 @@ the area you change before editing it:
   choosing status, type, and safe text. An explicitly mapped 5xx keeps that
   text. Unexpected errors are returned as is and become a logged, fixed 500.
   Public error text and input messages contain no rejected values or causes.
+- A throttle's refusal is an `*attemptlimit.Error` carrying its wait; map
+  it with `retryAfterProblem`, which adds `Retry-After`.
 - A write that spans features is one `Storage` method shaped as an
   update function, run in one transaction in `repository/postgres`.
   Feature code receives no transaction, transaction provider, or
@@ -65,6 +67,7 @@ The web app reads these from the contract; keep them stable:
 - The contract's `ProblemType` lists every type an operation shows as a
   response example, plus the shared ones. Give each type the web compares a
   response example, and type the web's constant with `ProblemType`.
+- Every 429 sends `Retry-After` in whole seconds; the web words the wait.
 - A 204 response needs transport work first: `web/src/api/transport.ts`
   requires a response schema.
 

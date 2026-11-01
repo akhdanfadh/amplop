@@ -6,14 +6,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/attemptlimit"
+	"inbok/internal/emailverification"
 	"inbok/internal/session"
+	"inbok/internal/totp"
 )
 
 type fakeThrottle struct {
@@ -95,4 +101,112 @@ func TestSetupValidationFirst(t *testing.T) {
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code)
 	assert.Zero(t, limiter.begun)
 	assert.Empty(t, accounts.created)
+}
+
+// Every throttle's 429 says how long to wait, in whole seconds.
+func TestRetryAfter(t *testing.T) {
+	// refused returns err as a throttle reports it: 90 seconds and a
+	// millisecond to wait, which rounds up to 91.
+	refused := func(err error) error {
+		return &attemptlimit.Error{Err: err, Wait: 90*time.Second + time.Millisecond}
+	}
+	for _, c := range []struct {
+		name string
+		send func() *httptest.ResponseRecorder
+		typ  string
+	}{
+		{"setup", func() *httptest.ResponseRecorder {
+			api := New(discard, Services{Account: &fakeAccounts{}, Throttle: &fakeThrottle{beginErr: refused(session.ErrThrottled)}})
+			request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(setupBody(t, setupFields())))
+			request.Header.Set("Origin", "http://"+request.Host)
+			request.Header.Set("Content-Type", jsonContentType)
+			response := httptest.NewRecorder()
+			api.Handler().ServeHTTP(response, request)
+			return response
+		}, "sign-in-throttled"},
+		{"sign-in", func() *httptest.ResponseRecorder {
+			return postSession(New(discard, Services{Session: &fakeSessions{err: refused(session.ErrThrottled)}}), signInHTTPBody)
+		}, "sign-in-throttled"},
+		{"code sign-in", func() *httptest.ResponseRecorder {
+			return postCode(New(discard, Services{CodeSignIn: &fakeCodeSignIn{err: refused(totp.ErrThrottled)}}), `{"code":"012345"}`, "http://example.com")
+		}, "totp-throttled"},
+		{"TOTP confirmation", func() *httptest.ResponseRecorder {
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), Enrollment: &fakeEnrollment{err: refused(totp.ErrThrottled)}})
+			return postTOTPConfirm(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
+		}, "totp-throttled"},
+		{"backup codes", func() *httptest.ResponseRecorder {
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: &fakeBackups{err: refused(totp.ErrThrottled)}})
+			return postBackupRegeneration(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
+		}, "totp-throttled"},
+		{"TOTP turn-off", func() *httptest.ResponseRecorder {
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), Disabler: &fakeDisabler{err: refused(totp.ErrThrottled)}})
+			return postDisableTOTP(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
+		}, "totp-throttled"},
+		{"verification link", func() *httptest.ResponseRecorder {
+			api := New(discard, Services{EmailVerification: &fakeEmailVerification{err: refused(emailverification.ErrThrottled)}, Session: memberSessions(account.RoleMember)})
+			return sendSessionRequest(api, http.MethodPost, "/account/email-verification")
+		}, "email-verification-throttled"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			response := c.send()
+
+			require.Equal(t, http.StatusTooManyRequests, response.Code, response.Body.String())
+			assert.Equal(t, problemPrefix+c.typ, decodeJSON(t, response.Body.Bytes())["type"])
+			assert.Equal(t, "91", response.Header().Get(retryAfterHeader))
+		})
+	}
+}
+
+// Retry-After rounds the wait up to whole seconds, never below 1.
+func TestRetryAfterSeconds(t *testing.T) {
+	for _, c := range []struct {
+		wait time.Duration
+		want int
+	}{
+		{time.Nanosecond, 1},
+		{time.Second, 1},
+		{time.Second + time.Nanosecond, 2},
+		{15 * time.Minute, 900},
+		{24*time.Hour - time.Second, 86399},
+	} {
+		t.Run(c.wait.String(), func(t *testing.T) {
+			err := retryAfterProblem(requestProblem(http.StatusTooManyRequests), &attemptlimit.Error{Err: session.ErrThrottled, Wait: c.wait})
+
+			headers, ok := errors.AsType[huma.HeadersError](err)
+			require.True(t, ok)
+			assert.Equal(t, []string{strconv.Itoa(c.want)}, headers.GetHeaders().Values(retryAfterHeader))
+		})
+	}
+}
+
+// An error without a wait gets no header.
+func TestRetryAfterMissing(t *testing.T) {
+	err := retryAfterProblem(requestProblem(http.StatusTooManyRequests), session.ErrThrottled)
+
+	_, headers := errors.AsType[huma.HeadersError](err)
+	assert.False(t, headers)
+}
+
+// The contract documents Retry-After on every 429.
+func TestRetryAfterDocumented(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+
+	var throttled int
+	for path, item := range doc.Paths {
+		for _, op := range []*huma.Operation{item.Get, item.Put, item.Post, item.Delete, item.Patch} {
+			if op == nil {
+				continue
+			}
+			response := op.Responses[strconv.Itoa(http.StatusTooManyRequests)]
+			if response == nil {
+				continue
+			}
+			throttled++
+			header := response.Headers[retryAfterHeader]
+			require.NotNil(t, header, path)
+			assert.True(t, header.Required, path)
+			assert.Equal(t, huma.TypeInteger, header.Schema.Type, path)
+		}
+	}
+	assert.Equal(t, 7, throttled, "setup, sign-in, code sign-in, confirm, backup codes, turn-off, and verification links")
 }

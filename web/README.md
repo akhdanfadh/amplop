@@ -309,9 +309,13 @@ dropped, not rejected.
 
 The API's `detail` and input `message` are safe user text. `userMessage(err)`
 from `src/api/problem.ts` shows the detail, then the title if no detail exists,
-and local fallback text if neither is usable. Unfamiliar problem types still
-show their safe text. Different business failures can share a status, so use
-their type when adding different recovery actions. Type the constant you
+and local fallback text if neither is usable. A 429 adds when to try again,
+from its `Retry-After` and the response's `receivedAt`, as a local clock time
+rounded up to the minute: "Try again after 14:32.", or "Try again after 14:32
+on Tuesday." on another day. Without a usable header, or for a wait over
+six days, it says "Try again later.". Unfamiliar problem types still show their safe text. Different
+business failures can share a status, so use their type when adding
+different recovery actions. Type the constant you
 compare with the generated `ProblemType`, e.g.
 `const setupDoneType: ProblemType = "/api/v0/problems/setup-done"`, so a type
 the contract no longer lists fails type-checking. The probe form displays a

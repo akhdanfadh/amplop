@@ -106,7 +106,7 @@ func TestRequestEmailVerificationRefused(t *testing.T) {
 		{"account deleted", account.ErrUserNotFound, http.StatusUnauthorized, "unauthenticated",
 			"Sign in to continue."},
 		{"throttled", emailverification.ErrThrottled, http.StatusTooManyRequests, "email-verification-throttled",
-			"Too many verification links were sent recently. Try again later."},
+			"Too many verification links were sent recently."},
 		{"send failed", &systememail.SendError{Reason: systememail.ReasonRecipient, Err: errors.New("550 private reply")}, http.StatusBadGateway, "email-not-sent",
 			"The email could not be sent. Try again later."},
 	} {

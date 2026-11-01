@@ -38,12 +38,23 @@ describe("sendErrorMessage", () => {
     );
   });
 
+  it("says when another link can be sent", () => {
+    const err = new ApiError("http", {
+      method: "POST",
+      status: 429,
+      retryAfter: "840",
+      receivedAt: new Date(2026, 10, 1, 14, 30).getTime(),
+      problem: { detail: "Too many verification links were sent recently." },
+    });
+    const at = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
+      new Date(2026, 10, 1, 14, 44),
+    );
+    expect(sendErrorMessage(err)).toBe(
+      `Too many verification links were sent recently. Try again after ${at}.`,
+    );
+  });
+
   it.each([
-    [
-      "too many links",
-      429,
-      { detail: "Too many verification links were sent recently. Try again later." },
-    ],
     ["no system email", 409, notConfiguredProblem],
     ["an already verified address", 409, alreadyVerifiedProblem],
   ])("keeps the server's text for %s", (_, status, problem) => {

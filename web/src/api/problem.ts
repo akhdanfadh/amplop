@@ -1,3 +1,4 @@
+import { retryAfterTime } from "./retry-after";
 import type { ApiError } from "./transport";
 
 // ===============================================
@@ -6,6 +7,7 @@ import type { ApiError } from "./transport";
 
 // HTTP statuses (RFC 9110) that change what the user is told.
 const unprocessable = 422;
+const tooManyRequests = 429;
 const firstServerError = 500;
 const badGateway = 502;
 const firstSuccess = 200;
@@ -22,6 +24,15 @@ const failed = "Something went wrong. Try again.";
 const uncertainWrite = "We couldn't confirm whether this was saved. Check before submitting again.";
 const unreadableWrite =
   "The server reported success, but we couldn't load the result. Check before submitting again.";
+const tooMany = "Too many attempts.";
+const tryLater = "Try again later.";
+
+const millisecondsPerMinute = 60_000;
+// A weekday names one day only within the next six.
+const longestNamedWait = 6 * 24 * 60 * millisecondsPerMinute;
+// The browser's locale chooses 12- or 24-hour time.
+const clockTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const weekday = new Intl.DateTimeFormat(undefined, { weekday: "long" });
 
 // uncertainOutcome reports whether err leaves it unknown whether its write
 // took effect: a write that got no status, a 5xx, or a success whose result
@@ -58,7 +69,7 @@ function reportedSuccess(status: number | undefined): boolean {
 }
 
 // userMessage returns safe text for err, warning when repeating a write could
-// duplicate its effect.
+// duplicate its effect. A 429 also says when to try again.
 export function userMessage(err: ApiError): string {
   const { status } = err;
 
@@ -69,6 +80,7 @@ export function userMessage(err: ApiError): string {
     return uncertainMessage(err, uncertainWrite);
   }
   const explanation = problemExplanation(err);
+  if (status === tooManyRequests) return `${sentence(explanation) ?? tooMany} ${retryAdvice(err)}`;
   if (explanation) return explanation;
 
   if (status === unprocessable) return checkValues;
@@ -83,6 +95,50 @@ export function userMessage(err: ApiError): string {
     return cannotReach;
   if (status !== undefined && status >= firstServerError) return serverFailed;
   return failed;
+}
+
+// retryAdvice says when err's request can be tried again, from its
+// Retry-After header, as a local clock time rounded up to the minute: with
+// the weekday when that is not the day the response arrived. A time already
+// past counts from when the response arrived. Without a usable header, or
+// for a wait over six days, it says "later".
+//
+// NOTE: a clock time stays true while the message stays on screen, which a
+// duration such as "in 3 minutes" does not; the weekday, unlike "tomorrow",
+// stays true past midnight. It is worked out from when the response arrived,
+// so every render shows the same text.
+function retryAdvice(err: ApiError): string {
+  if (err.receivedAt === undefined) return tryLater;
+  const time = retryAfterTime(err.retryAfter, err.receivedAt);
+  // Received data can hold any wait; one too long for a weekday, or for a
+  // Date, says "later" instead of an ambiguous or invalid time.
+  if (time === undefined || !(time - err.receivedAt <= longestNamedWait)) return tryLater;
+  // A past HTTP date would otherwise name a day already gone.
+  const earliest = Math.max(time, err.receivedAt);
+  // Rounding down would invite a retry the server still refuses.
+  const at = new Date(Math.ceil(earliest / millisecondsPerMinute) * millisecondsPerMinute);
+  const clock = clockTime.format(at);
+  // Some locales end the time with a full stop, e.g. "2:32 p.m.".
+  if (sameDay(at, new Date(err.receivedAt))) return sentence(`Try again after ${clock}`);
+  return `Try again after ${clock} on ${weekday.format(at)}.`;
+}
+
+// sameDay reports whether a and b fall on the same local calendar day.
+function sameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+// sentence returns text ending in a full stop, adding one when it has no
+// final punctuation, e.g. after a problem title; undefined stays undefined.
+function sentence(text: string): string;
+function sentence(text: string | undefined): string | undefined;
+function sentence(text: string | undefined): string | undefined {
+  if (text === undefined || /[.!?]$/.test(text)) return text;
+  return `${text}.`;
 }
 
 // ===============================================

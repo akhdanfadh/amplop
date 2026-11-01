@@ -99,7 +99,7 @@ func emailVerificationRequestProblem(err error) error {
 	case errors.Is(err, systememail.ErrNotConfigured):
 		return newProblem(http.StatusConflict, systemEmailNotConfiguredType, "System email not configured", "Email can't be sent until an administrator sets up system email.")
 	case errors.Is(err, emailverification.ErrThrottled):
-		return newProblem(http.StatusTooManyRequests, emailVerificationThrottledType, "Too many links", "Too many verification links were sent recently. Try again later.")
+		return retryAfterProblem(newProblem(http.StatusTooManyRequests, emailVerificationThrottledType, "Too many links", "Too many verification links were sent recently."), err)
 	}
 	// The server's reason stays in the log; it can name the username.
 	if _, ok := errors.AsType[*systememail.SendError](err); ok {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { retryAfterDelay } from "./retry-after";
+import { retryAfterDelay, retryAfterTime } from "./retry-after";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -48,5 +48,23 @@ describe("retryAfterDelay", () => {
 
   it("moves a legacy date more than fifty years ahead into the previous century", () => {
     expect(retryAfterDelay("Thursday, 23-Oct-76 00:00:01 GMT")).toBe(0);
+  });
+});
+
+describe("retryAfterTime", () => {
+  const receivedAt = Date.UTC(2026, 9, 22, 12, 0, 0);
+
+  it("adds integer seconds to when the response arrived", () => {
+    expect(retryAfterTime("90", receivedAt)).toBe(receivedAt + 90_000);
+  });
+
+  it("returns an HTTP date as is, even if it has passed", () => {
+    expect(retryAfterTime("Thu, 22 Oct 2026 11:00:00 GMT", receivedAt)).toBe(
+      Date.UTC(2026, 9, 22, 11, 0, 0),
+    );
+  });
+
+  it.each([undefined, "", "-1", "soon"])("returns nothing for an unusable header %s", (header) => {
+    expect(retryAfterTime(header, receivedAt)).toBeUndefined();
   });
 });
