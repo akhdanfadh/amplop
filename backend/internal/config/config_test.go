@@ -9,10 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testEncryptionKeys = "1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+const (
+	testEncryptionKeys = "1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+	testPublicURL      = "https://mail.example.com"
+)
 
 func TestLoadDefault(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
 	t.Setenv(envHTTPAddr, "")
 	t.Setenv(envSetupToken, "")
 	t.Setenv(envTrustedProxies, "")
@@ -26,6 +30,7 @@ func TestLoadDefault(t *testing.T) {
 
 func TestLoadAddr(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
 	t.Setenv(envHTTPAddr, "0.0.0.0:9090")
 	t.Setenv(envSetupToken, "")
 	t.Setenv(envTrustedProxies, "")
@@ -38,6 +43,7 @@ func TestLoadAddr(t *testing.T) {
 
 func TestLoadBadAddr(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
 	t.Setenv(envHTTPAddr, "localhost")
 	t.Setenv(envSetupToken, "")
 	t.Setenv(envTrustedProxies, "")
@@ -49,6 +55,7 @@ func TestLoadBadAddr(t *testing.T) {
 
 func TestLoadTrustedProxiesUnset(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
 	t.Setenv(envHTTPAddr, "")
 	t.Setenv(envSetupToken, "")
 	t.Setenv(envTrustedProxies, "")
@@ -62,6 +69,7 @@ func TestLoadTrustedProxiesUnset(t *testing.T) {
 
 func TestLoadTrustedProxies(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
 	cases := []struct {
 		value string
 		want  []string
@@ -88,6 +96,7 @@ func TestLoadTrustedProxies(t *testing.T) {
 
 func TestLoadBadTrustedProxies(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
 	for _, value := range []string{"localhost", "127.0.0.1", "10.0.0.0/33", "::1/129", "10.0.0.0/8,", ",10.0.0.0/8", "10.0.0.0/8, ,::1/128"} {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv(envHTTPAddr, "")
@@ -103,6 +112,7 @@ func TestLoadBadTrustedProxies(t *testing.T) {
 
 func TestLoadSetupTokenUnset(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
 	t.Setenv(envHTTPAddr, "")
 	t.Setenv(envSetupToken, "")
 	t.Setenv(envTrustedProxies, "")
@@ -116,6 +126,7 @@ func TestLoadSetupTokenUnset(t *testing.T) {
 
 func TestLoadSetupToken(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
 	cases := []struct {
 		name  string
 		token string
@@ -143,6 +154,7 @@ func TestLoadSetupToken(t *testing.T) {
 
 func TestLoadShortSetupToken(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
 	cases := []struct {
 		name  string
 		token string
@@ -190,6 +202,7 @@ func TestLoadEncryptionKeys(t *testing.T) {
 			t.Setenv(envHTTPAddr, "")
 			t.Setenv(envSetupToken, "")
 			t.Setenv(envTrustedProxies, "")
+			t.Setenv(envPublicURL, testPublicURL)
 			t.Setenv(envEncryptionKeys, value)
 			cfg, err := Load()
 			require.ErrorContains(t, err, envEncryptionKeys)
@@ -204,6 +217,7 @@ func TestLoadEncryptionKeys(t *testing.T) {
 		t.Setenv(envSetupToken, "")
 		t.Setenv(envTrustedProxies, "")
 		t.Setenv(envEncryptionKeys, testEncryptionKeys)
+		t.Setenv(envPublicURL, testPublicURL)
 		cfg, err := Load()
 		require.NoError(t, err)
 		require.NotNil(t, cfg.Encryption)
@@ -211,4 +225,96 @@ func TestLoadEncryptionKeys(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "1", id)
 	})
+}
+
+func TestLoadPublicURL(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envHTTPAddr, "")
+	t.Setenv(envSetupToken, "")
+	t.Setenv(envTrustedProxies, "")
+	cases := []struct {
+		value string
+		want  string
+	}{
+		{"https://mail.example.com", "https://mail.example.com"},
+		{"https://mail.example.com/", "https://mail.example.com"},
+		{" https://mail.example.com ", "https://mail.example.com"},
+		{"HTTPS://Mail.Example.com:8443", "https://mail.example.com:8443"},
+		{"https://mäil.example.com", "https://xn--mil-qla.example.com"},
+		{"https://mail.example.com:0443", "https://mail.example.com:443"},
+		{"https://192.0.2.10", "https://192.0.2.10"},
+		{"http://localhost:5173", "http://localhost:5173"},
+		{"http://127.1.2.3", "http://127.1.2.3"},
+		{"http://[::1]:5173/", "http://[::1]:5173"},
+	}
+	for _, c := range cases {
+		t.Run(c.value, func(t *testing.T) {
+			t.Setenv(envPublicURL, c.value)
+
+			cfg, err := Load()
+			require.NoError(t, err)
+
+			require.NotNil(t, cfg.PublicURL)
+			assert.Equal(t, c.want, cfg.PublicURL.String())
+		})
+	}
+}
+
+func TestLoadBadPublicURL(t *testing.T) {
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envHTTPAddr, "")
+	t.Setenv(envSetupToken, "")
+	t.Setenv(envTrustedProxies, "")
+	cases := []struct {
+		value string
+		want  string
+	}{
+		{"", "INBOK_PUBLIC_URL is required"},
+		{"  ", "INBOK_PUBLIC_URL is required"},
+
+		// https, or http only for a loopback host.
+		{"mail.example.com", "INBOK_PUBLIC_URL must use https"},
+		{"ftp://mail.example.com", "INBOK_PUBLIC_URL must use https"},
+		{"http://mail.example.com", "INBOK_PUBLIC_URL must use https"},
+		{"http://localhost.example.com", "INBOK_PUBLIC_URL must use https"},
+		{"http://192.0.2.10", "INBOK_PUBLIC_URL must use https"},
+		{"http://0.0.0.0:5173", "INBOK_PUBLIC_URL must use https"},
+
+		// The origin alone.
+		{"https:mail.example.com", "INBOK_PUBLIC_URL must be"},
+		{"https://", "INBOK_PUBLIC_URL must be"},
+		{"https://mail.example.com/inbok", "INBOK_PUBLIC_URL must be"},
+		{"https://mail.example.com//", "INBOK_PUBLIC_URL must be"},
+		{"https://mail.example.com/?", "INBOK_PUBLIC_URL must be"},
+		{"https://mail.example.com?a=1", "INBOK_PUBLIC_URL must be"},
+		{"https://mail.example.com#", "INBOK_PUBLIC_URL must be"},
+		{"https://mail.example.com#top", "INBOK_PUBLIC_URL must be"},
+		{"https://user:secret@mail.example.com", "INBOK_PUBLIC_URL must be"},
+
+		// A host name, checked by idna.
+		{`https://mail.example.com"<b>`, "INBOK_PUBLIC_URL must be"},
+		{"https://mail_box.example.com", "INBOK_PUBLIC_URL must be"},
+		{"https://mail.example.com.", "INBOK_PUBLIC_URL must be"},
+
+		// An IP address that names one host.
+		{"https://0.0.0.0", "INBOK_PUBLIC_URL must be"},
+		{"https://[::]", "INBOK_PUBLIC_URL must be"},
+		{"https://[fe80::1%25en0]", "INBOK_PUBLIC_URL must be"},
+
+		// A port from 1 to 65535.
+		{"https://mail.example.com:", "INBOK_PUBLIC_URL must be"},
+		{"https://mail.example.com:0", "INBOK_PUBLIC_URL must be"},
+		{"https://mail.example.com:65536", "INBOK_PUBLIC_URL must be"},
+	}
+	for _, c := range cases {
+		t.Run(c.value, func(t *testing.T) {
+			t.Setenv(envPublicURL, c.value)
+
+			cfg, err := Load()
+			require.ErrorContains(t, err, c.want)
+
+			assert.Nil(t, cfg.PublicURL)
+			assert.NotContains(t, err.Error(), "secret")
+		})
+	}
 }

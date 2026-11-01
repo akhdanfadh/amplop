@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -67,14 +68,29 @@ const noSTARTTLS = "smtp: server doesn't support STARTTLS"
 type Sender struct {
 	roots   *x509.CertPool // nil: the system's trusted certificates
 	timeout time.Duration
+	hello   string // the name sent in EHLO
 }
 
 var _ systememail.Sender = (*Sender)(nil)
 
-// NewSender returns a Sender that verifies servers against the system's
-// trusted certificates.
-func NewSender() *Sender {
-	return &Sender{timeout: exchangeTimeout}
+// NewSender returns a Sender that names itself host in EHLO, a domain or an
+// IP address, and verifies servers against the system's trusted certificates.
+func NewSender(host string) *Sender {
+	return &Sender{timeout: exchangeTimeout, hello: helloName(host)}
+}
+
+// helloName returns host as an EHLO argument: a domain unchanged, an IP
+// address as an address literal, e.g. [192.0.2.1] or [IPv6:2001:db8::1].
+func helloName(host string) string {
+	// RFC 5321 section 4.1.3 defines the address literals.
+	ip, err := netip.ParseAddr(host)
+	switch {
+	case err != nil:
+		return host
+	case ip.Is4():
+		return "[" + ip.String() + "]"
+	}
+	return "[IPv6:" + ip.String() + "]"
 }
 
 // Send delivers message to message.To, signing in with password when
@@ -197,7 +213,7 @@ func (s *Sender) open(ctx context.Context, conn *watchedConn, server systememail
 		}
 
 		// The handshake runs on the first command after STARTTLS.
-		if err := client.Hello("localhost"); err != nil {
+		if err := client.Hello(s.hello); err != nil {
 			client.Close()
 			return nil, failed(systememail.ReasonTLS, err)
 		}
@@ -215,7 +231,7 @@ func (s *Sender) open(ctx context.Context, conn *watchedConn, server systememail
 		plain = protected
 	}
 	client := gosmtp.NewClient(plain)
-	if err := client.Hello("localhost"); err != nil {
+	if err := client.Hello(s.hello); err != nil {
 		return nil, failed(systememail.ReasonConnect, err)
 	}
 	return client, nil

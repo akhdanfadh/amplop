@@ -203,6 +203,7 @@ in-flight requests up to 5 seconds to finish.
 |---|---|---|
 | `INBOK_HTTP_ADDR` | `127.0.0.1:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
 | `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL; see Migrations below. |
+| `INBOK_PUBLIC_URL` | none, required | The address users open inbok at, e.g. `https://mail.example.com`; see Public URL below. Invalid values stop startup. |
 | `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
 | `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
 | `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets and the system email password; see Encryption keys below. Invalid entries stop startup. |
@@ -210,6 +211,20 @@ in-flight requests up to 5 seconds to finish.
 
 `export` reads none of them, so the committed document is the same on every
 machine.
+
+### Public URL
+
+`INBOK_PUBLIC_URL` is the origin users open inbok at: `https`, a host name
+or IP address, and an optional port, e.g. `https://mail.example.com`. Plain
+`http` is accepted only for `localhost` and loopback addresses, e.g.
+`http://localhost:5173` for the Vite dev server. A path other than `/`, a
+query, a fragment, or user info stops startup. Host names use letters,
+digits, and hyphens; inbok lowercases them and converts an internationalized
+domain to its `xn--` form.
+Links in inbok's emails start with this value, never with a request's `Host`
+header, which a client chooses. The host is also the name inbok gives mail
+servers in SMTP's `EHLO` greeting; an IP address is sent in brackets, e.g.
+`[192.0.2.10]`.
 
 ### Encryption keys
 

@@ -112,7 +112,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
-	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(), logger)
+	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
 	services := httpapi.Services{
 		SystemEmail:  systememail.NewService(db, cfg.Encryption),
 		TestMessages: systememail.NewTestMessages(db, mailer, time.Now),

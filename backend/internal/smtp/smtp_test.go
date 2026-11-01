@@ -33,6 +33,7 @@ const (
 	testUsername = "inbok@example.com"
 	testPassword = "app password 7f3c"
 	testTimeout  = 2 * time.Second
+	testHello    = "mail.example.com"
 )
 
 // fakeServer is an in-process SMTP server that records what it accepts.
@@ -50,6 +51,7 @@ type fakeServer struct {
 }
 
 type received struct {
+	hello    string
 	signedIn string
 	from, to string
 	data     []byte
@@ -59,8 +61,9 @@ type received struct {
 func (f *fakeServer) start(t *testing.T, certificate tls.Certificate) systememail.Server {
 	t.Helper()
 
-	server := gosmtp.NewServer(gosmtp.BackendFunc(func(*gosmtp.Conn) (gosmtp.Session, error) {
-		return &fakeSession{server: f}, nil
+	// go-smtp creates the session at the greeting, so the name is known.
+	server := gosmtp.NewServer(gosmtp.BackendFunc(func(c *gosmtp.Conn) (gosmtp.Session, error) {
+		return &fakeSession{server: f, hello: c.Hostname()}, nil
 	}))
 	server.Domain = "localhost"
 	server.ErrorLog = log.New(io.Discard, "", 0) // refused handshakes are expected
@@ -90,6 +93,7 @@ func (f *fakeServer) messages() []received {
 
 type fakeSession struct {
 	server   *fakeServer
+	hello    string
 	signedIn string
 	current  received
 }
@@ -123,7 +127,7 @@ func (s *fakeSession) Mail(from string, _ *gosmtp.MailOptions) error {
 	if s.server.rejectMail {
 		return &gosmtp.SMTPError{Code: 553, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "Sender not allowed"}
 	}
-	s.current = received{signedIn: s.signedIn, from: from}
+	s.current = received{hello: s.hello, signedIn: s.signedIn, from: from}
 	return nil
 }
 
@@ -238,16 +242,46 @@ func TestSendAccepted(t *testing.T) {
 			if !c.signIn {
 				server.Username = ""
 			}
-			sender := &Sender{roots: roots, timeout: testTimeout}
+			sender := &Sender{roots: roots, timeout: testTimeout, hello: testHello}
 
 			err := sender.Send(t.Context(), server, testPassword, testMessage())
 			require.NoError(t, err)
 
 			got := fake.messages()
 			require.Len(t, got, 1)
+			assert.Equal(t, testHello, got[0].hello)
 			assert.Equal(t, server.Username, got[0].signedIn)
 			assert.Equal(t, "inbok@example.com", got[0].from)
 			assert.Equal(t, "admin@example.org", got[0].to)
+		})
+	}
+}
+
+// The greeting names inbok's public host; an IP address becomes an address
+// literal (RFC 5321 section 4.1.3).
+func TestNewSenderHello(t *testing.T) {
+	for _, c := range []struct {
+		host string
+		want string
+	}{
+		{"mail.example.com", "mail.example.com"},
+		{"localhost", "localhost"},
+		{"127.0.0.1", "[127.0.0.1]"},
+		{"::1", "[IPv6:::1]"},
+		{"2001:db8::1", "[IPv6:2001:db8::1]"},
+	} {
+		t.Run(c.host, func(t *testing.T) {
+			fake := &fakeServer{security: systememail.SecurityNone}
+			server := fake.start(t, tls.Certificate{})
+			server.Username = ""
+			sender := NewSender(c.host)
+
+			err := sender.Send(t.Context(), server, "", testMessage())
+			require.NoError(t, err)
+
+			got := fake.messages()
+			require.Len(t, got, 1)
+			assert.Equal(t, c.want, got[0].hello)
 		})
 	}
 }
@@ -259,7 +293,7 @@ func TestSendMessage(t *testing.T) {
 	message := testMessage()
 	message.FromName = "inbok, Mail Ünit"
 
-	err := (&Sender{roots: roots, timeout: testTimeout}).Send(t.Context(), server, testPassword, message)
+	err := (&Sender{roots: roots, timeout: testTimeout, hello: testHello}).Send(t.Context(), server, testPassword, message)
 	require.NoError(t, err)
 
 	got := fake.messages()
@@ -331,7 +365,7 @@ func TestSendUnsafeInput(t *testing.T) {
 			server, password, message := fake.start(t, certificate), testPassword, testMessage()
 			c.change(&server, &password, &message)
 
-			err := (&Sender{roots: roots, timeout: testTimeout}).Send(t.Context(), server, password, message)
+			err := (&Sender{roots: roots, timeout: testTimeout, hello: testHello}).Send(t.Context(), server, password, message)
 			require.ErrorIs(t, err, errUnsafeInput)
 
 			var failed *systememail.SendError
@@ -369,7 +403,7 @@ func TestSendFailure(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			server := c.fake.start(t, certificate)
-			sender := &Sender{roots: roots, timeout: testTimeout}
+			sender := &Sender{roots: roots, timeout: testTimeout, hello: testHello}
 			if c.change != nil {
 				c.change(&server, sender)
 			}
@@ -390,7 +424,7 @@ func TestSendWrongPassword(t *testing.T) {
 	server := fake.start(t, certificate)
 	const wrong = "wrong password 91ad"
 
-	err := (&Sender{roots: roots, timeout: testTimeout}).Send(t.Context(), server, wrong, testMessage())
+	err := (&Sender{roots: roots, timeout: testTimeout, hello: testHello}).Send(t.Context(), server, wrong, testMessage())
 
 	assert.Equal(t, systememail.ReasonAuth, failure(t, err))
 	assert.NotContains(t, err.Error(), wrong)
@@ -404,7 +438,7 @@ func TestSendSTARTTLSMissing(t *testing.T) {
 	fake := &fakeServer{security: systememail.SecuritySTARTTLS, noSTARTTLS: true}
 	server := fake.start(t, certificate)
 
-	err := (&Sender{roots: roots, timeout: testTimeout}).Send(t.Context(), server, testPassword, testMessage())
+	err := (&Sender{roots: roots, timeout: testTimeout, hello: testHello}).Send(t.Context(), server, testPassword, testMessage())
 
 	assert.Equal(t, systememail.ReasonTLS, failure(t, err), "STARTTLS is required, never skipped")
 	assert.Empty(t, fake.messages())
@@ -416,7 +450,7 @@ func TestSendTimeout(t *testing.T) {
 	for _, security := range []systememail.Security{systememail.SecurityTLS, systememail.SecuritySTARTTLS, systememail.SecurityNone} {
 		t.Run(string(security), func(t *testing.T) {
 			port := silentServer(t)
-			sender := &Sender{timeout: 200 * time.Millisecond}
+			sender := &Sender{timeout: 200 * time.Millisecond, hello: testHello}
 			server := systememail.Server{Host: "127.0.0.1", Port: port, Security: security}
 			start := time.Now()
 
@@ -435,7 +469,7 @@ func TestSendCanceled(t *testing.T) {
 	time.AfterFunc(50*time.Millisecond, cancel)
 	server := systememail.Server{Host: "127.0.0.1", Port: port, Security: systememail.SecurityNone}
 
-	err := (&Sender{timeout: testTimeout}).Send(ctx, server, testPassword, testMessage())
+	err := (&Sender{timeout: testTimeout, hello: testHello}).Send(ctx, server, testPassword, testMessage())
 
 	require.ErrorIs(t, err, context.Canceled)
 	var failed *systememail.SendError
@@ -509,7 +543,7 @@ func TestSendCleartextSignIn(t *testing.T) {
 	})
 	server.Username = testUsername
 
-	err := (&Sender{timeout: testTimeout}).Send(t.Context(), server, testPassword, testMessage())
+	err := (&Sender{timeout: testTimeout, hello: testHello}).Send(t.Context(), server, testPassword, testMessage())
 
 	assert.Equal(t, systememail.ReasonAuth, failure(t, err))
 	require.ErrorIs(t, err, errCleartext)
@@ -553,7 +587,7 @@ func TestSendScripted(t *testing.T) {
 			server := scriptedServer(t, c.script)
 			server.Security = c.security
 
-			err := (&Sender{timeout: testTimeout}).Send(t.Context(), server, testPassword, testMessage())
+			err := (&Sender{timeout: testTimeout, hello: testHello}).Send(t.Context(), server, testPassword, testMessage())
 
 			assert.Equal(t, c.want, failure(t, err))
 		})
@@ -567,7 +601,7 @@ func TestSendReplyLimit(t *testing.T) {
 		}
 	})
 
-	err := (&Sender{timeout: testTimeout}).Send(t.Context(), server, testPassword, testMessage())
+	err := (&Sender{timeout: testTimeout, hello: testHello}).Send(t.Context(), server, testPassword, testMessage())
 
 	assert.Equal(t, systememail.ReasonConnect, failure(t, err))
 	require.ErrorIs(t, err, errTooLong)
@@ -599,7 +633,7 @@ func TestSendQuitUnanswered(t *testing.T) {
 	})
 	start := time.Now()
 
-	err := (&Sender{timeout: 5 * time.Second}).Send(t.Context(), server, testPassword, testMessage())
+	err := (&Sender{timeout: 5 * time.Second, hello: testHello}).Send(t.Context(), server, testPassword, testMessage())
 	require.NoError(t, err)
 
 	assert.Less(t, time.Since(start), 3*time.Second)
@@ -613,7 +647,7 @@ func TestSendCallerDeadline(t *testing.T) {
 	defer cancel()
 	server := systememail.Server{Host: "127.0.0.1", Port: port, Security: systememail.SecurityNone}
 
-	err := (&Sender{timeout: exchangeTimeout}).Send(ctx, server, testPassword, testMessage())
+	err := (&Sender{timeout: exchangeTimeout, hello: testHello}).Send(ctx, server, testPassword, testMessage())
 
 	assert.Equal(t, systememail.ReasonTimeout, failure(t, err))
 	assert.NoError(t, ctx.Err(), "the caller still has time to record the result")
@@ -625,7 +659,7 @@ func TestSendTimeoutCause(t *testing.T) {
 	port := silentServer(t)
 	server := systememail.Server{Host: "127.0.0.1", Port: port, Security: systememail.SecurityNone}
 
-	err := (&Sender{timeout: 100 * time.Millisecond}).Send(t.Context(), server, testPassword, testMessage())
+	err := (&Sender{timeout: 100 * time.Millisecond, hello: testHello}).Send(t.Context(), server, testPassword, testMessage())
 
 	var failed *systememail.SendError
 	require.ErrorAs(t, err, &failed)
