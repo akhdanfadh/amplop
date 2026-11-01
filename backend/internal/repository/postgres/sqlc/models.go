@@ -99,6 +99,7 @@ type User struct {
 	Role            string
 	CreatedAt       time.Time
 	EmailVerifiedAt *time.Time
+	DeactivatedAt   *time.Time
 }
 
 type UserTotp struct {
