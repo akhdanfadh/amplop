@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -116,6 +117,17 @@ func TestRecoveryFailures(t *testing.T) {
 			}
 		})
 	}
+}
+
+// An invalid address is reported as such, not as an unconfirmed failure.
+func TestRecoveryInvalidEmail(t *testing.T) {
+	service := &recoveryService{findErr: emailaddress.ErrInvalid}
+	console := recoveryConsole{input: strings.NewReader("a new recovery password"), output: &bytes.Buffer{}}
+
+	err := runRecovery(t.Context(), "admin", service, console)
+
+	require.ErrorIs(t, err, emailaddress.ErrInvalid)
+	assert.Empty(t, service.password)
 }
 
 func TestRecoveryLineEndings(t *testing.T) {

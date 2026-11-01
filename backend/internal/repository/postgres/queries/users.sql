@@ -12,7 +12,7 @@ RETURNING id, email, role;
 
 -- name: ReadUserCredentials :one
 SELECT id, email, role, password_hash FROM users
-WHERE lower(email) = lower(@email);
+WHERE email = @email;
 
 -- name: ReadUserByID :one
 SELECT id, email, role FROM users

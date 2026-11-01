@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/session"
 	"inbok/internal/totp"
 )
@@ -98,7 +99,7 @@ const invalidCredentialsType = problemPrefix + "invalid-credentials"
 
 // newSession is the sign-in request body. Password creation rules do not apply.
 type newSession struct {
-	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254"`
+	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"Letters A to Z match in either case."`
 	Password string `json:"password" writeOnly:"true" maxLength:"128"`
 }
 
@@ -185,6 +186,9 @@ func signInResponses(api huma.API) map[string]*huma.Response {
 func signInProblem(err error) error {
 	if errors.Is(err, account.ErrInvalidCredentials) {
 		return newProblem(http.StatusUnauthorized, invalidCredentialsType, "Sign-in failed", "The email or password is incorrect.")
+	}
+	if errors.Is(err, emailaddress.ErrInvalid) {
+		return invalidEmailProblem("body.email")
 	}
 
 	return throttleProblem(err)

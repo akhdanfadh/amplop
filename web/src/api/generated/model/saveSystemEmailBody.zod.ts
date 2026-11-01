@@ -25,7 +25,7 @@ export const saveSystemEmailBodyUsernameMax = 254;
 
 
 export const SaveSystemEmailBody = zod.object({
-  "fromAddress": zod.email().min(saveSystemEmailBodyFromAddressMin).max(saveSystemEmailBodyFromAddressMax),
+  "fromAddress": zod.email().min(saveSystemEmailBodyFromAddressMin).max(saveSystemEmailBodyFromAddressMax).describe('Letters A to Z are saved in lowercase.'),
   "fromName": zod.string().max(saveSystemEmailBodyFromNameMax).regex(saveSystemEmailBodyFromNameRegExp),
   "host": zod.string().max(saveSystemEmailBodyHostMax).regex(saveSystemEmailBodyHostRegExp),
   "password": zod.string().max(saveSystemEmailBodyPasswordMax).optional().describe('Omit or leave empty to keep the saved password, if the host, port, and username are unchanged.'),

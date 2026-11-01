@@ -14,7 +14,7 @@ export const newSetupPasswordMax = 128;
 
 
 export const NewSetup = zod.object({
-  "email": zod.email().min(newSetupEmailMin).max(newSetupEmailMax),
+  "email": zod.email().min(newSetupEmailMin).max(newSetupEmailMax).describe('Letters A to Z are saved in lowercase.'),
   "password": zod.string().min(newSetupPasswordMin).max(newSetupPasswordMax),
   "token": zod.string()
 })

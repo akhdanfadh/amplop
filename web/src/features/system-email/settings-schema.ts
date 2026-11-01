@@ -59,6 +59,12 @@ export function settingsSchema(saved: SystemEmailSettings | undefined) {
   );
 }
 
+// savedAddress returns address as Go saves it: trimmed, with the letters A to
+// Z lowercased and other letters as typed (ADR025).
+function savedAddress(address: string): string {
+  return address.trim().replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
 // checkedSave compares the settings read after an uncertain save with the
 // form.
 export function checkedSave(
@@ -69,7 +75,7 @@ export function checkedSave(
     saved !== undefined &&
     sameAccount(saved, values) &&
     saved.security === values.security &&
-    saved.fromAddress === values.fromAddress.trim() &&
+    saved.fromAddress === savedAddress(values.fromAddress) &&
     saved.fromName === values.fromName;
   if (!matches) return "different";
   // The password is never read back, so a typed one stays unconfirmed.

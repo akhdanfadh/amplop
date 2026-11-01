@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
 
 	"github.com/stretchr/testify/assert"
@@ -82,14 +83,14 @@ func TestSetup(t *testing.T) {
 	service := NewService(storage, testSetupToken)
 	input := SetupInput{
 		Token:    testSetupToken,
-		Email:    " \tADMIN@Example.COM \n",
+		Email:    " \tADMIN@Example.COM \t",
 		Password: "a long setup password",
 	}
 
 	user, err := service.Setup(t.Context(), input)
 
 	require.NoError(t, err)
-	assert.Equal(t, User{ID: 1, Email: "ADMIN@example.com", Role: RoleAdmin}, user)
+	assert.Equal(t, User{ID: 1, Email: "admin@example.com", Role: RoleAdmin}, user)
 	require.NotNil(t, storage.saved)
 	assert.Equal(t, user.Email, storage.saved.Email)
 
@@ -103,28 +104,26 @@ func TestSetup(t *testing.T) {
 }
 
 func TestSetupEmail(t *testing.T) {
-	cases := []struct {
-		name, input, want string
-	}{
-		{"mixed case", "Mixed.Case+Tag@Example.COM", "Mixed.Case+Tag@example.com"},
-		{"outer whitespace", " \tAdmin@EXAMPLE.COM\n", "Admin@example.com"},
-		{"already normalized", "admin@example.com", "admin@example.com"},
-		{"quoted at sign", `"Ab@CD"@EXAMPLE.COM`, `"Ab@CD"@example.com`},
-	}
+	storage := &fakeStorage{}
+	input := SetupInput{Token: testSetupToken, Email: "Mixed.Case+Tag@Example.COM", Password: "a long setup password"}
 
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			storage := &fakeStorage{}
-			input := SetupInput{Token: testSetupToken, Email: c.input, Password: "a long setup password"}
+	user, err := NewService(storage, testSetupToken).Setup(t.Context(), input)
 
-			user, err := NewService(storage, testSetupToken).Setup(t.Context(), input)
+	require.NoError(t, err)
+	assert.Equal(t, "mixed.case+tag@example.com", user.Email)
+	require.NotNil(t, storage.saved)
+	assert.Equal(t, "mixed.case+tag@example.com", storage.saved.Email)
+}
 
-			require.NoError(t, err)
-			assert.Equal(t, c.want, user.Email)
-			require.NotNil(t, storage.saved)
-			assert.Equal(t, c.want, storage.saved.Email)
-		})
-	}
+func TestSetupInvalidEmail(t *testing.T) {
+	storage := &fakeStorage{}
+	input := SetupInput{Token: testSetupToken, Email: "Admin <admin@example.com>", Password: "a long setup password"}
+
+	user, err := NewService(storage, testSetupToken).Setup(t.Context(), input)
+
+	require.ErrorIs(t, err, emailaddress.ErrInvalid)
+	assert.Zero(t, user)
+	assert.Nil(t, storage.saved)
 }
 
 func TestSetupClaimedWhileHashing(t *testing.T) {
@@ -161,8 +160,9 @@ func TestSetupRejected(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			storage := &fakeStorage{state: c.state}
+			input := SetupInput{Token: c.submitted, Email: "admin@example.com"}
 
-			user, err := NewService(storage, c.configured).Setup(t.Context(), SetupInput{Token: c.submitted})
+			user, err := NewService(storage, c.configured).Setup(t.Context(), input)
 
 			require.ErrorIs(t, err, c.err)
 			assert.Zero(t, user)

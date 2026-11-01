@@ -75,6 +75,16 @@ func requestProblem(status int) *problem {
 	}
 }
 
+// invalidEmailProblem returns the 422 for an address [emailaddress.Parse]
+// rejects at location, e.g. "body.email".
+func invalidEmailProblem(location string) *problem {
+	invalid := requestProblem(http.StatusUnprocessableEntity)
+	// Huma's own format "email" failure reads the same, so the response does
+	// not depend on which check rejected the address.
+	invalid.Errors = []inputError{{Location: location, Message: "Enter a valid value."}}
+	return invalid
+}
+
 // writeProblem writes an already-safe problem for Gin fallbacks and recovery.
 // These paths bypass Huma's response transformer.
 func writeProblem(ctx *gin.Context, p *problem) {

@@ -9,20 +9,23 @@ import (
 	"inbok/internal/account"
 )
 
+// Storage matches emails exactly; the account service normalizes them first.
 func TestReadCredentials(t *testing.T) {
 	db, _ := setupStorage(t)
 	user, err := db.UpdateSetup(t.Context(), func(account.SetupState) (account.NewAdmin, error) {
-		return account.NewAdmin{Email: "Admin@example.com", PasswordHash: setupTestHash}, nil
+		return account.NewAdmin{Email: "admin@example.com", PasswordHash: setupTestHash}, nil
 	})
 	require.NoError(t, err)
 
-	row, err := db.ReadCredentials(t.Context(), "ADMIN@EXAMPLE.COM")
+	row, err := db.ReadCredentials(t.Context(), "admin@example.com")
 
 	require.NoError(t, err)
 	assert.Equal(t, account.Credentials{User: user, PasswordHash: setupTestHash}, row)
-	row, err = db.ReadCredentials(t.Context(), "missing@example.com")
-	require.ErrorIs(t, err, account.ErrUserNotFound)
-	assert.Zero(t, row)
+	for _, email := range []string{"ADMIN@EXAMPLE.COM", "missing@example.com"} {
+		row, err = db.ReadCredentials(t.Context(), email)
+		require.ErrorIs(t, err, account.ErrUserNotFound, email)
+		assert.Zero(t, row)
+	}
 }
 
 func TestAccountAuthentication(t *testing.T) {
@@ -34,7 +37,7 @@ func TestAccountAuthentication(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	got, err := service.Authenticate(t.Context(), " \tADMIN@example.com\n", password)
+	got, err := service.Authenticate(t.Context(), " \tADMIN@example.com\t", password)
 
 	require.NoError(t, err)
 	assert.Equal(t, user, got.User)
@@ -57,7 +60,7 @@ func TestReadUser(t *testing.T) {
 	got, err := accounts.UserByID(t.Context(), user.ID)
 
 	require.NoError(t, err)
-	assert.Equal(t, account.User{ID: user.ID, Email: "Admin@example.com", Role: account.RoleAdmin}, got)
+	assert.Equal(t, account.User{ID: user.ID, Email: "admin@example.com", Role: account.RoleAdmin}, got)
 
 	// Identity reads must reflect later changes without requiring a new session.
 	_, err = conn.Exec(t.Context(), "UPDATE users SET email = $1, role = $2 WHERE id = $3", "member@example.com", account.RoleMember, user.ID)

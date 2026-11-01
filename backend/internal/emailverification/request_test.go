@@ -19,11 +19,11 @@ func TestRequest(t *testing.T) {
 	address, err := testService(storage, mailer).Request(t.Context(), testUserID)
 	require.NoError(t, err)
 
-	assert.Equal(t, "Admin@example.org", address)
+	assert.Equal(t, "admin@example.org", address)
 	require.Len(t, mailer.sent, 1)
 	sent := mailer.sent[0]
 	assert.Equal(t, "email verification", sent.Purpose)
-	assert.Equal(t, "Admin@example.org", sent.To)
+	assert.Equal(t, "admin@example.org", sent.To)
 	assert.Equal(t, "Verify your email address for inbok", sent.Subject)
 	assert.True(t, sent.Private, "the body holds the secret")
 	assert.Contains(t, sent.Body, "Someone asked inbok at https://mail.example.com to verify this email address.")
@@ -37,7 +37,7 @@ func TestRequest(t *testing.T) {
 	assert.Len(t, raw, secretSize)
 	require.Len(t, storage.links, 1)
 	assert.Equal(t, Link{
-		TokenHash: sha256.Sum256(raw), UserID: testUserID, Address: "Admin@example.org",
+		TokenHash: sha256.Sum256(raw), UserID: testUserID, Address: "admin@example.org",
 		CreatedAt: testNow, ExpiresAt: testNow.Add(24 * time.Hour),
 	}, storage.links[0])
 }
@@ -76,14 +76,14 @@ func TestRequestRefused(t *testing.T) {
 		links []Link
 		want  error
 	}{
-		{"already verified", RequestState{Email: "Admin@example.org", Verified: true, MailConfigured: true}, nil, ErrAlreadyVerified},
-		{"verified and throttled", RequestState{Email: "Admin@example.org", Verified: true}, recentLinks(3, time.Minute), ErrAlreadyVerified},
-		{"3 in 15 minutes", RequestState{Email: "Admin@example.org", MailConfigured: true}, recentLinks(3, time.Minute), ErrThrottled},
-		{"3 just inside 15 minutes", RequestState{Email: "Admin@example.org", MailConfigured: true}, recentLinks(3, 15*time.Minute-time.Microsecond), ErrThrottled},
-		{"10 in 24 hours", RequestState{Email: "Admin@example.org", MailConfigured: true}, recentLinks(10, time.Hour), ErrThrottled},
-		{"10 just inside 24 hours", RequestState{Email: "Admin@example.org", MailConfigured: true}, recentLinks(10, 24*time.Hour-time.Microsecond), ErrThrottled},
-		{"throttled without system email", RequestState{Email: "Admin@example.org"}, recentLinks(3, time.Minute), ErrThrottled},
-		{"no system email", RequestState{Email: "Admin@example.org"}, nil, systememail.ErrNotConfigured},
+		{"already verified", RequestState{Email: "admin@example.org", Verified: true, MailConfigured: true}, nil, ErrAlreadyVerified},
+		{"verified and throttled", RequestState{Email: "admin@example.org", Verified: true}, recentLinks(3, time.Minute), ErrAlreadyVerified},
+		{"3 in 15 minutes", RequestState{Email: "admin@example.org", MailConfigured: true}, recentLinks(3, time.Minute), ErrThrottled},
+		{"3 just inside 15 minutes", RequestState{Email: "admin@example.org", MailConfigured: true}, recentLinks(3, 15*time.Minute-time.Microsecond), ErrThrottled},
+		{"10 in 24 hours", RequestState{Email: "admin@example.org", MailConfigured: true}, recentLinks(10, time.Hour), ErrThrottled},
+		{"10 just inside 24 hours", RequestState{Email: "admin@example.org", MailConfigured: true}, recentLinks(10, 24*time.Hour-time.Microsecond), ErrThrottled},
+		{"throttled without system email", RequestState{Email: "admin@example.org"}, recentLinks(3, time.Minute), ErrThrottled},
+		{"no system email", RequestState{Email: "admin@example.org"}, nil, systememail.ErrNotConfigured},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			storage, mailer := &memoryStorage{state: c.state, links: c.links}, &fakeMailer{}

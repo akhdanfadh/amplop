@@ -1,11 +1,13 @@
 package account
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"strings"
 	"testing"
 
+	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
 
 	"github.com/stretchr/testify/assert"
@@ -43,13 +45,13 @@ func (f *recoveryStorage) UpdateRecovery(_ context.Context, _ int64, update func
 }
 
 func TestRecovery(t *testing.T) {
-	storage := &recoveryStorage{user: User{ID: 1, Email: "ADMIN@example.com", Role: RoleAdmin}}
+	storage := &recoveryStorage{user: User{ID: 1, Email: "admin@example.com", Role: RoleAdmin}}
 	password := "a new recovery password"
 
-	result, err := NewRecovery(storage).Recover(t.Context(), " \tADMIN@Example.COM\n", password)
+	result, err := NewRecovery(storage).Recover(t.Context(), " \tADMIN@Example.COM\t", password)
 
 	require.NoError(t, err)
-	assert.Equal(t, "ADMIN@example.com", storage.email)
+	assert.Equal(t, "admin@example.com", storage.email)
 	assert.Equal(t, int64(2), result.Sessions)
 	match, err := passwordhash.Verify(password, storage.hash)
 	require.NoError(t, err)
@@ -59,12 +61,13 @@ func TestRecovery(t *testing.T) {
 func TestRecoveryRejected(t *testing.T) {
 	lost := errors.New("storage unavailable")
 	for _, c := range []struct {
-		name              string
+		name, email       string
 		role              Role
 		locked            *User
 		readErr, writeErr error
 		want              error
 	}{
+		{name: "invalid email", email: "admin.example.com", want: emailaddress.ErrInvalid},
 		{name: "missing", readErr: ErrUserNotFound, want: ErrUserNotFound},
 		{name: "member", role: RoleMember, want: ErrRecoveryForbidden},
 		{name: "unknown role", role: Role("future"), want: ErrRecoveryForbidden},
@@ -74,8 +77,9 @@ func TestRecoveryRejected(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			storage := &recoveryStorage{user: User{ID: 1, Role: c.role}, locked: c.locked, readErr: c.readErr, writeErr: c.writeErr}
+			email := cmp.Or(c.email, "admin@example.com")
 
-			result, err := NewRecovery(storage).Recover(t.Context(), "admin@example.com", "a new recovery password")
+			result, err := NewRecovery(storage).Recover(t.Context(), email, "a new recovery password")
 
 			require.ErrorIs(t, err, c.want)
 			assert.Zero(t, result)
@@ -121,14 +125,14 @@ func TestRecoveryPasswordBounds(t *testing.T) {
 }
 
 func TestRecoveryAdministrator(t *testing.T) {
-	storage := &recoveryStorage{user: User{ID: 1, Email: "ADMIN@example.com", Role: RoleAdmin}}
+	storage := &recoveryStorage{user: User{ID: 1, Email: "admin@example.com", Role: RoleAdmin}}
 	service := NewRecovery(storage)
 
-	user, err := service.Administrator(t.Context(), " \tADMIN@Example.COM\n")
+	user, err := service.Administrator(t.Context(), " \tADMIN@Example.COM\t")
 
 	require.NoError(t, err)
 	assert.Equal(t, storage.user, user)
-	assert.Equal(t, "ADMIN@example.com", storage.email)
+	assert.Equal(t, "admin@example.com", storage.email)
 	assert.Empty(t, storage.hash)
 	storage.user.Role = RoleMember
 	_, err = service.Administrator(t.Context(), "admin@example.com")

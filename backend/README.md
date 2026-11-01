@@ -309,6 +309,25 @@ explains the Host override. Keep the Go listener inaccessible to remote
 clients. A container proxy has a different connection address; trust its
 actual range rather than copying the loopback range.
 
+## Email addresses
+
+Every address inbok takes goes through `emailaddress.Parse`: setup, sign-in,
+`recover-admin`, the system email From address, and each message's
+recipient. It trims surrounding spaces and tabs, accepts one bare address of
+at most 254 characters without hidden characters, and lowercases the letters
+A to Z, local part included; other letters keep their case. Hidden
+characters are controls, invisible formatting such as a zero-width space or
+a right-to-left override, and Unicode spaces and separators. Anything else
+is `emailaddress.ErrInvalid`, which handlers answer with a 422 on the field;
+Huma accepts hidden characters, so for those the service's 422 is the one a
+client sees. Saved addresses are compared
+exactly, and the `users` table refuses an email with an uppercase ASCII
+letter. New code that takes an address calls `Parse` in its service.
+
+ADR025 in the project's decision records explains the choice and its cost: a
+mail server that treats the local part's case as meaningful is not
+supported. Mail accounts that members connect are outside this rule.
+
 ## First administrator setup
 
 After applying migrations, create the first administrator through the web app:
@@ -631,8 +650,9 @@ actor, and deletes every link of that account. A link for an account that is
 already verified succeeds without changing its verified time or recording an
 event. An unknown, used, or expired link, or one sent to an address the
 account no longer has, answers 404 `email-verification-link-invalid`. The
-address must match exactly, including case. Redeem has no attempt limit: a
-256-bit secret cannot be guessed.
+address must match exactly; both are saved lowercased, as
+[Email addresses](#email-addresses) describes. Redeem has no attempt limit:
+a 256-bit secret cannot be guessed.
 
 Sending a link deletes the account's expired links; a refused request or
 redeem changes nothing. There is no scheduled cleanup, so an account that

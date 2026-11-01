@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/session"
 )
 
@@ -85,7 +86,7 @@ type setupThrottle interface {
 // newSetup is the request body. Huma checks its fields before calling Setup.
 type newSetup struct {
 	Token    string `json:"token" writeOnly:"true"`
-	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254"`
+	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
 	Password string `json:"password" writeOnly:"true" minLength:"15" maxLength:"128"`
 }
 
@@ -170,6 +171,8 @@ func firstAdminProblem(err error) error {
 		return newProblem(http.StatusConflict, setupUnconfiguredType, "Setup unavailable", "Configure INBOK_SETUP_TOKEN to enable setup.")
 	case errors.Is(err, account.ErrSetupTokenInvalid):
 		return newProblem(http.StatusForbidden, setupTokenInvalidType, "Setup token invalid", "The setup token is invalid.")
+	case errors.Is(err, emailaddress.ErrInvalid):
+		return invalidEmailProblem("body.email")
 	default:
 		return err
 	}

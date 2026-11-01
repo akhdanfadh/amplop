@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -57,8 +56,8 @@ func (db *DB) UpdateRecovery(ctx context.Context, userID int64, update func(acco
 		if err != nil {
 			return fmt.Errorf("clear recovery TOTP attempts: %w", err)
 		}
-		key := strings.ToLower(strings.TrimSpace(row.Email))
-		result.SignInAttempts, err = queries.DeleteRecoverySignInAttempts(ctx, &key)
+		// Saved emails and throttle keys share emailaddress.Parse's form.
+		result.SignInAttempts, err = queries.DeleteRecoverySignInAttempts(ctx, &row.Email)
 		if err != nil {
 			return fmt.Errorf("clear recovery sign-in attempts: %w", err)
 		}

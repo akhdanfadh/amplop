@@ -32,7 +32,7 @@ func TestStartSignInPersistence(t *testing.T) {
 	}
 
 	device := session.Device{UserAgent: "Mozilla/5.0 Firefox/131.0", Addr: addr}
-	issued, err := service.StartSignIn(t.Context(), " \tADMIN@example.com\n", password, device)
+	issued, err := service.StartSignIn(t.Context(), " \tADMIN@example.com\t", password, device)
 
 	require.NoError(t, err)
 	assert.Equal(t, session.SignInStepComplete, issued.Step)

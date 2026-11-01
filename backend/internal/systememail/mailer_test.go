@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/emailaddress"
 )
 
 // testMailer sends with sender, decrypts with keys, and logs to logs.
@@ -47,6 +49,32 @@ func TestMailerSendWithoutSignIn(t *testing.T) {
 
 	assert.Empty(t, sender.server.Username)
 	assert.Empty(t, sender.password)
+}
+
+// The recipient is sent to as emailaddress.Parse returns it.
+func TestMailerSendRecipient(t *testing.T) {
+	storage, sender := &memoryStorage{record: savedSignIn()}, &fakeSender{}
+	outgoing := testOutgoing()
+	outgoing.To = " Admin@Example.ORG\t"
+
+	_, err := testMailer(storage, &fakeKeyring{}, sender, &bytes.Buffer{}).Send(t.Context(), outgoing)
+	require.NoError(t, err)
+
+	assert.Equal(t, "admin@example.org", sender.message.To)
+}
+
+// An invalid recipient is refused before the settings are read, so it comes
+// with no revision.
+func TestMailerSendInvalidRecipient(t *testing.T) {
+	storage, sender := &memoryStorage{record: savedSignIn()}, &fakeSender{}
+	outgoing := testOutgoing()
+	outgoing.To = "admin@example.org, other@example.org"
+
+	revision, err := testMailer(storage, &fakeKeyring{}, sender, &bytes.Buffer{}).Send(t.Context(), outgoing)
+	require.ErrorIs(t, err, emailaddress.ErrInvalid)
+
+	assert.Zero(t, revision)
+	assert.Zero(t, sender.sent)
 }
 
 func TestMailerSendNotConfigured(t *testing.T) {

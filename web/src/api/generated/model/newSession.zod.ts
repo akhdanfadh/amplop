@@ -13,7 +13,7 @@ export const newSessionPasswordMax = 128;
 
 
 export const NewSession = zod.object({
-  "email": zod.email().min(newSessionEmailMin).max(newSessionEmailMax),
+  "email": zod.email().min(newSessionEmailMin).max(newSessionEmailMax).describe('Letters A to Z match in either case.'),
   "password": zod.string().max(newSessionPasswordMax)
 })
 

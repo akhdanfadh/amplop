@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"inbok/internal/emailaddress"
 	"inbok/internal/session"
 	"inbok/internal/systememail"
 )
@@ -106,7 +107,7 @@ type newSystemEmailSettings struct {
 	Security    systememail.Security `json:"security" enum:"tls,starttls,none"`
 	Username    string               `json:"username,omitempty" maxLength:"254" doc:"Omit or leave empty for a server that needs no sign-in."`
 	Password    string               `json:"password,omitempty" writeOnly:"true" maxLength:"255" doc:"Omit or leave empty to keep the saved password, if the host, port, and username are unchanged."`
-	FromAddress string               `json:"fromAddress" format:"email" minLength:"3" maxLength:"254"`
+	FromAddress string               `json:"fromAddress" format:"email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
 	FromName    string               `json:"fromName" maxLength:"64" pattern:"\\S" patternDescription:"not blank"`
 }
 
@@ -126,8 +127,8 @@ func registerSystemEmailSave(api huma.API, handler systemEmailHandler) {
 func (h systemEmailHandler) handleSaveSystemEmail(ctx context.Context, in *struct{ Body newSystemEmailSettings }) (*output[systemEmail], error) {
 	// The actor is the checked session's account, never a request value.
 	actor := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
-	// Huma's patterns and email format accept surrounding spaces, which DNS,
-	// SASL, and MAIL FROM would not; a blank username means no sign-in.
+	// Huma's patterns accept surrounding spaces, which DNS and SASL would not;
+	// a blank username means no sign-in. The service checks the From address.
 	saved, err := h.service.Save(ctx, actor.ID, systememail.Input{
 		Server: systememail.Server{
 			Host:     strings.TrimSpace(in.Body.Host),
@@ -136,7 +137,7 @@ func (h systemEmailHandler) handleSaveSystemEmail(ctx context.Context, in *struc
 			Username: strings.TrimSpace(in.Body.Username),
 		},
 		Password:    in.Body.Password,
-		FromAddress: strings.TrimSpace(in.Body.FromAddress),
+		FromAddress: in.Body.FromAddress,
 		FromName:    in.Body.FromName,
 	})
 	if err != nil {
@@ -175,6 +176,8 @@ func systemEmailSaveProblem(err error) error {
 		input = inputError{Location: "body.password", Message: "Enter a password of at most 255 bytes, without control characters."}
 	case errors.Is(err, systememail.ErrInvalidFromName):
 		input = inputError{Location: "body.fromName", Message: "Enter a name without control characters."}
+	case errors.Is(err, emailaddress.ErrInvalid):
+		return invalidEmailProblem("body.fromAddress")
 	default:
 		return err
 	}
@@ -190,7 +193,7 @@ func systemEmailSaveProblem(err error) error {
 const systemEmailNotConfiguredType = problemPrefix + "system-email-not-configured"
 
 type systemEmailTestMessageRecipient struct {
-	Recipient string `json:"recipient" format:"email" maxLength:"254" doc:"Where to send the test message."`
+	Recipient string `json:"recipient" format:"email" maxLength:"254" doc:"Where to send the test message. Letters A to Z are sent in lowercase."`
 }
 
 // testMessageStatus is whether the server accepted the test message.
@@ -222,8 +225,7 @@ func registerSystemEmailTestMessage(api huma.API, handler systemEmailHandler) {
 func (h systemEmailHandler) handleSendTestMessage(ctx context.Context, in *struct {
 	Body systemEmailTestMessageRecipient
 }) (*output[systemEmailTestMessageResult], error) {
-	// Huma's email format allows surrounding spaces; the server would not.
-	result, err := h.testMessages.Send(ctx, strings.TrimSpace(in.Body.Recipient))
+	result, err := h.testMessages.Send(ctx, in.Body.Recipient)
 	if err != nil {
 		return nil, testMessageProblem(err)
 	}
@@ -247,6 +249,9 @@ func testMessageResponses(api huma.API) map[string]*huma.Response {
 }
 
 func testMessageProblem(err error) error {
+	if errors.Is(err, emailaddress.ErrInvalid) {
+		return invalidEmailProblem("body.recipient")
+	}
 	if errors.Is(err, systememail.ErrNotConfigured) {
 		return newProblem(http.StatusConflict, systemEmailNotConfiguredType, "System email not configured", "Save the system email settings before sending a test message.")
 	}

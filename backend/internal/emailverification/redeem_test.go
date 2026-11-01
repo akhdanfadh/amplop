@@ -53,8 +53,8 @@ func TestRedeemAlreadyVerified(t *testing.T) {
 	assert.Equal(t, &verifiedAt, storage.verifiedAt)
 }
 
-// An expired link, or one sent to an address the user no longer has, even
-// one differing only in case, is not valid and changes nothing.
+// An expired link, or one sent to an address the user no longer has, is not
+// valid and changes nothing.
 func TestRedeemRefused(t *testing.T) {
 	for _, c := range []struct {
 		name   string
@@ -63,7 +63,6 @@ func TestRedeemRefused(t *testing.T) {
 	}{
 		{"expired", testNow.Add(24 * time.Hour), func(*memoryStorage) {}},
 		{"address changed", testNow, func(s *memoryStorage) { s.state.Email = "new@example.org" }},
-		{"address case changed", testNow, func(s *memoryStorage) { s.state.Email = "admin@example.org" }},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			storage, service, secret := requested(t)

@@ -11,7 +11,8 @@ import (
 	"inbok/internal/repository/postgres/sqlc"
 )
 
-// ReadCredentials loads an account and its hash using case-insensitive email.
+// ReadCredentials loads an account and its hash by its exact email, as
+// emailaddress.Parse returns it.
 // Missing accounts return account.ErrUserNotFound.
 func (db *DB) ReadCredentials(ctx context.Context, email string) (account.Credentials, error) {
 	row, err := sqlc.New(db.pool).ReadUserCredentials(ctx, email)

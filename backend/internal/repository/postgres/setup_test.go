@@ -61,6 +61,7 @@ func TestUsersChecks(t *testing.T) {
 		{"empty email", "", "admin"},
 		{"short email", "a@", "admin"},
 		{"long email", "a" + longest, "admin"},
+		{"uppercase ASCII in email", "Other@example.com", "admin"},
 		{"unknown role", "other@example.com", "owner"},
 	}
 
@@ -75,39 +76,33 @@ func TestUsersChecks(t *testing.T) {
 	}
 }
 
+// Emails are unique exactly.
 func TestUsersEmailUnique(t *testing.T) {
 	const uniqueViolation = "23505"
 	conn := migrated(t)
 	const insert = "INSERT INTO users (email, password_hash, role) VALUES ($1, $2, 'member')"
-	_, err := conn.Exec(t.Context(), insert, "Admin@example.com", setupTestHash)
+	_, err := conn.Exec(t.Context(), insert, "admin@example.com", setupTestHash)
 	require.NoError(t, err)
 
-	var stored string
-	err = conn.QueryRow(t.Context(), "SELECT email FROM users").Scan(&stored)
+	_, err = conn.Exec(t.Context(), insert, "admin@example.com", setupTestHash)
+
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr)
+	assert.Equal(t, uniqueViolation, pgErr.Code)
+}
+
+// Only ASCII letters must be lowercase, so non-ASCII case variants are
+// different addresses.
+func TestUsersEmailNonASCIICase(t *testing.T) {
+	conn := migrated(t)
+	const insert = "INSERT INTO users (email, password_hash, role) VALUES ($1, $2, 'member')"
+	_, err := conn.Exec(t.Context(), insert, "élise@example.fr", setupTestHash)
 	require.NoError(t, err)
-	assert.Equal(t, "Admin@example.com", stored)
 
-	cases := []struct {
-		name, email string
-	}{
-		{"identical", "Admin@example.com"},
-		{"local-part case", "admin@example.com"},
-		{"domain case", "Admin@Example.COM"},
-		{"both parts", "ADMIN@EXAMPLE.COM"},
-	}
+	_, err = conn.Exec(t.Context(), insert, "Élise@example.fr", setupTestHash)
 
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			_, err := conn.Exec(t.Context(), insert, c.email, setupTestHash)
-
-			var pgErr *pgconn.PgError
-			require.ErrorAs(t, err, &pgErr)
-			assert.Equal(t, uniqueViolation, pgErr.Code)
-		})
-	}
-
-	_, err = conn.Exec(t.Context(), insert, "other@example.com", setupTestHash)
 	require.NoError(t, err)
+	assert.Equal(t, int64(2), countUsers(t, conn))
 }
 
 func TestUsersMigrationDown(t *testing.T) {
@@ -162,7 +157,7 @@ func TestUpdateSetup(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Positive(t, user.ID)
-	assert.Equal(t, "ADMIN@example.com", user.Email)
+	assert.Equal(t, "admin@example.com", user.Email)
 	var email, hash, role string
 	var createdAt time.Time
 	err = conn.QueryRow(t.Context(), "SELECT email, password_hash, role, created_at FROM users WHERE id = $1", user.ID).

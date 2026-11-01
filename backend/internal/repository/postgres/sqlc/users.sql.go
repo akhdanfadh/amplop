@@ -86,7 +86,7 @@ func (q *Queries) ReadUserByID(ctx context.Context, id int64) (ReadUserByIDRow, 
 
 const readUserCredentials = `-- name: ReadUserCredentials :one
 SELECT id, email, role, password_hash FROM users
-WHERE lower(email) = lower($1)
+WHERE email = $1
 `
 
 type ReadUserCredentialsRow struct {

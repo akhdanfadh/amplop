@@ -5,8 +5,8 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"errors"
-	"strings"
 
+	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
 )
 
@@ -26,14 +26,14 @@ var (
 	ErrSetupTokenInvalid = errors.New("setup token is invalid")
 )
 
-// SetupInput carries the token and credentials after request validation.
+// SetupInput carries the token and credentials for [Service.Setup].
 type SetupInput struct {
 	Token    string
 	Email    string
 	Password string
 }
 
-// NewAdmin is the delivery email and password hash to save.
+// NewAdmin is the normalized email and password hash to save.
 type NewAdmin struct {
 	Email        string
 	PasswordHash string
@@ -59,8 +59,15 @@ func (s *Service) SetupStatus(ctx context.Context) (SetupStatus, error) {
 	return SetupOpen, nil
 }
 
-// Setup claims the first administrator without creating a session.
+// Setup claims the first administrator without creating a session and returns
+// it. It returns [emailaddress.ErrInvalid] for an invalid email, and
+// [ErrSetupDone], [ErrSetupUnconfigured], or [ErrSetupTokenInvalid] when setup
+// is not open to input's token.
 func (s *Service) Setup(ctx context.Context, input SetupInput) (User, error) {
+	email, err := emailaddress.Parse(input.Email)
+	if err != nil {
+		return User{}, err
+	}
 	status, err := s.SetupStatus(ctx)
 	if err != nil {
 		return User{}, err
@@ -80,7 +87,7 @@ func (s *Service) Setup(ctx context.Context, input SetupInput) (User, error) {
 
 	// Argon2id must finish before storage takes the table lock.
 	admin := NewAdmin{
-		Email:        normalizeEmail(input.Email),
+		Email:        email,
 		PasswordHash: passwordhash.Hash(input.Password),
 	}
 	return s.storage.UpdateSetup(ctx, func(state SetupState) (NewAdmin, error) {
@@ -89,15 +96,4 @@ func (s *Service) Setup(ctx context.Context, input SetupInput) (User, error) {
 		}
 		return admin, nil
 	})
-}
-
-// normalizeEmail keeps local-part case for delivery to case-sensitive hosts.
-func normalizeEmail(email string) string {
-	email = strings.TrimSpace(email)
-	at := strings.LastIndexByte(email, '@')
-	if at < 0 {
-		return email
-	}
-
-	return email[:at+1] + strings.ToLower(email[at+1:])
 }

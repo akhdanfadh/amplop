@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/emailaddress"
 )
 
 // fakeSender records each send and answers with err. During, if set, runs
@@ -94,6 +96,19 @@ func TestSendTestMessageFailed(t *testing.T) {
 	assert.Contains(t, logs.String(), `purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com`)
 	assert.Contains(t, logs.String(), "535 5.7.8")
 	assert.NotContains(t, logs.String(), reply, "a long reply is cut")
+}
+
+// An invalid recipient sends nothing and leaves the tested time.
+func TestSendTestMessageInvalidRecipient(t *testing.T) {
+	saved := savedSignIn()
+	storage, sender := &memoryStorage{record: saved}, &fakeSender{}
+
+	result, err := testMessages(storage, &fakeKeyring{}, sender, &bytes.Buffer{}).Send(t.Context(), "Admin <admin@example.org>")
+	require.ErrorIs(t, err, emailaddress.ErrInvalid)
+
+	assert.Empty(t, result)
+	assert.Zero(t, sender.sent)
+	assert.Same(t, saved, storage.record)
 }
 
 func TestSendTestMessageNotConfigured(t *testing.T) {

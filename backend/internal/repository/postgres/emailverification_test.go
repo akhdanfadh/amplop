@@ -89,7 +89,7 @@ func verificationRequestRecording(seen *emailverification.RequestState, link ema
 // saves the new one.
 func TestEmailVerificationRequest(t *testing.T) {
 	db, conn := setupStorage(t)
-	user := verificationUser(t, conn, "User@example.com")
+	user := verificationUser(t, conn, "user@example.com")
 	other := verificationUser(t, conn, "other@example.com")
 	verificationSystemEmail(t, conn)
 	expired, live := verificationLink(user, "expired", 24*time.Hour), verificationLink(user, "live", time.Hour)
@@ -103,7 +103,7 @@ func TestEmailVerificationRequest(t *testing.T) {
 	err := db.RequestEmailVerification(t.Context(), user, verificationRequestRecording(&seen, added))
 	require.NoError(t, err)
 
-	assert.Equal(t, "User@example.com", seen.Email)
+	assert.Equal(t, "user@example.com", seen.Email)
 	assert.False(t, seen.Verified)
 	assert.True(t, seen.MailConfigured)
 	assert.ElementsMatch(t, []time.Time{expired.CreatedAt, live.CreatedAt}, utcTimes(seen.LinksCreatedAt))
@@ -282,7 +282,7 @@ func verificationRedeemRecording(seen *emailverification.RedeemState, change ema
 // audit event, and deletes all the user's links; other users' links stay.
 func TestEmailVerificationRedeem(t *testing.T) {
 	db, conn := setupStorage(t)
-	user := verificationUser(t, conn, "User@example.com")
+	user := verificationUser(t, conn, "user@example.com")
 	other := verificationUser(t, conn, "other@example.com")
 	redeemed := verificationLink(user, "redeemed", time.Hour)
 	othersLink := verificationLink(other, "other", time.Hour)
@@ -294,7 +294,7 @@ func TestEmailVerificationRedeem(t *testing.T) {
 	err := db.RedeemEmailVerification(t.Context(), redeemed.TokenHash, verificationRedeemRecording(&seen, emailverification.RedeemChange{VerifiedAt: &verificationNow}, nil))
 	require.NoError(t, err)
 
-	assert.Equal(t, emailverification.RedeemState{Link: redeemed, Email: "User@example.com"}, seen)
+	assert.Equal(t, emailverification.RedeemState{Link: redeemed, Email: "user@example.com"}, seen)
 	assert.Equal(t, &verificationNow, emailVerifiedAt(t, conn, user))
 	assert.Nil(t, emailVerifiedAt(t, conn, other))
 	assert.Equal(t, []emailverification.Link{othersLink}, savedVerificationLinks(t, conn))

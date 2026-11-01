@@ -14,6 +14,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/config"
+	"inbok/internal/emailaddress"
 	"inbok/internal/repository/postgres"
 )
 
@@ -70,7 +71,7 @@ func runRecovery(ctx context.Context, email string, service adminRecovery, conso
 
 // Unknown storage errors may contain credentials; only known safe errors reach logs.
 func recoveryError(err error) error {
-	for _, known := range []error{account.ErrUserNotFound, account.ErrRecoveryForbidden, account.ErrPasswordInvalid} {
+	for _, known := range []error{emailaddress.ErrInvalid, account.ErrUserNotFound, account.ErrRecoveryForbidden, account.ErrPasswordInvalid} {
 		if errors.Is(err, known) {
 			return known
 		}

@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/session"
 )
 
@@ -212,6 +213,19 @@ func TestCreateSessionErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// An email the service rejects is the same field error as one Huma rejects.
+func TestCreateSessionRejectedEmail(t *testing.T) {
+	service := &fakeSessions{err: emailaddress.ErrInvalid}
+
+	response := postSession(New(discard, Services{Session: service}), signInHTTPBody)
+
+	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+	body := decodeJSON(t, response.Body.Bytes())
+	assert.Equal(t, problemPrefix+"validation-error", body["type"])
+	assert.Equal(t, []any{map[string]any{"location": "body.email", "message": "Enter a valid value."}}, body["errors"])
+	assert.Empty(t, response.Result().Cookies())
 }
 
 func TestSignInValidation(t *testing.T) {

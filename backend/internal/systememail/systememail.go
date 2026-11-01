@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"inbok/internal/emailaddress"
 )
 
 // Security selects how the connection to the mail server is protected.
@@ -121,8 +123,14 @@ func (s *Service) Settings(ctx context.Context) (*Settings, error) {
 
 // Save replaces the settings, records actorID as the administrator who saved
 // them, clears their tested time, and returns them. Every successful save is
-// audited, even one that changes nothing.
+// audited, even one that changes nothing. It returns
+// [emailaddress.ErrInvalid] for an invalid From address.
 func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Settings, error) {
+	from, err := emailaddress.Parse(input.FromAddress)
+	if err != nil {
+		return Settings{}, err
+	}
+	input.FromAddress = from
 	if err := checkInput(input); err != nil {
 		return Settings{}, err
 	}
@@ -138,7 +146,7 @@ func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Setting
 	}
 
 	var saved Record
-	err := s.storage.UpdateSystemEmail(ctx, actorID, func(current *Record) (Record, error) {
+	err = s.storage.UpdateSystemEmail(ctx, actorID, func(current *Record) (Record, error) {
 		// Keeping the password for another server would let an administrator
 		// send it there and read it, so a moved account needs it again.
 		password := sealed

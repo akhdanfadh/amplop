@@ -41,8 +41,8 @@ func (s *Service) Redeem(ctx context.Context, secret string) error {
 	}
 	return s.storage.RedeemEmailVerification(ctx, hash, func(state RedeemState) (RedeemChange, error) {
 		now := s.now().UTC()
-		// The link saved an exact copy of the email, and inbok keeps the local
-		// part's case, so any difference may be another mailbox.
+		// The link saved an exact copy of the email, which is already in
+		// emailaddress.Parse's form, so any difference is another address.
 		if !state.Link.ExpiresAt.After(now) || state.Link.Address != state.Email {
 			return RedeemChange{}, ErrLinkInvalid
 		}

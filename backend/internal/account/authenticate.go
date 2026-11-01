@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
 )
 
@@ -27,9 +28,14 @@ type Credentials struct {
 // Authenticate returns the verified credentials so sign-in can detect a
 // password replacement before issuing a session or challenge.
 // Unknown accounts do the same password work and receive the same error as
-// wrong passwords. Callers must reserve a throttle attempt before calling it.
+// wrong passwords. It returns [emailaddress.ErrInvalid] for an invalid email.
+// Callers must reserve a throttle attempt before calling it.
 func (s *Service) Authenticate(ctx context.Context, email, password string) (Credentials, error) {
-	credentials, err := s.storage.ReadCredentials(ctx, normalizeEmail(email))
+	email, err := emailaddress.Parse(email)
+	if err != nil {
+		return Credentials{}, err
+	}
+	credentials, err := s.storage.ReadCredentials(ctx, email)
 	missing := errors.Is(err, ErrUserNotFound)
 	if err != nil && !missing {
 		return Credentials{}, err

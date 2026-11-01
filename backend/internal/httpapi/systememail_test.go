@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/session"
 	"inbok/internal/systememail"
 )
@@ -176,21 +177,19 @@ func TestSaveSystemEmailKeepsPassword(t *testing.T) {
 	}
 }
 
-// Surrounding whitespace, which Huma accepts, is trimmed from the host,
-// username, and From address before the service sees them.
+// Surrounding whitespace, which Huma accepts, is trimmed from the host and
+// username before the service sees them. The service trims the From address.
 func TestSaveSystemEmailTrims(t *testing.T) {
 	service := &fakeSystemEmail{}
 	api := New(discard, Services{SystemEmail: service, Session: adminSessions()})
 	body := strings.NewReplacer(`"host":"smtp.example.com"`, `"host":" smtp.example.com\r\n"`,
-		`"username":"inbok@example.com"`, `"username":" inbok@example.com\t"`,
-		`"fromAddress":"inbok@example.com"`, `"fromAddress":"\t inbok@example.com "`).Replace(systemEmailBody)
+		`"username":"inbok@example.com"`, `"username":" inbok@example.com\t"`).Replace(systemEmailBody)
 
 	response := requestSystemEmail(api, http.MethodPut, "/system-email", body)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, "smtp.example.com", service.input.Host)
 	assert.Equal(t, "inbok@example.com", service.input.Username)
-	assert.Equal(t, "inbok@example.com", service.input.FromAddress)
 }
 
 // A username of only spaces means no sign-in.
@@ -248,6 +247,7 @@ func TestSaveSystemEmailRejected(t *testing.T) {
 		{systememail.ErrInvalidUsername, "body.username", "Enter a username without control characters."},
 		{systememail.ErrInvalidPassword, "body.password", "Enter a password of at most 255 bytes, without control characters."},
 		{systememail.ErrInvalidFromName, "body.fromName", "Enter a name without control characters."},
+		{emailaddress.ErrInvalid, "body.fromAddress", "Enter a valid value."},
 	} {
 		t.Run(c.err.Error(), func(t *testing.T) {
 			api := New(discard, Services{SystemEmail: &fakeSystemEmail{err: c.err}, Session: adminSessions()})
@@ -275,11 +275,11 @@ func TestSendSystemEmailTestMessage(t *testing.T) {
 			service := &fakeTestMessages{result: c.result}
 			api := New(discard, Services{TestMessages: service, Session: adminSessions()})
 
-			response := requestSystemEmail(api, http.MethodPost, "/system-email/test-message", `{"recipient":" admin@example.org "}`)
+			response := requestSystemEmail(api, http.MethodPost, "/system-email/test-message", `{"recipient":"Admin@example.org"}`)
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 			assert.JSONEq(t, c.want, response.Body.String())
-			assert.Equal(t, "admin@example.org", service.recipient, "surrounding spaces are trimmed")
+			assert.Equal(t, "Admin@example.org", service.recipient, "the service normalizes the address")
 		})
 	}
 }
@@ -298,6 +298,18 @@ func TestSendSystemEmailTestMessageInvalidRecipient(t *testing.T) {
 			assert.Equal(t, []any{map[string]any{"location": "body.recipient", "message": "Enter a valid value."}}, problem["errors"])
 		})
 	}
+}
+
+// A recipient the service rejects is the same field error as one Huma rejects.
+func TestSendSystemEmailTestMessageRejectedRecipient(t *testing.T) {
+	api := New(discard, Services{TestMessages: &fakeTestMessages{err: emailaddress.ErrInvalid}, Session: adminSessions()})
+
+	response := requestSystemEmail(api, http.MethodPost, "/system-email/test-message", `{"recipient":"admin@example.org"}`)
+
+	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+	problem := decodeJSON(t, response.Body.Bytes())
+	assert.Equal(t, problemPrefix+"validation-error", problem["type"])
+	assert.Equal(t, []any{map[string]any{"location": "body.recipient", "message": "Enter a valid value."}}, problem["errors"])
 }
 
 func TestSendSystemEmailTestMessageNotConfigured(t *testing.T) {

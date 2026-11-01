@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 )
 
 // ========================
@@ -53,7 +54,7 @@ func (f *fakeAccounts) SetupStatus(context.Context) (account.SetupStatus, error)
 
 func (f *fakeAccounts) Setup(_ context.Context, input account.SetupInput) (account.User, error) {
 	f.created = append(f.created, input)
-	return account.User{ID: 7, Email: "Admin@example.com"}, f.setupErr
+	return account.User{ID: 7, Email: "admin@example.com"}, f.setupErr
 }
 
 func postSetup(logger *slog.Logger, accounts *fakeAccounts, body string) *httptest.ResponseRecorder {
@@ -92,11 +93,23 @@ func TestCreateFirstAdmin(t *testing.T) {
 	response := postSetup(discard, accounts, body)
 
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
-	assert.JSONEq(t, `{"data":{"id":7,"email":"Admin@example.com"}}`, response.Body.String())
+	assert.JSONEq(t, `{"data":{"id":7,"email":"admin@example.com"}}`, response.Body.String())
 	assert.Empty(t, response.Header().Values("Set-Cookie"))
 	assert.Equal(t, []account.SetupInput{{
 		Token: "test-only-setup-token-for-http-tests", Email: "Admin@Example.COM", Password: "a long setup password",
 	}}, accounts.created)
+}
+
+// An email the service rejects is the same field error as one Huma rejects.
+func TestSetupRejectedEmail(t *testing.T) {
+	accounts := &fakeAccounts{setupErr: emailaddress.ErrInvalid}
+
+	response := postSetup(discard, accounts, setupBody(t, setupFields()))
+
+	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+	body := decodeJSON(t, response.Body.Bytes())
+	assert.Equal(t, problemPrefix+"validation-error", body["type"])
+	assert.Equal(t, []any{map[string]any{"location": "body.email", "message": "Enter a valid value."}}, body["errors"])
 }
 
 func TestSetupProblems(t *testing.T) {

@@ -10,7 +10,7 @@ export const sendSystemEmailTestMessageBodyRecipientMax = 254;
 
 
 export const SendSystemEmailTestMessageBody = zod.object({
-  "recipient": zod.email().max(sendSystemEmailTestMessageBodyRecipientMax).describe('Where to send the test message.')
+  "recipient": zod.email().max(sendSystemEmailTestMessageBodyRecipientMax).describe('Where to send the test message. Letters A to Z are sent in lowercase.')
 })
 
 export type SendSystemEmailTestMessageBody = zod.input<typeof SendSystemEmailTestMessageBody>;

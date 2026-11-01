@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/totp"
 )
 
@@ -61,7 +62,13 @@ func NewService(storage Storage, accounts accountService, throttle *Throttle, no
 // StartSignIn checks the password and chooses a session or second-factor challenge.
 // The device's address also identifies the sign-in for throttling.
 // The returned secret is for the browser; storage receives only its hash.
+// It returns [emailaddress.ErrInvalid] for an invalid email without
+// reserving a throttle attempt.
 func (s *Service) StartSignIn(ctx context.Context, email, password string, device Device) (SignedIn, error) {
+	email, err := emailaddress.Parse(email)
+	if err != nil {
+		return SignedIn{}, err
+	}
 	id, err := s.throttle.Begin(ctx, email, device.Addr)
 	if err != nil {
 		return SignedIn{}, err

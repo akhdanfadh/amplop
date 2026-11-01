@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/totp"
 )
 
@@ -81,10 +82,10 @@ func TestStartSignIn(t *testing.T) {
 	}
 	accounts := signInAccounts{authenticate: func(_ context.Context, email, password string) (account.Credentials, error) {
 		assert.Len(t, attempts.rows, 5, "reserve before checking credentials")
-		assert.Equal(t, "ADMIN@Example.COM", email)
+		assert.Equal(t, "admin@example.com", email, "the throttle and accounts see the parsed address")
 		assert.Equal(t, " password with spaces ", password)
 		clock.Advance(time.Second)
-		return account.Credentials{User: account.User{ID: 42, Email: "Admin@example.com"}}, nil
+		return account.Credentials{User: account.User{ID: 42, Email: "admin@example.com"}}, nil
 	}}
 	service := NewService(store, accounts, throttle, clock.Now)
 
@@ -131,6 +132,21 @@ func TestStartSignInThrottled(t *testing.T) {
 	assert.Zero(t, issued)
 	assert.Empty(t, store.states)
 	assert.Len(t, attempts.rows, 5)
+}
+
+func TestStartSignInInvalidEmail(t *testing.T) {
+	attempts := &memoryAttempts{rows: map[int64]Attempt{}}
+	accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
+		t.Error("an invalid email reached password verification")
+		return account.Credentials{}, nil
+	}}
+	service := NewService(&signInStorage{}, accounts, NewThrottle(attempts, time.Now), time.Now)
+
+	issued, err := service.StartSignIn(t.Context(), "admin.example.com", "password", Device{Addr: netip.MustParseAddr("192.0.2.1")})
+
+	require.ErrorIs(t, err, emailaddress.ErrInvalid)
+	assert.Zero(t, issued)
+	assert.Empty(t, attempts.rows, "no attempt is reserved")
 }
 
 func TestStartSignInErrors(t *testing.T) {

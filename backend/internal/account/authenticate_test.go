@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
 
 	"github.com/stretchr/testify/assert"
@@ -26,15 +27,15 @@ func (f *credentialStorage) ReadCredentials(_ context.Context, email string) (Cr
 
 func TestAuthenticate(t *testing.T) {
 	const password = "a long sign-in password "
-	user := User{ID: 42, Email: "Admin@example.com"}
+	user := User{ID: 42, Email: "admin@example.com"}
 	storage := &credentialStorage{credentials: Credentials{User: user, PasswordHash: passwordhash.Hash(password)}}
 	service := NewService(storage, "")
 
-	got, err := service.Authenticate(t.Context(), " \tADMIN@Example.COM\n", password)
+	got, err := service.Authenticate(t.Context(), " \tADMIN@Example.COM\t", password)
 
 	require.NoError(t, err)
 	assert.Equal(t, storage.credentials, got)
-	assert.Equal(t, "ADMIN@example.com", storage.email)
+	assert.Equal(t, "admin@example.com", storage.email)
 
 	got, err = service.Authenticate(t.Context(), user.Email, "a long sign-in password")
 	require.ErrorIs(t, err, ErrInvalidCredentials)
@@ -87,6 +88,16 @@ func TestAuthenticateErrors(t *testing.T) {
 			assert.Zero(t, got)
 		})
 	}
+}
+
+func TestAuthenticateInvalidEmail(t *testing.T) {
+	storage := &credentialStorage{}
+
+	got, err := NewService(storage, "").Authenticate(t.Context(), "admin.example.com", "password")
+
+	require.ErrorIs(t, err, emailaddress.ErrInvalid)
+	assert.Zero(t, got)
+	assert.Empty(t, storage.email, "storage is not read")
 }
 
 func TestDummyPasswordHash(t *testing.T) {

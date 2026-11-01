@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/emailaddress"
 )
 
 type memoryAttempts struct {
@@ -68,6 +70,28 @@ func TestThrottlePair(t *testing.T) {
 	_, err = limiter.Begin(t.Context(), "admin@example.com", addr)
 	require.NoError(t, err)
 	assert.Len(t, store.rows, 1)
+}
+
+// Throttle keys are addresses as emailaddress.Parse returns them.
+func TestThrottleKey(t *testing.T) {
+	store := &memoryAttempts{rows: map[int64]Attempt{}}
+	limiter := NewThrottle(store, time.Now)
+
+	id, err := limiter.Begin(t.Context(), " Admin@Example.COM\t", netip.MustParseAddr("192.0.2.1"))
+	require.NoError(t, err)
+
+	require.NotNil(t, store.rows[id].Email)
+	assert.Equal(t, "admin@example.com", *store.rows[id].Email)
+}
+
+func TestThrottleInvalidEmail(t *testing.T) {
+	store := &memoryAttempts{rows: map[int64]Attempt{}}
+	limiter := NewThrottle(store, time.Now)
+
+	_, err := limiter.Begin(t.Context(), "admin", netip.MustParseAddr("192.0.2.1"))
+
+	require.ErrorIs(t, err, emailaddress.ErrInvalid)
+	assert.Empty(t, store.rows, "an invalid email reserves nothing")
 }
 
 func TestThrottleSuccess(t *testing.T) {

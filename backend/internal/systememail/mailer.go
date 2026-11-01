@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+
+	"inbok/internal/emailaddress"
 )
 
 // maxLoggedReply is how much of a failed send's error is logged.
@@ -55,12 +57,17 @@ type Outgoing struct {
 
 // Send sends outgoing with the saved settings, logs a failed send, without the
 // server's reply when outgoing is [Outgoing.Private], and returns the
-// settings' revision. It returns [ErrNotConfigured] when nothing is saved,
-// [ErrPasswordUnreadable] when the password cannot be decrypted, a
+// settings' revision. It returns [emailaddress.ErrInvalid] for an invalid
+// [Outgoing.To] before reading the settings, [ErrNotConfigured] when nothing
+// is saved, [ErrPasswordUnreadable] when the password cannot be decrypted, a
 // [*SendError] when the server or network fails, and the [Sender]'s other
 // errors unchanged. Every error after the settings are read comes with their
 // revision.
 func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
+	to, err := emailaddress.Parse(outgoing.To)
+	if err != nil {
+		return 0, err
+	}
 	saved, err := m.storage.ReadSystemEmail(ctx)
 	if err != nil {
 		return 0, err
@@ -80,7 +87,7 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 	message := Message{
 		FromAddress: saved.FromAddress,
 		FromName:    saved.FromName,
-		To:          outgoing.To,
+		To:          to,
 		Subject:     outgoing.Subject,
 		Body:        outgoing.Body,
 	}

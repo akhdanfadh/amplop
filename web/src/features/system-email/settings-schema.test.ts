@@ -133,9 +133,15 @@ describe("checkedSave", () => {
         ...values,
         host: " smtp.example.com ",
         username: " inbok@example.com ",
-        fromAddress: " inbok@example.com ",
+        fromAddress: " Inbok@Example.COM ",
       }),
     ).toBe("saved");
+  });
+
+  it("keeps the case of non-ASCII letters in the From address", () => {
+    const settings = { ...saved, fromAddress: "élise@example.fr" };
+
+    expect(checkedSave(settings, { ...values, fromAddress: "Élise@example.fr" })).toBe("different");
   });
 
   it("cannot confirm a typed password", () => {

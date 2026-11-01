@@ -43,7 +43,7 @@ func recoverySnapshot(t *testing.T, conn *pgx.Conn, userID int64) string {
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM sessions t WHERE user_id=$1),
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM sign_in_challenges t WHERE user_id=$1),
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM totp_attempts t WHERE user_id=$1),
- (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sign_in_attempts t WHERE email=(SELECT lower(email) FROM users WHERE id=$1) OR email IS NULL),
+ (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sign_in_attempts t WHERE email=(SELECT email FROM users WHERE id=$1) OR email IS NULL),
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_events t WHERE target_user_id=$1)
  )::text`, userID).Scan(&snapshot)
 	require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestRecoveryPersistence(t *testing.T) {
 	f := newRecovery(t)
 	foreign := recoverySnapshot(t, f.conn, f.foreign.UserID)
 
-	result, err := account.NewRecovery(f.db).Recover(t.Context(), " \tADMIN@EXAMPLE.COM\n", "a new recovery password")
+	result, err := account.NewRecovery(f.db).Recover(t.Context(), " \tADMIN@EXAMPLE.COM\t", "a new recovery password")
 
 	require.NoError(t, err)
 	assert.Equal(t, account.RecoveryResult{Factors: 1, BackupCodes: 2, Sessions: 2, Challenges: 1, TOTPAttempts: 2, SignInAttempts: 2}, result)

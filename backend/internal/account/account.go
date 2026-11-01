@@ -25,7 +25,8 @@ type User struct {
 type Storage interface {
 	ReadSetup(ctx context.Context) (SetupState, error)
 
-	// ReadCredentials finds an account by case-insensitive email.
+	// ReadCredentials finds an account by its exact email, as
+	// [emailaddress.Parse] returns it.
 	// A missing account returns ErrUserNotFound.
 	ReadCredentials(ctx context.Context, email string) (Credentials, error)
 

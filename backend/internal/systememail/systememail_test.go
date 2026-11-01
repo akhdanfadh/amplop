@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/emailaddress"
 )
 
 type memoryStorage struct {
@@ -134,6 +136,20 @@ func TestSystemEmailSave(t *testing.T) {
 	assert.Equal(t, &saved, read)
 }
 
+// The From address is saved as emailaddress.Parse returns it.
+func TestSystemEmailSaveFromAddress(t *testing.T) {
+	input := inputWithSignIn()
+	input.FromAddress = " \tInbok@Example.COM\t"
+	storage := &memoryStorage{}
+
+	saved, err := NewService(storage, &fakeKeyring{}).Save(t.Context(), adminID, input)
+	require.NoError(t, err)
+
+	assert.Equal(t, "inbok@example.com", saved.FromAddress)
+	require.NotNil(t, storage.record)
+	assert.Equal(t, "inbok@example.com", storage.record.FromAddress)
+}
+
 // The owner keeps its parts apart, so moving text between them changes it.
 func TestSystemEmailPasswordOwner(t *testing.T) {
 	assert.NotEqual(t, passwordOwner(Server{Host: "a:1", Port: 2, Username: "b"}), passwordOwner(Server{Host: "a", Port: 1, Username: `2:"b`}))
@@ -228,6 +244,8 @@ func TestSystemEmailSaveRejected(t *testing.T) {
 	longPassword.Password = strings.Repeat("é", 128) // 128 characters, 256 bytes
 	fromName := inputWithSignIn()
 	fromName.FromName = "inbok\u0085"
+	fromAddress := inputWithSignIn()
+	fromAddress.FromAddress = "inbok <inbok@example.com>"
 	for _, c := range []struct {
 		name  string
 		input Input
@@ -242,6 +260,7 @@ func TestSystemEmailSaveRejected(t *testing.T) {
 		{"control in password", nulPassword, ErrInvalidPassword},
 		{"password over 255 bytes", longPassword, ErrInvalidPassword},
 		{"control in from name", fromName, ErrInvalidFromName},
+		{"invalid from address", fromAddress, emailaddress.ErrInvalid},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			stored := storedSignIn()

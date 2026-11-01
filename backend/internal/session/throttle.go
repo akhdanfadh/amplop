@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/netip"
-	"strings"
 	"time"
+
+	"inbok/internal/emailaddress"
 )
 
 const (
@@ -49,11 +50,15 @@ func NewThrottle(storage AttemptStorage, now func() time.Time) *Throttle {
 	return &Throttle{storage: storage, now: now}
 }
 
-// Begin reserves a sign-in attempt and returns its ID if the limits allow it.
-// Call it before checking the password. Leave the row on failure.
+// Begin reserves a sign-in attempt for email from addr and returns its ID if
+// the limits allow it. Call it before checking the password. Leave the row on
+// failure. It returns [emailaddress.ErrInvalid] for an invalid email and
+// [ErrThrottled] when a limit is reached.
 func (t *Throttle) Begin(ctx context.Context, email string, addr netip.Addr) (int64, error) {
-	// This lookup key matches lower(email) uniqueness; delivery case is unchanged.
-	key := strings.ToLower(strings.TrimSpace(email))
+	key, err := emailaddress.Parse(email)
+	if err != nil {
+		return 0, err
+	}
 	return t.begin(ctx, &key, addr)
 }
 
