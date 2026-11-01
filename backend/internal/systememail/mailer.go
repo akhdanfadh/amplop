@@ -50,11 +50,13 @@ type Outgoing struct {
 	To      string
 	Subject string
 	Body    string
+	Private bool // Body holds a secret, e.g. a link's, so logs must not quote it
 }
 
-// Send sends outgoing with the saved settings, logs a failed send, and
-// returns the settings' revision. It returns [ErrNotConfigured] when nothing
-// is saved, [ErrPasswordUnreadable] when the password cannot be decrypted, a
+// Send sends outgoing with the saved settings, logs a failed send, without the
+// server's reply when outgoing is [Outgoing.Private], and returns the
+// settings' revision. It returns [ErrNotConfigured] when nothing is saved,
+// [ErrPasswordUnreadable] when the password cannot be decrypted, a
 // [*SendError] when the server or network fails, and the [Sender]'s other
 // errors unchanged. Every error after the settings are read comes with their
 // revision.
@@ -84,11 +86,16 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 	}
 	err = m.sender.Send(ctx, saved.Server, password, message)
 	if failed, ok := errors.AsType[*SendError](err); ok {
-		// The server's reply can name the username or quote the message, never
-		// the password, and can be long, so only its start is kept.
-		m.logger.WarnContext(ctx, "system email send failed", "purpose", outgoing.Purpose, "reason", failed.Reason,
-			"host", saved.Host, "port", saved.Port, "security", saved.Security, "username", saved.Username,
-			"err", truncate(failed.Err.Error(), maxLoggedReply))
+		attrs := []any{"purpose", outgoing.Purpose, "reason", failed.Reason,
+			"host", saved.Host, "port", saved.Port, "security", saved.Security, "username", saved.Username}
+		// The reply can quote the message, in any encoding or cut anywhere, so
+		// no part of a private one is safe to keep.
+		if !outgoing.Private {
+			// The reply can name the username, never the password, and can be
+			// long, so only its start is kept.
+			attrs = append(attrs, "err", truncate(failed.Err.Error(), maxLoggedReply))
+		}
+		m.logger.WarnContext(ctx, "system email send failed", attrs...)
 	}
 	return saved.Revision, err
 }

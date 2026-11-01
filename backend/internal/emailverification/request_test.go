@@ -25,6 +25,7 @@ func TestRequest(t *testing.T) {
 	assert.Equal(t, "email verification", sent.Purpose)
 	assert.Equal(t, "Admin@example.org", sent.To)
 	assert.Equal(t, "Verify your email address for inbok", sent.Subject)
+	assert.True(t, sent.Private, "the body holds the secret")
 	assert.Contains(t, sent.Body, "Someone asked inbok at https://mail.example.com to verify this email address.")
 	assert.Contains(t, sent.Body, "The link expires in 24 hours.")
 	assert.Contains(t, sent.Body, "If you didn't ask for this, you can ignore this email.")

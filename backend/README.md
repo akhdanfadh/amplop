@@ -613,7 +613,8 @@ limit counts the account's saved links, so anything that deletes them, such
 as a redeem, starts it over. The link is saved before the send, so a 502
 `email-not-sent` still counts toward the limit, and a timed-out message may
 arrive and work. A failed send logs the same warning as a test message, with
-`purpose="email verification"`.
+`purpose="email verification"`, but without the server's reply, which can
+quote the link. A test message to the same server shows the reply.
 
 The link is `INBOK_PUBLIC_URL` + `/verify-email#` + a 32-byte random secret
 in unpadded base64url. Browsers never send the part after `#` to a server,

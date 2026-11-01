@@ -104,6 +104,23 @@ func TestMailerSendFailed(t *testing.T) {
 	assert.NotContains(t, logs.String(), "app password")
 }
 
+// A private message's failure logs no reply, since a server can quote the
+// message, here split by quoted-printable's line break.
+func TestMailerSendFailedPrivate(t *testing.T) {
+	storage := &memoryStorage{record: savedSignIn()}
+	outgoing := testOutgoing()
+	outgoing.Private = true
+	sender := &fakeSender{err: &SendError{Reason: ReasonSender, Err: errors.New("554 blocked: verify-email#private-li=\r\nnk-secret")}}
+	var logs bytes.Buffer
+
+	_, err := testMailer(storage, &fakeKeyring{}, sender, &logs).Send(t.Context(), outgoing)
+	require.Error(t, err)
+
+	assert.Contains(t, logs.String(), `msg="system email send failed" purpose="email verification" reason=sender`)
+	assert.NotContains(t, logs.String(), "554")
+	assert.NotContains(t, logs.String(), "private-li")
+}
+
 // Errors the server did not cause, e.g. the caller giving up, are returned
 // unchanged and not logged.
 func TestMailerSendCanceled(t *testing.T) {

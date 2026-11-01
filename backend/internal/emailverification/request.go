@@ -78,6 +78,7 @@ func (s *Service) Request(ctx context.Context, userID int64) (string, error) {
 		To:      link.Address,
 		Subject: messageSubject,
 		Body:    s.messageBody(secret),
+		Private: true,
 	}); err != nil {
 		return "", err
 	}
