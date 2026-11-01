@@ -903,10 +903,13 @@ httpapi --> emailverification <-- repository/postgres
 - A feature can use another feature through an interface it declares:
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`
   fills with `systememail`'s `Mailer`.
-- `webapp` embeds the built web app; `httpapi` serves whatever files it
-  is given, so its tests pass small in-memory builds.
+- `webapp` embeds the built web app and serves it as a static site:
+  files, the shell for browser routes, and caching. It knows the build's
+  layout, not the web app's code. `httpapi` declares a `webApp` interface
+  and sends it the reads outside `/api`, keeping the API's 404 and 405
+  for the rest, so its tests use a fake.
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
-  in `httpapi.Services`, and hands it `webapp`'s files.
+  in `httpapi.Services`, and loads `webapp`'s build for `ServeWebApp`.
 
 ADR021 in the project's decision records explains this layout and the
 alternatives it was chosen over.

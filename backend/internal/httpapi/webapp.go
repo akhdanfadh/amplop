@@ -1,125 +1,32 @@
 package httpapi
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
-	"errors"
-	"io/fs"
-	"mime"
 	"net/http"
-	"path"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	// webAppShell is the page every browser route starts from.
-	webAppShell = "_shell.html"
-	// webAppAssets is the folder of the build's hashed files.
-	webAppAssets = "/assets/"
-
-	// A new build gives a changed asset a new name, so a stored copy never
-	// goes stale.
-	cacheForever = "public, max-age=31536000, immutable"
-	// Browsers may store the file but must ask again before each use.
-	cacheRevalidate = "no-cache"
-)
-
-// webAppTypes maps the extensions the web build writes that Go's own
-// table lacks to their content type.
-//
-// NOTE: Without it, a .woff2 font's type would come from the host's MIME
-// files, which a minimal container image may not have.
-var webAppTypes = map[string]string{
-	".woff2": "font/woff2",
+// webApp is the built web app, served on paths outside /api.
+type webApp interface {
+	// Serve answers a GET or HEAD with a built file or page. Returns false,
+	// having written nothing, if the build has none for the path.
+	Serve(w http.ResponseWriter, request *http.Request) bool
 }
 
-// ErrNoWebApp reports that the files given to [API.ServeWebApp] are not a
-// web app build: they have no shell.
-var ErrNoWebApp = errors.New("no web app build: missing " + webAppShell)
-
-// webFile is one built file, ready to send.
-type webFile struct {
-	data         []byte
-	contentType  string
-	cacheControl string
-	// etag lets a browser recheck a no-cache file without downloading it.
-	etag string
-}
-
-// webApp serves the built web app.
-type webApp struct {
-	// files maps each URL path, e.g. /assets/index-BrBO-kCw.js, to its file.
-	files map[string]webFile
-	shell webFile
-}
-
-// ServeWebApp serves files, a web app build, on every path outside /api.
-// Call before serving requests. Returns [ErrNoWebApp] if files has no
-// shell, or the error from reading files.
-func (a *API) ServeWebApp(files fs.FS) error {
-	app := &webApp{files: map[string]webFile{}}
-	err := fs.WalkDir(files, ".", func(name string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		// Hidden files, e.g. the embed folder's .gitkeep, are not part of
-		// the build.
-		if name != "." && isHidden(name) {
-			if entry.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		data, err := fs.ReadFile(files, name)
-		if err != nil {
-			return err
-		}
-		app.files["/"+name] = newWebFile(name, data)
-		return nil
+// ServeWebApp serves app on every GET or HEAD outside /api. There, other
+// methods get a 405 and paths app has nothing for get the API's 404. Call
+// before serving requests.
+func (a *API) ServeWebApp(app webApp) {
+	a.router.NoRoute(func(ctx *gin.Context) {
+		handleWebApp(ctx, app)
 	})
-	if err != nil {
-		return err
-	}
-
-	shell, ok := app.files["/"+webAppShell]
-	if !ok {
-		return ErrNoWebApp
-	}
-	app.shell = shell
-	a.router.NoRoute(app.handleWebApp)
-	return nil
 }
 
-// newWebFile returns the file at name, relative to the build, with data.
-func newWebFile(name string, data []byte) webFile {
-	contentType, ok := webAppTypes[path.Ext(name)]
-	if !ok {
-		contentType = mime.TypeByExtension(path.Ext(name))
-	}
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-
-	cacheControl := cacheRevalidate
-	if strings.HasPrefix("/"+name, webAppAssets) {
-		cacheControl = cacheForever
-	}
-	sum := sha256.Sum256(data)
-	etag := `"` + base64.RawURLEncoding.EncodeToString(sum[:]) + `"`
-	return webFile{data: data, contentType: contentType, cacheControl: cacheControl, etag: etag}
-}
-
-// handleWebApp answers a request no API route matched: a built file, the
-// shell for a browser route, or the API's 404 or 405.
-func (app *webApp) handleWebApp(ctx *gin.Context) {
-	urlPath := ctx.Request.URL.Path
-	if isAPIPath(urlPath) {
+// handleWebApp answers a request no API route matched with app, or with the
+// API's 404 or 405.
+func handleWebApp(ctx *gin.Context, app webApp) {
+	if isAPIPath(ctx.Request.URL.Path) {
 		handleNoRoute(ctx)
 		return
 	}
@@ -128,29 +35,12 @@ func (app *webApp) handleWebApp(ctx *gin.Context) {
 		writeProblem(ctx, requestProblem(http.StatusMethodNotAllowed))
 		return
 	}
-
-	file, ok := app.files[urlPath]
-	if !ok && !isBrowserRoute(urlPath) {
-		handleNoRoute(ctx)
-		return
-	}
-	if !ok {
-		file = app.shell
-	}
-	ctx.Header("Cache-Control", file.cacheControl)
-	ctx.Header("ETag", file.etag)
-	if etagMatches(ctx.GetHeader("If-None-Match"), file.etag) {
-		ctx.Status(http.StatusNotModified)
-		return
-	}
-	ctx.Header("Content-Type", file.contentType)
-	// Set before writing so HEAD, which sends no body, reports it too.
-	ctx.Header("Content-Length", strconv.Itoa(len(file.data)))
+	// Gin presets 404 for a request no route matched; a response app
+	// writes without a status gets the usual 200 instead.
 	ctx.Status(http.StatusOK)
-	if ctx.Request.Method == http.MethodHead {
-		return
+	if !app.Serve(ctx.Writer, ctx.Request) {
+		handleNoRoute(ctx)
 	}
-	_, _ = ctx.Writer.Write(file.data)
 }
 
 // isAPIPath reports whether urlPath is /api or under /api/.
@@ -159,40 +49,4 @@ func isAPIPath(urlPath string) bool {
 	urlPath = "/" + strings.TrimLeft(urlPath, "/")
 	// Later versions, e.g. /api/v1, belong to the API too.
 	return urlPath == "/api" || strings.HasPrefix(urlPath, "/api/")
-}
-
-// isBrowserRoute reports whether urlPath, which has no built file, can be a
-// route of the browser's router.
-func isBrowserRoute(urlPath string) bool {
-	switch {
-	// A missing asset is an old or mistyped build file, not a page.
-	case urlPath+"/" == webAppAssets, strings.HasPrefix(urlPath, webAppAssets):
-		return false
-	// Browser routes have no extension; /favicon.ico is a missing file.
-	case path.Ext(urlPath) != "":
-		return false
-	case isHidden(urlPath):
-		return false
-	}
-	return true
-}
-
-// isHidden reports whether any segment of name starts with a dot.
-func isHidden(name string) bool {
-	return strings.HasPrefix(name, ".") || strings.Contains(name, "/.")
-}
-
-// etagMatches reports whether an If-None-Match header value names etag,
-// e.g. `"abc", W/"abc"`, or is *.
-func etagMatches(header, etag string) bool {
-	if strings.TrimSpace(header) == "*" {
-		return true
-	}
-	for candidate := range strings.SplitSeq(header, ",") {
-		// If-None-Match compares weakly: W/"abc" matches "abc".
-		if strings.TrimPrefix(strings.TrimSpace(candidate), "W/") == etag {
-			return true
-		}
-	}
-	return false
 }
