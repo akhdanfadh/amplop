@@ -1,0 +1,18 @@
+# Serves inbok at INBOK_DOMAIN. Caddy gets and renews a public certificate
+# itself and redirects HTTP to HTTPS. For localhost, an IP address, or a
+# name under .localhost, .local, .internal, or .home.arpa it uses its own
+# local CA instead, which browsers do not trust until its root
+# certificate, in the caddy-data volume, is installed by hand.
+{$INBOK_DOMAIN} {
+	# Browsers that have seen this use only HTTPS here for a year. inbok's
+	# own domain only: other subdomains of it are unaffected.
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Compresses responses with zstd or gzip. Caddy adds the encoding to
+	# inbok's ETags and removes it again when a browser rechecks.
+	encode zstd gzip
+
+	# Keeps the browser's Host, which inbok's cross-origin check compares
+	# with Origin, and sets X-Forwarded-For from the client's address.
+	reverse_proxy inbok:8080
+}
