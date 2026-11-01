@@ -21,35 +21,42 @@ export function settingsValues(saved: SystemEmailSettings | undefined): Settings
   return { host, port, security, username, password: "", fromAddress, fromName };
 }
 
+// sameAccount reports whether values name the saved host, port, and
+// username, compared as Go saves them.
+function sameAccount(saved: SystemEmailSettings, values: SettingsValues): boolean {
+  // Go trims the host and username before saving.
+  return (
+    saved.host === values.host.trim() &&
+    saved.port === values.port &&
+    saved.username === values.username.trim()
+  );
+}
+
 // keepsPassword reports whether saving values without a password keeps the
 // saved one, as Go decides: only for the same host, port, and username.
 export function keepsPassword(saved: SystemEmailSettings | undefined, values: SettingsValues) {
-  return Boolean(
-    saved?.hasPassword &&
-    values.username &&
-    // Go trims the host before comparing; it keeps the username as entered.
-    saved.host === values.host.trim() &&
-    saved.port === values.port &&
-    saved.username === values.username,
-  );
+  return Boolean(saved?.hasPassword && values.username.trim() && sameAccount(saved, values));
 }
 
 // settingsSchema checks the contract's limits and the rules Go applies
 // between fields, given the settings saved now.
 export function settingsSchema(saved: SystemEmailSettings | undefined) {
-  return NewSystemEmailSettings.required()
-    .refine((value) => value.security !== "none" || !value.username, {
-      path: ["security"],
-      error: "Choose TLS or STARTTLS to sign in with a username.",
-    })
-    .refine((value) => value.username || !value.password, {
-      path: ["username"],
-      error: "Enter the username for this password.",
-    })
-    .refine((value) => !value.username || value.password || keepsPassword(saved, value), {
-      path: ["password"],
-      error: "Enter the password for this server and username.",
-    });
+  return (
+    NewSystemEmailSettings.required()
+      // Go saves a blank username as none, so these rules read it trimmed.
+      .refine((value) => value.security !== "none" || !value.username.trim(), {
+        path: ["security"],
+        error: "Choose TLS or STARTTLS to sign in with a username.",
+      })
+      .refine((value) => value.username.trim() || !value.password, {
+        path: ["username"],
+        error: "Enter the username for this password.",
+      })
+      .refine((value) => !value.username.trim() || value.password || keepsPassword(saved, value), {
+        path: ["password"],
+        error: "Enter the password for this server and username.",
+      })
+  );
 }
 
 // checkedSave compares the settings read after an uncertain save with the
@@ -60,10 +67,8 @@ export function checkedSave(
 ): "saved" | "passwordUnconfirmed" | "different" {
   const matches =
     saved !== undefined &&
-    saved.host === values.host.trim() &&
-    saved.port === values.port &&
+    sameAccount(saved, values) &&
     saved.security === values.security &&
-    saved.username === values.username &&
     saved.fromAddress === values.fromAddress.trim() &&
     saved.fromName === values.fromName;
   if (!matches) return "different";

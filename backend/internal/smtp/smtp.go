@@ -50,6 +50,9 @@ var (
 	errTooLong = errors.New("server replies exceed the size limit")
 )
 
+// noSTARTTLS is the text of go-smtp's error for a server that does not offer
+// STARTTLS.
+//
 // NOTE: noSTARTTLS is a workaround. Remove it once go-smtp exports one.
 //
 // Matching error text depends on go-smtp's v0.25.0 internals, which any release
@@ -79,6 +82,7 @@ func NewSender() *Sender {
 // a [*systememail.SendError] when the server or network fails, ctx's error
 // when the caller gives up, and a plain error for unsafe input.
 func (s *Sender) Send(ctx context.Context, server systememail.Server, password string, message systememail.Message) error {
+	// Unsafe input is the caller's fault, not the server's, so it is no SendError.
 	if err := checkSafe(server, password, message); err != nil {
 		return err
 	}
@@ -270,8 +274,7 @@ func compose(message systememail.Message, now time.Time) ([]byte, error) {
 }
 
 // checkSafe returns errUnsafeInput for input that would change the SMTP
-// session or cannot be dialed. It is a plain error, not a SendError: the
-// input is at fault, not the server.
+// session or cannot be dialed, and nil otherwise.
 func checkSafe(server systememail.Server, password string, message systememail.Message) error {
 	// SMTP commands end at CRLF (RFC 5321), and go-smtp writes MAIL FROM:<%s>
 	// unescaped: a line break would start a command, an angle bracket would
@@ -298,9 +301,10 @@ func failed(reason systememail.Reason, err error) error {
 	return &systememail.SendError{Reason: reason, Err: err}
 }
 
-// refused is failed, except that a dropped connection gets connect instead of
-// reason: the step's reason applies only when the server answered.
+// refused returns err as a [*systememail.SendError] with reason, or with
+// connect when the connection dropped or passed the reply limit.
 func refused(reason systememail.Reason, err error) error {
+	// The step's reason applies only when the server answered it.
 	var opErr *net.OpError
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) ||
 		errors.Is(err, errTooLong) || errors.As(err, &opErr) {

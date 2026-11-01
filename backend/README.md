@@ -519,7 +519,8 @@ sends the whole message unencrypted and unchecked, so use it only for a
 server on the same host or a trusted private network. It allows no username, and inbok never signs in
 without TLS, so the password never crosses the network in clear text. TLS
 checks the server's certificate against the host name with the system's
-roots and needs TLS 1.2 or newer.
+roots and needs TLS 1.2 or newer. The host, username, and From address are saved
+without surrounding spaces, so a username of only spaces means no sign-in.
 
 The password is write-only. Reads return `hasPassword`; the value is
 encrypted with `INBOK_ENCRYPTION_KEYS` and bound to the host, port, and

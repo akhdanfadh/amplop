@@ -114,7 +114,8 @@ func (t *TestMessages) Send(ctx context.Context, recipient string) (TestMessageR
 	return result, nil
 }
 
-// truncate returns s cut to at most n bytes, keeping valid UTF-8.
+// truncate returns s cut to at most n bytes, keeping valid UTF-8, followed by
+// "…" when it was cut.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s

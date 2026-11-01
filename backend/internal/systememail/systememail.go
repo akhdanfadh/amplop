@@ -24,8 +24,8 @@ const (
 var (
 	ErrCleartextUsername       = errors.New("a username needs TLS or STARTTLS")
 	ErrPasswordWithoutUsername = errors.New("a password needs a username")
-	// ErrPasswordRequired also covers a new host, port, or username: the stored
-	// password is only for the server and account it was entered for.
+	// ErrPasswordRequired means a username has no password: none was typed,
+	// and none is saved for the same host, port, and username.
 	ErrPasswordRequired = errors.New("a username needs a password")
 
 	ErrInvalidHost     = errors.New("host contains a control character")
@@ -128,9 +128,8 @@ func (s *Service) Settings(ctx context.Context) (*Settings, error) {
 }
 
 // Save replaces the settings, records actorID as the administrator who saved
-// them, and clears their tested state, since a test of the old settings says
-// nothing about the new ones. Every successful save is audited, even one that
-// changes nothing.
+// them, clears their tested time, and returns them. Every successful save is
+// audited, even one that changes nothing.
 func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Settings, error) {
 	if err := checkInput(input); err != nil {
 		return Settings{}, err
@@ -175,9 +174,11 @@ func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Setting
 	return settingsOf(saved), nil
 }
 
-// passwordOwner binds the encrypted password to its purpose and to the server
-// and account it was entered for, so a ciphertext copied into other settings
-// fails to decrypt. Changing the format makes stored passwords unreadable.
+// passwordOwner returns the owner that binds the encrypted password to system
+// email and to the host, port, and username it was entered for.
+//
+// NOTE: A ciphertext copied into other settings fails to decrypt. Changing the
+// format makes every stored password unreadable.
 func passwordOwner(host string, port int, username string) string {
 	// Quoting keeps the parts apart even when they contain the separator.
 	return "system-email:" + strconv.Quote(host) + ":" + strconv.Itoa(port) + ":" + strconv.Quote(username)

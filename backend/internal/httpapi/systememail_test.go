@@ -176,19 +176,33 @@ func TestSaveSystemEmailKeepsPassword(t *testing.T) {
 	}
 }
 
-// Surrounding whitespace, which Huma's email format accepts, is trimmed from
-// the host and From address before the service sees them.
+// Surrounding whitespace, which Huma accepts, is trimmed from the host,
+// username, and From address before the service sees them.
 func TestSaveSystemEmailTrims(t *testing.T) {
 	service := &fakeSystemEmail{}
 	api := New(discard, Services{SystemEmail: service, Session: adminSessions()})
 	body := strings.NewReplacer(`"host":"smtp.example.com"`, `"host":" smtp.example.com\r\n"`,
+		`"username":"inbok@example.com"`, `"username":" inbok@example.com\t"`,
 		`"fromAddress":"inbok@example.com"`, `"fromAddress":"\t inbok@example.com "`).Replace(systemEmailBody)
 
 	response := requestSystemEmail(api, http.MethodPut, "/system-email", body)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, "smtp.example.com", service.input.Host)
+	assert.Equal(t, "inbok@example.com", service.input.Username)
 	assert.Equal(t, "inbok@example.com", service.input.FromAddress)
+}
+
+// A username of only spaces means no sign-in.
+func TestSaveSystemEmailBlankUsername(t *testing.T) {
+	service := &fakeSystemEmail{}
+	api := New(discard, Services{SystemEmail: service, Session: adminSessions()})
+	body := strings.Replace(systemEmailBody, `"username":"inbok@example.com"`, `"username":"   "`, 1)
+
+	response := requestSystemEmail(api, http.MethodPut, "/system-email", body)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Empty(t, service.input.Username)
 }
 
 // Inputs that break the contract are refused before the service, at their field.

@@ -126,12 +126,13 @@ func registerSystemEmailSave(api huma.API, handler systemEmailHandler) {
 func (h systemEmailHandler) handleSaveSystemEmail(ctx context.Context, in *struct{ Body newSystemEmailSettings }) (*output[systemEmail], error) {
 	// The actor is the checked session's account, never a request value.
 	actor := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	// Huma's patterns and email format accept surrounding spaces, which DNS,
+	// SASL, and MAIL FROM would not; a blank username means no sign-in.
 	saved, err := h.service.Save(ctx, actor.ID, systememail.Input{
-		// Huma's email format accepts surrounding spaces; MAIL FROM would not.
 		Host:        strings.TrimSpace(in.Body.Host),
 		Port:        in.Body.Port,
 		Security:    in.Body.Security,
-		Username:    in.Body.Username,
+		Username:    strings.TrimSpace(in.Body.Username),
 		Password:    in.Body.Password,
 		FromAddress: strings.TrimSpace(in.Body.FromAddress),
 		FromName:    in.Body.FromName,

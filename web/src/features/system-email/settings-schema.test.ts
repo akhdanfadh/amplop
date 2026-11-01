@@ -54,6 +54,7 @@ describe("keepsPassword", () => {
     ["port", { port: 465 }],
     ["username", { username: "other@example.com" }],
     ["username case", { username: "Inbok@example.com" }],
+    ["blank username", { username: "  " }],
   ])("needs it again for another %s", (_, change) => {
     expect(keepsPassword(saved, { ...values, ...change })).toBe(false);
   });
@@ -71,6 +72,10 @@ describe("settingsSchema", () => {
 
   it("accepts a server without sign-in", () => {
     expect(issues({ ...values, security: "none", username: "", port: 1025 })).toEqual([]);
+  });
+
+  it("reads a blank username as no sign-in", () => {
+    expect(issues({ ...values, security: "none", username: "  ", port: 1025 })).toEqual([]);
   });
 
   it("accepts a new server with its password", () => {
@@ -122,11 +127,12 @@ describe("checkedSave", () => {
     expect(checkedSave(saved, values)).toBe("saved");
   });
 
-  it("compares the host and From address as Go saves them", () => {
+  it("compares the host, username, and From address as Go saves them", () => {
     expect(
       checkedSave(saved, {
         ...values,
         host: " smtp.example.com ",
+        username: " inbok@example.com ",
         fromAddress: " inbok@example.com ",
       }),
     ).toBe("saved");
