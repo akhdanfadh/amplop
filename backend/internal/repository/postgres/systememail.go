@@ -27,9 +27,11 @@ func readSystemEmail(ctx context.Context, queries *sqlc.Queries) (*systememail.R
 	}
 
 	record := &systememail.Record{
-		Host:        row.Host,
-		Port:        int(row.Port),
-		Security:    systememail.Security(row.Security),
+		Server: systememail.Server{
+			Host:     row.Host,
+			Port:     int(row.Port),
+			Security: systememail.Security(row.Security),
+		},
 		FromAddress: row.FromAddress,
 		FromName:    row.FromName,
 		TestedAt:    row.TestedAt,

@@ -72,7 +72,7 @@ func (t *TestMessages) Send(ctx context.Context, recipient string) (TestMessageR
 	}
 	var password string
 	if saved.Password != nil {
-		plaintext, err := t.encryption.Open(saved.Password.KeyID, saved.Password.Ciphertext, passwordOwner(saved.Host, saved.Port, saved.Username))
+		plaintext, err := t.encryption.Open(saved.Password.KeyID, saved.Password.Ciphertext, passwordOwner(saved.Server))
 		if err != nil {
 			// Settings that cannot be decrypted cannot send, so they have not passed.
 			return TestMessageResult{}, errors.Join(err, t.storage.UpdateSystemEmailTestedAt(ctx, saved.Revision, nil))
@@ -80,7 +80,6 @@ func (t *TestMessages) Send(ctx context.Context, recipient string) (TestMessageR
 		password = string(plaintext)
 	}
 
-	server := Server{Host: saved.Host, Port: saved.Port, Security: saved.Security, Username: saved.Username}
 	message := Message{
 		FromAddress: saved.FromAddress,
 		FromName:    saved.FromName,
@@ -89,7 +88,7 @@ func (t *TestMessages) Send(ctx context.Context, recipient string) (TestMessageR
 		Body:        testMessageBody,
 	}
 	result := TestMessageResult{Accepted: true}
-	err = t.sender.Send(ctx, server, password, message)
+	err = t.sender.Send(ctx, saved.Server, password, message)
 	if failed, ok := errors.AsType[*SendError](err); ok {
 		result = TestMessageResult{Reason: failed.Reason}
 		// The server's reply can name the username, never the password, and can

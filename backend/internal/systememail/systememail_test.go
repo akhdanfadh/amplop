@@ -81,10 +81,12 @@ func (f *fakeKeyring) Open(id string, ciphertext []byte, owner string) ([]byte, 
 // inputWithSignIn is a typical provider's settings with a username and password.
 func inputWithSignIn() Input {
 	return Input{
-		Host:        "smtp.example.com",
-		Port:        587,
-		Security:    SecuritySTARTTLS,
-		Username:    "inbok@example.com",
+		Server: Server{
+			Host:     "smtp.example.com",
+			Port:     587,
+			Security: SecuritySTARTTLS,
+			Username: "inbok@example.com",
+		},
 		Password:    "app password",
 		FromAddress: "inbok@example.com",
 		FromName:    "inbok",
@@ -95,8 +97,8 @@ func inputWithSignIn() Input {
 func storedSignIn() *Record {
 	tested := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 	return &Record{
-		Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS,
-		Username: "inbok@example.com", Password: &Password{KeyID: "1", Ciphertext: []byte("stored")},
+		Server:      Server{Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS, Username: "inbok@example.com"},
+		Password:    &Password{KeyID: "1", Ciphertext: []byte("stored")},
 		FromAddress: "inbok@example.com", FromName: "inbok", TestedAt: &tested, Revision: 3,
 	}
 }
@@ -118,8 +120,8 @@ func TestSystemEmailSave(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, Settings{
-		Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS,
-		Username: "inbok@example.com", HasPassword: true,
+		Server:      Server{Host: "smtp.example.com", Port: 587, Security: SecuritySTARTTLS, Username: "inbok@example.com"},
+		HasPassword: true,
 		FromAddress: "inbok@example.com", FromName: "inbok",
 	}, saved)
 	assert.Equal(t, signInOwner, sealer.owner)
@@ -134,15 +136,15 @@ func TestSystemEmailSave(t *testing.T) {
 
 // The owner keeps its parts apart, so moving text between them changes it.
 func TestSystemEmailPasswordOwner(t *testing.T) {
-	assert.NotEqual(t, passwordOwner("a:1", 2, "b"), passwordOwner("a", 1, `2:"b`))
-	assert.NotEqual(t, passwordOwner("smtp.example.com", 587, "a"), passwordOwner("smtp.example.com", 465, "a"))
+	assert.NotEqual(t, passwordOwner(Server{Host: "a:1", Port: 2, Username: "b"}), passwordOwner(Server{Host: "a", Port: 1, Username: `2:"b`}))
+	assert.NotEqual(t, passwordOwner(Server{Host: "smtp.example.com", Port: 587, Username: "a"}), passwordOwner(Server{Host: "smtp.example.com", Port: 465, Username: "a"}))
 }
 
 func TestSystemEmailSaveWithoutSignIn(t *testing.T) {
 	for _, security := range []Security{SecurityTLS, SecuritySTARTTLS, SecurityNone} {
 		t.Run(string(security), func(t *testing.T) {
 			storage := &memoryStorage{record: storedSignIn()}
-			input := Input{Host: "smtp.example.com", Port: 587, Security: security, FromAddress: "inbok@example.com", FromName: "inbok"}
+			input := Input{Server: Server{Host: "smtp.example.com", Port: 587, Security: security}, FromAddress: "inbok@example.com", FromName: "inbok"}
 
 			saved, err := NewService(storage, &fakeKeyring{}).Save(t.Context(), adminID, input)
 			require.NoError(t, err)
