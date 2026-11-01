@@ -26,15 +26,6 @@ const (
 	cacheRevalidate = "no-cache"
 )
 
-// contentTypes maps the extensions the web build writes that Go's own table
-// lacks to their content type.
-//
-// NOTE: Without it, a .woff2 font's type would come from the host's MIME
-// files, which a minimal container image may not have.
-var contentTypes = map[string]string{
-	".woff2": "font/woff2",
-}
-
 // ErrNoBuild reports that the files given to [Load] are not a build: they
 // have no shell.
 var ErrNoBuild = errors.New("no web app build: missing " + shell)
@@ -101,10 +92,7 @@ func Load(files fs.FS) (*Build, error) {
 
 // newFile returns the file at name, relative to the build, with data.
 func newFile(name string, data []byte) file {
-	contentType, ok := contentTypes[path.Ext(name)]
-	if !ok {
-		contentType = mime.TypeByExtension(path.Ext(name))
-	}
+	contentType := mime.TypeByExtension(path.Ext(name))
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}

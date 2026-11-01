@@ -16,14 +16,14 @@ const testShell = `<!DOCTYPE html><title>inbok</title><script>self.a=1</script>`
 	`<script type="module" async src="/assets/index-BrBO-kCw.js"></script>` +
 	`<script>document.currentScript.remove()</script>`
 
-// testFiles is a small build: the shell, a hashed script and font, a file
-// of a kind no MIME table knows, an unhashed file, and the placeholder the
-// embed folder keeps.
+// testFiles is a small build: the shell, a hashed script and stylesheet, a
+// file of a kind no MIME table knows, an unhashed file, and the placeholder
+// the embed folder keeps.
 func testFiles() fstest.MapFS {
 	return fstest.MapFS{
 		"_shell.html":                    {Data: []byte(testShell)},
 		"assets/index-BrBO-kCw.js":       {Data: []byte("console.log(1)")},
-		"assets/geist-DC-KSUi6.woff2":    {Data: []byte("wOF2font")},
+		"assets/styles-BRqUNFMl.css":     {Data: []byte("body{}")},
 		"assets/data-Dx91kQ2a.inbokdata": {Data: []byte{0, 1}},
 		"robots.txt":                     {Data: []byte("User-agent: *")},
 		".gitkeep":                       {Data: []byte{}},
@@ -70,7 +70,7 @@ func TestBuildFiles(t *testing.T) {
 		path, contentType, cacheControl, body string
 	}{
 		{"/assets/index-BrBO-kCw.js", "text/javascript; charset=utf-8", "public, max-age=31536000, immutable", "console.log(1)"},
-		{"/assets/geist-DC-KSUi6.woff2", "font/woff2", "public, max-age=31536000, immutable", "wOF2font"},
+		{"/assets/styles-BRqUNFMl.css", "text/css; charset=utf-8", "public, max-age=31536000, immutable", "body{}"},
 		{"/assets/data-Dx91kQ2a.inbokdata", "application/octet-stream", "public, max-age=31536000, immutable", "\x00\x01"},
 		{"/robots.txt", "text/plain; charset=utf-8", "no-cache", "User-agent: *"},
 		{"/_shell.html", "text/html; charset=utf-8", "no-cache", testShell},
