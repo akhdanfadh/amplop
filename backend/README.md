@@ -220,11 +220,15 @@ or IP address, and an optional port, e.g. `https://mail.example.com`. Plain
 `http://localhost:5173` for the Vite dev server. A path other than `/`, a
 query, a fragment, or user info stops startup. Host names use letters,
 digits, and hyphens; inbok lowercases them and converts an internationalized
-domain to its `xn--` form.
+domain to its `xn--` form. The example value in `.env.example` is for
+development; a deployed server needs its own `https` origin.
+
 Links in inbok's emails start with this value, never with a request's `Host`
-header, which a client chooses. The host is also the name inbok gives mail
-servers in SMTP's `EHLO` greeting; an IP address is sent in brackets, e.g.
-`[192.0.2.10]`.
+header, which a client chooses, so a client cannot point an emailed link at
+another server. When moving to another domain, keep the old one for 24
+hours, until links sent before the move expire: whoever holds it receives
+their secrets. The host is also the name inbok gives mail servers in SMTP's
+`EHLO` greeting; an IP address is sent in brackets, e.g. `[192.0.2.10]`.
 
 ### Encryption keys
 
@@ -523,8 +527,8 @@ System email is the mail server inbok sends its own messages through,
 separate from members' mailboxes. It has no environment variables: an
 administrator with confirmed TOTP configures it on the web app's Settings
 page, which calls `GET` and `PUT /api/v0/system-email` and
-`POST /api/v0/system-email/test-message`. Nothing sends through it yet
-except the test message.
+`POST /api/v0/system-email/test-message`. It sends test messages and
+[email verification](#email-verification) links.
 
 The settings are one `system_email` row: host, port, security, an optional
 username and password, and the From address and name. Security is `tls`
@@ -590,8 +594,58 @@ in a web page instead of delivering it. On the Settings page, save:
 | From address and name | any, e.g. `inbok@example.com` and `inbok` |
 
 Then send a test message and open `http://localhost:8025`
-(`INBOK_MAILPIT_WEB_PORT`) to read it. Mailpit deletes its messages when it
-stops and keeps the newest 500.
+(`INBOK_MAILPIT_WEB_PORT`) to read it. Verification links arrive there too.
+Mailpit deletes its messages when it stops and keeps the newest 500.
+
+## Email verification
+
+A signed-in account proves it controls its email address by following a
+link inbok emails to it. Nothing sends a link automatically: the user asks
+for one on the web app's Security page. An unverified account signs in and
+works as before; `GET /api/v0/sessions/current` reports `emailVerified`.
+
+`POST /api/v0/account/email-verification` sends a link to the session's own
+account and returns the address it went to. It answers 409
+`email-already-verified`, 409 `system-email-not-configured` before system
+email is saved, or 429 `email-verification-throttled` after 3 links in 15
+minutes or 10 in 24 hours, without `Retry-After`, like the other limits. The
+limit counts the account's saved links, so anything that deletes them, such
+as a redeem, starts it over. The link is saved before the send, so a 502
+`email-not-sent` still counts toward the limit, and a timed-out message may
+arrive and work. A failed send logs the same warning as a test message, with
+`purpose="email verification"`.
+
+The link is `INBOK_PUBLIC_URL` + `/verify-email#` + a 32-byte random secret
+in unpadded base64url. Browsers never send the part after `#` to a server,
+so the secret stays out of inbok's and its proxy's request logs and out of
+Referer headers. It still sits in the email, in the browser's history, and
+with any service that rewrites links in mail. Only the secret's SHA-256 hash
+is saved, in `email_verification_links`, with the address it was sent to. A
+link expires after 24 hours. Every unexpired link works until one is used.
+
+`POST /api/v0/email-verifications/redeem` takes the secret, needs no session,
+and signs no one in. It marks the account verified, records an
+`email-verified` audit event with the account as `target_user_id` and no
+actor, and deletes every link of that account. A link for an account that is
+already verified succeeds without changing its verified time or recording an
+event. An unknown, used, or expired link, or one sent to an address the
+account no longer has, answers 404 `email-verification-link-invalid`. The
+address must match exactly, including case. Redeem has no attempt limit: a
+256-bit secret cannot be guessed.
+
+Sending a link deletes the account's expired links; a refused request or
+redeem changes nothing. There is no scheduled cleanup, so an account that
+never asks again keeps its expired rows, which cannot be used. Deleting an
+account deletes its links.
+
+To list verifications:
+
+```sql
+SELECT id, occurred_at, target_user_id
+FROM audit_events
+WHERE action = 'email-verified'
+ORDER BY id DESC;
+```
 
 ## Logs and request IDs
 
@@ -731,6 +785,8 @@ outside world. An arrow means "imports":
 httpapi --> probe <-- repository/postgres
 httpapi --> systememail <-- repository/postgres
                         <-- smtp
+httpapi --> emailverification <-- repository/postgres
+            emailverification --> systememail
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -751,6 +807,9 @@ httpapi --> systememail <-- repository/postgres
   implements the `Sender` interface that `systememail` declares, using the
   emersion SMTP libraries. A technology package is named for its technology
   and imports features, never the other way around.
+- A feature can use another feature through an interface it declares:
+  `emailverification` sends through a `mailer` interface, which `cmd/inbok`
+  fills with `systememail`'s `Mailer`.
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
   in `httpapi.Services`.
 

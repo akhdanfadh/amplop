@@ -148,13 +148,13 @@ Security opens with the account's email address and whether it is verified.
 "Send verification link" emails a link that expires in 24 hours. A lost reply
 or failed send can be repeated without a check: the server limits how many
 links are sent, and every unexpired link works. Sending and TOTP writes wait
-for each other, because confirming TOTP replaces this browser's session. An unverified account
-also sees a notice on home that links to Security.
+for each other, because confirming TOTP replaces this browser's session. An
+unverified account also sees a notice on home that links to Security.
 
 The link opens `/verify-email`, which works signed in or out. The secret after
 `#` never reaches the server with the page request; the page keeps it in
 memory and replaces the address, so the Back button and a copied URL lose it;
-the browser's saved history still has the visit. Reloading after that asks
+the browser's history list may still hold the full link. Reloading after that asks
 for the emailed link again. "Verify email" sends the secret. A link that is
 expired, used, unknown, or sent to an old address cannot be retried; if the
 signed-in account is already verified, the page says so instead. Any other
