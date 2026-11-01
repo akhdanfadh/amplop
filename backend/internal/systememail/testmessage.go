@@ -44,9 +44,11 @@ type TestMessageResult struct {
 
 // Send sends a test message to recipient, an email address already checked
 // by request validation, with the saved settings and records whether they
-// passed. It returns ErrNotConfigured when nothing is saved, and an error when
-// the password cannot be decrypted, the send fails for a reason other than
-// the server or network, or the result cannot be recorded.
+// passed. It returns [ErrNotConfigured] when nothing is saved, and
+// [ErrPasswordUnreadable], after clearing the tested time of the settings it
+// read, when the password cannot be decrypted. It returns other errors when
+// the settings cannot be read, the send fails for a reason other than the
+// server or network, or the result cannot be recorded.
 func (t *TestMessages) Send(ctx context.Context, recipient string) (TestMessageResult, error) {
 	revision, err := t.mailer.Send(ctx, Outgoing{
 		Purpose: testMessagePurpose,

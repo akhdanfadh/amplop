@@ -54,7 +54,7 @@ func (s *Service) Redeem(ctx context.Context, secret string) error {
 }
 
 // hashSecret returns the SHA-256 hash of the bytes secret encodes. It
-// reports false when secret is not exactly secretSize bytes in unpadded
+// reports false when secret is not exactly [secretSize] bytes in unpadded
 // URL-safe base64.
 func hashSecret(secret string) ([sha256.Size]byte, bool) {
 	if len(secret) != base64.RawURLEncoding.EncodedLen(secretSize) {

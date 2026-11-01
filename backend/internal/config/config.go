@@ -178,7 +178,7 @@ func publicHost(host string) (string, bool) {
 	return ascii, err == nil
 }
 
-// isLoopback reports whether host, as publicHost returns it, is localhost or
+// isLoopback reports whether host, as [publicHost] returns it, is localhost or
 // a loopback IP address.
 func isLoopback(host string) bool {
 	if host == "localhost" {

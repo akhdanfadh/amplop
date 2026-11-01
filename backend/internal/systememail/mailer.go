@@ -53,8 +53,8 @@ type Outgoing struct {
 }
 
 // Send sends outgoing with the saved settings, logs a failed send, and
-// returns the settings' revision. It returns ErrNotConfigured when nothing is
-// saved, ErrPasswordUnreadable when the password cannot be decrypted, a
+// returns the settings' revision. It returns [ErrNotConfigured] when nothing
+// is saved, [ErrPasswordUnreadable] when the password cannot be decrypted, a
 // [*SendError] when the server or network fails, and the [Sender]'s other
 // errors unchanged. Every error after the settings are read comes with their
 // revision.
