@@ -35,7 +35,7 @@ func registerSystemEmail(api huma.API, service systemEmailService, testMessages 
 
 	registerSystemEmailSettings(api, handler)
 	registerSystemEmailSave(api, handler)
-	registerTestMessage(api, handler)
+	registerSystemEmailTestMessage(api, handler)
 }
 
 // ========================
@@ -204,11 +204,11 @@ type systemEmailTestMessageResult struct {
 	Reason systememail.Reason `json:"reason,omitempty" enum:"connect,tls,auth,sender,recipient,timeout" doc:"The step that failed. Present only when status is failed."`
 }
 
-func registerTestMessage(api huma.API, handler systemEmailHandler) {
+func registerSystemEmailTestMessage(api huma.API, handler systemEmailHandler) {
 	huma.Register(api, huma.Operation{
 		OperationID: "sendSystemEmailTestMessage",
 		Method:      http.MethodPost,
-		Path:        systemEmailPath + "/test",
+		Path:        systemEmailPath + "/test-message",
 		Summary:     "Send a test message with the saved system email settings",
 		Description: "A server or network refusal is a failed result, not an error. A pass records the tested time; a failure clears it. Test messages are not audited.",
 		Metadata:    map[string]any{accessKey: session.AccessAdmin},

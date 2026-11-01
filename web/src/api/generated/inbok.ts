@@ -1261,7 +1261,7 @@ export const getSendSystemEmailTestMessageUrl = () => {
 
 
 
-  return `/api/v0/system-email/test`
+  return `/api/v0/system-email/test-message`
 }
 
 /**

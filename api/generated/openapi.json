@@ -1748,7 +1748,7 @@
         "summary": "Replace the system email settings"
       }
     },
-    "/system-email/test": {
+    "/system-email/test-message": {
       "post": {
         "description": "A server or network refusal is a failed result, not an error. A pass records the tested time; a failure clears it. Test messages are not audited.",
         "operationId": "sendSystemEmailTestMessage",

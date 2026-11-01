@@ -508,8 +508,8 @@ System email is the mail server inbok sends its own messages through,
 separate from members' mailboxes. It has no environment variables: an
 administrator with confirmed TOTP configures it on the web app's Settings
 page, which calls `GET` and `PUT /api/v0/system-email` and
-`POST /api/v0/system-email/test`. Nothing sends through it yet except the
-test message.
+`POST /api/v0/system-email/test-message`. Nothing sends through it yet
+except the test message.
 
 The settings are one `system_email` row: host, port, security, an optional
 username and password, and the From address and name. Security is `tls`

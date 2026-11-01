@@ -275,7 +275,7 @@ func TestSendSystemEmailTestMessage(t *testing.T) {
 			service := &fakeTestMessages{result: c.result}
 			api := New(discard, Services{TestMessages: service, Session: adminSessions()})
 
-			response := requestSystemEmail(api, http.MethodPost, "/system-email/test", `{"recipient":" admin@example.org "}`)
+			response := requestSystemEmail(api, http.MethodPost, "/system-email/test-message", `{"recipient":" admin@example.org "}`)
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 			assert.JSONEq(t, c.want, response.Body.String())
@@ -290,7 +290,7 @@ func TestSendSystemEmailTestMessageInvalidRecipient(t *testing.T) {
 			service := &fakeTestMessages{}
 			api := New(discard, Services{TestMessages: service, Session: adminSessions()})
 
-			response := requestSystemEmail(api, http.MethodPost, "/system-email/test", `{"recipient":"`+recipient+`"}`)
+			response := requestSystemEmail(api, http.MethodPost, "/system-email/test-message", `{"recipient":"`+recipient+`"}`)
 
 			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 			assert.Zero(t, service.calls)
@@ -303,7 +303,7 @@ func TestSendSystemEmailTestMessageInvalidRecipient(t *testing.T) {
 func TestSendSystemEmailTestMessageNotConfigured(t *testing.T) {
 	api := New(discard, Services{TestMessages: &fakeTestMessages{err: systememail.ErrNotConfigured}, Session: adminSessions()})
 
-	response := requestSystemEmail(api, http.MethodPost, "/system-email/test", `{"recipient":"admin@example.org"}`)
+	response := requestSystemEmail(api, http.MethodPost, "/system-email/test-message", `{"recipient":"admin@example.org"}`)
 
 	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
 	problem := decodeJSON(t, response.Body.Bytes())
@@ -319,7 +319,7 @@ func TestSystemEmailUnexpectedFailure(t *testing.T) {
 	}{
 		{"get", http.MethodGet, "/system-email", ""},
 		{"save", http.MethodPut, "/system-email", systemEmailBody},
-		{"test", http.MethodPost, "/system-email/test", `{"recipient":"admin@example.org"}`},
+		{"test", http.MethodPost, "/system-email/test-message", `{"recipient":"admin@example.org"}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			var logs bytes.Buffer
@@ -347,7 +347,7 @@ func TestSystemEmailAccess(t *testing.T) {
 	}{
 		{"get", http.MethodGet, "/system-email", ""},
 		{"save", http.MethodPut, "/system-email", systemEmailBody},
-		{"test", http.MethodPost, "/system-email/test", `{"recipient":"admin@example.org"}`},
+		{"test", http.MethodPost, "/system-email/test-message", `{"recipient":"admin@example.org"}`},
 	} {
 		for _, c := range []struct {
 			name     string
@@ -383,7 +383,7 @@ func TestSystemEmailOpenAPI(t *testing.T) {
 	}{
 		{doc.Paths["/system-email"].Get, "getSystemEmail", []string{"200", "401", "403", "default"}},
 		{doc.Paths["/system-email"].Put, "saveSystemEmail", []string{"200", "401", "403", "422", "default"}},
-		{doc.Paths["/system-email/test"].Post, "sendSystemEmailTestMessage", []string{"200", "401", "403", "409", "422", "default"}},
+		{doc.Paths["/system-email/test-message"].Post, "sendSystemEmailTestMessage", []string{"200", "401", "403", "409", "422", "default"}},
 	} {
 		operation := op.operation
 		require.NotNil(t, operation, op.id)
