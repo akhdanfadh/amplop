@@ -58,15 +58,18 @@ for v1.5.0. These checks do not establish that the package has no defects.
 ## Code-attempt limits
 
 `Throttle` defines the per-user limits. PostgreSQL locks the user while it
-cleans that user's expired attempts, inserts a reservation, and checks counts
-in one transaction. Enrollment confirmation, code sign-in, backup-code
-regeneration, and turn-off use this limiter.
+cleans that user's expired attempts, counts the rest with `attemptlimit.Wait`,
+and saves a reservation only if one more fits, in one transaction. Enrollment
+confirmation, code sign-in, backup-code regeneration, and turn-off use this
+limiter.
 
 Reserve an attempt with `Begin` before checking a code. Pending checks count
 against both limits, so parallel requests cannot all pass an earlier count.
-Leave the attempt saved on failure; call `Succeed` only after the protected
-action succeeds. Success removes its own attempt, preserving earlier failures.
-A rejected reservation rolls back and must not trigger code verification.
+Leave the attempt saved when a code fails. Success removes its own attempt,
+preserving earlier failures. A request that fails before checking any code,
+e.g. turn-off with TOTP off, releases its attempt with `Release`, because it
+made no guess. A rejected reservation saves nothing and must not trigger code
+verification.
 
 The policy allows 5 failed or pending attempts per 15 minutes and 20 per 24
 hours. Attempts exactly at a window's cutoff no longer count. TOTP codes,

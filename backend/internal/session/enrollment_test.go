@@ -59,15 +59,20 @@ func (f *enrollmentOpener) Open(keyID string, data []byte, owner string) ([]byte
 }
 
 type enrollmentAttempts struct {
-	calls  int
-	userID int64
-	err    error
+	calls    int
+	userID   int64
+	err      error
+	released []int64
 }
 
 func (f *enrollmentAttempts) Begin(_ context.Context, userID int64) (int64, error) {
 	f.calls++
 	f.userID = userID
 	return 7, f.err
+}
+
+func (f *enrollmentAttempts) Release(_ context.Context, id int64) {
+	f.released = append(f.released, id)
 }
 
 func enrollmentFixture() (*Enrollment, *enrollmentStorage, *enrollmentOpener, *enrollmentAttempts, Authenticated, *fakeClock) {
@@ -118,27 +123,29 @@ func TestConfirmEnrollment(t *testing.T) {
 
 func TestConfirmEnrollmentRejected(t *testing.T) {
 	failure := errors.New("storage unavailable")
+	// wantRelease means the request checked no code, so it releases its attempt.
 	for _, c := range []struct {
-		name string
-		edit func(*enrollmentStorage, *enrollmentOpener, *fakeClock)
-		code string
-		want error
+		name        string
+		edit        func(*enrollmentStorage, *enrollmentOpener, *fakeClock)
+		code        string
+		want        error
+		wantRelease bool
 	}{
-		{"missing factor", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.state.Factor = nil }, "287082", totp.ErrNotPending},
+		{"missing factor", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.state.Factor = nil }, "287082", totp.ErrNotPending, true},
 		{"already on", func(s *enrollmentStorage, _ *enrollmentOpener, c *fakeClock) {
 			now := c.Now()
 			s.state.Factor.ConfirmedAt = &now
-		}, "287082", totp.ErrAlreadyOn},
-		{"replay", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.state.Factor.LastStep = 1 }, "287082", totp.ErrInvalidCode},
-		{"expired session", func(s *enrollmentStorage, _ *enrollmentOpener, c *fakeClock) { s.state.Session.ExpiresAt = c.Now() }, "287082", ErrUnauthenticated},
-		{"wrong owner", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.state.Session.UserID++ }, "287082", ErrUnauthenticated},
-		{"wrong session", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.state.Session.TokenHash[0]++ }, "287082", ErrUnauthenticated},
-		{"missing session", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.readErr = ErrNotFound }, "287082", ErrUnauthenticated},
-		{"storage", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.readErr = failure }, "287082", failure},
-		{"commit", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.commitErr = failure }, "287082", failure},
-		{"decryption", func(_ *enrollmentStorage, o *enrollmentOpener, _ *fakeClock) { o.err = failure }, "287082", failure},
-		{"wrong code", func(*enrollmentStorage, *enrollmentOpener, *fakeClock) {}, "000000", totp.ErrInvalidCode},
-		{"malformed code", func(*enrollmentStorage, *enrollmentOpener, *fakeClock) {}, "invalid", totp.ErrInvalidCode},
+		}, "287082", totp.ErrAlreadyOn, true},
+		{"replay", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.state.Factor.LastStep = 1 }, "287082", totp.ErrInvalidCode, false},
+		{"expired session", func(s *enrollmentStorage, _ *enrollmentOpener, c *fakeClock) { s.state.Session.ExpiresAt = c.Now() }, "287082", ErrUnauthenticated, true},
+		{"wrong owner", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.state.Session.UserID++ }, "287082", ErrUnauthenticated, true},
+		{"wrong session", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.state.Session.TokenHash[0]++ }, "287082", ErrUnauthenticated, true},
+		{"missing session", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.readErr = ErrNotFound }, "287082", ErrUnauthenticated, true},
+		{"storage", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.readErr = failure }, "287082", failure, true},
+		{"commit", func(s *enrollmentStorage, _ *enrollmentOpener, _ *fakeClock) { s.commitErr = failure }, "287082", failure, false},
+		{"decryption", func(_ *enrollmentStorage, o *enrollmentOpener, _ *fakeClock) { o.err = failure }, "287082", failure, true},
+		{"wrong code", func(*enrollmentStorage, *enrollmentOpener, *fakeClock) {}, "000000", totp.ErrInvalidCode, false},
+		{"malformed code", func(*enrollmentStorage, *enrollmentOpener, *fakeClock) {}, "invalid", totp.ErrInvalidCode, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service, store, opener, attempts, current, clock := enrollmentFixture()
@@ -150,6 +157,11 @@ func TestConfirmEnrollmentRejected(t *testing.T) {
 			assert.Empty(t, result, "failed confirmation must reveal no session or backup codes")
 			assert.Nil(t, store.change)
 			assert.Equal(t, 1, attempts.calls)
+			if c.wantRelease {
+				assert.Equal(t, []int64{7}, attempts.released)
+			} else {
+				assert.Empty(t, attempts.released)
+			}
 		})
 	}
 }
@@ -164,6 +176,7 @@ func TestConfirmEnrollmentBlocked(t *testing.T) {
 	assert.Empty(t, result)
 	assert.Zero(t, store.calls)
 	assert.Zero(t, opener.calls)
+	assert.Empty(t, attempts.released, "a refused reservation saved nothing to release")
 }
 
 func TestConfirmEnrollmentUnchecked(t *testing.T) {

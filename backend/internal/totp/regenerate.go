@@ -29,6 +29,7 @@ type opener interface {
 
 type codeAttempts interface {
 	Begin(ctx context.Context, userID int64) (int64, error)
+	Release(ctx context.Context, id int64)
 }
 
 // Backups manages recovery codes using current authenticator proof.
@@ -53,9 +54,12 @@ func (s *Backups) Regenerate(ctx context.Context, userID int64, code string) ([]
 	// Prepare slow salted hashes before taking the owner's write lock.
 	set, err := NewBackupCodes()
 	if err != nil {
+		// No code was checked.
+		s.throttle.Release(ctx, attemptID)
 		return nil, err
 	}
 
+	checked := false
 	err = s.storage.ReplaceTOTPBackupCodes(ctx, userID, func(current *Factor) (BackupChange, error) {
 		if current == nil || current.ConfirmedAt == nil {
 			return BackupChange{}, ErrNotOn
@@ -65,6 +69,7 @@ func (s *Backups) Regenerate(ctx context.Context, userID int64, code string) ([]
 		if err != nil {
 			return BackupChange{}, err
 		}
+		checked = true
 		step, err := s.verifier.Check(string(secret), code, current.LastStep)
 		if err != nil {
 			return BackupChange{}, err
@@ -76,6 +81,11 @@ func (s *Backups) Regenerate(ctx context.Context, userID int64, code string) ([]
 		return BackupChange{Factor: factor, Hashes: set.Hashes, AttemptID: attemptID}, nil
 	})
 	if err != nil {
+		// A request refused before any code check, e.g. with TOTP off, made
+		// no guess, so it releases its attempt.
+		if !checked {
+			s.throttle.Release(ctx, attemptID)
+		}
 		return nil, err
 	}
 

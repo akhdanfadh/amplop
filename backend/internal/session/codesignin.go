@@ -95,6 +95,7 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 
 	var issued Issued
 	outcome := ErrInvalidChallenge
+	checked := false
 	err = s.storage.CompleteSignIn(ctx, userID, hash, func(state CodeSignInState) (CodeSignInChange, error) {
 		if state.Challenge.UserID != userID || state.Challenge.TokenHash != hash {
 			return CodeSignInChange{}, ErrInvalidChallenge
@@ -103,7 +104,17 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 			return CodeSignInChange{Action: CodeActionDelete}, nil
 		}
 
-		factor, backupID, err := s.checkCode(state, code)
+		var secret []byte
+		if isTOTPCode(code) {
+			var err error
+			secret, err = s.encryption.Open(state.Factor.KeyID, state.Factor.Ciphertext, "totp:"+strconv.FormatInt(userID, 10))
+			if err != nil {
+				return CodeSignInChange{}, err
+			}
+		}
+
+		checked = true
+		factor, backupID, err := s.checkCode(state, secret, code)
 		if errors.Is(err, totp.ErrInvalidCode) {
 			failures := state.Challenge.Failures + 1
 			if failures >= challengeFailureLimit {
@@ -124,6 +135,11 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 			BackupCodeID: backupID, AttemptID: attemptID,
 		}, nil
 	})
+	// A request refused before any code check, e.g. with an expired
+	// challenge, made no guess, so it releases its attempt.
+	if (err != nil || outcome != nil) && !checked {
+		s.throttle.Release(ctx, attemptID)
+	}
 	if errors.Is(err, ErrNotFound) {
 		return Issued{}, ErrInvalidChallenge
 	}
@@ -136,12 +152,11 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 	return issued, nil
 }
 
-func (s *CodeSignIn) checkCode(state CodeSignInState, code string) (*totp.Factor, int64, error) {
+// checkCode checks code against the factor's decrypted secret when it is six
+// digits, or else against the unused backup codes. It returns the factor with
+// the accepted step, or the matched backup code's ID.
+func (s *CodeSignIn) checkCode(state CodeSignInState, secret []byte, code string) (*totp.Factor, int64, error) {
 	if isTOTPCode(code) {
-		secret, err := s.encryption.Open(state.Factor.KeyID, state.Factor.Ciphertext, "totp:"+strconv.FormatInt(state.Challenge.UserID, 10))
-		if err != nil {
-			return nil, 0, err
-		}
 		step, err := s.verifier.Check(string(secret), code, state.Factor.LastStep)
 		if err != nil {
 			return nil, 0, err

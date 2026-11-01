@@ -39,6 +39,7 @@ type secretOpener interface {
 
 type codeAttempts interface {
 	Begin(ctx context.Context, userID int64) (int64, error)
+	Release(ctx context.Context, id int64)
 }
 
 // Enrollment confirms a factor and replaces sessions in one storage operation.
@@ -79,10 +80,13 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 	// Hash all ten codes before storage takes a write lock.
 	backups, err := totp.NewBackupCodes()
 	if err != nil {
+		// No code was checked.
+		e.throttle.Release(ctx, attemptID)
 		return Confirmed{}, err
 	}
 	issued := newSession(userID, device, e.now)
 
+	checked := false
 	err = e.storage.ConfirmTOTP(ctx, userID, current.Session.hash, func(state EnrollmentState) (EnrollmentChange, error) {
 		// Current's earlier session check can become stale; recheck under the lock.
 		if state.Session.UserID != userID || state.Session.TokenHash != current.Session.hash {
@@ -105,6 +109,7 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 			return EnrollmentChange{}, err
 		}
 
+		checked = true
 		step, err := e.verifier.Check(string(secret), code, state.Factor.LastStep)
 		if err != nil {
 			return EnrollmentChange{}, err
@@ -123,6 +128,11 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 		}, nil
 	})
 
+	// A request refused before any code check, e.g. with nothing pending or
+	// a stale session, made no guess, so it releases its attempt.
+	if err != nil && !checked {
+		e.throttle.Release(ctx, attemptID)
+	}
 	if errors.Is(err, ErrNotFound) {
 		return Confirmed{}, ErrUnauthenticated
 	}

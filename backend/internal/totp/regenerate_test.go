@@ -48,13 +48,18 @@ func (f *backupOpener) Open(_ string, _ []byte, owner string) ([]byte, error) {
 }
 
 type backupAttempts struct {
-	calls int
-	err   error
+	calls    int
+	err      error
+	released []int64
 }
 
 func (f *backupAttempts) Begin(context.Context, int64) (int64, error) {
 	f.calls++
 	return 7, f.err
+}
+
+func (f *backupAttempts) Release(_ context.Context, id int64) {
+	f.released = append(f.released, id)
 }
 
 func backupFixture() (*Backups, *backupStorage, *backupOpener, *backupAttempts) {
@@ -87,17 +92,19 @@ func TestRegenerateBackupCodes(t *testing.T) {
 }
 
 func TestRegenerateRejected(t *testing.T) {
+	// wantRelease means the request checked no code, so it releases its attempt.
 	for _, c := range []struct {
-		name string
-		edit func(*backupStorage)
-		code string
-		want error
+		name        string
+		edit        func(*backupStorage)
+		code        string
+		want        error
+		wantRelease bool
 	}{
-		{"missing", func(s *backupStorage) { s.factor = nil }, "287082", ErrNotOn},
-		{"pending", func(s *backupStorage) { s.factor.ConfirmedAt = nil }, "287082", ErrNotOn},
-		{"wrong", func(*backupStorage) {}, "000000", ErrInvalidCode},
-		{"backup proof", func(*backupStorage) {}, "ABCDE-FGHJK", ErrInvalidCode},
-		{"replay", func(s *backupStorage) { s.factor.LastStep = 1 }, "287082", ErrInvalidCode},
+		{"missing", func(s *backupStorage) { s.factor = nil }, "287082", ErrNotOn, true},
+		{"pending", func(s *backupStorage) { s.factor.ConfirmedAt = nil }, "287082", ErrNotOn, true},
+		{"wrong", func(*backupStorage) {}, "000000", ErrInvalidCode, false},
+		{"backup proof", func(*backupStorage) {}, "ABCDE-FGHJK", ErrInvalidCode, false},
+		{"replay", func(s *backupStorage) { s.factor.LastStep = 1 }, "287082", ErrInvalidCode, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service, store, _, attempts := backupFixture()
@@ -109,6 +116,11 @@ func TestRegenerateRejected(t *testing.T) {
 			assert.Nil(t, codes)
 			assert.Nil(t, store.change)
 			assert.Equal(t, 1, attempts.calls)
+			if c.wantRelease {
+				assert.Equal(t, []int64{7}, attempts.released)
+			} else {
+				assert.Empty(t, attempts.released)
+			}
 		})
 	}
 }
@@ -140,6 +152,12 @@ func TestRegenerateErrors(t *testing.T) {
 			}
 			assert.Nil(t, codes, "never expose replacement codes on failure")
 			assert.Nil(t, store.change)
+			// Only a failure before any code check gives the attempt back.
+			if stage == "read" || stage == "open" {
+				assert.Equal(t, []int64{7}, attempts.released)
+			} else {
+				assert.Empty(t, attempts.released)
+			}
 		})
 	}
 }

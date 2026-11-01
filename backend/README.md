@@ -390,7 +390,10 @@ Challenges expire after five minutes. Wrong codes update their saved failure
 count; the fifth deletes the challenge and requires password sign-in again.
 Starting a new challenge does not reset the shared per-user code allowance:
 5 failed or pending attempts per 15 minutes and 20 per 24 hours. Successful
-code sign-in removes only its own attempt in the same transaction.
+code sign-in removes only its own attempt in the same transaction. A code
+request refused before any code is checked, e.g. with an expired challenge,
+TOTP off, or as an administrator turning it off, releases its attempt: only
+guesses count.
 
 Expired challenges are pruned for that user during a successful password
 sign-in. Saving a new session, after a password or a code, also deletes that
@@ -473,6 +476,11 @@ and 50 failures for one address across all emails. Setup attempts share the
 address limit. A pending attempt counts until a successful verification
 removes it, so parallel password checks cannot bypass the limits. A blocked
 attempt returns HTTP 429. These limits are constants too.
+
+Every throttle (sign-in, setup, TOTP codes, and verification links) counts
+with `attemptlimit.Wait`, which says how long until one more attempt fits; a
+new throttle uses it too. Each keeps its own key, storage, and lock: under the
+lock it counts the earlier attempts, then saves this one only if it fits.
 
 `DELETE /api/v0/totp/enrollment` cancels a signed-in account's pending
 enrollment without a code. Success returns HTTP 200 with `data.status:
@@ -836,6 +844,9 @@ httpapi --> emailverification <-- repository/postgres
   implements the `Sender` interface that `systememail` declares, using the
   emersion SMTP libraries. A technology package is named for its technology
   and imports features, never the other way around.
+- A leaf package holds one rule that several features share, such as
+  `emailaddress` (the address rule) or `attemptlimit` (the window count). It
+  imports no feature or technology package and is named for its rule.
 - A feature can use another feature through an interface it declares:
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`
   fills with `systememail`'s `Mailer`.

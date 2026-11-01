@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"testing"
@@ -33,9 +34,6 @@ func (m *memoryCodeAttempts) ReserveTOTPAttempt(_ context.Context, attempt Attem
 			next[id] = row
 		}
 	}
-	m.next++
-	id := m.next
-	next[id] = attempt
 	var rows []Attempt
 	for _, row := range next {
 		if row.UserID == attempt.UserID {
@@ -45,13 +43,18 @@ func (m *memoryCodeAttempts) ReserveTOTPAttempt(_ context.Context, attempt Attem
 	if err := check(rows); err != nil {
 		return 0, err
 	}
+	m.next++
+	next[m.next] = attempt
 	m.rows = next
-	return id, nil
+	return m.next, nil
 }
 
-func (m *memoryCodeAttempts) DeleteTOTPAttempt(_ context.Context, id int64) error {
+func (m *memoryCodeAttempts) DeleteTOTPAttempt(ctx context.Context, id int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if m.deleteErr != nil {
 		return m.deleteErr
 	}
@@ -196,4 +199,45 @@ func TestThrottleInvalidUser(t *testing.T) {
 		assert.Zero(t, id)
 	}
 	assert.Empty(t, store.rows)
+}
+
+// Release removes an attempt so it no longer counts, even after the request
+// was cancelled.
+func TestThrottleRelease(t *testing.T) {
+	store := &memoryCodeAttempts{}
+	limiter := NewThrottle(store, time.Now, slog.New(slog.DiscardHandler))
+	var id int64
+	for range 5 {
+		var err error
+		id, err = limiter.Begin(t.Context(), 42)
+		require.NoError(t, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	limiter.Release(ctx, id)
+
+	_, err := limiter.Begin(t.Context(), 42)
+	require.NoError(t, err)
+}
+
+// A release that fails is logged, and the attempt keeps counting.
+func TestThrottleReleaseFailure(t *testing.T) {
+	store := &memoryCodeAttempts{}
+	var logs bytes.Buffer
+	limiter := NewThrottle(store, time.Now, slog.New(slog.NewTextHandler(&logs, nil)))
+	var id int64
+	for range 5 {
+		var err error
+		id, err = limiter.Begin(t.Context(), 42)
+		require.NoError(t, err)
+	}
+	store.deleteErr = errors.New("storage unavailable")
+
+	limiter.Release(t.Context(), id)
+
+	assert.Contains(t, logs.String(), "level=WARN")
+	assert.Contains(t, logs.String(), fmt.Sprintf("attempt_id=%d", id))
+	_, err := limiter.Begin(t.Context(), 42)
+	require.ErrorIs(t, err, ErrThrottled)
 }

@@ -14,8 +14,8 @@ import (
 // Compile-time check that *DB implements session.AttemptStorage.
 var _ session.AttemptStorage = (*DB)(nil)
 
-// ReserveAttempt stores an attempt if check accepts the address's failure counts.
-// The address lock covers reservation and counting, including the first attempt.
+// ReserveAttempt stores an attempt if check accepts the address's earlier attempts.
+// The address lock covers counting and reservation, including the first attempt.
 // Password verification happens after this transaction ends.
 func (db *DB) ReserveAttempt(ctx context.Context, attempt session.Attempt, cutoff time.Time, check func([]session.Attempt) error) (int64, error) {
 	var id int64
@@ -27,13 +27,6 @@ func (db *DB) ReserveAttempt(ctx context.Context, attempt session.Attempt, cutof
 		if err := queries.DeleteOldSignInAttempts(ctx, cutoff); err != nil {
 			return fmt.Errorf("delete old attempts: %w", err)
 		}
-		var err error
-		id, err = queries.InsertSignInAttempt(ctx, sqlc.InsertSignInAttemptParams{
-			Email: attempt.Email, ClientAddr: attempt.ClientAddr, CreatedAt: attempt.CreatedAt,
-		})
-		if err != nil {
-			return fmt.Errorf("reserve attempt: %w", err)
-		}
 		rows, err := queries.ListSignInAttempts(ctx, attempt.ClientAddr)
 		if err != nil {
 			return fmt.Errorf("read attempts: %w", err)
@@ -42,7 +35,16 @@ func (db *DB) ReserveAttempt(ctx context.Context, attempt session.Attempt, cutof
 		for _, row := range rows {
 			attempts = append(attempts, session.Attempt{Email: row.Email, ClientAddr: row.ClientAddr, CreatedAt: row.CreatedAt.UTC()})
 		}
-		return check(attempts)
+		if err := check(attempts); err != nil {
+			return err
+		}
+		id, err = queries.InsertSignInAttempt(ctx, sqlc.InsertSignInAttemptParams{
+			Email: attempt.Email, ClientAddr: attempt.ClientAddr, CreatedAt: attempt.CreatedAt,
+		})
+		if err != nil {
+			return fmt.Errorf("reserve attempt: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
 		return 0, err

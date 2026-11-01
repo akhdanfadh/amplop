@@ -59,6 +59,7 @@ func TestDisableProof(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.True(t, store.disabled)
+			assert.Empty(t, attempts.released, "storage removes a successful attempt")
 			assert.Equal(t, int64(42), store.userID)
 			assert.Equal(t, int64(7), store.attemptID)
 			assert.Equal(t, 1, attempts.calls)
@@ -72,19 +73,21 @@ func TestDisableProof(t *testing.T) {
 }
 
 func TestDisableRejected(t *testing.T) {
+	// wantRelease means the request checked no code, so it releases its attempt.
 	for _, c := range []struct {
-		name string
-		edit func(*disableStorage)
-		code string
-		want error
+		name        string
+		edit        func(*disableStorage)
+		code        string
+		want        error
+		wantRelease bool
 	}{
-		{"admin", func(s *disableStorage) { s.state.Role = account.RoleAdmin }, "287082", ErrDisableForbidden},
-		{"unknown role", func(s *disableStorage) { s.state.Role = "unknown" }, "287082", ErrDisableForbidden},
-		{"missing", func(s *disableStorage) { s.state.Factor = nil }, "287082", ErrNotOn},
-		{"pending", func(s *disableStorage) { s.state.Factor.ConfirmedAt = nil }, "287082", ErrNotOn},
-		{"wrong", func(*disableStorage) {}, "000000", ErrInvalidCode},
-		{"malformed", func(*disableStorage) {}, "abc", ErrInvalidCode},
-		{"replay", func(s *disableStorage) { s.state.Factor.LastStep = 1 }, "287082", ErrInvalidCode},
+		{"admin", func(s *disableStorage) { s.state.Role = account.RoleAdmin }, "287082", ErrDisableForbidden, true},
+		{"unknown role", func(s *disableStorage) { s.state.Role = "unknown" }, "287082", ErrDisableForbidden, true},
+		{"missing", func(s *disableStorage) { s.state.Factor = nil }, "287082", ErrNotOn, true},
+		{"pending", func(s *disableStorage) { s.state.Factor.ConfirmedAt = nil }, "287082", ErrNotOn, true},
+		{"wrong", func(*disableStorage) {}, "000000", ErrInvalidCode, false},
+		{"malformed", func(*disableStorage) {}, "abc", ErrInvalidCode, false},
+		{"replay", func(s *disableStorage) { s.state.Factor.LastStep = 1 }, "287082", ErrInvalidCode, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service, store, _, attempts := disableFixture()
@@ -95,6 +98,11 @@ func TestDisableRejected(t *testing.T) {
 			require.ErrorIs(t, err, c.want)
 			assert.False(t, store.disabled)
 			assert.Equal(t, 1, attempts.calls)
+			if c.wantRelease {
+				assert.Equal(t, []int64{7}, attempts.released)
+			} else {
+				assert.Empty(t, attempts.released)
+			}
 		})
 	}
 }
@@ -127,6 +135,12 @@ func TestDisableErrors(t *testing.T) {
 			if stage == "throttle" {
 				assert.Zero(t, store.calls)
 				assert.Zero(t, opener.calls)
+			}
+			// Only a failure before any code check gives the attempt back.
+			if stage == "open" {
+				assert.Equal(t, []int64{7}, attempts.released)
+			} else {
+				assert.Empty(t, attempts.released)
 			}
 		})
 	}

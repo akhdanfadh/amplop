@@ -118,9 +118,7 @@ func TestTOTPAttemptsRollback(t *testing.T) {
 	require.NoError(t, err)
 	rejected := errors.New("reservation rejected")
 	id, err := db.ReserveTOTPAttempt(t.Context(), totp.Attempt{UserID: userID, CreatedAt: now}, now.Add(-24*time.Hour), func(rows []totp.Attempt) error {
-		require.Len(t, rows, 1, "cleanup and insertion must precede the check")
-		assert.Equal(t, userID, rows[0].UserID)
-		assert.Equal(t, now, rows[0].CreatedAt)
+		assert.Empty(t, rows, "cleanup precedes the check, which sees only earlier attempts")
 		return rejected
 	})
 	require.ErrorIs(t, err, rejected)

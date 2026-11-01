@@ -5,20 +5,23 @@ import (
 	"errors"
 	"log/slog"
 	"time"
+
+	"inbok/internal/attemptlimit"
 )
 
-const (
-	// Product policy: OWASP recommends strict limits without prescribing these values.
-	shortWindow = 15 * time.Minute
-	shortLimit  = 5
-	longWindow  = 24 * time.Hour
-	longLimit   = 20
+// Product policy: OWASP recommends strict limits without prescribing these values.
+var (
+	shortLimit = attemptlimit.Limit{Window: 15 * time.Minute, Max: 5}
+	longLimit  = attemptlimit.Limit{Window: 24 * time.Hour, Max: 20}
 )
 
 // ErrThrottled means recent code attempts have exhausted a user's allowance.
 var ErrThrottled = errors.New("TOTP code attempts throttled")
 
 var errAttemptUserID = errors.New("invalid TOTP attempt user ID")
+
+// releaseTimeout bounds Release, which outlives a cancelled request.
+const releaseTimeout = 5 * time.Second
 
 // Attempt is reserved before checking a code. It contains no code or secret.
 type Attempt struct {
@@ -28,11 +31,13 @@ type Attempt struct {
 
 // AttemptStorage stores code attempts and serializes reservations per user.
 type AttemptStorage interface {
-	// ReserveTOTPAttempt removes expired rows, inserts the attempt, then calls
-	// check with this user's rows, including it. A check error rolls back writes.
+	// ReserveTOTPAttempt removes this user's rows created at or before cutoff,
+	// calls check with the remaining ones, then saves the attempt and returns
+	// its ID. A check error rolls back writes and saves nothing.
 	ReserveTOTPAttempt(ctx context.Context, attempt Attempt, cutoff time.Time, check func([]Attempt) error) (int64, error)
 
-	// DeleteTOTPAttempt removes a successful attempt. Missing rows are harmless.
+	// DeleteTOTPAttempt removes an attempt by ID, after success or on release.
+	// Missing rows are harmless.
 	DeleteTOTPAttempt(ctx context.Context, id int64) error
 }
 
@@ -43,32 +48,31 @@ type Throttle struct {
 	logger  *slog.Logger
 }
 
-// NewThrottle supplies storage, a clock, and a logger for user-ID-only warnings.
+// NewThrottle supplies storage, a clock, and a logger for warnings that name
+// no code or secret.
 func NewThrottle(storage AttemptStorage, now func() time.Time, logger *slog.Logger) *Throttle {
 	return &Throttle{storage: storage, now: now, logger: logger}
 }
 
-// Begin reserves an attempt before verification. Leave it saved on failure.
-// Successful verification must remove only its own reservation with Succeed.
+// Begin reserves an attempt for userID before verification and returns its
+// ID, or [ErrThrottled] when one more does not fit. Leave it saved when a code
+// fails. Success removes only its own reservation, in the operation's storage
+// transaction or with Succeed; a request that fails before checking a code
+// removes it with Release.
 func (t *Throttle) Begin(ctx context.Context, userID int64) (int64, error) {
 	if userID <= 0 {
 		return 0, errAttemptUserID
 	}
 	now := t.now().UTC()
-	cutoff := now.Add(-longWindow)
-	shortCutoff := now.Add(-shortWindow)
+	cutoff := now.Add(-longLimit.Window)
 	id, err := t.storage.ReserveTOTPAttempt(ctx, Attempt{UserID: userID, CreatedAt: now}, cutoff, func(rows []Attempt) error {
-		var shortCount, longCount int
+		var times []time.Time
 		for _, row := range rows {
-			if row.UserID != userID || !row.CreatedAt.After(cutoff) {
-				continue
-			}
-			longCount++
-			if row.CreatedAt.After(shortCutoff) {
-				shortCount++
+			if row.UserID == userID {
+				times = append(times, row.CreatedAt)
 			}
 		}
-		if shortCount > shortLimit || longCount > longLimit {
+		if attemptlimit.Wait(times, now, shortLimit, longLimit) > 0 {
 			return ErrThrottled
 		}
 		return nil
@@ -82,4 +86,20 @@ func (t *Throttle) Begin(ctx context.Context, userID int64) (int64, error) {
 // Succeed removes this attempt after the protected action has succeeded.
 func (t *Throttle) Succeed(ctx context.Context, id int64) error {
 	return t.storage.DeleteTOTPAttempt(ctx, id)
+}
+
+// Release removes attempt id when its request ended before checking any
+// code, so only guesses count. It logs a failure instead of returning it.
+//
+// NOTE: the request already failed with its own error, which is the one to
+// report. An attempt that cannot be removed counts until it expires, as a
+// wrong code would, so the failure costs the user one attempt, not safety.
+func (t *Throttle) Release(ctx context.Context, id int64) {
+	// Remove it even if the client has gone, keeping the request's values,
+	// but do not hold the request open on a stuck database.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), releaseTimeout)
+	defer cancel()
+	if err := t.storage.DeleteTOTPAttempt(ctx, id); err != nil {
+		t.logger.WarnContext(ctx, "TOTP attempt not released", "attempt_id", id, "error", err)
+	}
 }

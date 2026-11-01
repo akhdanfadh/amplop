@@ -6,13 +6,17 @@ import (
 	"net/netip"
 	"time"
 
+	"inbok/internal/attemptlimit"
 	"inbok/internal/emailaddress"
 )
 
-const (
-	attemptWindow = 15 * time.Minute
-	pairLimit     = 5
-	addressLimit  = 50
+const attemptWindow = 15 * time.Minute
+
+var (
+	// pairLimit counts one email from one client address.
+	pairLimit = attemptlimit.Limit{Window: attemptWindow, Max: 5}
+	// addressLimit counts every email, and setup, from one client address.
+	addressLimit = attemptlimit.Limit{Window: attemptWindow, Max: 50}
 )
 
 // ErrThrottled means an attempt exceeds the sign-in failure limits.
@@ -30,8 +34,8 @@ type Attempt struct {
 // Reservations for one client address must be serialized across API instances.
 type AttemptStorage interface {
 	// ReserveAttempt saves an attempt and returns its ID if check accepts it.
-	// It removes old rows, inserts the attempt, then checks the address's rows
-	// including it. A check error rolls back the reservation.
+	// It removes rows created at or before cutoff, then calls check with the
+	// address's remaining rows. A check error saves nothing.
 	ReserveAttempt(ctx context.Context, attempt Attempt, cutoff time.Time, check func([]Attempt) error) (int64, error)
 
 	// DeleteAttempt removes an attempt by ID. A missing ID is harmless.
@@ -82,17 +86,14 @@ func (t *Throttle) begin(ctx context.Context, email *string, addr netip.Addr) (i
 	cutoff := now.Add(-attemptWindow)
 	attempt := Attempt{Email: email, ClientAddr: addr.Unmap().WithZone("").String(), CreatedAt: now}
 	return t.storage.ReserveAttempt(ctx, attempt, cutoff, func(rows []Attempt) error {
-		var addressCount, pairCount int
+		var address, pair []time.Time
 		for _, row := range rows {
-			if !row.CreatedAt.After(cutoff) {
-				continue
-			}
-			addressCount++
+			address = append(address, row.CreatedAt)
 			if email != nil && row.Email != nil && *email == *row.Email {
-				pairCount++
+				pair = append(pair, row.CreatedAt)
 			}
 		}
-		if addressCount > addressLimit || pairCount > pairLimit {
+		if attemptlimit.Wait(address, now, addressLimit) > 0 || attemptlimit.Wait(pair, now, pairLimit) > 0 {
 			return ErrThrottled
 		}
 		return nil

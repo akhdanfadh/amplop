@@ -27,9 +27,6 @@ func (s *memoryAttempts) ReserveAttempt(_ context.Context, attempt Attempt, cuto
 			delete(s.rows, id)
 		}
 	}
-	s.next++
-	id := s.next
-	s.rows[id] = attempt
 	var rows []Attempt
 	for _, row := range s.rows {
 		if row.ClientAddr == attempt.ClientAddr {
@@ -37,10 +34,11 @@ func (s *memoryAttempts) ReserveAttempt(_ context.Context, attempt Attempt, cuto
 		}
 	}
 	if err := check(rows); err != nil {
-		delete(s.rows, id)
 		return 0, err
 	}
-	return id, nil
+	s.next++
+	s.rows[s.next] = attempt
+	return s.next, nil
 }
 
 func (s *memoryAttempts) DeleteAttempt(_ context.Context, id int64) error {

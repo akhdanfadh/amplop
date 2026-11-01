@@ -252,7 +252,9 @@ func TestTOTPConfirmationParallel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, sessions)
 	assert.Equal(t, 10, hashes)
-	assert.Equal(t, len(f.attemptIDs)+1, attempts)
+	// The loser finds its session replaced before checking a code, so it
+	// releases its attempt and the winner's success removes the other.
+	assert.Equal(t, len(f.attemptIDs), attempts)
 }
 
 func TestSessionUserIndexDown(t *testing.T) {

@@ -88,18 +88,27 @@ func TestAttemptsSuccessAndExpiry(t *testing.T) {
 	assert.Equal(t, 1, count, "old rows from other addresses must be removed too")
 }
 
+// Check sees the address's earlier live attempts; rejecting saves nothing and
+// rolls back the cleanup.
 func TestAttemptsRollback(t *testing.T) {
 	db, conn := setupStorage(t)
 	now := time.Date(2026, time.October, 28, 12, 0, 0, 0, time.UTC)
+	for _, at := range []time.Time{now.Add(-time.Hour), now.Add(-time.Minute)} {
+		_, err := conn.Exec(t.Context(), "INSERT INTO sign_in_attempts (client_addr, created_at) VALUES ($1, $2)", "192.0.2.1", at)
+		require.NoError(t, err)
+	}
 	attempt := session.Attempt{ClientAddr: "192.0.2.1", CreatedAt: now}
 	rejected := errors.New("reservation rejected")
+
 	id, err := db.ReserveAttempt(t.Context(), attempt, now.Add(-15*time.Minute), func(rows []session.Attempt) error {
-		assert.Len(t, rows, 1, "the reservation must exist before counting")
+		require.Len(t, rows, 1, "check sees only earlier attempts inside the window")
+		assert.Equal(t, now.Add(-time.Minute), rows[0].CreatedAt)
 		return rejected
 	})
+
 	require.ErrorIs(t, err, rejected)
 	assert.Zero(t, id)
 	var count int
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM sign_in_attempts").Scan(&count))
-	assert.Zero(t, count)
+	assert.Equal(t, 2, count, "rejection saves nothing and rolls back the cleanup")
 }

@@ -16,10 +16,10 @@ import (
 )
 
 type codeSignInStorage struct {
-	state               CodeSignInState
-	change              *CodeSignInChange
-	lookupErr, writeErr error
-	calls               int
+	state                        CodeSignInState
+	change                       *CodeSignInChange
+	lookupErr, readErr, writeErr error
+	calls                        int
 }
 
 func (f *codeSignInStorage) ChallengeUser(context.Context, [sha256.Size]byte) (int64, error) {
@@ -28,6 +28,9 @@ func (f *codeSignInStorage) ChallengeUser(context.Context, [sha256.Size]byte) (i
 
 func (f *codeSignInStorage) CompleteSignIn(_ context.Context, _ int64, _ [sha256.Size]byte, update func(CodeSignInState) (CodeSignInChange, error)) error {
 	f.calls++
+	if f.readErr != nil {
+		return f.readErr
+	}
 	next, err := update(f.state)
 	if err != nil {
 		return err
@@ -89,23 +92,25 @@ func TestCodeSignInBackup(t *testing.T) {
 }
 
 func TestCodeSignInRejected(t *testing.T) {
+	// wantRelease means the request checked no code, so it releases its attempt.
 	for _, c := range []struct {
-		name   string
-		edit   func(*CodeSignInState)
-		code   string
-		want   error
-		action CodeAction
+		name        string
+		edit        func(*CodeSignInState)
+		code        string
+		want        error
+		action      CodeAction
+		wantRelease bool
 	}{
-		{"wrong", func(*CodeSignInState) {}, "000000", totp.ErrInvalidCode, CodeActionFail},
-		{"malformed", func(*CodeSignInState) {}, "abc", totp.ErrInvalidCode, CodeActionFail},
-		{"replay", func(s *CodeSignInState) { s.Factor.LastStep = 1 }, "287082", totp.ErrInvalidCode, CodeActionFail},
-		{"fifth wrong", func(s *CodeSignInState) { s.Challenge.Failures = 4 }, "000000", ErrInvalidChallenge, CodeActionDelete},
-		{"expired", func(s *CodeSignInState) { s.Challenge.ExpiresAt = time.Unix(59, 0).UTC() }, "287082", ErrInvalidChallenge, CodeActionDelete},
-		{"missing factor", func(s *CodeSignInState) { s.Factor = nil }, "287082", ErrInvalidChallenge, CodeActionDelete},
-		{"pending factor", func(s *CodeSignInState) { s.Factor.ConfirmedAt = nil }, "287082", ErrInvalidChallenge, CodeActionDelete},
+		{"wrong", func(*CodeSignInState) {}, "000000", totp.ErrInvalidCode, CodeActionFail, false},
+		{"malformed", func(*CodeSignInState) {}, "abc", totp.ErrInvalidCode, CodeActionFail, false},
+		{"replay", func(s *CodeSignInState) { s.Factor.LastStep = 1 }, "287082", totp.ErrInvalidCode, CodeActionFail, false},
+		{"fifth wrong", func(s *CodeSignInState) { s.Challenge.Failures = 4 }, "000000", ErrInvalidChallenge, CodeActionDelete, false},
+		{"expired", func(s *CodeSignInState) { s.Challenge.ExpiresAt = time.Unix(59, 0).UTC() }, "287082", ErrInvalidChallenge, CodeActionDelete, true},
+		{"missing factor", func(s *CodeSignInState) { s.Factor = nil }, "287082", ErrInvalidChallenge, CodeActionDelete, true},
+		{"pending factor", func(s *CodeSignInState) { s.Factor.ConfirmedAt = nil }, "287082", ErrInvalidChallenge, CodeActionDelete, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			service, store, _, secret := codeSignInFixture()
+			service, store, attempts, secret := codeSignInFixture()
 			c.edit(&store.state)
 
 			issued, err := service.Complete(t.Context(), secret, c.code, Device{})
@@ -117,26 +122,35 @@ func TestCodeSignInRejected(t *testing.T) {
 			if c.action == CodeActionFail {
 				assert.Equal(t, store.state.Challenge.Failures+1, store.change.Failures)
 			}
+			if c.wantRelease {
+				assert.Equal(t, []int64{7}, attempts.released)
+			} else {
+				assert.Empty(t, attempts.released)
+			}
 		})
 	}
 }
 
 func TestCodeSignInErrors(t *testing.T) {
 	lost := errors.New("commit failed")
+	// read fails before the code check, so the request releases its
+	// attempt; write fails after it, so the attempt counts.
 	for _, c := range []struct {
-		name                    string
-		lookup, throttle, write error
-		want                    error
+		name                          string
+		lookup, throttle, read, write error
+		want                          error
+		wantRelease                   bool
 	}{
-		{"missing", ErrNotFound, nil, nil, ErrInvalidChallenge},
-		{"lookup", lost, nil, nil, lost},
-		{"throttled", nil, totp.ErrThrottled, nil, totp.ErrThrottled},
-		{"commit", nil, nil, lost, lost},
-		{"consumed", nil, nil, ErrNotFound, ErrInvalidChallenge},
+		{"missing", ErrNotFound, nil, nil, nil, ErrInvalidChallenge, false},
+		{"lookup", lost, nil, nil, nil, lost, false},
+		{"throttled", nil, totp.ErrThrottled, nil, nil, totp.ErrThrottled, false},
+		{"consumed", nil, nil, ErrNotFound, nil, ErrInvalidChallenge, true},
+		{"read", nil, nil, lost, nil, lost, true},
+		{"commit", nil, nil, nil, lost, lost, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service, store, attempts, secret := codeSignInFixture()
-			store.lookupErr, store.writeErr, attempts.err = c.lookup, c.write, c.throttle
+			store.lookupErr, store.readErr, store.writeErr, attempts.err = c.lookup, c.read, c.write, c.throttle
 
 			issued, err := service.Complete(t.Context(), secret, "287082", Device{})
 
@@ -146,6 +160,11 @@ func TestCodeSignInErrors(t *testing.T) {
 			if c.lookup != nil || c.throttle != nil {
 				assert.Zero(t, store.calls)
 			}
+			if c.wantRelease {
+				assert.Equal(t, []int64{7}, attempts.released)
+			} else {
+				assert.Empty(t, attempts.released)
+			}
 		})
 	}
 	service, store, attempts, _ := codeSignInFixture()
@@ -153,4 +172,30 @@ func TestCodeSignInErrors(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidChallenge)
 	assert.Zero(t, attempts.calls)
 	assert.Zero(t, store.calls)
+}
+
+// A challenge that no longer matches, or a secret that cannot be decrypted,
+// stops the request before any code check, so it releases its attempt.
+func TestCodeSignInUnchecked(t *testing.T) {
+	failure := errors.New("key unavailable")
+	for _, c := range []struct {
+		name string
+		edit func(*codeSignInStorage, *enrollmentOpener)
+		want error
+	}{
+		{"other user's challenge", func(s *codeSignInStorage, _ *enrollmentOpener) { s.state.Challenge.UserID++ }, ErrInvalidChallenge},
+		{"decryption", func(_ *codeSignInStorage, o *enrollmentOpener) { o.err = failure }, failure},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			service, store, attempts, secret := codeSignInFixture()
+			c.edit(store, service.encryption.(*enrollmentOpener))
+
+			issued, err := service.Complete(t.Context(), secret, "287082", Device{})
+
+			require.ErrorIs(t, err, c.want)
+			assert.Empty(t, issued)
+			assert.Nil(t, store.change)
+			assert.Equal(t, []int64{7}, attempts.released)
+		})
+	}
 }

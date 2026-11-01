@@ -123,7 +123,7 @@ func TestRequestUnderLimit(t *testing.T) {
 
 // Deleting expired links must not lower the throttle's count.
 func TestLinkLifetimeCoversThrottle(t *testing.T) {
-	assert.GreaterOrEqual(t, linkLifetime, longWindow)
+	assert.GreaterOrEqual(t, linkLifetime, longLimit.Window)
 }
 
 // A request deletes the user's expired links and keeps live ones and other
