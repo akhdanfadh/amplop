@@ -14,6 +14,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/config"
+	"inbok/internal/emailverification"
 	"inbok/internal/httpapi"
 	"inbok/internal/probe"
 	"inbok/internal/repository/postgres"
@@ -114,17 +115,18 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
 	services := httpapi.Services{
-		SystemEmail:  systememail.NewService(db, cfg.Encryption),
-		TestMessages: systememail.NewTestMessages(db, mailer, time.Now),
-		Disabler:     totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
-		Backups:      totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
-		CodeSignIn:   session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
-		Enrollment:   session.NewEnrollment(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
-		TOTP:         totp.NewService(db, cfg.Encryption),
-		Probe:        probe.NewService(db),
-		Account:      accounts,
-		Session:      session.NewService(db, accounts, throttle, time.Now),
-		Throttle:     throttle,
+		EmailVerification: emailverification.NewService(db, mailer, cfg.PublicURL, time.Now),
+		SystemEmail:       systememail.NewService(db, cfg.Encryption),
+		TestMessages:      systememail.NewTestMessages(db, mailer, time.Now),
+		Disabler:          totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
+		Backups:           totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
+		CodeSignIn:        session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
+		Enrollment:        session.NewEnrollment(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
+		TOTP:              totp.NewService(db, cfg.Encryption),
+		Probe:             probe.NewService(db),
+		Account:           accounts,
+		Session:           session.NewService(db, accounts, throttle, time.Now),
+		Throttle:          throttle,
 	}
 	api := httpapi.New(logger, services)
 	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {

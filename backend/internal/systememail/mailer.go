@@ -84,8 +84,8 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 	}
 	err = m.sender.Send(ctx, saved.Server, password, message)
 	if failed, ok := errors.AsType[*SendError](err); ok {
-		// The server's reply can name the username, never the password, and can
-		// be long, so only its start is kept.
+		// The server's reply can name the username or quote the message, never
+		// the password, and can be long, so only its start is kept.
 		m.logger.WarnContext(ctx, "system email send failed", "purpose", outgoing.Purpose, "reason", failed.Reason,
 			"host", saved.Host, "port", saved.Port, "security", saved.Security, "username", saved.Username,
 			"err", truncate(failed.Err.Error(), maxLoggedReply))
