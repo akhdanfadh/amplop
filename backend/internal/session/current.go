@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"inbok/internal/account"
+	"inbok/internal/randomsecret"
 )
 
 // Access is a request's allowed or required level, ordered by privilege.
@@ -47,7 +48,7 @@ type Authenticated struct {
 // Current returns a checked session reference and current account identity.
 // It deletes expired sessions and writes last-use time at most once an hour.
 func (s *Service) Current(ctx context.Context, secret string) (Authenticated, error) {
-	hash, err := hashSecret(secret)
+	hash, err := randomsecret.Hash(secret)
 	if err != nil {
 		return Authenticated{}, ErrUnauthenticated
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"inbok/internal/account"
+	"inbok/internal/randomsecret"
 	"inbok/internal/totp"
 )
 
@@ -76,7 +77,7 @@ func NewCodeSignIn(storage codeSignInStore, encryption secretOpener, verifier *t
 // It deletes a deactivated account's challenge and returns
 // [account.ErrDeactivated].
 func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device Device) (Issued, error) {
-	hash, err := hashSecret(secret)
+	hash, err := randomsecret.Hash(secret)
 	if err != nil {
 		return Issued{}, ErrInvalidChallenge
 	}

@@ -12,6 +12,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/emailaddress"
+	"inbok/internal/randomsecret"
 	"inbok/internal/totp"
 )
 
@@ -102,7 +103,7 @@ func TestStartSignIn(t *testing.T) {
 	assert.Equal(t, clock.Now(), store.states[0].CreatedAt, "lifetime starts after credential verification")
 	assert.Equal(t, []Expiry{{ExpiresBy: clock.Now(), LastUsedBy: clock.Now().Add(-idleTimeout)}}, store.expiries,
 		"the new session clears the user's expired ones")
-	hash, err := hashSecret(first.Secret)
+	hash, err := randomsecret.Hash(first.Secret)
 	require.NoError(t, err)
 	assert.Equal(t, hash, store.states[0].TokenHash)
 	assert.Len(t, attempts.rows, 4, "remove only the successful reservation")
@@ -223,7 +224,7 @@ func TestPasswordRequiresTOTP(t *testing.T) {
 			}
 			assert.Empty(t, store.states)
 			require.Len(t, store.challenges, 1)
-			hash, err := hashSecret(result.Secret)
+			hash, err := randomsecret.Hash(result.Secret)
 			require.NoError(t, err)
 			assert.Equal(t, hash, store.challenges[0].TokenHash)
 			assert.Equal(t, clock.Now().Add(5*time.Minute), result.ExpiresAt)

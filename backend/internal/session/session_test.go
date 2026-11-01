@@ -2,15 +2,15 @@ package session
 
 import (
 	"encoding/base64"
-	"encoding/hex"
 	"net/netip"
-	"strings"
 	"testing"
 	"time"
 	"uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/randomsecret"
 )
 
 type fakeClock struct{ now time.Time }
@@ -48,49 +48,12 @@ func TestNewSessionSecrets(t *testing.T) {
 
 	first := newSession(7, Device{}, clock.Now)
 	second := newSession(7, Device{}, clock.Now)
-	hash, err := hashSecret(first.Secret)
+	hash, err := randomsecret.Hash(first.Secret)
 	require.NoError(t, err)
 
 	assert.NotEqual(t, first.Secret, second.Secret)
 	assert.NotEqual(t, first.State.TokenHash, second.State.TokenHash)
 	assert.Equal(t, first.State.TokenHash, hash)
-}
-
-// TestHashSecret checks SHA-256 against a known vector of 32 zero bytes.
-// The digest was checked independently with Python's hashlib.
-func TestHashSecret(t *testing.T) {
-	hash, err := hashSecret(strings.Repeat("A", 43))
-
-	require.NoError(t, err)
-	assert.Equal(t, "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925", hex.EncodeToString(hash[:]))
-}
-
-func TestHashSecretInvalid(t *testing.T) {
-	cases := []struct {
-		name, secret string
-	}{
-		{"empty", ""},
-		{"short", strings.Repeat("A", 42)},
-		{"long", strings.Repeat("A", 44)},
-		{"oversized", strings.Repeat("A", 65536)},
-		{"padding", strings.Repeat("A", 43) + "="},
-		{"standard alphabet", strings.Repeat("/", 43)},
-		{"noncanonical", strings.Repeat("A", 42) + "B"},
-		{"newline", strings.Repeat("A", 43) + "\n"},
-		{"newline within expected length", strings.Repeat("A", 42) + "\n"},
-		{"embedded newline", strings.Repeat("A", 21) + "\r\n" + strings.Repeat("A", 22)},
-		{"leading space", " " + strings.Repeat("A", 43)},
-		{"trailing space", strings.Repeat("A", 43) + " "},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			hash, err := hashSecret(c.secret)
-
-			require.ErrorIs(t, err, errInvalidSecret)
-			require.EqualError(t, err, "invalid session secret")
-			assert.Zero(t, hash)
-		})
-	}
 }
 
 func TestCheckSessionIdle(t *testing.T) {

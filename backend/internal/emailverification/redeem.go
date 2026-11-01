@@ -2,10 +2,10 @@ package emailverification
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"time"
+
+	"inbok/internal/randomsecret"
 )
 
 // ErrLinkInvalid means a link is malformed, unknown, used, expired, sent to
@@ -35,8 +35,8 @@ type RedeemChange struct {
 // NOTE: Redeem has no throttle. The secret has 256 random bits, so guessing
 // one is hopeless however fast the guesses come.
 func (s *Service) Redeem(ctx context.Context, secret string) error {
-	hash, ok := hashSecret(secret)
-	if !ok {
+	hash, err := randomsecret.Hash(secret)
+	if err != nil {
 		return ErrLinkInvalid
 	}
 	return s.storage.RedeemEmailVerification(ctx, hash, func(state RedeemState) (RedeemChange, error) {
@@ -51,23 +51,4 @@ func (s *Service) Redeem(ctx context.Context, secret string) error {
 		}
 		return RedeemChange{VerifiedAt: &now}, nil
 	})
-}
-
-// hashSecret returns the SHA-256 hash of the bytes secret encodes. It
-// reports false when secret is not exactly [secretSize] bytes in unpadded
-// URL-safe base64.
-func hashSecret(secret string) ([sha256.Size]byte, bool) {
-	if len(secret) != base64.RawURLEncoding.EncodedLen(secretSize) {
-		return [sha256.Size]byte{}, false
-	}
-	raw, err := base64.RawURLEncoding.Strict().DecodeString(secret)
-	if err != nil {
-		return [sha256.Size]byte{}, false
-	}
-	// Even strict base64 ignores line breaks, so text of the right length can
-	// decode short.
-	if len(raw) != secretSize {
-		return [sha256.Size]byte{}, false
-	}
-	return sha256.Sum256(raw), true
 }

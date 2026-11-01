@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/randomsecret"
 )
 
 // requested returns storage holding one link requested at testNow, the
@@ -90,7 +92,7 @@ func TestRedeemBeforeExpiry(t *testing.T) {
 // A secret that is malformed or matches no link is not valid.
 func TestRedeemUnknown(t *testing.T) {
 	_, service, secret := requested(t)
-	other, _ := newSecret()
+	other, _ := randomsecret.New()
 	for _, c := range []struct {
 		name   string
 		secret string

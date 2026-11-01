@@ -2,25 +2,21 @@
 package session
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"time"
 	"uuid"
+
+	"inbok/internal/randomsecret"
 )
 
 const (
-	secretSize    = 32
 	idleTimeout   = 7 * 24 * time.Hour
 	maxLifetime   = 30 * 24 * time.Hour
 	touchInterval = time.Hour
 )
 
-var (
-	errInvalidSecret = errors.New("invalid session secret")
-	errExpired       = errors.New("session is expired")
-)
+var errExpired = errors.New("session is expired")
 
 // State is the session data saved by storage, without the cookie secret.
 // ID is the public identifier storage assigns; it is the nil UUID before insert.
@@ -43,7 +39,7 @@ type Issued struct {
 // newSession creates a fresh secret and fixes the maximum lifetime.
 // It keeps the device details of the request that creates the session.
 func newSession(userID int64, device Device, now func() time.Time) Issued {
-	secret, hash := newSecret()
+	secret, hash := randomsecret.New()
 	createdAt := now().UTC()
 	return Issued{
 		Secret: secret,
@@ -56,28 +52,6 @@ func newSession(userID int64, device Device, now func() time.Time) Issued {
 			Device:     cleanDevice(device),
 		},
 	}
-}
-
-// newSecret uses the same random-secret format for sessions and challenges.
-// Their separate storage tables determine what each secret can authorize.
-func newSecret() (string, [sha256.Size]byte) {
-	secret := make([]byte, secretSize)
-	rand.Read(secret)
-	return base64.RawURLEncoding.EncodeToString(secret), sha256.Sum256(secret)
-}
-
-// hashSecret derives the lookup key from the browser's encoded secret.
-func hashSecret(secret string) ([sha256.Size]byte, error) {
-	if len(secret) != base64.RawURLEncoding.EncodedLen(secretSize) {
-		return [sha256.Size]byte{}, errInvalidSecret
-	}
-
-	// Even strict base64 ignores newlines, so verify the decoded size too.
-	raw, err := base64.RawURLEncoding.Strict().DecodeString(secret)
-	if err != nil || len(raw) != secretSize {
-		return [sha256.Size]byte{}, errInvalidSecret
-	}
-	return sha256.Sum256(raw), nil
 }
 
 // Expiry is the expiry rule at one moment, as two limits storage can

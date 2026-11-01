@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/randomsecret"
 )
 
 func TestNewChallenge(t *testing.T) {
@@ -17,7 +19,7 @@ func TestNewChallenge(t *testing.T) {
 	raw, err := base64.RawURLEncoding.Strict().DecodeString(secret)
 	require.NoError(t, err)
 	assert.Len(t, raw, 32)
-	hash, err := hashSecret(secret)
+	hash, err := randomsecret.Hash(secret)
 	require.NoError(t, err)
 	assert.Equal(t, hash, state.TokenHash)
 	assert.Equal(t, int64(42), state.UserID)

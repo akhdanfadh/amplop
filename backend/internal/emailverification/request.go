@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"inbok/internal/attemptlimit"
+	"inbok/internal/randomsecret"
 	"inbok/internal/systememail"
 )
 
@@ -49,7 +50,7 @@ type RequestChange struct {
 // [systememail.ErrNotConfigured] without saving or sending, and the error
 // from [systememail.Mailer.Send] after saving.
 func (s *Service) Request(ctx context.Context, userID int64) (string, error) {
-	secret, hash := newSecret()
+	secret, hash := randomsecret.New()
 	var link Link
 	// Saving before sending reserves the link, so it counts toward the
 	// throttle even when the send fails after the server accepted it.

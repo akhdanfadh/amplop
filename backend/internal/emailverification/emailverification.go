@@ -4,19 +4,14 @@ package emailverification
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"net/url"
 	"time"
 
 	"inbok/internal/systememail"
 )
 
-const (
-	secretSize   = 32
-	linkLifetime = 24 * time.Hour
-)
+const linkLifetime = 24 * time.Hour
 
 // Link is a saved verification link without its secret.
 type Link struct {
@@ -64,11 +59,4 @@ type Service struct {
 // system email settings, the public URL links start with, and a clock.
 func NewService(storage Storage, mailer mailer, publicURL *url.URL, now func() time.Time) *Service {
 	return &Service{storage: storage, mailer: mailer, publicURL: publicURL, now: now}
-}
-
-// newSecret returns a random secret, encoded for a URL, and its SHA-256 hash.
-func newSecret() (string, [sha256.Size]byte) {
-	secret := make([]byte, secretSize)
-	rand.Read(secret)
-	return base64.RawURLEncoding.EncodeToString(secret), sha256.Sum256(secret)
 }
