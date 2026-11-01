@@ -7,6 +7,10 @@
           "email": {
             "type": "string"
           },
+          "emailVerified": {
+            "description": "Whether the account proved control of its email address with a verification link.",
+            "type": "boolean"
+          },
           "role": {
             "enum": [
               "member",
@@ -21,7 +25,8 @@
         "required": [
           "email",
           "role",
-          "totpRequired"
+          "totpRequired",
+          "emailVerified"
         ],
         "type": "object"
       },

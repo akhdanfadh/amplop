@@ -9,6 +9,7 @@ import * as zod from 'zod';
 export const ResponseCurrentSession = zod.object({
   "data": zod.object({
   "email": zod.string(),
+  "emailVerified": zod.boolean().describe('Whether the account proved control of its email address with a verification link.'),
   "role": zod.enum(['member', 'admin']),
   "totpRequired": zod.boolean()
 })

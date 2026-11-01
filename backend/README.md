@@ -368,8 +368,8 @@ cleanup; idle users' expired rows remain unusable until removed. Both cookies
 use Secure, HttpOnly, SameSite=Lax, and Path=/, without Domain.
 Authentication responses use Cache-Control: no-store.
 
-`GET /api/v0/sessions/current` returns the current email, role, and
-`totpRequired`. An administrator with confirmed TOTP receives admin access
+`GET /api/v0/sessions/current` returns the current email, role,
+`totpRequired`, and `emailVerified`. An administrator with confirmed TOTP receives admin access
 and `totpRequired: false`. An administrator without confirmed TOTP receives
 member access and `totpRequired: true`. Members always receive member access
 and `totpRequired: false`, whether or not they enable TOTP.

@@ -212,18 +212,19 @@ func TestCurrentAccess(t *testing.T) {
 		name      string
 		role      account.Role
 		confirmed bool
+		verified  bool
 		access    Access
 		required  bool
 	}{
-		{"admin off", account.RoleAdmin, false, AccessMember, true},
-		{"admin on", account.RoleAdmin, true, AccessAdmin, false},
-		{"member off", account.RoleMember, false, AccessMember, false},
-		{"member on", account.RoleMember, true, AccessMember, false},
+		{"admin off", account.RoleAdmin, false, false, AccessMember, true},
+		{"admin on", account.RoleAdmin, true, true, AccessAdmin, false},
+		{"member off", account.RoleMember, false, true, AccessMember, false},
+		{"member on", account.RoleMember, true, false, AccessMember, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			issued := newSession(42, Device{}, time.Now)
 			store := &currentStorage{row: &issued.State, identity: func(context.Context, int64) (IdentityState, error) {
-				return IdentityState{User: account.User{ID: 42, Role: c.role}, TOTPConfirmed: c.confirmed}, nil
+				return IdentityState{User: account.User{ID: 42, Role: c.role}, TOTPConfirmed: c.confirmed, EmailVerified: c.verified}, nil
 			}}
 
 			current, err := NewService(store, nil, nil, time.Now).Current(t.Context(), issued.Secret)
@@ -231,6 +232,7 @@ func TestCurrentAccess(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, c.access, current.Identity.Access)
 			assert.Equal(t, c.required, current.Identity.TOTPRequired)
+			assert.Equal(t, c.verified, current.Identity.EmailVerified, "email verification does not change access")
 		})
 	}
 }

@@ -24,15 +24,18 @@ var errInvalidRole = errors.New("invalid user role")
 // Identity is the current user and the access allowed for this request.
 // An administrator without confirmed TOTP has member access.
 type Identity struct {
-	User         account.User
-	Access       Access
-	TOTPRequired bool
+	User          account.User
+	Access        Access
+	TOTPRequired  bool
+	EmailVerified bool
 }
 
-// IdentityState is current account and factor metadata for an existing session.
+// IdentityState is the current account, factor, and email verification state
+// for an existing session.
 type IdentityState struct {
 	User          account.User
 	TOTPConfirmed bool
+	EmailVerified bool
 }
 
 // Authenticated is a checked session and the user's current identity.
@@ -89,7 +92,7 @@ func (s *Service) Current(ctx context.Context, secret string) (Authenticated, er
 	}
 
 	// Role alone is insufficient; a confirmed factor is also required.
-	identity := Identity{User: user, Access: AccessMember}
+	identity := Identity{User: user, Access: AccessMember, EmailVerified: state.EmailVerified}
 	if user.Role == account.RoleAdmin {
 		identity.TOTPRequired = !state.TOTPConfirmed
 		if state.TOTPConfirmed {

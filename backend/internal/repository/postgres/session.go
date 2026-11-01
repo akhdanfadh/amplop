@@ -216,5 +216,6 @@ func (db *DB) ReadSessionIdentity(ctx context.Context, hash [sha256.Size]byte) (
 	return session.IdentityState{
 		User:          account.User{ID: row.ID, Email: row.Email, Role: account.Role(row.Role)},
 		TOTPConfirmed: row.TotpConfirmed,
+		EmailVerified: row.EmailVerified,
 	}, nil
 }

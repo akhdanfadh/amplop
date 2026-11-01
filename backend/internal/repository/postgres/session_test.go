@@ -505,3 +505,19 @@ func TestSessionIDsMigration(t *testing.T) {
 		WHERE table_name = 'sessions' AND column_name = 'id'`).Scan(&columns))
 	assert.Zero(t, columns)
 }
+
+// The identity reads whether the account's email is verified.
+func TestReadSessionIdentityEmailVerified(t *testing.T) {
+	db, state := sessionStorage(t)
+	require.NoError(t, db.InsertSession(t.Context(), state))
+	before, err := db.ReadSessionIdentity(t.Context(), state.TokenHash)
+	require.NoError(t, err)
+	_, err = db.pool.Exec(t.Context(), "UPDATE users SET email_verified_at = now() WHERE id = $1", state.UserID)
+	require.NoError(t, err)
+
+	after, err := db.ReadSessionIdentity(t.Context(), state.TokenHash)
+	require.NoError(t, err)
+
+	assert.False(t, before.EmailVerified)
+	assert.True(t, after.EmailVerified)
+}

@@ -31,8 +31,9 @@ type Change struct {
 // Storage stores session hashes and lifetimes.
 // Updates serialize decisions for each session.
 type Storage interface {
-	// ReadSessionIdentity loads account and factor metadata in one snapshot,
-	// rechecking the session so enrollment revocation cannot grant old proof access.
+	// ReadSessionIdentity loads account, factor, and email verification state in
+	// one snapshot, rechecking the session so enrollment revocation cannot grant
+	// old proof access.
 	ReadSessionIdentity(ctx context.Context, hash [sha256.Size]byte) (IdentityState, error)
 
 	// StartSignIn locks the owner and reads the current password hash and factor.
