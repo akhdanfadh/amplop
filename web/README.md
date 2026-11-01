@@ -49,6 +49,35 @@ how Go answers each path. Go caches every file under `assets/` for a year,
 so only the build's hashed files may go there; a `public/assets` folder
 would be cached the same way and its changes not seen.
 
+### Content-Security-Policy
+
+Go sends the built app with a Content-Security-Policy; its value is in
+[Security headers](../backend/README.md#security-headers). The
+development server sends none. When a change touches any of these, run
+`make backend-build`, start `backend/bin/inbok serve`, and check that the
+browser console logs no Content Security Policy violation:
+
+- Scripts: only the build's own files and the shell's inline scripts run.
+  No `eval`, `new Function`, or inline event attributes such as `onclick`.
+  A `script` in the root route's `head` (`src/routes/__root.tsx`) lands
+  in the shell and is allowed automatically; one in any other route's
+  `head` is added in the browser and blocked.
+- Styles: stylesheets and React `style` props work. Any `<style>`
+  element, or a `style` attribute in the shell's HTML, is blocked. A
+  library that adds its own `<style>` needs its rules in a stylesheet, as
+  `src/components/ui/input-otp.tsx` does for input-otp.
+- Images, fonts, and requests: only inbok's own origin. No `data:` URLs,
+  no CDNs, and no calls to other sites.
+- Framing: no site, inbok included, may show a page in a frame.
+
+Zod's compiled checks need `new Function`, so `src/zod-config.ts` turns
+them off with `z.config({ jitless: true })`. Zod reads that setting when a
+schema is created, and schemas are created as their modules load, so
+`src/router.tsx` imports it first. `vite.config.ts` sets Rolldown's
+`strictExecutionOrder` so the bundle keeps that order. input-otp's own
+`<style>` is kept out by a workaround explained in
+`src/components/ui/input-otp.tsx`.
+
 ## Vite+
 
 The app uses [Vite+](https://viteplus.dev), whose `vp` command runs
@@ -346,7 +375,7 @@ query never asks for a check. `problemExplanation(err)` returns the
 detail-else-title text, and `uncertainMessage(err, advice)` puts that text
 before the feature's advice, e.g. "Check the list before trying again."
 
-Zod's messages are developer text: `src/router.tsx`
+Zod's messages are developer text: `src/zod-config.ts`
 replaces them app-wide with `src/api/validation.ts`, which states the
 field's rule, e.g. "Enter a whole number from 1 to 10.".
 

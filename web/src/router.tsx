@@ -1,8 +1,8 @@
+// First: Zod's settings must apply to every schema the imports below create.
+import "./zod-config";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, type Router } from "@tanstack/react-router";
-import * as z from "zod";
 import { retryOptions } from "@/api/retry";
-import { validationMessage } from "@/api/validation";
 import { captureLinkSecret } from "@/features/email-verification/link-secret";
 import { routeTree } from "./routeTree.gen";
 
@@ -11,9 +11,6 @@ export function getRouter(): Router<typeof routeTree> {
   // Before the router reads the address or any request starts, so a failed
   // request cannot leave a verification secret in the address bar.
   captureLinkSecret();
-
-  // Every Zod check in the app, e.g. a form's, reports in the app's words.
-  z.config({ customError: validationMessage });
 
   const queryClient = new QueryClient({
     defaultOptions: retryOptions,

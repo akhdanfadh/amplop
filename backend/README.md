@@ -110,7 +110,8 @@ app's code: whatever the build's shell holds is allowed, and the web app
 keeps to the rest. API responses get no Content-Security-Policy; Huma's
 docs page at `/api/v0/docs` sets its own, since it loads scripts from
 unpkg.com. HTTPS-only (HSTS) is the proxy's header, because Go itself
-serves plain HTTP.
+serves plain HTTP. `web/README.md` lists what the policy means for web
+code.
 
 ## API contract
 
