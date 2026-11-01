@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProbeRouteImport } from './routes/probe'
 import { Route as SecurityRouteImport } from './routes/security'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
 
@@ -30,6 +31,11 @@ const SecurityRoute = SecurityRouteImport.update({
   path: '/security',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
   path: '/setup',
@@ -45,6 +51,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/probe': typeof ProbeRoute
   '/security': typeof SecurityRoute
+  '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
 }
@@ -52,6 +59,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/probe': typeof ProbeRoute
   '/security': typeof SecurityRoute
+  '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
 }
@@ -60,21 +68,30 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/probe': typeof ProbeRoute
   '/security': typeof SecurityRoute
+  '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/probe' | '/security' | '/setup' | '/sign-in'
+  fullPaths: '/' | '/probe' | '/security' | '/settings' | '/setup' | '/sign-in'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/probe' | '/security' | '/setup' | '/sign-in'
-  id: '__root__' | '/' | '/probe' | '/security' | '/setup' | '/sign-in'
+  to: '/' | '/probe' | '/security' | '/settings' | '/setup' | '/sign-in'
+  id:
+    | '__root__'
+    | '/'
+    | '/probe'
+    | '/security'
+    | '/settings'
+    | '/setup'
+    | '/sign-in'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ProbeRoute: typeof ProbeRoute
   SecurityRoute: typeof SecurityRoute
+  SettingsRoute: typeof SettingsRoute
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
 }
@@ -102,6 +119,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SecurityRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/setup': {
       id: '/setup'
       path: '/setup'
@@ -123,6 +147,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ProbeRoute: ProbeRoute,
   SecurityRoute: SecurityRoute,
+  SettingsRoute: SettingsRoute,
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
 }

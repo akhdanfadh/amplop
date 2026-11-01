@@ -54,7 +54,7 @@ function Security() {
 
   return (
     <>
-      <AccountNav />
+      <AccountNav account={current.data?.data} />
       <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
         <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
           Account security

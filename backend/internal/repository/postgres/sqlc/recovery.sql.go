@@ -80,20 +80,6 @@ func (q *Queries) DeleteUserSignInChallenges(ctx context.Context, userID int64) 
 	return result.RowsAffected(), nil
 }
 
-const insertAuditEvent = `-- name: InsertAuditEvent :exec
-INSERT INTO audit_events (action, user_id) VALUES ($1, $2)
-`
-
-type InsertAuditEventParams struct {
-	Action string
-	UserID int64
-}
-
-func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error {
-	_, err := q.db.Exec(ctx, insertAuditEvent, arg.Action, arg.UserID)
-	return err
-}
-
 const lockRecoveryUser = `-- name: LockRecoveryUser :one
 SELECT id, email, role FROM users WHERE id = $1 FOR UPDATE
 `

@@ -13,7 +13,7 @@ is removed before the first release.
 
 - Go 1.27.1 or newer
 - pnpm, which downloads the pinned pnpm and Node.js versions itself
-- Docker, for PostgreSQL and the Go database tests
+- Docker, for PostgreSQL, Mailpit, and the Go database tests
 - A C compiler, e.g. gcc, for SQLC, which `make generate` and
   `make check` run
 - GNU Make
@@ -23,13 +23,13 @@ is removed before the first release.
 From the repository root:
 
 ```sh
-make db-start    # PostgreSQL in Docker; creates .env from .env.example
+make db-start    # PostgreSQL and Mailpit; creates .env from .env.example
 make db-migrate  # create the tables
 make dev         # Go on 127.0.0.1:8080, the web app on localhost:5173
 ```
 
 Open `http://localhost:5173`. Ctrl+C stops both servers; `make db-stop`
-stops PostgreSQL and keeps its data.
+stops PostgreSQL and Mailpit and keeps the database.
 
 To create the first administrator, follow
 [First administrator setup](backend/README.md#first-administrator-setup),

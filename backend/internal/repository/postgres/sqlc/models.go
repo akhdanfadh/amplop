@@ -12,10 +12,11 @@ import (
 )
 
 type AuditEvent struct {
-	ID         int64
-	OccurredAt time.Time
-	Action     string
-	UserID     int64
+	ID           int64
+	OccurredAt   time.Time
+	Action       string
+	TargetUserID *int64
+	ActorUserID  *int64
 }
 
 type ProbeCounter struct {
@@ -55,6 +56,20 @@ type SignInChallenge struct {
 	UserID    int64
 	ExpiresAt time.Time
 	Failures  int32
+}
+
+type SystemEmail struct {
+	ID                 bool
+	Host               string
+	Port               int32
+	Security           string
+	Username           *string
+	PasswordKeyID      *string
+	PasswordCiphertext []byte
+	FromAddress        string
+	FromName           string
+	TestedAt           *time.Time
+	Revision           int64
 }
 
 type TotpAttempt struct {

@@ -62,7 +62,7 @@ func (db *DB) UpdateRecovery(ctx context.Context, userID int64, update func(acco
 		if err != nil {
 			return fmt.Errorf("clear recovery sign-in attempts: %w", err)
 		}
-		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{UserID: userID, Action: adminRecoveredAction}); err != nil {
+		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{Action: adminRecoveredAction, TargetUserID: &userID}); err != nil {
 			return fmt.Errorf("record administrator recovery: %w", err)
 		}
 		return nil

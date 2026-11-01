@@ -243,6 +243,62 @@
         ],
         "type": "object"
       },
+      "NewSystemEmailSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "fromAddress": {
+            "format": "email",
+            "maxLength": 254,
+            "minLength": 3,
+            "type": "string"
+          },
+          "fromName": {
+            "maxLength": 64,
+            "pattern": "\\S",
+            "patternDescription": "not blank",
+            "type": "string"
+          },
+          "host": {
+            "maxLength": 253,
+            "pattern": "\\S",
+            "patternDescription": "not blank",
+            "type": "string"
+          },
+          "password": {
+            "description": "Omit or leave empty to keep the saved password, if the host, port, and username are unchanged.",
+            "maxLength": 255,
+            "type": "string",
+            "writeOnly": true
+          },
+          "port": {
+            "format": "int64",
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "security": {
+            "enum": [
+              "tls",
+              "starttls",
+              "none"
+            ],
+            "type": "string"
+          },
+          "username": {
+            "description": "Omit or leave empty for a server that needs no sign-in.",
+            "maxLength": 254,
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "port",
+          "security",
+          "fromAddress",
+          "fromName"
+        ],
+        "type": "object"
+      },
       "ProbeEvent": {
         "additionalProperties": false,
         "properties": {
@@ -433,6 +489,30 @@
         ],
         "type": "object"
       },
+      "ResponseSystemEmail": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SystemEmail"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponseSystemEmailTestMessageResult": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SystemEmailTestMessageResult"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "ResponseTotpBackupCodes": {
         "additionalProperties": false,
         "properties": {
@@ -511,6 +591,113 @@
         },
         "required": [
           "step"
+        ],
+        "type": "object"
+      },
+      "SystemEmail": {
+        "additionalProperties": false,
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/SystemEmailSettings",
+            "description": "Absent until an administrator saves settings."
+          }
+        },
+        "type": "object"
+      },
+      "SystemEmailSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "fromAddress": {
+            "type": "string"
+          },
+          "fromName": {
+            "type": "string"
+          },
+          "hasPassword": {
+            "description": "Whether a password is saved. The password itself is never returned.",
+            "type": "boolean"
+          },
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "security": {
+            "enum": [
+              "tls",
+              "starttls",
+              "none"
+            ],
+            "type": "string"
+          },
+          "testedAt": {
+            "description": "When these settings last passed a test message; null if they have not.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "description": "Empty when the server needs no sign-in.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "port",
+          "security",
+          "username",
+          "hasPassword",
+          "fromAddress",
+          "fromName",
+          "testedAt"
+        ],
+        "type": "object"
+      },
+      "SystemEmailTestMessageRecipient": {
+        "additionalProperties": false,
+        "properties": {
+          "recipient": {
+            "description": "Where to send the test message.",
+            "format": "email",
+            "maxLength": 254,
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipient"
+        ],
+        "type": "object"
+      },
+      "SystemEmailTestMessageResult": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "description": "The step that failed. Present only when status is failed.",
+            "enum": [
+              "connect",
+              "tls",
+              "auth",
+              "sender",
+              "recipient",
+              "timeout"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "description": "Accepted means the server took the message for delivery, not that it arrived.",
+            "enum": [
+              "accepted",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
         ],
         "type": "object"
       },
@@ -1333,6 +1520,352 @@
           }
         },
         "summary": "Create the first administrator"
+      }
+    },
+    "/system-email": {
+      "get": {
+        "description": "The instance's own sender, separate from members' mailboxes. The password is never returned.",
+        "operationId": "getSystemEmail",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSystemEmail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "type": "/api/v0/problems/forbidden",
+                      "status": 403,
+                      "title": "Access denied",
+                      "detail": "You do not have access to this operation."
+                    }
+                  },
+                  "totpRequired": {
+                    "value": {
+                      "type": "/api/v0/problems/totp-required",
+                      "status": 403,
+                      "title": "TOTP required",
+                      "detail": "Set up two-factor authentication to use administrator features."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The account is not an administrator, or has not set up two-factor authentication."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get the system email settings"
+      },
+      "put": {
+        "description": "Saving clears the tested time until a test message passes. The save is recorded in the audit log, without setting values.",
+        "operationId": "saveSystemEmail",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewSystemEmailSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSystemEmail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "type": "/api/v0/problems/forbidden",
+                      "status": 403,
+                      "title": "Access denied",
+                      "detail": "You do not have access to this operation."
+                    }
+                  },
+                  "totpRequired": {
+                    "value": {
+                      "type": "/api/v0/problems/totp-required",
+                      "status": 403,
+                      "title": "TOTP required",
+                      "detail": "Set up two-factor authentication to use administrator features."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The account is not an administrator, or has not set up two-factor authentication."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "cleartextUsername": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs.",
+                      "errors": [
+                        {
+                          "location": "body.security",
+                          "message": "Choose TLS or STARTTLS to sign in with a username."
+                        }
+                      ]
+                    }
+                  },
+                  "invalidInput": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs."
+                    }
+                  },
+                  "passwordRequired": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs.",
+                      "errors": [
+                        {
+                          "location": "body.password",
+                          "message": "Enter the password for this server and username."
+                        }
+                      ]
+                    }
+                  },
+                  "passwordWithoutUsername": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs.",
+                      "errors": [
+                        {
+                          "location": "body.username",
+                          "message": "Enter the username for this password."
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request inputs are invalid or do not fit together."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Replace the system email settings"
+      }
+    },
+    "/system-email/test-message": {
+      "post": {
+        "description": "A server or network refusal is a failed result, not an error. A pass records the tested time; a failure clears it. Test messages are not audited.",
+        "operationId": "sendSystemEmailTestMessage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemEmailTestMessageRecipient"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSystemEmailTestMessageResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "type": "/api/v0/problems/forbidden",
+                      "status": 403,
+                      "title": "Access denied",
+                      "detail": "You do not have access to this operation."
+                    }
+                  },
+                  "totpRequired": {
+                    "value": {
+                      "type": "/api/v0/problems/totp-required",
+                      "status": 403,
+                      "title": "TOTP required",
+                      "detail": "Set up two-factor authentication to use administrator features."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The account is not an administrator, or has not set up two-factor authentication."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/system-email-not-configured",
+                  "status": 409,
+                  "title": "System email not configured",
+                  "detail": "Save the system email settings before sending a test message."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No system email settings are saved."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/validation-error",
+                  "status": 422,
+                  "title": "Invalid request",
+                  "detail": "Correct the rejected request inputs."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The recipient is missing or not a single email address."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Send a test message with the saved system email settings"
       }
     },
     "/totp": {

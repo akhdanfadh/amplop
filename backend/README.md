@@ -205,7 +205,7 @@ in-flight requests up to 5 seconds to finish.
 | `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL; see Migrations below. |
 | `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
 | `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
-| `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets; see Encryption keys below. Invalid entries stop startup. |
+| `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets and the system email password; see Encryption keys below. Invalid entries stop startup. |
 | `GIN_MODE` | `debug` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
@@ -219,20 +219,24 @@ without leading zeros; each key is 32 random bytes in standard base64, from
 `openssl rand -base64 32`. Startup fails, without printing key material, if
 the list is empty or an entry is malformed or repeated.
 
-The first entry encrypts new TOTP secrets with AES-256-GCM. Every entry can
-decrypt. Each stored secret records its key ID and is bound to its user, so
-a ciphertext copied to another user does not decrypt. Backup codes and
+The first entry encrypts new TOTP secrets and a newly entered system email
+password with AES-256-GCM. Every entry can decrypt. Each stored secret
+records its key ID and is bound to what it belongs to: a TOTP secret to its
+user, the system email password to its mail server host, port, and username.
+A ciphertext copied elsewhere does not decrypt. Backup codes and account
 passwords use Argon2id hashes and do not depend on these keys.
 
 To rotate, generate a key, put it first under an unused ID, keep the old
 entries, and restart every API instance with the same list. Existing secrets
 are not re-encrypted; each keeps its original key until that factor is
-removed and enrolled again. Administrators cannot turn TOTP off, so their
-factors can need an old key indefinitely. Remove an old key only when no
-`user_totp` row uses its ID:
+removed and enrolled again, and the system email password keeps its key
+until an administrator saves a new password. Administrators cannot turn TOTP
+off, so their factors can need an old key indefinitely. Remove an old key
+only when neither query lists its ID:
 
 ```sql
 SELECT key_id, count(*) FROM user_totp GROUP BY key_id;
+SELECT password_key_id FROM system_email WHERE password_key_id IS NOT NULL;
 ```
 
 Back up the key list separately from database backups, so one stolen backup
@@ -241,7 +245,10 @@ survive losing the database host. A database restore needs every key its
 rows use. If a key is lost, authenticator codes for its users fail with
 HTTP 500. Their unused backup codes still sign in, and members can use one to
 turn TOTP off and enroll again. Administrators cannot remove the factor
-themselves; use host-operator recovery below.
+themselves; use host-operator recovery below. A lost key also makes the
+system email password unreadable: test messages fail with HTTP 500 and the
+settings lose their tested time until an administrator enters the password
+again and saves. The web app shows that 500 as a lost test result.
 
 ## Reverse proxies
 
@@ -470,15 +477,14 @@ docker exec -it inbok /app/inbok recover-admin admin@example.com
 ```
 
 For piped input, use `docker exec -i` without `-t` so it uses the one-line
-input mode. This repository's Compose file starts only PostgreSQL; it does
-not provide an application container.
+input mode. This repository's Compose file starts PostgreSQL and Mailpit; it
+does not provide an application container.
 
 Recovery checks that the account is an administrator, then replaces the
 password, removes TOTP and every backup code, ends all sessions and sign-in
 challenges, clears that account's code and sign-in attempt rows, and records
 an `admin-recovered` event in `audit_events`. These writes commit together.
-Counts are printed without secrets. Notification email is deferred until
-system email exists.
+Counts are printed without secrets. Recovery sends no notification email.
 
 The administrator signs in with the new password and has member access until
 they enroll TOTP on the Security page. Confirmation restores administrator
@@ -490,11 +496,87 @@ If the command reports unconfirmed success after interruption or a database
 error, inspect the audit table before retrying. It contains no credentials:
 
 ```sql
-SELECT id, occurred_at, action, user_id
+SELECT id, occurred_at, action, target_user_id
 FROM audit_events
 WHERE action = 'admin-recovered'
 ORDER BY id DESC;
 ```
+
+## System email
+
+System email is the mail server inbok sends its own messages through,
+separate from members' mailboxes. It has no environment variables: an
+administrator with confirmed TOTP configures it on the web app's Settings
+page, which calls `GET` and `PUT /api/v0/system-email` and
+`POST /api/v0/system-email/test-message`. Nothing sends through it yet
+except the test message.
+
+The settings are one `system_email` row: host, port, security, an optional
+username and password, and the From address and name. Security is `tls`
+(TLS from the first byte, usually port 465), `starttls` (required: a server
+that does not offer it fails the send, usually port 587), or `none`. `none`
+sends the whole message unencrypted and unchecked, so use it only for a
+server on the same host or a trusted private network. It allows no username, and inbok never signs in
+without TLS, so the password never crosses the network in clear text. TLS
+checks the server's certificate against the host name with the system's
+roots and needs TLS 1.2 or newer. The host, username, and From address are saved
+without surrounding spaces, so a username of only spaces means no sign-in.
+
+The password is write-only. Reads return `hasPassword`; the value is
+encrypted with `INBOK_ENCRYPTION_KEYS` and bound to the host, port, and
+username it was entered for. A save without a password keeps the saved one
+only when those three are unchanged, so an administrator cannot move it to a
+server they control and read it there. Clearing the username clears the
+saved password.
+
+Saving replaces the whole row, clears the tested time, and records a
+`system-email-saved` event in `audit_events` with the saving administrator
+as `actor_user_id`, in the same transaction. The event holds no setting
+values. A test message sends a short fixed message to the given recipient
+with the saved settings. A pass sets the tested time. A `failed` result
+clears it, even when only the recipient was refused, and so does a password
+that no longer decrypts. Tests are not audited. A test that ends after a
+newer save leaves that save's tested time alone.
+
+A test answers `accepted` or `failed` with the step that failed: `connect`,
+`tls`, `auth`, `sender`, `recipient`, or `timeout`. Accepted means the server
+took the message for delivery, not that it arrived. One send, from dialing to
+the server's last reply, has at most 8 seconds, inside the 10-second request
+limit. A
+failed test logs a warning with the reason, host, port, security, username,
+and the first 512 bytes of the error. inbok never adds the password; the
+text can include the server's own reply. Only the request's own log line carries its
+`request_id`, so match the two by time:
+
+```text
+time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email test message failed" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="..."
+```
+
+To list saves, with no setting values:
+
+```sql
+SELECT id, occurred_at, actor_user_id
+FROM audit_events
+WHERE action = 'system-email-saved'
+ORDER BY id DESC;
+```
+
+### Testing with Mailpit
+
+`make db-start` also starts Mailpit, which accepts any message and shows it
+in a web page instead of delivering it. On the Settings page, save:
+
+| Field | Value |
+|---|---|
+| Mail server | `127.0.0.1` |
+| Port | `1025`, or `INBOK_MAILPIT_SMTP_PORT` from `.env` |
+| Security | None |
+| Username and password | empty |
+| From address and name | any, e.g. `inbok@example.com` and `inbok` |
+
+Then send a test message and open `http://localhost:8025`
+(`INBOK_MAILPIT_WEB_PORT`) to read it. Mailpit deletes its messages when it
+stops and keeps the newest 500.
 
 ## Logs and request IDs
 
@@ -632,6 +714,8 @@ outside world. An arrow means "imports":
 
 ```text
 httpapi --> probe <-- repository/postgres
+httpapi --> systememail <-- repository/postgres
+                        <-- smtp
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -648,6 +732,10 @@ httpapi --> probe <-- repository/postgres
   method running one transaction, as `UpdateCounter` does. `DB` method
   names must be unique across features; when two clash, qualify the newer
   one.
+- `smtp`, like `repository/postgres`, is a technology package: it
+  implements the `Sender` interface that `systememail` declares, using the
+  emersion SMTP libraries. A technology package is named for its technology
+  and imports features, never the other way around.
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
   in `httpapi.Services`.
 

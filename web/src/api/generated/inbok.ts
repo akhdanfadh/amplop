@@ -32,6 +32,8 @@ import {
   ResponseProbeEventCreated,
   ResponseSetupStatus,
   ResponseSignInResult,
+  ResponseSystemEmail,
+  ResponseSystemEmailTestMessageResult,
   ResponseTotpBackupCodes,
   ResponseTotpConfirmation,
   ResponseTotpEnrollment,
@@ -42,7 +44,9 @@ import type {
   NewProbeEvent,
   NewSession,
   NewSetup,
+  NewSystemEmailSettings,
   Problem,
+  SystemEmailTestMessageRecipient,
   TotpConfirmationCode,
   TotpDisableCode,
   TotpRegenerationCode
@@ -1057,6 +1061,289 @@ export const useCreateFirstAdmin = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getCreateFirstAdminMutationOptions(options), queryClient);
+    }
+
+export const getGetSystemEmailUrl = () => {
+
+
+
+
+  return `/api/v0/system-email`
+}
+
+/**
+ * The instance's own sender, separate from members' mailboxes. The password is never returned.
+ * @summary Get the system email settings
+ */
+export const getSystemEmail = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseSystemEmail> => {
+
+  return transport<ResponseSystemEmail>(getGetSystemEmailUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseSystemEmail
+  }
+);}
+
+
+
+
+
+export const getGetSystemEmailQueryKey = () => {
+    return [
+    `/api/v0/system-email`
+    ] as const;
+    }
+
+
+export const getGetSystemEmailQueryOptions = <TData = Awaited<ReturnType<typeof getSystemEmail>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemEmail>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSystemEmailQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSystemEmail>>> = ({ signal }) => getSystemEmail({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSystemEmail>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSystemEmailQueryResult = NonNullable<Awaited<ReturnType<typeof getSystemEmail>>>
+export type GetSystemEmailQueryError = ErrorType<Problem>
+
+
+export function useGetSystemEmail<TData = Awaited<ReturnType<typeof getSystemEmail>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemEmail>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSystemEmail>>,
+          TError,
+          Awaited<ReturnType<typeof getSystemEmail>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSystemEmail<TData = Awaited<ReturnType<typeof getSystemEmail>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemEmail>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSystemEmail>>,
+          TError,
+          Awaited<ReturnType<typeof getSystemEmail>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSystemEmail<TData = Awaited<ReturnType<typeof getSystemEmail>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemEmail>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get the system email settings
+ */
+
+export function useGetSystemEmail<TData = Awaited<ReturnType<typeof getSystemEmail>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemEmail>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSystemEmailQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveSystemEmailUrl = () => {
+
+
+
+
+  return `/api/v0/system-email`
+}
+
+/**
+ * Saving clears the tested time until a test message passes. The save is recorded in the audit log, without setting values.
+ * @summary Replace the system email settings
+ */
+export const saveSystemEmail = async (newSystemEmailSettings: NewSystemEmailSettings, options?: Parameters<typeof transport>[1]): Promise<ResponseSystemEmail> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseSystemEmail>(getSaveSystemEmailUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newSystemEmailSettings),
+    schema: ResponseSystemEmail
+  }
+);}
+
+
+
+
+
+export const getSaveSystemEmailMutationKey = () => ['saveSystemEmail'] as const;
+
+export const getSaveSystemEmailMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveSystemEmail>>, TError,SaveSystemEmailMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveSystemEmail>>, TError,SaveSystemEmailMutationVariables, TContext> => {
+
+const mutationKey = getSaveSystemEmailMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveSystemEmail>>, SaveSystemEmailMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveSystemEmail(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveSystemEmailMutationResult = NonNullable<Awaited<ReturnType<typeof saveSystemEmail>>>
+    export type SaveSystemEmailMutationBody = NewSystemEmailSettings
+    export type SaveSystemEmailMutationError = ErrorType<Problem>
+    export type SaveSystemEmailMutationVariables = {data: NewSystemEmailSettings}
+
+    /**
+ * @summary Replace the system email settings
+ */
+export const useSaveSystemEmail = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveSystemEmail>>, TError,SaveSystemEmailMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof saveSystemEmail>>,
+        TError,
+        SaveSystemEmailMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveSystemEmailMutationOptions(options), queryClient);
+    }
+
+export const getSendSystemEmailTestMessageUrl = () => {
+
+
+
+
+  return `/api/v0/system-email/test-message`
+}
+
+/**
+ * A server or network refusal is a failed result, not an error. A pass records the tested time; a failure clears it. Test messages are not audited.
+ * @summary Send a test message with the saved system email settings
+ */
+export const sendSystemEmailTestMessage = async (systemEmailTestMessageRecipient: SystemEmailTestMessageRecipient, options?: Parameters<typeof transport>[1]): Promise<ResponseSystemEmailTestMessageResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseSystemEmailTestMessageResult>(getSendSystemEmailTestMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(systemEmailTestMessageRecipient),
+    schema: ResponseSystemEmailTestMessageResult
+  }
+);}
+
+
+
+
+
+export const getSendSystemEmailTestMessageMutationKey = () => ['sendSystemEmailTestMessage'] as const;
+
+export const getSendSystemEmailTestMessageMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSystemEmailTestMessage>>, TError,SendSystemEmailTestMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendSystemEmailTestMessage>>, TError,SendSystemEmailTestMessageMutationVariables, TContext> => {
+
+const mutationKey = getSendSystemEmailTestMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendSystemEmailTestMessage>>, SendSystemEmailTestMessageMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendSystemEmailTestMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendSystemEmailTestMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendSystemEmailTestMessage>>>
+    export type SendSystemEmailTestMessageMutationBody = SystemEmailTestMessageRecipient
+    export type SendSystemEmailTestMessageMutationError = ErrorType<Problem>
+    export type SendSystemEmailTestMessageMutationVariables = {data: SystemEmailTestMessageRecipient}
+
+    /**
+ * @summary Send a test message with the saved system email settings
+ */
+export const useSendSystemEmailTestMessage = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSystemEmailTestMessage>>, TError,SendSystemEmailTestMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof sendSystemEmailTestMessage>>,
+        TError,
+        SendSystemEmailTestMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendSystemEmailTestMessageMutationOptions(options), queryClient);
     }
 
 export const getGetTOTPStatusUrl = () => {

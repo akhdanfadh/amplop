@@ -13,21 +13,27 @@ It also fails when generated code, e.g. `api/generated/openapi.json`, is
 out of date with its source, and names the command that updates it.
 Commands that need `.env` copy it from `.env.example` when it is missing.
 
-## Local database
+## Local database and mail
 
-PostgreSQL runs in Docker Compose (`compose.yaml`). From the repository
-root, create your local settings once, then start it in the background:
+PostgreSQL and Mailpit run in Docker Compose (`compose.yaml`). From the
+repository root, create your local settings once, then start them in the
+background:
 
 ```sh
 cp .env.example .env
 docker compose up -d --wait
 ```
 
-`--wait` returns once PostgreSQL accepts connections on
-`127.0.0.1:5432` (`INBOK_POSTGRES_PORT` in `.env`). Data lives in a Docker
+`--wait` returns once PostgreSQL accepts connections on `127.0.0.1:5432`
+(`INBOK_POSTGRES_PORT` in `.env`) and Mailpit is ready. PostgreSQL's data lives in a Docker
 volume and survives `docker compose down`. To delete it and start empty,
 e.g. after changing the user or password in `.env`, run
 `docker compose down -v`.
+
+Mailpit catches mail sent to `127.0.0.1:1025` (`INBOK_MAILPIT_SMTP_PORT`)
+and shows it at `http://localhost:8025` (`INBOK_MAILPIT_WEB_PORT`). It deletes
+its messages when it stops. To send inbok's test message there, see
+[System email](backend/README.md#system-email).
 
 ## Changing the API
 
