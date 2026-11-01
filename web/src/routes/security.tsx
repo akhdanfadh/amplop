@@ -5,6 +5,7 @@ import { useGetCurrentSession, useDeleteCurrentSession } from "@/api/generated/i
 import { userMessage } from "@/api/problem";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { sessionMessage } from "@/features/auth/session-error";
+import { EmailVerificationSection } from "@/features/email-verification/section";
 import { SessionList } from "@/features/sessions/list";
 import { Enrollment } from "@/features/totp/enrollment";
 import { AccountNav } from "@/components/account-nav";
@@ -23,6 +24,7 @@ function Security() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [writing, setWriting] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [sending, setSending] = useState(false);
   const [hasCodes, setHasCodes] = useState(false);
   const signOut = useDeleteCurrentSession({
     mutation: {
@@ -77,8 +79,16 @@ function Security() {
         {current.data && current.error?.status !== unauthorized && (
           // Stay mounted to keep one-time codes; stay shown during background
           // checks so a code field keeps focus. Enrollment and SessionList lock
-          // each other: confirming TOTP replaces this session's cookie.
+          // each other: confirming TOTP replaces this session's cookie. So do
+          // Enrollment and EmailVerificationSection.
           <div className="flex flex-col gap-8" hidden={!current.isSuccess}>
+            <EmailVerificationSection
+              key={current.data.data.email}
+              email={current.data.data.email}
+              verified={current.data.data.emailVerified}
+              locked={!ready || writing || signOut.isPending}
+              onWritingChange={setSending}
+            />
             <div>
               {current.data.data.totpRequired && (
                 <p className="mb-6">
@@ -88,7 +98,7 @@ function Security() {
               <Enrollment
                 key={current.data.data.email}
                 role={current.data.data.role}
-                locked={!ready || ending}
+                locked={!ready || ending || sending}
                 onWritingChange={setWriting}
                 onCodesChange={setHasCodes}
               />
@@ -105,7 +115,7 @@ function Security() {
             type="button"
             variant="outline"
             className="min-h-11 w-fit border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            disabled={!ready || writing || ending || hasCodes || signOut.isPending}
+            disabled={!ready || writing || ending || sending || hasCodes || signOut.isPending}
             onClick={() => signOut.mutate()}
           >
             {signOut.isPending ? "Signing out..." : "Sign out of this browser"}

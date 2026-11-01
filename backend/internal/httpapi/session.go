@@ -298,11 +298,13 @@ func codeSignInProblem(err error) error {
 // Current session
 // ========================
 
-// currentSession is the signed-in account and its TOTP enrollment requirement.
+// currentSession is the signed-in account, its TOTP enrollment requirement,
+// and whether its email is verified.
 type currentSession struct {
-	Email        string       `json:"email"`
-	Role         account.Role `json:"role" enum:"member,admin"`
-	TOTPRequired bool         `json:"totpRequired"`
+	Email         string       `json:"email"`
+	Role          account.Role `json:"role" enum:"member,admin"`
+	TOTPRequired  bool         `json:"totpRequired"`
+	EmailVerified bool         `json:"emailVerified" doc:"Whether the account proved control of its email address with a verification link."`
 }
 
 // registerCurrentSession adds the signed-in account operation.
@@ -321,7 +323,10 @@ func registerCurrentSession(api huma.API, handler sessionHandler) {
 // handleGetCurrentSession returns the identity checked by access middleware.
 func (h sessionHandler) handleGetCurrentSession(ctx context.Context, _ *struct{}) (*output[currentSession], error) {
 	identity := ctx.Value(sessionKey{}).(session.Authenticated).Identity
-	return respondData(currentSession{Email: identity.User.Email, Role: identity.User.Role, TOTPRequired: identity.TOTPRequired}), nil
+	return respondData(currentSession{
+		Email: identity.User.Email, Role: identity.User.Role,
+		TOTPRequired: identity.TOTPRequired, EmailVerified: identity.EmailVerified,
+	}), nil
 }
 
 func currentSessionResponses(api huma.API) map[string]*huma.Response {

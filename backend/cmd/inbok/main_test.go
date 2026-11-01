@@ -56,6 +56,7 @@ func TestMigrateNoURL(t *testing.T) {
 // serve names the missing setting before touching a database or a port.
 func TestServeNoURL(t *testing.T) {
 	t.Setenv("INBOK_ENCRYPTION_KEYS", "1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
+	t.Setenv("INBOK_PUBLIC_URL", "https://mail.example.com")
 	t.Setenv("INBOK_DATABASE_URL", "")
 	t.Setenv("INBOK_SETUP_TOKEN", "")
 	t.Setenv("INBOK_TRUSTED_PROXIES", "")
@@ -159,6 +160,7 @@ func TestServeEncryptionKeys(t *testing.T) {
 			t.Setenv("INBOK_HTTP_ADDR", "")
 			t.Setenv("INBOK_SETUP_TOKEN", "")
 			t.Setenv("INBOK_TRUSTED_PROXIES", "")
+			t.Setenv("INBOK_PUBLIC_URL", "https://mail.example.com")
 			t.Setenv("INBOK_DATABASE_URL", "")
 			t.Setenv("INBOK_ENCRYPTION_KEYS", value)
 			err := run(context.Background(), []string{"serve"}, discard)
@@ -166,6 +168,24 @@ func TestServeEncryptionKeys(t *testing.T) {
 			if value != "" {
 				assert.NotContains(t, err.Error(), value)
 			}
+		})
+	}
+}
+
+// A missing or unusable public URL stops serve before database or listener
+// startup.
+func TestServePublicURL(t *testing.T) {
+	for _, value := range []string{"", "http://mail.example.com", "https://mail.example.com/inbok"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("INBOK_HTTP_ADDR", "")
+			t.Setenv("INBOK_SETUP_TOKEN", "")
+			t.Setenv("INBOK_TRUSTED_PROXIES", "")
+			t.Setenv("INBOK_DATABASE_URL", "")
+			t.Setenv("INBOK_ENCRYPTION_KEYS", "1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
+			t.Setenv("INBOK_PUBLIC_URL", value)
+
+			err := run(context.Background(), []string{"serve"}, discard)
+			require.ErrorContains(t, err, "INBOK_PUBLIC_URL")
 		})
 	}
 }

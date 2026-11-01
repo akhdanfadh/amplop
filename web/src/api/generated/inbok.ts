@@ -25,11 +25,13 @@ import type {
 
 import {
   ResponseCurrentSession,
+  ResponseEmailVerificationResult,
   ResponseEndedSessions,
   ResponseFirstAdmin,
   ResponseHealthStatus,
   ResponseListedSessions,
   ResponseProbeEventCreated,
+  ResponseSentEmailVerification,
   ResponseSetupStatus,
   ResponseSignInResult,
   ResponseSystemEmail,
@@ -40,6 +42,7 @@ import {
   ResponseTotpStatus
 } from './model';
 import type {
+  EmailVerificationSecret,
   NewCodeSession,
   NewProbeEvent,
   NewSession,
@@ -72,6 +75,172 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getRequestEmailVerificationUrl = () => {
+
+
+
+
+  return `/api/v0/account/email-verification`
+}
+
+/**
+ * The link expires in 24 hours, and every unexpired link works until one is used. At most 3 links are sent in 15 minutes and 10 in 24 hours.
+ * @summary Email a link that verifies the account's email address
+ */
+export const requestEmailVerification = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseSentEmailVerification> => {
+
+  return transport<ResponseSentEmailVerification>(getRequestEmailVerificationUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+    ,
+    schema: ResponseSentEmailVerification
+  }
+);}
+
+
+
+
+
+export const getRequestEmailVerificationMutationKey = () => ['requestEmailVerification'] as const;
+
+export const getRequestEmailVerificationMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestEmailVerification>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestEmailVerification>>, TError,void, TContext> => {
+
+const mutationKey = getRequestEmailVerificationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestEmailVerification>>, void> = () => {
+
+
+          return  requestEmailVerification(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestEmailVerificationMutationResult = NonNullable<Awaited<ReturnType<typeof requestEmailVerification>>>
+
+    export type RequestEmailVerificationMutationError = ErrorType<Problem>
+
+
+    /**
+ * @summary Email a link that verifies the account's email address
+ */
+export const useRequestEmailVerification = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestEmailVerification>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof requestEmailVerification>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRequestEmailVerificationMutationOptions(options), queryClient);
+    }
+
+export const getRedeemEmailVerificationUrl = () => {
+
+
+
+
+  return `/api/v0/email-verifications/redeem`
+}
+
+/**
+ * Needs no session and signs no one in. Redeeming a link uses up every link sent to that account.
+ * @summary Verify an email address with an emailed link
+ */
+export const redeemEmailVerification = async (emailVerificationSecret: EmailVerificationSecret, options?: Parameters<typeof transport>[1]): Promise<ResponseEmailVerificationResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseEmailVerificationResult>(getRedeemEmailVerificationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(emailVerificationSecret),
+    schema: ResponseEmailVerificationResult
+  }
+);}
+
+
+
+
+
+export const getRedeemEmailVerificationMutationKey = () => ['redeemEmailVerification'] as const;
+
+export const getRedeemEmailVerificationMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemEmailVerification>>, TError,RedeemEmailVerificationMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof redeemEmailVerification>>, TError,RedeemEmailVerificationMutationVariables, TContext> => {
+
+const mutationKey = getRedeemEmailVerificationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof redeemEmailVerification>>, RedeemEmailVerificationMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  redeemEmailVerification(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RedeemEmailVerificationMutationResult = NonNullable<Awaited<ReturnType<typeof redeemEmailVerification>>>
+    export type RedeemEmailVerificationMutationBody = EmailVerificationSecret
+    export type RedeemEmailVerificationMutationError = ErrorType<Problem>
+    export type RedeemEmailVerificationMutationVariables = {data: EmailVerificationSecret}
+
+    /**
+ * @summary Verify an email address with an emailed link
+ */
+export const useRedeemEmailVerification = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemEmailVerification>>, TError,RedeemEmailVerificationMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof redeemEmailVerification>>,
+        TError,
+        RedeemEmailVerificationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRedeemEmailVerificationMutationOptions(options), queryClient);
+    }
 
 export const getGetHealthUrl = () => {
 

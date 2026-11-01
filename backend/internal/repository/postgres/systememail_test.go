@@ -53,10 +53,12 @@ func savedBy(actor int64) auditEvent {
 
 func systemEmailInput() systememail.Input {
 	return systememail.Input{
-		Host:        "smtp.example.com",
-		Port:        587,
-		Security:    systememail.SecuritySTARTTLS,
-		Username:    "inbok@example.com",
+		Server: systememail.Server{
+			Host:     "smtp.example.com",
+			Port:     587,
+			Security: systememail.SecuritySTARTTLS,
+			Username: "inbok@example.com",
+		},
 		Password:    "app password",
 		FromAddress: "inbok@example.com",
 		FromName:    "inbok",
@@ -126,8 +128,8 @@ func TestSystemEmailUpdate(t *testing.T) {
 	admin := systemEmailAdmin(t, conn)
 	tested := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 	want := systememail.Record{
-		Host: "smtp.example.com", Port: 465, Security: systememail.SecurityTLS,
-		Username: "inbok", Password: &systememail.Password{KeyID: "1", Ciphertext: []byte("sealed")},
+		Server:      systememail.Server{Host: "smtp.example.com", Port: 465, Security: systememail.SecurityTLS, Username: "inbok"},
+		Password:    &systememail.Password{KeyID: "1", Ciphertext: []byte("sealed")},
 		FromAddress: "inbok@example.com", FromName: "inbok", TestedAt: &tested,
 		Revision: 99, // Storage clears the tested time and numbers the revisions.
 	}
@@ -139,7 +141,7 @@ func TestSystemEmailUpdate(t *testing.T) {
 	var got *systememail.Record
 	require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(current *systememail.Record) (systememail.Record, error) {
 		got = current
-		return systememail.Record{Host: "localhost", Port: 1025, Security: systememail.SecurityNone, FromAddress: "inbok@localhost", FromName: "inbok"}, nil
+		return systememail.Record{Server: systememail.Server{Host: "localhost", Port: 1025, Security: systememail.SecurityNone}, FromAddress: "inbok@localhost", FromName: "inbok"}, nil
 	}))
 	var rows int
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM system_email").Scan(&rows))
@@ -167,7 +169,7 @@ func TestSystemEmailUpdateSerializes(t *testing.T) {
 	releaseFirst := sync.OnceFunc(func() { close(release) })
 	defer releaseFirst()
 	firstDone, secondDone := make(chan error, 1), make(chan error, 1)
-	first := systememail.Record{Host: "first.example.com", Port: 25, Security: systememail.SecurityNone, FromAddress: "inbok@example.com", FromName: "inbok"}
+	first := systememail.Record{Server: systememail.Server{Host: "first.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "inbok@example.com", FromName: "inbok"}
 	var seen *systememail.Record
 
 	go func() {
@@ -218,7 +220,7 @@ func TestSystemEmailUpdateSerializes(t *testing.T) {
 func TestSystemEmailSaveRejected(t *testing.T) {
 	db, conn := setupStorage(t)
 	admin := systemEmailAdmin(t, conn)
-	original := systememail.Record{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone, FromAddress: "inbok@example.com", FromName: "inbok"}
+	original := systememail.Record{Server: systememail.Server{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "inbok@example.com", FromName: "inbok"}
 	require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) { return original, nil }))
 
 	err := db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) {
@@ -243,7 +245,7 @@ func TestSystemEmailSaveFailure(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			db, conn := setupStorage(t)
 			admin := systemEmailAdmin(t, conn)
-			original := systememail.Record{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone, FromAddress: "inbok@example.com", FromName: "inbok"}
+			original := systememail.Record{Server: systememail.Server{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "inbok@example.com", FromName: "inbok"}
 			require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) { return original, nil }))
 			_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_system_email() RETURNS trigger LANGUAGE plpgsql AS
   $$ BEGIN RAISE EXCEPTION 'forced system email failure'; END $$`)
@@ -345,7 +347,8 @@ func TestSystemEmailSendTestMessage(t *testing.T) {
 	require.NoError(t, err)
 	sender := &recordingSender{}
 	tested := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
-	messages := systememail.NewTestMessages(db, ring, sender, func() time.Time { return tested }, slog.New(slog.DiscardHandler))
+	mailer := systememail.NewMailer(db, ring, sender, slog.New(slog.DiscardHandler))
+	messages := systememail.NewTestMessages(db, mailer, func() time.Time { return tested })
 
 	result, err := messages.Send(t.Context(), "admin@example.org")
 	require.NoError(t, err)
@@ -365,7 +368,7 @@ func TestSystemEmailSendTestMessage(t *testing.T) {
 func TestSystemEmailUpdateTestedAt(t *testing.T) {
 	db, conn := setupStorage(t)
 	admin := systemEmailAdmin(t, conn)
-	original := systememail.Record{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone, FromAddress: "inbok@example.com", FromName: "inbok"}
+	original := systememail.Record{Server: systememail.Server{Host: "smtp.example.com", Port: 25, Security: systememail.SecurityNone}, FromAddress: "inbok@example.com", FromName: "inbok"}
 	save := func() {
 		require.NoError(t, db.UpdateSystemEmail(t.Context(), admin, func(*systememail.Record) (systememail.Record, error) { return original, nil }))
 	}

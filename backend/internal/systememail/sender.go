@@ -42,7 +42,8 @@ const (
 )
 
 // SendError is a send that failed at Reason's step. Show users the Reason;
-// Err is for logs only, since it can hold the server's reply.
+// Err is for logs only, since it can hold the server's reply, which can quote
+// the message.
 type SendError struct {
 	Reason Reason
 	Err    error

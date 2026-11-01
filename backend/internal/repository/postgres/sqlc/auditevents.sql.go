@@ -20,7 +20,8 @@ type InsertAuditEventParams struct {
 	TargetUserID *int64
 }
 
-// A NULL actor is the host operator; a NULL target is no account.
+// A NULL actor is the host operator, or someone without a session, e.g. the
+// holder of an email verification link; a NULL target is no account.
 func (q *Queries) InsertAuditEvent(ctx context.Context, arg InsertAuditEventParams) error {
 	_, err := q.db.Exec(ctx, insertAuditEvent, arg.Action, arg.ActorUserID, arg.TargetUserID)
 	return err

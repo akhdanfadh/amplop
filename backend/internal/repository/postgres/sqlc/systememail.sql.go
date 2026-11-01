@@ -10,6 +10,17 @@ import (
 	"time"
 )
 
+const hasSystemEmail = `-- name: HasSystemEmail :one
+SELECT EXISTS (SELECT 1 FROM system_email)
+`
+
+func (q *Queries) HasSystemEmail(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, hasSystemEmail)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const lockSystemEmail = `-- name: LockSystemEmail :exec
 LOCK TABLE system_email IN SHARE ROW EXCLUSIVE MODE
 `

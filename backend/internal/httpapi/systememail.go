@@ -129,10 +129,12 @@ func (h systemEmailHandler) handleSaveSystemEmail(ctx context.Context, in *struc
 	// Huma's patterns and email format accept surrounding spaces, which DNS,
 	// SASL, and MAIL FROM would not; a blank username means no sign-in.
 	saved, err := h.service.Save(ctx, actor.ID, systememail.Input{
-		Host:        strings.TrimSpace(in.Body.Host),
-		Port:        in.Body.Port,
-		Security:    in.Body.Security,
-		Username:    strings.TrimSpace(in.Body.Username),
+		Server: systememail.Server{
+			Host:     strings.TrimSpace(in.Body.Host),
+			Port:     in.Body.Port,
+			Security: in.Body.Security,
+			Username: strings.TrimSpace(in.Body.Username),
+		},
 		Password:    in.Body.Password,
 		FromAddress: strings.TrimSpace(in.Body.FromAddress),
 		FromName:    in.Body.FromName,

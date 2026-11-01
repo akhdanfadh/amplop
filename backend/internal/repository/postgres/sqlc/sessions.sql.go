@@ -206,7 +206,8 @@ func (q *Queries) LockUserSessionByID(ctx context.Context, arg LockUserSessionBy
 
 const readSessionIdentity = `-- name: ReadSessionIdentity :one
 SELECT users.id, users.email, users.role,
-    (user_totp.confirmed_at IS NOT NULL)::boolean AS totp_confirmed
+    (user_totp.confirmed_at IS NOT NULL)::boolean AS totp_confirmed,
+    (users.email_verified_at IS NOT NULL)::boolean AS email_verified
 FROM sessions
 JOIN users ON users.id = sessions.user_id
 LEFT JOIN user_totp ON user_totp.user_id = users.id
@@ -218,9 +219,11 @@ type ReadSessionIdentityRow struct {
 	Email         string
 	Role          string
 	TotpConfirmed bool
+	EmailVerified bool
 }
 
-// Recheck the session together with the account and factor used for access.
+// Recheck the session together with the account and factor used for access,
+// and read whether the account's email is verified.
 func (q *Queries) ReadSessionIdentity(ctx context.Context, tokenHash []byte) (ReadSessionIdentityRow, error) {
 	row := q.db.QueryRow(ctx, readSessionIdentity, tokenHash)
 	var i ReadSessionIdentityRow
@@ -229,6 +232,7 @@ func (q *Queries) ReadSessionIdentity(ctx context.Context, tokenHash []byte) (Re
 		&i.Email,
 		&i.Role,
 		&i.TotpConfirmed,
+		&i.EmailVerified,
 	)
 	return i, err
 }

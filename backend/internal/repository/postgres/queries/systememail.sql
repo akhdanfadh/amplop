@@ -30,3 +30,6 @@ ON CONFLICT (id) DO UPDATE SET
 UPDATE system_email SET tested_at = @tested_at
     -- A save since the read changed the revision, so this matches no row.
     WHERE revision = @revision;
+
+-- name: HasSystemEmail :one
+SELECT EXISTS (SELECT 1 FROM system_email);

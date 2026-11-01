@@ -61,8 +61,8 @@ var systemEmailTested = time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 
 func systemEmailSettingsFixture() systememail.Settings {
 	return systememail.Settings{
-		Host: "smtp.example.com", Port: 587, Security: systememail.SecuritySTARTTLS,
-		Username: "inbok@example.com", HasPassword: true,
+		Server:      systememail.Server{Host: "smtp.example.com", Port: 587, Security: systememail.SecuritySTARTTLS, Username: "inbok@example.com"},
+		HasPassword: true,
 		FromAddress: "inbok@example.com", FromName: "inbok", TestedAt: &systemEmailTested,
 	}
 }
@@ -95,7 +95,7 @@ func TestGetSystemEmail(t *testing.T) {
 		want     string
 	}{
 		{"not configured", nil, `{"data":{}}`},
-		{"without sign-in or test", &systememail.Settings{Host: "localhost", Port: 1025, Security: systememail.SecurityNone, FromAddress: "inbok@localhost", FromName: "inbok"},
+		{"without sign-in or test", &systememail.Settings{Server: systememail.Server{Host: "localhost", Port: 1025, Security: systememail.SecurityNone}, FromAddress: "inbok@localhost", FromName: "inbok"},
 			`{"data":{"settings":{"host":"localhost","port":1025,"security":"none","username":"","hasPassword":false,` +
 				`"fromAddress":"inbok@localhost","fromName":"inbok","testedAt":null}}}`},
 		{"configured", &settings, `{"data":{"settings":{"host":"smtp.example.com","port":587,"security":"starttls",` +
@@ -127,8 +127,8 @@ func TestSaveSystemEmail(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, int64(42), service.actorID, "the actor is the signed-in administrator")
 	assert.Equal(t, systememail.Input{
-		Host: "smtp.example.com", Port: 587, Security: systememail.SecuritySTARTTLS,
-		Username: "inbok@example.com", Password: "app password 7f3c",
+		Server:      systememail.Server{Host: "smtp.example.com", Port: 587, Security: systememail.SecuritySTARTTLS, Username: "inbok@example.com"},
+		Password:    "app password 7f3c",
 		FromAddress: "inbok@example.com", FromName: "inbok",
 	}, service.input)
 	assert.JSONEq(t, `{"data":{"settings":{"host":"smtp.example.com","port":587,"security":"starttls",`+

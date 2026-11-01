@@ -95,7 +95,7 @@ func TestCurrentSessionHTTP(t *testing.T) {
 	api := New(discard, Services{Session: service})
 	for i, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
 		t.Run(string(role), func(t *testing.T) {
-			service.identity = session.Identity{User: account.User{ID: 42, Email: "admin@example.com", Role: role}, Access: session.AccessMember, TOTPRequired: role == account.RoleAdmin}
+			service.identity = session.Identity{User: account.User{ID: 42, Email: "admin@example.com", Role: role}, Access: session.AccessMember, TOTPRequired: role == account.RoleAdmin, EmailVerified: role == account.RoleMember}
 			request := httptest.NewRequest(http.MethodGet, "/api/v0/sessions/current", nil)
 			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "private-cookie-secret"})
 			response := httptest.NewRecorder()
@@ -104,7 +104,7 @@ func TestCurrentSessionHTTP(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 			data := decodeJSON(t, response.Body.Bytes())["data"]
-			assert.Equal(t, map[string]any{"email": "admin@example.com", "role": string(role), "totpRequired": role == account.RoleAdmin}, data)
+			assert.Equal(t, map[string]any{"email": "admin@example.com", "role": string(role), "totpRequired": role == account.RoleAdmin, "emailVerified": role == account.RoleMember}, data)
 			assert.Equal(t, "private-cookie-secret", service.currentSecret)
 			assert.Equal(t, i+1, service.currentCalls)
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
@@ -183,7 +183,7 @@ func TestAccessDeclarations(t *testing.T) {
 	assert.Equal(t, sessionCookieName, scheme.Name)
 	result := doc.Components.Schemas.Map()["CurrentSession"]
 	require.NotNil(t, result)
-	assert.ElementsMatch(t, []string{"email", "role", "totpRequired"}, result.Required)
+	assert.ElementsMatch(t, []string{"email", "role", "totpRequired", "emailVerified"}, result.Required)
 	require.NotNil(t, result.Properties["role"])
 	assert.ElementsMatch(t, []any{"member", "admin"}, result.Properties["role"].Enum)
 }

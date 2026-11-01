@@ -64,6 +64,8 @@ Put shared code in the folder for its responsibility:
 - `src/features/totp`: authenticator enrollment, confirmation, backup-code
   management, and turning TOTP off.
 - `src/features/sessions`: the signed-in browser list and ending sessions.
+- `src/features/email-verification`: the Security page's Email section, the
+  `/verify-email` form, and their wording.
 - `src/features/system-email`: the system email settings form, its schema,
   and the test message form and its result wording.
 - `src/components`: shared controls, such as the password input. `ui/` holds
@@ -141,6 +143,24 @@ administrator after the page loaded, the HTTP 403 refreshes the session and the
 page switches to that notice. An HTTP 409 means TOTP is already off, so the
 page offers enrollment again. An uncertain turn-off blocks another attempt until
 status is checked.
+
+Security opens with the account's email address and whether it is verified.
+"Send verification link" emails a link that expires in 24 hours. A lost reply
+or failed send can be repeated without a check: the server limits how many
+links are sent, and every unexpired link works. Sending and TOTP writes wait
+for each other, because confirming TOTP replaces this browser's session. An
+unverified account also sees a notice on home that links to Security.
+
+The link opens `/verify-email`, which works signed in or out. The secret after
+`#` never reaches the server with the page request; the page keeps it in
+memory and replaces the address, so the Back button and a copied URL lose it;
+the browser's history list may still hold the full link. Reloading after that asks
+for the emailed link again. "Verify email" sends the secret. A link that is
+expired, used, unknown, or sent to an old address cannot be retried; if the
+signed-in account is already verified, the page says so instead. Any other
+failure offers another try. Redeeming needs no session, so a link can verify
+an account other than the signed-in one; the page then says the signed-in
+account is still not verified.
 
 Security also lists the account's signed-in browsers, newest sign-in first.
 Each row shows the browser and operating system, or "Unknown browser", the

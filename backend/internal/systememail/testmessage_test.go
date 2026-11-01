@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -38,8 +37,7 @@ var testNow = time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 
 // testMessages sends with sender, decrypts with keys, and logs to logs.
 func testMessages(storage *memoryStorage, keys *fakeKeyring, sender *fakeSender, logs *bytes.Buffer) *TestMessages {
-	logger := slog.New(slog.NewTextHandler(logs, nil))
-	return NewTestMessages(storage, keys, sender, func() time.Time { return testNow }, logger)
+	return NewTestMessages(storage, testMailer(storage, keys, sender, logs), func() time.Time { return testNow })
 }
 
 // savedSignIn is storedSignIn with a password the fake keyring can open.
@@ -93,7 +91,7 @@ func TestSendTestMessageFailed(t *testing.T) {
 
 	assert.Equal(t, TestMessageResult{Reason: ReasonAuth}, result)
 	assert.Nil(t, storage.record.TestedAt)
-	assert.Contains(t, logs.String(), "reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com")
+	assert.Contains(t, logs.String(), `purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com`)
 	assert.Contains(t, logs.String(), "535 5.7.8")
 	assert.NotContains(t, logs.String(), reply, "a long reply is cut")
 }
@@ -149,7 +147,7 @@ func TestSendTestMessageUndecryptable(t *testing.T) {
 			storage, sender := &memoryStorage{record: record}, &fakeSender{}
 
 			result, err := testMessages(storage, &fakeKeyring{}, sender, &bytes.Buffer{}).Send(t.Context(), "admin@example.org")
-			require.Error(t, err)
+			require.ErrorIs(t, err, ErrPasswordUnreadable)
 
 			assert.Empty(t, result)
 			assert.Zero(t, sender.sent)
@@ -199,10 +197,4 @@ func TestSendTestMessageRecordFailure(t *testing.T) {
 
 	assert.Empty(t, result)
 	assert.Equal(t, 1, sender.sent)
-}
-
-func TestTruncate(t *testing.T) {
-	assert.Equal(t, "short", truncate("short", 10))
-	assert.Equal(t, "abc…", truncate("abcdef", 3))
-	assert.Equal(t, "a…", truncate("aé", 2), "a split character is dropped")
 }

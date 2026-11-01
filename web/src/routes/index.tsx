@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useDeleteCurrentSession, useGetCurrentSession } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
 import { sessionMessage, uncertainSession } from "@/features/auth/session-error";
@@ -100,6 +100,18 @@ function Home(): ReactElement {
 
         {account && (
           <section className="flex flex-col gap-6" aria-label="Your account">
+            {!account.emailVerified && (
+              <p>
+                Your email address isn&apos;t verified.{" "}
+                <Link
+                  to="/security"
+                  className="underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
+                >
+                  Verify it in Security
+                </Link>
+                .
+              </p>
+            )}
             <Button
               ref={signOutRef}
               className="h-auto min-h-11 w-fit whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
