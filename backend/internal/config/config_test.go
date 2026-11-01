@@ -53,6 +53,30 @@ func TestLoadBadAddr(t *testing.T) {
 	require.ErrorContains(t, err, envHTTPAddr)
 }
 
+// HTTPAddr needs no other setting, e.g. no encryption keys.
+func TestHTTPAddr(t *testing.T) {
+	t.Setenv(envEncryptionKeys, "")
+	cases := map[string]string{"": "127.0.0.1:8080", "0.0.0.0:9090": "0.0.0.0:9090"}
+	for value, want := range cases {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(envHTTPAddr, value)
+
+			got, err := HTTPAddr()
+			require.NoError(t, err)
+
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
+func TestHTTPAddrBad(t *testing.T) {
+	t.Setenv(envHTTPAddr, "localhost")
+
+	_, err := HTTPAddr()
+
+	require.ErrorContains(t, err, envHTTPAddr)
+}
+
 func TestLoadTrustedProxiesUnset(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)

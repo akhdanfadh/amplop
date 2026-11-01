@@ -1,9 +1,9 @@
 # inbok backend
 
-The Go server: the `inbok` command (`serve`, `migrate`, `export`,
-`recover-admin`), its HTTP API, the built web app it serves, and its
-database code. Running `make` in the repository root lists a shortcut for
-most commands here.
+The Go server: the `inbok` command (`serve`, `migrate`, `health`,
+`export`, `recover-admin`), its HTTP API, the built web app it serves,
+and its database code. Running `make` in the repository root lists a
+shortcut for most commands here.
 
 ## Run the server
 
@@ -43,6 +43,12 @@ Expect HTTP 200 with:
 ```json
 {"data": {"status": "ok"}}
 ```
+
+`inbok health` makes the same request to the address `serve` listens on
+(`INBOK_HTTP_ADDR`; an all-interfaces address such as `0.0.0.0:8080`
+reaches this machine), with a 3-second limit and no proxy. It exits 0 if the
+answer is HTTP 200 and 1 otherwise, printing the reason. It reads no other
+setting, so it needs no secrets.
 
 ## The web app
 
