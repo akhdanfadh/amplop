@@ -31,6 +31,7 @@ type Services struct {
 	Members           membersService
 	SystemEmail       systemEmailService
 	TestMessages      testMessageService
+	Registration      registrationService
 	Disabler          disableService
 	Backups           backupService
 	CodeSignIn        codeSignInService
@@ -108,6 +109,7 @@ func New(logger *slog.Logger, services Services) *API {
 	registerSystemEmail(api, services.SystemEmail, services.TestMessages)
 	registerEmailVerification(api, services.EmailVerification)
 	registerMembers(api, services.Members)
+	registerRegistration(api, services.Registration)
 	registerProblemTypes(api)
 
 	return &API{router: router, api: api}

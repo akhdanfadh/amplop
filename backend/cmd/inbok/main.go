@@ -18,6 +18,7 @@ import (
 	"inbok/internal/httpapi"
 	"inbok/internal/logging"
 	"inbok/internal/probe"
+	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
 	"inbok/internal/session"
 	"inbok/internal/smtp"
@@ -124,6 +125,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		Members:           account.NewMembers(db, time.Now),
 		SystemEmail:       systememail.NewService(db, cfg.Encryption),
 		TestMessages:      systememail.NewTestMessages(db, mailer, time.Now),
+		Registration:      registration.NewService(db),
 		Disabler:          totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		Backups:           totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		CodeSignIn:        session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),

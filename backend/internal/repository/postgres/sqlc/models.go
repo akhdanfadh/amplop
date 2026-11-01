@@ -41,6 +41,11 @@ type ProbeEvent struct {
 	CreatedAt   time.Time
 }
 
+type Registration struct {
+	ID   bool
+	Open bool
+}
+
 type Session struct {
 	TokenHash    []byte
 	UserID       int64
