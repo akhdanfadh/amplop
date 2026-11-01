@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/attemptlimit"
+	"inbok/internal/logging"
 )
 
 type memoryCodeAttempts struct {
@@ -163,16 +164,17 @@ func TestThrottleParallel(t *testing.T) {
 
 func TestThrottleWarning(t *testing.T) {
 	var logs bytes.Buffer
-	limiter := NewThrottle(&memoryCodeAttempts{}, time.Now, slog.New(slog.NewTextHandler(&logs, nil)))
+	limiter := NewThrottle(&memoryCodeAttempts{}, time.Now, logging.New(&logs))
 	for range 5 {
 		_, err := limiter.Begin(t.Context(), 42)
 		require.NoError(t, err)
 	}
 	assert.Empty(t, logs.String(), "allowed attempts need no warning")
-	_, err := limiter.Begin(t.Context(), 42)
+	_, err := limiter.Begin(logging.WithRequestID(t.Context(), "req-1"), 42)
 	require.ErrorIs(t, err, ErrThrottled)
 	assert.Contains(t, logs.String(), "level=WARN")
 	assert.Contains(t, logs.String(), "user_id=42")
+	assert.Contains(t, logs.String(), "request_id=req-1")
 	assert.NotContains(t, logs.String(), "code=")
 	assert.NotContains(t, logs.String(), "secret=")
 }
@@ -230,7 +232,7 @@ func TestThrottleRelease(t *testing.T) {
 func TestThrottleReleaseFailure(t *testing.T) {
 	store := &memoryCodeAttempts{}
 	var logs bytes.Buffer
-	limiter := NewThrottle(store, time.Now, slog.New(slog.NewTextHandler(&logs, nil)))
+	limiter := NewThrottle(store, time.Now, logging.New(&logs))
 	var id int64
 	for range 5 {
 		var err error
@@ -239,9 +241,10 @@ func TestThrottleReleaseFailure(t *testing.T) {
 	}
 	store.deleteErr = errors.New("storage unavailable")
 
-	limiter.Release(t.Context(), id)
+	limiter.Release(logging.WithRequestID(t.Context(), "req-1"), id)
 
 	assert.Contains(t, logs.String(), "level=WARN")
+	assert.Contains(t, logs.String(), "request_id=req-1")
 	assert.Contains(t, logs.String(), fmt.Sprintf("attempt_id=%d", id))
 	_, err := limiter.Begin(t.Context(), 42)
 	require.ErrorIs(t, err, ErrThrottled)

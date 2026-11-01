@@ -41,14 +41,13 @@ type Services struct {
 	Throttle          setupThrottle
 }
 
-// New registers operations; logger receives one line per request.
+// New registers operations; logger receives one line per request. Build it
+// with [logging.New] so lines logged with a request's context carry its
+// request_id.
 // Create all APIs and register all operations before serving requests.
 func New(logger *slog.Logger, services Services) *API {
 	// Tells Huma to construct errors using our problem model.
 	configureErrors()
-
-	// Logs written with a request context gain its request_id.
-	logger = slog.New(requestIDHandler{logger.Handler()})
 
 	router := gin.New()
 	// Disable Gin's trust of all proxies. An empty list cannot fail parsing.

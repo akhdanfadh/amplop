@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"log/slog"
 	"strings"
 	"testing"
 
@@ -12,11 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/emailaddress"
+	"inbok/internal/logging"
 )
 
-// testMailer sends with sender, decrypts with keys, and logs to logs.
+// testMailer sends with sender, decrypts with keys, and logs to logs as
+// inbok's root logger does.
 func testMailer(storage *memoryStorage, keys *fakeKeyring, sender *fakeSender, logs *bytes.Buffer) *Mailer {
-	return NewMailer(storage, keys, sender, slog.New(slog.NewTextHandler(logs, nil)))
+	return NewMailer(storage, keys, sender, logging.New(logs))
 }
 
 func testOutgoing() Outgoing {
@@ -120,13 +121,15 @@ func TestMailerSendFailed(t *testing.T) {
 	var logs bytes.Buffer
 	var failed *SendError
 
-	revision, err := testMailer(storage, &fakeKeyring{}, sender, &logs).Send(t.Context(), testOutgoing())
+	ctx := logging.WithRequestID(t.Context(), "req-1")
+	revision, err := testMailer(storage, &fakeKeyring{}, sender, &logs).Send(ctx, testOutgoing())
 	require.ErrorAs(t, err, &failed)
 
 	assert.Equal(t, ReasonAuth, failed.Reason)
 	assert.Equal(t, int64(3), revision)
 	assert.Contains(t, logs.String(), `msg="system email send failed" purpose="email verification" `+
 		"reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com")
+	assert.Contains(t, logs.String(), "request_id=req-1", "the warning names the request that sent it")
 	assert.Contains(t, logs.String(), "535 5.7.8")
 	assert.NotContains(t, logs.String(), reply, "a long reply is cut")
 	assert.NotContains(t, logs.String(), "app password")

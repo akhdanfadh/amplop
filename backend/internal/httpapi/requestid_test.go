@@ -13,12 +13,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/logging"
 )
 
 // Every log line of one request carries the ID returned to the client.
 func TestRequestID(t *testing.T) {
 	var out bytes.Buffer
-	a := New(slog.New(slog.NewJSONHandler(&out, nil)), Services{})
+	a := New(slog.New(logging.Handler(slog.NewJSONHandler(&out, nil))), Services{})
 	a.router.GET("/panic", func(*gin.Context) { panic("boom") })
 
 	response := httptest.NewRecorder()

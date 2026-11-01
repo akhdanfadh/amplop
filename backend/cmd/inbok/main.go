@@ -16,6 +16,7 @@ import (
 	"inbok/internal/config"
 	"inbok/internal/emailverification"
 	"inbok/internal/httpapi"
+	"inbok/internal/logging"
 	"inbok/internal/probe"
 	"inbok/internal/repository/postgres"
 	"inbok/internal/session"
@@ -47,7 +48,8 @@ const (
 var errUsage = errors.New("usage: inbok serve | inbok migrate | inbok export <path> | inbok recover-admin <email>")
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	// One root logger for every service, so their lines carry request_id.
+	logger := logging.New(os.Stderr)
 
 	// SIGINT (Ctrl+C) and SIGTERM (docker stop) cancel ctx. The first
 	// signal also restores default handling, so a second one exits at

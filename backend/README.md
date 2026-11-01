@@ -604,11 +604,10 @@ the server's last reply, has at most 8 seconds, inside the 10-second request
 limit. A failed send logs a warning with its purpose, e.g. `test message`,
 the reason, host, port, security, username, and the first 512 bytes of the
 error. inbok never adds the password; the text can include the server's own
-reply. Only the request's own log line carries its `request_id`, so match the
-two by time:
+reply. The warning carries the `request_id` of the request that sent it:
 
 ```text
-time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="..."
+time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="..." request_id=0b9d6a56-3f4e-4c1a-9d2b-7e8f0a1b2c3d
 ```
 
 To list saves, with no setting values:
@@ -698,9 +697,14 @@ returns a 500 Problem Details response and logs `msg=panic` with its stack
 trace; the panic value never reaches the client.
 
 Each response has an `X-Request-ID` header, and that request's log lines
-carry the same value as `request_id`. Quote it when reporting a failed
+carry the same value as `request_id`, including warnings services log while
+serving it, e.g. a failed email send. Quote it when reporting a failed
 request. An incoming `X-Request-ID` that parses as a UUID, e.g. nginx's
 `$request_id`, is reused unchanged; any other value is replaced.
+
+`cmd/inbok` builds one root logger with `logging.New` and passes it to every
+service and to `httpapi`. A line gets `request_id` when it is logged with
+the request's context, e.g. `logger.WarnContext(ctx, ...)`.
 
 ## Checks
 
@@ -850,7 +854,8 @@ httpapi --> emailverification <-- repository/postgres
   emersion SMTP libraries. A technology package is named for its technology
   and imports features, never the other way around.
 - A leaf package holds one rule that several features share, such as
-  `emailaddress` (the address rule) or `attemptlimit` (the window count). It
+  `emailaddress` (the address rule), `attemptlimit` (the window count), or
+  `logging` (how loggers are built and tagged with the request). It
   imports no feature or technology package and is named for its rule.
 - A feature can use another feature through an interface it declares:
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`

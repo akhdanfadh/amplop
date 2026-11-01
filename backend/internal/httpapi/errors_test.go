@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"inbok/internal/logging"
 	"inbok/internal/session"
 )
 
@@ -101,7 +102,7 @@ func TestHideServerErrors(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.note, func(t *testing.T) {
 			var out bytes.Buffer
-			response := post(errorAPI(slog.New(slog.NewJSONHandler(&out, nil))), `{"note":"`+c.note+`","password":"x"}`)
+			response := post(errorAPI(slog.New(logging.Handler(slog.NewJSONHandler(&out, nil)))), `{"note":"`+c.note+`","password":"x"}`)
 
 			require.Equal(t, http.StatusInternalServerError, response.Code)
 			body := decodeJSON(t, response.Body.Bytes())

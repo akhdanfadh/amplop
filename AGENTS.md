@@ -34,6 +34,9 @@ the area you change before editing it:
   Public error text and input messages contain no rejected values or causes.
 - A throttle's refusal is an `*attemptlimit.Error` carrying its wait; map
   it with `retryAfterProblem`, which adds `Retry-After`.
+- Services take a `*slog.Logger` from `cmd/inbok`, built by `logging.New`.
+  Log with the request's context, e.g. `logger.WarnContext(ctx, ...)`, so the
+  line carries its `request_id`.
 - A write that spans features is one `Storage` method shaped as an
   update function, run in one transaction in `repository/postgres`.
   Feature code receives no transaction, transaction provider, or
