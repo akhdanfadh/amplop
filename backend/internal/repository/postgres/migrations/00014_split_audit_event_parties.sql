@@ -3,7 +3,7 @@
 -- absent, but not both. Existing admin-recovered rows keep their target.
 ALTER TABLE audit_events RENAME COLUMN user_id TO target_user_id; -- NULL: no account, e.g. a settings save
 ALTER TABLE audit_events ALTER COLUMN target_user_id DROP NOT NULL;
-ALTER TABLE audit_events ADD COLUMN actor_user_id bigint REFERENCES users (id); -- NULL: the host operator, outside the app
+ALTER TABLE audit_events ADD COLUMN actor_user_id bigint REFERENCES users (id); -- NULL: the host operator, or someone without a session, e.g. an email verification link holder
 ALTER TABLE audit_events ADD CONSTRAINT audit_events_party
     CHECK (target_user_id IS NOT NULL OR actor_user_id IS NOT NULL);
 

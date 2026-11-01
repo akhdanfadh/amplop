@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"crypto/sha256"
+	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +15,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/emailverification"
+	"inbok/internal/systememail"
 )
 
 var verificationNow = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
@@ -73,9 +76,9 @@ func savedVerificationLinks(t *testing.T, conn *pgx.Conn) []emailverification.Li
 	return links
 }
 
-// requestRecording returns a create function that records the state it reads
+// verificationRequestRecording returns a create function that records the state it reads
 // and saves link, deleting links that expired by verificationNow.
-func requestRecording(seen *emailverification.RequestState, link emailverification.Link) func(emailverification.RequestState) (emailverification.RequestChange, error) {
+func verificationRequestRecording(seen *emailverification.RequestState, link emailverification.Link) func(emailverification.RequestState) (emailverification.RequestChange, error) {
 	return func(state emailverification.RequestState) (emailverification.RequestChange, error) {
 		*seen = state
 		return emailverification.RequestChange{Link: link, ExpiredBy: verificationNow}, nil
@@ -97,7 +100,7 @@ func TestEmailVerificationRequest(t *testing.T) {
 	added := verificationLink(user, "added", 0)
 	var seen emailverification.RequestState
 
-	err := db.RequestEmailVerification(t.Context(), user, requestRecording(&seen, added))
+	err := db.RequestEmailVerification(t.Context(), user, verificationRequestRecording(&seen, added))
 	require.NoError(t, err)
 
 	assert.Equal(t, "User@example.com", seen.Email)
@@ -114,7 +117,7 @@ func TestEmailVerificationRequestState(t *testing.T) {
 	require.NoError(t, err)
 	var seen emailverification.RequestState
 
-	err = db.RequestEmailVerification(t.Context(), user, requestRecording(&seen, verificationLink(user, "added", 0)))
+	err = db.RequestEmailVerification(t.Context(), user, verificationRequestRecording(&seen, verificationLink(user, "added", 0)))
 	require.NoError(t, err)
 
 	assert.True(t, seen.Verified)
@@ -184,7 +187,7 @@ func TestEmailVerificationRequestSerializes(t *testing.T) {
 
 	// When a second request starts and waits, then the first finishes.
 	go func() {
-		secondDone <- db.RequestEmailVerification(ctx, user, requestRecording(&seen, verificationLink(user, "second", 0)))
+		secondDone <- db.RequestEmailVerification(ctx, user, verificationRequestRecording(&seen, verificationLink(user, "second", 0)))
 	}()
 	require.Eventually(t, func() bool {
 		var blocked bool
@@ -227,4 +230,227 @@ func utcTimes(times []time.Time) []time.Time {
 		out[i] = at.UTC()
 	}
 	return out
+}
+
+// emailVerifiedAt returns the user's email_verified_at, nil when unverified.
+func emailVerifiedAt(t *testing.T, conn *pgx.Conn, userID int64) *time.Time {
+	t.Helper()
+
+	var at *time.Time
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT email_verified_at FROM users WHERE id = $1", userID).Scan(&at))
+	if at != nil {
+		utc := at.UTC()
+		at = &utc
+	}
+	return at
+}
+
+// verificationRedeemRecording returns a redeem function that records the state it reads
+// and answers with change and err.
+func verificationRedeemRecording(seen *emailverification.RedeemState, change emailverification.RedeemChange, err error) func(emailverification.RedeemState) (emailverification.RedeemChange, error) {
+	return func(state emailverification.RedeemState) (emailverification.RedeemChange, error) {
+		*seen = state
+		return change, err
+	}
+}
+
+// Redeeming reads the link and its user, saves the verified time with an
+// audit event, and deletes all the user's links; other users' links stay.
+func TestEmailVerificationRedeem(t *testing.T) {
+	db, conn := setupStorage(t)
+	user := verificationUser(t, conn, "User@example.com")
+	other := verificationUser(t, conn, "other@example.com")
+	redeemed := verificationLink(user, "redeemed", time.Hour)
+	othersLink := verificationLink(other, "other", time.Hour)
+	for _, link := range []emailverification.Link{redeemed, verificationLink(user, "live", time.Minute), verificationLink(user, "expired", 48*time.Hour), othersLink} {
+		insertVerificationLink(t, conn, link)
+	}
+	var seen emailverification.RedeemState
+
+	err := db.RedeemEmailVerification(t.Context(), redeemed.TokenHash, verificationRedeemRecording(&seen, emailverification.RedeemChange{VerifiedAt: &verificationNow}, nil))
+	require.NoError(t, err)
+
+	assert.Equal(t, emailverification.RedeemState{Link: redeemed, Email: "User@example.com"}, seen)
+	assert.Equal(t, &verificationNow, emailVerifiedAt(t, conn, user))
+	assert.Nil(t, emailVerifiedAt(t, conn, other))
+	assert.Equal(t, []emailverification.Link{othersLink}, savedVerificationLinks(t, conn))
+	assert.Equal(t, []auditEvent{{Action: "email-verified", Target: &user}}, auditEvents(t, conn))
+}
+
+// A link for a verified user deletes the links and keeps the verified time,
+// without an audit event.
+func TestEmailVerificationRedeemAlreadyVerified(t *testing.T) {
+	db, conn := setupStorage(t)
+	user := verificationUser(t, conn, "user@example.com")
+	earlier := verificationNow.Add(-time.Hour)
+	_, err := conn.Exec(t.Context(), "UPDATE users SET email_verified_at = $1 WHERE id = $2", earlier, user)
+	require.NoError(t, err)
+	link := verificationLink(user, "link", time.Minute)
+	insertVerificationLink(t, conn, link)
+	var seen emailverification.RedeemState
+
+	err = db.RedeemEmailVerification(t.Context(), link.TokenHash, verificationRedeemRecording(&seen, emailverification.RedeemChange{}, nil))
+	require.NoError(t, err)
+
+	assert.True(t, seen.Verified)
+	assert.Equal(t, &earlier, emailVerifiedAt(t, conn, user))
+	assert.Empty(t, savedVerificationLinks(t, conn))
+	assert.Empty(t, auditEvents(t, conn))
+}
+
+// A refused redeem changes nothing.
+func TestEmailVerificationRedeemRefused(t *testing.T) {
+	db, conn := setupStorage(t)
+	user := verificationUser(t, conn, "user@example.com")
+	link := verificationLink(user, "link", time.Minute)
+	insertVerificationLink(t, conn, link)
+	var seen emailverification.RedeemState
+
+	err := db.RedeemEmailVerification(t.Context(), link.TokenHash, verificationRedeemRecording(&seen, emailverification.RedeemChange{}, emailverification.ErrLinkInvalid))
+	require.ErrorIs(t, err, emailverification.ErrLinkInvalid)
+
+	assert.Nil(t, emailVerifiedAt(t, conn, user))
+	assert.Equal(t, []emailverification.Link{link}, savedVerificationLinks(t, conn))
+	assert.Empty(t, auditEvents(t, conn))
+}
+
+func TestEmailVerificationRedeemUnknown(t *testing.T) {
+	db, _ := setupStorage(t)
+	called := false
+
+	err := db.RedeemEmailVerification(t.Context(), sha256.Sum256([]byte("unknown")), func(emailverification.RedeemState) (emailverification.RedeemChange, error) {
+		called = true
+		return emailverification.RedeemChange{}, nil
+	})
+	require.ErrorIs(t, err, emailverification.ErrLinkInvalid)
+
+	assert.False(t, called)
+}
+
+// Two redeems of one link take turns; the second finds it gone.
+func TestEmailVerificationRedeemSerializes(t *testing.T) {
+	db, conn := setupStorage(t)
+	user := verificationUser(t, conn, "user@example.com")
+	link := verificationLink(user, "link", time.Minute)
+	insertVerificationLink(t, conn, link)
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+	ready, release := make(chan struct{}), make(chan struct{})
+	releaseFirst := sync.OnceFunc(func() { close(release) })
+	defer releaseFirst()
+	firstDone, secondDone := make(chan error, 1), make(chan error, 1)
+
+	// Given a first redeem holding the user's lock.
+	go func() {
+		firstDone <- db.RedeemEmailVerification(ctx, link.TokenHash, func(emailverification.RedeemState) (emailverification.RedeemChange, error) {
+			close(ready)
+			select {
+			case <-release:
+				return emailverification.RedeemChange{VerifiedAt: &verificationNow}, nil
+			case <-ctx.Done():
+				return emailverification.RedeemChange{}, ctx.Err()
+			}
+		})
+	}()
+	select {
+	case <-ready:
+	case <-ctx.Done():
+		require.FailNow(t, "first redeem did not reach its callback")
+	}
+
+	// When a second redeem of the same link starts and waits, then the first
+	// finishes.
+	go func() {
+		secondDone <- db.RedeemEmailVerification(ctx, link.TokenHash, func(emailverification.RedeemState) (emailverification.RedeemChange, error) {
+			return emailverification.RedeemChange{VerifiedAt: &verificationNow}, nil
+		})
+	}()
+	require.Eventually(t, func() bool {
+		var blocked bool
+		err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%LockEmailVerificationUser%')").Scan(&blocked)
+		return err == nil && blocked
+	}, setupTestTimeout, 10*time.Millisecond, "second redeem did not wait on the user lock")
+	releaseFirst()
+
+	// Then only the first verified, and it recorded one event.
+	require.NoError(t, <-firstDone)
+	require.ErrorIs(t, <-secondDone, emailverification.ErrLinkInvalid)
+	assert.Equal(t, []auditEvent{{Action: "email-verified", Target: &user}}, auditEvents(t, conn))
+}
+
+// verificationMailer keeps the body of each message.
+type verificationMailer struct{ bodies []string }
+
+func (b *verificationMailer) Send(_ context.Context, outgoing systememail.Outgoing) (int64, error) {
+	b.bodies = append(b.bodies, outgoing.Body)
+	return 1, nil
+}
+
+// verificationSecret returns the secret in a verification email's link.
+func verificationSecret(t *testing.T, body string) string {
+	t.Helper()
+
+	_, after, ok := strings.Cut(body, "/verify-email#")
+	require.True(t, ok, "the body has a link")
+	secret, _, _ := strings.Cut(after, "\n")
+	return secret
+}
+
+// verificationService runs the service on db with its clock at *now.
+func verificationService(db *DB, mailer *verificationMailer, now *time.Time) *emailverification.Service {
+	return emailverification.NewService(db, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, func() time.Time { return *now })
+}
+
+// Through the service: an older live link works, and redeeming it deletes the
+// newer one.
+func TestEmailVerificationServiceRedeem(t *testing.T) {
+	db, conn := setupStorage(t)
+	user := verificationUser(t, conn, "user@example.com")
+	verificationSystemEmail(t, conn)
+	mailer, now := &verificationMailer{}, verificationNow
+	service := verificationService(db, mailer, &now)
+	for range 2 {
+		_, err := service.Request(t.Context(), user)
+		require.NoError(t, err)
+	}
+	now = now.Add(time.Hour)
+
+	err := service.Redeem(t.Context(), verificationSecret(t, mailer.bodies[0]))
+	require.NoError(t, err)
+
+	assert.Equal(t, &now, emailVerifiedAt(t, conn, user))
+	assert.Empty(t, savedVerificationLinks(t, conn))
+}
+
+// Through the service: an expired link, or one sent to an old address, does
+// not verify.
+func TestEmailVerificationServiceRedeemRefused(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		after  time.Duration
+		change string
+	}{
+		{"expired", 24 * time.Hour, ""},
+		{"address changed", time.Minute, "UPDATE users SET email = 'new@example.com'"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			db, conn := setupStorage(t)
+			user := verificationUser(t, conn, "user@example.com")
+			verificationSystemEmail(t, conn)
+			mailer, now := &verificationMailer{}, verificationNow
+			service := verificationService(db, mailer, &now)
+			_, err := service.Request(t.Context(), user)
+			require.NoError(t, err)
+			if c.change != "" {
+				_, err := conn.Exec(t.Context(), c.change)
+				require.NoError(t, err)
+			}
+			now = now.Add(c.after)
+
+			err = service.Redeem(t.Context(), verificationSecret(t, mailer.bodies[0]))
+			require.ErrorIs(t, err, emailverification.ErrLinkInvalid)
+
+			assert.Nil(t, emailVerifiedAt(t, conn, user))
+		})
+	}
 }

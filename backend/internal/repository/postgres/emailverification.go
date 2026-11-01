@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 
@@ -14,11 +15,7 @@ import (
 
 var _ emailverification.Storage = (*DB)(nil)
 
-// RequestEmailVerification implements
-// [emailverification.Storage.RequestEmailVerification]: it locks the user,
-// reads their address, verified state, link times, and whether system email
-// is saved, then calls create. On success it deletes the user's expired links
-// and inserts the new one, in the same transaction.
+// RequestEmailVerification implements [emailverification.Storage.RequestEmailVerification].
 func (db *DB) RequestEmailVerification(ctx context.Context, userID int64, create func(emailverification.RequestState) (emailverification.RequestChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
@@ -63,6 +60,73 @@ func (db *DB) RequestEmailVerification(ctx context.Context, userID int64, create
 			ExpiresAt: link.ExpiresAt,
 		}); err != nil {
 			return fmt.Errorf("insert email verification link: %w", err)
+		}
+		return nil
+	})
+}
+
+const emailVerifiedAction = "email-verified"
+
+// RedeemEmailVerification implements [emailverification.Storage.RedeemEmailVerification].
+func (db *DB) RedeemEmailVerification(ctx context.Context, hash [sha256.Size]byte, redeem func(emailverification.RedeemState) (emailverification.RedeemChange, error)) error {
+	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+		found, err := queries.ReadEmailVerificationLink(ctx, hash[:])
+		if errors.Is(err, pgx.ErrNoRows) {
+			return emailverification.ErrLinkInvalid
+		}
+		if err != nil {
+			return fmt.Errorf("read email verification link: %w", err)
+		}
+		user, err := queries.LockEmailVerificationUser(ctx, found.UserID)
+		// Deleting the user while this waited also deleted the link.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return emailverification.ErrLinkInvalid
+		}
+		if err != nil {
+			return fmt.Errorf("lock email verification user: %w", err)
+		}
+		// Another redeem of this user may have deleted the link while this one
+		// waited for the lock.
+		row, err := queries.ReadEmailVerificationLink(ctx, hash[:])
+		if errors.Is(err, pgx.ErrNoRows) {
+			return emailverification.ErrLinkInvalid
+		}
+		if err != nil {
+			return fmt.Errorf("read email verification link: %w", err)
+		}
+
+		change, err := redeem(emailverification.RedeemState{
+			Link: emailverification.Link{
+				TokenHash: hash,
+				UserID:    row.UserID,
+				Address:   row.Address,
+				CreatedAt: row.CreatedAt.UTC(),
+				ExpiresAt: row.ExpiresAt.UTC(),
+			},
+			Email:    user.Email,
+			Verified: user.EmailVerifiedAt != nil,
+		})
+		if err != nil {
+			return err
+		}
+
+		if change.VerifiedAt != nil {
+			if err := queries.UpdateUserEmailVerifiedAt(ctx, sqlc.UpdateUserEmailVerifiedAtParams{
+				UserID: row.UserID, EmailVerifiedAt: change.VerifiedAt,
+			}); err != nil {
+				return fmt.Errorf("save email verified time: %w", err)
+			}
+			// No session is needed to redeem: whoever holds the link acts, so
+			// the event names no actor.
+			if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{
+				Action: emailVerifiedAction, TargetUserID: &row.UserID,
+			}); err != nil {
+				return fmt.Errorf("record email verification: %w", err)
+			}
+		}
+		if err := queries.DeleteUserEmailVerificationLinks(ctx, row.UserID); err != nil {
+			return fmt.Errorf("delete email verification links: %w", err)
 		}
 		return nil
 	})

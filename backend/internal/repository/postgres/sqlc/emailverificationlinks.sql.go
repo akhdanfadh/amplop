@@ -24,6 +24,15 @@ func (q *Queries) DeleteExpiredEmailVerificationLinks(ctx context.Context, arg D
 	return err
 }
 
+const deleteUserEmailVerificationLinks = `-- name: DeleteUserEmailVerificationLinks :exec
+DELETE FROM email_verification_links WHERE user_id = $1
+`
+
+func (q *Queries) DeleteUserEmailVerificationLinks(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, deleteUserEmailVerificationLinks, userID)
+	return err
+}
+
 const insertEmailVerificationLink = `-- name: InsertEmailVerificationLink :exec
 INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at)
 VALUES ($1, $2, $3, $4, $5)
@@ -81,10 +90,49 @@ type LockEmailVerificationUserRow struct {
 	EmailVerifiedAt *time.Time
 }
 
-// Serializes a user's link requests, so the throttle counts every link.
+// Serializes a user's link requests and redeems, so the throttle counts every
+// link and a link verifies once.
 func (q *Queries) LockEmailVerificationUser(ctx context.Context, userID int64) (LockEmailVerificationUserRow, error) {
 	row := q.db.QueryRow(ctx, lockEmailVerificationUser, userID)
 	var i LockEmailVerificationUserRow
 	err := row.Scan(&i.Email, &i.EmailVerifiedAt)
 	return i, err
+}
+
+const readEmailVerificationLink = `-- name: ReadEmailVerificationLink :one
+SELECT user_id, address, created_at, expires_at FROM email_verification_links
+WHERE token_hash = $1
+`
+
+type ReadEmailVerificationLinkRow struct {
+	UserID    int64
+	Address   string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) ReadEmailVerificationLink(ctx context.Context, tokenHash []byte) (ReadEmailVerificationLinkRow, error) {
+	row := q.db.QueryRow(ctx, readEmailVerificationLink, tokenHash)
+	var i ReadEmailVerificationLinkRow
+	err := row.Scan(
+		&i.UserID,
+		&i.Address,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const updateUserEmailVerifiedAt = `-- name: UpdateUserEmailVerifiedAt :exec
+UPDATE users SET email_verified_at = $1 WHERE id = $2
+`
+
+type UpdateUserEmailVerifiedAtParams struct {
+	EmailVerifiedAt *time.Time
+	UserID          int64
+}
+
+func (q *Queries) UpdateUserEmailVerifiedAt(ctx context.Context, arg UpdateUserEmailVerifiedAtParams) error {
+	_, err := q.db.Exec(ctx, updateUserEmailVerifiedAt, arg.EmailVerifiedAt, arg.UserID)
+	return err
 }
