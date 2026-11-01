@@ -16,10 +16,12 @@ import (
 func (db *DB) ReplaceTOTPBackupCodes(ctx context.Context, userID int64, update func(*totp.Factor) (totp.BackupChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
-		if _, err := queries.LockTOTPUser(ctx, userID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return account.ErrUserNotFound
-			}
+		deactivated, err := queries.LockTOTPUser(ctx, userID)
+		// A deactivation ended the session this request was checked with.
+		if errors.Is(err, pgx.ErrNoRows) || deactivated {
+			return account.ErrUserNotFound
+		}
+		if err != nil {
 			return fmt.Errorf("lock backup-code owner: %w", err)
 		}
 

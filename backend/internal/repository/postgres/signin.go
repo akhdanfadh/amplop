@@ -15,7 +15,7 @@ import (
 func (db *DB) StartSignIn(ctx context.Context, userID int64, update func(session.SignInState) (session.SignInChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
-		hash, err := queries.LockSignInUser(ctx, userID)
+		user, err := queries.LockSignInUser(ctx, userID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return session.ErrNotFound
@@ -26,7 +26,7 @@ func (db *DB) StartSignIn(ctx context.Context, userID int64, update func(session
 		if err != nil {
 			return err
 		}
-		next, err := update(session.SignInState{PasswordHash: hash, Factor: factor})
+		next, err := update(session.SignInState{PasswordHash: user.PasswordHash, Factor: factor, Deactivated: user.Deactivated})
 		if err != nil {
 			return err
 		}

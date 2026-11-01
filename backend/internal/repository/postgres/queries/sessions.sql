@@ -49,11 +49,12 @@ RETURNING token_hash, user_id, created_at, last_used_at, expires_at, user_agent,
 
 -- name: ReadSessionIdentity :one
 -- Recheck the session together with the account and factor used for access,
--- and read whether the account's email is verified.
+-- and read whether the account's email is verified. A deactivated account's
+-- session identifies no one.
 SELECT users.id, users.email, users.role,
     (user_totp.confirmed_at IS NOT NULL)::boolean AS totp_confirmed,
     (users.email_verified_at IS NOT NULL)::boolean AS email_verified
 FROM sessions
 JOIN users ON users.id = sessions.user_id
 LEFT JOIN user_totp ON user_totp.user_id = users.id
-WHERE sessions.token_hash = @token_hash;
+WHERE sessions.token_hash = @token_hash AND users.deactivated_at IS NULL;

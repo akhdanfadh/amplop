@@ -22,6 +22,7 @@ type disableStore interface {
 	// DisableTOTP locks the user and loads role, factor, and remaining backup hashes.
 	// On successful proof it deletes the factor (cascading to all backup codes)
 	// and this owned attempt in one transaction. Sessions remain unchanged.
+	// A missing or deactivated user returns [account.ErrUserNotFound].
 	DisableTOTP(ctx context.Context, userID, attemptID int64, check func(DisableState) error) error
 }
 

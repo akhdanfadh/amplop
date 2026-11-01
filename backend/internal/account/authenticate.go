@@ -13,10 +13,14 @@ import (
 const dummyPasswordHash = "$argon2id$v=19$m=19456,t=2,p=1$MDEyMzQ1Njc4OWFiY2RlZg$DCD4ERxMEHwAyfsOVs7QftC+Pw565z7RS2Cs1YOL4dY"
 
 var (
-	// ErrUserNotFound means no account matches the storage lookup.
+	// ErrUserNotFound means no account matches the storage lookup. Writes made
+	// for a signed-in user also return it once the account is deactivated.
 	ErrUserNotFound = errors.New("user not found")
 	// ErrInvalidCredentials means the email or password did not match.
 	ErrInvalidCredentials = errors.New("invalid credentials")
+	// ErrDeactivated means the password was right but an administrator has
+	// deactivated the account.
+	ErrDeactivated = errors.New("account is deactivated")
 )
 
 // Credentials is a stored account and its password hash, used for verification.

@@ -32,7 +32,7 @@ type Storage interface {
 	// RequestEmailVerification locks the user, reads their [RequestState], and
 	// calls create. If create succeeds, it deletes the user's links expiring at
 	// or before [RequestChange.ExpiredBy] and saves [RequestChange.Link] as the
-	// user's, all in one transaction. A missing user returns
+	// user's, all in one transaction. A missing or deactivated user returns
 	// [inbok/internal/account.ErrUserNotFound]. An error from create rolls back
 	// and is returned unchanged.
 	RequestEmailVerification(ctx context.Context, userID int64, create func(RequestState) (RequestChange, error)) error
@@ -41,8 +41,9 @@ type Storage interface {
 	// their [RedeemState], and calls redeem. If redeem succeeds, it deletes all
 	// the user's links and, when [RedeemChange.VerifiedAt] is set, saves it
 	// and records an email-verified event with the user as target and no
-	// actor, all in one transaction. A link that is missing, or deleted while
-	// waiting for the lock, returns [ErrLinkInvalid]. An error from redeem
+	// actor, all in one transaction. A link that is missing, deleted while
+	// waiting for the lock, or owned by a deactivated user returns
+	// [ErrLinkInvalid]. An error from redeem
 	// rolls back and is returned unchanged.
 	RedeemEmailVerification(ctx context.Context, hash [sha256.Size]byte, redeem func(RedeemState) (RedeemChange, error)) error
 }

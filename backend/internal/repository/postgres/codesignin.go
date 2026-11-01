@@ -28,10 +28,11 @@ func (db *DB) ChallengeUser(ctx context.Context, hash [sha256.Size]byte) (int64,
 func (db *DB) CompleteSignIn(ctx context.Context, userID int64, hash [sha256.Size]byte, update func(session.CodeSignInState) (session.CodeSignInChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
-		if _, err := queries.LockTOTPUser(ctx, userID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return session.ErrNotFound
-			}
+		deactivated, err := queries.LockTOTPUser(ctx, userID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return session.ErrNotFound
+		}
+		if err != nil {
 			return fmt.Errorf("lock code sign-in owner: %w", err)
 		}
 		row, err := queries.LockSignInChallenge(ctx, sqlc.LockSignInChallengeParams{UserID: userID, TokenHash: hash[:]})
@@ -55,7 +56,7 @@ func (db *DB) CompleteSignIn(ctx context.Context, userID int64, hash [sha256.Siz
 		}
 		next, err := update(session.CodeSignInState{
 			Challenge: session.Challenge{TokenHash: hash, UserID: row.UserID, ExpiresAt: row.ExpiresAt.UTC(), Failures: int(row.Failures)},
-			Factor:    factor, BackupCodes: codes,
+			Factor:    factor, BackupCodes: codes, Deactivated: deactivated,
 		})
 		if err != nil {
 			return err

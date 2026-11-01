@@ -24,6 +24,7 @@ type CodeSignInState struct {
 	Challenge   Challenge
 	Factor      *totp.Factor
 	BackupCodes []BackupCode
+	Deactivated bool
 }
 
 // CodeAction selects a committed counter update, deletion, or session issuance.
@@ -51,7 +52,8 @@ type codeSignInStore interface {
 	// CompleteSignIn locks the user before the owned challenge, then calls update.
 	// Completion consumes the challenge and optional backup code, saves the step
 	// and session, deletes the user's expired sessions, and removes only the
-	// successful attempt in one transaction.
+	// successful attempt in one transaction. It reads whether the owner is
+	// deactivated.
 	CompleteSignIn(ctx context.Context, userID int64, hash [sha256.Size]byte, update func(CodeSignInState) (CodeSignInChange, error)) error
 }
 
@@ -71,6 +73,8 @@ func NewCodeSignIn(storage codeSignInStore, encryption secretOpener, verifier *t
 
 // Complete returns a session secret only after consuming both proofs commits.
 // The new session keeps the device details of this code request.
+// It deletes a deactivated account's challenge and returns
+// [account.ErrDeactivated].
 func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device Device) (Issued, error) {
 	hash, err := hashSecret(secret)
 	if err != nil {
@@ -99,6 +103,12 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 	err = s.storage.CompleteSignIn(ctx, userID, hash, func(state CodeSignInState) (CodeSignInChange, error) {
 		if state.Challenge.UserID != userID || state.Challenge.TokenHash != hash {
 			return CodeSignInChange{}, ErrInvalidChallenge
+		}
+		// The password step already proved the password, so the account's
+		// status may be told; the challenge can never complete.
+		if state.Deactivated {
+			outcome = account.ErrDeactivated
+			return CodeSignInChange{Action: CodeActionDelete}, nil
 		}
 		if checkChallenge(state.Challenge, s.now) != nil || state.Factor == nil || state.Factor.ConfirmedAt == nil {
 			return CodeSignInChange{Action: CodeActionDelete}, nil

@@ -16,8 +16,9 @@ import (
 func (db *DB) DisableTOTP(ctx context.Context, userID, attemptID int64, check func(totp.DisableState) error) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
-		role, err := queries.LockTOTPUserRole(ctx, userID)
-		if errors.Is(err, pgx.ErrNoRows) {
+		owner, err := queries.LockTOTPUserRole(ctx, userID)
+		// A deactivation ended the session this request was checked with.
+		if errors.Is(err, pgx.ErrNoRows) || owner.Deactivated {
 			return account.ErrUserNotFound
 		}
 		if err != nil {
@@ -37,7 +38,7 @@ func (db *DB) DisableTOTP(ctx context.Context, userID, attemptID int64, check fu
 			hashes = append(hashes, row.CodeHash)
 		}
 
-		if err := check(totp.DisableState{Role: account.Role(role), Factor: factor, BackupHashes: hashes}); err != nil {
+		if err := check(totp.DisableState{Role: account.Role(owner.Role), Factor: factor, BackupHashes: hashes}); err != nil {
 			return err
 		}
 

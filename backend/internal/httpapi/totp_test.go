@@ -125,6 +125,18 @@ func TestStartTOTPAlreadyOn(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), `"secret"`)
 }
 
+// An account removed or deactivated after its session was checked is
+// answered as signed out.
+func TestStartTOTPAccountEnded(t *testing.T) {
+	service := &fakeTOTP{err: fmt.Errorf("wrapped: %w", account.ErrUserNotFound)}
+
+	response := requestTOTP(New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)}), http.MethodPost, totpAuthAuthenticated)
+
+	require.Equal(t, http.StatusUnauthorized, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/unauthenticated"`)
+	assertSessionCookieCleared(t, response, true)
+}
+
 func TestTOTPUnexpectedFailure(t *testing.T) {
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
 		t.Run(method, func(t *testing.T) {

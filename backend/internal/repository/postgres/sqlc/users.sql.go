@@ -45,15 +45,22 @@ func (q *Queries) InsertAdminUser(ctx context.Context, arg InsertAdminUserParams
 }
 
 const lockSignInUser = `-- name: LockSignInUser :one
-SELECT password_hash FROM users WHERE id = $1 FOR UPDATE
+SELECT password_hash, (deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM users WHERE id = $1 FOR UPDATE
 `
 
-// Compare password proof with the current hash while recovery shares this lock.
-func (q *Queries) LockSignInUser(ctx context.Context, userID int64) (string, error) {
+type LockSignInUserRow struct {
+	PasswordHash string
+	Deactivated  bool
+}
+
+// Compare password proof with the current hash while recovery shares this lock,
+// and see a deactivation that committed while the password was checked.
+func (q *Queries) LockSignInUser(ctx context.Context, userID int64) (LockSignInUserRow, error) {
 	row := q.db.QueryRow(ctx, lockSignInUser, userID)
-	var password_hash string
-	err := row.Scan(&password_hash)
-	return password_hash, err
+	var i LockSignInUserRow
+	err := row.Scan(&i.PasswordHash, &i.Deactivated)
+	return i, err
 }
 
 const lockUsers = `-- name: LockUsers :exec

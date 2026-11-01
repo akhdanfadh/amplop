@@ -20,7 +20,8 @@ func (db *DB) RequestEmailVerification(ctx context.Context, userID int64, create
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 		user, err := queries.LockEmailVerificationUser(ctx, userID)
-		if errors.Is(err, pgx.ErrNoRows) {
+		// A deactivation ended the session this request was checked with.
+		if errors.Is(err, pgx.ErrNoRows) || user.Deactivated {
 			return account.ErrUserNotFound
 		}
 		if err != nil {
@@ -80,7 +81,9 @@ func (db *DB) RedeemEmailVerification(ctx context.Context, hash [sha256.Size]byt
 		}
 		user, err := queries.LockEmailVerificationUser(ctx, found.UserID)
 		// Deleting the user while this waited also deleted the link.
-		if errors.Is(err, pgx.ErrNoRows) {
+		// Deactivating deletes links too, so the flag check only guards
+		// against a link that somehow outlived it.
+		if errors.Is(err, pgx.ErrNoRows) || user.Deactivated {
 			return emailverification.ErrLinkInvalid
 		}
 		if err != nil {

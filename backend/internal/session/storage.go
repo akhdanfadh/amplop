@@ -9,7 +9,8 @@ import (
 )
 
 // ErrNotFound means no session row matches. Ending a session by ID also
-// returns it for an expired row or another user's row.
+// returns it for an expired row or another user's row, and reading an
+// identity or confirming TOTP returns it for a deactivated user.
 var ErrNotFound = errors.New("session not found")
 
 // Action identifies whether to keep, touch, or delete a session.
@@ -33,10 +34,12 @@ type Change struct {
 type Storage interface {
 	// ReadSessionIdentity loads account, factor, and email verification state in
 	// one snapshot, rechecking the session so enrollment revocation cannot grant
-	// old proof access.
+	// old proof access. A missing session, or a deactivated user's, returns
+	// ErrNotFound.
 	ReadSessionIdentity(ctx context.Context, hash [sha256.Size]byte) (IdentityState, error)
 
-	// StartSignIn locks the owner and reads the current password hash and factor.
+	// StartSignIn locks the owner and reads the current password hash, factor,
+	// and whether the owner is deactivated.
 	// It saves the chosen session or challenge and deletes expired challenges
 	// atomically; saving a session also deletes the user's expired sessions.
 	StartSignIn(ctx context.Context, userID int64, update func(SignInState) (SignInChange, error)) error

@@ -26,9 +26,10 @@ type EnrollmentChange struct {
 
 type enrollmentStore interface {
 	// ConfirmTOTP locks the user, then the session, and loads the factor.
-	// A missing user or session returns ErrNotFound. On callback success it saves
-	// the factor and hashes, replaces all user sessions with the new session,
-	// and removes this user's successful attempt in the same transaction.
+	// A missing user or session, or a deactivated user, returns ErrNotFound.
+	// On callback success it saves the factor and hashes, replaces all user
+	// sessions with the new session, and removes this user's successful
+	// attempt in the same transaction.
 	// Any error rolls back every write, including attempt removal.
 	ConfirmTOTP(ctx context.Context, userID int64, hash [sha256.Size]byte, update func(EnrollmentState) (EnrollmentChange, error)) error
 }

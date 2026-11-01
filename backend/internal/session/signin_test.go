@@ -30,11 +30,12 @@ type signInStorage struct {
 	challenges   []Challenge
 	factor       *totp.Factor
 	passwordHash string
+	deactivated  bool
 	err          error
 }
 
 func (f *signInStorage) StartSignIn(_ context.Context, _ int64, update func(SignInState) (SignInChange, error)) error {
-	next, err := update(SignInState{PasswordHash: f.passwordHash, Factor: f.factor})
+	next, err := update(SignInState{PasswordHash: f.passwordHash, Factor: f.factor, Deactivated: f.deactivated})
 	if err != nil {
 		return err
 	}
@@ -254,4 +255,49 @@ func TestStartSignInStalePassword(t *testing.T) {
 			assert.Empty(t, store.challenges)
 		})
 	}
+}
+
+// The right password for a deactivated account issues neither a session nor
+// a challenge, and says the account is deactivated. The password was right,
+// so the attempt is not a failure.
+func TestStartSignInDeactivated(t *testing.T) {
+	now := time.Now()
+	for _, c := range []struct {
+		name   string
+		factor *totp.Factor
+	}{
+		{"session", nil},
+		{"challenge", &totp.Factor{ConfirmedAt: &now}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			store := &signInStorage{passwordHash: "hash", factor: c.factor, deactivated: true}
+			accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
+				return account.Credentials{User: account.User{ID: 42}, PasswordHash: "hash"}, nil
+			}}
+			attempts := &memoryAttempts{rows: map[int64]Attempt{}}
+			throttle := NewThrottle(attempts, time.Now)
+
+			issued, err := NewService(store, accounts, throttle, time.Now).StartSignIn(t.Context(), "member@example.com", "password", Device{Addr: netip.MustParseAddr("192.0.2.1")})
+
+			require.ErrorIs(t, err, account.ErrDeactivated)
+			assert.Zero(t, issued)
+			assert.Empty(t, store.states)
+			assert.Empty(t, store.challenges)
+			assert.Empty(t, attempts.rows)
+		})
+	}
+}
+
+// A stale password is refused as invalid even for a deactivated account, so
+// only current password proof learns that the account is deactivated.
+func TestStartSignInDeactivatedStalePassword(t *testing.T) {
+	store := &signInStorage{passwordHash: "replacement hash", deactivated: true}
+	accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
+		return account.Credentials{User: account.User{ID: 42}, PasswordHash: "verified earlier hash"}, nil
+	}}
+	throttle := NewThrottle(&memoryAttempts{rows: map[int64]Attempt{}}, time.Now)
+
+	_, err := NewService(store, accounts, throttle, time.Now).StartSignIn(t.Context(), "member@example.com", "password", Device{Addr: netip.MustParseAddr("192.0.2.1")})
+
+	require.ErrorIs(t, err, account.ErrInvalidCredentials)
 }

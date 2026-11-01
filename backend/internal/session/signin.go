@@ -25,10 +25,12 @@ type SignedIn struct {
 	ExpiresAt time.Time
 }
 
-// SignInState is the current password hash and factor, read with the user locked.
+// SignInState is the current password hash, factor, and status, read with
+// the user locked.
 type SignInState struct {
 	PasswordHash string
 	Factor       *totp.Factor
+	Deactivated  bool
 }
 
 // SignInChange saves exactly one of Session or Challenge, selected by Step.
@@ -63,7 +65,8 @@ func NewService(storage Storage, accounts accountService, throttle *Throttle, no
 // The device's address also identifies the sign-in for throttling.
 // The returned secret is for the browser; storage receives only its hash.
 // It returns [emailaddress.ErrInvalid] for an invalid email without
-// reserving a throttle attempt.
+// reserving a throttle attempt, and [account.ErrDeactivated] for the right
+// password of a deactivated account.
 func (s *Service) StartSignIn(ctx context.Context, email, password string, device Device) (SignedIn, error) {
 	email, err := emailaddress.Parse(email)
 	if err != nil {
@@ -87,6 +90,11 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, devic
 		// A recovery invalidates password proof even when the plaintext is unchanged.
 		if state.PasswordHash != credentials.PasswordHash {
 			return SignInChange{}, account.ErrInvalidCredentials
+		}
+		// Checked after the password, so only someone who knows it learns
+		// that the account is deactivated.
+		if state.Deactivated {
+			return SignInChange{}, account.ErrDeactivated
 		}
 
 		// The current factor determines whether a second sign-in step is required.

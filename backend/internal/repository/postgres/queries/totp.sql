@@ -1,10 +1,14 @@
 -- name: LockTOTPUser :one
--- Lock the existing owner even before their first factor row exists.
-SELECT id FROM users WHERE id = @user_id FOR UPDATE;
+-- Lock the existing owner even before their first factor row exists, and
+-- read whether a deactivation committed first.
+SELECT (deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM users WHERE id = @user_id FOR UPDATE;
 
 -- name: LockTOTPUserRole :one
--- Role checks must share the owner lock with factor deletion and promotion.
-SELECT role FROM users WHERE id = @user_id FOR UPDATE;
+-- Role checks must share the owner lock with factor deletion and promotion;
+-- also reads whether a deactivation committed first.
+SELECT role, (deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM users WHERE id = @user_id FOR UPDATE;
 
 -- name: ReadUserTOTP :one
 SELECT key_id, secret_ciphertext, confirmed_at, last_step

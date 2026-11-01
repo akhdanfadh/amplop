@@ -143,7 +143,11 @@ func totpEnrollmentResponses(api huma.API) map[string]*huma.Response {
 }
 
 func totpEnrollmentProblem(err error) error {
-	if errors.Is(err, totp.ErrAlreadyOn) {
+	switch {
+	// The account was deleted or deactivated after its session was checked.
+	case errors.Is(err, account.ErrUserNotFound):
+		return unauthenticatedProblem()
+	case errors.Is(err, totp.ErrAlreadyOn):
 		return newProblem(http.StatusConflict, totpAlreadyOnType, "Two-factor authentication already on", "An authenticator is already confirmed for this account.")
 	}
 	return err
@@ -170,18 +174,11 @@ func registerTOTPCancellation(api huma.API, handler totpHandler) {
 func (h totpHandler) handleCancelTOTPEnrollment(ctx context.Context, _ *struct{}) (*output[totpStatus], error) {
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
 	if err := h.service.Cancel(ctx, user.ID); err != nil {
-		return nil, totpCancellationProblem(err)
+		return nil, totpEnrollmentProblem(err)
 	}
 
 	// The transaction already established off; avoid a second read after commit.
 	return respondData(totpStatus{Status: totp.StateOff, BackupCodesLeft: 0}), nil
-}
-
-func totpCancellationProblem(err error) error {
-	if errors.Is(err, account.ErrUserNotFound) {
-		return unauthenticatedProblem()
-	}
-	return totpEnrollmentProblem(err)
 }
 
 // ========================

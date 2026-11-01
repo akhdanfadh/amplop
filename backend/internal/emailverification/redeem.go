@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// ErrLinkInvalid means a link is malformed, unknown, used, expired, or was
-// sent to an address the user no longer has.
+// ErrLinkInvalid means a link is malformed, unknown, used, expired, sent to
+// an address the user no longer has, or owned by a deactivated user.
 var ErrLinkInvalid = errors.New("email verification link is not valid")
 
 // RedeemState is what [Storage.RedeemEmailVerification] reads under the
@@ -29,8 +29,8 @@ type RedeemChange struct {
 // Redeem verifies the address the link with secret was sent to and deletes
 // all of its user's links. A link for an already verified user succeeds and
 // keeps their verified time. It returns [ErrLinkInvalid] for a link that is
-// malformed, unknown, used, expired, or sent to an address the user no longer
-// has.
+// malformed, unknown, used, expired, sent to an address the user no longer
+// has, or owned by a deactivated user.
 //
 // NOTE: Redeem has no throttle. The secret has 256 random bits, so guessing
 // one is hopeless however fast the guesses come.

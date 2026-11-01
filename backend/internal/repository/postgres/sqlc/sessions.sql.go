@@ -211,7 +211,7 @@ SELECT users.id, users.email, users.role,
 FROM sessions
 JOIN users ON users.id = sessions.user_id
 LEFT JOIN user_totp ON user_totp.user_id = users.id
-WHERE sessions.token_hash = $1
+WHERE sessions.token_hash = $1 AND users.deactivated_at IS NULL
 `
 
 type ReadSessionIdentityRow struct {
@@ -223,7 +223,8 @@ type ReadSessionIdentityRow struct {
 }
 
 // Recheck the session together with the account and factor used for access,
-// and read whether the account's email is verified.
+// and read whether the account's email is verified. A deactivated account's
+// session identifies no one.
 func (q *Queries) ReadSessionIdentity(ctx context.Context, tokenHash []byte) (ReadSessionIdentityRow, error) {
 	row := q.db.QueryRow(ctx, readSessionIdentity, tokenHash)
 	var i ReadSessionIdentityRow
