@@ -90,9 +90,9 @@ func TestMailerSendFailed(t *testing.T) {
 	reply := "535 5.7.8 Authentication failed for inbok@example.com " + strings.Repeat("x", 2*maxLoggedReply)
 	sender := &fakeSender{err: &SendError{Reason: ReasonAuth, Err: errors.New(reply)}}
 	var logs bytes.Buffer
+	var failed *SendError
 
 	revision, err := testMailer(storage, &fakeKeyring{}, sender, &logs).Send(t.Context(), testOutgoing())
-	var failed *SendError
 	require.ErrorAs(t, err, &failed)
 
 	assert.Equal(t, ReasonAuth, failed.Reason)

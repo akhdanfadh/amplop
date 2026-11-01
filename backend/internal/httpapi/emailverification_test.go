@@ -203,6 +203,7 @@ func TestEmailVerificationUnexpectedFailure(t *testing.T) {
 
 func TestEmailVerificationOpenAPI(t *testing.T) {
 	doc := New(discard, Services{}).api.OpenAPI()
+
 	for _, op := range []struct {
 		operation *huma.Operation
 		id        string

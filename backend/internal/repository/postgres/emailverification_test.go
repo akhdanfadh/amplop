@@ -214,13 +214,37 @@ func TestEmailVerificationUserDeleted(t *testing.T) {
 	assert.Empty(t, savedVerificationLinks(t, conn))
 }
 
+// Down removes the links table and the verified time column; Up adds them
+// back.
 func TestEmailVerificationMigrationDown(t *testing.T) {
 	url := newDatabase(t)
 	provider := migratedProvider(t, url)
-	_, err := provider.DownTo(t.Context(), 14)
+	conn, err := pgx.Connect(t.Context(), url)
 	require.NoError(t, err)
+	defer conn.Close(t.Context())
+
+	_, err = provider.DownTo(t.Context(), 14)
+	require.NoError(t, err)
+
+	assert.Equal(t, [2]bool{false, false}, emailVerificationSchema(t, conn))
+
 	_, err = provider.Up(t.Context())
 	require.NoError(t, err)
+
+	assert.Equal(t, [2]bool{true, true}, emailVerificationSchema(t, conn))
+}
+
+// emailVerificationSchema reports whether the links table and the users
+// column email_verified_at exist.
+func emailVerificationSchema(t *testing.T, conn *pgx.Conn) [2]bool {
+	t.Helper()
+
+	var table, column bool
+	const exists = `SELECT to_regclass('public.email_verification_links') IS NOT NULL,
+		EXISTS (SELECT 1 FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'email_verified_at')`
+	require.NoError(t, conn.QueryRow(t.Context(), exists).Scan(&table, &column))
+	return [2]bool{table, column}
 }
 
 // utcTimes returns times converted to UTC.
