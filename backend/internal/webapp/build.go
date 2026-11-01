@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -52,6 +53,8 @@ type Build struct {
 	// files maps each URL path, e.g. /assets/index-BrBO-kCw.js, to its file.
 	files map[string]file
 	shell file
+	// policy is the Content-Security-Policy sent with every file.
+	policy string
 }
 
 // Load reads every file of files, a web app build, into memory. Returns
@@ -89,6 +92,10 @@ func Load(files fs.FS) (*Build, error) {
 		return nil, ErrNoBuild
 	}
 	build.shell = shellFile
+	build.policy, err = newPolicy(shellFile.data)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", shell, err)
+	}
 	return build, nil
 }
 
@@ -125,6 +132,7 @@ func (b *Build) Serve(w http.ResponseWriter, request *http.Request) bool {
 	}
 
 	header := w.Header()
+	header.Set("Content-Security-Policy", b.policy)
 	header.Set("Cache-Control", served.cacheControl)
 	header.Set("ETag", served.etag)
 	if etagMatches(request.Header.Get("If-None-Match"), served.etag) {

@@ -155,4 +155,5 @@ func TestWebAppBuild(t *testing.T) {
 	assert.Empty(t, head.Body.String())
 	assert.Equal(t, http.StatusNotModified, again.Code)
 	assert.Empty(t, again.Body.String())
+	assert.NotEmpty(t, again.Header().Get("Content-Security-Policy"))
 }

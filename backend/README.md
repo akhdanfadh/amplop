@@ -88,6 +88,30 @@ same cross-origin check as the API: a write without `Origin` or
 belong to the API, so `/api/v1/x` is an API 404, not the shell. There are
 no directory listings, and only the files in the build can be sent.
 
+### Security headers
+
+Every response from inbok's handlers, the API's and the web app's,
+carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
+and `X-Frame-Options: DENY`. The web app's files and shell also carry this
+`Content-Security-Policy`:
+
+```text
+default-src 'self'; script-src 'self' <shell hashes>; object-src 'none';
+base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+```
+
+Pages load only inbok's own files and call only its own API. No `<style>`
+element or `style` attribute in the HTML applies; styles set from script,
+e.g. React's `style` props, still do. The build's shell has inline
+scripts, and their text changes with every build, so `serve` reads the
+embedded shell at startup and allows each one by its SHA-256 hash; no
+other inline script runs. Nothing in the policy names a part of the web
+app's code: whatever the build's shell holds is allowed, and the web app
+keeps to the rest. API responses get no Content-Security-Policy; Huma's
+docs page at `/api/v0/docs` sets its own, since it loads scripts from
+unpkg.com. HTTPS-only (HSTS) is the proxy's header, because Go itself
+serves plain HTTP.
+
 ## API contract
 
 GET, HEAD, and OPTIONS must not perform user actions, such as changing mail.
@@ -904,10 +928,10 @@ httpapi --> emailverification <-- repository/postgres
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`
   fills with `systememail`'s `Mailer`.
 - `webapp` embeds the built web app and serves it as a static site:
-  files, the shell for browser routes, and caching. It knows the build's
-  layout, not the web app's code. `httpapi` declares a `webApp` interface
-  and sends it the reads outside `/api`, keeping the API's 404 and 405
-  for the rest, so its tests use a fake.
+  files, the shell for browser routes, caching, and the CSP. It knows the
+  build's layout, not the web app's code. `httpapi` declares a `webApp`
+  interface and sends it the reads outside `/api`, keeping the API's 404
+  and 405 for the rest, so its tests use a fake.
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
   in `httpapi.Services`, and loads `webapp`'s build for `ServeWebApp`.
 
