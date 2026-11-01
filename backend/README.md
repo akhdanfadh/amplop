@@ -48,7 +48,27 @@ Expect HTTP 200 with:
 (`INBOK_HTTP_ADDR`; an all-interfaces address such as `0.0.0.0:8080`
 reaches this machine), with a 3-second limit and no proxy. It exits 0 if the
 answer is HTTP 200 and 1 otherwise, printing the reason. It reads no other
-setting, so it needs no secrets.
+setting, so it needs no secrets. The container image runs it as its health
+check, since the image has no `curl`.
+
+## Container image
+
+From the repository root, `make image` builds the `inbok:local` image
+from the `Dockerfile`; `IMAGE=name:tag` picks another name. Nothing is
+pushed to a registry. It holds the binary, with the web app built in, on
+distroless's `static` base: no shell, no package manager, and the
+`nonroot` user (65532). It sets `GIN_MODE=release` and
+`INBOK_HTTP_ADDR=0.0.0.0:8080`, since a container's loopback is
+unreachable from other containers. Containers on the same Docker network
+can then reach it, and the host's network only if the port is published.
+To publish it for a proxy on the same host, bind loopback, e.g.
+`-p 127.0.0.1:8080:8080`: a bare `-p 8080:8080` listens on every host
+interface, and Docker's rules bypass host firewalls such as ufw. Its entry point is `inbok`, and its default command is
+`serve`, so `docker run inbok:local migrate` runs a migration.
+
+The base images are pinned by version and digest; the `Dockerfile` says
+how to update one. Builds cache downloaded Go modules and pnpm packages
+between runs, and a change under `backend/` reuses the cached web build.
 
 ## The web app
 
@@ -286,13 +306,13 @@ in-flight requests up to 5 seconds to finish.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `INBOK_HTTP_ADDR` | `127.0.0.1:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
+| `INBOK_HTTP_ADDR` | `127.0.0.1:8080`; the image sets `0.0.0.0:8080` | Address and port to listen on, e.g. `0.0.0.0:8080`. |
 | `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL; see Migrations below. |
 | `INBOK_PUBLIC_URL` | none, required | The address users open inbok at, e.g. `https://mail.example.com`; see Public URL below. Invalid values stop startup. |
 | `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
 | `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
 | `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets and the system email password; see Encryption keys below. Invalid entries stop startup. |
-| `GIN_MODE` | `debug` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
+| `GIN_MODE` | `debug`; the image sets `release` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
 machine.
@@ -602,16 +622,17 @@ reads the first line and skips confirmation. Password spaces are preserved.
 Use a password manager or another trusted program to supply that line; never
 put the password in arguments, environment variables, or shell history.
 
-For a deployment container, replace the container name and binary path with
-yours. The container must have `INBOK_DATABASE_URL` configured:
+In a container from the image, the binary is on the `PATH`. The
+container must have `INBOK_DATABASE_URL` set, as one running `serve` does.
+Replace the container name with yours:
 
 ```sh
-docker exec -it inbok /app/inbok recover-admin admin@example.com
+docker exec -it inbok inbok recover-admin admin@example.com
 ```
 
 For piped input, use `docker exec -i` without `-t` so it uses the one-line
-input mode. This repository's Compose file starts PostgreSQL and Mailpit; it
-does not provide an application container.
+input mode. This repository's development Compose file starts PostgreSQL
+and Mailpit; it does not run inbok itself.
 
 Recovery checks that the account is an administrator, then replaces the
 password, removes TOTP and every backup code, ends all sessions and sign-in

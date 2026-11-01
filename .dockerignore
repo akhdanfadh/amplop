@@ -1,0 +1,18 @@
+# The build context holds only what the Dockerfile copies: backend/ and
+# web/. Everything else stays out, e.g. .git, local .env files, and editor
+# folders.
+*
+!backend/
+!web/
+
+# Inside those, leave out what each machine makes for itself: installed
+# packages, build output, binaries, and caches. The Dockerfile builds them.
+**/node_modules
+**/dist
+backend/bin
+backend/tmp
+**/.cache
+**/*.log
+
+# Local settings, possibly secrets.
+**/.env*

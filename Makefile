@@ -27,7 +27,7 @@ TESTIFYLINT := go -C backend tool -modfile=tools.mod testifylint
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install dev dev-backend dev-web backend-serve backend-build \
+.PHONY: help install image dev dev-backend dev-web backend-serve backend-build \
 	web-build web-preview web-add-ui \
 	db-start db-stop db-wipe db-migrate db-status db-rollback \
 	db-reset db-migration \
@@ -45,6 +45,14 @@ $(ENV_FILE):
 
 install: ## Install web dependencies (Go downloads its own)
 	pnpm -C web install
+
+# Container image, built from the Dockerfile on this machine; nothing is
+# pushed. Another name keeps a second image beside this one, e.g.
+# make image IMAGE=inbok:trial
+IMAGE ?= inbok:local
+
+image: ## Build the inbok container image, tagged IMAGE (inbok:local)
+	docker build --tag $(IMAGE) .
 
 # Development servers
 
