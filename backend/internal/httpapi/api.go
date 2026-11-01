@@ -105,6 +105,7 @@ func New(logger *slog.Logger, services Services) *API {
 	registerTOTP(api, services.TOTP, services.Enrollment, services.Backups, services.Disabler)
 	registerSystemEmail(api, services.SystemEmail, services.TestMessages)
 	registerEmailVerification(api, services.EmailVerification)
+	registerProblemTypes(api)
 
 	return &API{router: router, api: api}
 }

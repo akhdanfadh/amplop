@@ -1,7 +1,7 @@
 import { useRef, type ReactElement } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useCreateFirstAdmin } from "@/api/generated/inbok";
-import { newSetupPasswordMin, newSetupPasswordMax } from "@/api/generated/model";
+import { newSetupPasswordMin, newSetupPasswordMax, type ProblemType } from "@/api/generated/model";
 import { formErrors, userMessage } from "@/api/problem";
 import { SetupSchema } from "./schema";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { PasswordInput } from "@/components/password-input";
 
 const emptySetup = { token: "", email: "", password: "", confirmPassword: "" };
 const conflict = 409;
-const setupDoneType = "/api/v0/problems/setup-done";
+const setupDoneType: ProblemType = "/api/v0/problems/setup-done";
 
 const inputs = [
   {

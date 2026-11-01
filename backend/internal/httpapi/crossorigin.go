@@ -20,11 +20,17 @@ func withCrossOrigin() gin.HandlerFunc {
 
 		missingSource := ctx.GetHeader("Sec-Fetch-Site") == "" && ctx.GetHeader("Origin") == ""
 		if missingSource || protection.Check(ctx.Request) != nil {
-			writeProblem(ctx, newProblem(http.StatusForbidden, problemPrefix+"cross-origin-request",
-				"Cross-origin request blocked", "Send this request from the inbok site."))
+			writeProblem(ctx, crossOriginProblem())
 			return
 		}
 
 		ctx.Next()
 	}
+}
+
+// crossOriginProblem returns the 403 for a write whose source is missing or
+// another site.
+func crossOriginProblem() *problem {
+	return newProblem(http.StatusForbidden, problemPrefix+"cross-origin-request",
+		"Cross-origin request blocked", "Send this request from the inbok site.")
 }

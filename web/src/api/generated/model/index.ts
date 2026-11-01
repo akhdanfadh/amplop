@@ -28,6 +28,7 @@ export * from './newSystemEmailSettings.zod';
 export * from './probeEvent.zod';
 export * from './probeEventCreated.zod';
 export * from './problem.zod';
+export * from './problemType.zod';
 export * from './redeemEmailVerificationBody.zod';
 export * from './regenerateTOTPBackupCodesBody.zod';
 export * from './responseCurrentSession.zod';

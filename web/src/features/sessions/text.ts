@@ -1,9 +1,9 @@
-import type { ListedSession } from "@/api/generated/model";
+import type { ListedSession, ProblemType } from "@/api/generated/model";
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 
 const notFound = 404;
-const sessionNotFoundType = "/api/v0/problems/session-not-found";
+const sessionNotFoundType: ProblemType = "/api/v0/problems/session-not-found";
 // The server records activity at most once an hour.
 const activityWindowMs = 60 * 60 * 1000;
 const shownTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });

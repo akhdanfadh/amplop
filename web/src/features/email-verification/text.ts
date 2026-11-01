@@ -1,10 +1,11 @@
+import type { ProblemType } from "@/api/generated/model";
 import { problemExplanation, uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 
 const notFound = 404;
 const conflict = 409;
-const alreadyVerifiedType = "/api/v0/problems/email-already-verified";
-const linkInvalidType = "/api/v0/problems/email-verification-link-invalid";
+const alreadyVerifiedType: ProblemType = "/api/v0/problems/email-already-verified";
+const linkInvalidType: ProblemType = "/api/v0/problems/email-verification-link-invalid";
 
 // sentMessage tells the user where a verification link went.
 export function sentMessage(address: string): string {

@@ -138,6 +138,14 @@ mapped 503 can explain maintenance. Unclassified errors are returned as is,
 become a fixed 500 `internal-error`, and log their technical cause with the
 request ID. Huma status helpers alone do not declare text safe for display.
 
+The contract lists problem types in the `ProblemType` schema:
+`registerProblemTypes` collects every type an operation shows in a response
+example, plus the shared types the API overview's table covers. A type a
+handler maps but no operation documents is missing from the list, so
+document each mapped problem with an example. `Problem.type` is any of the
+listed types or any other URI reference, so clients still accept a type the
+list lacks.
+
 Optional `errors` is a nonempty list of rejected inputs. Each entry has a
 `location` and safe `message`, without `value`. Missing required fields have
 precise locations, e.g. `body.items[3].name`, and "This field is required."
@@ -868,7 +876,8 @@ To add a feature, e.g. `account`:
 4. `httpapi/account.go`: follow [HTTP feature files](#http-feature-files).
    Declare an `accountService` interface and a `registerAccount` entry point.
    Test the operations with fake services. Add an `Account` field to
-   `Services` and call `registerAccount` in `New`.
+   `Services` and call `registerAccount` in `New`, before
+   `registerProblemTypes`, which lists the problem types registered so far.
 5. `cmd/inbok/main.go`: set `Account` in `serve`'s `Services`.
 6. Regenerate `api/generated/openapi.json`.
 

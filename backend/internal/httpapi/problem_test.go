@@ -21,7 +21,6 @@ func TestProblemSchema(t *testing.T) {
 	schema := a.api.OpenAPI().Components.Schemas.Map()["Problem"]
 	require.NotNil(t, schema, "public problem schema missing")
 	assert.ElementsMatch(t, []string{"detail", "status", "title", "type"}, schema.Required)
-	assert.Equal(t, "uri-reference", schema.Properties["type"].Format)
 
 	errors := schema.Properties["errors"]
 	assert.False(t, errors.Nullable)
