@@ -19,6 +19,14 @@ type AuditEvent struct {
 	ActorUserID  *int64
 }
 
+type EmailVerificationLink struct {
+	TokenHash []byte
+	UserID    int64
+	Address   string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
 type ProbeCounter struct {
 	ID    int32
 	Total int64
@@ -85,11 +93,12 @@ type TotpBackupCode struct {
 }
 
 type User struct {
-	ID           int64
-	Email        string
-	PasswordHash string
-	Role         string
-	CreatedAt    time.Time
+	ID              int64
+	Email           string
+	PasswordHash    string
+	Role            string
+	CreatedAt       time.Time
+	EmailVerifiedAt *time.Time
 }
 
 type UserTotp struct {
