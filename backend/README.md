@@ -69,6 +69,7 @@ interface, and Docker's rules bypass host firewalls such as ufw. Its entry point
 The base images are pinned by version and digest; the `Dockerfile` says
 how to update one. Builds cache downloaded Go modules and pnpm packages
 between runs, and a change under `backend/` reuses the cached web build.
+`deploy/README.md` runs the image with Docker Compose on a server.
 
 ## The web app
 
@@ -408,7 +409,9 @@ preserves the browser's Host, including its port. nginx forwards `Origin`
 and `Sec-Fetch-Site` unchanged. Its [proxy header documentation](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header)
 explains the Host override. Keep the Go listener inaccessible to remote
 clients. A container proxy has a different connection address; trust its
-actual range rather than copying the loopback range.
+actual range rather than copying the loopback range. With the Compose
+files in `deploy/`, [Using your own proxy](../deploy/README.md#using-your-own-proxy-instead-of-caddy)
+gives the address to trust.
 
 ## Email addresses
 

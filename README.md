@@ -11,6 +11,9 @@ is removed before the first release.
 
 ## Requirements
 
+These are for development. Self-hosting needs only Docker and git; see
+[Self-hosting](#self-hosting).
+
 - Go 1.27.1 or newer
 - pnpm, which downloads the pinned pnpm and Node.js versions itself
 - Docker, for PostgreSQL, Mailpit, and the Go database tests
@@ -36,6 +39,12 @@ To create the first administrator, follow
 then open `http://localhost:5173/setup`. After setup, sign in at
 `http://localhost:5173/sign-in`.
 
+## Self-hosting
+
+To run inbok on your own server with HTTPS, follow `deploy/README.md`.
+Docker Compose builds inbok from this repository and runs it with
+PostgreSQL and Caddy.
+
 ## Documentation
 
 - `CONTRIBUTING.md`: Make commands, the local database, and changing the
@@ -44,6 +53,8 @@ then open `http://localhost:5173/setup`. After setup, sign in at
   conventions, configuration, migrations, queries, and package layout.
 - `web/README.md`: the browser app, its generated API client, error
   messages, data loading, and forms.
+- `deploy/README.md`: running inbok on a server: first run, upgrades,
+  backups, administrator recovery, and using your own proxy.
 
 ## License
 
