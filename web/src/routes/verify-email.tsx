@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
+import { forgetLinkSecret, linkSecret } from "@/features/email-verification/link-secret";
 import { RedeemForm } from "@/features/email-verification/redeem-form";
 
 export const Route = createFileRoute("/verify-email")({
@@ -11,16 +12,19 @@ function VerifyEmail(): ReactElement {
   const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const hash = useLocation({ select: (location) => location.hash });
-  // The secret is kept from the first render, before the address bar loses
-  // it. Another link pasted into this tab changes only the hash.
-  const [secret, setSecret] = useState(hash);
+  // getRouter took the opening link's secret out of the address at start; a
+  // link pasted into this tab later changes only the hash, which wins.
+  const [secret, setSecret] = useState(() => hash || linkSecret());
   if (hash && hash !== secret) setSecret(hash);
 
   useEffect(() => {
+    // A later visit without a link must not reuse this one.
+    forgetLinkSecret();
     headingRef.current?.focus();
   }, []);
   useEffect(() => {
-    // Replacing the entry keeps the secret out of history and copied URLs.
+    // Replacing the entry keeps a pasted link's secret out of the address
+    // bar, Back, and copied URLs.
     if (hash) void navigate({ to: "/verify-email", replace: true });
   }, [hash, navigate]);
 
