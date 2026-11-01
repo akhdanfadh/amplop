@@ -93,10 +93,10 @@ func (db *DB) CompleteSignIn(ctx context.Context, userID int64, hash [sha256.Siz
 				return fmt.Errorf("consume sign-in backup code: %w", err)
 			}
 		}
-		if err := queries.InsertSession(ctx, sqlc.InsertSessionParams{
-			UserID: userID, TokenHash: next.Session.TokenHash[:], CreatedAt: next.Session.CreatedAt,
-			LastUsedAt: next.Session.LastUsedAt, ExpiresAt: next.Session.ExpiresAt,
-		}); err != nil {
+		if err := deleteUserExpiredSessions(ctx, queries, userID, next.Expiry); err != nil {
+			return err
+		}
+		if err := queries.InsertSession(ctx, insertSessionParams(next.Session)); err != nil {
 			return fmt.Errorf("save code sign-in session: %w", err)
 		}
 		if err := queries.DeleteUserTOTPAttempt(ctx, sqlc.DeleteUserTOTPAttemptParams{UserID: userID, ID: next.AttemptID}); err != nil {

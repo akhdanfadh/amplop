@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"errors"
 	"time"
+	"uuid"
 )
 
-// ErrNotFound means the session row does not exist.
+// ErrNotFound means no session row matches. Ending a session by ID also
+// returns it for an expired row or another user's row.
 var ErrNotFound = errors.New("session not found")
 
 // Action identifies whether to keep, touch, or delete a session.
@@ -34,7 +36,8 @@ type Storage interface {
 	ReadSessionIdentity(ctx context.Context, hash [sha256.Size]byte) (IdentityState, error)
 
 	// StartSignIn locks the owner and reads the current password hash and factor.
-	// It saves the chosen session or challenge and prunes expired challenges atomically.
+	// It saves the chosen session or challenge and deletes expired challenges
+	// atomically; saving a session also deletes the user's expired sessions.
 	StartSignIn(ctx context.Context, userID int64, update func(SignInState) (SignInChange, error)) error
 
 	// UpdateSession applies a Go decision to a session in one transaction.
@@ -45,4 +48,18 @@ type Storage interface {
 
 	// DeleteSession succeeds even when the row is already missing.
 	DeleteSession(ctx context.Context, hash [sha256.Size]byte) error
+
+	// ReadUserSessions returns every session row the user owns, newest
+	// sign-in first, including expired rows the Go rules have not deleted yet.
+	ReadUserSessions(ctx context.Context, userID int64) ([]State, error)
+
+	// UpdateUserSession is UpdateSession for the user's session with this
+	// public ID. Another user's session returns ErrNotFound, like a missing one.
+	UpdateUserSession(ctx context.Context, userID int64, id uuid.UUID, update func(State) (Change, error)) error
+
+	// DeleteUserOtherSessions locks the user, then the session keep, and calls
+	// check with keep's state. If check accepts it, one statement deletes the
+	// user's other sessions, and they are returned, expired ones included.
+	// A missing user or keep returns ErrNotFound. An error deletes nothing.
+	DeleteUserOtherSessions(ctx context.Context, userID int64, keep [sha256.Size]byte, check func(State) error) ([]State, error)
 }

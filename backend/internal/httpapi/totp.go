@@ -28,7 +28,7 @@ type totpService interface {
 }
 
 type enrollmentService interface {
-	Confirm(ctx context.Context, current session.Authenticated, code string) (session.Confirmed, error)
+	Confirm(ctx context.Context, current session.Authenticated, code string, device session.Device) (session.Confirmed, error)
 }
 
 type backupService interface {
@@ -199,6 +199,17 @@ type totpConfirmation struct {
 	BackupCodes []string `json:"backupCodes" nullable:"false" minItems:"10" maxItems:"10" doc:"Shown once. Save these codes before leaving this page."`
 }
 
+// totpConfirmationInput adds the device details the replacement session keeps.
+type totpConfirmationInput struct {
+	device session.Device
+	Body   totpConfirmationCode
+}
+
+// Resolve reads the device details the replacement session keeps.
+func (in *totpConfirmationInput) Resolve(ctx huma.Context) []error {
+	return resolveDevice(ctx, &in.device)
+}
+
 type totpConfirmationOutput struct {
 	SetCookie http.Cookie `header:"Set-Cookie"`
 	Body      response[totpConfirmation]
@@ -217,9 +228,9 @@ func registerTOTPConfirmation(api huma.API, handler totpHandler) {
 	}, handler.handleConfirmTOTPEnrollment)
 }
 
-func (h totpHandler) handleConfirmTOTPEnrollment(ctx context.Context, in *struct{ Body totpConfirmationCode }) (*totpConfirmationOutput, error) {
+func (h totpHandler) handleConfirmTOTPEnrollment(ctx context.Context, in *totpConfirmationInput) (*totpConfirmationOutput, error) {
 	current := ctx.Value(sessionKey{}).(session.Authenticated)
-	confirmed, err := h.enrollment.Confirm(ctx, current, in.Body.Code)
+	confirmed, err := h.enrollment.Confirm(ctx, current, in.Body.Code, in.device)
 	if err != nil {
 		return nil, totpConfirmationProblem(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strconv"
 	"strings"
 	"testing"
@@ -67,18 +68,11 @@ func requestTOTP(api *API, method string, auth totpAuth) *httptest.ResponseRecor
 	return response
 }
 
-func totpSessions(role account.Role) *fakeSessions {
-	return &fakeSessions{identity: session.Identity{
-		User:   account.User{ID: 42, Email: "alice@example.com", Role: role},
-		Access: session.AccessMember, TOTPRequired: role == account.RoleAdmin,
-	}}
-}
-
 func TestStartTOTPEnrollment(t *testing.T) {
 	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
 		t.Run(string(role), func(t *testing.T) {
 			service := &fakeTOTP{started: totp.Started{Secret: "manual-secret", URI: "otpauth://test"}}
-			sessions := totpSessions(role)
+			sessions := memberSessions(role)
 			var logs bytes.Buffer
 			logger := slog.New(slog.NewTextHandler(&logs, nil))
 			api := New(logger, Services{TOTP: service, Session: sessions})
@@ -102,7 +96,7 @@ func TestGetTOTPStatus(t *testing.T) {
 				count = 7
 			}
 			service := &fakeTOTP{status: totp.Status{State: state, BackupCodesLeft: count}}
-			response := requestTOTP(New(discard, Services{TOTP: service, Session: totpSessions(account.RoleMember)}), http.MethodGet, totpAuthAuthenticated)
+			response := requestTOTP(New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)}), http.MethodGet, totpAuthAuthenticated)
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 			assert.JSONEq(t, fmt.Sprintf(`{"data":{"status":"%s","backupCodesLeft":%d}}`, state, count), response.Body.String())
 			assert.Equal(t, int64(42), service.userID)
@@ -125,7 +119,7 @@ func TestTOTPRequiresSession(t *testing.T) {
 
 func TestStartTOTPAlreadyOn(t *testing.T) {
 	service := &fakeTOTP{err: totp.ErrAlreadyOn}
-	response := requestTOTP(New(discard, Services{TOTP: service, Session: totpSessions(account.RoleMember)}), http.MethodPost, totpAuthAuthenticated)
+	response := requestTOTP(New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)}), http.MethodPost, totpAuthAuthenticated)
 	require.Equal(t, http.StatusConflict, response.Code)
 	assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/totp-already-on"`)
 	assert.NotContains(t, response.Body.String(), `"secret"`)
@@ -137,7 +131,7 @@ func TestTOTPUnexpectedFailure(t *testing.T) {
 			service := &fakeTOTP{err: errors.New("private storage cause")}
 			var logs bytes.Buffer
 			logger := slog.New(slog.NewTextHandler(&logs, nil))
-			response := requestTOTP(New(logger, Services{TOTP: service, Session: totpSessions(account.RoleMember)}), method, totpAuthAuthenticated)
+			response := requestTOTP(New(logger, Services{TOTP: service, Session: memberSessions(account.RoleMember)}), method, totpAuthAuthenticated)
 			require.Equal(t, http.StatusInternalServerError, response.Code)
 			assert.NotContains(t, response.Body.String(), "private storage cause")
 			assert.Contains(t, logs.String(), "private storage cause")
@@ -147,7 +141,7 @@ func TestTOTPUnexpectedFailure(t *testing.T) {
 
 func TestTOTPCrossOrigin(t *testing.T) {
 	service := &fakeTOTP{}
-	api := New(discard, Services{TOTP: service, Session: totpSessions(account.RoleMember)})
+	api := New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)})
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp", nil)
 	request.Header.Set("Origin", "https://untrusted.example")
 	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
@@ -162,12 +156,13 @@ type fakeEnrollment struct {
 	err     error
 	current session.Authenticated
 	code    string
+	device  session.Device
 	calls   int
 }
 
-func (f *fakeEnrollment) Confirm(_ context.Context, current session.Authenticated, code string) (session.Confirmed, error) {
+func (f *fakeEnrollment) Confirm(_ context.Context, current session.Authenticated, code string, device session.Device) (session.Confirmed, error) {
 	f.calls++
-	f.current, f.code = current, code
+	f.current, f.code, f.device = current, code, device
 	return f.result, f.err
 }
 
@@ -175,6 +170,7 @@ func postTOTPConfirm(api *API, body, origin string, auth totpAuth) *httptest.Res
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/confirm", strings.NewReader(body))
 	request.Header.Set("Content-Type", jsonContentType)
 	request.Header.Set("Origin", origin)
+	request.Header.Set("User-Agent", "inbok-confirm-test/1.0")
 	if auth == totpAuthAuthenticated {
 		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "old-cookie-secret"})
 	}
@@ -186,7 +182,7 @@ func postTOTPConfirm(api *API, body, origin string, auth totpAuth) *httptest.Res
 func TestConfirmTOTPEnrollment(t *testing.T) {
 	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
 		t.Run(string(role), func(t *testing.T) {
-			sessions := totpSessions(role)
+			sessions := memberSessions(role)
 			sessions.reference = checkedReference(t)
 			expires := time.Now().Add(2 * time.Hour)
 			service := &fakeEnrollment{result: session.Confirmed{
@@ -209,6 +205,7 @@ func TestConfirmTOTPEnrollment(t *testing.T) {
 			assert.Equal(t, service.result.BackupCodes, body.Data.BackupCodes)
 			assert.Equal(t, session.Authenticated{Identity: sessions.identity, Session: sessions.reference}, service.current)
 			assert.Equal(t, "287082", service.code)
+			assert.Equal(t, session.Device{UserAgent: "inbok-confirm-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
 			assert.Equal(t, 1, service.calls)
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 			cookies := response.Result().Cookies()
@@ -249,7 +246,7 @@ func TestConfirmTOTPFailures(t *testing.T) {
 				Session: session.Issued{Secret: "must-not-issue"}, BackupCodes: []string{"must-not-reveal"},
 			}}
 			var logs bytes.Buffer
-			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{Session: totpSessions(account.RoleMember), Enrollment: service})
+			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{Session: memberSessions(account.RoleMember), Enrollment: service})
 
 			response := postTOTPConfirm(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
 
@@ -284,7 +281,7 @@ func TestConfirmTOTPRequestGate(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service := &fakeEnrollment{}
-			api := New(discard, Services{Session: totpSessions(account.RoleMember), Enrollment: service})
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), Enrollment: service})
 
 			response := postTOTPConfirm(api, c.body, c.origin, c.auth)
 
@@ -361,7 +358,7 @@ func TestRegenerateBackupCodes(t *testing.T) {
 				"ABCDE-FGHJK", "MNPQR-STUVW", "XYZ23-45678", "9ABCD-EFGHJ", "KMNPQ-RSTUV",
 				"WXYZ2-34567", "89ABC-DEFGH", "JKMNP-QRSTU", "VWXYZ-23456", "789AB-CDEFG",
 			}}
-			sessions := totpSessions(role)
+			sessions := memberSessions(role)
 			if role == account.RoleAdmin {
 				sessions.identity.Access = session.AccessAdmin
 				sessions.identity.TOTPRequired = false
@@ -405,7 +402,7 @@ func TestRegenerateProblems(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service := &fakeBackups{codes: []string{"must-not-reveal"}, err: fmt.Errorf("regeneration: %w", c.err)}
-			api := New(discard, Services{Session: totpSessions(account.RoleMember), Backups: service})
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: service})
 
 			response := postBackupRegeneration(api, `{"code":"012345"}`, "http://example.com", totpAuthAuthenticated)
 
@@ -437,7 +434,7 @@ func TestRegenerateRequestGate(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service := &fakeBackups{}
-			api := New(discard, Services{Session: totpSessions(account.RoleMember), Backups: service})
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: service})
 
 			response := postBackupRegeneration(api, c.body, c.origin, c.auth)
 
@@ -509,7 +506,7 @@ func TestDisableTOTP(t *testing.T) {
 		t.Run(code, func(t *testing.T) {
 			service := &fakeDisabler{}
 			var logs bytes.Buffer
-			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{Session: totpSessions(account.RoleMember), Disabler: service})
+			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{Session: memberSessions(account.RoleMember), Disabler: service})
 
 			response := postDisableTOTP(api, `{"code":"`+code+`"}`, "http://example.com", totpAuthAuthenticated)
 
@@ -543,9 +540,9 @@ func TestDisableTOTPProblems(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service := &fakeDisabler{err: fmt.Errorf("turn off: %w", c.err)}
-			sessions := totpSessions(account.RoleMember)
+			sessions := memberSessions(account.RoleMember)
 			if c.err == totp.ErrDisableForbidden {
-				sessions = totpSessions(account.RoleAdmin)
+				sessions = memberSessions(account.RoleAdmin)
 				sessions.identity.Access = session.AccessAdmin
 				sessions.identity.TOTPRequired = false
 			}
@@ -582,7 +579,7 @@ func TestDisableTOTPRequestGate(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service := &fakeDisabler{}
-			api := New(discard, Services{Session: totpSessions(account.RoleMember), Disabler: service})
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), Disabler: service})
 
 			response := postDisableTOTP(api, c.body, c.origin, c.auth)
 
@@ -627,7 +624,7 @@ func TestCancelTOTPEnrollment(t *testing.T) {
 		t.Run(string(role), func(t *testing.T) {
 			service := &fakeTOTP{}
 			var logs bytes.Buffer
-			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{TOTP: service, Session: totpSessions(role)})
+			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{TOTP: service, Session: memberSessions(role)})
 
 			response := deleteTOTPEnrollment(api, "http://example.com", totpAuthAuthenticated)
 
@@ -657,7 +654,7 @@ func TestCancelTOTPFailures(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service := &fakeTOTP{err: c.err}
-			api := New(discard, Services{TOTP: service, Session: totpSessions(account.RoleMember)})
+			api := New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)})
 
 			response := deleteTOTPEnrollment(api, "http://example.com", totpAuthAuthenticated)
 
@@ -684,7 +681,7 @@ func TestCancelTOTPRequestGate(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service := &fakeTOTP{}
-			api := New(discard, Services{TOTP: service, Session: totpSessions(account.RoleMember)})
+			api := New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)})
 
 			response := deleteTOTPEnrollment(api, c.origin, c.auth)
 

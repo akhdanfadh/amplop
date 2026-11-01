@@ -43,6 +43,7 @@ export function ConfirmForm({
   purpose,
   pending,
   locked,
+  checking,
   error,
   onEdit,
   onConfirm,
@@ -50,6 +51,8 @@ export function ConfirmForm({
   purpose: keyof typeof purposes;
   pending: boolean;
   locked: boolean;
+  // A background check: submits wait for it, typing does not.
+  checking: boolean;
   error: ApiError | null;
   onEdit: () => void;
   onConfirm: (code: string, reject: (err: ApiError) => void) => void;
@@ -64,13 +67,14 @@ export function ConfirmForm({
   const focused = useRef(false);
   const kindChanged = useRef(false);
   const submitRef = useRef<HTMLButtonElement>(null);
+  const focusedError = useRef<ApiError | null>(null);
   const form = useForm({
     defaultValues: { code: "" },
     validators: { onChange: config.schema(kind) },
     listeners: { onChange: onEdit },
     onSubmitInvalid: () => inputRef.current?.focus(),
     onSubmit: ({ value, formApi }) => {
-      if (pending || locked) return;
+      if (pending || locked || checking) return;
       onConfirm(value.code, (err) => {
         const { fields } = formErrors(err, fieldNames);
         if (Object.keys(fields).length) formApi.setErrorMap({ onSubmit: { fields } });
@@ -89,9 +93,10 @@ export function ConfirmForm({
     inputRef.current?.focus();
   }, [locked, error]);
   useEffect(() => {
-    if (!error || pending || locked) return;
+    if (!error || pending || locked || checking || focusedError.current === error) return;
     (codeRejected ? inputRef.current : submitRef.current)?.focus();
-  }, [error, pending, locked, codeRejected]);
+    focusedError.current = error;
+  }, [error, pending, locked, checking, codeRejected]);
 
   useEffect(() => {
     // The keyed input remounts with the new kind.
@@ -131,7 +136,7 @@ export function ConfirmForm({
                       type="button"
                       variant="link"
                       className="min-h-11 w-fit whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-                      disabled={pending || locked}
+                      disabled={pending || locked || checking}
                       onClick={changeKind}
                     >
                       {kind === "authenticator" ? "Use a backup code" : "Use authenticator app"}
@@ -183,7 +188,7 @@ export function ConfirmForm({
         ref={submitRef}
         type="submit"
         className="h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-        disabled={pending || locked}
+        disabled={pending || locked || checking}
       >
         {pending ? config.pending : config.action}
       </Button>

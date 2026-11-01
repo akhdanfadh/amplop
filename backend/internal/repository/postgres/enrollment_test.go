@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"errors"
 	"log/slog"
+	"net/netip"
 	"strconv"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
@@ -104,9 +106,11 @@ func assertPendingConfirmation(t *testing.T, f *confirmationFixture) {
 
 func TestTOTPConfirmationStorage(t *testing.T) {
 	f := newConfirmation(t)
+	device := session.Device{UserAgent: "confirming browser", Addr: netip.MustParseAddr("2001:db8::5")}
 
-	result, err := f.service.Confirm(t.Context(), f.current, "287082")
+	result, err := f.service.Confirm(t.Context(), f.current, "287082", device)
 	require.NoError(t, err)
+	assert.Equal(t, device, result.Session.State.Device)
 
 	factor, err := f.db.ReadTOTP(t.Context(), f.state.UserID)
 	require.NoError(t, err)
@@ -165,7 +169,7 @@ func TestTOTPConfirmationRollback(t *testing.T) {
 			_, err = f.conn.Exec(t.Context(), c.trigger)
 			require.NoError(t, err)
 
-			result, err := f.service.Confirm(t.Context(), f.current, "287082")
+			result, err := f.service.Confirm(t.Context(), f.current, "287082", session.Device{})
 
 			require.ErrorContains(t, err, "forced confirmation failure")
 			assert.Empty(t, result, "no new secrets may escape a failed write or commit")
@@ -181,7 +185,11 @@ func TestTOTPConfirmationRejected(t *testing.T) {
 	f := newConfirmation(t)
 	rejected := errors.New("confirmation rejected")
 	err := f.db.ConfirmTOTP(t.Context(), f.state.UserID, f.state.TokenHash, func(state session.EnrollmentState) (session.EnrollmentChange, error) {
-		assert.Equal(t, f.state, state.Session)
+		// Storage assigns the ID; the rest is the inserted state.
+		got := state.Session
+		assert.NotEqual(t, uuid.Nil(), got.ID)
+		got.ID = uuid.Nil()
+		assert.Equal(t, f.state, got)
 		assert.Equal(t, f.factor, state.Factor)
 		return session.EnrollmentChange{}, rejected
 	})
@@ -217,7 +225,7 @@ func TestTOTPConfirmationParallel(t *testing.T) {
 	for range 2 {
 		go func() {
 			<-start
-			value, err := f.service.Confirm(ctx, f.current, "287082")
+			value, err := f.service.Confirm(ctx, f.current, "287082", session.Device{})
 			results <- result{value, err}
 		}()
 	}

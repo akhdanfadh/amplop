@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"net/netip"
 	"time"
 
 	"inbok/internal/account"
@@ -35,6 +34,7 @@ type SignInState struct {
 type SignInChange struct {
 	Step      SignInStep
 	Session   State
+	Expiry    Expiry
 	Challenge Challenge
 	Cutoff    time.Time
 }
@@ -59,9 +59,10 @@ func NewService(storage Storage, accounts accountService, throttle *Throttle, no
 }
 
 // StartSignIn checks the password and chooses a session or second-factor challenge.
+// The device's address also identifies the sign-in for throttling.
 // The returned secret is for the browser; storage receives only its hash.
-func (s *Service) StartSignIn(ctx context.Context, email, password string, addr netip.Addr) (SignedIn, error) {
-	id, err := s.throttle.Begin(ctx, email, addr)
+func (s *Service) StartSignIn(ctx context.Context, email, password string, device Device) (SignedIn, error) {
+	id, err := s.throttle.Begin(ctx, email, device.Addr)
 	if err != nil {
 		return SignedIn{}, err
 	}
@@ -88,9 +89,10 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, addr 
 			return SignInChange{Step: result.Step, Challenge: challenge, Cutoff: s.now().UTC()}, nil
 		}
 
-		issued := newSession(credentials.User.ID, s.now)
+		issued := newSession(credentials.User.ID, device, s.now)
 		result = SignedIn{Step: SignInStepComplete, Secret: issued.Secret, ExpiresAt: issued.State.ExpiresAt}
-		return SignInChange{Step: result.Step, Session: issued.State, Cutoff: s.now().UTC()}, nil
+		now := s.now()
+		return SignInChange{Step: result.Step, Session: issued.State, Expiry: expiryAt(now), Cutoff: now.UTC()}, nil
 	})
 	if errors.Is(err, ErrNotFound) {
 		return SignedIn{}, account.ErrInvalidCredentials

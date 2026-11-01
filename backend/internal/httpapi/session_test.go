@@ -6,14 +6,18 @@ import (
 	"crypto/sha256"
 	"errors"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -43,8 +47,18 @@ type fakeSessions struct {
 	err           error
 	email         string
 	password      string
-	addr          netip.Addr
+	device        session.Device
 	calls         int
+	listed        []session.Listed
+	listErr       error
+	listCalls     int
+	endedID       uuid.UUID
+	endErr        error
+	endCalls      int
+	endedOthers   int
+	endOthersErr  error
+	endOtherCalls int
+	caller        session.Authenticated
 }
 
 func (f *fakeSessions) SignOut(_ context.Context, ref session.Reference) error {
@@ -59,10 +73,28 @@ func (f *fakeSessions) Current(_ context.Context, secret string) (session.Authen
 	return session.Authenticated{Identity: f.identity, Session: f.reference}, f.currentErr
 }
 
-func (f *fakeSessions) StartSignIn(_ context.Context, email, password string, addr netip.Addr) (session.SignedIn, error) {
+func (f *fakeSessions) StartSignIn(_ context.Context, email, password string, device session.Device) (session.SignedIn, error) {
 	f.calls++
-	f.email, f.password, f.addr = email, password, addr
+	f.email, f.password, f.device = email, password, device
 	return f.issued, f.err
+}
+
+func (f *fakeSessions) List(_ context.Context, current session.Authenticated) ([]session.Listed, error) {
+	f.listCalls++
+	f.caller = current
+	return f.listed, f.listErr
+}
+
+func (f *fakeSessions) End(_ context.Context, current session.Authenticated, id uuid.UUID) error {
+	f.endCalls++
+	f.caller, f.endedID = current, id
+	return f.endErr
+}
+
+func (f *fakeSessions) EndOthers(_ context.Context, current session.Authenticated) (int, error) {
+	f.endOtherCalls++
+	f.caller = current
+	return f.endedOthers, f.endOthersErr
 }
 
 // referenceStorage supplies a session row for issuing test references through Current.
@@ -87,10 +119,30 @@ func checkedReference(t *testing.T) session.Reference {
 	return current.Session
 }
 
+// memberSessions returns a fake signed in with member access: a member, or an
+// administrator who still needs TOTP.
+func memberSessions(role account.Role) *fakeSessions {
+	return &fakeSessions{identity: session.Identity{
+		User:   account.User{ID: 42, Email: "alice@example.com", Role: role},
+		Access: session.AccessMember, TOTPRequired: role == account.RoleAdmin,
+	}}
+}
+
+// sendSessionRequest sends a same-origin request carrying a session cookie.
+func sendSessionRequest(api *API, method, path string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, "/api/v0"+path, nil)
+	request.Header.Set("Origin", "http://"+request.Host)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "private-cookie-secret"})
+	response := httptest.NewRecorder()
+	api.Handler().ServeHTTP(response, request)
+	return response
+}
+
 func postSession(api *API, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/sessions", strings.NewReader(body))
 	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", jsonContentType)
+	request.Header.Set("User-Agent", "inbok-test/1.0")
 	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: "old-browser-secret"})
 	response := httptest.NewRecorder()
 	api.Handler().ServeHTTP(response, request)
@@ -113,7 +165,7 @@ func TestCreateSession(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"step":"complete"}}`, response.Body.String())
 	assert.Equal(t, "Admin@Example.COM", service.email)
 	assert.Equal(t, "a long sign-in password", service.password)
-	assert.Equal(t, netip.MustParseAddr("192.0.2.1"), service.addr)
+	assert.Equal(t, session.Device{UserAgent: "inbok-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
 	cookies := response.Result().Cookies()
 	require.Len(t, cookies, 2)
 	assert.Equal(t, challengeCookieName, cookies[1].Name)
@@ -215,7 +267,7 @@ func TestSignInClientAddress(t *testing.T) {
 			api.Handler().ServeHTTP(response, request)
 
 			require.Equal(t, http.StatusUnauthorized, response.Code)
-			assert.Equal(t, netip.MustParseAddr(c.want), service.addr)
+			assert.Equal(t, netip.MustParseAddr(c.want), service.device.Addr)
 		})
 	}
 }
@@ -402,4 +454,239 @@ func TestSignOutOpenAPI(t *testing.T) {
 	assert.NotNil(t, noContent.Headers["Set-Cookie"])
 	assert.NotNil(t, op.Responses[strconv.Itoa(http.StatusUnauthorized)])
 	assert.NotNil(t, op.Responses["default"])
+}
+
+// ========================
+// Session list
+// ========================
+
+func TestListSessions(t *testing.T) {
+	signedIn := time.Date(2026, time.October, 30, 9, 0, 0, 0, time.UTC)
+	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
+		t.Run(string(role), func(t *testing.T) {
+			service := memberSessions(role)
+			service.reference = checkedReference(t)
+			service.listed = []session.Listed{
+				{
+					ID: uuid.MustParse("0b7f3a52-5d4e-4c1a-9f0e-2a6b8c9d1e2f"), Browser: "Firefox", OS: "Linux",
+					SignedInFrom: netip.MustParseAddr("2001:db8::1"), CreatedAt: signedIn, LastUsedAt: signedIn.Add(time.Hour), Current: true,
+				},
+				{ID: uuid.MustParse("6c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f"), CreatedAt: signedIn.Add(-time.Hour), LastUsedAt: signedIn},
+			}
+
+			response := sendSessionRequest(New(discard, Services{Session: service}), http.MethodGet, "/sessions")
+
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			assert.JSONEq(t, `{"data":{"sessions":[
+				{"id":"0b7f3a52-5d4e-4c1a-9f0e-2a6b8c9d1e2f","browser":"Firefox","os":"Linux",
+				 "signedInAt":"2026-10-30T09:00:00Z","lastActiveAt":"2026-10-30T10:00:00Z","signedInFrom":"2001:db8::1","current":true},
+				{"id":"6c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f","browser":"","os":"",
+				 "signedInAt":"2026-10-30T08:00:00Z","lastActiveAt":"2026-10-30T09:00:00Z","signedInFrom":"","current":false}
+			]}}`, response.Body.String())
+			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+			assert.Equal(t, service.reference, service.caller.Session)
+		})
+	}
+}
+
+func TestListSessionsEmpty(t *testing.T) {
+	service := memberSessions(account.RoleMember)
+
+	response := sendSessionRequest(New(discard, Services{Session: service}), http.MethodGet, "/sessions")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"sessions":[]}}`, response.Body.String(), "the web schema rejects null")
+}
+
+// ========================
+// Session end
+// ========================
+
+func TestDeleteSession(t *testing.T) {
+	service := memberSessions(account.RoleMember)
+	service.reference = checkedReference(t)
+	id := uuid.MustParse("0b7f3a52-5d4e-4c1a-9f0e-2a6b8c9d1e2f")
+
+	response := sendSessionRequest(New(discard, Services{Session: service}), http.MethodDelete, "/sessions/"+id.String())
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"ended":1}}`, response.Body.String())
+	assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+	assert.Equal(t, id, service.endedID)
+	assert.Equal(t, service.reference, service.caller.Session)
+	assert.Zero(t, service.signOutCalls)
+	assert.Empty(t, response.Result().Cookies(), "the current session's cookie stays")
+}
+
+func TestDeleteSessionErrors(t *testing.T) {
+	cases := []struct {
+		name   string
+		err    error
+		status int
+		typ    string
+	}{
+		{"not found", session.ErrNotFound, http.StatusNotFound, sessionNotFoundType},
+		{"current", session.ErrCurrentSession, http.StatusConflict, sessionIsCurrentType},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			service := memberSessions(account.RoleMember)
+			service.endErr = c.err
+
+			response := sendSessionRequest(New(discard, Services{Session: service}), http.MethodDelete, "/sessions/0b7f3a52-5d4e-4c1a-9f0e-2a6b8c9d1e2f")
+
+			require.Equal(t, c.status, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), `"type":"`+c.typ+`"`)
+		})
+	}
+}
+
+func TestDeleteSessionInvalidID(t *testing.T) {
+	// totp is a real path segment, but only for POST.
+	for _, id := range []string{"not-an-id", "totp", "0b7f3a52"} {
+		t.Run(id, func(t *testing.T) {
+			service := memberSessions(account.RoleMember)
+
+			response := sendSessionRequest(New(discard, Services{Session: service}), http.MethodDelete, "/sessions/"+id)
+
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), `"location":"path.id"`)
+			assert.NotContains(t, response.Body.String(), id, "the rejected value is not echoed")
+			assert.Zero(t, service.endCalls)
+		})
+	}
+}
+
+func TestDeleteSessionRouting(t *testing.T) {
+	service := memberSessions(account.RoleMember)
+	api := New(discard, Services{Session: service})
+	// The ID shares its first letter with the static current segment.
+	id := uuid.MustParse("c0ffee00-5d4e-4c1a-9f0e-2a6b8c9d1e2f")
+
+	signOut := sendSessionRequest(api, http.MethodDelete, "/sessions/current")
+	end := sendSessionRequest(api, http.MethodDelete, "/sessions/"+id.String())
+
+	require.Equal(t, http.StatusNoContent, signOut.Code, signOut.Body.String())
+	require.Equal(t, http.StatusOK, end.Code, end.Body.String())
+	assert.Equal(t, 1, service.signOutCalls)
+	assert.Equal(t, 1, service.endCalls, "current is never read as a session ID")
+	assert.Equal(t, id, service.endedID)
+	assert.Zero(t, service.endOtherCalls)
+}
+
+// ========================
+// Other sessions end
+// ========================
+
+func TestDeleteOtherSessions(t *testing.T) {
+	service := memberSessions(account.RoleAdmin)
+	service.reference = checkedReference(t)
+	service.endedOthers = 2
+
+	response := sendSessionRequest(New(discard, Services{Session: service}), http.MethodDelete, "/sessions/others")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"ended":2}}`, response.Body.String())
+	assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
+	assert.Equal(t, 1, service.endOtherCalls)
+	assert.Equal(t, service.reference, service.caller.Session)
+	assert.Zero(t, service.endCalls, "others is never read as a session ID")
+	assert.Zero(t, service.signOutCalls)
+}
+
+// ========================
+// Session list and end, shared
+// ========================
+
+// sessionListAndEndRequests are one request per operation.
+var sessionListAndEndRequests = []struct{ method, path string }{
+	{http.MethodGet, "/sessions"},
+	{http.MethodDelete, "/sessions/0b7f3a52-5d4e-4c1a-9f0e-2a6b8c9d1e2f"},
+	{http.MethodDelete, "/sessions/others"},
+}
+
+func TestSessionListAndEndUnauthenticated(t *testing.T) {
+	for _, r := range sessionListAndEndRequests {
+		t.Run(r.method+" "+r.path, func(t *testing.T) {
+			service := &fakeSessions{currentErr: session.ErrUnauthenticated}
+
+			response := sendSessionRequest(New(discard, Services{Session: service}), r.method, r.path)
+
+			require.Equal(t, http.StatusUnauthorized, response.Code, response.Body.String())
+			assert.Zero(t, service.listCalls+service.endCalls+service.endOtherCalls)
+		})
+	}
+}
+
+func TestSessionEndSourceRequired(t *testing.T) {
+	for _, path := range []string{"/sessions/0b7f3a52-5d4e-4c1a-9f0e-2a6b8c9d1e2f", "/sessions/others"} {
+		for _, site := range []string{"cross-site", ""} {
+			t.Run(path+" "+site, func(t *testing.T) {
+				service := memberSessions(account.RoleMember)
+				request := httptest.NewRequest(http.MethodDelete, "/api/v0"+path, nil)
+				request.Header.Set("Sec-Fetch-Site", site)
+				request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "private-cookie-secret"})
+				response := httptest.NewRecorder()
+
+				New(discard, Services{Session: service}).Handler().ServeHTTP(response, request)
+
+				require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+				assert.Zero(t, service.currentCalls)
+				assert.Zero(t, service.endCalls+service.endOtherCalls)
+			})
+		}
+	}
+}
+
+func TestSessionListAndEndErrors(t *testing.T) {
+	for _, r := range sessionListAndEndRequests {
+		for _, c := range []struct {
+			name   string
+			err    error
+			status int
+			typ    string
+		}{
+			// The session ended or expired after the access check.
+			{"stale", session.ErrUnauthenticated, http.StatusUnauthorized, problemPrefix + "unauthenticated"},
+			{"unexpected", errors.New("connection lost"), http.StatusInternalServerError, problemPrefix + "internal-error"},
+		} {
+			t.Run(r.method+" "+r.path+" "+c.name, func(t *testing.T) {
+				service := memberSessions(account.RoleMember)
+				service.listErr, service.endErr, service.endOthersErr = c.err, c.err, c.err
+
+				response := sendSessionRequest(New(discard, Services{Session: service}), r.method, r.path)
+
+				require.Equal(t, c.status, response.Code, response.Body.String())
+				assert.Contains(t, response.Body.String(), `"type":"`+c.typ+`"`)
+				assert.NotContains(t, response.Body.String(), "connection lost")
+				assert.Equal(t, 1, service.listCalls+service.endCalls+service.endOtherCalls)
+			})
+		}
+	}
+}
+
+func TestSessionListAndEndOpenAPI(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+	for _, c := range []struct {
+		op       *huma.Operation
+		id       string
+		statuses []int
+	}{
+		{doc.Paths["/sessions"].Get, "listSessions", []int{http.StatusOK, http.StatusUnauthorized}},
+		{doc.Paths["/sessions/{id}"].Delete, "deleteSession", []int{http.StatusOK, http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict}},
+		{doc.Paths["/sessions/others"].Delete, "deleteOtherSessions", []int{http.StatusOK, http.StatusUnauthorized}},
+	} {
+		require.NotNil(t, c.op, c.id)
+		assert.Equal(t, c.id, c.op.OperationID)
+		assert.Equal(t, session.AccessMember, c.op.Metadata[accessKey], c.id)
+		assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, c.op.Security, c.id)
+		want := []string{"default"}
+		for _, status := range c.statuses {
+			want = append(want, strconv.Itoa(status))
+		}
+		assert.ElementsMatch(t, want, slices.Collect(maps.Keys(c.op.Responses)), c.id)
+	}
+	listed := doc.Components.Schemas.Map()["ListedSession"]
+	require.NotNil(t, listed)
+	assert.ElementsMatch(t, []string{"id", "browser", "os", "signedInAt", "lastActiveAt", "signedInFrom", "current"}, listed.Required)
 }

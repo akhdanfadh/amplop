@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -66,7 +68,7 @@ func newCodeFixture(t *testing.T) *codeFixture {
 
 func startCodeSignIn(t *testing.T, f *codeFixture) session.SignedIn {
 	t.Helper()
-	result, err := f.sessions.StartSignIn(t.Context(), "alice@example.com", codeSignInPassword, netip.MustParseAddr("192.0.2.1"))
+	result, err := f.sessions.StartSignIn(t.Context(), "alice@example.com", codeSignInPassword, session.Device{Addr: netip.MustParseAddr("192.0.2.1")})
 	require.NoError(t, err)
 	require.Equal(t, session.SignInStepTOTP, result.Step)
 	return result
@@ -76,6 +78,8 @@ func codePost(f *codeFixture, path, body string, cookie *http.Cookie) *httptest.
 	request := httptest.NewRequest(http.MethodPost, "/api/v0"+path, strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", "http://example.com")
+	// Each step names its own browser, so tests can tell which one a session kept.
+	request.Header.Set("User-Agent", "browser for "+path)
 	if cookie != nil {
 		request.AddCookie(cookie)
 	}
@@ -86,6 +90,11 @@ func codePost(f *codeFixture, path, body string, cookie *http.Cookie) *httptest.
 
 func TestCodeSignInHTTP(t *testing.T) {
 	f := newCodeFixture(t)
+	idle := f.now.Add(-8 * 24 * time.Hour)
+	require.NoError(t, f.db.InsertSession(t.Context(), session.State{
+		TokenHash: sha256.Sum256([]byte("abandoned")), UserID: f.userID,
+		CreatedAt: idle, LastUsedAt: idle, ExpiresAt: idle.Add(30 * 24 * time.Hour),
+	}))
 
 	password := codePost(f, "/sessions", `{"email":"alice@example.com","password":"a long sign-in password"}`, nil)
 
@@ -121,6 +130,15 @@ func TestCodeSignInHTTP(t *testing.T) {
 	assert.Equal(t, session.AccessAdmin, current.Identity.Access)
 	assert.False(t, current.Identity.TOTPRequired)
 	assert.NotContains(t, completed.Body.String(), cookies[0].Value)
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(cookies[0].Value)
+	require.NoError(t, err)
+	stored := readSession(t, f.db, sha256.Sum256(raw))
+	assert.Equal(t, session.Device{UserAgent: "browser for /sessions/totp", Addr: netip.MustParseAddr("192.0.2.1")}, stored.Device,
+		"the session keeps the code request's details")
+	sessions, err := f.db.ReadUserSessions(t.Context(), f.userID)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1, "completing sign-in deleted the expired session")
+	assert.Equal(t, stored.TokenHash, sessions[0].TokenHash)
 
 	reused := codePost(f, "/sessions/totp", `{"code":"`+f.code+`"}`, challenge)
 	require.Equal(t, http.StatusUnauthorized, reused.Code, reused.Body.String())
@@ -137,7 +155,7 @@ func TestCodeFailureLimit(t *testing.T) {
 	f := newCodeFixture(t)
 	challenge := startCodeSignIn(t, f)
 	for i := 1; i <= 5; i++ {
-		_, err := f.codes.Complete(t.Context(), challenge.Secret, "wrong")
+		_, err := f.codes.Complete(t.Context(), challenge.Secret, "wrong", session.Device{})
 		if i == 5 {
 			require.ErrorIs(t, err, session.ErrInvalidChallenge)
 			continue
@@ -148,7 +166,7 @@ func TestCodeFailureLimit(t *testing.T) {
 	require.NoError(t, f.conn.QueryRow(t.Context(), "SELECT count(*) FROM sign_in_challenges").Scan(&count))
 	assert.Zero(t, count)
 	newChallenge := startCodeSignIn(t, f)
-	_, err := f.codes.Complete(t.Context(), newChallenge.Secret, f.code)
+	_, err := f.codes.Complete(t.Context(), newChallenge.Secret, f.code, session.Device{})
 	require.ErrorIs(t, err, totp.ErrThrottled, "a fresh challenge must not reset user limits")
 	require.NoError(t, f.conn.QueryRow(t.Context(), "SELECT count(*) FROM sessions").Scan(&count))
 	assert.Zero(t, count)
@@ -159,7 +177,7 @@ func TestCodeChallengeExpiry(t *testing.T) {
 	challenge := startCodeSignIn(t, f)
 	f.now = challenge.ExpiresAt
 
-	issued, err := f.codes.Complete(t.Context(), challenge.Secret, f.code)
+	issued, err := f.codes.Complete(t.Context(), challenge.Secret, f.code, session.Device{})
 
 	require.ErrorIs(t, err, session.ErrInvalidChallenge)
 	assert.Empty(t, issued)
@@ -181,7 +199,7 @@ func TestCodeSignInParallel(t *testing.T) {
 			defer cancel()
 			start, results := make(chan struct{}), make(chan error, 2)
 			for _, secret := range []string{first.Secret, second.Secret} {
-				go func() { <-start; _, err := f.codes.Complete(ctx, secret, code); results <- err }()
+				go func() { <-start; _, err := f.codes.Complete(ctx, secret, code, session.Device{}); results <- err }()
 			}
 			close(start)
 			var accepted, rejected int
@@ -222,7 +240,7 @@ func TestCodeSignInRollback(t *testing.T) {
 				code = "ABCDE-FGHJK"
 			}
 
-			issued, err := f.codes.Complete(t.Context(), challenge.Secret, code)
+			issued, err := f.codes.Complete(t.Context(), challenge.Secret, code, session.Device{})
 
 			require.ErrorContains(t, err, "forced sign-in failure")
 			assert.Empty(t, issued)
@@ -259,7 +277,7 @@ func TestPasswordEnrollmentRace(t *testing.T) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		issued, err := f.sessions.StartSignIn(ctx, "alice@example.com", codeSignInPassword, netip.MustParseAddr("192.0.2.1"))
+		issued, err := f.sessions.StartSignIn(ctx, "alice@example.com", codeSignInPassword, session.Device{Addr: netip.MustParseAddr("192.0.2.1")})
 		done <- result{issued, err}
 	}()
 	require.Eventually(t, func() bool {

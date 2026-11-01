@@ -29,10 +29,10 @@ export function TurnOff({
   const uncertain = Boolean(error && uncertainSession(error));
 
   useEffect(() => {
-    if (confirming || !restoreFocus.current || locked) return;
+    if (confirming || !restoreFocus.current || locked || checking) return;
     openRef.current?.focus();
     restoreFocus.current = false;
-  }, [confirming, locked]);
+  }, [confirming, locked, checking]);
 
   useEffect(() => {
     if (!uncertain || focusedError.current === error || locked || checking) return;
@@ -54,7 +54,8 @@ export function TurnOff({
           </p>
           <ConfirmForm
             purpose="turnOff"
-            locked={locked || checking || uncertain}
+            locked={locked || uncertain}
+            checking={checking}
             pending={pending}
             error={error}
             onEdit={onEdit}

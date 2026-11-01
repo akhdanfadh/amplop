@@ -33,7 +33,8 @@ stops PostgreSQL and keeps its data.
 
 To create the first administrator, follow
 [First administrator setup](backend/README.md#first-administrator-setup),
-then open `http://localhost:5173/setup`. Sign-in is not implemented yet.
+then open `http://localhost:5173/setup`. After setup, sign in at
+`http://localhost:5173/sign-in`.
 
 ## Documentation
 

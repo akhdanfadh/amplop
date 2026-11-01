@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -71,7 +72,7 @@ func (f *enrollmentAttempts) Begin(_ context.Context, userID int64) (int64, erro
 
 func enrollmentFixture() (*Enrollment, *enrollmentStorage, *enrollmentOpener, *enrollmentAttempts, Authenticated, *fakeClock) {
 	clock := &fakeClock{now: time.Unix(59, 0).UTC()}
-	issued := newSession(42, clock.Now)
+	issued := newSession(42, Device{}, clock.Now)
 	store := &enrollmentStorage{state: EnrollmentState{
 		Session: issued.State,
 		Factor:  &totp.Factor{KeyID: "2", Ciphertext: []byte("encrypted"), LastStep: -1},
@@ -84,10 +85,12 @@ func enrollmentFixture() (*Enrollment, *enrollmentStorage, *enrollmentOpener, *e
 func TestConfirmEnrollment(t *testing.T) {
 	service, store, opener, attempts, current, clock := enrollmentFixture()
 
-	result, err := service.Confirm(t.Context(), current, "287082")
+	device := Device{UserAgent: "confirming browser", Addr: netip.MustParseAddr("198.51.100.4")}
+	result, err := service.Confirm(t.Context(), current, "287082", device)
 	require.NoError(t, err)
 
 	require.NotNil(t, store.change)
+	assert.Equal(t, device, store.change.Session.Device)
 	assert.Equal(t, current.Identity.User.ID, attempts.userID)
 	assert.Equal(t, current.Identity.User.ID, store.userID)
 	assert.Equal(t, current.Session.hash, store.hash)
@@ -141,7 +144,7 @@ func TestConfirmEnrollmentRejected(t *testing.T) {
 			service, store, opener, attempts, current, clock := enrollmentFixture()
 			c.edit(store, opener, clock)
 
-			result, err := service.Confirm(t.Context(), current, c.code)
+			result, err := service.Confirm(t.Context(), current, c.code, Device{})
 
 			require.ErrorIs(t, err, c.want)
 			assert.Empty(t, result, "failed confirmation must reveal no session or backup codes")
@@ -155,7 +158,7 @@ func TestConfirmEnrollmentBlocked(t *testing.T) {
 	service, store, opener, attempts, current, _ := enrollmentFixture()
 	attempts.err = totp.ErrThrottled
 
-	result, err := service.Confirm(t.Context(), current, "287082")
+	result, err := service.Confirm(t.Context(), current, "287082", Device{})
 
 	require.ErrorIs(t, err, totp.ErrThrottled)
 	assert.Empty(t, result)
@@ -171,7 +174,7 @@ func TestConfirmEnrollmentUnchecked(t *testing.T) {
 	} {
 		service, store, opener, attempts, _, _ := enrollmentFixture()
 
-		result, err := service.Confirm(t.Context(), current, "287082")
+		result, err := service.Confirm(t.Context(), current, "287082", Device{})
 
 		require.ErrorIs(t, err, ErrUnauthenticated)
 		assert.Empty(t, result)

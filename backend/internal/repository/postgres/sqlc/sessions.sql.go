@@ -7,7 +7,10 @@ package sqlc
 
 import (
 	"context"
+	"net/netip"
 	"time"
+
+	"uuid"
 )
 
 const deleteSession = `-- name: DeleteSession :exec
@@ -17,6 +20,63 @@ DELETE FROM sessions WHERE token_hash = $1
 func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	_, err := q.db.Exec(ctx, deleteSession, tokenHash)
 	return err
+}
+
+const deleteUserExpiredSessions = `-- name: DeleteUserExpiredSessions :exec
+DELETE FROM sessions
+WHERE user_id = $1 AND (expires_at <= $2 OR last_used_at <= $3)
+`
+
+type DeleteUserExpiredSessionsParams struct {
+	UserID     int64
+	ExpiresBy  time.Time
+	LastUsedBy time.Time
+}
+
+// Go supplies both limits, so the expiry rule stays in one place.
+func (q *Queries) DeleteUserExpiredSessions(ctx context.Context, arg DeleteUserExpiredSessionsParams) error {
+	_, err := q.db.Exec(ctx, deleteUserExpiredSessions, arg.UserID, arg.ExpiresBy, arg.LastUsedBy)
+	return err
+}
+
+const deleteUserOtherSessions = `-- name: DeleteUserOtherSessions :many
+DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2
+RETURNING token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
+`
+
+type DeleteUserOtherSessionsParams struct {
+	UserID int64
+	Keep   []byte
+}
+
+// Returns the deleted rows so Go can count the ones that were still live.
+func (q *Queries) DeleteUserOtherSessions(ctx context.Context, arg DeleteUserOtherSessionsParams) ([]Session, error) {
+	rows, err := q.db.Query(ctx, deleteUserOtherSessions, arg.UserID, arg.Keep)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Session
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.TokenHash,
+			&i.UserID,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+			&i.ExpiresAt,
+			&i.UserAgent,
+			&i.SignedInFrom,
+			&i.ID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const deleteUserSessions = `-- name: DeleteUserSessions :exec
@@ -29,16 +89,18 @@ func (q *Queries) DeleteUserSessions(ctx context.Context, userID int64) error {
 }
 
 const insertSession = `-- name: InsertSession :exec
-INSERT INTO sessions (token_hash, user_id, created_at, last_used_at, expires_at)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO sessions (token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type InsertSessionParams struct {
-	TokenHash  []byte
-	UserID     int64
-	CreatedAt  time.Time
-	LastUsedAt time.Time
-	ExpiresAt  time.Time
+	TokenHash    []byte
+	UserID       int64
+	CreatedAt    time.Time
+	LastUsedAt   time.Time
+	ExpiresAt    time.Time
+	UserAgent    *string
+	SignedInFrom *netip.Addr
 }
 
 func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) error {
@@ -48,37 +110,49 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.CreatedAt,
 		arg.LastUsedAt,
 		arg.ExpiresAt,
+		arg.UserAgent,
+		arg.SignedInFrom,
 	)
 	return err
 }
 
 const lockSession = `-- name: LockSession :one
-SELECT user_id, created_at, last_used_at, expires_at
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
 FROM sessions WHERE token_hash = $1 FOR UPDATE
 `
 
-type LockSessionRow struct {
-	UserID     int64
-	CreatedAt  time.Time
-	LastUsedAt time.Time
-	ExpiresAt  time.Time
-}
-
 // Decisions in Go use the latest state after any previous update commits.
-func (q *Queries) LockSession(ctx context.Context, tokenHash []byte) (LockSessionRow, error) {
+func (q *Queries) LockSession(ctx context.Context, tokenHash []byte) (Session, error) {
 	row := q.db.QueryRow(ctx, lockSession, tokenHash)
-	var i LockSessionRow
+	var i Session
 	err := row.Scan(
+		&i.TokenHash,
 		&i.UserID,
 		&i.CreatedAt,
 		&i.LastUsedAt,
 		&i.ExpiresAt,
+		&i.UserAgent,
+		&i.SignedInFrom,
+		&i.ID,
 	)
 	return i, err
 }
 
+const lockSessionUser = `-- name: LockSessionUser :one
+SELECT id FROM users WHERE id = $1 FOR UPDATE
+`
+
+// The owner lock comes first, as in enrollment confirmation, so deleting
+// several of the user's sessions cannot deadlock with it.
+func (q *Queries) LockSessionUser(ctx context.Context, userID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, lockSessionUser, userID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const lockUserSession = `-- name: LockUserSession :one
-SELECT user_id, created_at, last_used_at, expires_at
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
 FROM sessions WHERE user_id = $1 AND token_hash = $2 FOR UPDATE
 `
 
@@ -87,21 +161,45 @@ type LockUserSessionParams struct {
 	TokenHash []byte
 }
 
-type LockUserSessionRow struct {
-	UserID     int64
-	CreatedAt  time.Time
-	LastUsedAt time.Time
-	ExpiresAt  time.Time
-}
-
-func (q *Queries) LockUserSession(ctx context.Context, arg LockUserSessionParams) (LockUserSessionRow, error) {
+func (q *Queries) LockUserSession(ctx context.Context, arg LockUserSessionParams) (Session, error) {
 	row := q.db.QueryRow(ctx, lockUserSession, arg.UserID, arg.TokenHash)
-	var i LockUserSessionRow
+	var i Session
 	err := row.Scan(
+		&i.TokenHash,
 		&i.UserID,
 		&i.CreatedAt,
 		&i.LastUsedAt,
 		&i.ExpiresAt,
+		&i.UserAgent,
+		&i.SignedInFrom,
+		&i.ID,
+	)
+	return i, err
+}
+
+const lockUserSessionByID = `-- name: LockUserSessionByID :one
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
+FROM sessions WHERE user_id = $1 AND id = $2 FOR UPDATE
+`
+
+type LockUserSessionByIDParams struct {
+	UserID int64
+	ID     uuid.UUID
+}
+
+// The owner is part of the lookup, so another user's id finds nothing.
+func (q *Queries) LockUserSessionByID(ctx context.Context, arg LockUserSessionByIDParams) (Session, error) {
+	row := q.db.QueryRow(ctx, lockUserSessionByID, arg.UserID, arg.ID)
+	var i Session
+	err := row.Scan(
+		&i.TokenHash,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.LastUsedAt,
+		&i.ExpiresAt,
+		&i.UserAgent,
+		&i.SignedInFrom,
+		&i.ID,
 	)
 	return i, err
 }
@@ -133,6 +231,43 @@ func (q *Queries) ReadSessionIdentity(ctx context.Context, tokenHash []byte) (Re
 		&i.TotpConfirmed,
 	)
 	return i, err
+}
+
+const readUserSessions = `-- name: ReadUserSessions :many
+SELECT token_hash, user_id, created_at, last_used_at, expires_at, user_agent, signed_in_from, id
+FROM sessions WHERE user_id = $1
+ORDER BY created_at DESC, id DESC
+`
+
+// Expiry is a Go rule, so expired rows are returned too. Random ids only
+// keep rows with equal sign-in times in one order.
+func (q *Queries) ReadUserSessions(ctx context.Context, userID int64) ([]Session, error) {
+	rows, err := q.db.Query(ctx, readUserSessions, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Session
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.TokenHash,
+			&i.UserID,
+			&i.CreatedAt,
+			&i.LastUsedAt,
+			&i.ExpiresAt,
+			&i.UserAgent,
+			&i.SignedInFrom,
+			&i.ID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const touchSession = `-- name: TouchSession :exec

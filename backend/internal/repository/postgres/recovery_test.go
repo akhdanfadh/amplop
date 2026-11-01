@@ -177,7 +177,7 @@ func TestRecoveryStaleSignIn(t *testing.T) {
 			}
 			results := make(chan outcome, 1)
 			go func() {
-				result, err := service.StartSignIn(ctx, "admin@example.com", "the old recovery password", netip.MustParseAddr("127.0.0.1"))
+				result, err := service.StartSignIn(ctx, "admin@example.com", "the old recovery password", session.Device{Addr: netip.MustParseAddr("127.0.0.1")})
 				results <- outcome{result, err}
 			}()
 			select {
@@ -199,7 +199,7 @@ func TestRecoveryStaleSignIn(t *testing.T) {
 				assert.Zero(t, count, table)
 			}
 			fresh := session.NewService(f.db, account.NewService(f.db, ""), session.NewThrottle(f.db, clock), clock)
-			issued, err := fresh.StartSignIn(ctx, "admin@example.com", password, netip.MustParseAddr("127.0.0.1"))
+			issued, err := fresh.StartSignIn(ctx, "admin@example.com", password, session.Device{Addr: netip.MustParseAddr("127.0.0.1")})
 			require.NoError(t, err)
 			assert.Equal(t, session.SignInStepComplete, issued.Step)
 		})

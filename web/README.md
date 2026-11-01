@@ -63,6 +63,7 @@ Put shared code in the folder for its responsibility:
 - `src/features/probe`: the probe demo form.
 - `src/features/totp`: authenticator enrollment, confirmation, backup-code
   management, and turning TOTP off.
+- `src/features/sessions`: the signed-in browser list and ending sessions.
 - `src/components`: shared controls, such as the password input. `ui/` holds
   the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -138,6 +139,19 @@ administrator after the page loaded, the HTTP 403 refreshes the session and the
 page switches to that notice. An HTTP 409 means TOTP is already off, so the
 page offers enrollment again. An uncertain turn-off blocks another attempt until
 status is checked.
+
+Security also lists the account's signed-in browsers, newest sign-in first.
+Each row shows the browser and operating system, or "Unknown browser", the
+sign-in time, and the address. Activity is saved at most hourly, so activity
+under an hour old reads "Active in the last hour" instead of a time. The
+current row has a "This browser" badge and no end button; "Sign out of this
+browser" ends it. Other rows sign out with one click. "Sign out of all other
+browsers" asks first. A short line says this does not stop someone who knows
+the password. Ending sessions is safe to repeat, so every outcome reloads the
+list instead of requiring a check. A session the API reports gone reads
+"already signed out"; an uncertain outcome asks the user to check the
+reloaded list. Ending sessions and TOTP writes wait for each other, because
+confirming TOTP replaces this browser's session and ends the others.
 
 Signing out deletes the current session, clears account caches, and opens
 sign-in. A 401 also completes sign-out because that session is already absent
@@ -259,9 +273,10 @@ received request reference for reporting failures.
 
 For writes, a missing response or HTTP 5xx cannot confirm whether the change
 took effect. The message keeps any safe server explanation and asks the user
-to check before submitting again. An unreadable success response instead says
-the server reported success but its result could not be loaded. A received
-4xx rejection keeps its normal explanation. Failed submissions keep the form's
+to check before submitting again; ending signed-in browsers reloads the list
+for that check. An unreadable success response instead says the server
+reported success but its result could not be loaded. A received 4xx
+rejection keeps its normal explanation. Failed submissions keep the form's
 values; the request reference remains available when received.
 
 Zod's messages are developer text: `src/router.tsx`

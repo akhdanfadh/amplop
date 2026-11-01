@@ -3,11 +3,14 @@ package postgres
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -32,6 +35,8 @@ func sessionStorage(t *testing.T) (*DB, session.State) {
 	}
 }
 
+// readSession omits the storage-assigned ID, so a read row equals the
+// state it was inserted from.
 func readSession(t *testing.T, db *DB, hash [sha256.Size]byte) session.State {
 	t.Helper()
 	var state session.State
@@ -40,6 +45,8 @@ func readSession(t *testing.T, db *DB, hash [sha256.Size]byte) session.State {
 		return session.Change{Action: session.Keep}, nil
 	})
 	require.NoError(t, err)
+	require.NotEqual(t, uuid.Nil(), state.ID)
+	state.ID = uuid.Nil()
 	return state
 }
 
@@ -175,4 +182,326 @@ func TestSessionsMigrationDown(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT to_regclass('public.sessions') IS NOT NULL").Scan(&sessions))
 	assert.True(t, sessions)
+}
+
+func TestSessionDeviceStorage(t *testing.T) {
+	db, state := sessionStorage(t)
+	withDevice := state
+	withDevice.Device = session.Device{UserAgent: "Mozilla/5.0 Firefox/131.0", Addr: netip.MustParseAddr("2001:db8::1")}
+	withoutDevice := state
+	withoutDevice.TokenHash = sha256.Sum256([]byte("no device"))
+
+	for _, row := range []session.State{withDevice, withoutDevice} {
+		require.NoError(t, db.InsertSession(t.Context(), row))
+	}
+
+	assert.Equal(t, withDevice, readSession(t, db, withDevice.TokenHash))
+	assert.Equal(t, withoutDevice, readSession(t, db, withoutDevice.TokenHash))
+	var agents, addrs int
+	require.NoError(t, db.pool.QueryRow(t.Context(), "SELECT count(user_agent), count(signed_in_from) FROM sessions").Scan(&agents, &addrs))
+	assert.Equal(t, 1, agents, "an empty User-Agent is stored as NULL")
+	assert.Equal(t, 1, addrs, "an unknown address is stored as NULL")
+
+	_, err := db.pool.Exec(t.Context(), `INSERT INTO sessions (token_hash, user_id, expires_at, user_agent)
+		VALUES ('\x01', $1, now() + interval '1 day', '')`, state.UserID)
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr)
+	assert.Equal(t, checkViolation, pgErr.Code, "empty User-Agent")
+}
+
+// currentCookie is the base64url encoding of 32 zero bytes, the secret of
+// userSessions' current session.
+var currentCookie = base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+
+// userSessions holds user A's current, other, and expired sessions, and user
+// B's session, all inserted through InsertSession.
+type userSessions struct {
+	db                               *DB
+	current, other, expired, foreign session.State
+}
+
+func newUserSessions(t *testing.T) userSessions {
+	t.Helper()
+	db, state := sessionStorage(t)
+	var otherUser int64
+	require.NoError(t, db.pool.QueryRow(t.Context(), "INSERT INTO users (email, password_hash, role) VALUES ('other@example.com', 'unused', 'member') RETURNING id").Scan(&otherUser))
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	f := userSessions{db: db, current: state}
+	f.current.TokenHash = sha256.Sum256(make([]byte, 32))
+	f.current.CreatedAt, f.current.LastUsedAt, f.current.ExpiresAt = now.Add(-2*time.Hour), now.Add(-2*time.Hour), now.Add(29*24*time.Hour)
+	f.other, f.expired, f.foreign = f.current, f.current, f.current
+	f.other.TokenHash = sha256.Sum256([]byte("other"))
+	f.other.CreatedAt, f.other.LastUsedAt = now.Add(-time.Hour), now.Add(-time.Hour)
+	f.other.Device = session.Device{UserAgent: "Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0", Addr: netip.MustParseAddr("192.0.2.9")}
+	f.expired.TokenHash = sha256.Sum256([]byte("expired"))
+	f.expired.LastUsedAt = now.Add(-8 * 24 * time.Hour)
+	f.foreign.TokenHash, f.foreign.UserID = sha256.Sum256([]byte("foreign")), otherUser
+	for _, row := range []*session.State{&f.current, &f.other, &f.expired, &f.foreign} {
+		*row = f.insert(t, *row)
+	}
+	return f
+}
+
+// insert stores state and returns it with the ID storage assigned.
+func (f userSessions) insert(t *testing.T, state session.State) session.State {
+	t.Helper()
+	require.NoError(t, f.db.InsertSession(t.Context(), state))
+	require.NoError(t, f.db.pool.QueryRow(t.Context(), "SELECT id FROM sessions WHERE token_hash = $1", state.TokenHash[:]).Scan(&state.ID))
+	return state
+}
+
+// ids lists the user's stored session IDs.
+func (f userSessions) ids(t *testing.T, userID int64) []uuid.UUID {
+	t.Helper()
+	rows, err := f.db.ReadUserSessions(t.Context(), userID)
+	require.NoError(t, err)
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	return ids
+}
+
+func TestReadUserSessions(t *testing.T) {
+	f := newUserSessions(t)
+
+	rows, err := f.db.ReadUserSessions(t.Context(), f.current.UserID)
+
+	require.NoError(t, err)
+	// current and expired signed in at the same time; the higher ID comes first.
+	tied := []session.State{f.current, f.expired}
+	if f.current.ID.Compare(f.expired.ID) < 0 {
+		tied = []session.State{f.expired, f.current}
+	}
+	assert.Equal(t, append([]session.State{f.other}, tied...), rows, "newest sign-in first, expired rows included")
+	missing, err := f.db.ReadUserSessions(t.Context(), -1)
+	require.NoError(t, err)
+	assert.Empty(t, missing)
+}
+
+func TestListPersistence(t *testing.T) {
+	f := newUserSessions(t)
+	service := session.NewService(f.db, nil, nil, time.Now)
+	current, err := service.Current(t.Context(), currentCookie)
+	require.NoError(t, err)
+
+	listed, err := service.List(t.Context(), current)
+
+	require.NoError(t, err)
+	require.Len(t, listed, 2, "the expired session is hidden")
+	assert.Equal(t, session.Listed{
+		ID: f.other.ID, Browser: "Firefox", OS: "Linux", SignedInFrom: f.other.Device.Addr,
+		CreatedAt: f.other.CreatedAt, LastUsedAt: f.other.LastUsedAt,
+	}, listed[0])
+	assert.Equal(t, f.current.ID, listed[1].ID)
+	assert.True(t, listed[1].Current)
+	assert.Empty(t, listed[1].Browser, "a session without details is an unknown browser")
+	assert.ElementsMatch(t, []uuid.UUID{f.current.ID, f.other.ID, f.expired.ID}, f.ids(t, f.current.UserID), "listing deletes nothing")
+}
+
+func TestUpdateUserSession(t *testing.T) {
+	f := newUserSessions(t)
+
+	// Another user's ID and a missing ID never reach the callback.
+	for _, id := range []uuid.UUID{f.foreign.ID, uuid.New()} {
+		err := f.db.UpdateUserSession(t.Context(), f.current.UserID, id, func(session.State) (session.Change, error) {
+			t.Error("another user's or a missing session reached update")
+			return session.Change{Action: session.Delete}, nil
+		})
+		require.ErrorIs(t, err, session.ErrNotFound)
+	}
+
+	err := f.db.UpdateUserSession(t.Context(), f.current.UserID, f.other.ID, func(stored session.State) (session.Change, error) {
+		assert.Equal(t, f.other, stored)
+		return session.Change{Action: session.Delete}, nil
+	})
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []uuid.UUID{f.current.ID, f.expired.ID}, f.ids(t, f.current.UserID))
+	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
+}
+
+func TestEndPersistence(t *testing.T) {
+	f := newUserSessions(t)
+	service := session.NewService(f.db, nil, nil, time.Now)
+	current, err := service.Current(t.Context(), currentCookie)
+	require.NoError(t, err)
+
+	// When the user ends sessions one at a time.
+	foreign := service.End(t.Context(), current, f.foreign.ID)
+	own := service.End(t.Context(), current, f.current.ID)
+	expired := service.End(t.Context(), current, f.expired.ID)
+	other := service.End(t.Context(), current, f.other.ID)
+	again := service.End(t.Context(), current, f.other.ID)
+
+	// Then only the other live session ends, and the expired row is cleared.
+	require.ErrorIs(t, foreign, session.ErrNotFound)
+	require.ErrorIs(t, own, session.ErrCurrentSession)
+	require.ErrorIs(t, expired, session.ErrNotFound)
+	require.NoError(t, other)
+	require.ErrorIs(t, again, session.ErrNotFound, "ending twice finds nothing")
+	assert.Equal(t, []uuid.UUID{f.current.ID}, f.ids(t, f.current.UserID))
+	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
+}
+
+func TestDeleteUserOtherSessions(t *testing.T) {
+	f := newUserSessions(t)
+
+	deleted, err := f.db.DeleteUserOtherSessions(t.Context(), f.current.UserID, f.current.TokenHash, func(kept session.State) error {
+		assert.Equal(t, f.current, kept)
+		return nil
+	})
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []session.State{f.other, f.expired}, deleted)
+	assert.Equal(t, []uuid.UUID{f.current.ID}, f.ids(t, f.current.UserID))
+	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
+}
+
+func TestDeleteUserOtherSessionsRejected(t *testing.T) {
+	f := newUserSessions(t)
+	rejected := errors.New("kept session rejected")
+	all := []uuid.UUID{f.current.ID, f.other.ID, f.expired.ID}
+
+	deleted, err := f.db.DeleteUserOtherSessions(t.Context(), f.current.UserID, f.current.TokenHash, func(session.State) error {
+		return rejected
+	})
+
+	require.ErrorIs(t, err, rejected)
+	assert.Nil(t, deleted)
+	assert.ElementsMatch(t, all, f.ids(t, f.current.UserID))
+
+	// A kept session that is missing or another user's deletes nothing.
+	for _, c := range []struct {
+		userID int64
+		keep   [sha256.Size]byte
+	}{
+		{f.current.UserID, sha256.Sum256([]byte("missing"))},
+		{f.current.UserID, f.foreign.TokenHash},
+		{f.foreign.UserID + 1000, f.current.TokenHash},
+	} {
+		deleted, err := f.db.DeleteUserOtherSessions(t.Context(), c.userID, c.keep, func(session.State) error {
+			t.Error("a missing kept session reached check")
+			return nil
+		})
+		require.ErrorIs(t, err, session.ErrNotFound)
+		assert.Nil(t, deleted)
+	}
+	assert.ElementsMatch(t, all, f.ids(t, f.current.UserID))
+	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
+}
+
+// TestDeleteUserOtherSessionsLockOrder holds the locks enrollment
+// confirmation takes before it replaces every session: the owner, then the
+// newest session. Deleting the other sessions must wait for the owner
+// instead of locking some rows first and deadlocking.
+func TestDeleteUserOtherSessionsLockOrder(t *testing.T) {
+	f := newUserSessions(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	tx, err := f.db.pool.Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(t.Context())
+	_, err = tx.Exec(ctx, "SELECT id FROM users WHERE id = $1 FOR UPDATE", f.current.UserID)
+	require.NoError(t, err)
+	_, err = tx.Exec(ctx, "SELECT 1 FROM sessions WHERE token_hash = $1 FOR UPDATE", f.other.TokenHash[:])
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := f.db.DeleteUserOtherSessions(ctx, f.current.UserID, f.current.TokenHash, func(session.State) error { return nil })
+		done <- err
+	}()
+	require.Eventually(t, func() bool {
+		var blocked bool
+		err := f.db.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%LockSessionUser%')").Scan(&blocked)
+		return err == nil && blocked
+	}, 3*time.Second, 10*time.Millisecond)
+	_, err = tx.Exec(ctx, "DELETE FROM sessions WHERE user_id = $1", f.current.UserID)
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit(ctx))
+
+	require.ErrorIs(t, <-done, session.ErrNotFound, "the kept session was replaced meanwhile")
+}
+
+func TestEndOthersPersistence(t *testing.T) {
+	f := newUserSessions(t)
+	service := session.NewService(f.db, nil, nil, time.Now)
+	current, err := service.Current(t.Context(), currentCookie)
+	require.NoError(t, err)
+
+	ended, err := service.EndOthers(t.Context(), current)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, ended, "the expired row is deleted but not counted")
+	assert.Equal(t, []uuid.UUID{f.current.ID}, f.ids(t, f.current.UserID))
+	assert.Equal(t, []uuid.UUID{f.foreign.ID}, f.ids(t, f.foreign.UserID))
+}
+
+func TestSessionDevicesMigration(t *testing.T) {
+	// Renumber with the migration if another branch takes 00011 first.
+	const beforeDevices = 10
+	url := newDatabase(t)
+	provider := migratedProvider(t, url)
+	conn, err := pgx.Connect(t.Context(), url)
+	require.NoError(t, err)
+	defer conn.Close(t.Context())
+	_, err = provider.DownTo(t.Context(), beforeDevices)
+	require.NoError(t, err)
+	var userID int64
+	require.NoError(t, conn.QueryRow(t.Context(), "INSERT INTO users (email, password_hash, role) VALUES ('a@example.com', 'unused', 'member') RETURNING id").Scan(&userID))
+	_, err = conn.Exec(t.Context(), `INSERT INTO sessions (token_hash, user_id, expires_at)
+		VALUES ('\x01', $1, now() + interval '1 day')`, userID)
+	require.NoError(t, err)
+
+	_, err = provider.Up(t.Context())
+	require.NoError(t, err)
+
+	var noAgent, noAddr bool
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT user_agent IS NULL, signed_in_from IS NULL FROM sessions").Scan(&noAgent, &noAddr))
+	assert.True(t, noAgent, "existing rows keep no details")
+	assert.True(t, noAddr)
+
+	_, err = provider.DownTo(t.Context(), beforeDevices)
+	require.NoError(t, err)
+	var columns int
+	require.NoError(t, conn.QueryRow(t.Context(), `SELECT count(*) FROM information_schema.columns
+		WHERE table_name = 'sessions' AND column_name IN ('user_agent', 'signed_in_from')`).Scan(&columns))
+	assert.Zero(t, columns)
+}
+
+func TestSessionIDsMigration(t *testing.T) {
+	// Renumber with the migration if another branch takes 00012 first.
+	const beforeIDs = 11
+	url := newDatabase(t)
+	provider := migratedProvider(t, url)
+	conn, err := pgx.Connect(t.Context(), url)
+	require.NoError(t, err)
+	defer conn.Close(t.Context())
+	_, err = provider.DownTo(t.Context(), beforeIDs)
+	require.NoError(t, err)
+	var userID int64
+	require.NoError(t, conn.QueryRow(t.Context(), "INSERT INTO users (email, password_hash, role) VALUES ('a@example.com', 'unused', 'member') RETURNING id").Scan(&userID))
+	_, err = conn.Exec(t.Context(), `INSERT INTO sessions (token_hash, user_id, expires_at)
+		VALUES ('\x01', $1, now() + interval '1 day'), ('\x02', $1, now() + interval '1 day')`, userID)
+	require.NoError(t, err)
+
+	_, err = provider.Up(t.Context())
+	require.NoError(t, err)
+
+	rows, err := conn.Query(t.Context(), "SELECT id FROM sessions ORDER BY id")
+	require.NoError(t, err)
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	require.NoError(t, err)
+	require.Len(t, ids, 2)
+	assert.NotContains(t, ids, uuid.Nil())
+	assert.NotEqual(t, ids[0], ids[1], "each existing row gets its own ID")
+
+	_, err = provider.DownTo(t.Context(), beforeIDs)
+	require.NoError(t, err)
+	var columns int
+	require.NoError(t, conn.QueryRow(t.Context(), `SELECT count(*) FROM information_schema.columns
+		WHERE table_name = 'sessions' AND column_name = 'id'`).Scan(&columns))
+	assert.Zero(t, columns)
 }

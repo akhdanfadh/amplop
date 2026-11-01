@@ -246,9 +246,11 @@ themselves; use host-operator recovery below.
 ## Reverse proxies
 
 `INBOK_TRUSTED_PROXIES` controls which peers may supply a forwarded client
-address for sign-in and setup throttling. Empty ignores forwarded addresses
-and uses the connection's address. Trust only the proxy's address ranges;
-trusting all addresses lets a caller forge their throttling address.
+address for sign-in and setup throttling and for the address saved with each
+new session. Empty ignores forwarded addresses and uses the connection's
+address; behind a proxy, every session then shows the proxy's address. Trust
+only the proxy's address ranges; trusting all addresses lets a caller forge
+their throttling address and the sign-in address shown in the session list.
 
 For one nginx proxy on the same host as Go, keep Go on `127.0.0.1:8080` and
 set `INBOK_TRUSTED_PROXIES=127.0.0.1/32`. Build the web app first. Adapt the
@@ -338,9 +340,11 @@ Starting a new challenge does not reset the shared per-user code allowance:
 code sign-in removes only its own attempt in the same transaction.
 
 Expired challenges are pruned for that user during a successful password
-sign-in. There is no scheduled cleanup; idle users' expired rows remain
-unusable until removed. Both cookies use Secure, HttpOnly, SameSite=Lax, and
-Path=/, without Domain. Authentication responses use Cache-Control: no-store.
+sign-in. Saving a new session, after a password or a code, also deletes that
+user's expired sessions in the same transaction. There is no scheduled
+cleanup; idle users' expired rows remain unusable until removed. Both cookies
+use Secure, HttpOnly, SameSite=Lax, and Path=/, without Domain.
+Authentication responses use Cache-Control: no-store.
 
 `GET /api/v0/sessions/current` returns the current email, role, and
 `totpRequired`. An administrator with confirmed TOTP receives admin access
@@ -357,8 +361,35 @@ enrollment, backup codes, and turn-off; sign-in shows the code step.
 cookie, returning HTTP 204. A missing or expired session returns HTTP 401
 and also clears the cookie; the web app treats that as signed out. Signing
 out clears account data and submitted credentials from the web app's Query
-cache while retaining the public setup status. Session listing, revoking
-other sessions, deactivation, and member recovery are not implemented yet.
+cache while retaining the public setup status.
+
+Each new session saves the request's `User-Agent`, cut to 512 bytes, and the
+client address resolved as in [Reverse proxies](#reverse-proxies). They help
+the owner recognize a session. No access decision uses them, because the
+client chooses its `User-Agent`. Sessions created before these columns
+existed have neither. Both are personal data: an expired row keeps them until
+its user signs in again, with no time limit for users who never return.
+Operators with a retention duty must delete expired rows themselves.
+
+`GET /api/v0/sessions` lists the account's live sessions, newest sign-in
+first, in `data.sessions`. Each has an `id`, `browser` and `os` names read
+from the saved header, `signedInAt`, `lastActiveAt`, `signedInFrom`, and
+`current` for the session that made the request. Unrecognized names and an
+unknown address are empty strings. `lastActiveAt` changes at most hourly, as
+described below. The `id` is a random UUID that names the session to its
+owner; the token hash never leaves the server. Listing deletes nothing.
+
+`DELETE /api/v0/sessions/{id}` ends another session of the account and
+returns HTTP 200 with `{"data":{"ended":1}}`. A missing, expired, or other
+account's session returns the same HTTP 404 (`session-not-found`); an
+expired one is deleted as well. The current session returns HTTP 409
+(`session-is-current`); sign-out ends it. `DELETE /api/v0/sessions/others`
+ends every other session of the account and returns how many live sessions it
+ended, which can be 0. Both are safe to repeat. Ending a session stops its
+next request, not one already running, and does not stop someone who knows
+the password from signing in again; there is no password change yet.
+
+Account deactivation and member recovery are not implemented yet.
 Host-operator administrator recovery is described below.
 
 The cookie is `__Host-inbok-session`, with `Secure`, `HttpOnly`,
@@ -377,8 +408,9 @@ Session rules are constants, not environment settings:
 - Each authenticated request loads the session and current user from
   PostgreSQL. It updates last-use time only when at least an hour has passed
   since the stored value. This reduces writes, not reads.
-- Expiry is checked before that update. An expired row is deleted when used;
-  there is no cleanup job. Sign-out deletes the current row.
+- Expiry is checked before that update. An expired row is deleted when used
+  or when its user signs in again; there is no cleanup job. Sign-out deletes
+  the current row.
 - Every sign-in creates a new 32-byte random secret. PostgreSQL stores only
   its SHA-256 hash. Cookie secrets, passwords, and hashes must not be logged.
 
