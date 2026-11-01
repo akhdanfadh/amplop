@@ -64,6 +64,8 @@ Put shared code in the folder for its responsibility:
 - `src/features/totp`: authenticator enrollment, confirmation, backup-code
   management, and turning TOTP off.
 - `src/features/sessions`: the signed-in browser list and ending sessions.
+- `src/features/system-email`: the system email settings form, its schema,
+  and the test message form and its result wording.
 - `src/components`: shared controls, such as the password input. `ui/` holds
   the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -152,6 +154,27 @@ list instead of requiring a check. A session the API reports gone reads
 "already signed out"; an uncertain outcome asks the user to check the
 reloaded list. Ending sessions and TOTP writes wait for each other, because
 confirming TOTP replaces this browser's session and ends the others.
+
+Administrators with confirmed TOTP see a Settings link to `/settings`. Each
+page passes its session to `AccountNav`, which decides from it. Anyone else
+who opens the page sees that settings are for administrators with two-factor
+authentication; an administrator also gets a link to Security. A 401 from a
+save or test signs out; a 403 reads access again.
+
+The page configures system email, the server inbok sends its own mail
+through. The form applies Go's rules between fields before sending, and its
+password description says when an empty password keeps the saved one.
+Inputs are read-only, not disabled, while a save runs, so focus stays and the
+values remain readable. A save whose response is lost locks the form and the
+test until "Check saved settings" reads them again and says whether they
+match; a typed password is never read back, so it stays unconfirmed. The
+username and password inputs carry password-manager opt-outs, so the inbok
+sign-in is neither filled in nor saved there.
+
+The test section sends to the signed-in address by default and words each
+failure by the step that failed. A lost result can be sent again without a
+check. Editing the recipient or a later save hides an earlier result. A save
+and a test never run at the same time.
 
 Signing out deletes the current session, clears account caches, and opens
 sign-in. A 401 also completes sign-out because that session is already absent

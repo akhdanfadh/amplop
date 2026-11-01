@@ -75,13 +75,13 @@ web-add-ui: ## Add a shadcn component, e.g. NAME=dialog
 
 # Database
 
-db-start: $(ENV_FILE) ## Start PostgreSQL in Docker
+db-start: $(ENV_FILE) ## Start PostgreSQL and Mailpit in Docker
 	$(WITH_ENV) docker compose up -d --wait
 
-db-stop: $(ENV_FILE) ## Stop PostgreSQL, keeping its data
+db-stop: $(ENV_FILE) ## Stop PostgreSQL and Mailpit, keeping the database
 	$(WITH_ENV) docker compose down
 
-db-wipe: $(ENV_FILE) ## Stop PostgreSQL and delete its data
+db-wipe: $(ENV_FILE) ## Stop PostgreSQL and Mailpit, deleting the database
 	$(WITH_ENV) docker compose down -v
 
 db-migrate: $(ENV_FILE) ## Apply pending migrations
