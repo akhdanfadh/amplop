@@ -194,10 +194,10 @@ unverified account also sees a notice on home that links to Security.
 
 The link opens `/verify-email`, which works signed in or out. The secret after
 `#` never reaches the server with the page request. `getRouter` calls
-`captureLinkSecret` (`features/email-verification/link-secret.ts`) before
-anything renders or fetches: it keeps the secret in memory and removes it
-from the address, so the address bar and a copied URL lose it even if the
-setup status check fails, and Back or Forward to the page finds no link. The
+`captureLinkSecret` (`lib/link-secret.ts`) before anything renders or
+fetches: it keeps the secret in memory and removes it from the address, so
+the address bar and a copied URL lose it even if the setup status check
+fails, and Back or Forward to the page finds no link. The
 browser's history list still holds the full link. Reloading after that asks
 for the emailed link again. "Verify email" sends the secret. A link that is
 expired, used, unknown, or sent to an old address cannot be retried; if the
