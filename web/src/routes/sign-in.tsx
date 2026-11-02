@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useGetRegistration } from "@/api/generated/inbok";
 import { SignInForm } from "@/features/auth/sign-in-form";
 import { CodeForm } from "@/features/auth/code-form";
 import { useSetup } from "@/features/setup/gate";
 import { clearAccountCache } from "@/features/auth/session-cache";
+
+const focusClass =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 export const Route = createFileRoute("/sign-in")({
   component: SignIn,
@@ -17,6 +22,9 @@ function SignIn(): ReactElement {
   const { completedHere } = useSetup();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [step, setStep] = useState<"password" | "code">("password");
+  // A failed read hides the link: sign-in matters more than registering.
+  const registration = useGetRegistration();
+  const canRegister = step === "password" && registration.data?.data.open;
   useEffect(() => {
     headingRef.current?.focus();
   }, [step]);
@@ -52,6 +60,11 @@ function SignIn(): ReactElement {
         </>
       ) : (
         <SignInForm onDone={finishSignIn} onCodeRequired={() => setStep("code")} />
+      )}
+      {canRegister && (
+        <Link to="/register" className={linkClass}>
+          Create an account
+        </Link>
       )}
     </main>
   );
