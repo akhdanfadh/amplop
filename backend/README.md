@@ -378,9 +378,11 @@ again and saves. The web app shows that 500 as a lost test result.
 ## Reverse proxies
 
 `INBOK_TRUSTED_PROXIES` controls which peers may supply a forwarded client
-address for sign-in and setup throttling and for the address saved with each
-new session. Empty ignores forwarded addresses and uses the connection's
-address; behind a proxy, every session then shows the proxy's address. Trust
+address for sign-in and setup throttling, for the request limit on public
+writes, and for the address saved with each new session. Empty ignores
+forwarded addresses and uses the connection's address; behind a proxy, every
+session then shows the proxy's address, and all clients share one request
+limit, so one busy client can block everyone's sign-in. Trust
 only the proxy's address ranges; trusting all addresses lets a caller forge
 their throttling address and the sign-in address shown in the session list.
 
@@ -587,6 +589,17 @@ refusal is an `*attemptlimit.Error` that wraps the feature's `ErrThrottled`
 and carries the wait; `retryAfterProblem` in `httpapi` turns it into the
 header. Every documented 429 lists the header as required, so a new 429 must
 send it.
+
+In front of those throttles, every write that needs no session (`rateLimited`
+in `httpapi`) passes a limit kept in memory, per operation and client: up to
+20 requests in a row, and each second gives one back, up to 20. A client is
+an IPv4 address, or an IPv6 address's /64 block. Past the limit, the request
+gets HTTP 429 `too-many-requests` with `Retry-After` before any database work,
+so a flood cannot hold database connections or start password hashes. Over
+any 15 minutes it allows more requests than any database limit, so people
+retrying by hand meet those limits first. Counts are per process and reset on
+restart; at most 100,000 clients are tracked at once. A new public write gets
+the limit, and its 429 in the contract, with no code of its own.
 
 `DELETE /api/v0/totp/enrollment` cancels a signed-in account's pending
 enrollment without a code. Success returns HTTP 200 with `data.status:

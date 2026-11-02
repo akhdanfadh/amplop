@@ -40,14 +40,20 @@ func totpThrottleProblem(err error) error {
 }
 
 // retryAfterProblem returns p with a Retry-After header holding the wait in
-// err's [*attemptlimit.Error], in whole seconds rounded up and at least 1.
-// Without one it returns p unchanged.
+// err's [*attemptlimit.Error], from [retryAfterSeconds]. Without one it
+// returns p unchanged.
 func retryAfterProblem(p *problem, err error) error {
 	refusal, ok := errors.AsType[*attemptlimit.Error](err)
 	if !ok {
 		return p
 	}
+	return huma.ErrorWithHeaders(p, http.Header{retryAfterHeader: {retryAfterSeconds(refusal.Wait)}})
+}
+
+// retryAfterSeconds returns wait as a Retry-After value: whole seconds,
+// rounded up, at least 1.
+func retryAfterSeconds(wait time.Duration) string {
 	// Rounding down would invite a retry that is still refused.
-	seconds := max(1, (refusal.Wait+time.Second-1)/time.Second)
-	return huma.ErrorWithHeaders(p, http.Header{retryAfterHeader: {strconv.FormatInt(int64(seconds), 10)}})
+	seconds := max(1, (wait+time.Second-1)/time.Second)
+	return strconv.FormatInt(int64(seconds), 10)
 }

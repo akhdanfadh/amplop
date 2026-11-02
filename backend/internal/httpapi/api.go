@@ -7,6 +7,7 @@ import (
 	jsonv2 "encoding/json/v2"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
@@ -19,8 +20,9 @@ const apiPrefix = "/api/v0"
 
 // API serves inbok's HTTP operations and describes them as OpenAPI.
 type API struct {
-	router *gin.Engine
-	api    huma.API
+	router  *gin.Engine
+	api     huma.API
+	limiter *rateLimiter // kept so tests can move its clock
 }
 
 // Services holds what each feature's operations call. Fields may be nil
@@ -99,7 +101,9 @@ func New(logger *slog.Logger, services Services) *API {
 	}}
 
 	api = humagin.NewWithGroup(router, group, config)
-	api.UseMiddleware(withAccess(api, services.Session))
+	// Floods are refused before the access check and body parsing.
+	limiter := newRateLimiter(time.Now)
+	api.UseMiddleware(withRateLimit(limiter), withAccess(api, services.Session))
 
 	registerHealth(api)
 	registerProbe(api, services.Probe)
@@ -110,9 +114,11 @@ func New(logger *slog.Logger, services Services) *API {
 	registerEmailVerification(api, services.EmailVerification)
 	registerMembers(api, services.Members)
 	registerRegistration(api, services.Registration)
+
+	documentRateLimits(api)
 	registerProblemTypes(api)
 
-	return &API{router: router, api: api}
+	return &API{router: router, api: api, limiter: limiter}
 }
 
 // SetTrustedProxies sets which peers may supply forwarded client addresses.
