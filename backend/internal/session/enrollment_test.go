@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/randomsecret"
 	"inbok/internal/totp"
 )
 
@@ -110,7 +111,7 @@ func TestConfirmEnrollment(t *testing.T) {
 	assert.Equal(t, current.Identity.User.ID, result.Session.State.UserID)
 	assert.Equal(t, clock.Now(), result.Session.State.CreatedAt)
 	assert.NotEqual(t, current.Session.hash, result.Session.State.TokenHash)
-	hash, err := hashSecret(result.Session.Secret)
+	hash, err := randomsecret.Hash(result.Session.Secret)
 	require.NoError(t, err)
 	assert.Equal(t, result.Session.State.TokenHash, hash)
 	assert.Equal(t, result.Session.State, store.change.Session)

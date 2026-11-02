@@ -3,14 +3,16 @@ import "./zod-config";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, type Router } from "@tanstack/react-router";
 import { retryOptions } from "@/api/retry";
-import { captureLinkSecret } from "@/features/email-verification/link-secret";
+import { verifyEmailPath } from "@/features/email-verification/path";
+import { completePath } from "@/features/registration/path";
+import { captureLinkSecret } from "@/lib/link-secret";
 import { routeTree } from "./routeTree.gen";
 
 // TanStack Start calls getRouter to create the app's router.
 export function getRouter(): Router<typeof routeTree> {
   // Before the router reads the address or any request starts, so a failed
-  // request cannot leave a verification secret in the address bar.
-  captureLinkSecret();
+  // request cannot leave a link's secret in the address bar.
+  captureLinkSecret([verifyEmailPath, completePath]);
 
   const queryClient = new QueryClient({
     defaultOptions: retryOptions,
@@ -23,4 +25,13 @@ export function getRouter(): Router<typeof routeTree> {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   });
+}
+
+declare module "@tanstack/react-router" {
+  // HistoryState is what one page hands the next without putting it in the
+  // address, where it would reach history, copied links, and server logs.
+  interface HistoryState {
+    // The email of an account just created, for sign-in to fill in.
+    registeredEmail?: string;
+  }
 }

@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"inbok/internal/emailaddress"
@@ -62,12 +61,14 @@ func TestRecoveryRejected(t *testing.T) {
 	lost := errors.New("storage unavailable")
 	for _, c := range []struct {
 		name, email       string
+		password          string
 		role              Role
 		locked            *User
 		readErr, writeErr error
 		want              error
 	}{
 		{name: "invalid email", email: "admin.example.com", want: emailaddress.ErrInvalid},
+		{name: "invalid password", role: RoleAdmin, password: "too short", want: ErrPasswordInvalid},
 		{name: "missing", readErr: ErrUserNotFound, want: ErrUserNotFound},
 		{name: "member", role: RoleMember, want: ErrRecoveryForbidden},
 		{name: "unknown role", role: Role("future"), want: ErrRecoveryForbidden},
@@ -79,47 +80,13 @@ func TestRecoveryRejected(t *testing.T) {
 			storage := &recoveryStorage{user: User{ID: 1, Role: c.role}, locked: c.locked, readErr: c.readErr, writeErr: c.writeErr}
 			email := cmp.Or(c.email, "admin@example.com")
 
-			result, err := NewRecovery(storage).Recover(t.Context(), email, "a new recovery password")
+			password := cmp.Or(c.password, "a new recovery password")
+
+			result, err := NewRecovery(storage).Recover(t.Context(), email, password)
 
 			require.ErrorIs(t, err, c.want)
 			assert.Zero(t, result)
 			assert.Empty(t, storage.hash)
-		})
-	}
-}
-
-func TestRecoveryPasswordBounds(t *testing.T) {
-	for _, c := range []struct {
-		name, password string
-		valid          bool
-	}{
-		{"empty", "", false},
-		{"too short", strings.Repeat("a", 14), false},
-		{"minimum", strings.Repeat("a", 15), true},
-		{"maximum", strings.Repeat("a", 128), true},
-		{"too long", strings.Repeat("a", 129), false},
-		{"Unicode too short", strings.Repeat("\u754c", 14), false},
-		{"Unicode minimum", strings.Repeat("\u754c", 15), true},
-		{"Unicode maximum", strings.Repeat("\u754c", 128), true},
-		{"Unicode too long", strings.Repeat("\u754c", 129), false},
-		{"spaces preserved", "  a long password  ", true},
-		{"invalid UTF-8", strings.Repeat("a", 15) + "\xff", false},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			storage := &recoveryStorage{user: User{ID: 1, Role: RoleAdmin}}
-
-			result, err := NewRecovery(storage).Recover(t.Context(), "admin@example.com", c.password)
-
-			if !c.valid {
-				require.ErrorIs(t, err, ErrPasswordInvalid)
-				assert.Zero(t, result)
-				assert.Empty(t, storage.hash)
-				return
-			}
-			require.NoError(t, err)
-			match, err := passwordhash.Verify(c.password, storage.hash)
-			require.NoError(t, err)
-			assert.True(t, match)
 		})
 	}
 }

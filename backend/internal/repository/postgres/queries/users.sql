@@ -10,6 +10,11 @@ INSERT INTO users (email, password_hash, role)
 VALUES (@email, @password_hash, 'admin')
 RETURNING id, email, role;
 
+-- name: InsertMemberUser :one
+INSERT INTO users (email, password_hash, role, email_verified_at)
+VALUES (@email, @password_hash, 'member', @email_verified_at)
+RETURNING id, email, role;
+
 -- name: ReadUserCredentials :one
 SELECT id, email, role, password_hash FROM users
 WHERE email = @email;
@@ -23,3 +28,6 @@ WHERE id = @id;
 -- and see a deactivation that committed while the password was checked.
 SELECT password_hash, (deactivated_at IS NOT NULL)::boolean AS deactivated
 FROM users WHERE id = @user_id FOR UPDATE;
+
+-- name: HasUserEmail :one
+SELECT EXISTS (SELECT 1 FROM users WHERE email = @email);

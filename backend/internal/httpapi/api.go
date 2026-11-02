@@ -7,6 +7,7 @@ import (
 	jsonv2 "encoding/json/v2"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
@@ -19,27 +20,31 @@ const apiPrefix = "/api/v0"
 
 // API serves inbok's HTTP operations and describes them as OpenAPI.
 type API struct {
-	router *gin.Engine
-	api    huma.API
+	router  *gin.Engine
+	api     huma.API
+	limiter *rateLimiter // kept so tests can move its clock
 }
 
 // Services holds what each feature's operations call. Fields may be nil
 // when no request is served, e.g. to export OpenAPI: registering an
 // operation calls none of them.
 type Services struct {
-	EmailVerification emailVerificationService
-	Members           membersService
-	SystemEmail       systemEmailService
-	TestMessages      testMessageService
-	Disabler          disableService
-	Backups           backupService
-	CodeSignIn        codeSignInService
-	Enrollment        enrollmentService
-	TOTP              totpService
-	Probe             probeService
-	Account           accountService
-	Session           sessionService
-	Throttle          setupThrottle
+	EmailVerification      emailVerificationService
+	Members                membersService
+	SystemEmail            systemEmailService
+	TestMessages           testMessageService
+	Registration           registrationService
+	RegistrationRequests   registrationRequestService
+	RegistrationCompletion registrationCompletionService
+	Disabler               disableService
+	Backups                backupService
+	CodeSignIn             codeSignInService
+	Enrollment             enrollmentService
+	TOTP                   totpService
+	Probe                  probeService
+	Account                accountService
+	Session                sessionService
+	Throttle               setupThrottle
 }
 
 // New registers operations; logger receives one line per request. Build it
@@ -98,7 +103,9 @@ func New(logger *slog.Logger, services Services) *API {
 	}}
 
 	api = humagin.NewWithGroup(router, group, config)
-	api.UseMiddleware(withAccess(api, services.Session))
+	// Floods are refused before the access check and body parsing.
+	limiter := newRateLimiter(time.Now)
+	api.UseMiddleware(withRateLimit(limiter), withAccess(api, services.Session))
 
 	registerHealth(api)
 	registerProbe(api, services.Probe)
@@ -108,9 +115,12 @@ func New(logger *slog.Logger, services Services) *API {
 	registerSystemEmail(api, services.SystemEmail, services.TestMessages)
 	registerEmailVerification(api, services.EmailVerification)
 	registerMembers(api, services.Members)
+	registerRegistration(api, services.Registration, services.RegistrationRequests, services.RegistrationCompletion)
+
+	documentRateLimits(api)
 	registerProblemTypes(api)
 
-	return &API{router: router, api: api}
+	return &API{router: router, api: api, limiter: limiter}
 }
 
 // SetTrustedProxies sets which peers may supply forwarded client addresses.

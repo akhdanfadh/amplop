@@ -29,6 +29,10 @@ describes the body format, not a replacement HTTP status.
 Write requests require Sec-Fetch-Site or Origin. Command-line clients can
 send an Origin matching the request's target.
 
+Writes that need no session, such as sign-in, also limit how fast one client
+can send each of them. Past that limit they answer 429 with type
+too-many-requests and Retry-After, before reading the request body.
+
 Input errors can include an errors list with field locations and safe
 correction messages. For example, a 422 response from POST /setup:
 

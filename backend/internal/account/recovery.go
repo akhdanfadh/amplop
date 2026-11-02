@@ -3,22 +3,12 @@ package account
 import (
 	"context"
 	"errors"
-	"unicode/utf8"
 
 	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
 )
 
-// Password bounds count Unicode code points, matching HTTP setup validation.
-const (
-	PasswordMinLength = 15
-	PasswordMaxLength = 128
-)
-
-var (
-	ErrRecoveryForbidden = errors.New("recovery requires an administrator")
-	ErrPasswordInvalid   = errors.New("password must contain 15 to 128 characters")
-)
+var ErrRecoveryForbidden = errors.New("recovery requires an administrator")
 
 // RecoveryResult contains only counts of removed authentication data.
 type RecoveryResult struct {
@@ -54,9 +44,8 @@ func (s *Recovery) Recover(ctx context.Context, email, password string) (Recover
 		return RecoveryResult{}, err
 	}
 
-	length := utf8.RuneCountInString(password)
-	if !utf8.ValidString(password) || length < PasswordMinLength || length > PasswordMaxLength {
-		return RecoveryResult{}, ErrPasswordInvalid
+	if err := CheckPassword(password); err != nil {
+		return RecoveryResult{}, err
 	}
 
 	// Finish Argon2id before acquiring the user lock.

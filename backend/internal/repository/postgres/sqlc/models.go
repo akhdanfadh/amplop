@@ -41,6 +41,26 @@ type ProbeEvent struct {
 	CreatedAt   time.Time
 }
 
+type Registration struct {
+	ID   bool
+	Open bool
+}
+
+type RegistrationAttempt struct {
+	ID         int64
+	Email      string
+	ClientAddr string
+	Outcome    string
+	CreatedAt  time.Time
+}
+
+type RegistrationLink struct {
+	TokenHash []byte
+	Email     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
 type Session struct {
 	TokenHash    []byte
 	UserID       int64

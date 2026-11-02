@@ -378,9 +378,11 @@ again and saves. The web app shows that 500 as a lost test result.
 ## Reverse proxies
 
 `INBOK_TRUSTED_PROXIES` controls which peers may supply a forwarded client
-address for sign-in and setup throttling and for the address saved with each
-new session. Empty ignores forwarded addresses and uses the connection's
-address; behind a proxy, every session then shows the proxy's address. Trust
+address for sign-in and setup throttling, for the request limit on public
+writes, and for the address saved with each new session. Empty ignores
+forwarded addresses and uses the connection's address; behind a proxy, every
+session then shows the proxy's address, and all clients share one request
+limit, so one busy client can block everyone's sign-in. Trust
 only the proxy's address ranges; trusting all addresses lets a caller forge
 their throttling address and the sign-in address shown in the session list.
 
@@ -416,8 +418,8 @@ gives the address to trust.
 ## Email addresses
 
 Every address inbok takes goes through `emailaddress.Parse`: setup, sign-in,
-`recover-admin`, the system email From address, and each message's
-recipient. It trims surrounding spaces and tabs, accepts one bare address of
+`recover-admin`, registration, the system email From address, and each
+message's recipient. It trims surrounding spaces and tabs, accepts one bare address of
 at most 254 characters without hidden characters, and lowercases the letters
 A to Z, local part included; other letters keep their case. Hidden
 characters are controls, invisible formatting such as a zero-width space or
@@ -587,6 +589,17 @@ refusal is an `*attemptlimit.Error` that wraps the feature's `ErrThrottled`
 and carries the wait; `retryAfterProblem` in `httpapi` turns it into the
 header. Every documented 429 lists the header as required, so a new 429 must
 send it.
+
+In front of those throttles, every write that needs no session (`rateLimited`
+in `httpapi`) passes a limit kept in memory, per operation and client: up to
+20 requests in a row, and each second gives one back, up to 20. A client is
+an IPv4 address, or an IPv6 address's /64 block. Past the limit, the request
+gets HTTP 429 `too-many-requests` with `Retry-After` before any database work,
+so a flood cannot hold database connections or start password hashes. Over
+any 15 minutes it allows more requests than any database limit, so people
+retrying by hand meet those limits first. Counts are per process and reset on
+restart; at most 100,000 clients are tracked at once. A new public write gets
+the limit, and its 429 in the contract, with no code of its own.
 
 `DELETE /api/v0/totp/enrollment` cancels a signed-in account's pending
 enrollment without a code. Success returns HTTP 200 with `data.status:
@@ -786,9 +799,11 @@ a 256-bit secret cannot be guessed.
 A deactivated account cannot ask for a link: the request answers like a
 signed-out one, HTTP 401. Deactivation deletes its unused links, so a link
 sent before it answers 404. Sending a link deletes the account's expired
-links; a refused request or redeem changes nothing. There is no scheduled
-cleanup, so an account that never asks again keeps its expired rows, which
-cannot be used. Deleting an account deletes its links.
+links; a refused request or redeem changes nothing. Each accepted
+registration request also deletes every account's expired links (see
+[Registration](#registration)). There is no scheduled cleanup, so while no
+one registers, an account that never asks again keeps its expired rows,
+which cannot be used. Deleting an account deletes its links.
 
 To list verifications:
 
@@ -851,6 +866,130 @@ To list deactivations and reactivations:
 SELECT id, occurred_at, action, actor_user_id, target_user_id
 FROM audit_events
 WHERE action IN ('member-deactivated', 'member-reactivated')
+ORDER BY id DESC;
+```
+
+## Registration
+
+While an administrator keeps registration open, anyone who can reach inbok
+can create a member account. A visitor gives only an email first. The
+password comes after they follow a link emailed to them, so no one can
+choose the password of an email they do not control, and no half-made
+account ever exists. ADR028 in the project's decision records explains
+each choice below and the alternatives it was chosen over.
+
+### Opening and closing
+
+`GET` and `PUT /api/v0/registration/settings` need administrator access.
+`PUT` takes `{"open": true}` or `{"open": false}`. Registration starts
+closed.
+
+- Opening needs system email settings that passed a test message;
+  otherwise it answers 409 `system-email-not-tested`. Closing always
+  works.
+- Every save records `registration-opened` or `registration-closed` with
+  the administrator as `actor_user_id` and no target, even a save that
+  changes nothing.
+- Saving new system email settings, or a failed test, clears their tested
+  time. Registration then reports `paused`: still open, but no visitor can register until a
+  test passes. Nothing closes it behind the administrator's back.
+- Closing deletes every registration attempt and link, so no visitor's
+  email or IP address is kept while it stays closed. The cost: a link sent
+  before the close stops working even after registration reopens, and the
+  limits below start from zero.
+
+`GET /api/v0/registration` is public and answers `{"open": true}` only when
+visitors can register now; paused answers `false`.
+
+### Asking for a link
+
+`POST /api/v0/registration/links` takes `{"email"}` and answers 200
+`{"status": "requested"}` whatever happens to that email:
+
+- an email without an account gets a link,
+  `INBOK_PUBLIC_URL/register/complete#` + a secret, made and stored like an
+  [email verification](#email-verification) link (only its SHA-256 hash is
+  saved, in `registration_links`), which expires after 24 hours;
+- an email with an account gets a notice instead: someone tried to register
+  it, and here is the sign-in page. A deactivated account gets it too, since
+  the answer must not depend on the account's state;
+- an email that got 3 messages in the last hour, or 5 in 24 hours, gets
+  nothing. Links and notices count; requests that sent nothing do not.
+
+The same answer for all three keeps the response from telling whether an
+email has an account. Other answers:
+
+- 409 `registration-closed`: registration is closed or paused.
+- 429 `registration-throttled` with `Retry-After`: this client IP asked 10
+  times in 15 minutes, or everyone together asked 50 times in the last hour.
+  Both limits are checked before the email's own, so a 429 never depends on
+  the email.
+- 502 `email-not-sent`: the send failed. The link stays saved and counts,
+  and after a timeout the message may still arrive. The warning logged has
+  `purpose="registration link"` or `"registration notice"` and no server
+  reply.
+
+The email counts exactly as `Parse` returns it: `kate+news@example.org` and
+`kate@example.org` are two emails. Folding them would need each provider's
+rules and can hand an account to the wrong person, so it is left out.
+
+Two differences remain, and ADR028 accepts both: a request that sends
+nothing answers sooner, and while mail is failing it still answers 200
+where the others answer 502. Either shows that the email was asked about
+recently, never whether it has an account. Anyone can also use up the 50
+per hour and block registration for an hour; `DEBT.md` lists the defenses
+for when that happens.
+
+How it runs: every request first reads whether registration is open, so a
+closed inbok answers without waiting. It then waits for one PostgreSQL
+advisory lock that all registration requests share
+(`LockRegistrationAttempts`), because the 50 per hour is one count over
+everyone. Under the lock it
+deletes attempts older than 24 hours, checks again that registration is
+open, counts the limits, and saves the attempt and the link. Each accepted
+request also deletes every expired registration link and every expired
+email verification link, skipping rows another transaction holds; there is
+no background job.
+
+### Creating the account
+
+`POST /api/v0/registration/links/redeem` takes `{"secret", "password"}` and
+needs no session. The password follows setup's rule, 15 to 128 characters,
+checked by `account.CheckPassword`.
+
+1. It reads the link without a lock. An unknown or expired link is refused
+   here, so a guessed secret costs no password hash.
+2. It hashes the password with Argon2id, at most 4 hashes at a time
+   (`maxHashes`). Each takes 19 MiB, and one live link sent many times at
+   once would otherwise start one hash per request.
+3. In one transaction it locks the registration row, the system email row,
+   the `users` table (the lock setup takes), and the link, then checks
+   everything again.
+4. It creates a member with `email_verified_at` set, since following the
+   link proved the email, deletes every link to that email, and records
+   `member-registered` with the new member as `target_user_id` and no
+   actor.
+
+It answers 201 `{"id", "email"}` and sets no cookie; the web app sends the
+visitor to sign in. Other answers:
+
+- 422 on `body.password` for a password outside the rule.
+- 404 `registration-link-invalid`: unknown, used, or expired.
+- 409 `registration-closed`: closed or paused. Pausing keeps links, so the
+  link may work later; closing deleted it.
+- 409 `registration-account-exists`: the email got an account first, e.g.
+  through a second submission of the same link that waited for the first.
+
+There is no attempt limit: a 256-bit secret cannot be guessed. Both
+registration writes also pass the in-memory request limit every public
+write has (see [Sign-in and browser sessions](#sign-in-and-browser-sessions)).
+
+To list registration events:
+
+```sql
+SELECT id, occurred_at, action, actor_user_id, target_user_id
+FROM audit_events
+WHERE action IN ('registration-opened', 'registration-closed', 'member-registered')
 ORDER BY id DESC;
 ```
 
@@ -999,6 +1138,8 @@ httpapi --> systememail <-- repository/postgres
                         <-- smtp
 httpapi --> emailverification <-- repository/postgres
             emailverification --> systememail
+httpapi --> registration <-- repository/postgres
+            registration --> systememail, account
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -1020,12 +1161,15 @@ httpapi --> emailverification <-- repository/postgres
   emersion SMTP libraries. A technology package is named for its technology
   and imports features, never the other way around.
 - A leaf package holds one rule that several features share, such as
-  `emailaddress` (the address rule), `attemptlimit` (the window count), or
-  `logging` (how loggers are built and tagged with the request). It
+  `emailaddress` (the address rule), `attemptlimit` (the window count),
+  `randomsecret` (emailed link secrets and their hashes), or `logging` (how
+  loggers are built and tagged with the request). It
   imports no feature or technology package and is named for its rule.
 - A feature can use another feature through an interface it declares:
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`
-  fills with `systememail`'s `Mailer`.
+  fills with `systememail`'s `Mailer`. A feature may import another's plain
+  rules directly: `registration` uses `account.CheckPassword` and
+  `account.User`.
 - `webapp` embeds the built web app and serves it as a static site:
   files, the shell for browser routes, caching, and the CSP. It knows the
   build's layout, not the web app's code. `httpapi` declares a `webApp`

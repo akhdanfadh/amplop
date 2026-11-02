@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"errors"
 	"time"
+
+	"inbok/internal/randomsecret"
 )
 
 const (
@@ -25,7 +27,7 @@ type Challenge struct {
 }
 
 func newChallenge(userID int64, now func() time.Time) (string, Challenge) {
-	secret, hash := newSecret()
+	secret, hash := randomsecret.New()
 	return secret, Challenge{
 		TokenHash: hash,
 		UserID:    userID,

@@ -34,6 +34,8 @@ the area you change before editing it:
   Public error text and input messages contain no rejected values or causes.
 - A throttle's refusal is an `*attemptlimit.Error` carrying its wait; map
   it with `retryAfterProblem`, which adds `Retry-After`.
+- A write with public access gets `withRateLimit`'s per-client limit and
+  its documented 429 automatically; add nothing by hand.
 - Services take a `*slog.Logger` from `cmd/inbok`, built by `logging.New`.
   Log with the request's context, e.g. `logger.WarnContext(ctx, ...)`, so the
   line carries its `request_id`.

@@ -140,7 +140,8 @@ func TestProbeOpenAPI(t *testing.T) {
 	assert.Equal(t, "#/components/schemas/NewProbeEvent", request)
 
 	responses := path.Post.Responses
-	require.Len(t, responses, 3)
+	// 201, 409, the rate limit's 429, and default.
+	require.Len(t, responses, 4)
 	fallback := responses["default"]
 	require.NotNil(t, fallback)
 	require.NotNil(t, fallback.Content[problemContentType])

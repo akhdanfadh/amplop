@@ -35,7 +35,7 @@ func TestRequest(t *testing.T) {
 	secret := secretOf(t, sent.Body)
 	raw, err := base64.RawURLEncoding.Strict().DecodeString(secret)
 	require.NoError(t, err)
-	assert.Len(t, raw, secretSize)
+	assert.Len(t, raw, 32)
 	require.Len(t, storage.links, 1)
 	assert.Equal(t, Link{
 		TokenHash: sha256.Sum256(raw), UserID: testUserID, Address: "admin@example.org",

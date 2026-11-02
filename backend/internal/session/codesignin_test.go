@@ -13,6 +13,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/passwordhash"
+	"inbok/internal/randomsecret"
 	"inbok/internal/totp"
 )
 
@@ -74,7 +75,7 @@ func TestCodeSignInTOTP(t *testing.T) {
 	assert.Zero(t, store.change.BackupCodeID)
 	assert.Equal(t, int64(7), store.change.AttemptID)
 	assert.Equal(t, int64(42), attempts.userID)
-	hash, err := hashSecret(issued.Secret)
+	hash, err := randomsecret.Hash(issued.Secret)
 	require.NoError(t, err)
 	assert.Equal(t, hash, issued.State.TokenHash)
 }

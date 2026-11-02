@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -289,11 +290,15 @@ func TestConcurrentErrors(t *testing.T) {
 	}
 
 	var group sync.WaitGroup
-	for _, local := range locals {
+	for i, local := range locals {
+		// Each goroutine is its own client, so the shared API's rate limit
+		// is not what answers.
+		client := fmt.Sprintf("192.0.2.%d:1234", i+1)
 		group.Go(func() {
 			for _, api := range []*API{a, local} {
 				for range requestsPerAPI {
 					request := httptest.NewRequest(http.MethodPost, "/api/v0/probe/events", strings.NewReader(`{}`))
+					request.RemoteAddr = client
 					request.Header.Set("Origin", "http://"+request.Host)
 					response := httptest.NewRecorder()
 					api.Handler().ServeHTTP(response, request)

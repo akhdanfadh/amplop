@@ -33,6 +33,10 @@ import {
   ResponseListedMembers,
   ResponseListedSessions,
   ResponseProbeEventCreated,
+  ResponseRegisteredMember,
+  ResponseRegistrationAvailability,
+  ResponseRegistrationRequestResult,
+  ResponseRegistrationSettings,
   ResponseSentEmailVerification,
   ResponseSetupStatus,
   ResponseSignInResult,
@@ -46,7 +50,10 @@ import {
 import type {
   EmailVerificationSecret,
   NewCodeSession,
+  NewMember,
   NewProbeEvent,
+  NewRegistrationRequest,
+  NewRegistrationSettings,
   NewSession,
   NewSetup,
   NewSystemEmailSettings,
@@ -687,6 +694,480 @@ export const useCreateProbeEvent = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getCreateProbeEventMutationOptions(options), queryClient);
+    }
+
+export const getGetRegistrationUrl = () => {
+
+
+
+
+  return `/api/v0/registration`
+}
+
+/**
+ * @summary Get whether visitors can register
+ */
+export const getRegistration = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseRegistrationAvailability> => {
+
+  return transport<ResponseRegistrationAvailability>(getGetRegistrationUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseRegistrationAvailability
+  }
+);}
+
+
+
+
+
+export const getGetRegistrationQueryKey = () => {
+    return [
+    `/api/v0/registration`
+    ] as const;
+    }
+
+
+export const getGetRegistrationQueryOptions = <TData = Awaited<ReturnType<typeof getRegistration>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRegistration>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRegistrationQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRegistration>>> = ({ signal }) => getRegistration({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRegistration>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetRegistrationQueryResult = NonNullable<Awaited<ReturnType<typeof getRegistration>>>
+export type GetRegistrationQueryError = ErrorType<Problem>
+
+
+export function useGetRegistration<TData = Awaited<ReturnType<typeof getRegistration>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRegistration>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRegistration>>,
+          TError,
+          Awaited<ReturnType<typeof getRegistration>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetRegistration<TData = Awaited<ReturnType<typeof getRegistration>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRegistration>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRegistration>>,
+          TError,
+          Awaited<ReturnType<typeof getRegistration>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetRegistration<TData = Awaited<ReturnType<typeof getRegistration>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRegistration>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get whether visitors can register
+ */
+
+export function useGetRegistration<TData = Awaited<ReturnType<typeof getRegistration>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRegistration>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetRegistrationQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRequestRegistrationLinkUrl = () => {
+
+
+
+
+  return `/api/v0/registration/links`
+}
+
+/**
+ * An email without an account gets a link that expires in 24 hours; an email with an account gets a notice instead. An email that got 3 messages in the last hour or 5 in 24 hours gets nothing. While sending works, the response is the same in every case. One client may ask 10 times in 15 minutes, and everyone together 50 times an hour.
+ * @summary Email a link that creates an account
+ */
+export const requestRegistrationLink = async (newRegistrationRequest: NewRegistrationRequest, options?: Parameters<typeof transport>[1]): Promise<ResponseRegistrationRequestResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseRegistrationRequestResult>(getRequestRegistrationLinkUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newRegistrationRequest),
+    schema: ResponseRegistrationRequestResult
+  }
+);}
+
+
+
+
+
+export const getRequestRegistrationLinkMutationKey = () => ['requestRegistrationLink'] as const;
+
+export const getRequestRegistrationLinkMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestRegistrationLink>>, TError,RequestRegistrationLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestRegistrationLink>>, TError,RequestRegistrationLinkMutationVariables, TContext> => {
+
+const mutationKey = getRequestRegistrationLinkMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestRegistrationLink>>, RequestRegistrationLinkMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestRegistrationLink(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestRegistrationLinkMutationResult = NonNullable<Awaited<ReturnType<typeof requestRegistrationLink>>>
+    export type RequestRegistrationLinkMutationBody = NewRegistrationRequest
+    export type RequestRegistrationLinkMutationError = ErrorType<Problem>
+    export type RequestRegistrationLinkMutationVariables = {data: NewRegistrationRequest}
+
+    /**
+ * @summary Email a link that creates an account
+ */
+export const useRequestRegistrationLink = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestRegistrationLink>>, TError,RequestRegistrationLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof requestRegistrationLink>>,
+        TError,
+        RequestRegistrationLinkMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRequestRegistrationLinkMutationOptions(options), queryClient);
+    }
+
+export const getRedeemRegistrationLinkUrl = () => {
+
+
+
+
+  return `/api/v0/registration/links/redeem`
+}
+
+/**
+ * Creates a member whose email, the one the link was sent to, is verified. Uses up every link sent to that email. Needs no session and signs no one in.
+ * @summary Create a member account with an emailed link
+ */
+export const redeemRegistrationLink = async (newMember: NewMember, options?: Parameters<typeof transport>[1]): Promise<ResponseRegisteredMember> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseRegisteredMember>(getRedeemRegistrationLinkUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newMember),
+    schema: ResponseRegisteredMember
+  }
+);}
+
+
+
+
+
+export const getRedeemRegistrationLinkMutationKey = () => ['redeemRegistrationLink'] as const;
+
+export const getRedeemRegistrationLinkMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemRegistrationLink>>, TError,RedeemRegistrationLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof redeemRegistrationLink>>, TError,RedeemRegistrationLinkMutationVariables, TContext> => {
+
+const mutationKey = getRedeemRegistrationLinkMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof redeemRegistrationLink>>, RedeemRegistrationLinkMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  redeemRegistrationLink(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RedeemRegistrationLinkMutationResult = NonNullable<Awaited<ReturnType<typeof redeemRegistrationLink>>>
+    export type RedeemRegistrationLinkMutationBody = NewMember
+    export type RedeemRegistrationLinkMutationError = ErrorType<Problem>
+    export type RedeemRegistrationLinkMutationVariables = {data: NewMember}
+
+    /**
+ * @summary Create a member account with an emailed link
+ */
+export const useRedeemRegistrationLink = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemRegistrationLink>>, TError,RedeemRegistrationLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof redeemRegistrationLink>>,
+        TError,
+        RedeemRegistrationLinkMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRedeemRegistrationLinkMutationOptions(options), queryClient);
+    }
+
+export const getGetRegistrationSettingsUrl = () => {
+
+
+
+
+  return `/api/v0/registration/settings`
+}
+
+/**
+ * @summary Get the registration settings
+ */
+export const getRegistrationSettings = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseRegistrationSettings> => {
+
+  return transport<ResponseRegistrationSettings>(getGetRegistrationSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseRegistrationSettings
+  }
+);}
+
+
+
+
+
+export const getGetRegistrationSettingsQueryKey = () => {
+    return [
+    `/api/v0/registration/settings`
+    ] as const;
+    }
+
+
+export const getGetRegistrationSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getRegistrationSettings>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRegistrationSettings>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRegistrationSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRegistrationSettings>>> = ({ signal }) => getRegistrationSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRegistrationSettings>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetRegistrationSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getRegistrationSettings>>>
+export type GetRegistrationSettingsQueryError = ErrorType<Problem>
+
+
+export function useGetRegistrationSettings<TData = Awaited<ReturnType<typeof getRegistrationSettings>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRegistrationSettings>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRegistrationSettings>>,
+          TError,
+          Awaited<ReturnType<typeof getRegistrationSettings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetRegistrationSettings<TData = Awaited<ReturnType<typeof getRegistrationSettings>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRegistrationSettings>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRegistrationSettings>>,
+          TError,
+          Awaited<ReturnType<typeof getRegistrationSettings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetRegistrationSettings<TData = Awaited<ReturnType<typeof getRegistrationSettings>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRegistrationSettings>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get the registration settings
+ */
+
+export function useGetRegistrationSettings<TData = Awaited<ReturnType<typeof getRegistrationSettings>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRegistrationSettings>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetRegistrationSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveRegistrationSettingsUrl = () => {
+
+
+
+
+  return `/api/v0/registration/settings`
+}
+
+/**
+ * Opening needs system email settings that passed a test; closing always succeeds. Each save is recorded in the audit log.
+ * @summary Open or close registration
+ */
+export const saveRegistrationSettings = async (newRegistrationSettings: NewRegistrationSettings, options?: Parameters<typeof transport>[1]): Promise<ResponseRegistrationSettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseRegistrationSettings>(getSaveRegistrationSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newRegistrationSettings),
+    schema: ResponseRegistrationSettings
+  }
+);}
+
+
+
+
+
+export const getSaveRegistrationSettingsMutationKey = () => ['saveRegistrationSettings'] as const;
+
+export const getSaveRegistrationSettingsMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveRegistrationSettings>>, TError,SaveRegistrationSettingsMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveRegistrationSettings>>, TError,SaveRegistrationSettingsMutationVariables, TContext> => {
+
+const mutationKey = getSaveRegistrationSettingsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveRegistrationSettings>>, SaveRegistrationSettingsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveRegistrationSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveRegistrationSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof saveRegistrationSettings>>>
+    export type SaveRegistrationSettingsMutationBody = NewRegistrationSettings
+    export type SaveRegistrationSettingsMutationError = ErrorType<Problem>
+    export type SaveRegistrationSettingsMutationVariables = {data: NewRegistrationSettings}
+
+    /**
+ * @summary Open or close registration
+ */
+export const useSaveRegistrationSettings = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveRegistrationSettings>>, TError,SaveRegistrationSettingsMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof saveRegistrationSettings>>,
+        TError,
+        SaveRegistrationSettingsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveRegistrationSettingsMutationOptions(options), queryClient);
     }
 
 export const getListSessionsUrl = () => {

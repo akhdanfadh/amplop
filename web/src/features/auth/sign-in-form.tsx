@@ -11,7 +11,6 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/password-input";
 
-const emptyCredentials = { email: "", password: "" };
 const unauthorized = 401;
 const inputs = [
   { name: "email", label: "Email address", type: "email", autoComplete: "username" },
@@ -20,10 +19,13 @@ const inputs = [
 const signInFields = inputs.map((input) => input.name);
 
 // SignInForm submits credentials and reports the completed sign-in step.
+// email fills in the email field, e.g. for an account just created.
 export function SignInForm({
+  email = "",
   onDone,
   onCodeRequired,
 }: {
+  email?: string;
   onDone: () => void;
   onCodeRequired: () => void;
 }): ReactElement {
@@ -46,7 +48,7 @@ export function SignInForm({
     },
   });
   const form = useForm({
-    defaultValues: emptyCredentials,
+    defaultValues: { email, password: "" },
     validators: { onChange: SignInSchema },
     onSubmitInvalid: ({ formApi }) => {
       const name = signInFields.find((field) => formApi.getFieldMeta(field)?.errors.length);

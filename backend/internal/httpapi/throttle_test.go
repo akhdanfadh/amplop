@@ -208,5 +208,5 @@ func TestRetryAfterDocumented(t *testing.T) {
 			assert.Equal(t, huma.TypeInteger, header.Schema.Type, path)
 		}
 	}
-	assert.Equal(t, 7, throttled, "setup, sign-in, code sign-in, confirm, backup codes, turn-off, and verification links")
+	assert.Equal(t, 11, throttled, "setup, sign-in, code sign-in, confirm, backup codes, turn-off, verification links, redeem, the probe, and both registration writes")
 }
