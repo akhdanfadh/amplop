@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ApiError } from "@/api/transport";
-import { sessionMessage } from "./session-error";
+import { challengeEnded, sessionMessage } from "./session-error";
 
-const httpStatus = { created: 201, unauthorized: 401, internalServerError: 500 };
+const httpStatus = {
+  created: 201,
+  unauthorized: 401,
+  forbidden: 403,
+  unprocessable: 422,
+  internalServerError: 500,
+};
 
 describe("session request errors", () => {
   it.each([
@@ -36,5 +42,38 @@ describe("session request errors", () => {
     expect(sessionMessage(err, "sign-out")).toBe(
       "Something went wrong on our side. Could not confirm sign-out. Check your session before trying again.",
     );
+  });
+
+  it("shows why a deactivated account cannot sign in", () => {
+    const err = new ApiError("http", {
+      method: "POST",
+      status: httpStatus.forbidden,
+      problem: {
+        type: "/api/v0/problems/account-deactivated",
+        detail: "This account is deactivated. Ask your administrator.",
+      },
+    });
+
+    expect(sessionMessage(err, "sign-in")).toBe(
+      "This account is deactivated. Ask your administrator.",
+    );
+  });
+});
+
+describe("code step errors", () => {
+  it("ends the challenge on a 401 or 403", () => {
+    for (const status of [httpStatus.unauthorized, httpStatus.forbidden]) {
+      expect(challengeEnded(new ApiError("http", { method: "POST", status }))).toBe(true);
+    }
+  });
+
+  it("keeps the challenge for a rejected code or an unknown outcome", () => {
+    for (const err of [
+      new ApiError("http", { method: "POST", status: httpStatus.unprocessable }),
+      new ApiError("http", { method: "POST", status: httpStatus.internalServerError }),
+      new ApiError("network", { method: "POST" }),
+    ]) {
+      expect(challengeEnded(err)).toBe(false);
+    }
   });
 });
