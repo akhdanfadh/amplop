@@ -11,3 +11,14 @@ VALUES (@token_hash, @email, @created_at, @expires_at);
 
 -- name: DeleteAllRegistrationLinks :exec
 DELETE FROM registration_links;
+
+-- name: ReadRegistrationLink :one
+SELECT email, created_at, expires_at FROM registration_links
+WHERE token_hash = @token_hash;
+
+-- name: LockRegistrationLink :one
+SELECT email, created_at, expires_at FROM registration_links
+WHERE token_hash = @token_hash FOR UPDATE;
+
+-- name: DeleteRegistrationLinksByEmail :exec
+DELETE FROM registration_links WHERE email = @email;

@@ -16,6 +16,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"inbok/internal/account"
+	"inbok/internal/passwordhash"
+	"inbok/internal/randomsecret"
 	"inbok/internal/registration"
 )
 
@@ -439,4 +442,266 @@ func TestRegistrationCloseWaitsForRequest(t *testing.T) {
 	require.NoError(t, <-requested)
 	require.NoError(t, <-closed)
 	assert.Empty(t, registrationLinkHashes(t, conn))
+}
+
+// saveRegistrationLink saves a live registration link to email and returns
+// its secret and hash.
+func saveRegistrationLink(t *testing.T, conn *pgx.Conn, email string) (string, [sha256.Size]byte) {
+	t.Helper()
+
+	secret, hash := randomsecret.New()
+	_, err := conn.Exec(t.Context(), "INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ($1, $2, $3, $4)",
+		hash[:], email, requestNow, requestNow.Add(24*time.Hour))
+	require.NoError(t, err)
+	return secret, hash
+}
+
+func TestRegistrationComplete(t *testing.T) {
+	db, conn := setupStorage(t)
+	openRegistration(t, conn)
+	first, _ := saveRegistrationLink(t, conn, "visitor@example.org")
+	second, _ := saveRegistrationLink(t, conn, "visitor@example.org")
+	_, other := saveRegistrationLink(t, conn, "other@example.org")
+	completion := registration.NewCompletion(db, func() time.Time { return requestNow })
+	const password = "correct horse battery"
+
+	user, err := completion.Complete(t.Context(), first, password)
+	require.NoError(t, err)
+
+	// The member's email is verified: following the link proved it.
+	assert.Equal(t, account.User{ID: user.ID, Email: "visitor@example.org", Role: account.RoleMember}, user)
+	var role, passwordHash string
+	var verifiedAt time.Time
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT role, email_verified_at, password_hash FROM users WHERE id = $1", user.ID).
+		Scan(&role, &verifiedAt, &passwordHash))
+	assert.Equal(t, "member", role)
+	assert.Equal(t, requestNow, verifiedAt.UTC())
+	ok, err := passwordhash.Verify(password, passwordHash)
+	require.NoError(t, err)
+	assert.True(t, ok, "the saved hash is of the password")
+
+	// Every link to the email is gone; another email's stays.
+	assert.Equal(t, map[string]string{hex.EncodeToString(other[:]): "other@example.org"}, registrationLinkHashes(t, conn))
+	assert.Equal(t, []auditEvent{{Action: "member-registered", Target: &user.ID}}, auditEvents(t, conn))
+
+	// So the email's other link no longer works.
+	_, err = completion.Complete(t.Context(), second, password)
+	require.ErrorIs(t, err, registration.ErrLinkInvalid)
+}
+
+func TestRegistrationCompleteReads(t *testing.T) {
+	db, conn := setupStorage(t)
+	openRegistration(t, conn)
+	verificationUser(t, conn, "member@example.org")
+	_, hash := saveRegistrationLink(t, conn, "member@example.org")
+	open := registration.Record{State: registration.StateOpen, SystemEmailTested: true}
+	want := registration.CompleteState{
+		Registration:  open,
+		Link:          &registration.Link{TokenHash: hash, Email: "member@example.org", CreatedAt: requestNow, ExpiresAt: requestNow.Add(24 * time.Hour)},
+		AccountExists: true,
+	}
+	refused := errors.New("refused")
+	var locked registration.CompleteState
+	lockedRead := func(hash [sha256.Size]byte, email string) registration.CompleteState {
+		_, err := db.CompleteRegistration(t.Context(), hash, email, func(state registration.CompleteState) (registration.CompleteChange, error) {
+			locked = state
+			return registration.CompleteChange{}, refused
+		})
+		require.ErrorIs(t, err, refused)
+		return locked
+	}
+
+	// Both reads see the link and the account.
+	state, err := db.ReadCompletion(t.Context(), hash)
+	require.NoError(t, err)
+	assert.Equal(t, want, state)
+	assert.Equal(t, want, lockedRead(hash, "member@example.org"))
+
+	// An unknown hash has no link; the locked read still checks the email.
+	unknown := sha256.Sum256([]byte("unknown"))
+	state, err = db.ReadCompletion(t.Context(), unknown)
+	require.NoError(t, err)
+	assert.Equal(t, registration.CompleteState{Registration: open}, state)
+	assert.Equal(t, registration.CompleteState{Registration: open, AccountExists: true}, lockedRead(unknown, "member@example.org"))
+}
+
+// The member gets the link's email, whatever email the caller passed, and a
+// create that accepts a missing link saves nothing.
+func TestRegistrationCompleteLinkEmail(t *testing.T) {
+	db, conn := setupStorage(t)
+	openRegistration(t, conn)
+	_, hash := saveRegistrationLink(t, conn, "visitor@example.org")
+	accept := func(registration.CompleteState) (registration.CompleteChange, error) {
+		return registration.CompleteChange{PasswordHash: "unused", VerifiedAt: requestNow}, nil
+	}
+
+	_, err := db.CompleteRegistration(t.Context(), sha256.Sum256([]byte("unknown")), "visitor@example.org", accept)
+	require.ErrorIs(t, err, errNoLink)
+	user, err := db.CompleteRegistration(t.Context(), hash, "other@example.org", accept)
+	require.NoError(t, err)
+
+	assert.Equal(t, "visitor@example.org", user.Email)
+	assert.Empty(t, registrationLinkHashes(t, conn))
+}
+
+func TestRegistrationCompleteRollsBack(t *testing.T) {
+	db, conn := setupStorage(t)
+	openRegistration(t, conn)
+	_, hash := saveRegistrationLink(t, conn, "visitor@example.org")
+	refused := errors.New("refused")
+
+	_, err := db.CompleteRegistration(t.Context(), hash, "visitor@example.org", func(registration.CompleteState) (registration.CompleteChange, error) {
+		return registration.CompleteChange{}, refused
+	})
+
+	require.ErrorIs(t, err, refused)
+	var users int
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM users").Scan(&users))
+	assert.Zero(t, users)
+	assert.Len(t, registrationLinkHashes(t, conn), 1)
+	assert.Empty(t, auditEvents(t, conn))
+}
+
+// holdCompletion starts CompleteRegistration for hash and email, waits until
+// its callback runs, and returns a function that lets the callback accept
+// and waits for the result.
+func holdCompletion(t *testing.T, ctx context.Context, db *DB, hash [sha256.Size]byte, email string) func() error {
+	t.Helper()
+
+	ready, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	releaseOnce := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(releaseOnce)
+	go func() {
+		_, err := db.CompleteRegistration(ctx, hash, email, func(registration.CompleteState) (registration.CompleteChange, error) {
+			close(ready)
+			select {
+			case <-release:
+				return registration.CompleteChange{PasswordHash: "unused", VerifiedAt: requestNow}, nil
+			case <-ctx.Done():
+				return registration.CompleteChange{}, ctx.Err()
+			}
+		})
+		done <- err
+	}()
+	select {
+	case <-ready:
+	case <-ctx.Done():
+		require.FailNow(t, "the completion did not reach its callback")
+	}
+	return func() error {
+		releaseOnce()
+		return <-done
+	}
+}
+
+// waitForLock fails the test unless a query waits for a lock soon.
+func waitForLock(t *testing.T, ctx context.Context, db *DB, message string) {
+	t.Helper()
+
+	const waiting = `SELECT EXISTS (
+		SELECT 1 FROM pg_stat_activity
+		WHERE datname = current_database() AND wait_event_type = 'Lock'
+	)`
+	require.Eventually(t, func() bool {
+		var blocked bool
+		err := db.pool.QueryRow(ctx, waiting).Scan(&blocked)
+		return err == nil && blocked
+	}, setupTestTimeout, 10*time.Millisecond, message)
+}
+
+// A second submission waits for the first, then sees its account: the first
+// deleted the link, so only the account explains the refusal.
+func TestRegistrationCompleteSerializes(t *testing.T) {
+	db, conn := setupStorage(t)
+	openRegistration(t, conn)
+	_, hash := saveRegistrationLink(t, conn, "visitor@example.org")
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+
+	finish := holdCompletion(t, ctx, db, hash, "visitor@example.org")
+	seen, secondDone := make(chan registration.CompleteState, 1), make(chan error, 1)
+	go func() {
+		_, err := db.CompleteRegistration(ctx, hash, "visitor@example.org", func(state registration.CompleteState) (registration.CompleteChange, error) {
+			seen <- state
+			return registration.CompleteChange{}, registration.ErrAccountExists
+		})
+		secondDone <- err
+	}()
+	waitForLock(t, ctx, db, "the second completion did not wait for the first")
+
+	require.NoError(t, finish())
+	require.ErrorIs(t, <-secondDone, registration.ErrAccountExists)
+	state := <-seen
+	assert.Nil(t, state.Link)
+	assert.True(t, state.AccountExists)
+}
+
+// Setup waits for a completion in progress, so a setup and a completion for
+// one email cannot both insert it.
+func TestSetupWaitsForCompletion(t *testing.T) {
+	db, conn := setupStorage(t)
+	openRegistration(t, conn)
+	_, hash := saveRegistrationLink(t, conn, "visitor@example.org")
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+
+	finish := holdCompletion(t, ctx, db, hash, "visitor@example.org")
+	setup := make(chan error, 1)
+	go func() {
+		_, err := db.UpdateSetup(ctx, func(account.SetupState) (account.NewAdmin, error) {
+			return account.NewAdmin{Email: "admin@example.org", PasswordHash: "unused"}, nil
+		})
+		setup <- err
+	}()
+	waitForLock(t, ctx, db, "setup did not wait for the completion")
+
+	require.NoError(t, finish())
+	require.NoError(t, <-setup)
+}
+
+// A close waits for a completion in progress, so no member is created after
+// registration closed.
+func TestRegistrationCloseWaitsForCompletion(t *testing.T) {
+	db, conn := setupStorage(t)
+	admin := systemEmailAdmin(t, conn)
+	openRegistration(t, conn)
+	_, hash := saveRegistrationLink(t, conn, "visitor@example.org")
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+
+	finish := holdCompletion(t, ctx, db, hash, "visitor@example.org")
+	closed := make(chan error, 1)
+	go func() {
+		closed <- db.UpdateRegistration(ctx, admin, func(registration.Record) (registration.State, error) { return registration.StateClosed, nil })
+	}()
+	waitForLock(t, ctx, db, "the close did not wait for the completion")
+
+	require.NoError(t, finish())
+	require.NoError(t, <-closed)
+	var events []string
+	for _, event := range auditEvents(t, conn) {
+		events = append(events, event.Action)
+	}
+	assert.Equal(t, []string{"member-registered", "registration-closed"}, events)
+}
+
+// Clearing the system email's tested time waits for a completion in
+// progress, so none completes while registration is paused.
+func TestSystemEmailSaveWaitsForCompletion(t *testing.T) {
+	db, conn := setupStorage(t)
+	openRegistration(t, conn)
+	_, hash := saveRegistrationLink(t, conn, "visitor@example.org")
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+
+	finish := holdCompletion(t, ctx, db, hash, "visitor@example.org")
+	saved := make(chan error, 1)
+	go func() {
+		_, err := db.pool.Exec(ctx, "UPDATE system_email SET tested_at = NULL")
+		saved <- err
+	}()
+	waitForLock(t, ctx, db, "the save did not wait for the completion")
+
+	require.NoError(t, finish())
+	require.NoError(t, <-saved)
 }

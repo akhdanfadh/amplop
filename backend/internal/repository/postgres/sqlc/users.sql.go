@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 )
 
 const hasAdminUser = `-- name: HasAdminUser :one
@@ -51,6 +52,31 @@ type InsertAdminUserRow struct {
 func (q *Queries) InsertAdminUser(ctx context.Context, arg InsertAdminUserParams) (InsertAdminUserRow, error) {
 	row := q.db.QueryRow(ctx, insertAdminUser, arg.Email, arg.PasswordHash)
 	var i InsertAdminUserRow
+	err := row.Scan(&i.ID, &i.Email, &i.Role)
+	return i, err
+}
+
+const insertMemberUser = `-- name: InsertMemberUser :one
+INSERT INTO users (email, password_hash, role, email_verified_at)
+VALUES ($1, $2, 'member', $3)
+RETURNING id, email, role
+`
+
+type InsertMemberUserParams struct {
+	Email           string
+	PasswordHash    string
+	EmailVerifiedAt *time.Time
+}
+
+type InsertMemberUserRow struct {
+	ID    int64
+	Email string
+	Role  string
+}
+
+func (q *Queries) InsertMemberUser(ctx context.Context, arg InsertMemberUserParams) (InsertMemberUserRow, error) {
+	row := q.db.QueryRow(ctx, insertMemberUser, arg.Email, arg.PasswordHash, arg.EmailVerifiedAt)
+	var i InsertMemberUserRow
 	err := row.Scan(&i.ID, &i.Email, &i.Role)
 	return i, err
 }

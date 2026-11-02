@@ -2,12 +2,14 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
+	"inbok/internal/account"
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres/sqlc"
 )
@@ -15,7 +17,10 @@ import (
 const (
 	registrationOpenedAction = "registration-opened"
 	registrationClosedAction = "registration-closed"
+	memberRegisteredAction   = "member-registered"
 )
+
+var errNoLink = errors.New("registration link not found")
 
 // ReadRegistration returns the saved state and whether the system email
 // settings in use passed a test.
@@ -158,4 +163,106 @@ func (db *DB) RequestRegistration(ctx context.Context, email string, since time.
 		}
 		return nil
 	})
+}
+
+// ReadCompletion returns the registration state, the link with hash, and
+// whether an account has the link's email, without a lock.
+func (db *DB) ReadCompletion(ctx context.Context, hash [sha256.Size]byte) (registration.CompleteState, error) {
+	record, err := db.ReadRegistration(ctx)
+	if err != nil {
+		return registration.CompleteState{}, err
+	}
+
+	queries := sqlc.New(db.pool)
+	state := registration.CompleteState{Registration: record}
+	row, err := queries.ReadRegistrationLink(ctx, hash[:])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return state, nil
+	}
+	if err != nil {
+		return registration.CompleteState{}, fmt.Errorf("read registration link: %w", err)
+	}
+	state.Link = &registration.Link{TokenHash: hash, Email: row.Email, CreatedAt: row.CreatedAt.UTC(), ExpiresAt: row.ExpiresAt.UTC()}
+	state.AccountExists, err = queries.HasUserEmail(ctx, row.Email)
+	if err != nil {
+		return registration.CompleteState{}, fmt.Errorf("read user email: %w", err)
+	}
+	return state, nil
+}
+
+// CompleteRegistration creates a member from the link with hash, in one
+// transaction, if create accepts what it reads for the link and email, and
+// returns the member.
+func (db *DB) CompleteRegistration(ctx context.Context, hash [sha256.Size]byte, email string, create func(registration.CompleteState) (registration.CompleteChange, error)) (account.User, error) {
+	var user account.User
+	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+		// 1. Lock registration. Completions and closes wait for each other
+		// here, so each sees the other's result.
+		open, err := queries.LockRegistration(ctx)
+		if err != nil {
+			return fmt.Errorf("lock registration: %w", err)
+		}
+		// 2. Lock the system email settings. No saved settings have nothing to
+		// lock and have not passed a test.
+		tested, err := queries.LockSystemEmailTested(ctx)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("lock system email: %w", err)
+		}
+		// 3. Lock user writes. Setup inserts users too: waiting for it lets
+		// the account check see its administrator.
+		if err := queries.LockUsers(ctx); err != nil {
+			return fmt.Errorf("lock users: %w", err)
+		}
+
+		// 4. Read the email's account and the link.
+		state := registration.CompleteState{Registration: registration.Record{State: registrationState(open), SystemEmailTested: tested}}
+		state.AccountExists, err = queries.HasUserEmail(ctx, email)
+		if err != nil {
+			return fmt.Errorf("read user email: %w", err)
+		}
+		row, err := queries.LockRegistrationLink(ctx, hash[:])
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("lock registration link: %w", err)
+		}
+		if err == nil {
+			state.Link = &registration.Link{TokenHash: hash, Email: row.Email, CreatedAt: row.CreatedAt.UTC(), ExpiresAt: row.ExpiresAt.UTC()}
+		}
+		// 5. Let create accept or refuse.
+		change, err := create(state)
+		if err != nil {
+			return err
+		}
+		// create must refuse a missing link; this guards other callers.
+		if state.Link == nil {
+			return errNoLink
+		}
+
+		// 6. Insert the member. The link decides the email, whatever the
+		// caller passed.
+		inserted, err := queries.InsertMemberUser(ctx, sqlc.InsertMemberUserParams{
+			Email: state.Link.Email, PasswordHash: change.PasswordHash, EmailVerifiedAt: &change.VerifiedAt,
+		})
+		if err != nil {
+			return fmt.Errorf("insert member user: %w", err)
+		}
+		// 7. Delete the email's links: the others would only answer that the
+		// account exists.
+		if err := queries.DeleteRegistrationLinksByEmail(ctx, inserted.Email); err != nil {
+			return fmt.Errorf("delete registration links: %w", err)
+		}
+		// 8. Record the event. No session is needed to complete: whoever
+		// holds the link acts, so the event names no actor.
+		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{
+			Action: memberRegisteredAction, TargetUserID: &inserted.ID,
+		}); err != nil {
+			return fmt.Errorf("record member registration: %w", err)
+		}
+		user = account.User{ID: inserted.ID, Email: inserted.Email, Role: account.Role(inserted.Role)}
+		return nil
+	})
+	if err != nil {
+		return account.User{}, err
+	}
+	return user, nil
 }

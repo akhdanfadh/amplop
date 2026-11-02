@@ -32,6 +32,15 @@ func (q *Queries) DeleteExpiredRegistrationLinks(ctx context.Context, expiredBy 
 	return err
 }
 
+const deleteRegistrationLinksByEmail = `-- name: DeleteRegistrationLinksByEmail :exec
+DELETE FROM registration_links WHERE email = $1
+`
+
+func (q *Queries) DeleteRegistrationLinksByEmail(ctx context.Context, email string) error {
+	_, err := q.db.Exec(ctx, deleteRegistrationLinksByEmail, email)
+	return err
+}
+
 const insertRegistrationLink = `-- name: InsertRegistrationLink :exec
 INSERT INTO registration_links (token_hash, email, created_at, expires_at)
 VALUES ($1, $2, $3, $4)
@@ -52,4 +61,40 @@ func (q *Queries) InsertRegistrationLink(ctx context.Context, arg InsertRegistra
 		arg.ExpiresAt,
 	)
 	return err
+}
+
+const lockRegistrationLink = `-- name: LockRegistrationLink :one
+SELECT email, created_at, expires_at FROM registration_links
+WHERE token_hash = $1 FOR UPDATE
+`
+
+type LockRegistrationLinkRow struct {
+	Email     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) LockRegistrationLink(ctx context.Context, tokenHash []byte) (LockRegistrationLinkRow, error) {
+	row := q.db.QueryRow(ctx, lockRegistrationLink, tokenHash)
+	var i LockRegistrationLinkRow
+	err := row.Scan(&i.Email, &i.CreatedAt, &i.ExpiresAt)
+	return i, err
+}
+
+const readRegistrationLink = `-- name: ReadRegistrationLink :one
+SELECT email, created_at, expires_at FROM registration_links
+WHERE token_hash = $1
+`
+
+type ReadRegistrationLinkRow struct {
+	Email     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) ReadRegistrationLink(ctx context.Context, tokenHash []byte) (ReadRegistrationLinkRow, error) {
+	row := q.db.QueryRow(ctx, readRegistrationLink, tokenHash)
+	var i ReadRegistrationLinkRow
+	err := row.Scan(&i.Email, &i.CreatedAt, &i.ExpiresAt)
+	return i, err
 }
