@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, type Router } from "@tanstack/react-router";
 import { retryOptions } from "@/api/retry";
 import { verifyEmailPath } from "@/features/email-verification/path";
+import { completePath } from "@/features/registration/path";
 import { captureLinkSecret } from "@/lib/link-secret";
 import { routeTree } from "./routeTree.gen";
 
@@ -11,7 +12,7 @@ import { routeTree } from "./routeTree.gen";
 export function getRouter(): Router<typeof routeTree> {
   // Before the router reads the address or any request starts, so a failed
   // request cannot leave a link's secret in the address bar.
-  captureLinkSecret([verifyEmailPath]);
+  captureLinkSecret([verifyEmailPath, completePath]);
 
   const queryClient = new QueryClient({
     defaultOptions: retryOptions,
@@ -24,4 +25,13 @@ export function getRouter(): Router<typeof routeTree> {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   });
+}
+
+declare module "@tanstack/react-router" {
+  // HistoryState is what one page hands the next without putting it in the
+  // address, where it would reach history, copied links, and server logs.
+  interface HistoryState {
+    // The email of an account just created, for sign-in to fill in.
+    registeredEmail?: string;
+  }
 }
