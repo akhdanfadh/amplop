@@ -890,8 +890,8 @@ closed.
 - Every save records `registration-opened` or `registration-closed` with
   the administrator as `actor_user_id` and no target, even a save that
   changes nothing.
-- Saving new system email settings clears their tested time. Registration
-  then reports `paused`: still open, but no visitor can register until a
+- Saving new system email settings, or a failed test, clears their tested
+  time. Registration then reports `paused`: still open, but no visitor can register until a
   test passes. Nothing closes it behind the administrator's back.
 - Closing deletes every registration attempt and link, so no visitor's
   email or IP address is kept while it stays closed. The cost: a link sent

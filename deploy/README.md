@@ -189,6 +189,22 @@ server block that does this; point its `proxy_pass` at
 
 ## Good to know
 
+### Letting others create accounts
+
+Registration starts closed, so the first administrator is the only
+account. To let others join, the administrator, once two-factor
+authentication is set up, opens Settings, saves the system email settings,
+sends a test message that passes, and opens registration there. Visitors
+then find "Create an account" on the sign-in page and get their sign-up
+link by email.
+
+Anyone who can reach your domain can join, and each member adds storage
+and sync work to the server. If only some people should join, close
+registration again once they have, or keep inbok behind a VPN. inbok
+sends at most 50 registration emails an hour, links and notices for all
+visitors together, so strangers cannot make it send unlimited mail through
+your mail account.
+
 ### Firewalls
 
 Only Caddy publishes ports. Docker's port publishing bypasses host

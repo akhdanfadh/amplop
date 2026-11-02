@@ -106,10 +106,16 @@ Put shared code in the folder for its responsibility:
   and the test message form and its result wording.
 - `src/features/members`: the member list's columns and cells, the table
   with its confirmation dialog, and its wording.
+- `src/features/registration`: the Settings page's Registration section,
+  the `/register` and `/register/complete` forms, and their wording.
 - `src/components`: shared controls, such as the password input. `ui/` holds
   the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
+- `src/lib`: code that knows no feature and no React, such as keeping the
+  secret of an emailed link.
+- `src/hooks`: React hooks shared by features, such as a page reading its
+  link's secret.
 - `src/routes`: route registration and page composition.
 
 Keep feature folders flat until they need more structure. File names can omit
@@ -194,17 +200,41 @@ unverified account also sees a notice on home that links to Security.
 
 The link opens `/verify-email`, which works signed in or out. The secret after
 `#` never reaches the server with the page request. `getRouter` calls
-`captureLinkSecret` (`lib/link-secret.ts`) before anything renders or
-fetches: it keeps the secret in memory and removes it from the address, so
-the address bar and a copied URL lose it even if the setup status check
-fails, and Back or Forward to the page finds no link. The
-browser's history list still holds the full link. Reloading after that asks
-for the emailed link again. "Verify email" sends the secret. A link that is
-expired, used, unknown, or sent to an old address cannot be retried; if the
-signed-in account is already verified, the page says so instead. Any other
-failure offers another try. Redeeming needs no session, so a link can verify
+`captureLinkSecret` (`lib/link-secret.ts`) with every page an emailed link
+opens, before anything renders or fetches: it keeps the secret in memory and
+removes it from the address, so the address bar and a copied URL lose it even
+if the setup status check fails, and Back or Forward to the page finds no
+link. The browser's history list still holds the full link. Reloading after
+that asks for the emailed link again. The page reads its secret with
+`useLinkSecret` (`hooks/use-link-secret.ts`), which drops the kept copy from
+memory and also removes the secret of a link pasted into the tab later. A
+page for a new kind of link exports its path from its feature, adds it to
+the list in `getRouter`, and calls the hook.
+
+"Verify email" sends the secret. A link that is expired, used, unknown, or
+sent to an old address cannot be retried; if the signed-in account is
+already verified, the page says so instead. Any other failure offers
+another try. Redeeming needs no session, so a link can verify
 an account other than the signed-in one; the page then says the signed-in
 account is still not verified.
+
+`/register` asks for an email address while registration is open, and says
+the inbok isn't accepting new accounts otherwise. A paused registration,
+open but with untested email settings, reads as closed.
+Every accepted request gets the same "Check your inbox" answer, so the page
+never tells whether an email has an account. "Use a different email
+address" brings the form back with the address kept. Sign-in shows a
+"Create an account" link only while visitors can register.
+
+A sign-up email's link opens `/register/complete`, whose secret is kept the
+same way as `/verify-email`'s. The visitor chooses a password, 15 to 128
+characters, entered twice. Success creates no session: the page opens
+sign-in with the email filled in and a notice naming the new account. The
+email travels in history state, data the browser keeps with the history
+entry, not in the URL. A spent or expired link, or an
+email that already has an account, ends the page with where to go next.
+After a try whose result was lost, a spent link means that try probably
+created the account, so the page points to sign-in first.
 
 Security also lists the account's signed-in browsers, newest sign-in first.
 Each row shows the browser and operating system, or "Unknown browser", the
@@ -241,6 +271,18 @@ The test section sends to the signed-in address by default and words each
 failure by the step that failed. A lost result can be sent again without a
 check. Editing the recipient or a later save hides an earlier result. A save
 and a test never run at the same time.
+
+The Registration section opens and closes public registration with a switch,
+which shows the status the server saved, not the click. Each change asks
+first: opening says anyone who can reach this inbok can create a member
+account, and each adds storage and sync work; closing says unused sign-up
+links stop working. Until the system email settings in use pass a test,
+opening is blocked: the switch stays focusable but read-only, with a note:
+save the settings, then send a test that passes. An open registration whose
+settings no longer have a passing test reads paused until one passes. The
+section reads its status again after every save that keeps access and
+whenever the settings' tested time changes, and says so when a lost response
+leaves the status unknown.
 
 Members lists every account, oldest first, in a table: the address, with
 the signed-in one marked "You", its status, active or deactivated with the
