@@ -473,7 +473,9 @@ it creates a fresh session and returns HTTP 201 with
 no session is created. The factor check and the chosen write share one user
 lock, so enrollment confirmation cannot race a password-only session into
 existence afterward. Unknown email and wrong password return the same HTTP
-401; unknown users still incur an Argon2id password check.
+401; unknown users still incur an Argon2id password check. A deactivated
+account with the right password returns HTTP 403 `account-deactivated`
+instead; see [Member management](#member-management).
 
 `POST /api/v0/sessions/totp` accepts a string `code` and the challenge cookie.
 Six ASCII digits select an authenticator code; other input is checked as a
@@ -542,8 +544,10 @@ ended, which can be 0. Both are safe to repeat. Ending a session stops its
 next request, not one already running, and does not stop someone who knows
 the password from signing in again; there is no password change yet.
 
-Account deactivation and member recovery are not implemented yet.
-Host-operator administrator recovery is described below.
+An administrator can deactivate a member, which ends all of that member's
+sessions; see [Member management](#member-management). Member recovery is
+not implemented yet. Host-operator administrator recovery is described
+below.
 
 The cookie is `__Host-inbok-session`, with `Secure`, `HttpOnly`,
 `SameSite=Lax`, `Path=/`, and no `Domain`. `Max-Age` is the remaining maximum
@@ -648,6 +652,13 @@ they enroll TOTP on the Security page. Confirmation restores administrator
 access. Enrollment happens in the web app. A sign-in that verified the old
 password before recovery cannot create a session afterward, even if recovery
 sets the same password again.
+
+Recovery leaves `users.deactivated_at` as it is. The web app cannot
+deactivate an administrator, but one deactivated directly in the database
+stays unable to sign in after recovery; clear the column in SQL as well. A
+deactivation done in SQL also leaves the account's sessions and sign-in
+challenges in place, refused only while the column is set, and records no
+audit event; delete them too.
 
 If the command reports unconfirmed success after interruption or a database
 error, inspect the audit table before retrying. It contains no credentials:
@@ -772,10 +783,12 @@ address must match exactly; both are saved lowercased, as
 [Email addresses](#email-addresses) describes. Redeem has no attempt limit:
 a 256-bit secret cannot be guessed.
 
-Sending a link deletes the account's expired links; a refused request or
-redeem changes nothing. There is no scheduled cleanup, so an account that
-never asks again keeps its expired rows, which cannot be used. Deleting an
-account deletes its links.
+A deactivated account cannot ask for a link: the request answers like a
+signed-out one, HTTP 401. Deactivation deletes its unused links, so a link
+sent before it answers 404. Sending a link deletes the account's expired
+links; a refused request or redeem changes nothing. There is no scheduled
+cleanup, so an account that never asks again keeps its expired rows, which
+cannot be used. Deleting an account deletes its links.
 
 To list verifications:
 
@@ -783,6 +796,61 @@ To list verifications:
 SELECT id, occurred_at, target_user_id
 FROM audit_events
 WHERE action = 'email-verified'
+ORDER BY id DESC;
+```
+
+## Member management
+
+An administrator with admin access lists every account and deactivates or
+reactivates members. Administrators themselves, the signed-in one included,
+cannot be deactivated or reactivated, so an instance never loses its last
+administrator this way. Deactivation keeps the account; nothing deletes a
+user.
+
+`GET /api/v0/members` returns every account, oldest first, in
+`data.members`. Each has its `id` (the user ID), `email`, `role`,
+`joinedAt`, `emailVerified`, `totpEnabled`, and `deactivatedAt`, null while
+active. It holds nothing about mail, sessions, or activity. There is no
+paging.
+
+`POST /api/v0/members/{id}/deactivate` and `.../reactivate` return HTTP 200
+with the member as saved in `data.member`. An unknown ID answers 404
+`member-not-found`, an administrator 409 `member-is-administrator`, and an
+ID that is not a positive whole number 422 at `path.id`. Both are safe to
+repeat: a member already in the asked state is returned unchanged, with no
+second audit event.
+
+Deactivation locks the user, the same lock sign-in, TOTP, and email
+verification take, and checks the member's role under it. In one transaction it
+sets `users.deactivated_at`, deletes the member's sessions, pending sign-in
+challenges, and unused email verification links, and records a
+`member-deactivated` event with the administrator as `actor_user_id` and
+the member as `target_user_id`. It keeps the password, the TOTP factor and
+backup codes, and the verified address, so reactivation, which clears the
+column and records `member-reactivated`, restores the account as it was.
+
+A deactivated account is kept out at each step:
+
+- Sign-in hashes the password before taking the user lock, then reads the
+  flag under it, so a deactivation that commits in between still counts. The
+  right password answers HTTP 403 `account-deactivated`, "This account is
+  deactivated. Ask your administrator."; a wrong one still answers 401 and
+  counts toward the throttle. Only someone who knows the password learns the
+  account is deactivated.
+- TOTP changes and asking for a verification link answer HTTP 401 if a
+  deactivation committed after their session check. Redeeming a link answers
+  404.
+- The session check requires an active account, and the code step answers
+  the same 403 and deletes the challenge. Deactivating through the API deletes
+  every session and challenge, so these two matter only when
+  `deactivated_at` is set directly in the database.
+
+To list deactivations and reactivations:
+
+```sql
+SELECT id, occurred_at, action, actor_user_id, target_user_id
+FROM audit_events
+WHERE action IN ('member-deactivated', 'member-reactivated')
 ORDER BY id DESC;
 ```
 
