@@ -2,8 +2,13 @@ package postgres
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"math/rand/v2"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +19,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/emailverification"
+	"inbok/internal/httpapi"
 	"inbok/internal/passwordhash"
 	"inbok/internal/session"
 	"inbok/internal/totp"
@@ -305,4 +311,102 @@ func TestDeactivatedSignInRace(t *testing.T) {
 			assert.Positive(t, outcomes[true], "some sign-in must see the deactivation")
 		})
 	}
+}
+
+// deactivatedAPI gives f's administrator a confirmed factor and a session,
+// and returns that session's cookie and a function that sends a same-origin
+// request, with an optional JSON body and cookie, to an API using f's
+// services.
+func deactivatedAPI(t *testing.T, f deactivatedAccounts) (*http.Cookie, func(method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder) {
+	t.Helper()
+
+	_, err := f.conn.Exec(t.Context(),
+		"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at) VALUES ($1, '1', 'ciphertext', now())", f.admin)
+	require.NoError(t, err)
+	now := time.Now()
+	require.NoError(t, f.db.InsertSession(t.Context(), session.State{
+		TokenHash: sha256.Sum256(make([]byte, 32)), UserID: f.admin, CreatedAt: now, LastUsedAt: now, ExpiresAt: now.Add(time.Hour),
+	}))
+	// This cookie is the base64url encoding of 32 zero bytes.
+	admin := &http.Cookie{Name: "__Host-inbok-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+	api := httpapi.New(discard, httpapi.Services{Session: f.sessions, Members: f.members})
+	send := func(method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(method, "/api/v0"+path, strings.NewReader(body))
+		request.Header.Set("Origin", "http://example.com")
+		if body != "" {
+			request.Header.Set("Content-Type", "application/json")
+		}
+		if cookie != nil {
+			request.AddCookie(cookie)
+		}
+		response := httptest.NewRecorder()
+		api.Handler().ServeHTTP(response, request)
+		return response
+	}
+	return admin, send
+}
+
+// Over HTTP, an administrator's deactivation signs the member out at once
+// and refuses their sign-in.
+func TestDeactivatedHTTP(t *testing.T) {
+	// Given an administrator with admin access and a signed-in member.
+	f := newDeactivatedAccounts(t, false)
+	admin, send := deactivatedAPI(t, f)
+	signIn := `{"email":"member@example.com","password":"` + deactivatedPassword + `"}`
+	signedIn := send(http.MethodPost, "/sessions", signIn, nil)
+	require.Equal(t, http.StatusCreated, signedIn.Code, signedIn.Body.String())
+	cookies := signedIn.Result().Cookies()
+	require.Len(t, cookies, 2)
+	member := cookies[0]
+	require.Equal(t, "__Host-inbok-session", member.Name)
+	require.Equal(t, http.StatusOK, send(http.MethodGet, "/sessions/current", "", member).Code)
+	memberPath := "/members/" + strconv.FormatInt(f.member, 10)
+
+	// When the administrator deactivates the member, who then uses their
+	// session and both a wrong and the right password.
+	deactivated := send(http.MethodPost, memberPath+"/deactivate", "", admin)
+	current := send(http.MethodGet, "/sessions/current", "", member)
+	wrong := send(http.MethodPost, "/sessions", `{"email":"member@example.com","password":"a wrong password"}`, nil)
+	refused := send(http.MethodPost, "/sessions", signIn, nil)
+
+	// Then the session has ended and only the right password learns why.
+	require.Equal(t, http.StatusOK, deactivated.Code, deactivated.Body.String())
+	var body struct {
+		Data struct {
+			Member struct {
+				ID            int64      `json:"id"`
+				DeactivatedAt *time.Time `json:"deactivatedAt"`
+			} `json:"member"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(deactivated.Body.Bytes(), &body))
+	assert.Equal(t, f.member, body.Data.Member.ID)
+	assert.NotNil(t, body.Data.Member.DeactivatedAt)
+	assert.Equal(t, http.StatusUnauthorized, current.Code, current.Body.String())
+	cleared := current.Result().Cookies()
+	require.Len(t, cleared, 1)
+	assert.Equal(t, "__Host-inbok-session", cleared[0].Name)
+	assert.Negative(t, cleared[0].MaxAge)
+	assert.Equal(t, http.StatusUnauthorized, wrong.Code, wrong.Body.String())
+	assert.Contains(t, wrong.Body.String(), `"type":"/api/v0/problems/invalid-credentials"`)
+	assert.Equal(t, http.StatusForbidden, refused.Code, refused.Body.String())
+	assert.Contains(t, refused.Body.String(), `"type":"/api/v0/problems/account-deactivated"`)
+}
+
+// Over HTTP, a reactivated member signs in again.
+func TestReactivatedHTTP(t *testing.T) {
+	// Given a deactivated member and an administrator with admin access.
+	f := newDeactivatedAccounts(t, false)
+	_, err := f.members.Deactivate(t.Context(), f.admin, f.member)
+	require.NoError(t, err)
+	admin, send := deactivatedAPI(t, f)
+
+	// When the administrator reactivates the member, who signs in.
+	reactivated := send(http.MethodPost, "/members/"+strconv.FormatInt(f.member, 10)+"/reactivate", "", admin)
+	signedIn := send(http.MethodPost, "/sessions", `{"email":"member@example.com","password":"`+deactivatedPassword+`"}`, nil)
+
+	// Then the sign-in succeeds.
+	require.Equal(t, http.StatusOK, reactivated.Code, reactivated.Body.String())
+	assert.Contains(t, reactivated.Body.String(), `"deactivatedAt":null`)
+	assert.Equal(t, http.StatusCreated, signedIn.Code, signedIn.Body.String())
 }

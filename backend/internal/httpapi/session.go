@@ -25,6 +25,7 @@ const (
 	sessionCookieName           = "__Host-inbok-session"
 	challengeCookieName         = "__Host-inbok-challenge"
 	challengeSecuritySchemeName = "challengeCookie"
+	accountDeactivatedType      = problemPrefix + "account-deactivated"
 )
 
 // sessionService is the session behavior called by these HTTP operations.
@@ -70,6 +71,12 @@ func registerSession(api huma.API, service sessionService, codes codeSignInServi
 	registerSessionList(api, handler)
 	registerSessionEnd(api, handler)
 	registerOtherSessionsEnd(api, handler)
+}
+
+// accountDeactivatedProblem returns both sign-in steps' answer for a
+// deactivated account. Only someone who proved the password receives it.
+func accountDeactivatedProblem() *problem {
+	return newProblem(http.StatusForbidden, accountDeactivatedType, "Account deactivated", "This account is deactivated. Ask your administrator.")
 }
 
 // sessionCookie builds a host-only cookie for issuing or clearing a session.
@@ -167,13 +174,18 @@ func (h sessionHandler) handleCreateSession(ctx context.Context, in *sessionInpu
 	}, nil
 }
 
-// signInResponses documents credential and throttle failures.
+// signInResponses documents credential, deactivated-account, and throttle
+// failures.
 func signInResponses(api huma.API) map[string]*huma.Response {
-	responses := problemResponses(api, http.StatusUnauthorized, http.StatusTooManyRequests)
+	responses := problemResponses(api, http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests)
 
 	unauthorized := responses[strconv.Itoa(http.StatusUnauthorized)]
 	unauthorized.Description = "The email or password is incorrect."
 	unauthorized.Content[problemContentType].Example = signInProblem(account.ErrInvalidCredentials)
+
+	forbidden := responses[strconv.Itoa(http.StatusForbidden)]
+	forbidden.Description = "The password is right, but an administrator has deactivated the account."
+	forbidden.Content[problemContentType].Example = accountDeactivatedProblem()
 
 	throttled := responses[strconv.Itoa(http.StatusTooManyRequests)]
 	throttled.Description = "Too many recent sign-in failures from this address."
@@ -186,6 +198,9 @@ func signInResponses(api huma.API) map[string]*huma.Response {
 func signInProblem(err error) error {
 	if errors.Is(err, account.ErrInvalidCredentials) {
 		return newProblem(http.StatusUnauthorized, invalidCredentialsType, "Sign-in failed", "The email or password is incorrect.")
+	}
+	if errors.Is(err, account.ErrDeactivated) {
+		return accountDeactivatedProblem()
 	}
 	if errors.Is(err, emailaddress.ErrInvalid) {
 		return invalidEmailProblem("body.email")
@@ -241,8 +256,9 @@ func (h sessionHandler) handleCreateSessionWithCode(ctx context.Context, in *cod
 	issued, err := h.codes.Complete(ctx, in.challenge, in.Body.Code, in.device)
 	if err != nil {
 		problem := codeSignInProblem(err)
-		if errors.Is(err, session.ErrInvalidChallenge) {
-			// Discard unusable proof so the browser can start with a password again.
+		if errors.Is(err, session.ErrInvalidChallenge) || errors.Is(err, account.ErrDeactivated) {
+			// Discard proof that can't complete, so the browser starts again
+			// with a password.
 			cleared := challengeCookie("", -1)
 			return nil, huma.ErrorWithHeaders(problem, http.Header{"Set-Cookie": {cleared.String()}})
 		}
@@ -260,11 +276,15 @@ func (h sessionHandler) handleCreateSessionWithCode(ctx context.Context, in *cod
 }
 
 func codeSignInResponses(api huma.API) map[string]*huma.Response {
-	responses := problemResponses(api, http.StatusUnauthorized, http.StatusUnprocessableEntity, http.StatusTooManyRequests)
+	responses := problemResponses(api, http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusTooManyRequests)
 
 	unauthorized := responses[strconv.Itoa(http.StatusUnauthorized)]
 	unauthorized.Description = "The challenge is missing, expired, consumed, or exhausted. Enter the password again."
 	unauthorized.Content[problemContentType].Example = codeSignInProblem(session.ErrInvalidChallenge)
+
+	forbidden := responses[strconv.Itoa(http.StatusForbidden)]
+	forbidden.Description = "An administrator deactivated the account after the password step. The challenge is discarded."
+	forbidden.Content[problemContentType].Example = codeSignInProblem(account.ErrDeactivated)
 
 	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
 	invalid.Description = "The request inputs or second-factor code are invalid."
@@ -279,6 +299,8 @@ func codeSignInResponses(api huma.API) map[string]*huma.Response {
 
 func codeSignInProblem(err error) error {
 	switch {
+	case errors.Is(err, account.ErrDeactivated):
+		return accountDeactivatedProblem()
 	case errors.Is(err, session.ErrInvalidChallenge):
 		return newProblem(
 			http.StatusUnauthorized, invalidChallengeType,

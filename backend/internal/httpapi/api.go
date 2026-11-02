@@ -28,6 +28,7 @@ type API struct {
 // operation calls none of them.
 type Services struct {
 	EmailVerification emailVerificationService
+	Members           membersService
 	SystemEmail       systemEmailService
 	TestMessages      testMessageService
 	Disabler          disableService
@@ -106,6 +107,7 @@ func New(logger *slog.Logger, services Services) *API {
 	registerTOTP(api, services.TOTP, services.Enrollment, services.Backups, services.Disabler)
 	registerSystemEmail(api, services.SystemEmail, services.TestMessages)
 	registerEmailVerification(api, services.EmailVerification)
+	registerMembers(api, services.Members)
 	registerProblemTypes(api)
 
 	return &API{router: router, api: api}

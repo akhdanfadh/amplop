@@ -1,6 +1,18 @@
 {
   "components": {
     "schemas": {
+      "ChangedMember": {
+        "additionalProperties": false,
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/Member"
+          }
+        },
+        "required": [
+          "member"
+        ],
+        "type": "object"
+      },
       "CurrentSession": {
         "additionalProperties": false,
         "properties": {
@@ -121,6 +133,22 @@
         ],
         "type": "object"
       },
+      "ListedMembers": {
+        "additionalProperties": false,
+        "properties": {
+          "members": {
+            "description": "Every account, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "type": "object"
+      },
       "ListedSession": {
         "additionalProperties": false,
         "properties": {
@@ -176,6 +204,55 @@
         },
         "required": [
           "sessions"
+        ],
+        "type": "object"
+      },
+      "Member": {
+        "additionalProperties": false,
+        "properties": {
+          "deactivatedAt": {
+            "description": "When the account was deactivated; null while it is active.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "joinedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "member",
+              "admin"
+            ],
+            "type": "string"
+          },
+          "totpEnabled": {
+            "description": "Whether a confirmed authenticator protects sign-in.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "joinedAt",
+          "emailVerified",
+          "totpEnabled",
+          "deactivatedAt"
         ],
         "type": "object"
       },
@@ -440,6 +517,7 @@
       "ProblemType": {
         "description": "Problem types this API documents. Clients should still accept other types.",
         "enum": [
+          "/api/v0/problems/account-deactivated",
           "/api/v0/problems/counter-full",
           "/api/v0/problems/cross-origin-request",
           "/api/v0/problems/email-already-verified",
@@ -453,6 +531,8 @@
           "/api/v0/problems/invalid-sign-in-code",
           "/api/v0/problems/invalid-totp-code",
           "/api/v0/problems/invalid-totp-proof",
+          "/api/v0/problems/member-is-administrator",
+          "/api/v0/problems/member-not-found",
           "/api/v0/problems/method-not-allowed",
           "/api/v0/problems/not-found",
           "/api/v0/problems/request-timeout",
@@ -476,6 +556,18 @@
           "/api/v0/problems/validation-error"
         ],
         "type": "string"
+      },
+      "ResponseChangedMember": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ChangedMember"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
       },
       "ResponseCurrentSession": {
         "additionalProperties": false,
@@ -530,6 +622,18 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/HealthStatus"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponseListedMembers": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ListedMembers"
           }
         },
         "required": [
@@ -1187,6 +1291,363 @@
         "summary": "Check process health"
       }
     },
+    "/members": {
+      "get": {
+        "operationId": "listMembers",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseListedMembers"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "type": "/api/v0/problems/forbidden",
+                      "status": 403,
+                      "title": "Access denied",
+                      "detail": "You do not have access to this operation."
+                    }
+                  },
+                  "totpRequired": {
+                    "value": {
+                      "type": "/api/v0/problems/totp-required",
+                      "status": 403,
+                      "title": "TOTP required",
+                      "detail": "Set up two-factor authentication to use administrator features."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The account is not an administrator, or has not set up two-factor authentication."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List every account"
+      }
+    },
+    "/members/{id}/deactivate": {
+      "post": {
+        "description": "Ends the member's sessions and stops them from signing in until they are reactivated. Their account, password, and authenticator are kept. Deactivating a deactivated member changes nothing. The change is recorded in the audit log.",
+        "operationId": "deactivateMember",
+        "parameters": [
+          {
+            "description": "Member ID from the member list.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Member ID from the member list.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseChangedMember"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "type": "/api/v0/problems/forbidden",
+                      "status": 403,
+                      "title": "Access denied",
+                      "detail": "You do not have access to this operation."
+                    }
+                  },
+                  "totpRequired": {
+                    "value": {
+                      "type": "/api/v0/problems/totp-required",
+                      "status": 403,
+                      "title": "TOTP required",
+                      "detail": "Set up two-factor authentication to use administrator features."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The account is not an administrator, or has not set up two-factor authentication."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/member-not-found",
+                  "status": 404,
+                  "title": "Member not found",
+                  "detail": "This account doesn't exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No account has this ID."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/member-is-administrator",
+                  "status": 409,
+                  "title": "Member is an administrator",
+                  "detail": "Administrators can't be deactivated or reactivated."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The account is an administrator's. Administrators can't be deactivated or reactivated."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/validation-error",
+                  "status": 422,
+                  "title": "Invalid request",
+                  "detail": "Correct the rejected request inputs."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The ID is not a positive whole number."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Deactivate a member"
+      }
+    },
+    "/members/{id}/reactivate": {
+      "post": {
+        "description": "Lets a deactivated member sign in again with their existing password and authenticator. Reactivating an active member changes nothing. The change is recorded in the audit log.",
+        "operationId": "reactivateMember",
+        "parameters": [
+          {
+            "description": "Member ID from the member list.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Member ID from the member list.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseChangedMember"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "forbidden": {
+                    "value": {
+                      "type": "/api/v0/problems/forbidden",
+                      "status": 403,
+                      "title": "Access denied",
+                      "detail": "You do not have access to this operation."
+                    }
+                  },
+                  "totpRequired": {
+                    "value": {
+                      "type": "/api/v0/problems/totp-required",
+                      "status": 403,
+                      "title": "TOTP required",
+                      "detail": "Set up two-factor authentication to use administrator features."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The account is not an administrator, or has not set up two-factor authentication."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/member-not-found",
+                  "status": 404,
+                  "title": "Member not found",
+                  "detail": "This account doesn't exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No account has this ID."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/member-is-administrator",
+                  "status": 409,
+                  "title": "Member is an administrator",
+                  "detail": "Administrators can't be deactivated or reactivated."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The account is an administrator's. Administrators can't be deactivated or reactivated."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/validation-error",
+                  "status": 422,
+                  "title": "Invalid request",
+                  "detail": "Correct the rejected request inputs."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The ID is not a positive whole number."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Reactivate a member"
+      }
+    },
     "/probe/events": {
       "post": {
         "operationId": "createProbeEvent",
@@ -1334,6 +1795,22 @@
               }
             },
             "description": "The email or password is incorrect."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/account-deactivated",
+                  "status": 403,
+                  "title": "Account deactivated",
+                  "detail": "This account is deactivated. Ask your administrator."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The password is right, but an administrator has deactivated the account."
           },
           "429": {
             "content": {
@@ -1567,6 +2044,22 @@
               }
             },
             "description": "The challenge is missing, expired, consumed, or exhausted. Enter the password again."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/account-deactivated",
+                  "status": 403,
+                  "title": "Account deactivated",
+                  "detail": "This account is deactivated. Ask your administrator."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "An administrator deactivated the account after the password step. The challenge is discarded."
           },
           "422": {
             "content": {

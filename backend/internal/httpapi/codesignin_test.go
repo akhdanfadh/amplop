@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"inbok/internal/account"
 	"inbok/internal/session"
 	"inbok/internal/totp"
 )
@@ -90,6 +91,7 @@ func TestCodeSessionProblems(t *testing.T) {
 	}{
 		{"invalid code", totp.ErrInvalidCode, http.StatusUnprocessableEntity, "invalid-sign-in-code"},
 		{"invalid challenge", session.ErrInvalidChallenge, http.StatusUnauthorized, "sign-in-challenge-invalid"},
+		{"deactivated", account.ErrDeactivated, http.StatusForbidden, "account-deactivated"},
 		{"throttled", totp.ErrThrottled, http.StatusTooManyRequests, "totp-throttled"},
 		{"commit failure", errors.New("private storage failure"), http.StatusInternalServerError, "internal-error"},
 	} {
@@ -106,7 +108,8 @@ func TestCodeSessionProblems(t *testing.T) {
 			assert.NotContains(t, response.Body.String(), "must-not-issue")
 			assert.NotContains(t, response.Body.String(), "012345")
 			cookies := response.Result().Cookies()
-			if c.err == session.ErrInvalidChallenge {
+			// Neither challenge can complete, so the browser drops it.
+			if c.err == session.ErrInvalidChallenge || c.err == account.ErrDeactivated {
 				require.Len(t, cookies, 1)
 				assert.Equal(t, challengeCookieName, cookies[0].Name)
 				assert.Negative(t, cookies[0].MaxAge)
@@ -145,4 +148,6 @@ func TestCodeSessionOpenAPI(t *testing.T) {
 	assert.Equal(t, []map[string][]string{{challengeSecuritySchemeName: {}}}, path.Post.Security)
 	assert.Empty(t, path.Post.Parameters, "the browser supplies the HttpOnly cookie automatically")
 	require.NotNil(t, path.Post.Responses["201"].Headers["Set-Cookie"])
+	require.NotNil(t, path.Post.Responses["403"])
+	assert.Equal(t, problemPrefix+"account-deactivated", path.Post.Responses["403"].Content[problemContentType].Example.(*problem).Type)
 }
