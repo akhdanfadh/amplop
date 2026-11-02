@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"inbok/internal/account"
 	"inbok/internal/passwordhash"
 	"inbok/internal/totp"
 )
@@ -108,6 +109,7 @@ func TestCodeSignInRejected(t *testing.T) {
 		{"expired", func(s *CodeSignInState) { s.Challenge.ExpiresAt = time.Unix(59, 0).UTC() }, "287082", ErrInvalidChallenge, CodeActionDelete, true},
 		{"missing factor", func(s *CodeSignInState) { s.Factor = nil }, "287082", ErrInvalidChallenge, CodeActionDelete, true},
 		{"pending factor", func(s *CodeSignInState) { s.Factor.ConfirmedAt = nil }, "287082", ErrInvalidChallenge, CodeActionDelete, true},
+		{"deactivated", func(s *CodeSignInState) { s.Deactivated = true }, "287082", account.ErrDeactivated, CodeActionDelete, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service, store, attempts, secret := codeSignInFixture()

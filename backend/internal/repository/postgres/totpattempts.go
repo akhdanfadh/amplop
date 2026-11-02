@@ -22,6 +22,9 @@ func (db *DB) ReserveTOTPAttempt(ctx context.Context, attempt totp.Attempt, cuto
 	var id int64
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+		// NOTE: A deactivated owner still reserves an attempt, so the code step
+		// reaches CompleteSignIn, which deletes their challenge and says the
+		// account is deactivated.
 		if _, err := queries.LockTOTPUser(ctx, attempt.UserID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return account.ErrUserNotFound

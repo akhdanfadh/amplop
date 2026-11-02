@@ -121,6 +121,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
 	services := httpapi.Services{
 		EmailVerification: emailverification.NewService(db, mailer, cfg.PublicURL, time.Now),
+		Members:           account.NewMembers(db, time.Now),
 		SystemEmail:       systememail.NewService(db, cfg.Encryption),
 		TestMessages:      systememail.NewTestMessages(db, mailer, time.Now),
 		Disabler:          totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),

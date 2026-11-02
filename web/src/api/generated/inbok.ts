@@ -24,11 +24,13 @@ import type {
 } from '@tanstack/react-query';
 
 import {
+  ResponseChangedMember,
   ResponseCurrentSession,
   ResponseEmailVerificationResult,
   ResponseEndedSessions,
   ResponseFirstAdmin,
   ResponseHealthStatus,
+  ResponseListedMembers,
   ResponseListedSessions,
   ResponseProbeEventCreated,
   ResponseSentEmailVerification,
@@ -343,6 +345,260 @@ export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TErr
 
 
 
+
+export const getListMembersUrl = () => {
+
+
+
+
+  return `/api/v0/members`
+}
+
+/**
+ * @summary List every account
+ */
+export const listMembers = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseListedMembers> => {
+
+  return transport<ResponseListedMembers>(getListMembersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseListedMembers
+  }
+);}
+
+
+
+
+
+export const getListMembersQueryKey = () => {
+    return [
+    `/api/v0/members`
+    ] as const;
+    }
+
+
+export const getListMembersQueryOptions = <TData = Awaited<ReturnType<typeof listMembers>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMembersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMembers>>> = ({ signal }) => listMembers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListMembersQueryResult = NonNullable<Awaited<ReturnType<typeof listMembers>>>
+export type ListMembersQueryError = ErrorType<Problem>
+
+
+export function useListMembers<TData = Awaited<ReturnType<typeof listMembers>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listMembers>>,
+          TError,
+          Awaited<ReturnType<typeof listMembers>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListMembers<TData = Awaited<ReturnType<typeof listMembers>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listMembers>>,
+          TError,
+          Awaited<ReturnType<typeof listMembers>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListMembers<TData = Awaited<ReturnType<typeof listMembers>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List every account
+ */
+
+export function useListMembers<TData = Awaited<ReturnType<typeof listMembers>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListMembersQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDeactivateMemberUrl = (id: number,) => {
+
+
+
+
+  return `/api/v0/members/${id}/deactivate`
+}
+
+/**
+ * Ends the member's sessions and stops them from signing in until they are reactivated. Their account, password, and authenticator are kept. Deactivating a deactivated member changes nothing. The change is recorded in the audit log.
+ * @summary Deactivate a member
+ */
+export const deactivateMember = async (id: number, options?: Parameters<typeof transport>[1]): Promise<ResponseChangedMember> => {
+
+  return transport<ResponseChangedMember>(getDeactivateMemberUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+    ,
+    schema: ResponseChangedMember
+  }
+);}
+
+
+
+
+
+export const getDeactivateMemberMutationKey = () => ['deactivateMember'] as const;
+
+export const getDeactivateMemberMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateMember>>, TError,DeactivateMemberMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof deactivateMember>>, TError,DeactivateMemberMutationVariables, TContext> => {
+
+const mutationKey = getDeactivateMemberMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deactivateMember>>, DeactivateMemberMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deactivateMember(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeactivateMemberMutationResult = NonNullable<Awaited<ReturnType<typeof deactivateMember>>>
+
+    export type DeactivateMemberMutationError = ErrorType<Problem>
+    export type DeactivateMemberMutationVariables = {id: number}
+
+    /**
+ * @summary Deactivate a member
+ */
+export const useDeactivateMember = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateMember>>, TError,DeactivateMemberMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deactivateMember>>,
+        TError,
+        DeactivateMemberMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeactivateMemberMutationOptions(options), queryClient);
+    }
+
+export const getReactivateMemberUrl = (id: number,) => {
+
+
+
+
+  return `/api/v0/members/${id}/reactivate`
+}
+
+/**
+ * Lets a deactivated member sign in again with their existing password and authenticator. Reactivating an active member changes nothing. The change is recorded in the audit log.
+ * @summary Reactivate a member
+ */
+export const reactivateMember = async (id: number, options?: Parameters<typeof transport>[1]): Promise<ResponseChangedMember> => {
+
+  return transport<ResponseChangedMember>(getReactivateMemberUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+    ,
+    schema: ResponseChangedMember
+  }
+);}
+
+
+
+
+
+export const getReactivateMemberMutationKey = () => ['reactivateMember'] as const;
+
+export const getReactivateMemberMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactivateMember>>, TError,ReactivateMemberMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof reactivateMember>>, TError,ReactivateMemberMutationVariables, TContext> => {
+
+const mutationKey = getReactivateMemberMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reactivateMember>>, ReactivateMemberMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  reactivateMember(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReactivateMemberMutationResult = NonNullable<Awaited<ReturnType<typeof reactivateMember>>>
+
+    export type ReactivateMemberMutationError = ErrorType<Problem>
+    export type ReactivateMemberMutationVariables = {id: number}
+
+    /**
+ * @summary Reactivate a member
+ */
+export const useReactivateMember = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactivateMember>>, TError,ReactivateMemberMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof reactivateMember>>,
+        TError,
+        ReactivateMemberMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReactivateMemberMutationOptions(options), queryClient);
+    }
 
 export const getCreateProbeEventUrl = () => {
 

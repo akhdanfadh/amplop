@@ -91,7 +91,7 @@ func emailVerificationRequestResponses(api huma.API) map[string]*huma.Response {
 
 func emailVerificationRequestProblem(err error) error {
 	switch {
-	// The account was deleted after its session was checked.
+	// The account was deleted or deactivated after its session was checked.
 	case errors.Is(err, account.ErrUserNotFound):
 		return unauthenticatedProblem()
 	case errors.Is(err, emailverification.ErrAlreadyVerified):

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -75,19 +74,6 @@ func adminSessions() *fakeSessions {
 	}}
 }
 
-// requestSystemEmail sends an authenticated request with a same-origin write source.
-func requestSystemEmail(api *API, method, path, body string) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(method, "/api/v0"+path, strings.NewReader(body))
-	request.Header.Set("Origin", "http://"+request.Host)
-	if body != "" {
-		request.Header.Set("Content-Type", "application/json")
-	}
-	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
-	response := httptest.NewRecorder()
-	api.Handler().ServeHTTP(response, request)
-	return response
-}
-
 func TestGetSystemEmail(t *testing.T) {
 	settings := systemEmailSettingsFixture()
 	for _, c := range []struct {
@@ -107,7 +93,7 @@ func TestGetSystemEmail(t *testing.T) {
 			service := &fakeSystemEmail{settings: c.settings}
 			api := New(discard, Services{SystemEmail: service, Session: adminSessions()})
 
-			response := requestSystemEmail(api, http.MethodGet, "/system-email", "")
+			response := requestAuthenticated(api, http.MethodGet, "/system-email", "")
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 			assert.JSONEq(t, c.want, response.Body.String())
@@ -123,7 +109,7 @@ func TestSaveSystemEmail(t *testing.T) {
 	var logs bytes.Buffer
 	api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{SystemEmail: service, Session: adminSessions()})
 
-	response := requestSystemEmail(api, http.MethodPut, "/system-email", systemEmailBody)
+	response := requestAuthenticated(api, http.MethodPut, "/system-email", systemEmailBody)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, int64(42), service.actorID, "the actor is the signed-in administrator")
@@ -143,7 +129,7 @@ func TestSaveSystemEmailWithoutSignIn(t *testing.T) {
 	service := &fakeSystemEmail{}
 	api := New(discard, Services{SystemEmail: service, Session: adminSessions()})
 
-	response := requestSystemEmail(api, http.MethodPut, "/system-email",
+	response := requestAuthenticated(api, http.MethodPut, "/system-email",
 		`{"host":"localhost","port":1025,"security":"none","fromAddress":"inbok@localhost","fromName":"inbok"}`)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
@@ -168,7 +154,7 @@ func TestSaveSystemEmailKeepsPassword(t *testing.T) {
 			body := strings.Replace(systemEmailBody, c.replace, with, 1)
 			require.NotEqual(t, systemEmailBody, body)
 
-			response := requestSystemEmail(api, http.MethodPut, "/system-email", body)
+			response := requestAuthenticated(api, http.MethodPut, "/system-email", body)
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 			assert.Equal(t, "inbok@example.com", service.input.Username)
@@ -185,7 +171,7 @@ func TestSaveSystemEmailTrims(t *testing.T) {
 	body := strings.NewReplacer(`"host":"smtp.example.com"`, `"host":" smtp.example.com\r\n"`,
 		`"username":"inbok@example.com"`, `"username":" inbok@example.com\t"`).Replace(systemEmailBody)
 
-	response := requestSystemEmail(api, http.MethodPut, "/system-email", body)
+	response := requestAuthenticated(api, http.MethodPut, "/system-email", body)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, "smtp.example.com", service.input.Host)
@@ -198,7 +184,7 @@ func TestSaveSystemEmailBlankUsername(t *testing.T) {
 	api := New(discard, Services{SystemEmail: service, Session: adminSessions()})
 	body := strings.Replace(systemEmailBody, `"username":"inbok@example.com"`, `"username":"   "`, 1)
 
-	response := requestSystemEmail(api, http.MethodPut, "/system-email", body)
+	response := requestAuthenticated(api, http.MethodPut, "/system-email", body)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Empty(t, service.input.Username)
@@ -223,7 +209,7 @@ func TestSaveSystemEmailInvalid(t *testing.T) {
 			body := strings.Replace(systemEmailBody, c.replace, c.with, 1)
 			require.NotEqual(t, systemEmailBody, body)
 
-			response := requestSystemEmail(api, http.MethodPut, "/system-email", body)
+			response := requestAuthenticated(api, http.MethodPut, "/system-email", body)
 
 			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 			assert.Zero(t, service.calls)
@@ -252,7 +238,7 @@ func TestSaveSystemEmailRejected(t *testing.T) {
 		t.Run(c.err.Error(), func(t *testing.T) {
 			api := New(discard, Services{SystemEmail: &fakeSystemEmail{err: c.err}, Session: adminSessions()})
 
-			response := requestSystemEmail(api, http.MethodPut, "/system-email", systemEmailBody)
+			response := requestAuthenticated(api, http.MethodPut, "/system-email", systemEmailBody)
 
 			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 			problem := decodeJSON(t, response.Body.Bytes())
@@ -275,7 +261,7 @@ func TestSendSystemEmailTestMessage(t *testing.T) {
 			service := &fakeTestMessages{result: c.result}
 			api := New(discard, Services{TestMessages: service, Session: adminSessions()})
 
-			response := requestSystemEmail(api, http.MethodPost, "/system-email/test-message", `{"recipient":"Admin@example.org"}`)
+			response := requestAuthenticated(api, http.MethodPost, "/system-email/test-message", `{"recipient":"Admin@example.org"}`)
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 			assert.JSONEq(t, c.want, response.Body.String())
@@ -290,7 +276,7 @@ func TestSendSystemEmailTestMessageInvalidRecipient(t *testing.T) {
 			service := &fakeTestMessages{}
 			api := New(discard, Services{TestMessages: service, Session: adminSessions()})
 
-			response := requestSystemEmail(api, http.MethodPost, "/system-email/test-message", `{"recipient":"`+recipient+`"}`)
+			response := requestAuthenticated(api, http.MethodPost, "/system-email/test-message", `{"recipient":"`+recipient+`"}`)
 
 			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 			assert.Zero(t, service.calls)
@@ -304,7 +290,7 @@ func TestSendSystemEmailTestMessageInvalidRecipient(t *testing.T) {
 func TestSendSystemEmailTestMessageRejectedRecipient(t *testing.T) {
 	api := New(discard, Services{TestMessages: &fakeTestMessages{err: emailaddress.ErrInvalid}, Session: adminSessions()})
 
-	response := requestSystemEmail(api, http.MethodPost, "/system-email/test-message", `{"recipient":"admin@example.org"}`)
+	response := requestAuthenticated(api, http.MethodPost, "/system-email/test-message", `{"recipient":"admin@example.org"}`)
 
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	problem := decodeJSON(t, response.Body.Bytes())
@@ -315,7 +301,7 @@ func TestSendSystemEmailTestMessageRejectedRecipient(t *testing.T) {
 func TestSendSystemEmailTestMessageNotConfigured(t *testing.T) {
 	api := New(discard, Services{TestMessages: &fakeTestMessages{err: systememail.ErrNotConfigured}, Session: adminSessions()})
 
-	response := requestSystemEmail(api, http.MethodPost, "/system-email/test-message", `{"recipient":"admin@example.org"}`)
+	response := requestAuthenticated(api, http.MethodPost, "/system-email/test-message", `{"recipient":"admin@example.org"}`)
 
 	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
 	problem := decodeJSON(t, response.Body.Bytes())
@@ -339,7 +325,7 @@ func TestSystemEmailUnexpectedFailure(t *testing.T) {
 				SystemEmail: &fakeSystemEmail{err: failure}, TestMessages: &fakeTestMessages{err: failure}, Session: adminSessions(),
 			})
 
-			response := requestSystemEmail(api, c.method, c.path, c.body)
+			response := requestAuthenticated(api, c.method, c.path, c.body)
 
 			require.Equal(t, http.StatusInternalServerError, response.Code)
 			assert.NotContains(t, response.Body.String(), "private storage cause")
@@ -375,7 +361,7 @@ func TestSystemEmailAccess(t *testing.T) {
 				settings, messages := &fakeSystemEmail{}, &fakeTestMessages{}
 				api := New(discard, Services{SystemEmail: settings, TestMessages: messages, Session: c.sessions})
 
-				response := requestSystemEmail(api, op.method, op.path, op.body)
+				response := requestAuthenticated(api, op.method, op.path, op.body)
 
 				require.Equal(t, c.code, response.Code, response.Body.String())
 				assert.Equal(t, problemPrefix+c.typ, decodeJSON(t, response.Body.Bytes())["type"])

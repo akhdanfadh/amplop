@@ -19,10 +19,12 @@ func (db *DB) ConfirmTOTP(ctx context.Context, userID int64, hash [sha256.Size]b
 		queries := sqlc.New(tx)
 
 		// Match enrollment restart and attempt reservation's lock order.
-		if _, err := queries.LockTOTPUser(ctx, userID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return session.ErrNotFound
-			}
+		deactivated, err := queries.LockTOTPUser(ctx, userID)
+		// A deactivation ended the session this request was checked with.
+		if errors.Is(err, pgx.ErrNoRows) || deactivated {
+			return session.ErrNotFound
+		}
+		if err != nil {
 			return fmt.Errorf("lock confirmation owner: %w", err)
 		}
 

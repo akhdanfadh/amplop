@@ -39,10 +39,12 @@ type Storage interface {
 
 	// UpdateTOTP locks the user, loads the factor (nil if absent), calls update,
 	// and saves its result in one transaction. An error rolls back the write.
+	// A missing or deactivated user returns [account.ErrUserNotFound].
 	UpdateTOTP(ctx context.Context, userID int64, update func(*Factor) (Factor, error)) error
 
 	// CancelTOTP locks the owner, checks the current factor, and deletes it in
-	// one transaction. A missing factor is passed to check as nil.
+	// one transaction. A missing factor is passed to check as nil. A missing
+	// or deactivated user returns [account.ErrUserNotFound].
 	CancelTOTP(ctx context.Context, userID int64, check func(*Factor) error) error
 }
 

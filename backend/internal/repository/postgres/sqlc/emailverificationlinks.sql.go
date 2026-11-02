@@ -82,20 +82,23 @@ func (q *Queries) ListEmailVerificationLinkTimes(ctx context.Context, userID int
 }
 
 const lockEmailVerificationUser = `-- name: LockEmailVerificationUser :one
-SELECT email, email_verified_at FROM users WHERE id = $1 FOR UPDATE
+SELECT email, email_verified_at, (deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM users WHERE id = $1 FOR UPDATE
 `
 
 type LockEmailVerificationUserRow struct {
 	Email           string
 	EmailVerifiedAt *time.Time
+	Deactivated     bool
 }
 
 // Serializes a user's link requests and redeems, so the throttle counts every
-// link and a link verifies once.
+// link and a link verifies once, and reads whether a deactivation committed
+// first.
 func (q *Queries) LockEmailVerificationUser(ctx context.Context, userID int64) (LockEmailVerificationUserRow, error) {
 	row := q.db.QueryRow(ctx, lockEmailVerificationUser, userID)
 	var i LockEmailVerificationUserRow
-	err := row.Scan(&i.Email, &i.EmailVerifiedAt)
+	err := row.Scan(&i.Email, &i.EmailVerifiedAt, &i.Deactivated)
 	return i, err
 }
 

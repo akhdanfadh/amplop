@@ -1,7 +1,9 @@
 -- name: LockEmailVerificationUser :one
 -- Serializes a user's link requests and redeems, so the throttle counts every
--- link and a link verifies once.
-SELECT email, email_verified_at FROM users WHERE id = @user_id FOR UPDATE;
+-- link and a link verifies once, and reads whether a deactivation committed
+-- first.
+SELECT email, email_verified_at, (deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM users WHERE id = @user_id FOR UPDATE;
 
 -- name: ListEmailVerificationLinkTimes :many
 SELECT created_at FROM email_verification_links WHERE user_id = @user_id;

@@ -94,8 +94,8 @@ Keep code for one feature together, including its form schemas and tests.
 Put shared code in the folder for its responsibility:
 
 - `src/features/setup`: first-admin form, validation, and installation gate.
-- `src/features/auth`: sign-in form, validation, session messages, and account
-  cache cleanup.
+- `src/features/auth`: sign-in form, validation, session messages, the code
+  step's rule for when a sign-in has ended, and account cache cleanup.
 - `src/features/probe`: the probe demo form.
 - `src/features/totp`: authenticator enrollment, confirmation, backup-code
   management, and turning TOTP off.
@@ -104,6 +104,8 @@ Put shared code in the folder for its responsibility:
   `/verify-email` form, and their wording.
 - `src/features/system-email`: the system email settings form, its schema,
   and the test message form and its result wording.
+- `src/features/members`: the member list's columns and cells, the table
+  with its confirmation dialog, and its wording.
 - `src/components`: shared controls, such as the password input. `ui/` holds
   the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -144,6 +146,9 @@ of five. Pasting ignores spaces and dashes. Switching clears the previous entry.
 Codes stay in memory and are released when the form closes.
 A rejected code can be retried; an expired or exhausted challenge requires
 starting sign-in again. Reloading also returns to the password step.
+A deactivated account with the right password sees "This account is
+deactivated. Ask your administrator." The code step answers a 403 the same
+way as an ended challenge: the form stops and offers to start again.
 An uncertain response offers a session check before another attempt.
 The `/` page reads the current account and redirects to sign-in on HTTP 401.
 Other failures keep a retry action. Administrators without confirmed TOTP open
@@ -214,11 +219,13 @@ list instead of requiring a check. A session the API reports gone reads
 reloaded list. Ending sessions and TOTP writes wait for each other, because
 confirming TOTP replaces this browser's session and ends the others.
 
-Administrators with confirmed TOTP see a Settings link to `/settings`. Each
-page passes its session to `AccountNav`, which decides from it. Anyone else
-who opens the page sees that settings are for administrators with two-factor
-authentication; an administrator also gets a link to Security. A 401 from a
-save or test signs out; a 403 reads access again.
+Administrators with confirmed TOTP see Members and Settings links to
+`/members` and `/settings`. Each page passes its session to `AccountNav`,
+which decides from it; a page wider than a form, such as `/members`, also
+passes `wide`. Anyone else who opens Settings sees that settings are for
+administrators with two-factor authentication; an administrator also gets a
+link to Security. A 401 from a save or test signs out; a 403 reads access
+again.
 
 The page configures system email, the server inbok sends its own mail
 through. The form applies Go's rules between fields before sending, and its
@@ -234,6 +241,23 @@ The test section sends to the signed-in address by default and words each
 failure by the step that failed. A lost result can be sent again without a
 check. Editing the recipient or a later save hides an earlier result. A save
 and a test never run at the same time.
+
+Members lists every account, oldest first, in a table: the address, with
+the signed-in one marked "You", its status, active or deactivated with the
+date, then role, joined date, whether the email is verified, and whether
+two-factor authentication is on. Status and the action come right after the
+address, so a phone shows them first; the table scrolls sideways in a region
+the keyboard can focus. Members have a Deactivate or Reactivate button; the
+signed-in administrator and other administrators have none. Both actions ask
+first in a dialog, and the request starts once the dialog has closed, so
+focus can return to the row's button. The changed row updates from the
+server's answer at once, and every outcome rereads the list. A failed reread
+keeps the list with "Could not reload members, so the list may be out of
+date." and Try again. An unknown outcome asks the user to check the list
+before trying again; a 404 or 409 shows the server's explanation. Like
+Settings, anyone else who opens the page sees that it is for administrators
+with two-factor authentication, a 401 signs out, and a 403 reads access
+again.
 
 Signing out deletes the current session, clears account caches, and opens
 sign-in. A 401 also completes sign-out because that session is already absent
@@ -293,6 +317,18 @@ format it:
 pnpm exec shadcn add dialog
 pnpm fix
 ```
+
+Data tables use [TanStack Table](https://tanstack.com/table), which supplies
+the rows and columns while shadcn's `Table` components render them. It is
+used even for a plain list, so every table shares typed column definitions
+and cell data, and sorting or paging can be added without a rewrite. A table
+used in one place calls `useTable` directly, with its column definitions and
+features at module scope in a `columns.tsx` beside it, as
+`src/features/members` does. Values that cells need from the component,
+such as handlers, go through the table's typed `meta`. Move to
+`createTableHook` once several tables share features or cells. The package
+ships agent guides for its installed version in
+`node_modules/@tanstack/react-table/skills`.
 
 Imports starting with `@/` point into `src`, e.g.
 `@/components/ui/button` is `src/components/ui/button.tsx`. The `cn` class
@@ -362,9 +398,10 @@ received request reference for reporting failures.
 
 For writes, a missing response or HTTP 5xx cannot confirm whether the change
 took effect. The message keeps any safe server explanation and asks the user
-to check before submitting again; ending signed-in browsers reloads the list
-for that check. An unreadable success response instead says the server
-reported success but its result could not be loaded. A received 4xx
+to check before submitting again; ending signed-in browsers and changing a
+member reload their list for that check. Elsewhere, an unreadable success
+response says the server reported success but its result could not be
+loaded. A received 4xx
 rejection keeps its normal explanation. Failed submissions keep the form's
 values; the request reference remains available when received.
 

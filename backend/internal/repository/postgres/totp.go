@@ -46,10 +46,12 @@ func readTOTP(ctx context.Context, queries *sqlc.Queries, userID int64) (*totp.F
 func (db *DB) UpdateTOTP(ctx context.Context, userID int64, update func(*totp.Factor) (totp.Factor, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
-		if _, err := queries.LockTOTPUser(ctx, userID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return account.ErrUserNotFound
-			}
+		deactivated, err := queries.LockTOTPUser(ctx, userID)
+		// A deactivation ended the session this request was checked with.
+		if errors.Is(err, pgx.ErrNoRows) || deactivated {
+			return account.ErrUserNotFound
+		}
+		if err != nil {
 			return fmt.Errorf("lock TOTP owner: %w", err)
 		}
 		current, err := readTOTP(ctx, queries, userID)
@@ -75,10 +77,12 @@ func (db *DB) UpdateTOTP(ctx context.Context, userID int64, update func(*totp.Fa
 func (db *DB) CancelTOTP(ctx context.Context, userID int64, check func(*totp.Factor) error) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
-		if _, err := queries.LockTOTPUser(ctx, userID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return account.ErrUserNotFound
-			}
+		deactivated, err := queries.LockTOTPUser(ctx, userID)
+		// A deactivation ended the session this request was checked with.
+		if errors.Is(err, pgx.ErrNoRows) || deactivated {
+			return account.ErrUserNotFound
+		}
+		if err != nil {
 			return fmt.Errorf("lock TOTP cancellation owner: %w", err)
 		}
 

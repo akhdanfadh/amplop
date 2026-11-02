@@ -20,6 +20,8 @@ type backupStore interface {
 	// ReplaceTOTPBackupCodes locks the owner, loads the factor, and calls update.
 	// It saves the factor, replaces every backup hash, and removes the owned
 	// successful attempt in one transaction. Any error rolls back every write.
+	// A missing or deactivated user returns
+	// [inbok/internal/account.ErrUserNotFound].
 	ReplaceTOTPBackupCodes(ctx context.Context, userID int64, update func(*Factor) (BackupChange, error)) error
 }
 

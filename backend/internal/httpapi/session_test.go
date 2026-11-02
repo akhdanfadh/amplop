@@ -120,6 +120,20 @@ func checkedReference(t *testing.T) session.Reference {
 	return current.Session
 }
 
+// requestAuthenticated sends a signed-in request with a same-origin write
+// source, and body as JSON unless it is empty.
+func requestAuthenticated(api *API, method, path, body string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, "/api/v0"+path, strings.NewReader(body))
+	request.Header.Set("Origin", "http://"+request.Host)
+	if body != "" {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
+	response := httptest.NewRecorder()
+	api.Handler().ServeHTTP(response, request)
+	return response
+}
+
 // memberSessions returns a fake signed in with member access: a member, or an
 // administrator who still needs TOTP.
 func memberSessions(role account.Role) *fakeSessions {
@@ -211,6 +225,7 @@ func TestCreateSessionErrors(t *testing.T) {
 		typ  string
 	}{
 		{"credentials", account.ErrInvalidCredentials, http.StatusUnauthorized, "/api/v0/problems/invalid-credentials"},
+		{"deactivated", account.ErrDeactivated, http.StatusForbidden, "/api/v0/problems/account-deactivated"},
 		{"throttled", session.ErrThrottled, http.StatusTooManyRequests, "/api/v0/problems/sign-in-throttled"},
 		{"unexpected", lost, http.StatusInternalServerError, "/api/v0/problems/internal-error"},
 	} {
@@ -311,11 +326,12 @@ func TestSessionOpenAPI(t *testing.T) {
 	require.NotNil(t, path)
 	require.NotNil(t, path.Post)
 	assert.Equal(t, "createSession", path.Post.OperationID)
-	for _, status := range []int{http.StatusCreated, http.StatusUnauthorized, http.StatusTooManyRequests} {
+	for _, status := range []int{http.StatusCreated, http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests} {
 		require.NotNil(t, path.Post.Responses[strconv.Itoa(status)])
 	}
 	assert.NotNil(t, path.Post.Responses["default"])
-	assert.Len(t, path.Post.Responses, 4)
+	assert.Len(t, path.Post.Responses, 5)
+	assert.Equal(t, problemPrefix+"account-deactivated", path.Post.Responses["403"].Content[problemContentType].Example.(*problem).Type)
 	result := doc.Components.Schemas.Map()["SignInResult"]
 	require.NotNil(t, result)
 	require.NotNil(t, result.Properties["step"])

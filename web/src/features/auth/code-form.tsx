@@ -12,7 +12,7 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { clearAccountCache } from "./session-cache";
-import { sessionMessage } from "./session-error";
+import { challengeEnded, sessionMessage } from "./session-error";
 import { codeFormats, codePaste, codeSchema, type CodeKind } from "./code-schema";
 
 const codeFields = ["code"] as const;
@@ -49,13 +49,13 @@ export function CodeForm({
       onSettled: () => clearAccountCache(queryClient),
     },
   });
-  const expired = create.error?.status === unauthorized;
+  const ended = create.error ? challengeEnded(create.error) : false;
   const form = useForm({
     defaultValues: { code: "" },
     validators: { onChange: schema },
     onSubmitInvalid: () => inputRef.current?.focus(),
     onSubmit: ({ value, formApi }) => {
-      if (create.isPending || checkRequest.current || expired) return;
+      if (create.isPending || checkRequest.current || ended) return;
 
       create.mutate(
         { data: schema.parse(value) },
@@ -94,9 +94,9 @@ export function CodeForm({
 
   useEffect(() => {
     if (!create.error || create.isPending) return;
-    if (expired) restartRef.current?.focus();
+    if (ended) restartRef.current?.focus();
     else (codeRejected ? inputRef.current : submitRef.current)?.focus();
-  }, [create.error, create.isPending, expired, codeRejected]);
+  }, [create.error, create.isPending, ended, codeRejected]);
 
   useEffect(() => {
     if (checkMessage && !checking) checkRef.current?.focus();
@@ -153,14 +153,14 @@ export function CodeForm({
           {(field) => {
             const errors = field.state.meta.isBlurred || submitted ? field.state.meta.errors : [];
             return (
-              <Field data-invalid={errors.length > 0} data-disabled={create.isPending || expired}>
+              <Field data-invalid={errors.length > 0} data-disabled={create.isPending || ended}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <FieldLabel htmlFor="sign-in-code">{format.label}</FieldLabel>
                   <Button
                     type="button"
                     variant="link"
                     className="min-h-11 w-fit whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-                    disabled={create.isPending || expired}
+                    disabled={create.isPending || ended}
                     onClick={changeKind}
                   >
                     {kind === "authenticator" ? "Use a backup code" : "Use authenticator app"}
@@ -179,7 +179,7 @@ export function CodeForm({
                   autoCapitalize="none"
                   spellCheck={false}
                   containerClassName="max-w-full flex-wrap gap-2"
-                  disabled={create.isPending || expired}
+                  disabled={create.isPending || ended}
                   aria-invalid={errors.length > 0}
                   aria-describedby={errors.length ? "sign-in-code-error" : undefined}
                   value={field.state.value}
@@ -212,7 +212,7 @@ export function CodeForm({
         ref={submitRef}
         className="h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
         type="submit"
-        disabled={create.isPending || checking || expired}
+        disabled={create.isPending || checking || ended}
       >
         {create.isPending ? "Verifying..." : "Verify and sign in"}
       </Button>
