@@ -3,13 +3,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   getGetCurrentSessionQueryKey,
+  getGetRegistrationSettingsQueryKey,
   getGetSystemEmailQueryKey,
   useGetCurrentSession,
+  useGetRegistrationSettings,
   useGetSystemEmail,
 } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { clearAccountCache } from "@/features/auth/session-cache";
+import { RegistrationSection } from "@/features/registration/section";
 import { SettingsForm } from "@/features/system-email/settings-form";
 import { TestMessageForm } from "@/features/system-email/test-message-form";
 import { AccountNav } from "@/components/account-nav";
@@ -31,11 +34,13 @@ function Settings(): ReactElement {
   const [writeExpired, setWriteExpired] = useState(false);
   const current = useGetCurrentSession();
   const systemEmail = useGetSystemEmail();
-  const expired =
-    writeExpired || [current.error, systemEmail.error].some((err) => err?.status === unauthorized);
+  const registration = useGetRegistrationSettings();
+  const adminReads = [systemEmail, registration];
+  const reads = [current, ...adminReads];
+  const expired = writeExpired || reads.some((read) => read.error?.status === unauthorized);
   // Access can be lost after the page loaded, so a 403 hides the forms even
   // with settings already read.
-  const denied = !expired && systemEmail.error?.status === forbidden;
+  const denied = !expired && adminReads.some((read) => read.error?.status === forbidden);
   const account = current.data?.data;
   const settings = systemEmail.data?.data.settings;
 
@@ -53,14 +58,13 @@ function Settings(): ReactElement {
     if (err.status === unauthorized) setWriteExpired(true);
     if (err.status !== forbidden) return;
     void client.invalidateQueries({ queryKey: getGetSystemEmailQueryKey() });
+    void client.invalidateQueries({ queryKey: getGetRegistrationSettingsQueryKey() });
     void client.invalidateQueries({ queryKey: getGetCurrentSessionQueryKey() });
   }
 
   // A failed read without data hides the forms; a failed refetch keeps them.
   const readError =
-    expired || denied
-      ? null
-      : (!current.data && current.error) || (!systemEmail.data && systemEmail.error) || null;
+    expired || denied ? null : (reads.find((read) => !read.data && read.error)?.error ?? null);
 
   return (
     <>
@@ -70,7 +74,7 @@ function Settings(): ReactElement {
           Settings
         </h1>
 
-        {(current.isPending || systemEmail.isPending) && !readError && !denied && (
+        {reads.some((read) => read.isPending) && !readError && !denied && (
           <output>Loading settings...</output>
         )}
         {expired && <output>Opening sign-in...</output>}
@@ -104,10 +108,9 @@ function Settings(): ReactElement {
               type="button"
               variant="outline"
               className="min-h-11 w-fit border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-              disabled={current.isFetching || systemEmail.isFetching}
+              disabled={reads.some((read) => read.isFetching)}
               onClick={() => {
-                void current.refetch();
-                void systemEmail.refetch();
+                for (const read of reads) void read.refetch();
               }}
             >
               Try again
@@ -153,6 +156,17 @@ function Settings(): ReactElement {
                 onAccessError={handleAccessError}
               />
             </section>
+
+            {/* A failed registration read must not hide system email, which
+                opening registration needs. */}
+            {registration.data && (
+              <RegistrationSection
+                settings={registration.data.data}
+                checkedAt={registration.dataUpdatedAt}
+                emailTestedAt={settings?.testedAt ?? undefined}
+                onAccessError={handleAccessError}
+              />
+            )}
           </>
         )}
       </main>
