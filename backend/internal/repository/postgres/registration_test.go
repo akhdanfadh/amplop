@@ -2,7 +2,12 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"net/netip"
+	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -143,4 +148,295 @@ func TestRegistrationChecks(t *testing.T) {
 	_, err = conn.Exec(t.Context(), "INSERT INTO registration (id) VALUES (false)")
 	require.ErrorAs(t, err, &pgErr, "only the true key is allowed")
 	assert.Equal(t, checkViolation, pgErr.Code)
+}
+
+var requestNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+
+// openRegistration opens registration with tested system email.
+func openRegistration(t *testing.T, conn *pgx.Conn) {
+	t.Helper()
+
+	saveSystemEmail(t, conn, tested)
+	_, err := conn.Exec(t.Context(), "UPDATE registration SET open = true")
+	require.NoError(t, err)
+}
+
+// requestRegistration calls RequestRegistration for email with since one
+// day before requestNow, returns what create saw, and saves change.
+func requestRegistration(t *testing.T, db *DB, email string, change registration.RequestChange) registration.RequestState {
+	t.Helper()
+
+	var seen registration.RequestState
+	require.NoError(t, db.RequestRegistration(t.Context(), email, requestNow.Add(-24*time.Hour), func(state registration.RequestState) (registration.RequestChange, error) {
+		seen = state
+		return change, nil
+	}))
+	return seen
+}
+
+// registrationLinkHashes lists the saved registration links' emails by hash.
+func registrationLinkHashes(t *testing.T, conn *pgx.Conn) map[string]string {
+	t.Helper()
+
+	rows, err := conn.Query(t.Context(), "SELECT encode(token_hash, 'hex'), email FROM registration_links")
+	require.NoError(t, err)
+	links := map[string]string{}
+	for rows.Next() {
+		var hash, email string
+		require.NoError(t, rows.Scan(&hash, &email))
+		links[hash] = email
+	}
+	require.NoError(t, rows.Err())
+	return links
+}
+
+func TestRegistrationRequestStorage(t *testing.T) {
+	db, conn := setupStorage(t)
+	openRegistration(t, conn)
+	verificationUser(t, conn, "member@example.org")
+	first := registration.Attempt{Email: "visitor@example.org", ClientAddr: "192.0.2.1", Outcome: registration.OutcomeLink, CreatedAt: requestNow}
+	link := registration.Link{TokenHash: sha256.Sum256([]byte("secret")), Email: "visitor@example.org", CreatedAt: requestNow, ExpiresAt: requestNow.Add(24 * time.Hour)}
+
+	// A new email sees no account and no attempts, and saves its link.
+	seen := requestRegistration(t, db, "visitor@example.org", registration.RequestChange{Attempt: first, Link: &link, ExpiredBy: requestNow})
+	assert.Equal(t, registration.RequestState{Registration: registration.Record{State: registration.StateOpen, SystemEmailTested: true}}, seen)
+
+	// An email with an account says so, and sees the earlier attempt.
+	notice := registration.Attempt{Email: "member@example.org", ClientAddr: "2001:db8::1", Outcome: registration.OutcomeNotice, CreatedAt: requestNow}
+	seen = requestRegistration(t, db, "member@example.org", registration.RequestChange{Attempt: notice, ExpiredBy: requestNow})
+	assert.True(t, seen.AccountExists)
+	assert.Equal(t, []registration.Attempt{first}, seen.Attempts)
+
+	seen = requestRegistration(t, db, "visitor@example.org", registration.RequestChange{Attempt: first, ExpiredBy: requestNow})
+	assert.False(t, seen.AccountExists)
+	assert.ElementsMatch(t, []registration.Attempt{first, notice}, seen.Attempts)
+	assert.Equal(t, map[string]string{hex.EncodeToString(link.TokenHash[:]): "visitor@example.org"}, registrationLinkHashes(t, conn))
+}
+
+// A request deletes expired links of both kinds, and attempts older than
+// since; a refused one deletes nothing.
+func TestRegistrationRequestCleanup(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		refused error
+	}{
+		{"accepted", nil},
+		{"refused", registration.ErrThrottled},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			db, conn := setupStorage(t)
+			user := verificationUser(t, conn, "member@example.org")
+			for _, row := range []struct {
+				sql  string
+				args []any
+			}{
+				{"INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ('\\x01', 'a@example.org', $1, $2)", []any{requestNow.Add(-24 * time.Hour), requestNow}},
+				{"INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ('\\x02', 'a@example.org', $1, $1)", []any{requestNow.Add(time.Second)}},
+				{"INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at) VALUES ('\\x03', $1, 'member@example.org', $2, $2)", []any{user, requestNow}},
+				{"INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at) VALUES ('\\x04', $1, 'member@example.org', $2, $2)", []any{user, requestNow.Add(time.Second)}},
+				{"INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)", []any{requestNow.Add(-24 * time.Hour)}},
+				{"INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)", []any{requestNow.Add(-24*time.Hour + time.Second)}},
+			} {
+				_, err := conn.Exec(t.Context(), row.sql, row.args...)
+				require.NoError(t, err)
+			}
+			attempt := registration.Attempt{Email: "b@example.org", ClientAddr: "192.0.2.2", Outcome: registration.OutcomeSkipped, CreatedAt: requestNow}
+
+			var seen []registration.Attempt
+			err := db.RequestRegistration(t.Context(), "b@example.org", requestNow.Add(-24*time.Hour), func(state registration.RequestState) (registration.RequestChange, error) {
+				seen = state.Attempts
+				return registration.RequestChange{Attempt: attempt, ExpiredBy: requestNow}, c.refused
+			})
+			require.ErrorIs(t, err, c.refused)
+
+			assert.Len(t, seen, 1, "attempts at or before since are not read")
+			var links, verifications, attempts int
+			require.NoError(t, conn.QueryRow(t.Context(), `SELECT
+				(SELECT count(*) FROM registration_links),
+				(SELECT count(*) FROM email_verification_links),
+				(SELECT count(*) FROM registration_attempts)`).Scan(&links, &verifications, &attempts))
+			want := []int{1, 1, 2} // expired rows go; the new attempt is recorded
+			if c.refused != nil {
+				want = []int{2, 2, 2} // a refused request changes nothing
+			}
+			assert.Equal(t, want, []int{links, verifications, attempts})
+		})
+	}
+}
+
+// Requests take turns: the second sees the first's attempt, so the instance
+// limit counts every request.
+func TestRegistrationRequestSerializes(t *testing.T) {
+	db, _ := setupStorage(t)
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+	ready, release := make(chan struct{}), make(chan struct{})
+	releaseFirst := sync.OnceFunc(func() { close(release) })
+	defer releaseFirst()
+	firstDone, secondDone := make(chan error, 1), make(chan error, 1)
+	first := registration.Attempt{Email: "a@example.org", ClientAddr: "192.0.2.1", Outcome: registration.OutcomeLink, CreatedAt: requestNow}
+	var seen []registration.Attempt
+
+	go func() {
+		firstDone <- db.RequestRegistration(ctx, "a@example.org", requestNow.Add(-24*time.Hour), func(registration.RequestState) (registration.RequestChange, error) {
+			close(ready)
+			select {
+			case <-release:
+				return registration.RequestChange{Attempt: first, ExpiredBy: requestNow}, nil
+			case <-ctx.Done():
+				return registration.RequestChange{}, ctx.Err()
+			}
+		})
+	}()
+	select {
+	case <-ready:
+	case <-ctx.Done():
+		require.FailNow(t, "first request did not reach its callback")
+	}
+	go func() {
+		secondDone <- db.RequestRegistration(ctx, "b@example.org", requestNow.Add(-24*time.Hour), func(state registration.RequestState) (registration.RequestChange, error) {
+			seen = state.Attempts
+			return registration.RequestChange{Attempt: first, ExpiredBy: requestNow}, nil
+		})
+	}()
+	const waiting = `SELECT EXISTS (
+		SELECT 1 FROM pg_locks
+		WHERE locktype = 'advisory' AND NOT granted
+		  AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+	)`
+	require.Eventually(t, func() bool {
+		var blocked bool
+		err := db.pool.QueryRow(ctx, waiting).Scan(&blocked)
+		return err == nil && blocked
+	}, setupTestTimeout, 10*time.Millisecond, "second request did not wait for the first")
+	releaseFirst()
+
+	require.NoError(t, <-firstDone)
+	require.NoError(t, <-secondDone)
+	assert.Equal(t, []registration.Attempt{first}, seen)
+}
+
+func TestRegistrationLinkChecks(t *testing.T) {
+	conn := migrated(t)
+	for _, c := range []struct{ name, sql string }{
+		{"uppercase link email", "INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ('\\x01', 'A@example.org', now(), now())"},
+		{"uppercase attempt email", "INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('A@example.org', '192.0.2.1', 'link', now())"},
+		{"unknown outcome", "INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'sent', now())"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := conn.Exec(t.Context(), c.sql)
+
+			var pgErr *pgconn.PgError
+			require.ErrorAs(t, err, &pgErr)
+			assert.Equal(t, checkViolation, pgErr.Code)
+		})
+	}
+}
+
+// The service against PostgreSQL: an email gets three messages in an hour,
+// links and notices alike, and later requests for it send nothing but are
+// still answered and recorded.
+func TestRegistrationRequests(t *testing.T) {
+	db, conn := setupStorage(t)
+	openRegistration(t, conn)
+	verificationUser(t, conn, "member@example.org")
+	mailer := &verificationMailer{}
+	requests := registration.NewRequests(db, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, func() time.Time { return requestNow })
+	client := netip.MustParseAddr("192.0.2.1")
+
+	for range 4 {
+		require.NoError(t, requests.Send(t.Context(), "visitor@example.org", client))
+		require.NoError(t, requests.Send(t.Context(), "member@example.org", client))
+	}
+
+	assert.Len(t, mailer.bodies, 6)
+	assert.Len(t, registrationLinkHashes(t, conn), 3)
+	rows, err := conn.Query(t.Context(), "SELECT outcome FROM registration_attempts ORDER BY id")
+	require.NoError(t, err)
+	outcomes, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	assert.Equal(t, []string{"link", "notice", "link", "notice", "link", "notice", "skipped", "skipped"}, outcomes)
+}
+
+// Closing deletes every attempt and link, so their emails and client
+// addresses are not kept while registration stays closed. Opening keeps them.
+func TestRegistrationCloseDeletesRequests(t *testing.T) {
+	for _, c := range []struct {
+		state registration.State
+		rows  int
+	}{
+		{registration.StateClosed, 0},
+		{registration.StateOpen, 1},
+	} {
+		t.Run(string(c.state), func(t *testing.T) {
+			db, conn := setupStorage(t)
+			admin := systemEmailAdmin(t, conn)
+			_, err := conn.Exec(t.Context(), `INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ('\x01', 'a@example.org', $1, $2)`,
+				requestNow, requestNow.Add(24*time.Hour))
+			require.NoError(t, err)
+			_, err = conn.Exec(t.Context(), `INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)`, requestNow)
+			require.NoError(t, err)
+
+			err = db.UpdateRegistration(t.Context(), admin, func(registration.Record) (registration.State, error) { return c.state, nil })
+			require.NoError(t, err)
+
+			var links, attempts int
+			require.NoError(t, conn.QueryRow(t.Context(), "SELECT (SELECT count(*) FROM registration_links), (SELECT count(*) FROM registration_attempts)").Scan(&links, &attempts))
+			assert.Equal(t, []int{c.rows, c.rows}, []int{links, attempts})
+		})
+	}
+}
+
+// A close waits for a request in progress, then deletes what it saved, so no
+// link outlives the close.
+func TestRegistrationCloseWaitsForRequest(t *testing.T) {
+	db, conn := setupStorage(t)
+	admin := systemEmailAdmin(t, conn)
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+	ready, release := make(chan struct{}), make(chan struct{})
+	releaseRequest := sync.OnceFunc(func() { close(release) })
+	defer releaseRequest()
+	requested, closed := make(chan error, 1), make(chan error, 1)
+	link := registration.Link{TokenHash: sha256.Sum256([]byte("secret")), Email: "a@example.org", CreatedAt: requestNow, ExpiresAt: requestNow.Add(24 * time.Hour)}
+	attempt := registration.Attempt{Email: "a@example.org", ClientAddr: "192.0.2.1", Outcome: registration.OutcomeLink, CreatedAt: requestNow}
+
+	// Given a request holding the lock, about to save its link.
+	go func() {
+		requested <- db.RequestRegistration(ctx, "a@example.org", requestNow.Add(-24*time.Hour), func(registration.RequestState) (registration.RequestChange, error) {
+			close(ready)
+			select {
+			case <-release:
+				return registration.RequestChange{Attempt: attempt, Link: &link, ExpiredBy: requestNow}, nil
+			case <-ctx.Done():
+				return registration.RequestChange{}, ctx.Err()
+			}
+		})
+	}()
+	select {
+	case <-ready:
+	case <-ctx.Done():
+		require.FailNow(t, "the request did not reach its callback")
+	}
+
+	// When an administrator closes registration meanwhile.
+	go func() {
+		closed <- db.UpdateRegistration(ctx, admin, func(registration.Record) (registration.State, error) { return registration.StateClosed, nil })
+	}()
+	const waiting = `SELECT EXISTS (
+		SELECT 1 FROM pg_locks
+		WHERE locktype = 'advisory' AND NOT granted
+		  AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+	)`
+	require.Eventually(t, func() bool {
+		var blocked bool
+		err := db.pool.QueryRow(ctx, waiting).Scan(&blocked)
+		return err == nil && blocked
+	}, setupTestTimeout, 10*time.Millisecond, "the close did not wait for the request")
+	releaseRequest()
+
+	// Then the close deletes what the request saved.
+	require.NoError(t, <-requested)
+	require.NoError(t, <-closed)
+	assert.Empty(t, registrationLinkHashes(t, conn))
 }

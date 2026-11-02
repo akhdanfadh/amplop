@@ -20,6 +20,17 @@ func (q *Queries) HasAdminUser(ctx context.Context) (bool, error) {
 	return exists, err
 }
 
+const hasUserEmail = `-- name: HasUserEmail :one
+SELECT EXISTS (SELECT 1 FROM users WHERE email = $1)
+`
+
+func (q *Queries) HasUserEmail(ctx context.Context, email string) (bool, error) {
+	row := q.db.QueryRow(ctx, hasUserEmail, email)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const insertAdminUser = `-- name: InsertAdminUser :one
 INSERT INTO users (email, password_hash, role)
 VALUES ($1, $2, 'admin')

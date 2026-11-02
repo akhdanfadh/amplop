@@ -53,8 +53,9 @@ type Storage interface {
 
 	// UpdateRegistration locks the state, loads it, calls update, saves the
 	// state update returns, and records that actorID opened or closed
-	// registration, all in one transaction. An error from update rolls back
-	// and is returned unchanged.
+	// registration, all in one transaction. Closing also deletes every
+	// registration attempt and link. An error from update rolls back and is
+	// returned unchanged.
 	UpdateRegistration(ctx context.Context, actorID int64, update func(Record) (State, error)) error
 }
 
@@ -82,6 +83,11 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 // returns the settings. Every successful save is audited, even one that
 // changes nothing. Opening returns [ErrSystemEmailNotTested] while the system
 // email settings in use have not passed a test; closing always succeeds.
+//
+// NOTE: Closing deletes every registration attempt and link, so no email or
+// client address is kept while registration stays closed. The cost: a link
+// sent before a close stops working, even after registration reopens, and
+// reopening starts the limits from zero. ADR028 records this.
 func (s *Service) Save(ctx context.Context, actorID int64, state State) (Settings, error) {
 	if state != StateOpen && state != StateClosed {
 		return Settings{}, errState

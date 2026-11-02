@@ -23,3 +23,6 @@ WHERE id = @id;
 -- and see a deactivation that committed while the password was checked.
 SELECT password_hash, (deactivated_at IS NOT NULL)::boolean AS deactivated
 FROM users WHERE id = @user_id FOR UPDATE;
+
+-- name: HasUserEmail :one
+SELECT EXISTS (SELECT 1 FROM users WHERE email = @email);

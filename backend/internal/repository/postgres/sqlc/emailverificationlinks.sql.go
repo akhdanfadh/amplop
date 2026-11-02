@@ -10,6 +10,21 @@ import (
 	"time"
 )
 
+const deleteAllExpiredEmailVerificationLinks = `-- name: DeleteAllExpiredEmailVerificationLinks :exec
+DELETE FROM email_verification_links WHERE token_hash IN (
+    SELECT expired.token_hash FROM email_verification_links expired
+    WHERE expired.expires_at <= $1
+    FOR UPDATE SKIP LOCKED)
+`
+
+// Registration requests clean up every user's expired links. Rows a user's
+// request or redeem holds are left for later instead of waited for, so the
+// two cannot deadlock.
+func (q *Queries) DeleteAllExpiredEmailVerificationLinks(ctx context.Context, expiredBy time.Time) error {
+	_, err := q.db.Exec(ctx, deleteAllExpiredEmailVerificationLinks, expiredBy)
+	return err
+}
+
 const deleteExpiredEmailVerificationLinks = `-- name: DeleteExpiredEmailVerificationLinks :exec
 DELETE FROM email_verification_links WHERE user_id = $1 AND expires_at <= $2
 `
