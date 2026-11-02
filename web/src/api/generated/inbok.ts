@@ -33,7 +33,9 @@ import {
   ResponseListedMembers,
   ResponseListedSessions,
   ResponseProbeEventCreated,
+  ResponseRegisteredMember,
   ResponseRegistrationAvailability,
+  ResponseRegistrationRequestResult,
   ResponseRegistrationSettings,
   ResponseSentEmailVerification,
   ResponseSetupStatus,
@@ -48,7 +50,9 @@ import {
 import type {
   EmailVerificationSecret,
   NewCodeSession,
+  NewMember,
   NewProbeEvent,
+  NewRegistrationRequest,
   NewRegistrationSettings,
   NewSession,
   NewSetup,
@@ -793,6 +797,186 @@ export function useGetRegistration<TData = Awaited<ReturnType<typeof getRegistra
 
 
 
+
+export const getRequestRegistrationLinkUrl = () => {
+
+
+
+
+  return `/api/v0/registration/links`
+}
+
+/**
+ * An email without an account gets a link that expires in 24 hours; an email with an account gets a notice instead. An email that got 3 messages in the last hour or 5 in 24 hours gets nothing. While sending works, the response is the same in every case. One client may ask 10 times in 15 minutes, and everyone together 50 times an hour.
+ * @summary Email a link that creates an account
+ */
+export const requestRegistrationLink = async (newRegistrationRequest: NewRegistrationRequest, options?: Parameters<typeof transport>[1]): Promise<ResponseRegistrationRequestResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseRegistrationRequestResult>(getRequestRegistrationLinkUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newRegistrationRequest),
+    schema: ResponseRegistrationRequestResult
+  }
+);}
+
+
+
+
+
+export const getRequestRegistrationLinkMutationKey = () => ['requestRegistrationLink'] as const;
+
+export const getRequestRegistrationLinkMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestRegistrationLink>>, TError,RequestRegistrationLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestRegistrationLink>>, TError,RequestRegistrationLinkMutationVariables, TContext> => {
+
+const mutationKey = getRequestRegistrationLinkMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestRegistrationLink>>, RequestRegistrationLinkMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestRegistrationLink(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestRegistrationLinkMutationResult = NonNullable<Awaited<ReturnType<typeof requestRegistrationLink>>>
+    export type RequestRegistrationLinkMutationBody = NewRegistrationRequest
+    export type RequestRegistrationLinkMutationError = ErrorType<Problem>
+    export type RequestRegistrationLinkMutationVariables = {data: NewRegistrationRequest}
+
+    /**
+ * @summary Email a link that creates an account
+ */
+export const useRequestRegistrationLink = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestRegistrationLink>>, TError,RequestRegistrationLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof requestRegistrationLink>>,
+        TError,
+        RequestRegistrationLinkMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRequestRegistrationLinkMutationOptions(options), queryClient);
+    }
+
+export const getRedeemRegistrationLinkUrl = () => {
+
+
+
+
+  return `/api/v0/registration/links/redeem`
+}
+
+/**
+ * Creates a member whose email, the one the link was sent to, is verified. Uses up every link sent to that email. Needs no session and signs no one in.
+ * @summary Create a member account with an emailed link
+ */
+export const redeemRegistrationLink = async (newMember: NewMember, options?: Parameters<typeof transport>[1]): Promise<ResponseRegisteredMember> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseRegisteredMember>(getRedeemRegistrationLinkUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newMember),
+    schema: ResponseRegisteredMember
+  }
+);}
+
+
+
+
+
+export const getRedeemRegistrationLinkMutationKey = () => ['redeemRegistrationLink'] as const;
+
+export const getRedeemRegistrationLinkMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemRegistrationLink>>, TError,RedeemRegistrationLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof redeemRegistrationLink>>, TError,RedeemRegistrationLinkMutationVariables, TContext> => {
+
+const mutationKey = getRedeemRegistrationLinkMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof redeemRegistrationLink>>, RedeemRegistrationLinkMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  redeemRegistrationLink(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RedeemRegistrationLinkMutationResult = NonNullable<Awaited<ReturnType<typeof redeemRegistrationLink>>>
+    export type RedeemRegistrationLinkMutationBody = NewMember
+    export type RedeemRegistrationLinkMutationError = ErrorType<Problem>
+    export type RedeemRegistrationLinkMutationVariables = {data: NewMember}
+
+    /**
+ * @summary Create a member account with an emailed link
+ */
+export const useRedeemRegistrationLink = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemRegistrationLink>>, TError,RedeemRegistrationLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof redeemRegistrationLink>>,
+        TError,
+        RedeemRegistrationLinkMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRedeemRegistrationLinkMutationOptions(options), queryClient);
+    }
 
 export const getGetRegistrationSettingsUrl = () => {
 

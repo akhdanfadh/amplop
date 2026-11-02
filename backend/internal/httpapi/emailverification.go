@@ -103,9 +103,15 @@ func emailVerificationRequestProblem(err error) error {
 	}
 	// The server's reason stays in the log; it can name the username.
 	if _, ok := errors.AsType[*systememail.SendError](err); ok {
-		return newProblem(http.StatusBadGateway, emailNotSentType, "Email not sent", "The email could not be sent. Try again later.")
+		return emailNotSentProblem()
 	}
 	return err
+}
+
+// emailNotSentProblem returns the 502 problem for a system email that failed
+// to send.
+func emailNotSentProblem() *problem {
+	return newProblem(http.StatusBadGateway, emailNotSentType, "Email not sent", "The email could not be sent. Try again later.")
 }
 
 // ========================

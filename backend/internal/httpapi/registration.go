@@ -3,18 +3,25 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/netip"
 	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/registration"
 	"inbok/internal/session"
+	"inbok/internal/systememail"
 )
 
 const (
 	registrationPath         = "/registration"
 	registrationSettingsPath = registrationPath + "/settings"
+	registrationLinksPath    = registrationPath + "/links"
+	registrationRedeemPath   = registrationLinksPath + "/redeem"
 )
 
 type registrationService interface {
@@ -22,16 +29,28 @@ type registrationService interface {
 	Save(ctx context.Context, actorID int64, state registration.State) (registration.Settings, error)
 }
 
-type registrationHandler struct {
-	service registrationService
+type registrationRequestService interface {
+	Send(ctx context.Context, email string, client netip.Addr) error
 }
 
-func registerRegistration(api huma.API, service registrationService) {
-	handler := registrationHandler{service: service}
+type registrationCompletionService interface {
+	Complete(ctx context.Context, secret, password string) (account.User, error)
+}
+
+type registrationHandler struct {
+	service    registrationService
+	requests   registrationRequestService
+	completion registrationCompletionService
+}
+
+func registerRegistration(api huma.API, service registrationService, requests registrationRequestService, completion registrationCompletionService) {
+	handler := registrationHandler{service: service, requests: requests, completion: completion}
 
 	registerGetRegistration(api, handler)
 	registerRegistrationSettings(api, handler)
 	registerRegistrationSave(api, handler)
+	registerRegistrationRequest(api, handler)
+	registerRegistrationComplete(api, handler)
 }
 
 // ========================
@@ -151,6 +170,186 @@ func registrationSaveProblem(err error) error {
 	if errors.Is(err, registration.ErrSystemEmailNotTested) {
 		return newProblem(http.StatusConflict, systemEmailNotTestedType, "System email not tested",
 			"Save the system email settings and send a test message that passes before opening registration.")
+	}
+	return err
+}
+
+// ========================
+// Registration link request
+// ========================
+
+const (
+	registrationClosedType    = problemPrefix + "registration-closed"
+	registrationThrottledType = problemPrefix + "registration-throttled"
+)
+
+// registrationRequestStatus is the one answer every accepted request gets.
+type registrationRequestStatus string
+
+const registrationRequested registrationRequestStatus = "requested"
+
+// newRegistrationRequest is the request body.
+type newRegistrationRequest struct {
+	Email string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
+}
+
+// registrationRequestInput combines the email with the resolved client
+// address.
+type registrationRequestInput struct {
+	Body newRegistrationRequest
+	addr netip.Addr
+}
+
+// Resolve fills the client address for throttling using Gin's proxy rules.
+// Huma calls it automatically after parsing the request, before the handler.
+func (in *registrationRequestInput) Resolve(ctx huma.Context) []error {
+	return resolveClientAddr(ctx, &in.addr)
+}
+
+type registrationRequestResult struct {
+	Status registrationRequestStatus `json:"status" enum:"requested" doc:"The same for every accepted request, so it does not tell whether the email has an account."`
+}
+
+func registerRegistrationRequest(api huma.API, handler registrationHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "requestRegistrationLink",
+		Method:      http.MethodPost,
+		Path:        registrationLinksPath,
+		Summary:     "Email a link that creates an account",
+		Description: "An email without an account gets a link that expires in 24 hours; an email with an account gets a notice instead. " +
+			"An email that got 3 messages in the last hour or 5 in 24 hours gets nothing. While sending works, the response is the same in every case. " +
+			"One client may ask 10 times in 15 minutes, and everyone together 50 times an hour.",
+		Metadata:    map[string]any{accessKey: session.AccessPublic},
+		Middlewares: huma.Middlewares{withNoStore},
+		Responses:   registrationRequestResponses(api),
+	}, handler.handleRequestRegistrationLink)
+}
+
+func (h registrationHandler) handleRequestRegistrationLink(ctx context.Context, in *registrationRequestInput) (*output[registrationRequestResult], error) {
+	if err := h.requests.Send(ctx, in.Body.Email, in.addr); err != nil {
+		return nil, registrationRequestProblem(err)
+	}
+	return respondData(registrationRequestResult{Status: registrationRequested}), nil
+}
+
+func registrationRequestResponses(api huma.API) map[string]*huma.Response {
+	responses := problemResponses(api, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests, http.StatusBadGateway)
+
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "Registration is closed, or paused until the system email settings pass a test."
+	conflict.Content[problemContentType].Example = registrationRequestProblem(registration.ErrClosed)
+
+	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
+	invalid.Description = "The email is not valid."
+	invalid.Content[problemContentType].Example = registrationRequestProblem(emailaddress.ErrInvalid)
+
+	throttled := responses[strconv.Itoa(http.StatusTooManyRequests)]
+	throttled.Description = "This client, or everyone together, asked for too many registration emails recently."
+	throttled.Content[problemContentType].Example = registrationRequestProblem(registration.ErrThrottled)
+
+	badGateway := responses[strconv.Itoa(http.StatusBadGateway)]
+	badGateway.Description = "Sending failed or timed out. A link was saved and counts toward the limits; after a timeout the message may still arrive."
+	badGateway.Content[problemContentType].Example = registrationRequestProblem(&systememail.SendError{})
+	return responses
+}
+
+func registrationRequestProblem(err error) error {
+	switch {
+	case errors.Is(err, emailaddress.ErrInvalid):
+		return invalidEmailProblem("body.email")
+	case errors.Is(err, registration.ErrClosed):
+		return newProblem(http.StatusConflict, registrationClosedType, "Registration not open", "Registration is not open right now.")
+	case errors.Is(err, registration.ErrThrottled):
+		return retryAfterProblem(newProblem(http.StatusTooManyRequests, registrationThrottledType, "Too many registration requests", "Too many registration requests were made recently."), err)
+	}
+	// The server's reason stays in the log; it can name the username.
+	if _, ok := errors.AsType[*systememail.SendError](err); ok {
+		return emailNotSentProblem()
+	}
+	return err
+}
+
+// ========================
+// Registration completion
+// ========================
+
+const (
+	registrationLinkInvalidType   = problemPrefix + "registration-link-invalid"
+	registrationAccountExistsType = problemPrefix + "registration-account-exists"
+)
+
+// newMember is the completion request body.
+type newMember struct {
+	Secret   string `json:"secret" writeOnly:"true" doc:"The text after # in the emailed link."`
+	Password string `json:"password" writeOnly:"true" minLength:"15" maxLength:"128"`
+}
+
+type registeredMember struct {
+	ID    int64  `json:"id"`
+	Email string `json:"email" doc:"The email the link was sent to, for signing in."`
+}
+
+func registerRegistrationComplete(api huma.API, handler registrationHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "redeemRegistrationLink",
+		Method:      http.MethodPost,
+		Path:        registrationRedeemPath,
+		Summary:     "Create a member account with an emailed link",
+		Description: "Creates a member whose email, the one the link was sent to, is verified. " +
+			"Uses up every link sent to that email. Needs no session and signs no one in.",
+		Metadata:      map[string]any{accessKey: session.AccessPublic},
+		Middlewares:   huma.Middlewares{withNoStore},
+		DefaultStatus: http.StatusCreated,
+		Responses:     registrationCompleteResponses(api),
+	}, handler.handleRedeemRegistrationLink)
+}
+
+func (h registrationHandler) handleRedeemRegistrationLink(ctx context.Context, in *struct{ Body newMember }) (*output[registeredMember], error) {
+	user, err := h.completion.Complete(ctx, in.Body.Secret, in.Body.Password)
+	if err != nil {
+		return nil, registrationCompleteProblem(err)
+	}
+	return respondData(registeredMember{ID: user.ID, Email: user.Email}), nil
+}
+
+func registrationCompleteResponses(api huma.API) map[string]*huma.Response {
+	responses := problemResponses(api, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity)
+
+	notFound := responses[strconv.Itoa(http.StatusNotFound)]
+	notFound.Description = "The link is unknown, used, or expired."
+	notFound.Content[problemContentType].Example = registrationCompleteProblem(registration.ErrLinkInvalid)
+
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "Registration is closed or paused, or the email already has an account."
+	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
+		"closed":        {Value: registrationCompleteProblem(registration.ErrClosed)},
+		"accountExists": {Value: registrationCompleteProblem(registration.ErrAccountExists)},
+	}
+
+	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
+	invalid.Description = "The request inputs are invalid."
+	invalid.Content[problemContentType].Example = registrationCompleteProblem(account.ErrPasswordInvalid)
+	return responses
+}
+
+func registrationCompleteProblem(err error) error {
+	switch {
+	// Huma's length check refuses almost every such password first; the
+	// service's rule decides the rest.
+	case errors.Is(err, account.ErrPasswordInvalid):
+		invalid := requestProblem(http.StatusUnprocessableEntity)
+		message := fmt.Sprintf("Use %d to %d characters.", account.PasswordMinLength, account.PasswordMaxLength)
+		invalid.Errors = []inputError{{Location: "body.password", Message: message}}
+		return invalid
+	case errors.Is(err, registration.ErrLinkInvalid):
+		return newProblem(http.StatusNotFound, registrationLinkInvalidType, "Link not valid", "This link has expired, was already used, or is not valid. Ask for a new one.")
+	case errors.Is(err, registration.ErrClosed):
+		// Pausing keeps links, so this one may work again; closing deletes
+		// them, so a new one is needed.
+		return newProblem(http.StatusConflict, registrationClosedType, "Registration not open",
+			"Registration is not open right now. Try this link again later; if it no longer works, ask for a new one.")
+	case errors.Is(err, registration.ErrAccountExists):
+		return newProblem(http.StatusConflict, registrationAccountExistsType, "Account exists", "This email already has an account. Sign in instead.")
 	}
 	return err
 }

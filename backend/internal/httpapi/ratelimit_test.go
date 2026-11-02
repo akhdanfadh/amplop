@@ -147,6 +147,7 @@ func TestRateLimitedOperations(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{
 		"createProbeEvent", "createFirstAdmin", "createSession", "createSessionWithCode", "redeemEmailVerification",
+		"requestRegistrationLink", "redeemRegistrationLink",
 	}, limited)
 
 	// Sign-in keeps its own throttle example.
