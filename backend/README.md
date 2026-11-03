@@ -299,7 +299,10 @@ deadline error from a handler produces a safe 500 Problem Details response and
 logs `context deadline exceeded`.
 
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and gives
-in-flight requests up to 5 seconds to finish.
+in-flight requests up to 5 seconds to finish. What is left of those 5 seconds
+goes to password reset emails still being sent, which their requests did not
+wait for (see [Password reset](#password-reset)); any still sending then are
+lost, and a warning says so.
 
 ## Configuration
 
@@ -1057,6 +1060,15 @@ email, or a deactivated user, is the same `passwordreset.ErrLinkInvalid`.
 On success it returns the user, so the caller can name the email to sign in
 with, and creates no session.
 
+Once the reset commits, `Complete` starts background work that emails the
+user that their password changed, naming the time, and returns without
+waiting for it. `passwordreset.Background` runs that work in a goroutine: it
+keeps the request's context values, so its logs carry the `request_id`, but
+not its cancellation, and has 30 seconds of its own. A failed send is only
+logged, by the mailer as for any system email, and does not undo the reset.
+A panic is logged with its stack, not its value, instead of stopping the
+server.
+
 To list password resets:
 
 ```sql
@@ -1214,7 +1226,7 @@ httpapi --> emailverification <-- repository/postgres
 httpapi --> registration <-- repository/postgres
             registration --> systememail, account
             passwordreset <-- repository/postgres
-            passwordreset --> account
+            passwordreset --> systememail, account
 ```
 
 - `probe`, like every feature package, holds the feature's types, its

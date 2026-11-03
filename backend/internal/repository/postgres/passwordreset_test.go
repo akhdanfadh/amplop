@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"math/rand/v2"
+	"net/url"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"inbok/internal/passwordhash"
 	"inbok/internal/passwordreset"
 	"inbok/internal/randomsecret"
+	"inbok/internal/systememail"
 )
 
 const resetPassword = "a new reset password"
@@ -74,6 +76,44 @@ func saveResetLink(t *testing.T, conn *pgx.Conn, userID int64, email string) (st
 	return secret, hash
 }
 
+// resetMailer records the messages password reset sends.
+type resetMailer struct {
+	mu   sync.Mutex
+	sent []systememail.Outgoing
+}
+
+// Send records outgoing and returns revision 1.
+func (m *resetMailer) Send(_ context.Context, outgoing systememail.Outgoing) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sent = append(m.sent, outgoing)
+	return 1, nil
+}
+
+// resetPublicURL is the public URL reset links start with.
+var resetPublicURL = &url.URL{Scheme: "https", Host: "mail.example.com"}
+
+// resetBackground returns a Background, and fails the test unless its work
+// finishes soon after the test ends.
+func resetBackground(t *testing.T) *passwordreset.Background {
+	t.Helper()
+	background := passwordreset.NewBackground(discard)
+	t.Cleanup(func() {
+		// t.Context() has ended by now.
+		ctx, cancel := context.WithTimeout(context.Background(), setupTestTimeout)
+		defer cancel()
+		assert.NoError(t, background.Wait(ctx), "background work still running after the test")
+	})
+	return background
+}
+
+// resetCompletion returns a Completion over db with the clock now, whose
+// notices go nowhere.
+func resetCompletion(t *testing.T, db *DB, now func() time.Time) *passwordreset.Completion {
+	t.Helper()
+	return passwordreset.NewCompletion(db, &resetMailer{}, resetPublicURL, resetBackground(t), now)
+}
+
 // resetSignInAttempts counts the sign-in attempts saved for email.
 func resetSignInAttempts(t *testing.T, conn *pgx.Conn, email string) int {
 	t.Helper()
@@ -90,7 +130,7 @@ func TestPasswordResetComplete(t *testing.T) {
 	second, _ := saveResetLink(t, f.conn, f.member, "member@example.com")
 	saveResetLink(t, f.conn, f.bystander, "bystander@example.com")
 	bystander := memberSnapshot(t, f.conn, f.bystander)
-	completion := passwordreset.NewCompletion(f.db, func() time.Time { return resetNow })
+	completion := resetCompletion(t, f.db, func() time.Time { return resetNow })
 
 	// When the member follows one link.
 	user, err := completion.Complete(t.Context(), first, resetPassword)
@@ -287,7 +327,7 @@ func TestPasswordResetWaitsForDeactivation(t *testing.T) {
 	// When a completion waits for the lock, and the deactivation commits.
 	resetDone := make(chan error, 1)
 	go func() {
-		_, err := passwordreset.NewCompletion(f.db, func() time.Time { return resetNow }).Complete(ctx, secret, resetPassword)
+		_, err := resetCompletion(t, f.db, func() time.Time { return resetNow }).Complete(ctx, secret, resetPassword)
 		resetDone <- err
 	}()
 	waitForLock(t, ctx, f.db, "the completion did not wait for the deactivation")
@@ -341,7 +381,7 @@ func TestDeactivationWaitsForPasswordReset(t *testing.T) {
 func TestPasswordResetDeactivationRace(t *testing.T) {
 	const rounds = 15
 	f := newDeactivatedAccounts(t, false)
-	completion := passwordreset.NewCompletion(f.db, time.Now)
+	completion := resetCompletion(t, f.db, time.Now)
 	outcomes := map[bool]int{} // whether the completion was refused
 	// A completion spends most of its time hashing the password. Every
 	// other round deactivates at once, which commits before the completion

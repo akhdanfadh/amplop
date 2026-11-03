@@ -3,9 +3,12 @@
 package passwordreset
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"time"
+
+	"inbok/internal/systememail"
 )
 
 const linkLifetime = time.Hour
@@ -21,4 +24,10 @@ type Link struct {
 	Email     string // the user's email when the link was sent
 	CreatedAt time.Time
 	ExpiresAt time.Time
+}
+
+// mailer sends one message with the system email settings; a
+// [systememail.Mailer] does.
+type mailer interface {
+	Send(ctx context.Context, outgoing systememail.Outgoing) (int64, error)
 }

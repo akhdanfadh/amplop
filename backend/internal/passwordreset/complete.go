@@ -3,11 +3,18 @@ package passwordreset
 import (
 	"context"
 	"crypto/sha256"
+	"net/url"
 	"time"
 
 	"inbok/internal/account"
 	"inbok/internal/passwordhash"
 	"inbok/internal/randomsecret"
+	"inbok/internal/systememail"
+)
+
+const (
+	noticePurpose = "password changed notice"
+	noticeSubject = "Your inbok password was changed"
 )
 
 // CompleteState is what [completeStorage] reads for one reset link.
@@ -41,18 +48,26 @@ type completeStorage interface {
 
 // Completion replaces passwords through reset links.
 type Completion struct {
-	storage completeStorage
-	now     func() time.Time
+	storage    completeStorage
+	mailer     mailer
+	publicURL  *url.URL
+	background *Background
+	now        func() time.Time
 }
 
-// NewCompletion returns a Completion given storage and a clock.
-func NewCompletion(storage completeStorage, now func() time.Time) *Completion {
-	return &Completion{storage: storage, now: now}
+// NewCompletion returns a Completion given storage, the
+// [systememail.Mailer] that sends the notice of a changed password, the
+// public URL the notice names, the [Background] that sends it after the
+// answer, and a clock.
+func NewCompletion(storage completeStorage, mailer mailer, publicURL *url.URL, background *Background, now func() time.Time) *Completion {
+	return &Completion{storage: storage, mailer: mailer, publicURL: publicURL, background: background, now: now}
 }
 
 // Complete sets password as the password of the user the reset link with
 // secret was sent to, signs that user out everywhere, and returns the user.
-// It signs no one in. It returns [account.ErrPasswordInvalid] for a password
+// It signs no one in. Once the reset commits, it starts background work,
+// which it does not wait for, that emails the user that their password
+// changed; a failed send is only logged. It returns [account.ErrPasswordInvalid] for a password
 // outside the length rule, [ErrLinkInvalid] for a link that is malformed,
 // unknown, used, expired, sent to an email the user no longer has, or owned
 // by a deactivated user, and the context's error if it ends while waiting
@@ -88,14 +103,38 @@ func (c *Completion) Complete(ctx context.Context, secret, password string) (acc
 	if err != nil {
 		return account.User{}, err
 	}
-	return c.storage.CompletePasswordReset(ctx, hash, func(state CompleteState) (CompleteChange, error) {
+	var changedAt time.Time
+	user, err := c.storage.CompletePasswordReset(ctx, hash, func(state CompleteState) (CompleteChange, error) {
 		// 4. Check again under the lock: another completion or a
 		// deactivation may have committed during the hash.
-		if err := checkCompletion(state, c.now().UTC()); err != nil {
+		changedAt = c.now().UTC()
+		if err := checkCompletion(state, changedAt); err != nil {
 			return CompleteChange{}, err
 		}
 		return CompleteChange{PasswordHash: passwordHash}, nil
 	})
+	if err != nil {
+		return account.User{}, err
+	}
+
+	// 5. Tell the owner, so a reset they did not ask for does not go
+	// unnoticed (OWASP's Forgot Password Cheat Sheet).
+	c.background.Go(ctx, noticePurpose, func(ctx context.Context) error {
+		_, err := c.mailer.Send(ctx, systememail.Outgoing{
+			Purpose: noticePurpose, To: user.Email, Subject: noticeSubject, Body: c.noticeBody(changedAt),
+		})
+		return err
+	})
+	return user, nil
+}
+
+// noticeBody returns the plain-text email telling an account's owner that
+// its password changed at changedAt.
+func (c *Completion) noticeBody(changedAt time.Time) string {
+	return "The password of your inbok account at " + c.publicURL.String() + " was changed on " +
+		changedAt.Format("2 January 2006 at 15:04 UTC") + ", using a password reset link sent to this email address.\n\n" +
+		"If you did this, you don't need to do anything.\n\n" +
+		"If you didn't, someone else may be able to read your email. Contact your inbok administrator.\n"
 }
 
 // checkCompletion returns [ErrLinkInvalid] unless state's link is live at

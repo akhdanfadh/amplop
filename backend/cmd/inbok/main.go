@@ -17,6 +17,7 @@ import (
 	"inbok/internal/emailverification"
 	"inbok/internal/httpapi"
 	"inbok/internal/logging"
+	"inbok/internal/passwordreset"
 	"inbok/internal/probe"
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
@@ -42,7 +43,8 @@ const (
 	writeTimeout = 30 * time.Second
 	idleTimeout  = 120 * time.Second
 
-	// shutdownTimeout bounds how long in-flight requests may finish.
+	// shutdownTimeout bounds how long in-flight requests, and then the
+	// password reset emails they started, may finish.
 	// It stays below Docker's default 10s grace period before SIGKILL.
 	shutdownTimeout = 5 * time.Second
 )
@@ -120,6 +122,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
+	resetBackground := passwordreset.NewBackground(logger)
 	services := httpapi.Services{
 		EmailVerification:      emailverification.NewService(db, mailer, cfg.PublicURL, time.Now),
 		Members:                account.NewMembers(db, time.Now),
@@ -153,12 +156,14 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		api.ServeWebApp(build)
 	}
 
-	return listen(ctx, cfg.HTTPAddr, api.Handler(), logger)
+	return listen(ctx, cfg.HTTPAddr, api.Handler(), resetBackground, logger)
 }
 
 // listen serves handler on addr until ctx is cancelled, then lets in-flight
-// requests finish.
-func listen(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger) error {
+// requests finish, and then the work they started on background. It returns
+// the error that stopped serving, or the shutdown's error, such as the
+// context's when requests outlast the timeout.
+func listen(ctx context.Context, addr string, handler http.Handler, background *passwordreset.Background, logger *slog.Logger) error {
 	// ErrorLog routes net/http's internal errors, e.g. a failed TLS
 	// handshake, into the same log.
 	server := http.Server{
@@ -190,7 +195,13 @@ func listen(ctx context.Context, addr string, handler http.Handler, logger *slog
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
-	return server.Shutdown(shutdownCtx)
+	err = server.Shutdown(shutdownCtx)
+	// Requests are done, so no new work starts; what is left of the timeout
+	// goes to work already started.
+	if waitErr := background.Wait(shutdownCtx); waitErr != nil {
+		logger.Warn("stopped before all password reset background work finished; its emails may not have been sent")
+	}
+	return err
 }
 
 // migrate applies pending database migrations, then exits. serve never
