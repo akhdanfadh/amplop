@@ -82,7 +82,7 @@ func TestCodeSignInTOTP(t *testing.T) {
 
 func TestCodeSignInBackup(t *testing.T) {
 	service, store, _, secret := codeSignInFixture()
-	store.state.BackupCodes = []BackupCode{{ID: 9, Hash: passwordhash.Hash("ZZZZZZZZZZ")}, {ID: 10, Hash: passwordhash.Hash("ABCDEFGHJK")}}
+	store.state.BackupCodes = []BackupCode{{ID: 9, Hash: hashPassword(t, "ZZZZZZZZZZ")}, {ID: 10, Hash: hashPassword(t, "ABCDEFGHJK")}}
 
 	issued, err := service.Complete(t.Context(), secret, "abcde-fghjk", Device{})
 
@@ -201,4 +201,29 @@ func TestCodeSignInUnchecked(t *testing.T) {
 			assert.Equal(t, []int64{7}, attempts.released)
 		})
 	}
+}
+
+// A request that ends while waiting to check its first backup code made no
+// guess: it releases its attempt and leaves the failure count alone.
+func TestCodeSignInBackupEnded(t *testing.T) {
+	service, store, attempts, secret := codeSignInFixture()
+	store.state.BackupCodes = []BackupCode{{ID: 9, Hash: hashPassword(t, "ZZZZZZZZZZ")}}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	issued, err := service.Complete(ctx, secret, "abcde-fghjk", Device{})
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Empty(t, issued)
+	assert.Nil(t, store.change)
+	assert.Equal(t, []int64{7}, attempts.released)
+}
+
+// hashPassword returns password's Argon2id hash, failing the test on an
+// error.
+func hashPassword(t *testing.T, password string) string {
+	t.Helper()
+	hash, err := passwordhash.Hash(t.Context(), password)
+	require.NoError(t, err)
+	return hash
 }

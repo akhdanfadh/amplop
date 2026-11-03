@@ -86,10 +86,11 @@ func (s *Service) Setup(ctx context.Context, input SetupInput) (User, error) {
 	}
 
 	// Argon2id must finish before storage takes the table lock.
-	admin := NewAdmin{
-		Email:        email,
-		PasswordHash: passwordhash.Hash(input.Password),
+	passwordHash, err := passwordhash.Hash(ctx, input.Password)
+	if err != nil {
+		return User{}, err
 	}
+	admin := NewAdmin{Email: email, PasswordHash: passwordHash}
 	return s.storage.UpdateSetup(ctx, func(state SetupState) (NewAdmin, error) {
 		if state.AdminExists {
 			return NewAdmin{}, ErrSetupDone

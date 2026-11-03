@@ -94,7 +94,7 @@ func TestSetup(t *testing.T) {
 	require.NotNil(t, storage.saved)
 	assert.Equal(t, user.Email, storage.saved.Email)
 
-	match, err := passwordhash.Verify(input.Password, storage.saved.PasswordHash)
+	match, err := passwordhash.Verify(t.Context(), input.Password, storage.saved.PasswordHash)
 	require.NoError(t, err)
 	assert.True(t, match)
 

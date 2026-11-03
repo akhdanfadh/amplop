@@ -1,6 +1,7 @@
 package totp
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 )
 
 func TestNewBackupCodes(t *testing.T) {
-	set, err := NewBackupCodes()
+	set, err := NewBackupCodes(t.Context())
 	require.NoError(t, err)
 	require.Len(t, set.Codes, 10)
 	require.Len(t, set.Hashes, 10)
@@ -21,7 +22,7 @@ func TestNewBackupCodes(t *testing.T) {
 		_, duplicate := seen[code]
 		assert.False(t, duplicate)
 		seen[code] = struct{}{}
-		require.NoError(t, CheckBackupCode(code, set.Hashes[i]))
+		require.NoError(t, CheckBackupCode(t.Context(), code, set.Hashes[i]))
 		assert.Regexp(t, `^\$argon2id\$v=19\$m=19456,t=2,p=1\$[A-Za-z0-9+/]{22}\$[A-Za-z0-9+/]{43}$`, set.Hashes[i])
 		assert.NotContains(t, set.Hashes[i], strings.ReplaceAll(code, "-", ""))
 	}
@@ -48,21 +49,21 @@ func TestNormalizeBackupInvalid(t *testing.T) {
 }
 
 func TestCheckBackupCode(t *testing.T) {
-	first := passwordhash.Hash("ABCDEFGHJK")
-	second := passwordhash.Hash("ABCDEFGHJK")
+	first := hashPassword(t, "ABCDEFGHJK")
+	second := hashPassword(t, "ABCDEFGHJK")
 	firstParts := strings.Split(first, "$")
 	secondParts := strings.Split(second, "$")
 	require.Len(t, firstParts, 6)
 	require.Len(t, secondParts, 6)
 	assert.NotEqual(t, firstParts[4], secondParts[4])
 	assert.NotEqual(t, firstParts[5], secondParts[5])
-	require.NoError(t, CheckBackupCode(" abcde - fghjk ", first))
-	require.ErrorIs(t, CheckBackupCode("ABCDE-FGHJM", first), ErrInvalidCode)
-	require.ErrorIs(t, CheckBackupCode("invalid-code", first), ErrInvalidCode)
+	require.NoError(t, CheckBackupCode(t.Context(), " abcde - fghjk ", first))
+	require.ErrorIs(t, CheckBackupCode(t.Context(), "ABCDE-FGHJM", first), ErrInvalidCode)
+	require.ErrorIs(t, CheckBackupCode(t.Context(), "invalid-code", first), ErrInvalidCode)
 }
 
 func TestCheckBackupHashInvalid(t *testing.T) {
-	valid := passwordhash.Hash("ABCDEFGHJK")
+	valid := hashPassword(t, "ABCDEFGHJK")
 	for _, encoded := range []string{
 		"",
 		"private-hash",
@@ -71,10 +72,60 @@ func TestCheckBackupHashInvalid(t *testing.T) {
 		valid + "\n",
 	} {
 		t.Run(encoded, func(t *testing.T) {
-			err := CheckBackupCode("ABCDE-FGHJK", encoded)
+			err := CheckBackupCode(t.Context(), "ABCDE-FGHJK", encoded)
 			require.ErrorIs(t, err, errBackupHash)
 			assert.NotContains(t, err.Error(), "ABCDEFGHJK")
 			assert.NotContains(t, err.Error(), "private-hash")
 		})
 	}
+}
+
+// hashPassword returns password's Argon2id hash, failing the test on an
+// error.
+func hashPassword(t *testing.T, password string) string {
+	t.Helper()
+	hash, err := passwordhash.Hash(t.Context(), password)
+	require.NoError(t, err)
+	return hash
+}
+
+// A context that ends before the hash reaches the caller as itself, not as a
+// damaged stored hash.
+func TestCheckBackupCodeContext(t *testing.T) {
+	stored := hashPassword(t, "ABCDEFGHJK")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := CheckBackupCode(ctx, "ABCDE-FGHJK", stored)
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.NotErrorIs(t, err, errBackupHash)
+}
+
+func TestMatchBackupCode(t *testing.T) {
+	stored := []string{hashPassword(t, "ZZZZZZZZZZ"), hashPassword(t, "ABCDEFGHJK")}
+
+	matched, matchErr := MatchBackupCode(t.Context(), "abcde-fghjk", stored)
+	_, wrongErr := MatchBackupCode(t.Context(), "ABCDE-FGHJM", stored)
+	_, noneErr := MatchBackupCode(t.Context(), "ABCDE-FGHJK", nil)
+	_, damagedErr := MatchBackupCode(t.Context(), "ABCDE-FGHJK", []string{"damaged"})
+
+	require.NoError(t, matchErr)
+	assert.Equal(t, 1, matched)
+	require.ErrorIs(t, wrongErr, ErrInvalidCode)
+	require.ErrorIs(t, noneErr, ErrInvalidCode)
+	require.ErrorIs(t, damagedErr, errBackupHash)
+	assert.NotErrorIs(t, damagedErr, ErrNotChecked)
+}
+
+// A context that ends before the first comparison checked nothing.
+func TestMatchBackupCodeEnded(t *testing.T) {
+	stored := []string{hashPassword(t, "ABCDEFGHJK")}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err := MatchBackupCode(ctx, "ABCDE-FGHJK", stored)
+
+	require.ErrorIs(t, err, ErrNotChecked)
+	require.ErrorIs(t, err, context.Canceled)
 }

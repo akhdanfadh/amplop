@@ -11,10 +11,6 @@ import (
 	"inbok/internal/randomsecret"
 )
 
-// maxHashes bounds Argon2id hashes in progress. Each takes 19 MiB, and one
-// live link lets anyone start a hash per parallel request.
-const maxHashes = 4
-
 var (
 	// ErrLinkInvalid means a registration link is malformed, unknown, used,
 	// or expired.
@@ -57,12 +53,11 @@ type completeStorage interface {
 type Completion struct {
 	storage completeStorage
 	now     func() time.Time
-	hashes  chan struct{} // one slot per hash in progress
 }
 
 // NewCompletion returns a Completion given storage and a clock.
 func NewCompletion(storage completeStorage, now func() time.Time) *Completion {
-	return &Completion{storage: storage, now: now, hashes: make(chan struct{}, maxHashes)}
+	return &Completion{storage: storage, now: now}
 }
 
 // Complete creates a member with password and a verified email, the one the
@@ -75,7 +70,9 @@ func NewCompletion(storage completeStorage, now func() time.Time) *Completion {
 //
 // NOTE: Complete has no throttle. The secret has 256 random bits, so guessing
 // one is hopeless however fast the guesses come. Guesses are refused before
-// the Argon2id hash, and maxHashes bounds the hashes one live link can start.
+// the Argon2id hash, and passwordhash bounds the hashes in progress across
+// the process, so one live link sent many times at once cannot exhaust
+// memory.
 func (c *Completion) Complete(ctx context.Context, secret, password string) (account.User, error) {
 	// 1. Refuse what needs no storage: a bad password or a malformed secret.
 	if err := account.CheckPassword(password); err != nil {
@@ -97,7 +94,7 @@ func (c *Completion) Complete(ctx context.Context, secret, password string) (acc
 	email := state.Link.Email
 
 	// 3. Hash before storage takes its locks: Argon2id is slow.
-	passwordHash, err := c.hash(ctx, password)
+	passwordHash, err := passwordhash.Hash(ctx, password)
 	if err != nil {
 		return account.User{}, err
 	}
@@ -110,19 +107,6 @@ func (c *Completion) Complete(ctx context.Context, secret, password string) (acc
 		}
 		return CompleteChange{PasswordHash: passwordHash, VerifiedAt: now}, nil
 	})
-}
-
-// hash returns password's Argon2id hash once a slot is free, or the
-// context's error if it ends first.
-func (c *Completion) hash(ctx context.Context, password string) (string, error) {
-	select {
-	case c.hashes <- struct{}{}:
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
-	defer func() { <-c.hashes }()
-
-	return passwordhash.Hash(password), nil
 }
 
 // checkCompletion returns why state cannot create a member at now, or nil.

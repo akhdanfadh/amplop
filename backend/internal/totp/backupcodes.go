@@ -1,8 +1,10 @@
 package totp
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"unicode"
@@ -26,8 +28,14 @@ type BackupCodes struct {
 
 var errBackupHash = errors.New("invalid stored backup-code hash")
 
-// NewBackupCodes creates distinct codes with an independently salted hash each.
-func NewBackupCodes() (BackupCodes, error) {
+// ErrNotChecked means a backup code check ended before it compared the code
+// with any stored hash, so it made no guess. It comes with the context's
+// error.
+var ErrNotChecked = errors.New("backup code not checked")
+
+// NewBackupCodes creates distinct codes with an independently salted hash
+// each. It returns the context's error if ctx ends while waiting to hash.
+func NewBackupCodes(ctx context.Context) (BackupCodes, error) {
 	var set BackupCodes
 	seen := make(map[string]struct{}, backupSetSize)
 	for len(set.Codes) < backupSetSize {
@@ -39,7 +47,11 @@ func NewBackupCodes() (BackupCodes, error) {
 			continue
 		}
 		seen[code] = struct{}{}
-		set.Hashes = append(set.Hashes, passwordhash.Hash(code))
+		hash, err := passwordhash.Hash(ctx, code)
+		if err != nil {
+			return BackupCodes{}, err
+		}
+		set.Hashes = append(set.Hashes, hash)
 		set.Codes = append(set.Codes, code[:backupGroupSize]+"-"+code[backupGroupSize:])
 	}
 	return set, nil
@@ -81,17 +93,48 @@ func normalizeBackupCode(input string) (string, error) {
 
 // CheckBackupCode ignores case, whitespace, and dashes before verifying a hash.
 // A match does not consume the code; storage must delete its row atomically.
-func CheckBackupCode(input, stored string) error {
+// It returns the context's error if ctx ends while waiting to verify.
+func CheckBackupCode(ctx context.Context, input, stored string) error {
 	code, err := normalizeBackupCode(input)
 	if err != nil {
 		return err
 	}
-	match, err := passwordhash.Verify(code, stored)
-	if err != nil {
+	match, err := passwordhash.Verify(ctx, code, stored)
+	if errors.Is(err, passwordhash.ErrInvalidHash) {
 		return errBackupHash
+	}
+	if err != nil {
+		return err
 	}
 	if !match {
 		return ErrInvalidCode
 	}
 	return nil
+}
+
+// MatchBackupCode returns the index in stored of the hash input matches,
+// normalizing input as [CheckBackupCode] does. It returns [ErrInvalidCode]
+// when input is malformed or matches none, and the error of
+// [CheckBackupCode] for a damaged hash or a context that ends while waiting
+// to verify. A context that ends before the first comparison also matches
+// [ErrNotChecked].
+func MatchBackupCode(ctx context.Context, input string, stored []string) (int, error) {
+	// Independently salted hashes require checking each remaining code.
+	for i, hash := range stored {
+		err := CheckBackupCode(ctx, input, hash)
+		if err == nil {
+			return i, nil
+		}
+		if errors.Is(err, ErrInvalidCode) {
+			continue
+		}
+		// Only the first wait ends with nothing compared. After a
+		// comparison the check counts, or a client that leaves mid-check
+		// would get free guesses.
+		if i == 0 && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+			return 0, fmt.Errorf("%w: %w", ErrNotChecked, err)
+		}
+		return 0, err
+	}
+	return 0, ErrInvalidCode
 }

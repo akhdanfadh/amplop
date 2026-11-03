@@ -52,7 +52,7 @@ func TestRecovery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "admin@example.com", storage.email)
 	assert.Equal(t, int64(2), result.Sessions)
-	match, err := passwordhash.Verify(password, storage.hash)
+	match, err := passwordhash.Verify(t.Context(), password, storage.hash)
 	require.NoError(t, err)
 	assert.True(t, match)
 }

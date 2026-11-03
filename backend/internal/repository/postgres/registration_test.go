@@ -476,7 +476,7 @@ func TestRegistrationComplete(t *testing.T) {
 		Scan(&role, &verifiedAt, &passwordHash))
 	assert.Equal(t, "member", role)
 	assert.Equal(t, requestNow, verifiedAt.UTC())
-	ok, err := passwordhash.Verify(password, passwordHash)
+	ok, err := passwordhash.Verify(t.Context(), password, passwordHash)
 	require.NoError(t, err)
 	assert.True(t, ok, "the saved hash is of the password")
 

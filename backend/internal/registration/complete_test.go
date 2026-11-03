@@ -97,7 +97,7 @@ func TestCompleteCreatesMember(t *testing.T) {
 	member := storage.members[0]
 	// Following the link proved the email.
 	assert.Equal(t, testNow, member.VerifiedAt)
-	ok, err := passwordhash.Verify(testPassword, member.PasswordHash)
+	ok, err := passwordhash.Verify(t.Context(), testPassword, member.PasswordHash)
 	require.NoError(t, err)
 	assert.True(t, ok, "the hash is of the password")
 	// The used link is gone; another email's link stays.
@@ -206,18 +206,14 @@ func TestCompleteStorageError(t *testing.T) {
 	assert.Zero(t, storage.locked)
 }
 
-// With every hash slot taken, a completion waits instead of hashing, and
-// gives up when its context ends.
-func TestCompleteWaitsForHashSlot(t *testing.T) {
+// A completion whose context ends before the hash gives up before storage
+// takes its locks.
+func TestCompleteEndedContext(t *testing.T) {
 	storage, secret := completeSetup(t)
-	completion := testCompletion(storage)
-	for range maxHashes {
-		completion.hashes <- struct{}{}
-	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := completion.Complete(ctx, secret, testPassword)
+	_, err := testCompletion(storage).Complete(ctx, secret, testPassword)
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Zero(t, storage.locked)

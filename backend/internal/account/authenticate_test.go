@@ -28,7 +28,7 @@ func (f *credentialStorage) ReadCredentials(_ context.Context, email string) (Cr
 func TestAuthenticate(t *testing.T) {
 	const password = "a long sign-in password "
 	user := User{ID: 42, Email: "admin@example.com"}
-	storage := &credentialStorage{credentials: Credentials{User: user, PasswordHash: passwordhash.Hash(password)}}
+	storage := &credentialStorage{credentials: Credentials{User: user, PasswordHash: hashPassword(t, password)}}
 	service := NewService(storage, "")
 
 	got, err := service.Authenticate(t.Context(), " \tADMIN@Example.COM\t", password)
@@ -44,7 +44,7 @@ func TestAuthenticate(t *testing.T) {
 
 func TestAuthenticateRejected(t *testing.T) {
 	user := User{ID: 42, Email: "admin@example.com"}
-	hash := passwordhash.Hash("the correct password")
+	hash := hashPassword(t, "the correct password")
 	cases := []struct {
 		name     string
 		row      Credentials
@@ -103,14 +103,23 @@ func TestAuthenticateInvalidEmail(t *testing.T) {
 func TestDummyPasswordHash(t *testing.T) {
 	// The dummy must keep pace with the work settings used for new passwords.
 	dummy := strings.Split(dummyPasswordHash, "$")
-	current := strings.Split(passwordhash.Hash("inbok dummy password"), "$")
+	current := strings.Split(hashPassword(t, "inbok dummy password"), "$")
 	require.Len(t, dummy, 6)
 	require.Len(t, current, 6)
 	assert.Equal(t, current[:4], dummy[:4])
 	assert.Len(t, dummy[4], len(current[4]))
 	assert.Len(t, dummy[5], len(current[5]))
 
-	match, err := passwordhash.Verify("inbok dummy password", dummyPasswordHash)
+	match, err := passwordhash.Verify(t.Context(), "inbok dummy password", dummyPasswordHash)
 	require.NoError(t, err)
 	assert.True(t, match)
+}
+
+// hashPassword returns password's Argon2id hash, failing the test on an
+// error.
+func hashPassword(t *testing.T, password string) string {
+	t.Helper()
+	hash, err := passwordhash.Hash(t.Context(), password)
+	require.NoError(t, err)
+	return hash
 }

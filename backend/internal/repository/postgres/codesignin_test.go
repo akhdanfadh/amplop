@@ -22,7 +22,6 @@ import (
 	"inbok/internal/account"
 	"inbok/internal/encryption"
 	"inbok/internal/httpapi"
-	"inbok/internal/passwordhash"
 	"inbok/internal/repository/postgres/sqlc"
 	"inbok/internal/session"
 	"inbok/internal/totp"
@@ -56,7 +55,7 @@ func newCodeFixture(t *testing.T) *codeFixture {
 	require.NoError(t, db.UpdateTOTP(t.Context(), user.ID, func(*totp.Factor) (totp.Factor, error) {
 		return totp.Factor{KeyID: id, Ciphertext: ciphertext, ConfirmedAt: &f.now, LastStep: -1}, nil
 	}))
-	require.NoError(t, sqlc.New(conn).InsertTOTPBackupCode(t.Context(), sqlc.InsertTOTPBackupCodeParams{UserID: user.ID, CodeHash: passwordhash.Hash("ABCDEFGHJK")}))
+	require.NoError(t, sqlc.New(conn).InsertTOTPBackupCode(t.Context(), sqlc.InsertTOTPBackupCodeParams{UserID: user.ID, CodeHash: hashPassword(t, "ABCDEFGHJK")}))
 	f.code, err = hotp.GenerateCode(confirmationSecret, uint64(f.now.Unix()/30))
 	require.NoError(t, err)
 	logger := slog.New(slog.DiscardHandler)

@@ -68,16 +68,12 @@ func (s *Disabler) Disable(ctx context.Context, userID int64, code string) error
 
 		checked = true
 		// Factor deletion consumes all remaining codes, including this matched proof.
-		for _, hash := range state.BackupHashes {
-			err := CheckBackupCode(code, hash)
-			if err == nil {
-				return nil
-			}
-			if !errors.Is(err, ErrInvalidCode) {
-				return err
-			}
+		_, err := MatchBackupCode(ctx, code, state.BackupHashes)
+		// A request that ended while waiting to compare made no guess.
+		if errors.Is(err, ErrNotChecked) {
+			checked = false
 		}
-		return ErrInvalidCode
+		return err
 	})
 	// A request refused before any code check, e.g. for an administrator or
 	// with TOTP off, made no guess, so it releases its attempt.

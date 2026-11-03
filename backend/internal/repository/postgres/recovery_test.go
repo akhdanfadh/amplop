@@ -60,7 +60,7 @@ func TestRecoveryPersistence(t *testing.T) {
 	assert.Equal(t, account.RecoveryResult{Factors: 1, BackupCodes: 2, Sessions: 2, Challenges: 1, TOTPAttempts: 2, SignInAttempts: 2}, result)
 	credentials, err := f.db.ReadCredentials(t.Context(), "admin@example.com")
 	require.NoError(t, err)
-	match, err := passwordhash.Verify("a new recovery password", credentials.PasswordHash)
+	match, err := passwordhash.Verify(t.Context(), "a new recovery password", credentials.PasswordHash)
 	require.NoError(t, err)
 	assert.True(t, match)
 	assert.Equal(t, account.RoleAdmin, credentials.User.Role)
@@ -166,7 +166,7 @@ func TestRecoveryStaleSignIn(t *testing.T) {
 			f := newRecovery(t)
 			ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
 			defer cancel()
-			_, err := f.conn.Exec(ctx, "UPDATE users SET password_hash=$1 WHERE id=$2", passwordhash.Hash("the old recovery password"), f.state.UserID)
+			_, err := f.conn.Exec(ctx, "UPDATE users SET password_hash=$1 WHERE id=$2", hashPassword(t, "the old recovery password"), f.state.UserID)
 			require.NoError(t, err)
 			accounts := &recoveryAccounts{service: account.NewService(f.db, ""), checked: make(chan struct{}), resume: make(chan struct{})}
 			clock := time.Now

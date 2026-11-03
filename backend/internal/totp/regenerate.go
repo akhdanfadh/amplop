@@ -54,7 +54,7 @@ func (s *Backups) Regenerate(ctx context.Context, userID int64, code string) ([]
 	}
 
 	// Prepare slow salted hashes before taking the owner's write lock.
-	set, err := NewBackupCodes()
+	set, err := NewBackupCodes(ctx)
 	if err != nil {
 		// No code was checked.
 		s.throttle.Release(ctx, attemptID)

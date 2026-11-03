@@ -434,6 +434,27 @@ ADR025 in the project's decision records explains the choice and its cost: a
 mail server that treats the local part's case as meaningful is not
 supported. Mail accounts that members connect are outside this rule.
 
+## Password hashes
+
+Passwords and TOTP backup codes are stored as Argon2id hashes
+(`passwordhash`), with OWASP's minimum profile: 19 MiB, two passes, one
+lane. A check uses the stored hash's own costs, so changing the profile
+keeps old passwords usable; it refuses a stored hash that asks for more
+than 128 MiB, 10 passes, or 16 lanes.
+
+Hashes and checks in progress share a 128 MiB memory budget across the
+process: each waits until its own memory cost fits, in arrival order, so
+6 hashes of the current profile run at once. The budget counts what
+hashes ask for, not what the process holds: the garbage collector frees a
+finished hash's memory later, so under load the process briefly holds
+more. Every caller shares it:
+sign-in, setup, registration, TOTP backup codes, and `inbok recover-admin`.
+A wait that outlives the request's context ends it; one that outlives the
+10-second request deadline is a 500 (see
+[Timeouts and shutdown](#timeouts-and-shutdown)). A TOTP request that ends
+while waiting to check its first backup code made no guess, so it gives
+its attempt back.
+
 ## First administrator setup
 
 After applying migrations, create the first administrator through the web app:
@@ -959,9 +980,9 @@ checked by `account.CheckPassword`.
 
 1. It reads the link without a lock. An unknown or expired link is refused
    here, so a guessed secret costs no password hash.
-2. It hashes the password with Argon2id, at most 4 hashes at a time
-   (`maxHashes`). Each takes 19 MiB, and one live link sent many times at
-   once would otherwise start one hash per request.
+2. It hashes the password with Argon2id, waiting for one of the process's
+   hash slots (see [Password hashes](#password-hashes)), so one live link
+   sent many times at once cannot start a hash per request.
 3. In one transaction it locks the registration row, the system email row,
    the `users` table (the lock setup takes), and the link, then checks
    everything again.

@@ -57,7 +57,7 @@ func newDeactivatedAccounts(t *testing.T, withTOTP bool) deactivatedAccounts {
 		"INSERT INTO users (email, password_hash, role) VALUES ('admin@example.com', 'unused', 'admin') RETURNING id").Scan(&f.admin))
 	require.NoError(t, conn.QueryRow(t.Context(),
 		"INSERT INTO users (email, password_hash, role) VALUES ('member@example.com', $1, 'member') RETURNING id",
-		passwordhash.Hash(deactivatedPassword)).Scan(&f.member))
+		hashPassword(t, deactivatedPassword)).Scan(&f.member))
 	if withTOTP {
 		_, err := conn.Exec(t.Context(),
 			"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at) VALUES ($1, '1', 'ciphertext', now())", f.member)
@@ -277,7 +277,7 @@ func TestDeactivatedSignInRace(t *testing.T) {
 			credentials, err := f.db.ReadCredentials(t.Context(), "member@example.com")
 			require.NoError(t, err)
 			started := time.Now()
-			_, err = passwordhash.Verify(deactivatedPassword, credentials.PasswordHash)
+			_, err = passwordhash.Verify(t.Context(), deactivatedPassword, credentials.PasswordHash)
 			require.NoError(t, err)
 			window := 2 * time.Since(started)
 

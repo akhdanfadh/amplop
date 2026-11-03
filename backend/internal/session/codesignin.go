@@ -125,7 +125,11 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 		}
 
 		checked = true
-		factor, backupID, err := s.checkCode(state, secret, code)
+		factor, backupID, err := s.checkCode(ctx, state, secret, code)
+		// A request that ended while waiting to compare made no guess.
+		if errors.Is(err, totp.ErrNotChecked) {
+			checked = false
+		}
 		if errors.Is(err, totp.ErrInvalidCode) {
 			failures := state.Challenge.Failures + 1
 			if failures >= challengeFailureLimit {
@@ -166,7 +170,7 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 // checkCode checks code against the factor's decrypted secret when it is six
 // digits, or else against the unused backup codes. It returns the factor with
 // the accepted step, or the matched backup code's ID.
-func (s *CodeSignIn) checkCode(state CodeSignInState, secret []byte, code string) (*totp.Factor, int64, error) {
+func (s *CodeSignIn) checkCode(ctx context.Context, state CodeSignInState, secret []byte, code string) (*totp.Factor, int64, error) {
 	if isTOTPCode(code) {
 		step, err := s.verifier.Check(string(secret), code, state.Factor.LastStep)
 		if err != nil {
@@ -177,17 +181,15 @@ func (s *CodeSignIn) checkCode(state CodeSignInState, secret []byte, code string
 		return &factor, 0, nil
 	}
 
-	// Independently salted hashes require checking each remaining code.
-	for _, backup := range state.BackupCodes {
-		err := totp.CheckBackupCode(code, backup.Hash)
-		if err == nil {
-			return nil, backup.ID, nil
-		}
-		if !errors.Is(err, totp.ErrInvalidCode) {
-			return nil, 0, err
-		}
+	hashes := make([]string, len(state.BackupCodes))
+	for i, backup := range state.BackupCodes {
+		hashes[i] = backup.Hash
 	}
-	return nil, 0, totp.ErrInvalidCode
+	i, err := totp.MatchBackupCode(ctx, code, hashes)
+	if err != nil {
+		return nil, 0, err
+	}
+	return nil, state.BackupCodes[i].ID, nil
 }
 
 func isTOTPCode(code string) bool {

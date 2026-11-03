@@ -49,7 +49,10 @@ func (s *Recovery) Recover(ctx context.Context, email, password string) (Recover
 	}
 
 	// Finish Argon2id before acquiring the user lock.
-	hash := passwordhash.Hash(password)
+	hash, err := passwordhash.Hash(ctx, password)
+	if err != nil {
+		return RecoveryResult{}, err
+	}
 	return s.storage.UpdateRecovery(ctx, user.ID, func(user User) (string, error) {
 		if user.Role != RoleAdmin {
 			return "", ErrRecoveryForbidden
