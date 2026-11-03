@@ -34,7 +34,7 @@ type registrationRequestService interface {
 }
 
 type registrationCompletionService interface {
-	Complete(ctx context.Context, secret, password string) (account.User, error)
+	Complete(ctx context.Context, secret, email, password string) (account.User, error)
 }
 
 type registrationHandler struct {
@@ -281,6 +281,7 @@ const (
 // newMember is the completion request body.
 type newMember struct {
 	Secret   string `json:"secret" writeOnly:"true" doc:"The text after # in the emailed link."`
+	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"The email the link was sent to, typed by the person using it. Letters A to Z match in either case."`
 	Password string `json:"password" writeOnly:"true" minLength:"15" maxLength:"128"`
 }
 
@@ -295,7 +296,7 @@ func registerRegistrationComplete(api huma.API, handler registrationHandler) {
 		Method:      http.MethodPost,
 		Path:        registrationRedeemPath,
 		Summary:     "Create a member account with an emailed link",
-		Description: "Creates a member whose email, the one the link was sent to, is verified. " +
+		Description: "Creates a member whose email, the one the link was sent to, is verified, when the email given is that one. " +
 			"Uses up every link sent to that email. Needs no session and signs no one in.",
 		Metadata:      map[string]any{accessKey: session.AccessPublic},
 		Middlewares:   huma.Middlewares{withNoStore},
@@ -305,7 +306,7 @@ func registerRegistrationComplete(api huma.API, handler registrationHandler) {
 }
 
 func (h registrationHandler) handleRedeemRegistrationLink(ctx context.Context, in *struct{ Body newMember }) (*output[registeredMember], error) {
-	user, err := h.completion.Complete(ctx, in.Body.Secret, in.Body.Password)
+	user, err := h.completion.Complete(ctx, in.Body.Secret, in.Body.Email, in.Body.Password)
 	if err != nil {
 		return nil, registrationCompleteProblem(err)
 	}
@@ -327,8 +328,11 @@ func registrationCompleteResponses(api huma.API) map[string]*huma.Response {
 	}
 
 	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
-	invalid.Description = "The request inputs are invalid."
-	invalid.Content[problemContentType].Example = registrationCompleteProblem(account.ErrPasswordInvalid)
+	invalid.Description = "The request inputs are invalid, or the link was sent to a different email."
+	invalid.Content[problemContentType].Examples = map[string]*huma.Example{
+		"password":      {Value: registrationCompleteProblem(account.ErrPasswordInvalid)},
+		"emailMismatch": {Value: registrationCompleteProblem(registration.ErrEmailMismatch)},
+	}
 	return responses
 }
 
@@ -341,6 +345,10 @@ func registrationCompleteProblem(err error) error {
 		message := fmt.Sprintf("Use %d to %d characters.", account.PasswordMinLength, account.PasswordMaxLength)
 		invalid.Errors = []inputError{{Location: "body.password", Message: message}}
 		return invalid
+	case errors.Is(err, emailaddress.ErrInvalid):
+		return invalidEmailProblem("body.email")
+	case errors.Is(err, registration.ErrEmailMismatch):
+		return linkEmailMismatchProblem()
 	case errors.Is(err, registration.ErrLinkInvalid):
 		return newProblem(http.StatusNotFound, registrationLinkInvalidType, "Link not valid", "This link has expired, was already used, or is not valid. Ask for a new one.")
 	case errors.Is(err, registration.ErrClosed):

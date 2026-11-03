@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
 	"inbok/internal/randomsecret"
 	"inbok/internal/systememail"
@@ -64,24 +65,35 @@ func NewCompletion(storage completeStorage, mailer mailer, publicURL *url.URL, b
 }
 
 // Complete sets password as the password of the user the reset link with
-// secret was sent to, signs that user out everywhere, and returns the user.
-// It signs no one in. Once the reset commits, it starts background work,
-// which it does not wait for, that emails the user that their password
-// changed; a failed send is only logged. It returns [account.ErrPasswordInvalid] for a password
-// outside the length rule, [ErrLinkInvalid] for a link that is malformed,
-// unknown, used, expired, sent to an email the user no longer has, or owned
-// by a deactivated user, and the context's error if it ends while waiting
-// to hash.
+// secret was sent to, when email is that link's email, signs that user out
+// everywhere, and returns the user. It signs no one in. Once the reset
+// commits, it starts background work, which it does not wait for, that
+// emails the user that their password changed; a failed send is only
+// logged. It returns [account.ErrPasswordInvalid] for a password outside the
+// length rule, [emailaddress.ErrInvalid] for an invalid email,
+// [ErrLinkInvalid] for a link that is malformed, unknown, used, expired,
+// sent to an email the user no longer has, or owned by a deactivated user,
+// [ErrEmailMismatch] for a live link sent to another email, and the
+// context's error if it ends while waiting to hash.
 //
 // DESIGN: Complete has no throttle. The secret has 256 random bits, so
 // guessing one is hopeless however fast the guesses come. Guesses are
 // refused before the Argon2id hash, and passwordhash bounds the hashes in
-// progress across the process. Every refusal is the same ErrLinkInvalid, so
-// a holder of an old link cannot tell a deactivated account from a used
-// link.
-func (c *Completion) Complete(ctx context.Context, secret, password string) (account.User, error) {
-	// 1. Refuse what needs no storage: a bad password or a malformed secret.
+// progress across the process. Every refusal of the link itself is the same
+// ErrLinkInvalid, so a holder of an old link cannot tell a deactivated
+// account from a used link.
+//
+// DESIGN: email must be the link's, so a link someone sends for an account
+// they control cannot set its password for a person who types their own
+// address (link fixation, ADR030).
+func (c *Completion) Complete(ctx context.Context, secret, email, password string) (account.User, error) {
+	// 1. Refuse what needs no storage: a bad password, an invalid email, or
+	// a malformed secret.
 	if err := account.CheckPassword(password); err != nil {
+		return account.User{}, err
+	}
+	email, err := emailaddress.Parse(email)
+	if err != nil {
 		return account.User{}, err
 	}
 	hash, err := randomsecret.Hash(secret)
@@ -94,7 +106,7 @@ func (c *Completion) Complete(ctx context.Context, secret, password string) (acc
 	if err != nil {
 		return account.User{}, err
 	}
-	if err := checkCompletion(state, c.now().UTC()); err != nil {
+	if err := checkCompletion(state, email, c.now().UTC()); err != nil {
 		return account.User{}, err
 	}
 
@@ -108,7 +120,7 @@ func (c *Completion) Complete(ctx context.Context, secret, password string) (acc
 		// 4. Check again under the lock: another completion or a
 		// deactivation may have committed during the hash.
 		changedAt = c.now().UTC()
-		if err := checkCompletion(state, changedAt); err != nil {
+		if err := checkCompletion(state, email, changedAt); err != nil {
 			return CompleteChange{}, err
 		}
 		return CompleteChange{PasswordHash: passwordHash}, nil
@@ -138,8 +150,9 @@ func (c *Completion) noticeBody(changedAt time.Time) string {
 }
 
 // checkCompletion returns [ErrLinkInvalid] unless state's link is live at
-// now, was sent to its user's current email, and the user is active.
-func checkCompletion(state CompleteState, now time.Time) error {
+// now, was sent to its user's current email, and the user is active, and
+// [ErrEmailMismatch] unless email is that link's.
+func checkCompletion(state CompleteState, email string, now time.Time) error {
 	if state.Link == nil || !state.Link.ExpiresAt.After(now) || state.Deactivated {
 		return ErrLinkInvalid
 	}
@@ -147,6 +160,11 @@ func checkCompletion(state CompleteState, now time.Time) error {
 	// emailaddress.Parse's form, so any difference is another address.
 	if state.Link.Email != state.User.Email {
 		return ErrLinkInvalid
+	}
+	// Both are in emailaddress.Parse's form, so any difference is another
+	// address.
+	if email != state.Link.Email {
+		return ErrEmailMismatch
 	}
 	return nil
 }

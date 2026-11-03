@@ -982,15 +982,20 @@ no background job.
 
 ### Creating the account
 
-`POST /api/v0/registration/links/redeem` takes `{"secret", "password"}` and
-needs no session. The password follows setup's rule, 15 to 128 characters,
-checked by `account.CheckPassword`.
+`POST /api/v0/registration/links/redeem` takes `{"secret", "email",
+"password"}` and needs no session. The password follows setup's rule, 15 to
+128 characters, checked by `account.CheckPassword`. The email is the one the
+visitor types; it must be the link's, after `emailaddress.Parse`. Otherwise
+someone could ask for a link to an address they control, send it to a
+visitor, and have the visitor create that account, which its owner can
+later take back with a password reset.
 
-1. It reads the link without a lock. An unknown or expired link is refused
-   here, so a guessed secret costs no password hash.
-2. It hashes the password with Argon2id, waiting for one of the process's
-   hash slots (see [Password hashes](#password-hashes)), so one live link
-   sent many times at once cannot start a hash per request.
+1. It reads the link without a lock. An unknown or expired link, or one
+   sent to another email, is refused here, so a guessed secret costs no
+   password hash.
+2. It hashes the password with Argon2id, waiting for room in the hash
+   budget (see [Password hashes](#password-hashes)), so one live link sent
+   many times at once cannot start a hash per request.
 3. In one transaction it locks the registration row, the system email row,
    the `users` table (the lock setup takes), and the link, then checks
    everything again.
@@ -1003,6 +1008,8 @@ It answers 201 `{"id", "email"}` and sets no cookie; the web app sends the
 visitor to sign in. Other answers:
 
 - 422 on `body.password` for a password outside the rule.
+- 422 on `body.email` for an invalid email, or "Enter the email address
+  this link was sent to." for another one. It names no address.
 - 404 `registration-link-invalid`: unknown, used, or expired.
 - 409 `registration-closed`: closed or paused. Pausing keeps links, so the
   link may work later; closing deleted it.
@@ -1085,11 +1092,16 @@ link times are both over 24 hours old; nothing deletes them on a schedule.
 
 ### Completing a reset
 
-`POST /api/v0/password-reset/links/redeem` takes `{"secret", "password"}`
-and needs no session. It answers 200 `{"email"}`, the account's email, so
+`POST /api/v0/password-reset/links/redeem` takes `{"secret", "email",
+"password"}` and needs no session. The email is the one the person types; it
+must be the link's, after `emailaddress.Parse`, so a link someone sends for
+an account they control cannot set its password for a person who types
+their own address. It answers 200 `{"email"}`, the account's email, so
 the sign-in form can be filled in, and sets no cookie. Other answers:
 
 - 422 on `body.password` for a password outside the rule.
+- 422 on `body.email` for an invalid email, or "Enter the email address
+  this link was sent to." for another one.
 - 404 `password-reset-link-invalid`: the link is unknown, used, or expired,
   or its account can no longer reset. One answer for every reason.
 - 429 `too-many-requests`: the in-memory request limit.
@@ -1097,12 +1109,13 @@ the sign-in form can be filled in, and sets no cookie. Other answers:
 There is no attempt limit: a 256-bit secret cannot be guessed.
 
 The operation calls `passwordreset.Completion.Complete` with the link's
-secret and the new password, which follows setup's rule, 15 to 128
-characters (`account.CheckPassword`).
+secret, the email typed, and the new password, which follows setup's rule,
+15 to 128 characters (`account.CheckPassword`).
 
 1. It reads the link and its user without a lock. A missing or expired
-   link, a deactivated user, or a user whose email is no longer the
-   link's is refused here, so a guessed secret costs no password hash.
+   link, a deactivated user, a user whose email is no longer the link's,
+   or an email given that is not the link's is refused here, so a guessed
+   secret costs no password hash.
 2. It hashes the password with Argon2id, waiting for room in the hash
    budget (see [Password hashes](#password-hashes)).
 3. In one transaction it locks the user, the lock sign-in, deactivation,
@@ -1113,9 +1126,11 @@ characters (`account.CheckPassword`).
    `target_user_id` and no actor. TOTP and backup codes stay, so the next
    sign-in still asks for a code.
 
-A password outside the rule is `account.ErrPasswordInvalid`. Every other
-refusal, a malformed, unknown, used, or expired link, a link for another
-email, or a deactivated user, is the same `passwordreset.ErrLinkInvalid`.
+A password outside the rule is `account.ErrPasswordInvalid`, an invalid
+email `emailaddress.ErrInvalid`, and a live link given with another email
+`passwordreset.ErrEmailMismatch`. Every other refusal, a malformed, unknown,
+used, or expired link, a link whose account changed its email, or a
+deactivated user, is the same `passwordreset.ErrLinkInvalid`.
 On success it returns the user, so the caller can name the email to sign in
 with, and creates no session.
 

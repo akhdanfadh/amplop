@@ -149,11 +149,12 @@ func TestRedeemPasswordResetLink(t *testing.T) {
 	service := &fakeCompletion{user: account.User{ID: 7, Email: "member@example.org", Role: account.RoleMember}}
 	api := New(discard, Services{PasswordResetCompletion: service})
 
-	response := postPublic(api, passwordResetRedeemPath, completeBody)
+	response := postPublic(api, passwordResetRedeemPath, resetBody)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.JSONEq(t, `{"data":{"email":"member@example.org"}}`, response.Body.String())
-	assert.Equal(t, []string{"link-secret", "correct horse battery"}, []string{service.secret, service.password})
+	// The service parses and compares the email.
+	assert.Equal(t, []string{"link-secret", "Member@Example.org", "correct horse battery"}, []string{service.secret, service.email, service.password})
 	// No one is signed in.
 	assert.Empty(t, response.Header().Values("Set-Cookie"))
 	assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
@@ -168,12 +169,14 @@ func TestRedeemPasswordResetLinkProblems(t *testing.T) {
 		location string
 	}{
 		{"password", account.ErrPasswordInvalid, http.StatusUnprocessableEntity, "validation-error", "body.password"},
+		{"invalid email", emailaddress.ErrInvalid, http.StatusUnprocessableEntity, "validation-error", "body.email"},
+		{"email mismatch", passwordreset.ErrEmailMismatch, http.StatusUnprocessableEntity, "validation-error", "body.email"},
 		{"link invalid", passwordreset.ErrLinkInvalid, http.StatusNotFound, "password-reset-link-invalid", ""},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			api := New(discard, Services{PasswordResetCompletion: &fakeCompletion{err: c.err}})
 
-			response := postPublic(api, passwordResetRedeemPath, completeBody)
+			response := postPublic(api, passwordResetRedeemPath, resetBody)
 
 			require.Equal(t, c.status, response.Code, response.Body.String())
 			body := decodeJSON(t, response.Body.Bytes())
@@ -183,6 +186,8 @@ func TestRedeemPasswordResetLinkProblems(t *testing.T) {
 	}
 }
 
+const resetBody = `{"secret":"link-secret","email":"Member@Example.org","password":"correct horse battery"}`
+
 // An unexpected failure becomes a fixed 500 whose cause is only logged.
 func TestPasswordResetUnexpectedFailure(t *testing.T) {
 	failure := errors.New("private storage cause")
@@ -190,7 +195,7 @@ func TestPasswordResetUnexpectedFailure(t *testing.T) {
 		name, path, body string
 	}{
 		{"request", passwordResetLinksPath, `{"email":"member@example.org"}`},
-		{"redeem", passwordResetRedeemPath, completeBody},
+		{"redeem", passwordResetRedeemPath, resetBody},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			var logs bytes.Buffer
@@ -213,7 +218,7 @@ func TestRedeemPasswordResetLinkShortPassword(t *testing.T) {
 	service := &fakeCompletion{}
 	api := New(discard, Services{PasswordResetCompletion: service})
 
-	response := postPublic(api, passwordResetRedeemPath, `{"secret":"link-secret","password":"too short"}`)
+	response := postPublic(api, passwordResetRedeemPath, `{"secret":"link-secret","email":"member@example.org","password":"too short"}`)
 
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code)
 	assert.Contains(t, response.Body.String(), `"location":"body.password"`)
@@ -252,6 +257,7 @@ func TestPasswordResetOpenAPI(t *testing.T) {
 	accepted := doc.Paths[passwordResetLinksPath].Post.Responses["202"]
 	require.NotNil(t, accepted.Content["application/json"])
 	assert.True(t, doc.Components.Schemas.Map()["NewPasswordFromLink"].Properties["secret"].WriteOnly)
+	assert.Contains(t, doc.Paths[passwordResetRedeemPath].Post.Responses["422"].Content[problemContentType].Examples, "emailMismatch")
 }
 
 // headersBut returns response's headers without name, which differs per

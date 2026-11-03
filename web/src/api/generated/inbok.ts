@@ -710,7 +710,7 @@ export const getRedeemPasswordResetLinkUrl = () => {
 }
 
 /**
- * Sets the password of the account the link was sent to, signs that account out everywhere, and uses up all of its reset links. TOTP stays on. Needs no session and signs no one in; the account's owner is emailed that the password changed.
+ * Sets the password of the account the link was sent to, when the email given is the one the link was sent to; signs that account out everywhere and uses up all of its reset links. TOTP stays on. Needs no session and signs no one in; the account's owner is emailed that the password changed.
  * @summary Set a new password with an emailed link
  */
 export const redeemPasswordResetLink = async (newPasswordFromLink: NewPasswordFromLink, options?: Parameters<typeof transport>[1]): Promise<ResponsePasswordResetResult> => {
@@ -1081,7 +1081,7 @@ export const getRedeemRegistrationLinkUrl = () => {
 }
 
 /**
- * Creates a member whose email, the one the link was sent to, is verified. Uses up every link sent to that email. Needs no session and signs no one in.
+ * Creates a member whose email, the one the link was sent to, is verified, when the email given is that one. Uses up every link sent to that email. Needs no session and signs no one in.
  * @summary Create a member account with an emailed link
  */
 export const redeemRegistrationLink = async (newMember: NewMember, options?: Parameters<typeof transport>[1]): Promise<ResponseRegisteredMember> => {

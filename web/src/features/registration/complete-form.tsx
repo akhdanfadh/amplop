@@ -10,6 +10,7 @@ import { formErrors, uncertainOutcome } from "@/api/problem";
 import { PasswordInput } from "@/components/password-input";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { CompleteSchema } from "./complete-schema";
 import {
   completeEnd,
@@ -19,7 +20,8 @@ import {
   type Ended,
 } from "./visitor-text";
 
-const emptyPasswords = { password: "", confirmPassword: "" };
+const emptyValues = { email: "", password: "", confirmPassword: "" };
+const emailId = "register-email";
 const focusClass =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
 const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
@@ -38,11 +40,12 @@ const inputs = [
     toggle: "password confirmation",
   },
 ] as const;
-const completeFields = inputs.map((input) => input.name);
+const completeFields = ["email", ...inputs.map((input) => input.name)] as const;
 
 // CompleteForm creates a member account from secret, the text after # in a
-// sign-up link, and the password the visitor chooses. onDone receives the
-// account's email, for signing in.
+// sign-up link, the email the visitor types, which must be the one the link
+// was sent to, and the password they choose. onDone receives the account's
+// email, for signing in.
 export function CompleteForm({
   secret,
   onDone,
@@ -59,7 +62,7 @@ export function CompleteForm({
   // Do not keep the chosen password after the form unmounts.
   const redeem = useRedeemRegistrationLink({ mutation: { gcTime: 0 } });
   const form = useForm({
-    defaultValues: emptyPasswords,
+    defaultValues: emptyValues,
     validators: { onChange: CompleteSchema },
     onSubmitInvalid: ({ formApi }) => {
       const name = completeFields.find((field) => formApi.getFieldMeta(field)?.errors.length);
@@ -68,7 +71,7 @@ export function CompleteForm({
     onSubmit: ({ value, formApi }) => {
       if (redeem.isPending) return;
       redeem.mutate(
-        { data: { secret, password: value.password } },
+        { data: { secret, email: value.email, password: value.password } },
         {
           onSuccess: (result) => {
             formApi.reset();
@@ -138,7 +141,7 @@ export function CompleteForm({
       ref={formRef}
       className="flex flex-col gap-6"
       noValidate
-      aria-label="Choose your password"
+      aria-label="Create your account"
       aria-busy={redeem.isPending}
       onSubmit={(event) => {
         event.preventDefault();
@@ -146,10 +149,45 @@ export function CompleteForm({
       }}
     >
       <p>
-        Choose a password for your new inbok account. If you didn&apos;t ask to create an account,
-        close this page.
+        Enter the email address this link was sent to and choose a password for your new inbok
+        account. If you didn&apos;t ask to create an account, close this page.
       </p>
       <FieldGroup>
+        <form.Field name="email">
+          {(field) => {
+            const errors = field.state.meta.isBlurred || submitted ? field.state.meta.errors : [];
+            return (
+              <Field data-invalid={errors.length > 0} data-disabled={redeem.isPending}>
+                <FieldLabel htmlFor={emailId}>Email address</FieldLabel>
+                <Input
+                  id={emailId}
+                  name="email"
+                  type="email"
+                  // "username" lets a password manager save it with the new
+                  // password as one login.
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  className={`h-11 border-muted-foreground dark:aria-invalid:border-destructive ${focusClass}`}
+                  disabled={redeem.isPending}
+                  aria-invalid={errors.length > 0}
+                  aria-describedby={
+                    errors.length > 0
+                      ? `${emailId}-description ${emailId}-error`
+                      : `${emailId}-description`
+                  }
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                />
+                <FieldDescription id={`${emailId}-description`}>
+                  The address you asked to sign up with.
+                </FieldDescription>
+                <FieldError id={`${emailId}-error`} errors={errors} />
+              </Field>
+            );
+          }}
+        </form.Field>
         {inputs.map(({ name, label, description, toggle }) => (
           <form.Field key={name} name={name}>
             {(field) => {

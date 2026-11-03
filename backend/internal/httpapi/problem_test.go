@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -33,4 +34,13 @@ func TestProblemSchema(t *testing.T) {
 	result := &huma.ValidateResult{}
 	huma.Validate(a.api.OpenAPI().Components.Schemas, schema, huma.NewPathBuffer(nil, 0), huma.ModeReadFromServer, body, result)
 	assert.Empty(t, result.Errors, "HTTP response violates exported schema")
+}
+
+// A link given with another email marks the email field, says what to type,
+// and names no address.
+func TestLinkEmailMismatchProblem(t *testing.T) {
+	problem := linkEmailMismatchProblem()
+
+	assert.Equal(t, http.StatusUnprocessableEntity, problem.Status)
+	assert.Equal(t, []inputError{{Location: "body.email", Message: "Enter the email address this link was sent to."}}, problem.Errors)
 }

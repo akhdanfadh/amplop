@@ -10,7 +10,7 @@ const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-o
 
 export const Route = createFileRoute("/register/complete")({
   component: CompleteRegistration,
-  head: () => ({ meta: [{ title: "Choose your password - inbok" }] }),
+  head: () => ({ meta: [{ title: "Create your account - inbok" }] }),
 });
 
 function CompleteRegistration(): ReactElement {
@@ -30,7 +30,7 @@ function CompleteRegistration(): ReactElement {
   return (
     <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
       <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-        Choose your password
+        Create your account
       </h1>
       {secret ? (
         <CompleteForm key={secret} secret={secret} onDone={signIn} />

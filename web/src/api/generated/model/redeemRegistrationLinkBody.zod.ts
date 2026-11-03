@@ -6,11 +6,15 @@
  */
 import * as zod from 'zod';
 
+export const redeemRegistrationLinkBodyEmailMin = 3;
+export const redeemRegistrationLinkBodyEmailMax = 254;
+
 export const redeemRegistrationLinkBodyPasswordMin = 15;
 export const redeemRegistrationLinkBodyPasswordMax = 128;
 
 
 export const RedeemRegistrationLinkBody = zod.object({
+  "email": zod.email().min(redeemRegistrationLinkBodyEmailMin).max(redeemRegistrationLinkBodyEmailMax).describe('The email the link was sent to, typed by the person using it. Letters A to Z match in either case.'),
   "password": zod.string().min(redeemRegistrationLinkBodyPasswordMin).max(redeemRegistrationLinkBodyPasswordMax),
   "secret": zod.string().describe('The text after # in the emailed link.')
 })

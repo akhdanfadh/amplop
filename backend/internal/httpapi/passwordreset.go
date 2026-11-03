@@ -27,7 +27,7 @@ type passwordResetRequestService interface {
 }
 
 type passwordResetCompletionService interface {
-	Complete(ctx context.Context, secret, password string) (account.User, error)
+	Complete(ctx context.Context, secret, email, password string) (account.User, error)
 }
 
 type passwordResetHandler struct {
@@ -130,6 +130,7 @@ const passwordResetLinkInvalidType = problemPrefix + "password-reset-link-invali
 // newPasswordFromLink is the completion request body.
 type newPasswordFromLink struct {
 	Secret   string `json:"secret" writeOnly:"true" doc:"The text after # in the emailed link."`
+	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"The email the link was sent to, typed by the person using it. Letters A to Z match in either case."`
 	Password string `json:"password" writeOnly:"true" minLength:"15" maxLength:"128"`
 }
 
@@ -143,7 +144,8 @@ func registerPasswordResetComplete(api huma.API, handler passwordResetHandler) {
 		Method:      http.MethodPost,
 		Path:        passwordResetRedeemPath,
 		Summary:     "Set a new password with an emailed link",
-		Description: "Sets the password of the account the link was sent to, signs that account out everywhere, and uses up all of its reset links. " +
+		Description: "Sets the password of the account the link was sent to, when the email given is the one the link was sent to; " +
+			"signs that account out everywhere and uses up all of its reset links. " +
 			"TOTP stays on. Needs no session and signs no one in; the account's owner is emailed that the password changed.",
 		Metadata:    map[string]any{accessKey: session.AccessPublic},
 		Middlewares: huma.Middlewares{withNoStore},
@@ -152,7 +154,7 @@ func registerPasswordResetComplete(api huma.API, handler passwordResetHandler) {
 }
 
 func (h passwordResetHandler) handleRedeemPasswordResetLink(ctx context.Context, in *struct{ Body newPasswordFromLink }) (*output[passwordResetResult], error) {
-	user, err := h.completion.Complete(ctx, in.Body.Secret, in.Body.Password)
+	user, err := h.completion.Complete(ctx, in.Body.Secret, in.Body.Email, in.Body.Password)
 	if err != nil {
 		return nil, passwordResetCompleteProblem(err)
 	}
@@ -167,8 +169,11 @@ func passwordResetCompleteResponses(api huma.API) map[string]*huma.Response {
 	notFound.Content[problemContentType].Example = passwordResetCompleteProblem(passwordreset.ErrLinkInvalid)
 
 	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
-	invalid.Description = "The request inputs are invalid."
-	invalid.Content[problemContentType].Example = passwordResetCompleteProblem(account.ErrPasswordInvalid)
+	invalid.Description = "The request inputs are invalid, or the link was sent to a different email."
+	invalid.Content[problemContentType].Examples = map[string]*huma.Example{
+		"password":      {Value: passwordResetCompleteProblem(account.ErrPasswordInvalid)},
+		"emailMismatch": {Value: passwordResetCompleteProblem(passwordreset.ErrEmailMismatch)},
+	}
 	return responses
 }
 
@@ -181,6 +186,10 @@ func passwordResetCompleteProblem(err error) error {
 		message := fmt.Sprintf("Use %d to %d characters.", account.PasswordMinLength, account.PasswordMaxLength)
 		invalid.Errors = []inputError{{Location: "body.password", Message: message}}
 		return invalid
+	case errors.Is(err, emailaddress.ErrInvalid):
+		return invalidEmailProblem("body.email")
+	case errors.Is(err, passwordreset.ErrEmailMismatch):
+		return linkEmailMismatchProblem()
 	case errors.Is(err, passwordreset.ErrLinkInvalid):
 		// One answer for every reason, so an old link tells nothing about
 		// the account.

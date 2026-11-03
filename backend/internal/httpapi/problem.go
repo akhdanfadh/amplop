@@ -85,6 +85,15 @@ func invalidEmailProblem(location string) *problem {
 	return invalid
 }
 
+// linkEmailMismatchProblem returns the 422 for an emailed link given with
+// another email than the one it was sent to, on body.email.
+func linkEmailMismatchProblem() *problem {
+	invalid := requestProblem(http.StatusUnprocessableEntity)
+	// It names no address: the person typing may not own the link.
+	invalid.Errors = []inputError{{Location: "body.email", Message: "Enter the email address this link was sent to."}}
+	return invalid
+}
+
 // writeProblem writes an already-safe problem for Gin fallbacks and recovery.
 // These paths bypass Huma's response transformer.
 func writeProblem(ctx *gin.Context, p *problem) {

@@ -64,8 +64,7 @@ function SignIn(): ReactElement {
         )}
       </div>
       {registered && (
-        // Naming the email shows a visitor whose link was meant for another
-        // address which account they just created.
+        // Naming the email confirms which account was just created.
         <p id={registeredId}>
           The account for {registeredEmail} is created. Sign in with your new password.
         </p>

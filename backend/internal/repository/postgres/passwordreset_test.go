@@ -135,7 +135,7 @@ func TestPasswordResetComplete(t *testing.T) {
 	completion := resetCompletion(t, f.db, func() time.Time { return resetNow })
 
 	// When the member follows one link.
-	user, err := completion.Complete(t.Context(), first, resetPassword)
+	user, err := completion.Complete(t.Context(), first, "member@example.com", resetPassword)
 	require.NoError(t, err)
 
 	// Then the new password is saved and the member is signed out
@@ -157,7 +157,7 @@ func TestPasswordResetComplete(t *testing.T) {
 	assert.Equal(t, 1, resetSignInAttempts(t, f.conn, "bystander@example.com"))
 
 	// And the member's other link no longer works.
-	_, err = completion.Complete(t.Context(), second, resetPassword)
+	_, err = completion.Complete(t.Context(), second, "member@example.com", resetPassword)
 	require.ErrorIs(t, err, passwordreset.ErrLinkInvalid)
 }
 
@@ -329,7 +329,7 @@ func TestPasswordResetWaitsForDeactivation(t *testing.T) {
 	// When a completion waits for the lock, and the deactivation commits.
 	resetDone := make(chan error, 1)
 	go func() {
-		_, err := resetCompletion(t, f.db, func() time.Time { return resetNow }).Complete(ctx, secret, resetPassword)
+		_, err := resetCompletion(t, f.db, func() time.Time { return resetNow }).Complete(ctx, secret, "member@example.com", resetPassword)
 		resetDone <- err
 	}()
 	waitForLock(t, ctx, f.db, "the completion did not wait for the deactivation")
@@ -409,7 +409,7 @@ func TestPasswordResetDeactivationRace(t *testing.T) {
 		var wg sync.WaitGroup
 		var resetErr, deactivateErr error
 		wg.Go(func() {
-			_, resetErr = completion.Complete(t.Context(), secret, resetPassword)
+			_, resetErr = completion.Complete(t.Context(), secret, "member@example.com", resetPassword)
 		})
 		wg.Go(func() {
 			time.Sleep(delay)
@@ -781,7 +781,7 @@ func TestPasswordResetFlow(t *testing.T) {
 	_, secret, ok := strings.Cut(mailer.sent[0].Body, "https://mail.example.com/reset-password#")
 	require.True(t, ok)
 	secret, _, _ = strings.Cut(secret, "\n")
-	user, err := completion.Complete(t.Context(), secret, resetPassword)
+	user, err := completion.Complete(t.Context(), secret, "member@example.com", resetPassword)
 	require.NoError(t, err)
 	require.NoError(t, background.Wait(t.Context()))
 

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
 	"inbok/internal/randomsecret"
 	"inbok/internal/systememail"
@@ -140,7 +141,7 @@ func TestComplete(t *testing.T) {
 	_, otherHash := randomsecret.New()
 	storage.links = append(storage.links, Link{TokenHash: otherHash, UserID: testUser.ID, Email: testUser.Email, ExpiresAt: testNow.Add(linkLifetime)})
 
-	user, err := testCompletion(t, storage).Complete(t.Context(), secret, testPassword)
+	user, err := testCompletion(t, storage).Complete(t.Context(), secret, testUser.Email, testPassword)
 	require.NoError(t, err)
 
 	assert.Equal(t, testUser, user)
@@ -185,7 +186,7 @@ func TestCompleteRefuses(t *testing.T) {
 
 			completion, mailer, background := notifyingCompletion(t, storage)
 
-			_, err := completion.Complete(t.Context(), secret, password)
+			_, err := completion.Complete(t.Context(), secret, testUser.Email, password)
 			require.NoError(t, background.Wait(t.Context()))
 
 			require.ErrorIs(t, err, c.want)
@@ -212,7 +213,7 @@ func TestCompleteRechecks(t *testing.T) {
 			storage, secret := completeSetup(t)
 			storage.beforeLock = c.change
 
-			_, err := testCompletion(t, storage).Complete(t.Context(), secret, testPassword)
+			_, err := testCompletion(t, storage).Complete(t.Context(), secret, testUser.Email, testPassword)
 
 			require.ErrorIs(t, err, ErrLinkInvalid)
 			assert.Equal(t, 1, storage.locked)
@@ -225,7 +226,7 @@ func TestCompleteStorageError(t *testing.T) {
 	storage, secret := completeSetup(t)
 	storage.readErr = errors.New("database down")
 
-	_, err := testCompletion(t, storage).Complete(t.Context(), secret, testPassword)
+	_, err := testCompletion(t, storage).Complete(t.Context(), secret, testUser.Email, testPassword)
 
 	require.ErrorIs(t, err, storage.readErr)
 	assert.Zero(t, storage.locked)
@@ -238,7 +239,7 @@ func TestCompleteEndedContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := testCompletion(t, storage).Complete(ctx, secret, testPassword)
+	_, err := testCompletion(t, storage).Complete(ctx, secret, testUser.Email, testPassword)
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Zero(t, storage.locked)
@@ -259,7 +260,7 @@ func TestCompleteExpiresDuringHash(t *testing.T) {
 
 	completion := NewCompletion(storage, &fakeMailer{}, testPublicURL, testBackground(t, slog.New(slog.DiscardHandler)), clock)
 
-	_, err := completion.Complete(t.Context(), secret, testPassword)
+	_, err := completion.Complete(t.Context(), secret, testUser.Email, testPassword)
 
 	require.ErrorIs(t, err, ErrLinkInvalid)
 	assert.Equal(t, 1, storage.locked)
@@ -272,7 +273,7 @@ func TestCompleteNotice(t *testing.T) {
 	storage, secret := completeSetup(t)
 	completion, mailer, background := notifyingCompletion(t, storage)
 
-	_, err := completion.Complete(t.Context(), secret, testPassword)
+	_, err := completion.Complete(t.Context(), secret, testUser.Email, testPassword)
 	require.NoError(t, err)
 	require.NoError(t, background.Wait(t.Context()))
 
@@ -292,10 +293,54 @@ func TestCompleteNoticeFails(t *testing.T) {
 	completion, mailer, background := notifyingCompletion(t, storage)
 	mailer.err = systememail.ErrNotConfigured
 
-	user, err := completion.Complete(t.Context(), secret, testPassword)
+	user, err := completion.Complete(t.Context(), secret, testUser.Email, testPassword)
 	require.NoError(t, background.Wait(t.Context()))
 
 	require.NoError(t, err)
 	assert.Equal(t, testUser, user)
 	assert.Len(t, storage.changes, 1)
+}
+
+// The email given must be the one the link was sent to, however it is
+// spelled.
+func TestCompleteEmailSpelling(t *testing.T) {
+	storage, secret := completeSetup(t)
+
+	_, err := testCompletion(t, storage).Complete(t.Context(), secret, " Member@Example.COM ", testPassword)
+
+	require.NoError(t, err)
+	assert.Len(t, storage.changes, 1)
+}
+
+// Another email cannot reset the account, so a link sent for an account
+// someone controls fails for a person who types their own address. A link
+// that is not live answers as one before the email is compared, so an old
+// link tells nothing more about the account.
+func TestCompleteEmailRefused(t *testing.T) {
+	cases := []struct {
+		name   string
+		email  string
+		change func(*completeMemory)
+		want   error
+	}{
+		{name: "other email", email: "alice@example.com", want: ErrEmailMismatch},
+		{name: "invalid email", email: "not an email", want: emailaddress.ErrInvalid},
+		{name: "used link, other email", email: "alice@example.com", change: func(m *completeMemory) { m.links = nil }, want: ErrLinkInvalid},
+		{name: "expired link, other email", email: "alice@example.com", change: func(m *completeMemory) { m.links[0].ExpiresAt = testNow }, want: ErrLinkInvalid},
+		{name: "deactivated, other email", email: "alice@example.com", change: func(m *completeMemory) { m.deactivated = true }, want: ErrLinkInvalid},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			storage, secret := completeSetup(t)
+			if c.change != nil {
+				c.change(storage)
+			}
+
+			_, err := testCompletion(t, storage).Complete(t.Context(), secret, c.email, testPassword)
+
+			require.ErrorIs(t, err, c.want)
+			assert.Zero(t, storage.locked, "refused before the hash and the lock")
+			assert.Empty(t, storage.changes)
+		})
+	}
 }

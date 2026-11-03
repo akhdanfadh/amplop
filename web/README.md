@@ -227,8 +227,13 @@ address" brings the form back with the address kept. Sign-in shows a
 "Create an account" link only while visitors can register.
 
 A sign-up email's link opens `/register/complete`, whose secret is kept the
-same way as `/verify-email`'s. The visitor chooses a password, 15 to 128
-characters, entered twice. Success creates no session: the page opens
+same way as `/verify-email`'s. The visitor types the email the link was
+sent to and chooses a password, 15 to 128 characters, entered twice. The
+server refuses another email on the email field ("Enter the email address
+this link was sent to."), so a link someone sends for an address they
+control cannot create that account for a visitor typing their own. The
+email field is marked `autocomplete="username"`, so a password manager
+saves it with the new password. Success creates no session: the page opens
 sign-in with the email filled in and a notice naming the new account. The
 email travels in history state, data the browser keeps with the history
 entry, not in the URL. A spent or expired link, or an

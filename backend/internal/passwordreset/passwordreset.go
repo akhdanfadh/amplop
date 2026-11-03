@@ -17,9 +17,15 @@ const linkLifetime = time.Hour
 // secret in its fragment.
 const resetPath = "/reset-password"
 
-// ErrLinkInvalid means a reset link is malformed, unknown, used, expired,
-// sent to an email the user no longer has, or owned by a deactivated user.
-var ErrLinkInvalid = errors.New("password reset link is not valid")
+var (
+	// ErrLinkInvalid means a reset link is malformed, unknown, used,
+	// expired, sent to an email the user no longer has, or owned by a
+	// deactivated user.
+	ErrLinkInvalid = errors.New("password reset link is not valid")
+	// ErrEmailMismatch means a live reset link was sent to another email
+	// than the one given with it.
+	ErrEmailMismatch = errors.New("password reset link was sent to another email")
+)
 
 // Link is a saved reset link without its secret.
 type Link struct {

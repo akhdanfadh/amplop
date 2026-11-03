@@ -218,7 +218,7 @@ func TestRecoveryEndsResetLinks(t *testing.T) {
 	_, err := account.NewRecovery(f.db).Recover(t.Context(), "admin@example.com", "a new recovery password")
 	require.NoError(t, err)
 
-	_, err = resetCompletion(t, f.db, func() time.Time { return resetNow }).Complete(t.Context(), secret, resetPassword)
+	_, err = resetCompletion(t, f.db, func() time.Time { return resetNow }).Complete(t.Context(), secret, "admin@example.com", resetPassword)
 
 	require.ErrorIs(t, err, passwordreset.ErrLinkInvalid)
 	credentials, err := f.db.ReadCredentials(t.Context(), "admin@example.com")

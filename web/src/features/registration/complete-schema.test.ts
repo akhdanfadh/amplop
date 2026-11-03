@@ -2,20 +2,31 @@ import { describe, expect, it } from "vite-plus/test";
 import { validationMessage } from "@/api/validation";
 import { CompleteSchema } from "./complete-schema";
 
+const email = "visitor@example.org";
 const password = "a long member password";
 
 describe("CompleteSchema", () => {
-  it("accepts a matching password", () => {
-    expect(CompleteSchema.parse({ password, confirmPassword: password })).toEqual({
+  it("accepts an email and a matching password", () => {
+    expect(CompleteSchema.parse({ email, password, confirmPassword: password })).toEqual({
+      email,
       password,
       confirmPassword: password,
     });
   });
 
+  it("asks for a valid email", () => {
+    const result = CompleteSchema.safeParse(
+      { email: "not an email", password, confirmPassword: password },
+      { error: validationMessage },
+    );
+
+    expect(result.error?.issues).toMatchObject([{ path: ["email"] }]);
+  });
+
   // The API's rule, as setup uses it.
   it.each(["p".repeat(14), "p".repeat(129)])("rejects a password of the wrong length", (value) => {
     const result = CompleteSchema.safeParse(
-      { password: value, confirmPassword: value },
+      { email, password: value, confirmPassword: value },
       { error: validationMessage },
     );
 
@@ -25,7 +36,7 @@ describe("CompleteSchema", () => {
   });
 
   it("asks for the confirmation", () => {
-    const result = CompleteSchema.safeParse({ password, confirmPassword: "" });
+    const result = CompleteSchema.safeParse({ email, password, confirmPassword: "" });
 
     expect(result.error?.issues).toEqual(
       expect.arrayContaining([
@@ -35,7 +46,7 @@ describe("CompleteSchema", () => {
   });
 
   it("rejects a confirmation that differs", () => {
-    const result = CompleteSchema.safeParse({ password, confirmPassword: `${password}!` });
+    const result = CompleteSchema.safeParse({ email, password, confirmPassword: `${password}!` });
 
     expect(result.error?.issues).toMatchObject([
       { path: ["confirmPassword"], message: "Passwords must match." },
