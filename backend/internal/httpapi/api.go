@@ -29,22 +29,24 @@ type API struct {
 // when no request is served, e.g. to export OpenAPI: registering an
 // operation calls none of them.
 type Services struct {
-	EmailVerification      emailVerificationService
-	Members                membersService
-	SystemEmail            systemEmailService
-	TestMessages           testMessageService
-	Registration           registrationService
-	RegistrationRequests   registrationRequestService
-	RegistrationCompletion registrationCompletionService
-	Disabler               disableService
-	Backups                backupService
-	CodeSignIn             codeSignInService
-	Enrollment             enrollmentService
-	TOTP                   totpService
-	Probe                  probeService
-	Account                accountService
-	Session                sessionService
-	Throttle               setupThrottle
+	EmailVerification       emailVerificationService
+	Members                 membersService
+	SystemEmail             systemEmailService
+	TestMessages            testMessageService
+	Registration            registrationService
+	RegistrationRequests    registrationRequestService
+	RegistrationCompletion  registrationCompletionService
+	PasswordResetRequests   passwordResetRequestService
+	PasswordResetCompletion passwordResetCompletionService
+	Disabler                disableService
+	Backups                 backupService
+	CodeSignIn              codeSignInService
+	Enrollment              enrollmentService
+	TOTP                    totpService
+	Probe                   probeService
+	Account                 accountService
+	Session                 sessionService
+	Throttle                setupThrottle
 }
 
 // New registers operations; logger receives one line per request. Build it
@@ -116,6 +118,7 @@ func New(logger *slog.Logger, services Services) *API {
 	registerEmailVerification(api, services.EmailVerification)
 	registerMembers(api, services.Members)
 	registerRegistration(api, services.Registration, services.RegistrationRequests, services.RegistrationCompletion)
+	registerPasswordReset(api, services.PasswordResetRequests, services.PasswordResetCompletion)
 
 	documentRateLimits(api)
 	registerProblemTypes(api)

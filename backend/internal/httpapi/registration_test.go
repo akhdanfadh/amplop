@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -231,12 +232,20 @@ func (m *requestMemory) RequestRegistration(ctx context.Context, email string, _
 	return nil
 }
 
+// recordingMailer records the subjects and recipients of the messages it
+// sends, which may come from background work.
 type recordingMailer struct {
-	subjects []string
+	mu         sync.Mutex
+	subjects   []string
+	recipients []string
 }
 
+// Send records outgoing's subject and recipient and returns revision 1.
 func (m *recordingMailer) Send(_ context.Context, outgoing systememail.Outgoing) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.subjects = append(m.subjects, outgoing.Subject)
+	m.recipients = append(m.recipients, outgoing.To)
 	return 1, nil
 }
 

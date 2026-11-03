@@ -32,6 +32,8 @@ import {
   ResponseHealthStatus,
   ResponseListedMembers,
   ResponseListedSessions,
+  ResponsePasswordResetRequestResult,
+  ResponsePasswordResetResult,
   ResponseProbeEventCreated,
   ResponseRegisteredMember,
   ResponseRegistrationAvailability,
@@ -51,6 +53,8 @@ import type {
   EmailVerificationSecret,
   NewCodeSession,
   NewMember,
+  NewPasswordFromLink,
+  NewPasswordResetRequest,
   NewProbeEvent,
   NewRegistrationRequest,
   NewRegistrationSettings,
@@ -605,6 +609,186 @@ export const useReactivateMember = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getReactivateMemberMutationOptions(options), queryClient);
+    }
+
+export const getRequestPasswordResetLinkUrl = () => {
+
+
+
+
+  return `/api/v0/password-reset/links`
+}
+
+/**
+ * Answers at once, the same for every email. Afterwards, an active account with that verified email gets a link that expires in 1 hour, unless 3 links were sent to it in the last hour or 5 in 24 hours; any other email gets nothing. Earlier links keep working. One client may ask 10 times in 15 minutes.
+ * @summary Email a link that resets a password
+ */
+export const requestPasswordResetLink = async (newPasswordResetRequest: NewPasswordResetRequest, options?: Parameters<typeof transport>[1]): Promise<ResponsePasswordResetRequestResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponsePasswordResetRequestResult>(getRequestPasswordResetLinkUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newPasswordResetRequest),
+    schema: ResponsePasswordResetRequestResult
+  }
+);}
+
+
+
+
+
+export const getRequestPasswordResetLinkMutationKey = () => ['requestPasswordResetLink'] as const;
+
+export const getRequestPasswordResetLinkMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestPasswordResetLink>>, TError,RequestPasswordResetLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestPasswordResetLink>>, TError,RequestPasswordResetLinkMutationVariables, TContext> => {
+
+const mutationKey = getRequestPasswordResetLinkMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestPasswordResetLink>>, RequestPasswordResetLinkMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestPasswordResetLink(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestPasswordResetLinkMutationResult = NonNullable<Awaited<ReturnType<typeof requestPasswordResetLink>>>
+    export type RequestPasswordResetLinkMutationBody = NewPasswordResetRequest
+    export type RequestPasswordResetLinkMutationError = ErrorType<Problem>
+    export type RequestPasswordResetLinkMutationVariables = {data: NewPasswordResetRequest}
+
+    /**
+ * @summary Email a link that resets a password
+ */
+export const useRequestPasswordResetLink = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestPasswordResetLink>>, TError,RequestPasswordResetLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof requestPasswordResetLink>>,
+        TError,
+        RequestPasswordResetLinkMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRequestPasswordResetLinkMutationOptions(options), queryClient);
+    }
+
+export const getRedeemPasswordResetLinkUrl = () => {
+
+
+
+
+  return `/api/v0/password-reset/links/redeem`
+}
+
+/**
+ * Sets the password of the account the link was sent to, signs that account out everywhere, and uses up all of its reset links. TOTP stays on. Needs no session and signs no one in; the account's owner is emailed that the password changed.
+ * @summary Set a new password with an emailed link
+ */
+export const redeemPasswordResetLink = async (newPasswordFromLink: NewPasswordFromLink, options?: Parameters<typeof transport>[1]): Promise<ResponsePasswordResetResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponsePasswordResetResult>(getRedeemPasswordResetLinkUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newPasswordFromLink),
+    schema: ResponsePasswordResetResult
+  }
+);}
+
+
+
+
+
+export const getRedeemPasswordResetLinkMutationKey = () => ['redeemPasswordResetLink'] as const;
+
+export const getRedeemPasswordResetLinkMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemPasswordResetLink>>, TError,RedeemPasswordResetLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof redeemPasswordResetLink>>, TError,RedeemPasswordResetLinkMutationVariables, TContext> => {
+
+const mutationKey = getRedeemPasswordResetLinkMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof redeemPasswordResetLink>>, RedeemPasswordResetLinkMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  redeemPasswordResetLink(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RedeemPasswordResetLinkMutationResult = NonNullable<Awaited<ReturnType<typeof redeemPasswordResetLink>>>
+    export type RedeemPasswordResetLinkMutationBody = NewPasswordFromLink
+    export type RedeemPasswordResetLinkMutationError = ErrorType<Problem>
+    export type RedeemPasswordResetLinkMutationVariables = {data: NewPasswordFromLink}
+
+    /**
+ * @summary Set a new password with an emailed link
+ */
+export const useRedeemPasswordResetLink = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemPasswordResetLink>>, TError,RedeemPasswordResetLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof redeemPasswordResetLink>>,
+        TError,
+        RedeemPasswordResetLinkMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRedeemPasswordResetLinkMutationOptions(options), queryClient);
     }
 
 export const getCreateProbeEventUrl = () => {

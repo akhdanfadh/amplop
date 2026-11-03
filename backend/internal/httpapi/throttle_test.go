@@ -18,6 +18,7 @@ import (
 	"inbok/internal/account"
 	"inbok/internal/attemptlimit"
 	"inbok/internal/emailverification"
+	"inbok/internal/passwordreset"
 	"inbok/internal/session"
 	"inbok/internal/totp"
 )
@@ -146,6 +147,10 @@ func TestRetryAfter(t *testing.T) {
 			api := New(discard, Services{EmailVerification: &fakeEmailVerification{err: refused(emailverification.ErrThrottled)}, Session: memberSessions(account.RoleMember)})
 			return sendSessionRequest(api, http.MethodPost, "/account/email-verification")
 		}, "email-verification-throttled"},
+		{"password reset link", func() *httptest.ResponseRecorder {
+			api := New(discard, Services{PasswordResetRequests: &fakeResetRequests{err: refused(passwordreset.ErrThrottled)}})
+			return postPublic(api, passwordResetLinksPath, `{"email":"member@example.org"}`)
+		}, "password-reset-throttled"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			response := c.send()
@@ -208,5 +213,5 @@ func TestRetryAfterDocumented(t *testing.T) {
 			assert.Equal(t, huma.TypeInteger, header.Schema.Type, path)
 		}
 	}
-	assert.Equal(t, 11, throttled, "setup, sign-in, code sign-in, confirm, backup codes, turn-off, verification links, redeem, the probe, and both registration writes")
+	assert.Equal(t, 13, throttled, "setup, sign-in, code sign-in, confirm, backup codes, turn-off, verification links, redeem, the probe, both registration writes, and both password reset writes")
 }

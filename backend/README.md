@@ -606,10 +606,11 @@ removes it, so parallel password checks cannot bypass the limits. A blocked
 attempt returns HTTP 429 with `Retry-After`: the seconds until one more
 attempt fits, rounded up. These limits are constants too.
 
-Every throttle (sign-in, setup, TOTP codes, and verification links) counts
-with `attemptlimit.Wait`, which says how long until one more attempt fits; a
-new throttle uses it too. Each keeps its own key, storage, and lock: under the
-lock it counts the earlier attempts, then saves this one only if it fits. A
+Every throttle (sign-in, setup, TOTP codes, verification links,
+registration, and password reset links) counts with `attemptlimit.Wait`,
+which says how long until one more attempt fits; a new throttle uses it
+too. Each keeps its own key, storage, and lock: under the lock it counts the
+earlier attempts, then saves this one only if it fits. A
 refusal is an `*attemptlimit.Error` that wraps the feature's `ErrThrottled`
 and carries the wait; `retryAfterProblem` in `httpapi` turns it into the
 header. Every documented 429 lists the header as required, so a new 429 must
@@ -1039,8 +1040,19 @@ holds.
 
 ### Asking for a link
 
-`passwordreset.Requests.Request` takes an email and the client's address
-and answers the same for every address. Before it returns, it only:
+`POST /api/v0/password-reset/links` takes `{"email"}`, needs no session,
+and answers 202 `{"status": "requested"}` whatever happens to that email.
+Other answers:
+
+- 422 on `body.email` for an invalid email.
+- 429 `password-reset-throttled` with `Retry-After`: this client asked 10
+  times in 15 minutes. It never depends on the email.
+- 429 `too-many-requests`: the in-memory request limit every public write
+  has (see [Sign-in and browser sessions](#sign-in-and-browser-sessions)).
+
+The operation calls `passwordreset.Requests.Request` with the email and the
+client's address, which answers the same for every address. Before it
+returns, it only:
 
 1. checks that the email is valid (`emailaddress.Parse`);
 2. under a lock on the client, records an attempt in
@@ -1073,9 +1085,20 @@ link times are both over 24 hours old; nothing deletes them on a schedule.
 
 ### Completing a reset
 
-`passwordreset.Completion.Complete` takes the link's secret and the new
-password, which follows setup's rule, 15 to 128 characters
-(`account.CheckPassword`).
+`POST /api/v0/password-reset/links/redeem` takes `{"secret", "password"}`
+and needs no session. It answers 200 `{"email"}`, the account's email, so
+the sign-in form can be filled in, and sets no cookie. Other answers:
+
+- 422 on `body.password` for a password outside the rule.
+- 404 `password-reset-link-invalid`: the link is unknown, used, or expired,
+  or its account can no longer reset. One answer for every reason.
+- 429 `too-many-requests`: the in-memory request limit.
+
+There is no attempt limit: a 256-bit secret cannot be guessed.
+
+The operation calls `passwordreset.Completion.Complete` with the link's
+secret and the new password, which follows setup's rule, 15 to 128
+characters (`account.CheckPassword`).
 
 1. It reads the link and its user without a lock. A missing or expired
    link, a deactivated user, or a user whose email is no longer the
@@ -1265,7 +1288,7 @@ httpapi --> emailverification <-- repository/postgres
             emailverification --> systememail
 httpapi --> registration <-- repository/postgres
             registration --> systememail, account
-            passwordreset <-- repository/postgres
+httpapi --> passwordreset <-- repository/postgres
             passwordreset --> systememail, account
 ```
 
