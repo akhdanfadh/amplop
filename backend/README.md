@@ -906,6 +906,16 @@ reply. The warning carries the `request_id` of the request that sent it:
 time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="..." request_id=0b9d6a56-3f4e-4c1a-9d2b-7e8f0a1b2c3d
 ```
 
+A send is **unconfirmed** when inbok had written the whole message, final
+dot included, and then failed while waiting for the server's answer
+without a 4xx or 5xx refusal: the connection dropped, time ran out, the
+reply was garbled, or the caller gave up. The server may have accepted
+the message, so the warning adds `unconfirmed=true`, and the `SendError`
+says so to callers, also when it matches the caller's cancellation;
+sending again could deliver it twice. A 4xx or 5xx refusal, and any
+failure before the final dot was written, is not unconfirmed: the message
+was not accepted.
+
 To list saves, with no setting values:
 
 ```sql
@@ -946,8 +956,8 @@ email is saved, or 429 `email-verification-throttled` after 3 links in 15
 minutes or 10 in 24 hours, with `Retry-After`, like the other limits. The
 limit counts the account's saved links, so anything that deletes them, such
 as a redeem, starts it over. The link is saved before the send, so a 502
-`email-not-sent` still counts toward the limit, and a timed-out message may
-arrive and work. A failed send logs the same warning as a test message, with
+`email-not-sent` still counts toward the limit, and an
+[unconfirmed](#system-email) message may arrive and work. A failed send logs the same warning as a test message, with
 `purpose="email verification"`, but without the server's reply, which can
 quote the link. A test message to the same server shows the reply.
 
@@ -1098,7 +1108,8 @@ email has an account. Other answers:
   Both limits are checked before the email's own, so a 429 never depends on
   the email.
 - 502 `email-not-sent`: the send failed. The link stays saved and counts,
-  and after a timeout the message may still arrive. The warning logged has
+  and an [unconfirmed](#system-email) message may still arrive. The
+  warning logged has
   `purpose="registration link"` or `"registration notice"` and no server
   reply.
 

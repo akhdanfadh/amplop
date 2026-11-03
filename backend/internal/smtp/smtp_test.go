@@ -594,6 +594,138 @@ func TestSendScripted(t *testing.T) {
 	}
 }
 
+// A send is unconfirmed only when the server got the whole message and no
+// readable answer came back, so the message may have been accepted. A 4xx
+// or 5xx refusal, and any failure before the message ends, is not.
+func TestSendUnconfirmed(t *testing.T) {
+	// upToMessage answers everything up to and including the message, then
+	// runs after.
+	upToMessage := func(after func(*textproto.Conn)) func(*textproto.Conn) {
+		return func(conn *textproto.Conn) {
+			reply(conn, "220 localhost")
+			expect(conn, "EHLO")
+			reply(conn, "250 localhost")
+			expect(conn, "MAIL")
+			reply(conn, "250 OK")
+			expect(conn, "RCPT")
+			reply(conn, "250 OK")
+			expect(conn, "DATA")
+			reply(conn, "354 Go ahead")
+			if _, err := conn.ReadDotBytes(); err != nil {
+				return
+			}
+			after(conn)
+		}
+	}
+	for _, c := range []struct {
+		name        string
+		script      func(*textproto.Conn)
+		reason      systememail.Reason
+		unconfirmed bool
+	}{
+		{"closed after the message", upToMessage(func(*textproto.Conn) {}), systememail.ReasonConnect, true},
+		{"silent after the message", upToMessage(func(*textproto.Conn) { <-t.Context().Done() }), systememail.ReasonTimeout, true},
+		{"refused the message", upToMessage(func(conn *textproto.Conn) { reply(conn, "554 Rejected") }), systememail.ReasonSender, false},
+		{"garbled answer", upToMessage(func(conn *textproto.Conn) { reply(conn, "queued, thanks") }), systememail.ReasonSender, true},
+		{"unexpected success code", upToMessage(func(conn *textproto.Conn) { reply(conn, "354 Go ahead") }), systememail.ReasonSender, true},
+		{"overlong answer", upToMessage(func(conn *textproto.Conn) { reply(conn, "250 "+strings.Repeat("x", 3000)) }), systememail.ReasonSender, true},
+		{"refused the recipient", func(conn *textproto.Conn) {
+			reply(conn, "220 localhost")
+			expect(conn, "EHLO")
+			reply(conn, "250 localhost")
+			expect(conn, "MAIL")
+			reply(conn, "250 OK")
+			expect(conn, "RCPT")
+			reply(conn, "550 No such user")
+		}, systememail.ReasonRecipient, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			server := scriptedServer(t, c.script)
+
+			err := (&Sender{timeout: 500 * time.Millisecond, hello: testHello}).Send(t.Context(), server, testPassword, testMessage())
+
+			var failed *systememail.SendError
+			require.ErrorAs(t, err, &failed)
+			assert.Equal(t, c.reason, failed.Reason)
+			assert.Equal(t, c.unconfirmed, failed.Unconfirmed)
+		})
+	}
+}
+
+// failingWrites wraps a connection so writes fail once the message's final
+// dot is among them, as when the connection breaks while inbok flushes the
+// message's end.
+type failingWrites struct {
+	net.Conn
+}
+
+func (c failingWrites) Write(b []byte) (int, error) {
+	if bytes.Contains(b, []byte("\r\n.\r\n")) {
+		return 0, net.ErrClosed
+	}
+	return c.Conn.Write(b)
+}
+
+// A failure while flushing the message's end means the final dot never left
+// inbok, so the server cannot have accepted the message: not unconfirmed.
+func TestSendFinalWriteFailed(t *testing.T) {
+	server := scriptedServer(t, func(conn *textproto.Conn) {
+		reply(conn, "220 localhost")
+		expect(conn, "EHLO")
+		reply(conn, "250 localhost")
+		expect(conn, "MAIL")
+		reply(conn, "250 OK")
+		expect(conn, "RCPT")
+		reply(conn, "250 OK")
+		expect(conn, "DATA")
+		reply(conn, "354 Go ahead")
+		<-t.Context().Done()
+	})
+	sender := &Sender{timeout: testTimeout, hello: testHello, dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+		conn, err := (&net.Dialer{}).DialContext(ctx, network, address)
+		return failingWrites{conn}, err
+	}}
+
+	err := sender.Send(t.Context(), server, testPassword, testMessage())
+
+	var failed *systememail.SendError
+	require.ErrorAs(t, err, &failed)
+	assert.False(t, failed.Unconfirmed)
+}
+
+// A caller giving up while inbok waits for the answer to a complete message
+// still learns the send is unconfirmed; one giving up earlier does not.
+func TestSendCanceledUnconfirmed(t *testing.T) {
+	// Given a server that has the whole message and never answers, and a
+	// caller that gives up as soon as it does.
+	ctx, cancel := context.WithCancel(t.Context())
+	server := scriptedServer(t, func(conn *textproto.Conn) {
+		reply(conn, "220 localhost")
+		expect(conn, "EHLO")
+		reply(conn, "250 localhost")
+		expect(conn, "MAIL")
+		reply(conn, "250 OK")
+		expect(conn, "RCPT")
+		reply(conn, "250 OK")
+		expect(conn, "DATA")
+		reply(conn, "354 Go ahead")
+		if _, err := conn.ReadDotBytes(); err != nil {
+			return
+		}
+		cancel()
+		<-t.Context().Done()
+	})
+
+	// When it sends.
+	err := (&Sender{timeout: testTimeout, hello: testHello}).Send(ctx, server, testPassword, testMessage())
+
+	// Then the error is still the cancellation, and unconfirmed.
+	require.ErrorIs(t, err, context.Canceled)
+	var failed *systememail.SendError
+	require.ErrorAs(t, err, &failed)
+	assert.True(t, failed.Unconfirmed)
+}
+
 // A server that never stops replying is cut off at the size limit.
 func TestSendReplyLimit(t *testing.T) {
 	server := scriptedServer(t, func(conn *textproto.Conn) {

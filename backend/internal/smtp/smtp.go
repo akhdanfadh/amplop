@@ -69,6 +69,10 @@ type Sender struct {
 	roots   *x509.CertPool // nil: the system's trusted certificates
 	timeout time.Duration
 	hello   string // the name sent in EHLO
+
+	// dial opens the connection; nil uses a plain [net.Dialer]. Tests
+	// replace it to break a connection at a chosen moment.
+	dial func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
 var _ systememail.Sender = (*Sender)(nil)
@@ -119,18 +123,29 @@ func (s *Sender) Send(ctx context.Context, server systememail.Server, password s
 	if err == nil {
 		return nil
 	}
-	// The caller gave up; the server is not at fault.
 	if ctx.Err() != nil {
+		// The caller gave up; the server is not at fault. Waiting for the
+		// answer to a whole message, the send stays unconfirmed, and the
+		// error still matches the caller's.
+		if step, ok := errors.AsType[*systememail.SendError](err); ok && step.Unconfirmed {
+			cancelled := failed(step.Reason, fmt.Errorf("%w while waiting for the answer to the message", ctx.Err()))
+			cancelled.Unconfirmed = true
+			return cancelled
+		}
 		return ctx.Err()
 	}
 	// When time runs out, the waiting step fails on the closed connection and
 	// labels itself, but the cause is the wait. Keep the step for logs.
 	var netErr net.Error
 	if bounded.Err() != nil || (errors.As(err, &netErr) && netErr.Timeout()) {
+		unconfirmed := false
 		if step, ok := errors.AsType[*systememail.SendError](err); ok {
 			err = fmt.Errorf("waiting at %s: %w", step.Reason, step.Err)
+			unconfirmed = step.Unconfirmed
 		}
-		return failed(systememail.ReasonTimeout, err)
+		timeout := failed(systememail.ReasonTimeout, err)
+		timeout.Unconfirmed = unconfirmed
+		return timeout
 	}
 	return err
 }
@@ -142,8 +157,11 @@ func (s *Sender) Send(ctx context.Context, server systememail.Server, password s
 // context or TLS settings, has no plain mode, and returns one error for
 // every step, so it cannot meet the deadline or report a reason.
 func (s *Sender) exchange(ctx context.Context, server systememail.Server, password string, message systememail.Message, body []byte) error {
-	var dialer net.Dialer
-	raw, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(server.Host, strconv.Itoa(server.Port)))
+	dial := s.dial
+	if dial == nil {
+		dial = (&net.Dialer{}).DialContext
+	}
+	raw, err := dial(ctx, "tcp", net.JoinHostPort(server.Host, strconv.Itoa(server.Port)))
 	if err != nil {
 		return failed(systememail.ReasonConnect, err)
 	}
@@ -188,8 +206,18 @@ func (s *Sender) exchange(ctx context.Context, server systememail.Server, passwo
 	if _, err := data.Write(body); err != nil {
 		return refused(systememail.ReasonSender, err)
 	}
-	if err := data.Close(); err != nil {
-		return refused(systememail.ReasonSender, err)
+	// CloseWithResponse flushes the message's end and its final dot, then
+	// reads the server's answer. A failed flush means the dot never left, so
+	// the message was not accepted. Once reading starts, only a 4xx or 5xx
+	// reply, which go-smtp documents as an *SMTPError, says the server did
+	// not take it; any other failure, a garbled reply included, leaves the
+	// message possibly accepted.
+	conn.ended.Store(true)
+	if _, err := data.CloseWithResponse(); err != nil {
+		failure := refused(systememail.ReasonSender, err)
+		smtpErr, ok := errors.AsType[*gosmtp.SMTPError](err)
+		failure.Unconfirmed = conn.answering.Load() && (!ok || smtpErr.Code < 400)
+		return failure
 	}
 
 	// The server has accepted the message; a slow or failed goodbye changes nothing.
@@ -313,13 +341,13 @@ func checkSafe(server systememail.Server, password string, message systememail.M
 }
 
 // failed returns err as a [*systememail.SendError] with reason.
-func failed(reason systememail.Reason, err error) error {
+func failed(reason systememail.Reason, err error) *systememail.SendError {
 	return &systememail.SendError{Reason: reason, Err: err}
 }
 
 // refused returns err as a [*systememail.SendError] with reason, or with
 // connect when the connection dropped or passed the reply limit.
-func refused(reason systememail.Reason, err error) error {
+func refused(reason systememail.Reason, err error) *systememail.SendError {
 	// The step's reason applies only when the server answered it.
 	var opErr *net.OpError
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) ||
@@ -329,17 +357,32 @@ func refused(reason systememail.Reason, err error) error {
 	return failed(reason, err)
 }
 
-// watchedConn wraps the server connection to cap the bytes read and to record
-// whether STARTTLS was sent.
+// watchedConn wraps the server connection to cap the bytes read, to record
+// whether STARTTLS was sent, and to record whether reading started after
+// the message ended, which happens only once its final dot was written.
+//
+// NOTE: that last record relies on go-smtp's DataCommand.CloseWithResponse
+// flushing the message's end and its dot before it reads the reply, which
+// its source does but its documentation does not promise. SMTP forces the order, since
+// no reply to the message exists before the dot. If a release reads
+// earlier, TestSendFinalWriteFailed fails; if it stops reading the
+// connection, TestSendUnconfirmed does. Either way a mismatch mostly errs
+// toward unconfirmed, which skips a retry rather than sending twice.
 type watchedConn struct {
 	net.Conn
-	left     int64
-	startTLS atomic.Bool
+	left      int64
+	startTLS  atomic.Bool
+	ended     atomic.Bool // the message's end is being written
+	answering atomic.Bool // a read started after ended was set
 }
 
 // Read reads from the connection until maxReplyBytes have been read in total,
-// then returns errTooLong.
+// then returns errTooLong. A read after the message's end records that the
+// answer is awaited.
 func (c *watchedConn) Read(b []byte) (int, error) {
+	if c.ended.Load() {
+		c.answering.Store(true)
+	}
 	if c.left <= 0 {
 		return 0, errTooLong
 	}

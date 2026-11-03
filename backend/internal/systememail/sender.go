@@ -43,10 +43,14 @@ const (
 
 // SendError is a send that failed at Reason's step. Show users the Reason;
 // Err is for logs only, since it can hold the server's reply, which can quote
-// the message.
+// the message. Unconfirmed is set when the whole message, final dot
+// included, was written and the send then failed without a 4xx or 5xx
+// refusal: the server may have accepted it, so sending it again could
+// deliver it twice.
 type SendError struct {
-	Reason Reason
-	Err    error
+	Reason      Reason
+	Err         error
+	Unconfirmed bool
 }
 
 func (e *SendError) Error() string {

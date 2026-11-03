@@ -152,6 +152,17 @@ func TestMailerSendFailedPrivate(t *testing.T) {
 	assert.NotContains(t, logs.String(), "private-li")
 }
 
+// A send the server may have accepted says so in the warning.
+func TestMailerSendUnconfirmed(t *testing.T) {
+	sender := &fakeSender{err: &SendError{Reason: ReasonTimeout, Err: errors.New("waiting at sender"), Unconfirmed: true}}
+	var logs bytes.Buffer
+
+	_, err := testMailer(&memoryStorage{record: savedSignIn()}, &fakeKeyring{}, sender, &logs).Send(t.Context(), testOutgoing())
+	require.Error(t, err)
+
+	assert.Contains(t, logs.String(), "reason=timeout host=smtp.example.com port=587 security=starttls username=inbok@example.com unconfirmed=true")
+}
+
 // Errors the server did not cause, e.g. the caller giving up, are returned
 // unchanged and not logged.
 func TestMailerSendCanceled(t *testing.T) {

@@ -95,6 +95,9 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 	if failed, ok := errors.AsType[*SendError](err); ok {
 		attrs := []any{"purpose", outgoing.Purpose, "reason", failed.Reason,
 			"host", saved.Host, "port", saved.Port, "security", saved.Security, "username", saved.Username}
+		if failed.Unconfirmed {
+			attrs = append(attrs, "unconfirmed", true)
+		}
 		// The reply can quote the message, in any encoding or cut anywhere, so
 		// no part of a private one is safe to keep.
 		if !outgoing.Private {
