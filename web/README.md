@@ -113,7 +113,8 @@ Put shared code in the folder for its responsibility:
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
-  secret of an emailed link.
+  secret of an emailed link, or keeping a server's field error through a
+  blur.
 - `src/hooks`: React hooks shared by features, such as a page reading its
   link's secret.
 - `src/routes`: route registration and page composition.
@@ -236,10 +237,12 @@ email field is marked `autocomplete="username"`, so a password manager
 saves it with the new password. Success creates no session: the page opens
 sign-in with the email filled in and a notice naming the new account. The
 email travels in history state, data the browser keeps with the history
-entry, not in the URL. A spent or expired link, or an
-email that already has an account, ends the page with where to go next.
+entry, not in the URL. When the server refuses the email, an "Ask for a
+new link" link to `/register` follows the error. A spent or expired link, or
+an email that already has an account, ends the page with where to go next.
 After a try whose result was lost, a spent link means that try probably
-created the account, so the page points to sign-in first.
+created the account, so the page points to sign-in first and says to sign
+in with the password sent then, since the fields may have changed since.
 
 Security also lists the account's signed-in browsers, newest sign-in first.
 Each row shows the browser and operating system, or "Unknown browser", the
@@ -529,6 +532,9 @@ its error once the user leaves it or clicks submit, then updates live.
 If Go still rejects a value, e.g. after a rule changed in Go before
 `pnpm generate`, `formErrors` from `src/api/problem.ts` attaches the server's
 safe messages only to fields that the form renders. Editing a field clears its
-server error. Rejected inputs outside those fields stay visible in the request
-summary. Request failures without input errors do not enter form validation
+server error. TanStack Form also drops it when a check on leaving the field
+passes, so a form whose server errors say what to type, such as the email a
+link was sent to, leaves fields through `blurKeepingSubmitErrors`
+(`src/lib/blur-keeping-submit-errors.ts`), which puts them back. Rejected
+inputs outside those fields stay visible in the request summary. Request failures without input errors do not enter form validation
 state, so valid input can be submitted again without an edit.

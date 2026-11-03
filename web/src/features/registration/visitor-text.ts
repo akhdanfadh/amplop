@@ -71,11 +71,13 @@ export type Ended = { message: string; links: readonly EndLink[] };
 // earlier tries.
 export function endOf(err: ApiError, end: CompleteEnd, earlier: EarlierTries): Ended {
   if (end === "account-exists") return { message: completeErrorMessage(err), links: ["sign-in"] };
-  // A created account deletes its link, so the unknown try likely worked.
+  // A created account deletes its link, so an unknown try likely worked.
+  // The fields may have been edited since, so this names that try, not the
+  // last one.
   if (earlier === "unknown")
     return {
       message:
-        "This link no longer works, so your last try probably created your account. Sign in with the password you chose.",
+        "This link no longer works, so an earlier try probably created your account. Sign in with the password you sent then.",
       links: ["sign-in", "new-link"],
     };
   return { message: completeErrorMessage(err), links: ["new-link", "sign-in"] };

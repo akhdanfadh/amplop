@@ -11,6 +11,7 @@ import { PasswordInput } from "@/components/password-input";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { CompleteSchema } from "./complete-schema";
 import {
   completeEnd,
@@ -124,7 +125,9 @@ export function CompleteForm({
         <p>{ended.message}</p>
         {ended.links.map((link) =>
           link === "new-link" ? (
-            <Link key={link} to="/register" className={linkClass}>
+            // Exact, or the router marks /register current on
+            // /register/complete and a screen reader says so.
+            <Link key={link} to="/register" activeOptions={{ exact: true }} className={linkClass}>
               Ask for a new link
             </Link>
           ) : (
@@ -156,6 +159,11 @@ export function CompleteForm({
         <form.Field name="email">
           {(field) => {
             const errors = field.state.meta.isBlurred || submitted ? field.state.meta.errors : [];
+            // Only the server's refusal is a submit error, almost always
+            // because the link was sent to another email; only a link to
+            // that address can create its account. Reading the field, not
+            // the request, keeps the link exactly as long as the error.
+            const refused = field.state.meta.errorMap.onSubmit !== undefined;
             return (
               <Field data-invalid={errors.length > 0} data-disabled={redeem.isPending}>
                 <FieldLabel htmlFor={emailId}>Email address</FieldLabel>
@@ -177,13 +185,28 @@ export function CompleteForm({
                       : `${emailId}-description`
                   }
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${emailId}-description`}>
                   The address you asked to sign up with.
                 </FieldDescription>
                 <FieldError id={`${emailId}-error`} errors={errors} />
+                {refused && (
+                  // Field stretches its children; the paragraph keeps the
+                  // link's focus outline to its text. An action, not part of
+                  // the error, so not in its color.
+                  <p>
+                    <Link
+                      to="/register"
+                      // Exact, as above.
+                      activeOptions={{ exact: true }}
+                      className={`text-foreground ${linkClass}`}
+                    >
+                      Ask for a new link
+                    </Link>
+                  </p>
+                )}
               </Field>
             );
           }}
@@ -208,7 +231,7 @@ export function CompleteForm({
                       errors.length > 0 ? `${id}-description ${id}-error` : `${id}-description`
                     }
                     value={field.state.value}
-                    onBlur={field.handleBlur}
+                    onBlur={() => blurKeepingSubmitErrors(field)}
                     onChange={(event) => field.handleChange(event.target.value)}
                   />
                   <FieldDescription id={`${id}-description`}>{description}</FieldDescription>

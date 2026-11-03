@@ -37,7 +37,9 @@ function CompleteRegistration(): ReactElement {
       ) : (
         <div className="flex flex-col gap-4">
           <p>Open this page from the link in your sign-up email.</p>
-          <Link to="/register" className={linkClass}>
+          {/* Exact, or the router marks /register current here and a screen
+              reader says so. */}
+          <Link to="/register" activeOptions={{ exact: true }} className={linkClass}>
             Ask for a new link
           </Link>
         </div>
