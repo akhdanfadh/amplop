@@ -16,6 +16,9 @@ const maxLoggedReply = 512
 var (
 	// ErrNotConfigured means no settings are saved, so nothing can be sent.
 	ErrNotConfigured = errors.New("system email is not configured")
+	// ErrNotTested means the saved settings have not passed a test message,
+	// and the message asked for tested settings with [Outgoing.RequireTested].
+	ErrNotTested = errors.New("system email has not passed a test")
 	// ErrPasswordUnreadable means the saved password cannot be decrypted, e.g.
 	// after its key was removed.
 	ErrPasswordUnreadable = errors.New("the saved system email password cannot be decrypted")
@@ -53,16 +56,21 @@ type Outgoing struct {
 	Subject string
 	Body    string
 	Private bool // Body holds a secret, e.g. a link's, so logs must not quote it
+
+	// RequireTested sends only with settings that passed a test message,
+	// judged on the settings the send would use.
+	RequireTested bool
 }
 
 // Send sends outgoing with the saved settings, logs a failed send, without the
 // server's reply when outgoing is [Outgoing.Private], and returns the
 // settings' revision. It returns [emailaddress.ErrInvalid] for an invalid
 // [Outgoing.To] before reading the settings, [ErrNotConfigured] when nothing
-// is saved, [ErrPasswordUnreadable] when the password cannot be decrypted, a
-// [*SendError] when the server or network fails, and the [Sender]'s other
-// errors unchanged. Every error after the settings are read comes with their
-// revision.
+// is saved, [ErrNotTested] when [Outgoing.RequireTested] is set and the
+// settings have not passed a test, [ErrPasswordUnreadable] when the
+// password cannot be decrypted, a [*SendError] when the server or network
+// fails, and the [Sender]'s other errors unchanged. Every error after the
+// settings are read comes with their revision.
 func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 	to, err := emailaddress.Parse(outgoing.To)
 	if err != nil {
@@ -74,6 +82,9 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 	}
 	if saved == nil {
 		return 0, ErrNotConfigured
+	}
+	if outgoing.RequireTested && saved.TestedAt == nil {
+		return saved.Revision, ErrNotTested
 	}
 	var password string
 	if saved.Password != nil {

@@ -771,6 +771,20 @@ func TestSendQuitUnanswered(t *testing.T) {
 	assert.Less(t, time.Since(start), 3*time.Second)
 }
 
+// WithTimeout sets the limit of a copy, leaving the original's alone.
+func TestSenderWithTimeout(t *testing.T) {
+	port := silentServer(t)
+	server := systememail.Server{Host: "127.0.0.1", Port: port, Security: systememail.SecurityNone}
+	original := NewSender("inbok.example.com")
+	start := time.Now()
+
+	err := original.WithTimeout(100*time.Millisecond).Send(t.Context(), server, testPassword, testMessage())
+
+	assert.Equal(t, systememail.ReasonTimeout, failure(t, err))
+	assert.Less(t, time.Since(start), 2*time.Second)
+	assert.Equal(t, exchangeTimeout, original.timeout)
+}
+
 // A caller with less time left than the exchange limit still gets a timeout,
 // before its own deadline.
 func TestSendCallerDeadline(t *testing.T) {

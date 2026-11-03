@@ -86,24 +86,40 @@ func Load() (Config, error) {
 		}
 	}
 
-	publicURL, err := parsePublicURL(os.Getenv(envPublicURL))
+	publicURL, err := PublicURL()
 	if err != nil {
 		return Config{}, err
 	}
 	cfg.PublicURL = publicURL
 
-	value := os.Getenv(envEncryptionKeys)
-	if strings.TrimSpace(value) == "" {
-		return Config{}, fmt.Errorf("%s is required", envEncryptionKeys)
-	}
-
-	keys, err := encryption.New(value)
+	keys, err := EncryptionKeys()
 	if err != nil {
-		return Config{}, fmt.Errorf("%s: %w", envEncryptionKeys, err)
+		return Config{}, err
 	}
 	cfg.Encryption = keys
 
 	return cfg, nil
+}
+
+// PublicURL reads the address users open inbok at, which has no default.
+// Returns an error naming the setting if it is missing or not an origin.
+func PublicURL() (*url.URL, error) {
+	return parsePublicURL(os.Getenv(envPublicURL))
+}
+
+// EncryptionKeys reads the keys for stored secrets, which have no default.
+// Returns an error naming the setting, without key material, if they are
+// missing or malformed.
+func EncryptionKeys() (*encryption.Keyring, error) {
+	value := os.Getenv(envEncryptionKeys)
+	if strings.TrimSpace(value) == "" {
+		return nil, fmt.Errorf("%s is required", envEncryptionKeys)
+	}
+	keys, err := encryption.New(value)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", envEncryptionKeys, err)
+	}
+	return keys, nil
 }
 
 // HTTPAddr reads the host:port serve listens on, or its default. Returns an

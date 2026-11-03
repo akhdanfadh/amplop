@@ -83,6 +83,14 @@ func NewSender(host string) *Sender {
 	return &Sender{timeout: exchangeTimeout, hello: helloName(host)}
 }
 
+// WithTimeout returns a copy of s whose sends end after timeout, from
+// dialing to the server's last reply, instead of exchangeTimeout.
+func (s *Sender) WithTimeout(timeout time.Duration) *Sender {
+	copied := *s
+	copied.timeout = timeout
+	return &copied
+}
+
 // helloName returns host as an EHLO argument: a domain unchanged, an IP
 // address as an address literal, e.g. [192.0.2.1] or [IPv6:2001:db8::1].
 func helloName(host string) string {
@@ -363,9 +371,9 @@ func refused(reason systememail.Reason, err error) *systememail.SendError {
 //
 // NOTE: that last record relies on go-smtp's DataCommand.CloseWithResponse
 // flushing the message's end and its dot before it reads the reply, which
-// its source does but its documentation does not promise. SMTP forces the order, since
-// no reply to the message exists before the dot. If a release reads
-// earlier, TestSendFinalWriteFailed fails; if it stops reading the
+// its source does but its documentation does not promise. SMTP forces the
+// order, since no reply to the message exists before the dot. If a release
+// reads earlier, TestSendFinalWriteFailed fails; if it stops reading the
 // connection, TestSendUnconfirmed does. Either way a mismatch mostly errs
 // toward unconfirmed, which skips a retry rather than sending twice.
 type watchedConn struct {
