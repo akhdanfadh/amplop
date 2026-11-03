@@ -655,6 +655,11 @@ operator process. The command trusts database write access; it does not ask
 for an inbok session, old password, TOTP code, or setup token, and it does not
 check which machine runs it. Members cannot be recovered this way.
 
+An administrator who only forgot their password can use
+[Password reset](#password-reset) instead, once their email is verified.
+Setup does not verify the first administrator's email, so one who forgets
+their password before verifying it needs this command.
+
 Apply migrations first. The server may keep running. From the repository root:
 
 ```sh

@@ -199,7 +199,9 @@ Security opens with the account's email address and whether it is verified.
 or failed send can be repeated without a check: the server limits how many
 links are sent, and every unexpired link works. Sending and TOTP writes wait
 for each other, because confirming TOTP replaces this browser's session. An
-unverified account also sees a notice on home that links to Security.
+unverified account also sees a notice on home that links to Security. Both
+say a forgotten password can't be reset by email until the address is
+verified, since the reset page's answer cannot say why nothing arrived.
 
 The link opens `/verify-email`, which works signed in or out. The secret after
 `#` never reaches the server with the page request. `getRouter` calls

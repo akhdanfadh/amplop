@@ -80,7 +80,10 @@ export function EmailVerificationSection({
       </p>
       {!verified && (
         <>
-          <p>We&apos;ll email you a link. Open it to confirm this address is yours.</p>
+          <p>
+            We&apos;ll email you a link. Open it to confirm this address is yours. Until you do, a
+            forgotten password can&apos;t be reset by email.
+          </p>
           <Button
             ref={buttonRef}
             type="button"
