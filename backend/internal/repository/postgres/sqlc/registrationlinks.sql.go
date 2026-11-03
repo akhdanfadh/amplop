@@ -19,17 +19,27 @@ func (q *Queries) DeleteAllRegistrationLinks(ctx context.Context) error {
 	return err
 }
 
-const deleteExpiredRegistrationLinks = `-- name: DeleteExpiredRegistrationLinks :exec
+const deleteExpiredRegistrationLinkBatch = `-- name: DeleteExpiredRegistrationLinkBatch :execrows
 DELETE FROM registration_links WHERE token_hash IN (
     SELECT expired.token_hash FROM registration_links expired
     WHERE expired.expires_at <= $1
+    LIMIT $2
     FOR UPDATE SKIP LOCKED)
 `
 
-// Rows a completion holds are left for later instead of waited for.
-func (q *Queries) DeleteExpiredRegistrationLinks(ctx context.Context, expiredBy time.Time) error {
-	_, err := q.db.Exec(ctx, deleteExpiredRegistrationLinks, expiredBy)
-	return err
+type DeleteExpiredRegistrationLinkBatchParams struct {
+	ExpiredBy time.Time
+	BatchSize int32
+}
+
+// The cleanup job deletes expired links, a batch at a time. Rows a
+// completion holds are left for a later batch instead of waited for.
+func (q *Queries) DeleteExpiredRegistrationLinkBatch(ctx context.Context, arg DeleteExpiredRegistrationLinkBatchParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredRegistrationLinkBatch, arg.ExpiredBy, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteRegistrationLinksByEmail = `-- name: DeleteRegistrationLinksByEmail :exec

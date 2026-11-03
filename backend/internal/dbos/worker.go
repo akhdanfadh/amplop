@@ -52,21 +52,32 @@ var errShutdownBudget = errors.New("DBOS did not shut down in time; unfinished w
 // application version and executor ID set in its configuration.
 var overrides = []string{"DBOS__APPVERSION", "DBOS__VMID"}
 
+// Services holds the feature operations inbok's workflows call; cmd/inbok
+// fills it, as it fills httpapi.Services. A nil field leaves its part of a
+// workflow out, e.g. in tests.
+type Services struct {
+	EmailVerificationCleanup expired
+	RegistrationCleanup      expired
+}
+
 // Worker runs inbok's workflows and schedules.
 type Worker struct {
-	ctx dbos.Context
+	ctx    dbos.Context
+	logger *slog.Logger
 }
 
 // NewWorker opens DBOS on the database at url as the executor id, without
-// migrating it, and logs to logger. Only Shutdown stops it. It returns an error if the workflow
-// tables are missing or older than the SDK needs, which inbok migrate
-// fixes, if url is malformed, or if DBOS__APPVERSION or DBOS__VMID is set.
+// migrating it, registers inbok's workflows calling services, and saves
+// their schedules. It logs to logger. Only Shutdown stops it. It returns an
+// error if the workflow tables are missing or older than the SDK needs,
+// which inbok migrate fixes, if url is malformed, if DBOS__APPVERSION or
+// DBOS__VMID is set, or if a schedule cannot be saved.
 //
 // DESIGN: DBOS resumes an executor's unfinished workflows only when an
 // executor with the same id launches. A replaced or restarted worker keeps
 // its id, so it resumes its predecessor's work; two workers running at
 // once need different ids, or each would resume the other's.
-func NewWorker(url, id string, logger *slog.Logger) (*Worker, error) {
+func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker, error) {
 	// DBOS would silently resume other work than applicationVersion and id
 	// select.
 	for _, name := range overrides {
@@ -96,7 +107,11 @@ func NewWorker(url, id string, logger *slog.Logger) (*Worker, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Worker{ctx: dbosCtx}, nil
+	w := &Worker{ctx: dbosCtx, logger: logger}
+	if err := w.registerCleanup(services.cleanups()); err != nil {
+		return nil, errors.Join(fmt.Errorf("schedule cleanup: %w", err), w.Shutdown())
+	}
+	return w, nil
 }
 
 // Launch resumes this worker's unfinished workflows, then starts running

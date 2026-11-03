@@ -36,7 +36,6 @@ type requestMemory struct {
 	attempts     []Attempt
 	links        []Link
 	since        time.Time
-	expiredBy    []time.Time
 	err          error
 	locked       int // calls to RequestRegistration
 }
@@ -61,7 +60,6 @@ func (m *requestMemory) RequestRegistration(_ context.Context, email string, sin
 		return err
 	}
 	m.attempts = append(kept, change.Attempt)
-	m.expiredBy = append(m.expiredBy, change.ExpiredBy)
 	if change.Link != nil {
 		m.links = append(m.links, *change.Link)
 	}
@@ -131,9 +129,8 @@ func TestRequestLink(t *testing.T) {
 	}}, storage.links)
 	assert.Equal(t, []Attempt{{Email: visitor, ClientAddr: "192.0.2.1", Outcome: OutcomeLink, CreatedAt: testNow}}, storage.attempts)
 
-	// Attempts are kept for the longest window; expired links of both kinds go.
+	// Attempts are kept for the longest window.
 	assert.Equal(t, testNow.Add(-24*time.Hour), storage.since)
-	assert.Equal(t, []time.Time{testNow}, storage.expiredBy)
 }
 
 // An email with an account gets a notice instead of a link, so its owner
@@ -255,7 +252,6 @@ func TestRequestClosed(t *testing.T) {
 			assert.Zero(t, storage.locked, "refused before the lock every request shares")
 			assert.Empty(t, mailer.sent)
 			assert.Len(t, storage.attempts, 10)
-			assert.Empty(t, storage.expiredBy)
 		})
 	}
 }

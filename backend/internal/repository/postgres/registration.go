@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -97,9 +98,8 @@ func registrationState(open bool) registration.State {
 
 // RequestRegistration takes the lock every registration request shares,
 // deletes attempts created at or before since, reads the state for email,
-// and calls create. If create succeeds, it deletes expired registration and
-// email verification links, records the attempt, and saves the link, in one
-// transaction.
+// and calls create. If create succeeds, it records the attempt and saves
+// the link, in one transaction.
 func (db *DB) RequestRegistration(ctx context.Context, email string, since time.Time, create func(registration.RequestState) (registration.RequestChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
@@ -142,12 +142,6 @@ func (db *DB) RequestRegistration(ctx context.Context, email string, since time.
 			return err
 		}
 
-		if err := queries.DeleteExpiredRegistrationLinks(ctx, change.ExpiredBy); err != nil {
-			return fmt.Errorf("delete expired registration links: %w", err)
-		}
-		if err := queries.DeleteAllExpiredEmailVerificationLinks(ctx, change.ExpiredBy); err != nil {
-			return fmt.Errorf("delete expired email verification links: %w", err)
-		}
 		attempt := change.Attempt
 		if err := queries.InsertRegistrationAttempt(ctx, sqlc.InsertRegistrationAttemptParams{
 			Email: attempt.Email, ClientAddr: attempt.ClientAddr, Outcome: string(attempt.Outcome), CreatedAt: attempt.CreatedAt,
@@ -267,4 +261,17 @@ func (db *DB) CompleteRegistration(ctx context.Context, hash [sha256.Size]byte, 
 		return account.User{}, err
 	}
 	return user, nil
+}
+
+// DeleteExpiredRegistrationLinks deletes up to limit links expiring at or
+// before expiredBy, skipping links another transaction holds, and returns
+// how many it deleted.
+func (db *DB) DeleteExpiredRegistrationLinks(ctx context.Context, expiredBy time.Time, limit int) (int, error) {
+	deleted, err := sqlc.New(db.pool).DeleteExpiredRegistrationLinkBatch(ctx, sqlc.DeleteExpiredRegistrationLinkBatchParams{
+		ExpiredBy: expiredBy, BatchSize: int32(min(limit, math.MaxInt32)),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("delete expired registration links: %w", err)
+	}
+	return int(deleted), nil
 }

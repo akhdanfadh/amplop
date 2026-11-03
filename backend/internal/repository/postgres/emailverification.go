@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -133,4 +135,17 @@ func (db *DB) RedeemEmailVerification(ctx context.Context, hash [sha256.Size]byt
 		}
 		return nil
 	})
+}
+
+// DeleteExpiredEmailVerificationLinks deletes up to limit links of any user
+// expiring at or before expiredBy, skipping links another transaction
+// holds, and returns how many it deleted.
+func (db *DB) DeleteExpiredEmailVerificationLinks(ctx context.Context, expiredBy time.Time, limit int) (int, error) {
+	deleted, err := sqlc.New(db.pool).DeleteExpiredEmailVerificationLinkBatch(ctx, sqlc.DeleteExpiredEmailVerificationLinkBatchParams{
+		ExpiredBy: expiredBy, BatchSize: int32(min(limit, math.MaxInt32)),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("delete expired email verification links: %w", err)
+	}
+	return int(deleted), nil
 }

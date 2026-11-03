@@ -478,3 +478,41 @@ func TestEmailVerificationServiceRedeemRefused(t *testing.T) {
 		})
 	}
 }
+
+// The cleanup deletes links expiring at or before the cutoff, at most limit
+// at a time, and leaves a link another transaction holds for a later call.
+func TestEmailVerificationCleanup(t *testing.T) {
+	// Given links that expire at, before, and after the cutoff, one of
+	// them held by another transaction.
+	db, conn := setupStorage(t)
+	user := verificationUser(t, conn, "member@example.org")
+	live := verificationLink(user, "live", 23*time.Hour)
+	held := verificationLink(user, "held", 26*time.Hour)
+	for _, link := range []emailverification.Link{
+		verificationLink(user, "at", 24*time.Hour), verificationLink(user, "before", 25*time.Hour), held, live,
+	} {
+		insertVerificationLink(t, conn, link)
+	}
+	tx, err := conn.Begin(t.Context())
+	require.NoError(t, err)
+	_, err = tx.Exec(t.Context(), "SELECT 1 FROM email_verification_links WHERE token_hash = $1 FOR UPDATE", held.TokenHash[:])
+	require.NoError(t, err)
+
+	// When the cleanup runs one link at a time, until it deletes none.
+	var batches []int
+	for range 3 {
+		deleted, err := db.DeleteExpiredEmailVerificationLinks(t.Context(), verificationNow, 1)
+		require.NoError(t, err)
+		batches = append(batches, deleted)
+	}
+
+	// Then the two expired free links go, the held and live ones stay, and
+	// the held one goes once released.
+	assert.Equal(t, []int{1, 1, 0}, batches)
+	assert.Equal(t, []emailverification.Link{held, live}, savedVerificationLinks(t, conn))
+	require.NoError(t, tx.Rollback(t.Context()))
+	deleted, err := db.DeleteExpiredEmailVerificationLinks(t.Context(), verificationNow, 10)
+	require.NoError(t, err)
+	assert.Equal(t, 1, deleted)
+	assert.Equal(t, []emailverification.Link{live}, savedVerificationLinks(t, conn))
+}

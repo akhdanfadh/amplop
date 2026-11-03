@@ -17,7 +17,7 @@ import (
 func TestWorkerUnmigrated(t *testing.T) {
 	url := newDatabase(t)
 
-	_, err := NewWorker(url, "worker", discard)
+	_, err := NewWorker(url, "worker", Services{}, discard)
 
 	require.ErrorContains(t, err, "is at schema version 0")
 }
@@ -29,7 +29,7 @@ func TestWorkerDBOSOverrides(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv(name, "other")
 
-			_, err := NewWorker("postgres://u:p@127.0.0.1:1/inbok", "worker", discard)
+			_, err := NewWorker("postgres://u:p@127.0.0.1:1/inbok", "worker", Services{}, discard)
 
 			require.ErrorContains(t, err, name)
 		})
@@ -39,7 +39,7 @@ func TestWorkerDBOSOverrides(t *testing.T) {
 // A malformed database URL stops the worker with an error that hides the
 // password; DBOS's own error would quote the URL.
 func TestWorkerBadURL(t *testing.T) {
-	_, err := NewWorker("postgres://inbok:SYNTHETIC_SECRET@localhost:bad/inbok", "worker", discard)
+	_, err := NewWorker("postgres://inbok:SYNTHETIC_SECRET@localhost:bad/inbok", "worker", Services{}, discard)
 
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "SYNTHETIC_SECRET")
@@ -47,7 +47,7 @@ func TestWorkerBadURL(t *testing.T) {
 
 // A worker launches on a migrated database and shuts down.
 func TestWorkerLaunch(t *testing.T) {
-	worker, err := NewWorker(migrated(t), "worker", discard)
+	worker, err := NewWorker(migrated(t), "worker", Services{}, discard)
 	require.NoError(t, err)
 
 	require.NoError(t, worker.Launch())
@@ -99,7 +99,7 @@ func TestWorkerResume(t *testing.T) {
 	secondStopped = make(chan struct{}, 2)
 	secondGate = make(chan struct{})
 
-	first, err := NewWorker(url, "worker", discard)
+	first, err := NewWorker(url, "worker", Services{}, discard)
 	require.NoError(t, err)
 	dbos.RegisterWorkflow(first.ctx, twoSteps)
 	require.NoError(t, first.Launch())
@@ -114,7 +114,7 @@ func TestWorkerResume(t *testing.T) {
 	// When another worker with the same ID launches, its second step free
 	// to finish.
 	close(secondGate)
-	second, err := NewWorker(url, "worker", discard)
+	second, err := NewWorker(url, "worker", Services{}, discard)
 	require.NoError(t, err)
 	dbos.RegisterWorkflow(second.ctx, twoSteps)
 	require.NoError(t, second.Launch())
@@ -149,7 +149,7 @@ func TestWorkerShutdownBudget(t *testing.T) {
 	stuckGate = make(chan struct{})
 	t.Cleanup(func() { close(stuckGate) })
 
-	worker, err := NewWorker(migrated(t), "worker", discard)
+	worker, err := NewWorker(migrated(t), "worker", Services{}, discard)
 	require.NoError(t, err)
 	dbos.RegisterWorkflow(worker.ctx, stuck)
 	require.NoError(t, worker.Launch())

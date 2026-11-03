@@ -80,6 +80,11 @@ DBOS's own `DBOS__APPVERSION` and `DBOS__VMID` would replace the version
 and the ID that decide which work a worker resumes (see below), so the
 worker refuses to start while either is set.
 
+The worker runs in UTC whatever the machine's time zone, so its log times
+are UTC. DBOS names each scheduled run after its time with the local
+offset, and workers in different zones would otherwise name, and run, one
+hour's run twice.
+
 The worker serves HTTP only for its health check. Once DBOS has started
 and resumed the worker's unfinished workflows, it answers every request on
 `INBOK_HTTP_ADDR` with HTTP 200 and no body, including the
@@ -140,6 +145,51 @@ hash of the binary, so a new release resumes what the previous one left
 unfinished. A workflow whose steps change must therefore still finish the
 runs an older release started, e.g. with
 [`dbos.Patch`](https://docs.dbos.dev/golang/tutorials/upgrading-workflows).
+
+### Scheduled cleanup
+
+Every hour on the hour (UTC), the workflow `inbok.cleanup`, scheduled as
+`inbok.cleanup.hourly`, deletes rows nobody can use any more: email
+verification links and registration links that expired at least an hour
+ago. The hour covers a worker clock running ahead of the API's, which
+checks expiry with its own clock. For each kind it
+deletes up to 1,000 rows per step until a step finds fewer, and stops
+after 100 steps; anything left waits for the next hour. Rows a request is
+using are skipped, not waited for. A run that fails for one kind still
+cleans the others, then ends in error; the next hour tries again. It does
+not make up for hours the worker was down. Deleting is tidying, not
+protection: redeeming refuses an expired link whether or not its row is
+still there. While the worker is down, expired rows, which hold a token
+hash and an email address, simply stay longer. Each run logs
+`deleted expired rows` with a count when it deleted any, and records the
+counts as its output.
+
+### Inspecting workflows
+
+DBOS keeps every run in `dbos.workflow_status` and each finished step's
+result in `dbos.operation_outputs`. In `psql`, recent cleanup runs:
+
+```sql
+SELECT workflow_uuid, status, executor_id, to_timestamp(created_at / 1000) AS created
+FROM dbos.workflow_status
+WHERE name = 'inbok.cleanup'
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+`status` is `SUCCESS`, `ERROR`, `PENDING` (running, or waiting for its
+worker to start again), `ENQUEUED`, or `CANCELLED`. A run's steps:
+
+```sql
+SELECT function_id, function_name,
+       convert_from(decode(output, 'base64'), 'UTF8') AS output, error
+FROM dbos.operation_outputs
+WHERE workflow_uuid = '<workflow_uuid>'
+ORDER BY function_id;
+```
+
+DBOS stores outputs as base64 of their JSON, hence the decode, e.g.
+`{"Deleted":1000,"More":true}` for a cleanup step.
 
 ## Container image
 
@@ -923,11 +973,9 @@ a 256-bit secret cannot be guessed.
 A deactivated account cannot ask for a link: the request answers like a
 signed-out one, HTTP 401. Deactivation deletes its unused links, so a link
 sent before it answers 404. Sending a link deletes the account's expired
-links; a refused request or redeem changes nothing. Each accepted
-registration request also deletes every account's expired links (see
-[Registration](#registration)). There is no scheduled cleanup, so while no
-one registers, an account that never asks again keeps its expired rows,
-which cannot be used. Deleting an account deletes its links.
+links; a refused request or redeem changes nothing. The worker's hourly
+[cleanup](#scheduled-cleanup) deletes every account's expired links.
+Deleting an account deletes its links.
 
 To list verifications:
 
@@ -1071,10 +1119,8 @@ advisory lock that all registration requests share
 (`LockRegistrationAttempts`), because the 50 per hour is one count over
 everyone. Under the lock it
 deletes attempts older than 24 hours, checks again that registration is
-open, counts the limits, and saves the attempt and the link. Each accepted
-request also deletes every expired registration link and every expired
-email verification link, skipping rows another transaction holds; there is
-no background job.
+open, counts the limits, and saves the attempt and the link. The worker's
+hourly [cleanup](#scheduled-cleanup) deletes expired links.
 
 ### Creating the account
 
@@ -1460,9 +1506,12 @@ httpapi --> passwordreset <-- repository/postgres
   interface and sends it the reads outside `/api`, keeping the API's 404
   and 405 for the rest, so its tests use a fake.
 - `dbos` is the technology package for [Background work](#background-work):
-  it opens DBOS for the worker, launches it, and shuts it down. It is the
-  only package besides `repository/postgres` that imports the DBOS SDK,
-  whose package is also named `dbos`.
+  it opens DBOS for the worker, registers and schedules its workflows,
+  launches it, and shuts it down. Its steps call features through
+  interfaces it declares, in `dbos.Services`, which `cmd/inbok` fills, e.g.
+  with `emailverification.Cleanup`, so it imports no feature. It is the only
+  package besides `repository/postgres` that imports the DBOS SDK, whose
+  package is also named `dbos`.
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
   in `httpapi.Services`, and loads `webapp`'s build for `ServeWebApp`.
 
@@ -1506,3 +1555,44 @@ To add a feature, e.g. `account`:
 6. Regenerate `api/generated/openapi.json`.
 
 Each step can be its own commit.
+
+## Adding a background job
+
+Background work runs in `inbok worker` on DBOS; read
+[Background work](#background-work) first. A job is a **workflow** made of
+**steps**: DBOS records each finished step's result and, after a stop,
+resumes at the first step without one. The rules every job follows:
+
+- A step may run twice: when the worker stops during it, it runs again.
+  Make each step safe to repeat, e.g. a delete, or an insert that ignores
+  a row it already added.
+- Steps call plain feature methods. Feature packages never import DBOS;
+  `internal/dbos` declares a small interface for what it calls and a field
+  for it in `dbos.Services`, which `cmd/inbok/worker.go` fills, as `serve`
+  fills `httpapi.Services`. `dbos.NewWorker` registers every workflow and
+  schedule, as `httpapi.New` registers every operation.
+- Bulk work runs in bounded batches, one step each, so a run makes durable
+  progress and no statement runs long.
+- Names DBOS records outlive the code: give the workflow a fixed name with
+  `dbos.WithWorkflowName`, keep step names, and add steps at the end. A run
+  an older release started resumes on the new code, and DBOS fails a step
+  whose name differs from the one it recorded at that position.
+- Inputs and outputs are saved as JSON in the database: pass IDs, never
+  secrets or copies of data the step can read itself.
+
+To add work to the [scheduled cleanup](#scheduled-cleanup), e.g. expired
+password reset links:
+
+1. The feature: a `Cleanup` type whose `DeleteExpired(ctx)` deletes one
+   batch and returns how many and whether more may remain, tested with an
+   in-memory storage, as `internal/emailverification/cleanup.go` does.
+2. `repository/postgres`: a query deleting up to a batch of expired rows
+   with `FOR UPDATE SKIP LOCKED`, and its `DB` method, tested against
+   PostgreSQL, as `DeleteExpiredEmailVerificationLinks` is.
+3. `internal/dbos`: a field in `Services`, and its entry at the end of
+   `Services.cleanups` in `cleanup.go`, with a name that stays fixed.
+4. `cmd/inbok/worker.go`: set the field to the feature's `Cleanup`.
+
+For a new scheduled job, follow `internal/dbos/cleanup.go`: register the
+workflow under a fixed name and save its schedule with
+`dbos.ApplySchedules`, both called from `NewWorker`.
