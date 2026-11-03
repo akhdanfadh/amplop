@@ -13,3 +13,22 @@ SELECT id FROM users WHERE id = @user_id FOR UPDATE;
 
 -- name: DeleteUserPasswordResetLinks :execrows
 DELETE FROM password_reset_links WHERE user_id = @user_id;
+
+-- name: LockPasswordResetAccount :one
+-- The account lock serializes one account's requests, so the email limits
+-- count every link, and orders a request with completions and deactivations.
+SELECT id, email, role, (email_verified_at IS NOT NULL)::boolean AS verified,
+    (deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM users WHERE email = @email FOR UPDATE;
+
+-- name: DeleteExpiredPasswordResetLinks :exec
+-- Rows a completion or a deactivation holds are left for later instead of
+-- waited for.
+DELETE FROM password_reset_links WHERE token_hash IN (
+    SELECT expired.token_hash FROM password_reset_links expired
+    WHERE expired.expires_at <= @expired_by
+    FOR UPDATE SKIP LOCKED);
+
+-- name: InsertPasswordResetLink :exec
+INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
+VALUES (@token_hash, @user_id, @email, @created_at, @expires_at);

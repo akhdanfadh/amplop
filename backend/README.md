@@ -1033,7 +1033,43 @@ decision records explains the choices.
 `randomsecret` secret, the user, the `email` it was sent to, and when it
 was created and expires, one hour later. Asking again keeps earlier links;
 completing a reset deletes all of the user's links, and so do deactivating
-a member and `inbok recover-admin`.
+a member and `inbok recover-admin`. Each accepted request also deletes
+every user's expired links, skipping rows a completion or deactivation
+holds.
+
+### Asking for a link
+
+`passwordreset.Requests.Request` takes an email and the client's address
+and answers the same for every address. Before it returns, it only:
+
+1. checks that the email is valid (`emailaddress.Parse`);
+2. under a lock on the client, records an attempt in
+   `password_reset_attempts`, unless the client already made 10 in the
+   last 15 minutes. A client is an IPv4 address or an IPv6 /64
+   (`clientprefix`). Over the limit it returns an `*attemptlimit.Error`
+   wrapping `passwordreset.ErrThrottled` with the wait.
+
+It reads nothing about the account, so its answer and timing are the
+same whether the address has one. The rest is background work that
+`Request` starts and does not wait for, run by `passwordreset.Background`
+as the notice after a reset is (see [Completing a reset](#completing-a-reset)).
+In one transaction it locks the account with the email, if any, and
+decides:
+
+- no account, an unverified email, or a deactivated account: nothing is
+  sent;
+- 3 links sent to the account in the last hour, or 5 in 24 hours: nothing
+  is sent. These limits are silent, so the answer cannot depend on them.
+- otherwise: it saves a link for the account's stored email and sets the
+  attempt's `user_id` and `linked_at`. The email limits count `linked_at`,
+  the time the link was saved, which can come later than the request.
+
+Then it mails the link to `<public URL>/reset-password#<secret>`. The secret
+exists only in memory and the email; the message is `Private`, so a failed
+send's log leaves out the server's reply. A failed send keeps its link and is
+only logged. Requested emails are kept only for accounts that got a link,
+as `user_id`. The next accepted request deletes attempts whose request and
+link times are both over 24 hours old; nothing deletes them on a schedule.
 
 ### Completing a reset
 
@@ -1069,12 +1105,16 @@ logged, by the mailer as for any system email, and does not undo the reset.
 A panic is logged with its stack, not its value, instead of stopping the
 server.
 
-To list password resets:
+To list password resets, and recent requests:
 
 ```sql
 SELECT id, occurred_at, target_user_id
 FROM audit_events
 WHERE action = 'password-reset'
+ORDER BY id DESC;
+
+SELECT id, created_at, client_prefix, user_id, linked_at
+FROM password_reset_attempts
 ORDER BY id DESC;
 ```
 

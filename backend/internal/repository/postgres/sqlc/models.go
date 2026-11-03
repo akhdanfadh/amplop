@@ -27,6 +27,14 @@ type EmailVerificationLink struct {
 	ExpiresAt time.Time
 }
 
+type PasswordResetAttempt struct {
+	ID           int64
+	ClientPrefix string
+	UserID       *int64
+	LinkedAt     *time.Time
+	CreatedAt    time.Time
+}
+
 type PasswordResetLink struct {
 	TokenHash []byte
 	UserID    int64

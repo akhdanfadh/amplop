@@ -10,6 +10,20 @@ import (
 	"time"
 )
 
+const deleteExpiredPasswordResetLinks = `-- name: DeleteExpiredPasswordResetLinks :exec
+DELETE FROM password_reset_links WHERE token_hash IN (
+    SELECT expired.token_hash FROM password_reset_links expired
+    WHERE expired.expires_at <= $1
+    FOR UPDATE SKIP LOCKED)
+`
+
+// Rows a completion or a deactivation holds are left for later instead of
+// waited for.
+func (q *Queries) DeleteExpiredPasswordResetLinks(ctx context.Context, expiredBy time.Time) error {
+	_, err := q.db.Exec(ctx, deleteExpiredPasswordResetLinks, expiredBy)
+	return err
+}
+
 const deleteUserPasswordResetLinks = `-- name: DeleteUserPasswordResetLinks :execrows
 DELETE FROM password_reset_links WHERE user_id = $1
 `
@@ -20,6 +34,59 @@ func (q *Queries) DeleteUserPasswordResetLinks(ctx context.Context, userID int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const insertPasswordResetLink = `-- name: InsertPasswordResetLink :exec
+INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type InsertPasswordResetLinkParams struct {
+	TokenHash []byte
+	UserID    int64
+	Email     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) InsertPasswordResetLink(ctx context.Context, arg InsertPasswordResetLinkParams) error {
+	_, err := q.db.Exec(ctx, insertPasswordResetLink,
+		arg.TokenHash,
+		arg.UserID,
+		arg.Email,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const lockPasswordResetAccount = `-- name: LockPasswordResetAccount :one
+SELECT id, email, role, (email_verified_at IS NOT NULL)::boolean AS verified,
+    (deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM users WHERE email = $1 FOR UPDATE
+`
+
+type LockPasswordResetAccountRow struct {
+	ID          int64
+	Email       string
+	Role        string
+	Verified    bool
+	Deactivated bool
+}
+
+// The account lock serializes one account's requests, so the email limits
+// count every link, and orders a request with completions and deactivations.
+func (q *Queries) LockPasswordResetAccount(ctx context.Context, email string) (LockPasswordResetAccountRow, error) {
+	row := q.db.QueryRow(ctx, lockPasswordResetAccount, email)
+	var i LockPasswordResetAccountRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Role,
+		&i.Verified,
+		&i.Deactivated,
+	)
+	return i, err
 }
 
 const lockPasswordResetUser = `-- name: LockPasswordResetUser :exec

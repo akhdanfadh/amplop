@@ -13,6 +13,10 @@ import (
 
 const linkLifetime = time.Hour
 
+// resetPath is the web app's page that completes a reset; links carry their
+// secret in its fragment.
+const resetPath = "/reset-password"
+
 // ErrLinkInvalid means a reset link is malformed, unknown, used, expired,
 // sent to an email the user no longer has, or owned by a deactivated user.
 var ErrLinkInvalid = errors.New("password reset link is not valid")
