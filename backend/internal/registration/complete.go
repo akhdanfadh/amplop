@@ -74,7 +74,7 @@ func NewCompletion(storage completeStorage, now func() time.Time) *Completion {
 // or expired, [ErrEmailMismatch] for a live link sent to another email, and
 // the context's error if it ends while waiting to hash.
 //
-// NOTE: Complete has no throttle. The secret has 256 random bits, so guessing
+// DESIGN: Complete has no throttle. The secret has 256 random bits, so guessing
 // one is hopeless however fast the guesses come. Guesses are refused before
 // the Argon2id hash, and passwordhash bounds the hashes in progress across
 // the process, so one live link sent many times at once cannot exhaust

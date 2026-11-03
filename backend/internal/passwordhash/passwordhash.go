@@ -42,7 +42,7 @@ const (
 // budget holds the memory, in KiB, of the Argon2id hashes in progress in
 // the process. Each hash takes its own memory cost from it.
 //
-// NOTE: Without a bound, requests from many clients at once each start a
+// DESIGN: Without a bound, requests from many clients at once each start a
 // hash, since every throttle counts per client or per account, and enough
 // of them exhaust memory. Hashes wait in arrival order; each waits until
 // its memory is free or its context ends. The budget bounds memory, not
