@@ -57,3 +57,18 @@ func TestHandler(t *testing.T) {
 
 	assert.Contains(t, out.String(), `"request_id":"req-3"`)
 }
+
+// A left-out key disappears from lines, whether logged with the line or
+// added to the logger before; other attributes stay.
+func TestWithoutAttrs(t *testing.T) {
+	var out bytes.Buffer
+	logger := WithoutAttrs(New(&out), "database_url")
+
+	logger.Info("connect", "database_url", "postgres://u:secret@h/db", "schema", "dbos")
+	logger.With("database_url", "postgres://u:secret@h/db").WithGroup("g").Info("derived", "database_url", "x")
+
+	assert.NotContains(t, out.String(), "secret")
+	assert.NotContains(t, out.String(), "database_url")
+	assert.Contains(t, out.String(), "msg=connect schema=dbos")
+	assert.Contains(t, out.String(), "msg=derived")
+}

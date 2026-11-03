@@ -1250,8 +1250,26 @@ The database schema changes through numbered SQL files, called
 migrations, in `backend/internal/repository/postgres/migrations`. Each
 file has an `Up` part that applies the change and a `Down` part that
 undoes it. `inbok migrate` applies the files the database has not seen
-yet and records them; `serve` never does. Go does not read `.env`, so
-load it into your shell first. From `backend`:
+yet and records them; `serve` never does. `migrate` then creates or
+upgrades the workflow tables [DBOS](https://docs.dbos.dev) keeps
+background work in, in the `dbos` schema. Their migrations ship inside the
+DBOS Go SDK, not as files here, and have no Down part. One PostgreSQL lock
+covers both steps, so a second `migrate` on the same database waits for
+the first.
+
+Upgrading the SDK can bring new workflow table migrations. Review them
+like inbok's own: the release before must keep working on the migrated
+tables. `dbos.MigrationStatements("dbos", n)` in Go lists the SQL from
+version `n` on; `SELECT version FROM dbos.dbos_migrations` shows a
+database's current version.
+
+The role in `INBOK_DATABASE_URL` needs the right to create a schema in its
+database, and `migrate` also connects to the server's `postgres` database
+to check that inbok's exists. The owner a Docker PostgreSQL creates from
+`POSTGRES_USER`, as in `compose.yaml`, has both.
+
+Go does not read `.env`, so load it into your shell first. From
+`backend`:
 
 ```sh
 set -a; . ../.env; set +a
@@ -1271,6 +1289,10 @@ go tool -modfile=tools.mod goose status               # applied and pending file
 go tool -modfile=tools.mod goose reset                # run every Down part
 go tool -modfile=tools.mod goose create -s add_x sql  # next numbered file
 ```
+
+Goose knows only inbok's files: `goose reset` and `make db-reset` leave
+the `dbos` schema in place. To empty that too, run `DROP SCHEMA dbos CASCADE;` in `psql`; the
+next `migrate` creates it again.
 
 Never edit a migration a shared database has already applied; add a new
 one. The probe's tables are an exception until the first release.

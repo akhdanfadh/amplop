@@ -109,7 +109,7 @@ db-status: $(ENV_FILE) ## List applied and pending migrations
 db-rollback: $(ENV_FILE) ## Undo the last applied migration
 	$(WITH_ENV) $(GOOSE) down
 
-db-reset: $(ENV_FILE) ## Undo every migration, then apply all again
+db-reset: $(ENV_FILE) ## Undo inbok's migrations (not dbos), then apply all again
 	$(WITH_ENV) $(GOOSE) reset
 	$(WITH_ENV) go -C backend run ./cmd/inbok migrate
 
