@@ -108,8 +108,8 @@ Put shared code in the folder for its responsibility:
   with its confirmation dialog, and its wording.
 - `src/features/registration`: the Settings page's Registration section,
   the `/register` and `/register/complete` forms, and their wording.
-- `src/features/password-reset`: the `/forgot-password` form and its
-  wording.
+- `src/features/password-reset`: the `/forgot-password` and
+  `/reset-password` forms, the reset form's schema, and their wording.
 - `src/components`: shared controls, such as the password input. `ui/` holds
   the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -253,8 +253,20 @@ the verified one of an active account, a link is on its way, can take a few
 minutes, and expires in 1 hour. A 429 says when to try again, from
 `Retry-After`. A lost answer can be repeated: earlier links keep working,
 and the server limits how many are sent. "Use a different email address"
-brings the form back with the address kept. The page the emailed link
-opens, `/reset-password`, is not built yet.
+brings the form back with the address kept.
+
+The reset email's link opens `/reset-password`, whose secret is kept the
+same way as `/verify-email`'s. Like `/register/complete`, the visitor types
+the email the link was sent to, marked `autocomplete="username"`, and a new
+password of 15 to 128 characters, entered twice; another email is refused
+on the email field, followed by "Ask for a new link" to `/forgot-password`.
+Success creates no session: the page opens sign-in in its place with the
+email filled in and "The password for <email> is changed. Sign in with your
+new password." A reset signs the account out everywhere, so success, or a
+result that may have been one, clears this browser's account caches, even
+if the page has closed. A spent or expired link ends the page with "Ask for
+a new link" and "Sign in"; after a lost result, sign-in comes first, as on
+`/register/complete`.
 
 Security also lists the account's signed-in browsers, newest sign-in first.
 Each row shows the browser and operating system, or "Unknown browser", the
