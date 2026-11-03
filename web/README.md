@@ -108,6 +108,8 @@ Put shared code in the folder for its responsibility:
   with its confirmation dialog, and its wording.
 - `src/features/registration`: the Settings page's Registration section,
   the `/register` and `/register/complete` forms, and their wording.
+- `src/features/password-reset`: the `/forgot-password` form and its
+  wording.
 - `src/components`: shared controls, such as the password input. `ui/` holds
   the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -243,6 +245,16 @@ an email that already has an account, ends the page with where to go next.
 After a try whose result was lost, a spent link means that try probably
 created the account, so the page points to sign-in first and says to sign
 in with the password sent then, since the fields may have changed since.
+
+Sign-in's "Forgot password?" link opens `/forgot-password`, which asks for
+the email the account signs in with. The API answers before it looks the
+address up, so every accepted request gets the same text: if the address is
+the verified one of an active account, a link is on its way, can take a few
+minutes, and expires in 1 hour. A 429 says when to try again, from
+`Retry-After`. A lost answer can be repeated: earlier links keep working,
+and the server limits how many are sent. "Use a different email address"
+brings the form back with the address kept. The page the emailed link
+opens, `/reset-password`, is not built yet.
 
 Security also lists the account's signed-in browsers, newest sign-in first.
 Each row shows the browser and operating system, or "Unknown browser", the

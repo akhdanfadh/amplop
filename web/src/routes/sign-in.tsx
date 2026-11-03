@@ -81,10 +81,17 @@ function SignIn(): ReactElement {
           onCodeRequired={() => setStep("code")}
         />
       )}
-      {canRegister && (
-        <Link to="/register" className={linkClass}>
-          Create an account
-        </Link>
+      {step === "password" && (
+        <div className="flex flex-col">
+          <Link to="/forgot-password" className={linkClass}>
+            Forgot password?
+          </Link>
+          {canRegister && (
+            <Link to="/register" className={linkClass}>
+              Create an account
+            </Link>
+          )}
+        </div>
       )}
     </main>
   );

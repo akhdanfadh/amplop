@@ -77,7 +77,7 @@ export function endOf(err: ApiError, end: CompleteEnd, earlier: EarlierTries): E
   if (earlier === "unknown")
     return {
       message:
-        "This link no longer works, so an earlier try probably created your account. Sign in with the password you sent then.",
+        "This link no longer works, so an earlier try probably created your account. Sign in with the password you sent then. If you're not sure which one that was, reset your password from the sign-in page.",
       links: ["sign-in", "new-link"],
     };
   return { message: completeErrorMessage(err), links: ["new-link", "sign-in"] };

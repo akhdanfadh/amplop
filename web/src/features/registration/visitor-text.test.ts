@@ -153,7 +153,7 @@ describe("endOf", () => {
   it("points to sign-in after a try with an unknown outcome", () => {
     expect(endOf(spent, "link-invalid", "unknown")).toEqual({
       message:
-        "This link no longer works, so an earlier try probably created your account. Sign in with the password you sent then.",
+        "This link no longer works, so an earlier try probably created your account. Sign in with the password you sent then. If you're not sure which one that was, reset your password from the sign-in page.",
       links: ["sign-in", "new-link"],
     });
   });
