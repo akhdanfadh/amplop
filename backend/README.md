@@ -448,7 +448,8 @@ process: each waits until its own memory cost fits, in arrival order, so
 hashes ask for, not what the process holds: the garbage collector frees a
 finished hash's memory later, so under load the process briefly holds
 more. Every caller shares it:
-sign-in, setup, registration, TOTP backup codes, and `inbok recover-admin`.
+sign-in, setup, registration, password reset, TOTP backup codes, and
+`inbok recover-admin`.
 A wait that outlives the request's context ends it; one that outlives the
 10-second request deadline is a 500 (see
 [Timeouts and shutdown](#timeouts-and-shutdown)). A TOTP request that ends
@@ -678,7 +679,8 @@ and Mailpit; it does not run inbok itself.
 
 Recovery checks that the account is an administrator, then replaces the
 password, removes TOTP and every backup code, ends all sessions and sign-in
-challenges, clears that account's code and sign-in attempt rows, and records
+challenges, clears that account's code and sign-in attempt rows, deletes its
+password reset links, and records
 an `admin-recovered` event in `audit_events`. These writes commit together.
 Counts are printed without secrets. Recovery sends no notification email.
 
@@ -857,10 +859,11 @@ ID that is not a positive whole number 422 at `path.id`. Both are safe to
 repeat: a member already in the asked state is returned unchanged, with no
 second audit event.
 
-Deactivation locks the user, the same lock sign-in, TOTP, and email
-verification take, and checks the member's role under it. In one transaction it
-sets `users.deactivated_at`, deletes the member's sessions, pending sign-in
-challenges, and unused email verification links, and records a
+Deactivation locks the user, the same lock sign-in, TOTP, email
+verification, and password reset take, and checks the member's role under it.
+In one transaction it sets `users.deactivated_at`, deletes the member's
+sessions, pending sign-in challenges, unused email verification links, and
+unused password reset links, and records a
 `member-deactivated` event with the administrator as `actor_user_id` and
 the member as `target_user_id`. It keeps the password, the TOTP factor and
 backup codes, and the verified address, so reactivation, which clears the
@@ -1015,6 +1018,54 @@ WHERE action IN ('registration-opened', 'registration-closed', 'member-registere
 ORDER BY id DESC;
 ```
 
+## Password reset
+
+A user who forgot their password follows a link sent to their verified
+email and chooses a new one (`passwordreset`). ADR030 in the project's
+decision records explains the choices.
+
+### Links
+
+`password_reset_links` keeps the SHA-256 hash of each link's
+`randomsecret` secret, the user, the `email` it was sent to, and when it
+was created and expires, one hour later. Asking again keeps earlier links;
+completing a reset deletes all of the user's links, and so do deactivating
+a member and `inbok recover-admin`.
+
+### Completing a reset
+
+`passwordreset.Completion.Complete` takes the link's secret and the new
+password, which follows setup's rule, 15 to 128 characters
+(`account.CheckPassword`).
+
+1. It reads the link and its user without a lock. A missing or expired
+   link, a deactivated user, or a user whose email is no longer the
+   link's is refused here, so a guessed secret costs no password hash.
+2. It hashes the password with Argon2id, waiting for room in the hash
+   budget (see [Password hashes](#password-hashes)).
+3. In one transaction it locks the user, the lock sign-in, deactivation,
+   and recovery take, and checks everything again.
+4. It saves the password, deletes the user's sessions, sign-in
+   challenges, and reset links, deletes the sign-in attempts counted for
+   the user's email, and records `password-reset` with the user as
+   `target_user_id` and no actor. TOTP and backup codes stay, so the next
+   sign-in still asks for a code.
+
+A password outside the rule is `account.ErrPasswordInvalid`. Every other
+refusal, a malformed, unknown, used, or expired link, a link for another
+email, or a deactivated user, is the same `passwordreset.ErrLinkInvalid`.
+On success it returns the user, so the caller can name the email to sign in
+with, and creates no session.
+
+To list password resets:
+
+```sql
+SELECT id, occurred_at, target_user_id
+FROM audit_events
+WHERE action = 'password-reset'
+ORDER BY id DESC;
+```
+
 ## Logs and request IDs
 
 `serve` writes text logs to stderr, one line per request with its method,
@@ -1162,6 +1213,8 @@ httpapi --> emailverification <-- repository/postgres
             emailverification --> systememail
 httpapi --> registration <-- repository/postgres
             registration --> systememail, account
+            passwordreset <-- repository/postgres
+            passwordreset --> account
 ```
 
 - `probe`, like every feature package, holds the feature's types, its

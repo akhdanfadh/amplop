@@ -31,8 +31,9 @@ type memberAccounts struct {
 
 // newMemberAccounts saves an administrator with an unconfirmed factor, a
 // session, and a challenge; a verified member with a confirmed factor, a backup code, two sessions, a
-// sign-in challenge, an email verification link, and a TOTP attempt; and a
-// bystander member with a session, a challenge, and a link. It returns them
+// sign-in challenge, an email verification link, a password reset link, and
+// a TOTP attempt; and a bystander member with a session, a challenge, and
+// both kinds of link. It returns them
 // with a service whose clock reads membersNow.
 func newMemberAccounts(t *testing.T) memberAccounts {
 	t.Helper()
@@ -66,6 +67,8 @@ func newMemberAccounts(t *testing.T) memberAccounts {
 			SELECT decode(md5(email), 'hex'), id, now() + interval '5 minutes' FROM users`, nil},
 		{`INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at)
 			SELECT decode(md5(email), 'hex'), id, email, now(), now() + interval '1 day' FROM users WHERE id IN ($1, $2)`, []any{f.member, f.bystander}},
+		{`INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
+			SELECT decode(md5(email), 'hex'), id, email, now(), now() + interval '1 hour' FROM users WHERE id IN ($1, $2)`, []any{f.member, f.bystander}},
 	} {
 		_, err := conn.Exec(t.Context(), statement.sql, statement.args...)
 		require.NoError(t, err)
@@ -87,6 +90,7 @@ func memberSnapshot(t *testing.T, conn *pgx.Conn, userID int64) string {
 		(SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM sessions t WHERE user_id = $1),
 		(SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM sign_in_challenges t WHERE user_id = $1),
 		(SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM email_verification_links t WHERE user_id = $1),
+		(SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM password_reset_links t WHERE user_id = $1),
 		(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_events t WHERE target_user_id = $1)
 	)::text`, userID).Scan(&snapshot))
 	return snapshot
@@ -159,7 +163,7 @@ func TestMembersDeactivatePersistence(t *testing.T) {
 	members, err := f.service.List(t.Context())
 	require.NoError(t, err)
 	assert.Contains(t, members, member)
-	for _, table := range []string{"sessions", "sign_in_challenges", "email_verification_links"} {
+	for _, table := range []string{"sessions", "sign_in_challenges", "email_verification_links", "password_reset_links"} {
 		assert.Zero(t, memberRowCount(t, f.conn, table, f.member), table)
 	}
 	savedHash, savedFactor := memberCredentials(t, f.conn, f.member)

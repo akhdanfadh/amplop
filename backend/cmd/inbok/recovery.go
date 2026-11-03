@@ -62,7 +62,7 @@ func runRecovery(ctx context.Context, email string, service adminRecovery, conso
 	if err != nil {
 		return recoveryError(err)
 	}
-	_, err = fmt.Fprintf(console.output, "Password replaced. %d TOTP factors and %d backup codes removed. %d sessions ended.\n%d sign-in challenges, %d TOTP attempts, and %d sign-in attempts cleared.\nSign in, then set up TOTP on the Security page to restore administrator access.\n", result.Factors, result.BackupCodes, result.Sessions, result.Challenges, result.TOTPAttempts, result.SignInAttempts)
+	_, err = fmt.Fprintf(console.output, "Password replaced. %d TOTP factors and %d backup codes removed. %d sessions ended.\n%d sign-in challenges, %d TOTP attempts, %d sign-in attempts, and %d password reset links cleared.\nSign in, then set up TOTP on the Security page to restore administrator access.\n", result.Factors, result.BackupCodes, result.Sessions, result.Challenges, result.TOTPAttempts, result.SignInAttempts, result.ResetLinks)
 	if err != nil {
 		return errors.New("recovery completed, but could not write the summary")
 	}

@@ -18,6 +18,7 @@ type RecoveryResult struct {
 	Challenges     int64
 	TOTPAttempts   int64
 	SignInAttempts int64
+	ResetLinks     int64 // password reset links, deleted so none can undo the recovery
 }
 
 type recoveryStore interface {

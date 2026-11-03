@@ -20,7 +20,9 @@ const (
 	memberRegisteredAction   = "member-registered"
 )
 
-var errNoLink = errors.New("registration link not found")
+// errNoLink means storage was asked to complete a registration or a
+// password reset without a link.
+var errNoLink = errors.New("link not found")
 
 // ReadRegistration returns the saved state and whether the system email
 // settings in use passed a test.

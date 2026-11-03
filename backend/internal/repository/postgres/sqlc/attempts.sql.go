@@ -28,6 +28,15 @@ func (q *Queries) DeleteSignInAttempt(ctx context.Context, id int64) error {
 	return err
 }
 
+const deleteSignInAttemptsByEmail = `-- name: DeleteSignInAttemptsByEmail :exec
+DELETE FROM sign_in_attempts WHERE email = $1
+`
+
+func (q *Queries) DeleteSignInAttemptsByEmail(ctx context.Context, email *string) error {
+	_, err := q.db.Exec(ctx, deleteSignInAttemptsByEmail, email)
+	return err
+}
+
 const insertSignInAttempt = `-- name: InsertSignInAttempt :one
 INSERT INTO sign_in_attempts (email, client_addr, created_at)
 VALUES ($1, $2, $3)
