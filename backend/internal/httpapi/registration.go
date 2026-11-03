@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/netip"
 	"strconv"
@@ -341,10 +340,7 @@ func registrationCompleteProblem(err error) error {
 	// Huma's length check refuses almost every such password first; the
 	// service's rule decides the rest.
 	case errors.Is(err, account.ErrPasswordInvalid):
-		invalid := requestProblem(http.StatusUnprocessableEntity)
-		message := fmt.Sprintf("Use %d to %d characters.", account.PasswordMinLength, account.PasswordMaxLength)
-		invalid.Errors = []inputError{{Location: "body.password", Message: message}}
-		return invalid
+		return invalidPasswordProblem("body.password")
 	case errors.Is(err, emailaddress.ErrInvalid):
 		return invalidEmailProblem("body.email")
 	case errors.Is(err, registration.ErrEmailMismatch):
