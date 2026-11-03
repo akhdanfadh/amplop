@@ -614,9 +614,10 @@ send it.
 In front of those throttles, every write that needs no session (`rateLimited`
 in `httpapi`) passes a limit kept in memory, per operation and client: up to
 20 requests in a row, and each second gives one back, up to 20. A client is
-an IPv4 address, or an IPv6 address's /64 block. Past the limit, the request
-gets HTTP 429 `too-many-requests` with `Retry-After` before any database work,
-so a flood cannot hold database connections or start password hashes. Over
+an IPv4 address, or an IPv6 address's /64 block (`clientprefix`). Past the
+limit, the request gets HTTP 429 `too-many-requests` with `Retry-After`
+before any database work, so a flood cannot hold database connections or
+start password hashes. Over
 any 15 minutes it allows more requests than any database limit, so people
 retrying by hand meet those limits first. Counts are per process and reset on
 restart; at most 100,000 clients are tracked at once. A new public write gets
@@ -1183,8 +1184,9 @@ httpapi --> registration <-- repository/postgres
   and imports features, never the other way around.
 - A leaf package holds one rule that several features share, such as
   `emailaddress` (the address rule), `attemptlimit` (the window count),
-  `randomsecret` (emailed link secrets and their hashes), or `logging` (how
-  loggers are built and tagged with the request). It
+  `randomsecret` (emailed link secrets and their hashes), `clientprefix`
+  (which addresses count as one client), or `logging` (how loggers are
+  built and tagged with the request). It
   imports no feature or technology package and is named for its rule.
 - A feature can use another feature through an interface it declares:
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`
