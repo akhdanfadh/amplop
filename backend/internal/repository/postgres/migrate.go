@@ -42,7 +42,7 @@ const (
 // logs what it applied to logger and returns the first error, joined with
 // any error releasing the lock.
 //
-// NOTE: DBOS takes no lock while migrating its tables, and two runs at once
+// DESIGN: DBOS takes no lock while migrating its tables, and two runs at once
 // fail on each other's CREATE. One PostgreSQL lock covers both steps, so a
 // second Migrate on the same database waits, then finds nothing to do.
 func Migrate(ctx context.Context, url string, logger *slog.Logger) (err error) {
@@ -122,7 +122,7 @@ func migrateFiles(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
 // in its default schema "dbos", to the version the linked SDK needs. DBOS
 // logs to logger.
 //
-// NOTE: DBOS versions its own tables and ships their migrations inside the
+// DESIGN: DBOS versions its own tables and ships their migrations inside the
 // SDK, so they are not Goose files. Each SDK upgrade can bring new ones;
 // Migrate applies them in the release migration like inbok's own.
 func migrateWorkflowTables(ctx context.Context, url string, logger *slog.Logger) error {

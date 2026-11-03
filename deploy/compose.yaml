@@ -1,5 +1,5 @@
 # A self-hosted inbok: PostgreSQL, a one-off migration, the inbok server,
-# and Caddy for HTTPS. Values come from deploy/.env; copy .env.example.
+# its background worker, and Caddy for HTTPS. Values come from deploy/.env; copy .env.example.
 # From deploy/, start it with docker compose up -d --build, and upgrade it
 # with ./upgrade.sh. The repository root's compose.yaml is for development.
 #
@@ -10,7 +10,7 @@
 # name, and sharing it would share its database volume.
 name: inbok-deploy
 
-# migrate and inbok connect with this URL. The password is hex, so it needs
+# migrate, inbok, and worker connect with this URL. The password is hex, so it needs
 # no escaping here.
 x-database-url: &database-url postgres://inbok:${INBOK_POSTGRES_PASSWORD:?set it in deploy/.env}@postgres:5432/inbok?sslmode=disable
 
@@ -50,7 +50,7 @@ services:
   migrate:
     # The image the inbok service builds, so an upgrade migrates with the
     # code it then serves. Only inbok builds it: Compose would otherwise
-    # build it once per service.
+    # build it once per service; worker uses it the same way.
     image: ${INBOK_IMAGE:-inbok:local}
     pull_policy: never
     command: migrate
@@ -93,6 +93,31 @@ services:
     # outside, only Caddy reaches it, on edge.
     networks:
       - edge
+      - db
+
+  # Runs background work. Restarting or replacing it is safe: work it left
+  # unfinished resumes when it starts again under the same INBOK_WORKER_ID,
+  # which defaults to "worker". A second worker at once needs its own ID.
+  worker:
+    image: ${INBOK_IMAGE:-inbok:local}
+    pull_policy: never
+    command: worker
+    restart: unless-stopped
+    # Its shutdown takes up to 12 seconds, past Docker's default 10 before
+    # it kills. A kill is safe, just less tidy: unfinished work resumes.
+    stop_grace_period: 15s
+    environment:
+      INBOK_DATABASE_URL: *database-url
+      # The image's health check asks this address. Loopback: nothing else
+      # needs to reach the worker. 8081 is the worker's port everywhere,
+      # though its own container would allow serve's 8080 too.
+      INBOK_HTTP_ADDR: 127.0.0.1:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
       - db
 
   caddy:
@@ -145,7 +170,7 @@ networks:
         - subnet: fd24:44bd:915f::/64
           ip_range: fd24:44bd:915f::1:0/112
 
-  # PostgreSQL, migrate, and inbok, with no internet access. Caddy is not
+  # PostgreSQL, migrate, inbok, and worker, with no internet access. Caddy is not
   # on it, so the service facing the internet cannot reach the database.
   db:
     internal: true

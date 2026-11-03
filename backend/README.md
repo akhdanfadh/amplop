@@ -1,8 +1,8 @@
 # inbok backend
 
-The Go server: the `inbok` command (`serve`, `migrate`, `health`,
-`export`, `recover-admin`), its HTTP API, the built web app it serves,
-and its database code. Running `make` in the repository root lists a
+The Go server: the `inbok` command (`serve`, `worker`, `migrate`,
+`health`, `export`, `recover-admin`), its HTTP API, the built web app it
+serves, its background work, and its database code. Running `make` in the repository root lists a
 shortcut for most commands here.
 
 ## Run the server
@@ -51,6 +51,96 @@ answer is HTTP 200 and 1 otherwise, printing the reason. It reads no other
 setting, so it needs no secrets. The container image runs it as its health
 check, since the image has no `curl`.
 
+## Background work
+
+Work that outlasts a request, or must happen even if a process stops
+halfway, runs in a separate process, `inbok worker`, on
+[DBOS](https://docs.dbos.dev). DBOS saves each piece of work as a
+**workflow** in PostgreSQL, in the `dbos` schema, and records each
+finished **step**, so a stopped workflow resumes where it left off.
+`serve` does not use DBOS. ADR004 in the project's decision records
+explains the choice.
+
+`make dev` runs the worker beside `serve`, restarting it when a Go file
+changes; `make dev-worker` runs only the worker, and `make backend-worker`
+runs it once without restarts. The worker needs the workflow tables that
+`migrate` creates; on a database that lacks them, or has them at an older
+version than its DBOS needs, it stops with an error saying the system
+database is at a lower schema version, and `migrate` fixes it.
+
+The worker reads these environment variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL, as for `serve`. |
+| `INBOK_HTTP_ADDR` | `127.0.0.1:8081`; the image sets `0.0.0.0:8080` | Address the worker answers health checks on: port 8081 for the worker, 8080 for `serve`, so both run on one machine. `.env` sets `serve`'s, so the Make commands pass the worker `INBOK_WORKER_HTTP_ADDR` instead; `deploy/compose.yaml` sets `127.0.0.1:8081`. |
+| `INBOK_WORKER_ID` | `worker` | The name the worker resumes unfinished work under: 1 to 64 letters, digits, `.`, `-`, or `_`. |
+
+DBOS's own `DBOS__APPVERSION` and `DBOS__VMID` would replace the version
+and the ID that decide which work a worker resumes (see below), so the
+worker refuses to start while either is set.
+
+The worker serves HTTP only for its health check. Once DBOS has started
+and resumed the worker's unfinished workflows, it answers every request on
+`INBOK_HTTP_ADDR` with HTTP 200 and no body, including the
+`/api/v0/health` that `inbok health` asks for. That says the worker started, not that it is
+still making progress: DBOS exposes no state of its queue loop to check.
+`inbok health`, run with the worker's `INBOK_HTTP_ADDR`, checks it like
+the server:
+
+```sh
+INBOK_HTTP_ADDR=127.0.0.1:8081 go run ./cmd/inbok health
+```
+
+Ctrl+C or SIGTERM closes the health listener, then shuts DBOS down: it
+cancels the running workflows and waits up to 3 seconds for each stage of
+its shutdown, and the worker exits after 7 seconds at most. A workflow
+cancelled this way is not marked failed: it stays pending. So does one
+whose worker was killed or lost power. Only DBOS's own shutdown leaves a
+workflow pending; DBOS marks one cancelled any other way as `CANCELLED`,
+which no worker resumes, so the worker never hands DBOS a context that a
+signal cancels.
+
+### Which worker resumes what
+
+Work waiting in a queue belongs to no worker: every worker polls the same
+queue tables, and each workflow goes to exactly one of them. Scheduled
+runs are shared the same way, since each run's workflow ID comes from the
+schedule's name and time. Once a worker starts a workflow, though, the
+workflow belongs to that worker's `INBOK_WORKER_ID` until it finishes.
+
+When a worker starts, it puts every pending workflow of its own ID back
+on the queue, and they resume from the first step that had not finished.
+So a step can run twice when a worker stops during it. DBOS does not check
+whether another worker with that ID is still running it, and nothing hands
+a workflow to a worker with another ID. Therefore:
+
+- Keep the ID when restarting or replacing a worker.
+- Never run two workers with one ID: each start would rerun the other's
+  running workflows, side effects and all, e.g. a second email.
+- A worker removed for good leaves its started workflows pending. Start a
+  worker once with its ID, e.g. `INBOK_WORKER_ID=worker-2`, to finish
+  them; DBOS's `ResumeWorkflow` also queues one for any worker, but only
+  once the old worker is surely gone.
+
+### Scaling
+
+Run one worker and raise how many workflows it runs at once. A worker runs
+each workflow in its own goroutine, so more worker processes on the same
+machine do no more than more concurrency in one. A second worker is worth
+it for another machine, or to keep one kind of work apart from another,
+and it needs its own stable ID. Concurrency is a DBOS queue setting, kept
+in the database and re-read by workers about every second, so `serve`
+could change it at runtime, e.g. from an admin setting. No queue needs
+that yet; the first job that does adds the setting.
+
+DBOS records a version on every workflow and resumes only workflows of its
+own version. inbok fixes that version at `1` instead of DBOS's default, a
+hash of the binary, so a new release resumes what the previous one left
+unfinished. A workflow whose steps change must therefore still finish the
+runs an older release started, e.g. with
+[`dbos.Patch`](https://docs.dbos.dev/golang/tutorials/upgrading-workflows).
+
 ## Container image
 
 From the repository root, `make image` builds the `inbok:local` image
@@ -64,7 +154,8 @@ can then reach it, and the host's network only if the port is published.
 To publish it for a proxy on the same host, bind loopback, e.g.
 `-p 127.0.0.1:8080:8080`: a bare `-p 8080:8080` listens on every host
 interface, and Docker's rules bypass host firewalls such as ufw. Its entry point is `inbok`, and its default command is
-`serve`, so `docker run inbok:local migrate` runs a migration.
+`serve`, so `docker run inbok:local migrate` runs a migration and
+`docker run inbok:local worker` the worker.
 
 The base images are pinned by version and digest; the `Dockerfile` says
 how to update one. Builds cache downloaded Go modules and pnpm packages
@@ -1368,6 +1459,10 @@ httpapi --> passwordreset <-- repository/postgres
   build's layout, not the web app's code. `httpapi` declares a `webApp`
   interface and sends it the reads outside `/api`, keeping the API's 404
   and 405 for the rest, so its tests use a fake.
+- `dbos` is the technology package for [Background work](#background-work):
+  it opens DBOS for the worker, launches it, and shuts it down. It is the
+  only package besides `repository/postgres` that imports the DBOS SDK,
+  whose package is also named `dbos`.
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
   in `httpapi.Services`, and loads `webapp`'s build for `ServeWebApp`.
 

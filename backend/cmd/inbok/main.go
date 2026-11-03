@@ -49,7 +49,7 @@ const (
 	shutdownTimeout = 5 * time.Second
 )
 
-var errUsage = errors.New("usage: inbok serve | inbok migrate | inbok health | inbok export <path> | inbok recover-admin <email>")
+var errUsage = errors.New("usage: inbok serve | inbok worker | inbok migrate | inbok health | inbok export <path> | inbok recover-admin <email>")
 
 func main() {
 	// One root logger for every service, so their lines carry request_id.
@@ -78,6 +78,8 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 	switch {
 	case args[0] == "serve" && len(args) == 1:
 		return serve(ctx, logger)
+	case args[0] == "worker" && len(args) == 1:
+		return worker(ctx, logger)
 	case args[0] == "migrate" && len(args) == 1:
 		return migrate(ctx, logger)
 	case args[0] == "health" && len(args) == 1:
@@ -162,9 +164,9 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 }
 
 // listen serves handler on addr until ctx is cancelled, then lets in-flight
-// requests finish, and then the work they started on background. It returns
-// the error that stopped serving, or the shutdown's error, such as the
-// context's when requests outlast the timeout.
+// requests finish, and then the work they started on background, if not nil.
+// It returns the error that stopped serving, or the shutdown's error, such
+// as the context's when requests outlast the timeout.
 func listen(ctx context.Context, addr string, handler http.Handler, background *passwordreset.Background, logger *slog.Logger) error {
 	// ErrorLog routes net/http's internal errors, e.g. a failed TLS
 	// handshake, into the same log.
@@ -199,7 +201,10 @@ func listen(ctx context.Context, addr string, handler http.Handler, background *
 
 	err = server.Shutdown(shutdownCtx)
 	// Requests are done, so no new work starts; what is left of the timeout
-	// goes to work already started.
+	// goes to work already started. The worker passes no background.
+	if background == nil {
+		return err
+	}
 	if waitErr := background.Wait(shutdownCtx); waitErr != nil {
 		logger.Warn("stopped before all password reset background work finished; its emails may not have been sent")
 	}
