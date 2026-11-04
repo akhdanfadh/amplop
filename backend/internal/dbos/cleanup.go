@@ -41,18 +41,22 @@ type cleanup struct {
 	rows expired
 }
 
-// cleanups lists the kinds of expired rows in services, in the order a run
-// deletes them, leaving out nil ones.
+// cleanups lists the kinds of expired rows a run deletes, in order: the
+// features' cleanups in s, leaving out nil ones, and DBOS's own finished
+// workflow runs.
 //
-// DESIGN: Keep each name, and add new kinds at the end: a run a previous
-// release started resumes on this code, and DBOS fails a step whose name
-// differs from the one it recorded at that position.
-func (s Services) cleanups() []cleanup {
+// DESIGN: Keep each name, and add new kinds at the end, after "failed
+// workflow runs", whatever they delete: a run a previous release started
+// resumes on this code, and DBOS fails a step whose name differs from the
+// one it recorded at that position.
+func (w *Worker) cleanups(s Services) []cleanup {
 	all := []cleanup{
 		{name: "email verification links", rows: s.EmailVerificationCleanup},
 		{name: "registration links", rows: s.RegistrationCleanup},
 		{name: "password reset links", rows: s.PasswordResetCleanup},
 		{name: "password reset attempts", rows: s.PasswordResetAttemptCleanup},
+		{name: "succeeded workflow runs", rows: newWorkflowRuns(w.ctx, succeeded, succeededKept)},
+		{name: "failed workflow runs", rows: newWorkflowRuns(w.ctx, failed, failedKept)},
 	}
 	return slices.DeleteFunc(all, func(c cleanup) bool { return c.rows == nil })
 }

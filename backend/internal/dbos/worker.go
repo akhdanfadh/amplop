@@ -114,7 +114,7 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 
 	// 4. Register every workflow and queue, which DBOS needs before Launch.
 	w := &Worker{ctx: dbosCtx, logger: logger}
-	if err := w.registerCleanup(services.cleanups()); err != nil {
+	if err := w.registerCleanup(w.cleanups(services)); err != nil {
 		return nil, errors.Join(fmt.Errorf("schedule cleanup: %w", err), w.Shutdown())
 	}
 	if err := w.registerEmailQueue(); err != nil {

@@ -168,9 +168,10 @@ cleans the others, then ends in error; the next hour tries again. It does
 not make up for hours the worker was down. Deleting is tidying, not
 protection: redeeming refuses an expired link whether or not its row is
 still there. While the worker is down, expired rows, which hold a token
-hash and an email address, simply stay longer. Each run logs
-`deleted expired rows` with a count when it deleted any, and records the
-counts as its output.
+hash and an email address, simply stay longer. The same run also deletes
+old workflow runs, as [Inspecting workflows](#inspecting-workflows)
+describes. Each run logs `deleted expired rows` with a count when it
+deleted any, and records the counts as its output.
 
 ### Recovery notice
 
@@ -229,8 +230,13 @@ outcomes with the run, no address.
 
 ### Inspecting workflows
 
-DBOS keeps every run in `dbos.workflow_status` and each finished step's
-result in `dbos.operation_outputs`. In `psql`, recent cleanup runs:
+DBOS keeps each run in `dbos.workflow_status` and each finished step's
+result in `dbos.operation_outputs`. The hourly cleanup deletes a run, with
+its steps, 7 days after it succeeded and 30 days after it failed: `ERROR`,
+`CANCELLED`, or `MAX_RECOVERY_ATTEMPTS_EXCEEDED`. Nearly every run
+succeeds and is rarely looked at again, while a failure may be looked into
+days later. Runs that have not finished are never deleted, however old. In
+`psql`, recent cleanup runs:
 
 ```sql
 SELECT workflow_uuid, status, executor_id, to_timestamp(created_at / 1000) AS created
@@ -241,7 +247,9 @@ LIMIT 10;
 ```
 
 `status` is `SUCCESS`, `ERROR`, `PENDING` (running, or waiting for its
-worker to start again), `ENQUEUED`, or `CANCELLED`. A run's steps:
+worker to start again), `ENQUEUED`, `DELAYED` (enqueued with a delay that
+has not passed), `CANCELLED`, or `MAX_RECOVERY_ATTEMPTS_EXCEEDED`. A run's
+steps:
 
 ```sql
 SELECT function_id, function_name,
@@ -1698,7 +1706,7 @@ rows of a new table, as password reset's links and attempts were added:
    with `FOR UPDATE SKIP LOCKED`, and its `DB` method, tested against
    PostgreSQL, as `DeleteExpiredEmailVerificationLinks` is.
 3. `internal/dbos`: a field in `Services`, and its entry at the end of
-   `Services.cleanups` in `cleanup.go`, with a name that stays fixed.
+   `Worker.cleanups` in `cleanup.go`, with a name that stays fixed.
 4. `cmd/inbok/worker.go`: set the field to the feature's `Cleanup`.
 
 For a new scheduled job, follow `internal/dbos/cleanup.go`: register the

@@ -85,7 +85,10 @@ func TestCleanupBatches(t *testing.T) {
 	deleted, err := triggerCleanup(t, worker)
 	require.NoError(t, err)
 
-	assert.Equal(t, map[string]int{"email verification links": 7, "registration links": 1}, deleted)
+	assert.Equal(t, map[string]int{
+		"email verification links": 7, "registration links": 1,
+		"succeeded workflow runs": 0, "failed workflow runs": 0,
+	}, deleted)
 	assert.Equal(t, 3, links.calls)
 	assert.Equal(t, maxCleanupBatches, endless.calls)
 }
@@ -160,10 +163,12 @@ func TestCleanupLinks(t *testing.T) {
 	assert.Equal(t, map[string]int{
 		"email verification links": 2, "registration links": 1,
 		"password reset links": 1, "password reset attempts": 1,
+		"succeeded workflow runs": 0, "failed workflow runs": 0,
 	}, first)
 	assert.Equal(t, map[string]int{
 		"email verification links": 0, "registration links": 0,
 		"password reset links": 0, "password reset attempts": 0,
+		"succeeded workflow runs": 0, "failed workflow runs": 0,
 	}, second)
 	rows, err := conn.Query(t.Context(), `SELECT encode(token_hash, 'hex') FROM email_verification_links
 		UNION ALL SELECT encode(token_hash, 'hex') FROM registration_links
@@ -173,4 +178,172 @@ func TestCleanupLinks(t *testing.T) {
 	left, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	require.NoError(t, err)
 	assert.Equal(t, []string{"03", "05", "06", "08", "within the hour"}, left)
+}
+
+// A run deletes DBOS's records of runs that succeeded at least 7 days ago
+// and of runs that failed at least 30 days ago, steps included, and never
+// a run that has not finished, however old.
+func TestCleanupWorkflowRuns(t *testing.T) {
+	// Given finished cleanup runs, aged and relabelled to cover each side of
+	// both cutoffs, and one pending.
+	day := 24 * time.Hour
+	runs := []agedRun{
+		{"SUCCESS", 8 * day},                         // goes
+		{"SUCCESS", 6 * day},                         // stays
+		{"ERROR", 31 * day},                          // goes
+		{"ERROR", 8 * day},                           // stays
+		{"CANCELLED", 31 * day},                      // goes
+		{"MAX_RECOVERY_ATTEMPTS_EXCEEDED", 31 * day}, // goes
+		{"PENDING", 90 * day},                        // stays: not finished
+		{"ENQUEUED", 90 * day},                       // stays: not started
+		{"DELAYED", 90 * day},                        // stays: not started
+	}
+	gone := []int{0, 2, 4, 5}
+	kept := []int{1, 3, 6, 7, 8}
+	url := migrated(t)
+	worker := cleanupWorker(t, url, Services{})
+	for range runs {
+		_, err := triggerCleanup(t, worker)
+		require.NoError(t, err)
+	}
+	conn, err := pgx.Connect(t.Context(), url)
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close(context.Background()) })
+	ids := workflowIDs(t, conn)
+	require.Len(t, ids, len(runs))
+	ageRuns(t, conn, ids, runs)
+	for i, n := range stepCounts(t, conn, ids) {
+		require.Positive(t, n, "run %d has steps to delete or keep", i)
+	}
+
+	// When the cleanup runs.
+	deleted, err := triggerCleanup(t, worker)
+	require.NoError(t, err)
+
+	// Then only the runs past their cutoff are gone, with their steps, and
+	// the rest keep theirs; the run that deleted them comes last.
+	assert.Equal(t, 1, deleted["succeeded workflow runs"])
+	assert.Equal(t, 3, deleted["failed workflow runs"])
+	var keptIDs []string
+	for _, i := range kept {
+		keptIDs = append(keptIDs, ids[i])
+	}
+	assert.Equal(t, keptIDs, workflowIDs(t, conn)[:len(kept)])
+	steps := stepCounts(t, conn, ids)
+	for _, i := range gone {
+		assert.Zero(t, steps[i], "run %d", i)
+	}
+	for _, i := range kept {
+		assert.Positive(t, steps[i], "run %d", i)
+	}
+}
+
+// A run finished exactly its window ago is deleted; one finished a
+// millisecond later is kept.
+func TestCleanupWorkflowRunsCutoff(t *testing.T) {
+	// Given two runs that succeeded at the cutoff and just after it.
+	url := migrated(t)
+	worker := cleanupWorker(t, url, Services{})
+	for range 2 {
+		_, err := triggerCleanup(t, worker)
+		require.NoError(t, err)
+	}
+	conn, err := pgx.Connect(t.Context(), url)
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close(context.Background()) })
+	ids := workflowIDs(t, conn)
+	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	cutoff := now.Add(-succeededKept).UnixMilli()
+	for i, completedAt := range []int64{cutoff, cutoff + 1} {
+		_, err := conn.Exec(t.Context(), "UPDATE dbos.workflow_status SET completed_at = $1 WHERE workflow_uuid = $2", completedAt, ids[i])
+		require.NoError(t, err)
+	}
+	runs := newWorkflowRuns(worker.ctx, succeeded, succeededKept)
+	runs.now = func() time.Time { return now }
+
+	// When it deletes.
+	deleted, more, err := runs.DeleteExpired(t.Context())
+	require.NoError(t, err)
+
+	// Then only the run at the cutoff goes.
+	assert.Equal(t, 1, deleted)
+	assert.False(t, more)
+	assert.Equal(t, []string{ids[1]}, workflowIDs(t, conn))
+}
+
+// stepCounts returns how many steps DBOS keeps for each of ids, in order.
+func stepCounts(t *testing.T, conn *pgx.Conn, ids []string) []int {
+	t.Helper()
+
+	counts := make([]int, len(ids))
+	for i, id := range ids {
+		require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM dbos.operation_outputs WHERE workflow_uuid = $1", id).Scan(&counts[i]))
+	}
+	return counts
+}
+
+// One call deletes up to a batch of runs, and reports more only when it
+// deleted a full batch.
+func TestCleanupWorkflowRunsBatches(t *testing.T) {
+	// Given three runs that succeeded 8 days ago.
+	url := migrated(t)
+	worker := cleanupWorker(t, url, Services{})
+	for range 3 {
+		_, err := triggerCleanup(t, worker)
+		require.NoError(t, err)
+	}
+	conn, err := pgx.Connect(t.Context(), url)
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close(context.Background()) })
+	_, err = conn.Exec(t.Context(), "UPDATE dbos.workflow_status SET completed_at = $1", time.Now().Add(-8*24*time.Hour).UnixMilli())
+	require.NoError(t, err)
+	runs := newWorkflowRuns(worker.ctx, succeeded, succeededKept)
+	runs.batch = 2
+
+	// When it deletes batch after batch.
+	type batch struct {
+		deleted int
+		more    bool
+	}
+	var batches []batch
+	for range 3 {
+		deleted, more, err := runs.DeleteExpired(t.Context())
+		require.NoError(t, err)
+		batches = append(batches, batch{deleted, more})
+	}
+
+	// Then a full batch reports more, a short one and an empty one none.
+	assert.Equal(t, []batch{{2, true}, {1, false}, {0, false}}, batches)
+}
+
+// agedRun is a status and how long ago a run finished with it.
+type agedRun struct {
+	status string
+	age    time.Duration
+}
+
+// ageRuns gives the run with each of ids the status and finish time of the
+// run at the same index. An enqueued or delayed run moves to a queue no
+// worker polls, so the test's worker does not run it again.
+func ageRuns(t *testing.T, conn *pgx.Conn, ids []string, runs []agedRun) {
+	t.Helper()
+
+	for i, run := range runs {
+		_, err := conn.Exec(t.Context(), `UPDATE dbos.workflow_status SET status = $1, completed_at = $2,
+			queue_name = CASE WHEN $1 IN ('ENQUEUED', 'DELAYED') THEN 'inbok.test-unpolled' ELSE queue_name END
+			WHERE workflow_uuid = $3`,
+			run.status, time.Now().Add(-run.age).UnixMilli(), ids[i])
+		require.NoError(t, err)
+	}
+}
+
+// workflowIDs lists the IDs of every run in DBOS's tables, oldest first.
+func workflowIDs(t *testing.T, conn *pgx.Conn) []string {
+	t.Helper()
+
+	rows, err := conn.Query(t.Context(), "SELECT workflow_uuid FROM dbos.workflow_status ORDER BY created_at, workflow_uuid")
+	require.NoError(t, err)
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	return ids
 }
