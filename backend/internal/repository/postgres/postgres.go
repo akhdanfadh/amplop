@@ -4,12 +4,28 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // DB stores inbok's data in PostgreSQL. Each feature adds its methods.
 type DB struct {
-	pool *pgxpool.Pool
+	pool      *pgxpool.Pool
+	workflows Workflows // nil until WithWorkflows
+}
+
+// Workflows saves background work in a transaction of DB's, so it commits
+// or rolls back with the change that needs it, e.g. internal/dbos's Client.
+type Workflows interface {
+	// EnqueueRecoveryNotice saves, in tx, the workflow that emails every active
+	// administrator about the recovery of the one with userID at recoveredAt.
+	EnqueueRecoveryNotice(ctx context.Context, tx pgx.Tx, userID int64, recoveredAt time.Time) error
+}
+
+// WithWorkflows returns a DB sharing db's connections that saves background
+// work with workflows. Closing either closes both.
+func (db *DB) WithWorkflows(workflows Workflows) *DB {
+	return &DB{pool: db.pool, workflows: workflows}
 }
 
 // defaultConnectTimeout bounds each new connection unless the URL sets

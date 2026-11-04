@@ -10,15 +10,28 @@ import (
 	"time"
 )
 
-const deleteOldPasswordResetAttempts = `-- name: DeleteOldPasswordResetAttempts :exec
-DELETE FROM password_reset_attempts
-WHERE created_at <= $1 AND (linked_at IS NULL OR linked_at <= $1)
+const deleteOldPasswordResetAttemptBatch = `-- name: DeleteOldPasswordResetAttemptBatch :execrows
+DELETE FROM password_reset_attempts WHERE id IN (
+    SELECT old.id FROM password_reset_attempts old
+    WHERE old.created_at <= $1 AND (old.linked_at IS NULL OR old.linked_at <= $1)
+    LIMIT $2
+    FOR UPDATE SKIP LOCKED)
 `
 
-// A row counts toward a limit until both its times are at or before since.
-func (q *Queries) DeleteOldPasswordResetAttempts(ctx context.Context, since time.Time) error {
-	_, err := q.db.Exec(ctx, deleteOldPasswordResetAttempts, since)
-	return err
+type DeleteOldPasswordResetAttemptBatchParams struct {
+	Since     time.Time
+	BatchSize int32
+}
+
+// The cleanup job deletes attempts no limit counts, a batch at a time: a
+// row counts toward a limit until both its times are at or before since.
+// Rows a request holds are left for a later batch instead of waited for.
+func (q *Queries) DeleteOldPasswordResetAttemptBatch(ctx context.Context, arg DeleteOldPasswordResetAttemptBatchParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOldPasswordResetAttemptBatch, arg.Since, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertPasswordResetAttempt = `-- name: InsertPasswordResetAttempt :one
@@ -40,11 +53,19 @@ func (q *Queries) InsertPasswordResetAttempt(ctx context.Context, arg InsertPass
 }
 
 const listPasswordResetClientAttempts = `-- name: ListPasswordResetClientAttempts :many
-SELECT created_at FROM password_reset_attempts WHERE client_prefix = $1
+SELECT created_at FROM password_reset_attempts
+WHERE client_prefix = $1 AND created_at > $2
 `
 
-func (q *Queries) ListPasswordResetClientAttempts(ctx context.Context, clientPrefix string) ([]time.Time, error) {
-	rows, err := q.db.Query(ctx, listPasswordResetClientAttempts, clientPrefix)
+type ListPasswordResetClientAttemptsParams struct {
+	ClientPrefix string
+	Since        time.Time
+}
+
+// The client's requests within the longest window; the hourly cleanup
+// deletes older ones.
+func (q *Queries) ListPasswordResetClientAttempts(ctx context.Context, arg ListPasswordResetClientAttemptsParams) ([]time.Time, error) {
+	rows, err := q.db.Query(ctx, listPasswordResetClientAttempts, arg.ClientPrefix, arg.Since)
 	if err != nil {
 		return nil, err
 	}

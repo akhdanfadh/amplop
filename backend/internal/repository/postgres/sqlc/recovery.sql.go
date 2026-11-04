@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 )
 
 const countUserBackupCodes = `-- name: CountUserBackupCodes :one
@@ -80,6 +81,49 @@ func (q *Queries) DeleteUserSignInChallenges(ctx context.Context, userID int64) 
 	return result.RowsAffected(), nil
 }
 
+const insertRecoveryAuditEvent = `-- name: InsertRecoveryAuditEvent :one
+INSERT INTO audit_events (action, target_user_id) VALUES ($1, $2)
+RETURNING occurred_at
+`
+
+type InsertRecoveryAuditEventParams struct {
+	Action       string
+	TargetUserID *int64
+}
+
+// The recovery's audit event; the recovery notice reports its time.
+func (q *Queries) InsertRecoveryAuditEvent(ctx context.Context, arg InsertRecoveryAuditEventParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, insertRecoveryAuditEvent, arg.Action, arg.TargetUserID)
+	var occurred_at time.Time
+	err := row.Scan(&occurred_at)
+	return occurred_at, err
+}
+
+const listActiveAdministrators = `-- name: ListActiveAdministrators :many
+SELECT id FROM users WHERE role = 'admin' AND deactivated_at IS NULL ORDER BY id
+`
+
+// Who a recovery is reported to, oldest account first.
+func (q *Queries) ListActiveAdministrators(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listActiveAdministrators)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockRecoveryUser = `-- name: LockRecoveryUser :one
 SELECT id, email, role FROM users WHERE id = $1 FOR UPDATE
 `
@@ -95,6 +139,38 @@ func (q *Queries) LockRecoveryUser(ctx context.Context, userID int64) (LockRecov
 	row := q.db.QueryRow(ctx, lockRecoveryUser, userID)
 	var i LockRecoveryUserRow
 	err := row.Scan(&i.ID, &i.Email, &i.Role)
+	return i, err
+}
+
+const readRecoveryNotice = `-- name: ReadRecoveryNotice :one
+SELECT recipient.email AS recipient_email,
+       (recipient.deactivated_at IS NULL)::boolean AS recipient_active,
+       recovered.email AS recovered_email
+FROM users recipient
+LEFT JOIN users recovered ON recovered.id = $1
+WHERE recipient.id = $2
+FOR SHARE OF recipient
+`
+
+type ReadRecoveryNoticeParams struct {
+	RecoveredID int64
+	RecipientID int64
+}
+
+type ReadRecoveryNoticeRow struct {
+	RecipientEmail  string
+	RecipientActive bool
+	RecoveredEmail  *string
+}
+
+// One recovery notice: the recipient's current email and whether they are
+// active, and the recovered account's email, NULL when it is gone. The two
+// IDs may be the same. The share lock waits for a deactivation in progress,
+// so the flag is read as ADR029 asks of a feature that sends mail.
+func (q *Queries) ReadRecoveryNotice(ctx context.Context, arg ReadRecoveryNoticeParams) (ReadRecoveryNoticeRow, error) {
+	row := q.db.QueryRow(ctx, readRecoveryNotice, arg.RecoveredID, arg.RecipientID)
+	var i ReadRecoveryNoticeRow
+	err := row.Scan(&i.RecipientEmail, &i.RecipientActive, &i.RecoveredEmail)
 	return i, err
 }
 

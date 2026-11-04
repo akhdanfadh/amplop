@@ -54,32 +54,27 @@ type LinkState struct {
 	LinksSent []time.Time // when links were saved for the account, within the longest window
 }
 
-// LinkChange is the link to save, nil to send none, and the cutoff for
-// deleting every user's expired links.
+// LinkChange is the link to save, nil to send none.
 type LinkChange struct {
-	Link      *Link
-	ExpiredBy time.Time
+	Link *Link
 }
 
 // requestStorage records reset requests and saves their links.
 type requestStorage interface {
 	// RecordPasswordResetRequest serializes the requests of client, an
-	// IPv4 address or an IPv6 /64 written as a prefix, deletes every
-	// attempt whose request and link times are both at or before since, and
-	// calls check with the times of client's requests. If check succeeds, it records an attempt from
-	// client at the time check returns and returns the attempt's ID, all in
-	// one transaction. An error from check rolls back and is returned
-	// unchanged.
+	// IPv4 address or an IPv6 /64 written as a prefix, and calls check with
+	// the times of client's requests after since. If check succeeds, it
+	// records an attempt from client at the time check returns and returns
+	// the attempt's ID, all in one transaction. An error from check rolls
+	// back and is returned unchanged.
 	RecordPasswordResetRequest(ctx context.Context, client string, since time.Time, check func([]time.Time) (time.Time, error)) (int64, error)
 
 	// CreatePasswordResetLink locks the account with email, if any, reads
 	// the [LinkState] with the times links were saved for it after since,
-	// and calls create. If create succeeds, it deletes every user's links
-	// expiring at or before [LinkChange.ExpiredBy] and, when
-	// [LinkChange.Link] is set, saves it for the locked account and marks
-	// the attempt with attemptID with the account and the link's creation
-	// time, all in one transaction. An error from create rolls
-	// back and is returned unchanged.
+	// and calls create. If create sets [LinkChange.Link], it saves it for
+	// the locked account and marks the attempt with attemptID with the
+	// account and the link's creation time, all in one transaction. An
+	// error from create rolls back and is returned unchanged.
 	CreatePasswordResetLink(ctx context.Context, attemptID int64, email string, since time.Time, create func(LinkState) (LinkChange, error)) error
 }
 
@@ -155,9 +150,9 @@ func (r *Requests) send(ctx context.Context, attemptID int64, email string) erro
 	since := r.now().UTC().Add(-attemptRetention)
 	err := r.storage.CreatePasswordResetLink(ctx, attemptID, email, since, func(state LinkState) (LinkChange, error) {
 		// 2. Under the account's lock, send nothing unless the account may
-		// reset and is under its limits. Every request cleans up either way.
+		// reset and is under its limits.
 		now := r.now().UTC()
-		change := LinkChange{ExpiredBy: now}
+		var change LinkChange
 		if !mayReset(state.Account) || attemptlimit.Wait(state.LinksSent, now, emailShortLimit, emailLongLimit) > 0 {
 			return change, nil
 		}

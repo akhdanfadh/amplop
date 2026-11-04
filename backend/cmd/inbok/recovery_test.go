@@ -18,6 +18,12 @@ import (
 type recoveryService struct {
 	email, password     string
 	findErr, recoverErr error
+	blocker             account.NoticeOutcome
+	blockerErr          error
+}
+
+func (f *recoveryService) NoticeBlocker(context.Context) (account.NoticeOutcome, error) {
+	return f.blocker, f.blockerErr
 }
 
 func (f *recoveryService) Administrator(_ context.Context, email string) (account.User, error) {
@@ -44,6 +50,34 @@ func TestRecoveryStdin(t *testing.T) {
 	assert.Contains(t, output.String(), "Security page")
 	assert.NotContains(t, output.String(), service.password)
 	assert.NotContains(t, output.String(), "Continue?")
+	assert.Contains(t, output.String(), "Every active administrator will be emailed about this recovery")
+}
+
+// After a recovery the operator learns whether the administrators will be
+// emailed, and why not; recovery stands either way.
+func TestRecoveryNoticeLine(t *testing.T) {
+	cases := map[string]struct {
+		blocker account.NoticeOutcome
+		err     error
+		want    string
+	}{
+		"not configured": {blocker: account.NoticeNotConfigured, want: "System email is not configured; the administrators will be emailed only if it is set up and tested before the worker tries."},
+		"not tested":     {blocker: account.NoticeNotTested, want: "System email has not passed a test message; the administrators will be emailed only if one passes before the worker tries."},
+		"unknown":        {err: errors.New("connection lost"), want: "Could not check whether the administrators will be emailed."},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			service := &recoveryService{blocker: c.blocker, blockerErr: c.err}
+			var output bytes.Buffer
+			console := recoveryConsole{input: strings.NewReader("a recovery password\n"), output: &output}
+
+			err := runRecovery(t.Context(), "admin@example.com", service, console)
+			require.NoError(t, err)
+
+			assert.Contains(t, output.String(), c.want)
+			assert.NotContains(t, output.String(), "connection lost")
+		})
+	}
 }
 
 func TestRecoveryTerminal(t *testing.T) {

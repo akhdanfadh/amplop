@@ -6,6 +6,7 @@ import (
 
 	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
+	"inbok/internal/systememail"
 )
 
 var ErrRecoveryForbidden = errors.New("recovery requires an administrator")
@@ -23,9 +24,15 @@ type RecoveryResult struct {
 
 type recoveryStore interface {
 	ReadCredentials(ctx context.Context, email string) (Credentials, error)
-	// UpdateRecovery locks the user before calling update. It saves the returned
-	// hash, clears authentication data, and records an audit event atomically.
+
+	// UpdateRecovery locks the user before calling update. It saves the
+	// returned hash, clears authentication data, records an audit event, and
+	// saves the recovery notice for the worker, atomically.
 	UpdateRecovery(ctx context.Context, userID int64, update func(User) (string, error)) (RecoveryResult, error)
+
+	// ReadSystemEmail returns the saved system email settings, nil when
+	// none are saved.
+	ReadSystemEmail(ctx context.Context) (*systememail.Record, error)
 }
 
 // Recovery restores password access for a host operator, without encryption keys.
@@ -78,4 +85,21 @@ func (s *Recovery) Administrator(ctx context.Context, email string) (User, error
 		return User{}, ErrRecoveryForbidden
 	}
 	return credentials.User, nil
+}
+
+// NoticeBlocker returns why system email cannot send the recovery notice
+// now, [NoticeNotConfigured] or [NoticeNotTested], or "" when it can. It
+// reads no keys, so the command can tell the operator before the worker
+// tries. It returns storage's error.
+func (s *Recovery) NoticeBlocker(ctx context.Context) (NoticeOutcome, error) {
+	settings, err := s.storage.ReadSystemEmail(ctx)
+	switch {
+	case err != nil:
+		return "", err
+	case settings == nil:
+		return NoticeNotConfigured, nil
+	case settings.TestedAt == nil:
+		return NoticeNotTested, nil
+	}
+	return "", nil
 }

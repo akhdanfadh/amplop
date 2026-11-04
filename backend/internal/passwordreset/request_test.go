@@ -40,7 +40,6 @@ type requestMemory struct {
 	attempts  []requestAttempt
 	links     []Link
 	since     []time.Time
-	expiredBy []time.Time
 	err       error // returned by RecordPasswordResetRequest
 	createErr error // returned by CreatePasswordResetLink
 	lastID    int64
@@ -60,12 +59,9 @@ func (m *requestMemory) RecordPasswordResetRequest(_ context.Context, client str
 		return 0, m.err
 	}
 	m.since = append(m.since, since)
-	m.attempts = slices.DeleteFunc(m.attempts, func(a requestAttempt) bool {
-		return !a.createdAt.After(since) && !a.linkedAt.After(since)
-	})
 	var times []time.Time
 	for _, attempt := range m.attempts {
-		if attempt.client == client {
+		if attempt.client == client && attempt.createdAt.After(since) {
 			times = append(times, attempt.createdAt)
 		}
 	}
@@ -104,7 +100,6 @@ func (m *requestMemory) CreatePasswordResetLink(_ context.Context, attemptID int
 	if err != nil {
 		return err
 	}
-	m.expiredBy = append(m.expiredBy, change.ExpiredBy)
 	if change.Link != nil {
 		m.links = append(m.links, *change.Link)
 		at := slices.IndexFunc(m.attempts, func(a requestAttempt) bool { return a.id == attemptID })
@@ -177,9 +172,8 @@ func TestRequestLink(t *testing.T) {
 	}}, storage.links)
 	assert.Equal(t, []requestAttempt{{id: 1, client: "192.0.2.1/32", userID: testUser.ID, linkedAt: testNow, createdAt: testNow}}, storage.attempts)
 
-	// Attempts are kept for the longest window; expired links go.
+	// Attempts count for the longest window.
 	assert.Equal(t, []time.Time{testNow.Add(-24 * time.Hour)}, storage.since)
-	assert.Equal(t, []time.Time{testNow}, storage.expiredBy)
 }
 
 // Every address gets the same answer and the same attempt; only an active,
@@ -210,7 +204,6 @@ func TestRequestSameAnswer(t *testing.T) {
 			require.NoError(t, background.Wait(t.Context()))
 
 			require.NoError(t, err)
-			assert.Equal(t, []time.Time{testNow}, storage.expiredBy, "every request cleans up")
 			recorded := storage.attempts[len(storage.attempts)-1]
 			assert.Equal(t, "192.0.2.1/32", recorded.client)
 			if c.wantLink {
@@ -262,7 +255,6 @@ func TestRequestThrottled(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, 5*time.Minute, throttled.Wait)
 	assert.Len(t, storage.attempts, 10)
-	assert.Empty(t, storage.expiredBy)
 	assert.Empty(t, mailer.sent)
 }
 

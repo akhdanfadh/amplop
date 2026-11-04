@@ -1,8 +1,10 @@
--- name: DeleteExpiredRegistrationLinks :exec
--- Rows a completion holds are left for later instead of waited for.
+-- name: DeleteExpiredRegistrationLinkBatch :execrows
+-- The cleanup job deletes expired links, a batch at a time. Rows a
+-- completion holds are left for a later batch instead of waited for.
 DELETE FROM registration_links WHERE token_hash IN (
     SELECT expired.token_hash FROM registration_links expired
     WHERE expired.expires_at <= @expired_by
+    LIMIT @batch_size
     FOR UPDATE SKIP LOCKED);
 
 -- name: InsertRegistrationLink :exec

@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"maps"
 	"net/netip"
 	"net/url"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -201,24 +203,24 @@ func TestRegistrationRequestStorage(t *testing.T) {
 	link := registration.Link{TokenHash: sha256.Sum256([]byte("secret")), Email: "visitor@example.org", CreatedAt: requestNow, ExpiresAt: requestNow.Add(24 * time.Hour)}
 
 	// A new email sees no account and no attempts, and saves its link.
-	seen := requestRegistration(t, db, "visitor@example.org", registration.RequestChange{Attempt: first, Link: &link, ExpiredBy: requestNow})
+	seen := requestRegistration(t, db, "visitor@example.org", registration.RequestChange{Attempt: first, Link: &link})
 	assert.Equal(t, registration.RequestState{Registration: registration.Record{State: registration.StateOpen, SystemEmailTested: true}}, seen)
 
 	// An email with an account says so, and sees the earlier attempt.
 	notice := registration.Attempt{Email: "member@example.org", ClientAddr: "2001:db8::1", Outcome: registration.OutcomeNotice, CreatedAt: requestNow}
-	seen = requestRegistration(t, db, "member@example.org", registration.RequestChange{Attempt: notice, ExpiredBy: requestNow})
+	seen = requestRegistration(t, db, "member@example.org", registration.RequestChange{Attempt: notice})
 	assert.True(t, seen.AccountExists)
 	assert.Equal(t, []registration.Attempt{first}, seen.Attempts)
 
-	seen = requestRegistration(t, db, "visitor@example.org", registration.RequestChange{Attempt: first, ExpiredBy: requestNow})
+	seen = requestRegistration(t, db, "visitor@example.org", registration.RequestChange{Attempt: first})
 	assert.False(t, seen.AccountExists)
 	assert.ElementsMatch(t, []registration.Attempt{first, notice}, seen.Attempts)
 	assert.Equal(t, map[string]string{hex.EncodeToString(link.TokenHash[:]): "visitor@example.org"}, registrationLinkHashes(t, conn))
 }
 
-// A request deletes expired links of both kinds, and attempts older than
-// since; a refused one deletes nothing.
-func TestRegistrationRequestCleanup(t *testing.T) {
+// A request deletes attempts at or before since and leaves expired links
+// to the cleanup job; a refused one deletes nothing.
+func TestRegistrationRequestOldAttempts(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		refused error
@@ -234,9 +236,7 @@ func TestRegistrationRequestCleanup(t *testing.T) {
 				args []any
 			}{
 				{"INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ('\\x01', 'a@example.org', $1, $2)", []any{requestNow.Add(-24 * time.Hour), requestNow}},
-				{"INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ('\\x02', 'a@example.org', $1, $1)", []any{requestNow.Add(time.Second)}},
 				{"INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at) VALUES ('\\x03', $1, 'member@example.org', $2, $2)", []any{user, requestNow}},
-				{"INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at) VALUES ('\\x04', $1, 'member@example.org', $2, $2)", []any{user, requestNow.Add(time.Second)}},
 				{"INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)", []any{requestNow.Add(-24 * time.Hour)}},
 				{"INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)", []any{requestNow.Add(-24*time.Hour + time.Second)}},
 			} {
@@ -248,21 +248,22 @@ func TestRegistrationRequestCleanup(t *testing.T) {
 			var seen []registration.Attempt
 			err := db.RequestRegistration(t.Context(), "b@example.org", requestNow.Add(-24*time.Hour), func(state registration.RequestState) (registration.RequestChange, error) {
 				seen = state.Attempts
-				return registration.RequestChange{Attempt: attempt, ExpiredBy: requestNow}, c.refused
+				return registration.RequestChange{Attempt: attempt}, c.refused
 			})
 			require.ErrorIs(t, err, c.refused)
 
 			assert.Len(t, seen, 1, "attempts at or before since are not read")
-			var links, verifications, attempts int
+			var links, verifications, oldAttempts, attempts int
 			require.NoError(t, conn.QueryRow(t.Context(), `SELECT
 				(SELECT count(*) FROM registration_links),
 				(SELECT count(*) FROM email_verification_links),
-				(SELECT count(*) FROM registration_attempts)`).Scan(&links, &verifications, &attempts))
-			want := []int{1, 1, 2} // expired rows go; the new attempt is recorded
+				(SELECT count(*) FROM registration_attempts WHERE created_at <= $1),
+				(SELECT count(*) FROM registration_attempts)`, requestNow.Add(-24*time.Hour)).Scan(&links, &verifications, &oldAttempts, &attempts))
+			want := []int{1, 1, 0, 2} // the old attempt goes; the new one is recorded
 			if c.refused != nil {
-				want = []int{2, 2, 2} // a refused request changes nothing
+				want = []int{1, 1, 1, 2} // a refused request changes nothing
 			}
-			assert.Equal(t, want, []int{links, verifications, attempts})
+			assert.Equal(t, want, []int{links, verifications, oldAttempts, attempts})
 		})
 	}
 }
@@ -285,7 +286,7 @@ func TestRegistrationRequestSerializes(t *testing.T) {
 			close(ready)
 			select {
 			case <-release:
-				return registration.RequestChange{Attempt: first, ExpiredBy: requestNow}, nil
+				return registration.RequestChange{Attempt: first}, nil
 			case <-ctx.Done():
 				return registration.RequestChange{}, ctx.Err()
 			}
@@ -299,7 +300,7 @@ func TestRegistrationRequestSerializes(t *testing.T) {
 	go func() {
 		secondDone <- db.RequestRegistration(ctx, "b@example.org", requestNow.Add(-24*time.Hour), func(state registration.RequestState) (registration.RequestChange, error) {
 			seen = state.Attempts
-			return registration.RequestChange{Attempt: first, ExpiredBy: requestNow}, nil
+			return registration.RequestChange{Attempt: first}, nil
 		})
 	}()
 	const waiting = `SELECT EXISTS (
@@ -410,7 +411,7 @@ func TestRegistrationCloseWaitsForRequest(t *testing.T) {
 			close(ready)
 			select {
 			case <-release:
-				return registration.RequestChange{Attempt: attempt, Link: &link, ExpiredBy: requestNow}, nil
+				return registration.RequestChange{Attempt: attempt, Link: &link}, nil
 			case <-ctx.Done():
 				return registration.RequestChange{}, ctx.Err()
 			}
@@ -704,4 +705,41 @@ func TestSystemEmailSaveWaitsForCompletion(t *testing.T) {
 
 	require.NoError(t, finish())
 	require.NoError(t, <-saved)
+}
+
+// The cleanup deletes links expiring at or before the cutoff, at most limit
+// at a time, and leaves a link another transaction holds for a later call.
+func TestRegistrationCleanup(t *testing.T) {
+	// Given links that expire at, before, and after the cutoff, one of
+	// them held by another transaction.
+	db, conn := setupStorage(t)
+	for hash, expiresAt := range map[string]time.Time{
+		"\\x01": requestNow, "\\x02": requestNow.Add(-time.Hour), "\\x03": requestNow.Add(-2 * time.Hour), "\\x04": requestNow.Add(time.Second),
+	} {
+		_, err := conn.Exec(t.Context(), "INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ($1::text::bytea, 'a@example.org', $2, $3)",
+			hash, expiresAt.Add(-24*time.Hour), expiresAt)
+		require.NoError(t, err)
+	}
+	tx, err := conn.Begin(t.Context())
+	require.NoError(t, err)
+	_, err = tx.Exec(t.Context(), `SELECT 1 FROM registration_links WHERE token_hash = '\x03' FOR UPDATE`)
+	require.NoError(t, err)
+
+	// When the cleanup runs one link at a time, until it deletes none.
+	var batches []int
+	for range 3 {
+		deleted, err := db.DeleteExpiredRegistrationLinks(t.Context(), requestNow, 1)
+		require.NoError(t, err)
+		batches = append(batches, deleted)
+	}
+
+	// Then the two expired free links go, the held and live ones stay, and
+	// the held one goes once released.
+	assert.Equal(t, []int{1, 1, 0}, batches)
+	assert.ElementsMatch(t, []string{"03", "04"}, slices.Collect(maps.Keys(registrationLinkHashes(t, conn))))
+	require.NoError(t, tx.Rollback(t.Context()))
+	deleted, err := db.DeleteExpiredRegistrationLinks(t.Context(), requestNow, 10)
+	require.NoError(t, err)
+	assert.Equal(t, 1, deleted)
+	assert.ElementsMatch(t, []string{"04"}, slices.Collect(maps.Keys(registrationLinkHashes(t, conn))))
 }

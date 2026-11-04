@@ -69,6 +69,30 @@ func TestHTTPAddr(t *testing.T) {
 	}
 }
 
+// The worker's default differs from serve's, so both run on one machine;
+// a set value applies to either.
+func TestWorkerHTTPAddr(t *testing.T) {
+	cases := map[string]string{"": "127.0.0.1:8081", "127.0.0.1:9091": "127.0.0.1:9091"}
+	for value, want := range cases {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(envHTTPAddr, value)
+
+			got, err := WorkerHTTPAddr()
+			require.NoError(t, err)
+
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
+func TestWorkerHTTPAddrBad(t *testing.T) {
+	t.Setenv(envHTTPAddr, "localhost")
+
+	_, err := WorkerHTTPAddr()
+
+	require.ErrorContains(t, err, envHTTPAddr)
+}
+
 func TestHTTPAddrBad(t *testing.T) {
 	t.Setenv(envHTTPAddr, "localhost")
 
@@ -339,6 +363,36 @@ func TestLoadBadPublicURL(t *testing.T) {
 
 			assert.Nil(t, cfg.PublicURL)
 			assert.NotContains(t, err.Error(), "secret")
+		})
+	}
+}
+
+// Without a setting the worker is "worker", so a replaced worker resumes
+// the work its predecessor left unfinished.
+func TestWorkerID(t *testing.T) {
+	cases := map[string]string{"": "worker", "worker-2": "worker-2", "a.b_C9": "a.b_C9"}
+	for value, want := range cases {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(envWorkerID, value)
+
+			id, err := WorkerID()
+			require.NoError(t, err)
+
+			assert.Equal(t, want, id)
+		})
+	}
+}
+
+// An ID that is too long or has other characters stops the worker and names
+// the setting.
+func TestWorkerIDBad(t *testing.T) {
+	for _, value := range []string{" ", "worker 2", "w/1", "w\n", strings.Repeat("w", 65)} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(envWorkerID, value)
+
+			_, err := WorkerID()
+
+			require.ErrorContains(t, err, envWorkerID)
 		})
 	}
 }

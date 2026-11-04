@@ -7,7 +7,8 @@ described in `backend/README.md`, the browser app in `web/README.md`.
 
 The `Makefile` runs every command in these files from the repository
 root. Run `make` to list them, e.g. `make db-start`, `make db-migrate`,
-then `make dev` for Go and the web app together. `make check` runs what a
+then `make dev` for the Go server, its background worker, and the web app
+together. `make check` runs what a
 commit must pass; `make check-backend` and `make check-web` run one half.
 It also fails when generated code, e.g. `api/generated/openapi.json`, is
 out of date with its source, and names the command that updates it.

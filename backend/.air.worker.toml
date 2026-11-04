@@ -1,0 +1,23 @@
+# Air rebuilds and restarts `inbok worker` when a Go file changes, beside
+# .air.toml's `inbok serve`. Run from backend:
+# go tool -modfile=tools.mod air -c .air.worker.toml
+# Settings not listed here use Air's defaults.
+
+# Inside .air.toml's tmp, which both leave out of watching.
+tmp_dir = "tmp/worker"
+
+[build]
+cmd = "go build -o ./tmp/worker/inbok ./cmd/inbok"
+entrypoint = ["./tmp/worker/inbok", "worker"]
+include_ext = ["go"]
+exclude_dir = ["tmp"]
+exclude_regex = ["_test\\.go$"]
+
+# Stop with SIGINT so the worker shuts down gracefully. Force-kill only
+# after its 7s shutdown budget has passed; a killed worker's workflows
+# resume on its next start anyway.
+send_interrupt = true
+kill_delay = "10s"
+
+[misc]
+clean_on_exit = true

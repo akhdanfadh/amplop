@@ -9,7 +9,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
@@ -35,7 +37,8 @@ func migrated(t *testing.T) *pgx.Conn {
 	return conn
 }
 
-// The first run applies the files and logs each; the second has nothing to do.
+// The first run applies the files and logs each; the second has nothing to
+// do. Afterwards DBOS opens the workflow tables without migrating them.
 func TestMigrate(t *testing.T) {
 	url := newDatabase(t)
 
@@ -48,6 +51,8 @@ func TestMigrate(t *testing.T) {
 	logs := out.String()
 	assert.Contains(t, logs, `msg="applied migration" file=00001_create_probe.sql`)
 	assert.Contains(t, logs, `msg="database up to date"`)
+	assert.Contains(t, logs, `msg="workflow tables up to date"`)
+	requireWorkflowTables(t, url)
 
 	conn, err := pgx.Connect(t.Context(), url)
 	require.NoError(t, err)
@@ -59,15 +64,44 @@ func TestMigrate(t *testing.T) {
 	assert.Equal(t, int64(0), total)
 }
 
-// Two migrations at once, e.g. two deploys, must not apply a file twice.
-// Goose's version table must exist first: creating it, Goose retries
-// after a clash, which alone spaces out the runs.
+// A database migrated before inbok used DBOS, e.g. a running install
+// upgrading, gets the workflow tables from its next Migrate.
+func TestMigrateUpgrade(t *testing.T) {
+	// Given a database with inbok's tables but no workflow tables.
+	url := newDatabase(t)
+	db, err := sql.Open("pgx", url)
+	require.NoError(t, err)
+	defer db.Close()
+	provider, err := newProvider(db)
+	require.NoError(t, err)
+	_, err = provider.Up(t.Context())
+	require.NoError(t, err)
+	err = openWorkflowTables(t.Context(), url)
+	require.ErrorContains(t, err, "is at schema version 0")
+
+	// When it migrates.
+	err = Migrate(t.Context(), url, discard)
+	require.NoError(t, err)
+
+	// Then DBOS opens it.
+	requireWorkflowTables(t, url)
+}
+
+// Two migrations at once, e.g. two deploys, must not apply anything twice:
+// the second waits for the first, then finds nothing to do. Goose's version
+// table must exist first: creating it, Goose retries after a clash, which
+// alone spaces out the runs.
 func TestMigrateConcurrent(t *testing.T) {
-	// Given Goose's version table and two migrations waiting on one start
-	// signal.
+	// Given Goose's version table, no workflow tables, and two migrations
+	// waiting on one start signal.
 	url := newDatabase(t)
 	provider := migratedProvider(t, url)
 	_, err := provider.DownTo(t.Context(), 0)
+	require.NoError(t, err)
+	conn, err := pgx.Connect(t.Context(), url)
+	require.NoError(t, err)
+	defer conn.Close(t.Context())
+	_, err = conn.Exec(t.Context(), "DROP SCHEMA dbos CASCADE")
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -87,6 +121,30 @@ func TestMigrateConcurrent(t *testing.T) {
 
 	// Then both succeed; a file applied twice would fail on its CREATE.
 	require.NoError(t, errors.Join(errs...))
+	requireWorkflowTables(t, url)
+}
+
+// requireWorkflowTables checks that DBOS opens the workflow tables at url
+// without migrating them, as a process that is not the release migration
+// does.
+func requireWorkflowTables(t *testing.T, url string) {
+	t.Helper()
+	require.NoError(t, openWorkflowTables(t.Context(), url))
+}
+
+// openWorkflowTables opens DBOS on url without migrating, then closes it.
+// It returns DBOS's error, e.g. for tables that are missing or too old.
+func openWorkflowTables(ctx context.Context, url string) error {
+	dbosCtx, err := dbos.NewContext(ctx, dbos.Config{
+		AppName:        "inbok",
+		DatabaseURL:    url,
+		Logger:         discard,
+		SkipMigrations: true,
+	})
+	if err != nil {
+		return err
+	}
+	return dbos.Shutdown(dbosCtx, time.Second)
 }
 
 // Every Down section works: undoing all migrations removes the probe

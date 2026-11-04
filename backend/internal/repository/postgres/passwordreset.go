@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -131,11 +132,8 @@ func (db *DB) RecordPasswordResetRequest(ctx context.Context, client string, sin
 		if err := queries.LockPasswordResetClient(ctx, client); err != nil {
 			return fmt.Errorf("lock password reset client: %w", err)
 		}
-		// 2. Drop attempts no limit counts any more, then read the client's.
-		if err := queries.DeleteOldPasswordResetAttempts(ctx, since); err != nil {
-			return fmt.Errorf("delete old password reset attempts: %w", err)
-		}
-		times, err := queries.ListPasswordResetClientAttempts(ctx, client)
+		// 2. Read the client's attempts within the window.
+		times, err := queries.ListPasswordResetClientAttempts(ctx, sqlc.ListPasswordResetClientAttemptsParams{ClientPrefix: client, Since: since})
 		if err != nil {
 			return fmt.Errorf("read password reset attempts: %w", err)
 		}
@@ -199,10 +197,6 @@ func (db *DB) CreatePasswordResetLink(ctx context.Context, attemptID int64, emai
 			return err
 		}
 
-		// 4. Delete every user's expired links, whatever create decided.
-		if err := queries.DeleteExpiredPasswordResetLinks(ctx, change.ExpiredBy); err != nil {
-			return fmt.Errorf("delete expired password reset links: %w", err)
-		}
 		if change.Link == nil {
 			return nil
 		}
@@ -211,7 +205,7 @@ func (db *DB) CreatePasswordResetLink(ctx context.Context, attemptID int64, emai
 		if state.Account == nil {
 			return errNoAccount
 		}
-		// 5. Save the link. The locked account owns it, whatever create put
+		// 4. Save the link. The locked account owns it, whatever create put
 		// in it.
 		link := change.Link
 		userID := state.Account.User.ID
@@ -221,7 +215,7 @@ func (db *DB) CreatePasswordResetLink(ctx context.Context, attemptID int64, emai
 		}); err != nil {
 			return fmt.Errorf("insert password reset link: %w", err)
 		}
-		// 6. Mark the attempt with the account and the link's time. The
+		// 5. Mark the attempt with the account and the link's time. The
 		// account limits count that time, which can be well after the
 		// request's when this waited for the lock.
 		if err := queries.UpdatePasswordResetAttemptLink(ctx, sqlc.UpdatePasswordResetAttemptLinkParams{
@@ -231,4 +225,30 @@ func (db *DB) CreatePasswordResetLink(ctx context.Context, attemptID int64, emai
 		}
 		return nil
 	})
+}
+
+// DeleteExpiredPasswordResetLinks deletes up to limit links expiring at or
+// before expiredBy, skipping links another transaction holds, and returns
+// how many it deleted.
+func (db *DB) DeleteExpiredPasswordResetLinks(ctx context.Context, expiredBy time.Time, limit int) (int, error) {
+	deleted, err := sqlc.New(db.pool).DeleteExpiredPasswordResetLinkBatch(ctx, sqlc.DeleteExpiredPasswordResetLinkBatchParams{
+		ExpiredBy: expiredBy, BatchSize: int32(min(limit, math.MaxInt32)),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("delete expired password reset links: %w", err)
+	}
+	return int(deleted), nil
+}
+
+// DeleteOldPasswordResetAttempts deletes up to limit attempts whose times
+// are all at or before since, skipping attempts another transaction holds,
+// and returns how many it deleted.
+func (db *DB) DeleteOldPasswordResetAttempts(ctx context.Context, since time.Time, limit int) (int, error) {
+	deleted, err := sqlc.New(db.pool).DeleteOldPasswordResetAttemptBatch(ctx, sqlc.DeleteOldPasswordResetAttemptBatchParams{
+		Since: since, BatchSize: int32(min(limit, math.MaxInt32)),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("delete old password reset attempts: %w", err)
+	}
+	return int(deleted), nil
 }

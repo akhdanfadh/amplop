@@ -46,3 +46,10 @@ func health(ctx context.Context, timeout time.Duration) error {
 	}
 	return nil
 }
+
+// workerHealth returns a handler answering every request with 200 and no
+// body, including the one health sends.
+func workerHealth() http.Handler {
+	// The listener exists only for health checks, so nothing needs routing.
+	return http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+}

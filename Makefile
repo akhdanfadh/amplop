@@ -27,8 +27,8 @@ TESTIFYLINT := go -C backend tool -modfile=tools.mod testifylint
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install image dev dev-backend dev-web backend-serve backend-build \
-	web-build web-preview web-add-ui \
+.PHONY: help install image dev dev-backend dev-worker dev-web backend-serve \
+	backend-worker backend-build web-build web-preview web-add-ui \
 	db-start db-stop db-wipe db-migrate db-status db-rollback \
 	db-reset db-migration \
 	generate generate-sqlc generate-api generate-web \
@@ -56,19 +56,30 @@ image: ## Build the inbok container image, tagged IMAGE (inbok:local)
 
 # Development servers
 
-# -j2 runs both at once; Ctrl+C stops both.
-dev: ## Run Go (restarts on change) and Vite together
-	@$(MAKE) -f $(firstword $(MAKEFILE_LIST)) --no-print-directory -j2 \
-		dev-backend dev-web
+# -j3 runs all three at once; Ctrl+C stops them all.
+dev: ## Run serve and the worker (restarting on change) and Vite together
+	@$(MAKE) -f $(firstword $(MAKEFILE_LIST)) --no-print-directory -j3 \
+		dev-backend dev-worker dev-web
 
 dev-backend: $(ENV_FILE) ## Run Go, restarting on change (Air)
 	$(WITH_ENV) go -C backend tool -modfile=tools.mod air
+
+# The worker answers health checks on its own address beside serve's. A
+# .env from before the worker lacks INBOK_WORKER_HTTP_ADDR; the default
+# covers it.
+WORKER_ENV = INBOK_HTTP_ADDR="$${INBOK_WORKER_HTTP_ADDR:-127.0.0.1:8081}"
+
+dev-worker: $(ENV_FILE) ## Run the worker, restarting on change (Air)
+	$(WITH_ENV) $(WORKER_ENV) go -C backend tool -modfile=tools.mod air -c .air.worker.toml
 
 dev-web: $(ENV_FILE) ## Run Vite on http://localhost:5173
 	$(WITH_ENV) pnpm -C web dev
 
 backend-serve: $(ENV_FILE) ## Run Go once, without restarts
 	$(WITH_ENV) go -C backend run ./cmd/inbok serve
+
+backend-worker: $(ENV_FILE) ## Run the worker once, without restarts
+	$(WITH_ENV) $(WORKER_ENV) go -C backend run ./cmd/inbok worker
 
 # The binary embeds what backend/internal/webapp/dist holds when it is
 # built, so replace that copy first; a file left from an older build would
@@ -109,7 +120,7 @@ db-status: $(ENV_FILE) ## List applied and pending migrations
 db-rollback: $(ENV_FILE) ## Undo the last applied migration
 	$(WITH_ENV) $(GOOSE) down
 
-db-reset: $(ENV_FILE) ## Undo every migration, then apply all again
+db-reset: $(ENV_FILE) ## Undo inbok's migrations (not dbos), then apply all again
 	$(WITH_ENV) $(GOOSE) reset
 	$(WITH_ENV) go -C backend run ./cmd/inbok migrate
 

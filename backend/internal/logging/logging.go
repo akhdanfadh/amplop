@@ -16,6 +16,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"slices"
 )
 
 type requestIDKey struct{}
@@ -66,4 +67,45 @@ func (h requestIDHandler) WithGroup(name string) slog.Handler {
 	// The embedded method would return the bare inner handler and drop
 	// request_id.
 	return requestIDHandler{h.Handler.WithGroup(name)}
+}
+
+// WithoutAttrs returns a logger that writes what logger writes, minus every
+// attribute whose key is one of keys, e.g. a connection URL a library logs.
+func WithoutAttrs(logger *slog.Logger, keys ...string) *slog.Logger {
+	return slog.New(withoutAttrsHandler{logger.Handler(), keys})
+}
+
+// withoutAttrsHandler leaves out attributes whose key is in keys, both on
+// records and on attributes added with WithAttrs.
+type withoutAttrsHandler struct {
+	slog.Handler
+	keys []string
+}
+
+// Handle passes record on without the attributes h leaves out.
+func (h withoutAttrsHandler) Handle(ctx context.Context, record slog.Record) error {
+	kept := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
+	record.Attrs(func(a slog.Attr) bool {
+		if !slices.Contains(h.keys, a.Key) {
+			kept.AddAttrs(a)
+		}
+		return true
+	})
+	return h.Handler.Handle(ctx, kept)
+}
+
+// WithAttrs returns the handler with attrs added, minus those h leaves out.
+func (h withoutAttrsHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	kept := slices.DeleteFunc(slices.Clone(attrs), func(a slog.Attr) bool {
+		return slices.Contains(h.keys, a.Key)
+	})
+	return withoutAttrsHandler{h.Handler.WithAttrs(kept), h.keys}
+}
+
+// WithGroup returns the handler with group name opened, still leaving out
+// the same keys.
+func (h withoutAttrsHandler) WithGroup(name string) slog.Handler {
+	// The embedded method would return the bare inner handler and log the
+	// keys again.
+	return withoutAttrsHandler{h.Handler.WithGroup(name), h.keys}
 }

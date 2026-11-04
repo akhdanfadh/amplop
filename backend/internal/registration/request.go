@@ -82,13 +82,11 @@ type RequestState struct {
 	Attempts      []Attempt // every attempt kept, from every client
 }
 
-// RequestChange is the attempt to record, the link to save (nil unless the
-// attempt's outcome is [OutcomeLink]), and the cutoff for deleting expired
-// links.
+// RequestChange is the attempt to record and the link to save, nil unless
+// the attempt's outcome is [OutcomeLink].
 type RequestChange struct {
-	Attempt   Attempt
-	Link      *Link
-	ExpiredBy time.Time
+	Attempt Attempt
+	Link    *Link
 }
 
 // requestStorage records registration requests.
@@ -98,11 +96,9 @@ type requestStorage interface {
 
 	// RequestRegistration serializes every registration request, deletes
 	// attempts created at or before since, reads the [RequestState] for
-	// email, and calls create. If create succeeds, it deletes registration
-	// links and email verification links expiring at or before
-	// [RequestChange.ExpiredBy], records the attempt, and saves the link, all
-	// in one transaction. An error from create rolls back and is returned
-	// unchanged.
+	// email, and calls create. If create succeeds, it records the attempt
+	// and saves the link, both in one transaction. An error from create
+	// rolls back and is returned unchanged.
 	RequestRegistration(ctx context.Context, email string, since time.Time, create func(RequestState) (RequestChange, error)) error
 }
 
@@ -188,8 +184,7 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		}
 
 		change = RequestChange{
-			Attempt:   Attempt{Email: email, ClientAddr: clientAddr, Outcome: OutcomeLink, CreatedAt: now},
-			ExpiredBy: now,
+			Attempt: Attempt{Email: email, ClientAddr: clientAddr, Outcome: OutcomeLink, CreatedAt: now},
 		}
 		switch {
 		case attemptlimit.Wait(toEmail, now, emailShortLimit, emailLongLimit) > 0:

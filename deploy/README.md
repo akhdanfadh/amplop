@@ -1,7 +1,8 @@
 # Self-hosting inbok
 
 This folder runs inbok on one server with Docker Compose: PostgreSQL, a
-one-off migration, the inbok server, and Caddy for HTTPS. No inbok image is
+one-off migration, the inbok server, its background worker, and Caddy for
+HTTPS. No inbok image is
 pulled from a registry: Compose builds it on the server from this
 repository, using pinned base images, and runs it beside pinned PostgreSQL
 and Caddy images.
@@ -40,8 +41,8 @@ Run every command here from this folder, `deploy/`.
    docker compose up -d --build
    ```
 
-   `docker compose ps -a` shows `postgres` and `inbok` as `healthy`,
-   `caddy` running, and `migrate` exited with code 0.
+   `docker compose ps -a` shows `postgres`, `inbok`, and `worker` as
+   `healthy`, `caddy` running, and `migrate` exited with code 0.
 
 4. Open `https://<your domain>/setup`, enter `INBOK_SETUP_TOKEN`, and
    create the first administrator. Then sign in and set up two-factor
@@ -53,9 +54,23 @@ Run every command here from this folder, `deploy/`.
    docker compose up -d
    ```
 
-Logs come from `docker compose logs inbok` (or `caddy`, `postgres`,
-`migrate`). Every line inbok logs for a request carries its `request_id`,
-which the browser also receives in the `X-Request-ID` header.
+Logs come from `docker compose logs inbok` (or `worker`, `caddy`,
+`postgres`, `migrate`). Every line inbok logs for a request carries its
+`request_id`, which the browser also receives in the `X-Request-ID` header.
+
+## The worker
+
+`worker` runs inbok's background work, which it keeps in the database, so
+work survives a restart. It reaches PostgreSQL and, to send inbok's
+email, mail servers on the internet; it needs `INBOK_ENCRYPTION_KEYS` and
+`INBOK_PUBLIC_URL` like the server. It answers its health check on its own
+loopback address, so nothing else can reach it. Stopping, restarting, or replacing it is
+safe: work it left unfinished resumes when it starts again, from the step
+that had not finished, so a step can run twice. That relies on its
+`INBOK_WORKER_ID`, which defaults to `worker`; keep it. Do not scale it,
+e.g. with `docker compose up --scale worker=2`: both copies would share
+one ID and run some work twice. One worker runs many jobs at once.
+[Background work](../backend/README.md#background-work) explains the rest.
 
 ## Upgrades
 
@@ -68,15 +83,16 @@ git pull
 
 `upgrade.sh` builds a candidate image, runs the new migrations with it
 while the old server keeps serving, and only then switches the image and
-restarts the server. The site is unavailable for about two seconds while
-the server restarts. The script exits with an error if anything fails:
+restarts the server and the worker. The site is unavailable for about two
+seconds while the server restarts; the new worker resumes the work the
+old one left unfinished. The script exits with an error if anything fails:
 
 - If the build or a migration fails, the old server keeps running on the
   old image. Fix the cause, or check out the previous commit, and run
   `./upgrade.sh` again.
-- If the new server does not become healthy, the script starts the
-  previous image again, on the migrated database. `docker compose logs
-  inbok` shows why the new one failed.
+- If the new server or worker does not become healthy, the script starts
+  the previous image again, on the migrated database. `docker compose logs
+  inbok` or `worker` shows why the new one failed.
 
 Avoid two commands that look like shortcuts:
 
@@ -85,10 +101,12 @@ Avoid two commands that look like shortcuts:
 - `docker compose restart` restarts every service at once, so migrate can
   start before PostgreSQL and fail. Use `docker compose up -d` to restart.
 
-After a migration, the old server can run on the new schema: during an
-upgrade, and after the rollback above. Every migration must therefore
-keep the previous release working: add tables and columns, and remove old
-ones only in a later release.
+After a migration, the old server and worker can run on the new schema:
+during an upgrade, and after the rollback above. Every migration must
+therefore keep the previous release working: add tables and columns, and
+remove old ones only in a later release. Background work a release left
+unfinished resumes in the next one, so it must keep working across
+releases too.
 
 ## Backups
 
@@ -110,10 +128,12 @@ that copy when you rotate keys.
 
 To restore, stop the services that use the database, load the dump, and
 start them again. `--single-transaction` makes the restore all or
-nothing: on any error it stops and leaves the database as it was.
+nothing: on any error it stops and leaves the database as it was. The dump
+holds background work as it stood when it was taken: work unfinished then
+runs again after the restore, including steps that had finished since.
 
 ```sh
-docker compose stop inbok caddy
+docker compose stop inbok worker caddy
 docker compose exec -T postgres pg_restore -U inbok -d inbok --clean --if-exists --no-owner --single-transaction < ~/inbok-backups/inbok-2026-11-01.dump
 docker compose up -d
 ```
@@ -142,6 +162,9 @@ manager instead, pipe one line in and add `-T`, which skips the
 confirmation:
 `docker compose exec -T inbok inbok recover-admin admin@example.com`. The
 administrator then signs in and sets up two-factor authentication again.
+The command also saves emails telling every active administrator of the
+recovery, which the `worker` service sends; its last line says whether
+they will go out.
 [Administrator recovery](../backend/README.md#administrator-recovery)
 explains what the command changes.
 

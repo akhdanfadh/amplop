@@ -37,7 +37,7 @@ func TestExport(t *testing.T) {
 }
 
 func TestRunUsage(t *testing.T) {
-	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"migrate", "extra"}, {"health", "extra"}, {"export"}, {"export", "a", "b"}}
+	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"migrate", "extra"}, {"health", "extra"}, {"worker", "extra"}, {"export"}, {"export", "a", "b"}}
 	for _, args := range cases {
 		err := run(context.Background(), args, discard)
 		require.ErrorIs(t, err, errUsage, "run(%q)", args)
@@ -93,33 +93,42 @@ func TestServeShortSetupToken(t *testing.T) {
 }
 
 // Cancelling the context, as SIGINT or SIGTERM does, stops the server
-// cleanly.
+// cleanly, with password reset work to wait for or, as for the worker,
+// without.
 func TestListenShutdown(t *testing.T) {
-	// Given a server started in the background and answering.
-	addr := freeAddr(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		done <- listen(ctx, addr, httpapi.New(discard, httpapi.Services{}).Handler(), passwordreset.NewBackground(discard), discard)
-	}()
-
-	url := "http://" + addr + "/api/v0/health"
-	require.True(t, waitUp(url), "server did not start")
-
-	// When its context is cancelled.
-	cancel()
-
-	// Then listen returns without error in time, and the port closes.
-	select {
-	case err := <-done:
-		require.NoError(t, err)
-	case <-time.After(shutdownTimeout + time.Second):
-		require.FailNow(t, "listen did not return after cancel")
+	cases := map[string]*passwordreset.Background{
+		"serve":  passwordreset.NewBackground(discard),
+		"worker": nil,
 	}
+	for name, background := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Given a server started in the background and answering.
+			addr := freeAddr(t)
 
-	_, err := http.Get(url)
-	require.Error(t, err, "server still accepts requests after shutdown")
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() {
+				done <- listen(ctx, addr, httpapi.New(discard, httpapi.Services{}).Handler(), background, discard)
+			}()
+
+			url := "http://" + addr + "/api/v0/health"
+			require.True(t, waitUp(url), "server did not start")
+
+			// When its context is cancelled.
+			cancel()
+
+			// Then listen returns without error in time, and the port closes.
+			select {
+			case err := <-done:
+				require.NoError(t, err)
+			case <-time.After(shutdownTimeout + time.Second):
+				require.FailNow(t, "listen did not return after cancel")
+			}
+
+			_, err := http.Get(url)
+			require.Error(t, err, "server still accepts requests after shutdown")
+		})
+	}
 }
 
 // Shutdown waits for password reset work that requests started.

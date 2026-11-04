@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -150,6 +151,36 @@ func TestMailerSendFailedPrivate(t *testing.T) {
 	assert.Contains(t, logs.String(), `msg="system email send failed" purpose="email verification" reason=sender`)
 	assert.NotContains(t, logs.String(), "554")
 	assert.NotContains(t, logs.String(), "private-li")
+}
+
+// A message that requires tested settings is refused, unsent, when the
+// settings it would use have not passed a test; with tested ones it sends.
+func TestMailerSendRequireTested(t *testing.T) {
+	untested := savedSignIn()
+	untested.TestedAt = nil
+	tested := savedSignIn()
+	tested.TestedAt = new(time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+	outgoing := testOutgoing()
+	outgoing.RequireTested = true
+
+	refusedSender, sentSender := &fakeSender{}, &fakeSender{}
+	_, refused := testMailer(&memoryStorage{record: untested}, &fakeKeyring{}, refusedSender, &bytes.Buffer{}).Send(t.Context(), outgoing)
+	_, sent := testMailer(&memoryStorage{record: tested}, &fakeKeyring{}, sentSender, &bytes.Buffer{}).Send(t.Context(), outgoing)
+
+	require.ErrorIs(t, refused, ErrNotTested)
+	require.NoError(t, sent)
+	assert.Equal(t, []int{0, 1}, []int{refusedSender.sent, sentSender.sent})
+}
+
+// A send the server may have accepted says so in the warning.
+func TestMailerSendUnconfirmed(t *testing.T) {
+	sender := &fakeSender{err: &SendError{Reason: ReasonTimeout, Err: errors.New("waiting at sender"), Unconfirmed: true}}
+	var logs bytes.Buffer
+
+	_, err := testMailer(&memoryStorage{record: savedSignIn()}, &fakeKeyring{}, sender, &logs).Send(t.Context(), testOutgoing())
+	require.Error(t, err)
+
+	assert.Contains(t, logs.String(), "reason=timeout host=smtp.example.com port=587 security=starttls username=inbok@example.com unconfirmed=true")
 }
 
 // Errors the server did not cause, e.g. the caller giving up, are returned

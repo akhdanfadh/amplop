@@ -21,6 +21,10 @@ const (
 	envHTTPAddr     = "INBOK_HTTP_ADDR"
 	defaultHTTPAddr = "127.0.0.1:8080"
 
+	// The worker's default differs from serve's, so both run on one
+	// machine without settings.
+	defaultWorkerHTTPAddr = "127.0.0.1:8081"
+
 	envEncryptionKeys = "INBOK_ENCRYPTION_KEYS"
 
 	envDatabaseURL    = "INBOK_DATABASE_URL"
@@ -30,6 +34,10 @@ const (
 	minSetupTokenLength = 32
 
 	envPublicURL = "INBOK_PUBLIC_URL"
+
+	envWorkerID     = "INBOK_WORKER_ID"
+	defaultWorkerID = "worker"
+	maxWorkerID     = 64
 )
 
 // errNoDatabaseURL has no default on purpose: a server deployed without
@@ -78,32 +86,61 @@ func Load() (Config, error) {
 		}
 	}
 
-	publicURL, err := parsePublicURL(os.Getenv(envPublicURL))
+	publicURL, err := PublicURL()
 	if err != nil {
 		return Config{}, err
 	}
 	cfg.PublicURL = publicURL
 
-	value := os.Getenv(envEncryptionKeys)
-	if strings.TrimSpace(value) == "" {
-		return Config{}, fmt.Errorf("%s is required", envEncryptionKeys)
-	}
-
-	keys, err := encryption.New(value)
+	keys, err := EncryptionKeys()
 	if err != nil {
-		return Config{}, fmt.Errorf("%s: %w", envEncryptionKeys, err)
+		return Config{}, err
 	}
 	cfg.Encryption = keys
 
 	return cfg, nil
 }
 
+// PublicURL reads the address users open inbok at, which has no default.
+// Returns an error naming the setting if it is missing or not an origin.
+func PublicURL() (*url.URL, error) {
+	return parsePublicURL(os.Getenv(envPublicURL))
+}
+
+// EncryptionKeys reads the keys for stored secrets, which have no default.
+// Returns an error naming the setting, without key material, if they are
+// missing or malformed.
+func EncryptionKeys() (*encryption.Keyring, error) {
+	value := os.Getenv(envEncryptionKeys)
+	if strings.TrimSpace(value) == "" {
+		return nil, fmt.Errorf("%s is required", envEncryptionKeys)
+	}
+	keys, err := encryption.New(value)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", envEncryptionKeys, err)
+	}
+	return keys, nil
+}
+
 // HTTPAddr reads the host:port serve listens on, or its default. Returns an
 // error naming the setting if the value is not host:port.
 func HTTPAddr() (string, error) {
+	return httpAddr(defaultHTTPAddr)
+}
+
+// WorkerHTTPAddr reads the host:port the worker answers health checks on,
+// or the worker's default. Returns an error naming the setting if the
+// value is not host:port.
+func WorkerHTTPAddr() (string, error) {
+	return httpAddr(defaultWorkerHTTPAddr)
+}
+
+// httpAddr reads INBOK_HTTP_ADDR, or returns fallback when it is empty.
+// Returns an error naming the setting if the value is not host:port.
+func httpAddr(fallback string) (string, error) {
 	addr := os.Getenv(envHTTPAddr)
 	if addr == "" {
-		addr = defaultHTTPAddr
+		addr = fallback
 	}
 	// Fail with the variable name, not later at listen or dial time.
 	if _, _, err := net.SplitHostPort(addr); err != nil {
@@ -119,6 +156,34 @@ func DatabaseURL() (string, error) {
 		return "", errNoDatabaseURL
 	}
 	return url, nil
+}
+
+// errWorkerID does not include the value.
+var errWorkerID = fmt.Errorf("%s must be 1 to %d letters, digits, dots, hyphens, or underscores", envWorkerID, maxWorkerID)
+
+// WorkerID reads the name the worker resumes its unfinished work under, or
+// its default. Returns an error naming the setting if the value is too
+// long or has other characters.
+func WorkerID() (string, error) {
+	id := os.Getenv(envWorkerID)
+	if id == "" {
+		return defaultWorkerID, nil
+	}
+	if len(id) > maxWorkerID || strings.IndexFunc(id, notWorkerIDRune) >= 0 {
+		return "", errWorkerID
+	}
+	return id, nil
+}
+
+// notWorkerIDRune reports whether r is not allowed in a worker ID.
+func notWorkerIDRune(r rune) bool {
+	switch {
+	case 'a' <= r && r <= 'z', 'A' <= r && r <= 'Z', '0' <= r && r <= '9':
+		return false
+	case r == '.', r == '-', r == '_':
+		return false
+	}
+	return true
 }
 
 // parsePublicURL returns value as a URL with only a scheme, host, and

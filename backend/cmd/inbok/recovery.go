@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"unicode/utf8"
@@ -14,6 +15,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/config"
+	"inbok/internal/dbos"
 	"inbok/internal/emailaddress"
 	"inbok/internal/repository/postgres"
 )
@@ -21,6 +23,7 @@ import (
 type adminRecovery interface {
 	Administrator(context.Context, string) (account.User, error)
 	Recover(context.Context, string, string) (account.RecoveryResult, error)
+	NoticeBlocker(context.Context) (account.NoticeOutcome, error)
 }
 
 type recoveryConsole struct {
@@ -31,10 +34,13 @@ type recoveryConsole struct {
 
 // runRecovery keeps input and output at the command boundary, outside account rules.
 func runRecovery(ctx context.Context, email string, service adminRecovery, console recoveryConsole) error {
+	// 1. Find the administrator before asking for anything.
 	user, err := service.Administrator(ctx, email)
 	if err != nil {
 		return recoveryError(err)
 	}
+
+	// 2. Read the new password, and on a terminal ask to continue.
 	password, err := console.password()
 	if err != nil {
 		return err
@@ -58,15 +64,42 @@ func runRecovery(ctx context.Context, email string, service adminRecovery, conso
 		return errors.New("recovery interrupted before submission")
 	}
 
+	// 3. Recover, saving the notice in the same transaction.
 	result, err := service.Recover(ctx, email, password)
 	if err != nil {
 		return recoveryError(err)
 	}
-	_, err = fmt.Fprintf(console.output, "Password replaced. %d TOTP factors and %d backup codes removed. %d sessions ended.\n%d sign-in challenges, %d TOTP attempts, %d sign-in attempts, and %d password reset links cleared.\nSign in, then set up TOTP on the Security page to restore administrator access.\n", result.Factors, result.BackupCodes, result.Sessions, result.Challenges, result.TOTPAttempts, result.SignInAttempts, result.ResetLinks)
-	if err != nil {
+
+	// 4. Report what changed, then whether the administrators will be emailed.
+	if _, err = fmt.Fprintf(console.output,
+		"Password replaced. %d TOTP factors and %d backup codes removed. %d sessions ended.\n"+
+			"%d sign-in challenges, %d TOTP attempts, %d sign-in attempts, and %d password reset links cleared.\n"+
+			"Sign in, then set up TOTP on the Security page to restore administrator access.\n",
+		result.Factors, result.BackupCodes, result.Sessions,
+		result.Challenges, result.TOTPAttempts, result.SignInAttempts, result.ResetLinks); err != nil {
+		return errors.New("recovery completed, but could not write the summary")
+	}
+	if _, err := fmt.Fprintln(console.output, noticeLine(ctx, service)); err != nil {
 		return errors.New("recovery completed, but could not write the summary")
 	}
 	return nil
+}
+
+// noticeLine returns the line telling the operator whether the worker will
+// email the administrators about the recovery, and if not, why.
+func noticeLine(ctx context.Context, service adminRecovery) string {
+	blocker, err := service.NoticeBlocker(ctx)
+	switch {
+	case err != nil:
+		// The recovery stands; only this check failed, and its cause can
+		// hold connection details.
+		return "Could not check whether the administrators will be emailed."
+	case blocker == account.NoticeNotConfigured:
+		return "System email is not configured; the administrators will be emailed only if it is set up and tested before the worker tries."
+	case blocker == account.NoticeNotTested:
+		return "System email has not passed a test message; the administrators will be emailed only if one passes before the worker tries."
+	}
+	return "Every active administrator will be emailed about this recovery once the worker runs."
 }
 
 // Unknown storage errors may contain credentials; only known safe errors reach logs.
@@ -81,6 +114,7 @@ func recoveryError(err error) error {
 
 // recoverAdmin composes the operator command with database-only configuration.
 func recoverAdmin(ctx context.Context, email string) error {
+	// 1. Open the database: the URL is the only setting.
 	url, err := config.DatabaseURL()
 	if err != nil {
 		return err
@@ -91,6 +125,16 @@ func recoverAdmin(ctx context.Context, email string) error {
 	}
 	defer db.Close()
 
+	// 2. Open a DBOS client, which saves the notice for the worker in the
+	// recovery's transaction. DBOS's progress lines would only clutter the
+	// command's output.
+	client, err := dbos.NewClient(ctx, url, slog.New(slog.DiscardHandler))
+	if err != nil {
+		return errors.New("cannot open background work for recovery; run inbok migrate first")
+	}
+	defer client.Close()
+
+	// 3. Read from the terminal without echo, or one line from a pipe.
 	console := recoveryConsole{input: os.Stdin, output: os.Stdout}
 	fd := int(os.Stdin.Fd())
 	if term.IsTerminal(fd) {
@@ -102,8 +146,11 @@ func recoverAdmin(ctx context.Context, email string) error {
 		defer term.Restore(fd, state)
 		console.readPassword = func() ([]byte, error) { return term.ReadPassword(fd) }
 	}
+
+	// 4. Run the recovery with storage that can save the notice, until it ends or
+	// a signal interrupts it.
 	done := make(chan error, 1)
-	go func() { done <- runRecovery(ctx, email, account.NewRecovery(db), console) }()
+	go func() { done <- runRecovery(ctx, email, account.NewRecovery(db.WithWorkflows(client)), console) }()
 	select {
 	case err := <-done:
 		return err

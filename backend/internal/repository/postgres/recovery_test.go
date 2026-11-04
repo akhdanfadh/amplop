@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"testing"
 	"time"
@@ -16,10 +17,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// tableWorkflows saves each recovery notice as a row of
+// test_recovery_notices in the transaction it is given, as DBOS's enqueue
+// does, so a test sees whether the notice committed. err fails the enqueue.
+type tableWorkflows struct {
+	err error
+}
+
+func (w tableWorkflows) EnqueueRecoveryNotice(ctx context.Context, tx pgx.Tx, userID int64, _ time.Time) error {
+	if w.err != nil {
+		return w.err
+	}
+	_, err := tx.Exec(ctx, "INSERT INTO test_recovery_notices (user_id) VALUES ($1)", userID)
+	return err
+}
+
+// recoveryNotices lists the user IDs of the saved recovery notices.
+func recoveryNotices(t *testing.T, conn *pgx.Conn) []int64 {
+	t.Helper()
+	rows, err := conn.Query(t.Context(), "SELECT user_id FROM test_recovery_notices ORDER BY user_id")
+	require.NoError(t, err)
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	require.NoError(t, err)
+	return ids
+}
+
 func newRecovery(t *testing.T) *confirmationFixture {
 	t.Helper()
 	f, _ := newRegeneration(t)
+	f.db = f.db.WithWorkflows(tableWorkflows{})
 	_, err := f.conn.Exec(t.Context(), `
+ CREATE TABLE test_recovery_notices (user_id bigint NOT NULL);
  INSERT INTO sign_in_challenges (user_id, token_hash, expires_at)
  SELECT id, decode(md5(email), 'hex'), now() + interval '5 minutes' FROM users;
  INSERT INTO sign_in_attempts (email, client_addr, created_at) VALUES
@@ -80,9 +108,33 @@ func TestRecoveryPersistence(t *testing.T) {
 	assert.Equal(t, 1, events)
 	assert.Equal(t, foreign, recoverySnapshot(t, f.conn, f.foreign.UserID))
 
+	assert.Equal(t, []int64{f.state.UserID}, recoveryNotices(t, f.conn), "the notice commits with the recovery")
+
 	result, err = account.NewRecovery(f.db).Recover(t.Context(), "admin@example.com", "another recovery password")
 	require.NoError(t, err)
 	assert.Zero(t, result, "recovery also works without a factor or sessions")
+	assert.Len(t, recoveryNotices(t, f.conn), 2, "each recovery saves its own notice")
+}
+
+// A notice that cannot be saved fails the recovery, which changes nothing,
+// and so does recovering without a way to save one.
+func TestRecoveryNoticeNotSaved(t *testing.T) {
+	cases := map[string]Workflows{
+		"enqueue failed": tableWorkflows{err: errors.New("workflow tables missing")},
+		"no workflows":   nil,
+	}
+	for name, workflows := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newRecovery(t)
+			before := recoverySnapshot(t, f.conn, f.state.UserID)
+
+			_, err := account.NewRecovery(f.db.WithWorkflows(workflows)).Recover(t.Context(), "admin@example.com", "a new recovery password")
+
+			require.Error(t, err)
+			assert.Equal(t, before, recoverySnapshot(t, f.conn, f.state.UserID))
+			assert.Empty(t, recoveryNotices(t, f.conn))
+		})
+	}
 }
 
 func TestRecoveryRollback(t *testing.T) {
@@ -103,6 +155,7 @@ func TestRecoveryRollback(t *testing.T) {
 			require.Error(t, err)
 			assert.Zero(t, result)
 			assert.Equal(t, before, recoverySnapshot(t, f.conn, f.state.UserID))
+			assert.Empty(t, recoveryNotices(t, f.conn), "the notice rolls back with the recovery")
 		})
 	}
 }
@@ -226,4 +279,52 @@ func TestRecoveryEndsResetLinks(t *testing.T) {
 	match, err := passwordhash.Verify(t.Context(), "a new recovery password", credentials.PasswordHash)
 	require.NoError(t, err)
 	assert.True(t, match, "the recovered password stays")
+}
+
+// A notice reads its recipient's current email and whether they are
+// active, and the recovered account's email, empty when it is gone; a
+// missing recipient is account.ErrUserNotFound.
+func TestRecoveryNoticeRead(t *testing.T) {
+	// Given a recovered administrator and another, later deactivated.
+	db, conn := setupStorage(t)
+	recovered := verificationUser(t, conn, "admin@example.com")
+	other := verificationUser(t, conn, "other@example.com")
+
+	own, err := db.ReadRecoveryNotice(t.Context(), recovered, recovered)
+	require.NoError(t, err)
+	alert, err := db.ReadRecoveryNotice(t.Context(), recovered, other)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), "UPDATE users SET deactivated_at = now() WHERE id = $1", other)
+	require.NoError(t, err)
+	deactivated, err := db.ReadRecoveryNotice(t.Context(), recovered, other)
+	require.NoError(t, err)
+	gone, err := db.ReadRecoveryNotice(t.Context(), other+1, recovered)
+	require.NoError(t, err)
+	_, missingErr := db.ReadRecoveryNotice(t.Context(), recovered, other+1)
+
+	assert.Equal(t, account.RecoveryNoticeState{RecipientEmail: "admin@example.com", RecipientActive: true, RecoveredEmail: "admin@example.com"}, own)
+	assert.Equal(t, account.RecoveryNoticeState{RecipientEmail: "other@example.com", RecipientActive: true, RecoveredEmail: "admin@example.com"}, alert)
+	assert.False(t, deactivated.RecipientActive)
+	assert.Empty(t, gone.RecoveredEmail, "a recovered account that is gone")
+	require.ErrorIs(t, missingErr, account.ErrUserNotFound)
+}
+
+func TestRecoveryNoticeAdministrators(t *testing.T) {
+	// Given two active administrators, a deactivated one, and a member.
+	db, conn := setupStorage(t)
+	var admins []int64
+	for _, email := range []string{"first@example.com", "gone@example.com", "second@example.com"} {
+		id := verificationUser(t, conn, email)
+		_, err := conn.Exec(t.Context(), "UPDATE users SET role = 'admin' WHERE id = $1", id)
+		require.NoError(t, err)
+		admins = append(admins, id)
+	}
+	_, err := conn.Exec(t.Context(), "UPDATE users SET deactivated_at = now() WHERE id = $1", admins[1])
+	require.NoError(t, err)
+	verificationUser(t, conn, "member@example.com")
+
+	ids, err := db.ListActiveAdministrators(t.Context())
+	require.NoError(t, err)
+
+	assert.Equal(t, []int64{admins[0], admins[2]}, ids)
 }

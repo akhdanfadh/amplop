@@ -519,9 +519,9 @@ func at(age time.Duration) *time.Time {
 	return &t
 }
 
-// A request deletes attempts whose times are both outside the longest
-// window, sees only its client's, and records one at the time check
-// returns.
+// A request sees only its client's attempts within the longest window,
+// leaves older ones for the hourly cleanup, and records one at the time
+// check returns.
 func TestPasswordResetRequestRecords(t *testing.T) {
 	f := newResetAccounts(t)
 	insertResetAttempt(t, f.conn, "192.0.2.1/32", 25*time.Hour)
@@ -538,6 +538,7 @@ func TestPasswordResetRequestRecords(t *testing.T) {
 
 	assert.Equal(t, []time.Time{resetNow.Add(-time.Minute)}, seen)
 	assert.Equal(t, []resetAttempt{
+		{Client: "192.0.2.1/32", CreatedAt: resetNow.Add(-25 * time.Hour)},
 		{Client: "192.0.2.1/32", CreatedAt: resetNow.Add(-time.Minute)},
 		{Client: "198.51.100.9/32", UserID: &f.member, LinkedAt: at(23 * time.Hour), CreatedAt: resetNow.Add(-25 * time.Hour)},
 		{Client: "192.0.2.1/32", CreatedAt: resetNow},
@@ -614,7 +615,7 @@ func TestPasswordResetLinkState(t *testing.T) {
 		var state passwordreset.LinkState
 		require.NoError(t, f.db.CreatePasswordResetLink(t.Context(), 1, email, resetNow.Add(-24*time.Hour), func(s passwordreset.LinkState) (passwordreset.LinkChange, error) {
 			state = s
-			return passwordreset.LinkChange{ExpiredBy: resetNow}, nil
+			return passwordreset.LinkChange{}, nil
 		}))
 		return state
 	}
@@ -631,8 +632,8 @@ func TestPasswordResetLinkState(t *testing.T) {
 	assert.Equal(t, passwordreset.LinkState{}, unknown)
 }
 
-// A link is saved for the locked account and marks its attempt; every
-// user's expired links go, live ones stay.
+// A link is saved for the locked account and marks its attempt; other
+// links stay, expired ones included, for the hourly cleanup.
 func TestPasswordResetLinkSaves(t *testing.T) {
 	f := newResetAccounts(t)
 	_, live := saveResetLink(t, f.conn, f.bystander, "bystander@example.com")
@@ -647,8 +648,7 @@ func TestPasswordResetLinkSaves(t *testing.T) {
 
 	err = f.db.CreatePasswordResetLink(t.Context(), id, "member@example.com", resetNow.Add(-24*time.Hour), func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
 		return passwordreset.LinkChange{
-			Link:      &passwordreset.Link{TokenHash: hash, Email: "other@example.com", CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour)},
-			ExpiredBy: resetNow,
+			Link: &passwordreset.Link{TokenHash: hash, Email: "other@example.com", CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour)},
 		}, nil
 	})
 	require.NoError(t, err)
@@ -660,7 +660,7 @@ func TestPasswordResetLinkSaves(t *testing.T) {
 		TokenHash: hash, UserID: f.member, Email: "member@example.com", CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour),
 	}, *state.Link, "the account decides the user and the email")
 	assert.Equal(t, []resetAttempt{{Client: "192.0.2.1/32", UserID: &f.member, LinkedAt: at(0), CreatedAt: resetNow}}, resetAttempts(t, f.conn))
-	assert.Equal(t, 1, memberRowCount(t, f.conn, "password_reset_links", f.bystander), "only the live link stays")
+	assert.Equal(t, 2, memberRowCount(t, f.conn, "password_reset_links", f.bystander), "the request deletes no other link")
 	liveState, err := f.db.ReadPasswordReset(t.Context(), live)
 	require.NoError(t, err)
 	assert.NotNil(t, liveState.Link)
@@ -674,10 +674,10 @@ func TestPasswordResetLinkRollsBack(t *testing.T) {
 	link := &passwordreset.Link{TokenHash: sha256.Sum256([]byte("link")), CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour)}
 
 	unknownErr := f.db.CreatePasswordResetLink(t.Context(), 1, "nobody@example.com", resetNow, func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
-		return passwordreset.LinkChange{Link: link, ExpiredBy: resetNow}, nil
+		return passwordreset.LinkChange{Link: link}, nil
 	})
 	refusedErr := f.db.CreatePasswordResetLink(t.Context(), 1, "member@example.com", resetNow, func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
-		return passwordreset.LinkChange{Link: link, ExpiredBy: resetNow}, refused
+		return passwordreset.LinkChange{Link: link}, refused
 	})
 
 	require.ErrorIs(t, unknownErr, errNoAccount)
@@ -705,8 +705,7 @@ func TestPasswordResetLinkSerializes(t *testing.T) {
 	finish := holdInCallback(t, ctx, func(pause func() error) error {
 		return f.db.CreatePasswordResetLink(ctx, ids[0], "member@example.com", since, func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
 			return passwordreset.LinkChange{
-				Link:      &passwordreset.Link{TokenHash: sha256.Sum256([]byte("first")), CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour)},
-				ExpiredBy: resetNow,
+				Link: &passwordreset.Link{TokenHash: sha256.Sum256([]byte("first")), CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour)},
 			}, pause()
 		})
 	})
@@ -716,7 +715,7 @@ func TestPasswordResetLinkSerializes(t *testing.T) {
 	go func() {
 		secondDone <- f.db.CreatePasswordResetLink(ctx, ids[1], "member@example.com", since, func(state passwordreset.LinkState) (passwordreset.LinkChange, error) {
 			seen <- state
-			return passwordreset.LinkChange{ExpiredBy: resetNow}, nil
+			return passwordreset.LinkChange{}, nil
 		})
 	}()
 	waitForLock(t, ctx, f.db, "the second link step did not wait for the first")
@@ -751,7 +750,7 @@ func TestPasswordResetLinkWaitsForDeactivation(t *testing.T) {
 	go func() {
 		linkDone <- f.db.CreatePasswordResetLink(ctx, 1, "member@example.com", resetNow.Add(-24*time.Hour), func(state passwordreset.LinkState) (passwordreset.LinkChange, error) {
 			seen <- state
-			return passwordreset.LinkChange{ExpiredBy: resetNow}, nil
+			return passwordreset.LinkChange{}, nil
 		})
 	}()
 	waitForLock(t, ctx, f.db, "the link step did not wait for the deactivation")
@@ -792,4 +791,83 @@ func TestPasswordResetFlow(t *testing.T) {
 	require.Len(t, mailer.sent, 2)
 	assert.Equal(t, "password changed notice", mailer.sent[1].Purpose)
 	assert.Equal(t, "member@example.com", mailer.sent[1].To)
+}
+
+// The cleanup deletes links expiring at or before the cutoff, at most limit
+// at a time, and leaves a link another transaction holds for a later call.
+func TestPasswordResetCleanupLinks(t *testing.T) {
+	// Given links that expire at, before, and after the cutoff, one of
+	// them held by another transaction.
+	f := newResetAccounts(t)
+	for hash, expiresAt := range map[string]time.Time{
+		"\\x01": resetNow, "\\x02": resetNow.Add(-time.Hour), "\\x03": resetNow.Add(-2 * time.Hour), "\\x04": resetNow.Add(time.Second),
+	} {
+		_, err := f.conn.Exec(t.Context(), `INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
+			VALUES ($1::text::bytea, $2, 'member@example.com', $3, $4)`, hash, f.member, expiresAt.Add(-time.Hour), expiresAt)
+		require.NoError(t, err)
+	}
+	tx, err := f.conn.Begin(t.Context())
+	require.NoError(t, err)
+	_, err = tx.Exec(t.Context(), `SELECT 1 FROM password_reset_links WHERE token_hash = '\x03' FOR UPDATE`)
+	require.NoError(t, err)
+
+	// When the cleanup runs one link at a time, until it deletes none.
+	var batches []int
+	for range 3 {
+		deleted, err := f.db.DeleteExpiredPasswordResetLinks(t.Context(), resetNow, 1)
+		require.NoError(t, err)
+		batches = append(batches, deleted)
+	}
+
+	// Then the two expired free links go, the held and live ones stay, and
+	// the held one goes once released.
+	assert.Equal(t, []int{1, 1, 0}, batches)
+	assert.Equal(t, []string{"03", "04"}, resetLinkHashes(t, f.conn))
+	require.NoError(t, tx.Rollback(t.Context()))
+	deleted, err := f.db.DeleteExpiredPasswordResetLinks(t.Context(), resetNow, 10)
+	require.NoError(t, err)
+	assert.Equal(t, 1, deleted)
+	assert.Equal(t, []string{"04"}, resetLinkHashes(t, f.conn))
+}
+
+// resetLinkHashes lists the saved links' hashes in hex, in order.
+func resetLinkHashes(t *testing.T, conn *pgx.Conn) []string {
+	t.Helper()
+
+	rows, err := conn.Query(t.Context(), "SELECT encode(token_hash, 'hex') FROM password_reset_links ORDER BY 1")
+	require.NoError(t, err)
+	hashes, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	return hashes
+}
+
+// The cleanup deletes attempts whose times are all at or before the cutoff,
+// at most limit at a time.
+func TestPasswordResetCleanupAttempts(t *testing.T) {
+	// Given attempts on both sides of a 24-hour cutoff, one of them old but
+	// linked recently.
+	f := newResetAccounts(t)
+	insertResetAttempt(t, f.conn, "old", 25*time.Hour)
+	insertResetAttempt(t, f.conn, "at cutoff", 24*time.Hour)
+	insertResetAttempt(t, f.conn, "recent", time.Hour)
+	insertLinkedResetAttempt(t, f.conn, "old, linked recently", f.member, 26*time.Hour, time.Hour)
+	insertLinkedResetAttempt(t, f.conn, "old, linked long ago", f.member, 26*time.Hour, 25*time.Hour)
+	insertLinkedResetAttempt(t, f.conn, "old, linked at cutoff", f.member, 26*time.Hour, 24*time.Hour)
+	since := resetNow.Add(-24 * time.Hour)
+
+	// When the cleanup runs two attempts at a time, until it deletes none.
+	var batches []int
+	for range 3 {
+		deleted, err := f.db.DeleteOldPasswordResetAttempts(t.Context(), since, 2)
+		require.NoError(t, err)
+		batches = append(batches, deleted)
+	}
+
+	// Then only attempts that no limit counts are gone.
+	assert.Equal(t, []int{2, 2, 0}, batches)
+	var left []string
+	for _, attempt := range resetAttempts(t, f.conn) {
+		left = append(left, attempt.Client)
+	}
+	assert.Equal(t, []string{"recent", "old, linked recently"}, left)
 }

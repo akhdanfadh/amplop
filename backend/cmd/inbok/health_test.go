@@ -115,3 +115,16 @@ func TestHealthBadAddr(t *testing.T) {
 
 	require.ErrorContains(t, err, "INBOK_HTTP_ADDR")
 }
+
+// The worker's health handler answers what inbok health asks, so the
+// image's health check works for the worker too.
+func TestWorkerHealth(t *testing.T) {
+	server := httptest.NewServer(workerHealth())
+	t.Cleanup(server.Close)
+	noSecrets(t)
+	t.Setenv("INBOK_HTTP_ADDR", server.Listener.Addr().String())
+
+	err := run(context.Background(), []string{"health"}, discard)
+
+	require.NoError(t, err)
+}
