@@ -61,8 +61,10 @@ Logs come from `docker compose logs inbok` (or `worker`, `caddy`,
 ## The worker
 
 `worker` runs inbok's background work, which it keeps in the database, so
-work survives a restart. It reaches only PostgreSQL and answers its health
-check on its own loopback address. Stopping, restarting, or replacing it is
+work survives a restart. It reaches PostgreSQL and, to send inbok's
+email, mail servers on the internet; it needs `INBOK_ENCRYPTION_KEYS` and
+`INBOK_PUBLIC_URL` like the server. It answers its health check on its own
+loopback address, so nothing else can reach it. Stopping, restarting, or replacing it is
 safe: work it left unfinished resumes when it starts again, from the step
 that had not finished, so a step can run twice. That relies on its
 `INBOK_WORKER_ID`, which defaults to `worker`; keep it. Do not scale it,

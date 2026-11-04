@@ -77,3 +77,32 @@ func (db *DB) UpdateRecovery(ctx context.Context, userID int64, update func(acco
 	}
 	return result, nil
 }
+
+// ReadRecoveryNotice implements the recovery notice's storage: the current
+// email of the user with recipientID and whether they are active, and the
+// email of the user with recoveredID, empty when that user is gone. A
+// missing recipient returns [account.ErrUserNotFound].
+func (db *DB) ReadRecoveryNotice(ctx context.Context, recoveredID, recipientID int64) (account.RecoveryNoticeState, error) {
+	row, err := sqlc.New(db.pool).ReadRecoveryNotice(ctx, sqlc.ReadRecoveryNoticeParams{RecoveredID: recoveredID, RecipientID: recipientID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return account.RecoveryNoticeState{}, account.ErrUserNotFound
+	}
+	if err != nil {
+		return account.RecoveryNoticeState{}, fmt.Errorf("read recovery notice: %w", err)
+	}
+	state := account.RecoveryNoticeState{RecipientEmail: row.RecipientEmail, RecipientActive: row.RecipientActive}
+	if row.RecoveredEmail != nil {
+		state.RecoveredEmail = *row.RecoveredEmail
+	}
+	return state, nil
+}
+
+// ListActiveAdministrators implements the recovery notice's storage: the
+// IDs of the administrators that are not deactivated, oldest first.
+func (db *DB) ListActiveAdministrators(ctx context.Context) ([]int64, error) {
+	ids, err := sqlc.New(db.pool).ListActiveAdministrators(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list active administrators: %w", err)
+	}
+	return ids, nil
+}

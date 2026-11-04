@@ -58,6 +58,7 @@ var overrides = []string{"DBOS__APPVERSION", "DBOS__VMID"}
 type Services struct {
 	EmailVerificationCleanup expired
 	RegistrationCleanup      expired
+	RecoveryNotices          recoveryNotices
 }
 
 // Worker runs inbok's workflows and schedules.
@@ -78,22 +79,23 @@ type Worker struct {
 // its id, so it resumes its predecessor's work; two workers running at
 // once need different ids, or each would resume the other's.
 func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker, error) {
-	// DBOS would silently resume other work than applicationVersion and id
-	// select.
+	// 1. Refuse DBOS's own overrides: DBOS would silently resume other work
+	// than applicationVersion and id select.
 	for _, name := range overrides {
 		if os.Getenv(name) != "" {
 			return nil, fmt.Errorf("unset %s: inbok sets the application version and INBOK_WORKER_ID itself", name)
 		}
 	}
 
-	// DBOS's error for a malformed URL quotes it, password included; pgx's
-	// hides the password.
+	// 2. Check the URL first: DBOS's error for a malformed URL quotes it,
+	// password included; pgx's hides the password.
 	if _, err := pgxpool.ParseConfig(url); err != nil {
 		return nil, err
 	}
 
-	// Not a caller's context: DBOS records a workflow cancelled by anything
-	// but its own Shutdown as CANCELLED, which no worker resumes.
+	// 3. Create the DBOS context. Not a caller's context: DBOS records a
+	// workflow cancelled by anything but its own Shutdown as CANCELLED,
+	// which no worker resumes.
 	dbosCtx, err := dbos.NewContext(context.Background(), dbos.Config{
 		AppName:            appName,
 		DatabaseURL:        url,
@@ -107,10 +109,16 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	if err != nil {
 		return nil, err
 	}
+
+	// 4. Register every workflow and queue, which DBOS needs before Launch.
 	w := &Worker{ctx: dbosCtx, logger: logger}
 	if err := w.registerCleanup(services.cleanups()); err != nil {
 		return nil, errors.Join(fmt.Errorf("schedule cleanup: %w", err), w.Shutdown())
 	}
+	if err := w.registerEmailQueue(); err != nil {
+		return nil, errors.Join(fmt.Errorf("register email queue: %w", err), w.Shutdown())
+	}
+	w.registerRecoveryNotice(services.RecoveryNotices)
 	return w, nil
 }
 

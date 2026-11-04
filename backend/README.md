@@ -75,6 +75,8 @@ The worker reads these environment variables:
 | `INBOK_DATABASE_URL` | none, required | PostgreSQL connection URL, as for `serve`. |
 | `INBOK_HTTP_ADDR` | `127.0.0.1:8081`; the image sets `0.0.0.0:8080` | Address the worker answers health checks on: port 8081 for the worker, 8080 for `serve`, so both run on one machine. `.env` sets `serve`'s, so the Make commands pass the worker `INBOK_WORKER_HTTP_ADDR` instead; `deploy/compose.yaml` sets `127.0.0.1:8081`. |
 | `INBOK_WORKER_ID` | `worker` | The name the worker resumes unfinished work under: 1 to 64 letters, digits, `.`, `-`, or `_`. |
+| `INBOK_PUBLIC_URL` | none, required | As for `serve`: links in the email the worker sends start with it, and its host names inbok to mail servers. |
+| `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password. |
 
 DBOS's own `DBOS__APPVERSION` and `DBOS__VMID` would replace the version
 and the ID that decide which work a worker resumes (see below), so the
@@ -137,7 +139,9 @@ it for another machine, or to keep one kind of work apart from another,
 and it needs its own stable ID. Concurrency is a DBOS queue setting, kept
 in the database and re-read by workers about every second, so `serve`
 could change it at runtime, e.g. from an admin setting. No queue needs
-that yet; the first job that does adds the setting.
+that yet; the first job that does adds the setting. A worker starting
+keeps a queue's saved settings rather than resetting them, so a change
+to a queue's options in code needs its own update.
 
 DBOS records a version on every workflow and resumes only workflows of its
 own version. inbok fixes that version at `1` instead of DBOS's default, a
@@ -163,6 +167,59 @@ still there. While the worker is down, expired rows, which hold a token
 hash and an email address, simply stay longer. Each run logs
 `deleted expired rows` with a count when it deleted any, and records the
 counts as its output.
+
+### Recovery notice
+
+The workflow `inbok.recovery-notice`, run from the queue `inbok.email`,
+tells every administrator by email that host recovery replaced an
+administrator's password; see [Administrator recovery](#administrator-recovery).
+Someone with the server can run recovery, so the other administrators
+learn of it even if the recovered one's mailbox is no longer theirs. Its
+input is the recovered administrator's ID and the time of the recovery,
+which the emails state. Its steps:
+
+1. `list administrators` lists the IDs of the active administrators.
+   DBOS records the list, so a resumed run sends to the same people. A
+   failure is retried 10 more times over about 5 minutes, waiting 1
+   second, doubling up to 1 minute; after that the run fails and sends
+   nothing.
+2. `send notice`, once per administrator, the recovered one first. In
+   one query it reads the recipient's current address and whether they
+   are still active, since a retry or a resumed run can come long after
+   the list, and the recovered account's email. It sends with the system
+   email settings: the recovered administrator gets the steps to
+   finish recovery, the others an alert naming the recovered account. It
+   ends without sending when the recipient is now missing or deactivated,
+   or the settings are missing or have not passed a test, and gives up at
+   once when the saved password no longer decrypts, the address is
+   invalid, or the mail server refuses the recipient with a
+   [permanent](#system-email) 5xx reply, so one dead address does not
+   hold up the next administrators. Any other failure is retried 5 more
+   times, waiting 1, 2, 4, 8, then 15 minutes. DBOS varies each wait by
+   up to 5% and counts retries in memory, so a worker restarted
+   meanwhile starts the count again.
+
+A send that runs out of retries does not stop the others; the run fails
+after the last one, with their errors. The sends run one after another,
+so a mail server that stays down delays each by about half an hour.
+
+The notice catches recovery run by someone careless, not by a careful
+attacker: whoever can run recovery can also write to the database, and
+so delete the queued run, stop the worker, or clear the system email's
+tested time, which ends the sends still waiting.
+
+An [unconfirmed](#system-email) send is retried too, so an administrator
+may get the email twice: a second copy costs less than none. So does a
+send that succeeded just before its worker stopped. The worker waits up
+to 5 minutes for a mail server, not the 8 seconds a request allows,
+which makes unconfirmed sends rarer. Each send logs `recovery notice`
+with the `recovered_id`, the recipient's `user_id`, and its outcome, a
+warning unless it was sent, or `recovery notice failed` with the error.
+That error, which DBOS also keeps with the run, names only the failed
+step, e.g. `failed at auth, unconfirmed`, never the server's reply: a
+reply can quote what inbok sent, the SMTP password included. The
+mailer's own warning has the reply. DBOS's tables keep only IDs and
+outcomes with the run, no address.
 
 ### Inspecting workflows
 
@@ -496,12 +553,12 @@ A ciphertext copied elsewhere does not decrypt. Backup codes and account
 passwords use Argon2id hashes and do not depend on these keys.
 
 To rotate, generate a key, put it first under an unused ID, keep the old
-entries, and restart every API instance with the same list. Existing secrets
-are not re-encrypted; each keeps its original key until that factor is
-removed and enrolled again, and the system email password keeps its key
-until an administrator saves a new password. Administrators cannot turn TOTP
-off, so their factors can need an old key indefinitely. Remove an old key
-only when neither query lists its ID:
+entries, and restart every API instance and worker with the same list.
+Existing secrets are not re-encrypted; each keeps its original key until
+that factor is removed and enrolled again, and the system email password
+keeps its key until an administrator saves a new password. Administrators
+cannot turn TOTP off, so their factors can need an old key indefinitely.
+Remove an old key only when neither query lists its ID:
 
 ```sql
 SELECT key_id, count(*) FROM user_totp GROUP BY key_id;
@@ -1528,7 +1585,9 @@ httpapi --> passwordreset <-- repository/postgres
   it opens DBOS for the worker, registers and schedules its workflows,
   launches it, and shuts it down. Its steps call features through
   interfaces it declares, in `dbos.Services`, which `cmd/inbok` fills, e.g.
-  with `emailverification.Cleanup`, so it imports no feature. It is the only
+  with `emailverification.Cleanup`; like other technology packages it may
+  import a feature's plain types, e.g. `account.NoticeOutcome`, while
+  features never import DBOS. It is the only
   package besides `repository/postgres` that imports the DBOS SDK, whose
   package is also named `dbos`.
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
@@ -1584,7 +1643,9 @@ resumes at the first step without one. The rules every job follows:
 
 - A step may run twice: when the worker stops during it, it runs again.
   Make each step safe to repeat, e.g. a delete, or an insert that ignores
-  a row it already added.
+  a row it already added. Where it cannot be, e.g. an email, decide
+  whether a repeat is acceptable, as the recovery notice accepts a second
+  copy, and record why in ADR004.
 - Steps call plain feature methods. Feature packages never import DBOS;
   `internal/dbos` declares a small interface for what it calls and a field
   for it in `dbos.Services`, which `cmd/inbok/worker.go` fills, as `serve`
@@ -1596,8 +1657,12 @@ resumes at the first step without one. The rules every job follows:
   `dbos.WithWorkflowName`, keep step names, and add steps at the end. A run
   an older release started resumes on the new code, and DBOS fails a step
   whose name differs from the one it recorded at that position.
-- Inputs and outputs are saved as JSON in the database: pass IDs, never
-  secrets or copies of data the step can read itself.
+- Inputs and outputs are saved as JSON in the database and kept with the
+  run. Give a workflow IDs, and facts that are not personal data and
+  will not change, e.g. when the recovery happened; let its steps read
+  the rest. A step's output holds what later steps need to resume, e.g.
+  the recovery notice's list of administrator IDs, and never a secret or
+  personal data a later step can read itself.
 
 To add work to the [scheduled cleanup](#scheduled-cleanup), e.g. expired
 password reset links:
@@ -1615,3 +1680,17 @@ password reset links:
 For a new scheduled job, follow `internal/dbos/cleanup.go`: register the
 workflow under a fixed name and save its schedule with
 `dbos.ApplySchedules`, both called from `NewWorker`.
+
+For a job that runs once per request, follow the recovery notice
+(`internal/account/recoverynotice.go`, `internal/dbos/recoverynotice.go`):
+
+1. The feature: a type whose methods are the steps, each returning a
+   value DBOS can save as JSON, e.g. the IDs a later step works through.
+   Return an error only for a failure worth retrying; end the job with an
+   outcome value for one that is not.
+2. `internal/dbos`: an input struct holding IDs and no personal data,
+   the workflow registered under a fixed name with each step's retry
+   policy, and a field in `Services` for the feature's type. A job that sends inbok's
+   email runs on `inbok.email` (`emailqueue.go`), which every such job
+   shares; another job registers its own queue the same way.
+3. `cmd/inbok/worker.go`: set that field.

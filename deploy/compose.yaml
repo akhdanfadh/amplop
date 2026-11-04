@@ -112,12 +112,19 @@ services:
       # needs to reach the worker. 8081 is the worker's port everywhere,
       # though its own container would allow serve's 8080 too.
       INBOK_HTTP_ADDR: 127.0.0.1:8081
+      # It sends inbok's email: the keys decrypt the saved SMTP password,
+      # and links in its messages start with the public URL.
+      INBOK_ENCRYPTION_KEYS: ${INBOK_ENCRYPTION_KEYS:?set it in deploy/.env}
+      INBOK_PUBLIC_URL: ${INBOK_PUBLIC_URL:?set it in deploy/.env}
     depends_on:
       postgres:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    # edge for mail servers on the internet. Caddy shares it but cannot
+    # reach the worker, which listens on loopback only.
     networks:
+      - edge
       - db
 
   caddy:
@@ -150,8 +157,8 @@ services:
         ipv6_address: fd24:44bd:915f::2
 
 networks:
-  # Caddy and inbok, with internet access for certificates and system
-  # email. The subnets are fixed so inbok can trust exactly Caddy's
+  # Caddy, inbok, and worker, with internet access for certificates and
+  # system email. The subnets are fixed so inbok can trust exactly Caddy's
   # addresses. If one collides with a network on the host, change it, its
   # ip_range, and Caddy's addresses in both places above.
   edge:

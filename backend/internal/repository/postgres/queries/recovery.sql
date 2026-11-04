@@ -22,3 +22,20 @@ DELETE FROM totp_attempts WHERE user_id = @user_id;
 
 -- name: DeleteRecoverySignInAttempts :execrows
 DELETE FROM sign_in_attempts WHERE email = @email;
+
+-- name: ReadRecoveryNotice :one
+-- One recovery notice: the recipient's current email and whether they are
+-- active, and the recovered account's email, NULL when it is gone. The two
+-- IDs may be the same. The share lock waits for a deactivation in progress,
+-- so the flag is read as ADR029 asks of a feature that sends mail.
+SELECT recipient.email AS recipient_email,
+       (recipient.deactivated_at IS NULL)::boolean AS recipient_active,
+       recovered.email AS recovered_email
+FROM users recipient
+LEFT JOIN users recovered ON recovered.id = @recovered_id
+WHERE recipient.id = @recipient_id
+FOR SHARE OF recipient;
+
+-- name: ListActiveAdministrators :many
+-- Who a recovery is reported to, oldest account first.
+SELECT id FROM users WHERE role = 'admin' AND deactivated_at IS NULL ORDER BY id;

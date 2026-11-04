@@ -227,3 +227,51 @@ func TestRecoveryEndsResetLinks(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, match, "the recovered password stays")
 }
+
+// A notice reads its recipient's current email and whether they are
+// active, and the recovered account's email, empty when it is gone; a
+// missing recipient is account.ErrUserNotFound.
+func TestRecoveryNoticeRead(t *testing.T) {
+	// Given a recovered administrator and another, later deactivated.
+	db, conn := setupStorage(t)
+	recovered := verificationUser(t, conn, "admin@example.com")
+	other := verificationUser(t, conn, "other@example.com")
+
+	own, err := db.ReadRecoveryNotice(t.Context(), recovered, recovered)
+	require.NoError(t, err)
+	alert, err := db.ReadRecoveryNotice(t.Context(), recovered, other)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), "UPDATE users SET deactivated_at = now() WHERE id = $1", other)
+	require.NoError(t, err)
+	deactivated, err := db.ReadRecoveryNotice(t.Context(), recovered, other)
+	require.NoError(t, err)
+	gone, err := db.ReadRecoveryNotice(t.Context(), other+1, recovered)
+	require.NoError(t, err)
+	_, missingErr := db.ReadRecoveryNotice(t.Context(), recovered, other+1)
+
+	assert.Equal(t, account.RecoveryNoticeState{RecipientEmail: "admin@example.com", RecipientActive: true, RecoveredEmail: "admin@example.com"}, own)
+	assert.Equal(t, account.RecoveryNoticeState{RecipientEmail: "other@example.com", RecipientActive: true, RecoveredEmail: "admin@example.com"}, alert)
+	assert.False(t, deactivated.RecipientActive)
+	assert.Empty(t, gone.RecoveredEmail, "a recovered account that is gone")
+	require.ErrorIs(t, missingErr, account.ErrUserNotFound)
+}
+
+func TestRecoveryNoticeAdministrators(t *testing.T) {
+	// Given two active administrators, a deactivated one, and a member.
+	db, conn := setupStorage(t)
+	var admins []int64
+	for _, email := range []string{"first@example.com", "gone@example.com", "second@example.com"} {
+		id := verificationUser(t, conn, email)
+		_, err := conn.Exec(t.Context(), "UPDATE users SET role = 'admin' WHERE id = $1", id)
+		require.NoError(t, err)
+		admins = append(admins, id)
+	}
+	_, err := conn.Exec(t.Context(), "UPDATE users SET deactivated_at = now() WHERE id = $1", admins[1])
+	require.NoError(t, err)
+	verificationUser(t, conn, "member@example.com")
+
+	ids, err := db.ListActiveAdministrators(t.Context())
+	require.NoError(t, err)
+
+	assert.Equal(t, []int64{admins[0], admins[2]}, ids)
+}
