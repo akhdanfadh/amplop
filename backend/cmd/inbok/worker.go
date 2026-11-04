@@ -11,6 +11,7 @@ import (
 	"inbok/internal/config"
 	"inbok/internal/dbos"
 	"inbok/internal/emailverification"
+	"inbok/internal/passwordreset"
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
 	"inbok/internal/smtp"
@@ -67,9 +68,11 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 	sender := smtp.NewSender(publicURL.Hostname()).WithTimeout(backgroundSendTimeout)
 	mailer := systememail.NewMailer(db, keys, sender, logger)
 	w, err := dbos.NewWorker(url, id, dbos.Services{
-		EmailVerificationCleanup: emailverification.NewCleanup(db, time.Now),
-		RegistrationCleanup:      registration.NewCleanup(db, time.Now),
-		RecoveryNotices:          account.NewRecoveryNotices(db, mailer, publicURL),
+		EmailVerificationCleanup:    emailverification.NewCleanup(db, time.Now),
+		RegistrationCleanup:         registration.NewCleanup(db, time.Now),
+		PasswordResetCleanup:        passwordreset.NewCleanup(db, time.Now),
+		PasswordResetAttemptCleanup: passwordreset.NewAttemptCleanup(db, time.Now),
+		RecoveryNotices:             account.NewRecoveryNotices(db, mailer, publicURL),
 	}, logger)
 	if err != nil {
 		db.Close()

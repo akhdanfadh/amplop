@@ -21,14 +21,15 @@ SELECT id, email, role, (email_verified_at IS NOT NULL)::boolean AS verified,
     (deactivated_at IS NOT NULL)::boolean AS deactivated
 FROM users WHERE email = @email FOR UPDATE;
 
--- name: DeleteExpiredPasswordResetLinks :exec
--- Rows a completion or a deactivation holds are left for later instead of
--- waited for.
-DELETE FROM password_reset_links WHERE token_hash IN (
-    SELECT expired.token_hash FROM password_reset_links expired
-    WHERE expired.expires_at <= @expired_by
-    FOR UPDATE SKIP LOCKED);
-
 -- name: InsertPasswordResetLink :exec
 INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
 VALUES (@token_hash, @user_id, @email, @created_at, @expires_at);
+
+-- name: DeleteExpiredPasswordResetLinkBatch :execrows
+-- The cleanup job deletes expired links, a batch at a time. Rows a request
+-- or completion holds are left for a later batch instead of waited for.
+DELETE FROM password_reset_links WHERE token_hash IN (
+    SELECT expired.token_hash FROM password_reset_links expired
+    WHERE expired.expires_at <= @expired_by
+    LIMIT @batch_size
+    FOR UPDATE SKIP LOCKED);

@@ -154,10 +154,14 @@ runs an older release started, e.g. with
 
 Every hour on the hour (UTC), the workflow `inbok.cleanup`, scheduled as
 `inbok.cleanup.hourly`, deletes rows nobody can use any more: email
-verification links and registration links that expired at least an hour
-ago. The hour covers a worker clock running ahead of the API's, which
-checks expiry with its own clock. For each kind it
-deletes up to 1,000 rows per step until a step finds fewer, and stops
+verification, registration, and password reset links that expired at
+least an hour ago, and password reset attempts that no limit has counted
+for at least an hour, both of their times being over 25 hours old. The
+hour covers a worker clock running ahead of the API's, which checks
+expiry and limits with its own clock. Registration and password reset
+requests no longer delete these rows themselves; a user's own expired
+verification links still go when they ask for a new one. For each kind
+it deletes up to 1,000 rows per step until a step finds fewer, and stops
 after 100 steps; anything left waits for the next hour. Rows a request is
 using are skipped, not waited for. A run that fails for one kind still
 cleans the others, then ends in error; the next hour tries again. It does
@@ -1275,9 +1279,9 @@ decision records explains the choices.
 `randomsecret` secret, the user, the `email` it was sent to, and when it
 was created and expires, one hour later. Asking again keeps earlier links;
 completing a reset deletes all of the user's links, and so do deactivating
-a member and `inbok recover-admin`. Each accepted request also deletes
-every user's expired links, skipping rows a completion or deactivation
-holds.
+a member and `inbok recover-admin`. The hourly
+[cleanup](#scheduled-cleanup) deletes expired links, and attempts that no
+limit counts any more.
 
 ### Asking for a link
 
@@ -1321,8 +1325,9 @@ Then it mails the link to `<public URL>/reset-password#<secret>`. The secret
 exists only in memory and the email; the message is `Private`, so a failed
 send's log leaves out the server's reply. A failed send keeps its link and is
 only logged. Requested emails are kept only for accounts that got a link,
-as `user_id`. The next accepted request deletes attempts whose request and
-link times are both over 24 hours old; nothing deletes them on a schedule.
+as `user_id`. The hourly [cleanup](#scheduled-cleanup) deletes attempts
+whose request and link times are both over 24 hours old, an hour after
+that.
 
 ### Completing a reset
 
@@ -1684,7 +1689,7 @@ resumes at the first step without one. The rules every job follows:
   personal data a later step can read itself.
 
 To add work to the [scheduled cleanup](#scheduled-cleanup), e.g. expired
-password reset links:
+rows of a new table, as password reset's links and attempts were added:
 
 1. The feature: a `Cleanup` type whose `DeleteExpired(ctx)` deletes one
    batch and returns how many and whether more may remain, tested with an

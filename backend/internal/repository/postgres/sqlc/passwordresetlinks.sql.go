@@ -10,18 +10,27 @@ import (
 	"time"
 )
 
-const deleteExpiredPasswordResetLinks = `-- name: DeleteExpiredPasswordResetLinks :exec
+const deleteExpiredPasswordResetLinkBatch = `-- name: DeleteExpiredPasswordResetLinkBatch :execrows
 DELETE FROM password_reset_links WHERE token_hash IN (
     SELECT expired.token_hash FROM password_reset_links expired
     WHERE expired.expires_at <= $1
+    LIMIT $2
     FOR UPDATE SKIP LOCKED)
 `
 
-// Rows a completion or a deactivation holds are left for later instead of
-// waited for.
-func (q *Queries) DeleteExpiredPasswordResetLinks(ctx context.Context, expiredBy time.Time) error {
-	_, err := q.db.Exec(ctx, deleteExpiredPasswordResetLinks, expiredBy)
-	return err
+type DeleteExpiredPasswordResetLinkBatchParams struct {
+	ExpiredBy time.Time
+	BatchSize int32
+}
+
+// The cleanup job deletes expired links, a batch at a time. Rows a request
+// or completion holds are left for a later batch instead of waited for.
+func (q *Queries) DeleteExpiredPasswordResetLinkBatch(ctx context.Context, arg DeleteExpiredPasswordResetLinkBatchParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredPasswordResetLinkBatch, arg.ExpiredBy, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteUserPasswordResetLinks = `-- name: DeleteUserPasswordResetLinks :execrows

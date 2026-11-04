@@ -51,6 +51,8 @@ func (s Services) cleanups() []cleanup {
 	all := []cleanup{
 		{name: "email verification links", rows: s.EmailVerificationCleanup},
 		{name: "registration links", rows: s.RegistrationCleanup},
+		{name: "password reset links", rows: s.PasswordResetCleanup},
+		{name: "password reset attempts", rows: s.PasswordResetAttemptCleanup},
 	}
 	return slices.DeleteFunc(all, func(c cleanup) bool { return c.rows == nil })
 }

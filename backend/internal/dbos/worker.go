@@ -56,9 +56,11 @@ var overrides = []string{"DBOS__APPVERSION", "DBOS__VMID"}
 // fills it, as it fills httpapi.Services. A nil field leaves its part of a
 // workflow out, e.g. in tests.
 type Services struct {
-	EmailVerificationCleanup expired
-	RegistrationCleanup      expired
-	RecoveryNotices          recoveryNotices
+	EmailVerificationCleanup    expired
+	RegistrationCleanup         expired
+	PasswordResetCleanup        expired
+	PasswordResetAttemptCleanup expired
+	RecoveryNotices             recoveryNotices
 }
 
 // Worker runs inbok's workflows and schedules.

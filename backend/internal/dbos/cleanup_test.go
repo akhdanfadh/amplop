@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/emailverification"
+	"inbok/internal/passwordreset"
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
 )
@@ -102,9 +103,10 @@ func TestCleanupError(t *testing.T) {
 	assert.Equal(t, 1, links.calls)
 }
 
-// With the features' real cleanups, a run deletes links of both kinds that
-// expired an hour or more ago and keeps the rest, including ones expired
-// less than an hour ago; running again deletes nothing more.
+// With the features' real cleanups, a run deletes links of every kind that
+// expired an hour or more ago, and password reset attempts no limit has
+// counted for an hour or more, and keeps the rest, including ones within
+// that hour; running again deletes nothing more.
 func TestCleanupLinks(t *testing.T) {
 	// Given links of both kinds that expired an hour or more ago, less than
 	// an hour ago, and not yet.
@@ -125,6 +127,11 @@ func TestCleanupLinks(t *testing.T) {
 		`INSERT INTO registration_links (token_hash, email, created_at, expires_at)
 		SELECT decode(hash, 'hex'), 'visitor@example.org', expires_at - interval '24 hours', expires_at
 		FROM (VALUES ('04', $1::timestamptz - interval '1 hour'), ('05', $1 - interval '30 minutes')) AS v(hash, expires_at)`,
+		`INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
+		SELECT decode(hash, 'hex'), (SELECT id FROM users), 'member@example.org', expires_at - interval '1 hour', expires_at
+		FROM (VALUES ('07', $1::timestamptz - interval '1 hour'), ('08', $1 - interval '59 minutes')) AS v(hash, expires_at)`,
+		`INSERT INTO password_reset_attempts (client_prefix, created_at)
+		VALUES ('old', $1::timestamptz - interval '25 hours'), ('within the hour', $1 - interval '24 hours 59 minutes')`,
 	} {
 		args := []any{now}
 		if !strings.Contains(sql, "$1") {
@@ -136,8 +143,10 @@ func TestCleanupLinks(t *testing.T) {
 
 	clock := func() time.Time { return now }
 	worker := cleanupWorker(t, url, Services{
-		EmailVerificationCleanup: emailverification.NewCleanup(db, clock),
-		RegistrationCleanup:      registration.NewCleanup(db, clock),
+		EmailVerificationCleanup:    emailverification.NewCleanup(db, clock),
+		RegistrationCleanup:         registration.NewCleanup(db, clock),
+		PasswordResetCleanup:        passwordreset.NewCleanup(db, clock),
+		PasswordResetAttemptCleanup: passwordreset.NewAttemptCleanup(db, clock),
 	})
 
 	// When the cleanup runs twice.
@@ -148,12 +157,20 @@ func TestCleanupLinks(t *testing.T) {
 
 	// Then the first deletes the links past the grace and the second
 	// nothing.
-	assert.Equal(t, map[string]int{"email verification links": 2, "registration links": 1}, first)
-	assert.Equal(t, map[string]int{"email verification links": 0, "registration links": 0}, second)
+	assert.Equal(t, map[string]int{
+		"email verification links": 2, "registration links": 1,
+		"password reset links": 1, "password reset attempts": 1,
+	}, first)
+	assert.Equal(t, map[string]int{
+		"email verification links": 0, "registration links": 0,
+		"password reset links": 0, "password reset attempts": 0,
+	}, second)
 	rows, err := conn.Query(t.Context(), `SELECT encode(token_hash, 'hex') FROM email_verification_links
-		UNION ALL SELECT encode(token_hash, 'hex') FROM registration_links ORDER BY 1`)
+		UNION ALL SELECT encode(token_hash, 'hex') FROM registration_links
+		UNION ALL SELECT encode(token_hash, 'hex') FROM password_reset_links
+		UNION ALL SELECT client_prefix FROM password_reset_attempts ORDER BY 1`)
 	require.NoError(t, err)
 	left, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	require.NoError(t, err)
-	assert.Equal(t, []string{"03", "05", "06"}, left)
+	assert.Equal(t, []string{"03", "05", "06", "08", "within the hour"}, left)
 }
