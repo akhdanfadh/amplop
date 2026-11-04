@@ -174,9 +174,11 @@ The workflow `inbok.recovery-notice`, run from the queue `inbok.email`,
 tells every administrator by email that host recovery replaced an
 administrator's password; see [Administrator recovery](#administrator-recovery).
 Someone with the server can run recovery, so the other administrators
-learn of it even if the recovered one's mailbox is no longer theirs. Its
-input is the recovered administrator's ID and the time of the recovery,
-which the emails state. Its steps:
+learn of it even if the recovered one's mailbox is no longer theirs.
+`recover-admin` saves it in the recovery's own transaction, through a
+DBOS client (`dbos.Client`) that runs no workflows, so a worker that is
+down sends it once it starts. Its input is the recovered administrator's
+ID and the time of the recovery, which the emails state. Its steps:
 
 1. `list administrators` lists the IDs of the active administrators.
    DBOS records the list, so a resumed run sends to the same people. A
@@ -858,7 +860,9 @@ An administrator who only forgot their password can use
 Setup does not verify the first administrator's email, so one who forgets
 their password before verifying it needs this command.
 
-Apply migrations first. The server may keep running. From the repository root:
+Apply migrations first, including the workflow tables `migrate` creates:
+the command saves the administrator's notice there. The server may keep
+running. From the repository root:
 
 ```sh
 set -a; . ./.env; set +a
@@ -887,9 +891,21 @@ and Mailpit; it does not run inbok itself.
 Recovery checks that the account is an administrator, then replaces the
 password, removes TOTP and every backup code, ends all sessions and sign-in
 challenges, clears that account's code and sign-in attempt rows, deletes its
-password reset links, and records
-an `admin-recovered` event in `audit_events`. These writes commit together.
-Counts are printed without secrets. Recovery sends no notification email.
+password reset links, records an `admin-recovered` event in `audit_events`,
+and saves the [recovery notice](#recovery-notice) for the worker, with that
+event's time. These writes commit together: a recovery that fails saves no
+notice, and one that succeeds always has one. Counts are printed without
+secrets, followed by whether the administrators will be emailed:
+
+```text
+Every active administrator will be emailed about this recovery once the worker runs.
+```
+
+or, when system email is not configured or has not passed a test
+message, that the administrators will be emailed only if it is fixed
+before the worker tries: the notice is saved either way, and the worker
+reads the settings when it sends. Recovery itself sends nothing and needs
+no encryption keys.
 
 The administrator signs in with the new password and has member access until
 they enroll TOTP on the Security page. Confirmation restores administrator
@@ -1587,9 +1603,12 @@ httpapi --> passwordreset <-- repository/postgres
   interfaces it declares, in `dbos.Services`, which `cmd/inbok` fills, e.g.
   with `emailverification.Cleanup`; like other technology packages it may
   import a feature's plain types, e.g. `account.NoticeOutcome`, while
-  features never import DBOS. It is the only
-  package besides `repository/postgres` that imports the DBOS SDK, whose
-  package is also named `dbos`.
+  features never import DBOS. Its `Client` saves workflows from a process
+  that runs none, e.g. `recover-admin`, inside a storage transaction: it
+  implements `repository/postgres`'s `Workflows`, and the two meet on
+  pgx's `pgx.Tx`, which DBOS's API takes, without importing each other
+  outside tests. It is the only package besides `repository/postgres`
+  that imports the DBOS SDK, whose package is also named `dbos`.
 - `cmd/inbok` builds each feature's `Service` and hands it to `httpapi`
   in `httpapi.Services`, and loads `webapp`'s build for `ServeWebApp`.
 
@@ -1694,3 +1713,15 @@ For a job that runs once per request, follow the recovery notice
    email runs on `inbok.email` (`emailqueue.go`), which every such job
    shares; another job registers its own queue the same way.
 3. `cmd/inbok/worker.go`: set that field.
+4. Save the workflow with the change that needs it, in one transaction.
+   The feature's `Storage` method documents that it saves the job; its
+   `repository/postgres` implementation calls a method of the
+   `Workflows` interface with the transaction, which `dbos.Client`
+   implements with `dbos.Enqueue` and `dbos.WithEnqueueTransaction`, as
+   `UpdateRecovery` and `EnqueueRecoveryNotice` do. Wrap the transaction
+   in `callerTx`, so cancelling the caller stops the enqueue; DBOS alone
+   would not. The feature never sees the transaction or DBOS. A test
+   makes the change fail at commit and checks that no workflow was saved.
+5. The command that makes the change gives storage the client with
+   `DB.WithWorkflows`; `serve` will need one too for a job started by a
+   request.

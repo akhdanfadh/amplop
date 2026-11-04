@@ -39,3 +39,8 @@ FOR SHARE OF recipient;
 -- name: ListActiveAdministrators :many
 -- Who a recovery is reported to, oldest account first.
 SELECT id FROM users WHERE role = 'admin' AND deactivated_at IS NULL ORDER BY id;
+
+-- name: InsertRecoveryAuditEvent :one
+-- The recovery's audit event; the recovery notice reports its time.
+INSERT INTO audit_events (action, target_user_id) VALUES (@action, @target_user_id)
+RETURNING occurred_at;

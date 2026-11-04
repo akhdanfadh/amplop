@@ -162,6 +162,9 @@ manager instead, pipe one line in and add `-T`, which skips the
 confirmation:
 `docker compose exec -T inbok inbok recover-admin admin@example.com`. The
 administrator then signs in and sets up two-factor authentication again.
+The command also saves emails telling every active administrator of the
+recovery, which the `worker` service sends; its last line says whether
+they will go out.
 [Administrator recovery](../backend/README.md#administrator-recovery)
 explains what the command changes.
 

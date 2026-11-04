@@ -5,21 +5,29 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
+	"inbok/internal/systememail"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 type recoveryStorage struct {
-	user     User
-	email    string
-	hash     string
-	locked   *User
-	readErr  error
-	writeErr error
+	user        User
+	email       string
+	hash        string
+	locked      *User
+	readErr     error
+	writeErr    error
+	settings    *systememail.Record
+	settingsErr error
+}
+
+func (f *recoveryStorage) ReadSystemEmail(context.Context) (*systememail.Record, error) {
+	return f.settings, f.settingsErr
 }
 
 func (f *recoveryStorage) ReadCredentials(_ context.Context, email string) (Credentials, error) {
@@ -107,4 +115,35 @@ func TestRecoveryAdministrator(t *testing.T) {
 	storage.readErr = ErrUserNotFound
 	_, err = service.Administrator(t.Context(), "admin@example.com")
 	require.ErrorIs(t, err, ErrUserNotFound)
+}
+
+// NoticeBlocker says why system email cannot send the recovery notice, or
+// nothing when it can, so the command can tell the operator.
+func TestRecoveryNoticeBlocker(t *testing.T) {
+	tested := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
+	cases := map[string]struct {
+		settings *systememail.Record
+		want     NoticeOutcome
+	}{
+		"not configured": {want: NoticeNotConfigured},
+		"not tested":     {settings: &systememail.Record{}, want: NoticeNotTested},
+		"ready":          {settings: &systememail.Record{TestedAt: &tested}},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			blocker, err := NewRecovery(&recoveryStorage{settings: c.settings}).NoticeBlocker(t.Context())
+			require.NoError(t, err)
+
+			assert.Equal(t, c.want, blocker)
+		})
+	}
+}
+
+// A settings read that fails is returned.
+func TestRecoveryNoticeBlockerError(t *testing.T) {
+	lost := errors.New("connection lost")
+
+	_, err := NewRecovery(&recoveryStorage{settingsErr: lost}).NoticeBlocker(t.Context())
+
+	require.ErrorIs(t, err, lost)
 }

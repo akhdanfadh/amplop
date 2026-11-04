@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 )
 
 const countUserBackupCodes = `-- name: CountUserBackupCodes :one
@@ -78,6 +79,24 @@ func (q *Queries) DeleteUserSignInChallenges(ctx context.Context, userID int64) 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const insertRecoveryAuditEvent = `-- name: InsertRecoveryAuditEvent :one
+INSERT INTO audit_events (action, target_user_id) VALUES ($1, $2)
+RETURNING occurred_at
+`
+
+type InsertRecoveryAuditEventParams struct {
+	Action       string
+	TargetUserID *int64
+}
+
+// The recovery's audit event; the recovery notice reports its time.
+func (q *Queries) InsertRecoveryAuditEvent(ctx context.Context, arg InsertRecoveryAuditEventParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, insertRecoveryAuditEvent, arg.Action, arg.TargetUserID)
+	var occurred_at time.Time
+	err := row.Scan(&occurred_at)
+	return occurred_at, err
 }
 
 const listActiveAdministrators = `-- name: ListActiveAdministrators :many

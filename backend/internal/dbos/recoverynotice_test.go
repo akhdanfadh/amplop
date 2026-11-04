@@ -27,10 +27,10 @@ const (
 
 // fakeNotices lists admins, or fails with listErr, and answers each recipient's sends with their
 // results, one per call, repeating the last; a recipient with none is sent
-// to. A send about any recovery but recoveredID's at recoveredAt fails, so
-// a test sees the input survive DBOS's JSON. A send to blockOn waits for its
+// to. A send to blockOn waits for its
 // context to end and reports on sendBlocked; with blockList set, so does
-// the list, on listBlocked. It records its calls.
+// the list, on listBlocked. It records its calls and the recovery each
+// send was about.
 type fakeNotices struct {
 	admins    []int64
 	listErr   error
@@ -41,6 +41,7 @@ type fakeNotices struct {
 	mu          sync.Mutex
 	lists       int
 	sends       []int64
+	recoveries  []RecoveryNoticeInput
 	sendBlocked chan struct{}
 	listBlocked chan struct{}
 }
@@ -65,6 +66,7 @@ func (f *fakeNotices) Administrators(ctx context.Context) ([]int64, error) {
 func (f *fakeNotices) Send(ctx context.Context, recovered int64, at time.Time, recipientID int64) (account.NoticeOutcome, error) {
 	f.mu.Lock()
 	f.sends = append(f.sends, recipientID)
+	f.recoveries = append(f.recoveries, RecoveryNoticeInput{UserID: recovered, RecoveredAt: at})
 	calls := 0
 	for _, id := range f.sends {
 		if id == recipientID {
@@ -74,9 +76,6 @@ func (f *fakeNotices) Send(ctx context.Context, recovered int64, at time.Time, r
 	results := f.results[recipientID]
 	f.mu.Unlock()
 
-	if recovered != recoveredID || !at.Equal(recoveredAt) {
-		return "", errors.New("wrong recovery")
-	}
 	if recipientID == f.blockOn {
 		f.sendBlocked <- struct{}{}
 		<-ctx.Done()
@@ -87,6 +86,13 @@ func (f *fakeNotices) Send(ctx context.Context, recovered int64, at time.Time, r
 	}
 	result := results[min(calls, len(results))-1]
 	return result.outcome, result.err
+}
+
+// recovered returns the recovery each Send was about, in order.
+func (f *fakeNotices) recovered() []RecoveryNoticeInput {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.recoveries)
 }
 
 // calls returns how often Administrators ran and whom Send was called for,
@@ -155,6 +161,12 @@ func TestRecoveryNoticeSent(t *testing.T) {
 	lists, sends := notices.calls()
 	assert.Equal(t, 1, lists)
 	assert.Equal(t, []int64{recoveredID, firstAdmin, lastAdmin}, sends)
+	// The input survives DBOS's JSON, time included.
+	want := RecoveryNoticeInput{UserID: recoveredID, RecoveredAt: recoveredAt}
+	for _, got := range notices.recovered() {
+		assert.Equal(t, want.UserID, got.UserID)
+		assert.WithinDuration(t, want.RecoveredAt, got.RecoveredAt, 0)
+	}
 }
 
 // A send that fails is retried, the same step running again, until it

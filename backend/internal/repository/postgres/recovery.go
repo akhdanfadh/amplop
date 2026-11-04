@@ -13,12 +13,19 @@ import (
 
 const adminRecoveredAction = "admin-recovered"
 
-// UpdateRecovery replaces credentials and clears authentication data together.
-// The callback sees the current account under the same lock as TOTP writes.
+// errNoWorkflows means a recovery ran on a DB without [DB.WithWorkflows],
+// so it could not save the administrator's notice.
+var errNoWorkflows = errors.New("recovery needs background work to save its notice")
+
+// UpdateRecovery replaces credentials and clears authentication data
+// together, and saves the recovery notice for the worker in the same
+// transaction, so both commit or neither does. The callback sees the
+// current account under the same lock as TOTP writes.
 func (db *DB) UpdateRecovery(ctx context.Context, userID int64, update func(account.User) (string, error)) (account.RecoveryResult, error) {
 	var result account.RecoveryResult
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+		// 1. Lock the user, as TOTP writes do.
 		row, err := queries.LockRecoveryUser(ctx, userID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return account.ErrUserNotFound
@@ -27,6 +34,7 @@ func (db *DB) UpdateRecovery(ctx context.Context, userID int64, update func(acco
 			return fmt.Errorf("lock recovery owner: %w", err)
 		}
 
+		// 2. Let update check the account and return the new hash.
 		hash, err := update(account.User{ID: row.ID, Email: row.Email, Role: account.Role(row.Role)})
 		if err != nil {
 			return err
@@ -36,6 +44,7 @@ func (db *DB) UpdateRecovery(ctx context.Context, userID int64, update func(acco
 			return fmt.Errorf("count recovery backup codes: %w", err)
 		}
 
+		// 3. Replace the password and clear every other way in.
 		if err := queries.UpdateUserPassword(ctx, sqlc.UpdateUserPasswordParams{UserID: userID, PasswordHash: hash}); err != nil {
 			return fmt.Errorf("replace recovery password: %w", err)
 		}
@@ -67,8 +76,20 @@ func (db *DB) UpdateRecovery(ctx context.Context, userID int64, update func(acco
 		if err != nil {
 			return fmt.Errorf("delete recovery reset links: %w", err)
 		}
-		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{Action: adminRecoveredAction, TargetUserID: &userID}); err != nil {
+
+		// 4. Record the event; the notice reports its time.
+		recoveredAt, err := queries.InsertRecoveryAuditEvent(ctx, sqlc.InsertRecoveryAuditEventParams{Action: adminRecoveredAction, TargetUserID: &userID})
+		if err != nil {
 			return fmt.Errorf("record administrator recovery: %w", err)
+		}
+
+		// 5. Save the notice in this transaction, so it commits or rolls back with
+		// the recovery.
+		if db.workflows == nil {
+			return errNoWorkflows
+		}
+		if err := db.workflows.EnqueueRecoveryNotice(ctx, tx, userID, recoveredAt); err != nil {
+			return fmt.Errorf("save recovery notice: %w", err)
 		}
 		return nil
 	})
