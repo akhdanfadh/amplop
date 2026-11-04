@@ -348,9 +348,14 @@ func checkSafe(server systememail.Server, password string, message systememail.M
 	return errUnsafeInput
 }
 
-// failed returns err as a [*systememail.SendError] with reason.
+// failed returns err as a [*systememail.SendError] with reason, permanent
+// when err holds a 5xx reply.
 func failed(reason systememail.Reason, err error) *systememail.SendError {
-	return &systememail.SendError{Reason: reason, Err: err}
+	// Checked here, where every SendError is made, so no step and no
+	// rewrap, e.g. a timeout's, loses it. go-smtp documents a 4xx or 5xx
+	// reply as an *SMTPError.
+	smtpErr, ok := errors.AsType[*gosmtp.SMTPError](err)
+	return &systememail.SendError{Reason: reason, Err: err, Permanent: ok && smtpErr.Code >= 500}
 }
 
 // refused returns err as a [*systememail.SendError] with reason, or with

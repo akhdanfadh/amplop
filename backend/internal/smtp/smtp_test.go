@@ -652,6 +652,94 @@ func TestSendUnconfirmed(t *testing.T) {
 	}
 }
 
+// A 5xx refusal is permanent, whatever the step; a 4xx refusal or a dropped
+// connection is not. None of them is unconfirmed.
+func TestSendPermanent(t *testing.T) {
+	// upTo answers everything before command, then answers it with answer.
+	upTo := func(command string, answer func(*textproto.Conn)) func(*textproto.Conn) {
+		return func(conn *textproto.Conn) {
+			reply(conn, "220 localhost")
+			expect(conn, "EHLO")
+			reply(conn, "250 localhost")
+			for _, next := range []string{"MAIL", "RCPT", "DATA"} {
+				expect(conn, next)
+				if next == command {
+					answer(conn)
+					return
+				}
+				reply(conn, "250 OK")
+			}
+		}
+	}
+	refuse := func(line string) func(*textproto.Conn) {
+		return func(conn *textproto.Conn) { reply(conn, line) }
+	}
+	for _, c := range []struct {
+		name      string
+		security  systememail.Security
+		script    func(*textproto.Conn)
+		reason    systememail.Reason
+		permanent bool
+	}{
+		{"greeting refused", systememail.SecurityNone, refuse("554 No SMTP service here"), systememail.ReasonConnect, true},
+		{"STARTTLS refused", systememail.SecuritySTARTTLS, func(conn *textproto.Conn) {
+			reply(conn, "220 localhost")
+			expect(conn, "EHLO")
+			reply(conn, "250-localhost", "250 STARTTLS")
+			expect(conn, "STARTTLS")
+			reply(conn, "554 TLS not available")
+		}, systememail.ReasonTLS, true},
+		{"sender refused", systememail.SecurityNone, upTo("MAIL", refuse("553 Sender not allowed")), systememail.ReasonSender, true},
+		{"recipient refused", systememail.SecurityNone, upTo("RCPT", refuse("550 No such user")), systememail.ReasonRecipient, true},
+		{"recipient refused for now", systememail.SecurityNone, upTo("RCPT", refuse("450 Greylisted, try again later")), systememail.ReasonRecipient, false},
+		{"closed at the recipient", systememail.SecurityNone, upTo("RCPT", func(*textproto.Conn) {}), systememail.ReasonConnect, false},
+		{"message refused", systememail.SecurityNone, upTo("DATA", func(conn *textproto.Conn) {
+			reply(conn, "354 Go ahead")
+			if _, err := conn.ReadDotBytes(); err != nil {
+				return
+			}
+			reply(conn, "554 Rejected")
+		}), systememail.ReasonSender, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			server := scriptedServer(t, c.script)
+			server.Security = c.security
+
+			err := (&Sender{timeout: 500 * time.Millisecond, hello: testHello}).Send(t.Context(), server, testPassword, testMessage())
+
+			var failed *systememail.SendError
+			require.ErrorAs(t, err, &failed)
+			assert.Equal(t, c.reason, failed.Reason)
+			assert.Equal(t, c.permanent, failed.Permanent)
+			assert.False(t, failed.Unconfirmed)
+		})
+	}
+}
+
+// A 5xx refusal stays permanent when time runs out afterwards: go-smtp
+// answers a refused sign-in with "*" and waits, and a server that stays
+// silent turns the send into a timeout.
+func TestSendPermanentTimeout(t *testing.T) {
+	certificate, roots := testCertificate(t)
+	server := scriptedTLSServer(t, certificate, func(conn *textproto.Conn) {
+		reply(conn, "220 localhost")
+		expect(conn, "EHLO")
+		reply(conn, "250-localhost", "250 AUTH PLAIN")
+		expect(conn, "AUTH")
+		reply(conn, "535 Authentication failed")
+		expect(conn, "*")
+		<-t.Context().Done()
+	})
+	server.Username = testUsername
+
+	err := (&Sender{roots: roots, timeout: 500 * time.Millisecond, hello: testHello}).Send(t.Context(), server, testPassword, testMessage())
+
+	var failed *systememail.SendError
+	require.ErrorAs(t, err, &failed)
+	assert.Equal(t, systememail.ReasonTimeout, failed.Reason)
+	assert.True(t, failed.Permanent)
+}
+
 // failingWrites wraps a connection so writes fail once the message's final
 // dot is among them, as when the connection breaks while inbok flushes the
 // message's end.
@@ -832,6 +920,25 @@ func TestComposeMessageID(t *testing.T) {
 func scriptedServer(t *testing.T, script func(*textproto.Conn)) systememail.Server {
 	t.Helper()
 
+	return scriptedOver(t, func(conn net.Conn) net.Conn { return conn }, script)
+}
+
+// scriptedTLSServer is scriptedServer behind implicit TLS with certificate.
+func scriptedTLSServer(t *testing.T, certificate tls.Certificate, script func(*textproto.Conn)) systememail.Server {
+	t.Helper()
+
+	server := scriptedOver(t, func(conn net.Conn) net.Conn {
+		return tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{certificate}})
+	}, script)
+	server.Security = systememail.SecurityTLS
+	return server
+}
+
+// scriptedOver runs script on each connection a local listener accepts,
+// after wrap, and returns the plain server's settings.
+func scriptedOver(t *testing.T, wrap func(net.Conn) net.Conn, script func(*textproto.Conn)) systememail.Server {
+	t.Helper()
+
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { listener.Close() })
@@ -843,7 +950,7 @@ func scriptedServer(t *testing.T, script func(*textproto.Conn)) systememail.Serv
 			}
 			go func() {
 				defer conn.Close()
-				script(textproto.NewConn(conn))
+				script(textproto.NewConn(wrap(conn)))
 			}()
 		}
 	}()

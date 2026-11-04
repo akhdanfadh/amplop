@@ -916,6 +916,14 @@ sending again could deliver it twice. A 4xx or 5xx refusal, and any
 failure before the final dot was written, is not unconfirmed: the message
 was not accepted.
 
+A refusal with a 5xx reply is **permanent**: RFC 5321 says the same
+command gets the same answer, so the `SendError` marks it for a caller
+that retries, which can stop. A 4xx reply, e.g. greylisting, and a
+dropped connection are not. Servers do not always follow the RFC, e.g. a
+full mailbox can answer 552 and later accept, so a caller decides per
+step whether to trust it. For a message that is not private, the reply,
+code included, is in the warning's `err`.
+
 To list saves, with no setting values:
 
 ```sql

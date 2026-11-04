@@ -28,8 +28,8 @@ type Message struct {
 // at or after DATA is sender, even when content filtering caused it; a
 // non-ASCII recipient on a server without SMTPUTF8 fails at MAIL and is
 // sender; STARTTLS or none aimed at an implicit-TLS port such as 465 waits
-// and becomes timeout. Temporary (4xx) and permanent (5xx) refusals are not
-// told apart.
+// and becomes timeout. Whether a refusal is temporary (4xx) or permanent
+// (5xx) is [SendError.Permanent].
 type Reason string
 
 const (
@@ -46,11 +46,18 @@ const (
 // the message. Unconfirmed is set when the whole message, final dot
 // included, was written and the send then failed without a 4xx or 5xx
 // refusal: the server may have accepted it, so sending it again could
-// deliver it twice.
+// deliver it twice. Permanent is set when the server refused with a 5xx
+// reply, which RFC 5321 says the same command gets again; a caller that
+// retries can stop.
+//
+// NOTE: servers do not always use codes as RFC 5321 intends, e.g. 552 for
+// a full mailbox, which can clear. Permanent reports the code, not a
+// promise.
 type SendError struct {
 	Reason      Reason
 	Err         error
 	Unconfirmed bool
+	Permanent   bool
 }
 
 func (e *SendError) Error() string {
