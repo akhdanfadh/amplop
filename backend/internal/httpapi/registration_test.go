@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -231,12 +232,20 @@ func (m *requestMemory) RequestRegistration(ctx context.Context, email string, _
 	return nil
 }
 
+// recordingMailer records the subjects and recipients of the messages it
+// sends, which may come from background work.
 type recordingMailer struct {
-	subjects []string
+	mu         sync.Mutex
+	subjects   []string
+	recipients []string
 }
 
+// Send records outgoing's subject and recipient and returns revision 1.
 func (m *recordingMailer) Send(_ context.Context, outgoing systememail.Outgoing) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.subjects = append(m.subjects, outgoing.Subject)
+	m.recipients = append(m.recipients, outgoing.To)
 	return 1, nil
 }
 
@@ -323,19 +332,20 @@ func TestRequestRegistrationLinkProblems(t *testing.T) {
 }
 
 type fakeCompletion struct {
-	user             account.User
-	err              error
-	calls            int
-	secret, password string
+	user                    account.User
+	err                     error
+	calls                   int
+	secret, email, password string
 }
 
-func (f *fakeCompletion) Complete(_ context.Context, secret, password string) (account.User, error) {
+// Complete records what it was given and returns user with err.
+func (f *fakeCompletion) Complete(_ context.Context, secret, email, password string) (account.User, error) {
 	f.calls++
-	f.secret, f.password = secret, password
+	f.secret, f.email, f.password = secret, email, password
 	return f.user, f.err
 }
 
-const completeBody = `{"secret":"link-secret","password":"correct horse battery"}`
+const completeBody = `{"secret":"link-secret","email":"Visitor@Example.org","password":"correct horse battery"}`
 
 func TestCompleteRegistration(t *testing.T) {
 	service := &fakeCompletion{user: account.User{ID: 7, Email: "visitor@example.org", Role: account.RoleMember}}
@@ -345,7 +355,8 @@ func TestCompleteRegistration(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	assert.JSONEq(t, `{"data":{"id":7,"email":"visitor@example.org"}}`, response.Body.String())
-	assert.Equal(t, []string{"link-secret", "correct horse battery"}, []string{service.secret, service.password})
+	// The service parses and compares the email.
+	assert.Equal(t, []string{"link-secret", "Visitor@Example.org", "correct horse battery"}, []string{service.secret, service.email, service.password})
 	// No one is signed in.
 	assert.Empty(t, response.Header().Values("Set-Cookie"))
 	assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
@@ -360,6 +371,8 @@ func TestCompleteRegistrationProblems(t *testing.T) {
 		location string
 	}{
 		{"password", account.ErrPasswordInvalid, http.StatusUnprocessableEntity, "validation-error", "body.password"},
+		{"invalid email", emailaddress.ErrInvalid, http.StatusUnprocessableEntity, "validation-error", "body.email"},
+		{"email mismatch", registration.ErrEmailMismatch, http.StatusUnprocessableEntity, "validation-error", "body.email"},
 		{"link invalid", registration.ErrLinkInvalid, http.StatusNotFound, "registration-link-invalid", ""},
 		{"closed", registration.ErrClosed, http.StatusConflict, "registration-closed", ""},
 		{"account exists", registration.ErrAccountExists, http.StatusConflict, "registration-account-exists", ""},
@@ -382,7 +395,7 @@ func TestCompleteRegistrationShortPassword(t *testing.T) {
 	service := &fakeCompletion{}
 	api := New(discard, Services{RegistrationCompletion: service})
 
-	response := postPublic(api, registrationRedeemPath, `{"secret":"link-secret","password":"too short"}`)
+	response := postPublic(api, registrationRedeemPath, `{"secret":"link-secret","email":"visitor@example.org","password":"too short"}`)
 
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code)
 	assert.Contains(t, response.Body.String(), `"location":"body.password"`)
@@ -417,6 +430,7 @@ func TestRegistrationLinksOpenAPI(t *testing.T) {
 	conflicts := doc.Paths[registrationRedeemPath].Post.Responses["409"].Content[problemContentType].Examples
 	assert.Contains(t, conflicts, "closed")
 	assert.Contains(t, conflicts, "accountExists")
+	assert.Contains(t, doc.Paths[registrationRedeemPath].Post.Responses["422"].Content[problemContentType].Examples, "emailMismatch")
 	assert.True(t, doc.Components.Schemas.Map()["NewMember"].Properties["secret"].WriteOnly)
 }
 

@@ -16,7 +16,6 @@ import (
 
 	"inbok/internal/encryption"
 	"inbok/internal/httpapi"
-	"inbok/internal/passwordhash"
 	"inbok/internal/repository/postgres/sqlc"
 	"inbok/internal/totp"
 )
@@ -29,7 +28,7 @@ func newRegeneration(t *testing.T) (*confirmationFixture, *totp.Backups) {
 	f.factor, err = f.db.ReadTOTP(t.Context(), f.state.UserID)
 	require.NoError(t, err)
 	for _, code := range []string{"ABCDEFGHJK", "MNPQRSTUVW"} {
-		require.NoError(t, sqlc.New(f.conn).InsertTOTPBackupCode(t.Context(), sqlc.InsertTOTPBackupCodeParams{UserID: f.state.UserID, CodeHash: passwordhash.Hash(code)}))
+		require.NoError(t, sqlc.New(f.conn).InsertTOTPBackupCode(t.Context(), sqlc.InsertTOTPBackupCodeParams{UserID: f.state.UserID, CodeHash: hashPassword(t, code)}))
 	}
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	require.NoError(t, err)
@@ -54,7 +53,7 @@ func TestRegeneratePersistence(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 10)
 	for i, row := range rows {
-		require.NoError(t, totp.CheckBackupCode(codes[i], row.CodeHash))
+		require.NoError(t, totp.CheckBackupCode(t.Context(), codes[i], row.CodeHash))
 		for _, previous := range old {
 			assert.NotEqual(t, previous.ID, row.ID)
 		}
@@ -156,7 +155,7 @@ func TestRegenerateParallel(t *testing.T) {
 	require.Len(t, rows, 10)
 	require.Len(t, winner, 10)
 	for i, row := range rows {
-		require.NoError(t, totp.CheckBackupCode(winner[i], row.CodeHash))
+		require.NoError(t, totp.CheckBackupCode(t.Context(), winner[i], row.CodeHash))
 	}
 }
 
@@ -184,5 +183,5 @@ func TestRegenerateHTTP(t *testing.T) {
 	rows, err := sqlc.New(f.conn).ReadTOTPBackupCodes(t.Context(), f.state.UserID)
 	require.NoError(t, err)
 	require.Len(t, rows, 10)
-	require.NoError(t, totp.CheckBackupCode(body.Data.BackupCodes[0], rows[0].CodeHash))
+	require.NoError(t, totp.CheckBackupCode(t.Context(), body.Data.BackupCodes[0], rows[0].CodeHash))
 }

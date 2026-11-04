@@ -61,6 +61,12 @@ func (db *DB) UpdateRecovery(ctx context.Context, userID int64, update func(acco
 		if err != nil {
 			return fmt.Errorf("clear recovery sign-in attempts: %w", err)
 		}
+		// A link sent before recovery could otherwise set a password the
+		// operator did not choose, before the administrator enrolls TOTP.
+		result.ResetLinks, err = queries.DeleteUserPasswordResetLinks(ctx, userID)
+		if err != nil {
+			return fmt.Errorf("delete recovery reset links: %w", err)
+		}
 		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{Action: adminRecoveredAction, TargetUserID: &userID}); err != nil {
 			return fmt.Errorf("record administrator recovery: %w", err)
 		}

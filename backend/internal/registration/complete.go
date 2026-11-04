@@ -7,13 +7,10 @@ import (
 	"time"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
 	"inbok/internal/randomsecret"
 )
-
-// maxHashes bounds Argon2id hashes in progress. Each takes 19 MiB, and one
-// live link lets anyone start a hash per parallel request.
-const maxHashes = 4
 
 var (
 	// ErrLinkInvalid means a registration link is malformed, unknown, used,
@@ -22,6 +19,9 @@ var (
 	// ErrAccountExists means the link's email has an account, e.g. one an
 	// earlier submission of the same link just created.
 	ErrAccountExists = errors.New("email already has an account")
+	// ErrEmailMismatch means a live registration link was sent to another
+	// email than the one given with it.
+	ErrEmailMismatch = errors.New("registration link was sent to another email")
 )
 
 // CompleteState is what [completeStorage] reads for one registration link.
@@ -57,28 +57,40 @@ type completeStorage interface {
 type Completion struct {
 	storage completeStorage
 	now     func() time.Time
-	hashes  chan struct{} // one slot per hash in progress
 }
 
 // NewCompletion returns a Completion given storage and a clock.
 func NewCompletion(storage completeStorage, now func() time.Time) *Completion {
-	return &Completion{storage: storage, now: now, hashes: make(chan struct{}, maxHashes)}
+	return &Completion{storage: storage, now: now}
 }
 
 // Complete creates a member with password and a verified email, the one the
-// registration link with secret was sent to, and returns the member. It
-// creates no session. It returns [account.ErrPasswordInvalid] for a password
-// outside the length rule, [ErrClosed] unless registration is open,
-// [ErrAccountExists] when the email already has an account, [ErrLinkInvalid]
-// for a link that is malformed, unknown, used, or expired, and the context's
-// error if it ends while waiting to hash.
+// registration link with secret was sent to, when email is that one, and
+// returns the member. It creates no session. It returns
+// [account.ErrPasswordInvalid] for a password outside the length rule,
+// [emailaddress.ErrInvalid] for an invalid email, [ErrClosed] unless
+// registration is open, [ErrAccountExists] when the link's email already has
+// an account, [ErrLinkInvalid] for a link that is malformed, unknown, used,
+// or expired, [ErrEmailMismatch] for a live link sent to another email, and
+// the context's error if it ends while waiting to hash.
 //
-// NOTE: Complete has no throttle. The secret has 256 random bits, so guessing
+// DESIGN: Complete has no throttle. The secret has 256 random bits, so guessing
 // one is hopeless however fast the guesses come. Guesses are refused before
-// the Argon2id hash, and maxHashes bounds the hashes one live link can start.
-func (c *Completion) Complete(ctx context.Context, secret, password string) (account.User, error) {
-	// 1. Refuse what needs no storage: a bad password or a malformed secret.
+// the Argon2id hash, and passwordhash bounds the hashes in progress across
+// the process, so one live link sent many times at once cannot exhaust
+// memory.
+//
+// DESIGN: email must be the link's, so a link someone sends for an address
+// they control cannot create that account for a person who types their own
+// (link fixation, ADR028).
+func (c *Completion) Complete(ctx context.Context, secret, email, password string) (account.User, error) {
+	// 1. Refuse what needs no storage: a bad password, an invalid email, or
+	// a malformed secret.
 	if err := account.CheckPassword(password); err != nil {
+		return account.User{}, err
+	}
+	email, err := emailaddress.Parse(email)
+	if err != nil {
 		return account.User{}, err
 	}
 	hash, err := randomsecret.Hash(secret)
@@ -91,42 +103,31 @@ func (c *Completion) Complete(ctx context.Context, secret, password string) (acc
 	if err != nil {
 		return account.User{}, err
 	}
-	if err := checkCompletion(state, c.now().UTC()); err != nil {
+	if err := checkCompletion(state, email, c.now().UTC()); err != nil {
 		return account.User{}, err
 	}
-	email := state.Link.Email
+	// The link decides the account's email; the one typed only had to match.
+	linkEmail := state.Link.Email
 
 	// 3. Hash before storage takes its locks: Argon2id is slow.
-	passwordHash, err := c.hash(ctx, password)
+	passwordHash, err := passwordhash.Hash(ctx, password)
 	if err != nil {
 		return account.User{}, err
 	}
-	return c.storage.CompleteRegistration(ctx, hash, email, func(state CompleteState) (CompleteChange, error) {
+	return c.storage.CompleteRegistration(ctx, hash, linkEmail, func(state CompleteState) (CompleteChange, error) {
 		// 4. Check again under the locks: anything may have changed during
 		// the hash.
 		now := c.now().UTC()
-		if err := checkCompletion(state, now); err != nil {
+		if err := checkCompletion(state, email, now); err != nil {
 			return CompleteChange{}, err
 		}
 		return CompleteChange{PasswordHash: passwordHash, VerifiedAt: now}, nil
 	})
 }
 
-// hash returns password's Argon2id hash once a slot is free, or the
-// context's error if it ends first.
-func (c *Completion) hash(ctx context.Context, password string) (string, error) {
-	select {
-	case c.hashes <- struct{}{}:
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
-	defer func() { <-c.hashes }()
-
-	return passwordhash.Hash(password), nil
-}
-
-// checkCompletion returns why state cannot create a member at now, or nil.
-func checkCompletion(state CompleteState, now time.Time) error {
+// checkCompletion returns why state cannot create a member at now for email,
+// or nil.
+func checkCompletion(state CompleteState, email string, now time.Time) error {
 	// Closing deletes every link, so this comes first: a visitor whose link
 	// stopped working learns that registration closed.
 	if statusOf(state.Registration) != StatusOpen {
@@ -139,6 +140,11 @@ func checkCompletion(state CompleteState, now time.Time) error {
 	}
 	if state.Link == nil || !state.Link.ExpiresAt.After(now) {
 		return ErrLinkInvalid
+	}
+	// The link saved an exact copy of the email, which is already in
+	// emailaddress.Parse's form, so any difference is another address.
+	if email != state.Link.Email {
+		return ErrEmailMismatch
 	}
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/passwordhash"
+	"inbok/internal/passwordreset"
 	"inbok/internal/session"
 
 	"github.com/jackc/pgx/v5"
@@ -26,7 +27,9 @@ func newRecovery(t *testing.T) *confirmationFixture {
  ('admin@example.com', '127.0.0.2', now()),
  ('other@example.com', '127.0.0.1', now()),
  (NULL, '127.0.0.1', now());
- INSERT INTO totp_attempts (user_id, created_at) SELECT id, now() FROM users WHERE role='member';`)
+ INSERT INTO totp_attempts (user_id, created_at) SELECT id, now() FROM users WHERE role='member';
+ INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
+ SELECT decode(md5(email), 'hex'), id, email, now(), now() + interval '1 hour' FROM users;`)
 	require.NoError(t, err)
 	return f
 }
@@ -43,6 +46,7 @@ func recoverySnapshot(t *testing.T, conn *pgx.Conn, userID int64) string {
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM sessions t WHERE user_id=$1),
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM sign_in_challenges t WHERE user_id=$1),
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM totp_attempts t WHERE user_id=$1),
+ (SELECT jsonb_agg(to_jsonb(t) ORDER BY token_hash) FROM password_reset_links t WHERE user_id=$1),
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM sign_in_attempts t WHERE email=(SELECT email FROM users WHERE id=$1) OR email IS NULL),
  (SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_events t WHERE target_user_id=$1)
  )::text`, userID).Scan(&snapshot)
@@ -57,14 +61,14 @@ func TestRecoveryPersistence(t *testing.T) {
 	result, err := account.NewRecovery(f.db).Recover(t.Context(), " \tADMIN@EXAMPLE.COM\t", "a new recovery password")
 
 	require.NoError(t, err)
-	assert.Equal(t, account.RecoveryResult{Factors: 1, BackupCodes: 2, Sessions: 2, Challenges: 1, TOTPAttempts: 2, SignInAttempts: 2}, result)
+	assert.Equal(t, account.RecoveryResult{Factors: 1, BackupCodes: 2, Sessions: 2, Challenges: 1, TOTPAttempts: 2, SignInAttempts: 2, ResetLinks: 1}, result)
 	credentials, err := f.db.ReadCredentials(t.Context(), "admin@example.com")
 	require.NoError(t, err)
-	match, err := passwordhash.Verify("a new recovery password", credentials.PasswordHash)
+	match, err := passwordhash.Verify(t.Context(), "a new recovery password", credentials.PasswordHash)
 	require.NoError(t, err)
 	assert.True(t, match)
 	assert.Equal(t, account.RoleAdmin, credentials.User.Role)
-	for _, table := range []string{"user_totp", "totp_backup_codes", "sessions", "sign_in_challenges", "totp_attempts"} {
+	for _, table := range []string{"user_totp", "totp_backup_codes", "sessions", "sign_in_challenges", "totp_attempts", "password_reset_links"} {
 		var count int
 		require.NoError(t, f.conn.QueryRow(t.Context(), "SELECT count(*) FROM "+table+" WHERE user_id=$1", f.state.UserID).Scan(&count))
 		assert.Zero(t, count, table)
@@ -166,7 +170,7 @@ func TestRecoveryStaleSignIn(t *testing.T) {
 			f := newRecovery(t)
 			ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
 			defer cancel()
-			_, err := f.conn.Exec(ctx, "UPDATE users SET password_hash=$1 WHERE id=$2", passwordhash.Hash("the old recovery password"), f.state.UserID)
+			_, err := f.conn.Exec(ctx, "UPDATE users SET password_hash=$1 WHERE id=$2", hashPassword(t, "the old recovery password"), f.state.UserID)
 			require.NoError(t, err)
 			accounts := &recoveryAccounts{service: account.NewService(f.db, ""), checked: make(chan struct{}), resume: make(chan struct{})}
 			clock := time.Now
@@ -204,4 +208,22 @@ func TestRecoveryStaleSignIn(t *testing.T) {
 			assert.Equal(t, session.SignInStepComplete, issued.Step)
 		})
 	}
+}
+
+// A reset link sent before recovery cannot replace the password the
+// operator chose.
+func TestRecoveryEndsResetLinks(t *testing.T) {
+	f := newRecovery(t)
+	secret, _ := saveResetLink(t, f.conn, f.state.UserID, "admin@example.com")
+	_, err := account.NewRecovery(f.db).Recover(t.Context(), "admin@example.com", "a new recovery password")
+	require.NoError(t, err)
+
+	_, err = resetCompletion(t, f.db, func() time.Time { return resetNow }).Complete(t.Context(), secret, "admin@example.com", resetPassword)
+
+	require.ErrorIs(t, err, passwordreset.ErrLinkInvalid)
+	credentials, err := f.db.ReadCredentials(t.Context(), "admin@example.com")
+	require.NoError(t, err)
+	match, err := passwordhash.Verify(t.Context(), "a new recovery password", credentials.PasswordHash)
+	require.NoError(t, err)
+	assert.True(t, match, "the recovered password stays")
 }

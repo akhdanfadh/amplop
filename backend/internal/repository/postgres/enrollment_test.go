@@ -124,7 +124,7 @@ func TestTOTPConfirmationStorage(t *testing.T) {
 	require.Len(t, rows, 10)
 	require.Len(t, result.BackupCodes, len(rows))
 	for i, row := range rows {
-		require.NoError(t, totp.CheckBackupCode(result.BackupCodes[i], row.CodeHash))
+		require.NoError(t, totp.CheckBackupCode(t.Context(), result.BackupCodes[i], row.CodeHash))
 	}
 	assert.Equal(t, result.Session.State, readSession(t, f.db, result.Session.State.TokenHash))
 	current, err := f.sessions.Current(t.Context(), result.Session.Secret)

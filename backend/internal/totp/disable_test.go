@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
-	"inbok/internal/passwordhash"
 )
 
 type disableStorage struct {
@@ -51,7 +50,7 @@ func TestDisableProof(t *testing.T) {
 			code := "287082"
 			if kind == "backup" {
 				code = "abcde-fghjk"
-				store.state.BackupHashes = []string{passwordhash.Hash("ZZZZZZZZZZ"), passwordhash.Hash("ABCDEFGHJK")}
+				store.state.BackupHashes = []string{hashPassword(t, "ZZZZZZZZZZ"), hashPassword(t, "ABCDEFGHJK")}
 				opener.err = errors.New("old encryption key unavailable")
 			}
 
@@ -144,4 +143,19 @@ func TestDisableErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A request that ends while waiting to check its first backup code made no
+// guess, so it releases its attempt.
+func TestDisableBackupEnded(t *testing.T) {
+	service, store, _, attempts := disableFixture()
+	store.state.BackupHashes = []string{hashPassword(t, "ZZZZZZZZZZ")}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := service.Disable(ctx, 42, "abcde-fghjk")
+
+	require.ErrorIs(t, err, context.Canceled)
+	assert.False(t, store.disabled)
+	assert.Equal(t, []int64{7}, attempts.released)
 }

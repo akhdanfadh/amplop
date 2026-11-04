@@ -86,6 +86,9 @@ func (db *DB) UpdateMember(ctx context.Context, actorID, memberID int64, update 
 			if err := queries.DeleteUserEmailVerificationLinks(ctx, memberID); err != nil {
 				return fmt.Errorf("remove member verification links: %w", err)
 			}
+			if _, err := queries.DeleteUserPasswordResetLinks(ctx, memberID); err != nil {
+				return fmt.Errorf("remove member reset links: %w", err)
+			}
 		}
 		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{
 			Action: action, ActorUserID: &actorID, TargetUserID: &memberID,

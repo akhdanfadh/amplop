@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, type Router } from "@tanstack/react-router";
 import { retryOptions } from "@/api/retry";
 import { verifyEmailPath } from "@/features/email-verification/path";
+import { resetPath } from "@/features/password-reset/path";
 import { completePath } from "@/features/registration/path";
 import { captureLinkSecret } from "@/lib/link-secret";
 import { routeTree } from "./routeTree.gen";
@@ -12,7 +13,7 @@ import { routeTree } from "./routeTree.gen";
 export function getRouter(): Router<typeof routeTree> {
   // Before the router reads the address or any request starts, so a failed
   // request cannot leave a link's secret in the address bar.
-  captureLinkSecret([verifyEmailPath, completePath]);
+  captureLinkSecret([verifyEmailPath, completePath, resetPath]);
 
   const queryClient = new QueryClient({
     defaultOptions: retryOptions,
@@ -33,5 +34,8 @@ declare module "@tanstack/react-router" {
   interface HistoryState {
     // The email of an account just created, for sign-in to fill in.
     registeredEmail?: string;
+    // The email of an account whose password was just reset, for sign-in
+    // to fill in.
+    passwordResetEmail?: string;
   }
 }

@@ -101,8 +101,11 @@ function Home(): ReactElement {
         {account && (
           <section className="flex flex-col gap-6" aria-label="Your account">
             {!account.emailVerified && (
+              // Password reset emails only a verified address, and its answer
+              // cannot say so without telling which accounts exist.
               <p>
-                Your email address isn&apos;t verified.{" "}
+                Your email address isn&apos;t verified, so a forgotten password can&apos;t be reset
+                by email.{" "}
                 <Link
                   to="/security"
                   className="underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"

@@ -29,7 +29,7 @@ func TestBackupCodeStorage(t *testing.T) {
 	alice := backupCodeUser(t, conn, "alice@example.com")
 	bob := backupCodeUser(t, conn, "bob@example.com")
 	queries := sqlc.New(conn)
-	set, err := totp.NewBackupCodes()
+	set, err := totp.NewBackupCodes(t.Context())
 	require.NoError(t, err)
 	for _, hash := range set.Hashes {
 		require.NoError(t, queries.InsertTOTPBackupCode(t.Context(), sqlc.InsertTOTPBackupCodeParams{UserID: alice, CodeHash: hash}))
@@ -40,7 +40,7 @@ func TestBackupCodeStorage(t *testing.T) {
 	for i, row := range rows {
 		require.Positive(t, row.ID)
 		assert.Equal(t, set.Hashes[i], row.CodeHash)
-		require.NoError(t, totp.CheckBackupCode(set.Codes[i], row.CodeHash))
+		require.NoError(t, totp.CheckBackupCode(t.Context(), set.Codes[i], row.CodeHash))
 	}
 	other, err := queries.ReadTOTPBackupCodes(t.Context(), bob)
 	require.NoError(t, err)

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/emailaddress"
 	"inbok/internal/passwordhash"
 	"inbok/internal/randomsecret"
 )
@@ -89,7 +90,7 @@ func TestCompleteCreatesMember(t *testing.T) {
 	_, otherHash := randomsecret.New()
 	storage.links = append(storage.links, Link{TokenHash: otherHash, Email: otherEmail, ExpiresAt: testNow.Add(linkLifetime)})
 
-	user, err := testCompletion(storage).Complete(t.Context(), secret, testPassword)
+	user, err := testCompletion(storage).Complete(t.Context(), secret, visitor, testPassword)
 	require.NoError(t, err)
 
 	assert.Equal(t, account.User{ID: 1, Email: visitor, Role: account.RoleMember}, user)
@@ -97,7 +98,7 @@ func TestCompleteCreatesMember(t *testing.T) {
 	member := storage.members[0]
 	// Following the link proved the email.
 	assert.Equal(t, testNow, member.VerifiedAt)
-	ok, err := passwordhash.Verify(testPassword, member.PasswordHash)
+	ok, err := passwordhash.Verify(t.Context(), testPassword, member.PasswordHash)
 	require.NoError(t, err)
 	assert.True(t, ok, "the hash is of the password")
 	// The used link is gone; another email's link stays.
@@ -147,7 +148,7 @@ func TestCompleteRefuses(t *testing.T) {
 				password = c.password
 			}
 
-			_, err := testCompletion(storage).Complete(t.Context(), secret, password)
+			_, err := testCompletion(storage).Complete(t.Context(), secret, visitor, password)
 
 			require.ErrorIs(t, err, c.want)
 			// Refused before the hash, so guesses cost no Argon2id work.
@@ -175,7 +176,7 @@ func TestCompleteRechecksUnderLock(t *testing.T) {
 			storage, secret := completeSetup(t)
 			storage.beforeLock = c.change
 
-			_, err := testCompletion(storage).Complete(t.Context(), secret, testPassword)
+			_, err := testCompletion(storage).Complete(t.Context(), secret, visitor, testPassword)
 
 			require.ErrorIs(t, err, c.want)
 			assert.Equal(t, 1, storage.locked)
@@ -190,7 +191,7 @@ func TestCompleteExpiresWhileHashing(t *testing.T) {
 	now := testNow
 	storage.beforeLock = func(*completeMemory) { now = testNow.Add(linkLifetime) }
 
-	_, err := NewCompletion(storage, func() time.Time { return now }).Complete(t.Context(), secret, testPassword)
+	_, err := NewCompletion(storage, func() time.Time { return now }).Complete(t.Context(), secret, visitor, testPassword)
 
 	require.ErrorIs(t, err, ErrLinkInvalid)
 	assert.Empty(t, storage.members)
@@ -200,25 +201,64 @@ func TestCompleteStorageError(t *testing.T) {
 	storage, secret := completeSetup(t)
 	storage.readErr = errors.New("database down")
 
-	_, err := testCompletion(storage).Complete(t.Context(), secret, testPassword)
+	_, err := testCompletion(storage).Complete(t.Context(), secret, visitor, testPassword)
 
 	require.ErrorIs(t, err, storage.readErr)
 	assert.Zero(t, storage.locked)
 }
 
-// With every hash slot taken, a completion waits instead of hashing, and
-// gives up when its context ends.
-func TestCompleteWaitsForHashSlot(t *testing.T) {
+// A completion whose context ends before the hash gives up before storage
+// takes its locks.
+func TestCompleteEndedContext(t *testing.T) {
 	storage, secret := completeSetup(t)
-	completion := testCompletion(storage)
-	for range maxHashes {
-		completion.hashes <- struct{}{}
-	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := completion.Complete(ctx, secret, testPassword)
+	_, err := testCompletion(storage).Complete(ctx, secret, visitor, testPassword)
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Zero(t, storage.locked)
+}
+
+// The email given must be the one the link was sent to, however it is
+// spelled.
+func TestCompleteEmailSpelling(t *testing.T) {
+	storage, secret := completeSetup(t)
+
+	_, err := testCompletion(storage).Complete(t.Context(), secret, " Visitor@Example.ORG ", testPassword)
+
+	require.NoError(t, err)
+	assert.Len(t, storage.members, 1)
+}
+
+// Another email cannot create the account, so a link sent for an address
+// someone controls fails for a person who types their own. A link refused
+// for another reason answers that reason first.
+func TestCompleteEmailRefused(t *testing.T) {
+	cases := []struct {
+		name   string
+		email  string
+		change func(*completeMemory)
+		want   error
+	}{
+		{name: "other email", email: "alice@example.org", want: ErrEmailMismatch},
+		{name: "invalid email", email: "not an email", want: emailaddress.ErrInvalid},
+		{name: "closed, other email", email: "alice@example.org", change: func(m *completeMemory) { m.registration.State = StateClosed }, want: ErrClosed},
+		{name: "expired link, other email", email: "alice@example.org", change: func(m *completeMemory) { m.links[0].ExpiresAt = testNow }, want: ErrLinkInvalid},
+		{name: "used link, other email", email: "alice@example.org", change: func(m *completeMemory) { m.links = nil }, want: ErrLinkInvalid},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			storage, secret := completeSetup(t)
+			if c.change != nil {
+				c.change(storage)
+			}
+
+			_, err := testCompletion(storage).Complete(t.Context(), secret, c.email, testPassword)
+
+			require.ErrorIs(t, err, c.want)
+			assert.Zero(t, storage.locked, "refused before the hash and the locks")
+			assert.Empty(t, storage.members)
+		})
+	}
 }

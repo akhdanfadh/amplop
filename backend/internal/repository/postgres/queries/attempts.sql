@@ -16,3 +16,6 @@ SELECT email, client_addr, created_at FROM sign_in_attempts WHERE client_addr = 
 
 -- name: DeleteSignInAttempt :exec
 DELETE FROM sign_in_attempts WHERE id = @id;
+
+-- name: DeleteSignInAttemptsByEmail :exec
+DELETE FROM sign_in_attempts WHERE email = @email;

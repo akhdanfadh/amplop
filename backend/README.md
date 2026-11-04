@@ -299,7 +299,10 @@ deadline error from a handler produces a safe 500 Problem Details response and
 logs `context deadline exceeded`.
 
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and gives
-in-flight requests up to 5 seconds to finish.
+in-flight requests up to 5 seconds to finish. What is left of those 5 seconds
+goes to password reset emails still being sent, which their requests did not
+wait for (see [Password reset](#password-reset)); any still sending then are
+lost, and a warning says so.
 
 ## Configuration
 
@@ -433,6 +436,28 @@ letter. New code that takes an address calls `Parse` in its service.
 ADR025 in the project's decision records explains the choice and its cost: a
 mail server that treats the local part's case as meaningful is not
 supported. Mail accounts that members connect are outside this rule.
+
+## Password hashes
+
+Passwords and TOTP backup codes are stored as Argon2id hashes
+(`passwordhash`), with OWASP's minimum profile: 19 MiB, two passes, one
+lane. A check uses the stored hash's own costs, so changing the profile
+keeps old passwords usable; it refuses a stored hash that asks for more
+than 128 MiB, 10 passes, or 16 lanes.
+
+Hashes and checks in progress share a 128 MiB memory budget across the
+process: each waits until its own memory cost fits, in arrival order, so
+6 hashes of the current profile run at once. The budget counts what
+hashes ask for, not what the process holds: the garbage collector frees a
+finished hash's memory later, so under load the process briefly holds
+more. Every caller shares it:
+sign-in, setup, registration, password reset, TOTP backup codes, and
+`inbok recover-admin`.
+A wait that outlives the request's context ends it; one that outlives the
+10-second request deadline is a 500 (see
+[Timeouts and shutdown](#timeouts-and-shutdown)). A TOTP request that ends
+while waiting to check its first backup code made no guess, so it gives
+its attempt back.
 
 ## First administrator setup
 
@@ -581,10 +606,11 @@ removes it, so parallel password checks cannot bypass the limits. A blocked
 attempt returns HTTP 429 with `Retry-After`: the seconds until one more
 attempt fits, rounded up. These limits are constants too.
 
-Every throttle (sign-in, setup, TOTP codes, and verification links) counts
-with `attemptlimit.Wait`, which says how long until one more attempt fits; a
-new throttle uses it too. Each keeps its own key, storage, and lock: under the
-lock it counts the earlier attempts, then saves this one only if it fits. A
+Every throttle (sign-in, setup, TOTP codes, verification links,
+registration, and password reset links) counts with `attemptlimit.Wait`,
+which says how long until one more attempt fits; a new throttle uses it
+too. Each keeps its own key, storage, and lock: under the lock it counts the
+earlier attempts, then saves this one only if it fits. A
 refusal is an `*attemptlimit.Error` that wraps the feature's `ErrThrottled`
 and carries the wait; `retryAfterProblem` in `httpapi` turns it into the
 header. Every documented 429 lists the header as required, so a new 429 must
@@ -593,9 +619,10 @@ send it.
 In front of those throttles, every write that needs no session (`rateLimited`
 in `httpapi`) passes a limit kept in memory, per operation and client: up to
 20 requests in a row, and each second gives one back, up to 20. A client is
-an IPv4 address, or an IPv6 address's /64 block. Past the limit, the request
-gets HTTP 429 `too-many-requests` with `Retry-After` before any database work,
-so a flood cannot hold database connections or start password hashes. Over
+an IPv4 address, or an IPv6 address's /64 block (`clientprefix`). Past the
+limit, the request gets HTTP 429 `too-many-requests` with `Retry-After`
+before any database work, so a flood cannot hold database connections or
+start password hashes. Over
 any 15 minutes it allows more requests than any database limit, so people
 retrying by hand meet those limits first. Counts are per process and reset on
 restart; at most 100,000 clients are tracked at once. A new public write gets
@@ -628,6 +655,11 @@ operator process. The command trusts database write access; it does not ask
 for an inbok session, old password, TOTP code, or setup token, and it does not
 check which machine runs it. Members cannot be recovered this way.
 
+An administrator who only forgot their password can use
+[Password reset](#password-reset) instead, once their email is verified.
+Setup does not verify the first administrator's email, so one who forgets
+their password before verifying it needs this command.
+
 Apply migrations first. The server may keep running. From the repository root:
 
 ```sh
@@ -656,7 +688,8 @@ and Mailpit; it does not run inbok itself.
 
 Recovery checks that the account is an administrator, then replaces the
 password, removes TOTP and every backup code, ends all sessions and sign-in
-challenges, clears that account's code and sign-in attempt rows, and records
+challenges, clears that account's code and sign-in attempt rows, deletes its
+password reset links, and records
 an `admin-recovered` event in `audit_events`. These writes commit together.
 Counts are printed without secrets. Recovery sends no notification email.
 
@@ -835,10 +868,11 @@ ID that is not a positive whole number 422 at `path.id`. Both are safe to
 repeat: a member already in the asked state is returned unchanged, with no
 second audit event.
 
-Deactivation locks the user, the same lock sign-in, TOTP, and email
-verification take, and checks the member's role under it. In one transaction it
-sets `users.deactivated_at`, deletes the member's sessions, pending sign-in
-challenges, and unused email verification links, and records a
+Deactivation locks the user, the same lock sign-in, TOTP, email
+verification, and password reset take, and checks the member's role under it.
+In one transaction it sets `users.deactivated_at`, deletes the member's
+sessions, pending sign-in challenges, unused email verification links, and
+unused password reset links, and records a
 `member-deactivated` event with the administrator as `actor_user_id` and
 the member as `target_user_id`. It keeps the password, the TOTP factor and
 backup codes, and the verified address, so reactivation, which clears the
@@ -953,15 +987,20 @@ no background job.
 
 ### Creating the account
 
-`POST /api/v0/registration/links/redeem` takes `{"secret", "password"}` and
-needs no session. The password follows setup's rule, 15 to 128 characters,
-checked by `account.CheckPassword`.
+`POST /api/v0/registration/links/redeem` takes `{"secret", "email",
+"password"}` and needs no session. The password follows setup's rule, 15 to
+128 characters, checked by `account.CheckPassword`. The email is the one the
+visitor types; it must be the link's, after `emailaddress.Parse`. Otherwise
+someone could ask for a link to an address they control, send it to a
+visitor, and have the visitor create that account, which its owner can
+later take back with a password reset.
 
-1. It reads the link without a lock. An unknown or expired link is refused
-   here, so a guessed secret costs no password hash.
-2. It hashes the password with Argon2id, at most 4 hashes at a time
-   (`maxHashes`). Each takes 19 MiB, and one live link sent many times at
-   once would otherwise start one hash per request.
+1. It reads the link without a lock. An unknown or expired link, or one
+   sent to another email, is refused here, so a guessed secret costs no
+   password hash.
+2. It hashes the password with Argon2id, waiting for room in the hash
+   budget (see [Password hashes](#password-hashes)), so one live link sent
+   many times at once cannot start a hash per request.
 3. In one transaction it locks the registration row, the system email row,
    the `users` table (the lock setup takes), and the link, then checks
    everything again.
@@ -974,6 +1013,8 @@ It answers 201 `{"id", "email"}` and sets no cookie; the web app sends the
 visitor to sign in. Other answers:
 
 - 422 on `body.password` for a password outside the rule.
+- 422 on `body.email` for an invalid email, or "Enter the email address
+  this link was sent to." for another one. It names no address.
 - 404 `registration-link-invalid`: unknown, used, or expired.
 - 409 `registration-closed`: closed or paused. Pausing keeps links, so the
   link may work later; closing deleted it.
@@ -990,6 +1031,133 @@ To list registration events:
 SELECT id, occurred_at, action, actor_user_id, target_user_id
 FROM audit_events
 WHERE action IN ('registration-opened', 'registration-closed', 'member-registered')
+ORDER BY id DESC;
+```
+
+## Password reset
+
+A user who forgot their password follows a link sent to their verified
+email and chooses a new one (`passwordreset`). ADR030 in the project's
+decision records explains the choices.
+
+### Links
+
+`password_reset_links` keeps the SHA-256 hash of each link's
+`randomsecret` secret, the user, the `email` it was sent to, and when it
+was created and expires, one hour later. Asking again keeps earlier links;
+completing a reset deletes all of the user's links, and so do deactivating
+a member and `inbok recover-admin`. Each accepted request also deletes
+every user's expired links, skipping rows a completion or deactivation
+holds.
+
+### Asking for a link
+
+`POST /api/v0/password-reset/links` takes `{"email"}`, needs no session,
+and answers 202 `{"status": "requested"}` whatever happens to that email.
+Other answers:
+
+- 422 on `body.email` for an invalid email.
+- 429 `password-reset-throttled` with `Retry-After`: this client asked 10
+  times in 15 minutes. It never depends on the email.
+- 429 `too-many-requests`: the in-memory request limit every public write
+  has (see [Sign-in and browser sessions](#sign-in-and-browser-sessions)).
+
+The operation calls `passwordreset.Requests.Request` with the email and the
+client's address, which answers the same for every address. Before it
+returns, it only:
+
+1. checks that the email is valid (`emailaddress.Parse`);
+2. under a lock on the client, records an attempt in
+   `password_reset_attempts`, unless the client already made 10 in the
+   last 15 minutes. A client is an IPv4 address or an IPv6 /64
+   (`clientprefix`). Over the limit it returns an `*attemptlimit.Error`
+   wrapping `passwordreset.ErrThrottled` with the wait.
+
+It reads nothing about the account, so its answer and timing are the
+same whether the address has one. The rest is background work that
+`Request` starts and does not wait for, run by `passwordreset.Background`
+as the notice after a reset is (see [Completing a reset](#completing-a-reset)).
+In one transaction it locks the account with the email, if any, and
+decides:
+
+- no account, an unverified email, or a deactivated account: nothing is
+  sent;
+- 3 links sent to the account in the last hour, or 5 in 24 hours: nothing
+  is sent. These limits are silent, so the answer cannot depend on them.
+- otherwise: it saves a link for the account's stored email and sets the
+  attempt's `user_id` and `linked_at`. The email limits count `linked_at`,
+  the time the link was saved, which can come later than the request.
+
+Then it mails the link to `<public URL>/reset-password#<secret>`. The secret
+exists only in memory and the email; the message is `Private`, so a failed
+send's log leaves out the server's reply. A failed send keeps its link and is
+only logged. Requested emails are kept only for accounts that got a link,
+as `user_id`. The next accepted request deletes attempts whose request and
+link times are both over 24 hours old; nothing deletes them on a schedule.
+
+### Completing a reset
+
+`POST /api/v0/password-reset/links/redeem` takes `{"secret", "email",
+"password"}` and needs no session. The email is the one the person types; it
+must be the link's, after `emailaddress.Parse`, so a link someone sends for
+an account they control cannot set its password for a person who types
+their own address. It answers 200 `{"email"}`, the account's email, so
+the sign-in form can be filled in, and sets no cookie. Other answers:
+
+- 422 on `body.password` for a password outside the rule.
+- 422 on `body.email` for an invalid email, or "Enter the email address
+  this link was sent to." for another one.
+- 404 `password-reset-link-invalid`: the link is unknown, used, or expired,
+  or its account can no longer reset. One answer for every reason.
+- 429 `too-many-requests`: the in-memory request limit.
+
+There is no attempt limit: a 256-bit secret cannot be guessed.
+
+The operation calls `passwordreset.Completion.Complete` with the link's
+secret, the email typed, and the new password, which follows setup's rule,
+15 to 128 characters (`account.CheckPassword`).
+
+1. It reads the link and its user without a lock. A missing or expired
+   link, a deactivated user, a user whose email is no longer the link's,
+   or an email given that is not the link's is refused here, so a guessed
+   secret costs no password hash.
+2. It hashes the password with Argon2id, waiting for room in the hash
+   budget (see [Password hashes](#password-hashes)).
+3. In one transaction it locks the user, the lock sign-in, deactivation,
+   and recovery take, and checks everything again.
+4. It saves the password, deletes the user's sessions, sign-in
+   challenges, and reset links, deletes the sign-in attempts counted for
+   the user's email, and records `password-reset` with the user as
+   `target_user_id` and no actor. TOTP and backup codes stay, so the next
+   sign-in still asks for a code.
+
+A password outside the rule is `account.ErrPasswordInvalid`, an invalid
+email `emailaddress.ErrInvalid`, and a live link given with another email
+`passwordreset.ErrEmailMismatch`. Every other refusal, a malformed, unknown,
+used, or expired link, a link whose account changed its email, or a
+deactivated user, is the same `passwordreset.ErrLinkInvalid`.
+On success it returns the user, so the caller can name the email to sign in
+with, and creates no session.
+
+Once the reset commits, `Complete` starts background work that emails the
+user that their password changed, naming the time, and returns without
+waiting for it. `passwordreset.Background` runs that work in a goroutine: it
+keeps the request's context values, so its logs carry the `request_id`, but
+not its cancellation, and has 30 seconds of its own. A failed send is only
+logged, by the mailer as for any system email, and does not undo the reset.
+A panic is logged with its stack, not its value, instead of stopping the
+server.
+
+To list password resets, and recent requests:
+
+```sql
+SELECT id, occurred_at, target_user_id
+FROM audit_events
+WHERE action = 'password-reset'
+ORDER BY id DESC;
+
+SELECT id, created_at, client_prefix, user_id, linked_at
+FROM password_reset_attempts
 ORDER BY id DESC;
 ```
 
@@ -1140,6 +1308,8 @@ httpapi --> emailverification <-- repository/postgres
             emailverification --> systememail
 httpapi --> registration <-- repository/postgres
             registration --> systememail, account
+httpapi --> passwordreset <-- repository/postgres
+            passwordreset --> systememail, account
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -1162,8 +1332,9 @@ httpapi --> registration <-- repository/postgres
   and imports features, never the other way around.
 - A leaf package holds one rule that several features share, such as
   `emailaddress` (the address rule), `attemptlimit` (the window count),
-  `randomsecret` (emailed link secrets and their hashes), or `logging` (how
-  loggers are built and tagged with the request). It
+  `randomsecret` (emailed link secrets and their hashes), `clientprefix`
+  (which addresses count as one client), or `logging` (how loggers are
+  built and tagged with the request). It
   imports no feature or technology package and is named for its rule.
 - A feature can use another feature through an interface it declares:
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`

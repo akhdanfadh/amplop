@@ -79,7 +79,7 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 	}
 
 	// Hash all ten codes before storage takes a write lock.
-	backups, err := totp.NewBackupCodes()
+	backups, err := totp.NewBackupCodes(ctx)
 	if err != nil {
 		// No code was checked.
 		e.throttle.Release(ctx, attemptID)

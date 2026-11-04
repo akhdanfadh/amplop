@@ -10,7 +10,7 @@ const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-o
 
 export const Route = createFileRoute("/register/complete")({
   component: CompleteRegistration,
-  head: () => ({ meta: [{ title: "Choose your password - inbok" }] }),
+  head: () => ({ meta: [{ title: "Create your account - inbok" }] }),
 });
 
 function CompleteRegistration(): ReactElement {
@@ -30,14 +30,16 @@ function CompleteRegistration(): ReactElement {
   return (
     <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
       <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-        Choose your password
+        Create your account
       </h1>
       {secret ? (
         <CompleteForm key={secret} secret={secret} onDone={signIn} />
       ) : (
         <div className="flex flex-col gap-4">
           <p>Open this page from the link in your sign-up email.</p>
-          <Link to="/register" className={linkClass}>
+          {/* Exact, or the router marks /register current here and a screen
+              reader says so. */}
+          <Link to="/register" activeOptions={{ exact: true }} className={linkClass}>
             Ask for a new link
           </Link>
         </div>

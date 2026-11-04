@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 	"golang.org/x/time/rate"
 
+	"inbok/internal/clientprefix"
 	"inbok/internal/session"
 )
 
@@ -27,10 +28,6 @@ const (
 	// uses.
 	maxBuckets = 100_000
 
-	// ipv6ClientBits is the IPv6 prefix one client is counted by: one
-	// connection usually owns a whole /64.
-	ipv6ClientBits = 64
-
 	tooManyRequestsType = problemPrefix + "too-many-requests"
 	rateLimitCause      = "Too many requests from this client in a short time."
 )
@@ -38,7 +35,7 @@ const (
 // rateLimitKey names one client's bucket for one operation.
 type rateLimitKey struct {
 	operation string       // the operation's ID
-	client    netip.Prefix // from clientPrefix
+	client    netip.Prefix // from clientprefix.Of
 }
 
 // rateLimiter keeps a token bucket per operation and client, in memory.
@@ -97,16 +94,6 @@ func (l *rateLimiter) sweep(now time.Time) {
 	l.buckets = kept
 }
 
-// clientPrefix returns what addr is counted as: an IPv4 address alone, or
-// its IPv6 /64, so one connection cannot rotate addresses within its block.
-func clientPrefix(addr netip.Addr) netip.Prefix {
-	addr = addr.Unmap().WithZone("")
-	if addr.Is4() {
-		return netip.PrefixFrom(addr, addr.BitLen())
-	}
-	return netip.PrefixFrom(addr, ipv6ClientBits).Masked()
-}
-
 // rateLimited reports whether op is one withRateLimit limits: a write anyone
 // can send without a session.
 func rateLimited(op *huma.Operation) bool {
@@ -138,7 +125,7 @@ func withRateLimit(limiter *rateLimiter) func(huma.Context, func(huma.Context)) 
 			return
 		}
 
-		wait := limiter.take(rateLimitKey{operation: op.OperationID, client: clientPrefix(client)})
+		wait := limiter.take(rateLimitKey{operation: op.OperationID, client: clientprefix.Of(client)})
 		if wait == 0 {
 			next(ctx)
 			return

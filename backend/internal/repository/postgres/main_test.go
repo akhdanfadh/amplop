@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"inbok/internal/passwordhash"
 )
 
 // testImage matches compose.yaml: tests run the PostgreSQL that
@@ -74,4 +76,13 @@ func adminExec(t *testing.T, sql string) {
 
 	_, err = conn.Exec(ctx, sql)
 	require.NoError(t, err)
+}
+
+// hashPassword returns password's Argon2id hash, failing the test on an
+// error.
+func hashPassword(t *testing.T, password string) string {
+	t.Helper()
+	hash, err := passwordhash.Hash(t.Context(), password)
+	require.NoError(t, err)
+	return hash
 }

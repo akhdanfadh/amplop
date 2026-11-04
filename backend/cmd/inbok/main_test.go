@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/httpapi"
+	"inbok/internal/passwordreset"
 )
 
 var discard = slog.New(slog.DiscardHandler)
@@ -99,7 +100,9 @@ func TestListenShutdown(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- listen(ctx, addr, httpapi.New(discard, httpapi.Services{}).Handler(), discard) }()
+	go func() {
+		done <- listen(ctx, addr, httpapi.New(discard, httpapi.Services{}).Handler(), passwordreset.NewBackground(discard), discard)
+	}()
 
 	url := "http://" + addr + "/api/v0/health"
 	require.True(t, waitUp(url), "server did not start")
@@ -119,6 +122,43 @@ func TestListenShutdown(t *testing.T) {
 	require.Error(t, err, "server still accepts requests after shutdown")
 }
 
+// Shutdown waits for password reset work that requests started.
+func TestListenWaitsForBackground(t *testing.T) {
+	// Given a server with background work that runs until released.
+	addr := freeAddr(t)
+	background := passwordreset.NewBackground(discard)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- listen(ctx, addr, httpapi.New(discard, httpapi.Services{}).Handler(), background, discard)
+	}()
+	require.True(t, waitUp("http://"+addr+"/api/v0/health"), "server did not start")
+	started, release := make(chan struct{}), make(chan struct{})
+	background.Go(t.Context(), "test", func(context.Context) error {
+		close(started)
+		<-release
+		return nil
+	})
+	<-started
+
+	// When the server stops while the work runs.
+	cancel()
+
+	// Then listen waits for the work, and returns once it finishes.
+	select {
+	case err := <-done:
+		require.FailNow(t, "listen returned while work was running", "error: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(shutdownTimeout + time.Second):
+		require.FailNow(t, "listen did not return after the work finished")
+	}
+}
+
 // A busy port fails listen without claiming the server started.
 func TestListenBusyPort(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -127,7 +167,7 @@ func TestListenBusyPort(t *testing.T) {
 
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&out, nil))
-	err = listen(context.Background(), listener.Addr().String(), httpapi.New(discard, httpapi.Services{}).Handler(), logger)
+	err = listen(context.Background(), listener.Addr().String(), httpapi.New(discard, httpapi.Services{}).Handler(), passwordreset.NewBackground(discard), logger)
 	require.Error(t, err)
 	assert.Empty(t, out.String(), "listen logged before failing")
 }

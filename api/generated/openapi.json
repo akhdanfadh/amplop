@@ -274,6 +274,13 @@
       "NewMember": {
         "additionalProperties": false,
         "properties": {
+          "email": {
+            "description": "The email the link was sent to, typed by the person using it. Letters A to Z match in either case.",
+            "format": "email",
+            "maxLength": 254,
+            "minLength": 3,
+            "type": "string"
+          },
           "password": {
             "maxLength": 128,
             "minLength": 15,
@@ -288,7 +295,53 @@
         },
         "required": [
           "secret",
+          "email",
           "password"
+        ],
+        "type": "object"
+      },
+      "NewPasswordFromLink": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "The email the link was sent to, typed by the person using it. Letters A to Z match in either case.",
+            "format": "email",
+            "maxLength": 254,
+            "minLength": 3,
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 15,
+            "type": "string",
+            "writeOnly": true
+          },
+          "secret": {
+            "description": "The text after # in the emailed link.",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "secret",
+          "email",
+          "password"
+        ],
+        "type": "object"
+      },
+      "NewPasswordResetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "The email the account signs in with. Any valid email gets the same answer.",
+            "format": "email",
+            "maxLength": 254,
+            "minLength": 3,
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
         ],
         "type": "object"
       },
@@ -463,6 +516,35 @@
         ],
         "type": "object"
       },
+      "PasswordResetRequestResult": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "description": "The same for every accepted request, so it does not tell whether the email has an account.",
+            "enum": [
+              "requested"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "PasswordResetResult": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "The account's email, for signing in with the new password.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
       "ProbeEvent": {
         "additionalProperties": false,
         "properties": {
@@ -585,6 +667,8 @@
           "/api/v0/problems/member-not-found",
           "/api/v0/problems/method-not-allowed",
           "/api/v0/problems/not-found",
+          "/api/v0/problems/password-reset-link-invalid",
+          "/api/v0/problems/password-reset-throttled",
           "/api/v0/problems/registration-account-exists",
           "/api/v0/problems/registration-closed",
           "/api/v0/problems/registration-link-invalid",
@@ -772,6 +856,30 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ListedSessions"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponsePasswordResetRequestResult": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PasswordResetRequestResult"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponsePasswordResetResult": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PasswordResetResult"
           }
         },
         "required": [
@@ -1852,6 +1960,230 @@
         "summary": "Reactivate a member"
       }
     },
+    "/password-reset/links": {
+      "post": {
+        "description": "Answers at once, the same for every email. Afterwards, an active account with that verified email gets a link that expires in 1 hour, unless 3 links were sent to it in the last hour or 5 in 24 hours; any other email gets nothing. Earlier links keep working. One client may ask 10 times in 15 minutes.",
+        "operationId": "requestPasswordResetLink",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsePasswordResetRequestResult"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/validation-error",
+                  "status": 422,
+                  "title": "Invalid request",
+                  "detail": "Correct the rejected request inputs.",
+                  "errors": [
+                    {
+                      "location": "body.email",
+                      "message": "Enter a valid value."
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The email is not valid."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "throttled": {
+                    "value": {
+                      "type": "/api/v0/problems/password-reset-throttled",
+                      "status": 429,
+                      "title": "Too many password reset requests",
+                      "detail": "Too many password reset requests were made recently."
+                    }
+                  },
+                  "tooManyRequests": {
+                    "value": {
+                      "type": "/api/v0/problems/too-many-requests",
+                      "status": 429,
+                      "title": "Too many requests",
+                      "detail": "Too many requests in a short time."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "This client asked for too many reset links recently. Too many requests from this client in a short time.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "summary": "Email a link that resets a password"
+      }
+    },
+    "/password-reset/links/redeem": {
+      "post": {
+        "description": "Sets the password of the account the link was sent to, when the email given is the one the link was sent to; signs that account out everywhere and uses up all of its reset links. TOTP stays on. Needs no session and signs no one in; the account's owner is emailed that the password changed.",
+        "operationId": "redeemPasswordResetLink",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPasswordFromLink"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsePasswordResetResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/password-reset-link-invalid",
+                  "status": 404,
+                  "title": "Link not valid",
+                  "detail": "This link has expired, was already used, or is not valid. Ask for a new one."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The link is unknown, used, or expired, or its account is deactivated or no longer has the email it was sent to."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "emailMismatch": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs.",
+                      "errors": [
+                        {
+                          "location": "body.email",
+                          "message": "Enter the email address this link was sent to."
+                        }
+                      ]
+                    }
+                  },
+                  "password": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs.",
+                      "errors": [
+                        {
+                          "location": "body.password",
+                          "message": "Use 15 to 128 characters."
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request inputs are invalid, or the link was sent to a different email."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "tooManyRequests": {
+                    "value": {
+                      "type": "/api/v0/problems/too-many-requests",
+                      "status": 429,
+                      "title": "Too many requests",
+                      "detail": "Too many requests in a short time."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too many requests from this client in a short time.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "summary": "Set a new password with an emailed link"
+      }
+    },
     "/probe/events": {
       "post": {
         "operationId": "createProbeEvent",
@@ -2097,7 +2429,7 @@
     },
     "/registration/links/redeem": {
       "post": {
-        "description": "Creates a member whose email, the one the link was sent to, is verified. Uses up every link sent to that email. Needs no session and signs no one in.",
+        "description": "Creates a member whose email, the one the link was sent to, is verified, when the email given is that one. Uses up every link sent to that email. Needs no session and signs no one in.",
         "operationId": "redeemRegistrationLink",
         "requestBody": {
           "content": {
@@ -2167,24 +2499,42 @@
           "422": {
             "content": {
               "application/problem+json": {
-                "example": {
-                  "type": "/api/v0/problems/validation-error",
-                  "status": 422,
-                  "title": "Invalid request",
-                  "detail": "Correct the rejected request inputs.",
-                  "errors": [
-                    {
-                      "location": "body.password",
-                      "message": "Use 15 to 128 characters."
+                "examples": {
+                  "emailMismatch": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs.",
+                      "errors": [
+                        {
+                          "location": "body.email",
+                          "message": "Enter the email address this link was sent to."
+                        }
+                      ]
                     }
-                  ]
+                  },
+                  "password": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs.",
+                      "errors": [
+                        {
+                          "location": "body.password",
+                          "message": "Use 15 to 128 characters."
+                        }
+                      ]
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "The request inputs are invalid."
+            "description": "The request inputs are invalid, or the link was sent to a different email."
           },
           "429": {
             "content": {

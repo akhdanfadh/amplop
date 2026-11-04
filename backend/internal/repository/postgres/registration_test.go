@@ -465,7 +465,7 @@ func TestRegistrationComplete(t *testing.T) {
 	completion := registration.NewCompletion(db, func() time.Time { return requestNow })
 	const password = "correct horse battery"
 
-	user, err := completion.Complete(t.Context(), first, password)
+	user, err := completion.Complete(t.Context(), first, "visitor@example.org", password)
 	require.NoError(t, err)
 
 	// The member's email is verified: following the link proved it.
@@ -476,7 +476,7 @@ func TestRegistrationComplete(t *testing.T) {
 		Scan(&role, &verifiedAt, &passwordHash))
 	assert.Equal(t, "member", role)
 	assert.Equal(t, requestNow, verifiedAt.UTC())
-	ok, err := passwordhash.Verify(password, passwordHash)
+	ok, err := passwordhash.Verify(t.Context(), password, passwordHash)
 	require.NoError(t, err)
 	assert.True(t, ok, "the saved hash is of the password")
 
@@ -485,7 +485,7 @@ func TestRegistrationComplete(t *testing.T) {
 	assert.Equal(t, []auditEvent{{Action: "member-registered", Target: &user.ID}}, auditEvents(t, conn))
 
 	// So the email's other link no longer works.
-	_, err = completion.Complete(t.Context(), second, password)
+	_, err = completion.Complete(t.Context(), second, "visitor@example.org", password)
 	require.ErrorIs(t, err, registration.ErrLinkInvalid)
 }
 

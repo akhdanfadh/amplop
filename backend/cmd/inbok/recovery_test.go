@@ -26,7 +26,7 @@ func (f *recoveryService) Administrator(_ context.Context, email string) (accoun
 }
 func (f *recoveryService) Recover(_ context.Context, email, password string) (account.RecoveryResult, error) {
 	f.email, f.password = email, password
-	return account.RecoveryResult{Factors: 1, BackupCodes: 4, Sessions: 2, Challenges: 3, TOTPAttempts: 20, SignInAttempts: 5}, f.recoverErr
+	return account.RecoveryResult{Factors: 1, BackupCodes: 4, Sessions: 2, Challenges: 3, TOTPAttempts: 20, SignInAttempts: 5, ResetLinks: 6}, f.recoverErr
 }
 
 func TestRecoveryStdin(t *testing.T) {
@@ -40,6 +40,7 @@ func TestRecoveryStdin(t *testing.T) {
 	assert.Equal(t, "  a recovery password  ", service.password)
 	assert.Contains(t, output.String(), "4 backup codes removed")
 	assert.Contains(t, output.String(), "2 sessions ended")
+	assert.Contains(t, output.String(), "6 password reset links cleared")
 	assert.Contains(t, output.String(), "Security page")
 	assert.NotContains(t, output.String(), service.password)
 	assert.NotContains(t, output.String(), "Continue?")

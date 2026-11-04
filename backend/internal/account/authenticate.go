@@ -48,7 +48,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (Cre
 		credentials.PasswordHash = dummyPasswordHash
 	}
 
-	match, err := passwordhash.Verify(password, credentials.PasswordHash)
+	match, err := passwordhash.Verify(ctx, password, credentials.PasswordHash)
 	if err != nil {
 		return Credentials{}, err
 	}

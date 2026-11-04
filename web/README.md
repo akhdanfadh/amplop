@@ -108,12 +108,15 @@ Put shared code in the folder for its responsibility:
   with its confirmation dialog, and its wording.
 - `src/features/registration`: the Settings page's Registration section,
   the `/register` and `/register/complete` forms, and their wording.
+- `src/features/password-reset`: the `/forgot-password` and
+  `/reset-password` forms, the reset form's schema, and their wording.
 - `src/components`: shared controls, such as the password input. `ui/` holds
   the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
-  secret of an emailed link.
+  secret of an emailed link, or keeping a server's field error through a
+  blur.
 - `src/hooks`: React hooks shared by features, such as a page reading its
   link's secret.
 - `src/routes`: route registration and page composition.
@@ -196,7 +199,9 @@ Security opens with the account's email address and whether it is verified.
 or failed send can be repeated without a check: the server limits how many
 links are sent, and every unexpired link works. Sending and TOTP writes wait
 for each other, because confirming TOTP replaces this browser's session. An
-unverified account also sees a notice on home that links to Security.
+unverified account also sees a notice on home that links to Security. Both
+say a forgotten password can't be reset by email until the address is
+verified, since the reset page's answer cannot say why nothing arrived.
 
 The link opens `/verify-email`, which works signed in or out. The secret after
 `#` never reaches the server with the page request. `getRouter` calls
@@ -227,14 +232,43 @@ address" brings the form back with the address kept. Sign-in shows a
 "Create an account" link only while visitors can register.
 
 A sign-up email's link opens `/register/complete`, whose secret is kept the
-same way as `/verify-email`'s. The visitor chooses a password, 15 to 128
-characters, entered twice. Success creates no session: the page opens
+same way as `/verify-email`'s. The visitor types the email the link was
+sent to and chooses a password, 15 to 128 characters, entered twice. The
+server refuses another email on the email field ("Enter the email address
+this link was sent to."), so a link someone sends for an address they
+control cannot create that account for a visitor typing their own. The
+email field is marked `autocomplete="username"`, so a password manager
+saves it with the new password. Success creates no session: the page opens
 sign-in with the email filled in and a notice naming the new account. The
 email travels in history state, data the browser keeps with the history
-entry, not in the URL. A spent or expired link, or an
-email that already has an account, ends the page with where to go next.
+entry, not in the URL. When the server refuses the email, an "Ask for a
+new link" link to `/register` follows the error. A spent or expired link, or
+an email that already has an account, ends the page with where to go next.
 After a try whose result was lost, a spent link means that try probably
-created the account, so the page points to sign-in first.
+created the account, so the page points to sign-in first and says to sign
+in with the password sent then, since the fields may have changed since.
+
+Sign-in's "Forgot password?" link opens `/forgot-password`, which asks for
+the email the account signs in with. The API answers before it looks the
+address up, so every accepted request gets the same text: if the address is
+the verified one of an active account, a link is on its way, can take a few
+minutes, and expires in 1 hour. A 429 says when to try again, from
+`Retry-After`. A lost answer can be repeated: earlier links keep working,
+and the server limits how many are sent. "Use a different email address"
+brings the form back with the address kept.
+
+The reset email's link opens `/reset-password`, whose secret is kept the
+same way as `/verify-email`'s. Like `/register/complete`, the visitor types
+the email the link was sent to, marked `autocomplete="username"`, and a new
+password of 15 to 128 characters, entered twice; another email is refused
+on the email field, followed by "Ask for a new link" to `/forgot-password`.
+Success creates no session: the page opens sign-in in its place with the
+email filled in and "The password for <email> is changed. Sign in with your
+new password." A reset signs the account out everywhere, so success, or a
+result that may have been one, clears this browser's account caches, even
+if the page has closed. A spent or expired link ends the page with "Ask for
+a new link" and "Sign in"; after a lost result, sign-in comes first, as on
+`/register/complete`.
 
 Security also lists the account's signed-in browsers, newest sign-in first.
 Each row shows the browser and operating system, or "Unknown browser", the
@@ -524,6 +558,9 @@ its error once the user leaves it or clicks submit, then updates live.
 If Go still rejects a value, e.g. after a rule changed in Go before
 `pnpm generate`, `formErrors` from `src/api/problem.ts` attaches the server's
 safe messages only to fields that the form renders. Editing a field clears its
-server error. Rejected inputs outside those fields stay visible in the request
-summary. Request failures without input errors do not enter form validation
+server error. TanStack Form also drops it when a check on leaving the field
+passes, so a form whose server errors say what to type, such as the email a
+link was sent to, leaves fields through `blurKeepingSubmitErrors`
+(`src/lib/blur-keeping-submit-errors.ts`), which puts them back. Rejected
+inputs outside those fields stay visible in the request summary. Request failures without input errors do not enter form validation
 state, so valid input can be submitted again without an edit.

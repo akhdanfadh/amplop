@@ -9,7 +9,7 @@ import { clearAccountCache } from "@/features/auth/session-cache";
 
 const focusClass =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
-const registeredId = "registered";
+const noticeId = "sign-in-notice";
 const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 export const Route = createFileRoute("/sign-in")({
@@ -23,12 +23,21 @@ function SignIn(): ReactElement {
   const { completedHere } = useSetup();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [step, setStep] = useState<"password" | "code">("password");
-  // Set by /register/complete, which creates no session.
+  // Set by /register/complete and /reset-password, which create no session.
   const registeredEmail = useLocation({ select: (location) => location.state.registeredEmail });
+  const resetEmail = useLocation({ select: (location) => location.state.passwordResetEmail });
   // A failed read hides the link: sign-in matters more than registering.
   const registration = useGetRegistration();
   const canRegister = step === "password" && registration.data?.data.open;
-  const registered = step === "password" && Boolean(registeredEmail);
+  // Naming the email confirms which account the page before changed.
+  const notice =
+    step !== "password"
+      ? undefined
+      : registeredEmail
+        ? `The account for ${registeredEmail} is created. Sign in with your new password.`
+        : resetEmail
+          ? `The password for ${resetEmail} is changed. Sign in with your new password.`
+          : undefined;
   useEffect(() => {
     headingRef.current?.focus();
   }, [step]);
@@ -45,7 +54,7 @@ function SignIn(): ReactElement {
         ref={headingRef}
         tabIndex={-1}
         className="text-3xl font-bold tracking-tight"
-        aria-describedby={registered ? registeredId : undefined}
+        aria-describedby={notice ? noticeId : undefined}
       >
         {step === "code" ? "Verify your sign-in" : "Sign in to inbok"}
       </h1>
@@ -63,13 +72,7 @@ function SignIn(): ReactElement {
           </section>
         )}
       </div>
-      {registered && (
-        // Naming the email shows a visitor whose link was meant for another
-        // address which account they just created.
-        <p id={registeredId}>
-          The account for {registeredEmail} is created. Sign in with your new password.
-        </p>
-      )}
+      {notice && <p id={noticeId}>{notice}</p>}
       {step === "code" ? (
         <>
           <p>Enter the current code from your authenticator app, or an unused backup code.</p>
@@ -77,15 +80,22 @@ function SignIn(): ReactElement {
         </>
       ) : (
         <SignInForm
-          email={registeredEmail}
+          email={registeredEmail ?? resetEmail}
           onDone={finishSignIn}
           onCodeRequired={() => setStep("code")}
         />
       )}
-      {canRegister && (
-        <Link to="/register" className={linkClass}>
-          Create an account
-        </Link>
+      {step === "password" && (
+        <div className="flex flex-col">
+          <Link to="/forgot-password" className={linkClass}>
+            Forgot password?
+          </Link>
+          {canRegister && (
+            <Link to="/register" className={linkClass}>
+              Create an account
+            </Link>
+          )}
+        </div>
       )}
     </main>
   );

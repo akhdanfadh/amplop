@@ -14,6 +14,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/clientprefix"
 )
 
 // testClock is a clock tests move by hand.
@@ -33,7 +35,7 @@ var (
 
 // keyFor returns the key of client's bucket for operation.
 func keyFor(operation string, client netip.Addr) rateLimitKey {
-	return rateLimitKey{operation: operation, client: clientPrefix(client)}
+	return rateLimitKey{operation: operation, client: clientprefix.Of(client)}
 }
 
 func TestRateLimiterBudget(t *testing.T) {
@@ -56,18 +58,6 @@ func TestRateLimiterBudget(t *testing.T) {
 	clock.now = clock.now.Add(500 * time.Millisecond)
 	assert.Zero(t, limiter.take(key))
 	assert.Equal(t, time.Second, limiter.take(key))
-}
-
-// An IPv4 address counts alone, however it is written; an IPv6 address counts
-// with the rest of its /64.
-func TestClientPrefix(t *testing.T) {
-	prefix := func(addr string) netip.Prefix { return clientPrefix(netip.MustParseAddr(addr)) }
-
-	assert.Equal(t, prefix("192.0.2.1"), prefix("::ffff:192.0.2.1"))
-	assert.NotEqual(t, prefix("192.0.2.1"), prefix("192.0.2.2"))
-	assert.Equal(t, prefix("2001:db8:1:2::1"), prefix("2001:db8:1:2:ffff::9"))
-	assert.Equal(t, prefix("2001:db8:1:2::1"), prefix("2001:db8:1:2::1%eth0"))
-	assert.NotEqual(t, prefix("2001:db8:1:2::1"), prefix("2001:db8:1:3::1"))
 }
 
 // A sweep keeps only buckets that are not full, and runs once per interval.
@@ -147,7 +137,7 @@ func TestRateLimitedOperations(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{
 		"createProbeEvent", "createFirstAdmin", "createSession", "createSessionWithCode", "redeemEmailVerification",
-		"requestRegistrationLink", "redeemRegistrationLink",
+		"requestRegistrationLink", "redeemRegistrationLink", "requestPasswordResetLink", "redeemPasswordResetLink",
 	}, limited)
 
 	// Sign-in keeps its own throttle example.

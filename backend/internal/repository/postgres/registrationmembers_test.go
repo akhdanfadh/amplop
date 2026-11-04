@@ -29,7 +29,7 @@ func register(t *testing.T, f deactivatedAccounts, email string) account.User {
 
 	secret, _ := saveRegistrationLink(t, f.conn, email)
 	completion := registration.NewCompletion(f.db, func() time.Time { return requestNow })
-	user, err := completion.Complete(t.Context(), secret, deactivatedPassword)
+	user, err := completion.Complete(t.Context(), secret, email, deactivatedPassword)
 	require.NoError(t, err)
 	return user
 }
@@ -180,7 +180,8 @@ func TestRegistrationDeactivationRace(t *testing.T) {
 	for round := range rounds {
 		_, err := f.members.Reactivate(t.Context(), f.admin, f.member)
 		require.NoError(t, err)
-		secret, _ := saveRegistrationLink(t, f.conn, "visitor"+strconv.Itoa(round)+"@example.org")
+		email := "visitor" + strconv.Itoa(round) + "@example.org"
+		secret, _ := saveRegistrationLink(t, f.conn, email)
 		var delay time.Duration
 		if round%2 == 1 {
 			delay = rand.N(window)
@@ -188,7 +189,7 @@ func TestRegistrationDeactivationRace(t *testing.T) {
 		var wg sync.WaitGroup
 		var completeErr, deactivateErr error
 		wg.Go(func() {
-			_, completeErr = completion.Complete(t.Context(), secret, deactivatedPassword)
+			_, completeErr = completion.Complete(t.Context(), secret, email, deactivatedPassword)
 		})
 		wg.Go(func() {
 			time.Sleep(delay)

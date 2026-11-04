@@ -44,7 +44,8 @@ type MemberStorage interface {
 
 	// UpdateMember locks the member's account, reads it, and calls update.
 	// For MemberDeactivate it saves the time and deletes the member's
-	// sessions, sign-in challenges, and email verification links; for
+	// sessions, sign-in challenges, email verification links, and password
+	// reset links; for
 	// MemberReactivate it clears the time. Either change records an audit
 	// event with actorID as actor and the member as target, all in one
 	// transaction. It returns the member as saved. A missing member returns

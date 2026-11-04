@@ -2,10 +2,13 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/gin-gonic/gin"
+
+	"inbok/internal/account"
 )
 
 const (
@@ -82,6 +85,26 @@ func invalidEmailProblem(location string) *problem {
 	// Huma's own format "email" failure reads the same, so the response does
 	// not depend on which check rejected the address.
 	invalid.Errors = []inputError{{Location: location, Message: "Enter a valid value."}}
+	return invalid
+}
+
+// invalidPasswordProblem returns the 422 for a password
+// [account.CheckPassword] rejects at location, e.g. "body.password".
+func invalidPasswordProblem(location string) *problem {
+	invalid := requestProblem(http.StatusUnprocessableEntity)
+	// Huma's own length failure reads the same, so the response does not
+	// depend on which check rejected the password.
+	message := fmt.Sprintf("Use %d to %d characters.", account.PasswordMinLength, account.PasswordMaxLength)
+	invalid.Errors = []inputError{{Location: location, Message: message}}
+	return invalid
+}
+
+// linkEmailMismatchProblem returns the 422 for an emailed link given with
+// another email than the one it was sent to, on body.email.
+func linkEmailMismatchProblem() *problem {
+	invalid := requestProblem(http.StatusUnprocessableEntity)
+	// It names no address: the person typing may not own the link.
+	invalid.Errors = []inputError{{Location: "body.email", Message: "Enter the email address this link was sent to."}}
 	return invalid
 }
 
