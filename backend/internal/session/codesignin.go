@@ -100,7 +100,7 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 
 	var issued Issued
 	outcome := ErrInvalidChallenge
-	checked := false
+	verified := false
 	err = s.storage.CompleteSignIn(ctx, userID, hash, func(state CodeSignInState) (CodeSignInChange, error) {
 		if state.Challenge.UserID != userID || state.Challenge.TokenHash != hash {
 			return CodeSignInChange{}, ErrInvalidChallenge
@@ -124,11 +124,11 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 			}
 		}
 
-		checked = true
-		factor, backupID, err := s.checkCode(ctx, state, secret, code)
+		verified = true
+		factor, backupID, err := s.verifyCode(ctx, state, secret, code)
 		// A request that ended while waiting to compare made no guess.
-		if errors.Is(err, totp.ErrNotChecked) {
-			checked = false
+		if errors.Is(err, totp.ErrNotVerified) {
+			verified = false
 		}
 		if errors.Is(err, totp.ErrInvalidCode) {
 			failures := state.Challenge.Failures + 1
@@ -150,9 +150,9 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 			BackupCodeID: backupID, AttemptID: attemptID,
 		}, nil
 	})
-	// A request refused before any code check, e.g. with an expired
+	// A request refused before verifying any code, e.g. with an expired
 	// challenge, made no guess, so it releases its attempt.
-	if (err != nil || outcome != nil) && !checked {
+	if (err != nil || outcome != nil) && !verified {
 		s.throttle.Release(ctx, attemptID)
 	}
 	if errors.Is(err, ErrNotFound) {
@@ -167,12 +167,12 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 	return issued, nil
 }
 
-// checkCode checks code against the factor's decrypted secret when it is six
+// verifyCode verifies code against the factor's decrypted secret when it is six
 // digits, or else against the unused backup codes. It returns the factor with
 // the accepted step, or the matched backup code's ID.
-func (s *CodeSignIn) checkCode(ctx context.Context, state CodeSignInState, secret []byte, code string) (*totp.Factor, int64, error) {
+func (s *CodeSignIn) verifyCode(ctx context.Context, state CodeSignInState, secret []byte, code string) (*totp.Factor, int64, error) {
 	if isTOTPCode(code) {
-		step, err := s.verifier.Check(string(secret), code, state.Factor.LastStep)
+		step, err := s.verifier.Verify(string(secret), code, state.Factor.LastStep)
 		if err != nil {
 			return nil, 0, err
 		}

@@ -53,7 +53,7 @@ func TestRegeneratePersistence(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 10)
 	for i, row := range rows {
-		require.NoError(t, totp.CheckBackupCode(t.Context(), codes[i], row.CodeHash))
+		require.NoError(t, totp.VerifyBackupCode(t.Context(), codes[i], row.CodeHash))
 		for _, previous := range old {
 			assert.NotEqual(t, previous.ID, row.ID)
 		}
@@ -155,7 +155,7 @@ func TestRegenerateParallel(t *testing.T) {
 	require.Len(t, rows, 10)
 	require.Len(t, winner, 10)
 	for i, row := range rows {
-		require.NoError(t, totp.CheckBackupCode(t.Context(), winner[i], row.CodeHash))
+		require.NoError(t, totp.VerifyBackupCode(t.Context(), winner[i], row.CodeHash))
 	}
 }
 
@@ -183,5 +183,5 @@ func TestRegenerateHTTP(t *testing.T) {
 	rows, err := sqlc.New(f.conn).ReadTOTPBackupCodes(t.Context(), f.state.UserID)
 	require.NoError(t, err)
 	require.Len(t, rows, 10)
-	require.NoError(t, totp.CheckBackupCode(t.Context(), body.Data.BackupCodes[0], rows[0].CodeHash))
+	require.NoError(t, totp.VerifyBackupCode(t.Context(), body.Data.BackupCodes[0], rows[0].CodeHash))
 }

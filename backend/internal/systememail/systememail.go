@@ -131,7 +131,7 @@ func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Setting
 		return Settings{}, err
 	}
 	input.FromAddress = from
-	if err := checkInput(input); err != nil {
+	if err := validateInput(input); err != nil {
 		return Settings{}, err
 	}
 
@@ -181,8 +181,8 @@ func passwordOwner(server Server) string {
 	return "system-email:" + strconv.Quote(server.Host) + ":" + strconv.Itoa(server.Port) + ":" + strconv.Quote(server.Username)
 }
 
-// checkInput applies the rules that need no saved state.
-func checkInput(input Input) error {
+// validateInput applies the rules that need no saved state.
+func validateInput(input Input) error {
 	if input.Port < 1 || input.Port > 65535 {
 		return errPort
 	}

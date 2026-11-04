@@ -81,13 +81,13 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 	// Hash all ten codes before storage takes a write lock.
 	backups, err := totp.NewBackupCodes(ctx)
 	if err != nil {
-		// No code was checked.
+		// No code was verified.
 		e.throttle.Release(ctx, attemptID)
 		return Confirmed{}, err
 	}
 	issued := newSession(userID, device, e.now)
 
-	checked := false
+	verified := false
 	err = e.storage.ConfirmTOTP(ctx, userID, current.Session.hash, func(state EnrollmentState) (EnrollmentChange, error) {
 		// Current's earlier session check can become stale; recheck under the lock.
 		if state.Session.UserID != userID || state.Session.TokenHash != current.Session.hash {
@@ -104,14 +104,14 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 			return EnrollmentChange{}, totp.ErrAlreadyOn
 		}
 
-		// Bind decryption to this owner before checking the code and replay history.
+		// Bind decryption to this owner before verifying the code and replay history.
 		secret, err := e.encryption.Open(state.Factor.KeyID, state.Factor.Ciphertext, "totp:"+strconv.FormatInt(userID, 10))
 		if err != nil {
 			return EnrollmentChange{}, err
 		}
 
-		checked = true
-		step, err := e.verifier.Check(string(secret), code, state.Factor.LastStep)
+		verified = true
+		step, err := e.verifier.Verify(string(secret), code, state.Factor.LastStep)
 		if err != nil {
 			return EnrollmentChange{}, err
 		}
@@ -129,9 +129,9 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 		}, nil
 	})
 
-	// A request refused before any code check, e.g. with nothing pending or
+	// A request refused before verifying any code, e.g. with nothing pending or
 	// a stale session, made no guess, so it releases its attempt.
-	if err != nil && !checked {
+	if err != nil && !verified {
 		e.throttle.Release(ctx, attemptID)
 	}
 	if errors.Is(err, ErrNotFound) {

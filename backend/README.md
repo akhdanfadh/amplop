@@ -1230,8 +1230,8 @@ hourly [cleanup](#scheduled-cleanup) deletes expired links.
 
 `POST /api/v0/registration/links/redeem` takes `{"secret", "email",
 "password"}` and needs no session. The password follows setup's rule, 15 to
-128 characters, checked by `account.CheckPassword`. The email is the one the
-visitor types; it must be the link's, after `emailaddress.Parse`. Otherwise
+128 characters, validated by `account.ValidatePassword`. The email is the one
+the visitor types; it must be the link's, after `emailaddress.Parse`. Otherwise
 someone could ask for a link to an address they control, send it to a
 visitor, and have the visitor create that account, which its owner can
 later take back with a password reset.
@@ -1357,7 +1357,7 @@ There is no attempt limit: a 256-bit secret cannot be guessed.
 
 The operation calls `passwordreset.Completion.Complete` with the link's
 secret, the email typed, and the new password, which follows setup's rule,
-15 to 128 characters (`account.CheckPassword`).
+15 to 128 characters (`account.ValidatePassword`).
 
 1. It reads the link and its user without a lock. A missing or expired
    link, a deactivated user, a user whose email is no longer the link's,
@@ -1603,7 +1603,7 @@ httpapi --> passwordreset <-- repository/postgres
 - A feature can use another feature through an interface it declares:
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`
   fills with `systememail`'s `Mailer`. A feature may import another's plain
-  rules directly: `registration` uses `account.CheckPassword` and
+  rules directly: `registration` uses `account.ValidatePassword` and
   `account.User`.
 - `webapp` embeds the built web app and serves it as a static site:
   files, the shell for browser routes, caching, and the CSP. It knows the

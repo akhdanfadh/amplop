@@ -56,12 +56,12 @@ func (s *Backups) Regenerate(ctx context.Context, userID int64, code string) ([]
 	// Prepare slow salted hashes before taking the owner's write lock.
 	set, err := NewBackupCodes(ctx)
 	if err != nil {
-		// No code was checked.
+		// No code was verified.
 		s.throttle.Release(ctx, attemptID)
 		return nil, err
 	}
 
-	checked := false
+	verified := false
 	err = s.storage.ReplaceTOTPBackupCodes(ctx, userID, func(current *Factor) (BackupChange, error) {
 		if current == nil || current.ConfirmedAt == nil {
 			return BackupChange{}, ErrNotOn
@@ -71,8 +71,8 @@ func (s *Backups) Regenerate(ctx context.Context, userID int64, code string) ([]
 		if err != nil {
 			return BackupChange{}, err
 		}
-		checked = true
-		step, err := s.verifier.Check(string(secret), code, current.LastStep)
+		verified = true
+		step, err := s.verifier.Verify(string(secret), code, current.LastStep)
 		if err != nil {
 			return BackupChange{}, err
 		}
@@ -83,9 +83,9 @@ func (s *Backups) Regenerate(ctx context.Context, userID int64, code string) ([]
 		return BackupChange{Factor: factor, Hashes: set.Hashes, AttemptID: attemptID}, nil
 	})
 	if err != nil {
-		// A request refused before any code check, e.g. with TOTP off, made
+		// A request refused before verifying any code, e.g. with TOTP off, made
 		// no guess, so it releases its attempt.
-		if !checked {
+		if !verified {
 			s.throttle.Release(ctx, attemptID)
 		}
 		return nil, err

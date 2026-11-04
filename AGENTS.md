@@ -47,6 +47,11 @@ the area you change before editing it:
   operation registration `register<Operation>`, handlers `handle<Operation>`.
   One noun per concept across file, function, and test: `requestlog.go`,
   `withRequestLog`, `TestRequestLog`.
+- One verb per kind of test: `Validate` holds input to a rule and returns
+  an error; `Parse` does that and returns the normalized or typed value;
+  `Verify` compares a secret with its stored form; `check` asks whether
+  saved state is still usable at a time. `Match` finds which of several
+  stored forms a secret matches.
 - `backend/tools.mod` changes only through
   `go get -modfile=tools.mod -tool`; `go mod tidy` there copies the
   app's dependencies in. Goose's version stays equal in `go.mod` and

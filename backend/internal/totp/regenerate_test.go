@@ -79,7 +79,7 @@ func TestRegenerateBackupCodes(t *testing.T) {
 	require.Len(t, codes, 10)
 	require.Len(t, store.change.Hashes, 10)
 	for i, code := range codes {
-		require.NoError(t, CheckBackupCode(t.Context(), code, store.change.Hashes[i]))
+		require.NoError(t, VerifyBackupCode(t.Context(), code, store.change.Hashes[i]))
 	}
 	assert.Equal(t, int64(42), store.userID)
 	assert.Equal(t, "totp:42", opener.owner)

@@ -109,11 +109,11 @@ preserve their bytes; backup codes are normalized by `totp` before hashing.
 
 `NewBackupCodes` keeps display codes separate from storage hashes. Generate
 these hashes before taking a database write lock. Return display codes only
-after the operation saving their hashes commits. `CheckBackupCode` performs
+after the operation saving their hashes commits. `VerifyBackupCode` performs
 comparison only. Confirmation and regeneration store the hashes; code sign-in
 consumes matched rows atomically.
 
-Salted hashes require checking the user's remaining hashes, up to ten, rather
+Salted hashes require verifying the user's remaining hashes, up to ten, rather
 than looking up a fast hash. A fast lookup digest would also let an attacker
 test guesses cheaply. Call the shared limiter before verification, and delete
 the matched row atomically with the action. Backup-code hashes do not depend

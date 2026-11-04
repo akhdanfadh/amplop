@@ -45,7 +45,7 @@ func (s *Disabler) Disable(ctx context.Context, userID int64, code string) error
 		return err
 	}
 
-	checked := false
+	verified := false
 	err = s.storage.DisableTOTP(ctx, userID, attemptID, func(state DisableState) error {
 		// A stale role from HTTP must not race a promotion into disabling admin TOTP.
 		if state.Role != account.RoleMember {
@@ -61,23 +61,23 @@ func (s *Disabler) Disable(ctx context.Context, userID int64, code string) error
 				return err
 			}
 
-			checked = true
-			_, err = s.verifier.Check(string(secret), code, state.Factor.LastStep)
+			verified = true
+			_, err = s.verifier.Verify(string(secret), code, state.Factor.LastStep)
 			return err
 		}
 
-		checked = true
+		verified = true
 		// Factor deletion consumes all remaining codes, including this matched proof.
 		_, err := MatchBackupCode(ctx, code, state.BackupHashes)
 		// A request that ended while waiting to compare made no guess.
-		if errors.Is(err, ErrNotChecked) {
-			checked = false
+		if errors.Is(err, ErrNotVerified) {
+			verified = false
 		}
 		return err
 	})
-	// A request refused before any code check, e.g. for an administrator or
+	// A request refused before verifying any code, e.g. for an administrator or
 	// with TOTP off, made no guess, so it releases its attempt.
-	if err != nil && !checked {
+	if err != nil && !verified {
 		s.throttle.Release(ctx, attemptID)
 	}
 	return err

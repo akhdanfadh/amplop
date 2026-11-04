@@ -89,7 +89,7 @@ func NewCompletion(storage completeStorage, mailer mailer, publicURL *url.URL, b
 func (c *Completion) Complete(ctx context.Context, secret, email, password string) (account.User, error) {
 	// 1. Refuse what needs no storage: a bad password, an invalid email, or
 	// a malformed secret.
-	if err := account.CheckPassword(password); err != nil {
+	if err := account.ValidatePassword(password); err != nil {
 		return account.User{}, err
 	}
 	email, err := emailaddress.Parse(email)

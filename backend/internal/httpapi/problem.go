@@ -89,7 +89,7 @@ func invalidEmailProblem(location string) *problem {
 }
 
 // invalidPasswordProblem returns the 422 for a password
-// [account.CheckPassword] rejects at location, e.g. "body.password".
+// [account.ValidatePassword] rejects at location, e.g. "body.password".
 func invalidPasswordProblem(location string) *problem {
 	invalid := requestProblem(http.StatusUnprocessableEntity)
 	// Huma's own length failure reads the same, so the response does not

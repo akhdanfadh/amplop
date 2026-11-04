@@ -111,7 +111,7 @@ func helloName(host string) string {
 // when the caller gives up, and a plain error for unsafe input.
 func (s *Sender) Send(ctx context.Context, server systememail.Server, password string, message systememail.Message) error {
 	// Unsafe input is the caller's fault, not the server's, so it is no SendError.
-	if err := checkSafe(server, password, message); err != nil {
+	if err := validateSend(server, password, message); err != nil {
 		return err
 	}
 	body, err := compose(message, time.Now())
@@ -325,9 +325,9 @@ func compose(message systememail.Message, now time.Time) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// checkSafe returns errUnsafeInput for input that would change the SMTP
+// validateSend returns errUnsafeInput for input that would change the SMTP
 // session or cannot be dialed, and nil otherwise.
-func checkSafe(server systememail.Server, password string, message systememail.Message) error {
+func validateSend(server systememail.Server, password string, message systememail.Message) error {
 	// SMTP commands end at CRLF (RFC 5321), and go-smtp writes MAIL FROM:<%s>
 	// unescaped: a line break would start a command, an angle bracket would
 	// add parameters, and NUL is not allowed at all.

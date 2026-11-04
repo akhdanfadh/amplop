@@ -118,7 +118,7 @@ func TestConfirmEnrollment(t *testing.T) {
 	require.Len(t, result.BackupCodes, 10)
 	require.Len(t, store.change.BackupHashes, 10)
 	for i, code := range result.BackupCodes {
-		require.NoError(t, totp.CheckBackupCode(t.Context(), code, store.change.BackupHashes[i]))
+		require.NoError(t, totp.VerifyBackupCode(t.Context(), code, store.change.BackupHashes[i]))
 	}
 }
 

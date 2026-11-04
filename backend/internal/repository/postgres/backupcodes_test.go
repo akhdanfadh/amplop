@@ -40,7 +40,7 @@ func TestBackupCodeStorage(t *testing.T) {
 	for i, row := range rows {
 		require.Positive(t, row.ID)
 		assert.Equal(t, set.Hashes[i], row.CodeHash)
-		require.NoError(t, totp.CheckBackupCode(t.Context(), set.Codes[i], row.CodeHash))
+		require.NoError(t, totp.VerifyBackupCode(t.Context(), set.Codes[i], row.CodeHash))
 	}
 	other, err := queries.ReadTOTPBackupCodes(t.Context(), bob)
 	require.NoError(t, err)

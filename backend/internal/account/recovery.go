@@ -52,7 +52,7 @@ func (s *Recovery) Recover(ctx context.Context, email, password string) (Recover
 		return RecoveryResult{}, err
 	}
 
-	if err := CheckPassword(password); err != nil {
+	if err := ValidatePassword(password); err != nil {
 		return RecoveryResult{}, err
 	}
 

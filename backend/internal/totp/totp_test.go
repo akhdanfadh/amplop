@@ -18,7 +18,7 @@ type fakeClock struct{ now time.Time }
 func (c *fakeClock) Now() time.Time          { return c.now }
 func (c *fakeClock) Advance(d time.Duration) { c.now = c.now.Add(d) }
 
-func TestCheckVectors(t *testing.T) {
+func TestVerifyVectors(t *testing.T) {
 	// RFC 6238 Appendix B: the last six digits of each SHA-1 result.
 	cases := []struct {
 		at   int64
@@ -37,7 +37,7 @@ func TestCheckVectors(t *testing.T) {
 			clock := &fakeClock{now: time.Unix(c.at, 0)}
 			verifier := NewVerifier(clock.Now)
 
-			step, err := verifier.Check(vectorSecret, c.code, -1)
+			step, err := verifier.Verify(vectorSecret, c.code, -1)
 
 			require.NoError(t, err)
 			assert.Equal(t, c.step, step)
@@ -45,7 +45,7 @@ func TestCheckVectors(t *testing.T) {
 	}
 }
 
-func TestCheckWindow(t *testing.T) {
+func TestVerifyWindow(t *testing.T) {
 	// RFC 4226 counters 1 through 5. At Unix second 90 the current step is 3.
 	cases := []struct {
 		name, code string
@@ -61,7 +61,7 @@ func TestCheckWindow(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			clock := &fakeClock{now: time.Unix(90, 0)}
-			step, err := NewVerifier(clock.Now).Check(vectorSecret, c.code, -1)
+			step, err := NewVerifier(clock.Now).Verify(vectorSecret, c.code, -1)
 			if !c.valid {
 				require.ErrorIs(t, err, ErrInvalidCode)
 				assert.Zero(t, step)
@@ -73,55 +73,55 @@ func TestCheckWindow(t *testing.T) {
 	}
 }
 
-func TestCheckReplay(t *testing.T) {
+func TestVerifyReplay(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(90, 0)}
 	verifier := NewVerifier(clock.Now)
-	accepted, err := verifier.Check(vectorSecret, "969429", -1)
+	accepted, err := verifier.Verify(vectorSecret, "969429", -1)
 	require.NoError(t, err)
 
 	// A repeated or older step cannot pass after storage records acceptance.
 	for _, code := range []string{"969429", "359152"} {
-		_, err := verifier.Check(vectorSecret, code, accepted)
+		_, err := verifier.Verify(vectorSecret, code, accepted)
 		require.ErrorIs(t, err, ErrInvalidCode)
 	}
-	newer, err := verifier.Check(vectorSecret, "338314", accepted)
+	newer, err := verifier.Verify(vectorSecret, "338314", accepted)
 	require.NoError(t, err)
 	assert.Equal(t, int64(4), newer)
 
 	// Accepting a clock-ahead code consumes it even when server time catches up.
 	clock.Advance(30 * time.Second)
-	_, err = verifier.Check(vectorSecret, "338314", newer)
+	_, err = verifier.Verify(vectorSecret, "338314", newer)
 	require.ErrorIs(t, err, ErrInvalidCode)
 }
 
-func TestCheckBoundary(t *testing.T) {
+func TestVerifyBoundary(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(90, 0).Add(-time.Nanosecond)}
 	verifier := NewVerifier(clock.Now)
-	_, err := verifier.Check(vectorSecret, "338314", -1)
+	_, err := verifier.Verify(vectorSecret, "338314", -1)
 	require.ErrorIs(t, err, ErrInvalidCode)
 
 	clock.Advance(time.Nanosecond)
-	step, err := verifier.Check(vectorSecret, "338314", -1)
+	step, err := verifier.Verify(vectorSecret, "338314", -1)
 	require.NoError(t, err)
 	assert.Equal(t, int64(4), step)
 }
 
-func TestCheckInvalidCode(t *testing.T) {
+func TestVerifyInvalidCode(t *testing.T) {
 	for _, code := range []string{"", "12345", "1234567", " 969429", "969429 ", "96942x", "96942\n", "\u0669\u0666\u0669\u0664\u0662\u0669"} {
 		t.Run(code, func(t *testing.T) {
 			clock := &fakeClock{now: time.Unix(90, 0)}
-			step, err := NewVerifier(clock.Now).Check(vectorSecret, code, -1)
+			step, err := NewVerifier(clock.Now).Verify(vectorSecret, code, -1)
 			require.ErrorIs(t, err, ErrInvalidCode)
 			assert.Zero(t, step)
 		})
 	}
 }
 
-func TestCheckInvalidSecret(t *testing.T) {
+func TestVerifyInvalidSecret(t *testing.T) {
 	for _, secret := range []string{"", "private-invalid-secret", "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"} {
 		t.Run(secret, func(t *testing.T) {
 			clock := &fakeClock{now: time.Unix(90, 0)}
-			step, err := NewVerifier(clock.Now).Check(secret, "969429", -1)
+			step, err := NewVerifier(clock.Now).Verify(secret, "969429", -1)
 			require.ErrorIs(t, err, errSecret)
 			assert.Zero(t, step)
 			if secret != "" {
@@ -131,15 +131,15 @@ func TestCheckInvalidSecret(t *testing.T) {
 	}
 }
 
-func TestCheckEpoch(t *testing.T) {
+func TestVerifyEpoch(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(0, 0)}
 	verifier := NewVerifier(clock.Now)
-	step, err := verifier.Check(vectorSecret, "755224", -1)
+	step, err := verifier.Verify(vectorSecret, "755224", -1)
 	require.NoError(t, err)
 	assert.Zero(t, step)
 
 	clock.Advance(-time.Nanosecond)
-	_, err = verifier.Check(vectorSecret, "755224", -1)
+	_, err = verifier.Verify(vectorSecret, "755224", -1)
 	require.ErrorIs(t, err, errClock)
 }
 
