@@ -272,7 +272,7 @@ func TestConfirmTOTPFailures(t *testing.T) {
 			}
 			assert.NotContains(t, response.Body.String(), "private commit failure")
 			if c.err == totp.ErrInvalidCode {
-				assert.Contains(t, response.Body.String(), `"location":"body.code"`)
+				assertCodeFieldHoldsDetail(t, response.Body.Bytes())
 			}
 		})
 	}
@@ -426,7 +426,7 @@ func TestRegenerateProblems(t *testing.T) {
 				assert.NotContains(t, response.Body.String(), secret)
 			}
 			if c.err == totp.ErrInvalidCode {
-				assert.Contains(t, response.Body.String(), `"location":"body.code"`)
+				assertCodeFieldHoldsDetail(t, response.Body.Bytes())
 			}
 		})
 	}
@@ -571,7 +571,7 @@ func TestDisableTOTPProblems(t *testing.T) {
 			assert.NotContains(t, response.Body.String(), "012345")
 			assert.NotContains(t, response.Body.String(), `"status":"off"`)
 			if c.err == totp.ErrInvalidCode {
-				assert.Contains(t, response.Body.String(), `"location":"body.code"`)
+				assertCodeFieldHoldsDetail(t, response.Body.Bytes())
 			}
 		})
 	}
@@ -718,4 +718,19 @@ func TestCancelTOTPOpenAPI(t *testing.T) {
 		require.NotNil(t, op.Responses[strconv.Itoa(status)])
 	}
 	assert.Nil(t, op.Responses["200"].Headers["Set-Cookie"])
+}
+
+// assertCodeFieldHoldsDetail asserts that body's one input error is on
+// body.code and reads as the problem's detail, so a form that shows only the
+// field loses nothing.
+func assertCodeFieldHoldsDetail(t *testing.T, body []byte) {
+	t.Helper()
+	problem := decodeJSON(t, body)
+	errs, ok := problem["errors"].([]any)
+	require.True(t, ok, "no input errors")
+	require.Len(t, errs, 1)
+	input, ok := errs[0].(map[string]any)
+	require.True(t, ok, "input error is not an object")
+	assert.Equal(t, "body.code", input["location"])
+	assert.Equal(t, problem["detail"], input["message"])
 }

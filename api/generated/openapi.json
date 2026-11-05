@@ -3991,11 +3991,11 @@
                       "type": "/api/v0/problems/invalid-totp-code",
                       "status": 422,
                       "title": "Invalid authenticator code",
-                      "detail": "Enter a current code from your confirmed authenticator.",
+                      "detail": "Enter a current code from your authenticator app.",
                       "errors": [
                         {
                           "location": "body.code",
-                          "message": "Enter a current authenticator code."
+                          "message": "Enter a current code from your authenticator app."
                         }
                       ]
                     }
@@ -4146,11 +4146,11 @@
                       "type": "/api/v0/problems/invalid-totp-code",
                       "status": 422,
                       "title": "Invalid authenticator code",
-                      "detail": "Enter a current code from the pending authenticator.",
+                      "detail": "Enter the current code from the authenticator entry you just added.",
                       "errors": [
                         {
                           "location": "body.code",
-                          "message": "Enter a current authenticator code."
+                          "message": "Enter the current code from the authenticator entry you just added."
                         }
                       ]
                     }

@@ -19,6 +19,12 @@ const (
 	totpPath            = "/totp"
 	invalidTOTPCodeType = problemPrefix + "invalid-totp-code"
 	totpNotOnType       = problemPrefix + "totp-not-on"
+
+	// A refused code's detail is also its field's message, so a form that
+	// shows only the field loses nothing. Enrollment names the new entry:
+	// an app may still hold one from an earlier setup, whose codes fail.
+	pendingTOTPCodeMessage   = "Enter the current code from the authenticator entry you just added."
+	confirmedTOTPCodeMessage = "Enter a current code from your authenticator app."
 )
 
 type totpService interface {
@@ -270,8 +276,8 @@ func totpConfirmationProblem(err error) error {
 	case errors.Is(err, totp.ErrNotPending):
 		return newProblem(http.StatusConflict, totpNotPendingType, "Enrollment not started", "Start authenticator enrollment before confirming a code.")
 	case errors.Is(err, totp.ErrInvalidCode):
-		return newProblem(http.StatusUnprocessableEntity, invalidTOTPCodeType, "Invalid authenticator code", "Enter a current code from the pending authenticator.",
-			inputError{Location: "body.code", Message: "Enter a current authenticator code."})
+		return newProblem(http.StatusUnprocessableEntity, invalidTOTPCodeType, "Invalid authenticator code", pendingTOTPCodeMessage,
+			inputError{Location: "body.code", Message: pendingTOTPCodeMessage})
 	case errors.Is(err, totp.ErrThrottled):
 		return totpThrottleProblem(err)
 	default:
@@ -351,8 +357,8 @@ func backupRegenerationProblem(err error) error {
 	case errors.Is(err, totp.ErrInvalidCode):
 		return newProblem(
 			http.StatusUnprocessableEntity, invalidTOTPCodeType,
-			"Invalid authenticator code", "Enter a current code from your confirmed authenticator.",
-			inputError{Location: "body.code", Message: "Enter a current authenticator code."},
+			"Invalid authenticator code", confirmedTOTPCodeMessage,
+			inputError{Location: "body.code", Message: confirmedTOTPCodeMessage},
 		)
 
 	default:
