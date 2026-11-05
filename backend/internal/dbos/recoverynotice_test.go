@@ -103,16 +103,6 @@ func (f *fakeNotices) calls() (int, []int64) {
 	return f.lists, slices.Clone(f.sends)
 }
 
-// quickRetries shortens the notice's retry waits for one test, keeping
-// how many retries there are.
-func quickRetries(t *testing.T) {
-	t.Helper()
-	list, send := listRetries, sendRetries
-	listRetries.base, listRetries.ceiling = time.Millisecond, time.Millisecond
-	sendRetries.base, sendRetries.ceiling = time.Millisecond, time.Millisecond
-	t.Cleanup(func() { listRetries, sendRetries = list, send })
-}
-
 // The send is retried 5 more times, waiting 1, 2, 4, 8, then 15 minutes;
 // the list 10 more times within about 5 minutes. The docs promise both.
 func TestRecoveryNoticeRetryPolicy(t *testing.T) {
@@ -172,7 +162,7 @@ func TestRecoveryNoticeSent(t *testing.T) {
 // A send that fails is retried, the same step running again, until it
 // passes.
 func TestRecoveryNoticeRetries(t *testing.T) {
-	quickRetries(t)
+	quickRetries(t, &listRetries, &sendRetries)
 	failed := sendResult{err: errors.New("connection refused")}
 	notices := &fakeNotices{
 		admins:  []int64{recoveredID},
@@ -192,7 +182,7 @@ func TestRecoveryNoticeRetries(t *testing.T) {
 // A send that keeps failing gives up after its retries; the others still
 // go out, and the run fails with its error.
 func TestRecoveryNoticeGivesUp(t *testing.T) {
-	quickRetries(t)
+	quickRetries(t, &listRetries, &sendRetries)
 	notices := &fakeNotices{
 		admins:  []int64{recoveredID, lastAdmin},
 		results: map[int64][]sendResult{recoveredID: {{err: errors.New("connection refused")}}},
@@ -263,7 +253,7 @@ func TestRecoveryNoticeNoAdministrators(t *testing.T) {
 // A list that keeps failing gives up after its retries; the run fails and
 // sends nothing.
 func TestRecoveryNoticeListGivesUp(t *testing.T) {
-	quickRetries(t)
+	quickRetries(t, &listRetries, &sendRetries)
 	notices := &fakeNotices{admins: []int64{recoveredID}, listErr: errors.New("connection refused")}
 	worker := noticeWorker(t, migrated(t), notices)
 	t.Cleanup(func() { assert.NoError(t, worker.Shutdown()) })

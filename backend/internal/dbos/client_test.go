@@ -15,10 +15,10 @@ import (
 
 var _ postgres.Workflows = (*Client)(nil)
 
-// recoveryStack returns a migrated database with an administrator,
+// clientStack returns a migrated database with an administrator,
 // admin@example.com, its storage saving workflows through a Client, and a
 // connection for checks. All close when the test ends.
-func recoveryStack(t *testing.T) (*postgres.DB, *pgx.Conn, string) {
+func clientStack(t *testing.T) (*postgres.DB, *pgx.Conn, string) {
 	t.Helper()
 
 	url := migrated(t)
@@ -52,7 +52,7 @@ func noticeWorkflows(t *testing.T, conn *pgx.Conn) []string {
 // that administrator and the time of the recovery's audit event.
 func TestClientRecoveryNotice(t *testing.T) {
 	// Given a recovery through storage that saves workflows with a Client.
-	db, conn, url := recoveryStack(t)
+	db, conn, url := clientStack(t)
 
 	// When an administrator is recovered.
 	_, err := account.NewRecovery(db).Recover(t.Context(), "admin@example.com", "a new recovery password")
@@ -80,7 +80,7 @@ func TestClientRecoveryNotice(t *testing.T) {
 // saved, so no administrator hears of a recovery that did not happen.
 func TestClientRecoveryRollback(t *testing.T) {
 	// Given a recovery that fails as it commits, after the notice is saved.
-	db, conn, _ := recoveryStack(t)
+	db, conn, _ := clientStack(t)
 	_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_recovery() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'recovery rejected'; END $$`)
 	require.NoError(t, err)
 	_, err = conn.Exec(t.Context(), "CREATE CONSTRAINT TRIGGER reject_write AFTER INSERT ON audit_events DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_recovery()")
@@ -98,7 +98,7 @@ func TestClientRecoveryRollback(t *testing.T) {
 // alone would not, so the recovery rolls back and its database closes.
 func TestClientRecoveryCancelled(t *testing.T) {
 	// Given a recovery whose enqueue waits for a lock held elsewhere.
-	db, conn, url := recoveryStack(t)
+	db, conn, url := clientStack(t)
 	observer, err := pgx.Connect(t.Context(), url)
 	require.NoError(t, err)
 	t.Cleanup(func() { observer.Close(context.Background()) })

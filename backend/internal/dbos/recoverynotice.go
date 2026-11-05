@@ -32,25 +32,6 @@ type recoveryNotices interface {
 	Send(ctx context.Context, recoveredID int64, recoveredAt time.Time, recipientID int64) (account.NoticeOutcome, error)
 }
 
-// retries is how DBOS retries a step that returns an error: up to `attempts`
-// more times, waiting first `base`, then twice as long each time, at most
-// `ceiling`. DBOS varies each wait by up to 5% either way.
-type retries struct {
-	attempts int
-	base     time.Duration
-	ceiling  time.Duration
-}
-
-// options returns r as DBOS step options.
-func (r retries) options() []dbos.StepOption {
-	return []dbos.StepOption{
-		dbos.WithStepMaxRetries(r.attempts),
-		dbos.WithStepBaseInterval(r.base),
-		dbos.WithStepBackoffFactor(2),
-		dbos.WithStepMaxInterval(r.ceiling),
-	}
-}
-
 // Retry policies of the recovery notice's steps.
 var (
 	// listRetries spans about 5 minutes, 1, 2, 4, 8, 16, 32 seconds, then 1
@@ -62,10 +43,6 @@ var (
 	// enough for a mail server's restart or a short outage.
 	sendRetries = retries{attempts: 5, base: time.Minute, ceiling: 15 * time.Minute}
 )
-
-// NOTE: DBOS counts a step's retries, and sleeps between them, in memory. A
-// worker restarted during them runs the step again with a fresh count, so
-// the limits above hold for each run of a worker, not across restarts.
 
 // recipientOutcome is how the notice to one administrator ended, as the
 // workflow's output records it.
