@@ -63,11 +63,11 @@ type Registration struct {
 }
 
 type RegistrationAttempt struct {
-	ID         int64
-	Email      string
-	ClientAddr string
-	Outcome    string
-	CreatedAt  time.Time
+	ID           int64
+	Email        string
+	ClientPrefix string
+	Outcome      string
+	CreatedAt    time.Time
 }
 
 type RegistrationLink struct {
@@ -89,10 +89,10 @@ type Session struct {
 }
 
 type SignInAttempt struct {
-	ID         int64
-	Email      *string
-	ClientAddr string
-	CreatedAt  time.Time
+	ID           int64
+	Email        *string
+	ClientPrefix string
+	CreatedAt    time.Time
 }
 
 type SignInChallenge struct {

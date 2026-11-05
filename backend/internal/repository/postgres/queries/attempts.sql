@@ -1,18 +1,18 @@
--- name: LockAttemptAddress :exec
--- LockAttemptAddress takes a transaction-scoped advisory lock for one address.
+-- name: LockAttemptClient :exec
+-- LockAttemptClient takes a transaction-scoped advisory lock for one client.
 -- It also covers the first attempt, when there is no row to lock yet.
-SELECT pg_advisory_xact_lock(hashtextextended('inbok.sign-in:' || @client_addr::text, 0));
+SELECT pg_advisory_xact_lock(hashtextextended('inbok.sign-in:' || @client_prefix::text, 0));
 
 -- name: DeleteOldSignInAttempts :exec
 DELETE FROM sign_in_attempts WHERE created_at <= @cutoff;
 
 -- name: InsertSignInAttempt :one
-INSERT INTO sign_in_attempts (email, client_addr, created_at)
-VALUES (@email, @client_addr, @created_at)
+INSERT INTO sign_in_attempts (email, client_prefix, created_at)
+VALUES (@email, @client_prefix, @created_at)
 RETURNING id;
 
 -- name: ListSignInAttempts :many
-SELECT email, client_addr, created_at FROM sign_in_attempts WHERE client_addr = @client_addr;
+SELECT email, client_prefix, created_at FROM sign_in_attempts WHERE client_prefix = @client_prefix;
 
 -- name: DeleteSignInAttempt :exec
 DELETE FROM sign_in_attempts WHERE id = @id;

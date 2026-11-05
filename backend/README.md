@@ -819,9 +819,10 @@ Session rules are constants, not environment settings:
   its SHA-256 hash. Cookie secrets, passwords, and hashes must not be logged.
 
 Throttling uses PostgreSQL across API instances. Within 15 minutes, at most
-5 failed sign-ins are allowed for one normalized email and client address,
-and 50 failures for one address across all emails. Setup attempts share the
-address limit. A pending attempt counts until a successful verification
+5 failed sign-ins are allowed for one normalized email and client, and 50
+failures for one client across all emails. A client is an IPv4 address or
+an IPv6 /64 (`clientprefix`), as in every limit. Setup attempts share the
+client limit. A pending attempt counts until a successful verification
 removes it, so parallel password checks cannot bypass the limits. A blocked
 attempt returns HTTP 429 with `Retry-After`: the seconds until one more
 attempt fits, rounded up. These limits are constants too.
@@ -1210,8 +1211,8 @@ The same answer for all three keeps the response from telling whether an
 email has an account. Other answers:
 
 - 409 `registration-closed`: registration is closed or paused.
-- 429 `registration-throttled` with `Retry-After`: this client IP asked 10
-  times in 15 minutes, or everyone together asked 50 times in the last hour.
+- 429 `registration-throttled` with `Retry-After`: this client (an IPv4
+  address or an IPv6 /64) asked 10 times in 15 minutes, or everyone together asked 50 times in the last hour.
   Both limits are checked before the email's own, so a 429 never depends on
   the email.
 - 502 `email-not-sent`: the send failed. The link stays saved and counts,

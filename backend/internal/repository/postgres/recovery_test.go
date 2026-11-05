@@ -53,7 +53,7 @@ func newRecovery(t *testing.T) *confirmationFixture {
  CREATE TABLE test_recovery_notices (user_id bigint NOT NULL);
  INSERT INTO sign_in_challenges (user_id, token_hash, expires_at)
  SELECT id, decode(md5(email), 'hex'), now() + interval '5 minutes' FROM users;
- INSERT INTO sign_in_attempts (email, client_addr, created_at) VALUES
+ INSERT INTO sign_in_attempts (email, client_prefix, created_at) VALUES
  ('admin@example.com', '127.0.0.1', now()),
  ('admin@example.com', '127.0.0.2', now()),
  ('other@example.com', '127.0.0.1', now()),

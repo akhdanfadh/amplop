@@ -31,7 +31,7 @@ func (s *memoryAttempts) ReserveAttempt(_ context.Context, attempt Attempt, cuto
 	}
 	var rows []Attempt
 	for _, row := range s.rows {
-		if row.ClientAddr == attempt.ClientAddr {
+		if row.ClientPrefix == attempt.ClientPrefix {
 			rows = append(rows, row)
 		}
 	}
@@ -116,7 +116,7 @@ func TestThrottleSuccess(t *testing.T) {
 	require.ErrorIs(t, err, ErrThrottled)
 }
 
-func TestThrottleSetupSharesAddress(t *testing.T) {
+func TestThrottleSetupSharesClient(t *testing.T) {
 	store := &memoryAttempts{rows: map[int64]Attempt{}}
 	limiter := NewThrottle(store, time.Now)
 	addr := netip.MustParseAddr("192.0.2.1")
@@ -138,6 +138,34 @@ func TestThrottleSetupSharesAddress(t *testing.T) {
 	_, err = limiter.Begin(t.Context(), "another@example.com", addr)
 	require.NoError(t, err)
 	assert.Len(t, store.rows, 50)
+}
+
+// The client limit counts a client as clientprefix.Of does: every address in
+// an IPv6 /64 as one client, so a host cannot dodge it by changing address,
+// and an IPv4 address mapped into IPv6 as the IPv4 address.
+func TestThrottleClientPrefix(t *testing.T) {
+	store := &memoryAttempts{rows: map[int64]Attempt{}}
+	limiter := NewThrottle(store, time.Now)
+	for i := range 50 {
+		addr := netip.AddrFrom16([16]byte{0x20, 0x01, 0x0d, 0xb8, 0, 1, 0, 2, 15: byte(i)})
+		_, err := limiter.BeginSetup(t.Context(), addr)
+		require.NoError(t, err)
+	}
+
+	_, err := limiter.BeginSetup(t.Context(), netip.MustParseAddr("2001:db8:1:2:ffff::9"))
+	require.ErrorIs(t, err, ErrThrottled)
+	_, err = limiter.BeginSetup(t.Context(), netip.MustParseAddr("2001:db8:1:3::1"))
+	require.NoError(t, err)
+	_, err = limiter.BeginSetup(t.Context(), netip.MustParseAddr("::ffff:192.0.2.1"))
+	require.NoError(t, err)
+
+	var prefixes []string
+	for _, row := range store.rows {
+		prefixes = append(prefixes, row.ClientPrefix)
+	}
+	assert.Contains(t, prefixes, "2001:db8:1:2::/64")
+	assert.Contains(t, prefixes, "2001:db8:1:3::/64")
+	assert.Contains(t, prefixes, "192.0.2.1/32")
 }
 
 func TestThrottleInvalidAddress(t *testing.T) {

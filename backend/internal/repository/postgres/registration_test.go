@@ -199,7 +199,7 @@ func TestRegistrationRequestStorage(t *testing.T) {
 	db, conn := setupStorage(t)
 	openRegistration(t, conn)
 	verificationUser(t, conn, "member@example.org")
-	first := registration.Attempt{Email: "visitor@example.org", ClientAddr: "192.0.2.1", Outcome: registration.OutcomeLink, CreatedAt: requestNow}
+	first := registration.Attempt{Email: "visitor@example.org", ClientPrefix: "192.0.2.1", Outcome: registration.OutcomeLink, CreatedAt: requestNow}
 	link := registration.Link{TokenHash: sha256.Sum256([]byte("secret")), Email: "visitor@example.org", CreatedAt: requestNow, ExpiresAt: requestNow.Add(24 * time.Hour)}
 
 	// A new email sees no account and no attempts, and saves its link.
@@ -207,7 +207,7 @@ func TestRegistrationRequestStorage(t *testing.T) {
 	assert.Equal(t, registration.RequestState{Registration: registration.Record{State: registration.StateOpen, SystemEmailTested: true}}, seen)
 
 	// An email with an account says so, and sees the earlier attempt.
-	notice := registration.Attempt{Email: "member@example.org", ClientAddr: "2001:db8::1", Outcome: registration.OutcomeNotice, CreatedAt: requestNow}
+	notice := registration.Attempt{Email: "member@example.org", ClientPrefix: "2001:db8::1", Outcome: registration.OutcomeNotice, CreatedAt: requestNow}
 	seen = requestRegistration(t, db, "member@example.org", registration.RequestChange{Attempt: notice})
 	assert.True(t, seen.AccountExists)
 	assert.Equal(t, []registration.Attempt{first}, seen.Attempts)
@@ -237,13 +237,13 @@ func TestRegistrationRequestOldAttempts(t *testing.T) {
 			}{
 				{"INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ('\\x01', 'a@example.org', $1, $2)", []any{requestNow.Add(-24 * time.Hour), requestNow}},
 				{"INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at) VALUES ('\\x03', $1, 'member@example.org', $2, $2)", []any{user, requestNow}},
-				{"INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)", []any{requestNow.Add(-24 * time.Hour)}},
-				{"INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)", []any{requestNow.Add(-24*time.Hour + time.Second)}},
+				{"INSERT INTO registration_attempts (email, client_prefix, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)", []any{requestNow.Add(-24 * time.Hour)}},
+				{"INSERT INTO registration_attempts (email, client_prefix, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)", []any{requestNow.Add(-24*time.Hour + time.Second)}},
 			} {
 				_, err := conn.Exec(t.Context(), row.sql, row.args...)
 				require.NoError(t, err)
 			}
-			attempt := registration.Attempt{Email: "b@example.org", ClientAddr: "192.0.2.2", Outcome: registration.OutcomeSkipped, CreatedAt: requestNow}
+			attempt := registration.Attempt{Email: "b@example.org", ClientPrefix: "192.0.2.2", Outcome: registration.OutcomeSkipped, CreatedAt: requestNow}
 
 			var seen []registration.Attempt
 			err := db.RequestRegistration(t.Context(), "b@example.org", requestNow.Add(-24*time.Hour), func(state registration.RequestState) (registration.RequestChange, error) {
@@ -278,7 +278,7 @@ func TestRegistrationRequestSerializes(t *testing.T) {
 	releaseFirst := sync.OnceFunc(func() { close(release) })
 	defer releaseFirst()
 	firstDone, secondDone := make(chan error, 1), make(chan error, 1)
-	first := registration.Attempt{Email: "a@example.org", ClientAddr: "192.0.2.1", Outcome: registration.OutcomeLink, CreatedAt: requestNow}
+	first := registration.Attempt{Email: "a@example.org", ClientPrefix: "192.0.2.1", Outcome: registration.OutcomeLink, CreatedAt: requestNow}
 	var seen []registration.Attempt
 
 	go func() {
@@ -324,8 +324,8 @@ func TestRegistrationLinkChecks(t *testing.T) {
 	conn := migrated(t)
 	for _, c := range []struct{ name, sql string }{
 		{"uppercase link email", "INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ('\\x01', 'A@example.org', now(), now())"},
-		{"uppercase attempt email", "INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('A@example.org', '192.0.2.1', 'link', now())"},
-		{"unknown outcome", "INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'sent', now())"},
+		{"uppercase attempt email", "INSERT INTO registration_attempts (email, client_prefix, outcome, created_at) VALUES ('A@example.org', '192.0.2.1', 'link', now())"},
+		{"unknown outcome", "INSERT INTO registration_attempts (email, client_prefix, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'sent', now())"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := conn.Exec(t.Context(), c.sql)
@@ -378,7 +378,7 @@ func TestRegistrationCloseDeletesRequests(t *testing.T) {
 			_, err := conn.Exec(t.Context(), `INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ('\x01', 'a@example.org', $1, $2)`,
 				requestNow, requestNow.Add(24*time.Hour))
 			require.NoError(t, err)
-			_, err = conn.Exec(t.Context(), `INSERT INTO registration_attempts (email, client_addr, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)`, requestNow)
+			_, err = conn.Exec(t.Context(), `INSERT INTO registration_attempts (email, client_prefix, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)`, requestNow)
 			require.NoError(t, err)
 
 			err = db.UpdateRegistration(t.Context(), admin, func(registration.Record) (registration.State, error) { return c.state, nil })
@@ -403,7 +403,7 @@ func TestRegistrationCloseWaitsForRequest(t *testing.T) {
 	defer releaseRequest()
 	requested, closed := make(chan error, 1), make(chan error, 1)
 	link := registration.Link{TokenHash: sha256.Sum256([]byte("secret")), Email: "a@example.org", CreatedAt: requestNow, ExpiresAt: requestNow.Add(24 * time.Hour)}
-	attempt := registration.Attempt{Email: "a@example.org", ClientAddr: "192.0.2.1", Outcome: registration.OutcomeLink, CreatedAt: requestNow}
+	attempt := registration.Attempt{Email: "a@example.org", ClientPrefix: "192.0.2.1", Outcome: registration.OutcomeLink, CreatedAt: requestNow}
 
 	// Given a request holding the lock, about to save its link.
 	go func() {

@@ -25,7 +25,7 @@ func (db *DB) ReserveAttempt(ctx context.Context, attempt session.Attempt, cutof
 
 		// 1. Lock the address. The lock covers the count and the insert,
 		// including the address's first attempt.
-		if err := queries.LockAttemptAddress(ctx, attempt.ClientAddr); err != nil {
+		if err := queries.LockAttemptClient(ctx, attempt.ClientPrefix); err != nil {
 			return fmt.Errorf("lock attempt address: %w", err)
 		}
 
@@ -33,13 +33,13 @@ func (db *DB) ReserveAttempt(ctx context.Context, attempt session.Attempt, cutof
 		if err := queries.DeleteOldSignInAttempts(ctx, cutoff); err != nil {
 			return fmt.Errorf("delete old attempts: %w", err)
 		}
-		rows, err := queries.ListSignInAttempts(ctx, attempt.ClientAddr)
+		rows, err := queries.ListSignInAttempts(ctx, attempt.ClientPrefix)
 		if err != nil {
 			return fmt.Errorf("read attempts: %w", err)
 		}
 		attempts := make([]session.Attempt, 0, len(rows))
 		for _, row := range rows {
-			attempts = append(attempts, session.Attempt{Email: row.Email, ClientAddr: row.ClientAddr, CreatedAt: row.CreatedAt.UTC()})
+			attempts = append(attempts, session.Attempt{Email: row.Email, ClientPrefix: row.ClientPrefix, CreatedAt: row.CreatedAt.UTC()})
 		}
 
 		// 3. Let check accept or refuse.
@@ -49,7 +49,7 @@ func (db *DB) ReserveAttempt(ctx context.Context, attempt session.Attempt, cutof
 
 		// 4. Save the attempt.
 		id, err = queries.InsertSignInAttempt(ctx, sqlc.InsertSignInAttemptParams{
-			Email: attempt.Email, ClientAddr: attempt.ClientAddr, CreatedAt: attempt.CreatedAt,
+			Email: attempt.Email, ClientPrefix: attempt.ClientPrefix, CreatedAt: attempt.CreatedAt,
 		})
 		if err != nil {
 			return fmt.Errorf("reserve attempt: %w", err)

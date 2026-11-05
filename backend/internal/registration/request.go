@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"inbok/internal/attemptlimit"
+	"inbok/internal/clientprefix"
 	"inbok/internal/emailaddress"
 	"inbok/internal/randomsecret"
 	"inbok/internal/systememail"
@@ -60,10 +61,10 @@ const (
 
 // Attempt is one accepted registration request, counted toward the limits.
 type Attempt struct {
-	Email      string
-	ClientAddr string // the client's IP address, IPv4 unmapped from IPv6
-	Outcome    Outcome
-	CreatedAt  time.Time
+	Email        string
+	ClientPrefix string // the client, as clientprefix.Of counts it
+	Outcome      Outcome
+	CreatedAt    time.Time
 }
 
 // Link is a saved registration link without its secret.
@@ -142,7 +143,7 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 	if !client.IsValid() {
 		return errClientAddr
 	}
-	clientAddr := client.Unmap().WithZone("").String()
+	clientPrefix := clientprefix.Of(client).String()
 
 	// 2. Refuse a closed registration before the lock every request shares.
 	// Closed is the default, and queued requests would hold connections
@@ -171,7 +172,7 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		var fromClient, fromAll, toEmail []time.Time
 		for _, attempt := range state.Attempts {
 			fromAll = append(fromAll, attempt.CreatedAt)
-			if attempt.ClientAddr == clientAddr {
+			if attempt.ClientPrefix == clientPrefix {
 				fromClient = append(fromClient, attempt.CreatedAt)
 			}
 			// Skipped requests sent nothing. Counting them would let anyone keep an
@@ -187,7 +188,7 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		}
 
 		change = RequestChange{
-			Attempt: Attempt{Email: email, ClientAddr: clientAddr, Outcome: OutcomeLink, CreatedAt: now},
+			Attempt: Attempt{Email: email, ClientPrefix: clientPrefix, Outcome: OutcomeLink, CreatedAt: now},
 		}
 		switch {
 		case attemptlimit.Wait(toEmail, now, emailShortLimit, emailLongLimit) > 0:

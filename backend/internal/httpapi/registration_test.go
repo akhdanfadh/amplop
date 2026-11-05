@@ -255,7 +255,7 @@ func TestRequestRegistrationLinkSameResponse(t *testing.T) {
 	storage := &requestMemory{accounts: []string{"member@example.org"}}
 	for range 3 {
 		storage.attempts = append(storage.attempts, registration.Attempt{
-			Email: "busy@example.org", ClientAddr: "198.51.100.1", Outcome: registration.OutcomeLink, CreatedAt: time.Now(),
+			Email: "busy@example.org", ClientPrefix: "198.51.100.1/32", Outcome: registration.OutcomeLink, CreatedAt: time.Now(),
 		})
 	}
 	mailer := &recordingMailer{}

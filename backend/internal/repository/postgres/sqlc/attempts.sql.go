@@ -38,36 +38,36 @@ func (q *Queries) DeleteSignInAttemptsByEmail(ctx context.Context, email *string
 }
 
 const insertSignInAttempt = `-- name: InsertSignInAttempt :one
-INSERT INTO sign_in_attempts (email, client_addr, created_at)
+INSERT INTO sign_in_attempts (email, client_prefix, created_at)
 VALUES ($1, $2, $3)
 RETURNING id
 `
 
 type InsertSignInAttemptParams struct {
-	Email      *string
-	ClientAddr string
-	CreatedAt  time.Time
+	Email        *string
+	ClientPrefix string
+	CreatedAt    time.Time
 }
 
 func (q *Queries) InsertSignInAttempt(ctx context.Context, arg InsertSignInAttemptParams) (int64, error) {
-	row := q.db.QueryRow(ctx, insertSignInAttempt, arg.Email, arg.ClientAddr, arg.CreatedAt)
+	row := q.db.QueryRow(ctx, insertSignInAttempt, arg.Email, arg.ClientPrefix, arg.CreatedAt)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
 }
 
 const listSignInAttempts = `-- name: ListSignInAttempts :many
-SELECT email, client_addr, created_at FROM sign_in_attempts WHERE client_addr = $1
+SELECT email, client_prefix, created_at FROM sign_in_attempts WHERE client_prefix = $1
 `
 
 type ListSignInAttemptsRow struct {
-	Email      *string
-	ClientAddr string
-	CreatedAt  time.Time
+	Email        *string
+	ClientPrefix string
+	CreatedAt    time.Time
 }
 
-func (q *Queries) ListSignInAttempts(ctx context.Context, clientAddr string) ([]ListSignInAttemptsRow, error) {
-	rows, err := q.db.Query(ctx, listSignInAttempts, clientAddr)
+func (q *Queries) ListSignInAttempts(ctx context.Context, clientPrefix string) ([]ListSignInAttemptsRow, error) {
+	rows, err := q.db.Query(ctx, listSignInAttempts, clientPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (q *Queries) ListSignInAttempts(ctx context.Context, clientAddr string) ([]
 	var items []ListSignInAttemptsRow
 	for rows.Next() {
 		var i ListSignInAttemptsRow
-		if err := rows.Scan(&i.Email, &i.ClientAddr, &i.CreatedAt); err != nil {
+		if err := rows.Scan(&i.Email, &i.ClientPrefix, &i.CreatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -86,13 +86,13 @@ func (q *Queries) ListSignInAttempts(ctx context.Context, clientAddr string) ([]
 	return items, nil
 }
 
-const lockAttemptAddress = `-- name: LockAttemptAddress :exec
+const lockAttemptClient = `-- name: LockAttemptClient :exec
 SELECT pg_advisory_xact_lock(hashtextextended('inbok.sign-in:' || $1::text, 0))
 `
 
-// LockAttemptAddress takes a transaction-scoped advisory lock for one address.
+// LockAttemptClient takes a transaction-scoped advisory lock for one client.
 // It also covers the first attempt, when there is no row to lock yet.
-func (q *Queries) LockAttemptAddress(ctx context.Context, clientAddr string) error {
-	_, err := q.db.Exec(ctx, lockAttemptAddress, clientAddr)
+func (q *Queries) LockAttemptClient(ctx context.Context, clientPrefix string) error {
+	_, err := q.db.Exec(ctx, lockAttemptClient, clientPrefix)
 	return err
 }

@@ -141,10 +141,10 @@ func (db *DB) RequestRegistration(ctx context.Context, email string, since time.
 		var attempts []registration.Attempt
 		for _, row := range rows {
 			attempts = append(attempts, registration.Attempt{
-				Email:      row.Email,
-				ClientAddr: row.ClientAddr,
-				Outcome:    registration.Outcome(row.Outcome),
-				CreatedAt:  row.CreatedAt.UTC(),
+				Email:        row.Email,
+				ClientPrefix: row.ClientPrefix,
+				Outcome:      registration.Outcome(row.Outcome),
+				CreatedAt:    row.CreatedAt.UTC(),
 			})
 		}
 
@@ -161,7 +161,7 @@ func (db *DB) RequestRegistration(ctx context.Context, email string, since time.
 		// 5. Save the attempt, and the link if create made one.
 		attempt := change.Attempt
 		if err := queries.InsertRegistrationAttempt(ctx, sqlc.InsertRegistrationAttemptParams{
-			Email: attempt.Email, ClientAddr: attempt.ClientAddr, Outcome: string(attempt.Outcome), CreatedAt: attempt.CreatedAt,
+			Email: attempt.Email, ClientPrefix: attempt.ClientPrefix, Outcome: string(attempt.Outcome), CreatedAt: attempt.CreatedAt,
 		}); err != nil {
 			return fmt.Errorf("insert registration attempt: %w", err)
 		}

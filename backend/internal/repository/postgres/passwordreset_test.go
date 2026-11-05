@@ -58,7 +58,7 @@ func newResetAccounts(t *testing.T) resetAccounts {
 		"INSERT INTO totp_attempts (user_id, created_at) SELECT id, now() FROM users",
 		"INSERT INTO sessions (token_hash, user_id, expires_at) SELECT decode(md5(email), 'hex'), id, now() + interval '1 day' FROM users",
 		"INSERT INTO sign_in_challenges (token_hash, user_id, expires_at) SELECT decode(md5(email), 'hex'), id, now() + interval '5 minutes' FROM users",
-		"INSERT INTO sign_in_attempts (email, client_addr, created_at) SELECT email, '192.0.2.1', now() FROM users",
+		"INSERT INTO sign_in_attempts (email, client_prefix, created_at) SELECT email, '192.0.2.1', now() FROM users",
 	} {
 		_, err := conn.Exec(t.Context(), statement)
 		require.NoError(t, err)
