@@ -2,7 +2,8 @@
 // holds the account rules: saving one once its identity is checked,
 // reconnecting it, listing a member's accounts, and disconnecting one.
 // Connections runs the connect flow that feeds them: a state per start, the
-// callback's checks, and the save. Google's side sits behind an interface.
+// callback's checks, and the save. Google's side sits behind an interface
+// the google package implements.
 package connectedaccount
 
 import (

@@ -690,8 +690,12 @@ and Gmail hosts, at the emulator's paths: `/o/oauth2/v2/auth`,
 `localhost` or a loopback address, `http` or `https`, and refuses to start
 otherwise, or when no client is set: inbok sends that server members'
 authorization codes and refresh tokens, so a setting copied from a
-development `.env` cannot send them to another machine. A deployed server
-leaves it empty. To turn Gmail off, empty all three Google settings.
+development `.env` cannot send them to another machine. For the same
+reason, while it is set, the client that carries them connects only to
+addresses on this machine, whatever `localhost` resolves to, and ignores
+proxy settings; with or without it, that client follows no redirects. A
+deployed server leaves it empty. To turn Gmail off, empty all three Google
+settings.
 
 The consent page lists the seeded accounts; choosing one agrees to every
 permission asked. `google-emulator/emulate.config.mjs` holds the seed:
@@ -1757,6 +1761,7 @@ httpapi --> registration <-- repository/postgres
 httpapi --> passwordreset <-- repository/postgres
             passwordreset --> systememail, account
 connectedaccount <-- repository/postgres
+                 <-- google
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -1788,6 +1793,11 @@ connectedaccount <-- repository/postgres
   fills with `systememail`'s `Mailer`. A feature may import another's plain
   rules directly: `registration` uses `account.ValidatePassword` and
   `account.User`.
+- `google`, like `smtp`, is a technology package: it implements the
+  Google side `connectedaccount`'s connect flow declares, the OAuth client,
+  the ID token checks, and Gmail's `users.getProfile`, with
+  `golang.org/x/oauth2` and Google's Gmail client. Their types stay inside
+  it.
 - `googleemulator` starts the [Google emulator](#google-emulator) for
   tests, each with its own seed. Only tests import it.
 - `webapp` embeds the built web app and serves it as a static site:

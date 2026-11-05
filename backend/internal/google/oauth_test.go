@@ -1,0 +1,146 @@
+package google
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
+
+	"inbok/internal/randomsecret"
+)
+
+func TestAuthCodeURL(t *testing.T) {
+	base, err := url.Parse("http://127.0.0.1:4000")
+	require.NoError(t, err)
+	client := New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect, BaseURL: base}, time.Now)
+
+	consentURL, err := url.Parse(client.AuthCodeURL("state-1", "verifier-1"))
+	require.NoError(t, err)
+
+	assert.Equal(t, "http://127.0.0.1:4000/o/oauth2/v2/auth", consentURL.Scheme+"://"+consentURL.Host+consentURL.Path)
+	query := consentURL.Query()
+	assert.Equal(t, testClientID, query.Get("client_id"))
+	assert.Equal(t, testRedirect, query.Get("redirect_uri"))
+	assert.Equal(t, "code", query.Get("response_type"))
+	assert.Equal(t, "openid email https://www.googleapis.com/auth/gmail.modify", query.Get("scope"))
+	assert.Equal(t, "state-1", query.Get("state"))
+	assert.Equal(t, "offline", query.Get("access_type"))
+	assert.Equal(t, "consent", query.Get("prompt"))
+	assert.Equal(t, "S256", query.Get("code_challenge_method"))
+	assert.Equal(t, oauth2.S256ChallengeFromVerifier("verifier-1"), query.Get("code_challenge"))
+}
+
+// Without a base URL the client uses Google's own consent page.
+func TestAuthCodeURLGoogle(t *testing.T) {
+	client := New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect}, time.Now)
+
+	consentURL, err := url.Parse(client.AuthCodeURL("state-1", "verifier-1"))
+	require.NoError(t, err)
+
+	assert.Equal(t, "https://accounts.google.com/o/oauth2/v2/auth", consentURL.Scheme+"://"+consentURL.Host+consentURL.Path)
+}
+
+func TestExchange(t *testing.T) {
+	e, client := startEmulator(t)
+	code, verifier := consent(t, e, client, "alex@example.com")
+
+	grant, err := client.Exchange(t.Context(), code, verifier)
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, grant.RefreshToken)
+	assert.NotEmpty(t, grant.AccessToken)
+	assert.Equal(t, alexSubject, grant.Identity.Subject)
+	assert.Equal(t, "alex@example.com", grant.Identity.Email)
+	assert.True(t, grant.EmailVerified)
+	assert.True(t, grant.GmailGranted)
+}
+
+func TestExchangeUnverified(t *testing.T) {
+	e, client := startEmulator(t)
+	code, verifier := consent(t, e, client, "unverified@example.com")
+
+	grant, err := client.Exchange(t.Context(), code, verifier)
+	require.NoError(t, err)
+
+	assert.False(t, grant.EmailVerified)
+}
+
+// Google refuses a code sent with another verifier, so a code taken from
+// the browser alone is useless.
+func TestExchangeWrongVerifier(t *testing.T) {
+	e, client := startEmulator(t)
+	code, _ := consent(t, e, client, "alex@example.com")
+	other, _ := randomsecret.New()
+
+	_, err := client.Exchange(t.Context(), code, other)
+
+	var refused *tokenRefusal
+	require.ErrorAs(t, err, &refused)
+	assert.Equal(t, "invalid_grant", refused.code)
+	assert.Equal(t, http.StatusBadRequest, refused.status)
+}
+
+func TestExchangeGmailUnticked(t *testing.T) {
+	now := testNow
+	client := stubGoogle(t, now, func(issuer string) map[string]any {
+		response := tokenResponse(t, alexClaims(issuer, now, nil))
+		response["scope"] = "openid email"
+		return response
+	})
+
+	grant, err := client.Exchange(t.Context(), "code-1", "verifier-1")
+	require.NoError(t, err)
+
+	assert.False(t, grant.GmailGranted)
+}
+
+func TestExchangeNoRefreshToken(t *testing.T) {
+	now := testNow
+	client := stubGoogle(t, now, func(issuer string) map[string]any {
+		response := tokenResponse(t, alexClaims(issuer, now, nil))
+		delete(response, "refresh_token")
+		return response
+	})
+
+	grant, err := client.Exchange(t.Context(), "code-1", "verifier-1")
+	require.NoError(t, err)
+
+	assert.Empty(t, grant.RefreshToken)
+}
+
+func TestExchangeNoIDToken(t *testing.T) {
+	now := testNow
+	client := stubGoogle(t, now, func(issuer string) map[string]any {
+		response := tokenResponse(t, alexClaims(issuer, now, nil))
+		delete(response, "id_token")
+		return response
+	})
+
+	_, err := client.Exchange(t.Context(), "code-1", "verifier-1")
+
+	require.ErrorIs(t, err, errNoIDToken)
+}
+
+// A refusal from the token endpoint keeps its status and code, and none of
+// the body, which may be any page.
+func TestExchangeRefusalRedacted(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "<html>secret page body</html>", http.StatusBadGateway)
+	}))
+	t.Cleanup(server.Close)
+	base, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	client := New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect, BaseURL: base}, time.Now)
+
+	_, err = client.Exchange(t.Context(), "code-1", "verifier-1")
+
+	var refused *tokenRefusal
+	require.ErrorAs(t, err, &refused)
+	assert.Equal(t, http.StatusBadGateway, refused.status)
+	assert.NotContains(t, err.Error(), "secret page body")
+}
