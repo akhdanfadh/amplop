@@ -1343,9 +1343,12 @@ decides:
   sent;
 - 3 links sent to the account in the last hour, or 5 in 24 hours: nothing
   is sent. These limits are silent, so the answer cannot depend on them.
-- otherwise: it saves a link for the account's stored email and sets the
-  attempt's `user_id` and `linked_at`. The email limits count `linked_at`,
-  the time the link was saved, which can come later than the request.
+- otherwise: it saves a link for the account's stored email and counts
+  it: it sets the attempt's `user_id` and `linked_at`, or, for a later link
+  for that attempt or one whose attempt is gone, saves an attempt row of its
+  own with no client, which the client's limit leaves out. The email limits
+  count `linked_at`, the time the link was saved, which can come later than
+  the request.
 
 Then it mails the link to `<public URL>/reset-password#<secret>`. The secret
 exists only in memory and the email; the message is `Private`, so a failed

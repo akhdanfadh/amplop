@@ -138,7 +138,7 @@ func (db *DB) RecordPasswordResetRequest(ctx context.Context, client string, sin
 		}
 
 		// 2. Read the client's attempts within the window.
-		times, err := queries.ListPasswordResetClientAttempts(ctx, sqlc.ListPasswordResetClientAttemptsParams{ClientPrefix: client, Since: since})
+		times, err := queries.ListPasswordResetClientAttempts(ctx, sqlc.ListPasswordResetClientAttemptsParams{ClientPrefix: &client, Since: since})
 		if err != nil {
 			return fmt.Errorf("read password reset attempts: %w", err)
 		}
@@ -153,7 +153,7 @@ func (db *DB) RecordPasswordResetRequest(ctx context.Context, client string, sin
 		}
 
 		// 4. Record the attempt.
-		id, err = queries.InsertPasswordResetAttempt(ctx, sqlc.InsertPasswordResetAttemptParams{ClientPrefix: client, CreatedAt: createdAt})
+		id, err = queries.InsertPasswordResetAttempt(ctx, sqlc.InsertPasswordResetAttemptParams{ClientPrefix: &client, CreatedAt: createdAt})
 		if err != nil {
 			return fmt.Errorf("insert password reset attempt: %w", err)
 		}
@@ -167,9 +167,10 @@ func (db *DB) RecordPasswordResetRequest(ctx context.Context, client string, sin
 
 // CreatePasswordResetLink calls create with the account with email, if any,
 // and the times links were saved for it after since. If create returns a
-// link, it saves it for that account and marks the attempt with attemptID
-// with the account and the link's time. It returns create's error
-// unchanged, and errNoAccount for a link without an account.
+// link, it saves it for that account and counts it: it marks the attempt
+// with attemptID with the account and the link's time, or saves a row of its
+// own when that attempt already counts a link or is gone. It returns
+// create's error unchanged, and errNoAccount for a link without an account.
 func (db *DB) CreatePasswordResetLink(ctx context.Context, attemptID int64, email string, since time.Time, create func(passwordreset.LinkState) (passwordreset.LinkChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
@@ -224,13 +225,23 @@ func (db *DB) CreatePasswordResetLink(ctx context.Context, attemptID int64, emai
 			return fmt.Errorf("insert password reset link: %w", err)
 		}
 
-		// 5. Mark the attempt with the account and the link's time. The
-		// account limits count that time, which can be well after the
-		// request's when this waited for the lock.
-		if err := queries.UpdatePasswordResetAttemptLink(ctx, sqlc.UpdatePasswordResetAttemptLinkParams{
+		// 5. Count the link for the account: mark the request's attempt with
+		// the account and the link's time, or, for a later link for it or an
+		// attempt the cleanup deleted, save a row of its own, so every link
+		// counts. The account limits count that time, which can be well
+		// after the request's when this waited for the lock.
+		marked, err := queries.MarkPasswordResetAttemptLink(ctx, sqlc.MarkPasswordResetAttemptLinkParams{
 			ID: attemptID, UserID: &userID, LinkedAt: &link.CreatedAt,
-		}); err != nil {
+		})
+		if err != nil {
 			return fmt.Errorf("mark password reset attempt: %w", err)
+		}
+		if marked == 0 {
+			if err := queries.InsertPasswordResetLinkAttempt(ctx, sqlc.InsertPasswordResetLinkAttemptParams{
+				UserID: &userID, LinkedAt: &link.CreatedAt,
+			}); err != nil {
+				return fmt.Errorf("count password reset link: %w", err)
+			}
 		}
 		return nil
 	})

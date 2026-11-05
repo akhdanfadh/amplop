@@ -477,7 +477,7 @@ type resetAttempt struct {
 func resetAttempts(t *testing.T, conn *pgx.Conn) []resetAttempt {
 	t.Helper()
 
-	rows, err := conn.Query(t.Context(), "SELECT client_prefix, user_id, linked_at, created_at FROM password_reset_attempts ORDER BY id")
+	rows, err := conn.Query(t.Context(), "SELECT coalesce(client_prefix, ''), user_id, linked_at, created_at FROM password_reset_attempts ORDER BY id")
 	require.NoError(t, err)
 	attempts, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (resetAttempt, error) {
 		var attempt resetAttempt
@@ -664,6 +664,51 @@ func TestPasswordResetLinkSaves(t *testing.T) {
 	liveState, err := f.db.ReadPasswordReset(t.Context(), live)
 	require.NoError(t, err)
 	assert.NotNil(t, liveState.Link)
+}
+
+// saveLinkFor saves a link named seed for email's account for the attempt
+// with attemptID at resetNow.
+func saveLinkFor(t *testing.T, f resetAccounts, attemptID int64, email, seed string) {
+	t.Helper()
+	require.NoError(t, f.db.CreatePasswordResetLink(t.Context(), attemptID, email, resetNow.Add(-24*time.Hour), func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
+		return passwordreset.LinkChange{
+			Link: &passwordreset.Link{TokenHash: sha256.Sum256([]byte(seed)), CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour)},
+		}, nil
+	}))
+}
+
+// Every saved link counts toward the account's limits: a later link for an
+// attempt that already counts one, and one whose attempt the cleanup
+// deleted, each get a row of their own, with no client, so the client's
+// limit does not count them.
+func TestPasswordResetLinkCountsEach(t *testing.T) {
+	f := newResetAccounts(t)
+	since := resetNow.Add(-24 * time.Hour)
+	id, err := f.db.RecordPasswordResetRequest(t.Context(), "192.0.2.1/32", since, func([]time.Time) (time.Time, error) { return resetNow, nil })
+	require.NoError(t, err)
+
+	saveLinkFor(t, f, id, "member@example.com", "first")
+	saveLinkFor(t, f, id, "member@example.com", "second")
+	saveLinkFor(t, f, id+1, "member@example.com", "attempt deleted")
+
+	assert.Equal(t, []resetAttempt{
+		{Client: "192.0.2.1/32", UserID: &f.member, LinkedAt: at(0), CreatedAt: resetNow},
+		{UserID: &f.member, LinkedAt: at(0), CreatedAt: resetNow},
+		{UserID: &f.member, LinkedAt: at(0), CreatedAt: resetNow},
+	}, resetAttempts(t, f.conn))
+	var seen passwordreset.LinkState
+	require.NoError(t, f.db.CreatePasswordResetLink(t.Context(), id, "member@example.com", since, func(state passwordreset.LinkState) (passwordreset.LinkChange, error) {
+		seen = state
+		return passwordreset.LinkChange{}, nil
+	}))
+	assert.Len(t, seen.LinksSent, 3)
+	var clientTimes []time.Time
+	_, err = f.db.RecordPasswordResetRequest(t.Context(), "192.0.2.1/32", since, func(times []time.Time) (time.Time, error) {
+		clientTimes = times
+		return resetNow, nil
+	})
+	require.NoError(t, err)
+	assert.Len(t, clientTimes, 1, "the client's limit counts its request, not the extra links")
 }
 
 // A link for an email without an account is refused, and a refused create

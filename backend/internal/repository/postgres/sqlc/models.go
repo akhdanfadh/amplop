@@ -29,7 +29,7 @@ type EmailVerificationLink struct {
 
 type PasswordResetAttempt struct {
 	ID           int64
-	ClientPrefix string
+	ClientPrefix *string
 	UserID       *int64
 	LinkedAt     *time.Time
 	CreatedAt    time.Time

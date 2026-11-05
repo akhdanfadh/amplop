@@ -72,9 +72,11 @@ type requestStorage interface {
 	// CreatePasswordResetLink locks the account with email, if any, reads
 	// the [LinkState] with the times links were saved for it after since,
 	// and calls create. If create sets [LinkChange.Link], it saves it for
-	// the locked account and marks the attempt with attemptID with the
-	// account and the link's creation time, all in one transaction. An
-	// error from create rolls back and is returned unchanged.
+	// the locked account and counts it: it marks the attempt with attemptID
+	// with the account and the link's creation time, or, when that attempt
+	// already counts a link or is gone, saves a row of its own for the
+	// account, all in one transaction. An error from create rolls back and
+	// is returned unchanged.
 	CreatePasswordResetLink(ctx context.Context, attemptID int64, email string, since time.Time, create func(LinkState) (LinkChange, error)) error
 }
 

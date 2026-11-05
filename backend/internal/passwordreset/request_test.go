@@ -102,8 +102,16 @@ func (m *requestMemory) CreatePasswordResetLink(_ context.Context, attemptID int
 	}
 	if change.Link != nil {
 		m.links = append(m.links, *change.Link)
+		// The attempt counts its first link; a later one, or one whose
+		// attempt is gone, gets a row of its own with no client.
+		linked := change.Link.CreatedAt
 		at := slices.IndexFunc(m.attempts, func(a requestAttempt) bool { return a.id == attemptID })
-		m.attempts[at].userID, m.attempts[at].linkedAt = state.Account.User.ID, change.Link.CreatedAt
+		if at >= 0 && m.attempts[at].linkedAt.IsZero() {
+			m.attempts[at].userID, m.attempts[at].linkedAt = state.Account.User.ID, linked
+		} else {
+			m.lastID++
+			m.attempts = append(m.attempts, requestAttempt{id: m.lastID, userID: state.Account.User.ID, linkedAt: linked, createdAt: linked})
+		}
 	}
 	return nil
 }
