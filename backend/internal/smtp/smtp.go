@@ -55,8 +55,6 @@ type Sender struct {
 	dial func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
-var _ systememail.Sender = (*Sender)(nil)
-
 // NewSender returns a Sender that names itself host in EHLO, a domain or an
 // IP address, and verifies servers against the system's trusted certificates.
 func NewSender(host string) *Sender {

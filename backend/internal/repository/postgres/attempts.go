@@ -11,9 +11,6 @@ import (
 	"inbok/internal/session"
 )
 
-// Compile-time check that *DB implements session.AttemptStorage.
-var _ session.AttemptStorage = (*DB)(nil)
-
 // ReserveAttempt saves attempt, in one transaction, if check accepts the
 // attempts from its address made after cutoff, and returns its ID. An error
 // from check is returned unchanged and saves nothing. Password verification

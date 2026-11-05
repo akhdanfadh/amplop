@@ -41,6 +41,9 @@ the area you change before editing it:
 - Services take a `*slog.Logger` from `cmd/inbok`, built by `logging.New`.
   Log with the request's context, e.g. `logger.WarnContext(ctx, ...)`, so the
   line carries its `request_id`.
+- No `var _ Interface = (*Type)(nil)` checks: `cmd/inbok` passes each
+  implementation to the constructor that takes the interface, so the
+  build already fails where one stops fitting.
 - A write that spans features is one `Storage` method shaped as an
   update function, run in one transaction in `repository/postgres`.
   Feature code receives no transaction, transaction provider, or

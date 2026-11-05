@@ -15,8 +15,6 @@ import (
 	"inbok/internal/repository/postgres/sqlc"
 )
 
-var _ emailverification.Storage = (*DB)(nil)
-
 // RequestEmailVerification implements [emailverification.Storage.RequestEmailVerification].
 func (db *DB) RequestEmailVerification(ctx context.Context, userID int64, create func(emailverification.RequestState) (emailverification.RequestChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {

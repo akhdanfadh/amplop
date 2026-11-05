@@ -12,8 +12,6 @@ import (
 	"inbok/internal/repository/postgres/sqlc"
 )
 
-var _ account.MemberStorage = (*DB)(nil)
-
 const (
 	memberDeactivatedAction = "member-deactivated"
 	memberReactivatedAction = "member-reactivated"

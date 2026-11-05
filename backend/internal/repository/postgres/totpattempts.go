@@ -13,8 +13,6 @@ import (
 	"inbok/internal/totp"
 )
 
-var _ totp.AttemptStorage = (*DB)(nil)
-
 // ReserveTOTPAttempt saves attempt, in one transaction, if check accepts its
 // user's attempts made after cutoff, and returns its ID. It returns
 // [account.ErrUserNotFound] when the user does not exist. An error from check

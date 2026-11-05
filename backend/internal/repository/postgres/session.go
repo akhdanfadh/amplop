@@ -14,9 +14,6 @@ import (
 	"inbok/internal/session"
 )
 
-// Compile-time check that *DB implements session.Storage.
-var _ session.Storage = (*DB)(nil)
-
 // InsertSession saves the hash and fixed lifetime chosen by the session rules.
 func (db *DB) InsertSession(ctx context.Context, state session.State) error {
 	if err := sqlc.New(db.pool).InsertSession(ctx, insertSessionParams(state)); err != nil {

@@ -17,8 +17,6 @@ import (
 	"inbok/internal/repository/postgres"
 )
 
-var _ postgres.Workflows = (*Client)(nil)
-
 // clientStack returns a migrated database with an administrator,
 // admin@example.com, its storage saving workflows through a Client, and a
 // connection for checks. All close when the test ends.
