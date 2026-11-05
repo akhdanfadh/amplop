@@ -34,6 +34,9 @@ type problem struct {
 
 	// raw retains private diagnostics for sanitizing and logging, never JSON.
 	raw *huma.ErrorModel
+	// timedOut marks a service-busy problem built from a request that timed
+	// out, whose cause is logged and whose retry is announced.
+	timedOut bool
 	// mapped marks the entire public response as explicitly selected as safe.
 	mapped bool
 }

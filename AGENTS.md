@@ -30,8 +30,10 @@ the area you change before editing it:
 
 - Errors flow outward: feature handlers map known errors with `newProblem`,
   choosing status, type, and safe text. An explicitly mapped 5xx keeps that
-  text. Unexpected errors are returned as is and become a logged, fixed 500.
-  Public error text and input messages contain no rejected values or causes.
+  text. Unexpected errors are returned as is and become a logged, fixed 500;
+  one caused by the request's own deadline becomes a 503 `service-busy`
+  with `Retry-After`, in one place for every operation. Public error text
+  and input messages contain no rejected values or causes.
 - A throttle's refusal is an `*attemptlimit.Error` carrying its wait; map
   it with `retryAfterProblem`, which adds `Retry-After`.
 - A write with public access gets `withRateLimit`'s per-client limit and
@@ -77,7 +79,8 @@ The web app reads these from the contract; keep them stable:
 - The contract's `ProblemType` lists every type an operation shows as a
   response example, plus the shared ones. Give each type the web compares a
   response example, and type the web's constant with `ProblemType`.
-- Every 429 sends `Retry-After` in whole seconds; the web words the wait.
+- Every 429 and 503 sends `Retry-After` in whole seconds; the web words a
+  429's wait.
 - A 204 response needs transport work first: `web/src/api/transport.ts`
   requires a response schema.
 

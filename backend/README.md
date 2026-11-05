@@ -444,7 +444,9 @@ Handlers map known service errors with `newProblem`, choosing safe public
 text and a stable type. This includes expected 5xx failures: an explicitly
 mapped 503 can explain maintenance. Unclassified errors are returned as is,
 become a fixed 500 `internal-error`, and log their technical cause with the
-request ID. Huma status helpers alone do not declare text safe for display.
+request ID. One that the request's own deadline caused becomes a 503
+`service-busy` instead (see [Timeouts and shutdown](#timeouts-and-shutdown)).
+Huma status helpers alone do not declare text safe for display.
 
 The contract lists problem types in the `ProblemType` schema:
 `registerProblemTypes` collects every type an operation shows in a response
@@ -504,11 +506,16 @@ not a redirect.
 
 ## Timeouts and shutdown
 
-Each request receives a context with a 10-second deadline. Database queries
-and other calls using that context can stop when it expires. The deadline does
-not forcibly stop handlers or undo completed writes. Returning the context's
-deadline error from a handler produces a safe 500 Problem Details response and
-logs `context deadline exceeded`.
+Each request receives a context with a 10-second deadline. Database queries and
+other calls using that context can stop when it expires. The deadline does not
+forcibly stop handlers or undo completed writes. Returning the context's
+deadline error from a handler, wrapped or not, after the deadline produces a
+503 `service-busy` with `Retry-After`, the deadline in whole seconds, and logs
+the cause as a warning, "request timed out". The request's own log line is a
+warning too, as for every 503; other 5xx lines are errors. A deadline error
+from inside a call while the request still has time stays an unexpected 500. A
+write may have committed before the deadline, so the 503 does not say it was
+not.
 
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and gives
 in-flight requests up to 5 seconds to finish. What is left of those 5 seconds
@@ -666,7 +673,7 @@ more. Every caller shares it:
 sign-in, setup, registration, password reset, TOTP backup codes, and
 `inbok recover-admin`.
 A wait that outlives the request's context ends it; one that outlives the
-10-second request deadline is a 500 (see
+10-second request deadline is a 503 `service-busy` (see
 [Timeouts and shutdown](#timeouts-and-shutdown)). A TOTP request that ends
 while waiting to check its first backup code made no guess, so it gives
 its attempt back.
@@ -1407,7 +1414,8 @@ ORDER BY id DESC;
 
 `serve` writes text logs to stderr, one line per request with its method,
 path, status, and duration. The query string is never logged because it may
-carry secrets. Server errors (5xx) log at `ERROR` level. A handler panic
+carry secrets. Server errors (5xx) log at `ERROR` level, except a 503, which
+is temporary and logs at `WARN`. A handler panic
 returns a 500 Problem Details response and logs `msg=panic` with its stack
 trace; the panic value never reaches the client.
 

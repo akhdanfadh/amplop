@@ -523,6 +523,9 @@ headers use normal backoff. Each wait may take at most 5 seconds; a longer
 server delay stops retries instead of being shortened. Scheduled waiting totals
 at most 10 seconds. Request execution and offline pauses are outside that
 waiting limit. Canceling an obsolete query also prevents its pending retries.
+Go answers a request that ran out of its time with 503 `service-busy` and a
+`Retry-After` from its own timeout; when that wait is longer than a retry may
+take, the read shows its error and retry action at once.
 
 Each HTTP attempt has a 15-second timeout covering sending and response body
 reading, leaving room around Go's 10-second work limit. Received status and

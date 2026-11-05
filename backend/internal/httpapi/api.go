@@ -54,6 +54,11 @@ type Services struct {
 // request_id.
 // Create all APIs and register all operations before serving requests.
 func New(logger *slog.Logger, services Services) *API {
+	return newAPI(logger, services, requestTimeout)
+}
+
+// newAPI is [New] with timeout as each request's time.
+func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API {
 	// Tells Huma to construct errors using our problem model.
 	configureErrors()
 
@@ -66,7 +71,7 @@ func New(logger *slog.Logger, services Services) *API {
 	// Recovery runs inside the request log, so a panic is logged as 500.
 	// Cross-origin rejection is logged before the timeout wraps the
 	// handler's own work.
-	router.Use(withRequestID(), withSecurityHeaders(), withRequestLog(logger), withRecovery(logger), withCrossOrigin(), withTimeout(requestTimeout))
+	router.Use(withRequestID(), withSecurityHeaders(), withRequestLog(logger), withRecovery(logger), withCrossOrigin(), withTimeout(timeout))
 	router.HandleMethodNotAllowed = true
 	// Gin would answer /health/ with a 301 to /health before any
 	// middleware runs: no request ID, no log line, and a Location built
@@ -101,7 +106,7 @@ func New(logger *slog.Logger, services Services) *API {
 	// to format safe input messages before Huma converts the response to JSON.
 	var api huma.API
 	config.Transformers = []huma.Transformer{func(ctx huma.Context, _ string, value any) (any, error) {
-		return normalizeError(logger, api, ctx, value), nil
+		return normalizeError(logger, api, ctx, value, timeout), nil
 	}}
 
 	api = humagin.NewWithGroup(router, group, config)

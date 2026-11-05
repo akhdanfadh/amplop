@@ -1,8 +1,10 @@
 import { CancelledError, MutationObserver, QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { getCreateProbeEventMutationOptions, getGetHealthQueryOptions } from "./generated/inbok";
+import type { ProblemType } from "./generated/model";
 import { retryOptions } from "./retry";
 
+const serviceBusyType: ProblemType = "/api/v0/problems/service-busy";
 const clients: QueryClient[] = [];
 const httpStatus = {
   ok: 200,
@@ -119,6 +121,39 @@ describe("read retries", () => {
 
     expect(attempts).toHaveLength(1);
     await expect(result).resolves.toMatchObject({ status });
+  });
+
+  it("shows Go's service-busy 503 at once when its wait is longer than a retry may take", async () => {
+    // Go sends this when a request runs out of its time, with a Retry-After
+    // from its own timeout: here past the five seconds one retry may wait.
+    const attempts: number[] = [];
+    vi.stubGlobal("fetch", async () => {
+      attempts.push(Date.now());
+      return Response.json(
+        {
+          type: serviceBusyType,
+          status: httpStatus.unavailable,
+          title: "Service busy",
+          detail: "The server is busy and could not finish the request in time.",
+        },
+        {
+          status: httpStatus.unavailable,
+          headers: { "Retry-After": "10", "Content-Type": "application/problem+json" },
+        },
+      );
+    });
+
+    const result = client()
+      .query(getGetHealthQueryOptions())
+      .catch((err: unknown) => err);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(attempts).toHaveLength(1);
+    await expect(result).resolves.toMatchObject({
+      status: httpStatus.unavailable,
+      retryAfter: "10",
+      problem: { type: serviceBusyType },
+    });
   });
 
   it("uses actual status rather than the problem body's advisory status", async () => {

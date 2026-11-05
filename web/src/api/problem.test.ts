@@ -6,6 +6,7 @@ import {
   uncertainOutcome,
   userMessage,
 } from "./problem";
+import type { ProblemType } from "./generated/model";
 import { ApiError } from "./transport";
 
 const httpStatus = {
@@ -17,6 +18,8 @@ const httpStatus = {
   unavailable: 503,
   gatewayTimeout: 504,
 };
+
+const serviceBusyType: ProblemType = "/api/v0/problems/service-busy";
 
 describe("uncertainOutcome", () => {
   it.each([
@@ -163,6 +166,29 @@ describe("userMessage", () => {
     expect(userMessage(err)).toBe(
       "The service is restarting. We couldn't confirm whether this was saved. Check before submitting again.",
     );
+  });
+
+  it.each([
+    ["a read", "GET", "The server is busy and could not finish the request in time."],
+    [
+      "a write",
+      "POST",
+      "The server is busy and could not finish the request in time. We couldn't confirm whether this was saved. Check before submitting again.",
+    ],
+  ])("words Go's service-busy 503 for %s", (_, method, message) => {
+    // A write may have committed before its request ran out of time.
+    const err = new ApiError("http", {
+      method,
+      status: httpStatus.unavailable,
+      retryAfter: "10",
+      problem: {
+        type: serviceBusyType,
+        title: "Service busy",
+        detail: "The server is busy and could not finish the request in time.",
+      },
+    });
+
+    expect(userMessage(err)).toBe(message);
   });
 
   it("keeps a known write rejection's explanation", () => {

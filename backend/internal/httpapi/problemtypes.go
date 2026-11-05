@@ -12,10 +12,10 @@ import (
 const problemTypeSchemaName = "ProblemType"
 
 // sharedProblems returns the problems in the API overview's Shared errors
-// table that no operation shows as an example: request failures and the
-// cross-origin refusal.
+// table that no operation shows as an example: request failures, the
+// cross-origin refusal, and a request that timed out.
 func sharedProblems() []*problem {
-	problems := []*problem{crossOriginProblem()}
+	problems := []*problem{crossOriginProblem(), serviceBusyProblem()}
 	for _, status := range []int{
 		http.StatusBadRequest,
 		http.StatusNotFound,

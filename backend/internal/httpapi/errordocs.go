@@ -22,6 +22,7 @@ response covers other errors using the same Problem schema, including:
 | 415 | The request content type is unsupported. |
 | 422 | Parsed input violates the request rules. |
 | 500 | An unexpected server failure occurred. |
+| 503 | The request timed out waiting for the server; see Retry-After. |
 
 Body errors apply to operations that accept a body. A default response
 describes the body format, not a replacement HTTP status.
@@ -32,6 +33,10 @@ send an Origin matching the request's target.
 Writes that need no session, such as sign-in, also limit how fast one client
 can send each of them. Past that limit they answer 429 with type
 too-many-requests and Retry-After, before reading the request body.
+
+A request still waiting when its time runs out, e.g. for a busy resource,
+answers 503 with type service-busy and Retry-After. A write may have taken
+effect before the time ran out.
 
 Input errors can include an errors list with field locations and safe
 correction messages. For example, a 422 response from POST /setup:

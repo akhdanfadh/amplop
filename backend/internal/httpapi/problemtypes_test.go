@@ -29,7 +29,7 @@ func TestProblemTypes(t *testing.T) {
 	for _, want := range []string{
 		setupDoneType, sessionNotFoundType, emailAlreadyVerifiedType, emailVerificationLinkInvalidType,
 		requestProblem(http.StatusNotFound).Type, requestProblem(http.StatusInternalServerError).Type,
-		crossOriginProblem().Type,
+		crossOriginProblem().Type, serviceBusyType,
 	} {
 		assert.Contains(t, types, want)
 	}
