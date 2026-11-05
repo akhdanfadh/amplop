@@ -2,6 +2,7 @@ package connectedaccount
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ type stored struct {
 type memoryStorage struct {
 	accounts []stored
 	lastID   int64
+	states   map[[sha256.Size]byte]ConnectState
 }
 
 func (m *memoryStorage) InsertConnectedAccount(_ context.Context, account NewAccount, seal func(int64) (Credential, error)) (Account, error) {

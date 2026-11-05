@@ -19,6 +19,15 @@ type AuditEvent struct {
 	ActorUserID  *int64
 }
 
+type ConnectState struct {
+	StateHash    []byte
+	UserID       int64
+	SessionID    uuid.UUID
+	AccountID    *int64
+	CodeVerifier string
+	ExpiresAt    time.Time
+}
+
 type ConnectedAccount struct {
 	ID                     int64
 	UserID                 int64

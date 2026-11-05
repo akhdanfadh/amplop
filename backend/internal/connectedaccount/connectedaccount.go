@@ -1,7 +1,8 @@
-// Package connectedaccount owns the Gmail accounts members connect: saving
-// one once the connect flow has verified it, reconnecting it, listing a
-// member's accounts, and disconnecting one. It makes no OAuth or Gmail call;
-// the flow hands it an identity it has already checked.
+// Package connectedaccount owns the Gmail accounts members connect. Service
+// holds the account rules: saving one once its identity is checked,
+// reconnecting it, listing a member's accounts, and disconnecting one.
+// Connections runs the connect flow that feeds them: a state per start, the
+// callback's checks, and the save. Google's side sits behind an interface.
 package connectedaccount
 
 import (
@@ -27,7 +28,7 @@ var (
 	ErrDifferentAccount = errors.New("reconnected with a different Google account")
 )
 
-// The connect flow refuses these first; they guard other callers.
+// Input Connections never sends; they guard other callers.
 var (
 	errNoSubject      = errors.New("identity has no subject")
 	errNoRefreshToken = errors.New("no refresh token")
@@ -39,10 +40,10 @@ type Provider string
 // ProviderGmail is a Google account's Gmail, reached through the Gmail API.
 const ProviderGmail Provider = "gmail"
 
-// Identity is a Google account as the connect flow verified it from the ID
-// token: Google's lasting ID for it and its verified email. Only the flow
-// builds one, from the ID token of the same exchange that returned the
-// refresh token passed with it; this package cannot check that pairing.
+// Identity is a Google account as Google's side of the flow read it from an
+// ID token: Google's lasting ID for it and its email. Connections passes it on
+// only with the refresh token from the same exchange; Service cannot check
+// that pairing.
 type Identity struct {
 	Subject string
 	Email   string

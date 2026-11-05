@@ -80,6 +80,7 @@ func TestCurrent(t *testing.T) {
 	assert.Equal(t, AccessMember, current.Identity.Access, "an admin without TOTP acts as a member")
 	assert.True(t, current.Identity.TOTPRequired)
 	assert.NotZero(t, current.Session)
+	assert.Equal(t, issued.State.ID, current.Session.ID())
 	require.Len(t, store.changes, 1)
 	assert.Equal(t, Keep, store.changes[0].Action)
 

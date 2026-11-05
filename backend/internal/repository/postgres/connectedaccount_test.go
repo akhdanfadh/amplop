@@ -18,6 +18,7 @@ import (
 // connectedAccountsTest is a migrated database with two members and the
 // connected account service on it.
 type connectedAccountsTest struct {
+	db          *DB
 	conn        *pgx.Conn
 	ring        *encryption.Keyring
 	service     *connectedaccount.Service
@@ -31,6 +32,7 @@ func newConnectedAccountsTest(t *testing.T) connectedAccountsTest {
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	require.NoError(t, err)
 	return connectedAccountsTest{
+		db:          db,
 		conn:        conn,
 		ring:        ring,
 		service:     connectedaccount.NewService(db, ring),
