@@ -19,6 +19,18 @@ type AuditEvent struct {
 	ActorUserID  *int64
 }
 
+type ConnectedAccount struct {
+	ID                     int64
+	UserID                 int64
+	Provider               string
+	Email                  string
+	OauthSubject           string
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
+	NeedsReconnectSince    *time.Time
+	CreatedAt              time.Time
+}
+
 type EmailVerificationLink struct {
 	TokenHash []byte
 	UserID    int64

@@ -121,9 +121,9 @@ mkdir -p ~/inbok-backups
 ```
 
 The encryption keys: `INBOK_ENCRYPTION_KEYS` from `.env`. They decrypt
-the TOTP secrets and the system email password stored in the database,
-so a stolen dump alone reveals neither, and a restore needs every key its
-rows use. Store them elsewhere, e.g. in a password manager, and update
+the TOTP secrets, the system email password, and connected Gmail
+accounts' refresh tokens stored in the database, so a stolen dump alone
+reveals none of them, and a restore needs every key its rows use. Store them elsewhere, e.g. in a password manager, and update
 that copy when you rotate keys.
 
 To restore, stop the services that use the database, load the dump, and

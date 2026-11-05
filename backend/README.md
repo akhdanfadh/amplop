@@ -600,7 +600,7 @@ its request.
 | `INBOK_PUBLIC_URL` | none, required | The address users open inbok at, e.g. `https://mail.example.com`; see Public URL below. Invalid values stop startup. |
 | `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
 | `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
-| `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets and the system email password; see Encryption keys below. Invalid entries stop startup. |
+| `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets, the system email password, and connected Gmail accounts' refresh tokens; see Encryption keys below. Invalid entries stop startup. |
 | `INBOK_GOOGLE_CLIENT_ID` | empty, Gmail not offered | The Google OAuth client members connect Gmail accounts with. Set it and the secret together, or neither. |
 | `INBOK_GOOGLE_CLIENT_SECRET` | empty, Gmail not offered | That client's secret. Surrounding spaces are removed from both. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | For development and tests only: one server on this machine that answers for Google, e.g. `http://127.0.0.1:4000`; see [Google emulator](#google-emulator). Any other host, or no client, stops startup. |
@@ -635,24 +635,28 @@ without leading zeros; each key is 32 random bytes in standard base64, from
 `openssl rand -base64 32`. Startup fails, without printing key material, if
 the list is empty or an entry is malformed or repeated.
 
-The first entry encrypts new TOTP secrets and a newly entered system email
-password with AES-256-GCM. Every entry can decrypt. Each stored secret
+The first entry encrypts new TOTP secrets, a newly entered system email
+password, and the refresh token of a newly connected or reconnected Gmail
+account with AES-256-GCM. Every entry can decrypt. Each stored secret
 records its key ID and is bound to what it belongs to: a TOTP secret to its
-user, the system email password to its mail server host, port, and username.
-A ciphertext copied elsewhere does not decrypt. Backup codes and account
+user; the system email password to its mail server host, port, and
+username; a refresh token to its member and connected account. A
+ciphertext copied elsewhere does not decrypt. Backup codes and account
 passwords use Argon2id hashes and do not depend on these keys.
 
 To rotate, generate a key, put it first under an unused ID, keep the old
 entries, and restart every API instance and worker with the same list.
 Existing secrets are not re-encrypted; each keeps its original key until
 that factor is removed and enrolled again, and the system email password
-keeps its key until an administrator saves a new password. Administrators
-cannot turn TOTP off, so their factors can need an old key indefinitely.
-Remove an old key only when neither query lists its ID:
+keeps its key until an administrator saves a new password, and a refresh
+token until its member reconnects the account. Administrators cannot turn
+TOTP off, so their factors can need an old key indefinitely. Remove an old
+key only when no query lists its ID:
 
 ```sql
 SELECT key_id, count(*) FROM user_totp GROUP BY key_id;
 SELECT password_key_id FROM system_email WHERE password_key_id IS NOT NULL;
+SELECT refresh_token_key_id, count(*) FROM connected_accounts GROUP BY refresh_token_key_id;
 ```
 
 Back up the key list separately from database backups, so one stolen backup
@@ -778,8 +782,8 @@ gives the address to trust.
 ## Email addresses
 
 Every address inbok takes goes through `emailaddress.Parse`: setup, sign-in,
-`recover-admin`, registration, the system email From address, and each
-message's recipient. It trims surrounding spaces and tabs, accepts one bare address of
+`recover-admin`, registration, the system email From address, each
+message's recipient, and a connected Gmail account's email from Google. It trims surrounding spaces and tabs, accepts one bare address of
 at most 254 characters without hidden characters, and lowercases the letters
 A to Z, local part included; other letters keep their case. Hidden
 characters are controls, invisible formatting such as a zero-width space or
@@ -787,12 +791,12 @@ a right-to-left override, and Unicode spaces and separators. Anything else
 is `emailaddress.ErrInvalid`, which handlers answer with a 422 on the field;
 Huma accepts hidden characters, so for those the service's 422 is the one a
 client sees. Saved addresses are compared
-exactly, and the `users` table refuses an email with an uppercase ASCII
-letter. New code that takes an address calls `Parse` in its service.
+exactly, and the `users` and `connected_accounts` tables refuse an email
+with an uppercase ASCII letter. New code that takes an address calls `Parse` in its service.
 
 ADR025 in the project's decision records explains the choice and its cost: a
 mail server that treats the local part's case as meaningful is not
-supported. Mail accounts that members connect are outside this rule.
+supported. ADR006 explains why connected Gmail accounts follow the rule.
 
 ## Password hashes
 
@@ -1752,6 +1756,7 @@ httpapi --> registration <-- repository/postgres
             registration --> systememail, account
 httpapi --> passwordreset <-- repository/postgres
             passwordreset --> systememail, account
+connectedaccount <-- repository/postgres
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
