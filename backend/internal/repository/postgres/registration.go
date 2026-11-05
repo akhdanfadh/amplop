@@ -35,33 +35,42 @@ func (db *DB) ReadRegistration(ctx context.Context) (registration.Record, error)
 	return registration.Record{State: registrationState(row.Open), SystemEmailTested: row.SystemEmailTested}, nil
 }
 
-// UpdateRegistration locks the state and the system email settings, loads
-// them, calls update, saves the state update returns, and records a
-// registration-opened or registration-closed event for actorID, in one
-// transaction. A system email save or test waits for the commit. Closing also
+// UpdateRegistration saves the state update returns for the current
+// registration state and whether system email passed a test, and records
+// actorID as the administrator who set it, in one transaction. Closing also
 // deletes every registration attempt and link.
 func (db *DB) UpdateRegistration(ctx context.Context, actorID int64, update func(registration.Record) (registration.State, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock registration.
 		open, err := queries.LockRegistration(ctx)
 		if err != nil {
 			return fmt.Errorf("lock registration: %w", err)
 		}
-		// No saved settings have nothing to lock and have not passed a test.
+
+		// 2. Lock the system email settings, so a save or a test waits for
+		// this commit. No saved settings have nothing to lock and have not
+		// passed a test.
 		tested, err := queries.LockSystemEmailTested(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("lock system email: %w", err)
 		}
+
+		// 3. Let update decide.
 		state, err := update(registration.Record{State: registrationState(open), SystemEmailTested: tested})
 		if err != nil {
 			return err
 		}
 
+		// 4. Save the state.
 		open = state == registration.StateOpen
 		if err := queries.UpdateRegistration(ctx, open); err != nil {
 			return fmt.Errorf("save registration: %w", err)
 		}
-		// The event names only the actor: no account is affected.
+
+		// 5. Record the event. It names only the actor: no account is
+		// affected.
 		action := registrationClosedAction
 		if open {
 			action = registrationOpenedAction
@@ -73,6 +82,7 @@ func (db *DB) UpdateRegistration(ctx context.Context, actorID int64, update func
 			return nil
 		}
 
+		// 6. On a close, lock the attempts and delete every attempt and link.
 		// The lock waits for requests in progress, so none saves a link after
 		// the delete. Requests never lock the state, so this cannot deadlock.
 		if err := queries.LockRegistrationAttempts(ctx); err != nil {
@@ -96,21 +106,26 @@ func registrationState(open bool) registration.State {
 	return registration.StateClosed
 }
 
-// RequestRegistration takes the lock every registration request shares,
-// deletes attempts created at or before since, reads the state for email,
-// and calls create. If create succeeds, it records the attempt and saves
-// the link, in one transaction.
+// RequestRegistration saves the attempt and the link create returns for a
+// request for email, in one transaction, given the registration state,
+// whether email has an account, and the attempts made after since.
 func (db *DB) RequestRegistration(ctx context.Context, email string, since time.Time, create func(registration.RequestState) (registration.RequestChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock the attempts, the lock every registration request shares.
 		if err := queries.LockRegistrationAttempts(ctx); err != nil {
 			return fmt.Errorf("lock registration attempts: %w", err)
 		}
+
+		// 2. Delete attempts created at or before since.
 		if err := queries.DeleteOldRegistrationAttempts(ctx, since); err != nil {
 			return fmt.Errorf("delete old registration attempts: %w", err)
 		}
-		// Not locked: a request only sends mail, and completing registration
-		// checks the state again under its own lock.
+
+		// 3. Read the state, the email's account, and the attempts. The state
+		// is not locked: a request only sends mail, and completing
+		// registration checks the state again under its own lock.
 		row, err := queries.ReadRegistration(ctx)
 		if err != nil {
 			return fmt.Errorf("read registration: %w", err)
@@ -133,6 +148,7 @@ func (db *DB) RequestRegistration(ctx context.Context, email string, since time.
 			})
 		}
 
+		// 4. Let create decide.
 		change, err := create(registration.RequestState{
 			Registration:  registration.Record{State: registrationState(row.Open), SystemEmailTested: row.SystemEmailTested},
 			AccountExists: exists,
@@ -142,6 +158,7 @@ func (db *DB) RequestRegistration(ctx context.Context, email string, since time.
 			return err
 		}
 
+		// 5. Save the attempt, and the link if create made one.
 		attempt := change.Attempt
 		if err := queries.InsertRegistrationAttempt(ctx, sqlc.InsertRegistrationAttemptParams{
 			Email: attempt.Email, ClientAddr: attempt.ClientAddr, Outcome: string(attempt.Outcome), CreatedAt: attempt.CreatedAt,
@@ -193,18 +210,21 @@ func (db *DB) CompleteRegistration(ctx context.Context, hash [sha256.Size]byte, 
 	var user account.User
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
 		// 1. Lock registration. Completions and closes wait for each other
 		// here, so each sees the other's result.
 		open, err := queries.LockRegistration(ctx)
 		if err != nil {
 			return fmt.Errorf("lock registration: %w", err)
 		}
+
 		// 2. Lock the system email settings. No saved settings have nothing to
 		// lock and have not passed a test.
 		tested, err := queries.LockSystemEmailTested(ctx)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("lock system email: %w", err)
 		}
+
 		// 3. Lock user writes. Setup inserts users too: waiting for it lets
 		// the account check see its administrator.
 		if err := queries.LockUsers(ctx); err != nil {
@@ -224,6 +244,7 @@ func (db *DB) CompleteRegistration(ctx context.Context, hash [sha256.Size]byte, 
 		if err == nil {
 			state.Link = &registration.Link{TokenHash: hash, Email: row.Email, CreatedAt: row.CreatedAt.UTC(), ExpiresAt: row.ExpiresAt.UTC()}
 		}
+
 		// 5. Let create accept or refuse.
 		change, err := create(state)
 		if err != nil {
@@ -242,11 +263,13 @@ func (db *DB) CompleteRegistration(ctx context.Context, hash [sha256.Size]byte, 
 		if err != nil {
 			return fmt.Errorf("insert member user: %w", err)
 		}
+
 		// 7. Delete the email's links: the others would only answer that the
 		// account exists.
 		if err := queries.DeleteRegistrationLinksByEmail(ctx, inserted.Email); err != nil {
 			return fmt.Errorf("delete registration links: %w", err)
 		}
+
 		// 8. Record the event. No session is needed to complete: whoever
 		// holds the link acts, so the event names no actor.
 		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{

@@ -25,6 +25,7 @@ func (db *DB) UpdateRecovery(ctx context.Context, userID int64, update func(acco
 	var result account.RecoveryResult
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
 		// 1. Lock the user, as TOTP writes do.
 		row, err := queries.LockRecoveryUser(ctx, userID)
 		if errors.Is(err, pgx.ErrNoRows) {

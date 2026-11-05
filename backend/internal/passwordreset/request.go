@@ -156,6 +156,7 @@ func (r *Requests) send(ctx context.Context, attemptID int64, email string) erro
 		if !mayReset(state.Account) || attemptlimit.Wait(state.LinksSent, now, emailShortLimit, emailLongLimit) > 0 {
 			return change, nil
 		}
+
 		// 3. Save a link for the stored email, already in
 		// emailaddress.Parse's form.
 		to = state.Account.User.Email

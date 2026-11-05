@@ -46,8 +46,8 @@ const (
 // fail on each other's CREATE. One PostgreSQL lock covers both steps, so a
 // second Migrate on the same database waits, then finds nothing to do.
 func Migrate(ctx context.Context, url string, logger *slog.Logger) (err error) {
-	// Goose needs database/sql; the same settings as Open give it the same
-	// connect timeout.
+	// 1. Open a database/sql handle. Goose needs database/sql; the same
+	// settings as Open give it the same connect timeout.
 	cfg, err := poolConfig(url)
 	if err != nil {
 		return err
@@ -56,12 +56,14 @@ func Migrate(ctx context.Context, url string, logger *slog.Logger) (err error) {
 	db := stdlib.OpenDB(*cfg.ConnConfig)
 	defer db.Close()
 
+	// 2. Take the migration lock, held until both migrations finish.
 	unlock, err := lockMigrations(ctx, db)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, unlock()) }()
 
+	// 3. Apply inbok's files, then the workflow tables.
 	if err := migrateFiles(ctx, db, logger); err != nil {
 		return err
 	}

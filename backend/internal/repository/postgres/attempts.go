@@ -14,16 +14,22 @@ import (
 // Compile-time check that *DB implements session.AttemptStorage.
 var _ session.AttemptStorage = (*DB)(nil)
 
-// ReserveAttempt stores an attempt if check accepts the address's earlier attempts.
-// The address lock covers counting and reservation, including the first attempt.
-// Password verification happens after this transaction ends.
+// ReserveAttempt saves attempt, in one transaction, if check accepts the
+// attempts from its address made after cutoff, and returns its ID. An error
+// from check is returned unchanged and saves nothing. Password verification
+// happens after this transaction ends.
 func (db *DB) ReserveAttempt(ctx context.Context, attempt session.Attempt, cutoff time.Time, check func([]session.Attempt) error) (int64, error) {
 	var id int64
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock the address. The lock covers the count and the insert,
+		// including the address's first attempt.
 		if err := queries.LockAttemptAddress(ctx, attempt.ClientAddr); err != nil {
 			return fmt.Errorf("lock attempt address: %w", err)
 		}
+
+		// 2. Delete attempts older than the window, then read the rest.
 		if err := queries.DeleteOldSignInAttempts(ctx, cutoff); err != nil {
 			return fmt.Errorf("delete old attempts: %w", err)
 		}
@@ -35,9 +41,13 @@ func (db *DB) ReserveAttempt(ctx context.Context, attempt session.Attempt, cutof
 		for _, row := range rows {
 			attempts = append(attempts, session.Attempt{Email: row.Email, ClientAddr: row.ClientAddr, CreatedAt: row.CreatedAt.UTC()})
 		}
+
+		// 3. Let check accept or refuse.
 		if err := check(attempts); err != nil {
 			return err
 		}
+
+		// 4. Save the attempt.
 		id, err = queries.InsertSignInAttempt(ctx, sqlc.InsertSignInAttemptParams{
 			Email: attempt.Email, ClientAddr: attempt.ClientAddr, CreatedAt: attempt.CreatedAt,
 		})

@@ -24,29 +24,33 @@ func readSetup(ctx context.Context, queries *sqlc.Queries) (account.SetupState, 
 	return account.SetupState{AdminExists: exists}, nil
 }
 
-// UpdateSetup serializes claims in one transaction:
-//
-//	lock users -> read setup -> update(state) -> insert admin -> commit
-//
-// Read Committed makes a waiting claim see the winner's committed row.
+// UpdateSetup inserts the administrator update returns, in one transaction,
+// if update accepts the setup state it reads, and returns the new user.
 func (db *DB) UpdateSetup(ctx context.Context, update func(account.SetupState) (account.NewAdmin, error)) (account.User, error) {
 	var user account.User
 
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock user writes, so claims run one at a time.
 		if err := queries.LockUsers(ctx); err != nil {
 			return fmt.Errorf("lock users: %w", err)
 		}
 
+		// 2. Read the setup state. Read Committed lets a claim that waited see
+		// the winner's committed row.
 		state, err := readSetup(ctx, queries)
 		if err != nil {
 			return err
 		}
+
+		// 3. Let update accept or refuse.
 		admin, err := update(state)
 		if err != nil {
 			return err
 		}
 
+		// 4. Insert the administrator.
 		row, err := queries.InsertAdminUser(ctx, sqlc.InsertAdminUserParams{
 			Email: admin.Email, PasswordHash: admin.PasswordHash,
 		})

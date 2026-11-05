@@ -103,3 +103,10 @@ The web app reads these from the contract; keep them stable:
   to no single line is a `DESIGN:` paragraph after the doc sentence.
 - `NOTE:` marks only a surprise a reader must know: a tool's unexpected
   behaviour, a workaround, a dependency on undocumented behaviour.
+- Number each step whose order is a decision the code cannot show: a step
+  that relies on what an earlier one did (a lock held, a row written, a
+  refusal before a costly or irreversible step), however few steps there
+  are: `// 2. Lock the system email settings. <reason>`, after a blank
+  line unless it opens a block. The doc comment keeps to what, inputs,
+  and returns. An interface method's doc comment states the order
+  instead, as the contract an implementation must meet.

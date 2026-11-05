@@ -38,6 +38,8 @@ func (db *DB) UpdateMember(ctx context.Context, actorID, memberID int64, update 
 	var member account.Member
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock the member.
 		row, err := queries.LockMemberUser(ctx, memberID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return account.ErrUserNotFound
@@ -47,6 +49,7 @@ func (db *DB) UpdateMember(ctx context.Context, actorID, memberID int64, update 
 		}
 		member = memberFromRow(row)
 
+		// 2. Let update decide. Keeping the member writes nothing.
 		change, err := update(member)
 		if err != nil {
 			return err
@@ -64,8 +67,8 @@ func (db *DB) UpdateMember(ctx context.Context, actorID, memberID int64, update 
 			return fmt.Errorf("unknown member action %d", change.Action)
 		}
 
-		// Return the saved time, which pgx truncates to microseconds, so the
-		// result equals what a later read finds.
+		// 3. Save the status. Return the saved time, which pgx truncates to
+		// microseconds, so the result equals what a later read finds.
 		saved, err := queries.UpdateUserDeactivatedAt(ctx, sqlc.UpdateUserDeactivatedAtParams{
 			UserID: memberID, DeactivatedAt: deactivatedAt,
 		})
@@ -75,8 +78,9 @@ func (db *DB) UpdateMember(ctx context.Context, actorID, memberID int64, update 
 		row.DeactivatedAt = saved
 		member = memberFromRow(row)
 		if change.Action == account.MemberDeactivate {
-			// The password and factor stay, so reactivating restores the
-			// account as it was.
+			// 4. On deactivation, end every way in the member has. The
+			// password and factor stay, so reactivating restores the account
+			// as it was.
 			if err := queries.DeleteUserSessions(ctx, memberID); err != nil {
 				return fmt.Errorf("end member sessions: %w", err)
 			}
@@ -90,6 +94,8 @@ func (db *DB) UpdateMember(ctx context.Context, actorID, memberID int64, update 
 				return fmt.Errorf("remove member reset links: %w", err)
 			}
 		}
+
+		// 5. Record the event.
 		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{
 			Action: action, ActorUserID: &actorID, TargetUserID: &memberID,
 		}); err != nil {
