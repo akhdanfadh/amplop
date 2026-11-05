@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"log/slog"
 	"net/netip"
 	"net/url"
 	"time"
@@ -113,12 +114,14 @@ type Requests struct {
 	mailer    mailer
 	publicURL *url.URL
 	now       func() time.Time
+	logger    *slog.Logger
 }
 
 // NewRequests returns Requests given storage, the [systememail.Mailer] that
-// sends, the public URL links start with, and a clock.
-func NewRequests(storage requestStorage, mailer mailer, publicURL *url.URL, now func() time.Time) *Requests {
-	return &Requests{storage: storage, mailer: mailer, publicURL: publicURL, now: now}
+// sends, the public URL links start with, a clock, and the logger that warns
+// when the limit on everyone refuses a request.
+func NewRequests(storage requestStorage, mailer mailer, publicURL *url.URL, now func() time.Time, logger *slog.Logger) *Requests {
+	return &Requests{storage: storage, mailer: mailer, publicURL: publicURL, now: now, logger: logger}
 }
 
 // Send answers a request to register email from client. A new email gets a
@@ -160,6 +163,7 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 	// or a skip.
 	secret, hash := randomsecret.New()
 	var change RequestChange
+	var everyoneWait time.Duration
 	since := r.now().UTC().Add(-attemptRetention)
 	err = r.storage.RequestRegistration(ctx, email, since, func(state RequestState) (RequestChange, error) {
 		// Read under the lock, so a request that waited counts from now.
@@ -183,7 +187,8 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		}
 		// These limits come before the email's own, so a refusal never
 		// depends on the email asked for.
-		if wait := max(attemptlimit.Wait(fromClient, now, clientLimit), attemptlimit.Wait(fromAll, now, instanceLimit)); wait > 0 {
+		everyoneWait = attemptlimit.Wait(fromAll, now, instanceLimit)
+		if wait := max(attemptlimit.Wait(fromClient, now, clientLimit), everyoneWait); wait > 0 {
 			return RequestChange{}, &attemptlimit.Error{Err: ErrThrottled, Wait: wait}
 		}
 
@@ -200,6 +205,11 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		}
 		return change, nil
 	})
+	// A full limit on everyone refuses every visitor, and may be someone
+	// keeping it full; nothing else tells an administrator.
+	if errors.Is(err, ErrThrottled) && everyoneWait > 0 {
+		r.logger.WarnContext(ctx, "registration limit on everyone reached", "wait", everyoneWait)
+	}
 	if err != nil {
 		return err
 	}

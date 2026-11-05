@@ -259,7 +259,7 @@ func TestRequestRegistrationLinkSameResponse(t *testing.T) {
 		})
 	}
 	mailer := &recordingMailer{}
-	requests := registration.NewRequests(storage, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, time.Now)
+	requests := registration.NewRequests(storage, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, time.Now, discard)
 	api := New(discard, Services{RegistrationRequests: requests})
 
 	var responses []*httptest.ResponseRecorder

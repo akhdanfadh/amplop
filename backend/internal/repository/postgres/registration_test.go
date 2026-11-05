@@ -345,7 +345,7 @@ func TestRegistrationRequests(t *testing.T) {
 	openRegistration(t, conn)
 	verificationUser(t, conn, "member@example.org")
 	mailer := &verificationMailer{}
-	requests := registration.NewRequests(db, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, func() time.Time { return requestNow })
+	requests := registration.NewRequests(db, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, func() time.Time { return requestNow }, discard)
 	client := netip.MustParseAddr("192.0.2.1")
 
 	for range 4 {

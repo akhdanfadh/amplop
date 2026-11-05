@@ -135,7 +135,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		SystemEmail:             systememail.NewService(db, cfg.Encryption),
 		TestMessages:            systememail.NewTestMessages(db, mailer, time.Now),
 		Registration:            registration.NewService(db),
-		RegistrationRequests:    registration.NewRequests(db, mailer, cfg.PublicURL, time.Now),
+		RegistrationRequests:    registration.NewRequests(db, mailer, cfg.PublicURL, time.Now, logger),
 		RegistrationCompletion:  registration.NewCompletion(db, time.Now),
 		PasswordResetRequests:   passwordreset.NewRequests(db, mailer, cfg.PublicURL, resetBackground, time.Now),
 		PasswordResetCompletion: passwordreset.NewCompletion(db, mailer, cfg.PublicURL, resetBackground, time.Now),

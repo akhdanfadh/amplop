@@ -1,10 +1,12 @@
 package registration
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"net/netip"
 	"net/url"
 	"slices"
@@ -83,7 +85,7 @@ func openStorage() *requestMemory {
 
 func testRequests(storage *requestMemory, mailer *fakeMailer) *Requests {
 	publicURL := &url.URL{Scheme: "https", Host: "mail.example.com"}
-	return NewRequests(storage, mailer, publicURL, func() time.Time { return testNow })
+	return NewRequests(storage, mailer, publicURL, func() time.Time { return testNow }, slog.New(slog.DiscardHandler))
 }
 
 // attempts returns n attempts made age before testNow.
@@ -193,21 +195,27 @@ func TestRequestEmailLimit(t *testing.T) {
 }
 
 // Too many requests from one client address, or from everyone, are refused
-// with the wait. Every recorded request counts, skipped ones included.
+// with the wait. Every recorded request counts, skipped ones included. A
+// refusal by the limit on everyone logs a warning, so an administrator can
+// see someone keeping registration full; one client's refusal does not.
 func TestRequestThrottled(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		earlier []Attempt
 		wait    time.Duration
+		warned  bool
 	}{
-		{"10 from the client in 15 minutes", attempts(10, otherEmail, "192.0.2.1/32", OutcomeSkipped, 5*time.Minute), 10 * time.Minute},
-		{"50 from everyone in an hour", attempts(50, otherEmail, "198.51.100.1/32", OutcomeSkipped, 20*time.Minute), 40 * time.Minute},
+		{"10 from the client in 15 minutes", attempts(10, otherEmail, "192.0.2.1/32", OutcomeSkipped, 5*time.Minute), 10 * time.Minute, false},
+		{"50 from everyone in an hour", attempts(50, otherEmail, "198.51.100.1/32", OutcomeSkipped, 20*time.Minute), 40 * time.Minute, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			storage, mailer := openStorage(), &fakeMailer{}
 			storage.attempts = c.earlier
+			var logs bytes.Buffer
+			publicURL := &url.URL{Scheme: "https", Host: "mail.example.com"}
+			requests := NewRequests(storage, mailer, publicURL, func() time.Time { return testNow }, slog.New(slog.NewTextHandler(&logs, nil)))
 
-			err := testRequests(storage, mailer).Send(t.Context(), visitor, visitorAddr)
+			err := requests.Send(t.Context(), visitor, visitorAddr)
 
 			limited, ok := errors.AsType[*attemptlimit.Error](err)
 			require.True(t, ok, "%v", err)
@@ -215,6 +223,12 @@ func TestRequestThrottled(t *testing.T) {
 			assert.Equal(t, c.wait, limited.Wait)
 			assert.Empty(t, mailer.sent)
 			assert.Equal(t, c.earlier, storage.attempts, "a refused request is not recorded")
+			if c.warned {
+				assert.Contains(t, logs.String(), `level=WARN msg="registration limit on everyone reached" wait=40m0s`)
+			} else {
+				assert.Empty(t, logs.String())
+			}
+			assert.NotContains(t, logs.String(), visitor, "the log names no email")
 		})
 	}
 }
@@ -354,7 +368,7 @@ func TestRetentionCoversLimits(t *testing.T) {
 func TestRequestClosedWhileWaiting(t *testing.T) {
 	storage, mailer := &closingStorage{requestMemory: openStorage()}, &fakeMailer{}
 
-	err := NewRequests(storage, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, func() time.Time { return testNow }).Send(t.Context(), visitor, visitorAddr)
+	err := NewRequests(storage, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, func() time.Time { return testNow }, slog.New(slog.DiscardHandler)).Send(t.Context(), visitor, visitorAddr)
 
 	require.ErrorIs(t, err, ErrClosed)
 	assert.Empty(t, mailer.sent)

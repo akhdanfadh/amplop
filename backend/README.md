@@ -1212,9 +1212,12 @@ email has an account. Other answers:
 
 - 409 `registration-closed`: registration is closed or paused.
 - 429 `registration-throttled` with `Retry-After`: this client (an IPv4
-  address or an IPv6 /64) asked 10 times in 15 minutes, or everyone together asked 50 times in the last hour.
-  Both limits are checked before the email's own, so a 429 never depends on
-  the email.
+  address or an IPv6 /64) asked 10 times in 15 minutes, or everyone
+  together asked 50 times in the last hour. Both limits are checked before
+  the email's own, so a 429 never depends on the email. A refusal by the
+  limit on everyone logs a warning,
+  `msg="registration limit on everyone reached" wait=…`, since it refuses
+  every visitor and may mean someone is keeping it full.
 - 502 `email-not-sent`: the send failed. The link stays saved and counts,
   and an [unconfirmed](#system-email) message may still arrive. The
   warning logged has
