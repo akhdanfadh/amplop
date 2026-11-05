@@ -44,8 +44,7 @@ const (
 	writeTimeout = 30 * time.Second
 	idleTimeout  = 120 * time.Second
 
-	// shutdownTimeout bounds how long in-flight requests, and then the
-	// password reset emails they started, may finish.
+	// shutdownTimeout bounds how long in-flight requests may finish.
 	// It stays below Docker's default 10s grace period before SIGKILL.
 	shutdownTimeout = 5 * time.Second
 )
@@ -141,7 +140,6 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
-	resetBackground := passwordreset.NewBackground(logger)
 	services := httpapi.Services{
 		EmailVerification:       emailverification.NewService(db, mailer, cfg.PublicURL, time.Now),
 		Members:                 account.NewMembers(db, time.Now),
@@ -151,7 +149,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		RegistrationRequests:    registration.NewRequests(db, mailer, cfg.PublicURL, time.Now, logger),
 		RegistrationCompletion:  registration.NewCompletion(db, time.Now),
 		PasswordResetRequests:   passwordreset.NewRequests(db, time.Now),
-		PasswordResetCompletion: passwordreset.NewCompletion(db, mailer, cfg.PublicURL, resetBackground, time.Now),
+		PasswordResetCompletion: passwordreset.NewCompletion(db, time.Now),
 		Disabler:                totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		Backups:                 totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		CodeSignIn:              session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
@@ -178,16 +176,14 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		api.ServeWebApp(build)
 	}
 
-	// 7. Serve until ctx is cancelled, then wait for the work requests
-	// started.
-	return listen(ctx, cfg.HTTPAddr, api.Handler(), resetBackground, logger)
+	// 7. Serve until ctx is cancelled.
+	return listen(ctx, cfg.HTTPAddr, api.Handler(), logger)
 }
 
 // listen serves handler on addr until ctx is cancelled, then lets in-flight
-// requests finish, and then the work they started on background, if not nil.
-// It returns the error that stopped serving, or the shutdown's error, such
-// as the context's when requests outlast the timeout.
-func listen(ctx context.Context, addr string, handler http.Handler, background *passwordreset.Background, logger *slog.Logger) error {
+// requests finish. It returns the error that stopped serving, or the
+// shutdown's error, such as the context's when requests outlast the timeout.
+func listen(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger) error {
 	// ErrorLog routes net/http's internal errors, e.g. a failed TLS
 	// handshake, into the same log.
 	server := http.Server{
@@ -221,18 +217,7 @@ func listen(ctx context.Context, addr string, handler http.Handler, background *
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
-	err = server.Shutdown(shutdownCtx)
-
-	// 4. Wait for background work. Requests are done, so no new work
-	// starts; what is left of the timeout goes to work already started. The
-	// worker passes no background.
-	if background == nil {
-		return err
-	}
-	if waitErr := background.Wait(shutdownCtx); waitErr != nil {
-		logger.Warn("stopped before all password reset background work finished; its emails may not have been sent")
-	}
-	return err
+	return server.Shutdown(shutdownCtx)
 }
 
 // migrate applies pending database migrations, then exits. serve never

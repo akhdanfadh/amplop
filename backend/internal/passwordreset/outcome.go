@@ -15,6 +15,7 @@ type Outcome string
 const (
 	OutcomeSent          Outcome = "sent"
 	OutcomeNotEligible   Outcome = "skipped: no account, or one that may not reset or is over its limits"
+	OutcomeNoRecipient   Outcome = "skipped: the user is gone or deactivated"
 	OutcomeNotConfigured Outcome = "skipped: system email is not configured"
 	OutcomeUnsendable    Outcome = "failed: the address or the saved password is unusable"
 	OutcomeRefused       Outcome = "failed: the mail server refused the address for good"
@@ -24,7 +25,7 @@ const (
 // have, e.g. because system email is not configured, as opposed to sending
 // it or having no one to send to.
 func (o Outcome) Failed() bool {
-	return o != OutcomeSent && o != OutcomeNotEligible
+	return o != OutcomeSent && o != OutcomeNotEligible && o != OutcomeNoRecipient
 }
 
 // sendOutcome returns what a send that returned err means for its job:

@@ -62,6 +62,7 @@ type Services struct {
 	PasswordResetAttemptCleanup expired
 	RecoveryNotices             recoveryNotices
 	PasswordResetLinks          passwordResetLinks
+	PasswordChangedNotices      passwordChangedNotices
 }
 
 // Worker runs inbok's workflows and schedules.
@@ -123,6 +124,7 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	}
 	w.registerRecoveryNotice(services.RecoveryNotices)
 	w.registerPasswordResetLink(services.PasswordResetLinks)
+	w.registerPasswordChangedNotice(services.PasswordChangedNotices)
 	return w, nil
 }
 

@@ -13,6 +13,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/passwordreset"
+	"inbok/internal/randomsecret"
 	"inbok/internal/repository/postgres"
 )
 
@@ -226,4 +227,76 @@ func TestClientPasswordResetRollback(t *testing.T) {
 	// Then the request fails and no job is saved.
 	require.ErrorContains(t, err, "request rejected")
 	assert.Empty(t, linkWorkflows(t, conn))
+}
+
+// changedNoticeWorkflows lists the password changed notice workflows saved
+// in DBOS's tables, by status.
+func changedNoticeWorkflows(t *testing.T, conn *pgx.Conn) []string {
+	t.Helper()
+	rows, err := conn.Query(t.Context(), "SELECT status FROM dbos.workflow_status WHERE name = $1", passwordChangedNoticeWorkflow)
+	require.NoError(t, err)
+	statuses, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	return statuses
+}
+
+// A completed reset saves its notice for the worker, which then tells that
+// user, at the time the reset was checked. The job's input holds no email.
+func TestClientPasswordChangedNotice(t *testing.T) {
+	// Given a live reset link for the administrator, through storage that
+	// saves workflows with a Client.
+	db, conn, url := clientStack(t)
+	var admin int64
+	require.NoError(t, conn.QueryRow(t.Context(), "UPDATE users SET email_verified_at = now() WHERE email = 'admin@example.com' RETURNING id").Scan(&admin))
+	secret, hash := randomsecret.New()
+	_, err := conn.Exec(t.Context(), `INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
+		VALUES ($1, $2, 'admin@example.com', now(), now() + interval '1 hour')`, hash[:], admin)
+	require.NoError(t, err)
+	resetAt := time.Now().UTC()
+
+	// When the link resets the password.
+	_, err = passwordreset.NewCompletion(db, func() time.Time { return resetAt }).Complete(t.Context(), secret, "admin@example.com", "a new password for the reset")
+	require.NoError(t, err)
+
+	// Then its notice waits in the queue, holding no email, until a worker
+	// sends it.
+	assert.Equal(t, []string{"ENQUEUED"}, changedNoticeWorkflows(t, conn))
+	var input string
+	require.NoError(t, conn.QueryRow(t.Context(), `SELECT i.inputs FROM dbos.workflow_input i
+		JOIN dbos.workflow_status s USING (workflow_uuid) WHERE s.name = $1`, passwordChangedNoticeWorkflow).Scan(&input))
+	decoded, err := base64.StdEncoding.DecodeString(input)
+	require.NoError(t, err)
+	assert.Contains(t, string(decoded), `"UserID"`)
+	assert.NotContains(t, string(decoded), "@")
+	notices := &fakeChangedNotices{}
+	changedNoticeWorker(t, url, notices)
+	require.Eventually(t, func() bool { return len(notices.sends()) == 1 }, wait, 50*time.Millisecond)
+	sent := notices.sends()[0]
+	assert.Equal(t, admin, sent.UserID)
+	assert.WithinDuration(t, resetAt, sent.ChangedAt, 0)
+}
+
+// A reset that fails as it commits rolls its notice back with it, so no
+// one hears of a password change that did not happen.
+func TestClientPasswordChangedNoticeRollback(t *testing.T) {
+	// Given a live reset link, and audit events that fail as they commit,
+	// after the notice is saved.
+	db, conn, _ := clientStack(t)
+	var admin int64
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT id FROM users WHERE email = 'admin@example.com'").Scan(&admin))
+	secret, hash := randomsecret.New()
+	_, err := conn.Exec(t.Context(), `INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
+		VALUES ($1, $2, 'admin@example.com', now(), now() + interval '1 hour')`, hash[:], admin)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), `CREATE FUNCTION reject_reset() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reset rejected'; END $$`)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), "CREATE CONSTRAINT TRIGGER reject_write AFTER INSERT ON audit_events DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_reset()")
+	require.NoError(t, err)
+
+	// When the link resets the password.
+	_, err = passwordreset.NewCompletion(db, time.Now).Complete(t.Context(), secret, "admin@example.com", "a new password for the reset")
+
+	// Then the reset fails and no notice is saved.
+	require.ErrorContains(t, err, "reset rejected")
+	assert.Empty(t, changedNoticeWorkflows(t, conn))
 }

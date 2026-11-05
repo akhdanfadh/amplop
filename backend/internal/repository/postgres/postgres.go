@@ -29,6 +29,10 @@ type PasswordResetWorkflows interface {
 	// link for the request with attemptID to the account with userID, if it
 	// may reset; userID is 0 when no account has the requested email.
 	EnqueuePasswordResetLink(ctx context.Context, tx pgx.Tx, attemptID, userID int64) error
+
+	// EnqueuePasswordChangedNotice saves, in tx, the workflow that tells the
+	// user with userID that their password changed at changedAt.
+	EnqueuePasswordChangedNotice(ctx context.Context, tx pgx.Tx, userID int64, changedAt time.Time) error
 }
 
 // RecoveryWorkflows saves the jobs of administrator recovery.

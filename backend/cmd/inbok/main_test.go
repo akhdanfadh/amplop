@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/httpapi"
-	"inbok/internal/passwordreset"
 )
 
 var discard = slog.New(slog.DiscardHandler)
@@ -93,79 +92,33 @@ func TestServeShortSetupToken(t *testing.T) {
 }
 
 // Cancelling the context, as SIGINT or SIGTERM does, stops the server
-// cleanly, with password reset work to wait for or, as for the worker,
-// without.
+// cleanly.
 func TestListenShutdown(t *testing.T) {
-	cases := map[string]*passwordreset.Background{
-		"serve":  passwordreset.NewBackground(discard),
-		"worker": nil,
-	}
-	for name, background := range cases {
-		t.Run(name, func(t *testing.T) {
-			// Given a server started in the background and answering.
-			addr := freeAddr(t)
-
-			ctx, cancel := context.WithCancel(context.Background())
-			done := make(chan error, 1)
-			go func() {
-				done <- listen(ctx, addr, httpapi.New(discard, httpapi.Services{}).Handler(), background, discard)
-			}()
-
-			url := "http://" + addr + "/api/v0/health"
-			require.True(t, waitUp(url), "server did not start")
-
-			// When its context is cancelled.
-			cancel()
-
-			// Then listen returns without error in time, and the port closes.
-			select {
-			case err := <-done:
-				require.NoError(t, err)
-			case <-time.After(shutdownTimeout + time.Second):
-				require.FailNow(t, "listen did not return after cancel")
-			}
-
-			_, err := http.Get(url)
-			require.Error(t, err, "server still accepts requests after shutdown")
-		})
-	}
-}
-
-// Shutdown waits for password reset work that requests started.
-func TestListenWaitsForBackground(t *testing.T) {
-	// Given a server with background work that runs until released.
+	// Given a server started in the background and answering.
 	addr := freeAddr(t)
-	background := passwordreset.NewBackground(discard)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- listen(ctx, addr, httpapi.New(discard, httpapi.Services{}).Handler(), background, discard)
+		done <- listen(ctx, addr, httpapi.New(discard, httpapi.Services{}).Handler(), discard)
 	}()
-	require.True(t, waitUp("http://"+addr+"/api/v0/health"), "server did not start")
-	started, release := make(chan struct{}), make(chan struct{})
-	background.Go(t.Context(), "test", func(context.Context) error {
-		close(started)
-		<-release
-		return nil
-	})
-	<-started
 
-	// When the server stops while the work runs.
+	url := "http://" + addr + "/api/v0/health"
+	require.True(t, waitUp(url), "server did not start")
+
+	// When its context is cancelled.
 	cancel()
 
-	// Then listen waits for the work, and returns once it finishes.
-	select {
-	case err := <-done:
-		require.FailNow(t, "listen returned while work was running", "error: %v", err)
-	case <-time.After(200 * time.Millisecond):
-	}
-	close(release)
+	// Then listen returns without error in time, and the port closes.
 	select {
 	case err := <-done:
 		require.NoError(t, err)
 	case <-time.After(shutdownTimeout + time.Second):
-		require.FailNow(t, "listen did not return after the work finished")
+		require.FailNow(t, "listen did not return after cancel")
 	}
+
+	_, err := http.Get(url)
+	require.Error(t, err, "server still accepts requests after shutdown")
 }
 
 // A busy port fails listen without claiming the server started.
@@ -176,7 +129,7 @@ func TestListenBusyPort(t *testing.T) {
 
 	var out bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&out, nil))
-	err = listen(context.Background(), listener.Addr().String(), httpapi.New(discard, httpapi.Services{}).Handler(), passwordreset.NewBackground(discard), logger)
+	err = listen(context.Background(), listener.Addr().String(), httpapi.New(discard, httpapi.Services{}).Handler(), logger)
 	require.Error(t, err)
 	assert.Empty(t, out.String(), "listen logged before failing")
 }

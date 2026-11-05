@@ -260,11 +260,33 @@ so the client's limit, which counts requests, leaves it out. A retry at
 the account's limit therefore sends nothing.
 
 The run logs `password reset link` with the `attempt_id`, the `user_id`,
-and its outcome, a warning unless it was `sent` or `skipped`, or
+and its outcome, a warning unless it was sent or skipped for lack of an
+eligible account, or
 `password reset link failed` with the error once its retries run out. That
 error, which DBOS also keeps with the run, names only where the send
 failed, e.g. `failed at timeout, unconfirmed`, never the server's reply,
 which can quote the message and its live link.
+
+### Password changed notice
+
+The workflow `inbok.password-changed-notice`, run from the queue
+`inbok.email`, tells a user that a reset link changed their password, so a
+reset they did not ask for does not go unnoticed. [Completing a
+reset](#completing-a-reset) saves it in the reset's own transaction, so a
+reset that committed always gets its notice. Its input is the user's ID
+and the time of the change, which the email names. Its one step, `send
+notice`, reads the user's current email, since it may run long after the
+reset, and sends nothing when the user is gone or deactivated. It reads
+under a share lock, so it waits for a deactivation in progress.
+
+A send that retrying cannot fix ends the run with its outcome, as for the
+[reset link](#password-reset-link). Any other failure, unconfirmed sends
+included, is retried 5 more times, waiting 1, 2, 4, 8, then 15 minutes,
+like the [recovery notice](#recovery-notice): no one waits for it, and a
+late notice still tells. So a user may get the notice twice. The run logs `password changed notice` with the
+`user_id` and its outcome, a warning unless it was sent or skipped for a
+user gone or deactivated, or `password changed notice failed` with an
+error that names only where the send failed.
 
 ### Inspecting workflows
 
@@ -556,10 +578,10 @@ write may have committed before the deadline, so the 503 does not say it was
 not.
 
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and gives
-in-flight requests up to 5 seconds to finish. What is left of those 5 seconds
-goes to "password changed" notices still being sent, which their resets did
-not wait for (see [Password reset](#password-reset)); any still sending then
-are lost, and a warning says so.
+in-flight requests up to 5 seconds to finish. The password reset link and
+the password changed notice are [background jobs](#background-work) saved
+with their request, so stopping loses neither; other email is sent inside
+its request.
 
 ## Configuration
 
@@ -1035,7 +1057,19 @@ reply, except at sign-in. A reply to the sign-in can quote the Base64
 credentials inbok sent, the password included, so a failed sign-in keeps
 only the reply's code and enhanced code, e.g. `SMTP error 535: 5.7.8`, or
 `unexpected reply to the sign-in` for a reply it cannot use. The warning
-carries the `request_id` of the request that sent it:
+carries the `request_id` of the request that sent it. Two choices each
+email makes decide what a send does:
+
+- **Private** when its body holds a secret, something that grants access if
+  read, e.g. a link's token: the warning then leaves out the server's reply,
+  which can quote the message. Reset, registration, and verification links
+  are private; notices and test messages are not.
+- **Tested settings required** for mail nobody asked for, e.g. the
+  [recovery notice](#recovery-notice) to other administrators: it is not
+  sent, or retried, through settings no one has seen work. Mail someone
+  asked for or caused, e.g. a link or the notice of their own reset, goes
+  out whenever settings are configured, so a saved but untested change
+  does not stop it.
 
 ```text
 time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="send failed at auth: SMTP error 535: 5.7.8" request_id=0b9d6a56-3f4e-4c1a-9d2b-7e8f0a1b2c3d
@@ -1443,14 +1477,10 @@ deactivated user, is the same `passwordreset.ErrLinkInvalid`.
 On success it returns the user, so the caller can name the email to sign in
 with, and creates no session.
 
-Once the reset commits, `Complete` starts background work that emails the
-user that their password changed, naming the time, and returns without
-waiting for it. `passwordreset.Background` runs that work in a goroutine: it
-keeps the request's context values, so its logs carry the `request_id`, but
-not its cancellation, and has 30 seconds of its own. A failed send is only
-logged, by the mailer as for any system email, and does not undo the reset.
-A panic is logged with its stack, not its value, instead of stopping the
-server.
+With the reset, in its transaction, `Complete` saves the
+[password changed notice](#password-changed-notice), which emails the user
+that their password changed, naming the time; the answer does not wait for
+it. A notice that fails to send does not undo the reset.
 
 To list password resets, and recent requests:
 

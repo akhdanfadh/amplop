@@ -55,10 +55,20 @@ type Outgoing struct {
 	To      string
 	Subject string
 	Body    string
-	Private bool // Body holds a secret, e.g. a link's, so logs must not quote it
+
+	// Private keeps the server's reply out of a failed send's log, since a
+	// reply can quote the message. Set it exactly when Body holds a secret,
+	// something that grants access if read, e.g. a link's token; a reply
+	// that quotes only the recipient's address is no reason to.
+	Private bool
 
 	// RequireTested sends only with settings that passed a test message,
-	// judged on the settings the send would use.
+	// judged on the settings the send would use. Set it for mail nobody
+	// asked for, e.g. the recovery notice to other administrators, so inbok
+	// does not push it, and retry it, through settings no one has seen
+	// work. Mail someone asked for or caused, e.g. a link or the notice of
+	// their own reset, goes out whenever settings are configured, so a
+	// saved but untested change does not stop it.
 	RequireTested bool
 }
 

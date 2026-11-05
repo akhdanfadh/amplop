@@ -19,7 +19,8 @@ func quickRetries(t *testing.T, policies ...*retries) {
 }
 
 // Notices are retried 5 more times, waiting 1, 2, 4, 8, then 15 minutes;
-// the docs promise it for the recovery notice.
+// the docs promise it for the recovery notice and the password changed
+// notice.
 func TestNoticeRetryPolicy(t *testing.T) {
 	assert.Equal(t, retries{attempts: 5, base: time.Minute, ceiling: 15 * time.Minute}, noticeRetries)
 }

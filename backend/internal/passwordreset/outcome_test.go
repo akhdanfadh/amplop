@@ -12,6 +12,7 @@ func TestOutcomeFailed(t *testing.T) {
 	for outcome, failed := range map[Outcome]bool{
 		OutcomeSent:          false,
 		OutcomeNotEligible:   false,
+		OutcomeNoRecipient:   false,
 		OutcomeNotConfigured: true,
 		OutcomeUnsendable:    true,
 		OutcomeRefused:       true,

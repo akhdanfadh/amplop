@@ -35,7 +35,8 @@ type resetAccounts struct {
 	bystander int64
 }
 
-// resetWorkflows saves each reset link job as a row of test_reset_link_jobs
+// resetWorkflows saves each reset link job as a row of test_reset_link_jobs,
+// and each password changed notice as one of test_password_changed_notices,
 // in the transaction it is given, as DBOS's enqueue does, so a test sees
 // whether the job committed. err fails the enqueue. It implements only
 // [PasswordResetWorkflows]: a call to another feature's job reaches the nil
@@ -55,6 +56,35 @@ func (w resetWorkflows) EnqueuePasswordResetLink(ctx context.Context, tx pgx.Tx,
 
 // missingUserID is the ID of no user: IDs start at 1.
 const missingUserID int64 = -1
+
+// EnqueuePasswordChangedNotice saves the notice as a row of
+// test_password_changed_notices in tx.
+func (w resetWorkflows) EnqueuePasswordChangedNotice(ctx context.Context, tx pgx.Tx, userID int64, changedAt time.Time) error {
+	if w.err != nil {
+		return w.err
+	}
+	_, err := tx.Exec(ctx, "INSERT INTO test_password_changed_notices (user_id, changed_at) VALUES ($1, $2)", userID, changedAt)
+	return err
+}
+
+// changedNotice is a saved password changed notice job.
+type changedNotice struct {
+	UserID    int64
+	ChangedAt time.Time
+}
+
+// changedNotices lists the saved password changed notice jobs.
+func changedNotices(t *testing.T, conn *pgx.Conn) []changedNotice {
+	t.Helper()
+	rows, err := conn.Query(t.Context(), "SELECT user_id, changed_at FROM test_password_changed_notices ORDER BY user_id")
+	require.NoError(t, err)
+	notices, err := pgx.CollectRows(rows, pgx.RowToStructByPos[changedNotice])
+	require.NoError(t, err)
+	for i := range notices {
+		notices[i].ChangedAt = notices[i].ChangedAt.UTC()
+	}
+	return notices
+}
 
 // resetLinkJob is a saved reset link job: the attempt, and the account's ID,
 // 0 for none.
@@ -92,7 +122,8 @@ func newResetAccounts(t *testing.T) resetAccounts {
 	t.Helper()
 
 	db, conn := setupStorage(t)
-	_, err := conn.Exec(t.Context(), "CREATE TABLE test_reset_link_jobs (attempt_id bigint NOT NULL, user_id bigint NOT NULL)")
+	_, err := conn.Exec(t.Context(), `CREATE TABLE test_reset_link_jobs (attempt_id bigint NOT NULL, user_id bigint NOT NULL);
+		CREATE TABLE test_password_changed_notices (user_id bigint NOT NULL, changed_at timestamptz NOT NULL)`)
 	require.NoError(t, err)
 	f := resetAccounts{db: db.WithWorkflows(resetWorkflows{}), conn: conn}
 	insert := func(email string) int64 {
@@ -147,25 +178,20 @@ func (m *resetMailer) Send(_ context.Context, outgoing systememail.Outgoing) (in
 // resetPublicURL is the public URL reset links start with.
 var resetPublicURL = &url.URL{Scheme: "https", Host: "mail.example.com"}
 
-// resetBackground returns a Background, and fails the test unless its work
-// finishes soon after the test ends.
-func resetBackground(t *testing.T) *passwordreset.Background {
-	t.Helper()
-	background := passwordreset.NewBackground(discard)
-	t.Cleanup(func() {
-		// t.Context() has ended by now.
-		ctx, cancel := context.WithTimeout(context.Background(), setupTestTimeout)
-		defer cancel()
-		assert.NoError(t, background.Wait(ctx), "background work still running after the test")
-	})
-	return background
+// noticeWorkflows accepts every password changed notice and saves nothing,
+// for tests about something else that complete a reset. It implements only
+// that job, as [resetWorkflows] does.
+type noticeWorkflows struct{ Workflows }
+
+func (noticeWorkflows) EnqueuePasswordChangedNotice(context.Context, pgx.Tx, int64, time.Time) error {
+	return nil
 }
 
 // resetCompletion returns a Completion over db with the clock now, whose
 // notices go nowhere.
 func resetCompletion(t *testing.T, db *DB, now func() time.Time) *passwordreset.Completion {
 	t.Helper()
-	return passwordreset.NewCompletion(db, &resetMailer{}, resetPublicURL, resetBackground(t), now)
+	return passwordreset.NewCompletion(db, now)
 }
 
 // resetSignInAttempts counts the sign-in attempts saved for email.
@@ -205,6 +231,7 @@ func TestPasswordResetComplete(t *testing.T) {
 		assert.Equal(t, 1, memberRowCount(t, f.conn, table, f.member), table)
 	}
 	assert.Equal(t, []auditEvent{{Action: "password-reset", Target: &f.member}}, auditEvents(t, f.conn))
+	assert.Equal(t, []changedNotice{{UserID: f.member, ChangedAt: resetNow}}, changedNotices(t, f.conn), "the owner's notice is saved with the reset")
 	assert.Equal(t, bystander, memberSnapshot(t, f.conn, f.bystander))
 	assert.Equal(t, 1, resetSignInAttempts(t, f.conn, "bystander@example.com"))
 
@@ -270,6 +297,75 @@ func TestPasswordResetCompleteRollsBack(t *testing.T) {
 	require.ErrorIs(t, missingErr, errNoLink)
 	assert.Equal(t, before, memberSnapshot(t, f.conn, f.member))
 	assert.Equal(t, 1, resetSignInAttempts(t, f.conn, "member@example.com"))
+	assert.Empty(t, changedNotices(t, f.conn))
+}
+
+// A notice that cannot be saved rolls the reset back with it, and so does a
+// DB without workflows: no reset goes unannounced.
+func TestPasswordResetCompleteNoticeRollsBack(t *testing.T) {
+	f := newResetAccounts(t)
+	_, hash := saveResetLink(t, f.conn, f.member, "member@example.com")
+	before := memberSnapshot(t, f.conn, f.member)
+	failed := errors.New("queue unavailable")
+	accept := func(passwordreset.CompleteState) (passwordreset.CompleteChange, error) {
+		return passwordreset.CompleteChange{PasswordHash: "new hash", ChangedAt: resetNow}, nil
+	}
+
+	_, failedErr := f.db.WithWorkflows(resetWorkflows{err: failed}).CompletePasswordReset(t.Context(), hash, accept)
+	_, plainErr := (&DB{pool: f.db.pool}).CompletePasswordReset(t.Context(), hash, accept)
+
+	require.ErrorIs(t, failedErr, failed)
+	require.ErrorIs(t, plainErr, errNoWorkflows)
+	assert.Equal(t, before, memberSnapshot(t, f.conn, f.member))
+	assert.Empty(t, changedNotices(t, f.conn))
+}
+
+// A notice that waits for a deactivation holding the user's lock reads the
+// user as deactivated, so it is not sent to an account just closed.
+func TestPasswordChangedNoticeWaitsForDeactivation(t *testing.T) {
+	f := newDeactivatedAccounts(t, false)
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+
+	// Given a deactivation that holds the member's lock.
+	finish := holdInCallback(t, ctx, func(pause func() error) error {
+		_, err := f.db.UpdateMember(ctx, f.admin, f.member, func(account.Member) (account.MemberChange, error) {
+			return account.MemberChange{Action: account.MemberDeactivate, At: time.Now()}, pause()
+		})
+		return err
+	})
+
+	// When the notice reads the member, and the deactivation commits.
+	read := make(chan passwordreset.NoticeState, 1)
+	go func() {
+		state, err := f.db.ReadPasswordChangedNotice(ctx, f.member)
+		assert.NoError(t, err)
+		read <- state
+	}()
+	waitForLock(t, ctx, f.db, "the notice did not wait for the deactivation")
+	require.NoError(t, finish())
+
+	// Then it reads the member as deactivated.
+	assert.False(t, (<-read).Active)
+}
+
+// The notice reads the user's current email and whether they are active;
+// a missing user reads as the zero state.
+func TestPasswordChangedNoticeRead(t *testing.T) {
+	f := newResetAccounts(t)
+	_, err := f.conn.Exec(t.Context(), "UPDATE users SET email = 'moved@example.com', deactivated_at = now() WHERE id = $1", f.bystander)
+	require.NoError(t, err)
+
+	member, err := f.db.ReadPasswordChangedNotice(t.Context(), f.member)
+	require.NoError(t, err)
+	moved, err := f.db.ReadPasswordChangedNotice(t.Context(), f.bystander)
+	require.NoError(t, err)
+	gone, err := f.db.ReadPasswordChangedNotice(t.Context(), missingUserID)
+	require.NoError(t, err)
+
+	assert.Equal(t, passwordreset.NoticeState{Email: "member@example.com", Active: true}, member)
+	assert.Equal(t, passwordreset.NoticeState{Email: "moved@example.com"}, moved)
+	assert.Equal(t, passwordreset.NoticeState{}, gone)
 }
 
 // holdInCallback runs run in a goroutine and waits until run calls the
@@ -381,7 +477,7 @@ func TestPasswordResetWaitsForDeactivation(t *testing.T) {
 	// When a completion waits for the lock, and the deactivation commits.
 	resetDone := make(chan error, 1)
 	go func() {
-		_, err := resetCompletion(t, f.db, func() time.Time { return resetNow }).Complete(ctx, secret, "member@example.com", resetPassword)
+		_, err := resetCompletion(t, f.db.WithWorkflows(noticeWorkflows{}), func() time.Time { return resetNow }).Complete(ctx, secret, "member@example.com", resetPassword)
 		resetDone <- err
 	}()
 	waitForLock(t, ctx, f.db, "the completion did not wait for the deactivation")
@@ -405,7 +501,7 @@ func TestDeactivationWaitsForPasswordReset(t *testing.T) {
 
 	// Given a completion that holds the member's lock.
 	finish := holdInCallback(t, ctx, func(pause func() error) error {
-		_, err := f.db.CompletePasswordReset(ctx, hash, func(passwordreset.CompleteState) (passwordreset.CompleteChange, error) {
+		_, err := f.db.WithWorkflows(noticeWorkflows{}).CompletePasswordReset(ctx, hash, func(passwordreset.CompleteState) (passwordreset.CompleteChange, error) {
 			return passwordreset.CompleteChange{PasswordHash: "reset"}, pause()
 		})
 		return err
@@ -435,7 +531,7 @@ func TestDeactivationWaitsForPasswordReset(t *testing.T) {
 func TestPasswordResetDeactivationRace(t *testing.T) {
 	const rounds = 15
 	f := newDeactivatedAccounts(t, false)
-	completion := resetCompletion(t, f.db, time.Now)
+	completion := resetCompletion(t, f.db.WithWorkflows(noticeWorkflows{}), time.Now)
 	outcomes := map[bool]int{} // whether the completion was refused
 	// A completion spends most of its time hashing the password. Every
 	// other round deactivates at once, which commits before the completion
@@ -878,14 +974,15 @@ func TestPasswordResetLinkWaitsForDeactivation(t *testing.T) {
 }
 
 // A request saves its job, which mails a link; following it resets the
-// password, and the owner is told.
+// password and saves the notice, which tells the owner.
 func TestPasswordResetFlow(t *testing.T) {
 	f := newResetAccounts(t)
-	mailer, background := &resetMailer{}, resetBackground(t)
+	mailer := &resetMailer{}
 	clock := func() time.Time { return resetNow }
 	requests := passwordreset.NewRequests(f.db, clock)
 	links := passwordreset.NewLinks(f.db, mailer, resetPublicURL, clock)
-	completion := passwordreset.NewCompletion(f.db, mailer, resetPublicURL, background, clock)
+	completion := passwordreset.NewCompletion(f.db, clock)
+	notices := passwordreset.NewNotices(f.db, mailer, resetPublicURL)
 
 	err := requests.Request(t.Context(), "Member@Example.com", netip.MustParseAddr("192.0.2.1"))
 	require.NoError(t, err)
@@ -900,7 +997,11 @@ func TestPasswordResetFlow(t *testing.T) {
 	secret, _, _ = strings.Cut(secret, "\n")
 	user, err := completion.Complete(t.Context(), secret, "member@example.com", resetPassword)
 	require.NoError(t, err)
-	require.NoError(t, background.Wait(t.Context()))
+	saved := changedNotices(t, f.conn)
+	require.Len(t, saved, 1)
+	outcome, err = notices.Send(t.Context(), saved[0].UserID, saved[0].ChangedAt)
+	require.NoError(t, err)
+	assert.Equal(t, passwordreset.OutcomeSent, outcome)
 
 	assert.Equal(t, f.member, user.ID)
 	ok, err = passwordhash.Verify(t.Context(), resetPassword, resetPasswordHash(t, f.conn, f.member))

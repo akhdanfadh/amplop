@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
-	"log/slog"
 	"net/url"
 	"slices"
 	"strings"
@@ -105,35 +104,11 @@ func completeSetup(t *testing.T) (*completeMemory, string) {
 	}, secret
 }
 
-// testBackground returns a Background that logs to logger, and fails the
-// test unless its work finishes soon after the test ends.
-func testBackground(t *testing.T, logger *slog.Logger) *Background {
-	t.Helper()
-	background := NewBackground(logger)
-	t.Cleanup(func() {
-		// t.Context() has ended by now.
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		assert.NoError(t, background.Wait(ctx), "background work still running after the test")
-	})
-	return background
-}
-
 // testCompletion returns a Completion over storage whose clock reads
-// testNow, and whose notices go nowhere.
+// testNow.
 func testCompletion(t *testing.T, storage *completeMemory) *Completion {
 	t.Helper()
-	completion, _, _ := notifyingCompletion(t, storage)
-	return completion
-}
-
-// notifyingCompletion returns a Completion over storage whose clock reads
-// testNow, the mailer its notices go to, and the Background that sends
-// them.
-func notifyingCompletion(t *testing.T, storage *completeMemory) (*Completion, *fakeMailer, *Background) {
-	t.Helper()
-	mailer, background := &fakeMailer{}, testBackground(t, slog.New(slog.DiscardHandler))
-	return NewCompletion(storage, mailer, testPublicURL, background, func() time.Time { return testNow }), mailer, background
+	return NewCompletion(storage, func() time.Time { return testNow })
 }
 
 func TestComplete(t *testing.T) {
@@ -184,15 +159,11 @@ func TestCompleteRefuses(t *testing.T) {
 				password = c.password
 			}
 
-			completion, mailer, background := notifyingCompletion(t, storage)
-
-			_, err := completion.Complete(t.Context(), secret, testUser.Email, password)
-			require.NoError(t, background.Wait(t.Context()))
+			_, err := testCompletion(t, storage).Complete(t.Context(), secret, testUser.Email, password)
 
 			require.ErrorIs(t, err, c.want)
 			assert.Zero(t, storage.locked)
-			assert.Empty(t, storage.changes)
-			assert.Empty(t, mailer.sent, "a refusal sends no notice")
+			assert.Empty(t, storage.changes, "a refusal changes nothing and saves no notice")
 		})
 	}
 }
@@ -258,7 +229,7 @@ func TestCompleteExpiresDuringHash(t *testing.T) {
 		return testNow.Add(linkLifetime)
 	}
 
-	completion := NewCompletion(storage, &fakeMailer{}, testPublicURL, testBackground(t, slog.New(slog.DiscardHandler)), clock)
+	completion := NewCompletion(storage, clock)
 
 	_, err := completion.Complete(t.Context(), secret, testUser.Email, testPassword)
 
@@ -267,38 +238,21 @@ func TestCompleteExpiresDuringHash(t *testing.T) {
 	assert.Empty(t, storage.changes)
 }
 
-// After a reset, the account's owner is told their password changed, so a
-// reset they did not ask for does not go unnoticed.
-func TestCompleteNotice(t *testing.T) {
+// A reset carries the time it was checked under the lock, the clock's
+// second reading, which the notice to the owner names.
+func TestCompleteChangedAt(t *testing.T) {
 	storage, secret := completeSetup(t)
-	completion, mailer, background := notifyingCompletion(t, storage)
+	reads := 0
+	clock := func() time.Time {
+		reads++
+		return testNow.Add(time.Duration(reads) * time.Minute)
+	}
 
-	_, err := completion.Complete(t.Context(), secret, testUser.Email, testPassword)
-	require.NoError(t, err)
-	require.NoError(t, background.Wait(t.Context()))
-
-	require.Len(t, mailer.sent, 1)
-	sent := mailer.sent[0]
-	assert.Equal(t, "password changed notice", sent.Purpose)
-	assert.Equal(t, testUser.Email, sent.To)
-	assert.Equal(t, "Your inbok password was changed", sent.Subject)
-	assert.False(t, sent.Private, "the notice holds no secret")
-	assert.Contains(t, sent.Body, "The password of your inbok account at https://mail.example.com was changed on 3 November 2026 at 12:00 UTC")
-	assert.Contains(t, sent.Body, "Contact your inbok administrator.")
-}
-
-// A failed notice does not undo the reset.
-func TestCompleteNoticeFails(t *testing.T) {
-	storage, secret := completeSetup(t)
-	completion, mailer, background := notifyingCompletion(t, storage)
-	mailer.err = systememail.ErrNotConfigured
-
-	user, err := completion.Complete(t.Context(), secret, testUser.Email, testPassword)
-	require.NoError(t, background.Wait(t.Context()))
+	_, err := NewCompletion(storage, clock).Complete(t.Context(), secret, testUser.Email, testPassword)
 
 	require.NoError(t, err)
-	assert.Equal(t, testUser, user)
-	assert.Len(t, storage.changes, 1)
+	require.Len(t, storage.changes, 1)
+	assert.Equal(t, testNow.Add(2*time.Minute), storage.changes[0].ChangedAt)
 }
 
 // The email given must be the one the link was sent to, however it is

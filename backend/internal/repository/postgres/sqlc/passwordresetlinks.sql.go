@@ -109,6 +109,26 @@ func (q *Queries) LockPasswordResetUser(ctx context.Context, userID int64) error
 	return err
 }
 
+const readPasswordChangedNotice = `-- name: ReadPasswordChangedNotice :one
+SELECT email, (deactivated_at IS NULL)::boolean AS active FROM users WHERE id = $1
+FOR SHARE
+`
+
+type ReadPasswordChangedNoticeRow struct {
+	Email  string
+	Active bool
+}
+
+// The notice reads the address when it runs, which can be long after the
+// reset. FOR SHARE waits for a deactivation that holds the row, so the
+// flag is read as ADR029 asks of a feature that sends mail.
+func (q *Queries) ReadPasswordChangedNotice(ctx context.Context, id int64) (ReadPasswordChangedNoticeRow, error) {
+	row := q.db.QueryRow(ctx, readPasswordChangedNotice, id)
+	var i ReadPasswordChangedNoticeRow
+	err := row.Scan(&i.Email, &i.Active)
+	return i, err
+}
+
 const readPasswordResetLink = `-- name: ReadPasswordResetLink :one
 SELECT l.user_id, l.email, l.created_at, l.expires_at,
     u.email AS user_email, u.role, (u.deactivated_at IS NOT NULL)::boolean AS deactivated

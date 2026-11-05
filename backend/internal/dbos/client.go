@@ -71,6 +71,20 @@ func (c *Client) EnqueuePasswordResetLink(ctx context.Context, tx pgx.Tx, attemp
 	return err
 }
 
+// EnqueuePasswordChangedNotice saves, in tx, the password changed notice
+// workflow for the user with userID and the change at changedAt on the
+// email queue, so it commits or rolls back with tx. Cancelling ctx stops
+// its statements. It returns DBOS's error, after which tx is aborted and
+// must roll back.
+func (c *Client) EnqueuePasswordChangedNotice(ctx context.Context, tx pgx.Tx, userID int64, changedAt time.Time) error {
+	input := PasswordChangedNoticeInput{UserID: userID, ChangedAt: changedAt}
+	_, err := dbos.Enqueue[passwordreset.Outcome](c.client, emailQueue, passwordChangedNoticeWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+	)
+	return err
+}
+
 // callerTx is a transaction whose statements run with ctx, whatever context
 // they are given.
 //

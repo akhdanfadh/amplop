@@ -28,8 +28,8 @@ func (db *DB) ReadPasswordReset(ctx context.Context, hash [sha256.Size]byte) (pa
 }
 
 // CompletePasswordReset replaces the password of the user of the link with
-// hash, in one transaction under that user's lock, if complete accepts what
-// it reads, and returns the user.
+// hash, and saves the notice that tells them, in one transaction under that
+// user's lock, if complete accepts what it reads, and returns the user.
 func (db *DB) CompletePasswordReset(ctx context.Context, hash [sha256.Size]byte, complete func(passwordreset.CompleteState) (passwordreset.CompleteChange, error)) (account.User, error) {
 	var user account.User
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
@@ -94,12 +94,34 @@ func (db *DB) CompletePasswordReset(ctx context.Context, hash [sha256.Size]byte,
 		}); err != nil {
 			return fmt.Errorf("record password reset: %w", err)
 		}
+
+		// 6. Save the notice to the owner in this transaction, so it commits
+		// or rolls back with the reset.
+		if db.workflows == nil {
+			return errNoWorkflows
+		}
+		if err := db.workflows.EnqueuePasswordChangedNotice(ctx, tx, userID, change.ChangedAt); err != nil {
+			return fmt.Errorf("save password changed notice: %w", err)
+		}
 		return nil
 	})
 	if err != nil {
 		return account.User{}, err
 	}
 	return user, nil
+}
+
+// ReadPasswordChangedNotice returns the current email of the user with
+// userID and whether they are active, or the zero state when they are gone.
+func (db *DB) ReadPasswordChangedNotice(ctx context.Context, userID int64) (passwordreset.NoticeState, error) {
+	row, err := sqlc.New(db.pool).ReadPasswordChangedNotice(ctx, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return passwordreset.NoticeState{}, nil
+	}
+	if err != nil {
+		return passwordreset.NoticeState{}, fmt.Errorf("read password changed notice: %w", err)
+	}
+	return passwordreset.NoticeState{Email: row.Email, Active: row.Active}, nil
 }
 
 // readPasswordReset returns the link with hash and its user, read through

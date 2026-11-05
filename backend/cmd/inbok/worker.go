@@ -74,6 +74,7 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		PasswordResetAttemptCleanup: passwordreset.NewAttemptCleanup(db, time.Now),
 		RecoveryNotices:             account.NewRecoveryNotices(db, mailer, publicURL),
 		PasswordResetLinks:          passwordreset.NewLinks(db, mailer, publicURL, time.Now),
+		PasswordChangedNotices:      passwordreset.NewNotices(db, mailer, publicURL),
 	}, logger)
 	if err != nil {
 		db.Close()
@@ -100,7 +101,6 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		err = errors.Join(err, shutdownErr)
 	}()
 
-	// 6. Answer health checks until ctx is cancelled. The worker starts no
-	// password reset work, so it has none to wait for.
-	return listen(ctx, addr, workerHealth(), nil, logger)
+	// 6. Answer health checks until ctx is cancelled.
+	return listen(ctx, addr, workerHealth(), logger)
 }
