@@ -12,11 +12,13 @@
 ARG PNPM_IMAGE=ghcr.io/pnpm/pnpm:12.8.1@sha256:44cfd11d75b901dc7a83a16812d9134e4bf9d82f6b0eb28af6d666ebbf0fb4fb
 ARG NODE_IMAGE=node:24.22.2-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446
 
-# emulate as pnpm-lock.yaml pins it. emulate runs no install scripts, so
-# this needs no Node.
+# emulate as pnpm-lock.yaml pins it, with inbok's patch applied (see
+# pnpm-workspace.yaml). emulate runs no install scripts, so this needs no
+# Node.
 FROM ${PNPM_IMAGE} AS install
 WORKDIR /emulator
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches/ patches/
 # No cache mount, unlike the repository's Dockerfile: Testcontainers builds
 # with Docker's classic builder, which has none, and four packages download
 # quickly.

@@ -63,6 +63,8 @@ type Seed struct {
 type User struct {
 	Email string
 	Name  string
+	// UID is the ID token's sub. Empty gets a random one.
+	UID string
 	// Unverified makes the ID token say email_verified false.
 	Unverified bool
 }
@@ -128,10 +130,10 @@ func Start(t testing.TB, seed Seed) *Emulator {
 //
 // DESIGN: building, rather than taking an existing image as found, keeps
 // tests on the checkout's emulator: a stale image would run another
-// emulate version or patch. Docker answers from its cache unless google-emulator/ changed; the
-// first build needs network access for the npm registry. Skipping the tests
-// when no image is there, the alternative, would let make check pass with
-// no Gmail test run.
+// emulate version or patch. Docker answers from its cache unless
+// google-emulator/ changed; the first build needs network access for the
+// npm registry. Skipping the tests when no image is there, the
+// alternative, would let make check pass with no Gmail test run.
 var buildImage = sync.OnceValues(func() (string, error) {
 	provider, err := testcontainers.NewDockerProvider()
 	if err != nil {
@@ -284,7 +286,11 @@ func contextDir() string {
 func configFile(seed Seed) (string, error) {
 	users := make([]map[string]any, 0, len(seed.Users))
 	for _, u := range seed.Users {
-		users = append(users, map[string]any{"email": u.Email, "name": u.Name, "email_verified": !u.Unverified})
+		user := map[string]any{"email": u.Email, "name": u.Name, "email_verified": !u.Unverified}
+		if u.UID != "" {
+			user["uid"] = u.UID
+		}
+		users = append(users, user)
 	}
 	clients := make([]map[string]any, 0, len(seed.Clients))
 	for _, c := range seed.Clients {

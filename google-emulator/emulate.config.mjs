@@ -32,13 +32,20 @@ export default {
     // access token or its scopes, and revoking leaves the refresh token
     // working (ADR006, Testing).
     strict_scopes: true,
+    // Fixed IDs, as a Google account keeps its own, so a reconnect after
+    // the emulator restarts finds the same account (see pnpm-workspace.yaml).
     users: [
-      { email: alex, name: "Alex Rivera" },
-      { email: blair, name: "Blair Chen" },
-      { email: casey, name: "Casey Okafor" },
+      { email: alex, name: "Alex Rivera", uid: "100000000000000000001" },
+      { email: blair, name: "Blair Chen", uid: "100000000000000000002" },
+      { email: casey, name: "Casey Okafor", uid: "100000000000000000003" },
       // Google does not vouch for this address, so inbok must not connect
       // it.
-      { email: "unverified@example.com", name: "Unverified Address", email_verified: false },
+      {
+        email: "unverified@example.com",
+        name: "Unverified Address",
+        uid: "100000000000000000004",
+        email_verified: false,
+      },
     ],
     oauth_clients: [
       {

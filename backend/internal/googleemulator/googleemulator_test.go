@@ -34,7 +34,7 @@ func startTestEmulator(t *testing.T) (*Emulator, *oauth2.Config) {
 	t.Helper()
 	e := Start(t, Seed{
 		Users: []User{
-			{Email: "alex@example.com", Name: "Alex Rivera"},
+			{Email: "alex@example.com", Name: "Alex Rivera", UID: "100000000000000000001"},
 			{Email: "unverified@example.com", Name: "Unverified", Unverified: true},
 		},
 		Clients: []Client{{ID: testClientID, Secret: testSecret, RedirectURIs: []string{testRedirect}}},
@@ -96,7 +96,7 @@ func TestEmulatorConnect(t *testing.T) {
 	claims := idTokenClaims(t, token)
 	assert.Equal(t, e.BaseURL.String(), claims["iss"])
 	assert.Equal(t, testClientID, claims["aud"])
-	assert.NotEmpty(t, claims["sub"])
+	assert.Equal(t, "100000000000000000001", claims["sub"])
 	assert.Equal(t, "alex@example.com", claims["email"])
 	assert.Equal(t, true, claims["email_verified"])
 }
@@ -135,6 +135,37 @@ func TestEmulatorWrongSecret(t *testing.T) {
 	_, err := cfg.Exchange(t.Context(), back.Query().Get("code"))
 
 	requireRefused(t, "invalid_client", err)
+}
+
+// A code works only with its authorization request's redirect URI, from
+// inbok's patch (google-emulator/patches/).
+func TestEmulatorWrongRedirect(t *testing.T) {
+	e, cfg := startTestEmulator(t)
+	back := e.Consent(t, cfg.AuthCodeURL("state-1"), "alex@example.com")
+	cfg.RedirectURL = "http://localhost:5173/elsewhere"
+
+	_, err := cfg.Exchange(t.Context(), back.Query().Get("code"))
+
+	requireRefused(t, "invalid_grant", err)
+}
+
+// getProfile comes from inbok's patch (google-emulator/patches/), and so do
+// history IDs that fit the Go client's uint64.
+func TestEmulatorProfile(t *testing.T) {
+	e, cfg := startTestEmulator(t)
+	token := connect(t, e, cfg, "alex@example.com")
+	service, err := gmail.NewService(t.Context(),
+		option.WithTokenSource(cfg.TokenSource(t.Context(), token)),
+		option.WithEndpoint(e.BaseURL.String()+"/"))
+	require.NoError(t, err)
+
+	profile, err := service.Users.GetProfile("me").Context(t.Context()).Do()
+	require.NoError(t, err)
+
+	assert.Equal(t, "alex@example.com", profile.EmailAddress)
+	assert.Equal(t, int64(1), profile.MessagesTotal)
+	assert.Equal(t, int64(1), profile.ThreadsTotal)
+	assert.NotZero(t, profile.HistoryId)
 }
 
 // Gmail calls check the access token's scopes; without this the emulator

@@ -703,14 +703,20 @@ permission asked. `google-emulator/emulate.config.mjs` holds the seed:
 The emulator keeps everything in memory. Restarting it, e.g. with
 `make services-stop` and `make services-start`, empties the mailboxes
 back to the seed and refuses every refresh token handed out before.
+Each account keeps its Google ID (`sub`) across restarts.
 
-Where it differs from Google:
+A patch in `google-emulator/patches/`, which pnpm applies on install,
+changes emulate where inbok needs Gmail's behavior: it adds
+`users.getProfile`, keeps history IDs within 64 bits, as Gmail's are and
+as the Go client decodes them, lets a seed fix an account's `sub`, and
+refuses a code exchanged by another client or with another redirect URI
+than its authorization request's. The install fails if the patch no
+longer applies, e.g. after a version change;
+`google-emulator/pnpm-workspace.yaml` says how to change it.
 
-- It has no `users.getProfile`, and its history IDs are 21 digits, too
-  long for the Go client's 64-bit field.
-- An account's Google ID (`sub`) changes on every start.
-- Its token endpoint accepts a code exchanged by another client or with
-  another redirect URI than its authorization request's.
+Where it still differs from Google, tests use small `httptest` stubs
+instead:
+
 - A person cannot refuse or untick a permission on its consent page.
 - `history.list` never answers 404 for an old history ID, and nothing
   returns quota errors.

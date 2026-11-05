@@ -162,13 +162,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  emulate@0.13.0: dfe7d590e6658c07ed8b4f928e8f437f796e7922884eca4a48905af7a58648c0
+
 importers:
 
   .:
     dependencies:
       emulate:
         specifier: 0.13.0
-        version: 0.13.0
+        version: 0.13.0(patch_hash=dfe7d590e6658c07ed8b4f928e8f437f796e7922884eca4a48905af7a58648c0)
 
 packages:
 
@@ -192,7 +195,7 @@ snapshots:
 
   commander@14.0.3: {}
 
-  emulate@0.13.0:
+  emulate@0.13.0(patch_hash=dfe7d590e6658c07ed8b4f928e8f437f796e7922884eca4a48905af7a58648c0):
     dependencies:
       commander: 14.0.3
       picocolors: 1.1.1

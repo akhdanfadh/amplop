@@ -1,0 +1,72 @@
+diff --git a/dist/dist-EESUF62H.js b/dist/dist-EESUF62H.js
+index 6eacbd77fe56aeeaa681400b8806320060ad6206..837ccbe617fa33d4c1ac90ae297e303b459f7c15 100644
+--- a/dist/dist-EESUF62H.js
++++ b/dist/dist-EESUF62H.js
+@@ -89,7 +89,10 @@ function generateDraftId() {
+   return `r-${Date.now()}${entropy}`;
+ }
+ function generateHistoryId() {
+-  const entropy = randomBytes(3).readUIntBE(0, 3).toString().padStart(8, "0");
++  // inbok: 6 random digits, not 8. With 8 an ID has 21 digits, past an
++  // unsigned 64-bit number, which Gmail's IDs fit and its Go client decodes
++  // them into. 19 digits stay under 2^63 and still increase.
++  const entropy = (randomBytes(3).readUIntBE(0, 3) % 1e6).toString().padStart(6, "0");
+   let next = BigInt(`${Date.now()}${entropy}`);
+   if (next <= lastGeneratedHistoryId) {
+     next = lastGeneratedHistoryId + 1n;
+@@ -2619,6 +2622,20 @@ function driveRoutes({ app, store }) {
+ var WATCH_STATE_KEY = "google.gmail.watchStates";
+ function historyRoutes({ app, store }) {
+   const gs = getGoogleStore(store);
++  // inbok: users.getProfile, which inbok calls before saving a connected
++  // account. Shaped like Gmail's: the address, message and thread counts,
++  // and the current history ID, the one history.list starts from.
++  app.get("/gmail/v1/users/:userId/profile", (c) => {
++    const authEmail = requireGmailUser(c);
++    if (authEmail instanceof Response) return authEmail;
++    const messages = gs.messages.findBy("user_email", authEmail);
++    return c.json({
++      emailAddress: authEmail,
++      messagesTotal: messages.length,
++      threadsTotal: new Set(messages.map((message) => message.thread_id)).size,
++      historyId: getCurrentHistoryId(gs, authEmail)
++    });
++  });
+   app.get("/gmail/v1/users/:userId/history", (c) => {
+     const authEmail = requireGmailUser(c);
+     if (authEmail instanceof Response) return authEmail;
+@@ -3636,6 +3653,12 @@ function oauthRoutes({ app, store, baseUrl, tokenMap }) {
+       pendingMap.delete(code);
+       return c.json({ error: "invalid_grant", error_description: "The code is incorrect or expired." }, 400);
+     }
++    // inbok: a code works only for the client it was issued to and with the
++    // redirect URI of its authorization request, as RFC 6749 section 4.1.3
++    // asks and Google does; emulate checked neither.
++    if (pending.redirectUri !== redirect_uri || clientsConfigured && pending.clientId !== bodyClientId) {
++      return c.json({ error: "invalid_grant", error_description: "The code was issued to another client or redirect URI." }, 400);
++    }
+     if (pending.codeChallenge != null) {
+       if (code_verifier === void 0) {
+         return c.json({ error: "invalid_grant", error_description: "PKCE verification failed." }, 400);
+@@ -3989,6 +4012,9 @@ var routeScopes = {
+   "PATCH /gmail/v1/users/:userId/labels/:id": gmailLabels,
+   "DELETE /gmail/v1/users/:userId/labels/:id": gmailLabels,
+   "GET /gmail/v1/users/:userId/history": gmailRead,
++  // inbok: getProfile's scopes. Google accepts any Gmail scope that reads
++  // mail or composes it.
++  "GET /gmail/v1/users/:userId/profile": [...gmailRead, ...googleScopes("gmail.compose")],
+   "POST /gmail/v1/users/:userId/watch": gmailRead,
+   "POST /gmail/v1/users/:userId/stop": gmailRead,
+   "GET /gmail/v1/users/:userId/settings/filters": gmailSettingsRead,
+@@ -4200,7 +4226,10 @@ function seedFromConfig(store, _baseUrl, config) {
+       if (!existing) {
+         const nameParts = (user.name ?? "").split(/\s+/).filter(Boolean);
+         gs.users.insert({
+-          uid: generateUid("goog"),
++          // inbok: a seed may fix the ID, the ID token's sub. A Google
++          // account keeps its sub, and inbok refuses a reconnect that
++          // returns another one.
++          uid: user.uid ?? generateUid("goog"),
+           email: user.email,
+           name: user.name ?? user.email.split("@")[0],
+           given_name: user.given_name ?? nameParts[0] ?? "",
