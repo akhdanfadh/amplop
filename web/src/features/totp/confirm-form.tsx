@@ -11,6 +11,7 @@ import {
   InputOTPSeparator,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { ConfirmationSchema, RegenerationSchema, turnOffSchema } from "./schema";
 
 const fieldNames = ["code"] as const;
@@ -149,7 +150,7 @@ export function ConfirmForm({
                   name="code"
                   value={field.state.value}
                   onChange={field.handleChange}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   maxLength={format.length}
                   pattern={format.pattern}
                   inputMode={kind === "authenticator" ? "numeric" : "text"}

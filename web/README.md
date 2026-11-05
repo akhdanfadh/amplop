@@ -562,8 +562,7 @@ If Go still rejects a value, e.g. after a rule changed in Go before
 `pnpm generate`, `formErrors` from `src/api/problem.ts` attaches the server's
 safe messages only to fields that the form renders. Editing a field clears its
 server error. TanStack Form also drops it when a check on leaving the field
-passes, so a form whose server errors say what to type, such as the email a
-link was sent to, leaves fields through `blurKeepingSubmitErrors`
-(`src/lib/blur-keeping-submit-errors.ts`), which puts them back. Rejected
+passes, so every field leaves through `blurKeepingSubmitErrors`
+(`src/lib/blur-keeping-submit-errors.ts`), which puts it back. Rejected
 inputs outside those fields stay visible in the request summary. Request failures without input errors do not enter form validation
 state, so valid input can be submitted again without an edit.

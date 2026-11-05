@@ -11,6 +11,7 @@ import {
   InputOTPSeparator,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { clearAccountCache } from "./session-cache";
 import { challengeEnded, sessionMessage } from "./session-error";
 import { codeFormats, codePaste, codeSchema, type CodeKind } from "./code-schema";
@@ -183,7 +184,7 @@ export function CodeForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={errors.length ? "sign-in-code-error" : undefined}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={field.handleChange}
                 >
                   {groups.map((offset) => (

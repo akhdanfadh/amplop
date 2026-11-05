@@ -12,6 +12,7 @@ import { ApiError } from "@/api/transport";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { testErrorMessage, testResultMessage } from "./test-result";
 
 const recipientFields = ["recipient"] as const;
@@ -135,7 +136,7 @@ export function TestMessageForm({
                 aria-invalid={errors.length > 0}
                 aria-describedby={`${id}-description ${statusId}${errors.length > 0 ? ` ${id}-error` : ""}`}
                 value={field.state.value}
-                onBlur={field.handleBlur}
+                onBlur={() => blurKeepingSubmitErrors(field)}
                 onChange={(event) => field.handleChange(event.target.value)}
               />
               <FieldDescription id={`${id}-description`}>

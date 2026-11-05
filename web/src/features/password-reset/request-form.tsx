@@ -6,6 +6,7 @@ import { formErrors } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { requestedMessage, requestErrorMessage } from "./text";
 
 const emptyRequest = { email: "" };
@@ -126,7 +127,7 @@ export function RequestForm(): ReactElement {
                 aria-invalid={errors.length > 0}
                 aria-describedby={errors.length > 0 ? `${emailId}-error` : undefined}
                 value={field.state.value}
-                onBlur={field.handleBlur}
+                onBlur={() => blurKeepingSubmitErrors(field)}
                 onChange={(event) => field.handleChange(event.target.value)}
               />
               <FieldError id={`${emailId}-error`} errors={errors} />

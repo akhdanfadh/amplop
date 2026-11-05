@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import {
   checkedSave,
   settingsSchema,
@@ -225,7 +226,7 @@ export function SettingsForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors.length > 0)}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -256,7 +257,7 @@ export function SettingsForm({
                   aria-describedby={describedBy(id, errors.length > 0)}
                   // An emptied box gives NaN; show it as empty, not "NaN".
                   value={Number.isNaN(field.state.value) ? "" : field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.valueAsNumber)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -297,7 +298,7 @@ export function SettingsForm({
                         id={`${id}-${option.value}`}
                         value={option.value}
                         aria-describedby={`${id}-${option.value}-description`}
-                        onBlur={field.handleBlur}
+                        onBlur={() => blurKeepingSubmitErrors(field)}
                       />
                       <FieldContent>
                         <FieldLabel htmlFor={`${id}-${option.value}`}>{option.label}</FieldLabel>
@@ -333,7 +334,7 @@ export function SettingsForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors.length > 0)}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -365,7 +366,7 @@ export function SettingsForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors.length > 0)}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -399,7 +400,7 @@ export function SettingsForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors.length > 0)}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -427,7 +428,7 @@ export function SettingsForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors.length > 0)}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${id}-description`}>

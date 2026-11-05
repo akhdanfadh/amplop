@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/password-input";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 
 const unauthorized = 401;
 const inputs = [
@@ -163,7 +164,7 @@ export function SignInForm({
                 "aria-invalid": errors.length > 0,
                 "aria-describedby": errors.length > 0 ? `${id}-error` : undefined,
                 value: field.state.value,
-                onBlur: field.handleBlur,
+                onBlur: () => blurKeepingSubmitErrors(field),
                 onChange: (event) => field.handleChange(event.target.value),
               };
               return (

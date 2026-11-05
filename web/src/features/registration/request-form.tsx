@@ -7,6 +7,7 @@ import { formErrors } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { registrationClosed, requestedMessage, requestErrorMessage } from "./visitor-text";
 
 const emptyRequest = { email: "" };
@@ -135,7 +136,7 @@ export function RequestForm(): ReactElement {
                     : `${emailId}-description`
                 }
                 value={field.state.value}
-                onBlur={field.handleBlur}
+                onBlur={() => blurKeepingSubmitErrors(field)}
                 onChange={(event) => field.handleChange(event.target.value)}
               />
               <FieldDescription id={`${emailId}-description`}>

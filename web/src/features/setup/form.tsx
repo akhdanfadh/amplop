@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/password-input";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 
 const emptySetup = { token: "", email: "", password: "", confirmPassword: "" };
 const conflict = 409;
@@ -128,7 +129,7 @@ export function SetupForm({
                 "aria-describedby":
                   errors.length > 0 ? `${id}-description ${id}-error` : `${id}-description`,
                 value: field.state.value,
-                onBlur: field.handleBlur,
+                onBlur: () => blurKeepingSubmitErrors(field),
                 onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
                   field.handleChange(event.target.value),
               };

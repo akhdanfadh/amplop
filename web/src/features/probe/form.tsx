@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 
 // The form holds exactly the request body, so it is sent as is.
 const emptyEvent: NewProbeEvent = { note: "", amount: 1, highlighted: false, tag: null };
@@ -65,7 +66,7 @@ export function ProbeForm(): ReactElement {
                   disabled={create.isPending}
                   aria-invalid={errors.length > 0}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
                 <FieldError errors={errors} />
@@ -87,7 +88,7 @@ export function ProbeForm(): ReactElement {
                   type="number"
                   // An emptied box gives NaN; show it as empty, not "NaN".
                   value={Number.isNaN(field.state.value) ? "" : field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(e) => field.handleChange(e.target.valueAsNumber)}
                 />
                 <FieldError errors={errors} />
@@ -107,7 +108,7 @@ export function ProbeForm(): ReactElement {
                   disabled={create.isPending}
                   aria-invalid={errors.length > 0}
                   value={field.state.value ?? ""}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   // An empty box means no tag (null); Go rejects an empty tag.
                   onChange={(e) => field.handleChange(e.target.value || null)}
                 />
