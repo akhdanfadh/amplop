@@ -3,6 +3,7 @@ package connectedaccount
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -334,7 +335,9 @@ func TestPrintingHidesSecrets(t *testing.T) {
 	grant := alexGrant()
 	state := ConnectState{UserID: member, CodeVerifier: "verifier-1"}
 
-	printed := fmt.Sprintf("%v %+v %v %+v", grant, grant, state, state)
+	saved, err := json.Marshal(grant)
+	require.NoError(t, err)
+	printed := fmt.Sprintf("%v %+v %#v %v %+v %#v %s", grant, grant, grant, state, state, state, saved)
 
 	assert.NotContains(t, printed, "refresh-1")
 	assert.NotContains(t, printed, "access-1")

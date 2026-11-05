@@ -49,9 +49,9 @@ var (
 // read and checked it.
 type Grant struct {
 	// RefreshToken is empty when Google sent none.
-	RefreshToken string
+	RefreshToken string `json:"-"`
 	// AccessToken is used once, to check the mailbox, and never stored.
-	AccessToken string
+	AccessToken string `json:"-"`
 	// Identity comes from the ID token in the same response.
 	Identity      Identity
 	EmailVerified bool
@@ -62,6 +62,11 @@ type Grant struct {
 // String returns g without its tokens, so printing a grant leaks neither.
 func (g Grant) String() string {
 	return fmt.Sprintf("Grant{Subject: %q, EmailVerified: %t, GmailGranted: %t}", g.Identity.Subject, g.EmailVerified, g.GmailGranted)
+}
+
+// GoString returns the same for %#v.
+func (g Grant) GoString() string {
+	return g.String()
 }
 
 // Profile is the Gmail mailbox an access token reaches.
@@ -95,6 +100,11 @@ type ConnectState struct {
 // String returns s without its verifier.
 func (s ConnectState) String() string {
 	return fmt.Sprintf("ConnectState{UserID: %d, AccountID: %d, ExpiresAt: %s}", s.UserID, s.AccountID, s.ExpiresAt)
+}
+
+// GoString returns the same for %#v.
+func (s ConnectState) GoString() string {
+	return s.String()
 }
 
 // connectStorage keeps connect states.
