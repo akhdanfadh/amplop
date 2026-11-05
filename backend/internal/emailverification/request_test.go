@@ -38,7 +38,7 @@ func TestRequest(t *testing.T) {
 	assert.Len(t, raw, 32)
 	require.Len(t, storage.links, 1)
 	assert.Equal(t, Link{
-		TokenHash: sha256.Sum256(raw), UserID: testUserID, Address: "admin@example.org",
+		TokenHash: sha256.Sum256(raw), UserID: testUserID, Email: "admin@example.org",
 		CreatedAt: testNow, ExpiresAt: testNow.Add(24 * time.Hour),
 	}, storage.links[0])
 }

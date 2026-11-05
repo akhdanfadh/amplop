@@ -124,7 +124,7 @@ func TestCleanupLinks(t *testing.T) {
 	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
 	for _, sql := range []string{
 		"INSERT INTO users (email, password_hash, role) VALUES ('member@example.org', 'unused', 'member')",
-		`INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at)
+		`INSERT INTO email_verification_links (token_hash, user_id, email, created_at, expires_at)
 		SELECT decode(hash, 'hex'), (SELECT id FROM users), 'member@example.org', expires_at - interval '24 hours', expires_at
 		FROM (VALUES ('01', $1::timestamptz - interval '1 hour'), ('02', $1 - interval '2 hours'), ('03', $1 - interval '59 minutes'), ('06', $1 + interval '1 second')) AS v(hash, expires_at)`,
 		`INSERT INTO registration_links (token_hash, email, created_at, expires_at)

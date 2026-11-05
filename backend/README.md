@@ -1074,7 +1074,7 @@ in unpadded base64url. Browsers never send the part after `#` to a server,
 so the secret stays out of inbok's and its proxy's request logs and out of
 Referer headers. It still sits in the email, in the browser's history, and
 with any service that rewrites links in mail. Only the secret's SHA-256 hash
-is saved, in `email_verification_links`, with the address it was sent to. A
+is saved, in `email_verification_links`, with the email it was sent to. A
 link expires after 24 hours. Every unexpired link works until one is used.
 
 `POST /api/v0/email-verifications/redeem` takes the secret, needs no session,

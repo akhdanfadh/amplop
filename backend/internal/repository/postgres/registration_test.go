@@ -236,7 +236,7 @@ func TestRegistrationRequestOldAttempts(t *testing.T) {
 				args []any
 			}{
 				{"INSERT INTO registration_links (token_hash, email, created_at, expires_at) VALUES ('\\x01', 'a@example.org', $1, $2)", []any{requestNow.Add(-24 * time.Hour), requestNow}},
-				{"INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at) VALUES ('\\x03', $1, 'member@example.org', $2, $2)", []any{user, requestNow}},
+				{"INSERT INTO email_verification_links (token_hash, user_id, email, created_at, expires_at) VALUES ('\\x03', $1, 'member@example.org', $2, $2)", []any{user, requestNow}},
 				{"INSERT INTO registration_attempts (email, client_prefix, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)", []any{requestNow.Add(-24 * time.Hour)}},
 				{"INSERT INTO registration_attempts (email, client_prefix, outcome, created_at) VALUES ('a@example.org', '192.0.2.1', 'link', $1)", []any{requestNow.Add(-24*time.Hour + time.Second)}},
 			} {

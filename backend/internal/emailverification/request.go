@@ -67,7 +67,7 @@ func (s *Service) Request(ctx context.Context, userID int64) (string, error) {
 		case !state.MailConfigured:
 			return RequestChange{}, systememail.ErrNotConfigured
 		}
-		link = Link{TokenHash: hash, UserID: userID, Address: state.Email, CreatedAt: now, ExpiresAt: now.Add(linkLifetime)}
+		link = Link{TokenHash: hash, UserID: userID, Email: state.Email, CreatedAt: now, ExpiresAt: now.Add(linkLifetime)}
 		// Expired links have also left the throttle's longest window, because
 		// linkLifetime is at least longLimit.Window, so deleting them loses no count.
 		return RequestChange{Link: link, ExpiredBy: now}, nil
@@ -79,14 +79,14 @@ func (s *Service) Request(ctx context.Context, userID int64) (string, error) {
 	// 2. Send the link.
 	if _, err := s.mailer.Send(ctx, systememail.Outgoing{
 		Purpose: messagePurpose,
-		To:      link.Address,
+		To:      link.Email,
 		Subject: messageSubject,
 		Body:    s.messageBody(secret),
 		Private: true,
 	}); err != nil {
 		return "", err
 	}
-	return link.Address, nil
+	return link.Email, nil
 }
 
 // messageBody returns the plain-text email that carries secret in its link.

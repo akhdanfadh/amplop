@@ -44,7 +44,7 @@ func verificationSystemEmail(t *testing.T, conn *pgx.Conn) {
 func verificationLink(userID int64, seed string, age time.Duration) emailverification.Link {
 	createdAt := verificationNow.Add(-age)
 	return emailverification.Link{
-		TokenHash: sha256.Sum256([]byte(seed)), UserID: userID, Address: "user@example.com",
+		TokenHash: sha256.Sum256([]byte(seed)), UserID: userID, Email: "user@example.com",
 		CreatedAt: createdAt, ExpiresAt: createdAt.Add(24 * time.Hour),
 	}
 }
@@ -53,8 +53,8 @@ func verificationLink(userID int64, seed string, age time.Duration) emailverific
 func insertVerificationLink(t *testing.T, conn *pgx.Conn, link emailverification.Link) {
 	t.Helper()
 
-	_, err := conn.Exec(t.Context(), `INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at)
-		VALUES ($1, $2, $3, $4, $5)`, link.TokenHash[:], link.UserID, link.Address, link.CreatedAt, link.ExpiresAt)
+	_, err := conn.Exec(t.Context(), `INSERT INTO email_verification_links (token_hash, user_id, email, created_at, expires_at)
+		VALUES ($1, $2, $3, $4, $5)`, link.TokenHash[:], link.UserID, link.Email, link.CreatedAt, link.ExpiresAt)
 	require.NoError(t, err)
 }
 
@@ -62,12 +62,12 @@ func insertVerificationLink(t *testing.T, conn *pgx.Conn, link emailverification
 func savedVerificationLinks(t *testing.T, conn *pgx.Conn) []emailverification.Link {
 	t.Helper()
 
-	rows, err := conn.Query(t.Context(), "SELECT token_hash, user_id, address, created_at, expires_at FROM email_verification_links ORDER BY created_at, user_id")
+	rows, err := conn.Query(t.Context(), "SELECT token_hash, user_id, email, created_at, expires_at FROM email_verification_links ORDER BY created_at, user_id")
 	require.NoError(t, err)
 	links, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (emailverification.Link, error) {
 		var link emailverification.Link
 		var hash []byte
-		err := row.Scan(&hash, &link.UserID, &link.Address, &link.CreatedAt, &link.ExpiresAt)
+		err := row.Scan(&hash, &link.UserID, &link.Email, &link.CreatedAt, &link.ExpiresAt)
 		copy(link.TokenHash[:], hash)
 		link.CreatedAt, link.ExpiresAt = link.CreatedAt.UTC(), link.ExpiresAt.UTC()
 		return link, err

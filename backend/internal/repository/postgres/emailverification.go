@@ -66,7 +66,7 @@ func (db *DB) RequestEmailVerification(ctx context.Context, userID int64, create
 		if err := queries.InsertEmailVerificationLink(ctx, sqlc.InsertEmailVerificationLinkParams{
 			TokenHash: link.TokenHash[:],
 			UserID:    userID,
-			Address:   link.Address,
+			Email:     link.Email,
 			CreatedAt: link.CreatedAt,
 			ExpiresAt: link.ExpiresAt,
 		}); err != nil {
@@ -119,7 +119,7 @@ func (db *DB) RedeemEmailVerification(ctx context.Context, hash [sha256.Size]byt
 			Link: emailverification.Link{
 				TokenHash: hash,
 				UserID:    row.UserID,
-				Address:   row.Address,
+				Email:     row.Email,
 				CreatedAt: row.CreatedAt.UTC(),
 				ExpiresAt: row.ExpiresAt.UTC(),
 			},

@@ -46,7 +46,7 @@ func (s *Service) Redeem(ctx context.Context, secret string) error {
 		now := s.now().UTC()
 		// The link saved an exact copy of the email, which is already in
 		// emailaddress.Parse's form, so any difference is another address.
-		if !state.Link.ExpiresAt.After(now) || state.Link.Address != state.Email {
+		if !state.Link.ExpiresAt.After(now) || state.Link.Email != state.Email {
 			return RedeemChange{}, ErrLinkInvalid
 		}
 		if state.Verified {

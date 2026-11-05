@@ -12,11 +12,11 @@ SELECT created_at FROM email_verification_links WHERE user_id = @user_id;
 DELETE FROM email_verification_links WHERE user_id = @user_id AND expires_at <= @expired_by;
 
 -- name: InsertEmailVerificationLink :exec
-INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at)
-VALUES (@token_hash, @user_id, @address, @created_at, @expires_at);
+INSERT INTO email_verification_links (token_hash, user_id, email, created_at, expires_at)
+VALUES (@token_hash, @user_id, @email, @created_at, @expires_at);
 
 -- name: ReadEmailVerificationLink :one
-SELECT user_id, address, created_at, expires_at FROM email_verification_links
+SELECT user_id, email, created_at, expires_at FROM email_verification_links
 WHERE token_hash = @token_hash;
 
 -- name: UpdateUserEmailVerifiedAt :exec

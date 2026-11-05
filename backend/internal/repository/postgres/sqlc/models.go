@@ -22,7 +22,7 @@ type AuditEvent struct {
 type EmailVerificationLink struct {
 	TokenHash []byte
 	UserID    int64
-	Address   string
+	Email     string
 	CreatedAt time.Time
 	ExpiresAt time.Time
 }

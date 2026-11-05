@@ -241,7 +241,7 @@ func TestDeactivatedWrites(t *testing.T) {
 func TestDeactivatedRedeem(t *testing.T) {
 	f := newDeactivatedAccounts(t, false)
 	link := verificationLink(f.member, "outlived", 0)
-	link.Address, link.CreatedAt, link.ExpiresAt = "member@example.com", time.Now(), time.Now().Add(time.Hour)
+	link.Email, link.CreatedAt, link.ExpiresAt = "member@example.com", time.Now(), time.Now().Add(time.Hour)
 	insertVerificationLink(t, f.conn, link)
 	f.setDeactivated(t, true)
 	before := memberSnapshot(t, f.conn, f.member)

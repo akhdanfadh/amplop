@@ -95,7 +95,7 @@ func testService(storage *memoryStorage, mailer *fakeMailer) *Service {
 // sentLink returns the link at age before testNow, for userID.
 func sentLink(userID int64, age time.Duration) Link {
 	createdAt := testNow.Add(-age)
-	return Link{UserID: userID, Address: "admin@example.org", CreatedAt: createdAt, ExpiresAt: createdAt.Add(linkLifetime)}
+	return Link{UserID: userID, Email: "admin@example.org", CreatedAt: createdAt, ExpiresAt: createdAt.Add(linkLifetime)}
 }
 
 // secretOf returns the secret in a verification email's link.

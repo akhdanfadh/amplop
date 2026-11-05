@@ -65,7 +65,7 @@ func newMemberAccounts(t *testing.T) memberAccounts {
 			FROM users, generate_series(1, 2) AS n WHERE id = $1 OR n = 1`, []any{f.member}},
 		{`INSERT INTO sign_in_challenges (token_hash, user_id, expires_at)
 			SELECT decode(md5(email), 'hex'), id, now() + interval '5 minutes' FROM users`, nil},
-		{`INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at)
+		{`INSERT INTO email_verification_links (token_hash, user_id, email, created_at, expires_at)
 			SELECT decode(md5(email), 'hex'), id, email, now(), now() + interval '1 day' FROM users WHERE id IN ($1, $2)`, []any{f.member, f.bystander}},
 		{`INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
 			SELECT decode(md5(email), 'hex'), id, email, now(), now() + interval '1 hour' FROM users WHERE id IN ($1, $2)`, []any{f.member, f.bystander}},

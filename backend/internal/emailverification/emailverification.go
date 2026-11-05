@@ -17,7 +17,7 @@ const linkLifetime = 24 * time.Hour
 type Link struct {
 	TokenHash [sha256.Size]byte
 	UserID    int64
-	Address   string // the user's email when the link was sent
+	Email     string // the user's email when the link was sent
 	CreatedAt time.Time
 	ExpiresAt time.Time
 }

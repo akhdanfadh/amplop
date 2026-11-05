@@ -27,9 +27,11 @@ func TestEmailAddressMigration(t *testing.T) {
 
 	admin := verificationUser(t, conn, "Admin@Example.COM")
 	verificationUser(t, conn, "ÉLise@Example.FR")
+	// Before 00023 renamed it, the link's email column was address.
 	link := verificationLink(admin, "link", time.Hour)
-	link.Address = "Admin@Example.COM"
-	insertVerificationLink(t, conn, link)
+	_, err = conn.Exec(t.Context(), `INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at)
+		VALUES ($1, $2, 'Admin@Example.COM', $3, $4)`, link.TokenHash[:], link.UserID, link.CreatedAt, link.ExpiresAt)
+	require.NoError(t, err)
 	_, err = conn.Exec(t.Context(), `INSERT INTO sign_in_attempts (email, client_addr, created_at)
 		VALUES ('Admin@Example.COM', '192.0.2.1', now()), (NULL, '192.0.2.1', now())`)
 	require.NoError(t, err)
@@ -43,7 +45,7 @@ func TestEmailAddressMigration(t *testing.T) {
 
 	// Then each address keeps only its non-ASCII letters' case.
 	assert.Equal(t, []string{"admin@example.com", "Élise@example.fr"}, queryStrings[string](t, conn, "SELECT email FROM users ORDER BY id"))
-	assert.Equal(t, []string{"admin@example.com"}, queryStrings[string](t, conn, "SELECT address FROM email_verification_links"))
+	assert.Equal(t, []string{"admin@example.com"}, queryStrings[string](t, conn, "SELECT email FROM email_verification_links"))
 	assert.Equal(t, []*string{new("admin@example.com"), nil}, queryStrings[*string](t, conn, "SELECT email FROM sign_in_attempts ORDER BY id"))
 	assert.Equal(t, []string{"inbok@example.com"}, queryStrings[string](t, conn, "SELECT from_address FROM system_email"))
 }
