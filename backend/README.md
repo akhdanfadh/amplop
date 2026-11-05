@@ -1120,8 +1120,8 @@ ORDER BY id DESC;
 
 ### Testing with Mailpit
 
-`make db-start` also starts Mailpit, which accepts any message and shows it
-in a web page instead of delivering it. On the Settings page, save:
+`make services-start` also starts Mailpit, which accepts any message and
+shows it in a web page instead of delivering it. On the Settings page, save:
 
 | Field | Value |
 |---|---|

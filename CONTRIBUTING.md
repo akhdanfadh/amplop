@@ -6,10 +6,10 @@ described in `backend/README.md`, the browser app in `web/README.md`.
 ## Make
 
 The `Makefile` runs every command in these files from the repository
-root. Run `make` to list them, e.g. `make db-start`, `make db-migrate`,
-then `make dev` for the Go server, its background worker, and the web app
-together. `make check` runs what a
-commit must pass; `make check-backend` and `make check-web` run one half.
+root. Run `make` to list them, e.g. `make services-start`,
+`make db-migrate`, then `make dev` for the Go server, its background
+worker, and the web app together. `make check` runs what a commit must
+pass; `make check-backend` and `make check-web` run one half.
 It also fails when generated code, e.g. `api/generated/openapi.json`, is
 out of date with its source, and names the command that updates it.
 Commands that need `.env` copy it from `.env.example` when it is missing.

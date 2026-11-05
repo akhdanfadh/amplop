@@ -21,7 +21,7 @@ the area you change before editing it:
 
 - Trial runs use their own stack: copy `.env.example` to a file outside
   the repo, set other ports and a `COMPOSE_PROJECT_NAME`, and pass it as
-  `ENV_FILE`, e.g. `make db-start dev ENV_FILE=/tmp/trial.env`. The
+  `ENV_FILE`, e.g. `make services-start dev ENV_FILE=/tmp/trial.env`. The
   default `.env` stack holds the developer's own data.
 - New migrations come from `make db-migration NAME=add_x`, which puts
   the file in the migrations folder.
