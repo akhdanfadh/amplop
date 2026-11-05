@@ -35,10 +35,13 @@ type RedeemChange struct {
 // DESIGN: Redeem has no throttle. The secret has 256 random bits, so guessing
 // one is hopeless however fast the guesses come.
 func (s *Service) Redeem(ctx context.Context, secret string) error {
+	// 1. Refuse a malformed secret before any storage.
 	hash, err := randomsecret.Hash(secret)
 	if err != nil {
 		return ErrLinkInvalid
 	}
+
+	// 2. Under the user's lock, check the link and save the verified time.
 	return s.storage.RedeemEmailVerification(ctx, hash, func(state RedeemState) (RedeemChange, error) {
 		now := s.now().UTC()
 		// The link saved an exact copy of the email, which is already in

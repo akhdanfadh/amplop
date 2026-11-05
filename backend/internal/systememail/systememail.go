@@ -126,6 +126,7 @@ func (s *Service) Settings(ctx context.Context) (*Settings, error) {
 // audited, even one that changes nothing. It returns
 // [emailaddress.ErrInvalid] for an invalid From address.
 func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Settings, error) {
+	// 1. Refuse invalid input before any work.
 	from, err := emailaddress.Parse(input.FromAddress)
 	if err != nil {
 		return Settings{}, err
@@ -135,7 +136,7 @@ func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Setting
 		return Settings{}, err
 	}
 
-	// Encrypt before the write lock is taken.
+	// 2. Encrypt the password before the write lock is taken.
 	var sealed *Password
 	if input.Password != "" {
 		keyID, ciphertext, err := s.encryption.Seal([]byte(input.Password), passwordOwner(input.Server))
@@ -145,6 +146,7 @@ func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Setting
 		sealed = &Password{KeyID: keyID, Ciphertext: ciphertext}
 	}
 
+	// 3. Under the lock, decide which password to keep, and save.
 	var saved Record
 	err = s.storage.UpdateSystemEmail(ctx, actorID, func(current *Record) (Record, error) {
 		// Keeping the password for another server would let an administrator

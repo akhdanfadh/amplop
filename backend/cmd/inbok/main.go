@@ -94,6 +94,7 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 
 // serve connects to the database, then serves the API until ctx is cancelled.
 func serve(ctx context.Context, logger *slog.Logger) error {
+	// 1. Read the settings, failing before anything starts.
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -104,12 +105,14 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		return err
 	}
 
+	// 2. Open the database.
 	db, err := postgres.Open(ctx, url)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer db.Close()
 
+	// 3. Warn when setup is done but its token is still configured.
 	accounts := account.NewService(db, cfg.SetupToken)
 	if cfg.SetupToken != "" {
 		status, err := accounts.SetupStatus(ctx)
@@ -121,6 +124,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		}
 	}
 
+	// 4. Build the services and the API.
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
@@ -150,6 +154,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("configure trusted proxies: %w", err)
 	}
 
+	// 5. Serve the web app when this build has one.
 	build, err := webapp.Load(webapp.Files())
 	switch {
 	case errors.Is(err, webapp.ErrNoBuild):
@@ -160,6 +165,8 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		api.ServeWebApp(build)
 	}
 
+	// 6. Serve until ctx is cancelled, then wait for the work requests
+	// started.
 	return listen(ctx, cfg.HTTPAddr, api.Handler(), resetBackground, logger)
 }
 
@@ -179,12 +186,13 @@ func listen(ctx context.Context, addr string, handler http.Handler, background *
 		IdleTimeout:       idleTimeout,
 	}
 
-	// Bind before logging, so a busy port never logs a false start.
+	// 1. Bind before logging, so a busy port never logs a false start.
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 
+	// 2. Serve until ctx is cancelled or serving fails.
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
 	logger.Info("starting HTTP server", "addr", listener.Addr().String())
@@ -195,13 +203,16 @@ func listen(ctx context.Context, addr string, handler http.Handler, background *
 	case <-ctx.Done():
 	}
 
+	// 3. Stop taking requests and let in-flight ones finish.
 	logger.Info("shutting down HTTP server")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	err = server.Shutdown(shutdownCtx)
-	// Requests are done, so no new work starts; what is left of the timeout
-	// goes to work already started. The worker passes no background.
+
+	// 4. Wait for background work. Requests are done, so no new work
+	// starts; what is left of the timeout goes to work already started. The
+	// worker passes no background.
 	if background == nil {
 		return err
 	}

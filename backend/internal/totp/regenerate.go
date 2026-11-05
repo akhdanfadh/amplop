@@ -48,12 +48,14 @@ func NewBackups(storage backupStore, encryption opener, verifier *Verifier, thro
 
 // Regenerate requires a checked user's ID and a fresh TOTP code, not a backup code.
 func (s *Backups) Regenerate(ctx context.Context, userID int64, code string) ([]string, error) {
+	// 1. Reserve an attempt before any code is verified.
 	attemptID, err := s.throttle.Begin(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Prepare slow salted hashes before taking the owner's write lock.
+	// 2. Hash the new codes before taking the owner's write lock: salted
+	// hashes are slow.
 	set, err := NewBackupCodes(ctx)
 	if err != nil {
 		// No code was verified.
@@ -63,10 +65,12 @@ func (s *Backups) Regenerate(ctx context.Context, userID int64, code string) ([]
 
 	verified := false
 	err = s.storage.ReplaceTOTPBackupCodes(ctx, userID, func(current *Factor) (BackupChange, error) {
+		// 3. Under the owner's lock, refuse when TOTP is off.
 		if current == nil || current.ConfirmedAt == nil {
 			return BackupChange{}, ErrNotOn
 		}
 
+		// 4. Decrypt the secret and verify the code.
 		secret, err := s.encryption.Open(current.KeyID, current.Ciphertext, "totp:"+strconv.FormatInt(userID, 10))
 		if err != nil {
 			return BackupChange{}, err
@@ -82,15 +86,17 @@ func (s *Backups) Regenerate(ctx context.Context, userID int64, code string) ([]
 		factor.LastStep = step
 		return BackupChange{Factor: factor, Hashes: set.Hashes, AttemptID: attemptID}, nil
 	})
+
+	// 5. Release the attempt when no code was verified. A request refused
+	// before that, e.g. with TOTP off, made no guess.
 	if err != nil {
-		// A request refused before verifying any code, e.g. with TOTP off, made
-		// no guess, so it releases its attempt.
 		if !verified {
 			s.throttle.Release(ctx, attemptID)
 		}
 		return nil, err
 	}
 
-	// Cleanup committed with replacement; no later error can hide the only copy.
+	// 6. Return the codes only after the replacement commits, so no later
+	// error can hide the only copy.
 	return set.Codes, nil
 }

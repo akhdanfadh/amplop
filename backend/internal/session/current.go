@@ -48,11 +48,14 @@ type Authenticated struct {
 // Current returns a checked session reference and current account identity.
 // It deletes expired sessions and writes last-use time at most once an hour.
 func (s *Service) Current(ctx context.Context, secret string) (Authenticated, error) {
+	// 1. Refuse a malformed secret before any storage.
 	hash, err := randomsecret.Hash(secret)
 	if err != nil {
 		return Authenticated{}, ErrUnauthenticated
 	}
 
+	// 2. Check the session under its lock: delete it when expired, or save
+	// its last use.
 	var expired bool
 	err = s.storage.UpdateSession(ctx, hash, func(state State) (Change, error) {
 		checked, err := checkSession(state, s.now)
@@ -80,6 +83,7 @@ func (s *Service) Current(ctx context.Context, secret string) (Authenticated, er
 		return Authenticated{}, ErrUnauthenticated
 	}
 
+	// 3. Read the user's identity, only for a session still live.
 	state, err := s.storage.ReadSessionIdentity(ctx, hash)
 	if errors.Is(err, ErrNotFound) {
 		return Authenticated{}, ErrUnauthenticated

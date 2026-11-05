@@ -72,10 +72,14 @@ type Outgoing struct {
 // fails, and the [Sender]'s other errors unchanged. Every error after the
 // settings are read comes with their revision.
 func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
+	// 1. Refuse an invalid recipient before reading the settings.
 	to, err := emailaddress.Parse(outgoing.To)
 	if err != nil {
 		return 0, err
 	}
+
+	// 2. Read the settings, and refuse missing or untested ones before
+	// decrypting anything.
 	saved, err := m.storage.ReadSystemEmail(ctx)
 	if err != nil {
 		return 0, err
@@ -86,6 +90,8 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 	if outgoing.RequireTested && saved.TestedAt == nil {
 		return saved.Revision, ErrNotTested
 	}
+
+	// 3. Decrypt the password.
 	var password string
 	if saved.Password != nil {
 		plaintext, err := m.encryption.Open(saved.Password.KeyID, saved.Password.Ciphertext, passwordOwner(saved.Server))
@@ -95,6 +101,7 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 		password = string(plaintext)
 	}
 
+	// 4. Send, and log a failure.
 	message := Message{
 		FromAddress: saved.FromAddress,
 		FromName:    saved.FromName,

@@ -80,9 +80,13 @@ func (t *Throttle) Succeed(ctx context.Context, id int64) error {
 
 // begin reserves an attempt and checks the limits that apply to it.
 func (t *Throttle) begin(ctx context.Context, email *string, addr netip.Addr) (int64, error) {
+	// 1. Refuse an invalid address before storage.
 	if !addr.IsValid() {
 		return 0, errors.New("invalid client address")
 	}
+
+	// 2. Reserve the attempt if the earlier ones from the address, and for
+	// the email, leave room.
 	now := t.now().UTC()
 	cutoff := now.Add(-attemptWindow)
 	attempt := Attempt{Email: email, ClientAddr: addr.Unmap().WithZone("").String(), CreatedAt: now}

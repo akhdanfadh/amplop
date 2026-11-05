@@ -68,23 +68,32 @@ func NewService(storage Storage, accounts accountService, throttle *Throttle, no
 // reserving a throttle attempt, and [account.ErrDeactivated] for the right
 // password of a deactivated account.
 func (s *Service) StartSignIn(ctx context.Context, email, password string, device Device) (SignedIn, error) {
+	// 1. Refuse an invalid email before reserving an attempt.
 	email, err := emailaddress.Parse(email)
 	if err != nil {
 		return SignedIn{}, err
 	}
+
+	// 2. Reserve an attempt before the password hash, so a refused guess
+	// costs no hash.
 	id, err := s.throttle.Begin(ctx, email, device.Addr)
 	if err != nil {
 		return SignedIn{}, err
 	}
 
+	// 3. Verify the password. A failure keeps the attempt, so it counts.
 	credentials, err := s.accounts.Authenticate(ctx, email, password)
 	if err != nil {
 		return SignedIn{}, err
 	}
+
+	// 4. Remove the attempt: only failures count.
 	if err := s.throttle.Succeed(ctx, id); err != nil {
 		return SignedIn{}, err
 	}
 
+	// 5. Under the user's lock, check the proof again and issue a session
+	// or a code challenge.
 	var result SignedIn
 	err = s.storage.StartSignIn(ctx, credentials.User.ID, func(state SignInState) (SignInChange, error) {
 		// A recovery invalidates password proof even when the plaintext is unchanged.

@@ -77,12 +77,14 @@ func NewCodeSignIn(storage codeSignInStore, encryption secretOpener, verifier *t
 // It deletes a deactivated account's challenge and returns
 // [account.ErrDeactivated].
 func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device Device) (Issued, error) {
+	// 1. Refuse a malformed secret before any storage.
 	hash, err := randomsecret.Hash(secret)
 	if err != nil {
 		return Issued{}, ErrInvalidChallenge
 	}
 
-	// This lookup only locates the limiter's owner; storage rechecks the proof.
+	// 2. Find the challenge's user. This lookup only locates the limiter's
+	// owner; storage checks the challenge again under its lock.
 	userID, err := s.storage.ChallengeUser(ctx, hash)
 	if errors.Is(err, ErrNotFound) {
 		return Issued{}, ErrInvalidChallenge
@@ -90,6 +92,8 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 	if err != nil {
 		return Issued{}, err
 	}
+
+	// 3. Reserve an attempt before any code is verified.
 	attemptID, err := s.throttle.Begin(ctx, userID)
 	if errors.Is(err, account.ErrUserNotFound) {
 		return Issued{}, ErrInvalidChallenge
@@ -102,6 +106,8 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 	outcome := ErrInvalidChallenge
 	verified := false
 	err = s.storage.CompleteSignIn(ctx, userID, hash, func(state CodeSignInState) (CodeSignInChange, error) {
+		// 4. Under the locks, refuse a challenge that cannot complete before
+		// verifying anything.
 		if state.Challenge.UserID != userID || state.Challenge.TokenHash != hash {
 			return CodeSignInChange{}, ErrInvalidChallenge
 		}
@@ -115,6 +121,7 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 			return CodeSignInChange{Action: CodeActionDelete}, nil
 		}
 
+		// 5. Decrypt the factor's secret, for a TOTP code only.
 		var secret []byte
 		if isTOTPCode(code) {
 			var err error
@@ -124,6 +131,8 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 			}
 		}
 
+		// 6. Verify the code. A wrong code counts against the challenge, and
+		// the last allowed failure deletes it.
 		verified = true
 		factor, backupID, err := s.verifyCode(ctx, state, secret, code)
 		// A request that ended while waiting to compare made no guess.
@@ -143,6 +152,7 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 			return CodeSignInChange{}, err
 		}
 
+		// 7. Issue the session.
 		issued = newSession(userID, device, s.now)
 		outcome = nil
 		return CodeSignInChange{
@@ -150,8 +160,9 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 			BackupCodeID: backupID, AttemptID: attemptID,
 		}, nil
 	})
-	// A request refused before verifying any code, e.g. with an expired
-	// challenge, made no guess, so it releases its attempt.
+
+	// 8. Release the attempt when no code was verified. A request refused
+	// before that, e.g. with an expired challenge, made no guess.
 	if (err != nil || outcome != nil) && !verified {
 		s.throttle.Release(ctx, attemptID)
 	}

@@ -83,6 +83,7 @@ type StatusRecord struct {
 
 // Start replaces a pending secret but cannot replace a confirmed factor.
 func (s *Service) Start(ctx context.Context, user account.User) (Started, error) {
+	// 1. Create and seal the secret before storage takes its lock.
 	value, err := newEnrollment(user.Email)
 	if err != nil {
 		return Started{}, err
@@ -92,6 +93,7 @@ func (s *Service) Start(ctx context.Context, user account.User) (Started, error)
 		return Started{}, err
 	}
 
+	// 2. Under the owner's lock, save it unless a confirmed factor exists.
 	err = s.storage.UpdateTOTP(ctx, user.ID, func(current *Factor) (Factor, error) {
 		if current != nil && current.ConfirmedAt != nil {
 			return Factor{}, ErrAlreadyOn
@@ -106,12 +108,14 @@ func (s *Service) Start(ctx context.Context, user account.User) (Started, error)
 
 // Cancel discards pending enrollment. Repeating a completed cancellation is safe.
 func (s *Service) Cancel(ctx context.Context, userID int64) error {
+	// 1. Refuse an invalid user ID before storage.
 	if userID <= 0 {
 		return account.ErrUserNotFound
 	}
 
+	// 2. Delete the pending factor. Check it under the owner lock so
+	// confirmation cannot race this deletion.
 	return s.storage.CancelTOTP(ctx, userID, func(current *Factor) error {
-		// Check under the owner lock so confirmation cannot race this deletion.
 		if current != nil && current.ConfirmedAt != nil {
 			return ErrAlreadyOn
 		}

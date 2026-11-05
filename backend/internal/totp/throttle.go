@@ -60,9 +60,12 @@ func NewThrottle(storage AttemptStorage, now func() time.Time, logger *slog.Logg
 // reservation, in the operation's storage transaction or with Succeed; a
 // request that fails before checking a code removes it with Release.
 func (t *Throttle) Begin(ctx context.Context, userID int64) (int64, error) {
+	// 1. Refuse an invalid user ID before storage.
 	if userID <= 0 {
 		return 0, errAttemptUserID
 	}
+
+	// 2. Reserve the attempt if the user's earlier ones leave room.
 	now := t.now().UTC()
 	cutoff := now.Add(-longLimit.Window)
 	id, err := t.storage.ReserveTOTPAttempt(ctx, Attempt{UserID: userID, CreatedAt: now}, cutoff, func(rows []Attempt) error {

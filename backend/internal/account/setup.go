@@ -64,10 +64,13 @@ func (s *Service) SetupStatus(ctx context.Context) (SetupStatus, error) {
 // [ErrSetupDone], [ErrSetupUnconfigured], or [ErrSetupTokenInvalid] when setup
 // is not open to input's token.
 func (s *Service) Setup(ctx context.Context, input SetupInput) (User, error) {
+	// 1. Refuse an invalid email.
 	email, err := emailaddress.Parse(input.Email)
 	if err != nil {
 		return User{}, err
 	}
+
+	// 2. Refuse when setup is done or not configured.
 	status, err := s.SetupStatus(ctx)
 	if err != nil {
 		return User{}, err
@@ -79,17 +82,21 @@ func (s *Service) Setup(ctx context.Context, input SetupInput) (User, error) {
 		return User{}, ErrSetupUnconfigured
 	}
 
-	// Equal-size digests avoid revealing the configured token's length.
+	// 3. Compare the token before the password hash. Equal-size digests
+	// avoid revealing the configured token's length.
 	token := sha256.Sum256([]byte(input.Token))
 	if subtle.ConstantTimeCompare(token[:], s.tokenHash[:]) != 1 {
 		return User{}, ErrSetupTokenInvalid
 	}
 
-	// Argon2id must finish before storage takes the table lock.
+	// 4. Hash the password: Argon2id must finish before storage takes the
+	// table lock.
 	passwordHash, err := passwordhash.Hash(ctx, input.Password)
 	if err != nil {
 		return User{}, err
 	}
+
+	// 5. Under the lock, insert the administrator unless one exists.
 	admin := NewAdmin{Email: email, PasswordHash: passwordHash}
 	return s.storage.UpdateSetup(ctx, func(state SetupState) (NewAdmin, error) {
 		if state.AdminExists {

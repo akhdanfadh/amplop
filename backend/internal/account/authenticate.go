@@ -35,10 +35,14 @@ type Credentials struct {
 // wrong passwords. It returns [emailaddress.ErrInvalid] for an invalid email.
 // Callers must reserve a throttle attempt before calling it.
 func (s *Service) Authenticate(ctx context.Context, email, password string) (Credentials, error) {
+	// 1. Refuse an invalid email before any password work.
 	email, err := emailaddress.Parse(email)
 	if err != nil {
 		return Credentials{}, err
 	}
+
+	// 2. Read the credentials. An unknown account gets a dummy hash, so it
+	// costs the same password work as a known one.
 	credentials, err := s.storage.ReadCredentials(ctx, email)
 	missing := errors.Is(err, ErrUserNotFound)
 	if err != nil && !missing {
@@ -48,6 +52,7 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (Cre
 		credentials.PasswordHash = dummyPasswordHash
 	}
 
+	// 3. Verify the password.
 	match, err := passwordhash.Verify(ctx, password, credentials.PasswordHash)
 	if err != nil {
 		return Credentials{}, err

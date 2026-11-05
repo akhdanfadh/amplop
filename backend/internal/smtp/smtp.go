@@ -110,27 +110,35 @@ func helloName(host string) string {
 // a [*systememail.SendError] when the server or network fails, ctx's error
 // when the caller gives up, and a plain error for unsafe input.
 func (s *Sender) Send(ctx context.Context, server systememail.Server, password string, message systememail.Message) error {
-	// Unsafe input is the caller's fault, not the server's, so it is no SendError.
+	// 1. Refuse unsafe input before connecting. It is the caller's fault,
+	// not the server's, so it is no SendError.
 	if err := validateSend(server, password, message); err != nil {
 		return err
 	}
+
+	// 2. Compose the message, so a malformed one fails before connecting.
 	body, err := compose(message, time.Now())
 	if err != nil {
 		return err
 	}
 
+	// 3. Bound the session. End before the caller's own deadline, so it can
+	// still record the result.
 	limit := s.timeout
-	// End before the caller's own deadline, so it can still record the result.
 	if deadline, ok := ctx.Deadline(); ok {
 		limit = min(limit, time.Until(deadline)-callerMargin)
 	}
 	bounded, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 
+	// 4. Run the session.
 	err = s.exchange(bounded, server, password, message, body)
 	if err == nil {
 		return nil
 	}
+
+	// 5. Label a failure: the caller giving up, then time running out, then
+	// the step's own reason.
 	if ctx.Err() != nil {
 		// The caller gave up; the server is not at fault. Waiting for the
 		// answer to a whole message, the send stays unconfirmed, and the
@@ -158,13 +166,15 @@ func (s *Sender) Send(ctx context.Context, server systememail.Server, password s
 	return err
 }
 
-// exchange runs one SMTP session: connect, protect, sign in, MAIL, RCPT,
-// DATA, and QUIT. Each failure carries the reason of its step.
+// exchange runs one SMTP session that delivers message with body to server.
+// It returns nil once the server accepts the message, and otherwise a failure
+// carrying the reason of its step.
 //
 // DESIGN: this follows [gosmtp.SendMail] step by step. SendMail takes no
 // context or TLS settings, has no plain mode, and returns one error for
 // every step, so it cannot meet the deadline or report a reason.
 func (s *Sender) exchange(ctx context.Context, server systememail.Server, password string, message systememail.Message, body []byte) error {
+	// 1. Connect.
 	dial := s.dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
@@ -181,19 +191,22 @@ func (s *Sender) exchange(ctx context.Context, server systememail.Server, passwo
 	defer stop()
 	defer raw.Close()
 
+	// 2. Protect the connection and greet the server.
 	client, err := s.open(ctx, conn, server)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 
+	// 3. Sign in, which needs the protected connection.
 	if server.Username != "" {
 		if err := signIn(client, server.Username, password); err != nil {
 			return refused(systememail.ReasonAuth, err)
 		}
 	}
 
-	// A non-ASCII address needs the server's SMTPUTF8 extension (RFC 6531).
+	// 4. Name the sender and the recipient (MAIL, RCPT). A non-ASCII
+	// address needs the server's SMTPUTF8 extension (RFC 6531).
 	var options *gosmtp.MailOptions
 	if !isASCII(message.FromAddress) || !isASCII(message.To) {
 		options = &gosmtp.MailOptions{UTF8: true}
@@ -205,8 +218,9 @@ func (s *Sender) exchange(ctx context.Context, server systememail.Server, passwo
 		return refused(systememail.ReasonRecipient, err)
 	}
 
-	// A refusal after the recipients is about the message itself. For a test
-	// message that is nearly always the From address, e.g. an unverified sender.
+	// 5. Send the message (DATA). A refusal after the recipients is about
+	// the message itself. For a test message that is nearly always the From
+	// address, e.g. an unverified sender.
 	data, err := client.Data()
 	if err != nil {
 		return refused(systememail.ReasonSender, err)
@@ -228,7 +242,8 @@ func (s *Sender) exchange(ctx context.Context, server systememail.Server, passwo
 		return failure
 	}
 
-	// The server has accepted the message; a slow or failed goodbye changes nothing.
+	// 6. Say goodbye (QUIT). The server has accepted the message; a slow or
+	// failed goodbye changes nothing.
 	client.CommandTimeout = quitTimeout
 	_ = client.Quit()
 	return nil

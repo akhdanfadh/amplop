@@ -89,10 +89,13 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 // sent before a close stops working, even after registration reopens, and
 // reopening starts the limits from zero. ADR028 records this.
 func (s *Service) Save(ctx context.Context, actorID int64, state State) (Settings, error) {
+	// 1. Refuse an unknown state before storage.
 	if state != StateOpen && state != StateClosed {
 		return Settings{}, errState
 	}
 
+	// 2. Under the lock, refuse opening with untested system email, and
+	// save.
 	var saved Record
 	err := s.storage.UpdateRegistration(ctx, actorID, func(current Record) (State, error) {
 		if state == StateOpen && !current.SystemEmailTested {

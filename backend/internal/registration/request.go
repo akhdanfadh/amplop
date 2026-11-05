@@ -134,6 +134,7 @@ func NewRequests(storage requestStorage, mailer mailer, publicURL *url.URL, now 
 // still returns nil where the others return the send's error. Either hints
 // that an email was asked for recently, never that it has an account.
 func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) error {
+	// 1. Refuse an invalid email or client address before any storage.
 	email, err := emailaddress.Parse(email)
 	if err != nil {
 		return err
@@ -143,8 +144,9 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 	}
 	clientAddr := client.Unmap().WithZone("").String()
 
-	// Closed is the default, so refuse it before the lock every request
-	// shares: queued requests would hold connections other routes need.
+	// 2. Refuse a closed registration before the lock every request shares.
+	// Closed is the default, and queued requests would hold connections
+	// other routes need.
 	record, err := r.storage.ReadRegistration(ctx)
 	if err != nil {
 		return err
@@ -153,8 +155,9 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		return ErrClosed
 	}
 
+	// 3. Under the lock, decide and record the attempt: a link, a notice,
+	// or a skip.
 	secret, hash := randomsecret.New()
-
 	var change RequestChange
 	since := r.now().UTC().Add(-attemptRetention)
 	err = r.storage.RequestRegistration(ctx, email, since, func(state RequestState) (RequestChange, error) {
@@ -200,6 +203,7 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		return err
 	}
 
+	// 4. Send what the attempt recorded, after it commits.
 	switch change.Attempt.Outcome {
 	case OutcomeSkipped:
 		return nil
