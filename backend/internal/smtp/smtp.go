@@ -179,24 +179,28 @@ func (s *Sender) exchange(ctx context.Context, server systememail.Server, passwo
 	defer client.Close()
 
 	// 3. Sign in, which needs the protected connection.
+	sent := redaction{recipient: message.To}
 	if server.Username != "" {
-		if err := signIn(client, server.Username, password); err != nil {
+		sent.credentials, err = signIn(client, server.Username, password)
+		if err != nil {
 			// The reply can quote the credentials just sent.
 			return refused(systememail.ReasonAuth, signInError(err))
 		}
 	}
 
 	// 4. Name the sender and the recipient (MAIL, RCPT). A non-ASCII
-	// address needs the server's SMTPUTF8 extension (RFC 6531).
+	// address needs the server's SMTPUTF8 extension (RFC 6531). From here
+	// on a reply can quote the sign-in or the recipient, so each failure
+	// passes through sent.
 	var options *gosmtp.MailOptions
 	if !isASCII(message.FromAddress) || !isASCII(message.To) {
 		options = &gosmtp.MailOptions{UTF8: true}
 	}
 	if err := client.Mail(message.FromAddress, options); err != nil {
-		return refused(systememail.ReasonSender, err)
+		return refused(systememail.ReasonSender, sent.redact(err))
 	}
 	if err := client.Rcpt(message.To, nil); err != nil {
-		return refused(systememail.ReasonRecipient, err)
+		return refused(systememail.ReasonRecipient, sent.redact(err))
 	}
 
 	// 5. Send the message (DATA). A refusal after the recipients is about
@@ -204,10 +208,10 @@ func (s *Sender) exchange(ctx context.Context, server systememail.Server, passwo
 	// address, e.g. an unverified sender.
 	data, err := client.Data()
 	if err != nil {
-		return refused(systememail.ReasonSender, err)
+		return refused(systememail.ReasonSender, sent.redact(err))
 	}
 	if _, err := data.Write(body); err != nil {
-		return refused(systememail.ReasonSender, err)
+		return refused(systememail.ReasonSender, sent.redact(err))
 	}
 	// CloseWithResponse flushes the message's end and its final dot, then
 	// reads the server's answer. A failed flush means the dot never left, so
@@ -217,7 +221,7 @@ func (s *Sender) exchange(ctx context.Context, server systememail.Server, passwo
 	// message possibly accepted.
 	conn.ended.Store(true)
 	if _, err := data.CloseWithResponse(); err != nil {
-		failure := refused(systememail.ReasonSender, err)
+		failure := refused(systememail.ReasonSender, sent.redact(err))
 		smtpErr, ok := errors.AsType[*gosmtp.SMTPError](err)
 		failure.Unconfirmed = conn.answering.Load() && (!ok || smtpErr.Code < 400)
 		return failure

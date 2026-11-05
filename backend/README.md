@@ -1058,9 +1058,13 @@ error. inbok never adds the password; the text can include the server's own
 reply, except at sign-in. A reply to the sign-in can quote the Base64
 credentials inbok sent, the password included, so a failed sign-in keeps
 only the reply's code and enhanced code, e.g. `SMTP error 535: 5.7.8`, or
-`unexpected reply to the sign-in` for a reply it cannot use. The warning
-carries the `request_id` of the request that sent it. Two choices each
-email makes decide what a send does:
+`unexpected reply to the sign-in` for a reply it cannot use. A later reply
+keeps its text, but the credentials' Base64 lines become `[credentials]`
+and the recipient's address, in any letter case, becomes `[recipient]`,
+e.g. `SMTP error 550: <[recipient]> unknown`, so the logged reply carries
+neither; a malformed one keeps none of its text. The warning carries the
+`request_id` of the request that sent it.
+Two choices each email makes decide what a send does:
 
 - **Private** when its body holds a secret, something that grants access if
   read, e.g. a link's token: the warning then leaves out the server's reply,

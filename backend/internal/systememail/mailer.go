@@ -129,8 +129,9 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 		// The reply can quote the message, in any encoding or cut anywhere, so
 		// no part of a private one is safe to keep.
 		if !outgoing.Private {
-			// The reply can name the username, never the password, and can be
-			// long, so only its start is kept.
+			// The sender hides the credentials and the recipient's address in
+			// the reply, which can still name the username, and can be long,
+			// so only its start is kept.
 			attrs = append(attrs, "err", truncate(failed.Err.Error(), maxLoggedReply))
 		}
 		m.logger.WarnContext(ctx, "system email send failed", attrs...)

@@ -21,21 +21,27 @@ var (
 )
 
 // signIn authenticates with PLAIN, or with LOGIN when the server offers only
-// that. It returns errCleartext on a connection without TLS.
-func signIn(client *gosmtp.Client, username, password string) error {
+// that. It returns the Base64 lines it sent with the credentials, and
+// errCleartext on a connection without TLS.
+func signIn(client *gosmtp.Client, username, password string) ([]string, error) {
 	// Neither go-smtp nor go-sasl checks for TLS. Saving settings forbids a
 	// username without it; this holds even if a stored row does not.
 	if _, ok := client.TLSConnectionState(); !ok {
-		return errCleartext
+		return nil, errCleartext
 	}
+	var mechanism sasl.Client
 	switch {
 	case client.SupportsAuth(sasl.Plain):
-		return client.Auth(sasl.NewPlainClient("", username, password))
+		mechanism = sasl.NewPlainClient("", username, password)
 	// Some providers offer only LOGIN, e.g. Microsoft 365.
 	case client.SupportsAuth(sasl.Login):
-		return client.Auth(sasl.NewLoginClient(username, password))
+		mechanism = sasl.NewLoginClient(username, password)
+	default:
+		return nil, errNoSignIn
 	}
-	return errNoSignIn
+	recorder := &recordingClient{Client: mechanism}
+	err := client.Auth(recorder)
+	return recorder.sent, err
 }
 
 // signInError returns err, from a failed sign-in, without any text the
@@ -48,7 +54,7 @@ func signIn(client *gosmtp.Client, username, password string) error {
 // is a value inbok formats from integers, a fixed error, or Go's network
 // error, so no parsing detail of go-smtp's, and no wrapper, decides what is
 // kept. A server that accepts the sign-in and quotes it at a later step is
-// not covered.
+// handled by [redaction], which keeps the rest of that reply.
 func signInError(err error) error {
 	// go-smtp documents a server's error from Auth as an *SMTPError. A new
 	// one with the same code keeps Permanent's decision in failed.
