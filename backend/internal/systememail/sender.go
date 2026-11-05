@@ -69,7 +69,9 @@ func (e *SendError) Unwrap() error { return e.Err }
 // Sender delivers one message while the caller waits, signing in with
 // password when server.Username is set. It returns a [*SendError] when the
 // server or network fails, ctx's error when the caller gives up, and a plain
-// error for unsafe input or a message that cannot be built.
+// error for unsafe input or a message that cannot be built. An error from the
+// sign-in step, whatever its Reason, holds no text the server wrote, since a
+// reply to the sign-in can quote the password.
 type Sender interface {
 	Send(ctx context.Context, server Server, password string, message Message) error
 }

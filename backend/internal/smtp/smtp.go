@@ -45,6 +45,9 @@ var (
 	errNoSignIn = errors.New("server offers no PLAIN or LOGIN sign-in")
 	// errCleartext means a sign-in was attempted without TLS.
 	errCleartext = errors.New("refusing to sign in without TLS")
+	// errUnexpectedReply stands for a reply to the sign-in that inbok cannot
+	// use, whose text it does not keep.
+	errUnexpectedReply = errors.New("unexpected reply to the sign-in")
 	// errUnsafeInput means the input would change the SMTP session or cannot be dialed.
 	errUnsafeInput = errors.New("address, credentials, port, or security mode cannot be sent")
 	// errTooLong means the server sent more than maxReplyBytes.
@@ -201,7 +204,8 @@ func (s *Sender) exchange(ctx context.Context, server systememail.Server, passwo
 	// 3. Sign in, which needs the protected connection.
 	if server.Username != "" {
 		if err := signIn(client, server.Username, password); err != nil {
-			return refused(systememail.ReasonAuth, err)
+			// The reply can quote the credentials just sent.
+			return refused(systememail.ReasonAuth, signInError(err))
 		}
 	}
 
@@ -304,6 +308,53 @@ func signIn(client *gosmtp.Client, username, password string) error {
 		return client.Auth(sasl.NewLoginClient(username, password))
 	}
 	return errNoSignIn
+}
+
+// signInError returns err, from a failed sign-in, without any text the
+// server wrote: a refusal keeps only its code and an enhanced code within RFC
+// 3463's ranges, a known error of inbok's, go-sasl's, or Go's is returned
+// alone, without what wraps it, and anything else becomes errUnexpectedReply.
+//
+// DESIGN: a reply to AUTH can quote what inbok sent, the Base64 credentials
+// with the SMTP password, and the mailer logs a reply. What leaves this step
+// is a value inbok formats from integers, a fixed error, or Go's network
+// error, so no parsing detail of go-smtp's, and no wrapper, decides what is
+// kept. A server that accepts the sign-in and quotes it at a later step is
+// not covered.
+func signInError(err error) error {
+	// go-smtp documents a server's error from Auth as an *SMTPError. A new
+	// one with the same code keeps Permanent's decision in failed.
+	if smtpErr, ok := errors.AsType[*gosmtp.SMTPError](err); ok {
+		return &gosmtp.SMTPError{Code: smtpErr.Code, Message: enhancedCode(smtpErr.EnhancedCode)}
+	}
+	for _, known := range []error{
+		errCleartext, errNoSignIn, errTooLong, sasl.ErrUnexpectedServerChallenge,
+		io.EOF, io.ErrUnexpectedEOF, net.ErrClosed,
+	} {
+		if errors.Is(err, known) {
+			return known
+		}
+	}
+	// The network error Go wrote, e.g. a reset or a timeout, which refused
+	// and Send label by.
+	if netErr, ok := errors.AsType[net.Error](err); ok {
+		return netErr
+	}
+	return errUnexpectedReply
+}
+
+// enhancedCode returns code as "class.subject.detail" when RFC 3463 allows
+// it: class 2, 4, or 5, and a subject and a detail from 0 to 999.
+// It returns "" otherwise, including for a code the server did not send.
+func enhancedCode(code gosmtp.EnhancedCode) string {
+	class, subject, detail := code[0], code[1], code[2]
+	if class != 2 && class != 4 && class != 5 {
+		return ""
+	}
+	if subject < 0 || subject > 999 || detail < 0 || detail > 999 {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d.%d", class, subject, detail)
 }
 
 // compose returns message as RFC 5322 bytes: From with name and address, To,

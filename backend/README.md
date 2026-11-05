@@ -225,8 +225,9 @@ warning unless it was sent, or `recovery notice failed` with the error.
 That error, which DBOS also keeps with the run, names only the failed
 step, e.g. `failed at auth, unconfirmed`, never the server's reply: a
 reply can quote what inbok sent, the SMTP password included. The
-mailer's own warning has the reply. DBOS's tables keep only IDs and
-outcomes with the run, no address.
+mailer's own warning has the reply, except a sign-in's, of which it keeps
+only the code. DBOS's tables keep only IDs and outcomes with the run, no
+address.
 
 ### Inspecting workflows
 
@@ -992,10 +993,14 @@ the server's last reply, has at most 8 seconds, inside the 10-second request
 limit. A failed send logs a warning with its purpose, e.g. `test message`,
 the reason, host, port, security, username, and the first 512 bytes of the
 error. inbok never adds the password; the text can include the server's own
-reply. The warning carries the `request_id` of the request that sent it:
+reply, except at sign-in. A reply to the sign-in can quote the Base64
+credentials inbok sent, the password included, so a failed sign-in keeps
+only the reply's code and enhanced code, e.g. `SMTP error 535: 5.7.8`, or
+`unexpected reply to the sign-in` for a reply it cannot use. The warning
+carries the `request_id` of the request that sent it:
 
 ```text
-time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="..." request_id=0b9d6a56-3f4e-4c1a-9d2b-7e8f0a1b2c3d
+time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="send failed at auth: SMTP error 535: 5.7.8" request_id=0b9d6a56-3f4e-4c1a-9d2b-7e8f0a1b2c3d
 ```
 
 A send is **unconfirmed** when inbok had written the whole message, final
@@ -1014,7 +1019,8 @@ that retries, which can stop. A 4xx reply, e.g. greylisting, and a
 dropped connection are not. Servers do not always follow the RFC, e.g. a
 full mailbox can answer 552 and later accept, so a caller decides per
 step whether to trust it. For a message that is not private, the reply,
-code included, is in the warning's `err`.
+code included, is in the warning's `err`; for a failed sign-in, only the
+code.
 
 To list saves, with no setting values:
 
@@ -1059,7 +1065,8 @@ as a redeem, starts it over. The link is saved before the send, so a 502
 `email-not-sent` still counts toward the limit, and an
 [unconfirmed](#system-email) message may arrive and work. A failed send logs the same warning as a test message, with
 `purpose="email verification"`, but without the server's reply, which can
-quote the link. A test message to the same server shows the reply.
+quote the link. A test message to the same server shows the reply, except
+at sign-in, where it shows only the reply's code.
 
 The link is `INBOK_PUBLIC_URL` + `/verify-email#` + a 32-byte random secret
 in unpadded base64url. Browsers never send the part after `#` to a server,
