@@ -4,6 +4,7 @@ import { useCreateFirstAdmin } from "@/api/generated/inbok";
 import { newSetupPasswordMin, newSetupPasswordMax, type ProblemType } from "@/api/generated/model";
 import { formErrors, formSummary, userMessage } from "@/api/problem";
 import { SetupSchema } from "./schema";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -171,16 +172,7 @@ export function SetupForm({
         {create.isPending ? "Creating administrator..." : "Create administrator"}
       </Button>
 
-      {create.error && summary.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <FieldError errors={summary} />
-          {create.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{create.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={create.error?.requestId} />
     </form>
   );
 }

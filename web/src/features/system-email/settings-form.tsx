@@ -10,6 +10,7 @@ import type { ResponseSystemEmail, SystemEmailSettings } from "@/api/generated/m
 import type { ApiError } from "@/api/transport";
 import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
 import { PasswordInput } from "@/components/password-input";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -299,7 +300,12 @@ export function SettingsForm({
                         className="border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
                         id={`${id}-${option.value}`}
                         value={option.value}
-                        aria-describedby={`${id}-${option.value}-description`}
+                        // Focus lands on a radio, not the group, so each names the error.
+                        aria-describedby={
+                          errors.length > 0
+                            ? `${id}-${option.value}-description ${id}-error`
+                            : `${id}-${option.value}-description`
+                        }
                         onBlur={() => blurKeepingSubmitErrors(field)}
                       />
                       <FieldContent>
@@ -456,28 +462,20 @@ export function SettingsForm({
       {/* The last attempt's error. Kept out of the form's own errors,
           which mean "these values are wrong" and block submitting until an
           edit. */}
-      {save.error && (summary.length > 0 || uncertain) && (
-        <div className="flex flex-col gap-3">
-          <FieldError errors={summary} />
-          {uncertain && (
-            <Button
-              ref={checkRef}
-              type="button"
-              variant="outline"
-              className={`${buttonClass} border-muted-foreground`}
-              disabled={checking}
-              onClick={() => void check()}
-            >
-              {checking ? "Checking saved settings..." : "Check saved settings"}
-            </Button>
-          )}
-          {summary.length > 0 && save.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{save.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={save.error?.requestId} className="gap-3">
+        {uncertain && (
+          <Button
+            ref={checkRef}
+            type="button"
+            variant="outline"
+            className={`${buttonClass} border-muted-foreground`}
+            disabled={checking}
+            onClick={() => void check()}
+          >
+            {checking ? "Checking saved settings..." : "Check saved settings"}
+          </Button>
+        )}
+      </RequestError>
       {checkError && (
         <p role="alert">Could not check the saved settings. {userMessage(checkError)}</p>
       )}

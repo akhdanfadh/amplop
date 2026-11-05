@@ -9,6 +9,7 @@ import {
 import { SystemEmailTestMessageRecipient, type SystemEmailSettings } from "@/api/generated/model";
 import { formErrors, formSummary, uncertainOutcome } from "@/api/problem";
 import { ApiError } from "@/api/transport";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -160,16 +161,7 @@ export function TestMessageForm({
         {send.isPending ? "Sending test message..." : "Send test message"}
       </Button>
 
-      {error && summary.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <FieldError errors={summary} />
-          {error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={error?.requestId} />
       <output aria-atomic="true" className={failed ? "text-destructive" : undefined}>
         {result && testResultMessage(result, result.recipient)}
       </output>

@@ -6,6 +6,7 @@ import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/pr
 import { sessionMessage } from "./session-error";
 import { clearAccountCache } from "./session-cache";
 import { SignInSchema } from "./sign-in-schema";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -194,16 +195,7 @@ export function SignInForm({
         {create.isPending ? "Signing in..." : "Sign in"}
       </Button>
 
-      {create.error && summary.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <FieldError errors={summary} />
-          {create.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{create.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={create.error?.requestId} />
       {create.error && uncertainOutcome(create.error) && (
         <div className="flex flex-col gap-3">
           <Button

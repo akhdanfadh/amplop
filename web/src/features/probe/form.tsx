@@ -3,6 +3,7 @@ import { useForm, useSelector, type AnyFieldMeta } from "@tanstack/react-form";
 import { useCreateProbeEvent } from "@/api/generated/inbok";
 import { NewProbeEvent } from "@/api/generated/model";
 import { formErrors, formSummary, userMessage } from "@/api/problem";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -13,8 +14,9 @@ import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 // The form holds exactly the request body, so it is sent as is.
 const emptyEvent: NewProbeEvent = { note: "", amount: 1, highlighted: false, tag: null };
 
-// Only these inputs are rendered; other rejected inputs belong in the summary.
-const probeFields = ["note", "amount", "highlighted", "tag"] satisfies (keyof NewProbeEvent)[];
+// Only these inputs are rendered, in page order; other rejected inputs belong
+// in the summary.
+const probeFields = ["note", "amount", "tag", "highlighted"] satisfies (keyof NewProbeEvent)[];
 
 // Adds an event to the probe counter: an example write.
 export function ProbeForm(): ReactElement {
@@ -27,6 +29,10 @@ export function ProbeForm(): ReactElement {
     // Each edit is checked against the contract's schema; nothing is sent
     // while a value breaks it.
     validators: { onChange: NewProbeEvent },
+    onSubmitInvalid: ({ formApi }) => {
+      const name = probeFields.find((field) => formApi.getFieldMeta(field)?.errors.length);
+      if (name) document.getElementById(name)?.focus();
+    },
     onSubmit: ({ value, formApi }) => {
       create.mutate(
         { data: value },
@@ -73,11 +79,12 @@ export function ProbeForm(): ReactElement {
                   id={field.name}
                   disabled={create.isPending}
                   aria-invalid={errors.length > 0}
+                  aria-describedby={errors.length > 0 ? `${field.name}-error` : undefined}
                   value={field.state.value}
                   onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(e) => field.handleChange(e.target.value)}
                 />
-                <FieldError errors={errors} />
+                <FieldError id={`${field.name}-error`} errors={errors} />
               </Field>
             );
           }}
@@ -93,13 +100,14 @@ export function ProbeForm(): ReactElement {
                   id={field.name}
                   disabled={create.isPending}
                   aria-invalid={errors.length > 0}
+                  aria-describedby={errors.length > 0 ? `${field.name}-error` : undefined}
                   type="number"
                   // An emptied box gives NaN; show it as empty, not "NaN".
                   value={Number.isNaN(field.state.value) ? "" : field.state.value}
                   onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(e) => field.handleChange(e.target.valueAsNumber)}
                 />
-                <FieldError errors={errors} />
+                <FieldError id={`${field.name}-error`} errors={errors} />
               </Field>
             );
           }}
@@ -115,12 +123,13 @@ export function ProbeForm(): ReactElement {
                   id={field.name}
                   disabled={create.isPending}
                   aria-invalid={errors.length > 0}
+                  aria-describedby={errors.length > 0 ? `${field.name}-error` : undefined}
                   value={field.state.value ?? ""}
                   onBlur={() => blurKeepingSubmitErrors(field)}
                   // An empty box means no tag (null); Go rejects an empty tag.
                   onChange={(e) => field.handleChange(e.target.value || null)}
                 />
-                <FieldError errors={errors} />
+                <FieldError id={`${field.name}-error`} errors={errors} />
               </Field>
             );
           }}
@@ -135,11 +144,12 @@ export function ProbeForm(): ReactElement {
                   id={field.name}
                   disabled={create.isPending}
                   aria-invalid={errors.length > 0}
+                  aria-describedby={errors.length > 0 ? `${field.name}-error` : undefined}
                   checked={field.state.value}
                   onCheckedChange={(checked) => field.handleChange(checked)}
                 />
                 <FieldLabel htmlFor={field.name}>Highlighted</FieldLabel>
-                <FieldError errors={errors} />
+                <FieldError id={`${field.name}-error`} errors={errors} />
               </Field>
             );
           }}
@@ -154,16 +164,7 @@ export function ProbeForm(): ReactElement {
       {/* The last attempt's error. Kept out of the form's own errors,
           which mean "these values are wrong" and block submitting until an
           edit: a retry after Go restarts would send nothing. */}
-      {create.error && summary.length > 0 && (
-        <div className="space-y-2">
-          <FieldError errors={summary} />
-          {create.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{create.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={create.error?.requestId} />
       {create.data && (
         <output>
           Added {create.data.data.event.amount}. Total: {create.data.data.total}.

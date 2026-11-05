@@ -110,8 +110,8 @@ Put shared code in the folder for its responsibility:
   the `/register` and `/register/complete` forms, and their wording.
 - `src/features/password-reset`: the `/forgot-password` and
   `/reset-password` forms, the reset form's schema, and their wording.
-- `src/components`: shared controls, such as the password input. `ui/` holds
-  the shadcn components we own.
+- `src/components`: shared components, such as the password input and the
+  request error under a form. `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
@@ -560,6 +560,9 @@ counter is full.", stays below the form until the next edit or submit.
 Before sending, the form checks each edit against the generated schema,
 `NewProbeEvent`, and sends nothing while a value breaks it. A field shows
 its error once the user leaves it or clicks submit, then updates live.
+A screen reader reads a field's error with the field rather than
+announcing each change, so give each `FieldError` an `id` and name it in
+the field's `aria-describedby`; an error nothing names is never read.
 If Go still rejects a value, e.g. after a rule changed in Go before
 `pnpm generate`, `formErrors` from `src/api/problem.ts` attaches the server's
 safe messages only to fields that the form renders. Editing a field clears its
@@ -567,7 +570,9 @@ server error. TanStack Form also drops it when a check on leaving the field
 passes, so every field leaves through `blurKeepingSubmitErrors`
 (`src/lib/blur-keeping-submit-errors.ts`), which puts it back. Rejected
 inputs outside those fields stay visible in the request summary below the
-form, which `formSummary` builds: the request's message, then those inputs.
+form, which `formSummary` builds and `RequestError`
+(`src/components/request-error.tsx`) shows as an alert, announced as it
+appears: the request's message, then those inputs.
 When every rejected input shows on a field, the summary is empty and no
 request reference shows, since the fields tell the whole refusal. Once a
 request fails, focus moves to the first invalid field, else to the submit

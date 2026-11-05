@@ -3,6 +3,7 @@ import { useForm, useSelector } from "@tanstack/react-form";
 import { useRequestPasswordResetLink } from "@/api/generated/inbok";
 import { NewPasswordResetRequest } from "@/api/generated/model";
 import { formErrors, formSummary } from "@/api/problem";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -142,16 +143,7 @@ export function RequestForm(): ReactElement {
         {request.isPending ? "Sending reset link..." : "Send reset link"}
       </Button>
 
-      {request.error && summary.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <FieldError errors={summary} />
-          {request.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{request.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={request.error?.requestId} />
     </form>
   );
 }

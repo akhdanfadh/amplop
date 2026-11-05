@@ -91,6 +91,9 @@ The web app reads these from the contract; keep them stable:
 - A request failure lives in the mutation (`create.error`); field
   problems live in the form's errors. A request failure in the form's
   error map blocks a retry until the next edit.
+- A form shows a request failure through `RequestError`, which is an
+  alert. A field's error is a `FieldError` with an `id` that the field's
+  `aria-describedby` names; it is not an alert.
 - `ApiError.status` is the actual HTTP status. Its optional `problem` is
   received data; use `status` for request decisions and preserve missing
   problems as missing.
