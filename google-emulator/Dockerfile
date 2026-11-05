@@ -1,9 +1,10 @@
 # syntax=docker/dockerfile:1
 
-# The Google emulator for inbok's development and trial stacks:
-# vercel-labs' emulate (https://github.com/vercel-labs/emulate), a
-# stateful fake of Google OAuth and the Gmail API. emulate publishes only
-# an npm package, so this builds the image. compose.yaml runs it.
+# The Google emulator for inbok's tests and its development and trial
+# stacks: vercel-labs' emulate (https://github.com/vercel-labs/emulate),
+# a stateful fake of Google OAuth and the Gmail API. emulate publishes
+# only an npm package, so this builds the image. compose.yaml runs it, and
+# backend/internal/googleemulator starts it for tests.
 
 # Base images, pinned by version and by digest, as in the repository's
 # Dockerfile, which says how to look up a digest. Keep pnpm's version
@@ -16,6 +17,9 @@ ARG NODE_IMAGE=node:24.22.2-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12
 FROM ${PNPM_IMAGE} AS install
 WORKDIR /emulator
 COPY package.json pnpm-lock.yaml ./
+# No cache mount, unlike the repository's Dockerfile: Testcontainers builds
+# with Docker's classic builder, which has none, and four packages download
+# quickly.
 RUN pnpm install --frozen-lockfile --prod
 
 FROM ${NODE_IMAGE}

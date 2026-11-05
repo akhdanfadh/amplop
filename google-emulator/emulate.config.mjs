@@ -1,5 +1,6 @@
 // The development and trial stacks' Google: seeded Gmail mailboxes and one
-// OAuth client, inbok's development one.
+// OAuth client, inbok's development one. Tests copy their own config over
+// this file.
 
 // The client is fixed here rather than read from inbok's settings, so a
 // real Google client secret put in .env never reaches the emulator.

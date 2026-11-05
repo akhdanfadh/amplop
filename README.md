@@ -17,7 +17,7 @@ These are for development. Self-hosting needs only Docker and git; see
 - Go 1.27.1 or newer
 - pnpm, which downloads the pinned pnpm and Node.js versions itself
 - Docker, for PostgreSQL, Mailpit, the Google emulator, and the Go
-  database tests
+  database and Gmail tests
 - A C compiler, e.g. gcc, for SQLC, which `make generate` and
   `make check` run
 - GNU Make

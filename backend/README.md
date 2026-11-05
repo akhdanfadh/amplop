@@ -722,6 +722,13 @@ Where it differs from Google:
 - An empty mailbox's history ID is `0`, every ID token carries an `hd`
   claim from the address's domain, and every response allows any origin.
 
+Go tests start their own emulator per test with `internal/googleemulator`,
+from the same Dockerfile, tagged `inbok-google-emulator:test` rather than
+Compose's `:local`. The first test in a run builds it, never taking an
+existing image as found, so a test cannot run a stale emulator. Docker
+answers from its cache unless `google-emulator/` changed; the first build
+needs network access for the npm registry.
+
 ## Reverse proxies
 
 `INBOK_TRUSTED_PROXIES` controls which peers may supply a forwarded client
@@ -1600,9 +1607,10 @@ against testify's usage rules, e.g. expected value first; `--fix`
 corrects most of them.
 
 Database tests start their own throwaway PostgreSQL in Docker
-([Testcontainers](https://golang.testcontainers.org)), so Docker must be
-running; without it they fail rather than skip. They never touch the
-Compose database.
+([Testcontainers](https://golang.testcontainers.org)), and Gmail tests
+their own [Google emulator](#google-emulator), so Docker must be running;
+without it they fail rather than skip. They never touch the Compose
+services.
 
 ## Writing tests
 
@@ -1769,6 +1777,8 @@ httpapi --> passwordreset <-- repository/postgres
   fills with `systememail`'s `Mailer`. A feature may import another's plain
   rules directly: `registration` uses `account.ValidatePassword` and
   `account.User`.
+- `googleemulator` starts the [Google emulator](#google-emulator) for
+  tests, each with its own seed. Only tests import it.
 - `webapp` embeds the built web app and serves it as a static site:
   files, the shell for browser routes, caching, and the CSP. It knows the
   build's layout, not the web app's code. `httpapi` declares a `webApp`
