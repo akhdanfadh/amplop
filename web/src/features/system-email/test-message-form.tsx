@@ -7,7 +7,7 @@ import {
   useSendSystemEmailTestMessage,
 } from "@/api/generated/inbok";
 import { SystemEmailTestMessageRecipient, type SystemEmailSettings } from "@/api/generated/model";
-import { formErrors, uncertainOutcome } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome } from "@/api/problem";
 import { ApiError } from "@/api/transport";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
@@ -93,7 +93,9 @@ export function TestMessageForm({
       : undefined;
   const error = current ? send.error : null;
   const failed = result?.status === "failed";
-  const inputErrors = error ? formErrors(error, recipientFields) : undefined;
+  const summary = error
+    ? formSummary(testErrorMessage(error), formErrors(error, recipientFields))
+    : [];
 
   // The button is disabled while sending; give focus back once it ends.
   useEffect(() => {
@@ -158,11 +160,9 @@ export function TestMessageForm({
         {send.isPending ? "Sending test message..." : "Send test message"}
       </Button>
 
-      {error && (
+      {error && summary.length > 0 && (
         <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[{ message: testErrorMessage(error) }, ...(inputErrors?.unmatched ?? [])]}
-          />
+          <FieldError errors={summary} />
           {error.requestId && (
             <p className="text-sm text-muted-foreground">
               Request reference: <code className="break-all">{error.requestId}</code>

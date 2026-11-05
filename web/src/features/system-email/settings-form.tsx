@@ -8,7 +8,7 @@ import {
 } from "@/api/generated/inbok";
 import type { ResponseSystemEmail, SystemEmailSettings } from "@/api/generated/model";
 import type { ApiError } from "@/api/transport";
-import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
 import { PasswordInput } from "@/components/password-input";
 import { Button } from "@/components/ui/button";
 import {
@@ -159,7 +159,9 @@ export function SettingsForm({
     },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const inputErrors = save.error ? formErrors(save.error, settingsFields) : undefined;
+  const summary = save.error
+    ? formSummary(userMessage(save.error), formErrors(save.error, settingsFields))
+    : [];
 
   // Once a save or check ends, focus what needs attention next.
   useEffect(() => {
@@ -454,11 +456,9 @@ export function SettingsForm({
       {/* The last attempt's error. Kept out of the form's own errors,
           which mean "these values are wrong" and block submitting until an
           edit. */}
-      {save.error && (
+      {save.error && (summary.length > 0 || uncertain) && (
         <div className="flex flex-col gap-3">
-          <FieldError
-            errors={[{ message: userMessage(save.error) }, ...(inputErrors?.unmatched ?? [])]}
-          />
+          <FieldError errors={summary} />
           {uncertain && (
             <Button
               ref={checkRef}
@@ -471,7 +471,7 @@ export function SettingsForm({
               {checking ? "Checking saved settings..." : "Check saved settings"}
             </Button>
           )}
-          {save.error.requestId && (
+          {summary.length > 0 && save.error.requestId && (
             <p className="text-sm text-muted-foreground">
               Request reference: <code className="break-all">{save.error.requestId}</code>
             </p>

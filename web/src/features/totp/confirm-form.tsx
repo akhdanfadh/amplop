@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import type { ApiError } from "@/api/transport";
-import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
 import { codeFormats, codePaste, type CodeKind } from "@/features/auth/code-schema";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -83,6 +83,7 @@ export function ConfirmForm({
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
   const inputs = error ? formErrors(error, fieldNames) : undefined;
+  const summary = error && inputs ? formSummary(userMessage(error), inputs) : [];
   const codeRejected = Boolean(inputs?.fields.code);
 
   useEffect(() => {
@@ -192,9 +193,9 @@ export function ConfirmForm({
       >
         {pending ? config.pending : config.action}
       </Button>
-      {error && (
+      {error && summary.length > 0 && (
         <div className="flex flex-col gap-2">
-          <FieldError errors={[{ message: userMessage(error) }, ...(inputs?.unmatched ?? [])]} />
+          <FieldError errors={summary} />
           {error.requestId && (
             <p className="text-sm text-muted-foreground">
               Request reference: <code className="break-all">{error.requestId}</code>

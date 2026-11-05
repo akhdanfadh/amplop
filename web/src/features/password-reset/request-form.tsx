@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactElement } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useRequestPasswordResetLink } from "@/api/generated/inbok";
 import { NewPasswordResetRequest } from "@/api/generated/model";
-import { formErrors } from "@/api/problem";
+import { formErrors, formSummary } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -49,7 +49,9 @@ export function RequestForm(): ReactElement {
     },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const inputErrors = request.error ? formErrors(request.error, requestFields) : undefined;
+  const summary = request.error
+    ? formSummary(requestErrorMessage(request.error), formErrors(request.error, requestFields))
+    : [];
 
   // The answer replaces the focused form, so it takes focus.
   useEffect(() => {
@@ -140,14 +142,9 @@ export function RequestForm(): ReactElement {
         {request.isPending ? "Sending reset link..." : "Send reset link"}
       </Button>
 
-      {request.error && (
+      {request.error && summary.length > 0 && (
         <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[
-              { message: requestErrorMessage(request.error) },
-              ...(inputErrors?.unmatched ?? []),
-            ]}
-          />
+          <FieldError errors={summary} />
           {request.error.requestId && (
             <p className="text-sm text-muted-foreground">
               Request reference: <code className="break-all">{request.error.requestId}</code>

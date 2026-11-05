@@ -470,7 +470,8 @@ different recovery actions. Type the constant you
 compare with the generated `ProblemType`, e.g.
 `const setupDoneType: ProblemType = "/api/v0/problems/setup-done"`, so a type
 the contract no longer lists fails type-checking. The probe form displays a
-received request reference for reporting failures.
+received request reference for reporting failures, except under a refusal
+its fields show in full.
 
 For writes, a missing response or HTTP 5xx cannot confirm whether the change
 took effect. The message keeps any safe server explanation and asks the user
@@ -479,7 +480,8 @@ member reload their list for that check. Elsewhere, an unreadable success
 response says the server reported success but its result could not be
 loaded. A received 4xx
 rejection keeps its normal explanation. Failed submissions keep the form's
-values; the request reference remains available when received.
+values; the request reference remains available when received, except
+under a refusal the fields show in full (see Forms).
 
 A feature with its own advice for that case uses the helpers in
 `src/api/problem.ts` instead of repeating the rules. `uncertainOutcome(err)`
@@ -564,5 +566,14 @@ safe messages only to fields that the form renders. Editing a field clears its
 server error. TanStack Form also drops it when a check on leaving the field
 passes, so every field leaves through `blurKeepingSubmitErrors`
 (`src/lib/blur-keeping-submit-errors.ts`), which puts it back. Rejected
-inputs outside those fields stay visible in the request summary. Request failures without input errors do not enter form validation
-state, so valid input can be submitted again without an edit.
+inputs outside those fields stay visible in the request summary below the
+form, which `formSummary` builds: the request's message, then those inputs.
+When every rejected input shows on a field, the summary is empty and no
+request reference shows, since the fields tell the whole refusal. Once a
+request fails, focus moves to the first invalid field, else to the submit
+button, which lost it while disabled: through `useFocusAfterError`
+(`src/hooks/use-focus-after-error.ts`), or by a form's own rules where it
+has other targets, such as the code forms' restart button or the system
+email form's check button. Request failures without input errors do not enter
+form validation state, so valid input can be submitted again without an
+edit.

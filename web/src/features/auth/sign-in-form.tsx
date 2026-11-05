@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ComponentProps, type ReactElement } f
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateSession, useGetCurrentSession } from "@/api/generated/inbok";
-import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
 import { sessionMessage } from "./session-error";
 import { clearAccountCache } from "./session-cache";
 import { SignInSchema } from "./sign-in-schema";
@@ -93,7 +93,9 @@ export function SignInForm({
     },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const inputErrors = create.error ? formErrors(create.error, signInFields) : undefined;
+  const summary = create.error
+    ? formSummary(sessionMessage(create.error, "sign-in"), formErrors(create.error, signInFields))
+    : [];
 
   useEffect(
     () => () => {
@@ -192,14 +194,9 @@ export function SignInForm({
         {create.isPending ? "Signing in..." : "Sign in"}
       </Button>
 
-      {create.error && (
+      {create.error && summary.length > 0 && (
         <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[
-              { message: sessionMessage(create.error, "sign-in") },
-              ...(inputErrors?.unmatched ?? []),
-            ]}
-          />
+          <FieldError errors={summary} />
           {create.error.requestId && (
             <p className="text-sm text-muted-foreground">
               Request reference: <code className="break-all">{create.error.requestId}</code>

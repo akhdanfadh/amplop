@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactElement } from "react"
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateSessionWithCode, useGetCurrentSession } from "@/api/generated/inbok";
-import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
@@ -84,6 +84,10 @@ export function CodeForm({
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
   const inputErrors = create.error ? formErrors(create.error, codeFields) : undefined;
+  const summary =
+    create.error && inputErrors
+      ? formSummary(sessionMessage(create.error, "sign-in"), inputErrors)
+      : [];
   const codeRejected = Boolean(inputErrors?.fields.code);
 
   useEffect(() => {
@@ -218,14 +222,9 @@ export function CodeForm({
         {create.isPending ? "Verifying..." : "Verify and sign in"}
       </Button>
 
-      {create.error && (
+      {create.error && summary.length > 0 && (
         <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[
-              { message: sessionMessage(create.error, "sign-in") },
-              ...(inputErrors?.unmatched ?? []),
-            ]}
-          />
+          <FieldError errors={summary} />
           {create.error.requestId && (
             <p className="text-sm text-muted-foreground">
               Request reference: <code className="break-all">{create.error.requestId}</code>

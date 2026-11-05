@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   formErrors,
+  formSummary,
   problemExplanation,
   uncertainMessage,
   uncertainOutcome,
@@ -482,5 +483,50 @@ describe("formErrors", () => {
     });
 
     expect(formErrors(err, ["note"])).toEqual({ fields: {}, unmatched: [] });
+  });
+});
+
+describe("formSummary", () => {
+  const message = "Check the values and try again.";
+
+  it("is empty when every input error shows on a field", () => {
+    const err = unprocessable([
+      { location: "body.note", message: "Use at most 120 characters." },
+      { location: "body.amount", message: "Enter a whole number from 1 to 10." },
+    ]);
+
+    expect(formSummary(message, formErrors(err, ["note", "amount"]))).toEqual([]);
+  });
+
+  it("follows the message with the input errors no field shows", () => {
+    const err = unprocessable([
+      { location: "body.note", message: "Use at most 120 characters." },
+      { location: "body", message: "Correct the submitted input." },
+    ]);
+
+    expect(formSummary(message, formErrors(err, ["note"]))).toEqual([
+      { message },
+      { message: "Correct the submitted input." },
+    ]);
+  });
+
+  it("keeps the message when no input error matches a field", () => {
+    const err = unprocessable([{ location: "body.owner", message: "Choose an owner." }]);
+
+    expect(formSummary(message, formErrors(err, ["note"]))).toEqual([
+      { message },
+      { message: "Choose an owner." },
+    ]);
+  });
+
+  it("is the message alone for a failure without input errors", () => {
+    const err = new ApiError("http", {
+      status: httpStatus.unavailable,
+      problem: { detail: "The service is restarting." },
+    });
+
+    expect(formSummary("The service is restarting.", formErrors(err, ["note"]))).toEqual([
+      { message: "The service is restarting." },
+    ]);
   });
 });

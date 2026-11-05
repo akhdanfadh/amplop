@@ -1,12 +1,13 @@
-import type { ReactElement } from "react";
+import { useRef, type ReactElement } from "react";
 import { useForm, useSelector, type AnyFieldMeta } from "@tanstack/react-form";
 import { useCreateProbeEvent } from "@/api/generated/inbok";
 import { NewProbeEvent } from "@/api/generated/model";
-import { formErrors, userMessage } from "@/api/problem";
+import { formErrors, formSummary, userMessage } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 
 // The form holds exactly the request body, so it is sent as is.
@@ -17,6 +18,8 @@ const probeFields = ["note", "amount", "highlighted", "tag"] satisfies (keyof Ne
 
 // Adds an event to the probe counter: an example write.
 export function ProbeForm(): ReactElement {
+  const formRef = useRef<HTMLFormElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
   const create = useCreateProbeEvent();
 
   const form = useForm({
@@ -42,10 +45,15 @@ export function ProbeForm(): ReactElement {
     listeners: { onChange: () => create.reset() },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const inputErrors = create.error ? formErrors(create.error, probeFields) : undefined;
+  const summary = create.error
+    ? formSummary(userMessage(create.error), formErrors(create.error, probeFields))
+    : [];
+
+  useFocusAfterError(create.error, create.isPending, formRef, submitRef);
 
   return (
     <form
+      ref={formRef}
       className="flex w-full max-w-sm flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
@@ -139,18 +147,16 @@ export function ProbeForm(): ReactElement {
       </FieldGroup>
 
       {/* Disabled while saving, so a second click or Enter sends nothing. */}
-      <Button type="submit" disabled={create.isPending}>
+      <Button ref={submitRef} type="submit" disabled={create.isPending}>
         {create.isPending ? "Adding..." : "Add event"}
       </Button>
 
       {/* The last attempt's error. Kept out of the form's own errors,
           which mean "these values are wrong" and block submitting until an
           edit: a retry after Go restarts would send nothing. */}
-      {create.error && (
+      {create.error && summary.length > 0 && (
         <div className="space-y-2">
-          <FieldError
-            errors={[{ message: userMessage(create.error) }, ...(inputErrors?.unmatched ?? [])]}
-          />
+          <FieldError errors={summary} />
           {create.error.requestId && (
             <p className="text-sm text-muted-foreground">
               Request reference: <code className="break-all">{create.error.requestId}</code>

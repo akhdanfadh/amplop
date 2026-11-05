@@ -6,7 +6,7 @@ import {
   redeemRegistrationLinkBodyPasswordMax,
   redeemRegistrationLinkBodyPasswordMin,
 } from "@/api/generated/model";
-import { formErrors, uncertainOutcome } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome } from "@/api/problem";
 import { PasswordInput } from "@/components/password-input";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -104,7 +104,9 @@ export function CompleteForm({
     },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const inputErrors = redeem.error ? formErrors(redeem.error, completeFields) : undefined;
+  const summary = redeem.error
+    ? formSummary(completeErrorMessage(redeem.error), formErrors(redeem.error, completeFields))
+    : [];
 
   useFocusAfterError(redeem.error, redeem.isPending, formRef, submitRef);
 
@@ -247,14 +249,9 @@ export function CompleteForm({
         {redeem.isPending ? "Creating account..." : "Create account"}
       </Button>
 
-      {redeem.error && (
+      {redeem.error && summary.length > 0 && (
         <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[
-              { message: completeErrorMessage(redeem.error) },
-              ...(inputErrors?.unmatched ?? []),
-            ]}
-          />
+          <FieldError errors={summary} />
           {redeem.error.requestId && (
             <p className="text-sm text-muted-foreground">
               Request reference: <code className="break-all">{redeem.error.requestId}</code>
