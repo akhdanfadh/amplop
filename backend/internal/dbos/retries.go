@@ -25,6 +25,11 @@ func (r retries) options() []dbos.StepOption {
 	}
 }
 
+// noticeRetries spans about half an hour, 1, 2, 4, 8, then 15 minutes,
+// enough for a mail server's restart or a short outage. Notices use it: no
+// one waits for them, and a late one still tells.
+var noticeRetries = retries{attempts: 5, base: time.Minute, ceiling: 15 * time.Minute}
+
 // NOTE: DBOS counts a step's retries, and sleeps between them, in memory. A
 // worker restarted during them runs the step again with a fresh count, so
 // every policy holds for each run of a worker, not across restarts.

@@ -3,13 +3,11 @@ package passwordreset
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/url"
 	"time"
 
 	"inbok/internal/account"
 	"inbok/internal/attemptlimit"
-	"inbok/internal/emailaddress"
 	"inbok/internal/randomsecret"
 	"inbok/internal/systememail"
 )
@@ -17,18 +15,6 @@ import (
 const (
 	linkPurpose = "password reset link"
 	linkSubject = "Reset your inbok password"
-)
-
-// LinkOutcome is how a reset link job ended without an error worth
-// retrying.
-type LinkOutcome string
-
-const (
-	LinkSent          LinkOutcome = "sent"
-	LinkSkipped       LinkOutcome = "skipped: no account, or one that may not reset or is over its limits"
-	LinkNotConfigured LinkOutcome = "skipped: system email is not configured"
-	LinkUnsendable    LinkOutcome = "failed: the address or the saved password is unusable"
-	LinkRefused       LinkOutcome = "failed: the mail server refused the address for good"
 )
 
 // ErrLinkNotSent means a reset link's send failed in a way worth retrying.
@@ -84,15 +70,15 @@ func NewLinks(storage linkStorage, mailer mailer, publicURL *url.URL, now func()
 
 // Send saves and mails a link for the request with attemptID to the account
 // with userID, 0 for none, when it exists, is active, has a verified email,
-// and is under its limits, and returns [LinkSent]; otherwise it saves and
-// sends nothing and returns [LinkSkipped]. A send that retrying cannot fix
-// returns its outcome, e.g. [LinkNotConfigured]. It returns storage's error,
+// and is under its limits, and returns [OutcomeSent]; otherwise it saves and
+// sends nothing and returns [OutcomeNotEligible]. A send that retrying cannot fix
+// returns its outcome, e.g. [OutcomeNotConfigured]. It returns storage's error,
 // or an error wrapping [ErrLinkNotSent] for a send worth retrying, such as
 // an unconfirmed one. Each call saves a new link, which counts toward the
 // account's limits, so a retry may deliver a second working link.
-func (l *Links) Send(ctx context.Context, attemptID, userID int64) (LinkOutcome, error) {
+func (l *Links) Send(ctx context.Context, attemptID, userID int64) (Outcome, error) {
 	if userID == 0 {
-		return LinkSkipped, nil
+		return OutcomeNotEligible, nil
 	}
 
 	// 1. Make the secret before storage takes the account's lock.
@@ -121,7 +107,7 @@ func (l *Links) Send(ctx context.Context, attemptID, userID int64) (LinkOutcome,
 		return "", err
 	}
 	if to == "" {
-		return LinkSkipped, nil
+		return OutcomeNotEligible, nil
 	}
 
 	// 4. Mail the link once it is saved, and turn a failure retrying cannot
@@ -130,30 +116,7 @@ func (l *Links) Send(ctx context.Context, attemptID, userID int64) (LinkOutcome,
 	_, err = l.mailer.Send(ctx, systememail.Outgoing{
 		Purpose: linkPurpose, To: to, Subject: linkSubject, Body: l.linkBody(secret), Private: true,
 	})
-	switch {
-	case err == nil:
-		return LinkSent, nil
-	case errors.Is(err, systememail.ErrNotConfigured):
-		return LinkNotConfigured, nil
-	case errors.Is(err, systememail.ErrPasswordUnreadable), errors.Is(err, emailaddress.ErrInvalid):
-		return LinkUnsendable, nil
-	}
-	failed, isSendError := errors.AsType[*systememail.SendError](err)
-	if isSendError && failed.Reason == systememail.ReasonRecipient && failed.Permanent {
-		return LinkRefused, nil
-	}
-
-	// 5. Return any other failure, to be retried. DBOS logs and keeps this
-	// error with the run, and the server's reply can quote the message,
-	// whose link is live; the mailer has logged where the send failed.
-	if isSendError {
-		state := ""
-		if failed.Unconfirmed {
-			state = ", unconfirmed"
-		}
-		return "", fmt.Errorf("%w: failed at %s%s", ErrLinkNotSent, failed.Reason, state)
-	}
-	return "", err
+	return sendOutcome(err, ErrLinkNotSent)
 }
 
 // mayReset reports whether account exists, is active, and has a verified

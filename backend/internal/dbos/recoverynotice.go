@@ -32,17 +32,10 @@ type recoveryNotices interface {
 	Send(ctx context.Context, recoveredID int64, recoveredAt time.Time, recipientID int64) (account.NoticeOutcome, error)
 }
 
-// Retry policies of the recovery notice's steps.
-var (
-	// listRetries spans about 5 minutes, 1, 2, 4, 8, 16, 32 seconds, then 1
-	// minute 4 times: a blip passes at once, and a database restart or
-	// failover in time. The run sends nothing if the list fails.
-	listRetries = retries{attempts: 10, base: time.Second, ceiling: time.Minute}
-
-	// sendRetries spans about half an hour, 1, 2, 4, 8, then 15 minutes,
-	// enough for a mail server's restart or a short outage.
-	sendRetries = retries{attempts: 5, base: time.Minute, ceiling: 15 * time.Minute}
-)
+// listRetries spans about 5 minutes, 1, 2, 4, 8, 16, 32 seconds, then 1
+// minute 4 times: a blip passes at once, and a database restart or failover
+// in time. The recovery notice sends nothing if its list fails.
+var listRetries = retries{attempts: 10, base: time.Second, ceiling: time.Minute}
 
 // recipientOutcome is how the notice to one administrator ended, as the
 // workflow's output records it.
@@ -103,7 +96,7 @@ func runRecoveryNotice(ctx dbos.Context, notices recoveryNotices, input Recovery
 	for _, admin := range admins {
 		outcome, err := dbos.RunAsStep(ctx, func(stepCtx context.Context) (account.NoticeOutcome, error) {
 			return notices.Send(stepCtx, input.UserID, input.RecoveredAt, admin)
-		}, append(sendRetries.options(), dbos.WithStepName("send notice"))...)
+		}, append(noticeRetries.options(), dbos.WithStepName("send notice"))...)
 		if ctx.Err() != nil {
 			// The worker is stopping; the next one resumes at this send.
 			return outcomes, ctx.Err()

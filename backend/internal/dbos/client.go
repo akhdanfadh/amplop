@@ -64,7 +64,7 @@ func (c *Client) EnqueueRecoveryNotice(ctx context.Context, tx pgx.Tx, userID in
 // must roll back.
 func (c *Client) EnqueuePasswordResetLink(ctx context.Context, tx pgx.Tx, attemptID, userID int64) error {
 	input := PasswordResetLinkInput{AttemptID: attemptID, UserID: userID}
-	_, err := dbos.Enqueue[passwordreset.LinkOutcome](c.client, emailQueue, passwordResetLinkWorkflow, input,
+	_, err := dbos.Enqueue[passwordreset.Outcome](c.client, emailQueue, passwordResetLinkWorkflow, input,
 		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
 		dbos.WithEnqueueApplicationVersion(applicationVersion),
 	)

@@ -25,16 +25,16 @@ type fakeLinks struct {
 }
 
 type linkResult struct {
-	outcome passwordreset.LinkOutcome
+	outcome passwordreset.Outcome
 	err     error
 }
 
-func (f *fakeLinks) Send(_ context.Context, attemptID, userID int64) (passwordreset.LinkOutcome, error) {
+func (f *fakeLinks) Send(_ context.Context, attemptID, userID int64) (passwordreset.Outcome, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, PasswordResetLinkInput{AttemptID: attemptID, UserID: userID})
 	if len(f.results) == 0 {
-		return passwordreset.LinkSent, nil
+		return passwordreset.OutcomeSent, nil
 	}
 	result := f.results[min(len(f.calls), len(f.results))-1]
 	return result.outcome, result.err
@@ -66,10 +66,10 @@ func linkWorker(t *testing.T, url string, links passwordResetLinks) *Worker {
 
 // enqueueLink enqueues the reset link job for input by name, as a client
 // does, and returns its handle.
-func enqueueLink(t *testing.T, worker *Worker, input PasswordResetLinkInput) dbos.WorkflowHandle[passwordreset.LinkOutcome] {
+func enqueueLink(t *testing.T, worker *Worker, input PasswordResetLinkInput) dbos.WorkflowHandle[passwordreset.Outcome] {
 	t.Helper()
 
-	handle, err := dbos.Enqueue[passwordreset.LinkOutcome](worker.ctx, emailQueue, passwordResetLinkWorkflow, input)
+	handle, err := dbos.Enqueue[passwordreset.Outcome](worker.ctx, emailQueue, passwordResetLinkWorkflow, input)
 	require.NoError(t, err)
 	return handle
 }
@@ -84,7 +84,7 @@ func TestPasswordResetLinkSent(t *testing.T) {
 	outcome, err := enqueueLink(t, worker, input).GetResult(dbos.WithHandleTimeout(wait))
 
 	require.NoError(t, err)
-	assert.Equal(t, passwordreset.LinkSent, outcome)
+	assert.Equal(t, passwordreset.OutcomeSent, outcome)
 	assert.Equal(t, []PasswordResetLinkInput{input}, links.sends())
 }
 
@@ -93,13 +93,13 @@ func TestPasswordResetLinkSent(t *testing.T) {
 func TestPasswordResetLinkRetries(t *testing.T) {
 	quickRetries(t, &linkRetries)
 	failed := linkResult{err: errors.New("connection refused")}
-	links := &fakeLinks{results: []linkResult{failed, failed, {outcome: passwordreset.LinkSent}}}
+	links := &fakeLinks{results: []linkResult{failed, failed, {outcome: passwordreset.OutcomeSent}}}
 	worker := linkWorker(t, migrated(t), links)
 
 	outcome, err := enqueueLink(t, worker, PasswordResetLinkInput{AttemptID: 4, UserID: 7}).GetResult(dbos.WithHandleTimeout(wait))
 
 	require.NoError(t, err)
-	assert.Equal(t, passwordreset.LinkSent, outcome)
+	assert.Equal(t, passwordreset.OutcomeSent, outcome)
 	assert.Len(t, links.sends(), 3)
 }
 

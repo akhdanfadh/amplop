@@ -893,7 +893,7 @@ func TestPasswordResetFlow(t *testing.T) {
 	require.Len(t, jobs, 1)
 	outcome, err := links.Send(t.Context(), jobs[0].AttemptID, jobs[0].UserID)
 	require.NoError(t, err)
-	assert.Equal(t, passwordreset.LinkSent, outcome)
+	assert.Equal(t, passwordreset.OutcomeSent, outcome)
 	require.Len(t, mailer.sent, 1)
 	_, secret, ok := strings.Cut(mailer.sent[0].Body, "https://mail.example.com/reset-password#")
 	require.True(t, ok)

@@ -65,7 +65,7 @@ func TestLinkSent(t *testing.T) {
 	outcome, err := testLinks(storage, mailer).Send(t.Context(), 1, testUser.ID)
 
 	require.NoError(t, err)
-	assert.Equal(t, LinkSent, outcome)
+	assert.Equal(t, OutcomeSent, outcome)
 	require.Len(t, mailer.sent, 1)
 	sent := mailer.sent[0]
 	assert.Equal(t, "password reset link", sent.Purpose)
@@ -96,16 +96,16 @@ func TestLinkSkipped(t *testing.T) {
 		accounts []Account
 		userID   int64
 		sent     []requestAttempt
-		want     LinkOutcome
+		want     Outcome
 	}{
-		{name: "no account", want: LinkSkipped},
-		{name: "account gone", userID: testUser.ID, want: LinkSkipped},
-		{name: "unverified", accounts: []Account{unverified}, userID: testUser.ID, want: LinkSkipped},
-		{name: "deactivated", accounts: []Account{deactivated}, userID: testUser.ID, want: LinkSkipped},
-		{name: "hourly limit", accounts: []Account{activeAccount()}, userID: testUser.ID, sent: linksSent(3, 59*time.Minute), want: LinkSkipped},
-		{name: "daily limit", accounts: []Account{activeAccount()}, userID: testUser.ID, sent: append(linksSent(2, 30*time.Minute), linksSent(3, 23*time.Hour)...), want: LinkSkipped},
-		{name: "eligible", accounts: []Account{activeAccount()}, userID: testUser.ID, want: LinkSent},
-		{name: "links aged out", accounts: []Account{activeAccount()}, userID: testUser.ID, sent: append(linksSent(3, time.Hour), linksSent(2, 24*time.Hour)...), want: LinkSent},
+		{name: "no account", want: OutcomeNotEligible},
+		{name: "account gone", userID: testUser.ID, want: OutcomeNotEligible},
+		{name: "unverified", accounts: []Account{unverified}, userID: testUser.ID, want: OutcomeNotEligible},
+		{name: "deactivated", accounts: []Account{deactivated}, userID: testUser.ID, want: OutcomeNotEligible},
+		{name: "hourly limit", accounts: []Account{activeAccount()}, userID: testUser.ID, sent: linksSent(3, 59*time.Minute), want: OutcomeNotEligible},
+		{name: "daily limit", accounts: []Account{activeAccount()}, userID: testUser.ID, sent: append(linksSent(2, 30*time.Minute), linksSent(3, 23*time.Hour)...), want: OutcomeNotEligible},
+		{name: "eligible", accounts: []Account{activeAccount()}, userID: testUser.ID, want: OutcomeSent},
+		{name: "links aged out", accounts: []Account{activeAccount()}, userID: testUser.ID, sent: append(linksSent(3, time.Hour), linksSent(2, 24*time.Hour)...), want: OutcomeSent},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -116,7 +116,7 @@ func TestLinkSkipped(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, c.want, outcome)
-			if c.want == LinkSent {
+			if c.want == OutcomeSent {
 				assert.Len(t, storage.links, 1)
 				assert.Len(t, mailer.sent, 1)
 			} else {
@@ -156,7 +156,7 @@ func TestLinkLimitsCountLinkTime(t *testing.T) {
 	outcome, err := testLinks(storage, mailer).Send(t.Context(), 1, testUser.ID)
 
 	require.NoError(t, err)
-	assert.Equal(t, LinkSkipped, outcome)
+	assert.Equal(t, OutcomeNotEligible, outcome)
 	assert.Empty(t, mailer.sent)
 }
 
@@ -181,7 +181,7 @@ func TestLinkSendFails(t *testing.T) {
 	mailer.err = nil
 	outcome, err := links.Send(t.Context(), 1, testUser.ID)
 	require.NoError(t, err)
-	assert.Equal(t, LinkSent, outcome)
+	assert.Equal(t, OutcomeSent, outcome)
 	assert.Len(t, storage.links, 2)
 	assert.NotEqual(t, secretOf(t, mailer.sent[0].Body), secretOf(t, mailer.sent[1].Body))
 	var counted int
@@ -200,12 +200,12 @@ func TestLinkSendCannotPass(t *testing.T) {
 	cases := []struct {
 		name string
 		err  error
-		want LinkOutcome
+		want Outcome
 	}{
-		{"not configured", systememail.ErrNotConfigured, LinkNotConfigured},
-		{"password unreadable", systememail.ErrPasswordUnreadable, LinkUnsendable},
-		{"invalid address", emailaddress.ErrInvalid, LinkUnsendable},
-		{"recipient refused for good", refused, LinkRefused},
+		{"not configured", systememail.ErrNotConfigured, OutcomeNotConfigured},
+		{"password unreadable", systememail.ErrPasswordUnreadable, OutcomeUnsendable},
+		{"invalid address", emailaddress.ErrInvalid, OutcomeUnsendable},
+		{"recipient refused for good", refused, OutcomeRefused},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -233,7 +233,7 @@ func TestLinkRetryAtLimit(t *testing.T) {
 	outcome, err := links.Send(t.Context(), 1, testUser.ID)
 
 	require.NoError(t, err)
-	assert.Equal(t, LinkSkipped, outcome)
+	assert.Equal(t, OutcomeNotEligible, outcome)
 	assert.Len(t, storage.links, 1)
 }
 

@@ -26,7 +26,7 @@ type PasswordResetLinkInput struct {
 // passwordResetLinks saves and sends reset links, e.g.
 // [passwordreset.Links].
 type passwordResetLinks interface {
-	Send(ctx context.Context, attemptID, userID int64) (passwordreset.LinkOutcome, error)
+	Send(ctx context.Context, attemptID, userID int64) (passwordreset.Outcome, error)
 }
 
 // linkRetries spans about 5 minutes, 1, 2, then 2 minutes: the member is
@@ -41,7 +41,7 @@ func (w *Worker) registerPasswordResetLink(links passwordResetLinks) {
 	if links == nil {
 		return
 	}
-	run := func(ctx dbos.Context, input PasswordResetLinkInput) (passwordreset.LinkOutcome, error) {
+	run := func(ctx dbos.Context, input PasswordResetLinkInput) (passwordreset.Outcome, error) {
 		return runPasswordResetLink(ctx, links, input, w.logger)
 	}
 	dbos.RegisterWorkflow(w.ctx, run, dbos.WithWorkflowName(passwordResetLinkWorkflow))
@@ -51,12 +51,12 @@ func (w *Worker) registerPasswordResetLink(links passwordResetLinks) {
 // account may reset, logs the outcome to logger by attempt and user ID,
 // adding no address itself, and returns it, or the send's error once its
 // retries run out.
-func runPasswordResetLink(ctx dbos.Context, links passwordResetLinks, input PasswordResetLinkInput, logger *slog.Logger) (passwordreset.LinkOutcome, error) {
+func runPasswordResetLink(ctx dbos.Context, links passwordResetLinks, input PasswordResetLinkInput, logger *slog.Logger) (passwordreset.Outcome, error) {
 	// One step saves the link and sends it: the secret it makes may not be
 	// recorded for a later step. It is not repeat-safe: one that succeeded
 	// just before a crash runs again, as does an unconfirmed one, which is
 	// retried on purpose; a second working link costs less than none.
-	outcome, err := dbos.RunAsStep(ctx, func(stepCtx context.Context) (passwordreset.LinkOutcome, error) {
+	outcome, err := dbos.RunAsStep(ctx, func(stepCtx context.Context) (passwordreset.Outcome, error) {
 		return links.Send(stepCtx, input.AttemptID, input.UserID)
 	}, append(linkRetries.options(), dbos.WithStepName("send link"))...)
 	if ctx.Err() != nil {
@@ -68,7 +68,7 @@ func runPasswordResetLink(ctx dbos.Context, links passwordResetLinks, input Pass
 		return "", err
 	}
 	level := slog.LevelInfo
-	if outcome != passwordreset.LinkSent && outcome != passwordreset.LinkSkipped {
+	if outcome.Failed() {
 		level = slog.LevelWarn
 	}
 	logger.Log(ctx, level, "password reset link", "attempt_id", input.AttemptID, "user_id", input.UserID, "outcome", outcome)
