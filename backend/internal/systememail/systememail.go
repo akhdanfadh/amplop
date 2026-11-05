@@ -185,33 +185,42 @@ func passwordOwner(server Server) string {
 
 // validateInput applies the rules that need no saved state.
 func validateInput(input Input) error {
+	// TCP ports are 16 bits, and port 0 is reserved (RFC 6335).
 	if input.Port < 1 || input.Port > 65535 {
 		return errPort
 	}
 	switch input.Security {
 	case SecurityTLS, SecuritySTARTTLS:
 	case SecurityNone:
+		// inbok never signs in without TLS, so the password never crosses the
+		// network in clear text (US018).
 		if input.Username != "" {
 			return ErrCleartextUsername
 		}
 	default:
 		return errSecurity
 	}
-	// SMTP commands end at CRLF and headers cannot hold control characters.
+	// A host is a name of letters, digits, hyphens, and dots (RFC 1123) or an
+	// IP address; neither holds a control character.
 	if strings.ContainsFunc(input.Host, unicode.IsControl) {
 		return ErrInvalidHost
 	}
+	// inbok's choice, following SASLprep, which forbids control characters
+	// (RFC 4013) and which SASL PLAIN recommends but does not require (RFC 4616).
 	if strings.ContainsFunc(input.Username, unicode.IsControl) {
 		return ErrInvalidUsername
 	}
-	// SASL PLAIN separates its fields with NUL and guarantees only 255 octets
-	// (RFC 4616).
+	// The username's rule, and SASL PLAIN separates its fields with NUL and
+	// guarantees only 255 octets (RFC 4616).
 	if strings.ContainsFunc(input.Password, unicode.IsControl) || len(input.Password) > maxPasswordBytes {
 		return ErrInvalidPassword
 	}
+	// inbok's choice, stricter than RFC 5322, which allows tabs and folded
+	// lines in a display name.
 	if strings.ContainsFunc(input.FromName, unicode.IsControl) {
 		return ErrInvalidFromName
 	}
+	// inbok sends a password only with a username, so one alone is a mistake.
 	if input.Username == "" && input.Password != "" {
 		return ErrPasswordWithoutUsername
 	}

@@ -22,8 +22,9 @@ const (
 	passwordSaltLength  = 16
 	passwordKeyLength   = 32
 
-	passwordParams   = "m=%d,t=%d,p=%d"
-	minMemoryPerLane = 8 // Argon2 requires at least eight KiB per lane.
+	passwordParams = "m=%d,t=%d,p=%d"
+	// Argon2 requires at least eight KiB per lane (RFC 9106).
+	minMemoryPerLane = 8
 
 	// memoryBudget caps the memory of the hashes in progress: six hashes of
 	// passwordMemory at once.
@@ -35,8 +36,11 @@ const (
 	maxPasswordIterations  = 10
 	maxPasswordParallelism = 16
 	maxPasswordHashLength  = 256
-	minPasswordSaltLength  = 8
-	minPasswordKeyLength   = 4
+	// The reference implementation's shortest salt; RFC 9106 recommends 16
+	// bytes but sets no minimum.
+	minPasswordSaltLength = 8
+	// RFC 9106's shortest tag.
+	minPasswordKeyLength = 4
 )
 
 // budget holds the memory, in KiB, of the Argon2id hashes in progress in
@@ -113,10 +117,13 @@ func deriveKey(ctx context.Context, password string, params passwordHash, length
 }
 
 func decodePasswordHash(encoded string) (passwordHash, error) {
+	// NOTE: base64's Strict mode still skips CR and LF, so the decoding below
+	// would accept a hash with a line break in its salt or key.
 	if len(encoded) > maxPasswordHashLength || strings.ContainsAny(encoded, "\r\n") {
 		return passwordHash{}, ErrInvalidHash
 	}
 
+	// The PHC string format, e.g. $argon2id$v=19$m=19456,t=2,p=1$salt$key.
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" || parts[2] != fmt.Sprintf("v=%d", argon2.Version) {
 		return passwordHash{}, ErrInvalidHash
@@ -127,6 +134,7 @@ func decodePasswordHash(encoded string) (passwordHash, error) {
 	if err != nil || parts[3] != fmt.Sprintf(passwordParams, hash.memory, hash.iterations, hash.parallelism) {
 		return passwordHash{}, ErrInvalidHash
 	}
+	// RFC 9106's lower bounds: one pass, one lane, eight KiB per lane.
 	if hash.iterations == 0 || hash.parallelism == 0 || hash.memory < minMemoryPerLane*uint32(hash.parallelism) {
 		return passwordHash{}, ErrInvalidHash
 	}
@@ -134,6 +142,8 @@ func decodePasswordHash(encoded string) (passwordHash, error) {
 		return passwordHash{}, ErrInvalidHash
 	}
 
+	// The PHC format's Base64 has no padding; Strict refuses a second
+	// spelling of the same bytes.
 	encoding := base64.RawStdEncoding.Strict()
 	hash.salt, err = encoding.DecodeString(parts[4])
 	if err != nil || len(hash.salt) < minPasswordSaltLength {

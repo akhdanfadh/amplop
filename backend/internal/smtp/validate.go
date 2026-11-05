@@ -23,6 +23,7 @@ func validateSend(server systememail.Server, password string, message systememai
 	if strings.ContainsRune(server.Username+password, 0) {
 		return errUnsafeInput
 	}
+	// TCP ports are 16 bits, and port 0 is reserved (RFC 6335).
 	if server.Port < 1 || server.Port > 65535 {
 		return errUnsafeInput
 	}
