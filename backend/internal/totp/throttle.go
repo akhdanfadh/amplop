@@ -91,7 +91,7 @@ func (t *Throttle) Succeed(ctx context.Context, id int64) error {
 // Release removes attempt id when its request ended before checking any
 // code, so only guesses count. It logs a failure instead of returning it.
 //
-// NOTE: the request already failed with its own error, which is the one to
+// DESIGN: the request already failed with its own error, which is the one to
 // report. An attempt that cannot be removed counts until it expires, as a
 // wrong code would, so the failure costs the user one attempt, not safety.
 func (t *Throttle) Release(ctx context.Context, id int64) {

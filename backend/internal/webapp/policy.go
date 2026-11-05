@@ -15,7 +15,7 @@ import (
 // policy is the web app's Content-Security-Policy, with %s for the
 // script-src hashes of the shell's inline scripts.
 //
-// NOTE: The policy is the browser's second line of defense, deciding what
+// The policy is the browser's second line of defense, deciding what
 // markup an attacker gets into a page can load, run, or send. 'self' is
 // inbok's own origin: its scheme, host, and port.
 const policy = "" +

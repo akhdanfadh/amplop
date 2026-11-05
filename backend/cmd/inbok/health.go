@@ -11,7 +11,7 @@ import (
 
 // healthTimeout bounds one check.
 //
-// NOTE: It stays below the image's HEALTHCHECK timeout, so a slow server
+// DESIGN: It stays below the image's HEALTHCHECK timeout, so a slow server
 // reports unhealthy instead of the check being killed.
 const healthTimeout = 3 * time.Second
 

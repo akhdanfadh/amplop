@@ -161,7 +161,7 @@ func (s *Sender) Send(ctx context.Context, server systememail.Server, password s
 // exchange runs one SMTP session: connect, protect, sign in, MAIL, RCPT,
 // DATA, and QUIT. Each failure carries the reason of its step.
 //
-// NOTE: this follows [gosmtp.SendMail] step by step. SendMail takes no
+// DESIGN: this follows [gosmtp.SendMail] step by step. SendMail takes no
 // context or TLS settings, has no plain mode, and returns one error for
 // every step, so it cannot meet the deadline or report a reason.
 func (s *Sender) exchange(ctx context.Context, server systememail.Server, password string, message systememail.Message, body []byte) error {

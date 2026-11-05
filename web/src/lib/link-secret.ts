@@ -2,7 +2,7 @@
 // page the link opens reads it. Links put the secret after #, which the
 // browser never sends to a server.
 //
-// NOTE: getRouter calls captureLinkSecret before anything renders or sends a
+// DESIGN: getRouter calls captureLinkSecret before anything renders or sends a
 // request, so the secret leaves the address bar even when the setup gate's
 // status request fails and the page never renders. Alternatives: the route's
 // beforeLoad, after which the router reads the address again and the page

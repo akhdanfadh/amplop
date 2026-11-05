@@ -1,7 +1,7 @@
 // Package attemptlimit decides when one more attempt fits sliding-window
 // limits, such as 5 per 15 minutes and 20 per 24 hours.
 //
-// NOTE: each throttle keeps its own key, storage, and lock in its feature
+// DESIGN: each throttle keeps its own key, storage, and lock in its feature
 // and passes the times it counted here, so every throttle counts a window's
 // edge the same way and can say how long to wait. ADR024 records the choice.
 package attemptlimit

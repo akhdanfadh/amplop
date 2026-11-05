@@ -95,3 +95,11 @@ The web app reads these from the contract; keep them stable:
   one with `make web-add-ui NAME=dialog`.
 - Before upgrading `vite-plus` or adding a Vite plugin, read the NOTE
   comments in `web/pnpm-workspace.yaml`.
+
+## Comments
+
+- A doc comment says what the code does, its inputs, and what it returns.
+  A reason sits inline above the line it explains. A reason that belongs
+  to no single line is a `DESIGN:` paragraph after the doc sentence.
+- `NOTE:` marks only a surprise a reader must know: a tool's unexpected
+  behaviour, a workaround, a dependency on undocumented behaviour.

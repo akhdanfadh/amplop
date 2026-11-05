@@ -73,7 +73,7 @@ const unauthenticatedDescription = "No valid session identifies a current accoun
 // unauthenticatedProblem is the safe response for a missing or invalid
 // session.
 //
-// NOTE: every response with it clears the session cookie. withAccess sets
+// DESIGN: every response with it clears the session cookie. withAccess sets
 // the header itself, and normalizeError sets it on a handler's response, so
 // a new handler gets it without asking. The alternative, a helper each
 // handler returns instead, makes a handler that forgets it leave a dead

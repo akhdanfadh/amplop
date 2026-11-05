@@ -32,7 +32,7 @@ type RedeemChange struct {
 // malformed, unknown, used, expired, sent to an address the user no longer
 // has, or owned by a deactivated user.
 //
-// NOTE: Redeem has no throttle. The secret has 256 random bits, so guessing
+// DESIGN: Redeem has no throttle. The secret has 256 random bits, so guessing
 // one is hopeless however fast the guesses come.
 func (s *Service) Redeem(ctx context.Context, secret string) error {
 	hash, err := randomsecret.Hash(secret)

@@ -2,7 +2,7 @@
 // session cookie or an emailed link, and the hashes it saves instead of them.
 // TOTP secrets are not these: inbok must read them back, so it encrypts them.
 //
-// NOTE: Every secret has the same format. What one authorizes depends only on
+// DESIGN: Every secret has the same format. What one authorizes depends only on
 // the table its hash is saved in.
 package randomsecret
 

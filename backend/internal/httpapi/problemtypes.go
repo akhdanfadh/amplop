@@ -36,7 +36,7 @@ func sharedProblems() []*problem {
 // shared one, sorted, and makes Problem.type any of those or any other URI
 // reference. Call it once, after every operation is registered.
 //
-// NOTE: Huma drops schemas nothing references, and a closed enum on
+// DESIGN: Huma drops schemas nothing references, and a closed enum on
 // Problem.type would tell clients to reject a type missing from the list,
 // e.g. one a newer server adds. anyOf keeps the list in the contract while
 // the field stays open.

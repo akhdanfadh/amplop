@@ -105,7 +105,7 @@ func rateLimited(op *huma.Operation) bool {
 // up its budget for a [rateLimited] operation, and passes every other request
 // on.
 //
-// NOTE: The database limits of sign-in and setup decide outcomes, but sit
+// DESIGN: The database limits of sign-in and setup decide outcomes, but sit
 // behind a lock or a password hash, so refusing a flood there still costs a
 // connection per request. This refuses in memory first. It counts per
 // process and forgets on restart, which suits a flood guard; the exact

@@ -103,7 +103,7 @@ export function userMessage(err: ApiError): string {
 // past counts from when the response arrived. Without a usable header, or
 // for a wait over six days, it says "later".
 //
-// NOTE: a clock time stays true while the message stays on screen, which a
+// DESIGN: a clock time stays true while the message stays on screen, which a
 // duration such as "in 3 minutes" does not; the weekday, unlike "tomorrow",
 // stays true past midnight. It is worked out from when the response arrived,
 // so every render shows the same text.

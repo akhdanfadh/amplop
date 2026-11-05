@@ -129,7 +129,7 @@ func NewRequests(storage requestStorage, mailer mailer, publicURL *url.URL, now 
 // for a client or instance over its limit, all without recording or sending
 // anything, and the error from [systememail.Mailer.Send] after recording.
 //
-// NOTE: Two differences remain, and ADR028 accepts both. A skipped request
+// DESIGN: Two differences remain, and ADR028 accepts both. A skipped request
 // returns sooner than one that sends. While mail fails, a skipped request
 // still returns nil where the others return the send's error. Either hints
 // that an email was asked for recently, never that it has an account.
