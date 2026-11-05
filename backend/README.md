@@ -1013,9 +1013,11 @@ ORDER BY id DESC;
 ## System email
 
 System email is the mail server inbok sends its own messages through,
-separate from members' mailboxes. It has no environment variables: an
-administrator with confirmed TOTP configures it on the web app's Settings
-page, which calls `GET` and `PUT /api/v0/system-email` and
+separate from members' mailboxes. It has no environment variables, because
+a test send must pass on the current settings before registration opens and
+each save is audited; US018 records the rule. An administrator with
+confirmed TOTP configures it on the web app's Settings page, which calls
+`GET` and `PUT /api/v0/system-email` and
 `POST /api/v0/system-email/test-message`. It sends test messages and
 [email verification](#email-verification) links.
 
