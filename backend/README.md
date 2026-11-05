@@ -1735,6 +1735,12 @@ For a job that runs once per request, follow the recovery notice
    in `callerTx`, so cancelling the caller stops the enqueue; DBOS alone
    would not. The feature never sees the transaction or DBOS. A test
    makes the change fail at commit and checks that no workflow was saved.
+
+   The method belongs to the feature's own interface, `<Feature>Workflows`,
+   which `Workflows` embeds, as it embeds `RecoveryWorkflows`; a feature's
+   first job adds that interface. Its test fake embeds a nil `Workflows`
+   and implements only the feature's interface, as `tableWorkflows` does,
+   so another feature's job changes no fake of yours.
 5. The command that makes the change gives storage the client with
    `DB.WithWorkflows`; `serve` will need one too for a job started by a
    request.

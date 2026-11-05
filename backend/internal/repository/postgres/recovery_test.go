@@ -20,7 +20,10 @@ import (
 // tableWorkflows saves each recovery notice as a row of
 // test_recovery_notices in the transaction it is given, as DBOS's enqueue
 // does, so a test sees whether the notice committed. err fails the enqueue.
+// It implements only [RecoveryWorkflows]: a call to another feature's job
+// reaches the nil Workflows and panics, failing the test.
 type tableWorkflows struct {
+	Workflows
 	err error
 }
 

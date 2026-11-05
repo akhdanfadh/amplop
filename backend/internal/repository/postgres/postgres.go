@@ -16,9 +16,16 @@ type DB struct {
 
 // Workflows saves background work in a transaction of DB's, so it commits
 // or rolls back with the change that needs it, e.g. internal/dbos's Client.
+// It embeds one interface per feature that saves a job.
 type Workflows interface {
-	// EnqueueRecoveryNotice saves, in tx, the workflow that emails every active
-	// administrator about the recovery of the one with userID at recoveredAt.
+	RecoveryWorkflows
+}
+
+// RecoveryWorkflows saves the jobs of administrator recovery.
+type RecoveryWorkflows interface {
+	// EnqueueRecoveryNotice saves, in tx, the workflow that emails every
+	// active administrator about the recovery of the one with userID at
+	// recoveredAt.
 	EnqueueRecoveryNotice(ctx context.Context, tx pgx.Tx, userID int64, recoveredAt time.Time) error
 }
 
