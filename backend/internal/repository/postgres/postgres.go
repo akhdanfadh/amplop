@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -19,6 +20,15 @@ type DB struct {
 // It embeds one interface per feature that saves a job.
 type Workflows interface {
 	RecoveryWorkflows
+	PasswordResetWorkflows
+}
+
+// PasswordResetWorkflows saves the jobs of password reset.
+type PasswordResetWorkflows interface {
+	// EnqueuePasswordResetLink saves, in tx, the workflow that sends a reset
+	// link for the request with attemptID to the account with userID, if it
+	// may reset; userID is 0 when no account has the requested email.
+	EnqueuePasswordResetLink(ctx context.Context, tx pgx.Tx, attemptID, userID int64) error
 }
 
 // RecoveryWorkflows saves the jobs of administrator recovery.
@@ -28,6 +38,10 @@ type RecoveryWorkflows interface {
 	// recoveredAt.
 	EnqueueRecoveryNotice(ctx context.Context, tx pgx.Tx, userID int64, recoveredAt time.Time) error
 }
+
+// errNoWorkflows means a change that saves background work ran on a DB
+// without [DB.WithWorkflows], and was rolled back.
+var errNoWorkflows = errors.New("this change saves background work, which needs DB.WithWorkflows")
 
 // WithWorkflows returns a DB sharing db's connections that saves background
 // work with workflows. Closing either closes both.

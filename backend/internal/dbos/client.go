@@ -11,10 +11,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"inbok/internal/logging"
+	"inbok/internal/passwordreset"
 )
 
 // Client saves workflows for a worker to run, from a process that runs
-// none itself, e.g. inbok recover-admin. It implements
+// none itself, e.g. inbok recover-admin or serve. It implements
 // [inbok/internal/repository/postgres.Workflows].
 type Client struct {
 	client dbos.Client
@@ -51,6 +52,20 @@ func (c *Client) EnqueueRecoveryNotice(ctx context.Context, tx pgx.Tx, userID in
 	_, err := dbos.Enqueue[[]recipientOutcome](c.client, emailQueue, recoveryNoticeWorkflow, input,
 		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
 		// A worker resumes and dequeues only work of its own version.
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+	)
+	return err
+}
+
+// EnqueuePasswordResetLink saves, in tx, the reset link workflow for the
+// request with attemptID and the account with userID, 0 for none, on the
+// email queue, so it commits or rolls back with tx. Cancelling ctx stops
+// its statements. It returns DBOS's error, after which tx is aborted and
+// must roll back.
+func (c *Client) EnqueuePasswordResetLink(ctx context.Context, tx pgx.Tx, attemptID, userID int64) error {
+	input := PasswordResetLinkInput{AttemptID: attemptID, UserID: userID}
+	_, err := dbos.Enqueue[passwordreset.LinkOutcome](c.client, emailQueue, passwordResetLinkWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
 		dbos.WithEnqueueApplicationVersion(applicationVersion),
 	)
 	return err

@@ -163,3 +163,16 @@ func (q *Queries) MarkPasswordResetAttemptLink(ctx context.Context, arg MarkPass
 	}
 	return result.RowsAffected(), nil
 }
+
+const readPasswordResetUserID = `-- name: ReadPasswordResetUserID :one
+SELECT id FROM users WHERE email = $1
+`
+
+// The ID of the account with the email, if any. A request runs it for
+// every address, so its answer takes the same work either way.
+func (q *Queries) ReadPasswordResetUserID(ctx context.Context, email string) (int64, error) {
+	row := q.db.QueryRow(ctx, readPasswordResetUserID, email)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}

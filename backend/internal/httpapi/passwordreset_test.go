@@ -27,28 +27,37 @@ import (
 	"inbok/internal/session"
 )
 
-// resetRequestMemory keeps accounts and the links sent to them for the real
-// passwordreset.Requests.
+// resetRequestMemory keeps accounts, the links sent to them, and the jobs
+// requests saved, for the real passwordreset.Requests and Links.
 type resetRequestMemory struct {
 	mu        sync.Mutex
 	accounts  map[string]passwordreset.Account
 	linksSent map[int64][]time.Time
+	jobs      []int64 // each request's account ID, 0 for none
 }
 
-// RecordPasswordResetRequest accepts every request.
-func (m *resetRequestMemory) RecordPasswordResetRequest(_ context.Context, _ string, _ time.Time, check func([]time.Time) (time.Time, error)) (int64, error) {
-	_, err := check(nil)
-	return 1, err
+// RecordPasswordResetRequest accepts every request and saves its job for
+// the account with email, if any.
+func (m *resetRequestMemory) RecordPasswordResetRequest(_ context.Context, _, email string, _ time.Time, check func([]time.Time) (time.Time, error)) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, err := check(nil); err != nil {
+		return err
+	}
+	m.jobs = append(m.jobs, m.accounts[email].User.ID)
+	return nil
 }
 
-// CreatePasswordResetLink calls create with the account with email and the
+// CreatePasswordResetLink calls create with the account with userID and the
 // links sent to it.
-func (m *resetRequestMemory) CreatePasswordResetLink(_ context.Context, _ int64, email string, _ time.Time, create func(passwordreset.LinkState) (passwordreset.LinkChange, error)) error {
+func (m *resetRequestMemory) CreatePasswordResetLink(_ context.Context, _, userID int64, _ time.Time, create func(passwordreset.LinkState) (passwordreset.LinkChange, error)) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var state passwordreset.LinkState
-	if found, ok := m.accounts[email]; ok {
-		state = passwordreset.LinkState{Account: &found, LinksSent: m.linksSent[found.User.ID]}
+	for _, found := range m.accounts {
+		if found.User.ID == userID {
+			state = passwordreset.LinkState{Account: &found, LinksSent: m.linksSent[found.User.ID]}
+		}
 	}
 	_, err := create(state)
 	return err
@@ -72,16 +81,20 @@ func TestRequestPasswordResetLinkSameResponse(t *testing.T) {
 		},
 		linksSent: map[int64][]time.Time{4: {now, now, now}},
 	}
-	mailer, background := &recordingMailer{}, passwordreset.NewBackground(slog.New(slog.DiscardHandler))
-	requests := passwordreset.NewRequests(storage, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, background, time.Now)
-	api := New(discard, Services{PasswordResetRequests: requests})
+	api := New(discard, Services{PasswordResetRequests: passwordreset.NewRequests(storage, time.Now)})
 
 	// When each is asked about.
 	var responses []*httptest.ResponseRecorder
 	for _, email := range []string{"nobody@example.org", "unverified@example.org", "deactivated@example.org", "busy@example.org", "member@example.org"} {
 		responses = append(responses, postPublic(api, passwordResetLinksPath, `{"email":"`+email+`"}`))
 	}
-	require.NoError(t, background.Wait(t.Context()))
+	// And the worker runs each request's job.
+	mailer := &recordingMailer{}
+	links := passwordreset.NewLinks(storage, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, time.Now)
+	for i, userID := range storage.jobs {
+		_, err := links.Send(t.Context(), int64(i+1), userID)
+		require.NoError(t, err)
+	}
 
 	// Then only the eligible account got a link, and every response is the
 	// same.

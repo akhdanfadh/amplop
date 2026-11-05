@@ -9,6 +9,11 @@ SELECT pg_advisory_xact_lock(hashtextextended('inbok.password-reset:' || @client
 SELECT created_at FROM password_reset_attempts
 WHERE client_prefix = @client_prefix AND created_at > @since;
 
+-- name: ReadPasswordResetUserID :one
+-- The ID of the account with the email, if any. A request runs it for
+-- every address, so its answer takes the same work either way.
+SELECT id FROM users WHERE email = @email;
+
 -- name: InsertPasswordResetAttempt :one
 INSERT INTO password_reset_attempts (client_prefix, created_at)
 VALUES (@client_prefix, @created_at)

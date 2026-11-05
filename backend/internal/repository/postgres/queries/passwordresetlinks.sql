@@ -19,7 +19,7 @@ DELETE FROM password_reset_links WHERE user_id = @user_id;
 -- count every link, and orders a request with completions and deactivations.
 SELECT id, email, role, (email_verified_at IS NOT NULL)::boolean AS verified,
     (deactivated_at IS NOT NULL)::boolean AS deactivated
-FROM users WHERE email = @email FOR UPDATE;
+FROM users WHERE id = @id FOR UPDATE;
 
 -- name: InsertPasswordResetLink :exec
 INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)

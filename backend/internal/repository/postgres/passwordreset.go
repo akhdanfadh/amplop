@@ -124,11 +124,10 @@ func readPasswordReset(ctx context.Context, queries *sqlc.Queries, hash [sha256.
 
 // RecordPasswordResetRequest records an attempt from client at the time
 // check returns, if check accepts the times of client's attempts kept after
-// since, and returns the attempt's ID. An error from check is returned
-// unchanged and records nothing.
-func (db *DB) RecordPasswordResetRequest(ctx context.Context, client string, since time.Time, check func([]time.Time) (time.Time, error)) (int64, error) {
-	var id int64
-	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+// since, and saves the job that sends its link, to the account with email
+// if any. An error from check is returned unchanged and records nothing.
+func (db *DB) RecordPasswordResetRequest(ctx context.Context, client, email string, since time.Time, check func([]time.Time) (time.Time, error)) error {
+	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 
 		// 1. Lock the client. The lock covers the count and the insert, so
@@ -153,33 +152,43 @@ func (db *DB) RecordPasswordResetRequest(ctx context.Context, client string, sin
 		}
 
 		// 4. Record the attempt.
-		id, err = queries.InsertPasswordResetAttempt(ctx, sqlc.InsertPasswordResetAttemptParams{ClientPrefix: &client, CreatedAt: createdAt})
+		attemptID, err := queries.InsertPasswordResetAttempt(ctx, sqlc.InsertPasswordResetAttemptParams{ClientPrefix: &client, CreatedAt: createdAt})
 		if err != nil {
 			return fmt.Errorf("insert password reset attempt: %w", err)
 		}
+
+		// 5. Find the account's ID, 0 for none, and save the job in this
+		// transaction, so it commits or rolls back with the attempt. Every
+		// request does both, so the answer takes the same work either way.
+		userID, err := queries.ReadPasswordResetUserID(ctx, email)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("read password reset account: %w", err)
+		}
+		if db.workflows == nil {
+			return errNoWorkflows
+		}
+		if err := db.workflows.EnqueuePasswordResetLink(ctx, tx, attemptID, userID); err != nil {
+			return fmt.Errorf("save password reset link job: %w", err)
+		}
 		return nil
 	})
-	if err != nil {
-		return 0, err
-	}
-	return id, nil
 }
 
-// CreatePasswordResetLink calls create with the account with email, if any,
-// and the times links were saved for it after since. If create returns a
-// link, it saves it for that account and counts it: it marks the attempt
+// CreatePasswordResetLink calls create with the account with userID, if
+// any, and the times links were saved for it after since. If create returns
+// a link, it saves it for that account and counts it: it marks the attempt
 // with attemptID with the account and the link's time, or saves a row of its
 // own when that attempt already counts a link or is gone. It returns
 // create's error unchanged, and errNoAccount for a link without an account.
-func (db *DB) CreatePasswordResetLink(ctx context.Context, attemptID int64, email string, since time.Time, create func(passwordreset.LinkState) (passwordreset.LinkChange, error)) error {
+func (db *DB) CreatePasswordResetLink(ctx context.Context, attemptID, userID int64, since time.Time, create func(passwordreset.LinkState) (passwordreset.LinkChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 		var state passwordreset.LinkState
 
-		// 1. Lock the account with the email, if any. The lock orders this
+		// 1. Lock the account, if it still exists. The lock orders this
 		// with the account's other requests, its completions, and its
 		// deactivation.
-		row, err := queries.LockPasswordResetAccount(ctx, email)
+		row, err := queries.LockPasswordResetAccount(ctx, userID)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("lock password reset account: %w", err)
 		}
@@ -217,7 +226,6 @@ func (db *DB) CreatePasswordResetLink(ctx context.Context, attemptID int64, emai
 		// 4. Save the link. The locked account owns it, whatever create put
 		// in it.
 		link := change.Link
-		userID := state.Account.User.ID
 		if err := queries.InsertPasswordResetLink(ctx, sqlc.InsertPasswordResetLinkParams{
 			TokenHash: link.TokenHash[:], UserID: userID, Email: state.Account.User.Email,
 			CreatedAt: link.CreatedAt, ExpiresAt: link.ExpiresAt,

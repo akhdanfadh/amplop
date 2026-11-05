@@ -13,10 +13,6 @@ import (
 
 const adminRecoveredAction = "admin-recovered"
 
-// errNoWorkflows means a recovery ran on a DB without [DB.WithWorkflows],
-// so it could not save the administrator's notice.
-var errNoWorkflows = errors.New("recovery needs background work to save its notice")
-
 // UpdateRecovery replaces credentials and clears authentication data
 // together, and saves the recovery notice for the worker in the same
 // transaction, so both commit or neither does. The callback sees the

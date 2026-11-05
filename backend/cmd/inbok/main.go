@@ -14,6 +14,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/config"
+	"inbok/internal/dbos"
 	"inbok/internal/emailverification"
 	"inbok/internal/httpapi"
 	"inbok/internal/logging"
@@ -92,8 +93,9 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 	return errUsage
 }
 
-// serve connects to the database, then serves the API until ctx is cancelled.
-func serve(ctx context.Context, logger *slog.Logger) error {
+// serve connects to the database and opens a DBOS client for the jobs
+// requests save, then serves the API until ctx is cancelled.
+func serve(ctx context.Context, logger *slog.Logger) (err error) {
 	// 1. Read the settings, failing before anything starts.
 	cfg, err := config.Load()
 	if err != nil {
@@ -112,7 +114,18 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 	}
 	defer db.Close()
 
-	// 3. Warn when setup is done but its token is still configured.
+	// 3. Open the DBOS client that saves background jobs with the changes
+	// that need them, e.g. a reset link's with its request; the worker runs
+	// them. Not ctx: it ends at the shutdown signal, while requests still
+	// drain; Close stops the client after them.
+	jobs, err := dbos.NewClient(context.WithoutCancel(ctx), url, logger)
+	if err != nil {
+		return fmt.Errorf("open DBOS client: %w", err)
+	}
+	defer func() { err = errors.Join(err, jobs.Close()) }()
+	db = db.WithWorkflows(jobs)
+
+	// 4. Warn when setup is done but its token is still configured.
 	accounts := account.NewService(db, cfg.SetupToken)
 	if cfg.SetupToken != "" {
 		status, err := accounts.SetupStatus(ctx)
@@ -124,7 +137,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		}
 	}
 
-	// 4. Build the services and the API.
+	// 5. Build the services and the API.
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
@@ -137,7 +150,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		Registration:            registration.NewService(db),
 		RegistrationRequests:    registration.NewRequests(db, mailer, cfg.PublicURL, time.Now, logger),
 		RegistrationCompletion:  registration.NewCompletion(db, time.Now),
-		PasswordResetRequests:   passwordreset.NewRequests(db, mailer, cfg.PublicURL, resetBackground, time.Now),
+		PasswordResetRequests:   passwordreset.NewRequests(db, time.Now),
 		PasswordResetCompletion: passwordreset.NewCompletion(db, mailer, cfg.PublicURL, resetBackground, time.Now),
 		Disabler:                totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		Backups:                 totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
@@ -154,7 +167,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("configure trusted proxies: %w", err)
 	}
 
-	// 5. Serve the web app when this build has one.
+	// 6. Serve the web app when this build has one.
 	build, err := webapp.Load(webapp.Files())
 	switch {
 	case errors.Is(err, webapp.ErrNoBuild):
@@ -165,7 +178,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		api.ServeWebApp(build)
 	}
 
-	// 6. Serve until ctx is cancelled, then wait for the work requests
+	// 7. Serve until ctx is cancelled, then wait for the work requests
 	// started.
 	return listen(ctx, cfg.HTTPAddr, api.Handler(), resetBackground, logger)
 }

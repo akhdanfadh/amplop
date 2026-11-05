@@ -58,7 +58,10 @@ halfway, runs in a separate process, `inbok worker`, on
 [DBOS](https://docs.dbos.dev). DBOS saves each piece of work as a
 **workflow** in PostgreSQL, in the `dbos` schema, and records each
 finished **step**, so a stopped workflow resumes where it left off.
-`serve` does not use DBOS. ADR004 in the project's decision records
+`serve` runs no workflows; it saves one with the change that needs it,
+e.g. a [password reset link](#password-reset-link) with its request,
+through a DBOS client (`dbos.Client`), so it too needs the workflow
+tables `migrate` creates. ADR004 in the project's decision records
 explains the choice.
 
 `make dev` runs the worker beside `serve`, restarting it when a Go file
@@ -228,6 +231,40 @@ reply can quote what inbok sent, the SMTP password included. The
 mailer's own warning has the reply, except a sign-in's, of which it keeps
 only the code. DBOS's tables keep only IDs and outcomes with the run, no
 address.
+
+### Password reset link
+
+The workflow `inbok.password-reset-link`, run from the queue
+`inbok.email`, sends the link a [password reset request](#asking-for-a-link-1)
+asked for. `serve` saves it in the request's own transaction, so a request
+that was answered always gets its job, even if `serve` stops right after.
+Its input is the request's attempt ID and the ID of the account with the
+requested email, 0 for none; it holds no email. Its one step, `send link`,
+locks the account and sends nothing when there is none, it is unverified
+or deactivated, or it is over its limits; otherwise it saves a link and
+mails it.
+
+Saving and sending are one step because the link's secret must not be
+recorded for a later one. A send that retrying cannot fix ends the run
+with its outcome: system email not configured, an unusable address or
+saved password, or a recipient the mail server refuses with a
+[permanent](#system-email) 5xx reply. Any other failure,
+[unconfirmed](#system-email) sends included, is retried 3 more times,
+waiting 1, 2, then 2 minutes: the member is waiting on the page, and after
+that asking again does better than a late link. DBOS counts these retries
+in memory, so a worker restarted meanwhile starts the count again. Each
+try saves a new link, so a retry may deliver a second working link, and
+each counts toward the account's limits: the request's attempt counts the
+first, and every later one gets an attempt row of its own with no client,
+so the client's limit, which counts requests, leaves it out. A retry at
+the account's limit therefore sends nothing.
+
+The run logs `password reset link` with the `attempt_id`, the `user_id`,
+and its outcome, a warning unless it was `sent` or `skipped`, or
+`password reset link failed` with the error once its retries run out. That
+error, which DBOS also keeps with the run, names only where the send
+failed, e.g. `failed at timeout, unconfirmed`, never the server's reply,
+which can quote the message and its live link.
 
 ### Inspecting workflows
 
@@ -520,9 +557,9 @@ not.
 
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and gives
 in-flight requests up to 5 seconds to finish. What is left of those 5 seconds
-goes to password reset emails still being sent, which their requests did not
-wait for (see [Password reset](#password-reset)); any still sending then are
-lost, and a warning says so.
+goes to "password changed" notices still being sent, which their resets did
+not wait for (see [Password reset](#password-reset)); any still sending then
+are lost, and a warning says so.
 
 ## Configuration
 
@@ -1326,18 +1363,21 @@ client's address, which answers the same for every address. Before it
 returns, it only:
 
 1. checks that the email is valid (`emailaddress.Parse`);
-2. under a lock on the client, records an attempt in
-   `password_reset_attempts`, unless the client already made 10 in the
-   last 15 minutes. A client is an IPv4 address or an IPv6 /64
-   (`clientprefix`). Over the limit it returns an `*attemptlimit.Error`
-   wrapping `passwordreset.ErrThrottled` with the wait.
+2. in one transaction, under a lock on the client, records an attempt in
+   `password_reset_attempts`, looks up the ID of the account with the
+   email, and saves the [reset link job](#password-reset-link) with both,
+   unless the client already made 10 requests in the last 15 minutes. A
+   client is an IPv4 address or an IPv6 /64 (`clientprefix`). Over the
+   limit it returns an `*attemptlimit.Error` wrapping
+   `passwordreset.ErrThrottled` with the wait.
 
-It reads nothing about the account, so its answer and timing are the
-same whether the address has one. The rest is background work that
-`Request` starts and does not wait for, run by `passwordreset.Background`
-as the notice after a reset is (see [Completing a reset](#completing-a-reset)).
-In one transaction it locks the account with the email, if any, and
-decides:
+Every request does the same work, whether or not an account has the
+email, so the answer and its timing are nearly the same either way: an
+indexed lookup that finds a row costs a few microseconds more than one
+that does not, far below a network's jitter, and the client limit leaves
+too few tries to average it out. Everything that differs runs in the job,
+which `passwordreset.Links.Send` does. In one transaction it locks the
+account, if any, and decides:
 
 - no account, an unverified email, or a deactivated account: nothing is
   sent;
@@ -1345,18 +1385,19 @@ decides:
   is sent. These limits are silent, so the answer cannot depend on them.
 - otherwise: it saves a link for the account's stored email and counts
   it: it sets the attempt's `user_id` and `linked_at`, or, for a later link
-  for that attempt or one whose attempt is gone, saves an attempt row of its
-  own with no client, which the client's limit leaves out. The email limits
-  count `linked_at`, the time the link was saved, which can come later than
-  the request.
+  for that attempt, such as a retry's, or one whose attempt is gone, saves
+  an attempt row of its own with no client, which the client's limit leaves
+  out. The email limits count `linked_at`, the time the link was saved,
+  which can come later than the request.
 
 Then it mails the link to `<public URL>/reset-password#<secret>`. The secret
 exists only in memory and the email; the message is `Private`, so a failed
-send's log leaves out the server's reply. A failed send keeps its link and is
-only logged. Requested emails are kept only for accounts that got a link,
-as `user_id`. The hourly [cleanup](#scheduled-cleanup) deletes attempts
-whose request and link times are both over 24 hours old, an hour after
-that.
+send's log, and the job's error, leave out the server's reply. A failed
+send keeps its link, and the job retries with a new one. No requested
+email is kept: the attempt holds the client, and the account as `user_id`
+only once it got a link, and the job's input holds IDs. The hourly [cleanup](#scheduled-cleanup) deletes
+attempts whose request and link times are both over 24 hours old, an hour
+after that.
 
 ### Completing a reset
 
@@ -1764,5 +1805,5 @@ For a job that runs once per request, follow the recovery notice
    and implements only the feature's interface, as `tableWorkflows` does,
    so another feature's job changes no fake of yours.
 5. The command that makes the change gives storage the client with
-   `DB.WithWorkflows`; `serve` will need one too for a job started by a
-   request.
+   `DB.WithWorkflows`, as `recover-admin` does; `serve` already has one,
+   for jobs requests save.

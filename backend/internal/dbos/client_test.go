@@ -2,6 +2,8 @@ package dbos
 
 import (
 	"context"
+	"encoding/base64"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/passwordreset"
 	"inbok/internal/repository/postgres"
 )
 
@@ -149,4 +152,78 @@ func TestClientUnmigrated(t *testing.T) {
 	_, err := NewClient(t.Context(), newDatabase(t), discard)
 
 	require.ErrorContains(t, err, "is at schema version 0")
+}
+
+// linkWorkflows lists the reset link workflows saved in DBOS's tables, by
+// status.
+func linkWorkflows(t *testing.T, conn *pgx.Conn) []string {
+	t.Helper()
+	rows, err := conn.Query(t.Context(), "SELECT status FROM dbos.workflow_status WHERE name = $1", passwordResetLinkWorkflow)
+	require.NoError(t, err)
+	statuses, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	return statuses
+}
+
+// A reset request saves its job for the worker, which then sends the link
+// for that attempt to the account with the email. The job's input holds no
+// email, for an account or not.
+func TestClientPasswordResetLink(t *testing.T) {
+	// Given storage that saves workflows with a Client.
+	db, conn, url := clientStack(t)
+	requests := passwordreset.NewRequests(db, time.Now)
+
+	// When an account's email, and an email with none, are asked about.
+	client := netip.MustParseAddr("192.0.2.1")
+	require.NoError(t, requests.Request(t.Context(), "admin@example.com", client))
+	require.NoError(t, requests.Request(t.Context(), "nobody@example.com", client))
+
+	// Then both jobs wait in the queue, their inputs holding IDs and no
+	// email. DBOS saves an input in workflow_input, as base64-encoded JSON.
+	assert.Equal(t, []string{"ENQUEUED", "ENQUEUED"}, linkWorkflows(t, conn))
+	rows, err := conn.Query(t.Context(), `SELECT i.inputs FROM dbos.workflow_input i
+		JOIN dbos.workflow_status s USING (workflow_uuid) WHERE s.name = $1`, passwordResetLinkWorkflow)
+	require.NoError(t, err)
+	encoded, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	require.Len(t, encoded, 2)
+	for _, input := range encoded {
+		decoded, err := base64.StdEncoding.DecodeString(input)
+		require.NoError(t, err)
+		assert.Contains(t, string(decoded), `"AttemptID"`)
+		assert.NotContains(t, string(decoded), "@")
+	}
+
+	// And a worker sends each for its attempt and account.
+	var admin int64
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT id FROM users WHERE email = 'admin@example.com'").Scan(&admin))
+	rows, err = conn.Query(t.Context(), "SELECT id FROM password_reset_attempts ORDER BY id")
+	require.NoError(t, err)
+	attempts, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	require.NoError(t, err)
+	links := &fakeLinks{}
+	linkWorker(t, url, links)
+	require.Eventually(t, func() bool { return len(links.sends()) == 2 }, wait, 50*time.Millisecond)
+	assert.ElementsMatch(t, []PasswordResetLinkInput{
+		{AttemptID: attempts[0], UserID: admin},
+		{AttemptID: attempts[1]},
+	}, links.sends())
+}
+
+// A reset request that fails as it commits rolls its job back with it, so
+// no link is sent for a request that was not recorded.
+func TestClientPasswordResetRollback(t *testing.T) {
+	// Given storage whose attempts fail as they commit, after the job is saved.
+	db, conn, _ := clientStack(t)
+	_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_request() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'request rejected'; END $$`)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), "CREATE CONSTRAINT TRIGGER reject_write AFTER INSERT ON password_reset_attempts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_request()")
+	require.NoError(t, err)
+
+	// When a reset is requested.
+	err = passwordreset.NewRequests(db, time.Now).Request(t.Context(), "admin@example.com", netip.MustParseAddr("192.0.2.1"))
+
+	// Then the request fails and no job is saved.
+	require.ErrorContains(t, err, "request rejected")
+	assert.Empty(t, linkWorkflows(t, conn))
 }

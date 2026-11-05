@@ -73,6 +73,7 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		PasswordResetCleanup:        passwordreset.NewCleanup(db, time.Now),
 		PasswordResetAttemptCleanup: passwordreset.NewAttemptCleanup(db, time.Now),
 		RecoveryNotices:             account.NewRecoveryNotices(db, mailer, publicURL),
+		PasswordResetLinks:          passwordreset.NewLinks(db, mailer, publicURL, time.Now),
 	}, logger)
 	if err != nil {
 		db.Close()
