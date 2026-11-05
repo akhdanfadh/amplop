@@ -102,13 +102,15 @@ web-add-ui: ## Add a shadcn component, e.g. NAME=dialog
 
 # Local services: the Docker Compose services in compose.yaml
 
-services-start: $(ENV_FILE) ## Start PostgreSQL and Mailpit in Docker
-	$(WITH_ENV) docker compose up -d --wait
+# --build rebuilds the Google emulator's image when google-emulator/
+# changes; otherwise Docker reuses its cached layers.
+services-start: $(ENV_FILE) ## Start PostgreSQL, Mailpit, and the Google emulator in Docker
+	$(WITH_ENV) docker compose up -d --wait --build
 
-services-stop: $(ENV_FILE) ## Stop PostgreSQL and Mailpit, keeping the database
+services-stop: $(ENV_FILE) ## Stop the Docker services, keeping the database
 	$(WITH_ENV) docker compose down
 
-services-wipe: $(ENV_FILE) ## Stop PostgreSQL and Mailpit, deleting the database
+services-wipe: $(ENV_FILE) ## Stop the Docker services, deleting the database
 	$(WITH_ENV) docker compose down -v
 
 # Database

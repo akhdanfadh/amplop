@@ -38,5 +38,27 @@ services:
       - 127.0.0.1:${INBOK_MAILPIT_SMTP_PORT:-1025}:1025
       - 127.0.0.1:${INBOK_MAILPIT_WEB_PORT:-8025}:8025
 
+  # Google OAuth and Gmail for connecting accounts without a Google
+  # project: seeded mailboxes and inbok's development OAuth client, defined
+  # in google-emulator/emulate.config.mjs. backend/README.md explains using
+  # it. Built here from google-emulator/; state lives in memory, so a
+  # restart empties the mailboxes back to the seed and refuses every
+  # refresh token handed out before.
+  google-emulator:
+    build: google-emulator
+    image: inbok-google-emulator:local
+    environment:
+      # The address the browser and Go reach it at, the one inbok is given,
+      # so the two cannot drift apart. It is also the ID token's issuer.
+      # The defaults keep a .env from before Gmail working.
+      EMULATE_BASE_URL: ${INBOK_GOOGLE_BASE_URL:-http://127.0.0.1:${INBOK_GOOGLE_EMULATOR_PORT:-4000}}
+      # For the redirect URI it registers for inbok's client.
+      INBOK_PUBLIC_URL: ${INBOK_PUBLIC_URL:-http://localhost:5173}
+
+    # Only this machine can connect. The image's own healthcheck tells
+    # --wait when it is ready.
+    ports:
+      - 127.0.0.1:${INBOK_GOOGLE_EMULATOR_PORT:-4000}:4000
+
 volumes:
   postgres:

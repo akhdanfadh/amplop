@@ -7,7 +7,7 @@ shortcut for most commands here.
 
 ## Run the server
 
-`serve` needs PostgreSQL with its migrations applied; see Local database
+`serve` needs PostgreSQL with its migrations applied; see Local services
 in `CONTRIBUTING.md` and Migrations below. From the repository root, load
 `.env` and start the
 development server:
@@ -603,7 +603,7 @@ its request.
 | `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets and the system email password; see Encryption keys below. Invalid entries stop startup. |
 | `INBOK_GOOGLE_CLIENT_ID` | empty, Gmail not offered | The Google OAuth client members connect Gmail accounts with. Set it and the secret together, or neither. |
 | `INBOK_GOOGLE_CLIENT_SECRET` | empty, Gmail not offered | That client's secret. Surrounding spaces are removed from both. |
-| `INBOK_GOOGLE_BASE_URL` | empty, Google itself | For development and tests only: one server on this machine that answers for Google, e.g. an emulator at `http://127.0.0.1:4000`. It accepts only `localhost` or a loopback address, so a copied setting cannot send members' tokens to another machine. Any other host, or no client, stops startup. |
+| `INBOK_GOOGLE_BASE_URL` | empty, Google itself | For development and tests only: one server on this machine that answers for Google, e.g. `http://127.0.0.1:4000`; see [Google emulator](#google-emulator). Any other host, or no client, stops startup. |
 | `GIN_MODE` | `debug`; the image sets `release` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
@@ -665,6 +665,62 @@ themselves; use host-operator recovery below. A lost key also makes the
 system email password unreadable: test messages fail with HTTP 500 and the
 settings lose their tested time until an administrator enters the password
 again and saves. The web app shows that 500 as a lost test result.
+
+### Google emulator
+
+`compose.yaml` runs a Google emulator, so connecting Gmail works without a
+Google project: [emulate](https://github.com/vercel-labs/emulate)'s
+Google OAuth and Gmail API, version 0.13.0, with seeded mailboxes. Its
+image is built from `google-emulator/` in the repository with pnpm, since
+emulate publishes only an npm package. `.env.example` sets
+`INBOK_GOOGLE_BASE_URL=http://127.0.0.1:4000` and the development client
+the emulator registers, `inbok-dev.apps.googleusercontent.com`, fixed in
+`google-emulator/emulate.config.mjs` so a real client secret in `.env`
+never reaches the emulator. `INBOK_GOOGLE_EMULATOR_PORT` moves it to
+another port; Compose gives the emulator `INBOK_GOOGLE_BASE_URL` as its
+own address, the ID tokens' issuer, so the two agree.
+
+`INBOK_GOOGLE_BASE_URL` makes that one server answer for Google's sign-in
+and Gmail hosts, at the emulator's paths: `/o/oauth2/v2/auth`,
+`/oauth2/token`, `/oauth2/revoke`, and `/gmail/v1/`. It accepts only
+`localhost` or a loopback address, `http` or `https`, and refuses to start
+otherwise, or when no client is set: inbok sends that server members'
+authorization codes and refresh tokens, so a setting copied from a
+development `.env` cannot send them to another machine. A deployed server
+leaves it empty. To turn Gmail off, empty all three Google settings.
+
+The consent page lists the seeded accounts; choosing one agrees to every
+permission asked. `google-emulator/emulate.config.mjs` holds the seed:
+
+| Account | Mailbox |
+|---|---|
+| `alex@example.com` | three messages in two threads, a `Receipts` label |
+| `blair@example.com` | two messages |
+| `casey@example.com` | one message |
+| `unverified@example.com` | empty; its ID token says the address is not verified |
+| `testuser@gmail.com` | emulate's own: a few messages and a draft |
+
+The emulator keeps everything in memory. Restarting it, e.g. with
+`make services-stop` and `make services-start`, empties the mailboxes
+back to the seed and refuses every refresh token handed out before.
+
+Where it differs from Google:
+
+- It has no `users.getProfile`, and its history IDs are 21 digits, too
+  long for the Go client's 64-bit field.
+- An account's Google ID (`sub`) changes on every start.
+- Its token endpoint accepts a code exchanged by another client or with
+  another redirect URI than its authorization request's.
+- A person cannot refuse or untick a permission on its consent page.
+- `history.list` never answers 404 for an old history ID, and nothing
+  returns quota errors.
+- It ignores `access_type` and `prompt` and always returns a refresh
+  token.
+- A failed PKCE check leaves the code usable, and posting the consent
+  form directly redirects to any `redirect_uri`; only the consent page
+  checks it.
+- An empty mailbox's history ID is `0`, every ID token carries an `hd`
+  claim from the address's domain, and every response allows any origin.
 
 ## Reverse proxies
 
@@ -974,8 +1030,8 @@ docker exec -it inbok inbok recover-admin admin@example.com
 ```
 
 For piped input, use `docker exec -i` without `-t` so it uses the one-line
-input mode. This repository's development Compose file starts PostgreSQL
-and Mailpit; it does not run inbok itself.
+input mode. This repository's development Compose file starts PostgreSQL,
+Mailpit, and the Google emulator; it does not run inbok itself.
 
 Recovery checks that the account is an administrator, then replaces the
 password, removes TOTP and every backup code, ends all sessions and sign-in
