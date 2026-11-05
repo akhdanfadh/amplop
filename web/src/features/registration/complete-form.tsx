@@ -11,6 +11,7 @@ import { PasswordInput } from "@/components/password-input";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { CompleteSchema } from "./complete-schema";
 import {
@@ -105,13 +106,7 @@ export function CompleteForm({
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
   const inputErrors = redeem.error ? formErrors(redeem.error, completeFields) : undefined;
 
-  // The disabled button lost focus while saving; the field a refusal names,
-  // or the button, takes it.
-  useEffect(() => {
-    if (!redeem.error || redeem.isPending) return;
-    const invalid = formRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
-    (invalid ?? submitRef.current)?.focus();
-  }, [redeem.error, redeem.isPending]);
+  useFocusAfterError(redeem.error, redeem.isPending, formRef, submitRef);
 
   // The end replaces the focused form, so it takes focus.
   useEffect(() => {

@@ -9,6 +9,7 @@ import { SignInSchema } from "./sign-in-schema";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { PasswordInput } from "@/components/password-input";
 import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 
@@ -102,11 +103,7 @@ export function SignInForm({
     [],
   );
 
-  useEffect(() => {
-    if (!create.error || create.isPending) return;
-    const invalid = formRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
-    (invalid ?? submitRef.current)?.focus();
-  }, [create.error, create.isPending]);
+  useFocusAfterError(create.error, create.isPending, formRef, submitRef);
 
   useEffect(() => {
     if (checkMessage && !checking) checkRef.current?.focus();

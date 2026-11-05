@@ -7,6 +7,7 @@ import { formErrors } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { registrationClosed, requestedMessage, requestErrorMessage } from "./visitor-text";
 
@@ -72,13 +73,7 @@ export function RequestForm(): ReactElement {
     formRef.current?.querySelector<HTMLInputElement>("input")?.focus();
   }, [request.isIdle]);
 
-  // The disabled button lost focus while sending; a refusal returns it to
-  // the field it names, else the button.
-  useEffect(() => {
-    if (!request.error || request.isPending) return;
-    const invalid = formRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
-    (invalid ?? submitRef.current)?.focus();
-  }, [request.error, request.isPending]);
+  useFocusAfterError(request.error, request.isPending, formRef, submitRef);
 
   // Shows the form again for a new request. The last address stays, so a
   // typo takes one edit.
