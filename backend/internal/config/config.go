@@ -42,6 +42,10 @@ const (
 	// maxWorkerID and [notWorkerIDRune] are inbok's own limits: DBOS stores
 	// any text as an executor ID.
 	maxWorkerID = 64
+
+	envGoogleClientID     = "INBOK_GOOGLE_CLIENT_ID"
+	envGoogleClientSecret = "INBOK_GOOGLE_CLIENT_SECRET"
+	envGoogleBaseURL      = "INBOK_GOOGLE_BASE_URL"
 )
 
 // errNoDatabaseURL has no default on purpose: a server deployed without
@@ -55,13 +59,38 @@ var (
 	errPublicURLShape  = errors.New(envPublicURL + " must be only a scheme, a host name or IP address, and an optional port, e.g. https://mail.example.com")
 )
 
+// Errors for unusable Google settings. None includes a value.
+var (
+	errGoogleClientPair   = errors.New(envGoogleClientID + " and " + envGoogleClientSecret + " must be set together; leave both empty to not offer Gmail")
+	errGoogleBaseNoClient = errors.New(envGoogleBaseURL + " needs " + envGoogleClientID + " and " + envGoogleClientSecret)
+	errGoogleBaseURLHost  = errors.New(envGoogleBaseURL + " must be an http or https address on this machine, e.g. http://127.0.0.1:4000: it points inbok at a local emulator, never at another server")
+	errGoogleBaseURLShape = errors.New(envGoogleBaseURL + " must be only a scheme, localhost or a loopback address, and an optional port, e.g. http://127.0.0.1:4000")
+)
+
+// Errors parseOrigin returns; each caller names its own setting instead.
+var (
+	errOriginScheme = errors.New("scheme not allowed")
+	errOriginShape  = errors.New("not an origin")
+)
+
 // Config holds settings for inbok serve.
 type Config struct {
 	Encryption     *encryption.Keyring // validated keys for stored secrets
+	Google         *Google             // nil: Gmail is not offered
 	HTTPAddr       string              // host:port to listen on, e.g. 0.0.0.0:8080
 	PublicURL      *url.URL            // where users open inbok: scheme, host, and port only
 	SetupToken     string              // empty disables first-admin setup
 	TrustedProxies []string            // CIDRs; empty ignores forwarded client addresses
+}
+
+// Google holds the OAuth client members connect Gmail accounts with.
+type Google struct {
+	ClientID     string
+	ClientSecret string
+	// BaseURL is one server on this machine that answers for Google, e.g.
+	// the emulator, with the emulator's paths: scheme, host, and port only.
+	// Nil means Google's own hosts.
+	BaseURL *url.URL
 }
 
 // Load reads the environment. Encryption keys are required; optional settings use defaults.
@@ -95,6 +124,12 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg.PublicURL = publicURL
+
+	google, err := GoogleSettings()
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Google = google
 
 	keys, err := EncryptionKeys()
 	if err != nil {
@@ -198,34 +233,86 @@ func parsePublicURL(value string) (*url.URL, error) {
 	if value == "" {
 		return nil, errNoPublicURL
 	}
+	// The session cookie is Secure, so a deployment needs https. Plain http on
+	// localhost and loopback is for development; whether a browser keeps a
+	// Secure cookie there depends on the browser.
+	origin, err := parseOrigin(value, func(scheme string, loopback bool) bool {
+		return scheme == "https" || (scheme == "http" && loopback)
+	})
+	switch {
+	case errors.Is(err, errOriginScheme):
+		return nil, errPublicURLScheme
+	case err != nil:
+		return nil, errPublicURLShape
+	}
+	return origin, nil
+}
+
+// GoogleSettings reads the Google OAuth client members connect Gmail
+// accounts with. It returns nil when all three Google settings are empty,
+// and an error naming the setting, without its value, when only one client
+// setting is set, the base URL is set without a client, or the base URL is
+// not an origin on this machine.
+func GoogleSettings() (*Google, error) {
+	// A value pasted from Google's console can carry a trailing newline.
+	id := strings.TrimSpace(os.Getenv(envGoogleClientID))
+	secret := strings.TrimSpace(os.Getenv(envGoogleClientSecret))
+	base := strings.TrimSpace(os.Getenv(envGoogleBaseURL))
+	switch {
+	case id == "" && secret == "" && base == "":
+		return nil, nil
+	case id == "" && secret == "":
+		return nil, errGoogleBaseNoClient
+	case id == "" || secret == "":
+		return nil, errGoogleClientPair
+	}
+	google := &Google{ClientID: id, ClientSecret: secret}
+	if base == "" {
+		return google, nil
+	}
+	// Only this machine: a mistyped or copied value must not send members'
+	// authorization codes and refresh tokens to another server.
+	origin, err := parseOrigin(base, func(scheme string, loopback bool) bool {
+		return (scheme == "http" || scheme == "https") && loopback
+	})
+	switch {
+	case errors.Is(err, errOriginScheme):
+		return nil, errGoogleBaseURLHost
+	case err != nil:
+		return nil, errGoogleBaseURLShape
+	}
+	google.BaseURL = origin
+	return google, nil
+}
+
+// parseOrigin returns value, a nonempty URL, with only a scheme, host, and
+// optional port, in the host's standard spelling. schemeOK says whether the
+// scheme fits the setting, given whether the host is localhost or a
+// loopback address. It returns errOriginScheme when schemeOK refuses and
+// errOriginShape when value is not such an origin.
+func parseOrigin(value string, schemeOK func(scheme string, loopback bool) bool) (*url.URL, error) {
 	parsed, err := url.Parse(value)
 	if err != nil {
-		return nil, errPublicURLShape
+		return nil, errOriginShape
 	}
 	// Links and the EHLO name use one spelling of the host, so the loopback
 	// check below reads the same one.
 	host, hostOK := publicHost(parsed.Hostname())
-	// The session cookie is Secure, so a deployment needs https. Plain http on
-	// localhost and loopback is for development; whether a browser keeps a
-	// Secure cookie there depends on the browser.
-	switch {
-	case parsed.Scheme == "https":
-	case parsed.Scheme == "http" && hostOK && isLoopback(host):
-	default:
-		return nil, errPublicURLScheme
+	if !schemeOK(parsed.Scheme, hostOK && isLoopback(host)) {
+		return nil, errOriginScheme
 	}
 	// Links are built by adding a path and a fragment, so the text must be the
 	// origin alone, apart from one trailing slash. Comparing the whole text
 	// also catches what url.URL does not keep, e.g. an empty "#".
 	if !hostOK || !strings.EqualFold(strings.TrimSuffix(value, "/"), parsed.Scheme+"://"+parsed.Host) {
-		return nil, errPublicURLShape
+		return nil, errOriginShape
 	}
 	port := parsed.Port()
 	if port != "" || strings.HasSuffix(parsed.Host, ":") {
 		// TCP ports are 16 bits, and port 0 is reserved (RFC 6335).
 		number, err := strconv.ParseUint(port, 10, 16)
 		if err != nil || number == 0 {
-			return nil, errPublicURLShape
+			return nil, errOriginShape
 		}
 		// Written back as a number, :0443 becomes :443.
 		port = strconv.FormatUint(number, 10)

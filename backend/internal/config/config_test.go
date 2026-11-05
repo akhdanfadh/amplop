@@ -14,6 +14,17 @@ const (
 	testPublicURL      = "https://mail.example.com"
 )
 
+// TestMain clears every inbok setting the shell passed in, e.g. from a
+// sourced .env, so each test sees only what it sets.
+func TestMain(m *testing.M) {
+	for _, entry := range os.Environ() {
+		if name, _, _ := strings.Cut(entry, "="); strings.HasPrefix(name, "INBOK_") {
+			os.Unsetenv(name)
+		}
+	}
+	os.Exit(m.Run())
+}
+
 func TestLoadDefault(t *testing.T) {
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)
@@ -363,6 +374,108 @@ func TestLoadBadPublicURL(t *testing.T) {
 
 			assert.Nil(t, cfg.PublicURL)
 			assert.NotContains(t, err.Error(), "secret")
+		})
+	}
+}
+
+// setGoogle sets the three Google settings for the test, and the
+// settings Load requires.
+func setGoogle(t *testing.T, id, secret, base string) {
+	t.Helper()
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
+	t.Setenv(envHTTPAddr, "")
+	t.Setenv(envSetupToken, "")
+	t.Setenv(envTrustedProxies, "")
+	t.Setenv(envGoogleClientID, id)
+	t.Setenv(envGoogleClientSecret, secret)
+	t.Setenv(envGoogleBaseURL, base)
+}
+
+func TestLoadGoogleUnset(t *testing.T) {
+	setGoogle(t, "", " ", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	assert.Nil(t, cfg.Google)
+}
+
+func TestLoadGoogle(t *testing.T) {
+	setGoogle(t, " inbok.apps.googleusercontent.com\n", "GOCSPX-secret\n", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	require.NotNil(t, cfg.Google)
+	assert.Equal(t, "inbok.apps.googleusercontent.com", cfg.Google.ClientID)
+	assert.Equal(t, "GOCSPX-secret", cfg.Google.ClientSecret)
+	assert.Nil(t, cfg.Google.BaseURL)
+}
+
+func TestLoadGoogleBaseURL(t *testing.T) {
+	cases := []struct {
+		value string
+		want  string
+	}{
+		{"http://localhost:4000", "http://localhost:4000"},
+		{"http://LocalHost:4000/", "http://localhost:4000"},
+		{"https://127.0.0.1:4443", "https://127.0.0.1:4443"},
+		{"http://127.9.9.9", "http://127.9.9.9"},
+		{"http://[::1]:4000", "http://[::1]:4000"},
+	}
+	for _, c := range cases {
+		t.Run(c.value, func(t *testing.T) {
+			setGoogle(t, "id", "secret", c.value)
+
+			cfg, err := Load()
+			require.NoError(t, err)
+
+			require.NotNil(t, cfg.Google)
+			require.NotNil(t, cfg.Google.BaseURL)
+			assert.Equal(t, c.want, cfg.Google.BaseURL.String())
+		})
+	}
+}
+
+func TestLoadBadGoogle(t *testing.T) {
+	cases := []struct {
+		name             string
+		id, secret, base string
+		want             string
+	}{
+		{"id alone", "client-id-x", "", "", "must be set together"},
+		{"secret alone", "", "client-secret-x", "", "must be set together"},
+		{"base alone", "", "", "http://localhost:4000", "INBOK_GOOGLE_BASE_URL needs"},
+
+		// Another machine, or not http.
+		{"remote https", "client-id-x", "client-secret-x", "https://oauth2.googleapis.com", "must be an http or https address on this machine"},
+		{"remote ip", "client-id-x", "client-secret-x", "http://192.0.2.10:4000", "must be an http or https address on this machine"},
+		{"lookalike", "client-id-x", "client-secret-x", "http://localhost.example.com", "must be an http or https address on this machine"},
+		{"unspecified", "client-id-x", "client-secret-x", "http://0.0.0.0:4000", "must be an http or https address on this machine"},
+		{"no scheme", "client-id-x", "client-secret-x", "localhost:4000", "must be an http or https address on this machine"},
+		{"ftp", "client-id-x", "client-secret-x", "ftp://localhost", "must be an http or https address on this machine"},
+
+		// The origin alone.
+		{"path", "client-id-x", "client-secret-x", "http://localhost:4000/google", "INBOK_GOOGLE_BASE_URL must be only"},
+		{"query", "client-id-x", "client-secret-x", "http://localhost:4000?x=1", "INBOK_GOOGLE_BASE_URL must be only"},
+		{"user info", "client-id-x", "client-secret-x", "http://user:secret@localhost:4000", "INBOK_GOOGLE_BASE_URL must be only"},
+		{"port", "client-id-x", "client-secret-x", "http://localhost:0", "INBOK_GOOGLE_BASE_URL must be only"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			setGoogle(t, c.id, c.secret, c.base)
+
+			cfg, err := Load()
+			require.ErrorContains(t, err, c.want)
+
+			assert.Nil(t, cfg.Google)
+			// Errors name settings, never their values.
+			for _, value := range []string{c.id, c.secret, c.base} {
+				if value != "" {
+					assert.NotContains(t, err.Error(), value)
+				}
+			}
 		})
 	}
 }

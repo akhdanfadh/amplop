@@ -601,6 +601,9 @@ its request.
 | `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
 | `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
 | `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets and the system email password; see Encryption keys below. Invalid entries stop startup. |
+| `INBOK_GOOGLE_CLIENT_ID` | empty, Gmail not offered | The Google OAuth client members connect Gmail accounts with. Set it and the secret together, or neither. |
+| `INBOK_GOOGLE_CLIENT_SECRET` | empty, Gmail not offered | That client's secret. Surrounding spaces are removed from both. |
+| `INBOK_GOOGLE_BASE_URL` | empty, Google itself | For development and tests only: one server on this machine that answers for Google, e.g. an emulator at `http://127.0.0.1:4000`. It accepts only `localhost` or a loopback address, so a copied setting cannot send members' tokens to another machine. Any other host, or no client, stops startup. |
 | `GIN_MODE` | `debug`; the image sets `release` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
