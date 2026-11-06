@@ -162,3 +162,16 @@ func handleNoRoute(ctx *gin.Context) {
 func handleNoMethod(ctx *gin.Context) {
 	writeProblem(ctx, requestProblem(http.StatusMethodNotAllowed))
 }
+
+// operations returns every operation in doc.
+func operations(doc *huma.OpenAPI) []*huma.Operation {
+	var ops []*huma.Operation
+	for _, item := range doc.Paths {
+		for _, op := range []*huma.Operation{item.Get, item.Put, item.Post, item.Delete, item.Options, item.Head, item.Patch, item.Trace} {
+			if op != nil {
+				ops = append(ops, op)
+			}
+		}
+	}
+	return ops
+}

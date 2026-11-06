@@ -459,7 +459,9 @@ then sets its failure descriptions and examples. Pass that map as `Responses`
 when registering the operation. The shared helper includes a `default`
 Problem response for shared errors. Avoid `Operation.Errors`: Huma adds
 separate 422 and 500 entries to that list.
-The API overview explains shared statuses and shows a field-error example.
+The API overview explains shared errors, shows a field-error example, and
+lists every problem type in a table that `registerProblemTypes` builds from
+the operations' examples and `sharedProblems`.
 
 The API base path is `/api/v0`; operation paths such as `/health` are
 relative to it. The OpenAPI document advertises this relative base, so it

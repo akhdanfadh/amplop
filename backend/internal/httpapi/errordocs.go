@@ -8,21 +8,9 @@ status, title, and detail. Quote the X-Request-ID response header when
 reporting a failure.
 
 Each operation documents its specific failures with examples. Its default
-response covers other errors using the same Problem schema, including:
-
-| Status | Meaning |
-| --- | --- |
-| 400 | The request cannot be parsed. |
-| 401 | A valid session is required. |
-| 403 | The write request's source or the account's access is not allowed. |
-| 404 | The route or resource was not found. |
-| 405 | The route does not support this method; see the Allow header. |
-| 408 | Receiving the request body took too long. |
-| 413 | The request body is too large. |
-| 415 | The request content type is unsupported. |
-| 422 | Parsed input violates the request rules. |
-| 500 | An unexpected server failure occurred. |
-| 503 | The request timed out waiting for the server; see Retry-After. |
+response covers the shared ones, which Problem types below marks Any, using
+the same Problem schema. A 405 lists the route's methods in the Allow
+header.
 
 Body errors apply to operations that accept a body. A default response
 describes the body format, not a replacement HTTP status.

@@ -79,8 +79,9 @@ The web app reads these from the contract; keep them stable:
   `instance` is initially omitted. Tracing uses `X-Request-ID`.
 - A second 409 meaning on one operation needs its own `type` URI so the
   web can tell them apart.
-- The contract's `ProblemType` lists every type an operation shows as a
-  response example, plus the shared ones. Give each type the web compares a
+- The contract's `ProblemType`, and the API overview's Problem types
+  table, list every type an operation shows as a response example, plus
+  the shared ones. Give each type the web compares a
   response example, and type the web's constant with `ProblemType`.
 - Every 429 and 503 sends `Retry-After` in whole seconds; the web words a
   429's wait.
