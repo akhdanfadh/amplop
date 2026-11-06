@@ -54,6 +54,8 @@ func (c *Client) parseIDToken(value any) (idClaims, error) {
 		return idClaims{}, errIDTokenFormat
 	}
 
+	// The issuer must be Google's, or the emulator's when one is configured
+	// (OpenID Connect Core 3.1.3.7).
 	issuer := claims.Issuer
 	if c.normalize {
 		issuer = normalizeIssuer(issuer)
@@ -61,12 +63,16 @@ func (c *Client) parseIDToken(value any) (idClaims, error) {
 	if !slices.Contains(c.issuers, issuer) {
 		return idClaims{}, errIDTokenIssuer
 	}
+	// OpenID Connect allows other audiences beside the client; inbok's choice
+	// refuses them, since they would make the token someone else's too.
 	if !slices.Equal(claims.Audience, []string{c.oauth.ClientID}) {
 		return idClaims{}, errIDTokenAudience
 	}
+	// The current time must be before exp (OpenID Connect Core 3.1.3.7).
 	if !c.now().Before(time.Unix(claims.Expiry, 0)) {
 		return idClaims{}, errIDTokenExpired
 	}
+	// inbok saves an account under its sub and shows it by its email.
 	if claims.Subject == "" || claims.Email == "" {
 		return idClaims{}, errIDTokenIdentity
 	}

@@ -112,7 +112,7 @@ type connectStorage interface {
 	// InsertConnectState saves state.
 	InsertConnectState(ctx context.Context, state ConnectState) error
 	// DeleteConnectState deletes the state saved under stateHash and returns
-	// it, or ErrStateInvalid when there is none.
+	// it, or [ErrStateInvalid] when there is none.
 	DeleteConnectState(ctx context.Context, stateHash [sha256.Size]byte) (ConnectState, error)
 }
 
@@ -124,9 +124,9 @@ type Callback struct {
 	Error string
 }
 
-// Connections runs the connect flow: Start sends the member to Google, and
-// Finish saves what Google sends back. It exists only when a Google client
-// is configured.
+// Connections runs the connect flow: [Connections.Start] sends the member to
+// Google, and [Connections.Finish] saves what Google sends back. It exists
+// only when a Google client is configured.
 type Connections struct {
 	storage  connectStorage
 	accounts *Service
@@ -142,7 +142,7 @@ func NewConnections(storage connectStorage, accounts *Service, google googleClie
 
 // Start saves a new state for userID's session sessionID and returns the
 // address of Google's consent page. accountID names the account to
-// reconnect, or is 0 to connect a new one. It returns ErrNotFound when
+// reconnect, or is 0 to connect a new one. It returns [ErrNotFound] when
 // userID has no account accountID.
 func (c *Connections) Start(ctx context.Context, userID int64, sessionID uuid.UUID, accountID int64) (string, error) {
 	if sessionID == (uuid.UUID{}) {
@@ -185,9 +185,9 @@ func (c *Connections) Start(ctx context.Context, userID int64, sessionID uuid.UU
 // connects or reconnects the account, which it returns. The state works
 // once, whatever the outcome.
 //
-// It returns ErrStateInvalid, ErrCancelled, ErrGmailNotGranted,
-// ErrEmailNotVerified, ErrAlreadyConnected, ErrDifferentAccount, or
-// ErrNotFound when the reconnected account went in the moment before the
+// It returns [ErrStateInvalid], [ErrCancelled], [ErrGmailNotGranted],
+// [ErrEmailNotVerified], [ErrAlreadyConnected], [ErrDifferentAccount], or
+// [ErrNotFound] when the reconnected account went in the moment before the
 // save; any other error is a failure the member cannot fix.
 //
 // DESIGN: a grant that is not saved is left alone at Google, not revoked.
@@ -230,10 +230,15 @@ func (c *Connections) Finish(ctx context.Context, userID int64, sessionID uuid.U
 
 	// 5. Refuse a grant inbok cannot use before spending a Gmail call on it.
 	switch {
+	// Jobs reach Gmail later only with a refresh token, which Google sends
+	// for offline access with the consent prompt.
 	case grant.RefreshToken == "":
 		return Account{}, errNoGrantToken
+	// Google's granular consent lets the member untick Gmail access.
 	case !grant.GmailGranted:
 		return Account{}, ErrGmailNotGranted
+	// inbok's choice: the member never types the email, so it must be one
+	// Google vouches for (ADR006).
 	case !grant.EmailVerified:
 		return Account{}, ErrEmailNotVerified
 	}
@@ -280,7 +285,7 @@ func (c *Connections) validateMailbox(ctx context.Context, grant Grant) error {
 	return nil
 }
 
-// checkState returns ErrStateInvalid unless state was started by userID's
+// checkState returns [ErrStateInvalid] unless state was started by userID's
 // session sessionID and has not expired at now.
 func checkState(state ConnectState, userID int64, sessionID uuid.UUID, now time.Time) error {
 	if state.UserID != userID || state.SessionID != sessionID || !now.Before(state.ExpiresAt) {

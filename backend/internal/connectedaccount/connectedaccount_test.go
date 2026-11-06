@@ -111,7 +111,7 @@ var (
 	blair = Identity{Subject: blairSubject, Email: "blair@example.com"}
 )
 
-// newTestService returns a Service on empty memory storage and the keyring
+// newTestService returns a [Service] on empty memory storage and the keyring
 // that seals its tokens.
 func newTestService(t *testing.T) (*Service, *memoryStorage, *encryption.Keyring) {
 	t.Helper()

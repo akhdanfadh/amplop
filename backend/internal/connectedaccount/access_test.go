@@ -83,8 +83,8 @@ func (f *fakeRefresher) Refresh(_ context.Context, refreshToken string) (Renewal
 	return f.answer(len(f.refreshed) - 1)
 }
 
-// accessTest is token access on memory storage with alex connected by
-// member with refresh-1, a fake Google, and the clock it reads.
+// accessTest is token access on memory storage with [alex] connected by
+// [member] with refresh-1, a fake Google, and the clock it reads.
 type accessTest struct {
 	access   *Access
 	accounts *Service

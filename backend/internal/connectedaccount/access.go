@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Errors Token returns. None includes a token or email.
+// Errors [Access.Token] returns. None includes a token or email.
 var (
 	// ErrNeedsReconnect means Google refused the account's refresh token,
 	// now or before, and provider work for it waits until the member
@@ -22,13 +22,13 @@ var (
 	ErrTokenUnreadable = errors.New("connected account's refresh token is unreadable")
 	// ErrCredentialChanged means the account's credential changed, or the
 	// account went, after it was read: storage returns it for a write
-	// meant for the credential read, and Token after a second change.
+	// meant for the credential read, and [Access.Token] after a second change.
 	ErrCredentialChanged = errors.New("connected account's credential changed")
 )
 
 // ErrRefreshRefused means Google refused a refresh token: it was revoked,
-// expired, or dropped. Google's side returns it; Token records the account
-// as needing a reconnect.
+// expired, or dropped. Google's side returns it; [Access.Token] records the
+// account as needing a reconnect.
 var ErrRefreshRefused = errors.New("google refused the refresh token")
 
 // AccessToken is a short-lived token for one account's Gmail, about an
@@ -75,7 +75,8 @@ func (r Renewal) GoString() string {
 	return r.String()
 }
 
-// AccessState is what Token reads about an account before calling Google.
+// AccessState is what [Access.Token] reads about an account before calling
+// Google.
 type AccessState struct {
 	UserID     int64
 	Credential Credential
@@ -85,10 +86,10 @@ type AccessState struct {
 	Deactivated bool
 }
 
-// refresher is Google's side of Token.
+// refresher is Google's side of [Access.Token].
 type refresher interface {
 	// Refresh trades refreshToken for an access token. It returns
-	// ErrRefreshRefused when Google refuses refreshToken.
+	// [ErrRefreshRefused] when Google refuses refreshToken.
 	Refresh(ctx context.Context, refreshToken string) (Renewal, error)
 }
 
@@ -98,20 +99,20 @@ type keyring interface {
 	Open(id string, ciphertext []byte, owner string) ([]byte, error)
 }
 
-// accessStorage keeps what Token reads and changes.
+// accessStorage keeps what [Access.Token] reads and changes.
 type accessStorage interface {
-	// ReadConnectedAccountAccess returns account accountID's state, or ErrNotFound when
-	// there is no such account.
+	// ReadConnectedAccountAccess returns account accountID's state, or
+	// [ErrNotFound] when there is no such account.
 	ReadConnectedAccountAccess(ctx context.Context, accountID int64) (AccessState, error)
 
 	// ReplaceConnectedAccountToken saves next as account accountID's credential if
-	// its ciphertext is still current. It returns ErrCredentialChanged
+	// its ciphertext is still current. It returns [ErrCredentialChanged]
 	// otherwise, including when the account went.
 	ReplaceConnectedAccountToken(ctx context.Context, accountID int64, current []byte, next Credential) error
 
 	// MarkConnectedAccountReconnect records at as when account accountID started needing
 	// a reconnect, keeping an earlier time, if its ciphertext is still
-	// current. It returns ErrCredentialChanged otherwise, including when the
+	// current. It returns [ErrCredentialChanged] otherwise, including when the
 	// account went.
 	MarkConnectedAccountReconnect(ctx context.Context, accountID int64, current []byte, at time.Time) error
 }
@@ -138,9 +139,9 @@ func NewAccess(storage accessStorage, encryption keyring, google refresher, now 
 // for an account gone or a member deactivated since checks again where it
 // acts.
 //
-// It returns ErrNotFound when the account is gone, ErrDeactivated,
-// ErrNeedsReconnect when Google refuses the refresh token, now or before,
-// ErrTokenUnreadable, ErrCredentialChanged when the credential changed
+// It returns [ErrNotFound] when the account is gone, [ErrDeactivated],
+// [ErrNeedsReconnect] when Google refuses the refresh token, now or before,
+// [ErrTokenUnreadable], [ErrCredentialChanged] when the credential changed
 // twice while this call held it, and any other error as a failure that
 // may pass.
 //
@@ -158,8 +159,8 @@ func (a *Access) Token(ctx context.Context, accountID int64) (AccessToken, error
 	return token, err
 }
 
-// token is one attempt of Token, returning ErrCredentialChanged when the
-// credential it read changed before it could write.
+// token is one attempt of [Access.Token], returning [ErrCredentialChanged]
+// when the credential it read changed before it could write.
 func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error) {
 	// 1. Read the account, and stop before Google for one whose provider
 	// work has stopped.
@@ -216,8 +217,8 @@ func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error
 	return renewal.AccessToken, nil
 }
 
-// read returns account accountID's state. It returns ErrNotFound,
-// ErrDeactivated, or ErrNeedsReconnect when provider work for it has
+// read returns account accountID's state. It returns [ErrNotFound],
+// [ErrDeactivated], or [ErrNeedsReconnect] when provider work for it has
 // stopped.
 func (a *Access) read(ctx context.Context, accountID int64) (AccessState, error) {
 	state, err := a.storage.ReadConnectedAccountAccess(ctx, accountID)

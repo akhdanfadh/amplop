@@ -49,7 +49,7 @@ func (c *Client) gmail(ctx context.Context, accessToken connectedaccount.AccessT
 }
 
 // redactGmail returns err, from the Gmail API, as only its HTTP status, for
-// the same reason as redactToken.
+// the same reason as [redactToken].
 func redactGmail(err error) error {
 	var refused *googleapi.Error
 	if !errors.As(err, &refused) {

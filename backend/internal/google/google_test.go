@@ -103,7 +103,7 @@ func alexClaims(issuer string, now time.Time, changes map[string]any) map[string
 	return claims
 }
 
-// tokenResponse returns a successful token response carrying idClaims.
+// tokenResponse returns a successful token response carrying [idClaims].
 func tokenResponse(t *testing.T, idClaims map[string]any) map[string]any {
 	t.Helper()
 	return map[string]any{

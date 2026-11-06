@@ -12,13 +12,9 @@ import (
 	"inbok/internal/repository/postgres/sqlc"
 )
 
-// Token access reads and writes credentials here; this fails to compile if
-// DB stops providing what connectedaccount.NewAccess takes.
-var _ = connectedaccount.NewAccess((*DB)(nil), nil, nil, nil)
-
 // InsertConnectedAccount saves account with the credential seal returns for
 // its ID, and returns the saved account. It returns
-// connectedaccount.ErrAlreadyConnected when account.UserID already has
+// [connectedaccount.ErrAlreadyConnected] when account.UserID already has
 // account.Subject from account.Provider; the ID taken is then never used.
 func (db *DB) InsertConnectedAccount(ctx context.Context, account connectedaccount.NewAccount, seal func(int64) (connectedaccount.Credential, error)) (connectedaccount.Account, error) {
 	queries := sqlc.New(db.pool)
@@ -56,7 +52,7 @@ func (db *DB) InsertConnectedAccount(ctx context.Context, account connectedaccou
 
 // UpdateConnectedAccount saves, for userID's account accountID, the email and
 // credential update returns, clears its need to reconnect, and returns it,
-// in one transaction. It returns connectedaccount.ErrNotFound when userID has
+// in one transaction. It returns [connectedaccount.ErrNotFound] when userID has
 // no such account.
 func (db *DB) UpdateConnectedAccount(ctx context.Context, userID, accountID int64, update func(connectedaccount.Account) (connectedaccount.Reconnection, error)) (connectedaccount.Account, error) {
 	var saved connectedaccount.Account
@@ -125,7 +121,7 @@ func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int6
 }
 
 // ReadConnectedAccountAccess returns account accountID's credential and whether its
-// provider work has stopped. It returns connectedaccount.ErrNotFound when
+// provider work has stopped. It returns [connectedaccount.ErrNotFound] when
 // there is no such account.
 func (db *DB) ReadConnectedAccountAccess(ctx context.Context, accountID int64) (connectedaccount.AccessState, error) {
 	row, err := sqlc.New(db.pool).ReadConnectedAccountAccess(ctx, accountID)
@@ -145,7 +141,7 @@ func (db *DB) ReadConnectedAccountAccess(ctx context.Context, accountID int64) (
 
 // ReplaceConnectedAccountToken saves next as account accountID's credential if its
 // ciphertext is still current, and returns
-// connectedaccount.ErrCredentialChanged otherwise.
+// [connectedaccount.ErrCredentialChanged] otherwise.
 func (db *DB) ReplaceConnectedAccountToken(ctx context.Context, accountID int64, current []byte, next connectedaccount.Credential) error {
 	replaced, err := sqlc.New(db.pool).ReplaceConnectedAccountToken(ctx, sqlc.ReplaceConnectedAccountTokenParams{
 		ID:                     accountID,
@@ -164,7 +160,7 @@ func (db *DB) ReplaceConnectedAccountToken(ctx context.Context, accountID int64,
 
 // MarkConnectedAccountReconnect records at as when account accountID started needing a
 // reconnect, keeping an earlier time, if its ciphertext is still current,
-// and returns connectedaccount.ErrCredentialChanged otherwise.
+// and returns [connectedaccount.ErrCredentialChanged] otherwise.
 func (db *DB) MarkConnectedAccountReconnect(ctx context.Context, accountID int64, current []byte, at time.Time) error {
 	marked, err := sqlc.New(db.pool).MarkConnectedAccountReconnect(ctx, sqlc.MarkConnectedAccountReconnectParams{
 		ID:                accountID,

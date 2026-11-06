@@ -1,6 +1,6 @@
 // Package googleemulator runs the Google emulator for tests: Google OAuth
 // and the Gmail API, built from google-emulator/ in the repository. Each
-// Start runs its own container with its own seed, so tests never share
+// [Start] runs its own container with its own seed, so tests never share
 // accounts or tokens. Docker must be running.
 package googleemulator
 
@@ -30,15 +30,15 @@ import (
 )
 
 const (
-	// imageRepo and imageTag name the image built from google-emulator/;
+	// [imageRepo] and [imageTag] name the image built from google-emulator/;
 	// Compose's is :local.
 	imageRepo = "inbok-google-emulator"
 	imageTag  = "test"
 	// containerPort is where the image's emulate listens.
 	containerPort = "4000/tcp"
-	// configPath is the image's config module, which Start replaces.
+	// configPath is the image's config module, which [Start] replaces.
 	configPath = "/emulator/emulate.config.mjs"
-	// startAttempts is how many free ports Start tries.
+	// startAttempts is how many free ports [Start] tries.
 	startAttempts = 3
 	// startTimeout is how long one start may take to answer.
 	startTimeout = 60 * time.Second

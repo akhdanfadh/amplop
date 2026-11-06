@@ -379,7 +379,7 @@ func TestLoadBadPublicURL(t *testing.T) {
 }
 
 // setGoogle sets the three Google settings for the test, and the
-// settings Load requires.
+// settings [Load] requires.
 func setGoogle(t *testing.T, id, secret, base string) {
 	t.Helper()
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)

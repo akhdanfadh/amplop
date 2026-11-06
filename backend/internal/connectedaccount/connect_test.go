@@ -65,7 +65,7 @@ func (f *fakeGoogle) Profile(_ context.Context, accessToken AccessToken) (Profil
 
 const testCode = "code-1"
 
-// alexGrant is a grant for alex with everything inbok needs.
+// alexGrant is a grant for [alex] with everything inbok needs.
 func alexGrant() Grant {
 	return Grant{RefreshToken: "refresh-1", AccessToken: NewAccessToken("access-1"), Identity: alex, EmailVerified: true, GmailGranted: true}
 }
@@ -97,7 +97,7 @@ func newConnectTest(t *testing.T) *connectTest {
 	return c
 }
 
-// start starts the flow for member's session, for accountID, and returns
+// start starts the flow for [member]'s session, for accountID, and returns
 // the state Google would send back.
 func (c *connectTest) start(t *testing.T, accountID int64) string {
 	t.Helper()
@@ -106,7 +106,7 @@ func (c *connectTest) start(t *testing.T, accountID int64) string {
 	return c.google.state
 }
 
-// finish finishes the flow for member's session with state and testCode.
+// finish finishes the flow for [member]'s session with state and [testCode].
 func (c *connectTest) finish(t *testing.T, state string) (Account, error) {
 	t.Helper()
 	return c.connections.Finish(t.Context(), member, c.session, Callback{State: state, Code: testCode})

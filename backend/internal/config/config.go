@@ -67,7 +67,7 @@ var (
 	errGoogleBaseURLShape = errors.New(envGoogleBaseURL + " must be only a scheme, localhost or a loopback address, and an optional port, e.g. http://127.0.0.1:4000")
 )
 
-// Errors parseOrigin returns; each caller names its own setting instead.
+// Errors [parseOrigin] returns; each caller names its own setting instead.
 var (
 	errOriginScheme = errors.New("scheme not allowed")
 	errOriginShape  = errors.New("not an origin")
@@ -288,8 +288,8 @@ func GoogleSettings() (*Google, error) {
 // parseOrigin returns value, a nonempty URL, with only a scheme, host, and
 // optional port, in the host's standard spelling. schemeOK says whether the
 // scheme fits the setting, given whether the host is localhost or a
-// loopback address. It returns errOriginScheme when schemeOK refuses and
-// errOriginShape when value is not such an origin.
+// loopback address. It returns [errOriginScheme] when schemeOK refuses and
+// [errOriginShape] when value is not such an origin.
 func parseOrigin(value string, schemeOK func(scheme string, loopback bool) bool) (*url.URL, error) {
 	parsed, err := url.Parse(value)
 	if err != nil {

@@ -12,10 +12,6 @@ import (
 	"inbok/internal/repository/postgres/sqlc"
 )
 
-// The flow keeps its states here; this fails to compile if DB stops
-// providing what connectedaccount.NewConnections takes.
-var _ = connectedaccount.NewConnections((*DB)(nil), nil, nil, nil)
-
 // InsertConnectState saves state; an AccountID of 0 is saved as no account.
 func (db *DB) InsertConnectState(ctx context.Context, state connectedaccount.ConnectState) error {
 	params := sqlc.InsertConnectStateParams{
@@ -35,7 +31,7 @@ func (db *DB) InsertConnectState(ctx context.Context, state connectedaccount.Con
 }
 
 // DeleteConnectState deletes the state saved under stateHash and returns
-// it, or connectedaccount.ErrStateInvalid when there is none.
+// it, or [connectedaccount.ErrStateInvalid] when there is none.
 func (db *DB) DeleteConnectState(ctx context.Context, stateHash [sha256.Size]byte) (connectedaccount.ConnectState, error) {
 	row, err := sqlc.New(db.pool).DeleteConnectState(ctx, stateHash[:])
 	if errors.Is(err, pgx.ErrNoRows) {
