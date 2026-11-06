@@ -30,8 +30,10 @@ the area you change before editing it:
 
 - Errors flow outward: feature handlers map known errors with `newProblem`,
   choosing status, type, and safe text. An explicitly mapped 5xx keeps that
-  text. Unexpected errors are returned as is and become a logged, fixed 500.
-  Public error text and input messages contain no rejected values or causes.
+  text. Unexpected errors are returned as is and become a logged, fixed 500;
+  one caused by the request's own deadline becomes a 503 `service-busy`
+  with `Retry-After`, in one place for every operation. Public error text
+  and input messages contain no rejected values or causes.
 - A throttle's refusal is an `*attemptlimit.Error` carrying its wait; map
   it with `retryAfterProblem`, which adds `Retry-After`.
 - A write with public access gets `withRateLimit`'s per-client limit and
@@ -39,6 +41,9 @@ the area you change before editing it:
 - Services take a `*slog.Logger` from `cmd/inbok`, built by `logging.New`.
   Log with the request's context, e.g. `logger.WarnContext(ctx, ...)`, so the
   line carries its `request_id`.
+- No `var _ Interface = (*Type)(nil)` checks: `cmd/inbok` passes each
+  implementation to the constructor that takes the interface, so the
+  build already fails where one stops fitting.
 - A write that spans features is one `Storage` method shaped as an
   update function, run in one transaction in `repository/postgres`.
   Feature code receives no transaction, transaction provider, or
@@ -47,6 +52,11 @@ the area you change before editing it:
   operation registration `register<Operation>`, handlers `handle<Operation>`.
   One noun per concept across file, function, and test: `requestlog.go`,
   `withRequestLog`, `TestRequestLog`.
+- One verb per kind of test: `Validate` holds input to a rule and returns
+  an error; `Parse` does that and returns the normalized or typed value;
+  `Verify` compares a secret with its stored form; `check` asks whether
+  saved state is still usable at a time. `Match` finds which of several
+  stored forms a secret matches.
 - `backend/tools.mod` changes only through
   `go get -modfile=tools.mod -tool`; `go mod tidy` there copies the
   app's dependencies in. Goose's version stays equal in `go.mod` and
@@ -69,10 +79,15 @@ The web app reads these from the contract; keep them stable:
   `instance` is initially omitted. Tracing uses `X-Request-ID`.
 - A second 409 meaning on one operation needs its own `type` URI so the
   web can tell them apart.
-- The contract's `ProblemType` lists every type an operation shows as a
-  response example, plus the shared ones. Give each type the web compares a
+- The contract's `ProblemType`, and the API overview's Problem types
+  table, list every type an operation shows as a response example, plus
+  the shared ones. Give each type the web compares a
   response example, and type the web's constant with `ProblemType`.
-- Every 429 sends `Retry-After` in whole seconds; the web words the wait.
+- Every 429 and 503 sends `Retry-After` in whole seconds; the web words a
+  429's wait.
+- Every operation lists one tag from `httpapi/tags.go` and a summary
+  that is a Title Case title of at most five words, e.g. "Sign In with
+  Code"; what it does in detail goes in `Description`.
 - A 204 response needs transport work first: `web/src/api/transport.ts`
   requires a response schema.
 
@@ -83,6 +98,9 @@ The web app reads these from the contract; keep them stable:
 - A request failure lives in the mutation (`create.error`); field
   problems live in the form's errors. A request failure in the form's
   error map blocks a retry until the next edit.
+- A form shows a request failure through `RequestError`, which is an
+  alert. A field's error is a `FieldError` with an `id` that the field's
+  `aria-describedby` names; it is not an alert.
 - `ApiError.status` is the actual HTTP status. Its optional `problem` is
   received data; use `status` for request decisions and preserve missing
   problems as missing.
@@ -90,3 +108,35 @@ The web app reads these from the contract; keep them stable:
   one with `make web-add-ui NAME=dialog`.
 - Before upgrading `vite-plus` or adding a Vite plugin, read the NOTE
   comments in `web/pnpm-workspace.yaml`.
+
+## Comments
+
+- A doc comment says what the code does, its inputs, and what it returns.
+  A reason sits inline above the line it explains. A reason that belongs
+  to no single line is a `DESIGN:` paragraph after the doc sentence.
+- A doc comment, including one on a field or a test, writes another
+  declaration's name as a doc link, e.g. `[account.ErrUserNotFound]` or
+  `[Outgoing.To]`, when `go doc` can resolve it: an exported name in the
+  same package, in a package that package imports, or in a one-word
+  standard library package such as `errors`. Never write a full import
+  path, e.g. `[inbok/internal/account.ErrUserNotFound]`; gopls cannot
+  jump to it, so write the name plainly. The comment on an unexported
+  declaration or a test may also bracket an unexported name in its
+  package, e.g. `[emailQueue]`; `go doc` shows it as text, but gopls
+  jumps to it. The comment on any other exported declaration writes such
+  a name plainly. See
+  https://tip.golang.org/doc/comment#links.
+- A check that holds input to a rule names the rule's source above it,
+  unless the code already says it: an RFC, a library's behaviour, an
+  attack, or inbok's own choice, e.g. `// SASL PLAIN guarantees only 255
+  octets (RFC 4616).` A reader can then tell a protocol limit from a
+  number someone picked. A comment that restates the check adds nothing.
+- `NOTE:` marks only a surprise a reader must know: a tool's unexpected
+  behaviour, a workaround, a dependency on undocumented behaviour.
+- Number each step whose order is a decision the code cannot show: a step
+  that relies on what an earlier one did (a lock held, a row written, a
+  refusal before a costly or irreversible step), however few steps there
+  are: `// 2. Lock the system email settings. <reason>`, after a blank
+  line unless it opens a block. The doc comment keeps to what, inputs,
+  and returns. An interface method's doc comment states the order
+  instead, as the contract an implementation must meet.

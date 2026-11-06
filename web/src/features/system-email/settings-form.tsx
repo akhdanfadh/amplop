@@ -8,8 +8,9 @@ import {
 } from "@/api/generated/inbok";
 import type { ResponseSystemEmail, SystemEmailSettings } from "@/api/generated/model";
 import type { ApiError } from "@/api/transport";
-import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
 import { PasswordInput } from "@/components/password-input";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import {
   checkedSave,
   settingsSchema,
@@ -158,7 +160,9 @@ export function SettingsForm({
     },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const inputErrors = save.error ? formErrors(save.error, settingsFields) : undefined;
+  const summary = save.error
+    ? formSummary(userMessage(save.error), formErrors(save.error, settingsFields))
+    : [];
 
   // Once a save or check ends, focus what needs attention next.
   useEffect(() => {
@@ -225,7 +229,7 @@ export function SettingsForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors.length > 0)}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -256,7 +260,7 @@ export function SettingsForm({
                   aria-describedby={describedBy(id, errors.length > 0)}
                   // An emptied box gives NaN; show it as empty, not "NaN".
                   value={Number.isNaN(field.state.value) ? "" : field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.valueAsNumber)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -296,8 +300,13 @@ export function SettingsForm({
                         className="border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
                         id={`${id}-${option.value}`}
                         value={option.value}
-                        aria-describedby={`${id}-${option.value}-description`}
-                        onBlur={field.handleBlur}
+                        // Focus lands on a radio, not the group, so each names the error.
+                        aria-describedby={
+                          errors.length > 0
+                            ? `${id}-${option.value}-description ${id}-error`
+                            : `${id}-${option.value}-description`
+                        }
+                        onBlur={() => blurKeepingSubmitErrors(field)}
                       />
                       <FieldContent>
                         <FieldLabel htmlFor={`${id}-${option.value}`}>{option.label}</FieldLabel>
@@ -333,7 +342,7 @@ export function SettingsForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors.length > 0)}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -365,7 +374,7 @@ export function SettingsForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors.length > 0)}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -399,7 +408,7 @@ export function SettingsForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors.length > 0)}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -427,7 +436,7 @@ export function SettingsForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors.length > 0)}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
                 <FieldDescription id={`${id}-description`}>
@@ -453,30 +462,20 @@ export function SettingsForm({
       {/* The last attempt's error. Kept out of the form's own errors,
           which mean "these values are wrong" and block submitting until an
           edit. */}
-      {save.error && (
-        <div className="flex flex-col gap-3">
-          <FieldError
-            errors={[{ message: userMessage(save.error) }, ...(inputErrors?.unmatched ?? [])]}
-          />
-          {uncertain && (
-            <Button
-              ref={checkRef}
-              type="button"
-              variant="outline"
-              className={`${buttonClass} border-muted-foreground`}
-              disabled={checking}
-              onClick={() => void check()}
-            >
-              {checking ? "Checking saved settings..." : "Check saved settings"}
-            </Button>
-          )}
-          {save.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{save.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={save.error?.requestId} className="gap-3">
+        {uncertain && (
+          <Button
+            ref={checkRef}
+            type="button"
+            variant="outline"
+            className={`${buttonClass} border-muted-foreground`}
+            disabled={checking}
+            onClick={() => void check()}
+          >
+            {checking ? "Checking saved settings..." : "Check saved settings"}
+          </Button>
+        )}
+      </RequestError>
       {checkError && (
         <p role="alert">Could not check the saved settings. {userMessage(checkError)}</p>
       )}

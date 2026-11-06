@@ -79,7 +79,8 @@ func registerPasswordResetRequest(api huma.API, handler passwordResetHandler) {
 		OperationID: "requestPasswordResetLink",
 		Method:      http.MethodPost,
 		Path:        passwordResetLinksPath,
-		Summary:     "Email a link that resets a password",
+		Summary:     "Send Password Reset Link",
+		Tags:        []string{tagPasswordReset},
 		Description: "Answers at once, the same for every email. Afterwards, an active account with that verified email gets a link that expires in 1 hour, " +
 			"unless 3 links were sent to it in the last hour or 5 in 24 hours; any other email gets nothing. " +
 			"Earlier links keep working. One client may ask 10 times in 15 minutes.",
@@ -142,7 +143,8 @@ func registerPasswordResetComplete(api huma.API, handler passwordResetHandler) {
 		OperationID: "redeemPasswordResetLink",
 		Method:      http.MethodPost,
 		Path:        passwordResetRedeemPath,
-		Summary:     "Set a new password with an emailed link",
+		Summary:     "Reset Password",
+		Tags:        []string{tagPasswordReset},
 		Description: "Sets the password of the account the link was sent to, when the email given is the one the link was sent to; " +
 			"signs that account out everywhere and uses up all of its reset links. " +
 			"TOTP stays on. Needs no session and signs no one in; the account's owner is emailed that the password changed.",

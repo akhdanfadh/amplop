@@ -72,7 +72,7 @@ func (q *Queries) InsertPasswordResetLink(ctx context.Context, arg InsertPasswor
 const lockPasswordResetAccount = `-- name: LockPasswordResetAccount :one
 SELECT id, email, role, (email_verified_at IS NOT NULL)::boolean AS verified,
     (deactivated_at IS NOT NULL)::boolean AS deactivated
-FROM users WHERE email = $1 FOR UPDATE
+FROM users WHERE id = $1 FOR UPDATE
 `
 
 type LockPasswordResetAccountRow struct {
@@ -85,8 +85,8 @@ type LockPasswordResetAccountRow struct {
 
 // The account lock serializes one account's requests, so the email limits
 // count every link, and orders a request with completions and deactivations.
-func (q *Queries) LockPasswordResetAccount(ctx context.Context, email string) (LockPasswordResetAccountRow, error) {
-	row := q.db.QueryRow(ctx, lockPasswordResetAccount, email)
+func (q *Queries) LockPasswordResetAccount(ctx context.Context, id int64) (LockPasswordResetAccountRow, error) {
+	row := q.db.QueryRow(ctx, lockPasswordResetAccount, id)
 	var i LockPasswordResetAccountRow
 	err := row.Scan(
 		&i.ID,
@@ -107,6 +107,26 @@ SELECT id FROM users WHERE id = $1 FOR UPDATE
 func (q *Queries) LockPasswordResetUser(ctx context.Context, userID int64) error {
 	_, err := q.db.Exec(ctx, lockPasswordResetUser, userID)
 	return err
+}
+
+const readPasswordChangedNotice = `-- name: ReadPasswordChangedNotice :one
+SELECT email, (deactivated_at IS NULL)::boolean AS active FROM users WHERE id = $1
+FOR SHARE
+`
+
+type ReadPasswordChangedNoticeRow struct {
+	Email  string
+	Active bool
+}
+
+// The notice reads the address when it runs, which can be long after the
+// reset. FOR SHARE waits for a deactivation that holds the row, so the
+// flag is read as ADR029 asks of a feature that sends mail.
+func (q *Queries) ReadPasswordChangedNotice(ctx context.Context, id int64) (ReadPasswordChangedNoticeRow, error) {
+	row := q.db.QueryRow(ctx, readPasswordChangedNotice, id)
+	var i ReadPasswordChangedNoticeRow
+	err := row.Scan(&i.Email, &i.Active)
+	return i, err
 }
 
 const readPasswordResetLink = `-- name: ReadPasswordResetLink :one

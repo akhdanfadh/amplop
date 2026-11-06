@@ -1,5 +1,5 @@
 // Package systememail owns the instance's own mail sender: its settings, test
-// messages, and the Mailer that sends inbok's messages with them. It is
+// messages, and the [Mailer] that sends inbok's messages with them. It is
 // separate from the mailboxes members connect.
 package systememail
 
@@ -73,7 +73,7 @@ type Password struct {
 }
 
 // Record is the saved configuration. Username is empty, and Password nil,
-// when the server needs no sign-in. Storage sets TestedAt and Revision: a
+// when the server needs no sign-in. [Storage] sets TestedAt and Revision: a
 // save clears TestedAt and adds one to Revision, ignoring the Record's values.
 type Record struct {
 	Server
@@ -126,16 +126,17 @@ func (s *Service) Settings(ctx context.Context) (*Settings, error) {
 // audited, even one that changes nothing. It returns
 // [emailaddress.ErrInvalid] for an invalid From address.
 func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Settings, error) {
+	// 1. Refuse invalid input before any work.
 	from, err := emailaddress.Parse(input.FromAddress)
 	if err != nil {
 		return Settings{}, err
 	}
 	input.FromAddress = from
-	if err := checkInput(input); err != nil {
+	if err := validateInput(input); err != nil {
 		return Settings{}, err
 	}
 
-	// Encrypt before the write lock is taken.
+	// 2. Encrypt the password before the write lock is taken.
 	var sealed *Password
 	if input.Password != "" {
 		keyID, ciphertext, err := s.encryption.Seal([]byte(input.Password), passwordOwner(input.Server))
@@ -145,6 +146,7 @@ func (s *Service) Save(ctx context.Context, actorID int64, input Input) (Setting
 		sealed = &Password{KeyID: keyID, Ciphertext: ciphertext}
 	}
 
+	// 3. Under the lock, decide which password to keep, and save.
 	var saved Record
 	err = s.storage.UpdateSystemEmail(ctx, actorID, func(current *Record) (Record, error) {
 		// Keeping the password for another server would let an administrator
@@ -181,35 +183,44 @@ func passwordOwner(server Server) string {
 	return "system-email:" + strconv.Quote(server.Host) + ":" + strconv.Itoa(server.Port) + ":" + strconv.Quote(server.Username)
 }
 
-// checkInput applies the rules that need no saved state.
-func checkInput(input Input) error {
+// validateInput applies the rules that need no saved state.
+func validateInput(input Input) error {
+	// TCP ports are 16 bits, and port 0 is reserved (RFC 6335).
 	if input.Port < 1 || input.Port > 65535 {
 		return errPort
 	}
 	switch input.Security {
 	case SecurityTLS, SecuritySTARTTLS:
 	case SecurityNone:
+		// inbok never signs in without TLS, so the password never crosses the
+		// network in clear text (US018).
 		if input.Username != "" {
 			return ErrCleartextUsername
 		}
 	default:
 		return errSecurity
 	}
-	// SMTP commands end at CRLF and headers cannot hold control characters.
+	// A host is a name of letters, digits, hyphens, and dots (RFC 1123) or an
+	// IP address; neither holds a control character.
 	if strings.ContainsFunc(input.Host, unicode.IsControl) {
 		return ErrInvalidHost
 	}
+	// inbok's choice, following SASLprep, which forbids control characters
+	// (RFC 4013) and which SASL PLAIN recommends but does not require (RFC 4616).
 	if strings.ContainsFunc(input.Username, unicode.IsControl) {
 		return ErrInvalidUsername
 	}
-	// SASL PLAIN separates its fields with NUL and guarantees only 255 octets
-	// (RFC 4616).
+	// The username's rule, and SASL PLAIN separates its fields with NUL and
+	// guarantees only 255 octets (RFC 4616).
 	if strings.ContainsFunc(input.Password, unicode.IsControl) || len(input.Password) > maxPasswordBytes {
 		return ErrInvalidPassword
 	}
+	// inbok's choice, stricter than RFC 5322, which allows tabs and folded
+	// lines in a display name.
 	if strings.ContainsFunc(input.FromName, unicode.IsControl) {
 		return ErrInvalidFromName
 	}
+	// inbok sends a password only with a username, so one alone is a mistake.
 	if input.Username == "" && input.Password != "" {
 		return ErrPasswordWithoutUsername
 	}

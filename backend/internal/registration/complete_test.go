@@ -34,7 +34,7 @@ type completeMemory struct {
 	beforeLock func(*completeMemory)
 }
 
-// state returns the CompleteState for the link with hash.
+// state returns the [CompleteState] for the link with hash.
 func (m *completeMemory) state(hash [sha256.Size]byte) CompleteState {
 	state := CompleteState{Registration: m.registration}
 	at := slices.IndexFunc(m.links, func(l Link) bool { return l.TokenHash == hash })

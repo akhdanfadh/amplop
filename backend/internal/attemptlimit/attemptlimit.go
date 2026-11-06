@@ -1,7 +1,7 @@
 // Package attemptlimit decides when one more attempt fits sliding-window
 // limits, such as 5 per 15 minutes and 20 per 24 hours.
 //
-// NOTE: each throttle keeps its own key, storage, and lock in its feature
+// DESIGN: each throttle keeps its own key, storage, and lock in its feature
 // and passes the times it counted here, so every throttle counts a window's
 // edge the same way and can say how long to wait. ADR024 records the choice.
 package attemptlimit
@@ -18,10 +18,10 @@ type Error struct {
 	Wait time.Duration
 }
 
-// Error returns Err's text.
+// Error returns [Error.Err]'s text.
 func (e *Error) Error() string { return e.Err.Error() }
 
-// Unwrap returns Err, so errors.Is matches the feature's error.
+// Unwrap returns [Error.Err], so [errors.Is] matches the feature's error.
 func (e *Error) Unwrap() error { return e.Err }
 
 // Limit allows at most Max attempts in any period of length Window. Max must
@@ -34,7 +34,7 @@ type Limit struct {
 // Wait returns how long after now one more attempt fits every limit, given
 // the times of the attempts already counted, in any order. It returns zero
 // when the attempt fits now. An attempt counts toward a limit until it is
-// Window old; at exactly Window old it no longer counts.
+// [Limit.Window] old; at exactly [Limit.Window] old it no longer counts.
 func Wait(times []time.Time, now time.Time, limits ...Limit) time.Duration {
 	var wait time.Duration
 	for _, limit := range limits {

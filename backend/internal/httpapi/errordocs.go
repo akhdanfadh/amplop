@@ -8,20 +8,9 @@ status, title, and detail. Quote the X-Request-ID response header when
 reporting a failure.
 
 Each operation documents its specific failures with examples. Its default
-response covers other errors using the same Problem schema, including:
-
-| Status | Meaning |
-| --- | --- |
-| 400 | The request cannot be parsed. |
-| 401 | A valid session is required. |
-| 403 | The write request's source or the account's access is not allowed. |
-| 404 | The route or resource was not found. |
-| 405 | The route does not support this method; see the Allow header. |
-| 408 | Receiving the request body took too long. |
-| 413 | The request body is too large. |
-| 415 | The request content type is unsupported. |
-| 422 | Parsed input violates the request rules. |
-| 500 | An unexpected server failure occurred. |
+response covers the shared ones, which Problem types below marks Any, using
+the same Problem schema. A 405 lists the route's methods in the Allow
+header.
 
 Body errors apply to operations that accept a body. A default response
 describes the body format, not a replacement HTTP status.
@@ -32,6 +21,10 @@ send an Origin matching the request's target.
 Writes that need no session, such as sign-in, also limit how fast one client
 can send each of them. Past that limit they answer 429 with type
 too-many-requests and Retry-After, before reading the request body.
+
+A request still waiting when its time runs out, e.g. for a busy resource,
+answers 503 with type service-busy and Retry-After. A write may have taken
+effect before the time ran out.
 
 Input errors can include an errors list with field locations and safe
 correction messages. For example, a 422 response from POST /setup:

@@ -7,11 +7,13 @@ import {
   useSendSystemEmailTestMessage,
 } from "@/api/generated/inbok";
 import { SystemEmailTestMessageRecipient, type SystemEmailSettings } from "@/api/generated/model";
-import { formErrors, uncertainOutcome } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome } from "@/api/problem";
 import { ApiError } from "@/api/transport";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { testErrorMessage, testResultMessage } from "./test-result";
 
 const recipientFields = ["recipient"] as const;
@@ -92,7 +94,9 @@ export function TestMessageForm({
       : undefined;
   const error = current ? send.error : null;
   const failed = result?.status === "failed";
-  const inputErrors = error ? formErrors(error, recipientFields) : undefined;
+  const summary = error
+    ? formSummary(testErrorMessage(error), formErrors(error, recipientFields))
+    : [];
 
   // The button is disabled while sending; give focus back once it ends.
   useEffect(() => {
@@ -135,7 +139,7 @@ export function TestMessageForm({
                 aria-invalid={errors.length > 0}
                 aria-describedby={`${id}-description ${statusId}${errors.length > 0 ? ` ${id}-error` : ""}`}
                 value={field.state.value}
-                onBlur={field.handleBlur}
+                onBlur={() => blurKeepingSubmitErrors(field)}
                 onChange={(event) => field.handleChange(event.target.value)}
               />
               <FieldDescription id={`${id}-description`}>
@@ -157,18 +161,7 @@ export function TestMessageForm({
         {send.isPending ? "Sending test message..." : "Send test message"}
       </Button>
 
-      {error && (
-        <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[{ message: testErrorMessage(error) }, ...(inputErrors?.unmatched ?? [])]}
-          />
-          {error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={error?.requestId} />
       <output aria-atomic="true" className={failed ? "text-destructive" : undefined}>
         {result && testResultMessage(result, result.recipient)}
       </output>

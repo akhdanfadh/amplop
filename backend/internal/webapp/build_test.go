@@ -30,7 +30,7 @@ func testFiles() fstest.MapFS {
 	}
 }
 
-// serve sends request to a [Build] of testFiles. A path the build has
+// serve sends request to a [Build] of [testFiles]. A path the build has
 // nothing for answers 404, as the API does.
 func serve(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
@@ -43,7 +43,7 @@ func serve(t *testing.T, request *http.Request) *httptest.ResponseRecorder {
 	return response
 }
 
-// get sends a GET for target to a [Build] of testFiles.
+// get sends a GET for target to a [Build] of [testFiles].
 func get(t *testing.T, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	return serve(t, httptest.NewRequest(http.MethodGet, target, nil))

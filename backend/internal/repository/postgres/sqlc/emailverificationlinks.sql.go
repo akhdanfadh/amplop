@@ -58,14 +58,14 @@ func (q *Queries) DeleteUserEmailVerificationLinks(ctx context.Context, userID i
 }
 
 const insertEmailVerificationLink = `-- name: InsertEmailVerificationLink :exec
-INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at)
+INSERT INTO email_verification_links (token_hash, user_id, email, created_at, expires_at)
 VALUES ($1, $2, $3, $4, $5)
 `
 
 type InsertEmailVerificationLinkParams struct {
 	TokenHash []byte
 	UserID    int64
-	Address   string
+	Email     string
 	CreatedAt time.Time
 	ExpiresAt time.Time
 }
@@ -74,7 +74,7 @@ func (q *Queries) InsertEmailVerificationLink(ctx context.Context, arg InsertEma
 	_, err := q.db.Exec(ctx, insertEmailVerificationLink,
 		arg.TokenHash,
 		arg.UserID,
-		arg.Address,
+		arg.Email,
 		arg.CreatedAt,
 		arg.ExpiresAt,
 	)
@@ -127,13 +127,13 @@ func (q *Queries) LockEmailVerificationUser(ctx context.Context, userID int64) (
 }
 
 const readEmailVerificationLink = `-- name: ReadEmailVerificationLink :one
-SELECT user_id, address, created_at, expires_at FROM email_verification_links
+SELECT user_id, email, created_at, expires_at FROM email_verification_links
 WHERE token_hash = $1
 `
 
 type ReadEmailVerificationLinkRow struct {
 	UserID    int64
-	Address   string
+	Email     string
 	CreatedAt time.Time
 	ExpiresAt time.Time
 }
@@ -143,7 +143,7 @@ func (q *Queries) ReadEmailVerificationLink(ctx context.Context, tokenHash []byt
 	var i ReadEmailVerificationLinkRow
 	err := row.Scan(
 		&i.UserID,
-		&i.Address,
+		&i.Email,
 		&i.CreatedAt,
 		&i.ExpiresAt,
 	)

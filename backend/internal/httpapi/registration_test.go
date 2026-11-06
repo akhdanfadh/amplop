@@ -212,7 +212,7 @@ func postPublic(api *API, path, body string) *httptest.ResponseRecorder {
 }
 
 // requestMemory keeps registration attempts in memory for the real
-// registration.Requests.
+// [registration.Requests].
 type requestMemory struct {
 	accounts []string // emails that have an account
 	attempts []registration.Attempt
@@ -255,11 +255,11 @@ func TestRequestRegistrationLinkSameResponse(t *testing.T) {
 	storage := &requestMemory{accounts: []string{"member@example.org"}}
 	for range 3 {
 		storage.attempts = append(storage.attempts, registration.Attempt{
-			Email: "busy@example.org", ClientAddr: "198.51.100.1", Outcome: registration.OutcomeLink, CreatedAt: time.Now(),
+			Email: "busy@example.org", ClientPrefix: "198.51.100.1/32", Outcome: registration.OutcomeLink, CreatedAt: time.Now(),
 		})
 	}
 	mailer := &recordingMailer{}
-	requests := registration.NewRequests(storage, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, time.Now)
+	requests := registration.NewRequests(storage, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, time.Now, discard)
 	api := New(discard, Services{RegistrationRequests: requests})
 
 	var responses []*httptest.ResponseRecorder

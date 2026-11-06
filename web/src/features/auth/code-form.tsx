@@ -2,7 +2,8 @@ import { Fragment, useEffect, useRef, useState, type ReactElement } from "react"
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateSessionWithCode, useGetCurrentSession } from "@/api/generated/inbok";
-import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
@@ -11,6 +12,7 @@ import {
   InputOTPSeparator,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { clearAccountCache } from "./session-cache";
 import { challengeEnded, sessionMessage } from "./session-error";
 import { codeFormats, codePaste, codeSchema, type CodeKind } from "./code-schema";
@@ -83,6 +85,10 @@ export function CodeForm({
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
   const inputErrors = create.error ? formErrors(create.error, codeFields) : undefined;
+  const summary =
+    create.error && inputErrors
+      ? formSummary(sessionMessage(create.error, "sign-in"), inputErrors)
+      : [];
   const codeRejected = Boolean(inputErrors?.fields.code);
 
   useEffect(() => {
@@ -183,7 +189,7 @@ export function CodeForm({
                   aria-invalid={errors.length > 0}
                   aria-describedby={errors.length ? "sign-in-code-error" : undefined}
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   onChange={field.handleChange}
                 >
                   {groups.map((offset) => (
@@ -217,21 +223,7 @@ export function CodeForm({
         {create.isPending ? "Verifying..." : "Verify and sign in"}
       </Button>
 
-      {create.error && (
-        <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[
-              { message: sessionMessage(create.error, "sign-in") },
-              ...(inputErrors?.unmatched ?? []),
-            ]}
-          />
-          {create.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{create.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={create.error?.requestId} />
       {create.error && uncertainOutcome(create.error) && (
         <div className="flex flex-col gap-3">
           <Button

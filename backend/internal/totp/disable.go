@@ -40,14 +40,17 @@ func NewDisabler(storage disableStore, encryption opener, verifier *Verifier, th
 
 // Disable requires a checked user's ID; its role is rechecked inside storage.
 func (s *Disabler) Disable(ctx context.Context, userID int64, code string) error {
+	// 1. Reserve an attempt before any code is verified.
 	attemptID, err := s.throttle.Begin(ctx, userID)
 	if err != nil {
 		return err
 	}
 
-	checked := false
+	verified := false
 	err = s.storage.DisableTOTP(ctx, userID, attemptID, func(state DisableState) error {
-		// A stale role from HTTP must not race a promotion into disabling admin TOTP.
+		// 2. Under the owner's lock, refuse before verifying anything. A
+		// stale role from HTTP must not race a promotion into disabling
+		// admin TOTP.
 		if state.Role != account.RoleMember {
 			return ErrDisableForbidden
 		}
@@ -55,29 +58,32 @@ func (s *Disabler) Disable(ctx context.Context, userID int64, code string) error
 			return ErrNotOn
 		}
 
+		// 3. Verify the code: a TOTP code against the decrypted secret, or
+		// else a backup code.
 		if isTOTPCode(code) {
 			secret, err := s.encryption.Open(state.Factor.KeyID, state.Factor.Ciphertext, "totp:"+strconv.FormatInt(userID, 10))
 			if err != nil {
 				return err
 			}
 
-			checked = true
-			_, err = s.verifier.Check(string(secret), code, state.Factor.LastStep)
+			verified = true
+			_, err = s.verifier.Verify(string(secret), code, state.Factor.LastStep)
 			return err
 		}
 
-		checked = true
+		verified = true
 		// Factor deletion consumes all remaining codes, including this matched proof.
 		_, err := MatchBackupCode(ctx, code, state.BackupHashes)
 		// A request that ended while waiting to compare made no guess.
-		if errors.Is(err, ErrNotChecked) {
-			checked = false
+		if errors.Is(err, ErrNotVerified) {
+			verified = false
 		}
 		return err
 	})
-	// A request refused before any code check, e.g. for an administrator or
-	// with TOTP off, made no guess, so it releases its attempt.
-	if err != nil && !checked {
+
+	// 4. Release the attempt when no code was verified. A request refused
+	// before that, e.g. for an administrator or with TOTP off, made no guess.
+	if err != nil && !verified {
 		s.throttle.Release(ctx, attemptID)
 	}
 	return err

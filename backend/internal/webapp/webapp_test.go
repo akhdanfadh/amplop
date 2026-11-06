@@ -23,7 +23,7 @@ func TestFiles(t *testing.T) {
 	assert.Equal(t, onDisk, err == nil, "the embedded files must match the folder on disk")
 }
 
-// Files is rooted at the build folder, where the placeholder always is.
+// [Files] is rooted at the build folder, where the placeholder always is.
 func TestFilesRoot(t *testing.T) {
 	_, err := fs.Stat(Files(), ".gitkeep")
 

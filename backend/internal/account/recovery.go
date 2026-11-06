@@ -47,20 +47,25 @@ func NewRecovery(storage recoveryStore) *Recovery {
 // Recover replaces an administrator's password and removes old authentication data.
 // Administrator access requires fresh TOTP enrollment through the web app.
 func (s *Recovery) Recover(ctx context.Context, email, password string) (RecoveryResult, error) {
+	// 1. Refuse a target that is not an administrator.
 	user, err := s.Administrator(ctx, email)
 	if err != nil {
 		return RecoveryResult{}, err
 	}
 
-	if err := CheckPassword(password); err != nil {
+	// 2. Refuse a password that breaks the rule.
+	if err := ValidatePassword(password); err != nil {
 		return RecoveryResult{}, err
 	}
 
-	// Finish Argon2id before acquiring the user lock.
+	// 3. Finish Argon2id before acquiring the user lock.
 	hash, err := passwordhash.Hash(ctx, password)
 	if err != nil {
 		return RecoveryResult{}, err
 	}
+
+	// 4. Under the user's lock, check the role again and replace the
+	// password.
 	return s.storage.UpdateRecovery(ctx, user.ID, func(user User) (string, error) {
 		if user.Role != RoleAdmin {
 			return "", ErrRecoveryForbidden
@@ -70,8 +75,8 @@ func (s *Recovery) Recover(ctx context.Context, email, password string) (Recover
 }
 
 // Administrator checks the recovery target before the command reads a password.
-// Recover repeats the lookup and checks the role again under the storage lock.
-// It returns [emailaddress.ErrInvalid] for an invalid email.
+// [Recovery.Recover] repeats the lookup and checks the role again under the
+// storage lock. It returns [emailaddress.ErrInvalid] for an invalid email.
 func (s *Recovery) Administrator(ctx context.Context, email string) (User, error) {
 	email, err := emailaddress.Parse(email)
 	if err != nil {

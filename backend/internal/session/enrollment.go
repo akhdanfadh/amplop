@@ -26,7 +26,7 @@ type EnrollmentChange struct {
 
 type enrollmentStore interface {
 	// ConfirmTOTP locks the user, then the session, and loads the factor.
-	// A missing user or session, or a deactivated user, returns ErrNotFound.
+	// A missing user or session, or a deactivated user, returns [ErrNotFound].
 	// On callback success it saves the factor and hashes, replaces all user
 	// sessions with the new session, and removes this user's successful
 	// attempt in the same transaction.
@@ -67,29 +67,32 @@ type Confirmed struct {
 // Confirm requires a current TOTP code for the pending factor.
 // The replacement session keeps the device details of this request.
 func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code string, device Device) (Confirmed, error) {
-	// Go permits an empty Authenticated value; reject it before reserving an attempt.
+	// 1. Refuse an empty Authenticated value, which Go permits, before
+	// reserving an attempt.
 	userID := current.Identity.User.ID
 	if current.Session == (Reference{}) || userID <= 0 {
 		return Confirmed{}, ErrUnauthenticated
 	}
 
+	// 2. Reserve an attempt before any code is verified.
 	attemptID, err := e.throttle.Begin(ctx, userID)
 	if err != nil {
 		return Confirmed{}, err
 	}
 
-	// Hash all ten codes before storage takes a write lock.
+	// 3. Hash all ten backup codes before storage takes a write lock.
 	backups, err := totp.NewBackupCodes(ctx)
 	if err != nil {
-		// No code was checked.
+		// No code was verified.
 		e.throttle.Release(ctx, attemptID)
 		return Confirmed{}, err
 	}
 	issued := newSession(userID, device, e.now)
 
-	checked := false
+	verified := false
 	err = e.storage.ConfirmTOTP(ctx, userID, current.Session.hash, func(state EnrollmentState) (EnrollmentChange, error) {
-		// Current's earlier session check can become stale; recheck under the lock.
+		// 4. Check the session again under the lock: Current's earlier check
+		// can become stale.
 		if state.Session.UserID != userID || state.Session.TokenHash != current.Session.hash {
 			return EnrollmentChange{}, ErrUnauthenticated
 		}
@@ -97,6 +100,7 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 			return EnrollmentChange{}, ErrUnauthenticated
 		}
 
+		// 5. Refuse when no factor is pending.
 		if state.Factor == nil {
 			return EnrollmentChange{}, totp.ErrNotPending
 		}
@@ -104,14 +108,16 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 			return EnrollmentChange{}, totp.ErrAlreadyOn
 		}
 
-		// Bind decryption to this owner before checking the code and replay history.
+		// 6. Decrypt the secret, bound to this owner, before verifying the
+		// code and its replay history.
 		secret, err := e.encryption.Open(state.Factor.KeyID, state.Factor.Ciphertext, "totp:"+strconv.FormatInt(userID, 10))
 		if err != nil {
 			return EnrollmentChange{}, err
 		}
 
-		checked = true
-		step, err := e.verifier.Check(string(secret), code, state.Factor.LastStep)
+		// 7. Verify the code.
+		verified = true
+		step, err := e.verifier.Verify(string(secret), code, state.Factor.LastStep)
 		if err != nil {
 			return EnrollmentChange{}, err
 		}
@@ -129,9 +135,10 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 		}, nil
 	})
 
-	// A request refused before any code check, e.g. with nothing pending or
-	// a stale session, made no guess, so it releases its attempt.
-	if err != nil && !checked {
+	// 8. Release the attempt when no code was verified. A request refused
+	// before that, e.g. with nothing pending or a stale session, made no
+	// guess.
+	if err != nil && !verified {
 		e.throttle.Release(ctx, attemptID)
 	}
 	if errors.Is(err, ErrNotFound) {
@@ -141,6 +148,7 @@ func (e *Enrollment) Confirm(ctx context.Context, current Authenticated, code st
 		return Confirmed{}, err
 	}
 
-	// Reveal the cookie secret and display codes only after storage commits.
+	// 9. Reveal the cookie secret and display codes only after storage
+	// commits.
 	return Confirmed{Session: issued, BackupCodes: backups.Codes}, nil
 }

@@ -12,14 +12,14 @@ import (
 	"inbok/internal/account"
 )
 
-// membersNow has nanoseconds, which saving drops: a deactivation at
-// membersNow is saved at membersSaved.
+// [membersNow] has nanoseconds, which saving drops: a deactivation at
+// [membersNow] is saved at membersSaved.
 var (
 	membersNow   = time.Date(2026, 11, 2, 9, 30, 0, 123456789, time.UTC)
 	membersSaved = time.Date(2026, 11, 2, 9, 30, 0, 123456000, time.UTC)
 )
 
-// memberAccounts are the accounts newMemberAccounts saves.
+// memberAccounts are the accounts [newMemberAccounts] saves.
 type memberAccounts struct {
 	db        *DB
 	conn      *pgx.Conn
@@ -34,7 +34,7 @@ type memberAccounts struct {
 // sign-in challenge, an email verification link, a password reset link, and
 // a TOTP attempt; and a bystander member with a session, a challenge, and
 // both kinds of link. It returns them
-// with a service whose clock reads membersNow.
+// with a service whose clock reads [membersNow].
 func newMemberAccounts(t *testing.T) memberAccounts {
 	t.Helper()
 
@@ -65,7 +65,7 @@ func newMemberAccounts(t *testing.T) memberAccounts {
 			FROM users, generate_series(1, 2) AS n WHERE id = $1 OR n = 1`, []any{f.member}},
 		{`INSERT INTO sign_in_challenges (token_hash, user_id, expires_at)
 			SELECT decode(md5(email), 'hex'), id, now() + interval '5 minutes' FROM users`, nil},
-		{`INSERT INTO email_verification_links (token_hash, user_id, address, created_at, expires_at)
+		{`INSERT INTO email_verification_links (token_hash, user_id, email, created_at, expires_at)
 			SELECT decode(md5(email), 'hex'), id, email, now(), now() + interval '1 day' FROM users WHERE id IN ($1, $2)`, []any{f.member, f.bystander}},
 		{`INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
 			SELECT decode(md5(email), 'hex'), id, email, now(), now() + interval '1 hour' FROM users WHERE id IN ($1, $2)`, []any{f.member, f.bystander}},

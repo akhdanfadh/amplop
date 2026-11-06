@@ -210,11 +210,11 @@ func TestSessionDeviceStorage(t *testing.T) {
 }
 
 // currentCookie is the base64url encoding of 32 zero bytes, the secret of
-// userSessions' current session.
+// [userSessions]' current session.
 var currentCookie = base64.RawURLEncoding.EncodeToString(make([]byte, 32))
 
 // userSessions holds user A's current, other, and expired sessions, and user
-// B's session, all inserted through InsertSession.
+// B's session, all inserted through [DB.InsertSession].
 type userSessions struct {
 	db                               *DB
 	current, other, expired, foreign session.State

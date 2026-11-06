@@ -58,7 +58,10 @@ halfway, runs in a separate process, `inbok worker`, on
 [DBOS](https://docs.dbos.dev). DBOS saves each piece of work as a
 **workflow** in PostgreSQL, in the `dbos` schema, and records each
 finished **step**, so a stopped workflow resumes where it left off.
-`serve` does not use DBOS. ADR004 in the project's decision records
+`serve` runs no workflows; it saves one with the change that needs it,
+e.g. a [password reset link](#password-reset-link) with its request,
+through a DBOS client (`dbos.Client`), so it too needs the workflow
+tables `migrate` creates. ADR004 in the project's decision records
 explains the choice.
 
 `make dev` runs the worker beside `serve`, restarting it when a Go file
@@ -225,8 +228,65 @@ warning unless it was sent, or `recovery notice failed` with the error.
 That error, which DBOS also keeps with the run, names only the failed
 step, e.g. `failed at auth, unconfirmed`, never the server's reply: a
 reply can quote what inbok sent, the SMTP password included. The
-mailer's own warning has the reply. DBOS's tables keep only IDs and
-outcomes with the run, no address.
+mailer's own warning has the reply, except a sign-in's, of which it keeps
+only the code. DBOS's tables keep only IDs and outcomes with the run, no
+address.
+
+### Password reset link
+
+The workflow `inbok.password-reset-link`, run from the queue
+`inbok.email`, sends the link a [password reset request](#asking-for-a-link-1)
+asked for. `serve` saves it in the request's own transaction, so a request
+that was answered always gets its job, even if `serve` stops right after.
+Its input is the request's attempt ID and the ID of the account with the
+requested email, 0 for none; it holds no email. Its one step, `send link`,
+locks the account and sends nothing when there is none, it is unverified
+or deactivated, or it is over its limits; otherwise it saves a link and
+mails it.
+
+Saving and sending are one step because the link's secret must not be
+recorded for a later one. A send that retrying cannot fix ends the run
+with its outcome: system email not configured, an unusable address or
+saved password, or a recipient the mail server refuses with a
+[permanent](#system-email) 5xx reply. Any other failure,
+[unconfirmed](#system-email) sends included, is retried 3 more times,
+waiting 1, 2, then 2 minutes: the member is waiting on the page, and after
+that asking again does better than a late link. DBOS counts these retries
+in memory, so a worker restarted meanwhile starts the count again. Each
+try saves a new link, so a retry may deliver a second working link, and
+each counts toward the account's limits: the request's attempt counts the
+first, and every later one gets an attempt row of its own with no client,
+so the client's limit, which counts requests, leaves it out. A retry at
+the account's limit therefore sends nothing.
+
+The run logs `password reset link` with the `attempt_id`, the `user_id`,
+and its outcome, a warning unless it was sent or skipped for lack of an
+eligible account, or
+`password reset link failed` with the error once its retries run out. That
+error, which DBOS also keeps with the run, names only where the send
+failed, e.g. `failed at timeout, unconfirmed`, never the server's reply,
+which can quote the message and its live link.
+
+### Password changed notice
+
+The workflow `inbok.password-changed-notice`, run from the queue
+`inbok.email`, tells a user that a reset link changed their password, so a
+reset they did not ask for does not go unnoticed. [Completing a
+reset](#completing-a-reset) saves it in the reset's own transaction, so a
+reset that committed always gets its notice. Its input is the user's ID
+and the time of the change, which the email names. Its one step, `send
+notice`, reads the user's current email, since it may run long after the
+reset, and sends nothing when the user is gone or deactivated. It reads
+under a share lock, so it waits for a deactivation in progress.
+
+A send that retrying cannot fix ends the run with its outcome, as for the
+[reset link](#password-reset-link). Any other failure, unconfirmed sends
+included, is retried 5 more times, waiting 1, 2, 4, 8, then 15 minutes,
+like the [recovery notice](#recovery-notice): no one waits for it, and a
+late notice still tells. So a user may get the notice twice. The run logs `password changed notice` with the
+`user_id` and its outcome, a warning unless it was sent or skipped for a
+user gone or deactivated, or `password changed notice failed` with an
+error that names only where the send failed.
 
 ### Inspecting workflows
 
@@ -384,7 +444,11 @@ web app and API on the same origin, including the scheme, host, and port.
 
 JSON success responses put their payload in `data`. Response schemas live
 only in the OpenAPI document: responses carry no `$schema` field or `Link`
-header. Operation IDs use camelCase. Handlers build success bodies with
+header. Operation IDs use camelCase. Each operation lists one tag from
+`tags.go`, which groups it in the API reference, and a summary that is a
+Title Case title of at most five words, e.g. `Sign In with Code`; what it
+does in detail goes in `Description`. `TestTags` and
+`TestOperationSummaries` check both. Handlers build success bodies with
 `respondData`. Schema names come from Go type names, e.g.
 `ResponseHealthStatus`, and become the generated client's type names, so
 renaming a payload type is a breaking change.
@@ -395,7 +459,9 @@ then sets its failure descriptions and examples. Pass that map as `Responses`
 when registering the operation. The shared helper includes a `default`
 Problem response for shared errors. Avoid `Operation.Errors`: Huma adds
 separate 422 and 500 entries to that list.
-The API overview explains shared statuses and shows a field-error example.
+The API overview explains shared errors, shows a field-error example, and
+lists every problem type in a table that `registerProblemTypes` builds from
+the operations' examples and `sharedProblems`.
 
 The API base path is `/api/v0`; operation paths such as `/health` are
 relative to it. The OpenAPI document advertises this relative base, so it
@@ -444,7 +510,9 @@ Handlers map known service errors with `newProblem`, choosing safe public
 text and a stable type. This includes expected 5xx failures: an explicitly
 mapped 503 can explain maintenance. Unclassified errors are returned as is,
 become a fixed 500 `internal-error`, and log their technical cause with the
-request ID. Huma status helpers alone do not declare text safe for display.
+request ID. One that the request's own deadline caused becomes a 503
+`service-busy` instead (see [Timeouts and shutdown](#timeouts-and-shutdown)).
+Huma status helpers alone do not declare text safe for display.
 
 The contract lists problem types in the `ProblemType` schema:
 `registerProblemTypes` collects every type an operation shows in a response
@@ -504,17 +572,22 @@ not a redirect.
 
 ## Timeouts and shutdown
 
-Each request receives a context with a 10-second deadline. Database queries
-and other calls using that context can stop when it expires. The deadline does
-not forcibly stop handlers or undo completed writes. Returning the context's
-deadline error from a handler produces a safe 500 Problem Details response and
-logs `context deadline exceeded`.
+Each request receives a context with a 10-second deadline. Database queries and
+other calls using that context can stop when it expires. The deadline does not
+forcibly stop handlers or undo completed writes. Returning the context's
+deadline error from a handler, wrapped or not, after the deadline produces a
+503 `service-busy` with `Retry-After`, the deadline in whole seconds, and logs
+the cause as a warning, "request timed out". The request's own log line is a
+warning too, as for every 503; other 5xx lines are errors. A deadline error
+from inside a call while the request still has time stays an unexpected 500. A
+write may have committed before the deadline, so the 503 does not say it was
+not.
 
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and gives
-in-flight requests up to 5 seconds to finish. What is left of those 5 seconds
-goes to password reset emails still being sent, which their requests did not
-wait for (see [Password reset](#password-reset)); any still sending then are
-lost, and a warning says so.
+in-flight requests up to 5 seconds to finish. The password reset link and
+the password changed notice are [background jobs](#background-work) saved
+with their request, so stopping loses neither; other email is sent inside
+its request.
 
 ## Configuration
 
@@ -666,7 +739,7 @@ more. Every caller shares it:
 sign-in, setup, registration, password reset, TOTP backup codes, and
 `inbok recover-admin`.
 A wait that outlives the request's context ends it; one that outlives the
-10-second request deadline is a 500 (see
+10-second request deadline is a 503 `service-busy` (see
 [Timeouts and shutdown](#timeouts-and-shutdown)). A TOTP request that ends
 while waiting to check its first backup code made no guess, so it gives
 its attempt back.
@@ -811,9 +884,10 @@ Session rules are constants, not environment settings:
   its SHA-256 hash. Cookie secrets, passwords, and hashes must not be logged.
 
 Throttling uses PostgreSQL across API instances. Within 15 minutes, at most
-5 failed sign-ins are allowed for one normalized email and client address,
-and 50 failures for one address across all emails. Setup attempts share the
-address limit. A pending attempt counts until a successful verification
+5 failed sign-ins are allowed for one normalized email and client, and 50
+failures for one client across all emails. A client is an IPv4 address or
+an IPv6 /64 (`clientprefix`), as in every limit. Setup attempts share the
+client limit. A pending attempt counts until a successful verification
 removes it, so parallel password checks cannot bypass the limits. A blocked
 attempt returns HTTP 429 with `Retry-After`: the seconds until one more
 attempt fits, rounded up. These limits are constants too.
@@ -945,9 +1019,11 @@ ORDER BY id DESC;
 ## System email
 
 System email is the mail server inbok sends its own messages through,
-separate from members' mailboxes. It has no environment variables: an
-administrator with confirmed TOTP configures it on the web app's Settings
-page, which calls `GET` and `PUT /api/v0/system-email` and
+separate from members' mailboxes. It has no environment variables, because
+a test send must pass on the current settings before registration opens and
+each save is audited; US018 records the rule. An administrator with
+confirmed TOTP configures it on the web app's Settings page, which calls
+`GET` and `PUT /api/v0/system-email` and
 `POST /api/v0/system-email/test-message`. It sends test messages and
 [email verification](#email-verification) links.
 
@@ -985,10 +1061,30 @@ the server's last reply, has at most 8 seconds, inside the 10-second request
 limit. A failed send logs a warning with its purpose, e.g. `test message`,
 the reason, host, port, security, username, and the first 512 bytes of the
 error. inbok never adds the password; the text can include the server's own
-reply. The warning carries the `request_id` of the request that sent it:
+reply, except at sign-in. A reply to the sign-in can quote the Base64
+credentials inbok sent, the password included, so a failed sign-in keeps
+only the reply's code and enhanced code, e.g. `SMTP error 535: 5.7.8`, or
+`unexpected reply to the sign-in` for a reply it cannot use. A later reply
+keeps its text, but the credentials' Base64 lines become `[credentials]`
+and the recipient's address, in any letter case, becomes `[recipient]`,
+e.g. `SMTP error 550: <[recipient]> unknown`, so the logged reply carries
+neither; a malformed one keeps none of its text. The warning carries the
+`request_id` of the request that sent it.
+Two choices each email makes decide what a send does:
+
+- **Private** when its body holds a secret, something that grants access if
+  read, e.g. a link's token: the warning then leaves out the server's reply,
+  which can quote the message. Reset, registration, and verification links
+  are private; notices and test messages are not.
+- **Tested settings required** for mail nobody asked for, e.g. the
+  [recovery notice](#recovery-notice) to other administrators: it is not
+  sent, or retried, through settings no one has seen work. Mail someone
+  asked for or caused, e.g. a link or the notice of their own reset, goes
+  out whenever settings are configured, so a saved but untested change
+  does not stop it.
 
 ```text
-time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="..." request_id=0b9d6a56-3f4e-4c1a-9d2b-7e8f0a1b2c3d
+time=2026-11-01T10:00:00.000+07:00 level=WARN msg="system email send failed" purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com err="send failed at auth: SMTP error 535: 5.7.8" request_id=0b9d6a56-3f4e-4c1a-9d2b-7e8f0a1b2c3d
 ```
 
 A send is **unconfirmed** when inbok had written the whole message, final
@@ -1007,7 +1103,8 @@ that retries, which can stop. A 4xx reply, e.g. greylisting, and a
 dropped connection are not. Servers do not always follow the RFC, e.g. a
 full mailbox can answer 552 and later accept, so a caller decides per
 step whether to trust it. For a message that is not private, the reply,
-code included, is in the warning's `err`.
+code included, is in the warning's `err`; for a failed sign-in, only the
+code.
 
 To list saves, with no setting values:
 
@@ -1052,14 +1149,15 @@ as a redeem, starts it over. The link is saved before the send, so a 502
 `email-not-sent` still counts toward the limit, and an
 [unconfirmed](#system-email) message may arrive and work. A failed send logs the same warning as a test message, with
 `purpose="email verification"`, but without the server's reply, which can
-quote the link. A test message to the same server shows the reply.
+quote the link. A test message to the same server shows the reply, except
+at sign-in, where it shows only the reply's code.
 
 The link is `INBOK_PUBLIC_URL` + `/verify-email#` + a 32-byte random secret
 in unpadded base64url. Browsers never send the part after `#` to a server,
 so the secret stays out of inbok's and its proxy's request logs and out of
 Referer headers. It still sits in the email, in the browser's history, and
 with any service that rewrites links in mail. Only the secret's SHA-256 hash
-is saved, in `email_verification_links`, with the address it was sent to. A
+is saved, in `email_verification_links`, with the email it was sent to. A
 link expires after 24 hours. Every unexpired link works until one is used.
 
 `POST /api/v0/email-verifications/redeem` takes the secret, needs no session,
@@ -1196,10 +1294,13 @@ The same answer for all three keeps the response from telling whether an
 email has an account. Other answers:
 
 - 409 `registration-closed`: registration is closed or paused.
-- 429 `registration-throttled` with `Retry-After`: this client IP asked 10
-  times in 15 minutes, or everyone together asked 50 times in the last hour.
-  Both limits are checked before the email's own, so a 429 never depends on
-  the email.
+- 429 `registration-throttled` with `Retry-After`: this client (an IPv4
+  address or an IPv6 /64) asked 10 times in 15 minutes, or everyone
+  together asked 50 times in the last hour. Both limits are checked before
+  the email's own, so a 429 never depends on the email. A refusal by the
+  limit on everyone logs a warning,
+  `msg="registration limit on everyone reached" wait=...`, since it refuses
+  every visitor and may mean someone is keeping it full.
 - 502 `email-not-sent`: the send failed. The link stays saved and counts,
   and an [unconfirmed](#system-email) message may still arrive. The
   warning logged has
@@ -1230,8 +1331,8 @@ hourly [cleanup](#scheduled-cleanup) deletes expired links.
 
 `POST /api/v0/registration/links/redeem` takes `{"secret", "email",
 "password"}` and needs no session. The password follows setup's rule, 15 to
-128 characters, checked by `account.CheckPassword`. The email is the one the
-visitor types; it must be the link's, after `emailaddress.Parse`. Otherwise
+128 characters, validated by `account.ValidatePassword`. The email is the one
+the visitor types; it must be the link's, after `emailaddress.Parse`. Otherwise
 someone could ask for a link to an address they control, send it to a
 visitor, and have the visitor create that account, which its owner can
 later take back with a password reset.
@@ -1308,34 +1409,41 @@ client's address, which answers the same for every address. Before it
 returns, it only:
 
 1. checks that the email is valid (`emailaddress.Parse`);
-2. under a lock on the client, records an attempt in
-   `password_reset_attempts`, unless the client already made 10 in the
-   last 15 minutes. A client is an IPv4 address or an IPv6 /64
-   (`clientprefix`). Over the limit it returns an `*attemptlimit.Error`
-   wrapping `passwordreset.ErrThrottled` with the wait.
+2. in one transaction, under a lock on the client, records an attempt in
+   `password_reset_attempts`, looks up the ID of the account with the
+   email, and saves the [reset link job](#password-reset-link) with both,
+   unless the client already made 10 requests in the last 15 minutes. A
+   client is an IPv4 address or an IPv6 /64 (`clientprefix`). Over the
+   limit it returns an `*attemptlimit.Error` wrapping
+   `passwordreset.ErrThrottled` with the wait.
 
-It reads nothing about the account, so its answer and timing are the
-same whether the address has one. The rest is background work that
-`Request` starts and does not wait for, run by `passwordreset.Background`
-as the notice after a reset is (see [Completing a reset](#completing-a-reset)).
-In one transaction it locks the account with the email, if any, and
-decides:
+Every request does the same work, whether or not an account has the
+email, so the answer and its timing are nearly the same either way: an
+indexed lookup that finds a row costs a few microseconds more than one
+that does not, far below a network's jitter, and the client limit leaves
+too few tries to average it out. Everything that differs runs in the job,
+which `passwordreset.Links.Send` does. In one transaction it locks the
+account, if any, and decides:
 
 - no account, an unverified email, or a deactivated account: nothing is
   sent;
 - 3 links sent to the account in the last hour, or 5 in 24 hours: nothing
   is sent. These limits are silent, so the answer cannot depend on them.
-- otherwise: it saves a link for the account's stored email and sets the
-  attempt's `user_id` and `linked_at`. The email limits count `linked_at`,
-  the time the link was saved, which can come later than the request.
+- otherwise: it saves a link for the account's stored email and counts
+  it: it sets the attempt's `user_id` and `linked_at`, or, for a later link
+  for that attempt, such as a retry's, or one whose attempt is gone, saves
+  an attempt row of its own with no client, which the client's limit leaves
+  out. The email limits count `linked_at`, the time the link was saved,
+  which can come later than the request.
 
 Then it mails the link to `<public URL>/reset-password#<secret>`. The secret
 exists only in memory and the email; the message is `Private`, so a failed
-send's log leaves out the server's reply. A failed send keeps its link and is
-only logged. Requested emails are kept only for accounts that got a link,
-as `user_id`. The hourly [cleanup](#scheduled-cleanup) deletes attempts
-whose request and link times are both over 24 hours old, an hour after
-that.
+send's log, and the job's error, leave out the server's reply. A failed
+send keeps its link, and the job retries with a new one. No requested
+email is kept: the attempt holds the client, and the account as `user_id`
+only once it got a link, and the job's input holds IDs. The hourly [cleanup](#scheduled-cleanup) deletes
+attempts whose request and link times are both over 24 hours old, an hour
+after that.
 
 ### Completing a reset
 
@@ -1357,7 +1465,7 @@ There is no attempt limit: a 256-bit secret cannot be guessed.
 
 The operation calls `passwordreset.Completion.Complete` with the link's
 secret, the email typed, and the new password, which follows setup's rule,
-15 to 128 characters (`account.CheckPassword`).
+15 to 128 characters (`account.ValidatePassword`).
 
 1. It reads the link and its user without a lock. A missing or expired
    link, a deactivated user, a user whose email is no longer the link's,
@@ -1381,14 +1489,10 @@ deactivated user, is the same `passwordreset.ErrLinkInvalid`.
 On success it returns the user, so the caller can name the email to sign in
 with, and creates no session.
 
-Once the reset commits, `Complete` starts background work that emails the
-user that their password changed, naming the time, and returns without
-waiting for it. `passwordreset.Background` runs that work in a goroutine: it
-keeps the request's context values, so its logs carry the `request_id`, but
-not its cancellation, and has 30 seconds of its own. A failed send is only
-logged, by the mailer as for any system email, and does not undo the reset.
-A panic is logged with its stack, not its value, instead of stopping the
-server.
+With the reset, in its transaction, `Complete` saves the
+[password changed notice](#password-changed-notice), which emails the user
+that their password changed, naming the time; the answer does not wait for
+it. A notice that fails to send does not undo the reset.
 
 To list password resets, and recent requests:
 
@@ -1407,7 +1511,8 @@ ORDER BY id DESC;
 
 `serve` writes text logs to stderr, one line per request with its method,
 path, status, and duration. The query string is never logged because it may
-carry secrets. Server errors (5xx) log at `ERROR` level. A handler panic
+carry secrets. Server errors (5xx) log at `ERROR` level, except a 503, which
+is temporary and logs at `WARN`. A handler panic
 returns a 500 Problem Details response and logs `msg=panic` with its stack
 trace; the panic value never reaches the client.
 
@@ -1603,7 +1708,7 @@ httpapi --> passwordreset <-- repository/postgres
 - A feature can use another feature through an interface it declares:
   `emailverification` sends through a `mailer` interface, which `cmd/inbok`
   fills with `systememail`'s `Mailer`. A feature may import another's plain
-  rules directly: `registration` uses `account.CheckPassword` and
+  rules directly: `registration` uses `account.ValidatePassword` and
   `account.User`.
 - `webapp` embeds the built web app and serves it as a static site:
   files, the shell for browser routes, caching, and the CSP. It knows the
@@ -1735,6 +1840,12 @@ For a job that runs once per request, follow the recovery notice
    in `callerTx`, so cancelling the caller stops the enqueue; DBOS alone
    would not. The feature never sees the transaction or DBOS. A test
    makes the change fail at commit and checks that no workflow was saved.
+
+   The method belongs to the feature's own interface, `<Feature>Workflows`,
+   which `Workflows` embeds, as it embeds `RecoveryWorkflows`; a feature's
+   first job adds that interface. Its test fake embeds a nil `Workflows`
+   and implements only the feature's interface, as `tableWorkflows` does,
+   so another feature's job changes no fake of yours.
 5. The command that makes the change gives storage the client with
-   `DB.WithWorkflows`; `serve` will need one too for a job started by a
-   request.
+   `DB.WithWorkflows`, as `recover-admin` does; `serve` already has one,
+   for jobs requests save.

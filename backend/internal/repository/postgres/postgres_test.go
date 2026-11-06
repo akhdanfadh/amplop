@@ -12,7 +12,7 @@ import (
 )
 
 // Without connect_timeout, pgx waits forever for a server that accepts the
-// connection but never answers; Open must give up on its own. A URL value
+// connection but never answers; [Open] must give up on its own. A URL value
 // still wins.
 func TestPoolConfigTimeout(t *testing.T) {
 	cases := []struct {

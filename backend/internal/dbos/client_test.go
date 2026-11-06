@@ -2,6 +2,8 @@ package dbos
 
 import (
 	"context"
+	"encoding/base64"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -10,15 +12,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/passwordreset"
+	"inbok/internal/randomsecret"
 	"inbok/internal/repository/postgres"
 )
 
-var _ postgres.Workflows = (*Client)(nil)
-
-// recoveryStack returns a migrated database with an administrator,
-// admin@example.com, its storage saving workflows through a Client, and a
+// clientStack returns a migrated database with an administrator,
+// admin@example.com, its storage saving workflows through a [Client], and a
 // connection for checks. All close when the test ends.
-func recoveryStack(t *testing.T) (*postgres.DB, *pgx.Conn, string) {
+func clientStack(t *testing.T) (*postgres.DB, *pgx.Conn, string) {
 	t.Helper()
 
 	url := migrated(t)
@@ -52,7 +54,7 @@ func noticeWorkflows(t *testing.T, conn *pgx.Conn) []string {
 // that administrator and the time of the recovery's audit event.
 func TestClientRecoveryNotice(t *testing.T) {
 	// Given a recovery through storage that saves workflows with a Client.
-	db, conn, url := recoveryStack(t)
+	db, conn, url := clientStack(t)
 
 	// When an administrator is recovered.
 	_, err := account.NewRecovery(db).Recover(t.Context(), "admin@example.com", "a new recovery password")
@@ -80,7 +82,7 @@ func TestClientRecoveryNotice(t *testing.T) {
 // saved, so no administrator hears of a recovery that did not happen.
 func TestClientRecoveryRollback(t *testing.T) {
 	// Given a recovery that fails as it commits, after the notice is saved.
-	db, conn, _ := recoveryStack(t)
+	db, conn, _ := clientStack(t)
 	_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_recovery() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'recovery rejected'; END $$`)
 	require.NoError(t, err)
 	_, err = conn.Exec(t.Context(), "CREATE CONSTRAINT TRIGGER reject_write AFTER INSERT ON audit_events DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_recovery()")
@@ -98,7 +100,7 @@ func TestClientRecoveryRollback(t *testing.T) {
 // alone would not, so the recovery rolls back and its database closes.
 func TestClientRecoveryCancelled(t *testing.T) {
 	// Given a recovery whose enqueue waits for a lock held elsewhere.
-	db, conn, url := recoveryStack(t)
+	db, conn, url := clientStack(t)
 	observer, err := pgx.Connect(t.Context(), url)
 	require.NoError(t, err)
 	t.Cleanup(func() { observer.Close(context.Background()) })
@@ -149,4 +151,150 @@ func TestClientUnmigrated(t *testing.T) {
 	_, err := NewClient(t.Context(), newDatabase(t), discard)
 
 	require.ErrorContains(t, err, "is at schema version 0")
+}
+
+// linkWorkflows lists the reset link workflows saved in DBOS's tables, by
+// status.
+func linkWorkflows(t *testing.T, conn *pgx.Conn) []string {
+	t.Helper()
+	rows, err := conn.Query(t.Context(), "SELECT status FROM dbos.workflow_status WHERE name = $1", passwordResetLinkWorkflow)
+	require.NoError(t, err)
+	statuses, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	return statuses
+}
+
+// A reset request saves its job for the worker, which then sends the link
+// for that attempt to the account with the email. The job's input holds no
+// email, for an account or not.
+func TestClientPasswordResetLink(t *testing.T) {
+	// Given storage that saves workflows with a Client.
+	db, conn, url := clientStack(t)
+	requests := passwordreset.NewRequests(db, time.Now)
+
+	// When an account's email, and an email with none, are asked about.
+	client := netip.MustParseAddr("192.0.2.1")
+	require.NoError(t, requests.Request(t.Context(), "admin@example.com", client))
+	require.NoError(t, requests.Request(t.Context(), "nobody@example.com", client))
+
+	// Then both jobs wait in the queue, their inputs holding IDs and no
+	// email. DBOS saves an input in workflow_input, as base64-encoded JSON.
+	assert.Equal(t, []string{"ENQUEUED", "ENQUEUED"}, linkWorkflows(t, conn))
+	rows, err := conn.Query(t.Context(), `SELECT i.inputs FROM dbos.workflow_input i
+		JOIN dbos.workflow_status s USING (workflow_uuid) WHERE s.name = $1`, passwordResetLinkWorkflow)
+	require.NoError(t, err)
+	encoded, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	require.Len(t, encoded, 2)
+	for _, input := range encoded {
+		decoded, err := base64.StdEncoding.DecodeString(input)
+		require.NoError(t, err)
+		assert.Contains(t, string(decoded), `"AttemptID"`)
+		assert.NotContains(t, string(decoded), "@")
+	}
+
+	// And a worker sends each for its attempt and account.
+	var admin int64
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT id FROM users WHERE email = 'admin@example.com'").Scan(&admin))
+	rows, err = conn.Query(t.Context(), "SELECT id FROM password_reset_attempts ORDER BY id")
+	require.NoError(t, err)
+	attempts, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	require.NoError(t, err)
+	links := &fakeLinks{}
+	linkWorker(t, url, links)
+	require.Eventually(t, func() bool { return len(links.sends()) == 2 }, wait, 50*time.Millisecond)
+	assert.ElementsMatch(t, []PasswordResetLinkInput{
+		{AttemptID: attempts[0], UserID: admin},
+		{AttemptID: attempts[1]},
+	}, links.sends())
+}
+
+// A reset request that fails as it commits rolls its job back with it, so
+// no link is sent for a request that was not recorded.
+func TestClientPasswordResetRollback(t *testing.T) {
+	// Given storage whose attempts fail as they commit, after the job is saved.
+	db, conn, _ := clientStack(t)
+	_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_request() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'request rejected'; END $$`)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), "CREATE CONSTRAINT TRIGGER reject_write AFTER INSERT ON password_reset_attempts DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_request()")
+	require.NoError(t, err)
+
+	// When a reset is requested.
+	err = passwordreset.NewRequests(db, time.Now).Request(t.Context(), "admin@example.com", netip.MustParseAddr("192.0.2.1"))
+
+	// Then the request fails and no job is saved.
+	require.ErrorContains(t, err, "request rejected")
+	assert.Empty(t, linkWorkflows(t, conn))
+}
+
+// changedNoticeWorkflows lists the password changed notice workflows saved
+// in DBOS's tables, by status.
+func changedNoticeWorkflows(t *testing.T, conn *pgx.Conn) []string {
+	t.Helper()
+	rows, err := conn.Query(t.Context(), "SELECT status FROM dbos.workflow_status WHERE name = $1", passwordChangedNoticeWorkflow)
+	require.NoError(t, err)
+	statuses, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	return statuses
+}
+
+// A completed reset saves its notice for the worker, which then tells that
+// user, at the time the reset was checked. The job's input holds no email.
+func TestClientPasswordChangedNotice(t *testing.T) {
+	// Given a live reset link for the administrator, through storage that
+	// saves workflows with a Client.
+	db, conn, url := clientStack(t)
+	var admin int64
+	require.NoError(t, conn.QueryRow(t.Context(), "UPDATE users SET email_verified_at = now() WHERE email = 'admin@example.com' RETURNING id").Scan(&admin))
+	secret, hash := randomsecret.New()
+	_, err := conn.Exec(t.Context(), `INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
+		VALUES ($1, $2, 'admin@example.com', now(), now() + interval '1 hour')`, hash[:], admin)
+	require.NoError(t, err)
+	resetAt := time.Now().UTC()
+
+	// When the link resets the password.
+	_, err = passwordreset.NewCompletion(db, func() time.Time { return resetAt }).Complete(t.Context(), secret, "admin@example.com", "a new password for the reset")
+	require.NoError(t, err)
+
+	// Then its notice waits in the queue, holding no email, until a worker
+	// sends it.
+	assert.Equal(t, []string{"ENQUEUED"}, changedNoticeWorkflows(t, conn))
+	var input string
+	require.NoError(t, conn.QueryRow(t.Context(), `SELECT i.inputs FROM dbos.workflow_input i
+		JOIN dbos.workflow_status s USING (workflow_uuid) WHERE s.name = $1`, passwordChangedNoticeWorkflow).Scan(&input))
+	decoded, err := base64.StdEncoding.DecodeString(input)
+	require.NoError(t, err)
+	assert.Contains(t, string(decoded), `"UserID"`)
+	assert.NotContains(t, string(decoded), "@")
+	notices := &fakeChangedNotices{}
+	changedNoticeWorker(t, url, notices)
+	require.Eventually(t, func() bool { return len(notices.sends()) == 1 }, wait, 50*time.Millisecond)
+	sent := notices.sends()[0]
+	assert.Equal(t, admin, sent.UserID)
+	assert.WithinDuration(t, resetAt, sent.ChangedAt, 0)
+}
+
+// A reset that fails as it commits rolls its notice back with it, so no
+// one hears of a password change that did not happen.
+func TestClientPasswordChangedNoticeRollback(t *testing.T) {
+	// Given a live reset link, and audit events that fail as they commit,
+	// after the notice is saved.
+	db, conn, _ := clientStack(t)
+	var admin int64
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT id FROM users WHERE email = 'admin@example.com'").Scan(&admin))
+	secret, hash := randomsecret.New()
+	_, err := conn.Exec(t.Context(), `INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
+		VALUES ($1, $2, 'admin@example.com', now(), now() + interval '1 hour')`, hash[:], admin)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), `CREATE FUNCTION reject_reset() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reset rejected'; END $$`)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), "CREATE CONSTRAINT TRIGGER reject_write AFTER INSERT ON audit_events DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_reset()")
+	require.NoError(t, err)
+
+	// When the link resets the password.
+	_, err = passwordreset.NewCompletion(db, time.Now).Complete(t.Context(), secret, "admin@example.com", "a new password for the reset")
+
+	// Then the reset fails and no notice is saved.
+	require.ErrorContains(t, err, "reset rejected")
+	assert.Empty(t, changedNoticeWorkflows(t, conn))
 }

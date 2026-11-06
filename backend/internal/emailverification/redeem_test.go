@@ -11,7 +11,7 @@ import (
 	"inbok/internal/randomsecret"
 )
 
-// requested returns storage holding one link requested at testNow, the
+// requested returns storage holding one link requested at [testNow], the
 // service, and the link's secret.
 func requested(t *testing.T) (*memoryStorage, *Service, string) {
 	t.Helper()

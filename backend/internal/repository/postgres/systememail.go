@@ -48,17 +48,21 @@ func readSystemEmail(ctx context.Context, queries *sqlc.Queries) (*systememail.R
 
 const systemEmailSavedAction = "system-email-saved"
 
-// UpdateSystemEmail locks the settings, loads them, calls update, saves its
-// result, and records a system-email-saved event for actorID, in one
-// transaction.
+// UpdateSystemEmail saves the settings update returns for the current ones,
+// nil when none are saved, and records actorID as the administrator who saved
+// them, in one transaction.
 func (db *DB) UpdateSystemEmail(ctx context.Context, actorID int64, update func(*systememail.Record) (systememail.Record, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
-		// Lock the table, not the row: the keep-password decision reads the stored
-		// row, so saves must not interleave, and the first save has no row to lock.
+
+		// 1. Lock the table, not the row: the keep-password decision reads the
+		// stored row, so saves must not interleave, and the first save has no
+		// row to lock.
 		if err := queries.LockSystemEmail(ctx); err != nil {
 			return fmt.Errorf("lock system email: %w", err)
 		}
+
+		// 2. Read the settings and let update decide.
 		current, err := readSystemEmail(ctx, queries)
 		if err != nil {
 			return err
@@ -68,6 +72,7 @@ func (db *DB) UpdateSystemEmail(ctx context.Context, actorID int64, update func(
 			return err
 		}
 
+		// 3. Save the settings.
 		params := sqlc.UpsertSystemEmailParams{
 			Host:        next.Host,
 			Port:        int32(next.Port), // systememail limits ports to 1 to 65535.
@@ -84,8 +89,9 @@ func (db *DB) UpdateSystemEmail(ctx context.Context, actorID int64, update func(
 		if err := queries.UpsertSystemEmail(ctx, params); err != nil {
 			return fmt.Errorf("save system email: %w", err)
 		}
-		// The event names only the actor: no account is affected, and setting
-		// values are not recorded.
+
+		// 4. Record the event. It names only the actor: no account is
+		// affected, and setting values are not recorded.
 		if err := queries.InsertAuditEvent(ctx, sqlc.InsertAuditEventParams{Action: systemEmailSavedAction, ActorUserID: &actorID}); err != nil {
 			return fmt.Errorf("record system email save: %w", err)
 		}

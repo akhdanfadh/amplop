@@ -8,7 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// withRequestLog logs one line per request after it completes. The path
+// withRequestLog logs one line per request after it completes: a warning
+// for a 503, an error for any other 5xx, and info otherwise. The path
 // excludes the query string, which may carry secrets.
 func withRequestLog(logger *slog.Logger) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
@@ -17,7 +18,11 @@ func withRequestLog(logger *slog.Logger) gin.HandlerFunc {
 
 		status := ctx.Writer.Status()
 		level := slog.LevelInfo
-		if status >= http.StatusInternalServerError {
+		switch {
+		// A 503 says the server is busy or down for a while, not broken.
+		case status == http.StatusServiceUnavailable:
+			level = slog.LevelWarn
+		case status >= http.StatusInternalServerError:
 			level = slog.LevelError
 		}
 

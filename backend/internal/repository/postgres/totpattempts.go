@@ -13,16 +13,18 @@ import (
 	"inbok/internal/totp"
 )
 
-var _ totp.AttemptStorage = (*DB)(nil)
-
-// ReserveTOTPAttempt locks the user, cleans expired rows, counts the rest, and
-// inserts if check accepts. A rejected check rolls back; code verification
-// happens afterward.
+// ReserveTOTPAttempt saves attempt, in one transaction, if check accepts its
+// user's attempts made after cutoff, and returns its ID. It returns
+// [account.ErrUserNotFound] when the user does not exist. An error from check
+// is returned unchanged and saves nothing. Code verification happens after
+// this transaction ends.
 func (db *DB) ReserveTOTPAttempt(ctx context.Context, attempt totp.Attempt, cutoff time.Time, check func([]totp.Attempt) error) (int64, error) {
 	var id int64
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
-		// NOTE: A deactivated owner still reserves an attempt, so the code step
+
+		// 1. Lock the user. The lock covers the count and the insert. A
+		// deactivated owner still reserves an attempt, so the code step
 		// reaches CompleteSignIn, which deletes their challenge and says the
 		// account is deactivated.
 		if _, err := queries.LockTOTPUser(ctx, attempt.UserID); err != nil {
@@ -31,6 +33,8 @@ func (db *DB) ReserveTOTPAttempt(ctx context.Context, attempt totp.Attempt, cuto
 			}
 			return fmt.Errorf("lock TOTP attempt owner: %w", err)
 		}
+
+		// 2. Delete attempts older than the window, then read the rest.
 		if err := queries.DeleteOldTOTPAttempts(ctx, sqlc.DeleteOldTOTPAttemptsParams{UserID: attempt.UserID, Cutoff: cutoff}); err != nil {
 			return fmt.Errorf("delete old TOTP attempts: %w", err)
 		}
@@ -42,9 +46,13 @@ func (db *DB) ReserveTOTPAttempt(ctx context.Context, attempt totp.Attempt, cuto
 		for _, row := range rows {
 			attempts = append(attempts, totp.Attempt{UserID: row.UserID, CreatedAt: row.CreatedAt.UTC()})
 		}
+
+		// 3. Let check accept or refuse.
 		if err := check(attempts); err != nil {
 			return err
 		}
+
+		// 4. Save the attempt.
 		id, err = queries.InsertTOTPAttempt(ctx, sqlc.InsertTOTPAttemptParams{UserID: attempt.UserID, CreatedAt: attempt.CreatedAt})
 		if err != nil {
 			return fmt.Errorf("reserve TOTP attempt: %w", err)

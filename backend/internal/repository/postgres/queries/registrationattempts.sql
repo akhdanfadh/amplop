@@ -6,11 +6,11 @@ SELECT pg_advisory_xact_lock(hashtextextended('inbok.registration-attempt', 0));
 DELETE FROM registration_attempts WHERE created_at <= @since;
 
 -- name: ListRegistrationAttempts :many
-SELECT email, client_addr, outcome, created_at FROM registration_attempts;
+SELECT email, client_prefix, outcome, created_at FROM registration_attempts;
 
 -- name: InsertRegistrationAttempt :exec
-INSERT INTO registration_attempts (email, client_addr, outcome, created_at)
-VALUES (@email, @client_addr, @outcome, @created_at);
+INSERT INTO registration_attempts (email, client_prefix, outcome, created_at)
+VALUES (@email, @client_prefix, @outcome, @created_at);
 
 -- name: DeleteAllRegistrationAttempts :exec
 DELETE FROM registration_attempts;

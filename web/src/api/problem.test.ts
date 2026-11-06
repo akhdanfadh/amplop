@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   formErrors,
+  formSummary,
   problemExplanation,
   uncertainMessage,
   uncertainOutcome,
   userMessage,
 } from "./problem";
+import type { ProblemType } from "./generated/model";
 import { ApiError } from "./transport";
 
 const httpStatus = {
@@ -17,6 +19,8 @@ const httpStatus = {
   unavailable: 503,
   gatewayTimeout: 504,
 };
+
+const serviceBusyType: ProblemType = "/api/v0/problems/service-busy";
 
 describe("uncertainOutcome", () => {
   it.each([
@@ -163,6 +167,29 @@ describe("userMessage", () => {
     expect(userMessage(err)).toBe(
       "The service is restarting. We couldn't confirm whether this was saved. Check before submitting again.",
     );
+  });
+
+  it.each([
+    ["a read", "GET", "The server is busy and could not finish the request in time."],
+    [
+      "a write",
+      "POST",
+      "The server is busy and could not finish the request in time. We couldn't confirm whether this was saved. Check before submitting again.",
+    ],
+  ])("words Go's service-busy 503 for %s", (_, method, message) => {
+    // A write may have committed before its request ran out of time.
+    const err = new ApiError("http", {
+      method,
+      status: httpStatus.unavailable,
+      retryAfter: "10",
+      problem: {
+        type: serviceBusyType,
+        title: "Service busy",
+        detail: "The server is busy and could not finish the request in time.",
+      },
+    });
+
+    expect(userMessage(err)).toBe(message);
   });
 
   it("keeps a known write rejection's explanation", () => {
@@ -456,5 +483,50 @@ describe("formErrors", () => {
     });
 
     expect(formErrors(err, ["note"])).toEqual({ fields: {}, unmatched: [] });
+  });
+});
+
+describe("formSummary", () => {
+  const message = "Check the values and try again.";
+
+  it("is empty when every input error shows on a field", () => {
+    const err = unprocessable([
+      { location: "body.note", message: "Use at most 120 characters." },
+      { location: "body.amount", message: "Enter a whole number from 1 to 10." },
+    ]);
+
+    expect(formSummary(message, formErrors(err, ["note", "amount"]))).toEqual([]);
+  });
+
+  it("follows the message with the input errors no field shows", () => {
+    const err = unprocessable([
+      { location: "body.note", message: "Use at most 120 characters." },
+      { location: "body", message: "Correct the submitted input." },
+    ]);
+
+    expect(formSummary(message, formErrors(err, ["note"]))).toEqual([
+      { message },
+      { message: "Correct the submitted input." },
+    ]);
+  });
+
+  it("keeps the message when no input error matches a field", () => {
+    const err = unprocessable([{ location: "body.owner", message: "Choose an owner." }]);
+
+    expect(formSummary(message, formErrors(err, ["note"]))).toEqual([
+      { message },
+      { message: "Choose an owner." },
+    ]);
+  });
+
+  it("is the message alone for a failure without input errors", () => {
+    const err = new ApiError("http", {
+      status: httpStatus.unavailable,
+      problem: { detail: "The service is restarting." },
+    });
+
+    expect(formSummary("The service is restarting.", formErrors(err, ["note"]))).toEqual([
+      { message: "The service is restarting." },
+    ]);
   });
 });

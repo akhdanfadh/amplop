@@ -14,6 +14,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/config"
+	"inbok/internal/dbos"
 	"inbok/internal/emailverification"
 	"inbok/internal/httpapi"
 	"inbok/internal/logging"
@@ -36,15 +37,14 @@ const (
 	// ReadHeaderTimeout stops clients that send headers slowly to hold
 	// connections open (Slowloris).
 	readHeaderTimeout = 5 * time.Second
-	// readTimeout and writeTimeout cap a whole request body and response:
+	// readTimeout and [writeTimeout] cap a whole request body and response:
 	// a slow upload or a streaming response (e.g. server-sent events)
 	// must extend its own deadline with [http.ResponseController].
 	readTimeout  = 30 * time.Second
 	writeTimeout = 30 * time.Second
 	idleTimeout  = 120 * time.Second
 
-	// shutdownTimeout bounds how long in-flight requests, and then the
-	// password reset emails they started, may finish.
+	// shutdownTimeout bounds how long in-flight requests may finish.
 	// It stays below Docker's default 10s grace period before SIGKILL.
 	shutdownTimeout = 5 * time.Second
 )
@@ -92,8 +92,10 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 	return errUsage
 }
 
-// serve connects to the database, then serves the API until ctx is cancelled.
-func serve(ctx context.Context, logger *slog.Logger) error {
+// serve connects to the database and opens a DBOS client for the jobs
+// requests save, then serves the API until ctx is cancelled.
+func serve(ctx context.Context, logger *slog.Logger) (err error) {
+	// 1. Read the settings, failing before anything starts.
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -104,12 +106,25 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		return err
 	}
 
+	// 2. Open the database.
 	db, err := postgres.Open(ctx, url)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer db.Close()
 
+	// 3. Open the DBOS client that saves background jobs with the changes
+	// that need them, e.g. a reset link's with its request; the worker runs
+	// them. Not ctx: it ends at the shutdown signal, while requests still
+	// drain; Close stops the client after them.
+	jobs, err := dbos.NewClient(context.WithoutCancel(ctx), url, logger)
+	if err != nil {
+		return fmt.Errorf("open DBOS client: %w", err)
+	}
+	defer func() { err = errors.Join(err, jobs.Close()) }()
+	db = db.WithWorkflows(jobs)
+
+	// 4. Warn when setup is done but its token is still configured.
 	accounts := account.NewService(db, cfg.SetupToken)
 	if cfg.SetupToken != "" {
 		status, err := accounts.SetupStatus(ctx)
@@ -121,20 +136,20 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		}
 	}
 
+	// 5. Build the services and the API.
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
-	resetBackground := passwordreset.NewBackground(logger)
 	services := httpapi.Services{
 		EmailVerification:       emailverification.NewService(db, mailer, cfg.PublicURL, time.Now),
 		Members:                 account.NewMembers(db, time.Now),
 		SystemEmail:             systememail.NewService(db, cfg.Encryption),
 		TestMessages:            systememail.NewTestMessages(db, mailer, time.Now),
 		Registration:            registration.NewService(db),
-		RegistrationRequests:    registration.NewRequests(db, mailer, cfg.PublicURL, time.Now),
+		RegistrationRequests:    registration.NewRequests(db, mailer, cfg.PublicURL, time.Now, logger),
 		RegistrationCompletion:  registration.NewCompletion(db, time.Now),
-		PasswordResetRequests:   passwordreset.NewRequests(db, mailer, cfg.PublicURL, resetBackground, time.Now),
-		PasswordResetCompletion: passwordreset.NewCompletion(db, mailer, cfg.PublicURL, resetBackground, time.Now),
+		PasswordResetRequests:   passwordreset.NewRequests(db, time.Now),
+		PasswordResetCompletion: passwordreset.NewCompletion(db, time.Now),
 		Disabler:                totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		Backups:                 totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		CodeSignIn:              session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
@@ -150,6 +165,7 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("configure trusted proxies: %w", err)
 	}
 
+	// 6. Serve the web app when this build has one.
 	build, err := webapp.Load(webapp.Files())
 	switch {
 	case errors.Is(err, webapp.ErrNoBuild):
@@ -160,14 +176,14 @@ func serve(ctx context.Context, logger *slog.Logger) error {
 		api.ServeWebApp(build)
 	}
 
-	return listen(ctx, cfg.HTTPAddr, api.Handler(), resetBackground, logger)
+	// 7. Serve until ctx is cancelled.
+	return listen(ctx, cfg.HTTPAddr, api.Handler(), logger)
 }
 
 // listen serves handler on addr until ctx is cancelled, then lets in-flight
-// requests finish, and then the work they started on background, if not nil.
-// It returns the error that stopped serving, or the shutdown's error, such
-// as the context's when requests outlast the timeout.
-func listen(ctx context.Context, addr string, handler http.Handler, background *passwordreset.Background, logger *slog.Logger) error {
+// requests finish. It returns the error that stopped serving, or the
+// shutdown's error, such as the context's when requests outlast the timeout.
+func listen(ctx context.Context, addr string, handler http.Handler, logger *slog.Logger) error {
 	// ErrorLog routes net/http's internal errors, e.g. a failed TLS
 	// handshake, into the same log.
 	server := http.Server{
@@ -179,12 +195,13 @@ func listen(ctx context.Context, addr string, handler http.Handler, background *
 		IdleTimeout:       idleTimeout,
 	}
 
-	// Bind before logging, so a busy port never logs a false start.
+	// 1. Bind before logging, so a busy port never logs a false start.
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 
+	// 2. Serve until ctx is cancelled or serving fails.
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
 	logger.Info("starting HTTP server", "addr", listener.Addr().String())
@@ -195,20 +212,12 @@ func listen(ctx context.Context, addr string, handler http.Handler, background *
 	case <-ctx.Done():
 	}
 
+	// 3. Stop taking requests and let in-flight ones finish.
 	logger.Info("shutting down HTTP server")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
-	err = server.Shutdown(shutdownCtx)
-	// Requests are done, so no new work starts; what is left of the timeout
-	// goes to work already started. The worker passes no background.
-	if background == nil {
-		return err
-	}
-	if waitErr := background.Wait(shutdownCtx); waitErr != nil {
-		logger.Warn("stopped before all password reset background work finished; its emails may not have been sent")
-	}
-	return err
+	return server.Shutdown(shutdownCtx)
 }
 
 // migrate applies pending database migrations, then exits. serve never

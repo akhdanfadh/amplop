@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -11,16 +12,40 @@ import (
 // DB stores inbok's data in PostgreSQL. Each feature adds its methods.
 type DB struct {
 	pool      *pgxpool.Pool
-	workflows Workflows // nil until WithWorkflows
+	workflows Workflows // nil until [DB.WithWorkflows]
 }
 
-// Workflows saves background work in a transaction of DB's, so it commits
+// Workflows saves background work in a transaction of [DB]'s, so it commits
 // or rolls back with the change that needs it, e.g. internal/dbos's Client.
+// It embeds one interface per feature that saves a job.
 type Workflows interface {
-	// EnqueueRecoveryNotice saves, in tx, the workflow that emails every active
-	// administrator about the recovery of the one with userID at recoveredAt.
+	RecoveryWorkflows
+	PasswordResetWorkflows
+}
+
+// PasswordResetWorkflows saves the jobs of password reset.
+type PasswordResetWorkflows interface {
+	// EnqueuePasswordResetLink saves, in tx, the workflow that sends a reset
+	// link for the request with attemptID to the account with userID, if it
+	// may reset; userID is 0 when no account has the requested email.
+	EnqueuePasswordResetLink(ctx context.Context, tx pgx.Tx, attemptID, userID int64) error
+
+	// EnqueuePasswordChangedNotice saves, in tx, the workflow that tells the
+	// user with userID that their password changed at changedAt.
+	EnqueuePasswordChangedNotice(ctx context.Context, tx pgx.Tx, userID int64, changedAt time.Time) error
+}
+
+// RecoveryWorkflows saves the jobs of administrator recovery.
+type RecoveryWorkflows interface {
+	// EnqueueRecoveryNotice saves, in tx, the workflow that emails every
+	// active administrator about the recovery of the one with userID at
+	// recoveredAt.
 	EnqueueRecoveryNotice(ctx context.Context, tx pgx.Tx, userID int64, recoveredAt time.Time) error
 }
+
+// errNoWorkflows means a change that saves background work ran on a [DB]
+// without [DB.WithWorkflows], and was rolled back.
+var errNoWorkflows = errors.New("this change saves background work, which needs DB.WithWorkflows")
 
 // WithWorkflows returns a DB sharing db's connections that saves background
 // work with workflows. Closing either closes both.

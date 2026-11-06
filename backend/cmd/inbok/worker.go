@@ -73,11 +73,14 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		PasswordResetCleanup:        passwordreset.NewCleanup(db, time.Now),
 		PasswordResetAttemptCleanup: passwordreset.NewAttemptCleanup(db, time.Now),
 		RecoveryNotices:             account.NewRecoveryNotices(db, mailer, publicURL),
+		PasswordResetLinks:          passwordreset.NewLinks(db, mailer, publicURL, time.Now),
+		PasswordChangedNotices:      passwordreset.NewNotices(db, mailer, publicURL),
 	}, logger)
 	if err != nil {
 		db.Close()
 		return fmt.Errorf("open DBOS: %w", err)
 	}
+
 	// 4. Launch DBOS: it resumes this worker's unfinished runs, then takes
 	// queued and scheduled ones. Launch shuts DBOS down itself when it
 	// fails.
@@ -85,6 +88,7 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		db.Close()
 		return fmt.Errorf("launch DBOS: %w", err)
 	}
+
 	// 5. Once step 6 returns, stop DBOS, which leaves unfinished runs
 	// pending for the next start.
 	defer func() {
@@ -97,7 +101,6 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		err = errors.Join(err, shutdownErr)
 	}()
 
-	// 6. Answer health checks until ctx is cancelled. The worker starts no
-	// password reset work, so it has none to wait for.
-	return listen(ctx, addr, workerHealth(), nil, logger)
+	// 6. Answer health checks until ctx is cancelled.
+	return listen(ctx, addr, workerHealth(), logger)
 }

@@ -169,7 +169,7 @@ function FieldError({
   errors,
   ...props
 }: React.ComponentProps<"div"> & {
-  errors?: Array<{ message?: string } | undefined>;
+  errors?: ReadonlyArray<{ message?: string } | undefined>;
 }) {
   const content = useMemo(() => {
     if (children) {
@@ -202,7 +202,6 @@ function FieldError({
 
   return (
     <div
-      role="alert"
       data-slot="field-error"
       className={cn("text-sm font-normal text-destructive", className)}
       {...props}

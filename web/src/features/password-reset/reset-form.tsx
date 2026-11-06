@@ -7,11 +7,13 @@ import {
   redeemPasswordResetLinkBodyPasswordMax,
   redeemPasswordResetLinkBodyPasswordMin,
 } from "@/api/generated/model";
-import { formErrors, uncertainOutcome } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome } from "@/api/problem";
 import { PasswordInput } from "@/components/password-input";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { ResetSchema } from "./reset-schema";
@@ -113,15 +115,11 @@ export function ResetForm({
     },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const inputErrors = redeem.error ? formErrors(redeem.error, resetFields) : undefined;
+  const summary = redeem.error
+    ? formSummary(completeErrorMessage(redeem.error), formErrors(redeem.error, resetFields))
+    : [];
 
-  // The disabled button lost focus while saving; the field a refusal names,
-  // or the button, takes it.
-  useEffect(() => {
-    if (!redeem.error || redeem.isPending) return;
-    const invalid = formRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
-    (invalid ?? submitRef.current)?.focus();
-  }, [redeem.error, redeem.isPending]);
+  useFocusAfterError(redeem.error, redeem.isPending, formRef, submitRef);
 
   // The end replaces the focused form, so it takes focus.
   useEffect(() => {
@@ -251,21 +249,7 @@ export function ResetForm({
         {redeem.isPending ? "Changing password..." : "Change password"}
       </Button>
 
-      {redeem.error && (
-        <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[
-              { message: completeErrorMessage(redeem.error) },
-              ...(inputErrors?.unmatched ?? []),
-            ]}
-          />
-          {redeem.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{redeem.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={redeem.error?.requestId} />
     </form>
   );
 }

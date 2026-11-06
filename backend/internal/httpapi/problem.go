@@ -34,6 +34,9 @@ type problem struct {
 
 	// raw retains private diagnostics for sanitizing and logging, never JSON.
 	raw *huma.ErrorModel
+	// timedOut marks a service-busy problem built from a request that timed
+	// out, whose cause is logged and whose retry is announced.
+	timedOut bool
 	// mapped marks the entire public response as explicitly selected as safe.
 	mapped bool
 }
@@ -54,7 +57,7 @@ func newProblem(status int, typ, title, detail string, inputs ...inputError) *pr
 }
 
 // requestProblem supplies shared defaults for Huma and Gin failures by status.
-// Business problems use newProblem with their own type and status.
+// Business problems use [newProblem] with their own type and status.
 func requestProblem(status int) *problem {
 	switch status {
 	case http.StatusBadRequest:
@@ -89,7 +92,7 @@ func invalidEmailProblem(location string) *problem {
 }
 
 // invalidPasswordProblem returns the 422 for a password
-// [account.CheckPassword] rejects at location, e.g. "body.password".
+// [account.ValidatePassword] rejects at location, e.g. "body.password".
 func invalidPasswordProblem(location string) *problem {
 	invalid := requestProblem(http.StatusUnprocessableEntity)
 	// Huma's own length failure reads the same, so the response does not

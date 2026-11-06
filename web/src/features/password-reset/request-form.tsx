@@ -2,10 +2,13 @@ import { useEffect, useRef, type ReactElement } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useRequestPasswordResetLink } from "@/api/generated/inbok";
 import { NewPasswordResetRequest } from "@/api/generated/model";
-import { formErrors } from "@/api/problem";
+import { formErrors, formSummary } from "@/api/problem";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useFocusAfterError } from "@/hooks/use-focus-after-error";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { requestedMessage, requestErrorMessage } from "./text";
 
 const emptyRequest = { email: "" };
@@ -47,7 +50,9 @@ export function RequestForm(): ReactElement {
     },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const inputErrors = request.error ? formErrors(request.error, requestFields) : undefined;
+  const summary = request.error
+    ? formSummary(requestErrorMessage(request.error), formErrors(request.error, requestFields))
+    : [];
 
   // The answer replaces the focused form, so it takes focus.
   useEffect(() => {
@@ -60,13 +65,7 @@ export function RequestForm(): ReactElement {
     formRef.current?.querySelector<HTMLInputElement>("input")?.focus();
   }, [request.isIdle]);
 
-  // The disabled button lost focus while sending; a refusal returns it to
-  // the field it names, else the button.
-  useEffect(() => {
-    if (!request.error || request.isPending) return;
-    const invalid = formRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
-    (invalid ?? submitRef.current)?.focus();
-  }, [request.error, request.isPending]);
+  useFocusAfterError(request.error, request.isPending, formRef, submitRef);
 
   // Shows the form again for a new request. The last address stays, so a
   // typo takes one edit.
@@ -126,7 +125,7 @@ export function RequestForm(): ReactElement {
                 aria-invalid={errors.length > 0}
                 aria-describedby={errors.length > 0 ? `${emailId}-error` : undefined}
                 value={field.state.value}
-                onBlur={field.handleBlur}
+                onBlur={() => blurKeepingSubmitErrors(field)}
                 onChange={(event) => field.handleChange(event.target.value)}
               />
               <FieldError id={`${emailId}-error`} errors={errors} />
@@ -144,21 +143,7 @@ export function RequestForm(): ReactElement {
         {request.isPending ? "Sending reset link..." : "Send reset link"}
       </Button>
 
-      {request.error && (
-        <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[
-              { message: requestErrorMessage(request.error) },
-              ...(inputErrors?.unmatched ?? []),
-            ]}
-          />
-          {request.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{request.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={request.error?.requestId} />
     </form>
   );
 }

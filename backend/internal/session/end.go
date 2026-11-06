@@ -11,13 +11,16 @@ import (
 var ErrCurrentSession = errors.New("current session cannot be ended by ID")
 
 // End ends one of the user's other sessions. A missing, expired, or another
-// user's session returns ErrNotFound, so the caller cannot tell them apart.
+// user's session returns [ErrNotFound], so the caller cannot tell them apart.
 func (s *Service) End(ctx context.Context, current Authenticated, id uuid.UUID) error {
+	// 1. Refuse an empty Authenticated value, which Go permits, before
+	// storage.
 	userID := current.Identity.User.ID
 	if current.Session == (Reference{}) || userID <= 0 {
 		return ErrUnauthenticated
 	}
 
+	// 2. Delete the session under its lock, unless it is the current one.
 	var expired bool
 	err := s.storage.UpdateUserSession(ctx, userID, id, func(state State) (Change, error) {
 		if state.TokenHash == current.Session.hash {
@@ -41,11 +44,15 @@ func (s *Service) End(ctx context.Context, current Authenticated, id uuid.UUID) 
 // EndOthers ends every session of the user except the current one.
 // It returns how many of them were still live; expired rows go uncounted.
 func (s *Service) EndOthers(ctx context.Context, current Authenticated) (int, error) {
+	// 1. Refuse an empty Authenticated value, which Go permits, before
+	// storage.
 	userID := current.Identity.User.ID
 	if current.Session == (Reference{}) || userID <= 0 {
 		return 0, ErrUnauthenticated
 	}
 
+	// 2. Delete the other sessions, if the current one is still live under
+	// the lock.
 	deleted, err := s.storage.DeleteUserOtherSessions(ctx, userID, current.Session.hash, func(state State) error {
 		// Current's earlier check can become stale: a session that expired
 		// since then must not end the others.

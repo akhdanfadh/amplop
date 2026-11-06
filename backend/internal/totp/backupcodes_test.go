@@ -22,33 +22,33 @@ func TestNewBackupCodes(t *testing.T) {
 		_, duplicate := seen[code]
 		assert.False(t, duplicate)
 		seen[code] = struct{}{}
-		require.NoError(t, CheckBackupCode(t.Context(), code, set.Hashes[i]))
+		require.NoError(t, VerifyBackupCode(t.Context(), code, set.Hashes[i]))
 		assert.Regexp(t, `^\$argon2id\$v=19\$m=19456,t=2,p=1\$[A-Za-z0-9+/]{22}\$[A-Za-z0-9+/]{43}$`, set.Hashes[i])
 		assert.NotContains(t, set.Hashes[i], strings.ReplaceAll(code, "-", ""))
 	}
 }
 
-func TestNormalizeBackupCode(t *testing.T) {
+func TestParseBackupCode(t *testing.T) {
 	for _, value := range []string{"ABCDE-FGHJK", "abcdefghjk", " abcde - fghjk ", "a b c d e\tf g h j k\n", "abcde\u00a0-fghjk"} {
 		t.Run(value, func(t *testing.T) {
-			normalized, err := normalizeBackupCode(value)
+			normalized, err := parseBackupCode(value)
 			require.NoError(t, err)
 			assert.Equal(t, "ABCDEFGHJK", normalized)
 		})
 	}
 }
 
-func TestNormalizeBackupInvalid(t *testing.T) {
+func TestParseBackupInvalid(t *testing.T) {
 	for _, value := range []string{"", "ABCDE", "ABCDEFGHJKM", "ABCDE-FGHIJ", "ABCDE-FGHLK", "ABCDE-FGHOJ", "ABCDE-FGHJ0", "ABCDE-FGHJ1", "ABCDE_FGHJK", "ABCDE-FGHJ\u212a"} {
 		t.Run(value, func(t *testing.T) {
-			normalized, err := normalizeBackupCode(value)
+			normalized, err := parseBackupCode(value)
 			require.ErrorIs(t, err, ErrInvalidCode)
 			assert.Empty(t, normalized)
 		})
 	}
 }
 
-func TestCheckBackupCode(t *testing.T) {
+func TestVerifyBackupCode(t *testing.T) {
 	first := hashPassword(t, "ABCDEFGHJK")
 	second := hashPassword(t, "ABCDEFGHJK")
 	firstParts := strings.Split(first, "$")
@@ -57,12 +57,12 @@ func TestCheckBackupCode(t *testing.T) {
 	require.Len(t, secondParts, 6)
 	assert.NotEqual(t, firstParts[4], secondParts[4])
 	assert.NotEqual(t, firstParts[5], secondParts[5])
-	require.NoError(t, CheckBackupCode(t.Context(), " abcde - fghjk ", first))
-	require.ErrorIs(t, CheckBackupCode(t.Context(), "ABCDE-FGHJM", first), ErrInvalidCode)
-	require.ErrorIs(t, CheckBackupCode(t.Context(), "invalid-code", first), ErrInvalidCode)
+	require.NoError(t, VerifyBackupCode(t.Context(), " abcde - fghjk ", first))
+	require.ErrorIs(t, VerifyBackupCode(t.Context(), "ABCDE-FGHJM", first), ErrInvalidCode)
+	require.ErrorIs(t, VerifyBackupCode(t.Context(), "invalid-code", first), ErrInvalidCode)
 }
 
-func TestCheckBackupHashInvalid(t *testing.T) {
+func TestVerifyBackupHashInvalid(t *testing.T) {
 	valid := hashPassword(t, "ABCDEFGHJK")
 	for _, encoded := range []string{
 		"",
@@ -72,7 +72,7 @@ func TestCheckBackupHashInvalid(t *testing.T) {
 		valid + "\n",
 	} {
 		t.Run(encoded, func(t *testing.T) {
-			err := CheckBackupCode(t.Context(), "ABCDE-FGHJK", encoded)
+			err := VerifyBackupCode(t.Context(), "ABCDE-FGHJK", encoded)
 			require.ErrorIs(t, err, errBackupHash)
 			assert.NotContains(t, err.Error(), "ABCDEFGHJK")
 			assert.NotContains(t, err.Error(), "private-hash")
@@ -91,12 +91,12 @@ func hashPassword(t *testing.T, password string) string {
 
 // A context that ends before the hash reaches the caller as itself, not as a
 // damaged stored hash.
-func TestCheckBackupCodeContext(t *testing.T) {
+func TestVerifyBackupCodeContext(t *testing.T) {
 	stored := hashPassword(t, "ABCDEFGHJK")
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	err := CheckBackupCode(ctx, "ABCDE-FGHJK", stored)
+	err := VerifyBackupCode(ctx, "ABCDE-FGHJK", stored)
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.NotErrorIs(t, err, errBackupHash)
@@ -115,7 +115,7 @@ func TestMatchBackupCode(t *testing.T) {
 	require.ErrorIs(t, wrongErr, ErrInvalidCode)
 	require.ErrorIs(t, noneErr, ErrInvalidCode)
 	require.ErrorIs(t, damagedErr, errBackupHash)
-	assert.NotErrorIs(t, damagedErr, ErrNotChecked)
+	assert.NotErrorIs(t, damagedErr, ErrNotVerified)
 }
 
 // A context that ends before the first comparison checked nothing.
@@ -126,6 +126,6 @@ func TestMatchBackupCodeEnded(t *testing.T) {
 
 	_, err := MatchBackupCode(ctx, "ABCDE-FGHJK", stored)
 
-	require.ErrorIs(t, err, ErrNotChecked)
+	require.ErrorIs(t, err, ErrNotVerified)
 	require.ErrorIs(t, err, context.Canceled)
 }

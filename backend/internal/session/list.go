@@ -23,7 +23,7 @@ type Listed struct {
 }
 
 // List returns the user's live sessions in storage's order, newest sign-in
-// first. checkSession drops expired rows, as Current would, but List
+// first. checkSession drops expired rows, as [Service.Current] would, but List
 // deletes nothing.
 func (s *Service) List(ctx context.Context, current Authenticated) ([]Listed, error) {
 	userID := current.Identity.User.ID

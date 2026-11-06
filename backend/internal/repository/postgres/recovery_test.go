@@ -20,7 +20,10 @@ import (
 // tableWorkflows saves each recovery notice as a row of
 // test_recovery_notices in the transaction it is given, as DBOS's enqueue
 // does, so a test sees whether the notice committed. err fails the enqueue.
+// It implements only [RecoveryWorkflows]: a call to another feature's job
+// reaches the nil [Workflows] and panics, failing the test.
 type tableWorkflows struct {
+	Workflows
 	err error
 }
 
@@ -50,7 +53,7 @@ func newRecovery(t *testing.T) *confirmationFixture {
  CREATE TABLE test_recovery_notices (user_id bigint NOT NULL);
  INSERT INTO sign_in_challenges (user_id, token_hash, expires_at)
  SELECT id, decode(md5(email), 'hex'), now() + interval '5 minutes' FROM users;
- INSERT INTO sign_in_attempts (email, client_addr, created_at) VALUES
+ INSERT INTO sign_in_attempts (email, client_prefix, created_at) VALUES
  ('admin@example.com', '127.0.0.1', now()),
  ('admin@example.com', '127.0.0.2', now()),
  ('other@example.com', '127.0.0.1', now()),
@@ -283,7 +286,7 @@ func TestRecoveryEndsResetLinks(t *testing.T) {
 
 // A notice reads its recipient's current email and whether they are
 // active, and the recovered account's email, empty when it is gone; a
-// missing recipient is account.ErrUserNotFound.
+// missing recipient is [account.ErrUserNotFound].
 func TestRecoveryNoticeRead(t *testing.T) {
 	// Given a recovered administrator and another, later deactivated.
 	db, conn := setupStorage(t)

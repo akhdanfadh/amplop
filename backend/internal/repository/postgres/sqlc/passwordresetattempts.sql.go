@@ -41,7 +41,7 @@ RETURNING id
 `
 
 type InsertPasswordResetAttemptParams struct {
-	ClientPrefix string
+	ClientPrefix *string
 	CreatedAt    time.Time
 }
 
@@ -52,13 +52,29 @@ func (q *Queries) InsertPasswordResetAttempt(ctx context.Context, arg InsertPass
 	return id, err
 }
 
+const insertPasswordResetLinkAttempt = `-- name: InsertPasswordResetLinkAttempt :exec
+INSERT INTO password_reset_attempts (user_id, linked_at, created_at)
+VALUES ($1, $2, $2)
+`
+
+type InsertPasswordResetLinkAttemptParams struct {
+	UserID   *int64
+	LinkedAt *time.Time
+}
+
+// Counts one more link for the account, with no client.
+func (q *Queries) InsertPasswordResetLinkAttempt(ctx context.Context, arg InsertPasswordResetLinkAttemptParams) error {
+	_, err := q.db.Exec(ctx, insertPasswordResetLinkAttempt, arg.UserID, arg.LinkedAt)
+	return err
+}
+
 const listPasswordResetClientAttempts = `-- name: ListPasswordResetClientAttempts :many
 SELECT created_at FROM password_reset_attempts
 WHERE client_prefix = $1 AND created_at > $2
 `
 
 type ListPasswordResetClientAttemptsParams struct {
-	ClientPrefix string
+	ClientPrefix *string
 	Since        time.Time
 }
 
@@ -126,17 +142,37 @@ func (q *Queries) LockPasswordResetClient(ctx context.Context, clientPrefix stri
 	return err
 }
 
-const updatePasswordResetAttemptLink = `-- name: UpdatePasswordResetAttemptLink :exec
-UPDATE password_reset_attempts SET user_id = $1, linked_at = $2 WHERE id = $3
+const markPasswordResetAttemptLink = `-- name: MarkPasswordResetAttemptLink :execrows
+UPDATE password_reset_attempts SET user_id = $1, linked_at = $2
+WHERE id = $3 AND linked_at IS NULL
 `
 
-type UpdatePasswordResetAttemptLinkParams struct {
+type MarkPasswordResetAttemptLinkParams struct {
 	UserID   *int64
 	LinkedAt *time.Time
 	ID       int64
 }
 
-func (q *Queries) UpdatePasswordResetAttemptLink(ctx context.Context, arg UpdatePasswordResetAttemptLinkParams) error {
-	_, err := q.db.Exec(ctx, updatePasswordResetAttemptLink, arg.UserID, arg.LinkedAt, arg.ID)
-	return err
+// Marks the request's attempt with its first link. A later link for it, or
+// one whose attempt the cleanup already deleted, matches no row and gets
+// its own with InsertPasswordResetLinkAttempt.
+func (q *Queries) MarkPasswordResetAttemptLink(ctx context.Context, arg MarkPasswordResetAttemptLinkParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markPasswordResetAttemptLink, arg.UserID, arg.LinkedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const readPasswordResetUserID = `-- name: ReadPasswordResetUserID :one
+SELECT id FROM users WHERE email = $1
+`
+
+// The ID of the account with the email, if any. A request runs it for
+// every address, so its answer takes the same work either way.
+func (q *Queries) ReadPasswordResetUserID(ctx context.Context, email string) (int64, error) {
+	row := q.db.QueryRow(ctx, readPasswordResetUserID, email)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }

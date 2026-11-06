@@ -37,7 +37,7 @@ func TestRequestIDDerived(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(out.String(), "request_id="))
 }
 
-// New writes Info and above, as slog's text handler does by default.
+// [New] writes Info and above, as slog's text handler does by default.
 func TestNewLevel(t *testing.T) {
 	var out bytes.Buffer
 	logger := New(&out)
@@ -49,7 +49,7 @@ func TestNewLevel(t *testing.T) {
 	assert.Contains(t, out.String(), "level=INFO msg=shown")
 }
 
-// Handler wraps any handler, e.g. JSON.
+// [Handler] wraps any handler, e.g. JSON.
 func TestHandler(t *testing.T) {
 	var out bytes.Buffer
 

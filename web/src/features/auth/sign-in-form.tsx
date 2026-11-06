@@ -2,14 +2,17 @@ import { useEffect, useRef, useState, type ComponentProps, type ReactElement } f
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateSession, useGetCurrentSession } from "@/api/generated/inbok";
-import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
 import { sessionMessage } from "./session-error";
 import { clearAccountCache } from "./session-cache";
 import { SignInSchema } from "./sign-in-schema";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { PasswordInput } from "@/components/password-input";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 
 const unauthorized = 401;
 const inputs = [
@@ -91,7 +94,9 @@ export function SignInForm({
     },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const inputErrors = create.error ? formErrors(create.error, signInFields) : undefined;
+  const summary = create.error
+    ? formSummary(sessionMessage(create.error, "sign-in"), formErrors(create.error, signInFields))
+    : [];
 
   useEffect(
     () => () => {
@@ -101,11 +106,7 @@ export function SignInForm({
     [],
   );
 
-  useEffect(() => {
-    if (!create.error || create.isPending) return;
-    const invalid = formRef.current?.querySelector<HTMLInputElement>('[aria-invalid="true"]');
-    (invalid ?? submitRef.current)?.focus();
-  }, [create.error, create.isPending]);
+  useFocusAfterError(create.error, create.isPending, formRef, submitRef);
 
   useEffect(() => {
     if (checkMessage && !checking) checkRef.current?.focus();
@@ -163,7 +164,7 @@ export function SignInForm({
                 "aria-invalid": errors.length > 0,
                 "aria-describedby": errors.length > 0 ? `${id}-error` : undefined,
                 value: field.state.value,
-                onBlur: field.handleBlur,
+                onBlur: () => blurKeepingSubmitErrors(field),
                 onChange: (event) => field.handleChange(event.target.value),
               };
               return (
@@ -194,21 +195,7 @@ export function SignInForm({
         {create.isPending ? "Signing in..." : "Sign in"}
       </Button>
 
-      {create.error && (
-        <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[
-              { message: sessionMessage(create.error, "sign-in") },
-              ...(inputErrors?.unmatched ?? []),
-            ]}
-          />
-          {create.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{create.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={create.error?.requestId} />
       {create.error && uncertainOutcome(create.error) && (
         <div className="flex flex-col gap-3">
           <Button

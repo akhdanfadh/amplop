@@ -53,7 +53,7 @@ func TestMailerSendWithoutSignIn(t *testing.T) {
 	assert.Empty(t, sender.password)
 }
 
-// The recipient is sent to as emailaddress.Parse returns it.
+// The recipient is sent to as [emailaddress.Parse] returns it.
 func TestMailerSendRecipient(t *testing.T) {
 	storage, sender := &memoryStorage{record: savedSignIn()}, &fakeSender{}
 	outgoing := testOutgoing()
@@ -117,8 +117,8 @@ func TestMailerSendUndecryptable(t *testing.T) {
 // and the start of the server's reply, never the password.
 func TestMailerSendFailed(t *testing.T) {
 	storage := &memoryStorage{record: savedSignIn()}
-	reply := "535 5.7.8 Authentication failed for inbok@example.com " + strings.Repeat("x", 2*maxLoggedReply)
-	sender := &fakeSender{err: &SendError{Reason: ReasonAuth, Err: errors.New(reply)}}
+	reply := "550 5.1.1 No such user here " + strings.Repeat("x", 2*maxLoggedReply)
+	sender := &fakeSender{err: &SendError{Reason: ReasonRecipient, Err: errors.New(reply)}}
 	var logs bytes.Buffer
 	var failed *SendError
 
@@ -126,12 +126,12 @@ func TestMailerSendFailed(t *testing.T) {
 	revision, err := testMailer(storage, &fakeKeyring{}, sender, &logs).Send(ctx, testOutgoing())
 	require.ErrorAs(t, err, &failed)
 
-	assert.Equal(t, ReasonAuth, failed.Reason)
+	assert.Equal(t, ReasonRecipient, failed.Reason)
 	assert.Equal(t, int64(3), revision)
 	assert.Contains(t, logs.String(), `msg="system email send failed" purpose="email verification" `+
-		"reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com")
+		"reason=recipient host=smtp.example.com port=587 security=starttls username=inbok@example.com")
 	assert.Contains(t, logs.String(), "request_id=req-1", "the warning names the request that sent it")
-	assert.Contains(t, logs.String(), "535 5.7.8")
+	assert.Contains(t, logs.String(), "550 5.1.1")
 	assert.NotContains(t, logs.String(), reply, "a long reply is cut")
 	assert.NotContains(t, logs.String(), "app password")
 }

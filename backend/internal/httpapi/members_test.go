@@ -53,7 +53,7 @@ func (f *fakeMembers) Reactivate(_ context.Context, actorID, memberID int64) (ac
 }
 
 // deactivatedMember is a verified member with a confirmed factor,
-// deactivated at membersDeactivated.
+// deactivated at [membersDeactivated].
 func deactivatedMember() account.Member {
 	deactivated := membersDeactivated
 	return account.Member{

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCheckPassword(t *testing.T) {
+func TestValidatePassword(t *testing.T) {
 	for _, c := range []struct {
 		name, password string
 		valid          bool
@@ -25,7 +25,7 @@ func TestCheckPassword(t *testing.T) {
 		{"invalid UTF-8", strings.Repeat("a", 15) + "\xff", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			err := CheckPassword(c.password)
+			err := ValidatePassword(c.password)
 
 			if !c.valid {
 				require.ErrorIs(t, err, ErrPasswordInvalid)

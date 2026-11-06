@@ -16,8 +16,8 @@ const (
 	// and an operator may look into one days after it happened.
 	failedKept = 30 * 24 * time.Hour
 
-	// workflowRunsBatch is the most runs one DeleteExpired deletes, so one
-	// step's statements stay short however many runs have piled up.
+	// workflowRunsBatch is the most runs one [workflowRuns.DeleteExpired] deletes,
+	// so one step's statements stay short however many runs have piled up.
 	workflowRunsBatch = 1000
 )
 
@@ -45,7 +45,7 @@ type workflowRuns struct {
 	now      func() time.Time
 }
 
-// newWorkflowRuns returns workflowRuns deleting, through client, runs with
+// newWorkflowRuns returns [workflowRuns] deleting, through client, runs with
 // one of statuses that finished at least kept ago, a batch at a time.
 func newWorkflowRuns(client dbos.Client, statuses []dbos.WorkflowStatusType, kept time.Duration) workflowRuns {
 	return workflowRuns{client: client, statuses: statuses, kept: kept, batch: workflowRunsBatch, now: time.Now}

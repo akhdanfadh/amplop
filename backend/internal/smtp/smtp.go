@@ -4,22 +4,16 @@
 package smtp
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/netip"
 	"strconv"
-	"strings"
-	"sync/atomic"
 	"time"
 
-	"github.com/emersion/go-message/mail"
-	"github.com/emersion/go-sasl"
 	gosmtp "github.com/emersion/go-smtp"
 
 	"inbok/internal/systememail"
@@ -35,20 +29,6 @@ const (
 	callerMargin = time.Second
 	// quitTimeout bounds the goodbye after the server has accepted the message.
 	quitTimeout = time.Second
-	// maxReplyBytes caps the bytes read from the server in one session; a test
-	// send needs a few kilobytes. go-smtp limits each line, not the line count.
-	maxReplyBytes = 1 << 20
-)
-
-var (
-	// errNoSignIn means the server offers neither sign-in method inbok supports.
-	errNoSignIn = errors.New("server offers no PLAIN or LOGIN sign-in")
-	// errCleartext means a sign-in was attempted without TLS.
-	errCleartext = errors.New("refusing to sign in without TLS")
-	// errUnsafeInput means the input would change the SMTP session or cannot be dialed.
-	errUnsafeInput = errors.New("address, credentials, port, or security mode cannot be sent")
-	// errTooLong means the server sent more than maxReplyBytes.
-	errTooLong = errors.New("server replies exceed the size limit")
 )
 
 // noSTARTTLS is the text of go-smtp's error for a server that does not offer
@@ -75,9 +55,7 @@ type Sender struct {
 	dial func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
-var _ systememail.Sender = (*Sender)(nil)
-
-// NewSender returns a Sender that names itself host in EHLO, a domain or an
+// NewSender returns a [Sender] that names itself host in EHLO, a domain or an
 // IP address, and verifies servers against the system's trusted certificates.
 func NewSender(host string) *Sender {
 	return &Sender{timeout: exchangeTimeout, hello: helloName(host)}
@@ -110,27 +88,35 @@ func helloName(host string) string {
 // a [*systememail.SendError] when the server or network fails, ctx's error
 // when the caller gives up, and a plain error for unsafe input.
 func (s *Sender) Send(ctx context.Context, server systememail.Server, password string, message systememail.Message) error {
-	// Unsafe input is the caller's fault, not the server's, so it is no SendError.
-	if err := checkSafe(server, password, message); err != nil {
+	// 1. Refuse unsafe input before connecting. It is the caller's fault,
+	// not the server's, so it is no SendError.
+	if err := validateSend(server, password, message); err != nil {
 		return err
 	}
+
+	// 2. Compose the message, so a malformed one fails before connecting.
 	body, err := compose(message, time.Now())
 	if err != nil {
 		return err
 	}
 
+	// 3. Bound the session. End before the caller's own deadline, so it can
+	// still record the result.
 	limit := s.timeout
-	// End before the caller's own deadline, so it can still record the result.
 	if deadline, ok := ctx.Deadline(); ok {
 		limit = min(limit, time.Until(deadline)-callerMargin)
 	}
 	bounded, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 
+	// 4. Run the session.
 	err = s.exchange(bounded, server, password, message, body)
 	if err == nil {
 		return nil
 	}
+
+	// 5. Label a failure: the caller giving up, then time running out, then
+	// the step's own reason.
 	if ctx.Err() != nil {
 		// The caller gave up; the server is not at fault. Waiting for the
 		// answer to a whole message, the send stays unconfirmed, and the
@@ -158,13 +144,15 @@ func (s *Sender) Send(ctx context.Context, server systememail.Server, password s
 	return err
 }
 
-// exchange runs one SMTP session: connect, protect, sign in, MAIL, RCPT,
-// DATA, and QUIT. Each failure carries the reason of its step.
+// exchange runs one SMTP session that delivers message with body to server.
+// It returns nil once the server accepts the message, and otherwise a failure
+// carrying the reason of its step.
 //
-// NOTE: this follows [gosmtp.SendMail] step by step. SendMail takes no
+// DESIGN: this follows [gosmtp.SendMail] step by step. SendMail takes no
 // context or TLS settings, has no plain mode, and returns one error for
 // every step, so it cannot meet the deadline or report a reason.
 func (s *Sender) exchange(ctx context.Context, server systememail.Server, password string, message systememail.Message, body []byte) error {
+	// 1. Connect.
 	dial := s.dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
@@ -181,38 +169,47 @@ func (s *Sender) exchange(ctx context.Context, server systememail.Server, passwo
 	defer stop()
 	defer raw.Close()
 
+	// 2. Protect the connection and greet the server.
 	client, err := s.open(ctx, conn, server)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 
+	// 3. Sign in, which needs the protected connection.
+	sent := redaction{recipient: message.To}
 	if server.Username != "" {
-		if err := signIn(client, server.Username, password); err != nil {
-			return refused(systememail.ReasonAuth, err)
+		sent.credentials, err = signIn(client, server.Username, password)
+		if err != nil {
+			// The reply can quote the credentials just sent.
+			return refused(systememail.ReasonAuth, signInError(err))
 		}
 	}
 
-	// A non-ASCII address needs the server's SMTPUTF8 extension (RFC 6531).
+	// 4. Name the sender and the recipient (MAIL, RCPT). A non-ASCII
+	// address needs the server's SMTPUTF8 extension (RFC 6531). From here
+	// on a reply can quote the sign-in or the recipient, so each failure
+	// passes through sent.
 	var options *gosmtp.MailOptions
 	if !isASCII(message.FromAddress) || !isASCII(message.To) {
 		options = &gosmtp.MailOptions{UTF8: true}
 	}
 	if err := client.Mail(message.FromAddress, options); err != nil {
-		return refused(systememail.ReasonSender, err)
+		return refused(systememail.ReasonSender, sent.redact(err))
 	}
 	if err := client.Rcpt(message.To, nil); err != nil {
-		return refused(systememail.ReasonRecipient, err)
+		return refused(systememail.ReasonRecipient, sent.redact(err))
 	}
 
-	// A refusal after the recipients is about the message itself. For a test
-	// message that is nearly always the From address, e.g. an unverified sender.
+	// 5. Send the message (DATA). A refusal after the recipients is about
+	// the message itself. For a test message that is nearly always the From
+	// address, e.g. an unverified sender.
 	data, err := client.Data()
 	if err != nil {
-		return refused(systememail.ReasonSender, err)
+		return refused(systememail.ReasonSender, sent.redact(err))
 	}
 	if _, err := data.Write(body); err != nil {
-		return refused(systememail.ReasonSender, err)
+		return refused(systememail.ReasonSender, sent.redact(err))
 	}
 	// CloseWithResponse flushes the message's end and its final dot, then
 	// reads the server's answer. A failed flush means the dot never left, so
@@ -222,13 +219,14 @@ func (s *Sender) exchange(ctx context.Context, server systememail.Server, passwo
 	// message possibly accepted.
 	conn.ended.Store(true)
 	if _, err := data.CloseWithResponse(); err != nil {
-		failure := refused(systememail.ReasonSender, err)
+		failure := refused(systememail.ReasonSender, sent.redact(err))
 		smtpErr, ok := errors.AsType[*gosmtp.SMTPError](err)
 		failure.Unconfirmed = conn.answering.Load() && (!ok || smtpErr.Code < 400)
 		return failure
 	}
 
-	// The server has accepted the message; a slow or failed goodbye changes nothing.
+	// 6. Say goodbye (QUIT). The server has accepted the message; a slow or
+	// failed goodbye changes nothing.
 	client.CommandTimeout = quitTimeout
 	_ = client.Quit()
 	return nil
@@ -271,150 +269,6 @@ func (s *Sender) open(ctx context.Context, conn *watchedConn, server systememail
 		return nil, failed(systememail.ReasonConnect, err)
 	}
 	return client, nil
-}
-
-// signIn authenticates with PLAIN, or with LOGIN when the server offers only
-// that. It returns errCleartext on a connection without TLS.
-func signIn(client *gosmtp.Client, username, password string) error {
-	// Neither go-smtp nor go-sasl checks for TLS. Saving settings forbids a
-	// username without it; this holds even if a stored row does not.
-	if _, ok := client.TLSConnectionState(); !ok {
-		return errCleartext
-	}
-	switch {
-	case client.SupportsAuth(sasl.Plain):
-		return client.Auth(sasl.NewPlainClient("", username, password))
-	// Some providers offer only LOGIN, e.g. Microsoft 365.
-	case client.SupportsAuth(sasl.Login):
-		return client.Auth(sasl.NewLoginClient(username, password))
-	}
-	return errNoSignIn
-}
-
-// compose returns message as RFC 5322 bytes: From with name and address, To,
-// Subject, Date, Message-ID, and a quoted-printable UTF-8 text body.
-func compose(message systememail.Message, now time.Time) ([]byte, error) {
-	// go-message encodes or rejects line breaks in header values, so no field
-	// can add a header.
-	var header mail.Header
-	header.SetAddressList("From", []*mail.Address{{Name: message.FromName, Address: message.FromAddress}})
-	header.SetAddressList("To", []*mail.Address{{Address: message.To}})
-	header.SetSubject(message.Subject)
-	header.SetDate(now)
-	// The sender's domain identifies inbok's messages; the host name might not.
-	domain := message.FromAddress[strings.LastIndexByte(message.FromAddress, '@')+1:]
-	if domain == "" || domain == message.FromAddress {
-		domain = "localhost"
-	}
-	if err := header.GenerateMessageIDWithHostname(domain); err != nil {
-		return nil, err
-	}
-	header.SetContentType("text/plain", map[string]string{"charset": "utf-8"})
-
-	var out bytes.Buffer
-	writer, err := mail.CreateSingleInlineWriter(&out, header)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := io.WriteString(writer, message.Body); err != nil {
-		return nil, err
-	}
-	if err := writer.Close(); err != nil {
-		return nil, err
-	}
-	return out.Bytes(), nil
-}
-
-// checkSafe returns errUnsafeInput for input that would change the SMTP
-// session or cannot be dialed, and nil otherwise.
-func checkSafe(server systememail.Server, password string, message systememail.Message) error {
-	// SMTP commands end at CRLF (RFC 5321), and go-smtp writes MAIL FROM:<%s>
-	// unescaped: a line break would start a command, an angle bracket would
-	// add parameters, and NUL is not allowed at all.
-	if strings.ContainsAny(message.FromAddress+message.To, "\r\n\x00<>") {
-		return errUnsafeInput
-	}
-	// SASL PLAIN separates its fields with NUL (RFC 4616).
-	if strings.ContainsRune(server.Username+password, 0) {
-		return errUnsafeInput
-	}
-	if server.Port < 1 || server.Port > 65535 {
-		return errUnsafeInput
-	}
-	switch server.Security {
-	case systememail.SecurityTLS, systememail.SecuritySTARTTLS, systememail.SecurityNone:
-		return nil
-	}
-	return errUnsafeInput
-}
-
-// failed returns err as a [*systememail.SendError] with reason, permanent
-// when err holds a 5xx reply.
-func failed(reason systememail.Reason, err error) *systememail.SendError {
-	// Checked here, where every SendError is made, so no step and no
-	// rewrap, e.g. a timeout's, loses it. go-smtp documents a 4xx or 5xx
-	// reply as an *SMTPError.
-	smtpErr, ok := errors.AsType[*gosmtp.SMTPError](err)
-	return &systememail.SendError{Reason: reason, Err: err, Permanent: ok && smtpErr.Code >= 500}
-}
-
-// refused returns err as a [*systememail.SendError] with reason, or with
-// connect when the connection dropped or passed the reply limit.
-func refused(reason systememail.Reason, err error) *systememail.SendError {
-	// The step's reason applies only when the server answered it.
-	var opErr *net.OpError
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) ||
-		errors.Is(err, errTooLong) || errors.As(err, &opErr) {
-		return failed(systememail.ReasonConnect, err)
-	}
-	return failed(reason, err)
-}
-
-// watchedConn wraps the server connection to cap the bytes read, to record
-// whether STARTTLS was sent, and to record whether reading started after
-// the message ended, which happens only once its final dot was written.
-//
-// NOTE: that last record relies on go-smtp's DataCommand.CloseWithResponse
-// flushing the message's end and its dot before it reads the reply, which
-// its source does but its documentation does not promise. SMTP forces the
-// order, since no reply to the message exists before the dot. If a release
-// reads earlier, TestSendFinalWriteFailed fails; if it stops reading the
-// connection, TestSendUnconfirmed does. Either way a mismatch mostly errs
-// toward unconfirmed, which skips a retry rather than sending twice.
-type watchedConn struct {
-	net.Conn
-	left      int64
-	startTLS  atomic.Bool
-	ended     atomic.Bool // the message's end is being written
-	answering atomic.Bool // a read started after ended was set
-}
-
-// Read reads from the connection until maxReplyBytes have been read in total,
-// then returns errTooLong. A read after the message's end records that the
-// answer is awaited.
-func (c *watchedConn) Read(b []byte) (int, error) {
-	if c.ended.Load() {
-		c.answering.Store(true)
-	}
-	if c.left <= 0 {
-		return 0, errTooLong
-	}
-	// Shorten b so a single read cannot pass the limit.
-	if int64(len(b)) > c.left {
-		b = b[:c.left]
-	}
-	n, err := c.Conn.Read(b)
-	c.left -= int64(n)
-	return n, err
-}
-
-// Write writes b unchanged and records whether b is the STARTTLS command.
-func (c *watchedConn) Write(b []byte) (int, error) {
-	// go-smtp flushes each command in one write, so the command starts b.
-	if bytes.HasPrefix(b, []byte("STARTTLS\r\n")) {
-		c.startTLS.Store(true)
-	}
-	return c.Conn.Write(b)
 }
 
 // isASCII reports whether s holds only ASCII bytes.

@@ -16,14 +16,14 @@ import (
 
 var noticeRecoveredAt = time.Date(2026, 11, 3, 11, 16, 0, 0, time.UTC)
 
-// IDs of the accounts in these tests: recoveredID was recovered,
+// IDs of the accounts in these tests: [recoveredID] was recovered,
 // otherAdminID is another administrator.
 const (
 	recoveredID  int64 = 7
 	otherAdminID int64 = 8
 )
 
-// noticeUser is an account in noticeMemory.
+// noticeUser is an account in [noticeMemory].
 type noticeUser struct {
 	email  string
 	active bool

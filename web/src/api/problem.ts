@@ -103,7 +103,7 @@ export function userMessage(err: ApiError): string {
 // past counts from when the response arrived. Without a usable header, or
 // for a wait over six days, it says "later".
 //
-// NOTE: a clock time stays true while the message stays on screen, which a
+// DESIGN: a clock time stays true while the message stays on screen, which a
 // duration such as "in 3 minutes" does not; the weekday, unlike "tomorrow",
 // stays true past midnight. It is worked out from when the response arrived,
 // so every render shows the same text.
@@ -149,7 +149,7 @@ const bodyPrefix = "body.";
 const rejected = "This value was not accepted.";
 
 type InputMessage = { message: string };
-type FormErrors = {
+export type FormErrors = {
   fields: Record<string, InputMessage[]>;
   unmatched: InputMessage[];
 };
@@ -173,4 +173,15 @@ export function formErrors(err: ApiError, fieldNames: readonly string[]): FormEr
   }
 
   return { fields: Object.fromEntries(fields), unmatched };
+}
+
+// formSummary returns the messages for the summary under a form's button
+// after a failed request: message, the request's own text, then the input
+// errors in errors that match no rendered field. It returns none when every
+// input error matched a field.
+export function formSummary(message: string, errors: FormErrors): InputMessage[] {
+  // The fields then hold the whole refusal and focus moves to the first; a
+  // request reference is for reporting a fault, which a refused value is not.
+  if (Object.keys(errors.fields).length > 0 && errors.unmatched.length === 0) return [];
+  return [{ message }, ...errors.unmatched];
 }

@@ -50,8 +50,9 @@ func registerEmailVerificationRequest(api huma.API, handler emailVerificationHan
 		OperationID: "requestEmailVerification",
 		Method:      http.MethodPost,
 		Path:        "/account/email-verification",
-		Summary:     "Email a link that verifies the account's email address",
-		Description: "The link expires in 24 hours, and every unexpired link works until one is used. " +
+		Summary:     "Send Verification Link",
+		Tags:        []string{tagEmailVerification},
+		Description: "Emails the signed-in account a link that verifies its email address. The link expires in 24 hours, and every unexpired link works until one is used. " +
 			"At most 3 links are sent in 15 minutes and 10 in 24 hours.",
 		Metadata:  map[string]any{accessKey: session.AccessMember},
 		Security:  []map[string][]string{{sessionSecuritySchemeName: {}}},
@@ -138,8 +139,9 @@ func registerEmailVerificationRedeem(api huma.API, handler emailVerificationHand
 		OperationID: "redeemEmailVerification",
 		Method:      http.MethodPost,
 		Path:        "/email-verifications/redeem",
-		Summary:     "Verify an email address with an emailed link",
-		Description: "Needs no session and signs no one in. Redeeming a link uses up every link sent to that account.",
+		Summary:     "Verify Email Address",
+		Tags:        []string{tagEmailVerification},
+		Description: "Verifies the email address an emailed link was sent to. Needs no session and signs no one in. Redeeming a link uses up every link sent to that account.",
 		Metadata:    map[string]any{accessKey: session.AccessPublic},
 		Middlewares: huma.Middlewares{withNoStore},
 		Responses:   emailVerificationRedeemResponses(api),

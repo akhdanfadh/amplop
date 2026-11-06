@@ -29,21 +29,21 @@ func (q *Queries) DeleteOldRegistrationAttempts(ctx context.Context, since time.
 }
 
 const insertRegistrationAttempt = `-- name: InsertRegistrationAttempt :exec
-INSERT INTO registration_attempts (email, client_addr, outcome, created_at)
+INSERT INTO registration_attempts (email, client_prefix, outcome, created_at)
 VALUES ($1, $2, $3, $4)
 `
 
 type InsertRegistrationAttemptParams struct {
-	Email      string
-	ClientAddr string
-	Outcome    string
-	CreatedAt  time.Time
+	Email        string
+	ClientPrefix string
+	Outcome      string
+	CreatedAt    time.Time
 }
 
 func (q *Queries) InsertRegistrationAttempt(ctx context.Context, arg InsertRegistrationAttemptParams) error {
 	_, err := q.db.Exec(ctx, insertRegistrationAttempt,
 		arg.Email,
-		arg.ClientAddr,
+		arg.ClientPrefix,
 		arg.Outcome,
 		arg.CreatedAt,
 	)
@@ -51,14 +51,14 @@ func (q *Queries) InsertRegistrationAttempt(ctx context.Context, arg InsertRegis
 }
 
 const listRegistrationAttempts = `-- name: ListRegistrationAttempts :many
-SELECT email, client_addr, outcome, created_at FROM registration_attempts
+SELECT email, client_prefix, outcome, created_at FROM registration_attempts
 `
 
 type ListRegistrationAttemptsRow struct {
-	Email      string
-	ClientAddr string
-	Outcome    string
-	CreatedAt  time.Time
+	Email        string
+	ClientPrefix string
+	Outcome      string
+	CreatedAt    time.Time
 }
 
 func (q *Queries) ListRegistrationAttempts(ctx context.Context) ([]ListRegistrationAttemptsRow, error) {
@@ -72,7 +72,7 @@ func (q *Queries) ListRegistrationAttempts(ctx context.Context) ([]ListRegistrat
 		var i ListRegistrationAttemptsRow
 		if err := rows.Scan(
 			&i.Email,
-			&i.ClientAddr,
+			&i.ClientPrefix,
 			&i.Outcome,
 			&i.CreatedAt,
 		); err != nil {

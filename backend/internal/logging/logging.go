@@ -1,7 +1,7 @@
 // Package logging builds inbok's loggers and adds request_id to lines logged
 // with a request's context.
 //
-// NOTE: cmd/inbok builds one root logger with New and passes it to every
+// DESIGN: cmd/inbok builds one root logger with [New] and passes it to every
 // service and to httpapi, so a line logged with a request's context carries
 // its request_id wherever it is written. Alternatives were exporting
 // httpapi's wrapper, which would make features depend on the HTTP package
@@ -76,7 +76,7 @@ func WithoutAttrs(logger *slog.Logger, keys ...string) *slog.Logger {
 }
 
 // withoutAttrsHandler leaves out attributes whose key is in keys, both on
-// records and on attributes added with WithAttrs.
+// records and on attributes added with [slog.Handler.WithAttrs].
 type withoutAttrsHandler struct {
 	slog.Handler
 	keys []string

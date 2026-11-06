@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import type { ApiError } from "@/api/transport";
-import { formErrors, uncertainOutcome, userMessage } from "@/api/problem";
+import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
 import { codeFormats, codePaste, type CodeKind } from "@/features/auth/code-schema";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
@@ -11,6 +12,7 @@ import {
   InputOTPSeparator,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { ConfirmationSchema, RegenerationSchema, turnOffSchema } from "./schema";
 
 const fieldNames = ["code"] as const;
@@ -82,6 +84,7 @@ export function ConfirmForm({
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
   const inputs = error ? formErrors(error, fieldNames) : undefined;
+  const summary = error && inputs ? formSummary(userMessage(error), inputs) : [];
   const codeRejected = Boolean(inputs?.fields.code);
 
   useEffect(() => {
@@ -149,7 +152,7 @@ export function ConfirmForm({
                   name="code"
                   value={field.state.value}
                   onChange={field.handleChange}
-                  onBlur={field.handleBlur}
+                  onBlur={() => blurKeepingSubmitErrors(field)}
                   maxLength={format.length}
                   pattern={format.pattern}
                   inputMode={kind === "authenticator" ? "numeric" : "text"}
@@ -191,16 +194,7 @@ export function ConfirmForm({
       >
         {pending ? config.pending : config.action}
       </Button>
-      {error && (
-        <div className="flex flex-col gap-2">
-          <FieldError errors={[{ message: userMessage(error) }, ...(inputs?.unmatched ?? [])]} />
-          {error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={error?.requestId} />
     </form>
   );
 }

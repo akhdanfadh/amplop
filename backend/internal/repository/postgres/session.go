@@ -14,9 +14,6 @@ import (
 	"inbok/internal/session"
 )
 
-// Compile-time check that *DB implements session.Storage.
-var _ session.Storage = (*DB)(nil)
-
 // InsertSession saves the hash and fixed lifetime chosen by the session rules.
 func (db *DB) InsertSession(ctx context.Context, state session.State) error {
 	if err := sqlc.New(db.pool).InsertSession(ctx, insertSessionParams(state)); err != nil {
@@ -59,12 +56,15 @@ func sessionState(row sqlc.Session) (session.State, error) {
 	return state, nil
 }
 
-// UpdateSession applies the callback's session change in one transaction.
-// It keeps the row locked through the decision and its commit.
-// Waiting requests then see refreshed activity or a deleted row.
+// UpdateSession applies the change update returns for the session with hash,
+// in one transaction. It returns [session.ErrNotFound] when no session has
+// hash.
 func (db *DB) UpdateSession(ctx context.Context, hash [sha256.Size]byte, update func(session.State) (session.Change, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock the session, held through the decision and its commit, so
+		// a waiting request sees refreshed activity or a deleted row.
 		row, err := queries.LockSession(ctx, hash[:])
 		if errors.Is(err, pgx.ErrNoRows) {
 			return session.ErrNotFound
@@ -72,15 +72,20 @@ func (db *DB) UpdateSession(ctx context.Context, hash [sha256.Size]byte, update 
 		if err != nil {
 			return fmt.Errorf("lock session: %w", err)
 		}
+
+		// 2. Let update decide, and apply its change.
 		return applySessionChange(ctx, queries, row, update)
 	})
 }
 
-// UpdateUserSession locks the session by owner and public ID, then applies
-// the callback's change like UpdateSession.
+// UpdateUserSession applies the change update returns for userID's session
+// with public ID id, in one transaction, like [DB.UpdateSession]. It returns
+// [session.ErrNotFound] when userID has no such session.
 func (db *DB) UpdateUserSession(ctx context.Context, userID int64, id uuid.UUID, update func(session.State) (session.Change, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock the session, held through the decision and its commit.
 		row, err := queries.LockUserSessionByID(ctx, sqlc.LockUserSessionByIDParams{UserID: userID, ID: id})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return session.ErrNotFound
@@ -88,6 +93,8 @@ func (db *DB) UpdateUserSession(ctx context.Context, userID int64, id uuid.UUID,
 		if err != nil {
 			return fmt.Errorf("lock user session: %w", err)
 		}
+
+		// 2. Let update decide, and apply its change.
 		return applySessionChange(ctx, queries, row, update)
 	})
 }
@@ -138,18 +145,24 @@ func (db *DB) ReadUserSessions(ctx context.Context, userID int64) ([]session.Sta
 	return sessionStates(rows)
 }
 
-// DeleteUserOtherSessions takes the owner lock before the kept session's,
-// as ConfirmTOTP does, then deletes the other sessions in one statement.
+// DeleteUserOtherSessions deletes userID's sessions other than keep, in one
+// transaction, if check accepts the kept session, and returns the deleted
+// ones. It returns [session.ErrNotFound] when userID or keep is missing.
 func (db *DB) DeleteUserOtherSessions(ctx context.Context, userID int64, keep [sha256.Size]byte, check func(session.State) error) ([]session.State, error) {
 	var deleted []session.State
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock the owner. Taking it before the kept session's lock, as
+		// ConfirmTOTP does, keeps the two from deadlocking.
 		if _, err := queries.LockSessionUser(ctx, userID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return session.ErrNotFound
 			}
 			return fmt.Errorf("lock session owner: %w", err)
 		}
+
+		// 2. Lock the kept session.
 		row, err := queries.LockUserSession(ctx, sqlc.LockUserSessionParams{UserID: userID, TokenHash: keep[:]})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return session.ErrNotFound
@@ -161,10 +174,13 @@ func (db *DB) DeleteUserOtherSessions(ctx context.Context, userID int64, keep [s
 		if err != nil {
 			return err
 		}
+
+		// 3. Let check accept or refuse the kept session.
 		if err := check(state); err != nil {
 			return err
 		}
 
+		// 4. Delete the other sessions in one statement.
 		rows, err := queries.DeleteUserOtherSessions(ctx, sqlc.DeleteUserOtherSessionsParams{UserID: userID, Keep: keep[:]})
 		if err != nil {
 			return fmt.Errorf("delete other sessions: %w", err)

@@ -71,7 +71,9 @@ func registerProbeEvent(api huma.API, handler probeHandler) {
 		Metadata:      map[string]any{accessKey: session.AccessPublic},
 		Method:        http.MethodPost,
 		Path:          probeEventsPath,
-		Summary:       "Add to the probe counter",
+		Summary:       "Add Probe Event",
+		Tags:          []string{tagProbe},
+		Description:   "Adds the entry's amount to the shared counter and records the entry.",
 		DefaultStatus: http.StatusCreated,
 		Responses:     probeEventResponses(api),
 	}, handler.handleCreateProbeEvent)

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	// cleanupWorkflow and cleanupSchedule name the cleanup in DBOS's
+	// cleanupWorkflow and [cleanupSchedule] name the cleanup in DBOS's
 	// tables, where runs and the schedule outlive the code that made them.
 	cleanupWorkflow = "inbok.cleanup"
 	cleanupSchedule = "inbok.cleanup.hourly"
@@ -27,7 +27,7 @@ const (
 )
 
 // expired deletes one bounded batch of a feature's expired rows, e.g.
-// [inbok/internal/emailverification.Cleanup].
+// emailverification.Cleanup.
 type expired interface {
 	// DeleteExpired returns how many rows it deleted and whether more may
 	// remain.
@@ -69,7 +69,7 @@ func (w *Worker) cleanups(s Services) []cleanup {
 // resumes after the last finished batch, and deleting a batch again is
 // harmless. The schedule waits for the next hour instead of making up for
 // hours the worker was down: a run works through the whole backlog, up to
-// maxCleanupBatches per kind, and the next runs take what it left.
+// [maxCleanupBatches] per kind, and the next runs take what it left.
 func (w *Worker) registerCleanup(cleanups []cleanup) error {
 	run := func(ctx dbos.Context, _ dbos.ScheduledWorkflowInput) (any, error) {
 		return runCleanup(ctx, cleanups, w.logger)
@@ -112,7 +112,7 @@ type batch struct {
 }
 
 // deleteBatches deletes c's expired rows, one batch per step, until a batch
-// reports no more or maxCleanupBatches have run. It returns how many it
+// reports no more or [maxCleanupBatches] have run. It returns how many it
 // deleted and the first step's error.
 func deleteBatches(ctx dbos.Context, c cleanup) (int, error) {
 	total := 0

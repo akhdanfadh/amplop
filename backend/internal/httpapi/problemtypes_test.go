@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +29,7 @@ func TestProblemTypes(t *testing.T) {
 	for _, want := range []string{
 		setupDoneType, sessionNotFoundType, emailAlreadyVerifiedType, emailVerificationLinkInvalidType,
 		requestProblem(http.StatusNotFound).Type, requestProblem(http.StatusInternalServerError).Type,
-		crossOriginProblem().Type,
+		crossOriginProblem().Type, serviceBusyType,
 	} {
 		assert.Contains(t, types, want)
 	}
@@ -41,19 +41,14 @@ func TestProblemExamples(t *testing.T) {
 	doc := New(discard, Services{}).api.OpenAPI()
 
 	var examples []any
-	for _, item := range doc.Paths {
-		for _, op := range []*huma.Operation{item.Get, item.Put, item.Post, item.Delete, item.Options, item.Head, item.Patch, item.Trace} {
-			if op == nil {
-				continue
-			}
-			for _, response := range op.Responses {
-				if media := response.Content[problemContentType]; media != nil {
-					if media.Example != nil {
-						examples = append(examples, media.Example)
-					}
-					for _, example := range media.Examples {
-						examples = append(examples, example.Value)
-					}
+	for _, op := range operations(doc) {
+		for _, response := range op.Responses {
+			if media := response.Content[problemContentType]; media != nil {
+				if media.Example != nil {
+					examples = append(examples, media.Example)
+				}
+				for _, example := range media.Examples {
+					examples = append(examples, example.Value)
 				}
 			}
 		}
@@ -85,4 +80,43 @@ func TestProblemTypeField(t *testing.T) {
 	assert.Contains(t, exported.Components.Schemas[problemTypeSchemaName].Enum, setupDoneType)
 	assert.JSONEq(t, `{"anyOf":[{"$ref":"#/components/schemas/ProblemType"},{"type":"string","format":"uri-reference"}]}`,
 		string(exported.Components.Schemas["Problem"].Properties["type"]))
+}
+
+// The API overview's Problem types table has one row per listed type, and
+// marks a shared type Any.
+func TestProblemTypesTable(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+	listed := doc.Components.Schemas.Map()[problemTypeSchemaName].Enum
+
+	rows := 0
+	for _, line := range strings.Split(doc.Info.Description, "\n") {
+		if strings.HasPrefix(line, "| `/") {
+			rows++
+		}
+	}
+	assert.Equal(t, len(listed), rows)
+	for _, typ := range listed {
+		assert.Contains(t, doc.Info.Description, "| `"+typ.(string)+"` |")
+	}
+	assert.Contains(t, doc.Info.Description, "| `"+serviceBusyType+"` | 503 | Service busy | Any |")
+	assert.Contains(t, doc.Info.Description, "| `"+setupDoneType+"` | 409 | Setup complete | Setup |")
+}
+
+// Each problem type has one status and one title wherever it is shown, so
+// the table's row describes every use.
+func TestProblemTypeTitles(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+	first := map[string]*problem{}
+	shown := sharedProblems()
+	for _, example := range problemExamples(doc) {
+		shown = append(shown, example.problem)
+	}
+	for _, p := range shown {
+		if seen, ok := first[p.Type]; ok {
+			assert.Equal(t, seen.Status, p.Status, p.Type)
+			assert.Equal(t, seen.Title, p.Title, p.Type)
+			continue
+		}
+		first[p.Type] = p
+	}
 }

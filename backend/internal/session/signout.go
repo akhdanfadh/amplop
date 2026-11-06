@@ -5,8 +5,8 @@ import (
 	"crypto/sha256"
 )
 
-// Reference identifies a session checked by Current, keeping its hash private.
-// Its zero value does not identify a checked session.
+// Reference identifies a session checked by [Service.Current], keeping its hash
+// private. Its zero value does not identify a checked session.
 type Reference struct {
 	hash [sha256.Size]byte
 }

@@ -110,8 +110,8 @@ Put shared code in the folder for its responsibility:
   the `/register` and `/register/complete` forms, and their wording.
 - `src/features/password-reset`: the `/forgot-password` and
   `/reset-password` forms, the reset form's schema, and their wording.
-- `src/components`: shared controls, such as the password input. `ui/` holds
-  the shadcn components we own.
+- `src/components`: shared components, such as the password input and the
+  request error under a form. `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
@@ -470,7 +470,8 @@ different recovery actions. Type the constant you
 compare with the generated `ProblemType`, e.g.
 `const setupDoneType: ProblemType = "/api/v0/problems/setup-done"`, so a type
 the contract no longer lists fails type-checking. The probe form displays a
-received request reference for reporting failures.
+received request reference for reporting failures, except under a refusal
+its fields show in full.
 
 For writes, a missing response or HTTP 5xx cannot confirm whether the change
 took effect. The message keeps any safe server explanation and asks the user
@@ -479,7 +480,8 @@ member reload their list for that check. Elsewhere, an unreadable success
 response says the server reported success but its result could not be
 loaded. A received 4xx
 rejection keeps its normal explanation. Failed submissions keep the form's
-values; the request reference remains available when received.
+values; the request reference remains available when received, except
+under a refusal the fields show in full (see Forms).
 
 A feature with its own advice for that case uses the helpers in
 `src/api/problem.ts` instead of repeating the rules. `uncertainOutcome(err)`
@@ -523,6 +525,9 @@ headers use normal backoff. Each wait may take at most 5 seconds; a longer
 server delay stops retries instead of being shortened. Scheduled waiting totals
 at most 10 seconds. Request execution and offline pauses are outside that
 waiting limit. Canceling an obsolete query also prevents its pending retries.
+Go answers a request that ran out of its time with 503 `service-busy` and a
+`Retry-After` from its own timeout; when that wait is longer than a retry may
+take, the read shows its error and retry action at once.
 
 Each HTTP attempt has a 15-second timeout covering sending and response body
 reading, leaving room around Go's 10-second work limit. Received status and
@@ -555,12 +560,25 @@ counter is full.", stays below the form until the next edit or submit.
 Before sending, the form checks each edit against the generated schema,
 `NewProbeEvent`, and sends nothing while a value breaks it. A field shows
 its error once the user leaves it or clicks submit, then updates live.
+A screen reader reads a field's error with the field rather than
+announcing each change, so give each `FieldError` an `id` and name it in
+the field's `aria-describedby`; an error nothing names is never read.
 If Go still rejects a value, e.g. after a rule changed in Go before
 `pnpm generate`, `formErrors` from `src/api/problem.ts` attaches the server's
 safe messages only to fields that the form renders. Editing a field clears its
 server error. TanStack Form also drops it when a check on leaving the field
-passes, so a form whose server errors say what to type, such as the email a
-link was sent to, leaves fields through `blurKeepingSubmitErrors`
-(`src/lib/blur-keeping-submit-errors.ts`), which puts them back. Rejected
-inputs outside those fields stay visible in the request summary. Request failures without input errors do not enter form validation
-state, so valid input can be submitted again without an edit.
+passes, so every field leaves through `blurKeepingSubmitErrors`
+(`src/lib/blur-keeping-submit-errors.ts`), which puts it back. Rejected
+inputs outside those fields stay visible in the request summary below the
+form, which `formSummary` builds and `RequestError`
+(`src/components/request-error.tsx`) shows as an alert, announced as it
+appears: the request's message, then those inputs.
+When every rejected input shows on a field, the summary is empty and no
+request reference shows, since the fields tell the whole refusal. Once a
+request fails, focus moves to the first invalid field, else to the submit
+button, which lost it while disabled: through `useFocusAfterError`
+(`src/hooks/use-focus-after-error.ts`), or by a form's own rules where it
+has other targets, such as the code forms' restart button or the system
+email form's check button. Request failures without input errors do not enter
+form validation state, so valid input can be submitted again without an
+edit.

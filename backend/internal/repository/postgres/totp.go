@@ -41,11 +41,15 @@ func readTOTP(ctx context.Context, queries *sqlc.Queries, userID int64) (*totp.F
 	return &totp.Factor{KeyID: row.KeyID, Ciphertext: row.SecretCiphertext, ConfirmedAt: row.ConfirmedAt, LastStep: row.LastStep}, nil
 }
 
-// UpdateTOTP locks the owner before reading, so first enrollment and restart
-// serialize even when there is no factor row to lock yet.
+// UpdateTOTP saves the factor update returns for userID's current factor, nil
+// when none, in one transaction. It returns [account.ErrUserNotFound] when
+// the user is missing or deactivated.
 func (db *DB) UpdateTOTP(ctx context.Context, userID int64, update func(*totp.Factor) (totp.Factor, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock the owner before reading, so first enrollment and restart
+		// serialize even when there is no factor row to lock yet.
 		deactivated, err := queries.LockTOTPUser(ctx, userID)
 		// A deactivation ended the session this request was checked with.
 		if errors.Is(err, pgx.ErrNoRows) || deactivated {
@@ -54,6 +58,8 @@ func (db *DB) UpdateTOTP(ctx context.Context, userID int64, update func(*totp.Fa
 		if err != nil {
 			return fmt.Errorf("lock TOTP owner: %w", err)
 		}
+
+		// 2. Read the factor and let update decide.
 		current, err := readTOTP(ctx, queries, userID)
 		if err != nil {
 			return err
@@ -62,6 +68,8 @@ func (db *DB) UpdateTOTP(ctx context.Context, userID int64, update func(*totp.Fa
 		if err != nil {
 			return err
 		}
+
+		// 3. Save the factor.
 		err = queries.UpsertUserTOTP(ctx, sqlc.UpsertUserTOTPParams{
 			UserID: userID, KeyID: next.KeyID, SecretCiphertext: next.Ciphertext,
 			ConfirmedAt: next.ConfirmedAt, LastStep: next.LastStep,
@@ -73,10 +81,14 @@ func (db *DB) UpdateTOTP(ctx context.Context, userID int64, update func(*totp.Fa
 	})
 }
 
-// CancelTOTP shares enrollment and confirmation's owner lock before deletion.
+// CancelTOTP deletes userID's factor, in one transaction, if check accepts it,
+// nil when none. It returns [account.ErrUserNotFound] when the user is
+// missing or deactivated.
 func (db *DB) CancelTOTP(ctx context.Context, userID int64, check func(*totp.Factor) error) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock the owner, the lock enrollment and confirmation share.
 		deactivated, err := queries.LockTOTPUser(ctx, userID)
 		// A deactivation ended the session this request was checked with.
 		if errors.Is(err, pgx.ErrNoRows) || deactivated {
@@ -86,6 +98,7 @@ func (db *DB) CancelTOTP(ctx context.Context, userID int64, check func(*totp.Fac
 			return fmt.Errorf("lock TOTP cancellation owner: %w", err)
 		}
 
+		// 2. Read the factor and let check accept or refuse.
 		current, err := readTOTP(ctx, queries, userID)
 		if err != nil {
 			return err
@@ -94,6 +107,7 @@ func (db *DB) CancelTOTP(ctx context.Context, userID int64, check func(*totp.Fac
 			return err
 		}
 
+		// 3. Delete the factor.
 		if err := queries.DeleteUserTOTP(ctx, userID); err != nil {
 			return fmt.Errorf("cancel TOTP enrollment: %w", err)
 		}

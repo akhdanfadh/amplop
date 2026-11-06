@@ -31,7 +31,7 @@ type Cleanup struct {
 	now     func() time.Time
 }
 
-// NewCleanup returns a Cleanup given storage and a clock.
+// NewCleanup returns a [Cleanup] given storage and a clock.
 func NewCleanup(storage cleanupStorage, now func() time.Time) *Cleanup {
 	return &Cleanup{storage: storage, now: now}
 }

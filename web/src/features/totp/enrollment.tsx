@@ -17,8 +17,8 @@ import type { CurrentSession, TotpEnrollment } from "@/api/generated/model";
 import type { ApiError } from "@/api/transport";
 import { uncertainOutcome, userMessage } from "@/api/problem";
 import { clearAccountCache } from "@/features/auth/session-cache";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
-import { FieldError } from "@/components/ui/field";
 import { BackupCodes } from "./backup-codes";
 import { ConfirmForm } from "./confirm-form";
 import { BackupSettings } from "./backup-settings";
@@ -545,8 +545,18 @@ export function Enrollment({
           </Button>
         </>
       ) : null}
-      {start.error && <FieldError errors={[{ message: userMessage(start.error) }]} />}
-      {cancel.error && <FieldError errors={[{ message: userMessage(cancel.error) }]} />}
+      {start.error && (
+        <RequestError
+          errors={[{ message: userMessage(start.error) }]}
+          requestId={start.error.requestId}
+        />
+      )}
+      {cancel.error && (
+        <RequestError
+          errors={[{ message: userMessage(cancel.error) }]}
+          requestId={cancel.error.requestId}
+        />
+      )}
     </section>
   );
 }

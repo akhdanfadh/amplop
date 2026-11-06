@@ -94,10 +94,10 @@ func TestAttemptsRollback(t *testing.T) {
 	db, conn := setupStorage(t)
 	now := time.Date(2026, time.October, 28, 12, 0, 0, 0, time.UTC)
 	for _, at := range []time.Time{now.Add(-time.Hour), now.Add(-time.Minute)} {
-		_, err := conn.Exec(t.Context(), "INSERT INTO sign_in_attempts (client_addr, created_at) VALUES ($1, $2)", "192.0.2.1", at)
+		_, err := conn.Exec(t.Context(), "INSERT INTO sign_in_attempts (client_prefix, created_at) VALUES ($1, $2)", "192.0.2.1", at)
 		require.NoError(t, err)
 	}
-	attempt := session.Attempt{ClientAddr: "192.0.2.1", CreatedAt: now}
+	attempt := session.Attempt{ClientPrefix: "192.0.2.1", CreatedAt: now}
 	rejected := errors.New("reservation rejected")
 
 	id, err := db.ReserveAttempt(t.Context(), attempt, now.Add(-15*time.Minute), func(rows []session.Attempt) error {

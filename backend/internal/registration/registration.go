@@ -64,12 +64,12 @@ type Service struct {
 	storage Storage
 }
 
-// NewService returns a Service that keeps the state in storage.
+// NewService returns a [Service] that keeps the state in storage.
 func NewService(storage Storage) *Service {
 	return &Service{storage: storage}
 }
 
-// Settings returns the saved state as a Status, and whether the system email
+// Settings returns the saved state as a [Status], and whether the system email
 // settings in use passed a test.
 func (s *Service) Settings(ctx context.Context) (Settings, error) {
 	record, err := s.storage.ReadRegistration(ctx)
@@ -84,15 +84,18 @@ func (s *Service) Settings(ctx context.Context) (Settings, error) {
 // changes nothing. Opening returns [ErrSystemEmailNotTested] while the system
 // email settings in use have not passed a test; closing always succeeds.
 //
-// NOTE: Closing deletes every registration attempt and link, so no email or
+// DESIGN: Closing deletes every registration attempt and link, so no email or
 // client address is kept while registration stays closed. The cost: a link
 // sent before a close stops working, even after registration reopens, and
 // reopening starts the limits from zero. ADR028 records this.
 func (s *Service) Save(ctx context.Context, actorID int64, state State) (Settings, error) {
+	// 1. Refuse an unknown state before storage.
 	if state != StateOpen && state != StateClosed {
 		return Settings{}, errState
 	}
 
+	// 2. Under the lock, refuse opening with untested system email, and
+	// save.
 	var saved Record
 	err := s.storage.UpdateRegistration(ctx, actorID, func(current Record) (State, error) {
 		if state == StateOpen && !current.SystemEmailTested {
@@ -114,7 +117,7 @@ func settingsOf(record Record) Settings {
 
 // statusOf returns whether visitors can register with record in place.
 //
-// NOTE: An administrator saving new system email settings clears their tested
+// DESIGN: An administrator saving new system email settings clears their tested
 // time. Registration then pauses rather than closing, so a passing test
 // resumes it without anyone reopening it.
 func statusOf(record Record) Status {

@@ -38,7 +38,7 @@ func TestRequest(t *testing.T) {
 	assert.Len(t, raw, 32)
 	require.Len(t, storage.links, 1)
 	assert.Equal(t, Link{
-		TokenHash: sha256.Sum256(raw), UserID: testUserID, Address: "admin@example.org",
+		TokenHash: sha256.Sum256(raw), UserID: testUserID, Email: "admin@example.org",
 		CreatedAt: testNow, ExpiresAt: testNow.Add(24 * time.Hour),
 	}, storage.links[0])
 }
@@ -59,7 +59,7 @@ func TestRequestAgain(t *testing.T) {
 	assert.NotEqual(t, storage.links[0].TokenHash, storage.links[1].TokenHash)
 }
 
-// recentLinks returns n of the user's links created age before testNow.
+// recentLinks returns n of the user's links created age before [testNow].
 func recentLinks(n int, age time.Duration) []Link {
 	links := make([]Link, n)
 	for i := range links {

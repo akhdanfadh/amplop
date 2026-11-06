@@ -54,6 +54,11 @@ type Services struct {
 // request_id.
 // Create all APIs and register all operations before serving requests.
 func New(logger *slog.Logger, services Services) *API {
+	return newAPI(logger, services, requestTimeout)
+}
+
+// newAPI is [New] with timeout as each request's time.
+func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API {
 	// Tells Huma to construct errors using our problem model.
 	configureErrors()
 
@@ -66,7 +71,7 @@ func New(logger *slog.Logger, services Services) *API {
 	// Recovery runs inside the request log, so a panic is logged as 500.
 	// Cross-origin rejection is logged before the timeout wraps the
 	// handler's own work.
-	router.Use(withRequestID(), withSecurityHeaders(), withRequestLog(logger), withRecovery(logger), withCrossOrigin(), withTimeout(requestTimeout))
+	router.Use(withRequestID(), withSecurityHeaders(), withRequestLog(logger), withRecovery(logger), withCrossOrigin(), withTimeout(timeout))
 	router.HandleMethodNotAllowed = true
 	// Gin would answer /health/ with a 301 to /health before any
 	// middleware runs: no request ID, no log line, and a Location built
@@ -78,6 +83,7 @@ func New(logger *slog.Logger, services Services) *API {
 
 	config := huma.DefaultConfig(schemaTitle, schemaVersion)
 	config.Info.Description = errorDocs
+	config.OpenAPI.Tags = apiTags()
 
 	// Reject duplicate names, including case aliases, while keeping other JSON
 	// decoding rules compatible with Huma's default format.
@@ -101,7 +107,7 @@ func New(logger *slog.Logger, services Services) *API {
 	// to format safe input messages before Huma converts the response to JSON.
 	var api huma.API
 	config.Transformers = []huma.Transformer{func(ctx huma.Context, _ string, value any) (any, error) {
-		return normalizeError(logger, api, ctx, value), nil
+		return normalizeError(logger, api, ctx, value, timeout), nil
 	}}
 
 	api = humagin.NewWithGroup(router, group, config)
@@ -155,4 +161,17 @@ func handleNoRoute(ctx *gin.Context) {
 // still sets the Allow header, e.g. "GET".
 func handleNoMethod(ctx *gin.Context) {
 	writeProblem(ctx, requestProblem(http.StatusMethodNotAllowed))
+}
+
+// operations returns every operation in doc.
+func operations(doc *huma.OpenAPI) []*huma.Operation {
+	var ops []*huma.Operation
+	for _, item := range doc.Paths {
+		for _, op := range []*huma.Operation{item.Get, item.Put, item.Post, item.Delete, item.Options, item.Head, item.Patch, item.Trace} {
+			if op != nil {
+				ops = append(ops, op)
+			}
+		}
+	}
+	return ops
 }

@@ -6,12 +6,13 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 )
 
 // problemResponses keeps shared errors under default, without Huma's
-// automatic 422 and 500 entries from Operation.Errors.
+// automatic 422 and 500 entries from [huma.Operation.Errors].
 func problemResponses(api huma.API, statuses ...int) map[string]*huma.Response {
 	schema := api.OpenAPI().Components.Schemas.Schema(reflect.TypeFor[problem](), true, "")
 	responses := map[string]*huma.Response{
@@ -54,10 +55,21 @@ func configureErrors() {
 			}
 			return out
 		}
+		// Huma builds a handler's unexpected error here, with the request,
+		// and sends the status of what this returns.
+		huma.NewErrorWithContext = func(ctx huma.Context, status int, message string, errs ...error) huma.StatusError {
+			if status != http.StatusInternalServerError || !requestTimedOut(ctx.Context(), errs) {
+				return huma.NewError(status, message, errs...)
+			}
+			busy := serviceBusyProblem()
+			busy.timedOut = true
+			busy.raw = &huma.ErrorModel{Status: status, Detail: message, Errors: errorDetails(errs)}
+			return busy
+		}
 	})
 }
 
-// errorDetails preserves structured input details through ErrorDetailer.
+// errorDetails preserves structured input details through [huma.ErrorDetailer].
 // Plain errors supply diagnostic text; nil entries are skipped.
 func errorDetails(errs []error) []*huma.ErrorDetail {
 	var details []*huma.ErrorDetail
@@ -79,8 +91,9 @@ func errorDetails(errs []error) []*huma.ErrorDetail {
 
 // normalizeError applies our safety policy before Huma serializes a response.
 // It keeps mapped problems, sanitizes others, and passes success bodies through.
-// An unauthenticated problem also clears the session cookie.
-func normalizeError(logger *slog.Logger, api huma.API, ctx huma.Context, value any) any {
+// An unauthenticated problem also clears the session cookie, and a request
+// that timed out answers [serviceBusyProblem] with Retry-After.
+func normalizeError(logger *slog.Logger, api huma.API, ctx huma.Context, value any, timeout time.Duration) any {
 	p, ok := value.(*problem)
 	if !ok {
 		// A helper may have created this error before New installed the hooks.
@@ -98,6 +111,11 @@ func normalizeError(logger *slog.Logger, api huma.API, ctx huma.Context, value a
 		cleared := sessionCookie("", -1)
 		ctx.AppendHeader("Set-Cookie", cleared.String())
 	}
+	if p.timedOut {
+		logCause(ctx, logger, p.raw, slog.LevelWarn, "request timed out")
+		ctx.SetHeader(retryAfterHeader, retryAfterSeconds(timeout))
+		return p
+	}
 	if p.mapped {
 		return p
 	}
@@ -105,7 +123,7 @@ func normalizeError(logger *slog.Logger, api huma.API, ctx huma.Context, value a
 	out := *p
 	out.Errors = nil
 	if out.Status == http.StatusInternalServerError {
-		logCause(ctx, logger, p.raw)
+		logCause(ctx, logger, p.raw, slog.LevelError, "unexpected error")
 		return &out
 	}
 
@@ -126,18 +144,19 @@ func normalizeError(logger *slog.Logger, api huma.API, ctx huma.Context, value a
 	return &out
 }
 
-// logCause writes technical causes to the server log with the request ID.
-// Without detailed causes, it logs the original message instead.
-func logCause(ctx huma.Context, logger *slog.Logger, raw *huma.ErrorModel) {
+// logCause writes technical causes to the server log at level with msg and
+// the request ID. Without detailed causes, it logs the original message
+// instead.
+func logCause(ctx huma.Context, logger *slog.Logger, raw *huma.ErrorModel, level slog.Level, msg string) {
 	logged := false
 	for _, cause := range raw.Errors {
 		if cause == nil {
 			continue
 		}
-		logger.LogAttrs(ctx.Context(), slog.LevelError, "unexpected error", slog.String("err", cause.Message))
+		logger.LogAttrs(ctx.Context(), level, msg, slog.String("err", cause.Message))
 		logged = true
 	}
 	if !logged {
-		logger.LogAttrs(ctx.Context(), slog.LevelError, "unexpected error", slog.String("err", raw.Detail))
+		logger.LogAttrs(ctx.Context(), level, msg, slog.String("err", raw.Detail))
 	}
 }

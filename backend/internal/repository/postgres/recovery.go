@@ -13,10 +13,6 @@ import (
 
 const adminRecoveredAction = "admin-recovered"
 
-// errNoWorkflows means a recovery ran on a DB without [DB.WithWorkflows],
-// so it could not save the administrator's notice.
-var errNoWorkflows = errors.New("recovery needs background work to save its notice")
-
 // UpdateRecovery replaces credentials and clears authentication data
 // together, and saves the recovery notice for the worker in the same
 // transaction, so both commit or neither does. The callback sees the
@@ -25,6 +21,7 @@ func (db *DB) UpdateRecovery(ctx context.Context, userID int64, update func(acco
 	var result account.RecoveryResult
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
 		// 1. Lock the user, as TOTP writes do.
 		row, err := queries.LockRecoveryUser(ctx, userID)
 		if errors.Is(err, pgx.ErrNoRows) {

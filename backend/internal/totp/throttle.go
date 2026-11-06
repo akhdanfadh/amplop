@@ -20,7 +20,7 @@ var ErrThrottled = errors.New("TOTP code attempts throttled")
 
 var errAttemptUserID = errors.New("invalid TOTP attempt user ID")
 
-// releaseTimeout bounds Release, which outlives a cancelled request.
+// releaseTimeout bounds [Throttle.Release], which outlives a cancelled request.
 const releaseTimeout = 5 * time.Second
 
 // Attempt is reserved before checking a code. It contains no code or secret.
@@ -54,15 +54,19 @@ func NewThrottle(storage AttemptStorage, now func() time.Time, logger *slog.Logg
 	return &Throttle{storage: storage, now: now, logger: logger}
 }
 
-// Begin reserves an attempt for userID before verification and returns its
-// ID, or an [*attemptlimit.Error] wrapping [ErrThrottled] when one more does
-// not fit. Leave it saved when a code fails. Success removes only its own
-// reservation, in the operation's storage transaction or with Succeed; a
-// request that fails before checking a code removes it with Release.
+// Begin reserves an attempt for userID before verification and returns its ID,
+// or an [*attemptlimit.Error] wrapping [ErrThrottled] when one more does not
+// fit. Leave it saved when a code fails. Success removes only its own
+// reservation, in the operation's storage transaction or with
+// [Throttle.Succeed]; a request that fails before checking a code removes it
+// with [Throttle.Release].
 func (t *Throttle) Begin(ctx context.Context, userID int64) (int64, error) {
+	// 1. Refuse an invalid user ID before storage.
 	if userID <= 0 {
 		return 0, errAttemptUserID
 	}
+
+	// 2. Reserve the attempt if the user's earlier ones leave room.
 	now := t.now().UTC()
 	cutoff := now.Add(-longLimit.Window)
 	id, err := t.storage.ReserveTOTPAttempt(ctx, Attempt{UserID: userID, CreatedAt: now}, cutoff, func(rows []Attempt) error {
@@ -91,7 +95,7 @@ func (t *Throttle) Succeed(ctx context.Context, id int64) error {
 // Release removes attempt id when its request ended before checking any
 // code, so only guesses count. It logs a failure instead of returning it.
 //
-// NOTE: the request already failed with its own error, which is the one to
+// DESIGN: the request already failed with its own error, which is the one to
 // report. An attempt that cannot be removed counts until it expires, as a
 // wrong code would, so the failure costs the user one attempt, not safety.
 func (t *Throttle) Release(ctx context.Context, id int64) {

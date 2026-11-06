@@ -114,7 +114,9 @@ func registerMemberList(api huma.API, handler membersHandler) {
 		OperationID: "listMembers",
 		Method:      http.MethodGet,
 		Path:        membersPath,
-		Summary:     "List every account",
+		Summary:     "List Members",
+		Tags:        []string{tagMembers},
+		Description: "Lists every account, administrators included, oldest first.",
 		Metadata:    map[string]any{accessKey: session.AccessAdmin},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   adminResponses(api),
@@ -142,7 +144,8 @@ func registerMemberDeactivation(api huma.API, handler membersHandler) {
 		OperationID: "deactivateMember",
 		Method:      http.MethodPost,
 		Path:        membersPath + "/{id}/deactivate",
-		Summary:     "Deactivate a member",
+		Summary:     "Deactivate Member",
+		Tags:        []string{tagMembers},
 		Description: "Ends the member's sessions and stops them from signing in until they are reactivated. " +
 			"Their account, password, and authenticator are kept. Deactivating a deactivated member changes nothing. " +
 			"The change is recorded in the audit log.",
@@ -171,7 +174,8 @@ func registerMemberReactivation(api huma.API, handler membersHandler) {
 		OperationID: "reactivateMember",
 		Method:      http.MethodPost,
 		Path:        membersPath + "/{id}/reactivate",
-		Summary:     "Reactivate a member",
+		Summary:     "Reactivate Member",
+		Tags:        []string{tagMembers},
 		Description: "Lets a deactivated member sign in again with their existing password and authenticator. " +
 			"Reactivating an active member changes nothing. The change is recorded in the audit log.",
 		Metadata:  map[string]any{accessKey: session.AccessAdmin},

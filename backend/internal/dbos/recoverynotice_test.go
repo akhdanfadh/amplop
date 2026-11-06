@@ -15,10 +15,10 @@ import (
 	"inbok/internal/account"
 )
 
-// recoveredAt is when recoveredID was recovered in these tests.
+// recoveredAt is when [recoveredID] was recovered in these tests.
 var recoveredAt = time.Date(2026, 11, 3, 11, 16, 0, 0, time.UTC)
 
-// IDs of the administrators in these tests: recoveredID was recovered.
+// IDs of the administrators in these tests: [recoveredID] was recovered.
 const (
 	recoveredID int64 = 7
 	firstAdmin  int64 = 3
@@ -103,20 +103,9 @@ func (f *fakeNotices) calls() (int, []int64) {
 	return f.lists, slices.Clone(f.sends)
 }
 
-// quickRetries shortens the notice's retry waits for one test, keeping
-// how many retries there are.
-func quickRetries(t *testing.T) {
-	t.Helper()
-	list, send := listRetries, sendRetries
-	listRetries.base, listRetries.ceiling = time.Millisecond, time.Millisecond
-	sendRetries.base, sendRetries.ceiling = time.Millisecond, time.Millisecond
-	t.Cleanup(func() { listRetries, sendRetries = list, send })
-}
-
-// The send is retried 5 more times, waiting 1, 2, 4, 8, then 15 minutes;
-// the list 10 more times within about 5 minutes. The docs promise both.
+// The list is retried 10 more times within about 5 minutes; the docs
+// promise it. The send uses [noticeRetries].
 func TestRecoveryNoticeRetryPolicy(t *testing.T) {
-	assert.Equal(t, retries{attempts: 5, base: time.Minute, ceiling: 15 * time.Minute}, sendRetries)
 	assert.Equal(t, retries{attempts: 10, base: time.Second, ceiling: time.Minute}, listRetries)
 }
 
@@ -130,8 +119,8 @@ func noticeWorker(t *testing.T, url string, notices recoveryNotices) *Worker {
 	return worker
 }
 
-// enqueueNotice enqueues the notice of recoveredID's recovery at
-// recoveredAt by name, as a client does, and returns its handle.
+// enqueueNotice enqueues the notice of [recoveredID]'s recovery at
+// [recoveredAt] by name, as a client does, and returns its handle.
 func enqueueNotice(t *testing.T, worker *Worker) dbos.WorkflowHandle[[]recipientOutcome] {
 	t.Helper()
 
@@ -172,7 +161,7 @@ func TestRecoveryNoticeSent(t *testing.T) {
 // A send that fails is retried, the same step running again, until it
 // passes.
 func TestRecoveryNoticeRetries(t *testing.T) {
-	quickRetries(t)
+	quickRetries(t, &listRetries, &noticeRetries)
 	failed := sendResult{err: errors.New("connection refused")}
 	notices := &fakeNotices{
 		admins:  []int64{recoveredID},
@@ -192,7 +181,7 @@ func TestRecoveryNoticeRetries(t *testing.T) {
 // A send that keeps failing gives up after its retries; the others still
 // go out, and the run fails with its error.
 func TestRecoveryNoticeGivesUp(t *testing.T) {
-	quickRetries(t)
+	quickRetries(t, &listRetries, &noticeRetries)
 	notices := &fakeNotices{
 		admins:  []int64{recoveredID, lastAdmin},
 		results: map[int64][]sendResult{recoveredID: {{err: errors.New("connection refused")}}},
@@ -263,7 +252,7 @@ func TestRecoveryNoticeNoAdministrators(t *testing.T) {
 // A list that keeps failing gives up after its retries; the run fails and
 // sends nothing.
 func TestRecoveryNoticeListGivesUp(t *testing.T) {
-	quickRetries(t)
+	quickRetries(t, &listRetries, &noticeRetries)
 	notices := &fakeNotices{admins: []int64{recoveredID}, listErr: errors.New("connection refused")}
 	worker := noticeWorker(t, migrated(t), notices)
 	t.Cleanup(func() { assert.NoError(t, worker.Shutdown()) })

@@ -49,7 +49,9 @@ func registerSetupStatus(api huma.API, handler accountHandler) {
 		Metadata:    map[string]any{accessKey: session.AccessPublic},
 		Method:      http.MethodGet,
 		Path:        setupPath,
-		Summary:     "Get first-admin setup status",
+		Summary:     "Get Setup Status",
+		Tags:        []string{tagSetup},
+		Description: "Whether the first administrator can be created: done once an administrator exists; otherwise unconfigured without a setup token, or open with one.",
 		Responses:   setupStatusResponses(api),
 	}, handler.handleGetSetupStatus)
 }
@@ -114,7 +116,9 @@ func registerFirstAdmin(api huma.API, handler accountHandler) {
 		Metadata:      map[string]any{accessKey: session.AccessPublic},
 		Method:        http.MethodPost,
 		Path:          setupPath,
-		Summary:       "Create the first administrator",
+		Summary:       "Create First Administrator",
+		Tags:          []string{tagSetup},
+		Description:   "Creates the first administrator with the setup token. Works once, and only while a setup token is configured.",
 		DefaultStatus: http.StatusCreated,
 		Responses:     firstAdminResponses(api),
 	}, handler.handleCreateFirstAdmin)

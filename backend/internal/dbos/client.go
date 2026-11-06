@@ -11,11 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"inbok/internal/logging"
+	"inbok/internal/passwordreset"
 )
 
 // Client saves workflows for a worker to run, from a process that runs
-// none itself, e.g. inbok recover-admin. It implements
-// [inbok/internal/repository/postgres.Workflows].
+// none itself, e.g. inbok recover-admin or serve. It implements
+// postgres.Workflows.
 type Client struct {
 	client dbos.Client
 }
@@ -25,11 +26,13 @@ type Client struct {
 // workflow tables are missing or older than the SDK needs, which inbok
 // migrate fixes.
 func NewClient(ctx context.Context, url string, logger *slog.Logger) (*Client, error) {
-	// DBOS's error for a malformed URL quotes it, password included;
-	// pgx's hides the password.
+	// 1. Parse url with pgx. DBOS's error for a malformed URL quotes it,
+	// password included; pgx's hides the password.
 	if _, err := pgxpool.ParseConfig(url); err != nil {
 		return nil, err
 	}
+
+	// 2. Open the DBOS client on the URL pgx accepted.
 	client, err := dbos.NewClient(ctx, dbos.ClientConfig{
 		DatabaseURL: url,
 		AppName:     appName,
@@ -51,6 +54,34 @@ func (c *Client) EnqueueRecoveryNotice(ctx context.Context, tx pgx.Tx, userID in
 	_, err := dbos.Enqueue[[]recipientOutcome](c.client, emailQueue, recoveryNoticeWorkflow, input,
 		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
 		// A worker resumes and dequeues only work of its own version.
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+	)
+	return err
+}
+
+// EnqueuePasswordResetLink saves, in tx, the reset link workflow for the
+// request with attemptID and the account with userID, 0 for none, on the
+// email queue, so it commits or rolls back with tx. Cancelling ctx stops
+// its statements. It returns DBOS's error, after which tx is aborted and
+// must roll back.
+func (c *Client) EnqueuePasswordResetLink(ctx context.Context, tx pgx.Tx, attemptID, userID int64) error {
+	input := PasswordResetLinkInput{AttemptID: attemptID, UserID: userID}
+	_, err := dbos.Enqueue[passwordreset.Outcome](c.client, emailQueue, passwordResetLinkWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+	)
+	return err
+}
+
+// EnqueuePasswordChangedNotice saves, in tx, the password changed notice
+// workflow for the user with userID and the change at changedAt on the
+// email queue, so it commits or rolls back with tx. Cancelling ctx stops
+// its statements. It returns DBOS's error, after which tx is aborted and
+// must roll back.
+func (c *Client) EnqueuePasswordChangedNotice(ctx context.Context, tx pgx.Tx, userID int64, changedAt time.Time) error {
+	input := PasswordChangedNoticeInput{UserID: userID, ChangedAt: changedAt}
+	_, err := dbos.Enqueue[passwordreset.Outcome](c.client, emailQueue, passwordChangedNoticeWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
 		dbos.WithEnqueueApplicationVersion(applicationVersion),
 	)
 	return err

@@ -55,10 +55,20 @@ type Outgoing struct {
 	To      string
 	Subject string
 	Body    string
-	Private bool // Body holds a secret, e.g. a link's, so logs must not quote it
+
+	// Private keeps the server's reply out of a failed send's log, since a
+	// reply can quote the message. Set it exactly when [Outgoing.Body] holds
+	// a secret, something that grants access if read, e.g. a link's token; a
+	// reply that quotes only the recipient's address is no reason to.
+	Private bool
 
 	// RequireTested sends only with settings that passed a test message,
-	// judged on the settings the send would use.
+	// judged on the settings the send would use. Set it for mail nobody
+	// asked for, e.g. the recovery notice to other administrators, so inbok
+	// does not push it, and retry it, through settings no one has seen
+	// work. Mail someone asked for or caused, e.g. a link or the notice of
+	// their own reset, goes out whenever settings are configured, so a
+	// saved but untested change does not stop it.
 	RequireTested bool
 }
 
@@ -72,10 +82,14 @@ type Outgoing struct {
 // fails, and the [Sender]'s other errors unchanged. Every error after the
 // settings are read comes with their revision.
 func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
+	// 1. Refuse an invalid recipient before reading the settings.
 	to, err := emailaddress.Parse(outgoing.To)
 	if err != nil {
 		return 0, err
 	}
+
+	// 2. Read the settings, and refuse missing or untested ones before
+	// decrypting anything.
 	saved, err := m.storage.ReadSystemEmail(ctx)
 	if err != nil {
 		return 0, err
@@ -86,6 +100,8 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 	if outgoing.RequireTested && saved.TestedAt == nil {
 		return saved.Revision, ErrNotTested
 	}
+
+	// 3. Decrypt the password.
 	var password string
 	if saved.Password != nil {
 		plaintext, err := m.encryption.Open(saved.Password.KeyID, saved.Password.Ciphertext, passwordOwner(saved.Server))
@@ -95,6 +111,7 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 		password = string(plaintext)
 	}
 
+	// 4. Send, and log a failure.
 	message := Message{
 		FromAddress: saved.FromAddress,
 		FromName:    saved.FromName,
@@ -112,8 +129,9 @@ func (m *Mailer) Send(ctx context.Context, outgoing Outgoing) (int64, error) {
 		// The reply can quote the message, in any encoding or cut anywhere, so
 		// no part of a private one is safe to keep.
 		if !outgoing.Private {
-			// The reply can name the username, never the password, and can be
-			// long, so only its start is kept.
+			// The sender hides the credentials and the recipient's address in
+			// the reply, which can still name the username, and can be long,
+			// so only its start is kept.
 			attrs = append(attrs, "err", truncate(failed.Err.Error(), maxLoggedReply))
 		}
 		m.logger.WarnContext(ctx, "system email send failed", attrs...)

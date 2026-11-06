@@ -57,7 +57,7 @@ func (m *memoryStorage) UpdateSystemEmailTestedAt(_ context.Context, revision in
 // adminID is the administrator saving settings in these tests.
 const adminID int64 = 7
 
-// signInOwner is the password owner for inputWithSignIn's server and account.
+// signInOwner is the password owner for [inputWithSignIn]'s server and account.
 const signInOwner = `system-email:"smtp.example.com":587:"inbok@example.com"`
 
 // fakeKeyring seals by prefixing "sealed:" and opens only for the sealing owner.
@@ -95,7 +95,7 @@ func inputWithSignIn() Input {
 	}
 }
 
-// storedSignIn is what saving inputWithSignIn stores, tested at a fixed time.
+// storedSignIn is what saving [inputWithSignIn] stores, tested at a fixed time.
 func storedSignIn() *Record {
 	tested := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 	return &Record{
@@ -136,7 +136,7 @@ func TestSystemEmailSave(t *testing.T) {
 	assert.Equal(t, &saved, read)
 }
 
-// The From address is saved as emailaddress.Parse returns it.
+// The From address is saved as [emailaddress.Parse] returns it.
 func TestSystemEmailSaveFromAddress(t *testing.T) {
 	input := inputWithSignIn()
 	input.FromAddress = " \tInbok@Example.COM\t"

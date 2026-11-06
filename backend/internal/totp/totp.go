@@ -27,20 +27,21 @@ var (
 	errClock  = errors.New("TOTP clock is before the Unix epoch")
 )
 
-// Verifier checks codes using a supplied clock, without retaining user state.
+// Verifier verifies codes using a supplied clock, without retaining user state.
 type Verifier struct {
 	now func() time.Time
 }
 
-// NewVerifier uses now for the code window. Production supplies time.Now.
+// NewVerifier uses now for the code window. Production supplies [time.Now].
 func NewVerifier(now func() time.Time) *Verifier {
 	return &Verifier{now: now}
 }
 
-// Check returns the matched 30-second step, accepting one step of clock skew.
-// Pass -1 when no code has been accepted. Storage must lock the factor, pass its
-// last accepted step, and save the returned step in the same transaction.
-func (v *Verifier) Check(secret, code string, lastStep int64) (int64, error) {
+// Verify returns the matched 30-second step, accepting one step of clock skew.
+// Pass -1 when no code has been accepted. [Storage] must lock the factor,
+// pass its last accepted step, and save the returned step in the same
+// transaction.
+func (v *Verifier) Verify(secret, code string, lastStep int64) (int64, error) {
 	if len(code) != codeDigits.Length() {
 		return 0, ErrInvalidCode
 	}

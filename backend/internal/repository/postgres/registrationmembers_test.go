@@ -22,7 +22,7 @@ import (
 // registeredEmail is the address a visitor registers in these tests.
 const registeredEmail = "visitor@example.org"
 
-// register completes a registration link to email with deactivatedPassword
+// register completes a registration link to email with [deactivatedPassword]
 // and returns the new member.
 func register(t *testing.T, f deactivatedAccounts, email string) account.User {
 	t.Helper()
@@ -91,7 +91,7 @@ func TestRegistrationRequestDeactivated(t *testing.T) {
 	_, err := f.members.Deactivate(t.Context(), f.admin, f.member)
 	require.NoError(t, err)
 	mailer := &verificationMailer{}
-	requests := registration.NewRequests(f.db, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, func() time.Time { return requestNow })
+	requests := registration.NewRequests(f.db, mailer, &url.URL{Scheme: "https", Host: "mail.example.com"}, func() time.Time { return requestNow }, discard)
 
 	require.NoError(t, requests.Send(t.Context(), "member@example.com", netip.MustParseAddr("192.0.2.1")))
 

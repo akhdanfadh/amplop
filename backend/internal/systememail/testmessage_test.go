@@ -42,7 +42,7 @@ func testMessages(storage *memoryStorage, keys *fakeKeyring, sender *fakeSender,
 	return NewTestMessages(storage, testMailer(storage, keys, sender, logs), func() time.Time { return testNow })
 }
 
-// savedSignIn is storedSignIn with a password the fake keyring can open.
+// savedSignIn is [storedSignIn] with a password the fake keyring can open.
 func savedSignIn() *Record {
 	record := storedSignIn()
 	record.Password = &Password{KeyID: "1", Ciphertext: []byte("sealed:" + signInOwner + ":app password")}
@@ -84,17 +84,17 @@ func TestSendTestMessageWithoutSignIn(t *testing.T) {
 // logs the start of the server's reply.
 func TestSendTestMessageFailed(t *testing.T) {
 	storage := &memoryStorage{record: savedSignIn()}
-	reply := "535 5.7.8 Authentication failed for inbok@example.com " + strings.Repeat("x", 2*maxLoggedReply)
-	sender := &fakeSender{err: &SendError{Reason: ReasonAuth, Err: errors.New(reply)}}
+	reply := "550 5.1.1 No such user here " + strings.Repeat("x", 2*maxLoggedReply)
+	sender := &fakeSender{err: &SendError{Reason: ReasonRecipient, Err: errors.New(reply)}}
 	var logs bytes.Buffer
 
 	result, err := testMessages(storage, &fakeKeyring{}, sender, &logs).Send(t.Context(), "admin@example.org")
 	require.NoError(t, err)
 
-	assert.Equal(t, TestMessageResult{Reason: ReasonAuth}, result)
+	assert.Equal(t, TestMessageResult{Reason: ReasonRecipient}, result)
 	assert.Nil(t, storage.record.TestedAt)
-	assert.Contains(t, logs.String(), `purpose="test message" reason=auth host=smtp.example.com port=587 security=starttls username=inbok@example.com`)
-	assert.Contains(t, logs.String(), "535 5.7.8")
+	assert.Contains(t, logs.String(), `purpose="test message" reason=recipient host=smtp.example.com port=587 security=starttls username=inbok@example.com`)
+	assert.Contains(t, logs.String(), "550 5.1.1")
 	assert.NotContains(t, logs.String(), reply, "a long reply is cut")
 }
 

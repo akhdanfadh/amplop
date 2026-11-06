@@ -13,7 +13,7 @@ import (
 
 // ReadCredentials loads an account and its hash by its exact email, as
 // emailaddress.Parse returns it.
-// Missing accounts return account.ErrUserNotFound.
+// Missing accounts return [account.ErrUserNotFound].
 func (db *DB) ReadCredentials(ctx context.Context, email string) (account.Credentials, error) {
 	row, err := sqlc.New(db.pool).ReadUserCredentials(ctx, email)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -28,7 +28,7 @@ func (db *DB) ReadCredentials(ctx context.Context, email string) (account.Creden
 }
 
 // ReadUser loads current account data by ID without reading its password hash.
-// Missing accounts return account.ErrUserNotFound.
+// Missing accounts return [account.ErrUserNotFound].
 func (db *DB) ReadUser(ctx context.Context, id int64) (account.User, error) {
 	row, err := sqlc.New(db.pool).ReadUserByID(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {

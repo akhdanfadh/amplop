@@ -30,14 +30,18 @@ const (
 	envDatabaseURL    = "INBOK_DATABASE_URL"
 	envTrustedProxies = "INBOK_TRUSTED_PROXIES"
 
-	envSetupToken       = "INBOK_SETUP_TOKEN"
+	envSetupToken = "INBOK_SETUP_TOKEN"
+	// minSetupTokenLength is inbok's own floor against a short, guessable
+	// token; openssl rand -base64 32 gives 44 characters.
 	minSetupTokenLength = 32
 
 	envPublicURL = "INBOK_PUBLIC_URL"
 
 	envWorkerID     = "INBOK_WORKER_ID"
 	defaultWorkerID = "worker"
-	maxWorkerID     = 64
+	// maxWorkerID and [notWorkerIDRune] are inbok's own limits: DBOS stores
+	// any text as an executor ID.
+	maxWorkerID = 64
 )
 
 // errNoDatabaseURL has no default on purpose: a server deployed without
@@ -201,6 +205,9 @@ func parsePublicURL(value string) (*url.URL, error) {
 	// Links and the EHLO name use one spelling of the host, so the loopback
 	// check below reads the same one.
 	host, hostOK := publicHost(parsed.Hostname())
+	// The session cookie is Secure, so a deployment needs https. Plain http on
+	// localhost and loopback is for development; whether a browser keeps a
+	// Secure cookie there depends on the browser.
 	switch {
 	case parsed.Scheme == "https":
 	case parsed.Scheme == "http" && hostOK && isLoopback(host):
@@ -215,6 +222,7 @@ func parsePublicURL(value string) (*url.URL, error) {
 	}
 	port := parsed.Port()
 	if port != "" || strings.HasSuffix(parsed.Host, ":") {
+		// TCP ports are 16 bits, and port 0 is reserved (RFC 6335).
 		number, err := strconv.ParseUint(port, 10, 16)
 		if err != nil || number == 0 {
 			return nil, errPublicURLShape

@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"log/slog"
 	"net/netip"
 	"net/url"
 	"time"
 
 	"inbok/internal/attemptlimit"
+	"inbok/internal/clientprefix"
 	"inbok/internal/emailaddress"
 	"inbok/internal/randomsecret"
 	"inbok/internal/systememail"
@@ -60,10 +62,10 @@ const (
 
 // Attempt is one accepted registration request, counted toward the limits.
 type Attempt struct {
-	Email      string
-	ClientAddr string // the client's IP address, IPv4 unmapped from IPv6
-	Outcome    Outcome
-	CreatedAt  time.Time
+	Email        string
+	ClientPrefix string // the client, as [clientprefix.Of] counts it
+	Outcome      Outcome
+	CreatedAt    time.Time
 }
 
 // Link is a saved registration link without its secret.
@@ -74,7 +76,7 @@ type Link struct {
 	ExpiresAt time.Time
 }
 
-// RequestState is what [requestStorage.RequestRegistration] reads under its
+// RequestState is what requestStorage.RequestRegistration reads under its
 // lock.
 type RequestState struct {
 	Registration  Record
@@ -112,12 +114,14 @@ type Requests struct {
 	mailer    mailer
 	publicURL *url.URL
 	now       func() time.Time
+	logger    *slog.Logger
 }
 
-// NewRequests returns Requests given storage, the [systememail.Mailer] that
-// sends, the public URL links start with, and a clock.
-func NewRequests(storage requestStorage, mailer mailer, publicURL *url.URL, now func() time.Time) *Requests {
-	return &Requests{storage: storage, mailer: mailer, publicURL: publicURL, now: now}
+// NewRequests returns [Requests] given storage, the [systememail.Mailer] that
+// sends, the public URL links start with, a clock, and the logger that warns
+// when the limit on everyone refuses a request.
+func NewRequests(storage requestStorage, mailer mailer, publicURL *url.URL, now func() time.Time, logger *slog.Logger) *Requests {
+	return &Requests{storage: storage, mailer: mailer, publicURL: publicURL, now: now, logger: logger}
 }
 
 // Send answers a request to register email from client. A new email gets a
@@ -129,11 +133,12 @@ func NewRequests(storage requestStorage, mailer mailer, publicURL *url.URL, now 
 // for a client or instance over its limit, all without recording or sending
 // anything, and the error from [systememail.Mailer.Send] after recording.
 //
-// NOTE: Two differences remain, and ADR028 accepts both. A skipped request
+// DESIGN: Two differences remain, and ADR028 accepts both. A skipped request
 // returns sooner than one that sends. While mail fails, a skipped request
 // still returns nil where the others return the send's error. Either hints
 // that an email was asked for recently, never that it has an account.
 func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) error {
+	// 1. Refuse an invalid email or client address before any storage.
 	email, err := emailaddress.Parse(email)
 	if err != nil {
 		return err
@@ -141,10 +146,11 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 	if !client.IsValid() {
 		return errClientAddr
 	}
-	clientAddr := client.Unmap().WithZone("").String()
+	clientPrefix := clientprefix.Of(client).String()
 
-	// Closed is the default, so refuse it before the lock every request
-	// shares: queued requests would hold connections other routes need.
+	// 2. Refuse a closed registration before the lock every request shares.
+	// Closed is the default, and queued requests would hold connections
+	// other routes need.
 	record, err := r.storage.ReadRegistration(ctx)
 	if err != nil {
 		return err
@@ -153,9 +159,11 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		return ErrClosed
 	}
 
+	// 3. Under the lock, decide and record the attempt: a link, a notice,
+	// or a skip.
 	secret, hash := randomsecret.New()
-
 	var change RequestChange
+	var everyoneWait time.Duration
 	since := r.now().UTC().Add(-attemptRetention)
 	err = r.storage.RequestRegistration(ctx, email, since, func(state RequestState) (RequestChange, error) {
 		// Read under the lock, so a request that waited counts from now.
@@ -168,7 +176,7 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		var fromClient, fromAll, toEmail []time.Time
 		for _, attempt := range state.Attempts {
 			fromAll = append(fromAll, attempt.CreatedAt)
-			if attempt.ClientAddr == clientAddr {
+			if attempt.ClientPrefix == clientPrefix {
 				fromClient = append(fromClient, attempt.CreatedAt)
 			}
 			// Skipped requests sent nothing. Counting them would let anyone keep an
@@ -179,12 +187,13 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		}
 		// These limits come before the email's own, so a refusal never
 		// depends on the email asked for.
-		if wait := max(attemptlimit.Wait(fromClient, now, clientLimit), attemptlimit.Wait(fromAll, now, instanceLimit)); wait > 0 {
+		everyoneWait = attemptlimit.Wait(fromAll, now, instanceLimit)
+		if wait := max(attemptlimit.Wait(fromClient, now, clientLimit), everyoneWait); wait > 0 {
 			return RequestChange{}, &attemptlimit.Error{Err: ErrThrottled, Wait: wait}
 		}
 
 		change = RequestChange{
-			Attempt: Attempt{Email: email, ClientAddr: clientAddr, Outcome: OutcomeLink, CreatedAt: now},
+			Attempt: Attempt{Email: email, ClientPrefix: clientPrefix, Outcome: OutcomeLink, CreatedAt: now},
 		}
 		switch {
 		case attemptlimit.Wait(toEmail, now, emailShortLimit, emailLongLimit) > 0:
@@ -196,10 +205,16 @@ func (r *Requests) Send(ctx context.Context, email string, client netip.Addr) er
 		}
 		return change, nil
 	})
+	// A full limit on everyone refuses every visitor, and may be someone
+	// keeping it full; nothing else tells an administrator.
+	if errors.Is(err, ErrThrottled) && everyoneWait > 0 {
+		r.logger.WarnContext(ctx, "registration limit on everyone reached", "wait", everyoneWait)
+	}
 	if err != nil {
 		return err
 	}
 
+	// 4. Send what the attempt recorded, after it commits.
 	switch change.Attempt.Outcome {
 	case OutcomeSkipped:
 		return nil

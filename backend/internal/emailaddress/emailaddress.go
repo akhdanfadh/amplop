@@ -2,7 +2,7 @@
 // account emails, addresses compared or sent to on their behalf, and the
 // system email settings. Connected mail accounts are not covered.
 //
-// NOTE: inbok lowercases the ASCII letters of a whole address, local part
+// DESIGN: inbok lowercases the ASCII letters of a whole address, local part
 // included, and compares addresses exactly. RFC 5321 lets a mail server treat
 // the local part's case as meaningful; an address on such a server cannot
 // be an inbok account's email or the system sender.

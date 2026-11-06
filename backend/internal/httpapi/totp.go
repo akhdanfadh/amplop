@@ -19,6 +19,12 @@ const (
 	totpPath            = "/totp"
 	invalidTOTPCodeType = problemPrefix + "invalid-totp-code"
 	totpNotOnType       = problemPrefix + "totp-not-on"
+
+	// A refused code's detail is also its field's message, so a form that
+	// shows only the field loses nothing. Enrollment names the new entry:
+	// an app may still hold one from an earlier setup, whose codes fail.
+	pendingTOTPCodeMessage   = "Enter the current code from the authenticator entry you just added."
+	confirmedTOTPCodeMessage = "Enter a current code from your authenticator app."
 )
 
 type totpService interface {
@@ -76,7 +82,8 @@ func registerTOTPStatus(api huma.API, handler totpHandler) {
 		OperationID: "getTOTPStatus",
 		Method:      http.MethodGet,
 		Path:        totpPath,
-		Summary:     "Get two-factor authentication status",
+		Summary:     "Get Two-Factor Status",
+		Tags:        []string{tagTwoFactor},
 		Metadata:    map[string]any{accessKey: session.AccessMember},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   totpStatusResponses(api),
@@ -116,7 +123,9 @@ func registerTOTPEnrollment(api huma.API, handler totpHandler) {
 		OperationID:   "startTOTPEnrollment",
 		Method:        http.MethodPost,
 		Path:          totpPath,
-		Summary:       "Start or restart two-factor authentication enrollment",
+		Summary:       "Start Two-Factor Enrollment",
+		Tags:          []string{tagTwoFactor},
+		Description:   "Starts enrollment, or restarts a pending one.",
 		DefaultStatus: http.StatusCreated,
 		Metadata:      map[string]any{accessKey: session.AccessMember},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
@@ -162,7 +171,8 @@ func registerTOTPCancellation(api huma.API, handler totpHandler) {
 		OperationID:   "cancelTOTPEnrollment",
 		Method:        http.MethodDelete,
 		Path:          totpPath + "/enrollment",
-		Summary:       "Cancel pending two-factor authentication enrollment",
+		Summary:       "Cancel Two-Factor Enrollment",
+		Tags:          []string{tagTwoFactor},
 		Description:   "Removes unconfirmed enrollment. Repeating cancellation succeeds if no factor remains. Confirmed authenticators cannot be canceled; existing sessions stay signed in.",
 		DefaultStatus: http.StatusOK,
 		Metadata:      map[string]any{accessKey: session.AccessMember},
@@ -217,7 +227,8 @@ func registerTOTPConfirmation(api huma.API, handler totpHandler) {
 		OperationID: "confirmTOTPEnrollment",
 		Method:      http.MethodPost,
 		Path:        totpPath + "/confirm",
-		Summary:     "Confirm two-factor authentication enrollment",
+		Summary:     "Confirm Two-Factor Enrollment",
+		Tags:        []string{tagTwoFactor},
 		Description: "Activates the authenticator, ends all existing sessions, and issues a replacement session cookie. Backup codes are returned once.",
 		Metadata:    map[string]any{accessKey: session.AccessMember},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
@@ -270,8 +281,8 @@ func totpConfirmationProblem(err error) error {
 	case errors.Is(err, totp.ErrNotPending):
 		return newProblem(http.StatusConflict, totpNotPendingType, "Enrollment not started", "Start authenticator enrollment before confirming a code.")
 	case errors.Is(err, totp.ErrInvalidCode):
-		return newProblem(http.StatusUnprocessableEntity, invalidTOTPCodeType, "Invalid authenticator code", "Enter a current code from the pending authenticator.",
-			inputError{Location: "body.code", Message: "Enter a current authenticator code."})
+		return newProblem(http.StatusUnprocessableEntity, invalidTOTPCodeType, "Invalid authenticator code", pendingTOTPCodeMessage,
+			inputError{Location: "body.code", Message: pendingTOTPCodeMessage})
 	case errors.Is(err, totp.ErrThrottled):
 		return totpThrottleProblem(err)
 	default:
@@ -296,7 +307,8 @@ func registerBackupRegeneration(api huma.API, handler totpHandler) {
 		OperationID: "regenerateTOTPBackupCodes",
 		Method:      http.MethodPost,
 		Path:        totpPath + "/backup-codes",
-		Summary:     "Replace two-factor authentication backup codes",
+		Summary:     "Replace Backup Codes",
+		Tags:        []string{tagTwoFactor},
 		Description: "Requires a fresh authenticator code. Invalidates the old backup codes and returns ten replacements once. Existing sessions stay signed in.",
 		Metadata:    map[string]any{accessKey: session.AccessMember},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
@@ -351,8 +363,8 @@ func backupRegenerationProblem(err error) error {
 	case errors.Is(err, totp.ErrInvalidCode):
 		return newProblem(
 			http.StatusUnprocessableEntity, invalidTOTPCodeType,
-			"Invalid authenticator code", "Enter a current code from your confirmed authenticator.",
-			inputError{Location: "body.code", Message: "Enter a current authenticator code."},
+			"Invalid authenticator code", confirmedTOTPCodeMessage,
+			inputError{Location: "body.code", Message: confirmedTOTPCodeMessage},
 		)
 
 	default:
@@ -379,7 +391,8 @@ func registerTOTPDisable(api huma.API, handler totpHandler) {
 		OperationID:   "disableTOTP",
 		Method:        http.MethodPost,
 		Path:          totpPath + "/disable",
-		Summary:       "Turn off optional two-factor authentication",
+		Summary:       "Turn Off Two-Factor",
+		Tags:          []string{tagTwoFactor},
 		Description:   "Members only. Requires a fresh authenticator code or an unused backup code. Removes the authenticator and all backup codes; existing sessions stay signed in.",
 		DefaultStatus: http.StatusOK,
 		Metadata:      map[string]any{accessKey: session.AccessMember},

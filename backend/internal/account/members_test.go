@@ -63,7 +63,8 @@ func (s *memberStorage) UpdateMember(_ context.Context, actorID, memberID int64,
 }
 
 // newMembers returns storage holding the administrator and an active
-// member with membersMemberID, and the service using it with its clock at membersNow.
+// member with [membersMemberID], and the service using it with its clock
+// at [membersNow].
 func newMembers() (*memberStorage, *Members) {
 	storage := &memberStorage{members: map[int64]Member{
 		membersAdminID:  {User: User{ID: membersAdminID, Email: "admin@example.com", Role: RoleAdmin}},

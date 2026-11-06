@@ -19,7 +19,7 @@ DELETE FROM password_reset_links WHERE user_id = @user_id;
 -- count every link, and orders a request with completions and deactivations.
 SELECT id, email, role, (email_verified_at IS NOT NULL)::boolean AS verified,
     (deactivated_at IS NOT NULL)::boolean AS deactivated
-FROM users WHERE email = @email FOR UPDATE;
+FROM users WHERE id = @id FOR UPDATE;
 
 -- name: InsertPasswordResetLink :exec
 INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
@@ -33,3 +33,10 @@ DELETE FROM password_reset_links WHERE token_hash IN (
     WHERE expired.expires_at <= @expired_by
     LIMIT @batch_size
     FOR UPDATE SKIP LOCKED);
+
+-- name: ReadPasswordChangedNotice :one
+-- The notice reads the address when it runs, which can be long after the
+-- reset. FOR SHARE waits for a deactivation that holds the row, so the
+-- flag is read as ADR029 asks of a feature that sends mail.
+SELECT email, (deactivated_at IS NULL)::boolean AS active FROM users WHERE id = @id
+FOR SHARE;

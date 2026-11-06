@@ -2,12 +2,15 @@ import { useRef, type ReactElement } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useCreateFirstAdmin } from "@/api/generated/inbok";
 import { newSetupPasswordMin, newSetupPasswordMax, type ProblemType } from "@/api/generated/model";
-import { formErrors, userMessage } from "@/api/problem";
+import { formErrors, formSummary, userMessage } from "@/api/problem";
 import { SetupSchema } from "./schema";
+import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { PasswordInput } from "@/components/password-input";
+import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 
 const emptySetup = { token: "", email: "", password: "", confirmPassword: "" };
 const conflict = 409;
@@ -53,6 +56,7 @@ export function SetupForm({
   onDone: () => void;
 }): ReactElement {
   const formRef = useRef<HTMLFormElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
   // Do not retain submitted credentials after the form is unmounted.
   const create = useCreateFirstAdmin({
     mutation: {
@@ -95,7 +99,11 @@ export function SetupForm({
     listeners: { onChange: () => create.reset() },
   });
   const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const inputErrors = create.error ? formErrors(create.error, setupFields) : undefined;
+  const summary = create.error
+    ? formSummary(userMessage(create.error), formErrors(create.error, setupFields))
+    : [];
+
+  useFocusAfterError(create.error, create.isPending, formRef, submitRef);
 
   return (
     <form
@@ -128,7 +136,7 @@ export function SetupForm({
                 "aria-describedby":
                   errors.length > 0 ? `${id}-description ${id}-error` : `${id}-description`,
                 value: field.state.value,
-                onBlur: field.handleBlur,
+                onBlur: () => blurKeepingSubmitErrors(field),
                 onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
                   field.handleChange(event.target.value),
               };
@@ -156,6 +164,7 @@ export function SetupForm({
       </FieldGroup>
 
       <Button
+        ref={submitRef}
         className="h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
         type="submit"
         disabled={create.isPending}
@@ -163,18 +172,7 @@ export function SetupForm({
         {create.isPending ? "Creating administrator..." : "Create administrator"}
       </Button>
 
-      {create.error && (
-        <div className="flex flex-col gap-2">
-          <FieldError
-            errors={[{ message: userMessage(create.error) }, ...(inputErrors?.unmatched ?? [])]}
-          />
-          {create.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{create.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
+      <RequestError errors={summary} requestId={create.error?.requestId} />
     </form>
   );
 }

@@ -35,6 +35,86 @@ type resetAccounts struct {
 	bystander int64
 }
 
+// resetWorkflows saves each reset link job as a row of test_reset_link_jobs,
+// and each password changed notice as one of test_password_changed_notices,
+// in the transaction it is given, as DBOS's enqueue does, so a test sees
+// whether the job committed. err fails the enqueue. It implements only
+// [PasswordResetWorkflows]: a call to another feature's job reaches the nil
+// [Workflows] and panics, failing the test.
+type resetWorkflows struct {
+	Workflows
+	err error
+}
+
+func (w resetWorkflows) EnqueuePasswordResetLink(ctx context.Context, tx pgx.Tx, attemptID, userID int64) error {
+	if w.err != nil {
+		return w.err
+	}
+	_, err := tx.Exec(ctx, "INSERT INTO test_reset_link_jobs (attempt_id, user_id) VALUES ($1, $2)", attemptID, userID)
+	return err
+}
+
+// missingUserID is the ID of no user: IDs start at 1.
+const missingUserID int64 = -1
+
+// EnqueuePasswordChangedNotice saves the notice as a row of
+// test_password_changed_notices in tx.
+func (w resetWorkflows) EnqueuePasswordChangedNotice(ctx context.Context, tx pgx.Tx, userID int64, changedAt time.Time) error {
+	if w.err != nil {
+		return w.err
+	}
+	_, err := tx.Exec(ctx, "INSERT INTO test_password_changed_notices (user_id, changed_at) VALUES ($1, $2)", userID, changedAt)
+	return err
+}
+
+// changedNotice is a saved password changed notice job.
+type changedNotice struct {
+	UserID    int64
+	ChangedAt time.Time
+}
+
+// changedNotices lists the saved password changed notice jobs.
+func changedNotices(t *testing.T, conn *pgx.Conn) []changedNotice {
+	t.Helper()
+	rows, err := conn.Query(t.Context(), "SELECT user_id, changed_at FROM test_password_changed_notices ORDER BY user_id")
+	require.NoError(t, err)
+	notices, err := pgx.CollectRows(rows, pgx.RowToStructByPos[changedNotice])
+	require.NoError(t, err)
+	for i := range notices {
+		notices[i].ChangedAt = notices[i].ChangedAt.UTC()
+	}
+	return notices
+}
+
+// resetLinkJob is a saved reset link job: the attempt, and the account's ID,
+// 0 for none.
+type resetLinkJob struct {
+	AttemptID int64
+	UserID    int64
+}
+
+// resetLinkJobs lists the saved reset link jobs, oldest attempt first.
+func resetLinkJobs(t *testing.T, conn *pgx.Conn) []resetLinkJob {
+	t.Helper()
+	rows, err := conn.Query(t.Context(), "SELECT attempt_id, user_id FROM test_reset_link_jobs ORDER BY attempt_id")
+	require.NoError(t, err)
+	jobs, err := pgx.CollectRows(rows, pgx.RowToStructByPos[resetLinkJob])
+	require.NoError(t, err)
+	return jobs
+}
+
+// recordResetRequest records a request from client for email at [resetNow]
+// and returns its attempt's ID.
+func recordResetRequest(t *testing.T, ctx context.Context, f resetAccounts, client, email string) int64 {
+	t.Helper()
+	require.NoError(t, f.db.RecordPasswordResetRequest(ctx, client, email, resetNow.Add(-24*time.Hour), func([]time.Time) (time.Time, error) {
+		return resetNow, nil
+	}))
+	var id int64
+	require.NoError(t, f.conn.QueryRow(ctx, "SELECT max(id) FROM password_reset_attempts").Scan(&id))
+	return id
+}
+
 // newResetAccounts saves a member and a bystander, each with a session, a
 // sign-in challenge, a confirmed factor, a backup code, a TOTP attempt, and
 // a sign-in attempt for their email.
@@ -42,7 +122,10 @@ func newResetAccounts(t *testing.T) resetAccounts {
 	t.Helper()
 
 	db, conn := setupStorage(t)
-	f := resetAccounts{db: db, conn: conn}
+	_, err := conn.Exec(t.Context(), `CREATE TABLE test_reset_link_jobs (attempt_id bigint NOT NULL, user_id bigint NOT NULL);
+		CREATE TABLE test_password_changed_notices (user_id bigint NOT NULL, changed_at timestamptz NOT NULL)`)
+	require.NoError(t, err)
+	f := resetAccounts{db: db.WithWorkflows(resetWorkflows{}), conn: conn}
 	insert := func(email string) int64 {
 		var id int64
 		require.NoError(t, conn.QueryRow(t.Context(),
@@ -58,9 +141,9 @@ func newResetAccounts(t *testing.T) resetAccounts {
 		"INSERT INTO totp_attempts (user_id, created_at) SELECT id, now() FROM users",
 		"INSERT INTO sessions (token_hash, user_id, expires_at) SELECT decode(md5(email), 'hex'), id, now() + interval '1 day' FROM users",
 		"INSERT INTO sign_in_challenges (token_hash, user_id, expires_at) SELECT decode(md5(email), 'hex'), id, now() + interval '5 minutes' FROM users",
-		"INSERT INTO sign_in_attempts (email, client_addr, created_at) SELECT email, '192.0.2.1', now() FROM users",
+		"INSERT INTO sign_in_attempts (email, client_prefix, created_at) SELECT email, '192.0.2.1', now() FROM users",
 	} {
-		_, err := conn.Exec(t.Context(), statement)
+		_, err = conn.Exec(t.Context(), statement)
 		require.NoError(t, err)
 	}
 	return f
@@ -95,25 +178,20 @@ func (m *resetMailer) Send(_ context.Context, outgoing systememail.Outgoing) (in
 // resetPublicURL is the public URL reset links start with.
 var resetPublicURL = &url.URL{Scheme: "https", Host: "mail.example.com"}
 
-// resetBackground returns a Background, and fails the test unless its work
-// finishes soon after the test ends.
-func resetBackground(t *testing.T) *passwordreset.Background {
-	t.Helper()
-	background := passwordreset.NewBackground(discard)
-	t.Cleanup(func() {
-		// t.Context() has ended by now.
-		ctx, cancel := context.WithTimeout(context.Background(), setupTestTimeout)
-		defer cancel()
-		assert.NoError(t, background.Wait(ctx), "background work still running after the test")
-	})
-	return background
+// noticeWorkflows accepts every password changed notice and saves nothing,
+// for tests about something else that complete a reset. It implements only
+// that job, as [resetWorkflows] does.
+type noticeWorkflows struct{ Workflows }
+
+func (noticeWorkflows) EnqueuePasswordChangedNotice(context.Context, pgx.Tx, int64, time.Time) error {
+	return nil
 }
 
 // resetCompletion returns a Completion over db with the clock now, whose
 // notices go nowhere.
 func resetCompletion(t *testing.T, db *DB, now func() time.Time) *passwordreset.Completion {
 	t.Helper()
-	return passwordreset.NewCompletion(db, &resetMailer{}, resetPublicURL, resetBackground(t), now)
+	return passwordreset.NewCompletion(db, now)
 }
 
 // resetSignInAttempts counts the sign-in attempts saved for email.
@@ -153,6 +231,7 @@ func TestPasswordResetComplete(t *testing.T) {
 		assert.Equal(t, 1, memberRowCount(t, f.conn, table, f.member), table)
 	}
 	assert.Equal(t, []auditEvent{{Action: "password-reset", Target: &f.member}}, auditEvents(t, f.conn))
+	assert.Equal(t, []changedNotice{{UserID: f.member, ChangedAt: resetNow}}, changedNotices(t, f.conn), "the owner's notice is saved with the reset")
 	assert.Equal(t, bystander, memberSnapshot(t, f.conn, f.bystander))
 	assert.Equal(t, 1, resetSignInAttempts(t, f.conn, "bystander@example.com"))
 
@@ -218,6 +297,75 @@ func TestPasswordResetCompleteRollsBack(t *testing.T) {
 	require.ErrorIs(t, missingErr, errNoLink)
 	assert.Equal(t, before, memberSnapshot(t, f.conn, f.member))
 	assert.Equal(t, 1, resetSignInAttempts(t, f.conn, "member@example.com"))
+	assert.Empty(t, changedNotices(t, f.conn))
+}
+
+// A notice that cannot be saved rolls the reset back with it, and so does a
+// [DB] without workflows: no reset goes unannounced.
+func TestPasswordResetCompleteNoticeRollsBack(t *testing.T) {
+	f := newResetAccounts(t)
+	_, hash := saveResetLink(t, f.conn, f.member, "member@example.com")
+	before := memberSnapshot(t, f.conn, f.member)
+	failed := errors.New("queue unavailable")
+	accept := func(passwordreset.CompleteState) (passwordreset.CompleteChange, error) {
+		return passwordreset.CompleteChange{PasswordHash: "new hash", ChangedAt: resetNow}, nil
+	}
+
+	_, failedErr := f.db.WithWorkflows(resetWorkflows{err: failed}).CompletePasswordReset(t.Context(), hash, accept)
+	_, plainErr := (&DB{pool: f.db.pool}).CompletePasswordReset(t.Context(), hash, accept)
+
+	require.ErrorIs(t, failedErr, failed)
+	require.ErrorIs(t, plainErr, errNoWorkflows)
+	assert.Equal(t, before, memberSnapshot(t, f.conn, f.member))
+	assert.Empty(t, changedNotices(t, f.conn))
+}
+
+// A notice that waits for a deactivation holding the user's lock reads the
+// user as deactivated, so it is not sent to an account just closed.
+func TestPasswordChangedNoticeWaitsForDeactivation(t *testing.T) {
+	f := newDeactivatedAccounts(t, false)
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+
+	// Given a deactivation that holds the member's lock.
+	finish := holdInCallback(t, ctx, func(pause func() error) error {
+		_, err := f.db.UpdateMember(ctx, f.admin, f.member, func(account.Member) (account.MemberChange, error) {
+			return account.MemberChange{Action: account.MemberDeactivate, At: time.Now()}, pause()
+		})
+		return err
+	})
+
+	// When the notice reads the member, and the deactivation commits.
+	read := make(chan passwordreset.NoticeState, 1)
+	go func() {
+		state, err := f.db.ReadPasswordChangedNotice(ctx, f.member)
+		assert.NoError(t, err)
+		read <- state
+	}()
+	waitForLock(t, ctx, f.db, "the notice did not wait for the deactivation")
+	require.NoError(t, finish())
+
+	// Then it reads the member as deactivated.
+	assert.False(t, (<-read).Active)
+}
+
+// The notice reads the user's current email and whether they are active;
+// a missing user reads as the zero state.
+func TestPasswordChangedNoticeRead(t *testing.T) {
+	f := newResetAccounts(t)
+	_, err := f.conn.Exec(t.Context(), "UPDATE users SET email = 'moved@example.com', deactivated_at = now() WHERE id = $1", f.bystander)
+	require.NoError(t, err)
+
+	member, err := f.db.ReadPasswordChangedNotice(t.Context(), f.member)
+	require.NoError(t, err)
+	moved, err := f.db.ReadPasswordChangedNotice(t.Context(), f.bystander)
+	require.NoError(t, err)
+	gone, err := f.db.ReadPasswordChangedNotice(t.Context(), missingUserID)
+	require.NoError(t, err)
+
+	assert.Equal(t, passwordreset.NoticeState{Email: "member@example.com", Active: true}, member)
+	assert.Equal(t, passwordreset.NoticeState{Email: "moved@example.com"}, moved)
+	assert.Equal(t, passwordreset.NoticeState{}, gone)
 }
 
 // holdInCallback runs run in a goroutine and waits until run calls the
@@ -329,7 +477,7 @@ func TestPasswordResetWaitsForDeactivation(t *testing.T) {
 	// When a completion waits for the lock, and the deactivation commits.
 	resetDone := make(chan error, 1)
 	go func() {
-		_, err := resetCompletion(t, f.db, func() time.Time { return resetNow }).Complete(ctx, secret, "member@example.com", resetPassword)
+		_, err := resetCompletion(t, f.db.WithWorkflows(noticeWorkflows{}), func() time.Time { return resetNow }).Complete(ctx, secret, "member@example.com", resetPassword)
 		resetDone <- err
 	}()
 	waitForLock(t, ctx, f.db, "the completion did not wait for the deactivation")
@@ -353,7 +501,7 @@ func TestDeactivationWaitsForPasswordReset(t *testing.T) {
 
 	// Given a completion that holds the member's lock.
 	finish := holdInCallback(t, ctx, func(pause func() error) error {
-		_, err := f.db.CompletePasswordReset(ctx, hash, func(passwordreset.CompleteState) (passwordreset.CompleteChange, error) {
+		_, err := f.db.WithWorkflows(noticeWorkflows{}).CompletePasswordReset(ctx, hash, func(passwordreset.CompleteState) (passwordreset.CompleteChange, error) {
 			return passwordreset.CompleteChange{PasswordHash: "reset"}, pause()
 		})
 		return err
@@ -383,7 +531,7 @@ func TestDeactivationWaitsForPasswordReset(t *testing.T) {
 func TestPasswordResetDeactivationRace(t *testing.T) {
 	const rounds = 15
 	f := newDeactivatedAccounts(t, false)
-	completion := resetCompletion(t, f.db, time.Now)
+	completion := resetCompletion(t, f.db.WithWorkflows(noticeWorkflows{}), time.Now)
 	outcomes := map[bool]int{} // whether the completion was refused
 	// A completion spends most of its time hashing the password. Every
 	// other round deactivates at once, which commits before the completion
@@ -477,7 +625,7 @@ type resetAttempt struct {
 func resetAttempts(t *testing.T, conn *pgx.Conn) []resetAttempt {
 	t.Helper()
 
-	rows, err := conn.Query(t.Context(), "SELECT client_prefix, user_id, linked_at, created_at FROM password_reset_attempts ORDER BY id")
+	rows, err := conn.Query(t.Context(), "SELECT coalesce(client_prefix, ''), user_id, linked_at, created_at FROM password_reset_attempts ORDER BY id")
 	require.NoError(t, err)
 	attempts, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (resetAttempt, error) {
 		var attempt resetAttempt
@@ -494,7 +642,7 @@ func resetAttempts(t *testing.T, conn *pgx.Conn) []resetAttempt {
 }
 
 // insertResetAttempt saves an attempt from client, made age before
-// resetNow, that saved no link.
+// [resetNow], that saved no link.
 func insertResetAttempt(t *testing.T, conn *pgx.Conn, client string, age time.Duration) {
 	t.Helper()
 
@@ -504,7 +652,7 @@ func insertResetAttempt(t *testing.T, conn *pgx.Conn, client string, age time.Du
 }
 
 // insertLinkedResetAttempt saves an attempt from client, made age before
-// resetNow, whose link for userID was saved linkedAge before resetNow.
+// [resetNow], whose link for userID was saved linkedAge before [resetNow].
 func insertLinkedResetAttempt(t *testing.T, conn *pgx.Conn, client string, userID int64, age, linkedAge time.Duration) {
 	t.Helper()
 
@@ -513,15 +661,15 @@ func insertLinkedResetAttempt(t *testing.T, conn *pgx.Conn, client string, userI
 	require.NoError(t, err)
 }
 
-// at returns resetNow less age, as a pointer.
+// at returns [resetNow] less age, as a pointer.
 func at(age time.Duration) *time.Time {
 	t := resetNow.Add(-age)
 	return &t
 }
 
 // A request sees only its client's attempts within the longest window,
-// leaves older ones for the hourly cleanup, and records one at the time
-// check returns.
+// leaves older ones for the hourly cleanup, records one at the time check
+// returns, and saves its job for the account with the email.
 func TestPasswordResetRequestRecords(t *testing.T) {
 	f := newResetAccounts(t)
 	insertResetAttempt(t, f.conn, "192.0.2.1/32", 25*time.Hour)
@@ -530,7 +678,7 @@ func TestPasswordResetRequestRecords(t *testing.T) {
 	insertLinkedResetAttempt(t, f.conn, "198.51.100.9/32", f.member, 25*time.Hour, 23*time.Hour)
 	var seen []time.Time
 
-	id, err := f.db.RecordPasswordResetRequest(t.Context(), "192.0.2.1/32", resetNow.Add(-24*time.Hour), func(times []time.Time) (time.Time, error) {
+	err := f.db.RecordPasswordResetRequest(t.Context(), "192.0.2.1/32", "member@example.com", resetNow.Add(-24*time.Hour), func(times []time.Time) (time.Time, error) {
 		seen = times
 		return resetNow, nil
 	})
@@ -545,7 +693,33 @@ func TestPasswordResetRequestRecords(t *testing.T) {
 	}, resetAttempts(t, f.conn))
 	var savedID int64
 	require.NoError(t, f.conn.QueryRow(t.Context(), "SELECT max(id) FROM password_reset_attempts").Scan(&savedID))
-	assert.Equal(t, savedID, id)
+	assert.Equal(t, []resetLinkJob{{AttemptID: savedID, UserID: f.member}}, resetLinkJobs(t, f.conn))
+}
+
+// An email no account has saves the same attempt and job, with no account.
+func TestPasswordResetRequestUnknownEmail(t *testing.T) {
+	f := newResetAccounts(t)
+
+	id := recordResetRequest(t, t.Context(), f, "192.0.2.1/32", "nobody@example.com")
+
+	assert.Equal(t, []resetAttempt{{Client: "192.0.2.1/32", CreatedAt: resetNow}}, resetAttempts(t, f.conn))
+	assert.Equal(t, []resetLinkJob{{AttemptID: id}}, resetLinkJobs(t, f.conn))
+}
+
+// A job that cannot be saved rolls the attempt back with it, and so does a
+// [DB] without workflows.
+func TestPasswordResetRequestJobRollsBack(t *testing.T) {
+	f := newResetAccounts(t)
+	failed := errors.New("queue unavailable")
+	accept := func([]time.Time) (time.Time, error) { return resetNow, nil }
+
+	failedErr := f.db.WithWorkflows(resetWorkflows{err: failed}).RecordPasswordResetRequest(t.Context(), "192.0.2.1/32", "member@example.com", resetNow, accept)
+	plainErr := (&DB{pool: f.db.pool}).RecordPasswordResetRequest(t.Context(), "192.0.2.1/32", "member@example.com", resetNow, accept)
+
+	require.ErrorIs(t, failedErr, failed)
+	require.ErrorIs(t, plainErr, errNoWorkflows)
+	assert.Empty(t, resetAttempts(t, f.conn))
+	assert.Empty(t, resetLinkJobs(t, f.conn))
 }
 
 // A refused request records nothing.
@@ -553,12 +727,13 @@ func TestPasswordResetRequestRefused(t *testing.T) {
 	f := newResetAccounts(t)
 	refused := errors.New("refused")
 
-	_, err := f.db.RecordPasswordResetRequest(t.Context(), "192.0.2.1/32", resetNow.Add(-24*time.Hour), func([]time.Time) (time.Time, error) {
+	err := f.db.RecordPasswordResetRequest(t.Context(), "192.0.2.1/32", "member@example.com", resetNow.Add(-24*time.Hour), func([]time.Time) (time.Time, error) {
 		return time.Time{}, refused
 	})
 
 	require.ErrorIs(t, err, refused)
 	assert.Empty(t, resetAttempts(t, f.conn))
+	assert.Empty(t, resetLinkJobs(t, f.conn))
 }
 
 // One client's requests wait for each other, so its limit counts every
@@ -569,19 +744,17 @@ func TestPasswordResetRequestSerializes(t *testing.T) {
 	defer cancel()
 	since := resetNow.Add(-24 * time.Hour)
 	record := func(client string, seen chan<- []time.Time) error {
-		_, err := f.db.RecordPasswordResetRequest(ctx, client, since, func(times []time.Time) (time.Time, error) {
+		return f.db.RecordPasswordResetRequest(ctx, client, "member@example.com", since, func(times []time.Time) (time.Time, error) {
 			seen <- times
 			return resetNow, nil
 		})
-		return err
 	}
 
 	// Given a request from one client that holds its lock.
 	finish := holdInCallback(t, ctx, func(pause func() error) error {
-		_, err := f.db.RecordPasswordResetRequest(ctx, "192.0.2.1/32", since, func([]time.Time) (time.Time, error) {
+		return f.db.RecordPasswordResetRequest(ctx, "192.0.2.1/32", "member@example.com", since, func([]time.Time) (time.Time, error) {
 			return resetNow, pause()
 		})
-		return err
 	})
 
 	// When another client asks, and then the same client asks again.
@@ -600,9 +773,9 @@ func TestPasswordResetRequestSerializes(t *testing.T) {
 	assert.Equal(t, []time.Time{resetNow}, <-sameSeen)
 }
 
-// The link step reads the account with the email, whether it may reset,
-// and when links were saved for it within the window; an unknown email
-// reads no account.
+// The link step reads the account with the ID, whether it may reset, and
+// when links were saved for it within the window; a missing account reads
+// as none.
 func TestPasswordResetLinkState(t *testing.T) {
 	f := newResetAccounts(t)
 	insertLinkedResetAttempt(t, f.conn, "192.0.2.1/32", f.member, 25*time.Hour, 25*time.Hour)
@@ -611,16 +784,16 @@ func TestPasswordResetLinkState(t *testing.T) {
 	insertLinkedResetAttempt(t, f.conn, "192.0.2.1/32", f.bystander, time.Minute, time.Minute)
 	_, err := f.conn.Exec(t.Context(), "UPDATE users SET email_verified_at = NULL, deactivated_at = now() WHERE id = $1", f.member)
 	require.NoError(t, err)
-	read := func(email string) passwordreset.LinkState {
+	read := func(userID int64) passwordreset.LinkState {
 		var state passwordreset.LinkState
-		require.NoError(t, f.db.CreatePasswordResetLink(t.Context(), 1, email, resetNow.Add(-24*time.Hour), func(s passwordreset.LinkState) (passwordreset.LinkChange, error) {
+		require.NoError(t, f.db.CreatePasswordResetLink(t.Context(), 1, userID, resetNow.Add(-24*time.Hour), func(s passwordreset.LinkState) (passwordreset.LinkChange, error) {
 			state = s
 			return passwordreset.LinkChange{}, nil
 		}))
 		return state
 	}
 
-	member, unknown := read("member@example.com"), read("nobody@example.com")
+	member, unknown := read(f.member), read(missingUserID)
 
 	assert.Equal(t, passwordreset.LinkState{
 		Account: &passwordreset.Account{
@@ -640,13 +813,10 @@ func TestPasswordResetLinkSaves(t *testing.T) {
 	_, err := f.conn.Exec(t.Context(), `INSERT INTO password_reset_links (token_hash, user_id, email, created_at, expires_at)
 		VALUES ('expired', $1, 'bystander@example.com', $2, $3)`, f.bystander, resetNow.Add(-2*time.Hour), resetNow.Add(-time.Hour))
 	require.NoError(t, err)
-	id, err := f.db.RecordPasswordResetRequest(t.Context(), "192.0.2.1/32", resetNow.Add(-24*time.Hour), func([]time.Time) (time.Time, error) {
-		return resetNow, nil
-	})
-	require.NoError(t, err)
+	id := recordResetRequest(t, t.Context(), f, "192.0.2.1/32", "member@example.com")
 	hash := sha256.Sum256([]byte("new link"))
 
-	err = f.db.CreatePasswordResetLink(t.Context(), id, "member@example.com", resetNow.Add(-24*time.Hour), func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
+	err = f.db.CreatePasswordResetLink(t.Context(), id, f.member, resetNow.Add(-24*time.Hour), func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
 		return passwordreset.LinkChange{
 			Link: &passwordreset.Link{TokenHash: hash, Email: "other@example.com", CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour)},
 		}, nil
@@ -666,17 +836,58 @@ func TestPasswordResetLinkSaves(t *testing.T) {
 	assert.NotNil(t, liveState.Link)
 }
 
-// A link for an email without an account is refused, and a refused create
-// saves nothing.
+// saveLinkFor saves a link named seed for userID for the attempt with
+// attemptID at [resetNow].
+func saveLinkFor(t *testing.T, f resetAccounts, attemptID, userID int64, seed string) {
+	t.Helper()
+	require.NoError(t, f.db.CreatePasswordResetLink(t.Context(), attemptID, userID, resetNow.Add(-24*time.Hour), func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
+		return passwordreset.LinkChange{
+			Link: &passwordreset.Link{TokenHash: sha256.Sum256([]byte(seed)), CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour)},
+		}, nil
+	}))
+}
+
+// Every saved link counts toward the account's limits: a retry's link, and
+// one whose attempt the cleanup deleted, each get a row of their own, with
+// no client, so the client's limit does not count them.
+func TestPasswordResetLinkCountsEach(t *testing.T) {
+	f := newResetAccounts(t)
+	id := recordResetRequest(t, t.Context(), f, "192.0.2.1/32", "member@example.com")
+
+	saveLinkFor(t, f, id, f.member, "first try")
+	saveLinkFor(t, f, id, f.member, "retry")
+	saveLinkFor(t, f, id+1, f.member, "attempt deleted")
+
+	assert.Equal(t, []resetAttempt{
+		{Client: "192.0.2.1/32", UserID: &f.member, LinkedAt: at(0), CreatedAt: resetNow},
+		{UserID: &f.member, LinkedAt: at(0), CreatedAt: resetNow},
+		{UserID: &f.member, LinkedAt: at(0), CreatedAt: resetNow},
+	}, resetAttempts(t, f.conn))
+	var seen passwordreset.LinkState
+	require.NoError(t, f.db.CreatePasswordResetLink(t.Context(), id, f.member, resetNow.Add(-24*time.Hour), func(state passwordreset.LinkState) (passwordreset.LinkChange, error) {
+		seen = state
+		return passwordreset.LinkChange{}, nil
+	}))
+	assert.Len(t, seen.LinksSent, 3)
+	var clientTimes []time.Time
+	require.NoError(t, f.db.RecordPasswordResetRequest(t.Context(), "192.0.2.1/32", "member@example.com", resetNow.Add(-24*time.Hour), func(times []time.Time) (time.Time, error) {
+		clientTimes = times
+		return resetNow, nil
+	}))
+	assert.Len(t, clientTimes, 1, "the client's limit counts its request, not the extra links")
+}
+
+// A link for a missing account is refused, and a refused create saves
+// nothing.
 func TestPasswordResetLinkRollsBack(t *testing.T) {
 	f := newResetAccounts(t)
 	refused := errors.New("refused")
 	link := &passwordreset.Link{TokenHash: sha256.Sum256([]byte("link")), CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour)}
 
-	unknownErr := f.db.CreatePasswordResetLink(t.Context(), 1, "nobody@example.com", resetNow, func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
+	unknownErr := f.db.CreatePasswordResetLink(t.Context(), 1, missingUserID, resetNow, func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
 		return passwordreset.LinkChange{Link: link}, nil
 	})
-	refusedErr := f.db.CreatePasswordResetLink(t.Context(), 1, "member@example.com", resetNow, func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
+	refusedErr := f.db.CreatePasswordResetLink(t.Context(), 1, f.member, resetNow, func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
 		return passwordreset.LinkChange{Link: link}, refused
 	})
 
@@ -696,14 +907,12 @@ func TestPasswordResetLinkSerializes(t *testing.T) {
 	since := resetNow.Add(-24 * time.Hour)
 	ids := make([]int64, 2)
 	for i := range ids {
-		var err error
-		ids[i], err = f.db.RecordPasswordResetRequest(ctx, "192.0.2.1/32", since, func([]time.Time) (time.Time, error) { return resetNow, nil })
-		require.NoError(t, err)
+		ids[i] = recordResetRequest(t, ctx, f, "192.0.2.1/32", "member@example.com")
 	}
 
 	// Given a link step that holds the member's lock and sends a link.
 	finish := holdInCallback(t, ctx, func(pause func() error) error {
-		return f.db.CreatePasswordResetLink(ctx, ids[0], "member@example.com", since, func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
+		return f.db.CreatePasswordResetLink(ctx, ids[0], f.member, since, func(passwordreset.LinkState) (passwordreset.LinkChange, error) {
 			return passwordreset.LinkChange{
 				Link: &passwordreset.Link{TokenHash: sha256.Sum256([]byte("first")), CreatedAt: resetNow, ExpiresAt: resetNow.Add(time.Hour)},
 			}, pause()
@@ -713,7 +922,7 @@ func TestPasswordResetLinkSerializes(t *testing.T) {
 	// When a second one for the member starts, and the first commits.
 	seen, secondDone := make(chan passwordreset.LinkState, 1), make(chan error, 1)
 	go func() {
-		secondDone <- f.db.CreatePasswordResetLink(ctx, ids[1], "member@example.com", since, func(state passwordreset.LinkState) (passwordreset.LinkChange, error) {
+		secondDone <- f.db.CreatePasswordResetLink(ctx, ids[1], f.member, since, func(state passwordreset.LinkState) (passwordreset.LinkChange, error) {
 			seen <- state
 			return passwordreset.LinkChange{}, nil
 		})
@@ -748,7 +957,7 @@ func TestPasswordResetLinkWaitsForDeactivation(t *testing.T) {
 	// deactivation commits.
 	seen, linkDone := make(chan passwordreset.LinkState, 1), make(chan error, 1)
 	go func() {
-		linkDone <- f.db.CreatePasswordResetLink(ctx, 1, "member@example.com", resetNow.Add(-24*time.Hour), func(state passwordreset.LinkState) (passwordreset.LinkChange, error) {
+		linkDone <- f.db.CreatePasswordResetLink(ctx, 1, f.member, resetNow.Add(-24*time.Hour), func(state passwordreset.LinkState) (passwordreset.LinkChange, error) {
 			seen <- state
 			return passwordreset.LinkChange{}, nil
 		})
@@ -764,25 +973,35 @@ func TestPasswordResetLinkWaitsForDeactivation(t *testing.T) {
 	assert.True(t, state.Account.Deactivated)
 }
 
-// A request mails a link; following it resets the password, and the owner
-// is told.
+// A request saves its job, which mails a link; following it resets the
+// password and saves the notice, which tells the owner.
 func TestPasswordResetFlow(t *testing.T) {
 	f := newResetAccounts(t)
-	mailer, background := &resetMailer{}, resetBackground(t)
+	mailer := &resetMailer{}
 	clock := func() time.Time { return resetNow }
-	requests := passwordreset.NewRequests(f.db, mailer, resetPublicURL, background, clock)
-	completion := passwordreset.NewCompletion(f.db, mailer, resetPublicURL, background, clock)
+	requests := passwordreset.NewRequests(f.db, clock)
+	links := passwordreset.NewLinks(f.db, mailer, resetPublicURL, clock)
+	completion := passwordreset.NewCompletion(f.db, clock)
+	notices := passwordreset.NewNotices(f.db, mailer, resetPublicURL)
 
 	err := requests.Request(t.Context(), "Member@Example.com", netip.MustParseAddr("192.0.2.1"))
 	require.NoError(t, err)
-	require.NoError(t, background.Wait(t.Context()))
+	jobs := resetLinkJobs(t, f.conn)
+	require.Len(t, jobs, 1)
+	outcome, err := links.Send(t.Context(), jobs[0].AttemptID, jobs[0].UserID)
+	require.NoError(t, err)
+	assert.Equal(t, passwordreset.OutcomeSent, outcome)
 	require.Len(t, mailer.sent, 1)
 	_, secret, ok := strings.Cut(mailer.sent[0].Body, "https://mail.example.com/reset-password#")
 	require.True(t, ok)
 	secret, _, _ = strings.Cut(secret, "\n")
 	user, err := completion.Complete(t.Context(), secret, "member@example.com", resetPassword)
 	require.NoError(t, err)
-	require.NoError(t, background.Wait(t.Context()))
+	saved := changedNotices(t, f.conn)
+	require.Len(t, saved, 1)
+	outcome, err = notices.Send(t.Context(), saved[0].UserID, saved[0].ChangedAt)
+	require.NoError(t, err)
+	assert.Equal(t, passwordreset.OutcomeSent, outcome)
 
 	assert.Equal(t, f.member, user.ID)
 	ok, err = passwordhash.Verify(t.Context(), resetPassword, resetPasswordHash(t, f.conn, f.member))

@@ -11,10 +11,14 @@ import (
 	"inbok/internal/session"
 )
 
-// StartSignIn serializes password sign-in with recovery and enrollment.
+// StartSignIn saves the session or the TOTP challenge update returns for
+// userID, in one transaction. It returns [session.ErrNotFound] when the user
+// does not exist.
 func (db *DB) StartSignIn(ctx context.Context, userID int64, update func(session.SignInState) (session.SignInChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
+
+		// 1. Lock the user, so sign-in waits for recovery and enrollment.
 		user, err := queries.LockSignInUser(ctx, userID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -22,6 +26,8 @@ func (db *DB) StartSignIn(ctx context.Context, userID int64, update func(session
 			}
 			return fmt.Errorf("lock sign-in owner: %w", err)
 		}
+
+		// 2. Read the factor and let update decide.
 		factor, err := readTOTP(ctx, queries, userID)
 		if err != nil {
 			return err
@@ -31,9 +37,12 @@ func (db *DB) StartSignIn(ctx context.Context, userID int64, update func(session
 			return err
 		}
 
+		// 3. Delete the user's expired challenges.
 		if err := queries.DeleteExpiredSignInChallenges(ctx, sqlc.DeleteExpiredSignInChallengesParams{UserID: userID, Cutoff: next.Cutoff}); err != nil {
 			return fmt.Errorf("prune sign-in challenges: %w", err)
 		}
+
+		// 4. Save the session, or the challenge for the code step.
 		switch next.Step {
 		case session.SignInStepComplete:
 			if err := deleteUserExpiredSessions(ctx, queries, userID, next.Expiry); err != nil {

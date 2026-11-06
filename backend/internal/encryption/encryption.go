@@ -30,6 +30,8 @@ func New(value string) (*Keyring, error) {
 	ring := &Keyring{keys: make(map[string]cipher.AEAD)}
 	for entry := range strings.SplitSeq(value, ",") {
 		id, encoded, ok := strings.Cut(strings.TrimSpace(entry), ":")
+		// inbok's own ID format: one spelling per number, since a stored
+		// secret finds its key by the exact ID text saved with it.
 		number, err := strconv.ParseUint(id, 10, 32)
 		if !ok || err != nil || number == 0 || strconv.FormatUint(number, 10) != id {
 			return nil, errKeys
