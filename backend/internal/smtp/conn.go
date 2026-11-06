@@ -24,7 +24,8 @@ var errTooLong = errors.New("server replies exceed the size limit")
 // order, since no reply to the message exists before the dot. If a release
 // reads earlier, TestSendFinalWriteFailed fails; if it stops reading the
 // connection, TestSendUnconfirmed does. Either way a mismatch mostly errs
-// toward unconfirmed, which skips a retry rather than sending twice.
+// toward unconfirmed, which tells the caller a failed send may have arrived
+// rather than that a delivered one failed.
 type watchedConn struct {
 	net.Conn
 	left      int64

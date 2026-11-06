@@ -26,11 +26,13 @@ type Client struct {
 // workflow tables are missing or older than the SDK needs, which inbok
 // migrate fixes.
 func NewClient(ctx context.Context, url string, logger *slog.Logger) (*Client, error) {
-	// DBOS's error for a malformed URL quotes it, password included;
-	// pgx's hides the password.
+	// 1. Parse url with pgx. DBOS's error for a malformed URL quotes it,
+	// password included; pgx's hides the password.
 	if _, err := pgxpool.ParseConfig(url); err != nil {
 		return nil, err
 	}
+
+	// 2. Open the DBOS client on the URL pgx accepted.
 	client, err := dbos.NewClient(ctx, dbos.ClientConfig{
 		DatabaseURL: url,
 		AppName:     appName,

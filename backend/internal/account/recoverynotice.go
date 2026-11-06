@@ -41,7 +41,7 @@ type RecoveryNoticeState struct {
 // recoveryNoticeStorage reads what a recovery notice needs.
 type recoveryNoticeStorage interface {
 	// ReadRecoveryNotice returns the [RecoveryNoticeState] of the notice to
-	// the user with recipientID about the one with [recoveredID], who may be
+	// the user with recipientID about the one with recoveredID, who may be
 	// the same. A missing recipient returns [ErrUserNotFound].
 	ReadRecoveryNotice(ctx context.Context, recoveredID, recipientID int64) (RecoveryNoticeState, error)
 

@@ -121,9 +121,10 @@ The web app reads these from the contract; keep them stable:
   standard library package such as `errors`. Never write a full import
   path, e.g. `[inbok/internal/account.ErrUserNotFound]`; gopls cannot
   jump to it, so write the name plainly. The comment on an unexported
-  declaration may also bracket an unexported name in its package, e.g.
-  `[emailQueue]`; `go doc` shows it as text, but gopls jumps to it. The
-  comment on an exported declaration writes such a name plainly. See
+  declaration or a test may also bracket an unexported name in its
+  package, e.g. `[emailQueue]`; `go doc` shows it as text, but gopls
+  jumps to it. The comment on any other exported declaration writes such
+  a name plainly. See
   https://tip.golang.org/doc/comment#links.
 - A check that holds input to a rule names the rule's source above it,
   unless the code already says it: an RFC, a library's behaviour, an
