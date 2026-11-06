@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"strings"
 	"testing"
 
@@ -189,16 +188,12 @@ func TestEmulatorScopes(t *testing.T) {
 func TestEmulatorRevoke(t *testing.T) {
 	e, cfg := startTestEmulator(t)
 	token := connect(t, e, cfg, "alex@example.com")
-	client := &http.Client{Timeout: requestTimeout}
 
 	// When the refresh token is revoked.
-	resp, err := client.PostForm(e.BaseURL.JoinPath("/oauth2/revoke").String(), url.Values{"token": {token.RefreshToken}})
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	e.Revoke(t, token.RefreshToken)
 
 	// Then a new access token is refused. A token with only the refresh
 	// token makes the source ask for one.
-	_, err = cfg.TokenSource(t.Context(), &oauth2.Token{RefreshToken: token.RefreshToken}).Token()
+	_, err := cfg.TokenSource(t.Context(), &oauth2.Token{RefreshToken: token.RefreshToken}).Token()
 	requireRefused(t, "invalid_grant", err)
 }

@@ -668,7 +668,12 @@ turn TOTP off and enroll again. Administrators cannot remove the factor
 themselves; use host-operator recovery below. A lost key also makes the
 system email password unreadable: test messages fail with HTTP 500 and the
 settings lose their tested time until an administrator enters the password
-again and saves. The web app shows that 500 as a lost test result.
+again and saves. The web app shows that 500 as a lost test result. A lost
+key also makes the Gmail refresh tokens it sealed unreadable: Gmail work
+for those accounts fails with `connectedaccount.ErrTokenUnreadable` until
+each member reconnects the account, which seals a new token with the
+first key. The accounts are not marked as needing a reconnect, since a
+worker started with a wrong key list would mark every account.
 
 ### Google emulator
 
@@ -1794,10 +1799,11 @@ connectedaccount <-- repository/postgres
   rules directly: `registration` uses `account.ValidatePassword` and
   `account.User`.
 - `google`, like `smtp`, is a technology package: it implements the
-  Google side `connectedaccount`'s connect flow declares, the OAuth client,
-  the ID token checks, and Gmail's `users.getProfile`, with
-  `golang.org/x/oauth2` and Google's Gmail client. Their types stay inside
-  it.
+  Google side `connectedaccount` declares for its connect flow and its
+  token access: the OAuth client, the ID token checks, the refresh token
+  trade, and Gmail's `users.getProfile`, with `golang.org/x/oauth2` and
+  Google's Gmail client. Their types stay inside it; Gmail calls take
+  `connectedaccount`'s `AccessToken`.
 - `googleemulator` starts the [Google emulator](#google-emulator) for
   tests, each with its own seed. Only tests import it.
 - `webapp` embeds the built web app and serves it as a static site:
@@ -1939,3 +1945,37 @@ For a job that runs once per request, follow the recovery notice
 5. The command that makes the change gives storage the client with
    `DB.WithWorkflows`, as `recover-admin` does; `serve` already has one,
    for jobs requests save.
+
+### Calling Gmail
+
+A job that calls Gmail, e.g. synchronization or sending, takes an access
+token for the account from `connectedaccount.Access.Token` when it
+starts, in the step that calls Gmail, and passes it to the `google`
+client's Gmail methods. A token lasts as long as Google's `expires_in`
+said, usually an hour; a step that may run longer takes another. `Token`
+does what Google's refresh tokens need:
+
+- It saves a replacement refresh token Google sends before handing out
+  the access token, and never revokes the one replaced.
+- When Google refuses the refresh token (`invalid_grant`), it marks the
+  account as needing a reconnect and returns
+  `connectedaccount.ErrNeedsReconnect`; it returns that again, without
+  asking Google, until the member reconnects. A job stops work for the
+  account on it, as on `ErrNotFound` for a disconnected account and
+  `ErrDeactivated` for a deactivated member's.
+- It writes only against the token it read, so a reconnect or another
+  job's replacement in between wins; it then reads again once, and
+  returns `ErrCredentialChanged` if the token changed again. Saving a
+  replacement clears a refusal another job recorded against the same
+  token, since Google accepted that token to send the replacement.
+- It reads the account under the member's share lock, as
+  ADR029 asks before provider work, and reads it again just before
+  returning, so an account disconnected, deactivated, or refused while
+  Google answered gets no token. Its checks hold at that last read; a job
+  that must not act for an account gone since, e.g. one sending mail,
+  checks again where it acts.
+
+Keep the token out of a step's output: DBOS saves outputs in the
+database. `AccessToken` saves as `{}` in JSON and prints as a
+placeholder, so a slip shows nothing, but a step should return what
+later steps need, never the token.

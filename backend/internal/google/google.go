@@ -4,9 +4,9 @@
 // connectedaccount sees its own.
 //
 // google.go builds the client for Google or the emulator; oauth.go asks for
-// consent and trades the code; idtoken.go checks the ID token; gmail.go
-// calls Gmail; transport.go is the HTTP client that carries codes and
-// tokens.
+// consent and trades the code and refresh tokens; idtoken.go checks the ID
+// token; gmail.go calls Gmail; transport.go is the HTTP client that carries
+// codes and tokens.
 package google
 
 import (

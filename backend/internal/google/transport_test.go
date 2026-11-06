@@ -60,15 +60,17 @@ func TestDialLoopback(t *testing.T) {
 }
 
 // With a base URL, the client itself refuses to connect off this machine,
-// so the code, secret, and token never leave it.
+// so the code, secret, and tokens never leave it.
 func TestClientLoopbackOnly(t *testing.T) {
 	base, err := url.Parse("http://[2001:db8::1]:4000")
 	require.NoError(t, err)
 	client := New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect, BaseURL: base}, time.Now)
 
 	_, exchangeErr := client.Exchange(t.Context(), "code-1", "verifier-1")
+	_, refreshErr := client.Refresh(t.Context(), "refresh-1")
 	_, profileErr := client.Profile(t.Context(), connectedaccount.NewAccessToken("access-1"))
 
 	require.ErrorIs(t, exchangeErr, errNotLoopback)
+	require.ErrorIs(t, refreshErr, errNotLoopback)
 	require.ErrorIs(t, profileErr, errNotLoopback)
 }

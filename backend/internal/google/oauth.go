@@ -13,6 +13,10 @@ import (
 	"inbok/internal/connectedaccount"
 )
 
+// errorInvalidGrant is the token endpoint's error for a refresh token it
+// no longer accepts: revoked, expired, or dropped (RFC 6749 section 5.2).
+const errorInvalidGrant = "invalid_grant"
+
 // scopes are what inbok asks for (ADR006): who the account is, and Gmail
 // without permanent deletion.
 var scopes = []string{"openid", "email", gmail.GmailModifyScope}
@@ -49,6 +53,27 @@ func (c *Client) Exchange(ctx context.Context, code, verifier string) (connected
 		EmailVerified: bool(claims.EmailVerified),
 		GmailGranted:  slices.Contains(strings.Fields(granted), gmail.GmailModifyScope),
 	}, nil
+}
+
+// Refresh trades refreshToken for an access token, with the replacement
+// refresh token Google sends, if any. It returns an error wrapping
+// [connectedaccount.ErrRefreshRefused] when Google refuses refreshToken.
+func (c *Client) Refresh(ctx context.Context, refreshToken string) (connectedaccount.Renewal, error) {
+	// A token with no access token makes the source ask for one.
+	token, err := c.oauth.TokenSource(c.withHTTP(ctx), &oauth2.Token{RefreshToken: refreshToken}).Token()
+	if err != nil {
+		err = redactToken(err)
+		if refused, ok := errors.AsType[*tokenRefusal](err); ok && refused.code == errorInvalidGrant {
+			return connectedaccount.Renewal{}, fmt.Errorf("%w: %w", connectedaccount.ErrRefreshRefused, err)
+		}
+		return connectedaccount.Renewal{}, err
+	}
+	renewal := connectedaccount.Renewal{AccessToken: connectedaccount.NewAccessToken(token.AccessToken)}
+	// x/oauth2 keeps the old refresh token when Google sends none.
+	if token.RefreshToken != refreshToken {
+		renewal.RefreshToken = token.RefreshToken
+	}
+	return renewal, nil
 }
 
 // withHTTP returns ctx carrying the client x/oauth2 sends requests with.

@@ -20,12 +20,15 @@ const (
 	flowRedirect = "http://localhost:5173/api/v0/connected-accounts/google/callback"
 )
 
-// connectFlowTest is the whole flow: PostgreSQL, the Google emulator with
-// alex and blair, and a member signed in.
+// connectFlowTest is the whole flow and the token access after it:
+// PostgreSQL, the Google emulator with alex and blair, and a member signed
+// in.
 type connectFlowTest struct {
 	connectedAccountsTest
 	emulator    *googleemulator.Emulator
+	google      *google.Client
 	connections *connectedaccount.Connections
+	access      *connectedaccount.Access
 	session     uuid.UUID
 }
 
@@ -45,7 +48,9 @@ func newConnectFlowTest(t *testing.T) connectFlowTest {
 	return connectFlowTest{
 		connectedAccountsTest: c,
 		emulator:              emulator,
+		google:                client,
 		connections:           connectedaccount.NewConnections(c.db, c.service, client, time.Now),
+		access:                connectedaccount.NewAccess(c.db, c.ring, client, time.Now),
 		session:               insertConnectingSession(t, c.conn, c.member),
 	}
 }
@@ -124,4 +129,40 @@ func TestConnectFlowCancelled(t *testing.T) {
 
 	require.ErrorIs(t, err, connectedaccount.ErrCancelled)
 	assert.Equal(t, int64(0), countConnectStates(t, f.conn))
+}
+
+// A job's token reaches the connected mailbox.
+func TestConnectFlowToken(t *testing.T) {
+	f := newConnectFlowTest(t)
+	account, err := f.consent(t, 0, alexIdentity.Email)
+	require.NoError(t, err)
+
+	token, err := f.access.Token(t.Context(), account.ID)
+	require.NoError(t, err)
+
+	profile, err := f.google.Profile(t.Context(), token)
+	require.NoError(t, err)
+	assert.Equal(t, alexIdentity.Email, profile.Email)
+}
+
+func TestConnectFlowTokenRevoked(t *testing.T) {
+	// Given a connected account whose member removed inbok's access at
+	// Google.
+	f := newConnectFlowTest(t)
+	account, err := f.consent(t, 0, alexIdentity.Email)
+	require.NoError(t, err)
+	f.emulator.Revoke(t, f.storedToken(t, f.member, account.ID))
+
+	// When a job asks for a token.
+	_, err = f.access.Token(t.Context(), account.ID)
+
+	// Then the account needs reconnecting, and reconnecting mends it.
+	require.ErrorIs(t, err, connectedaccount.ErrNeedsReconnect)
+	accounts, err := f.service.List(t.Context(), f.member)
+	require.NoError(t, err)
+	assert.NotNil(t, accounts[0].NeedsReconnectSince)
+	_, err = f.consent(t, account.ID, alexIdentity.Email)
+	require.NoError(t, err)
+	_, err = f.access.Token(t.Context(), account.ID)
+	require.NoError(t, err)
 }

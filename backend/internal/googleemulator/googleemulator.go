@@ -264,6 +264,17 @@ func (e *Emulator) Consent(t testing.TB, authURL, email string) *url.URL {
 	return location
 }
 
+// Revoke revokes token at the emulator, as a member removing inbok's
+// access in their Google account does, so Google then refuses it.
+func (e *Emulator) Revoke(t testing.TB, token string) {
+	t.Helper()
+	client := &http.Client{Timeout: requestTimeout}
+	resp, err := client.PostForm(e.BaseURL.JoinPath("/oauth2/revoke").String(), url.Values{"token": {token}})
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
 // freePort returns a TCP port on 127.0.0.1 that was free a moment ago.
 func freePort() (int, error) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
