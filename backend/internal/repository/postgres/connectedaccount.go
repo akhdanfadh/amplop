@@ -4,12 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"inbok/internal/connectedaccount"
 	"inbok/internal/repository/postgres/sqlc"
 )
+
+// Token access reads and writes credentials here; this fails to compile if
+// DB stops providing what connectedaccount.NewAccess takes.
+var _ = connectedaccount.NewAccess((*DB)(nil), nil, nil, nil)
 
 // InsertConnectedAccount saves account with the credential seal returns for
 // its ID, and returns the saved account. It returns
@@ -115,6 +120,62 @@ func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int6
 	}
 	if deleted == 0 {
 		return connectedaccount.ErrNotFound
+	}
+	return nil
+}
+
+// ReadConnectedAccountAccess returns account accountID's credential and whether its
+// provider work has stopped. It returns connectedaccount.ErrNotFound when
+// there is no such account.
+func (db *DB) ReadConnectedAccountAccess(ctx context.Context, accountID int64) (connectedaccount.AccessState, error) {
+	row, err := sqlc.New(db.pool).ReadConnectedAccountAccess(ctx, accountID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return connectedaccount.AccessState{}, connectedaccount.ErrNotFound
+	}
+	if err != nil {
+		return connectedaccount.AccessState{}, fmt.Errorf("read access state: %w", err)
+	}
+	return connectedaccount.AccessState{
+		UserID:         row.UserID,
+		Credential:     connectedaccount.Credential{KeyID: row.RefreshTokenKeyID, Ciphertext: row.RefreshTokenCiphertext},
+		NeedsReconnect: row.NeedsReconnect,
+		Deactivated:    row.Deactivated,
+	}, nil
+}
+
+// ReplaceConnectedAccountToken saves next as account accountID's credential if its
+// ciphertext is still current, and returns
+// connectedaccount.ErrCredentialChanged otherwise.
+func (db *DB) ReplaceConnectedAccountToken(ctx context.Context, accountID int64, current []byte, next connectedaccount.Credential) error {
+	replaced, err := sqlc.New(db.pool).ReplaceConnectedAccountToken(ctx, sqlc.ReplaceConnectedAccountTokenParams{
+		ID:                     accountID,
+		CurrentCiphertext:      current,
+		RefreshTokenKeyID:      next.KeyID,
+		RefreshTokenCiphertext: next.Ciphertext,
+	})
+	if err != nil {
+		return fmt.Errorf("replace refresh token: %w", err)
+	}
+	if replaced == 0 {
+		return connectedaccount.ErrCredentialChanged
+	}
+	return nil
+}
+
+// MarkConnectedAccountReconnect records at as when account accountID started needing a
+// reconnect, keeping an earlier time, if its ciphertext is still current,
+// and returns connectedaccount.ErrCredentialChanged otherwise.
+func (db *DB) MarkConnectedAccountReconnect(ctx context.Context, accountID int64, current []byte, at time.Time) error {
+	marked, err := sqlc.New(db.pool).MarkConnectedAccountReconnect(ctx, sqlc.MarkConnectedAccountReconnectParams{
+		ID:                accountID,
+		CurrentCiphertext: current,
+		At:                at,
+	})
+	if err != nil {
+		return fmt.Errorf("mark connected account needs reconnect: %w", err)
+	}
+	if marked == 0 {
+		return connectedaccount.ErrCredentialChanged
 	}
 	return nil
 }

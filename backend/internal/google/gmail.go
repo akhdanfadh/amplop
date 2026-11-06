@@ -16,10 +16,24 @@ import (
 
 // Profile returns the Gmail mailbox accessToken reaches, from
 // users.getProfile.
-func (c *Client) Profile(ctx context.Context, accessToken string) (connectedaccount.Profile, error) {
+func (c *Client) Profile(ctx context.Context, accessToken connectedaccount.AccessToken) (connectedaccount.Profile, error) {
+	service, err := c.gmail(ctx, accessToken)
+	if err != nil {
+		return connectedaccount.Profile{}, err
+	}
+	profile, err := service.Users.GetProfile("me").Context(ctx).Do()
+	if err != nil {
+		return connectedaccount.Profile{}, redactGmail(err)
+	}
+	return connectedaccount.Profile{Email: profile.EmailAddress}, nil
+}
+
+// gmail returns a Gmail client that sends accessToken with every request,
+// over the client's own HTTP client.
+func (c *Client) gmail(ctx context.Context, accessToken connectedaccount.AccessToken) (*gmail.Service, error) {
 	authorized := &http.Client{
 		Transport: &oauth2.Transport{
-			Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken}),
+			Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken.Value()}),
 			Base:   c.http.Transport,
 		},
 		Timeout:       c.http.Timeout,
@@ -29,13 +43,9 @@ func (c *Client) Profile(ctx context.Context, accessToken string) (connectedacco
 	// reads, e.g. GOOGLE_CLOUD_UNIVERSE_DOMAIN, can send the token elsewhere.
 	service, err := gmail.NewService(ctx, option.WithHTTPClient(authorized), option.WithEndpoint(c.gmailURL))
 	if err != nil {
-		return connectedaccount.Profile{}, fmt.Errorf("gmail client: %w", err)
+		return nil, fmt.Errorf("gmail client: %w", err)
 	}
-	profile, err := service.Users.GetProfile("me").Context(ctx).Do()
-	if err != nil {
-		return connectedaccount.Profile{}, redactGmail(err)
-	}
-	return connectedaccount.Profile{Email: profile.EmailAddress}, nil
+	return service, nil
 }
 
 // redactGmail returns err, from the Gmail API, as only its HTTP status, for

@@ -26,6 +26,8 @@ type memoryStorage struct {
 	accounts []stored
 	lastID   int64
 	states   map[[sha256.Size]byte]ConnectState
+	// deactivated are the deactivated members.
+	deactivated map[int64]bool
 }
 
 func (m *memoryStorage) InsertConnectedAccount(_ context.Context, account NewAccount, seal func(int64) (Credential, error)) (Account, error) {

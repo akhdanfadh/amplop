@@ -53,7 +53,7 @@ func TestExchange(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, grant.RefreshToken)
-	assert.NotEmpty(t, grant.AccessToken)
+	assert.NotEmpty(t, grant.AccessToken.Value())
 	assert.Equal(t, alexSubject, grant.Identity.Subject)
 	assert.Equal(t, "alex@example.com", grant.Identity.Email)
 	assert.True(t, grant.EmailVerified)

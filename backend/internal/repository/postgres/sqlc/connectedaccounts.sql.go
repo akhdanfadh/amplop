@@ -165,6 +165,27 @@ func (q *Queries) LockConnectedAccount(ctx context.Context, arg LockConnectedAcc
 	return i, err
 }
 
+const markConnectedAccountReconnect = `-- name: MarkConnectedAccountReconnect :execrows
+UPDATE connected_accounts SET
+    needs_reconnect_since = coalesce(needs_reconnect_since, $1::timestamptz)
+WHERE id = $2 AND refresh_token_ciphertext = $3
+`
+
+type MarkConnectedAccountReconnectParams struct {
+	At                time.Time
+	ID                int64
+	CurrentCiphertext []byte
+}
+
+// Marks only the token the caller had refused, and keeps the first time.
+func (q *Queries) MarkConnectedAccountReconnect(ctx context.Context, arg MarkConnectedAccountReconnectParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markConnectedAccountReconnect, arg.At, arg.ID, arg.CurrentCiphertext)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const nextConnectedAccountID = `-- name: NextConnectedAccountID :one
 SELECT nextval(pg_get_serial_sequence('connected_accounts', 'id'))
 `
@@ -175,6 +196,70 @@ func (q *Queries) NextConnectedAccountID(ctx context.Context) (int64, error) {
 	var nextval int64
 	err := row.Scan(&nextval)
 	return nextval, err
+}
+
+const readConnectedAccountAccess = `-- name: ReadConnectedAccountAccess :one
+SELECT ca.user_id, ca.refresh_token_key_id, ca.refresh_token_ciphertext,
+    (ca.needs_reconnect_since IS NOT NULL)::boolean AS needs_reconnect,
+    (u.deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM connected_accounts ca
+JOIN users u ON u.id = ca.user_id
+WHERE ca.id = $1
+FOR SHARE OF u
+`
+
+type ReadConnectedAccountAccessRow struct {
+	UserID                 int64
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
+	NeedsReconnect         bool
+	Deactivated            bool
+}
+
+// The share lock waits for a deactivation in progress, so the member's flag
+// is read as ADR029 asks before provider work.
+func (q *Queries) ReadConnectedAccountAccess(ctx context.Context, id int64) (ReadConnectedAccountAccessRow, error) {
+	row := q.db.QueryRow(ctx, readConnectedAccountAccess, id)
+	var i ReadConnectedAccountAccessRow
+	err := row.Scan(
+		&i.UserID,
+		&i.RefreshTokenKeyID,
+		&i.RefreshTokenCiphertext,
+		&i.NeedsReconnect,
+		&i.Deactivated,
+	)
+	return i, err
+}
+
+const replaceConnectedAccountToken = `-- name: ReplaceConnectedAccountToken :execrows
+UPDATE connected_accounts SET
+    refresh_token_key_id = $1,
+    refresh_token_ciphertext = $2,
+    needs_reconnect_since = NULL
+WHERE id = $3 AND refresh_token_ciphertext = $4
+`
+
+type ReplaceConnectedAccountTokenParams struct {
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
+	ID                     int64
+	CurrentCiphertext      []byte
+}
+
+// Replaces only the token the caller read, so a reconnect or another job's
+// replacement saved meanwhile stays. Google accepted that token to send the
+// replacement, so a refusal another job recorded against it is cleared.
+func (q *Queries) ReplaceConnectedAccountToken(ctx context.Context, arg ReplaceConnectedAccountTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, replaceConnectedAccountToken,
+		arg.RefreshTokenKeyID,
+		arg.RefreshTokenCiphertext,
+		arg.ID,
+		arg.CurrentCiphertext,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateConnectedAccount = `-- name: UpdateConnectedAccount :one

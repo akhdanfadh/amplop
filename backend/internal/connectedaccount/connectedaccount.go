@@ -2,8 +2,10 @@
 // holds the account rules: saving one once its identity is checked,
 // reconnecting it, listing a member's accounts, and disconnecting one.
 // Connections runs the connect flow that feeds them: a state per start, the
-// callback's checks, and the save. Google's side sits behind an interface
-// the google package implements.
+// callback's checks, and the save. Access hands the jobs that call Gmail an
+// access token per account, saving what Google says about the refresh
+// token. Google's side sits behind interfaces the google package
+// implements.
 package connectedaccount
 
 import (
@@ -141,7 +143,7 @@ func (s *Service) Connect(ctx context.Context, userID int64, identity Identity, 
 	// 2. Seal the token for the ID storage gives the account, and save it.
 	account := NewAccount{UserID: userID, Provider: ProviderGmail, Email: email, Subject: identity.Subject}
 	return s.storage.InsertConnectedAccount(ctx, account, func(accountID int64) (Credential, error) {
-		return s.seal(userID, accountID, refreshToken)
+		return seal(s.encryption, userID, accountID, refreshToken)
 	})
 }
 
@@ -159,7 +161,7 @@ func (s *Service) Reconnect(ctx context.Context, userID, accountID int64, identi
 
 	// 2. Seal the token before storage locks the row; the account's ID is
 	// already known.
-	credential, err := s.seal(userID, accountID, refreshToken)
+	credential, err := seal(s.encryption, userID, accountID, refreshToken)
 	if err != nil {
 		return Account{}, err
 	}
@@ -186,9 +188,10 @@ func (s *Service) Disconnect(ctx context.Context, userID, accountID int64) error
 	return s.storage.DeleteConnectedAccount(ctx, userID, accountID)
 }
 
-// seal returns refreshToken sealed for userID's account accountID.
-func (s *Service) seal(userID, accountID int64, refreshToken string) (Credential, error) {
-	keyID, ciphertext, err := s.encryption.Seal([]byte(refreshToken), tokenOwner(userID, accountID))
+// seal returns refreshToken sealed with encryption for userID's account
+// accountID.
+func seal(encryption sealer, userID, accountID int64, refreshToken string) (Credential, error) {
+	keyID, ciphertext, err := encryption.Seal([]byte(refreshToken), tokenOwner(userID, accountID))
 	if err != nil {
 		return Credential{}, err
 	}

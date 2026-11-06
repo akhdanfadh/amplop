@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/connectedaccount"
 )
 
 func TestProfile(t *testing.T) {
@@ -26,7 +28,7 @@ func TestProfile(t *testing.T) {
 func TestProfileRefusedToken(t *testing.T) {
 	_, client := startEmulator(t)
 
-	_, err := client.Profile(t.Context(), "not-a-token")
+	_, err := client.Profile(t.Context(), connectedaccount.NewAccessToken("not-a-token"))
 
 	require.Error(t, err)
 }
@@ -41,7 +43,7 @@ func TestProfileRefusalRedacted(t *testing.T) {
 	require.NoError(t, err)
 	client := New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect, BaseURL: base}, time.Now)
 
-	_, err = client.Profile(t.Context(), "access-1")
+	_, err = client.Profile(t.Context(), connectedaccount.NewAccessToken("access-1"))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")

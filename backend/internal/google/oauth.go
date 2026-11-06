@@ -44,7 +44,7 @@ func (c *Client) Exchange(ctx context.Context, code, verifier string) (connected
 	granted, _ := token.Extra("scope").(string)
 	return connectedaccount.Grant{
 		RefreshToken:  token.RefreshToken,
-		AccessToken:   token.AccessToken,
+		AccessToken:   connectedaccount.NewAccessToken(token.AccessToken),
 		Identity:      connectedaccount.Identity{Subject: claims.Subject, Email: claims.Email},
 		EmailVerified: bool(claims.EmailVerified),
 		GmailGranted:  slices.Contains(strings.Fields(granted), gmail.GmailModifyScope),

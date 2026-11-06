@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"strconv"
 	"sync"
 	"testing"
@@ -65,8 +66,7 @@ func (c connectedAccountsTest) storedCiphertext(t *testing.T, accountID int64) (
 func (c connectedAccountsTest) storedToken(t *testing.T, userID, accountID int64) string {
 	t.Helper()
 	keyID, ciphertext := c.storedCiphertext(t, accountID)
-	owner := "connected-account:" + strconv.FormatInt(userID, 10) + ":" + strconv.FormatInt(accountID, 10) + ":google-refresh-token"
-	token, err := c.ring.Open(keyID, ciphertext, owner)
+	token, err := c.ring.Open(keyID, ciphertext, refreshTokenOwner(userID, accountID))
 	require.NoError(t, err)
 	return string(token)
 }
@@ -317,4 +317,194 @@ func TestConnectedAccountsChecks(t *testing.T) {
 			assert.Equal(t, checkViolation, pgErr.Code)
 		})
 	}
+}
+
+// connectAlex connects alex for the member with refresh-1 and returns the
+// account and its ciphertext.
+func (c connectedAccountsTest) connectAlex(t *testing.T) (connectedaccount.Account, []byte) {
+	t.Helper()
+	account, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
+	require.NoError(t, err)
+	_, ciphertext := c.storedCiphertext(t, account.ID)
+	return account, ciphertext
+}
+
+func TestAccountAccess(t *testing.T) {
+	t.Run("saved", func(t *testing.T) {
+		c := newConnectedAccountsTest(t)
+		account, ciphertext := c.connectAlex(t)
+
+		state, err := c.db.ReadConnectedAccountAccess(t.Context(), account.ID)
+		require.NoError(t, err)
+
+		keyID, _ := c.storedCiphertext(t, account.ID)
+		assert.Equal(t, connectedaccount.AccessState{
+			UserID:     c.member,
+			Credential: connectedaccount.Credential{KeyID: keyID, Ciphertext: ciphertext},
+		}, state)
+	})
+
+	// Work stops for an account Google refused or a deactivated member's, and
+	// the state says which.
+	t.Run("stopped", func(t *testing.T) {
+		c := newConnectedAccountsTest(t)
+		account, _ := c.connectAlex(t)
+		_, err := c.conn.Exec(t.Context(), "UPDATE connected_accounts SET needs_reconnect_since = now() WHERE id = $1", account.ID)
+		require.NoError(t, err)
+		_, err = c.conn.Exec(t.Context(), "UPDATE users SET deactivated_at = now() WHERE id = $1", c.member)
+		require.NoError(t, err)
+
+		state, err := c.db.ReadConnectedAccountAccess(t.Context(), account.ID)
+		require.NoError(t, err)
+
+		assert.True(t, state.NeedsReconnect)
+		assert.True(t, state.Deactivated)
+	})
+
+	t.Run("gone", func(t *testing.T) {
+		c := newConnectedAccountsTest(t)
+
+		_, err := c.db.ReadConnectedAccountAccess(t.Context(), 1)
+
+		require.ErrorIs(t, err, connectedaccount.ErrNotFound)
+	})
+
+	// A deactivation in progress holds the user lock; the read waits for it
+	// and sees the member deactivated, as ADR029 asks before provider work.
+	t.Run("deactivating", func(t *testing.T) {
+		c := newConnectedAccountsTest(t)
+		account, _ := c.connectAlex(t)
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		tx, err := c.conn.Begin(ctx)
+		require.NoError(t, err)
+		defer tx.Rollback(t.Context())
+		_, err = tx.Exec(ctx, "SELECT id FROM users WHERE id = $1 FOR UPDATE", c.member)
+		require.NoError(t, err)
+		_, err = tx.Exec(ctx, "UPDATE users SET deactivated_at = now() WHERE id = $1", c.member)
+		require.NoError(t, err)
+		type result struct {
+			state connectedaccount.AccessState
+			err   error
+		}
+		done := make(chan result, 1)
+		go func() {
+			state, err := c.db.ReadConnectedAccountAccess(ctx, account.ID)
+			done <- result{state, err}
+		}()
+
+		require.Eventually(t, func() bool {
+			var blocked bool
+			err := c.db.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%ReadConnectedAccountAccess%')").Scan(&blocked)
+			return err == nil && blocked
+		}, 3*time.Second, 10*time.Millisecond)
+		require.NoError(t, tx.Commit(ctx))
+		read := <-done
+
+		require.NoError(t, read.err)
+		assert.True(t, read.state.Deactivated)
+	})
+}
+
+func TestTokenReplace(t *testing.T) {
+	t.Run("current", func(t *testing.T) {
+		c := newConnectedAccountsTest(t)
+		account, current := c.connectAlex(t)
+
+		err := c.db.ReplaceConnectedAccountToken(t.Context(), account.ID, current, c.seal(t, c.member, account.ID, "refresh-2"))
+		require.NoError(t, err)
+
+		assert.Equal(t, "refresh-2", c.storedToken(t, c.member, account.ID))
+	})
+
+	// Google accepted the token the replacement comes from, so a refusal
+	// another job recorded against that same token meanwhile is cleared.
+	t.Run("marked meanwhile", func(t *testing.T) {
+		c := newConnectedAccountsTest(t)
+		account, current := c.connectAlex(t)
+		require.NoError(t, c.db.MarkConnectedAccountReconnect(t.Context(), account.ID, current, time.Now()))
+
+		err := c.db.ReplaceConnectedAccountToken(t.Context(), account.ID, current, c.seal(t, c.member, account.ID, "refresh-2"))
+		require.NoError(t, err)
+
+		accounts, err := c.service.List(t.Context(), c.member)
+		require.NoError(t, err)
+		assert.Nil(t, accounts[0].NeedsReconnectSince)
+	})
+
+	// A replacement for a token that is no longer saved, e.g. after a
+	// reconnect, keeps the saved one.
+	t.Run("changed", func(t *testing.T) {
+		c := newConnectedAccountsTest(t)
+		account, read := c.connectAlex(t)
+		_, err := c.service.Reconnect(t.Context(), c.member, account.ID, alexIdentity, "refresh-3")
+		require.NoError(t, err)
+
+		err = c.db.ReplaceConnectedAccountToken(t.Context(), account.ID, read, c.seal(t, c.member, account.ID, "refresh-2"))
+
+		require.ErrorIs(t, err, connectedaccount.ErrCredentialChanged)
+		assert.Equal(t, "refresh-3", c.storedToken(t, c.member, account.ID))
+	})
+
+	t.Run("gone", func(t *testing.T) {
+		c := newConnectedAccountsTest(t)
+		account, read := c.connectAlex(t)
+		require.NoError(t, c.service.Disconnect(t.Context(), c.member, account.ID))
+
+		err := c.db.ReplaceConnectedAccountToken(t.Context(), account.ID, read, c.seal(t, c.member, account.ID, "refresh-2"))
+
+		require.ErrorIs(t, err, connectedaccount.ErrCredentialChanged)
+		assert.Equal(t, int64(0), c.countConnectedAccounts(t))
+	})
+}
+
+func TestReconnectMark(t *testing.T) {
+	// The first refusal's time stays, and a reconnect clears it.
+	t.Run("current", func(t *testing.T) {
+		c := newConnectedAccountsTest(t)
+		account, current := c.connectAlex(t)
+		first := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+
+		require.NoError(t, c.db.MarkConnectedAccountReconnect(t.Context(), account.ID, current, first))
+		require.NoError(t, c.db.MarkConnectedAccountReconnect(t.Context(), account.ID, current, first.Add(time.Hour)))
+
+		accounts, err := c.service.List(t.Context(), c.member)
+		require.NoError(t, err)
+		require.NotNil(t, accounts[0].NeedsReconnectSince)
+		assert.Equal(t, first, *accounts[0].NeedsReconnectSince)
+		reconnected, err := c.service.Reconnect(t.Context(), c.member, account.ID, alexIdentity, "refresh-2")
+		require.NoError(t, err)
+		assert.Nil(t, reconnected.NeedsReconnectSince)
+	})
+
+	// A refusal of a token that is no longer saved, e.g. after a reconnect,
+	// marks nothing.
+	t.Run("changed", func(t *testing.T) {
+		c := newConnectedAccountsTest(t)
+		account, read := c.connectAlex(t)
+		_, err := c.service.Reconnect(t.Context(), c.member, account.ID, alexIdentity, "refresh-2")
+		require.NoError(t, err)
+
+		err = c.db.MarkConnectedAccountReconnect(t.Context(), account.ID, read, time.Now())
+
+		require.ErrorIs(t, err, connectedaccount.ErrCredentialChanged)
+		accounts, err := c.service.List(t.Context(), c.member)
+		require.NoError(t, err)
+		assert.Nil(t, accounts[0].NeedsReconnectSince)
+	})
+}
+
+// seal returns refreshToken sealed for userID's account accountID, as the
+// connectedaccount package seals it.
+func (c connectedAccountsTest) seal(t *testing.T, userID, accountID int64, refreshToken string) connectedaccount.Credential {
+	t.Helper()
+	keyID, ciphertext, err := c.ring.Seal([]byte(refreshToken), refreshTokenOwner(userID, accountID))
+	require.NoError(t, err)
+	return connectedaccount.Credential{KeyID: keyID, Ciphertext: ciphertext}
+}
+
+// refreshTokenOwner returns the owner ADR006 binds userID's account
+// accountID's refresh token to.
+func refreshTokenOwner(userID, accountID int64) string {
+	return "connected-account:" + strconv.FormatInt(userID, 10) + ":" + strconv.FormatInt(accountID, 10) + ":google-refresh-token"
 }

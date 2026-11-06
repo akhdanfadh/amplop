@@ -50,8 +50,8 @@ var (
 type Grant struct {
 	// RefreshToken is empty when Google sent none.
 	RefreshToken string `json:"-"`
-	// AccessToken is used once, to check the mailbox, and never stored.
-	AccessToken string `json:"-"`
+	// AccessToken is used once, to check the mailbox.
+	AccessToken AccessToken `json:"-"`
 	// Identity comes from the ID token in the same response.
 	Identity      Identity
 	EmailVerified bool
@@ -83,7 +83,7 @@ type googleClient interface {
 	// when Google refuses the code or its ID token fails a check.
 	Exchange(ctx context.Context, code, verifier string) (Grant, error)
 	// Profile returns the mailbox accessToken reaches.
-	Profile(ctx context.Context, accessToken string) (Profile, error)
+	Profile(ctx context.Context, accessToken AccessToken) (Profile, error)
 }
 
 // ConnectState is one start of the flow, saved until its callback.

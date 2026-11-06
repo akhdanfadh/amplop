@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/connectedaccount"
 )
 
 // A redirect from the token endpoint is not followed, so the code and
@@ -65,7 +67,7 @@ func TestClientLoopbackOnly(t *testing.T) {
 	client := New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect, BaseURL: base}, time.Now)
 
 	_, exchangeErr := client.Exchange(t.Context(), "code-1", "verifier-1")
-	_, profileErr := client.Profile(t.Context(), "access-1")
+	_, profileErr := client.Profile(t.Context(), connectedaccount.NewAccessToken("access-1"))
 
 	require.ErrorIs(t, exchangeErr, errNotLoopback)
 	require.ErrorIs(t, profileErr, errNotLoopback)

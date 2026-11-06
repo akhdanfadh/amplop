@@ -38,3 +38,30 @@ ORDER BY created_at, id;
 
 -- name: DeleteConnectedAccount :execrows
 DELETE FROM connected_accounts WHERE id = @id AND user_id = @user_id;
+
+-- name: ReadConnectedAccountAccess :one
+-- The share lock waits for a deactivation in progress, so the member's flag
+-- is read as ADR029 asks before provider work.
+SELECT ca.user_id, ca.refresh_token_key_id, ca.refresh_token_ciphertext,
+    (ca.needs_reconnect_since IS NOT NULL)::boolean AS needs_reconnect,
+    (u.deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM connected_accounts ca
+JOIN users u ON u.id = ca.user_id
+WHERE ca.id = @id
+FOR SHARE OF u;
+
+-- name: ReplaceConnectedAccountToken :execrows
+-- Replaces only the token the caller read, so a reconnect or another job's
+-- replacement saved meanwhile stays. Google accepted that token to send the
+-- replacement, so a refusal another job recorded against it is cleared.
+UPDATE connected_accounts SET
+    refresh_token_key_id = @refresh_token_key_id,
+    refresh_token_ciphertext = @refresh_token_ciphertext,
+    needs_reconnect_since = NULL
+WHERE id = @id AND refresh_token_ciphertext = @current_ciphertext;
+
+-- name: MarkConnectedAccountReconnect :execrows
+-- Marks only the token the caller had refused, and keeps the first time.
+UPDATE connected_accounts SET
+    needs_reconnect_since = coalesce(needs_reconnect_since, sqlc.arg(at)::timestamptz)
+WHERE id = @id AND refresh_token_ciphertext = @current_ciphertext;

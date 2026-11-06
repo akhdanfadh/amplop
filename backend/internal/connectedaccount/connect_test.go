@@ -44,7 +44,8 @@ type fakeGoogle struct {
 	profileErr  error
 
 	// What the flow sent.
-	state, verifier, code, exchangeVerifier, accessToken string
+	state, verifier, code, exchangeVerifier string
+	accessToken                             AccessToken
 }
 
 func (f *fakeGoogle) AuthCodeURL(state, verifier string) string {
@@ -57,7 +58,7 @@ func (f *fakeGoogle) Exchange(_ context.Context, code, verifier string) (Grant, 
 	return f.grant, f.exchangeErr
 }
 
-func (f *fakeGoogle) Profile(_ context.Context, accessToken string) (Profile, error) {
+func (f *fakeGoogle) Profile(_ context.Context, accessToken AccessToken) (Profile, error) {
 	f.accessToken = accessToken
 	return Profile{Email: f.mailbox}, f.profileErr
 }
@@ -66,7 +67,7 @@ const testCode = "code-1"
 
 // alexGrant is a grant for alex with everything inbok needs.
 func alexGrant() Grant {
-	return Grant{RefreshToken: "refresh-1", AccessToken: "access-1", Identity: alex, EmailVerified: true, GmailGranted: true}
+	return Grant{RefreshToken: "refresh-1", AccessToken: NewAccessToken("access-1"), Identity: alex, EmailVerified: true, GmailGranted: true}
 }
 
 // connectTest is a flow on memory storage with a fake Google, and the clock
@@ -160,7 +161,7 @@ func TestFinishConnects(t *testing.T) {
 	assert.Equal(t, alexSubject, account.Subject)
 	assert.Equal(t, testCode, c.google.code)
 	assert.Equal(t, c.google.verifier, c.google.exchangeVerifier)
-	assert.Equal(t, "access-1", c.google.accessToken)
+	assert.Equal(t, "access-1", c.google.accessToken.Value())
 	assert.Equal(t, "refresh-1", openToken(t, c.ring, c.storage, member, account.ID), "the refresh token is saved, not the access token")
 	assert.Empty(t, c.storage.states, "the state is used up")
 }
