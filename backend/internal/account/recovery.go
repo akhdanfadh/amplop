@@ -75,8 +75,8 @@ func (s *Recovery) Recover(ctx context.Context, email, password string) (Recover
 }
 
 // Administrator checks the recovery target before the command reads a password.
-// Recover repeats the lookup and checks the role again under the storage lock.
-// It returns [emailaddress.ErrInvalid] for an invalid email.
+// [Recovery.Recover] repeats the lookup and checks the role again under the
+// storage lock. It returns [emailaddress.ErrInvalid] for an invalid email.
 func (s *Recovery) Administrator(ctx context.Context, email string) (User, error) {
 	email, err := emailaddress.Parse(email)
 	if err != nil {

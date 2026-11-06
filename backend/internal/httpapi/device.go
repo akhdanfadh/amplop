@@ -20,7 +20,7 @@ func resolveClientAddr(ctx huma.Context, addr *netip.Addr) []error {
 }
 
 // resolveDevice reads the details a new session keeps about its browser:
-// the User-Agent header and the address resolveClientAddr selects.
+// the User-Agent header and the address [resolveClientAddr] selects.
 // The session feature cleans and cuts them before storage.
 func resolveDevice(ctx huma.Context, device *session.Device) []error {
 	device.UserAgent = ctx.Header("User-Agent")

@@ -225,7 +225,7 @@ func TestBudgetMalformed(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidHash)
 }
 
-// The largest stored hash Verify accepts fits in the budget, so checking it
+// The largest stored hash [Verify] accepts fits in the budget, so checking it
 // does not wait forever.
 func TestBudgetLargestHash(t *testing.T) {
 	encoded := fmt.Sprintf("$argon2id$v=19$m=%d,t=1,p=1$c29tZXNhbHQ$YWJjZA", maxPasswordMemory)

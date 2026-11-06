@@ -53,7 +53,7 @@ func TestMailerSendWithoutSignIn(t *testing.T) {
 	assert.Empty(t, sender.password)
 }
 
-// The recipient is sent to as emailaddress.Parse returns it.
+// The recipient is sent to as [emailaddress.Parse] returns it.
 func TestMailerSendRecipient(t *testing.T) {
 	storage, sender := &memoryStorage{record: savedSignIn()}, &fakeSender{}
 	outgoing := testOutgoing()

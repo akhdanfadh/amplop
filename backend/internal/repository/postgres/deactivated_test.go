@@ -29,7 +29,7 @@ const deactivatedPassword = "a long member password"
 
 var deactivatedDevice = session.Device{Addr: netip.MustParseAddr("192.0.2.1")}
 
-// deactivatedAccounts are a member who can sign in with deactivatedPassword,
+// deactivatedAccounts are a member who can sign in with [deactivatedPassword],
 // the administrator who manages them, and the services both use.
 type deactivatedAccounts struct {
 	db       *DB

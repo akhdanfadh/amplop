@@ -212,7 +212,7 @@ func postPublic(api *API, path, body string) *httptest.ResponseRecorder {
 }
 
 // requestMemory keeps registration attempts in memory for the real
-// registration.Requests.
+// [registration.Requests].
 type requestMemory struct {
 	accounts []string // emails that have an account
 	attempts []registration.Attempt

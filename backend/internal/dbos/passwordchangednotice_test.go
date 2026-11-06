@@ -18,7 +18,7 @@ import (
 // changedAt is when the password changed in these tests.
 var changedAt = time.Date(2026, 11, 5, 12, 30, 0, 0, time.UTC)
 
-// noticeResult is one answer of fakeChangedNotices.
+// noticeResult is one answer of [fakeChangedNotices].
 type noticeResult struct {
 	outcome passwordreset.Outcome
 	err     error
@@ -64,7 +64,7 @@ func changedNoticeWorker(t *testing.T, url string, notices passwordChangedNotice
 	return worker
 }
 
-// enqueueChangedNotice enqueues the notice of user 7's change at changedAt
+// enqueueChangedNotice enqueues the notice of user 7's change at [changedAt]
 // by name, as a client does, and returns its handle.
 func enqueueChangedNotice(t *testing.T, worker *Worker) dbos.WorkflowHandle[passwordreset.Outcome] {
 	t.Helper()

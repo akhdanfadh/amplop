@@ -12,7 +12,7 @@ import (
 )
 
 // problemResponses keeps shared errors under default, without Huma's
-// automatic 422 and 500 entries from Operation.Errors.
+// automatic 422 and 500 entries from [huma.Operation.Errors].
 func problemResponses(api huma.API, statuses ...int) map[string]*huma.Response {
 	schema := api.OpenAPI().Components.Schemas.Schema(reflect.TypeFor[problem](), true, "")
 	responses := map[string]*huma.Response{
@@ -69,7 +69,7 @@ func configureErrors() {
 	})
 }
 
-// errorDetails preserves structured input details through ErrorDetailer.
+// errorDetails preserves structured input details through [huma.ErrorDetailer].
 // Plain errors supply diagnostic text; nil entries are skipped.
 func errorDetails(errs []error) []*huma.ErrorDetail {
 	var details []*huma.ErrorDetail

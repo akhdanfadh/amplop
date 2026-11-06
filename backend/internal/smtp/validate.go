@@ -10,7 +10,7 @@ import (
 // errUnsafeInput means the input would change the SMTP session or cannot be dialed.
 var errUnsafeInput = errors.New("address, credentials, port, or security mode cannot be sent")
 
-// validateSend returns errUnsafeInput for input that would change the SMTP
+// validateSend returns [errUnsafeInput] for input that would change the SMTP
 // session or cannot be dialed, and nil otherwise.
 func validateSend(server systememail.Server, password string, message systememail.Message) error {
 	// SMTP commands end at CRLF (RFC 5321), and go-smtp writes MAIL FROM:<%s>

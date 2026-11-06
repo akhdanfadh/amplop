@@ -54,7 +54,7 @@ func TestRecovery(t *testing.T) {
 	assert.InDelta(t, http.StatusInternalServerError, request["status"], 0)
 }
 
-// net/http uses http.ErrAbortHandler to abort a response on purpose.
+// net/http uses [http.ErrAbortHandler] to abort a response on purpose.
 func TestRecoveryAbort(t *testing.T) {
 	a := New(discard, Services{})
 	a.router.GET("/abort", func(*gin.Context) { panic(http.ErrAbortHandler) })

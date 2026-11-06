@@ -2,8 +2,8 @@
 // browser form adds an amount to a shared counter and records the entry,
 // both in one database transaction. Remove it before the first release.
 //
-// Dependencies point here, never out: httpapi calls Service, and the
-// PostgreSQL adapter implements Storage.
+// Dependencies point here, never out: httpapi calls [Service], and the
+// PostgreSQL adapter implements [Storage].
 //
 //	httpapi --> probe <-- repository/postgres
 package probe
@@ -42,7 +42,7 @@ type Counter struct {
 	Total int64
 }
 
-// add applies the entry's amount unless that passes maxTotal.
+// add applies the entry's amount unless that passes [maxTotal].
 func (c *Counter) add(e Entry) error {
 	total := c.Total + int64(e.Amount)
 	if total > maxTotal {
@@ -71,7 +71,7 @@ type Service struct {
 	storage Storage
 }
 
-// NewService returns a Service that saves through storage.
+// NewService returns a [Service] that saves through storage.
 func NewService(storage Storage) *Service {
 	return &Service{storage: storage}
 }

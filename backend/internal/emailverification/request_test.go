@@ -59,7 +59,7 @@ func TestRequestAgain(t *testing.T) {
 	assert.NotEqual(t, storage.links[0].TokenHash, storage.links[1].TokenHash)
 }
 
-// recentLinks returns n of the user's links created age before testNow.
+// recentLinks returns n of the user's links created age before [testNow].
 func recentLinks(n int, age time.Duration) []Link {
 	links := make([]Link, n)
 	for i := range links {

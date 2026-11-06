@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// cleanupMemory records what Cleanup asks storage to delete and answers
+// cleanupMemory records what [Cleanup] asks storage to delete and answers
 // with deleted or err.
 type cleanupMemory struct {
 	expiredBy time.Time
@@ -24,7 +24,7 @@ func (m *cleanupMemory) DeleteExpiredEmailVerificationLinks(_ context.Context, e
 	return m.deleted, m.err
 }
 
-// One call deletes up to a batch of links that expired cleanupGrace or more
+// One call deletes up to a batch of links that expired [cleanupGrace] or more
 // before now, and reports more only when it deleted a full batch.
 func TestCleanup(t *testing.T) {
 	now := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)

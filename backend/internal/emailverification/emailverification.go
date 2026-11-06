@@ -28,8 +28,8 @@ type Storage interface {
 	// calls create. If create succeeds, it deletes the user's links expiring at
 	// or before [RequestChange.ExpiredBy] and saves [RequestChange.Link] as the
 	// user's, all in one transaction. A missing or deactivated user returns
-	// [inbok/internal/account.ErrUserNotFound]. An error from create rolls back
-	// and is returned unchanged.
+	// account.ErrUserNotFound. An error from create rolls back and is
+	// returned unchanged.
 	RequestEmailVerification(ctx context.Context, userID int64, create func(RequestState) (RequestChange, error)) error
 
 	// RedeemEmailVerification finds the link with hash, locks its user, reads

@@ -12,10 +12,10 @@ import (
 // DB stores inbok's data in PostgreSQL. Each feature adds its methods.
 type DB struct {
 	pool      *pgxpool.Pool
-	workflows Workflows // nil until WithWorkflows
+	workflows Workflows // nil until [DB.WithWorkflows]
 }
 
-// Workflows saves background work in a transaction of DB's, so it commits
+// Workflows saves background work in a transaction of [DB]'s, so it commits
 // or rolls back with the change that needs it, e.g. internal/dbos's Client.
 // It embeds one interface per feature that saves a job.
 type Workflows interface {
@@ -43,7 +43,7 @@ type RecoveryWorkflows interface {
 	EnqueueRecoveryNotice(ctx context.Context, tx pgx.Tx, userID int64, recoveredAt time.Time) error
 }
 
-// errNoWorkflows means a change that saves background work ran on a DB
+// errNoWorkflows means a change that saves background work ran on a [DB]
 // without [DB.WithWorkflows], and was rolled back.
 var errNoWorkflows = errors.New("this change saves background work, which needs DB.WithWorkflows")
 

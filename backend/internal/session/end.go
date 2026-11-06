@@ -11,7 +11,7 @@ import (
 var ErrCurrentSession = errors.New("current session cannot be ended by ID")
 
 // End ends one of the user's other sessions. A missing, expired, or another
-// user's session returns ErrNotFound, so the caller cannot tell them apart.
+// user's session returns [ErrNotFound], so the caller cannot tell them apart.
 func (s *Service) End(ctx context.Context, current Authenticated, id uuid.UUID) error {
 	// 1. Refuse an empty Authenticated value, which Go permits, before
 	// storage.

@@ -26,7 +26,7 @@ type EnrollmentChange struct {
 
 type enrollmentStore interface {
 	// ConfirmTOTP locks the user, then the session, and loads the factor.
-	// A missing user or session, or a deactivated user, returns ErrNotFound.
+	// A missing user or session, or a deactivated user, returns [ErrNotFound].
 	// On callback success it saves the factor and hashes, replaces all user
 	// sessions with the new session, and removes this user's successful
 	// attempt in the same transaction.

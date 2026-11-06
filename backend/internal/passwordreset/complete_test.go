@@ -60,7 +60,7 @@ type completeMemory struct {
 	beforeLock func(*completeMemory)
 }
 
-// state returns the CompleteState for the link with hash.
+// state returns the [CompleteState] for the link with hash.
 func (m *completeMemory) state(hash [sha256.Size]byte) CompleteState {
 	at := slices.IndexFunc(m.links, func(l Link) bool { return l.TokenHash == hash })
 	if at < 0 {
@@ -93,7 +93,7 @@ func (m *completeMemory) CompletePasswordReset(_ context.Context, hash [sha256.S
 	return state.User, nil
 }
 
-// completeSetup returns testUser with one live link, and the link's secret.
+// completeSetup returns [testUser] with one live link, and the link's secret.
 func completeSetup(t *testing.T) (*completeMemory, string) {
 	t.Helper()
 
@@ -104,8 +104,8 @@ func completeSetup(t *testing.T) (*completeMemory, string) {
 	}, secret
 }
 
-// testCompletion returns a Completion over storage whose clock reads
-// testNow.
+// testCompletion returns a [Completion] over storage whose clock reads
+// [testNow].
 func testCompletion(t *testing.T, storage *completeMemory) *Completion {
 	t.Helper()
 	return NewCompletion(storage, func() time.Time { return testNow })

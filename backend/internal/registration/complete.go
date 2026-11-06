@@ -24,7 +24,7 @@ var (
 	ErrEmailMismatch = errors.New("registration link was sent to another email")
 )
 
-// CompleteState is what [completeStorage] reads for one registration link.
+// CompleteState is what completeStorage reads for one registration link.
 type CompleteState struct {
 	Registration  Record
 	Link          *Link // nil: no link has the secret's hash
@@ -59,7 +59,7 @@ type Completion struct {
 	now     func() time.Time
 }
 
-// NewCompletion returns a Completion given storage and a clock.
+// NewCompletion returns a [Completion] given storage and a clock.
 func NewCompletion(storage completeStorage, now func() time.Time) *Completion {
 	return &Completion{storage: storage, now: now}
 }

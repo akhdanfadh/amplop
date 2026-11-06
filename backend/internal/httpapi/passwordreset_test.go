@@ -28,7 +28,8 @@ import (
 )
 
 // resetRequestMemory keeps accounts, the links sent to them, and the jobs
-// requests saved, for the real passwordreset.Requests and Links.
+// requests saved, for the real [passwordreset.Requests] and
+// [passwordreset.Links].
 type resetRequestMemory struct {
 	mu        sync.Mutex
 	accounts  map[string]passwordreset.Account

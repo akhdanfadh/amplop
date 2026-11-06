@@ -58,7 +58,7 @@ func TestWorkerLaunch(t *testing.T) {
 // wait bounds every wait for a workflow in these tests.
 const wait = 10 * time.Second
 
-// Counters and gates for twoSteps. Each test that uses them resets them.
+// Counters and gates for [twoSteps]. Each test that uses them resets them.
 var (
 	firstStepRuns atomic.Int32
 	secondStarted chan struct{}
@@ -66,8 +66,8 @@ var (
 	secondGate    chan struct{}
 )
 
-// twoSteps runs a first step, then a second that waits for secondGate or
-// for the workflow to be cancelled, e.g. by Shutdown.
+// twoSteps runs a first step, then a second that waits for [secondGate] or
+// for the workflow to be cancelled, e.g. by [Worker.Shutdown].
 func twoSteps(ctx dbos.Context, input string) (string, error) {
 	_, err := dbos.RunAsStep(ctx, func(context.Context) (int32, error) {
 		return firstStepRuns.Add(1), nil
@@ -129,10 +129,10 @@ func TestWorkerResume(t *testing.T) {
 	assert.Equal(t, int32(1), firstStepRuns.Load())
 }
 
-// stuckGate holds stuck's step until the test ends.
+// stuckGate holds [stuck]'s step until the test ends.
 var stuckGate chan struct{}
 
-// stuck runs one step that ignores cancellation until stuckGate closes.
+// stuck runs one step that ignores cancellation until [stuckGate] closes.
 func stuck(ctx dbos.Context, _ string) (string, error) {
 	return dbos.RunAsStep(ctx, func(context.Context) (string, error) {
 		secondStarted <- struct{}{}
@@ -141,7 +141,7 @@ func stuck(ctx dbos.Context, _ string) (string, error) {
 	}, dbos.WithStepName("stuck"))
 }
 
-// Shutdown returns within its budget even when a step ignores
+// [Worker.Shutdown] returns within its budget even when a step ignores
 // cancellation, so the process exits before its container is killed.
 func TestWorkerShutdownBudget(t *testing.T) {
 	// Given a worker running a step that ignores cancellation.
@@ -165,7 +165,7 @@ func TestWorkerShutdownBudget(t *testing.T) {
 	assert.Less(t, time.Since(start), shutdownBudget+time.Second)
 }
 
-// receive waits up to wait for a value on ch, failing the test with what
+// receive waits up to [wait] for a value on ch, failing the test with what
 // as the reason if none comes.
 func receive(t *testing.T, ch <-chan struct{}, what string) {
 	t.Helper()

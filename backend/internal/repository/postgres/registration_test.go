@@ -166,8 +166,8 @@ func openRegistration(t *testing.T, conn *pgx.Conn) {
 	require.NoError(t, err)
 }
 
-// requestRegistration calls RequestRegistration for email with since one
-// day before requestNow, returns what create saw, and saves change.
+// requestRegistration calls [DB.RequestRegistration] for email with since one
+// day before [requestNow], returns what create saw, and saves change.
 func requestRegistration(t *testing.T, db *DB, email string, change registration.RequestChange) registration.RequestState {
 	t.Helper()
 
@@ -563,9 +563,9 @@ func TestRegistrationCompleteRollsBack(t *testing.T) {
 	assert.Empty(t, auditEvents(t, conn))
 }
 
-// holdCompletion starts CompleteRegistration for hash and email, waits until
-// its callback runs, and returns a function that lets the callback accept
-// and waits for the result.
+// holdCompletion starts [DB.CompleteRegistration] for hash and email, waits
+// until its callback runs, and returns a function that lets the callback
+// accept and waits for the result.
 func holdCompletion(t *testing.T, ctx context.Context, db *DB, hash [sha256.Size]byte, email string) func() error {
 	t.Helper()
 

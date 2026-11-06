@@ -57,9 +57,9 @@ type Outgoing struct {
 	Body    string
 
 	// Private keeps the server's reply out of a failed send's log, since a
-	// reply can quote the message. Set it exactly when Body holds a secret,
-	// something that grants access if read, e.g. a link's token; a reply
-	// that quotes only the recipient's address is no reason to.
+	// reply can quote the message. Set it exactly when [Outgoing.Body] holds
+	// a secret, something that grants access if read, e.g. a link's token; a
+	// reply that quotes only the recipient's address is no reason to.
 	Private bool
 
 	// RequireTested sends only with settings that passed a test message,

@@ -11,7 +11,7 @@ import (
 	"inbok/internal/randomsecret"
 )
 
-// CompleteState is what [completeStorage] reads for one reset link.
+// CompleteState is what completeStorage reads for one reset link.
 type CompleteState struct {
 	Link        *Link        // nil: no link has the secret's hash
 	User        account.User // the link's user; zero without a link
@@ -50,7 +50,7 @@ type Completion struct {
 	now     func() time.Time
 }
 
-// NewCompletion returns a Completion given storage and a clock.
+// NewCompletion returns a [Completion] given storage and a clock.
 func NewCompletion(storage completeStorage, now func() time.Time) *Completion {
 	return &Completion{storage: storage, now: now}
 }
@@ -70,7 +70,7 @@ func NewCompletion(storage completeStorage, now func() time.Time) *Completion {
 // guessing one is hopeless however fast the guesses come. Guesses are
 // refused before the Argon2id hash, and passwordhash bounds the hashes in
 // progress across the process. Every refusal of the link itself is the same
-// ErrLinkInvalid, so a holder of an old link cannot tell a deactivated
+// [ErrLinkInvalid], so a holder of an old link cannot tell a deactivated
 // account from a used link.
 //
 // DESIGN: email must be the link's, so a link someone sends for an account

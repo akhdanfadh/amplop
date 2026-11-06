@@ -34,7 +34,7 @@ const (
 // saves nothing.
 type MemberChange struct {
 	Action MemberAction
-	At     time.Time // when the deactivation happens, for MemberDeactivate
+	At     time.Time // when the deactivation happens, for [MemberDeactivate]
 }
 
 // MemberStorage keeps accounts' status for administrators.
@@ -43,10 +43,10 @@ type MemberStorage interface {
 	ReadMembers(ctx context.Context) ([]Member, error)
 
 	// UpdateMember locks the member's account, reads it, and calls update.
-	// For MemberDeactivate it saves the time and deletes the member's
+	// For [MemberDeactivate] it saves the time and deletes the member's
 	// sessions, sign-in challenges, email verification links, and password
 	// reset links; for
-	// MemberReactivate it clears the time. Either change records an audit
+	// [MemberReactivate] it clears the time. Either change records an audit
 	// event with actorID as actor and the member as target, all in one
 	// transaction. It returns the member as saved. A missing member returns
 	// [ErrUserNotFound]. An error from update rolls back and is returned
@@ -61,7 +61,7 @@ type Members struct {
 	now     func() time.Time
 }
 
-// NewMembers returns a Members service that saves through storage and dates
+// NewMembers returns a [Members] service that saves through storage and dates
 // deactivations with now.
 func NewMembers(storage MemberStorage, now func() time.Time) *Members {
 	return &Members{storage: storage, now: now}

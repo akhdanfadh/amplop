@@ -34,7 +34,7 @@ func (m *cleanupMemory) DeleteOldPasswordResetAttempts(_ context.Context, since 
 var cleanupNow = time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 
 // Each cleanup deletes up to a batch of its rows past their cutoff by
-// cleanupGrace, and reports more only when it deleted a full batch: links
+// [cleanupGrace], and reports more only when it deleted a full batch: links
 // past their expiry, attempts past the longest limit's window.
 func TestCleanup(t *testing.T) {
 	type deleteExpired func(cleanupStorage) (int, bool, error)

@@ -39,7 +39,7 @@ const (
 
 	envWorkerID     = "INBOK_WORKER_ID"
 	defaultWorkerID = "worker"
-	// maxWorkerID and notWorkerIDRune are inbok's own limits: DBOS stores
+	// maxWorkerID and [notWorkerIDRune] are inbok's own limits: DBOS stores
 	// any text as an executor ID.
 	maxWorkerID = 64
 )

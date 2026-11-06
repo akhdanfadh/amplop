@@ -11,7 +11,7 @@ import (
 // send needs a few kilobytes. go-smtp limits each line, not the line count.
 const maxReplyBytes = 1 << 20
 
-// errTooLong means the server sent more than maxReplyBytes.
+// errTooLong means the server sent more than [maxReplyBytes].
 var errTooLong = errors.New("server replies exceed the size limit")
 
 // watchedConn wraps the server connection to cap the bytes read, to record
@@ -33,8 +33,8 @@ type watchedConn struct {
 	answering atomic.Bool // a read started after ended was set
 }
 
-// Read reads from the connection until maxReplyBytes have been read in total,
-// then returns errTooLong. A read after the message's end records that the
+// Read reads from the connection until [maxReplyBytes] have been read in total,
+// then returns [errTooLong]. A read after the message's end records that the
 // answer is awaited.
 func (c *watchedConn) Read(b []byte) (int, error) {
 	if c.ended.Load() {

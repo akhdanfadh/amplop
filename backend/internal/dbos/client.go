@@ -16,7 +16,7 @@ import (
 
 // Client saves workflows for a worker to run, from a process that runs
 // none itself, e.g. inbok recover-admin or serve. It implements
-// [inbok/internal/repository/postgres.Workflows].
+// postgres.Workflows.
 type Client struct {
 	client dbos.Client
 }

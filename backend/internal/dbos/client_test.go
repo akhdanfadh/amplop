@@ -18,7 +18,7 @@ import (
 )
 
 // clientStack returns a migrated database with an administrator,
-// admin@example.com, its storage saving workflows through a Client, and a
+// admin@example.com, its storage saving workflows through a [Client], and a
 // connection for checks. All close when the test ends.
 func clientStack(t *testing.T) (*postgres.DB, *pgx.Conn, string) {
 	t.Helper()

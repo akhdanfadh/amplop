@@ -88,7 +88,7 @@ func testRequests(storage *requestMemory, mailer *fakeMailer) *Requests {
 	return NewRequests(storage, mailer, publicURL, func() time.Time { return testNow }, slog.New(slog.DiscardHandler))
 }
 
-// attempts returns n attempts made age before testNow.
+// attempts returns n attempts made age before [testNow].
 func attempts(n int, address, client string, outcome Outcome, age time.Duration) []Attempt {
 	made := make([]Attempt, n)
 	for i := range made {
@@ -292,7 +292,7 @@ func TestRequestInvalid(t *testing.T) {
 	}
 }
 
-// The client limit counts a client as clientprefix.Of does: an IPv4 address
+// The client limit counts a client as [clientprefix.Of] does: an IPv4 address
 // mapped into IPv6 as the IPv4 address, and every address in an IPv6 /64 as
 // one client, so a host cannot dodge it by changing address.
 func TestRequestClientPrefix(t *testing.T) {

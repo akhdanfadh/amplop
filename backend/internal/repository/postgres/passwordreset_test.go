@@ -40,7 +40,7 @@ type resetAccounts struct {
 // in the transaction it is given, as DBOS's enqueue does, so a test sees
 // whether the job committed. err fails the enqueue. It implements only
 // [PasswordResetWorkflows]: a call to another feature's job reaches the nil
-// Workflows and panics, failing the test.
+// [Workflows] and panics, failing the test.
 type resetWorkflows struct {
 	Workflows
 	err error
@@ -103,7 +103,7 @@ func resetLinkJobs(t *testing.T, conn *pgx.Conn) []resetLinkJob {
 	return jobs
 }
 
-// recordResetRequest records a request from client for email at resetNow
+// recordResetRequest records a request from client for email at [resetNow]
 // and returns its attempt's ID.
 func recordResetRequest(t *testing.T, ctx context.Context, f resetAccounts, client, email string) int64 {
 	t.Helper()
@@ -301,7 +301,7 @@ func TestPasswordResetCompleteRollsBack(t *testing.T) {
 }
 
 // A notice that cannot be saved rolls the reset back with it, and so does a
-// DB without workflows: no reset goes unannounced.
+// [DB] without workflows: no reset goes unannounced.
 func TestPasswordResetCompleteNoticeRollsBack(t *testing.T) {
 	f := newResetAccounts(t)
 	_, hash := saveResetLink(t, f.conn, f.member, "member@example.com")
@@ -642,7 +642,7 @@ func resetAttempts(t *testing.T, conn *pgx.Conn) []resetAttempt {
 }
 
 // insertResetAttempt saves an attempt from client, made age before
-// resetNow, that saved no link.
+// [resetNow], that saved no link.
 func insertResetAttempt(t *testing.T, conn *pgx.Conn, client string, age time.Duration) {
 	t.Helper()
 
@@ -652,7 +652,7 @@ func insertResetAttempt(t *testing.T, conn *pgx.Conn, client string, age time.Du
 }
 
 // insertLinkedResetAttempt saves an attempt from client, made age before
-// resetNow, whose link for userID was saved linkedAge before resetNow.
+// [resetNow], whose link for userID was saved linkedAge before [resetNow].
 func insertLinkedResetAttempt(t *testing.T, conn *pgx.Conn, client string, userID int64, age, linkedAge time.Duration) {
 	t.Helper()
 
@@ -661,7 +661,7 @@ func insertLinkedResetAttempt(t *testing.T, conn *pgx.Conn, client string, userI
 	require.NoError(t, err)
 }
 
-// at returns resetNow less age, as a pointer.
+// at returns [resetNow] less age, as a pointer.
 func at(age time.Duration) *time.Time {
 	t := resetNow.Add(-age)
 	return &t
@@ -707,7 +707,7 @@ func TestPasswordResetRequestUnknownEmail(t *testing.T) {
 }
 
 // A job that cannot be saved rolls the attempt back with it, and so does a
-// DB without workflows.
+// [DB] without workflows.
 func TestPasswordResetRequestJobRollsBack(t *testing.T) {
 	f := newResetAccounts(t)
 	failed := errors.New("queue unavailable")
@@ -837,7 +837,7 @@ func TestPasswordResetLinkSaves(t *testing.T) {
 }
 
 // saveLinkFor saves a link named seed for userID for the attempt with
-// attemptID at resetNow.
+// attemptID at [resetNow].
 func saveLinkFor(t *testing.T, f resetAccounts, attemptID, userID int64, seed string) {
 	t.Helper()
 	require.NoError(t, f.db.CreatePasswordResetLink(t.Context(), attemptID, userID, resetNow.Add(-24*time.Hour), func(passwordreset.LinkState) (passwordreset.LinkChange, error) {

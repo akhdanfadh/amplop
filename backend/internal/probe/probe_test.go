@@ -49,7 +49,7 @@ func TestAdd(t *testing.T) {
 	assert.Len(t, storage.events, 1)
 }
 
-// The total may reach maxTotal but never pass it.
+// The total may reach [maxTotal] but never pass it.
 func TestAddLimit(t *testing.T) {
 	cases := []struct {
 		amount int

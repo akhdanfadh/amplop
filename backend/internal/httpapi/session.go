@@ -85,7 +85,7 @@ func sessionCookie(secret string, maxAge int) http.Cookie {
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: maxAge}
 }
 
-// Public sign-in skips withAccess's no-store header.
+// Public sign-in skips [withAccess]'s no-store header.
 // Run before input validation so failures receive it too.
 func withNoStore(ctx huma.Context, next func(huma.Context)) {
 	ctx.SetHeader("Cache-Control", "no-store")

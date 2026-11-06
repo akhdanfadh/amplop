@@ -65,7 +65,7 @@ func TestSendCleartextSignIn(t *testing.T) {
 // A failed sign-in keeps no text the server wrote, since a reply at this step
 // can quote the credentials inbok sent: a refusal keeps only its codes,
 // inbok's, go-sasl's, and Go's own errors keep their fixed text, and any
-// other reply becomes errUnexpectedReply.
+// other reply becomes [errUnexpectedReply].
 func TestSendSignInReply(t *testing.T) {
 	certificate, roots := testCertificate(t)
 	// The credentials inbok sends with AUTH PLAIN, as a server could quote them.

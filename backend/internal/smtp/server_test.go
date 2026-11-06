@@ -210,7 +210,8 @@ func testMessage() systememail.Message {
 	}
 }
 
-// failure returns the reason a send failed and requires that it is a SendError.
+// failure returns the reason a send failed and requires that it is a
+// [*systememail.SendError].
 func failure(t *testing.T, err error) systememail.Reason {
 	t.Helper()
 
@@ -271,7 +272,7 @@ func scriptedServer(t *testing.T, script func(*textproto.Conn)) systememail.Serv
 	return scriptedOver(t, func(conn net.Conn) net.Conn { return conn }, script)
 }
 
-// scriptedTLSServer is scriptedServer behind implicit TLS with certificate.
+// scriptedTLSServer is [scriptedServer] behind implicit TLS with certificate.
 func scriptedTLSServer(t *testing.T, certificate tls.Certificate, script func(*textproto.Conn)) systememail.Server {
 	t.Helper()
 

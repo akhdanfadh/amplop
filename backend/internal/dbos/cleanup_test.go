@@ -39,7 +39,7 @@ func (e *expiredRows) DeleteExpired(context.Context) (int, bool, error) {
 }
 
 // cleanupWorker launches a worker on url calling services, with the
-// cleanup schedule paused so only triggerCleanup runs it, shuts it down when
+// cleanup schedule paused so only [triggerCleanup] runs it, shuts it down when
 // the test ends, and returns it.
 func cleanupWorker(t *testing.T, url string, services Services) *Worker {
 	t.Helper()
@@ -76,7 +76,7 @@ func TestCleanupSchedule(t *testing.T) {
 }
 
 // A run deletes batches until one reports no more, for each kind of rows,
-// and stops after maxCleanupBatches for rows that never run out.
+// and stops after [maxCleanupBatches] for rows that never run out.
 func TestCleanupBatches(t *testing.T) {
 	links := &expiredRows{batches: []int{3, 3, 1}}
 	endless := &expiredRows{batches: []int{1}, more: true}

@@ -42,7 +42,7 @@ func testMessages(storage *memoryStorage, keys *fakeKeyring, sender *fakeSender,
 	return NewTestMessages(storage, testMailer(storage, keys, sender, logs), func() time.Time { return testNow })
 }
 
-// savedSignIn is storedSignIn with a password the fake keyring can open.
+// savedSignIn is [storedSignIn] with a password the fake keyring can open.
 func savedSignIn() *Record {
 	record := storedSignIn()
 	record.Password = &Password{KeyID: "1", Ciphertext: []byte("sealed:" + signInOwner + ":app password")}

@@ -28,7 +28,7 @@ type Account struct {
 	Deactivated bool
 }
 
-// LinkState is what [linkStorage.CreatePasswordResetLink] reads under the
+// LinkState is what linkStorage.CreatePasswordResetLink reads under the
 // account's lock.
 type LinkState struct {
 	Account   *Account    // nil: no account has the email
@@ -54,7 +54,7 @@ type linkStorage interface {
 }
 
 // Links sends the reset links that requests asked for; the reset link job
-// calls Send.
+// calls [Links.Send].
 type Links struct {
 	storage   linkStorage
 	mailer    mailer
@@ -62,7 +62,7 @@ type Links struct {
 	now       func() time.Time
 }
 
-// NewLinks returns Links given storage, the [systememail.Mailer] that sends,
+// NewLinks returns [Links] given storage, the [systememail.Mailer] that sends,
 // the public URL links start with, and a clock.
 func NewLinks(storage linkStorage, mailer mailer, publicURL *url.URL, now func() time.Time) *Links {
 	return &Links{storage: storage, mailer: mailer, publicURL: publicURL, now: now}

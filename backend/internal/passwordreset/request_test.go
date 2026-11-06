@@ -17,7 +17,7 @@ import (
 
 var clientAddr = netip.MustParseAddr("192.0.2.1")
 
-// requestAttempt is one attempt requestMemory keeps.
+// requestAttempt is one attempt [requestMemory] keeps.
 type requestAttempt struct {
 	id        int64
 	client    string
@@ -26,7 +26,7 @@ type requestAttempt struct {
 	createdAt time.Time
 }
 
-// linkJob is a reset link job requestMemory saved: the attempt, and the ID
+// linkJob is a reset link job [requestMemory] saved: the attempt, and the ID
 // of the account with the requested email, 0 for none.
 type linkJob struct {
 	attemptID int64
@@ -111,7 +111,7 @@ func (m *requestMemory) CreatePasswordResetLink(_ context.Context, attemptID, us
 	return nil
 }
 
-// testRequests returns Requests over storage whose clock reads testNow.
+// testRequests returns [Requests] over storage whose clock reads [testNow].
 func testRequests(storage *requestMemory) *Requests {
 	return NewRequests(storage, func() time.Time { return testNow })
 }

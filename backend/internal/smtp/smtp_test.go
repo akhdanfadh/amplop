@@ -165,8 +165,8 @@ func TestSendFailure(t *testing.T) {
 	}
 }
 
-// A server that does not offer STARTTLS is a tls failure. Send detects it by
-// go-smtp's error text, so this fails if an upgrade changes that text.
+// A server that does not offer STARTTLS is a tls failure. [Sender.Send] detects
+// it by go-smtp's error text, so this fails if an upgrade changes that text.
 func TestSendSTARTTLSMissing(t *testing.T) {
 	certificate, roots := testCertificate(t)
 	fake := &fakeServer{security: systememail.SecuritySTARTTLS, noSTARTTLS: true}
@@ -517,7 +517,7 @@ func TestSendQuitUnanswered(t *testing.T) {
 	assert.Less(t, time.Since(start), 3*time.Second)
 }
 
-// WithTimeout sets the limit of a copy, leaving the original's alone.
+// [Sender.WithTimeout] sets the limit of a copy, leaving the original's alone.
 func TestSenderWithTimeout(t *testing.T) {
 	port := silentServer(t)
 	server := systememail.Server{Host: "127.0.0.1", Port: port, Security: systememail.SecurityNone}

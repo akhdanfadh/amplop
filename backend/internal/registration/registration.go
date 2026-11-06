@@ -64,12 +64,12 @@ type Service struct {
 	storage Storage
 }
 
-// NewService returns a Service that keeps the state in storage.
+// NewService returns a [Service] that keeps the state in storage.
 func NewService(storage Storage) *Service {
 	return &Service{storage: storage}
 }
 
-// Settings returns the saved state as a Status, and whether the system email
+// Settings returns the saved state as a [Status], and whether the system email
 // settings in use passed a test.
 func (s *Service) Settings(ctx context.Context) (Settings, error) {
 	record, err := s.storage.ReadRegistration(ctx)

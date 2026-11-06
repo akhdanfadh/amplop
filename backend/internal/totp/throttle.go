@@ -20,7 +20,7 @@ var ErrThrottled = errors.New("TOTP code attempts throttled")
 
 var errAttemptUserID = errors.New("invalid TOTP attempt user ID")
 
-// releaseTimeout bounds Release, which outlives a cancelled request.
+// releaseTimeout bounds [Throttle.Release], which outlives a cancelled request.
 const releaseTimeout = 5 * time.Second
 
 // Attempt is reserved before checking a code. It contains no code or secret.
@@ -54,11 +54,12 @@ func NewThrottle(storage AttemptStorage, now func() time.Time, logger *slog.Logg
 	return &Throttle{storage: storage, now: now, logger: logger}
 }
 
-// Begin reserves an attempt for userID before verification and returns its
-// ID, or an [*attemptlimit.Error] wrapping [ErrThrottled] when one more does
-// not fit. Leave it saved when a code fails. Success removes only its own
-// reservation, in the operation's storage transaction or with Succeed; a
-// request that fails before checking a code removes it with Release.
+// Begin reserves an attempt for userID before verification and returns its ID,
+// or an [*attemptlimit.Error] wrapping [ErrThrottled] when one more does not
+// fit. Leave it saved when a code fails. Success removes only its own
+// reservation, in the operation's storage transaction or with
+// [Throttle.Succeed]; a request that fails before checking a code removes it
+// with [Throttle.Release].
 func (t *Throttle) Begin(ctx context.Context, userID int64) (int64, error) {
 	// 1. Refuse an invalid user ID before storage.
 	if userID <= 0 {

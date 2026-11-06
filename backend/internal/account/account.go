@@ -27,11 +27,11 @@ type Storage interface {
 
 	// ReadCredentials finds an account by its exact email, as
 	// [emailaddress.Parse] returns it.
-	// A missing account returns ErrUserNotFound.
+	// A missing account returns [ErrUserNotFound].
 	ReadCredentials(ctx context.Context, email string) (Credentials, error)
 
 	// ReadUser loads current account data by ID without reading credentials.
-	// A missing account returns ErrUserNotFound.
+	// A missing account returns [ErrUserNotFound].
 	ReadUser(ctx context.Context, id int64) (User, error)
 
 	// UpdateSetup locks user writes, reads setup state, then calls update.
@@ -56,7 +56,7 @@ func NewService(storage Storage, token string) *Service {
 }
 
 // UserByID returns the account's current identity and assigned role.
-// A missing account returns ErrUserNotFound.
+// A missing account returns [ErrUserNotFound].
 func (s *Service) UserByID(ctx context.Context, id int64) (User, error) {
 	return s.storage.ReadUser(ctx, id)
 }

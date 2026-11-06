@@ -17,18 +17,19 @@ import (
 	"inbok/internal/systememail"
 )
 
-// activeAccount is testUser, verified and active.
+// activeAccount is [testUser], verified and active.
 func activeAccount() Account {
 	return Account{User: testUser, Verified: true}
 }
 
-// testLinks returns Links over storage and mailer whose clock reads testNow.
+// testLinks returns [Links] over storage and mailer whose clock reads
+// [testNow].
 func testLinks(storage *requestMemory, mailer *fakeMailer) *Links {
 	return NewLinks(storage, mailer, testPublicURL, func() time.Time { return testNow })
 }
 
 // linksSent returns n attempts by another client whose links were saved for
-// testUser age before testNow, a minute after their requests.
+// [testUser] age before [testNow], a minute after their requests.
 func linksSent(n int, age time.Duration) []requestAttempt {
 	made := make([]requestAttempt, n)
 	for i := range made {
@@ -160,7 +161,7 @@ func TestLinkLimitsCountLinkTime(t *testing.T) {
 	assert.Empty(t, mailer.sent)
 }
 
-// A send that may pass later is returned as ErrLinkNotSent, naming only
+// A send that may pass later is returned as [ErrLinkNotSent], naming only
 // where it failed: the server's reply can quote the live link and the
 // address, and DBOS logs and keeps the error. It keeps its link, since the
 // message may still arrive, and a retry saves and counts another.

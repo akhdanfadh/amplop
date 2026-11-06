@@ -24,7 +24,7 @@ func (m *noticeMemory) ReadPasswordChangedNotice(_ context.Context, userID int64
 	return m.state, m.err
 }
 
-// testNotices returns Notices over storage and mailer.
+// testNotices returns [Notices] over storage and mailer.
 func testNotices(storage *noticeMemory, mailer *fakeMailer) *Notices {
 	return NewNotices(storage, mailer, testPublicURL)
 }
@@ -70,7 +70,7 @@ func TestNoticeSkipped(t *testing.T) {
 	}
 }
 
-// A send that may pass later is returned as ErrNoticeNotSent, naming only
+// A send that may pass later is returned as [ErrNoticeNotSent], naming only
 // where it failed; one that cannot ends with its outcome.
 func TestNoticeSendFails(t *testing.T) {
 	storage := &noticeMemory{state: NoticeState{Email: testUser.Email, Active: true}}

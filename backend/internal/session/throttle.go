@@ -17,7 +17,7 @@ var (
 	// pairLimit counts one email from one client.
 	pairLimit = attemptlimit.Limit{Window: attemptWindow, Max: 5}
 	// clientLimit counts every email, and setup, from one client: an IPv4
-	// address or an IPv6 /64, as clientprefix.Of counts it.
+	// address or an IPv6 /64, as [clientprefix.Of] counts it.
 	clientLimit = attemptlimit.Limit{Window: attemptWindow, Max: 50}
 )
 
@@ -45,7 +45,7 @@ type AttemptStorage interface {
 }
 
 // Throttle is the failure limiter for sign-in and first-admin setup.
-// Pending checks count as failures until Succeed removes them.
+// Pending checks count as failures until [Throttle.Succeed] removes them.
 type Throttle struct {
 	storage AttemptStorage
 	now     func() time.Time

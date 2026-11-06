@@ -35,7 +35,7 @@ const (
 // rateLimitKey names one client's bucket for one operation.
 type rateLimitKey struct {
 	operation string       // the operation's ID
-	client    netip.Prefix // from clientprefix.Of
+	client    netip.Prefix // from [clientprefix.Of]
 }
 
 // rateLimiter keeps a token bucket per operation and client, in memory.
@@ -46,7 +46,7 @@ type rateLimiter struct {
 	lastSweep time.Time
 }
 
-// newRateLimiter returns a rateLimiter that reads time from now.
+// newRateLimiter returns a [rateLimiter] that reads time from now.
 func newRateLimiter(now func() time.Time) *rateLimiter {
 	return &rateLimiter{buckets: map[rateLimitKey]*rate.Limiter{}, now: now, lastSweep: now()}
 }
@@ -94,7 +94,7 @@ func (l *rateLimiter) sweep(now time.Time) {
 	l.buckets = kept
 }
 
-// rateLimited reports whether op is one withRateLimit limits: a write anyone
+// rateLimited reports whether op is one [withRateLimit] limits: a write anyone
 // can send without a session.
 func rateLimited(op *huma.Operation) bool {
 	level, ok := op.Metadata[accessKey].(session.Access)
@@ -136,15 +136,15 @@ func withRateLimit(limiter *rateLimiter) func(huma.Context, func(huma.Context)) 
 	}
 }
 
-// tooManyRequestsProblem is the response withRateLimit sends.
+// tooManyRequestsProblem is the response [withRateLimit] sends.
 func tooManyRequestsProblem() *problem {
 	return newProblem(http.StatusTooManyRequests, tooManyRequestsType, "Too many requests", "Too many requests in a short time.")
 }
 
-// documentRateLimits adds withRateLimit's 429 to every [rateLimited]
+// documentRateLimits adds [withRateLimit]'s 429 to every [rateLimited]
 // operation's documented responses, beside any 429 the operation sends
 // itself. Call it once, after every operation is registered, before
-// registerProblemTypes.
+// [registerProblemTypes].
 func documentRateLimits(api huma.API) {
 	status := strconv.Itoa(http.StatusTooManyRequests)
 	for _, item := range api.OpenAPI().Paths {

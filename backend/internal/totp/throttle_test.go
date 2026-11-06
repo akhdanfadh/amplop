@@ -208,8 +208,8 @@ func TestThrottleInvalidUser(t *testing.T) {
 	assert.Empty(t, store.rows)
 }
 
-// Release removes an attempt so it no longer counts, even after the request
-// was cancelled.
+// [Throttle.Release] removes an attempt so it no longer counts, even after the
+// request was cancelled.
 func TestThrottleRelease(t *testing.T) {
 	store := &memoryCodeAttempts{}
 	limiter := NewThrottle(store, time.Now, slog.New(slog.DiscardHandler))

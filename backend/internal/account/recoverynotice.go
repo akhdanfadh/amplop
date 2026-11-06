@@ -41,7 +41,7 @@ type RecoveryNoticeState struct {
 // recoveryNoticeStorage reads what a recovery notice needs.
 type recoveryNoticeStorage interface {
 	// ReadRecoveryNotice returns the [RecoveryNoticeState] of the notice to
-	// the user with recipientID about the one with recoveredID, who may be
+	// the user with recipientID about the one with [recoveredID], who may be
 	// the same. A missing recipient returns [ErrUserNotFound].
 	ReadRecoveryNotice(ctx context.Context, recoveredID, recipientID int64) (RecoveryNoticeState, error)
 
@@ -63,7 +63,7 @@ type RecoveryNotices struct {
 	publicURL *url.URL
 }
 
-// NewRecoveryNotices returns RecoveryNotices given storage, the
+// NewRecoveryNotices returns [RecoveryNotices] given storage, the
 // [systememail.Mailer] that sends, and the public URL links start with.
 func NewRecoveryNotices(storage recoveryNoticeStorage, mailer noticeSender, publicURL *url.URL) *RecoveryNotices {
 	return &RecoveryNotices{storage: storage, mailer: mailer, publicURL: publicURL}

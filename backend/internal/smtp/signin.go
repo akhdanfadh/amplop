@@ -22,7 +22,7 @@ var (
 
 // signIn authenticates with PLAIN, or with LOGIN when the server offers only
 // that. It returns the Base64 lines it sent with the credentials, and
-// errCleartext on a connection without TLS.
+// [errCleartext] on a connection without TLS.
 func signIn(client *gosmtp.Client, username, password string) ([]string, error) {
 	// Neither go-smtp nor go-sasl checks for TLS. Saving settings forbids a
 	// username without it; this holds even if a stored row does not.
@@ -47,7 +47,7 @@ func signIn(client *gosmtp.Client, username, password string) ([]string, error) 
 // signInError returns err, from a failed sign-in, without any text the
 // server wrote: a refusal keeps only its code and an enhanced code within RFC
 // 3463's ranges, a known error of inbok's, go-sasl's, or Go's is returned
-// alone, without what wraps it, and anything else becomes errUnexpectedReply.
+// alone, without what wraps it, and anything else becomes [errUnexpectedReply].
 //
 // DESIGN: a reply to AUTH can quote what inbok sent, the Base64 credentials
 // with the SMTP password, and the mailer logs a reply. What leaves this step

@@ -33,14 +33,14 @@ type noticeStorage interface {
 }
 
 // Notices tells users their password was changed through a reset link;
-// the password changed notice job calls Send.
+// the password changed notice job calls [Notices.Send].
 type Notices struct {
 	storage   noticeStorage
 	mailer    mailer
 	publicURL *url.URL
 }
 
-// NewNotices returns Notices given storage, the [systememail.Mailer] that
+// NewNotices returns [Notices] given storage, the [systememail.Mailer] that
 // sends, and the public URL the notice names.
 func NewNotices(storage noticeStorage, mailer mailer, publicURL *url.URL) *Notices {
 	return &Notices{storage: storage, mailer: mailer, publicURL: publicURL}

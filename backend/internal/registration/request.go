@@ -63,7 +63,7 @@ const (
 // Attempt is one accepted registration request, counted toward the limits.
 type Attempt struct {
 	Email        string
-	ClientPrefix string // the client, as clientprefix.Of counts it
+	ClientPrefix string // the client, as [clientprefix.Of] counts it
 	Outcome      Outcome
 	CreatedAt    time.Time
 }
@@ -76,7 +76,7 @@ type Link struct {
 	ExpiresAt time.Time
 }
 
-// RequestState is what [requestStorage.RequestRegistration] reads under its
+// RequestState is what requestStorage.RequestRegistration reads under its
 // lock.
 type RequestState struct {
 	Registration  Record
@@ -117,7 +117,7 @@ type Requests struct {
 	logger    *slog.Logger
 }
 
-// NewRequests returns Requests given storage, the [systememail.Mailer] that
+// NewRequests returns [Requests] given storage, the [systememail.Mailer] that
 // sends, the public URL links start with, a clock, and the logger that warns
 // when the limit on everyone refuses a request.
 func NewRequests(storage requestStorage, mailer mailer, publicURL *url.URL, now func() time.Time, logger *slog.Logger) *Requests {

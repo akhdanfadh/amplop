@@ -27,11 +27,11 @@ const (
 	minMemoryPerLane = 8
 
 	// memoryBudget caps the memory of the hashes in progress: six hashes of
-	// passwordMemory at once.
+	// [passwordMemory] at once.
 	memoryBudget = 128 * 1024 // KiB
 
 	// Bound verification work even when the stored parameters are damaged.
-	// Any accepted hash fits in memoryBudget.
+	// Any accepted hash fits in [memoryBudget].
 	maxPasswordMemory      = memoryBudget
 	maxPasswordIterations  = 10
 	maxPasswordParallelism = 16

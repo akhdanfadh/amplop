@@ -50,7 +50,7 @@ type Requests struct {
 	now     func() time.Time
 }
 
-// NewRequests returns Requests given storage and a clock.
+// NewRequests returns [Requests] given storage and a clock.
 func NewRequests(storage requestStorage, now func() time.Time) *Requests {
 	return &Requests{storage: storage, now: now}
 }

@@ -19,7 +19,7 @@ const beforeClientPrefixMigration = 21
 // addresses unmapped, IPv6 addresses without a zone.
 var savedAddrs = []string{"192.0.2.1", "2001:db8:1:2::1", "2001:db8:1:2:ffff::9", "2001:db8:abcd::"}
 
-// The migration turns each saved address into the prefix clientprefix.Of
+// The migration turns each saved address into the prefix [clientprefix.Of]
 // gives it, so attempts made before still count toward their client.
 func TestClientPrefixMigration(t *testing.T) {
 	// Given attempts saved by address before the migration.

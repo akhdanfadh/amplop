@@ -18,7 +18,7 @@ const (
 var ErrInvalidChallenge = errors.New("invalid sign-in challenge")
 
 // Challenge is pending second-factor proof, never an authenticated session.
-// Storage receives the hash; only the browser receives the secret.
+// [Storage] receives the hash; only the browser receives the secret.
 type Challenge struct {
 	TokenHash [sha256.Size]byte
 	UserID    int64
@@ -36,7 +36,7 @@ func newChallenge(userID int64, now func() time.Time) (string, Challenge) {
 }
 
 // checkChallenge never extends expiry or resets failures during a retry.
-// Storage must check and update the challenge under the same lock.
+// [Storage] must check and update the challenge under the same lock.
 func checkChallenge(state Challenge, now func() time.Time) error {
 	if !now().Before(state.ExpiresAt) || state.Failures >= challengeFailureLimit {
 		return ErrInvalidChallenge

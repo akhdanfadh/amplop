@@ -40,7 +40,7 @@ func verificationSystemEmail(t *testing.T, conn *pgx.Conn) {
 }
 
 // verificationLink is a link for userID named by seed, created age before
-// verificationNow.
+// [verificationNow].
 func verificationLink(userID int64, seed string, age time.Duration) emailverification.Link {
 	createdAt := verificationNow.Add(-age)
 	return emailverification.Link{
@@ -77,7 +77,7 @@ func savedVerificationLinks(t *testing.T, conn *pgx.Conn) []emailverification.Li
 }
 
 // verificationRequestRecording returns a create function that records the state it reads
-// and saves link, deleting links that expired by verificationNow.
+// and saves link, deleting links that expired by [verificationNow].
 func verificationRequestRecording(seen *emailverification.RequestState, link emailverification.Link) func(emailverification.RequestState) (emailverification.RequestChange, error) {
 	return func(state emailverification.RequestState) (emailverification.RequestChange, error) {
 		*seen = state

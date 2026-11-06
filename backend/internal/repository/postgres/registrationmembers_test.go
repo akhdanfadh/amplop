@@ -22,7 +22,7 @@ import (
 // registeredEmail is the address a visitor registers in these tests.
 const registeredEmail = "visitor@example.org"
 
-// register completes a registration link to email with deactivatedPassword
+// register completes a registration link to email with [deactivatedPassword]
 // and returns the new member.
 func register(t *testing.T, f deactivatedAccounts, email string) account.User {
 	t.Helper()

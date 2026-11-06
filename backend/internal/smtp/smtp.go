@@ -55,7 +55,7 @@ type Sender struct {
 	dial func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
-// NewSender returns a Sender that names itself host in EHLO, a domain or an
+// NewSender returns a [Sender] that names itself host in EHLO, a domain or an
 // IP address, and verifies servers against the system's trusted certificates.
 func NewSender(host string) *Sender {
 	return &Sender{timeout: exchangeTimeout, hello: helloName(host)}

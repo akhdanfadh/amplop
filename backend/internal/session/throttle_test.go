@@ -75,7 +75,7 @@ func TestThrottlePair(t *testing.T) {
 	assert.Len(t, store.rows, 1)
 }
 
-// Throttle keys are addresses as emailaddress.Parse returns them.
+// [Throttle] keys are addresses as [emailaddress.Parse] returns them.
 func TestThrottleKey(t *testing.T) {
 	store := &memoryAttempts{rows: map[int64]Attempt{}}
 	limiter := NewThrottle(store, time.Now)
@@ -140,7 +140,7 @@ func TestThrottleSetupSharesClient(t *testing.T) {
 	assert.Len(t, store.rows, 50)
 }
 
-// The client limit counts a client as clientprefix.Of does: every address in
+// The client limit counts a client as [clientprefix.Of] does: every address in
 // an IPv6 /64 as one client, so a host cannot dodge it by changing address,
 // and an IPv4 address mapped into IPv6 as the IPv4 address.
 func TestThrottleClientPrefix(t *testing.T) {

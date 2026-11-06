@@ -1,5 +1,5 @@
 // Package systememail owns the instance's own mail sender: its settings, test
-// messages, and the Mailer that sends inbok's messages with them. It is
+// messages, and the [Mailer] that sends inbok's messages with them. It is
 // separate from the mailboxes members connect.
 package systememail
 
@@ -73,7 +73,7 @@ type Password struct {
 }
 
 // Record is the saved configuration. Username is empty, and Password nil,
-// when the server needs no sign-in. Storage sets TestedAt and Revision: a
+// when the server needs no sign-in. [Storage] sets TestedAt and Revision: a
 // save clears TestedAt and adds one to Revision, ignoring the Record's values.
 type Record struct {
 	Server

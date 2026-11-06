@@ -37,7 +37,7 @@ const (
 	// ReadHeaderTimeout stops clients that send headers slowly to hold
 	// connections open (Slowloris).
 	readHeaderTimeout = 5 * time.Second
-	// readTimeout and writeTimeout cap a whole request body and response:
+	// readTimeout and [writeTimeout] cap a whole request body and response:
 	// a slow upload or a streaming response (e.g. server-sent events)
 	// must extend its own deadline with [http.ResponseController].
 	readTimeout  = 30 * time.Second

@@ -110,6 +110,17 @@ The web app reads these from the contract; keep them stable:
 - A doc comment says what the code does, its inputs, and what it returns.
   A reason sits inline above the line it explains. A reason that belongs
   to no single line is a `DESIGN:` paragraph after the doc sentence.
+- A doc comment, including one on a field or a test, writes another
+  declaration's name as a doc link, e.g. `[account.ErrUserNotFound]` or
+  `[Outgoing.To]`, when `go doc` can resolve it: an exported name in the
+  same package, in a package that package imports, or in a one-word
+  standard library package such as `errors`. Never write a full import
+  path, e.g. `[inbok/internal/account.ErrUserNotFound]`; gopls cannot
+  jump to it, so write the name plainly. The comment on an unexported
+  declaration may also bracket an unexported name in its package, e.g.
+  `[emailQueue]`; `go doc` shows it as text, but gopls jumps to it. The
+  comment on an exported declaration writes such a name plainly. See
+  https://tip.golang.org/doc/comment#links.
 - A check that holds input to a rule names the rule's source above it,
   unless the code already says it: an RFC, a library's behaviour, an
   attack, or inbok's own choice, e.g. `// SASL PLAIN guarantees only 255

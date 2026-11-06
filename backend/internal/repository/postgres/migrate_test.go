@@ -65,7 +65,7 @@ func TestMigrate(t *testing.T) {
 }
 
 // A database migrated before inbok used DBOS, e.g. a running install
-// upgrading, gets the workflow tables from its next Migrate.
+// upgrading, gets the workflow tables from its next [Migrate].
 func TestMigrateUpgrade(t *testing.T) {
 	// Given a database with inbok's tables but no workflow tables.
 	url := newDatabase(t)

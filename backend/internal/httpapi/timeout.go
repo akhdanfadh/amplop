@@ -22,7 +22,7 @@ const serviceBusyType = problemPrefix + "service-busy"
 // WriteTimeout only stops writing; without this, a slow query would keep
 // running after the client got cut off. A handler that hits it returns the
 // context's error, which becomes [serviceBusyProblem]. A streaming handler
-// can extend its own deadline with http.ResponseController.
+// can extend its own deadline with [http.ResponseController].
 func withTimeout(d time.Duration) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		timed, cancel := context.WithTimeout(ctx.Request.Context(), d)

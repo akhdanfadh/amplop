@@ -57,7 +57,7 @@ func newProblem(status int, typ, title, detail string, inputs ...inputError) *pr
 }
 
 // requestProblem supplies shared defaults for Huma and Gin failures by status.
-// Business problems use newProblem with their own type and status.
+// Business problems use [newProblem] with their own type and status.
 func requestProblem(status int) *problem {
 	switch status {
 	case http.StatusBadRequest:

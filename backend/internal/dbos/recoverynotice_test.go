@@ -15,10 +15,10 @@ import (
 	"inbok/internal/account"
 )
 
-// recoveredAt is when recoveredID was recovered in these tests.
+// recoveredAt is when [recoveredID] was recovered in these tests.
 var recoveredAt = time.Date(2026, 11, 3, 11, 16, 0, 0, time.UTC)
 
-// IDs of the administrators in these tests: recoveredID was recovered.
+// IDs of the administrators in these tests: [recoveredID] was recovered.
 const (
 	recoveredID int64 = 7
 	firstAdmin  int64 = 3
@@ -104,7 +104,7 @@ func (f *fakeNotices) calls() (int, []int64) {
 }
 
 // The list is retried 10 more times within about 5 minutes; the docs
-// promise it. The send uses noticeRetries.
+// promise it. The send uses [noticeRetries].
 func TestRecoveryNoticeRetryPolicy(t *testing.T) {
 	assert.Equal(t, retries{attempts: 10, base: time.Second, ceiling: time.Minute}, listRetries)
 }
@@ -119,8 +119,8 @@ func noticeWorker(t *testing.T, url string, notices recoveryNotices) *Worker {
 	return worker
 }
 
-// enqueueNotice enqueues the notice of recoveredID's recovery at
-// recoveredAt by name, as a client does, and returns its handle.
+// enqueueNotice enqueues the notice of [recoveredID]'s recovery at
+// [recoveredAt] by name, as a client does, and returns its handle.
 func enqueueNotice(t *testing.T, worker *Worker) dbos.WorkflowHandle[[]recipientOutcome] {
 	t.Helper()
 

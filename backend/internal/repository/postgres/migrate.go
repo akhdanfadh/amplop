@@ -26,7 +26,7 @@ import (
 var migrations embed.FS
 
 const (
-	// A waiting Migrate checks the lock every second for up to 5 minutes:
+	// A waiting [Migrate] checks the lock every second for up to 5 minutes:
 	// longer than the workflow tables may take, plus inbok's files.
 	lockRetrySeconds = 1
 	lockRetries      = 300
@@ -71,7 +71,7 @@ func Migrate(ctx context.Context, url string, logger *slog.Logger) (err error) {
 }
 
 // lockMigrations takes Goose's PostgreSQL lock on a connection of db,
-// waiting for another Migrate to finish. It returns the function that
+// waiting for another [Migrate] to finish. It returns the function that
 // releases the lock and the connection.
 func lockMigrations(ctx context.Context, db *sql.DB) (func() error, error) {
 	// Goose's default 5-second retry would delay a waiting Migrate
@@ -126,7 +126,7 @@ func migrateFiles(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
 //
 // DESIGN: DBOS versions its own tables and ships their migrations inside the
 // SDK, so they are not Goose files. Each SDK upgrade can bring new ones;
-// Migrate applies them in the release migration like inbok's own.
+// [Migrate] applies them in the release migration like inbok's own.
 func migrateWorkflowTables(ctx context.Context, url string, logger *slog.Logger) error {
 	ctx, cancel := context.WithTimeout(ctx, workflowTablesTimeout)
 	defer cancel()
@@ -142,7 +142,7 @@ func migrateWorkflowTables(ctx context.Context, url string, logger *slog.Logger)
 	return nil
 }
 
-// newProvider reads the embedded migrations. It takes no lock: Migrate
+// newProvider reads the embedded migrations. It takes no lock: [Migrate]
 // holds one around it.
 func newProvider(db *sql.DB) (*goose.Provider, error) {
 	dir, err := fs.Sub(migrations, "migrations")

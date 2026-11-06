@@ -54,8 +54,8 @@ type redaction struct {
 
 // redact returns err with each sign-in line replaced by [credentials] and
 // the recipient's address, in any letter case, by [recipient]. A refusal
-// stays an *SMTPError with its codes, a malformed reply becomes
-// errGarbledReply, and any other err, whose text is Go's or inbok's, is
+// stays an [*gosmtp.SMTPError] with its codes, a malformed reply becomes
+// [errGarbledReply], and any other err, whose text is Go's or inbok's, is
 // returned as is.
 //
 // DESIGN: the mailer logs a reply that is not private, so an administrator

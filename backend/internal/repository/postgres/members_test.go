@@ -12,14 +12,14 @@ import (
 	"inbok/internal/account"
 )
 
-// membersNow has nanoseconds, which saving drops: a deactivation at
-// membersNow is saved at membersSaved.
+// [membersNow] has nanoseconds, which saving drops: a deactivation at
+// [membersNow] is saved at membersSaved.
 var (
 	membersNow   = time.Date(2026, 11, 2, 9, 30, 0, 123456789, time.UTC)
 	membersSaved = time.Date(2026, 11, 2, 9, 30, 0, 123456000, time.UTC)
 )
 
-// memberAccounts are the accounts newMemberAccounts saves.
+// memberAccounts are the accounts [newMemberAccounts] saves.
 type memberAccounts struct {
 	db        *DB
 	conn      *pgx.Conn
@@ -34,7 +34,7 @@ type memberAccounts struct {
 // sign-in challenge, an email verification link, a password reset link, and
 // a TOTP attempt; and a bystander member with a session, a challenge, and
 // both kinds of link. It returns them
-// with a service whose clock reads membersNow.
+// with a service whose clock reads [membersNow].
 func newMemberAccounts(t *testing.T) memberAccounts {
 	t.Helper()
 

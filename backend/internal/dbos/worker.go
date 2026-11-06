@@ -32,20 +32,20 @@ const (
 	// leave the previous release's unfinished workflows behind. One fixed
 	// version lets a new release resume them, which ADR015 already
 	// requires workflows and their inputs to allow. A workflow whose steps
-	// change must keep resuming old runs, e.g. with dbos.Patch.
+	// change must keep resuming old runs, e.g. with [dbos.Patch].
 	applicationVersion = "1"
 
 	// stageTimeout bounds each stage of DBOS's shutdown, e.g. waiting for
 	// running workflows to unwind.
 	stageTimeout = 3 * time.Second
 
-	// shutdownBudget bounds all of Shutdown. With serve's 5-second limit
+	// shutdownBudget bounds all of [Worker.Shutdown]. With serve's 5-second limit
 	// for the health listener it stays inside the worker's 15-second stop
 	// grace period in deploy/compose.yaml.
 	shutdownBudget = 7 * time.Second
 )
 
-// errShutdownBudget reports a DBOS shutdown that outlasted shutdownBudget.
+// errShutdownBudget reports a DBOS shutdown that outlasted [shutdownBudget].
 var errShutdownBudget = errors.New("DBOS did not shut down in time; unfinished workflows resume at the next start")
 
 // overrides are DBOS's environment variables that replace the
@@ -72,11 +72,11 @@ type Worker struct {
 }
 
 // NewWorker opens DBOS on the database at url as the executor id, without
-// migrating it, registers inbok's workflows calling services, and saves
-// their schedules. It logs to logger. Only Shutdown stops it. It returns an
-// error if the workflow tables are missing or older than the SDK needs,
-// which inbok migrate fixes, if url is malformed, if DBOS__APPVERSION or
-// DBOS__VMID is set, or if a schedule cannot be saved.
+// migrating it, registers inbok's workflows calling services, and saves their
+// schedules. It logs to logger. Only [Worker.Shutdown] stops it. It returns an
+// error if the workflow tables are missing or older than the SDK needs, which
+// inbok migrate fixes, if url is malformed, if DBOS__APPVERSION or DBOS__VMID
+// is set, or if a schedule cannot be saved.
 //
 // DESIGN: DBOS resumes an executor's unfinished workflows only when an
 // executor with the same id launches. A replaced or restarted worker keeps
@@ -134,11 +134,11 @@ func (w *Worker) Launch() error {
 	return dbos.Launch(w.ctx)
 }
 
-// Shutdown stops new work and cancels running workflows, which stay
-// pending and resume on the next Launch with the same id. It waits up to
-// stageTimeout for each stage of DBOS's shutdown and up to shutdownBudget
-// in all. It returns DBOS's error, or errShutdownBudget if DBOS is still
-// shutting down; the caller then exits without waiting for it.
+// Shutdown stops new work and cancels running workflows, which stay pending and
+// resume on the next [Worker.Launch] with the same id. It waits up to
+// stageTimeout for each stage of DBOS's shutdown and up to shutdownBudget in
+// all. It returns DBOS's error, or errShutdownBudget if DBOS is still shutting
+// down; the caller then exits without waiting for it.
 func (w *Worker) Shutdown() error {
 	done := make(chan error, 1)
 	go func() { done <- dbos.Shutdown(w.ctx, stageTimeout) }()

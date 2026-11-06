@@ -139,7 +139,7 @@ func TestUpdateCounterConcurrent(t *testing.T) {
 	assert.Equal(t, want, amounts)
 }
 
-// Open fails at once when nothing listens, instead of on first use.
+// [Open] fails at once when nothing listens, instead of on first use.
 func TestOpenUnreachable(t *testing.T) {
 	db, err := Open(t.Context(), "postgres://inbok:secret@127.0.0.1:1/inbok?sslmode=disable")
 	if err == nil {
