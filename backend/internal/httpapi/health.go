@@ -31,7 +31,9 @@ func registerGetHealth(api huma.API) {
 		Metadata:      map[string]any{accessKey: session.AccessPublic},
 		Method:        http.MethodGet,
 		Path:          healthPath,
-		Summary:       "Check process health",
+		Summary:       "Check Health",
+		Tags:          []string{tagHealth},
+		Description:   "Answers while this process can serve requests. It does not check the database.",
 		DefaultStatus: http.StatusOK,
 		Responses:     healthResponses(api),
 	}, handleGetHealth)

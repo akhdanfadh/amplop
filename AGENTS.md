@@ -84,6 +84,9 @@ The web app reads these from the contract; keep them stable:
   response example, and type the web's constant with `ProblemType`.
 - Every 429 and 503 sends `Retry-After` in whole seconds; the web words a
   429's wait.
+- Every operation lists one tag from `httpapi/tags.go` and a summary
+  that is a Title Case title of at most five words, e.g. "Sign In with
+  Code"; what it does in detail goes in `Description`.
 - A 204 response needs transport work first: `web/src/api/transport.ts`
   requires a response schema.
 

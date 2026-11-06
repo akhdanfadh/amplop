@@ -444,7 +444,11 @@ web app and API on the same origin, including the scheme, host, and port.
 
 JSON success responses put their payload in `data`. Response schemas live
 only in the OpenAPI document: responses carry no `$schema` field or `Link`
-header. Operation IDs use camelCase. Handlers build success bodies with
+header. Operation IDs use camelCase. Each operation lists one tag from
+`tags.go`, which groups it in the API reference, and a summary that is a
+Title Case title of at most five words, e.g. `Sign In with Code`; what it
+does in detail goes in `Description`. `TestTags` and
+`TestOperationSummaries` check both. Handlers build success bodies with
 `respondData`. Schema names come from Go type names, e.g.
 `ResponseHealthStatus`, and become the generated client's type names, so
 renaming a payload type is a breaking change.

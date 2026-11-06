@@ -1357,7 +1357,7 @@
   "paths": {
     "/account/email-verification": {
       "post": {
-        "description": "The link expires in 24 hours, and every unexpired link works until one is used. At most 3 links are sent in 15 minutes and 10 in 24 hours.",
+        "description": "Emails the signed-in account a link that verifies its email address. The link expires in 24 hours, and every unexpired link works until one is used. At most 3 links are sent in 15 minutes and 10 in 24 hours.",
         "operationId": "requestEmailVerification",
         "responses": {
           "200": {
@@ -1472,12 +1472,15 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Email a link that verifies the account's email address"
+        "summary": "Send Verification Link",
+        "tags": [
+          "Email Verification"
+        ]
       }
     },
     "/email-verifications/redeem": {
       "post": {
-        "description": "Needs no session and signs no one in. Redeeming a link uses up every link sent to that account.",
+        "description": "Verifies the email address an emailed link was sent to. Needs no session and signs no one in. Redeeming a link uses up every link sent to that account.",
         "operationId": "redeemEmailVerification",
         "requestBody": {
           "content": {
@@ -1573,11 +1576,15 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Verify an email address with an emailed link"
+        "summary": "Verify Email Address",
+        "tags": [
+          "Email Verification"
+        ]
       }
     },
     "/health": {
       "get": {
+        "description": "Answers while this process can serve requests. It does not check the database.",
         "operationId": "getHealth",
         "responses": {
           "200": {
@@ -1601,11 +1608,15 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Check process health"
+        "summary": "Check Health",
+        "tags": [
+          "Health"
+        ]
       }
     },
     "/members": {
       "get": {
+        "description": "Lists every account, administrators included, oldest first.",
         "operationId": "listMembers",
         "responses": {
           "200": {
@@ -1678,7 +1689,10 @@
             "sessionCookie": []
           }
         ],
-        "summary": "List every account"
+        "summary": "List Members",
+        "tags": [
+          "Members"
+        ]
       }
     },
     "/members/{id}/deactivate": {
@@ -1818,7 +1832,10 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Deactivate a member"
+        "summary": "Deactivate Member",
+        "tags": [
+          "Members"
+        ]
       }
     },
     "/members/{id}/reactivate": {
@@ -1958,7 +1975,10 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Reactivate a member"
+        "summary": "Reactivate Member",
+        "tags": [
+          "Members"
+        ]
       }
     },
     "/password-reset/links": {
@@ -2057,7 +2077,10 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Email a link that resets a password"
+        "summary": "Send Password Reset Link",
+        "tags": [
+          "Password Reset"
+        ]
       }
     },
     "/password-reset/links/redeem": {
@@ -2182,11 +2205,15 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Set a new password with an emailed link"
+        "summary": "Reset Password",
+        "tags": [
+          "Password Reset"
+        ]
       }
     },
     "/probe/events": {
       "post": {
+        "description": "Adds the entry's amount to the shared counter and records the entry.",
         "operationId": "createProbeEvent",
         "requestBody": {
           "content": {
@@ -2266,11 +2293,15 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Add to the probe counter"
+        "summary": "Add Probe Event",
+        "tags": [
+          "Probe"
+        ]
       }
     },
     "/registration": {
       "get": {
+        "description": "Whether visitors can register.",
         "operationId": "getRegistration",
         "responses": {
           "200": {
@@ -2294,7 +2325,10 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Get whether visitors can register"
+        "summary": "Get Registration Status",
+        "tags": [
+          "Registration"
+        ]
       }
     },
     "/registration/links": {
@@ -2425,7 +2459,10 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Email a link that creates an account"
+        "summary": "Send Registration Link",
+        "tags": [
+          "Registration"
+        ]
       }
     },
     "/registration/links/redeem": {
@@ -2578,7 +2615,10 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Create a member account with an emailed link"
+        "summary": "Complete Registration",
+        "tags": [
+          "Registration"
+        ]
       }
     },
     "/registration/settings": {
@@ -2655,10 +2695,13 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Get the registration settings"
+        "summary": "Get Registration Settings",
+        "tags": [
+          "Registration"
+        ]
       },
       "put": {
-        "description": "Opening needs system email settings that passed a test; closing always succeeds. Each save is recorded in the audit log.",
+        "description": "Opens or closes registration. Opening needs system email settings that passed a test; closing always succeeds. Each save is recorded in the audit log.",
         "operationId": "saveRegistrationSettings",
         "requestBody": {
           "content": {
@@ -2773,11 +2816,15 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Open or close registration"
+        "summary": "Save Registration Settings",
+        "tags": [
+          "Registration"
+        ]
       }
     },
     "/sessions": {
       "get": {
+        "description": "Lists the signed-in account's live sessions.",
         "operationId": "listSessions",
         "responses": {
           "200": {
@@ -2822,9 +2869,13 @@
             "sessionCookie": []
           }
         ],
-        "summary": "List the signed-in account's sessions"
+        "summary": "List Sessions",
+        "tags": [
+          "Sessions"
+        ]
       },
       "post": {
+        "description": "Checks the email and password. An account without a confirmed authenticator is signed in; one with an authenticator gets step totp and a challenge cookie instead, and Sign In with Code finishes the sign-in.",
         "operationId": "createSession",
         "requestBody": {
           "content": {
@@ -2935,11 +2986,15 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Sign in with a password"
+        "summary": "Sign In",
+        "tags": [
+          "Sessions"
+        ]
       }
     },
     "/sessions/current": {
       "delete": {
+        "description": "Ends the current session.",
         "operationId": "deleteCurrentSession",
         "responses": {
           "204": {
@@ -2984,9 +3039,13 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Sign out of the current session"
+        "summary": "Sign Out",
+        "tags": [
+          "Sessions"
+        ]
       },
       "get": {
+        "description": "Returns the signed-in account.",
         "operationId": "getCurrentSession",
         "responses": {
           "200": {
@@ -3031,12 +3090,15 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Get the signed-in account"
+        "summary": "Get Current Session",
+        "tags": [
+          "Sessions"
+        ]
       }
     },
     "/sessions/others": {
       "delete": {
-        "description": "Keeps the current session. The count excludes sessions that had already expired.",
+        "description": "Ends every session of the signed-in account except the current one. The count excludes sessions that had already expired.",
         "operationId": "deleteOtherSessions",
         "responses": {
           "200": {
@@ -3081,11 +3143,15 @@
             "sessionCookie": []
           }
         ],
-        "summary": "End every other session of the signed-in account"
+        "summary": "End Other Sessions",
+        "tags": [
+          "Sessions"
+        ]
       }
     },
     "/sessions/totp": {
       "post": {
+        "description": "Completes a sign-in that needs a second factor, with an authenticator code or a backup code.",
         "operationId": "createSessionWithCode",
         "requestBody": {
           "content": {
@@ -3223,12 +3289,15 @@
             "challengeCookie": []
           }
         ],
-        "summary": "Complete sign-in with an authenticator or backup code"
+        "summary": "Sign In with Code",
+        "tags": [
+          "Sessions"
+        ]
       }
     },
     "/sessions/{id}": {
       "delete": {
-        "description": "To end the current session, sign out instead.",
+        "description": "Ends another session of the signed-in account. To end the current session, sign out instead.",
         "operationId": "deleteSession",
         "parameters": [
           {
@@ -3318,11 +3387,15 @@
             "sessionCookie": []
           }
         ],
-        "summary": "End another session of the signed-in account"
+        "summary": "End Session",
+        "tags": [
+          "Sessions"
+        ]
       }
     },
     "/setup": {
       "get": {
+        "description": "Whether the first administrator can be created: done once an administrator exists; otherwise unconfigured without a setup token, or open with one.",
         "operationId": "getSetupStatus",
         "responses": {
           "200": {
@@ -3346,9 +3419,13 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Get first-admin setup status"
+        "summary": "Get Setup Status",
+        "tags": [
+          "Setup"
+        ]
       },
       "post": {
+        "description": "Creates the first administrator with the setup token. Works once, and only while a setup token is configured.",
         "operationId": "createFirstAdmin",
         "requestBody": {
           "content": {
@@ -3464,7 +3541,10 @@
             "description": "Other errors. See Shared errors in the API overview."
           }
         },
-        "summary": "Create the first administrator"
+        "summary": "Create First Administrator",
+        "tags": [
+          "Setup"
+        ]
       }
     },
     "/system-email": {
@@ -3542,10 +3622,13 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Get the system email settings"
+        "summary": "Get System Email Settings",
+        "tags": [
+          "System Email"
+        ]
       },
       "put": {
-        "description": "Saving clears the tested time until a test message passes. The save is recorded in the audit log, without setting values.",
+        "description": "Replaces the saved settings. Saving clears the tested time until a test message passes. The save is recorded in the audit log, without setting values.",
         "operationId": "saveSystemEmail",
         "requestBody": {
           "content": {
@@ -3690,12 +3773,15 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Replace the system email settings"
+        "summary": "Save System Email Settings",
+        "tags": [
+          "System Email"
+        ]
       }
     },
     "/system-email/test-message": {
       "post": {
-        "description": "A server or network refusal is a failed result, not an error. A pass records the tested time; a failure clears it. Test messages are not audited.",
+        "description": "Sends a test message with the saved settings. A server or network refusal is a failed result, not an error. A pass records the tested time; a failure clears it. Test messages are not audited.",
         "operationId": "sendSystemEmailTestMessage",
         "requestBody": {
           "content": {
@@ -3810,7 +3896,10 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Send a test message with the saved system email settings"
+        "summary": "Send Test Message",
+        "tags": [
+          "System Email"
+        ]
       }
     },
     "/totp": {
@@ -3859,9 +3948,13 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Get two-factor authentication status"
+        "summary": "Get Two-Factor Status",
+        "tags": [
+          "Two-Factor Authentication"
+        ]
       },
       "post": {
+        "description": "Starts enrollment, or restarts a pending one.",
         "operationId": "startTOTPEnrollment",
         "responses": {
           "201": {
@@ -3922,7 +4015,10 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Start or restart two-factor authentication enrollment"
+        "summary": "Start Two-Factor Enrollment",
+        "tags": [
+          "Two-Factor Authentication"
+        ]
       }
     },
     "/totp/backup-codes": {
@@ -4058,7 +4154,10 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Replace two-factor authentication backup codes"
+        "summary": "Replace Backup Codes",
+        "tags": [
+          "Two-Factor Authentication"
+        ]
       }
     },
     "/totp/confirm": {
@@ -4213,7 +4312,10 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Confirm two-factor authentication enrollment"
+        "summary": "Confirm Two-Factor Enrollment",
+        "tags": [
+          "Two-Factor Authentication"
+        ]
       }
     },
     "/totp/disable": {
@@ -4365,7 +4467,10 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Turn off optional two-factor authentication"
+        "summary": "Turn Off Two-Factor",
+        "tags": [
+          "Two-Factor Authentication"
+        ]
       }
     },
     "/totp/enrollment": {
@@ -4431,13 +4536,58 @@
             "sessionCookie": []
           }
         ],
-        "summary": "Cancel pending two-factor authentication enrollment"
+        "summary": "Cancel Two-Factor Enrollment",
+        "tags": [
+          "Two-Factor Authentication"
+        ]
       }
     }
   },
   "servers": [
     {
       "url": "/api/v0"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Create the first administrator of a new instance.",
+      "name": "Setup"
+    },
+    {
+      "description": "Sign in and out, and see or end the signed-in account's sessions.",
+      "name": "Sessions"
+    },
+    {
+      "description": "Enroll an authenticator, replace backup codes, or turn two-factor authentication off.",
+      "name": "Two-Factor Authentication"
+    },
+    {
+      "description": "Verify the signed-in account's email address with an emailed link.",
+      "name": "Email Verification"
+    },
+    {
+      "description": "Set a forgotten password with an emailed link.",
+      "name": "Password Reset"
+    },
+    {
+      "description": "Open or close registration, and create member accounts with emailed links.",
+      "name": "Registration"
+    },
+    {
+      "description": "List, deactivate, and reactivate accounts. Administrators only.",
+      "name": "Members"
+    },
+    {
+      "description": "The instance's own sender of links and notices. Administrators only.",
+      "name": "System Email"
+    },
+    {
+      "description": "Whether the process answers requests.",
+      "name": "Health"
+    },
+    {
+      "description": "An example feature that exercises the whole stack. It goes before the first release.",
+      "name": "Probe"
     }
   ]
 }

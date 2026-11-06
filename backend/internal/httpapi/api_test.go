@@ -5,10 +5,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"unicode"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -117,5 +120,43 @@ func TestNoRoute(t *testing.T) {
 			assert.Contains(t, out.String(), "msg=request")
 			assert.Contains(t, out.String(), "status="+strconv.Itoa(c.status))
 		})
+	}
+}
+
+// operations returns every operation in doc.
+func operations(doc *huma.OpenAPI) []*huma.Operation {
+	var ops []*huma.Operation
+	for _, item := range doc.Paths {
+		for _, op := range []*huma.Operation{item.Get, item.Put, item.Post, item.Delete, item.Options, item.Head, item.Patch, item.Trace} {
+			if op != nil {
+				ops = append(ops, op)
+			}
+		}
+	}
+	return ops
+}
+
+// titleSmallWords stay lowercase inside a title, as Chicago style has
+// articles, conjunctions, and short prepositions. A particle such as "In"
+// in "Sign In" is not one.
+var titleSmallWords = []string{"a", "an", "the", "and", "but", "or", "nor", "for", "of", "to", "with", "at", "by"}
+
+// Every summary is a Title Case title of at most five words, e.g. "Sign In
+// with Code"; what an operation does in detail goes in its description.
+func TestOperationSummaries(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+	for _, op := range operations(doc) {
+		words := strings.Fields(op.Summary)
+		require.NotEmpty(t, words, op.OperationID)
+		assert.LessOrEqual(t, len(words), 5, op.Summary)
+		// Hyphenated parts follow the same rule, e.g. "State-of-the-Art".
+		parts := strings.FieldsFunc(op.Summary, func(r rune) bool { return r == ' ' || r == '-' })
+		for i, part := range parts {
+			if i > 0 && i < len(parts)-1 && slices.Contains(titleSmallWords, strings.ToLower(part)) {
+				assert.Equal(t, strings.ToLower(part), part, "%q in %q", part, op.Summary)
+				continue
+			}
+			assert.True(t, unicode.IsUpper([]rune(part)[0]), "%q in %q", part, op.Summary)
+		}
 	}
 }

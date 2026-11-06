@@ -83,6 +83,7 @@ func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API 
 
 	config := huma.DefaultConfig(schemaTitle, schemaVersion)
 	config.Info.Description = errorDocs
+	config.OpenAPI.Tags = apiTags()
 
 	// Reject duplicate names, including case aliases, while keeping other JSON
 	// decoding rules compatible with Huma's default format.

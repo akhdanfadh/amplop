@@ -98,8 +98,8 @@ export const getRequestEmailVerificationUrl = () => {
 }
 
 /**
- * The link expires in 24 hours, and every unexpired link works until one is used. At most 3 links are sent in 15 minutes and 10 in 24 hours.
- * @summary Email a link that verifies the account's email address
+ * Emails the signed-in account a link that verifies its email address. The link expires in 24 hours, and every unexpired link works until one is used. At most 3 links are sent in 15 minutes and 10 in 24 hours.
+ * @summary Send Verification Link
  */
 export const requestEmailVerification = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseSentEmailVerification> => {
 
@@ -152,7 +152,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
     /**
- * @summary Email a link that verifies the account's email address
+ * @summary Send Verification Link
  */
 export const useRequestEmailVerification = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestEmailVerification>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
@@ -174,8 +174,8 @@ export const getRedeemEmailVerificationUrl = () => {
 }
 
 /**
- * Needs no session and signs no one in. Redeeming a link uses up every link sent to that account.
- * @summary Verify an email address with an emailed link
+ * Verifies the email address an emailed link was sent to. Needs no session and signs no one in. Redeeming a link uses up every link sent to that account.
+ * @summary Verify Email Address
  */
 export const redeemEmailVerification = async (emailVerificationSecret: EmailVerificationSecret, options?: Parameters<typeof transport>[1]): Promise<ResponseEmailVerificationResult> => {
 
@@ -242,7 +242,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RedeemEmailVerificationMutationVariables = {data: EmailVerificationSecret}
 
     /**
- * @summary Verify an email address with an emailed link
+ * @summary Verify Email Address
  */
 export const useRedeemEmailVerification = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemEmailVerification>>, TError,RedeemEmailVerificationMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -264,7 +264,8 @@ export const getGetHealthUrl = () => {
 }
 
 /**
- * @summary Check process health
+ * Answers while this process can serve requests. It does not check the database.
+ * @summary Check Health
  */
 export const getHealth = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseHealthStatus> => {
 
@@ -336,7 +337,7 @@ export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TErr
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Check process health
+ * @summary Check Health
  */
 
 export function useGetHealth<TData = Awaited<ReturnType<typeof getHealth>>, TError = ErrorType<Problem>>(
@@ -366,7 +367,8 @@ export const getListMembersUrl = () => {
 }
 
 /**
- * @summary List every account
+ * Lists every account, administrators included, oldest first.
+ * @summary List Members
  */
 export const listMembers = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseListedMembers> => {
 
@@ -438,7 +440,7 @@ export function useListMembers<TData = Awaited<ReturnType<typeof listMembers>>, 
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary List every account
+ * @summary List Members
  */
 
 export function useListMembers<TData = Awaited<ReturnType<typeof listMembers>>, TError = ErrorType<Problem>>(
@@ -469,7 +471,7 @@ export const getDeactivateMemberUrl = (id: number,) => {
 
 /**
  * Ends the member's sessions and stops them from signing in until they are reactivated. Their account, password, and authenticator are kept. Deactivating a deactivated member changes nothing. The change is recorded in the audit log.
- * @summary Deactivate a member
+ * @summary Deactivate Member
  */
 export const deactivateMember = async (id: number, options?: Parameters<typeof transport>[1]): Promise<ResponseChangedMember> => {
 
@@ -522,7 +524,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeactivateMemberMutationVariables = {id: number}
 
     /**
- * @summary Deactivate a member
+ * @summary Deactivate Member
  */
 export const useDeactivateMember = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateMember>>, TError,DeactivateMemberMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -545,7 +547,7 @@ export const getReactivateMemberUrl = (id: number,) => {
 
 /**
  * Lets a deactivated member sign in again with their existing password and authenticator. Reactivating an active member changes nothing. The change is recorded in the audit log.
- * @summary Reactivate a member
+ * @summary Reactivate Member
  */
 export const reactivateMember = async (id: number, options?: Parameters<typeof transport>[1]): Promise<ResponseChangedMember> => {
 
@@ -598,7 +600,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ReactivateMemberMutationVariables = {id: number}
 
     /**
- * @summary Reactivate a member
+ * @summary Reactivate Member
  */
 export const useReactivateMember = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reactivateMember>>, TError,ReactivateMemberMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -621,7 +623,7 @@ export const getRequestPasswordResetLinkUrl = () => {
 
 /**
  * Answers at once, the same for every email. Afterwards, an active account with that verified email gets a link that expires in 1 hour, unless 3 links were sent to it in the last hour or 5 in 24 hours; any other email gets nothing. Earlier links keep working. One client may ask 10 times in 15 minutes.
- * @summary Email a link that resets a password
+ * @summary Send Password Reset Link
  */
 export const requestPasswordResetLink = async (newPasswordResetRequest: NewPasswordResetRequest, options?: Parameters<typeof transport>[1]): Promise<ResponsePasswordResetRequestResult> => {
 
@@ -688,7 +690,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RequestPasswordResetLinkMutationVariables = {data: NewPasswordResetRequest}
 
     /**
- * @summary Email a link that resets a password
+ * @summary Send Password Reset Link
  */
 export const useRequestPasswordResetLink = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestPasswordResetLink>>, TError,RequestPasswordResetLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -711,7 +713,7 @@ export const getRedeemPasswordResetLinkUrl = () => {
 
 /**
  * Sets the password of the account the link was sent to, when the email given is the one the link was sent to; signs that account out everywhere and uses up all of its reset links. TOTP stays on. Needs no session and signs no one in; the account's owner is emailed that the password changed.
- * @summary Set a new password with an emailed link
+ * @summary Reset Password
  */
 export const redeemPasswordResetLink = async (newPasswordFromLink: NewPasswordFromLink, options?: Parameters<typeof transport>[1]): Promise<ResponsePasswordResetResult> => {
 
@@ -778,7 +780,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RedeemPasswordResetLinkMutationVariables = {data: NewPasswordFromLink}
 
     /**
- * @summary Set a new password with an emailed link
+ * @summary Reset Password
  */
 export const useRedeemPasswordResetLink = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemPasswordResetLink>>, TError,RedeemPasswordResetLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -800,7 +802,8 @@ export const getCreateProbeEventUrl = () => {
 }
 
 /**
- * @summary Add to the probe counter
+ * Adds the entry's amount to the shared counter and records the entry.
+ * @summary Add Probe Event
  */
 export const createProbeEvent = async (newProbeEvent: NewProbeEvent, options?: Parameters<typeof transport>[1]): Promise<ResponseProbeEventCreated> => {
 
@@ -867,7 +870,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateProbeEventMutationVariables = {data: NewProbeEvent}
 
     /**
- * @summary Add to the probe counter
+ * @summary Add Probe Event
  */
 export const useCreateProbeEvent = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProbeEvent>>, TError,CreateProbeEventMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -889,7 +892,8 @@ export const getGetRegistrationUrl = () => {
 }
 
 /**
- * @summary Get whether visitors can register
+ * Whether visitors can register.
+ * @summary Get Registration Status
  */
 export const getRegistration = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseRegistrationAvailability> => {
 
@@ -961,7 +965,7 @@ export function useGetRegistration<TData = Awaited<ReturnType<typeof getRegistra
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Get whether visitors can register
+ * @summary Get Registration Status
  */
 
 export function useGetRegistration<TData = Awaited<ReturnType<typeof getRegistration>>, TError = ErrorType<Problem>>(
@@ -992,7 +996,7 @@ export const getRequestRegistrationLinkUrl = () => {
 
 /**
  * An email without an account gets a link that expires in 24 hours; an email with an account gets a notice instead. An email that got 3 messages in the last hour or 5 in 24 hours gets nothing. While sending works, the response is the same in every case. One client may ask 10 times in 15 minutes, and everyone together 50 times an hour.
- * @summary Email a link that creates an account
+ * @summary Send Registration Link
  */
 export const requestRegistrationLink = async (newRegistrationRequest: NewRegistrationRequest, options?: Parameters<typeof transport>[1]): Promise<ResponseRegistrationRequestResult> => {
 
@@ -1059,7 +1063,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RequestRegistrationLinkMutationVariables = {data: NewRegistrationRequest}
 
     /**
- * @summary Email a link that creates an account
+ * @summary Send Registration Link
  */
 export const useRequestRegistrationLink = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestRegistrationLink>>, TError,RequestRegistrationLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -1082,7 +1086,7 @@ export const getRedeemRegistrationLinkUrl = () => {
 
 /**
  * Creates a member whose email, the one the link was sent to, is verified, when the email given is that one. Uses up every link sent to that email. Needs no session and signs no one in.
- * @summary Create a member account with an emailed link
+ * @summary Complete Registration
  */
 export const redeemRegistrationLink = async (newMember: NewMember, options?: Parameters<typeof transport>[1]): Promise<ResponseRegisteredMember> => {
 
@@ -1149,7 +1153,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RedeemRegistrationLinkMutationVariables = {data: NewMember}
 
     /**
- * @summary Create a member account with an emailed link
+ * @summary Complete Registration
  */
 export const useRedeemRegistrationLink = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof redeemRegistrationLink>>, TError,RedeemRegistrationLinkMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -1171,7 +1175,7 @@ export const getGetRegistrationSettingsUrl = () => {
 }
 
 /**
- * @summary Get the registration settings
+ * @summary Get Registration Settings
  */
 export const getRegistrationSettings = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseRegistrationSettings> => {
 
@@ -1243,7 +1247,7 @@ export function useGetRegistrationSettings<TData = Awaited<ReturnType<typeof get
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Get the registration settings
+ * @summary Get Registration Settings
  */
 
 export function useGetRegistrationSettings<TData = Awaited<ReturnType<typeof getRegistrationSettings>>, TError = ErrorType<Problem>>(
@@ -1273,8 +1277,8 @@ export const getSaveRegistrationSettingsUrl = () => {
 }
 
 /**
- * Opening needs system email settings that passed a test; closing always succeeds. Each save is recorded in the audit log.
- * @summary Open or close registration
+ * Opens or closes registration. Opening needs system email settings that passed a test; closing always succeeds. Each save is recorded in the audit log.
+ * @summary Save Registration Settings
  */
 export const saveRegistrationSettings = async (newRegistrationSettings: NewRegistrationSettings, options?: Parameters<typeof transport>[1]): Promise<ResponseRegistrationSettings> => {
 
@@ -1341,7 +1345,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SaveRegistrationSettingsMutationVariables = {data: NewRegistrationSettings}
 
     /**
- * @summary Open or close registration
+ * @summary Save Registration Settings
  */
 export const useSaveRegistrationSettings = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveRegistrationSettings>>, TError,SaveRegistrationSettingsMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -1363,7 +1367,8 @@ export const getListSessionsUrl = () => {
 }
 
 /**
- * @summary List the signed-in account's sessions
+ * Lists the signed-in account's live sessions.
+ * @summary List Sessions
  */
 export const listSessions = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseListedSessions> => {
 
@@ -1435,7 +1440,7 @@ export function useListSessions<TData = Awaited<ReturnType<typeof listSessions>>
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary List the signed-in account's sessions
+ * @summary List Sessions
  */
 
 export function useListSessions<TData = Awaited<ReturnType<typeof listSessions>>, TError = ErrorType<Problem>>(
@@ -1465,7 +1470,8 @@ export const getCreateSessionUrl = () => {
 }
 
 /**
- * @summary Sign in with a password
+ * Checks the email and password. An account without a confirmed authenticator is signed in; one with an authenticator gets step totp and a challenge cookie instead, and Sign In with Code finishes the sign-in.
+ * @summary Sign In
  */
 export const createSession = async (newSession: NewSession, options?: Parameters<typeof transport>[1]): Promise<ResponseSignInResult> => {
 
@@ -1532,7 +1538,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateSessionMutationVariables = {data: NewSession}
 
     /**
- * @summary Sign in with a password
+ * @summary Sign In
  */
 export const useCreateSession = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSession>>, TError,CreateSessionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -1554,7 +1560,8 @@ export const getDeleteCurrentSessionUrl = () => {
 }
 
 /**
- * @summary Sign out of the current session
+ * Ends the current session.
+ * @summary Sign Out
  */
 export const deleteCurrentSession = async ( options?: Parameters<typeof transport>[1]): Promise<void> => {
 
@@ -1606,7 +1613,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
     /**
- * @summary Sign out of the current session
+ * @summary Sign Out
  */
 export const useDeleteCurrentSession = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCurrentSession>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
@@ -1628,7 +1635,8 @@ export const getGetCurrentSessionUrl = () => {
 }
 
 /**
- * @summary Get the signed-in account
+ * Returns the signed-in account.
+ * @summary Get Current Session
  */
 export const getCurrentSession = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseCurrentSession> => {
 
@@ -1700,7 +1708,7 @@ export function useGetCurrentSession<TData = Awaited<ReturnType<typeof getCurren
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Get the signed-in account
+ * @summary Get Current Session
  */
 
 export function useGetCurrentSession<TData = Awaited<ReturnType<typeof getCurrentSession>>, TError = ErrorType<Problem>>(
@@ -1730,8 +1738,8 @@ export const getDeleteOtherSessionsUrl = () => {
 }
 
 /**
- * Keeps the current session. The count excludes sessions that had already expired.
- * @summary End every other session of the signed-in account
+ * Ends every session of the signed-in account except the current one. The count excludes sessions that had already expired.
+ * @summary End Other Sessions
  */
 export const deleteOtherSessions = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseEndedSessions> => {
 
@@ -1784,7 +1792,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
     /**
- * @summary End every other session of the signed-in account
+ * @summary End Other Sessions
  */
 export const useDeleteOtherSessions = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteOtherSessions>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
@@ -1806,7 +1814,8 @@ export const getCreateSessionWithCodeUrl = () => {
 }
 
 /**
- * @summary Complete sign-in with an authenticator or backup code
+ * Completes a sign-in that needs a second factor, with an authenticator code or a backup code.
+ * @summary Sign In with Code
  */
 export const createSessionWithCode = async (newCodeSession: NewCodeSession, options?: Parameters<typeof transport>[1]): Promise<ResponseSignInResult> => {
 
@@ -1873,7 +1882,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateSessionWithCodeMutationVariables = {data: NewCodeSession}
 
     /**
- * @summary Complete sign-in with an authenticator or backup code
+ * @summary Sign In with Code
  */
 export const useCreateSessionWithCode = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSessionWithCode>>, TError,CreateSessionWithCodeMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -1895,8 +1904,8 @@ export const getDeleteSessionUrl = (id: string,) => {
 }
 
 /**
- * To end the current session, sign out instead.
- * @summary End another session of the signed-in account
+ * Ends another session of the signed-in account. To end the current session, sign out instead.
+ * @summary End Session
  */
 export const deleteSession = async (id: string, options?: Parameters<typeof transport>[1]): Promise<ResponseEndedSessions> => {
 
@@ -1949,7 +1958,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteSessionMutationVariables = {id: string}
 
     /**
- * @summary End another session of the signed-in account
+ * @summary End Session
  */
 export const useDeleteSession = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSession>>, TError,DeleteSessionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -1971,7 +1980,8 @@ export const getGetSetupStatusUrl = () => {
 }
 
 /**
- * @summary Get first-admin setup status
+ * Whether the first administrator can be created: done once an administrator exists; otherwise unconfigured without a setup token, or open with one.
+ * @summary Get Setup Status
  */
 export const getSetupStatus = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseSetupStatus> => {
 
@@ -2043,7 +2053,7 @@ export function useGetSetupStatus<TData = Awaited<ReturnType<typeof getSetupStat
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Get first-admin setup status
+ * @summary Get Setup Status
  */
 
 export function useGetSetupStatus<TData = Awaited<ReturnType<typeof getSetupStatus>>, TError = ErrorType<Problem>>(
@@ -2073,7 +2083,8 @@ export const getCreateFirstAdminUrl = () => {
 }
 
 /**
- * @summary Create the first administrator
+ * Creates the first administrator with the setup token. Works once, and only while a setup token is configured.
+ * @summary Create First Administrator
  */
 export const createFirstAdmin = async (newSetup: NewSetup, options?: Parameters<typeof transport>[1]): Promise<ResponseFirstAdmin> => {
 
@@ -2140,7 +2151,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CreateFirstAdminMutationVariables = {data: NewSetup}
 
     /**
- * @summary Create the first administrator
+ * @summary Create First Administrator
  */
 export const useCreateFirstAdmin = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFirstAdmin>>, TError,CreateFirstAdminMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -2163,7 +2174,7 @@ export const getGetSystemEmailUrl = () => {
 
 /**
  * The instance's own sender, separate from members' mailboxes. The password is never returned.
- * @summary Get the system email settings
+ * @summary Get System Email Settings
  */
 export const getSystemEmail = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseSystemEmail> => {
 
@@ -2235,7 +2246,7 @@ export function useGetSystemEmail<TData = Awaited<ReturnType<typeof getSystemEma
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Get the system email settings
+ * @summary Get System Email Settings
  */
 
 export function useGetSystemEmail<TData = Awaited<ReturnType<typeof getSystemEmail>>, TError = ErrorType<Problem>>(
@@ -2265,8 +2276,8 @@ export const getSaveSystemEmailUrl = () => {
 }
 
 /**
- * Saving clears the tested time until a test message passes. The save is recorded in the audit log, without setting values.
- * @summary Replace the system email settings
+ * Replaces the saved settings. Saving clears the tested time until a test message passes. The save is recorded in the audit log, without setting values.
+ * @summary Save System Email Settings
  */
 export const saveSystemEmail = async (newSystemEmailSettings: NewSystemEmailSettings, options?: Parameters<typeof transport>[1]): Promise<ResponseSystemEmail> => {
 
@@ -2333,7 +2344,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SaveSystemEmailMutationVariables = {data: NewSystemEmailSettings}
 
     /**
- * @summary Replace the system email settings
+ * @summary Save System Email Settings
  */
 export const useSaveSystemEmail = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveSystemEmail>>, TError,SaveSystemEmailMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -2355,8 +2366,8 @@ export const getSendSystemEmailTestMessageUrl = () => {
 }
 
 /**
- * A server or network refusal is a failed result, not an error. A pass records the tested time; a failure clears it. Test messages are not audited.
- * @summary Send a test message with the saved system email settings
+ * Sends a test message with the saved settings. A server or network refusal is a failed result, not an error. A pass records the tested time; a failure clears it. Test messages are not audited.
+ * @summary Send Test Message
  */
 export const sendSystemEmailTestMessage = async (systemEmailTestMessageRecipient: SystemEmailTestMessageRecipient, options?: Parameters<typeof transport>[1]): Promise<ResponseSystemEmailTestMessageResult> => {
 
@@ -2423,7 +2434,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SendSystemEmailTestMessageMutationVariables = {data: SystemEmailTestMessageRecipient}
 
     /**
- * @summary Send a test message with the saved system email settings
+ * @summary Send Test Message
  */
 export const useSendSystemEmailTestMessage = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendSystemEmailTestMessage>>, TError,SendSystemEmailTestMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -2445,7 +2456,7 @@ export const getGetTOTPStatusUrl = () => {
 }
 
 /**
- * @summary Get two-factor authentication status
+ * @summary Get Two-Factor Status
  */
 export const getTOTPStatus = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseTotpStatus> => {
 
@@ -2517,7 +2528,7 @@ export function useGetTOTPStatus<TData = Awaited<ReturnType<typeof getTOTPStatus
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Get two-factor authentication status
+ * @summary Get Two-Factor Status
  */
 
 export function useGetTOTPStatus<TData = Awaited<ReturnType<typeof getTOTPStatus>>, TError = ErrorType<Problem>>(
@@ -2547,7 +2558,8 @@ export const getStartTOTPEnrollmentUrl = () => {
 }
 
 /**
- * @summary Start or restart two-factor authentication enrollment
+ * Starts enrollment, or restarts a pending one.
+ * @summary Start Two-Factor Enrollment
  */
 export const startTOTPEnrollment = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseTotpEnrollment> => {
 
@@ -2600,7 +2612,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
     /**
- * @summary Start or restart two-factor authentication enrollment
+ * @summary Start Two-Factor Enrollment
  */
 export const useStartTOTPEnrollment = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTOTPEnrollment>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
@@ -2623,7 +2635,7 @@ export const getRegenerateTOTPBackupCodesUrl = () => {
 
 /**
  * Requires a fresh authenticator code. Invalidates the old backup codes and returns ten replacements once. Existing sessions stay signed in.
- * @summary Replace two-factor authentication backup codes
+ * @summary Replace Backup Codes
  */
 export const regenerateTOTPBackupCodes = async (totpRegenerationCode: TotpRegenerationCode, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpBackupCodes> => {
 
@@ -2690,7 +2702,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RegenerateTOTPBackupCodesMutationVariables = {data: TotpRegenerationCode}
 
     /**
- * @summary Replace two-factor authentication backup codes
+ * @summary Replace Backup Codes
  */
 export const useRegenerateTOTPBackupCodes = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>, TError,RegenerateTOTPBackupCodesMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -2713,7 +2725,7 @@ export const getConfirmTOTPEnrollmentUrl = () => {
 
 /**
  * Activates the authenticator, ends all existing sessions, and issues a replacement session cookie. Backup codes are returned once.
- * @summary Confirm two-factor authentication enrollment
+ * @summary Confirm Two-Factor Enrollment
  */
 export const confirmTOTPEnrollment = async (totpConfirmationCode: TotpConfirmationCode, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpConfirmation> => {
 
@@ -2780,7 +2792,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ConfirmTOTPEnrollmentMutationVariables = {data: TotpConfirmationCode}
 
     /**
- * @summary Confirm two-factor authentication enrollment
+ * @summary Confirm Two-Factor Enrollment
  */
 export const useConfirmTOTPEnrollment = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmTOTPEnrollment>>, TError,ConfirmTOTPEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -2803,7 +2815,7 @@ export const getDisableTOTPUrl = () => {
 
 /**
  * Members only. Requires a fresh authenticator code or an unused backup code. Removes the authenticator and all backup codes; existing sessions stay signed in.
- * @summary Turn off optional two-factor authentication
+ * @summary Turn Off Two-Factor
  */
 export const disableTOTP = async (totpDisableCode: TotpDisableCode, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpStatus> => {
 
@@ -2870,7 +2882,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DisableTOTPMutationVariables = {data: TotpDisableCode}
 
     /**
- * @summary Turn off optional two-factor authentication
+ * @summary Turn Off Two-Factor
  */
 export const useDisableTOTP = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disableTOTP>>, TError,DisableTOTPMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
@@ -2893,7 +2905,7 @@ export const getCancelTOTPEnrollmentUrl = () => {
 
 /**
  * Removes unconfirmed enrollment. Repeating cancellation succeeds if no factor remains. Confirmed authenticators cannot be canceled; existing sessions stay signed in.
- * @summary Cancel pending two-factor authentication enrollment
+ * @summary Cancel Two-Factor Enrollment
  */
 export const cancelTOTPEnrollment = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseTotpStatus> => {
 
@@ -2946,7 +2958,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
     /**
- * @summary Cancel pending two-factor authentication enrollment
+ * @summary Cancel Two-Factor Enrollment
  */
 export const useCancelTOTPEnrollment = <TError = ErrorType<Problem>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelTOTPEnrollment>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
