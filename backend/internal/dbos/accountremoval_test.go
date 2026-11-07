@@ -2,6 +2,7 @@ package dbos
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"slices"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/connectedaccount"
+	"inbok/internal/encryption"
 )
 
 // fakeRemovals answers every Revoke with outcome and err and every Discard
@@ -165,4 +167,68 @@ func TestRemovalWaitsForGoogle(t *testing.T) {
 	outcome, err := handle.GetResult(dbos.WithHandleTimeout(wait))
 	require.NoError(t, err)
 	assert.Equal(t, connectedaccount.RevokeRevoked, outcome)
+}
+
+// A disconnect saves the removal for the worker, whose input holds only
+// the removal's ID, never the token.
+func TestClientAccountRemoval(t *testing.T) {
+	// Given a member with a connected account, through storage that saves
+	// workflows with a Client.
+	db, conn, url := clientStack(t)
+	var member int64
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT id FROM users WHERE email = 'admin@example.com'").Scan(&member))
+	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
+	require.NoError(t, err)
+	accounts := connectedaccount.NewService(db, ring)
+	account, err := accounts.Connect(t.Context(), member, connectedaccount.Identity{Subject: "100000000000000000001", Email: "alex@example.com"}, "refresh-secret-1")
+	require.NoError(t, err)
+
+	// When the member disconnects it.
+	_, err = accounts.Disconnect(t.Context(), member, account.ID)
+	require.NoError(t, err)
+
+	// Then its removal waits in the Google queue, holding no token or
+	// email, until a worker revokes it.
+	assert.Equal(t, []string{"ENQUEUED"}, accountRemovalWorkflows(t, conn))
+	var input, queue string
+	require.NoError(t, conn.QueryRow(t.Context(), `SELECT i.inputs, s.queue_name FROM dbos.workflow_input i
+		JOIN dbos.workflow_status s USING (workflow_uuid) WHERE s.name = $1`, accountRemovalWorkflow).Scan(&input, &queue))
+	assert.Equal(t, googleQueue, queue)
+	decoded, err := base64.StdEncoding.DecodeString(input)
+	require.NoError(t, err)
+	assert.Contains(t, string(decoded), `"RemovalID"`)
+	assert.NotContains(t, string(decoded), "refresh")
+	assert.NotContains(t, string(decoded), "@")
+	removals := &fakeRemovals{outcome: connectedaccount.RevokeRevoked}
+	removalWorker(t, url, removals)
+	require.Eventually(t, func() bool { revoked, _ := removals.calls(); return len(revoked) == 1 }, wait, 50*time.Millisecond)
+}
+
+// A disconnect that fails as it commits rolls its removal job back with
+// it, and keeps the account.
+func TestClientRemovalRollback(t *testing.T) {
+	// Given a connected account, and removals that fail as they commit,
+	// after the job is saved.
+	db, conn, _ := clientStack(t)
+	var member int64
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT id FROM users WHERE email = 'admin@example.com'").Scan(&member))
+	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
+	require.NoError(t, err)
+	accounts := connectedaccount.NewService(db, ring)
+	account, err := accounts.Connect(t.Context(), member, connectedaccount.Identity{Subject: "100000000000000000001", Email: "alex@example.com"}, "refresh-secret-1")
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), `CREATE FUNCTION reject_removal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'removal rejected'; END $$`)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), "CREATE CONSTRAINT TRIGGER reject_write AFTER INSERT ON account_removals DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_removal()")
+	require.NoError(t, err)
+
+	// When the member disconnects it.
+	_, err = accounts.Disconnect(t.Context(), member, account.ID)
+
+	// Then the disconnect fails, the account stays, and no job is saved.
+	require.ErrorContains(t, err, "removal rejected")
+	listed, err := accounts.List(t.Context(), member)
+	require.NoError(t, err)
+	assert.Equal(t, []connectedaccount.Account{account}, listed)
+	assert.Empty(t, accountRemovalWorkflows(t, conn))
 }

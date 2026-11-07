@@ -19,8 +19,10 @@ func (q *Queries) DeleteAccountRemoval(ctx context.Context, id int64) error {
 	return err
 }
 
-const deleteConnectedAccount = `-- name: DeleteConnectedAccount :execrows
+const deleteConnectedAccount = `-- name: DeleteConnectedAccount :one
 DELETE FROM connected_accounts WHERE id = $1 AND user_id = $2
+RETURNING id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at,
+    refresh_token_key_id, refresh_token_ciphertext
 `
 
 type DeleteConnectedAccountParams struct {
@@ -28,12 +30,65 @@ type DeleteConnectedAccountParams struct {
 	UserID int64
 }
 
-func (q *Queries) DeleteConnectedAccount(ctx context.Context, arg DeleteConnectedAccountParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteConnectedAccount, arg.ID, arg.UserID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+type DeleteConnectedAccountRow struct {
+	ID                     int64
+	UserID                 int64
+	Provider               string
+	Email                  string
+	OauthSubject           string
+	NeedsReconnectSince    *time.Time
+	CreatedAt              time.Time
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
+}
+
+// Returns the credential too, which the disconnect keeps for revocation.
+func (q *Queries) DeleteConnectedAccount(ctx context.Context, arg DeleteConnectedAccountParams) (DeleteConnectedAccountRow, error) {
+	row := q.db.QueryRow(ctx, deleteConnectedAccount, arg.ID, arg.UserID)
+	var i DeleteConnectedAccountRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.Email,
+		&i.OauthSubject,
+		&i.NeedsReconnectSince,
+		&i.CreatedAt,
+		&i.RefreshTokenKeyID,
+		&i.RefreshTokenCiphertext,
+	)
+	return i, err
+}
+
+const insertAccountRemoval = `-- name: InsertAccountRemoval :one
+INSERT INTO account_removals (user_id, account_id, provider, oauth_subject,
+    refresh_token_key_id, refresh_token_ciphertext)
+VALUES ($1, $2, $3, $4,
+    $5, $6)
+RETURNING id
+`
+
+type InsertAccountRemovalParams struct {
+	UserID                 int64
+	AccountID              int64
+	Provider               string
+	OauthSubject           string
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
+}
+
+func (q *Queries) InsertAccountRemoval(ctx context.Context, arg InsertAccountRemovalParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertAccountRemoval,
+		arg.UserID,
+		arg.AccountID,
+		arg.Provider,
+		arg.OauthSubject,
+		arg.RefreshTokenKeyID,
+		arg.RefreshTokenCiphertext,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const insertConnectedAccount = `-- name: InsertConnectedAccount :one

@@ -301,7 +301,8 @@ func TestFinishReconnectedAccountGone(t *testing.T) {
 	account, err := c.accounts.Connect(t.Context(), member, alex, "refresh-0")
 	require.NoError(t, err)
 	state := c.start(t, account.ID)
-	require.NoError(t, c.accounts.Disconnect(t.Context(), member, account.ID))
+	_, err = c.accounts.Disconnect(t.Context(), member, account.ID)
+	require.NoError(t, err)
 
 	_, err = c.finish(t, state)
 

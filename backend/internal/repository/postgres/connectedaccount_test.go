@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"testing"
@@ -27,9 +28,37 @@ type connectedAccountsTest struct {
 	otherMember int64
 }
 
+// removalWorkflows saves each account removal job as a row of
+// test_account_removal_jobs in the caller's transaction, or fails with err.
+type removalWorkflows struct {
+	Workflows
+	err error
+}
+
+func (w removalWorkflows) EnqueueAccountRemoval(ctx context.Context, tx pgx.Tx, removalID int64) error {
+	if w.err != nil {
+		return w.err
+	}
+	_, err := tx.Exec(ctx, "INSERT INTO test_account_removal_jobs (removal_id) VALUES ($1)", removalID)
+	return err
+}
+
+// removalJobs lists the removal IDs of the saved jobs.
+func (c connectedAccountsTest) removalJobs(t *testing.T) []int64 {
+	t.Helper()
+	rows, err := c.conn.Query(t.Context(), "SELECT removal_id FROM test_account_removal_jobs ORDER BY removal_id")
+	require.NoError(t, err)
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	require.NoError(t, err)
+	return ids
+}
+
 func newConnectedAccountsTest(t *testing.T) connectedAccountsTest {
 	t.Helper()
 	db, conn := setupStorage(t)
+	_, err := conn.Exec(t.Context(), "CREATE TABLE test_account_removal_jobs (removal_id bigint NOT NULL)")
+	require.NoError(t, err)
+	db = db.WithWorkflows(removalWorkflows{})
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	require.NoError(t, err)
 	return connectedAccountsTest{
@@ -219,7 +248,7 @@ func TestConnectedAccountReconnectDisconnectConcurrent(t *testing.T) {
 			_, reconnectErr = c.service.Reconnect(t.Context(), c.member, account.ID, alexIdentity, "refresh-new")
 		})
 		wg.Go(func() {
-			disconnectErr = c.service.Disconnect(t.Context(), c.member, account.ID)
+			_, disconnectErr = c.service.Disconnect(t.Context(), c.member, account.ID)
 		})
 		wg.Wait()
 
@@ -256,16 +285,34 @@ func TestConnectedAccountListEmpty(t *testing.T) {
 	assert.Empty(t, accounts)
 }
 
+// A disconnect deletes the account, keeps its token as a removal, and
+// saves the job that revokes it, which needs only the removal's ID.
 func TestConnectedAccountDisconnect(t *testing.T) {
 	c := newConnectedAccountsTest(t)
 	account, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
 	require.NoError(t, err)
-	require.NoError(t, c.service.Disconnect(t.Context(), c.member, account.ID))
+	keyID, ciphertext := c.storedCiphertext(t, account.ID)
 
-	err = c.service.Disconnect(t.Context(), c.member, account.ID)
+	disconnected, err := c.service.Disconnect(t.Context(), c.member, account.ID)
+	require.NoError(t, err)
 
-	require.ErrorIs(t, err, connectedaccount.ErrNotFound)
+	assert.Equal(t, account, disconnected)
 	assert.Equal(t, int64(0), c.countConnectedAccounts(t))
+	jobs := c.removalJobs(t)
+	require.Len(t, jobs, 1)
+	removal, err := c.db.ReadAccountRemoval(t.Context(), jobs[0])
+	require.NoError(t, err)
+	assert.Equal(t, connectedaccount.Removal{
+		UserID: c.member, AccountID: account.ID,
+		Credential: connectedaccount.Credential{KeyID: keyID, Ciphertext: ciphertext},
+	}, removal)
+
+	t.Run("again", func(t *testing.T) {
+		_, err := c.service.Disconnect(t.Context(), c.member, account.ID)
+
+		require.ErrorIs(t, err, connectedaccount.ErrNotFound)
+		assert.Len(t, c.removalJobs(t), 1)
+	})
 }
 
 func TestConnectedAccountDisconnectOtherMembersAccount(t *testing.T) {
@@ -273,10 +320,30 @@ func TestConnectedAccountDisconnectOtherMembersAccount(t *testing.T) {
 	account, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
 	require.NoError(t, err)
 
-	err = c.service.Disconnect(t.Context(), c.otherMember, account.ID)
+	_, err = c.service.Disconnect(t.Context(), c.otherMember, account.ID)
 
 	require.ErrorIs(t, err, connectedaccount.ErrNotFound)
 	assert.Equal(t, int64(1), c.countConnectedAccounts(t))
+	assert.Empty(t, c.removalJobs(t))
+}
+
+// A disconnect whose job cannot be saved keeps the account and saves no
+// removal.
+func TestDisconnectRollback(t *testing.T) {
+	c := newConnectedAccountsTest(t)
+	account, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
+	require.NoError(t, err)
+	failed := errors.New("enqueue failed")
+
+	_, failedErr := connectedaccount.NewService(c.db.WithWorkflows(removalWorkflows{err: failed}), c.ring).Disconnect(t.Context(), c.member, account.ID)
+	_, plainErr := connectedaccount.NewService(&DB{pool: c.db.pool}, c.ring).Disconnect(t.Context(), c.member, account.ID)
+
+	require.ErrorIs(t, failedErr, failed)
+	require.ErrorIs(t, plainErr, errNoWorkflows)
+	assert.Equal(t, int64(1), c.countConnectedAccounts(t))
+	var removals int64
+	require.NoError(t, c.conn.QueryRow(t.Context(), "SELECT count(*) FROM account_removals").Scan(&removals))
+	assert.Equal(t, int64(0), removals)
 }
 
 // Deleting a member deletes their accounts and tokens with them.
@@ -449,9 +516,10 @@ func TestTokenReplace(t *testing.T) {
 	t.Run("gone", func(t *testing.T) {
 		c := newConnectedAccountsTest(t)
 		account, read := c.connectAlex(t)
-		require.NoError(t, c.service.Disconnect(t.Context(), c.member, account.ID))
+		_, err := c.service.Disconnect(t.Context(), c.member, account.ID)
+		require.NoError(t, err)
 
-		err := c.db.ReplaceConnectedAccountToken(t.Context(), account.ID, read, c.seal(t, c.member, account.ID, "refresh-2"))
+		err = c.db.ReplaceConnectedAccountToken(t.Context(), account.ID, read, c.seal(t, c.member, account.ID, "refresh-2"))
 
 		require.ErrorIs(t, err, connectedaccount.ErrCredentialChanged)
 		assert.Equal(t, int64(0), c.countConnectedAccounts(t))

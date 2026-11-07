@@ -127,7 +127,8 @@ func TestConnectStateDeletedWithItsRows(t *testing.T) {
 	// When the first session signs out and the account is disconnected.
 	_, err = c.conn.Exec(t.Context(), "DELETE FROM sessions WHERE id = $1", session)
 	require.NoError(t, err)
-	require.NoError(t, c.service.Disconnect(t.Context(), c.member, account.ID))
+	_, err = c.service.Disconnect(t.Context(), c.member, account.ID)
+	require.NoError(t, err)
 
 	// Then both states are gone.
 	assert.Equal(t, int64(0), countConnectStates(t, c.conn))

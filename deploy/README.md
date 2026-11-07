@@ -133,8 +133,8 @@ work survives a restart. It reaches PostgreSQL and, to send inbok's
 email, mail servers on the internet; it needs `INBOK_ENCRYPTION_KEYS` and
 `INBOK_PUBLIC_URL` like the server, and the same `INBOK_GOOGLE_CLIENT_ID`
 and `INBOK_GOOGLE_CLIENT_SECRET`, which `compose.yaml` passes to both, for
-the job that asks Google to end inbok's permission for a removed Gmail
-account. It answers its health check on its own
+the job that asks Google to end inbok's permission for a Gmail account a
+member disconnects. It answers its health check on its own
 loopback address, so nothing else can reach it. Stopping, restarting, or replacing it is
 safe: work it left unfinished resumes when it starts again, from the step
 that had not finished, so a step can run twice. That relies on its

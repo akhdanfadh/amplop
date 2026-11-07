@@ -36,8 +36,18 @@ FROM connected_accounts
 WHERE user_id = @user_id
 ORDER BY created_at, id;
 
--- name: DeleteConnectedAccount :execrows
-DELETE FROM connected_accounts WHERE id = @id AND user_id = @user_id;
+-- name: DeleteConnectedAccount :one
+-- Returns the credential too, which the disconnect keeps for revocation.
+DELETE FROM connected_accounts WHERE id = @id AND user_id = @user_id
+RETURNING id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at,
+    refresh_token_key_id, refresh_token_ciphertext;
+
+-- name: InsertAccountRemoval :one
+INSERT INTO account_removals (user_id, account_id, provider, oauth_subject,
+    refresh_token_key_id, refresh_token_ciphertext)
+VALUES (@user_id, @account_id, @provider, @oauth_subject,
+    @refresh_token_key_id, @refresh_token_ciphertext)
+RETURNING id;
 
 -- name: ReadAccountRemoval :one
 -- shared is whether a connected account is the same provider's account,

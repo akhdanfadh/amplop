@@ -108,16 +108,56 @@ func (db *DB) ListConnectedAccounts(ctx context.Context, userID int64) ([]connec
 	return accounts, nil
 }
 
-// DeleteConnectedAccount deletes userID's account accountID.
-func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int64) error {
-	deleted, err := sqlc.New(db.pool).DeleteConnectedAccount(ctx, sqlc.DeleteConnectedAccountParams{ID: accountID, UserID: userID})
+// DeleteConnectedAccount deletes userID's account accountID, moves its
+// credential to an account removal, and saves the job that revokes it, in
+// one transaction. It returns the deleted account, or
+// [connectedaccount.ErrNotFound] when userID has no such account.
+func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int64) (connectedaccount.Account, error) {
+	var deleted connectedaccount.Account
+	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+
+		// 1. Delete the account, which deletes its connect states with it.
+		row, err := queries.DeleteConnectedAccount(ctx, sqlc.DeleteConnectedAccountParams{ID: accountID, UserID: userID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return connectedaccount.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("delete connected account: %w", err)
+		}
+
+		// 2. Keep its credential for the job, which then needs only the
+		// removal's ID (ADR003).
+		removalID, err := queries.InsertAccountRemoval(ctx, sqlc.InsertAccountRemovalParams{
+			UserID:                 row.UserID,
+			AccountID:              row.ID,
+			Provider:               row.Provider,
+			OauthSubject:           row.OauthSubject,
+			RefreshTokenKeyID:      row.RefreshTokenKeyID,
+			RefreshTokenCiphertext: row.RefreshTokenCiphertext,
+		})
+		if err != nil {
+			return fmt.Errorf("insert account removal: %w", err)
+		}
+
+		// 3. Save the job in this transaction, so it commits or rolls back
+		// with the disconnect.
+		if db.workflows == nil {
+			return errNoWorkflows
+		}
+		if err := db.workflows.EnqueueAccountRemoval(ctx, tx, removalID); err != nil {
+			return fmt.Errorf("save account removal: %w", err)
+		}
+		deleted = connectedAccountFromRow(sqlc.ListConnectedAccountsRow{
+			ID: row.ID, UserID: row.UserID, Provider: row.Provider, Email: row.Email,
+			OauthSubject: row.OauthSubject, NeedsReconnectSince: row.NeedsReconnectSince, CreatedAt: row.CreatedAt,
+		})
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("delete connected account: %w", err)
+		return connectedaccount.Account{}, err
 	}
-	if deleted == 0 {
-		return connectedaccount.ErrNotFound
-	}
-	return nil
+	return deleted, nil
 }
 
 // ReadAccountRemoval returns removal removalID, with whether a

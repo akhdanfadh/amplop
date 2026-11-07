@@ -90,13 +90,14 @@ func (m *memoryStorage) ListConnectedAccounts(_ context.Context, userID int64) (
 	return accounts, nil
 }
 
-func (m *memoryStorage) DeleteConnectedAccount(_ context.Context, userID, accountID int64) error {
+func (m *memoryStorage) DeleteConnectedAccount(_ context.Context, userID, accountID int64) (Account, error) {
 	i := m.find(userID, accountID)
 	if i < 0 {
-		return ErrNotFound
+		return Account{}, ErrNotFound
 	}
-	m.accounts = append(m.accounts[:i], m.accounts[i+1:]...)
-	return nil
+	deleted := m.accounts[i].account
+	m.keepRemoval(userID, accountID)
+	return deleted, nil
 }
 
 // keepRemoval deletes userID's account accountID and keeps its token as a
@@ -321,9 +322,12 @@ func TestDisconnect(t *testing.T) {
 	account, err := service.Connect(t.Context(), member, alex, "refresh-1")
 	require.NoError(t, err)
 
-	require.NoError(t, service.Disconnect(t.Context(), member, account.ID))
+	disconnected, err := service.Disconnect(t.Context(), member, account.ID)
+	require.NoError(t, err)
 
+	assert.Equal(t, account, disconnected)
 	assert.Empty(t, storage.accounts)
+	require.Len(t, storage.removals, 1, "the token is kept for revoking")
 }
 
 func TestDisconnectOtherMembersAccount(t *testing.T) {
@@ -331,10 +335,11 @@ func TestDisconnectOtherMembersAccount(t *testing.T) {
 	account, err := service.Connect(t.Context(), otherMember, alex, "refresh-1")
 	require.NoError(t, err)
 
-	err = service.Disconnect(t.Context(), member, account.ID)
+	_, err = service.Disconnect(t.Context(), member, account.ID)
 
 	require.ErrorIs(t, err, ErrNotFound)
 	assert.Len(t, storage.accounts, 1)
+	assert.Empty(t, storage.removals)
 }
 
 // failingSealer refuses to seal, as a keyring cannot today but another

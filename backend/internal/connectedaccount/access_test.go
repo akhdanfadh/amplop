@@ -236,9 +236,10 @@ func TestTokenChangedTwice(t *testing.T) {
 
 func TestTokenAccountGone(t *testing.T) {
 	a := newAccessTest(t)
-	require.NoError(t, a.accounts.Disconnect(t.Context(), member, a.account.ID))
+	_, err := a.accounts.Disconnect(t.Context(), member, a.account.ID)
+	require.NoError(t, err)
 
-	_, err := a.access.Token(t.Context(), a.account.ID)
+	_, err = a.access.Token(t.Context(), a.account.ID)
 
 	require.ErrorIs(t, err, ErrNotFound)
 	assert.Empty(t, a.google.refreshed)
@@ -248,7 +249,8 @@ func TestTokenAccountGone(t *testing.T) {
 func TestTokenGoneOnReplace(t *testing.T) {
 	a := newAccessTest(t)
 	a.google.answer = func(int) (Renewal, error) {
-		require.NoError(t, a.accounts.Disconnect(t.Context(), member, a.account.ID))
+		_, err := a.accounts.Disconnect(t.Context(), member, a.account.ID)
+		require.NoError(t, err)
 		return Renewal{AccessToken: NewAccessToken("access-1"), RefreshToken: "refresh-2"}, nil
 	}
 
@@ -262,7 +264,8 @@ func TestTokenGoneOnReplace(t *testing.T) {
 func TestTokenGoneMidway(t *testing.T) {
 	a := newAccessTest(t)
 	a.google.answer = func(int) (Renewal, error) {
-		require.NoError(t, a.accounts.Disconnect(t.Context(), member, a.account.ID))
+		_, err := a.accounts.Disconnect(t.Context(), member, a.account.ID)
+		require.NoError(t, err)
 		return Renewal{AccessToken: NewAccessToken("access-1")}, nil
 	}
 

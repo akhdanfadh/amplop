@@ -110,9 +110,11 @@ type Storage interface {
 	// ListConnectedAccounts returns userID's accounts, oldest first.
 	ListConnectedAccounts(ctx context.Context, userID int64) ([]Account, error)
 
-	// DeleteConnectedAccount deletes userID's account accountID and returns
-	// [ErrNotFound] when userID has no such account.
-	DeleteConnectedAccount(ctx context.Context, userID, accountID int64) error
+	// DeleteConnectedAccount deletes userID's account accountID, keeps its
+	// credential as a removal, and saves the job that revokes it, in one
+	// transaction. It returns the deleted account, or [ErrNotFound] when
+	// userID has no such account.
+	DeleteConnectedAccount(ctx context.Context, userID, accountID int64) (Account, error)
 }
 
 type sealer interface {
@@ -183,9 +185,10 @@ func (s *Service) List(ctx context.Context, userID int64) ([]Account, error) {
 	return s.storage.ListConnectedAccounts(ctx, userID)
 }
 
-// Disconnect deletes userID's account accountID with its credential. It
-// returns [ErrNotFound] when userID has no such account.
-func (s *Service) Disconnect(ctx context.Context, userID, accountID int64) error {
+// Disconnect deletes userID's account accountID with its credential, which a
+// job then revokes at Google ([Removals.Revoke]), and returns the deleted
+// account. It returns [ErrNotFound] when userID has no such account.
+func (s *Service) Disconnect(ctx context.Context, userID, accountID int64) (Account, error) {
 	return s.storage.DeleteConnectedAccount(ctx, userID, accountID)
 }
 

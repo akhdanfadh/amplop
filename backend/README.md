@@ -295,9 +295,10 @@ error that names only where the send failed.
 
 The workflow `inbok.account-removal`, run from the queue `inbok.google`,
 finishes what removing a Gmail account leaves to do once its row is gone:
-so far, asking Google to end inbok's permission. Its input is only the ID
-of an `account_removals` row, which holds the account's sealed refresh
-token, so the token never sits in DBOS's tables. Every job that calls
+so far, asking Google to end inbok's permission. A disconnect deletes the
+account, moves its sealed refresh token to an `account_removals` row, and
+saves the job, in one transaction, so the job's input is only the
+removal's ID and the token never sits in DBOS's tables. Every job that calls
 Google runs on `inbok.google`, so one limit on it protects the Google
 project's quota.
 
