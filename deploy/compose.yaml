@@ -119,6 +119,10 @@ services:
       # and links in its messages start with the public URL.
       INBOK_ENCRYPTION_KEYS: ${INBOK_ENCRYPTION_KEYS:?set it in deploy/.env}
       INBOK_PUBLIC_URL: ${INBOK_PUBLIC_URL:?set it in deploy/.env}
+      # It revokes a disconnected Gmail account's permission at Google
+      # with the same client as inbok.
+      INBOK_GOOGLE_CLIENT_ID: ${INBOK_GOOGLE_CLIENT_ID:-}
+      INBOK_GOOGLE_CLIENT_SECRET: ${INBOK_GOOGLE_CLIENT_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy

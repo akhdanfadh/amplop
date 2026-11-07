@@ -120,6 +120,34 @@ func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int6
 	return nil
 }
 
+// ReadAccountRemoval returns removal removalID, with whether a
+// connected account is the same Google account, or
+// [connectedaccount.ErrNotFound] when there is none.
+func (db *DB) ReadAccountRemoval(ctx context.Context, removalID int64) (connectedaccount.Removal, error) {
+	row, err := sqlc.New(db.pool).ReadAccountRemoval(ctx, removalID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return connectedaccount.Removal{}, connectedaccount.ErrNotFound
+	}
+	if err != nil {
+		return connectedaccount.Removal{}, fmt.Errorf("read account removal: %w", err)
+	}
+	return connectedaccount.Removal{
+		UserID:     row.UserID,
+		AccountID:  row.AccountID,
+		Credential: connectedaccount.Credential{KeyID: row.RefreshTokenKeyID, Ciphertext: row.RefreshTokenCiphertext},
+		Shared:     row.Shared,
+	}, nil
+}
+
+// DeleteAccountRemoval deletes removal removalID; one already gone
+// is no error.
+func (db *DB) DeleteAccountRemoval(ctx context.Context, removalID int64) error {
+	if err := sqlc.New(db.pool).DeleteAccountRemoval(ctx, removalID); err != nil {
+		return fmt.Errorf("delete account removal: %w", err)
+	}
+	return nil
+}
+
 // ReadConnectedAccountAccess returns account accountID's credential and whether its
 // provider work has stopped. It returns [connectedaccount.ErrNotFound] when
 // there is no such account.

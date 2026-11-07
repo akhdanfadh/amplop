@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+const deleteAccountRemoval = `-- name: DeleteAccountRemoval :exec
+DELETE FROM account_removals WHERE id = $1
+`
+
+func (q *Queries) DeleteAccountRemoval(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, deleteAccountRemoval, id)
+	return err
+}
+
 const deleteConnectedAccount = `-- name: DeleteConnectedAccount :execrows
 DELETE FROM connected_accounts WHERE id = $1 AND user_id = $2
 `
@@ -196,6 +205,39 @@ func (q *Queries) NextConnectedAccountID(ctx context.Context) (int64, error) {
 	var nextval int64
 	err := row.Scan(&nextval)
 	return nextval, err
+}
+
+const readAccountRemoval = `-- name: ReadAccountRemoval :one
+SELECT r.user_id, r.account_id, r.refresh_token_key_id, r.refresh_token_ciphertext,
+    EXISTS (
+        SELECT 1 FROM connected_accounts ca
+        WHERE ca.provider = r.provider AND ca.oauth_subject = r.oauth_subject
+    ) AS shared
+FROM account_removals r
+WHERE r.id = $1
+`
+
+type ReadAccountRemovalRow struct {
+	UserID                 int64
+	AccountID              int64
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
+	Shared                 bool
+}
+
+// shared is whether a connected account is the same provider's account,
+// whose grant revoking would end too.
+func (q *Queries) ReadAccountRemoval(ctx context.Context, id int64) (ReadAccountRemovalRow, error) {
+	row := q.db.QueryRow(ctx, readAccountRemoval, id)
+	var i ReadAccountRemovalRow
+	err := row.Scan(
+		&i.UserID,
+		&i.AccountID,
+		&i.RefreshTokenKeyID,
+		&i.RefreshTokenCiphertext,
+		&i.Shared,
+	)
+	return i, err
 }
 
 const readConnectedAccountAccess = `-- name: ReadConnectedAccountAccess :one

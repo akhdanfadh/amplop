@@ -28,6 +28,16 @@ type memoryStorage struct {
 	states   map[[sha256.Size]byte]ConnectState
 	// deactivated are the deactivated members.
 	deactivated map[int64]bool
+	// removals are the disconnected accounts' tokens, by removal ID.
+	removals      map[int64]storedRemoval
+	lastRemovalID int64
+}
+
+// storedRemoval is a kept token as the table keeps it: with the Google
+// account it belongs to.
+type storedRemoval struct {
+	removal Removal
+	subject string
 }
 
 func (m *memoryStorage) InsertConnectedAccount(_ context.Context, account NewAccount, seal func(int64) (Credential, error)) (Account, error) {
@@ -87,6 +97,23 @@ func (m *memoryStorage) DeleteConnectedAccount(_ context.Context, userID, accoun
 	}
 	m.accounts = append(m.accounts[:i], m.accounts[i+1:]...)
 	return nil
+}
+
+// keepRemoval deletes userID's account accountID and keeps its token as a
+// removal, as a disconnect does, and returns the removal's ID.
+func (m *memoryStorage) keepRemoval(userID, accountID int64) int64 {
+	i := m.find(userID, accountID)
+	deleted := m.accounts[i]
+	m.accounts = append(m.accounts[:i], m.accounts[i+1:]...)
+	if m.removals == nil {
+		m.removals = map[int64]storedRemoval{}
+	}
+	m.lastRemovalID++
+	m.removals[m.lastRemovalID] = storedRemoval{
+		removal: Removal{UserID: userID, AccountID: accountID, Credential: deleted.credential},
+		subject: deleted.account.Subject,
+	}
+	return m.lastRemovalID
 }
 
 // find returns the index of userID's account accountID, or -1.

@@ -8,6 +8,10 @@ const (
 	// emailQueue runs every workflow that sends inbok's own email, so one
 	// limit on it, e.g. sends at once, protects the SMTP account.
 	emailQueue = "inbok.email"
+
+	// googleQueue runs every workflow that calls Google, so one limit on it
+	// protects the Google project's quota.
+	googleQueue = "inbok.google"
 )
 
 // registerQueue registers the queue name, keeping its saved settings if it

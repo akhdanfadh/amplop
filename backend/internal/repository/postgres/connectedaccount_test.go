@@ -508,3 +508,82 @@ func (c connectedAccountsTest) seal(t *testing.T, userID, accountID int64, refre
 func refreshTokenOwner(userID, accountID int64) string {
 	return "connected-account:" + strconv.FormatInt(userID, 10) + ":" + strconv.FormatInt(accountID, 10) + ":google-refresh-token"
 }
+
+// keepRemoval deletes account accountID and keeps its token as a removal,
+// as a disconnect leaves it, and returns the removal's ID.
+func (c connectedAccountsTest) keepRemoval(t *testing.T, accountID int64) int64 {
+	t.Helper()
+	var id int64
+	require.NoError(t, c.conn.QueryRow(t.Context(), `INSERT INTO account_removals
+		(user_id, account_id, provider, oauth_subject, refresh_token_key_id, refresh_token_ciphertext)
+		SELECT user_id, id, provider, oauth_subject, refresh_token_key_id, refresh_token_ciphertext
+		FROM connected_accounts WHERE id = $1 RETURNING id`, accountID).Scan(&id))
+	_, err := c.conn.Exec(t.Context(), "DELETE FROM connected_accounts WHERE id = $1", accountID)
+	require.NoError(t, err)
+	return id
+}
+
+// fakeRevoker records the tokens it is asked to revoke.
+type fakeRevoker struct{ revoked []string }
+
+func (f *fakeRevoker) Revoke(_ context.Context, refreshToken string) error {
+	f.revoked = append(f.revoked, refreshToken)
+	return nil
+}
+
+// A removal reads back its token and whether another member connected the
+// same Google account, and deleting it twice is no error.
+func TestAccountRemovalStorage(t *testing.T) {
+	c := newConnectedAccountsTest(t)
+	shared, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
+	require.NoError(t, err)
+	_, err = c.service.Connect(t.Context(), c.otherMember, alexIdentity, "refresh-2")
+	require.NoError(t, err)
+	alone, err := c.service.Connect(t.Context(), c.member, blairIdentity, "refresh-3")
+	require.NoError(t, err)
+	keyID, ciphertext := c.storedCiphertext(t, alone.ID)
+	sharedID, aloneID := c.keepRemoval(t, shared.ID), c.keepRemoval(t, alone.ID)
+
+	sharedRemoval, err := c.db.ReadAccountRemoval(t.Context(), sharedID)
+	require.NoError(t, err)
+	aloneRemoval, err := c.db.ReadAccountRemoval(t.Context(), aloneID)
+	require.NoError(t, err)
+
+	assert.True(t, sharedRemoval.Shared)
+	assert.Equal(t, connectedaccount.Removal{
+		UserID: c.member, AccountID: alone.ID,
+		Credential: connectedaccount.Credential{KeyID: keyID, Ciphertext: ciphertext},
+	}, aloneRemoval)
+	for range 2 {
+		require.NoError(t, c.db.DeleteAccountRemoval(t.Context(), aloneID))
+	}
+	_, err = c.db.ReadAccountRemoval(t.Context(), aloneID)
+	require.ErrorIs(t, err, connectedaccount.ErrNotFound)
+}
+
+// A kept token opens with the owner it was sealed for, and is revoked at
+// Google only when no other connection is the same Google account.
+func TestAccountRemoval(t *testing.T) {
+	c := newConnectedAccountsTest(t)
+	// Member and other member both connect alex; member also connects blair.
+	shared, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
+	require.NoError(t, err)
+	_, err = c.service.Connect(t.Context(), c.otherMember, alexIdentity, "refresh-2")
+	require.NoError(t, err)
+	alone, err := c.service.Connect(t.Context(), c.member, blairIdentity, "refresh-3")
+	require.NoError(t, err)
+	sharedID, aloneID := c.keepRemoval(t, shared.ID), c.keepRemoval(t, alone.ID)
+	google := &fakeRevoker{}
+	removals := connectedaccount.NewRemovals(c.db, c.ring, google)
+
+	sharedOutcome, err := removals.Revoke(t.Context(), sharedID)
+	require.NoError(t, err)
+	aloneOutcome, err := removals.Revoke(t.Context(), aloneID)
+	require.NoError(t, err)
+
+	assert.Equal(t, connectedaccount.RevokeShared, sharedOutcome)
+	assert.Equal(t, connectedaccount.RevokeRevoked, aloneOutcome)
+	assert.Equal(t, []string{"refresh-3"}, google.revoked)
+	_, err = c.db.ReadAccountRemoval(t.Context(), aloneID)
+	require.ErrorIs(t, err, connectedaccount.ErrNotFound)
+}

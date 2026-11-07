@@ -93,10 +93,15 @@ type refresher interface {
 	Refresh(ctx context.Context, refreshToken string) (Renewal, error)
 }
 
+// opener opens saved refresh tokens.
+type opener interface {
+	Open(id string, ciphertext []byte, owner string) ([]byte, error)
+}
+
 // keyring opens saved refresh tokens and seals their replacements.
 type keyring interface {
 	sealer
-	Open(id string, ciphertext []byte, owner string) ([]byte, error)
+	opener
 }
 
 // accessStorage keeps what [Access.Token] reads and changes.

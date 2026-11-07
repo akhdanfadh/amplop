@@ -11,6 +11,16 @@ import (
 	"uuid"
 )
 
+type AccountRemoval struct {
+	ID                     int64
+	UserID                 int64
+	AccountID              int64
+	Provider               string
+	OauthSubject           string
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
+}
+
 type AuditEvent struct {
 	ID           int64
 	OccurredAt   time.Time

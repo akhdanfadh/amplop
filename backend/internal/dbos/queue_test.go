@@ -21,7 +21,7 @@ func queueWorker(t *testing.T, url string) *Worker {
 // Restarting the worker keeps each queue's saved settings, e.g. a
 // concurrency limit set at runtime.
 func TestQueueKept(t *testing.T) {
-	for _, name := range []string{emailQueue} {
+	for _, name := range []string{emailQueue, googleQueue} {
 		t.Run(name, func(t *testing.T) {
 			// Given a worker whose queue got a limit while it ran.
 			url := migrated(t)

@@ -39,6 +39,20 @@ ORDER BY created_at, id;
 -- name: DeleteConnectedAccount :execrows
 DELETE FROM connected_accounts WHERE id = @id AND user_id = @user_id;
 
+-- name: ReadAccountRemoval :one
+-- shared is whether a connected account is the same provider's account,
+-- whose grant revoking would end too.
+SELECT r.user_id, r.account_id, r.refresh_token_key_id, r.refresh_token_ciphertext,
+    EXISTS (
+        SELECT 1 FROM connected_accounts ca
+        WHERE ca.provider = r.provider AND ca.oauth_subject = r.oauth_subject
+    ) AS shared
+FROM account_removals r
+WHERE r.id = @id;
+
+-- name: DeleteAccountRemoval :exec
+DELETE FROM account_removals WHERE id = @id;
+
 -- name: ReadConnectedAccountAccess :one
 -- The share lock waits for a deactivation in progress, so the member's flag
 -- is read as ADR029 asks before provider work.

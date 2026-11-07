@@ -79,7 +79,9 @@ The worker reads these environment variables:
 | `INBOK_HTTP_ADDR` | `127.0.0.1:8081`; the image sets `0.0.0.0:8080` | Address the worker answers health checks on: port 8081 for the worker, 8080 for `serve`, so both run on one machine. `.env` sets `serve`'s, so the Make commands pass the worker `INBOK_WORKER_HTTP_ADDR` instead; `deploy/compose.yaml` sets `127.0.0.1:8081`. |
 | `INBOK_WORKER_ID` | `worker` | The name the worker resumes unfinished work under: 1 to 64 letters, digits, `.`, `-`, or `_`. |
 | `INBOK_PUBLIC_URL` | none, required | As for `serve`: links in the email the worker sends start with it, and its host names inbok to mail servers. |
-| `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password. |
+| `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of removed Gmail accounts. |
+| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with. Empty: the worker runs no removals and leaves them queued. |
+| `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
 
 DBOS's own `DBOS__APPVERSION` and `DBOS__VMID` would replace the version
 and the ID that decide which work a worker resumes (see below), so the
@@ -288,6 +290,38 @@ late notice still tells. So a user may get the notice twice. The run logs `passw
 `user_id` and its outcome, a warning unless it was sent or skipped for a
 user gone or deactivated, or `password changed notice failed` with an
 error that names only where the send failed.
+
+### Account removal
+
+The workflow `inbok.account-removal`, run from the queue `inbok.google`,
+finishes what removing a Gmail account leaves to do once its row is gone:
+so far, asking Google to end inbok's permission. Its input is only the ID
+of an `account_removals` row, which holds the account's sealed refresh
+token, so the token never sits in DBOS's tables. Every job that calls
+Google runs on `inbok.google`, so one limit on it protects the Google
+project's quota.
+
+Its step, `revoke token` (`connectedaccount.Removals.Revoke`), first
+checks whether another member has connected the same Google account: a
+revocation ends the Google account's whole grant to inbok's Google
+project, theirs included, so it is then left alone (`shared`). Otherwise it
+opens the token, sends it to Google's revocation endpoint in the request
+body, and deletes the removal (`revoked`). Google answers a token it no
+longer knows, e.g. one already revoked, with 400 `invalid_token`, which
+counts as revoked, so a step that runs twice is harmless. A token no key
+opens is dropped (`unreadable`). Any other failure is retried 5 more
+times, waiting 1, 2, 4, 8, then 15 minutes; after that, `discard token`
+deletes the removal unrevoked, so no sealed token is kept, and the token
+lapses unused. The run logs `account removal` with the `removal_id` and
+its outcome, or `account removal failed` with an error holding only
+Google's status and OAuth error code.
+
+The worker registers the workflow, and listens to `inbok.google`, only
+when `INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET` are set.
+DBOS would otherwise claim a removal it cannot run for that worker, and
+no other worker could take it. Removals saved while the settings were set
+wait in the queue, with their sealed tokens, until a worker that has them
+runs; one that never does leaves them there.
 
 ### Inspecting workflows
 
@@ -650,14 +684,18 @@ entries, and restart every API instance and worker with the same list.
 Existing secrets are not re-encrypted; each keeps its original key until
 that factor is removed and enrolled again, and the system email password
 keeps its key until an administrator saves a new password, and a refresh
-token until its member reconnects the account. Administrators cannot turn
-TOTP off, so their factors can need an old key indefinitely. Remove an old
-key only when no query lists its ID:
+token until its member reconnects the account. A disconnected account's
+token keeps its key while it waits for the [account
+removal](#account-removal) job; without that key the job drops it
+without revoking. Administrators cannot turn TOTP off, so their factors
+can need an old key indefinitely. Remove an old key only when no query
+lists its ID:
 
 ```sql
 SELECT key_id, count(*) FROM user_totp GROUP BY key_id;
 SELECT password_key_id FROM system_email WHERE password_key_id IS NOT NULL;
 SELECT refresh_token_key_id, count(*) FROM connected_accounts GROUP BY refresh_token_key_id;
+SELECT refresh_token_key_id, count(*) FROM account_removals GROUP BY refresh_token_key_id;
 ```
 
 Back up the key list separately from database backups, so one stolen backup
@@ -1926,8 +1964,9 @@ For a job that runs once per request, follow the recovery notice
 2. `internal/dbos`: an input struct holding IDs and no personal data,
    the workflow registered under a fixed name with each step's retry
    policy, and a field in `Services` for the feature's type. A job that sends inbok's
-   email runs on `inbok.email` (`queue.go`), which every such job shares;
-   another kind of job adds its own queue there.
+   email runs on `inbok.email`, and one that calls Google on
+   `inbok.google` (`queue.go`), which every such job shares; another kind
+   of job adds its own queue there.
 3. `cmd/inbok/worker.go`: set that field.
 4. Save the workflow with the change that needs it, in one transaction.
    The feature's `Storage` method documents that it saves the job; its
@@ -1976,6 +2015,11 @@ does what Google's refresh tokens need:
   Google answered gets no token. Its checks hold at that last read; a job
   that must not act for an account gone since, e.g. one sending mail,
   checks again where it acts.
+
+Build `Access` in `cmd/inbok/worker.go` only when a Google client is
+configured, as `connectedaccount.Removals` is, so the job's field in
+`dbos.Services` stays nil otherwise: a nil `*Access` stored in it would
+pass the worker's nil check.
 
 Keep the token out of a step's output: DBOS saves outputs in the
 database. `AccessToken` saves as `{}` in JSON and prints as a
