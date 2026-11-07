@@ -120,8 +120,10 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	if err := w.registerCleanup(w.cleanups(services)); err != nil {
 		return nil, errors.Join(fmt.Errorf("schedule cleanup: %w", err), w.Shutdown())
 	}
-	if err := w.registerEmailQueue(); err != nil {
-		return nil, errors.Join(fmt.Errorf("register email queue: %w", err), w.Shutdown())
+	for _, queue := range []string{emailQueue} {
+		if err := w.registerQueue(queue); err != nil {
+			return nil, errors.Join(fmt.Errorf("register queue %s: %w", queue, err), w.Shutdown())
+		}
 	}
 	w.registerRecoveryNotice(services.RecoveryNotices)
 	w.registerPasswordResetLink(services.PasswordResetLinks)

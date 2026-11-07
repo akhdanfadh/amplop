@@ -1925,8 +1925,8 @@ For a job that runs once per request, follow the recovery notice
 2. `internal/dbos`: an input struct holding IDs and no personal data,
    the workflow registered under a fixed name with each step's retry
    policy, and a field in `Services` for the feature's type. A job that sends inbok's
-   email runs on `inbok.email` (`emailqueue.go`), which every such job
-   shares; another job registers its own queue the same way.
+   email runs on `inbok.email` (`queue.go`), which every such job shares;
+   another kind of job adds its own queue there.
 3. `cmd/inbok/worker.go`: set that field.
 4. Save the workflow with the change that needs it, in one transaction.
    The feature's `Storage` method documents that it saves the job; its
