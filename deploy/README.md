@@ -188,6 +188,11 @@ old one left unfinished. The script exits with an error if anything fails:
 - If the build or a migration fails, the old server keeps running on the
   old image. Fix the cause, or check out the previous commit, and run
   `./upgrade.sh` again.
+- If a service that does not run the inbok image, e.g. `meilisearch`,
+  does not become healthy, the script stops before switching the image,
+  and the old server keeps running: the previous image would not repair
+  it. The script starts all of them first, except Caddy, which waits for
+  the server. `docker compose logs <service>` shows why one failed.
 - If the new server or worker does not become healthy, the script starts
   the previous image again, on the migrated database. `docker compose logs
   inbok` or `worker` shows why the new one failed.
