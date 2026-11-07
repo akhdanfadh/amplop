@@ -1800,9 +1800,10 @@ connectedaccount <-- repository/postgres
   rules directly: `registration` uses `account.ValidatePassword` and
   `account.User`.
 - `google`, like `smtp`, is a technology package: it implements the
-  Google side `connectedaccount` declares for its connect flow and its
-  token access: the OAuth client, the ID token checks, the refresh token
-  trade, and Gmail's `users.getProfile`, with `golang.org/x/oauth2` and
+  Google side `connectedaccount` declares for its connect flow, its token
+  access, and its revocations: the OAuth client, the ID token checks, the
+  refresh token trade, revocation, and Gmail's `users.getProfile`, with
+  `golang.org/x/oauth2` and
   Google's Gmail client. Their types stay inside it; Gmail calls take
   `connectedaccount`'s `AccessToken`.
 - `googleemulator` starts the [Google emulator](#google-emulator) for

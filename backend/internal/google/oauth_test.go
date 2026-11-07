@@ -242,3 +242,85 @@ func TestRefreshOtherRefusals(t *testing.T) {
 		})
 	}
 }
+
+// A revoked refresh token is refused afterwards, and revoking it again
+// still succeeds.
+func TestRevoke(t *testing.T) {
+	e, client := startEmulator(t)
+	code, verifier := consent(t, e, client, "alex@example.com")
+	grant, err := client.Exchange(t.Context(), code, verifier)
+	require.NoError(t, err)
+
+	require.NoError(t, client.Revoke(t.Context(), grant.RefreshToken))
+
+	_, err = client.Refresh(t.Context(), grant.RefreshToken)
+	require.ErrorIs(t, err, connectedaccount.ErrRefreshRefused)
+	require.NoError(t, client.Revoke(t.Context(), grant.RefreshToken))
+}
+
+// stubRevoke starts a revocation endpoint that answers every request with
+// status and body, and records the last request's query and form. It
+// returns a client pointed at it.
+func stubRevoke(t *testing.T, status int, body map[string]any) (*Client, *http.Request) {
+	t.Helper()
+	got := &http.Request{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth2/revoke" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		_ = r.ParseForm()
+		*got = *r
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(body)
+	}))
+	t.Cleanup(server.Close)
+	base, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	return New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect, BaseURL: base}, time.Now), got
+}
+
+// The token travels in the body, never the URL.
+func TestRevokeSendsTokenInBody(t *testing.T) {
+	client, got := stubRevoke(t, http.StatusOK, map[string]any{})
+
+	require.NoError(t, client.Revoke(t.Context(), "refresh-1"))
+
+	assert.Equal(t, "refresh-1", got.PostForm.Get("token"))
+	assert.Empty(t, got.URL.RawQuery)
+}
+
+// Google answers 400 invalid_token for a token it no longer knows, which
+// is as good as revoked.
+func TestRevokeUnknownToken(t *testing.T) {
+	client, _ := stubRevoke(t, http.StatusBadRequest, map[string]any{"error": "invalid_token", "error_description": "Token expired or revoked"})
+
+	require.NoError(t, client.Revoke(t.Context(), "refresh-1"))
+}
+
+// Any other refusal fails with its status and code, and none of the body.
+func TestRevokeRefused(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		code   string
+	}{
+		{"bad request", http.StatusBadRequest, "invalid_request"},
+		{"google failing", http.StatusServiceUnavailable, ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client, _ := stubRevoke(t, test.status, map[string]any{"error": test.code, "error_description": "secret page body"})
+
+			err := client.Revoke(t.Context(), "refresh-1")
+
+			var refused *tokenRefusal
+			require.ErrorAs(t, err, &refused)
+			assert.Equal(t, test.status, refused.status)
+			assert.Equal(t, test.code, refused.code)
+			assert.NotContains(t, err.Error(), "secret page body")
+			assert.NotContains(t, err.Error(), "refresh-1")
+		})
+	}
+}

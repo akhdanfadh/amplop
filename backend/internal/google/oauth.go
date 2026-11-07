@@ -2,8 +2,12 @@ package google
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -16,6 +20,14 @@ import (
 // errorInvalidGrant is the token endpoint's error for a refresh token it
 // no longer accepts: revoked, expired, or dropped (RFC 6749 section 5.2).
 const errorInvalidGrant = "invalid_grant"
+
+// errorInvalidToken is the revocation endpoint's error for a token it does
+// not know, e.g. one already revoked or expired.
+const errorInvalidToken = "invalid_token"
+
+// maxRevokeError bounds how much of a refused revocation's body is read for
+// its error code.
+const maxRevokeError = 4 << 10
 
 // scopes are what inbok asks for (ADR006): who the account is, and Gmail
 // without permanent deletion.
@@ -76,6 +88,40 @@ func (c *Client) Refresh(ctx context.Context, refreshToken string) (connectedacc
 	return renewal, nil
 }
 
+// Revoke ends refreshToken's grant at Google: the token and every other
+// token of the same Google account issued to inbok's Google project. A token
+// Google no longer knows counts as revoked. It returns an error with only the
+// HTTP status and OAuth error code when Google refuses or fails.
+func (c *Client) Revoke(ctx context.Context, refreshToken string) error {
+	// The token goes in the body, as RFC 7009 section 2.1 sends it, so no
+	// error that quotes the URL carries it.
+	form := url.Values{"token": {refreshToken}}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.revokeURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, err := c.http.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusOK {
+		return nil
+	}
+	var refusal struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(io.LimitReader(response.Body, maxRevokeError)).Decode(&refusal)
+	// RFC 7009 answers 200 for a token the server does not know; Google
+	// answers 400 invalid_token. Either way the token no longer works.
+	if response.StatusCode == http.StatusBadRequest && refusal.Error == errorInvalidToken {
+		return nil
+	}
+	return &tokenRefusal{status: response.StatusCode, code: refusal.Error}
+}
+
 // withHTTP returns ctx carrying the client x/oauth2 sends requests with.
 func (c *Client) withHTTP(ctx context.Context) context.Context {
 	return context.WithValue(ctx, oauth2.HTTPClient, c.http)
@@ -96,8 +142,9 @@ func redactToken(err error) error {
 	return &tokenRefusal{status: status, code: refused.ErrorCode}
 }
 
-// tokenRefusal is a refusal from Google's token endpoint: its HTTP status
-// and OAuth error code, e.g. invalid_grant, and nothing from the body.
+// tokenRefusal is a refusal from Google's token or revocation endpoint: its
+// HTTP status and OAuth error code, e.g. invalid_grant, and nothing else
+// from the body.
 type tokenRefusal struct {
 	status int
 	code   string
@@ -105,5 +152,5 @@ type tokenRefusal struct {
 
 // Error returns the status and code.
 func (e *tokenRefusal) Error() string {
-	return fmt.Sprintf("google token endpoint: %d %s", e.status, e.code)
+	return fmt.Sprintf("google oauth endpoint: %d %s", e.status, e.code)
 }

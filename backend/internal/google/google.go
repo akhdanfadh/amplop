@@ -4,9 +4,9 @@
 // connectedaccount sees its own.
 //
 // google.go builds the client for Google or the emulator; oauth.go asks for
-// consent and trades the code and refresh tokens; idtoken.go checks the ID
-// token; gmail.go calls Gmail; transport.go is the HTTP client that carries
-// codes and tokens.
+// consent, trades the code and refresh tokens, and revokes them; idtoken.go
+// checks the ID token; gmail.go calls Gmail; transport.go is the HTTP client
+// that carries codes and tokens.
 package google
 
 import (
@@ -21,8 +21,9 @@ import (
 // Google's own addresses. The consent page is the v2 one Google's guide
 // and discovery document name; [endpoints.Google] still has the older path.
 const (
-	googleAuthURL = "https://accounts.google.com/o/oauth2/v2/auth"
-	gmailURL      = "https://gmail.googleapis.com/"
+	googleAuthURL   = "https://accounts.google.com/o/oauth2/v2/auth"
+	googleRevokeURL = "https://oauth2.googleapis.com/revoke"
+	gmailURL        = "https://gmail.googleapis.com/"
 )
 
 // googleIssuers are the issuers Google's own ID tokens name.
@@ -41,10 +42,11 @@ type Settings struct {
 
 // Client talks to Google for connectedaccount.
 type Client struct {
-	oauth    *oauth2.Config
-	http     *http.Client
-	issuers  []string
-	gmailURL string
+	oauth     *oauth2.Config
+	http      *http.Client
+	issuers   []string
+	revokeURL string
+	gmailURL  string
 	// normalize is whether an ID token's issuer is compared as config spells
 	// a base URL; Google's own issuers are compared exactly.
 	normalize bool
@@ -56,6 +58,7 @@ type Client struct {
 func New(settings Settings, now func() time.Time) *Client {
 	endpoint := oauth2.Endpoint{AuthURL: googleAuthURL, TokenURL: endpoints.Google.TokenURL}
 	issuers := googleIssuers
+	revoke := googleRevokeURL
 	gmail := gmailURL
 	reach := reachAny
 	if settings.BaseURL != nil {
@@ -66,6 +69,7 @@ func New(settings Settings, now func() time.Time) *Client {
 			TokenURL: settings.BaseURL.JoinPath("/oauth2/token").String(),
 		}
 		issuers = []string{origin(settings.BaseURL)}
+		revoke = settings.BaseURL.JoinPath("/oauth2/revoke").String()
 		gmail = origin(settings.BaseURL) + "/"
 		reach = reachLoopback
 	}
@@ -82,6 +86,7 @@ func New(settings Settings, now func() time.Time) *Client {
 		},
 		http:      httpClient(reach),
 		issuers:   issuers,
+		revokeURL: revoke,
 		gmailURL:  gmail,
 		normalize: settings.BaseURL != nil,
 		now:       now,
