@@ -158,8 +158,9 @@ runs an older release started, e.g. with
 Every hour on the hour (UTC), the workflow `inbok.cleanup`, scheduled as
 `inbok.cleanup.hourly`, deletes rows nobody can use any more: email
 verification, registration, and password reset links that expired at
-least an hour ago, and password reset attempts that no limit has counted
-for at least an hour, both of their times being over 25 hours old. The
+least an hour ago, password reset attempts that no limit has counted
+for at least an hour, both of their times being over 25 hours old, and
+Gmail connect states that expired at least an hour ago. The
 hour covers a worker clock running ahead of the API's, which checks
 expiry and limits with its own clock. Registration and password reset
 requests no longer delete these rows themselves; a user's own expired

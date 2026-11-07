@@ -25,6 +25,7 @@ type ConnectState struct {
 	SessionID    uuid.UUID
 	AccountID    *int64
 	CodeVerifier string
+	CreatedAt    time.Time
 	ExpiresAt    time.Time
 }
 

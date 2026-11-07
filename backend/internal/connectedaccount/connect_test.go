@@ -14,14 +14,29 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"inbok/internal/attemptlimit"
 	"inbok/internal/encryption"
 	"inbok/internal/randomsecret"
 )
 
-func (m *memoryStorage) InsertConnectState(_ context.Context, state ConnectState) error {
+func (m *memoryStorage) InsertConnectState(_ context.Context, userID int64, create func([]time.Time) (ConnectState, error)) error {
+	if m.deactivated[userID] {
+		return ErrDeactivated
+	}
+	var started []time.Time
+	for _, state := range m.states {
+		if state.UserID == userID {
+			started = append(started, state.CreatedAt)
+		}
+	}
+	state, err := create(started)
+	if err != nil {
+		return err
+	}
 	if m.states == nil {
 		m.states = map[[sha256.Size]byte]ConnectState{}
 	}
+	state.UserID = userID
 	m.states[state.StateHash] = state
 	return nil
 }
@@ -127,6 +142,7 @@ func TestStart(t *testing.T) {
 	assert.Zero(t, saved.AccountID)
 	assert.Equal(t, c.google.verifier, saved.CodeVerifier)
 	assert.NotEqual(t, c.google.state, c.google.verifier)
+	assert.Equal(t, c.now, saved.CreatedAt)
 	assert.Equal(t, c.now.Add(stateLifetime), saved.ExpiresAt)
 }
 
@@ -136,6 +152,91 @@ func TestStartNoSession(t *testing.T) {
 	_, err := c.connections.Start(t.Context(), member, uuid.UUID{}, 0)
 
 	require.ErrorIs(t, err, errNoSession)
+	assert.Empty(t, c.storage.states)
+}
+
+// A member may have 5 unfinished starts; the sixth waits until the oldest
+// expires, and a finished flow frees its place at once.
+func TestStartThrottled(t *testing.T) {
+	c := newConnectTest(t)
+	started := c.now
+	var first string
+	for i := range startLimit.Max {
+		state := c.start(t, 0)
+		if i == 0 {
+			first = state
+		}
+		c.now = c.now.Add(time.Minute)
+	}
+
+	_, err := c.connections.Start(t.Context(), member, c.session, 0)
+
+	refusal, ok := errors.AsType[*attemptlimit.Error](err)
+	require.True(t, ok, "got %v", err)
+	require.ErrorIs(t, err, ErrStartThrottled)
+	assert.Equal(t, started.Add(stateLifetime).Sub(c.now), refusal.Wait)
+	assert.Len(t, c.storage.states, startLimit.Max)
+
+	t.Run("finished flow frees a place", func(t *testing.T) {
+		_, err := c.finish(t, first)
+		require.NoError(t, err)
+
+		c.start(t, 0)
+	})
+}
+
+// A start counts until its state expires, even while the row is kept: one
+// more fits only once the oldest has expired.
+func TestStartThrottleExpiry(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		after  time.Duration
+		allows bool
+	}{
+		{"just before expiry", stateLifetime - time.Nanosecond, false},
+		{"at expiry", stateLifetime, true},
+		{"after expiry", stateLifetime + time.Minute, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			conn := newConnectTest(t)
+			started := conn.now
+			for range startLimit.Max {
+				conn.start(t, 0)
+			}
+			conn.now = started.Add(c.after)
+
+			_, err := conn.connections.Start(t.Context(), member, conn.session, 0)
+
+			if c.allows {
+				require.NoError(t, err)
+				assert.Len(t, conn.storage.states, startLimit.Max+1, "the expired states are still kept")
+				return
+			}
+			refusal, ok := errors.AsType[*attemptlimit.Error](err)
+			require.True(t, ok, "got %v", err)
+			assert.Equal(t, time.Nanosecond, refusal.Wait)
+		})
+	}
+}
+
+// Another member's starts do not count toward a member's limit.
+func TestStartThrottlePerMember(t *testing.T) {
+	c := newConnectTest(t)
+	for range startLimit.Max {
+		_, err := c.connections.Start(t.Context(), otherMember, uuid.New(), 0)
+		require.NoError(t, err)
+	}
+
+	c.start(t, 0)
+}
+
+func TestStartDeactivated(t *testing.T) {
+	c := newConnectTest(t)
+	c.storage.deactivated = map[int64]bool{member: true}
+
+	_, err := c.connections.Start(t.Context(), member, c.session, 0)
+
+	require.ErrorIs(t, err, ErrDeactivated)
 	assert.Empty(t, c.storage.states)
 }
 

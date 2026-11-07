@@ -8,6 +8,7 @@ import (
 	"time"
 	"uuid"
 
+	"inbok/internal/attemptlimit"
 	"inbok/internal/emailaddress"
 	"inbok/internal/randomsecret"
 )
@@ -16,6 +17,12 @@ import (
 // sign in and read the consent page, short enough that a stray link soon
 // stops working.
 const stateLifetime = 10 * time.Minute
+
+// startLimit bounds a member's unfinished starts: a finished flow deletes
+// its state, so only abandoned ones count, and each counts until it
+// expires. inbok's choice, so one member cannot fill the table between
+// cleanups (ADR006).
+var startLimit = attemptlimit.Limit{Window: stateLifetime, Max: 5}
 
 // errorAccessDenied is the error Google's redirect carries when the member
 // declines (RFC 6749 section 4.1.2.1).
@@ -36,6 +43,8 @@ var (
 	// ErrNoGmail means the Google account has no Gmail, e.g. a Workspace
 	// account whose administrator turned Gmail off.
 	ErrNoGmail = errors.New("the google account has no gmail")
+	// ErrStartThrottled means the member has too many unfinished starts.
+	ErrStartThrottled = errors.New("too many unfinished gmail connections")
 )
 
 // Answers from Google the member cannot fix, all shown as a failure.
@@ -98,6 +107,7 @@ type ConnectState struct {
 	// AccountID is the account to reconnect; 0 connects a new one.
 	AccountID    int64
 	CodeVerifier string
+	CreatedAt    time.Time
 	ExpiresAt    time.Time
 }
 
@@ -113,8 +123,11 @@ func (s ConnectState) GoString() string {
 
 // connectStorage keeps connect states.
 type connectStorage interface {
-	// InsertConnectState saves state.
-	InsertConnectState(ctx context.Context, state ConnectState) error
+	// InsertConnectState locks userID, calls create with when each of its
+	// saved states was created, and saves the state create returns, in one
+	// transaction. It returns [ErrDeactivated] when userID is deactivated or
+	// gone. An error from create saves nothing and is returned unchanged.
+	InsertConnectState(ctx context.Context, userID int64, create func(started []time.Time) (ConnectState, error)) error
 	// DeleteConnectState deletes the state saved under stateHash and returns
 	// it, or [ErrStateInvalid] when there is none.
 	DeleteConnectState(ctx context.Context, stateHash [sha256.Size]byte) (ConnectState, error)
@@ -147,7 +160,10 @@ func NewConnections(storage connectStorage, accounts *Service, google googleClie
 // Start saves a new state for userID's session sessionID and returns the
 // address of Google's consent page. accountID names the account to
 // reconnect, or is 0 to connect a new one. It returns [ErrNotFound] when
-// userID has no account accountID.
+// userID has no account accountID, an [*attemptlimit.Error] wrapping
+// [ErrStartThrottled] when userID has too many unfinished starts, and
+// [ErrDeactivated] when userID was deactivated since its session was
+// checked.
 func (c *Connections) Start(ctx context.Context, userID int64, sessionID uuid.UUID, accountID int64) (string, error) {
 	if sessionID == (uuid.UUID{}) {
 		return "", errNoSession
@@ -166,17 +182,25 @@ func (c *Connections) Start(ctx context.Context, userID int64, sessionID uuid.UU
 		}
 	}
 
-	// 2. Save the state before the member can use it. The verifier is a
-	// second random secret: base64url is a valid PKCE verifier.
+	// 2. Save the state before the member can use it, unless the member has
+	// too many unfinished starts. The verifier is a second random secret:
+	// base64url is a valid PKCE verifier.
 	state, stateHash := randomsecret.New()
 	verifier, _ := randomsecret.New()
-	err := c.storage.InsertConnectState(ctx, ConnectState{
-		StateHash:    stateHash,
-		UserID:       userID,
-		SessionID:    sessionID,
-		AccountID:    accountID,
-		CodeVerifier: verifier,
-		ExpiresAt:    c.now().UTC().Add(stateLifetime),
+	err := c.storage.InsertConnectState(ctx, userID, func(started []time.Time) (ConnectState, error) {
+		now := c.now().UTC()
+		if wait := attemptlimit.Wait(started, now, startLimit); wait > 0 {
+			return ConnectState{}, &attemptlimit.Error{Err: ErrStartThrottled, Wait: wait}
+		}
+		return ConnectState{
+			StateHash:    stateHash,
+			UserID:       userID,
+			SessionID:    sessionID,
+			AccountID:    accountID,
+			CodeVerifier: verifier,
+			CreatedAt:    now,
+			ExpiresAt:    now.Add(stateLifetime),
+		}, nil
 	})
 	if err != nil {
 		return "", err

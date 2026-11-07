@@ -60,6 +60,7 @@ type Services struct {
 	RegistrationCleanup         expired
 	PasswordResetCleanup        expired
 	PasswordResetAttemptCleanup expired
+	ConnectStateCleanup         expired
 	RecoveryNotices             recoveryNotices
 	PasswordResetLinks          passwordResetLinks
 	PasswordChangedNotices      passwordChangedNotices

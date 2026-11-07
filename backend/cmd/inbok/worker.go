@@ -9,6 +9,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/config"
+	"inbok/internal/connectedaccount"
 	"inbok/internal/dbos"
 	"inbok/internal/emailverification"
 	"inbok/internal/passwordreset"
@@ -72,6 +73,7 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		RegistrationCleanup:         registration.NewCleanup(db, time.Now),
 		PasswordResetCleanup:        passwordreset.NewCleanup(db, time.Now),
 		PasswordResetAttemptCleanup: passwordreset.NewAttemptCleanup(db, time.Now),
+		ConnectStateCleanup:         connectedaccount.NewStateCleanup(db, time.Now),
 		RecoveryNotices:             account.NewRecoveryNotices(db, mailer, publicURL),
 		PasswordResetLinks:          passwordreset.NewLinks(db, mailer, publicURL, time.Now),
 		PasswordChangedNotices:      passwordreset.NewNotices(db, mailer, publicURL),

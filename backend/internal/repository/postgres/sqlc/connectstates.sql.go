@@ -14,7 +14,7 @@ import (
 
 const deleteConnectState = `-- name: DeleteConnectState :one
 DELETE FROM connect_states WHERE state_hash = $1
-RETURNING user_id, session_id, account_id, code_verifier, expires_at
+RETURNING user_id, session_id, account_id, code_verifier, created_at, expires_at
 `
 
 type DeleteConnectStateRow struct {
@@ -22,6 +22,7 @@ type DeleteConnectStateRow struct {
 	SessionID    uuid.UUID
 	AccountID    *int64
 	CodeVerifier string
+	CreatedAt    time.Time
 	ExpiresAt    time.Time
 }
 
@@ -34,16 +35,40 @@ func (q *Queries) DeleteConnectState(ctx context.Context, stateHash []byte) (Del
 		&i.SessionID,
 		&i.AccountID,
 		&i.CodeVerifier,
+		&i.CreatedAt,
 		&i.ExpiresAt,
 	)
 	return i, err
 }
 
+const deleteExpiredConnectStateBatch = `-- name: DeleteExpiredConnectStateBatch :execrows
+DELETE FROM connect_states WHERE state_hash IN (
+    SELECT expired.state_hash FROM connect_states expired
+    WHERE expired.expires_at <= $1
+    LIMIT $2
+    FOR UPDATE SKIP LOCKED)
+`
+
+type DeleteExpiredConnectStateBatchParams struct {
+	ExpiredBy time.Time
+	BatchSize int32
+}
+
+// The cleanup job deletes every member's expired states, a batch at a time.
+// Rows a callback holds are left for a later batch instead of waited for.
+func (q *Queries) DeleteExpiredConnectStateBatch(ctx context.Context, arg DeleteExpiredConnectStateBatchParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredConnectStateBatch, arg.ExpiredBy, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const insertConnectState = `-- name: InsertConnectState :exec
 INSERT INTO connect_states (state_hash, user_id, session_id, account_id,
-    code_verifier, expires_at)
+    code_verifier, created_at, expires_at)
 VALUES ($1, $2, $3, $4,
-    $5, $6)
+    $5, $6, $7)
 `
 
 type InsertConnectStateParams struct {
@@ -52,6 +77,7 @@ type InsertConnectStateParams struct {
 	SessionID    uuid.UUID
 	AccountID    *int64
 	CodeVerifier string
+	CreatedAt    time.Time
 	ExpiresAt    time.Time
 }
 
@@ -62,7 +88,47 @@ func (q *Queries) InsertConnectState(ctx context.Context, arg InsertConnectState
 		arg.SessionID,
 		arg.AccountID,
 		arg.CodeVerifier,
+		arg.CreatedAt,
 		arg.ExpiresAt,
 	)
 	return err
+}
+
+const listConnectStateTimes = `-- name: ListConnectStateTimes :many
+SELECT created_at FROM connect_states WHERE user_id = $1
+`
+
+func (q *Queries) ListConnectStateTimes(ctx context.Context, userID int64) ([]time.Time, error) {
+	rows, err := q.db.Query(ctx, listConnectStateTimes, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []time.Time
+	for rows.Next() {
+		var created_at time.Time
+		if err := rows.Scan(&created_at); err != nil {
+			return nil, err
+		}
+		items = append(items, created_at)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockConnectStateUser = `-- name: LockConnectStateUser :one
+SELECT (deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM users WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// Serializes a member's starts, so the throttle counts every state, and
+// reads whether a deactivation committed first. No key column changes, so
+// rows referencing the user need not wait.
+func (q *Queries) LockConnectStateUser(ctx context.Context, userID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, lockConnectStateUser, userID)
+	var deactivated bool
+	err := row.Scan(&deactivated)
+	return deactivated, err
 }
