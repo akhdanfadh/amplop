@@ -12,6 +12,10 @@ import (
 const (
 	testEncryptionKeys = "1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
 	testPublicURL      = "https://mail.example.com"
+
+	testS3Endpoint        = "http://seaweedfs:8333"
+	testS3AccessKeyID     = "test-key-id"
+	testS3SecretAccessKey = "test-secret-access-key"
 )
 
 // TestMain clears every inbok setting the shell passed in, e.g. from a
@@ -25,7 +29,17 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// setObjectStore sets valid object store settings for one test, so a test
+// of another setting can call [Load].
+func setObjectStore(t *testing.T) {
+	t.Helper()
+	t.Setenv(envS3Endpoint, testS3Endpoint)
+	t.Setenv(envS3AccessKeyID, testS3AccessKeyID)
+	t.Setenv(envS3SecretAccessKey, testS3SecretAccessKey)
+}
+
 func TestLoadDefault(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)
 	t.Setenv(envHTTPAddr, "")
@@ -40,6 +54,7 @@ func TestLoadDefault(t *testing.T) {
 }
 
 func TestLoadAddr(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)
 	t.Setenv(envHTTPAddr, "0.0.0.0:9090")
@@ -53,6 +68,7 @@ func TestLoadAddr(t *testing.T) {
 }
 
 func TestLoadBadAddr(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)
 	t.Setenv(envHTTPAddr, "localhost")
@@ -113,6 +129,7 @@ func TestHTTPAddrBad(t *testing.T) {
 }
 
 func TestLoadTrustedProxiesUnset(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)
 	t.Setenv(envHTTPAddr, "")
@@ -127,6 +144,7 @@ func TestLoadTrustedProxiesUnset(t *testing.T) {
 }
 
 func TestLoadTrustedProxies(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)
 	cases := []struct {
@@ -154,6 +172,7 @@ func TestLoadTrustedProxies(t *testing.T) {
 }
 
 func TestLoadBadTrustedProxies(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)
 	for _, value := range []string{"localhost", "127.0.0.1", "10.0.0.0/33", "::1/129", "10.0.0.0/8,", ",10.0.0.0/8", "10.0.0.0/8, ,::1/128"} {
@@ -170,6 +189,7 @@ func TestLoadBadTrustedProxies(t *testing.T) {
 }
 
 func TestLoadSetupTokenUnset(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)
 	t.Setenv(envHTTPAddr, "")
@@ -184,6 +204,7 @@ func TestLoadSetupTokenUnset(t *testing.T) {
 }
 
 func TestLoadSetupToken(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)
 	cases := []struct {
@@ -212,6 +233,7 @@ func TestLoadSetupToken(t *testing.T) {
 }
 
 func TestLoadShortSetupToken(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envPublicURL, testPublicURL)
 	cases := []struct {
@@ -256,6 +278,7 @@ func TestDatabaseURLRequired(t *testing.T) {
 }
 
 func TestLoadEncryptionKeys(t *testing.T) {
+	setObjectStore(t)
 	for _, value := range []string{"", "invalid-private-key", "1:bad-base64"} {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv(envHTTPAddr, "")
@@ -287,6 +310,7 @@ func TestLoadEncryptionKeys(t *testing.T) {
 }
 
 func TestLoadPublicURL(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envHTTPAddr, "")
 	t.Setenv(envSetupToken, "")
@@ -320,6 +344,7 @@ func TestLoadPublicURL(t *testing.T) {
 }
 
 func TestLoadBadPublicURL(t *testing.T) {
+	setObjectStore(t)
 	t.Setenv(envEncryptionKeys, testEncryptionKeys)
 	t.Setenv(envHTTPAddr, "")
 	t.Setenv(envSetupToken, "")
@@ -390,6 +415,7 @@ func setGoogle(t *testing.T, id, secret, base string) {
 	t.Setenv(envGoogleClientID, id)
 	t.Setenv(envGoogleClientSecret, secret)
 	t.Setenv(envGoogleBaseURL, base)
+	setObjectStore(t)
 }
 
 func TestLoadGoogleUnset(t *testing.T) {
@@ -530,6 +556,44 @@ func TestSearchIndex(t *testing.T) {
 	}
 }
 
+func TestLoadObjectStore(t *testing.T) {
+	setObjectStore(t)
+	t.Setenv(envEncryptionKeys, testEncryptionKeys)
+	t.Setenv(envPublicURL, testPublicURL)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	require.NotNil(t, cfg.ObjectStore.Endpoint)
+	assert.Equal(t, testS3Endpoint, cfg.ObjectStore.Endpoint.String())
+	assert.Equal(t, testS3AccessKeyID, cfg.ObjectStore.AccessKeyID)
+	assert.Equal(t, testS3SecretAccessKey, cfg.ObjectStore.SecretAccessKey)
+}
+
+// The worker reads the settings without serve's others, e.g. the setup
+// token.
+func TestObjectStoreEndpoint(t *testing.T) {
+	setObjectStore(t)
+	cases := map[string]string{
+		"http://seaweedfs:8333":      "http://seaweedfs:8333",
+		"http://127.0.0.1:8333/":     "http://127.0.0.1:8333",
+		" https://s3.example.com ":   "https://s3.example.com",
+		"HTTP://SeaweedFS:8333":      "http://seaweedfs:8333",
+		"http://[::1]:8333":          "http://[::1]:8333",
+		"https://s3.example.com:443": "https://s3.example.com:443",
+	}
+	for value, want := range cases {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(envS3Endpoint, value)
+
+			store, err := ObjectStore()
+			require.NoError(t, err)
+
+			assert.Equal(t, want, store.Endpoint.String())
+		})
+	}
+}
+
 // Neither setting has a default, and an error never shows the key.
 func TestSearchIndexBad(t *testing.T) {
 	const key = "a-test-master-key"
@@ -552,6 +616,63 @@ func TestSearchIndexBad(t *testing.T) {
 
 			require.ErrorContains(t, err, c.want)
 			assert.NotContains(t, err.Error(), key)
+		})
+	}
+}
+
+func TestObjectStoreBadEndpoint(t *testing.T) {
+	setObjectStore(t)
+	cases := []struct {
+		value string
+		want  string
+	}{
+		{"", "INBOK_S3_ENDPOINT is required"},
+		{"  ", "INBOK_S3_ENDPOINT is required"},
+		{"seaweedfs:8333", "INBOK_S3_ENDPOINT must be"},
+		{"ftp://seaweedfs:8333", "INBOK_S3_ENDPOINT must be"},
+		{"http://", "INBOK_S3_ENDPOINT must be"},
+		{"http://seaweedfs:8333/inbok", "INBOK_S3_ENDPOINT must be"},
+		{"http://seaweedfs:8333?a=1", "INBOK_S3_ENDPOINT must be"},
+		{"http://seaweedfs:8333#top", "INBOK_S3_ENDPOINT must be"},
+		{"http://user:secret@seaweedfs:8333", "INBOK_S3_ENDPOINT must be"},
+		{"http://seaweedfs:port", "INBOK_S3_ENDPOINT must be"},
+		{"http://:8333", "INBOK_S3_ENDPOINT must be"},
+		{"http://seaweedfs:", "INBOK_S3_ENDPOINT must be"},
+		{"http://seaweedfs:0", "INBOK_S3_ENDPOINT must be"},
+		{"http://seaweedfs:65536", "INBOK_S3_ENDPOINT must be"},
+	}
+	for _, c := range cases {
+		t.Run(c.value, func(t *testing.T) {
+			t.Setenv(envS3Endpoint, c.value)
+
+			_, err := ObjectStore()
+
+			require.ErrorContains(t, err, c.want)
+			assert.NotContains(t, err.Error(), "secret")
+		})
+	}
+}
+
+// Keys are taken as they are: a space may be part of a generated secret.
+func TestObjectStoreKeys(t *testing.T) {
+	setObjectStore(t)
+	t.Setenv(envS3SecretAccessKey, " spaced secret ")
+
+	store, err := ObjectStore()
+	require.NoError(t, err)
+
+	assert.Equal(t, " spaced secret ", store.SecretAccessKey)
+}
+
+func TestObjectStoreKeysRequired(t *testing.T) {
+	for _, name := range []string{envS3AccessKeyID, envS3SecretAccessKey} {
+		t.Run(name, func(t *testing.T) {
+			setObjectStore(t)
+			t.Setenv(name, "")
+
+			_, err := ObjectStore()
+
+			require.EqualError(t, err, name+" is required")
 		})
 	}
 }

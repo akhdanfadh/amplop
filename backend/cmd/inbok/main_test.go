@@ -57,6 +57,9 @@ func TestMigrateNoURL(t *testing.T) {
 func TestServeNoURL(t *testing.T) {
 	t.Setenv("INBOK_ENCRYPTION_KEYS", "1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	t.Setenv("INBOK_PUBLIC_URL", "https://mail.example.com")
+	t.Setenv("INBOK_S3_ENDPOINT", "http://127.0.0.1:1")
+	t.Setenv("INBOK_S3_ACCESS_KEY_ID", "test-key-id")
+	t.Setenv("INBOK_S3_SECRET_ACCESS_KEY", "test-secret-access-key")
 	t.Setenv("INBOK_DATABASE_URL", "")
 	t.Setenv("INBOK_SETUP_TOKEN", "")
 	t.Setenv("INBOK_TRUSTED_PROXIES", "")

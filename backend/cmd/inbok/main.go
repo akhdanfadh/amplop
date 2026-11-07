@@ -25,6 +25,7 @@ import (
 	"inbok/internal/probe"
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
+	"inbok/internal/s3"
 	"inbok/internal/session"
 	"inbok/internal/smtp"
 	"inbok/internal/systememail"
@@ -127,7 +128,12 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 	defer func() { err = errors.Join(err, jobs.Close()) }()
 	db = db.WithWorkflows(jobs)
 
-	// 4. Warn when setup is done but its token is still configured.
+	// 4. Open the store for message content, creating its bucket if missing.
+	if _, err := s3.Open(ctx, objectStore(cfg.ObjectStore)); err != nil {
+		return fmt.Errorf("open object store: %w", err)
+	}
+
+	// 5. Warn when setup is done but its token is still configured.
 	accounts := account.NewService(db, cfg.SetupToken)
 	if cfg.SetupToken != "" {
 		status, err := accounts.SetupStatus(ctx)
@@ -139,7 +145,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		}
 	}
 
-	// 5. Build the services and the API.
+	// 6. Build the services and the API.
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
@@ -176,7 +182,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		return fmt.Errorf("configure trusted proxies: %w", err)
 	}
 
-	// 6. Serve the web app when this build has one.
+	// 7. Serve the web app when this build has one.
 	build, err := webapp.Load(webapp.Files())
 	switch {
 	case errors.Is(err, webapp.ErrNoBuild):
@@ -187,7 +193,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		api.ServeWebApp(build)
 	}
 
-	// 7. Serve until ctx is cancelled.
+	// 8. Serve until ctx is cancelled.
 	return listen(ctx, cfg.HTTPAddr, api.Handler(), logger)
 }
 
@@ -200,6 +206,15 @@ func googleClient(settings *config.Google, publicURL *url.URL) *google.Client {
 		RedirectURL:  httpapi.GoogleCallbackURL(publicURL),
 		BaseURL:      settings.BaseURL,
 	}, time.Now)
+}
+
+// objectStore returns the s3 package's settings for the store in cfg.
+func objectStore(cfg config.S3) s3.Settings {
+	return s3.Settings{
+		Endpoint:        cfg.Endpoint,
+		AccessKeyID:     cfg.AccessKeyID,
+		SecretAccessKey: cfg.SecretAccessKey,
+	}
 }
 
 // listen serves handler on addr until ctx is cancelled, then lets in-flight

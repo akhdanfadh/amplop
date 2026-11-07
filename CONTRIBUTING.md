@@ -38,9 +38,11 @@ and the worker with one naming the URL. Copy both lines from
 `.env.example`.
 
 SeaweedFS holds message content and answers on `127.0.0.1:8333`
-(`INBOK_SEAWEEDFS_PORT`). A `.env` from before it lacks the `INBOK_S3_*`
-lines: Compose then stops with an error naming a key. Copy them, and
-`INBOK_SEAWEEDFS_PORT`, from `.env.example`.
+(`INBOK_SEAWEEDFS_PORT`); [Message content
+store](backend/README.md#message-content-store) explains its settings. A
+`.env` from before it lacks the `INBOK_S3_*` settings, which Compose,
+serve, and the worker need: Compose stops with an error naming a key.
+Copy them, and `INBOK_SEAWEEDFS_PORT`, from `.env.example`.
 
 Mailpit catches mail sent to `127.0.0.1:1025` (`INBOK_MAILPIT_SMTP_PORT`)
 and shows it at `http://localhost:8025` (`INBOK_MAILPIT_WEB_PORT`). It deletes

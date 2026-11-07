@@ -7,9 +7,9 @@ shortcut for most commands here.
 
 ## Run the server
 
-`serve` needs PostgreSQL with its migrations applied; see Local services
-in `CONTRIBUTING.md` and Migrations below. From the repository root, load
-`.env` and start the
+`serve` needs PostgreSQL with its migrations applied, and SeaweedFS; see
+Local services in `CONTRIBUTING.md` and Migrations below. From the
+repository root, load `.env` and start the
 development server:
 
 ```sh
@@ -642,10 +642,38 @@ its request.
 | `INBOK_GOOGLE_CLIENT_ID` | empty, Gmail not offered | The Google OAuth client members connect Gmail accounts with. Set it and the secret together, or neither. |
 | `INBOK_GOOGLE_CLIENT_SECRET` | empty, Gmail not offered | That client's secret. Surrounding spaces are removed from both. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | For development and tests only: one server on this machine that answers for Google, e.g. `http://127.0.0.1:4000`; see [Google emulator](#google-emulator). Any other host, or no client, stops startup. |
+| `INBOK_S3_ENDPOINT` | none, required | The S3 service that holds message content, e.g. `http://127.0.0.1:8333`; see Message content store below. |
+| `INBOK_S3_ACCESS_KEY_ID` | none, required | The key ID inbok signs in to it with. |
+| `INBOK_S3_SECRET_ACCESS_KEY` | none, required | The secret for that key ID. |
 | `GIN_MODE` | `debug`; the image sets `release` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
 machine.
+
+### Message content store
+
+Message content, such as the text of a message, lives in an S3-compatible
+object store; PostgreSQL keeps what describes it. Every stack runs
+[SeaweedFS](https://github.com/seaweedfs/seaweedfs) for it, one container
+started with `weed mini`. Both `serve` and the worker read the three
+`INBOK_S3_*` settings and, at startup, create the bucket `inbok` if it is
+missing, so a wrong address or key stops them there. A store that does not
+answer fails startup within 10 seconds.
+
+`INBOK_S3_ENDPOINT` is the origin alone: `http` or `https`, a host, and an
+optional port. inbok adds the bucket and key to the path (path-style
+addressing). Plain `http` suits a store on a private network, as in the
+Compose files: requests are signed, so the secret never travels, but the
+content does, unencrypted. The keys are taken as they are.
+
+SeaweedFS makes the keys in its own `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` its admin identity on every start, and the Compose
+files pass inbok's keys there. To change them, change them in `.env` and
+start SeaweedFS again; the old key stops working and the content stays.
+SeaweedFS's S3 port checks the keys, but its other ports (master, filer,
+volume, and their gRPC ports) let anyone who reaches them read and write,
+so only the S3 port is published, to this machine only, and the deployment
+keeps SeaweedFS on a network of its own with inbok and the worker.
 
 ### Public URL
 
@@ -1807,10 +1835,10 @@ against testify's usage rules, e.g. expected value first; `--fix`
 corrects most of them.
 
 Database tests start their own throwaway PostgreSQL in Docker
-([Testcontainers](https://golang.testcontainers.org)), and Gmail tests
-their own [Google emulator](#google-emulator), so Docker must be running;
-without it they fail rather than skip. They never touch the Compose
-services.
+([Testcontainers](https://golang.testcontainers.org)), Gmail tests their
+own [Google emulator](#google-emulator), and the `s3` package's tests
+their own SeaweedFS, so Docker must be running; without it they fail
+rather than skip. They never touch the Compose services.
 
 ## Writing tests
 
@@ -1970,6 +1998,9 @@ httpapi --> connectedaccount <-- repository/postgres
   emersion SMTP libraries. A technology package is named for its technology
   and imports features, never the other way around. `meilisearch`
   implements `search`'s `Index` the same way.
+- `s3` is the technology package for the
+  [Message content store](#message-content-store): it reaches the store
+  with AWS's Go SDK, whose types never leave the package.
 - A leaf package holds one rule that several features share, such as
   `emailaddress` (the address rule), `attemptlimit` (the window count),
   `randomsecret` (emailed link secrets and their hashes), `clientprefix`

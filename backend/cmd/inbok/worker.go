@@ -17,6 +17,7 @@ import (
 	"inbok/internal/passwordreset"
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
+	"inbok/internal/s3"
 	"inbok/internal/smtp"
 	"inbok/internal/systememail"
 )
@@ -72,6 +73,10 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 	if err != nil {
 		return err
 	}
+	store, err := config.ObjectStore()
+	if err != nil {
+		return err
+	}
 
 	// 2. Count time in UTC. DBOS names each scheduled run after its time in
 	// the process's local zone, offset included, so workers in different zones would name one
@@ -90,7 +95,12 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		return err
 	}
 
-	// 4. Open the database and build the services the workflows call.
+	// 4. Open the store for message content, creating its bucket if missing.
+	if _, err := s3.Open(ctx, objectStore(store)); err != nil {
+		return fmt.Errorf("open object store: %w", err)
+	}
+
+	// 5. Open the database and build the services the workflows call.
 	db, err := postgres.Open(ctx, url)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
@@ -125,7 +135,7 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		return fmt.Errorf("open DBOS: %w", err)
 	}
 
-	// 5. Launch DBOS: it resumes this worker's unfinished runs, then takes
+	// 6. Launch DBOS: it resumes this worker's unfinished runs, then takes
 	// queued and scheduled ones. Launch shuts DBOS down itself when it
 	// fails.
 	if err := w.Launch(); err != nil {
@@ -133,7 +143,7 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		return fmt.Errorf("launch DBOS: %w", err)
 	}
 
-	// 6. Once step 7 returns, stop DBOS, which leaves unfinished runs
+	// 7. Once step 8 returns, stop DBOS, which leaves unfinished runs
 	// pending for the next start.
 	defer func() {
 		shutdownErr := w.Shutdown()
@@ -145,6 +155,6 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		err = errors.Join(err, shutdownErr)
 	}()
 
-	// 7. Answer health checks until ctx is cancelled.
+	// 8. Answer health checks until ctx is cancelled.
 	return listen(ctx, addr, workerHealth(), logger)
 }
