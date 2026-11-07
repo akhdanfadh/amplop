@@ -1,10 +1,10 @@
 # Self-hosting inbok
 
-This folder runs inbok on one server with Docker Compose: PostgreSQL, a
-one-off migration, the inbok server, its background worker, and Caddy for
-HTTPS. No inbok image is
-pulled from a registry: Compose builds it on the server from this
-repository, using pinned base images, and runs it beside pinned PostgreSQL
+This folder runs inbok on one server with Docker Compose: PostgreSQL,
+Meilisearch for search, a one-off migration, the inbok server, its
+background worker, and Caddy for HTTPS. No inbok image is pulled from a
+registry: Compose builds it on the server from this repository, using
+pinned base images, and runs it beside pinned PostgreSQL, Meilisearch,
 and Caddy images.
 
 Run every command here from this folder, `deploy/`.
@@ -43,8 +43,9 @@ Run every command here from this folder, `deploy/`.
    docker compose up -d --build
    ```
 
-   `docker compose ps -a` shows `postgres`, `inbok`, and `worker` as
-   `healthy`, `caddy` running, and `migrate` exited with code 0.
+   `docker compose ps -a` shows `postgres`, `meilisearch`, `inbok`, and
+   `worker` as `healthy`, `caddy` running, and `migrate` exited with
+   code 0.
 
 4. Open `https://<your domain>/setup`, enter `INBOK_SETUP_TOKEN`, and
    create the first administrator. Then sign in and set up two-factor
@@ -57,8 +58,9 @@ Run every command here from this folder, `deploy/`.
    ```
 
 Logs come from `docker compose logs inbok` (or `worker`, `caddy`,
-`postgres`, `migrate`). Every line inbok logs for a request carries its
-`request_id`, which the browser also receives in the `X-Request-ID` header.
+`postgres`, `meilisearch`, `migrate`). Every line inbok logs for a
+request carries its `request_id`, which the browser also receives in the
+`X-Request-ID` header.
 
 ## Connecting Gmail
 
@@ -152,6 +154,22 @@ e.g. with `docker compose up --scale worker=2`: both copies would share
 one ID and run some work twice. One worker runs many jobs at once.
 [Background work](../backend/README.md#background-work) explains the rest.
 
+## The search index
+
+`meilisearch` runs [Meilisearch](https://www.meilisearch.com) Community
+Edition, the search index: once search arrives, it holds a copy of
+members' messages for it. Search itself, with the command that rebuilds
+the index, is not part of this release yet. It has no published port and
+sits on the internal network with PostgreSQL, so the internet and Caddy
+cannot reach it. Apart from its health check, it answers only requests
+with a valid key: `INBOK_MEILISEARCH_KEY`, its master key, or a key made
+from it. Meilisearch's anonymous usage reports are turned off.
+
+Everything in it comes from the database, so its volume needs no
+[backup](#backups). The index is rebuilt instead, which an operator runs:
+after an upgrade that brings a new Meilisearch, after going back to an
+earlier one, and after a restore.
+
 ## Upgrades
 
 Take a [backup](#backups) first: migrations have no undo. Then:
@@ -180,6 +198,16 @@ Avoid two commands that look like shortcuts:
   so a failing migration takes the site down until it is fixed.
 - `docker compose restart` restarts every service at once, so migrate can
   start before PostgreSQL and fail. Use `docker compose up -d` to restart.
+
+A Meilisearch version cannot open the data another version wrote, so
+each version keeps its index in its own volume, named after it, e.g.
+`inbok-deploy_meilisearch-1.56.1`. When an upgrade brings a new
+Meilisearch, it starts on a new, empty volume, where the
+[index is rebuilt](#the-search-index). Going back to an earlier commit
+also goes back to its Meilisearch and its old volume, whose index missed
+every change since, so it is rebuilt then too. Once the upgrade works,
+delete the old volume, which still holds a copy of members' mail:
+`docker volume ls` lists it, and `docker volume rm` deletes it.
 
 After a migration, the old server and worker can run on the new schema:
 during an upgrade, and after the rollback above. Every migration must
@@ -223,10 +251,14 @@ On a new server, run `docker compose up -d --wait postgres` first, which
 creates the empty database, then the restore and `docker compose up -d`.
 Use the same `INBOK_ENCRYPTION_KEYS` as when the dump was made. The
 `caddy-data` volume needs no backup: Caddy requests new certificates if
-it is empty.
+it is empty. Nor does Meilisearch's: after a restore, rebuild the
+[search index](#the-search-index) from the restored database, since the
+index still holds what changed after the dump was made.
 
 `docker compose down -v` deletes the volumes, including the only copy of
-the database. Plain `docker compose down` keeps them.
+the database. Plain `docker compose down` keeps them. Neither deletes the
+Meilisearch volumes of earlier versions, which `compose.yaml` no longer
+names; `docker volume rm` does.
 
 ## Administrator recovery
 

@@ -104,13 +104,13 @@ web-add-ui: ## Add a shadcn component, e.g. NAME=dialog
 
 # --build rebuilds the Google emulator's image when google-emulator/
 # changes; otherwise Docker reuses its cached layers.
-services-start: $(ENV_FILE) ## Start PostgreSQL, Mailpit, and the Google emulator in Docker
+services-start: $(ENV_FILE) ## Start PostgreSQL, Mailpit, Meilisearch, and the Google emulator in Docker
 	$(WITH_ENV) docker compose up -d --wait --build
 
-services-stop: $(ENV_FILE) ## Stop the Docker services, keeping the database
+services-stop: $(ENV_FILE) ## Stop the Docker services, keeping their data
 	$(WITH_ENV) docker compose down
 
-services-wipe: $(ENV_FILE) ## Stop the Docker services, deleting the database
+services-wipe: $(ENV_FILE) ## Stop the Docker services, deleting their data
 	$(WITH_ENV) docker compose down -v
 
 # Database

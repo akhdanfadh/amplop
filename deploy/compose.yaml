@@ -1,5 +1,6 @@
-# A self-hosted inbok: PostgreSQL, a one-off migration, the inbok server,
-# its background worker, and Caddy for HTTPS. Values come from deploy/.env; copy .env.example.
+# A self-hosted inbok: PostgreSQL, Meilisearch for search, a one-off
+# migration, the inbok server, its background worker, and Caddy for HTTPS.
+# Values come from deploy/.env; copy .env.example.
 # From deploy/, start it with docker compose up -d --build, and upgrade it
 # with ./upgrade.sh. The repository root's compose.yaml is for development.
 #
@@ -42,6 +43,39 @@ services:
       start_interval: 2s
 
     # No published port, and on db only.
+    networks:
+      - db
+
+  # The search index. It holds copies of PostgreSQL's data and can be
+  # rebuilt from it, so its volume needs no backup.
+  meilisearch:
+    image: getmeili/meilisearch:v1.56.1@sha256:b7ba431bf6f9b26cc86132798f3640964147a699cf23f026b74c6c05dbb1d60d
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${INBOK_MEILISEARCH_KEY:?set it in deploy/.env}
+      # Refuses a master key under 16 bytes and turns off the web
+      # dashboard.
+      MEILI_ENV: production
+      # Meilisearch sends anonymous usage data unless this is set.
+      MEILI_NO_ANALYTICS: "true"
+
+    # NOTE: The volume is named after the image's version. A Meilisearch
+    # version refuses to open data another version wrote, so an upgrade
+    # starts on a new, empty volume and the index is rebuilt. Change the
+    # name here and below whenever the image changes.
+    volumes:
+      - meilisearch-1.56.1:/meili_data
+
+    # The image has curl. /health answers without the key.
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+
+    # No published port, and on db only: the browser never reaches it.
     networks:
       - db
 
@@ -184,8 +218,9 @@ networks:
         - subnet: fd24:44bd:915f::/64
           ip_range: fd24:44bd:915f::1:0/112
 
-  # PostgreSQL, migrate, inbok, and worker, with no internet access. Caddy is not
-  # on it, so the service facing the internet cannot reach the database.
+  # PostgreSQL, Meilisearch, migrate, inbok, and worker, with no internet
+  # access. Caddy is not on it, so the service facing the internet cannot
+  # reach the database or the search index.
   db:
     internal: true
 
@@ -193,5 +228,6 @@ networks:
 # database, and caddy-data the certificates. Plain down keeps them.
 volumes:
   postgres:
+  meilisearch-1.56.1:
   caddy-data:
   caddy-config:
