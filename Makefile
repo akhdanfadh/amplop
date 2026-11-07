@@ -6,8 +6,9 @@
 # `<verb>-web`, e.g. `make check` runs `check-backend` and `check-web`.
 # A command for one part only is `<part>-<verb>`, e.g. `db-migrate`.
 
-# Settings for PostgreSQL, Go, and Goose; copied from .env.example on first
-# use. Another file runs a second copy beside yours, e.g. on other ports:
+# Settings for the Docker services, Go, and Goose; copied from .env.example
+# on first use. Another file runs a second copy beside yours, e.g. on other
+# ports:
 # make dev ENV_FILE=/tmp/trial.env
 ENV_FILE ?= .env
 
@@ -104,7 +105,7 @@ web-add-ui: ## Add a shadcn component, e.g. NAME=dialog
 
 # --build rebuilds the Google emulator's image when google-emulator/
 # changes; otherwise Docker reuses its cached layers.
-services-start: $(ENV_FILE) ## Start PostgreSQL, Mailpit, Meilisearch, and the Google emulator in Docker
+services-start: $(ENV_FILE) ## Start PostgreSQL, Mailpit, Meilisearch, SeaweedFS, and the Google emulator in Docker
 	$(WITH_ENV) docker compose up -d --wait --build
 
 services-stop: $(ENV_FILE) ## Stop the Docker services, keeping their data
