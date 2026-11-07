@@ -293,6 +293,7 @@ func TestFinishRefused(t *testing.T) {
 		{name: "Gmail unticked", google: func(g *fakeGoogle) { g.grant.GmailGranted = false }, want: ErrGmailNotGranted},
 		{name: "email not verified", google: func(g *fakeGoogle) { g.grant.EmailVerified = false }, want: ErrEmailNotVerified},
 		{name: "profile fails", google: func(g *fakeGoogle) { g.profileErr = broken }, want: broken},
+		{name: "no Gmail", google: func(g *fakeGoogle) { g.profileErr = fmt.Errorf("%w: gmail api: 400", ErrNoGmail) }, want: ErrNoGmail},
 		{name: "another mailbox", google: func(g *fakeGoogle) { g.mailbox = "blair@example.com" }, want: errProfileMailbox},
 		{name: "email inbok cannot store", google: func(g *fakeGoogle) {
 			g.grant.Identity.Email = "Alex <alex@example.com>"

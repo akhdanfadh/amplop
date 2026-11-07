@@ -33,6 +33,9 @@ var (
 	ErrGmailNotGranted = errors.New("gmail access was not granted")
 	// ErrEmailNotVerified means Google does not vouch for the account's email.
 	ErrEmailNotVerified = errors.New("google has not verified the account's email")
+	// ErrNoGmail means the Google account has no Gmail, e.g. a Workspace
+	// account whose administrator turned Gmail off.
+	ErrNoGmail = errors.New("the google account has no gmail")
 )
 
 // Answers from Google the member cannot fix, all shown as a failure.
@@ -82,7 +85,8 @@ type googleClient interface {
 	// Exchange trades code and its verifier for a grant. It returns an error
 	// when Google refuses the code or its ID token fails a check.
 	Exchange(ctx context.Context, code, verifier string) (Grant, error)
-	// Profile returns the mailbox accessToken reaches.
+	// Profile returns the mailbox accessToken reaches. It returns
+	// [ErrNoGmail] when the Google account has none.
 	Profile(ctx context.Context, accessToken AccessToken) (Profile, error)
 }
 
@@ -186,7 +190,8 @@ func (c *Connections) Start(ctx context.Context, userID int64, sessionID uuid.UU
 // once, whatever the outcome.
 //
 // It returns [ErrStateInvalid], [ErrCancelled], [ErrGmailNotGranted],
-// [ErrEmailNotVerified], [ErrAlreadyConnected], [ErrDifferentAccount], or
+// [ErrEmailNotVerified], [ErrNoGmail], [ErrAlreadyConnected],
+// [ErrDifferentAccount], or
 // [ErrNotFound] when the reconnected account went in the moment before the
 // save; any other error is a failure the member cannot fix.
 //
@@ -271,6 +276,9 @@ func (c *Connections) save(ctx context.Context, userID, accountID int64, grant G
 // mailbox of grant's identity, and an error otherwise.
 func (c *Connections) validateMailbox(ctx context.Context, grant Grant) error {
 	profile, err := c.google.Profile(ctx, grant.AccessToken)
+	if errors.Is(err, ErrNoGmail) {
+		return ErrNoGmail
+	}
 	if err != nil {
 		return fmt.Errorf("read gmail profile: %w", err)
 	}

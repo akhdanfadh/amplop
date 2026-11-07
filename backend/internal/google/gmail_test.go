@@ -48,4 +48,26 @@ func TestProfileRefusalRedacted(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
 	assert.NotContains(t, err.Error(), "secret page body")
+	require.NotErrorIs(t, err, connectedaccount.ErrNoGmail)
+}
+
+// Gmail's answer for a Google account without Gmail is told apart from
+// other refusals, still without the body.
+func TestProfileNoGmail(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":400,"message":"Mail service not enabled",` +
+			`"errors":[{"message":"Mail service not enabled","domain":"global","reason":"failedPrecondition"}],` +
+			`"status":"FAILED_PRECONDITION"}}`))
+	}))
+	t.Cleanup(server.Close)
+	base, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	client := New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect, BaseURL: base}, time.Now)
+
+	_, err = client.Profile(t.Context(), connectedaccount.NewAccessToken("access-1"))
+
+	require.ErrorIs(t, err, connectedaccount.ErrNoGmail)
+	assert.NotContains(t, err.Error(), "Mail service")
 }
