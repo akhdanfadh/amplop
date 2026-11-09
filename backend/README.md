@@ -685,12 +685,11 @@ entries, and restart every API instance and worker with the same list.
 Existing secrets are not re-encrypted; each keeps its original key until
 that factor is removed and enrolled again, and the system email password
 keeps its key until an administrator saves a new password, and a refresh
-token until its member reconnects the account. A disconnected account's
-token keeps its key while it waits for the [account
-removal](#account-removal) job; without that key the job drops it
-without revoking. Administrators cannot turn TOTP off, so their factors
-can need an old key indefinitely. Remove an old key only when no query
-lists its ID:
+token until its account is reconnected or connected again. A disconnected
+account's token keeps its key while it waits for the [account
+removal](#account-removal) job; without that key the job drops it without
+revoking. Administrators cannot turn TOTP off, so their factors can need an
+old key indefinitely. Remove an old key only when no query lists its ID:
 
 ```sql
 SELECT key_id, count(*) FROM user_totp GROUP BY key_id;
@@ -711,9 +710,10 @@ settings lose their tested time until an administrator enters the password
 again and saves. The web app shows that 500 as a lost test result. A lost
 key also makes the Gmail refresh tokens it sealed unreadable: Gmail work
 for those accounts fails with `connectedaccount.ErrTokenUnreadable` until
-each member reconnects the account, which seals a new token with the
-first key. The accounts are not marked as needing a reconnect, since a
-worker started with a wrong key list would mark every account.
+each member disconnects the account and connects it again, which seals a
+new token with the first key. The accounts are not marked as needing a
+reconnect, since a worker started with a wrong key list would mark every
+account, so the Connected accounts page offers them no Reconnect.
 
 ### Google emulator
 

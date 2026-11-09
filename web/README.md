@@ -110,6 +110,9 @@ Put shared code in the folder for its responsibility:
   the `/register` and `/register/complete` forms, and their wording.
 - `src/features/password-reset`: the `/forgot-password` and
   `/reset-password` forms, the reset form's schema, and their wording.
+- `src/features/connected-accounts`: the Connected accounts list with its
+  connect, reconnect, and disconnect actions, and the page's wording,
+  including each way a connection can end.
 - `src/components`: shared components, such as the password input and the
   request error under a form. `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -335,6 +338,30 @@ Settings, anyone else who opens the page sees that it is for administrators
 with two-factor authentication, a 401 signs out, and a 403 reads access
 again.
 
+Every signed-in page links `/connected-accounts`, where members connect
+Gmail accounts. The page lists the member's accounts, oldest first, with the
+date each was connected. Connect Gmail asks the API for Google's consent
+page and sends the tab there; Google returns the browser to the API, which
+redirects to this page with `?outcome=`. The page validates it against the
+generated `ConnectOutcome`, ignores any other value, removes it from the
+address, so a reload or Back does not repeat it, and then shows its message.
+An account Google stopped accepting is marked "Needs reconnecting", with the
+date, and only it has Reconnect, which runs the same consent flow for that
+account, where the member must choose the same Google account. Disconnect
+asks first and says inbok removes the account with everything it keeps for
+it and asks Google to end its access. The row goes as soon as the server
+confirms. When the server has no Google client, the page says to ask an
+administrator instead of offering Connect Gmail or Reconnect. A 401 from any
+read or write opens sign-in. A refused start rereads what it shows has
+changed: the providers on a 409, the list on a 404. A lost answer to a start
+just asks for another try, since an unused start expires; a lost answer to a
+disconnect asks the member to check the list, which rereads after every
+outcome. A failed reread keeps the list with "Could not reload connected
+accounts, so the list may be out of date." and Try again. A start goes to
+Google only while the page is still open. The browser's back-forward cache
+can restore the page locked as it left for Google, so a restored page
+unlocks its buttons and rereads the list.
+
 Signing out deletes the current session, clears account caches, and opens
 sign-in. A 401 also completes sign-out because that session is already absent
 or expired. Other failures stay visible and can be retried. Signing in also
@@ -485,9 +512,9 @@ its fields show in full.
 
 For writes, a missing response or HTTP 5xx cannot confirm whether the change
 took effect. The message keeps any safe server explanation and asks the user
-to check before submitting again; ending signed-in browsers and changing a
-member reload their list for that check. Elsewhere, an unreadable success
-response says the server reported success but its result could not be
+to check before submitting again; ending signed-in browsers, changing a
+member, and disconnecting an account reload their list for that check.
+Elsewhere, an unreadable success response says the server reported success but its result could not be
 loaded. A received 4xx
 rejection keeps its normal explanation. Failed submissions keep the form's
 values; the request reference remains available when received, except
