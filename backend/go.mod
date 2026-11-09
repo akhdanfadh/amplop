@@ -21,6 +21,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/pressly/goose/v3 v3.28.0 // keep equal to tools.mod's goose
 	github.com/stretchr/testify v1.12.1
+	github.com/tdewolff/parse/v2 v2.8.20
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/meilisearch v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0

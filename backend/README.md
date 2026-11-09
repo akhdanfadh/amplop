@@ -984,10 +984,9 @@ The copy:
 
 - keeps sectioning, text, list, table, and image elements and the
   presentational ones mail still uses, e.g. `center` and `font`, with
-  layout attributes, `class`, `id`, and `aria-*`. Scripts, `<style>`
-  and `style` attributes, forms, embedded content, SVG, MathML,
-  comments, and the sender's `<meta>`, `<base>`, and `<link>` are gone;
-  an unknown element keeps its text.
+  layout attributes, `class`, `id`, and `aria-*`. Scripts, forms,
+  embedded content, SVG, MathML, comments, and the sender's `<meta>`,
+  `<base>`, and `<link>` are gone; an unknown element keeps its text.
 - keeps links, `href` on `a` only, with absolute `http`, `https`,
   `mailto`, and `tel` URLs, opening in a new tab. A relative URL would
   resolve against inbok, and a URL with a space in it is dropped, as
@@ -997,6 +996,15 @@ The copy:
   remote ones unless allowed, reporting them in `Sanitized.Blocked` so the
   view can offer to load them. Only `img`'s `src` and the `background`
   of `body` and table elements load an image. `data:` URLs are dropped.
+- keeps `<style>` and `style` attributes, filtered to the CSS properties,
+  selectors, and media queries Gmail documents. A `url()` that may not
+  load becomes `none`, so a background color still applies. `@import`,
+  `@font-face`, escapes, and functions such as `var()` are dropped, and
+  so is a style sheet a screen would not apply, e.g. `media="print"`.
+  CSS is written again with a space between tokens, so tokens the
+  parser read apart, e.g. across a comment it dropped, cannot join into
+  a comment or a name in the browser. At most 256 KiB of CSS is read per
+  document, since the parser holds a declaration's tokens at once.
 - starts with `<!DOCTYPE html>`, so the browser lays it out in standards
   mode, as Gmail does.
 
@@ -1006,11 +1014,12 @@ Like `search.BodyText`, the sanitizer reads tokens and never builds a
 tree with `html.Parse`, which a crafted document can make use hundreds
 of megabytes. It writes every token again itself, so a browser reads the
 copy as the same tokens. A fuzz test checks that every copy parses into
-allowed elements only, that bluemonday's `UGCPolicy`, widened only by
-the extras mail needs, would remove nothing from it, and that
-sanitizing a copy without inline parts changes nothing (a second copy
-drops the relative part URLs of the first); run it longer with
-`go test -fuzz=FuzzSanitize ./internal/messagecontent`.
+allowed elements only, that its CSS has no comment, at-rule but
+`@media`, or `url()` it may not load, that bluemonday's `UGCPolicy`,
+widened only by the extras mail needs, would remove nothing from it,
+and that sanitizing a copy without inline parts changes nothing (a
+second copy drops the relative part URLs of the first); run it longer
+with `go test -fuzz=FuzzSanitize ./internal/messagecontent`.
 
 ## Email addresses
 

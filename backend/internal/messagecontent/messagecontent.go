@@ -4,7 +4,8 @@
 //
 // messagecontent.go declares the store; part.go reads a message's part
 // tree, text.go converts its text to UTF-8, display.go chooses what a
-// view shows of it, and sanitize.go makes its HTML safe to show.
+// view shows of it, and sanitize.go, with css.go, makes its HTML safe to
+// show.
 package messagecontent
 
 import (

@@ -5,6 +5,7 @@ import (
 	"io"
 	"iter"
 	"net/url"
+	"slices"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -58,8 +59,26 @@ const (
 	attrHref       = "href"
 	attrSrc        = "src"
 	attrBackground = "background"
+	attrStyle      = "style"
 	attrAria       = "aria-"
+	attrType       = "type"
+	attrMedia      = "media"
 )
+
+// mediaCSS is the one style sheet type a browser applies (HTML Standard
+// 4.2.6).
+const mediaCSS = "text/css"
+
+// maxCSS is the most bytes of CSS, in style elements and style
+// attributes together, that [Sanitize] reads in one document; a style
+// sheet or attribute past what is left of it is dropped.
+//
+// DESIGN: the CSS parser holds every token of a declaration or a rule's
+// prelude at once, so crafted CSS takes about a hundred times its size in
+// memory: 10 MB took over 1 GB. 256 KiB caps that near 40 MB. Gmail clips
+// a message whose HTML passes 102 KB, so mail meant to be read keeps its
+// CSS well under it; past it, the text still shows, unstyled.
+const maxCSS = 256 << 10
 
 // doctype starts every sanitized document, so a browser lays it out in
 // standards mode, as Gmail's web client, where senders test, shows mail.
@@ -103,12 +122,12 @@ var (
 		atom.Big, atom.Center, atom.Font, atom.Nobr, atom.Strike, atom.Tt)
 
 	// dropped elements are removed with their content: the tokenizer
-	// reads the content of the first ones as text, which is code, CSS, or
+	// reads the content of the first ones as text, which is code or is
 	// not shown; svg and math are foreign content, where a browser parses
 	// markup differently from HTML, the usual way past a sanitizer
 	// (mutation XSS); template and select hold content a reader does not
 	// see as text.
-	dropped = set(atom.Script, atom.Style, atom.Title, atom.Textarea, atom.Xmp,
+	dropped = set(atom.Script, atom.Title, atom.Textarea, atom.Xmp,
 		atom.Plaintext, atom.Noscript, atom.Noembed, atom.Noframes,
 		atom.Iframe,
 		atom.Svg, atom.Math,
@@ -144,30 +163,34 @@ var attributes = map[string]bool{
 
 // Sanitize writes to w a copy of the HTML document read from r that is
 // safe to show, as policy allows, and returns what it found. The copy
-// keeps the elements and attributes a message's layout needs and no
-// scripts, styles, forms, embedded content, or comments. Links keep only
+// keeps the elements, attributes, and CSS a message's layout needs and
+// no scripts, forms, embedded content, or comments. Links keep only
 // http, https, mailto, and tel URLs and open in a new tab. Images keep
 // cid: URLs naming an inline part of policy, rewritten to the part's
-// URL, and remote http and https URLs only under [RemoteAllowed]. It
-// returns r's or w's error.
+// URL, and remote http and https URLs only under [RemoteAllowed]. CSS
+// keeps what Gmail supports, without @import or @font-face. It returns
+// r's or w's error.
 //
 // DESIGN: It reads the document once, token by token, and writes each
 // token it keeps again itself: a known element, its allowed attributes
-// quoted and escaped, and escaped text. A browser therefore reads the
+// quoted and escaped, escaped text, and CSS it filtered without a < in
+// it, each CSS token apart from the next. A browser therefore reads the
 // copy as the same tokens, whatever tree it builds of them, and never
 // enters a state where text becomes markup: no foreign content, and no
-// raw text. It does not build the document's tree with [html.Parse],
-// whose error recovery lets a crafted document of a few kilobytes take
-// hundreds of megabytes; a sender writes the HTML. bluemonday, which
-// reads tokens too, applies one URL rule to links and images alike, so
-// it cannot block remote images while keeping links, and reports
-// nothing of what it drops (ADR009, "Displaying HTML").
+// raw text but its CSS. It does not build the document's tree with
+// [html.Parse], whose error recovery lets a crafted document of a few
+// kilobytes take hundreds of megabytes; a sender writes the HTML.
+// bluemonday, which reads tokens too, applies one URL rule to links and
+// images alike, so it cannot block remote images while keeping links,
+// reports nothing of what it drops, keeps no <style> element, and cannot
+// rewrite a url() in CSS (ADR009, "Displaying HTML").
 func Sanitize(w io.Writer, r io.Reader, policy Policy) (Sanitized, error) {
 	s := sanitizer{
-		policy: policy,
-		out:    bufio.NewWriter(w),
-		inline: map[string]string{},
-		shown:  map[string]bool{},
+		policy:  policy,
+		out:     bufio.NewWriter(w),
+		inline:  map[string]string{},
+		shown:   map[string]bool{},
+		cssLeft: maxCSS,
 	}
 	for _, part := range policy.Inline {
 		// The first part with a Content-ID wins, as mail clients do.
@@ -198,6 +221,20 @@ type sanitizer struct {
 	// and depth how many of it are open.
 	skipping atom.Atom
 	depth    int
+	// style is whether the next text is a style element's content.
+	style bool
+	// cssLeft is how many bytes of CSS the document may still have read.
+	cssLeft int
+}
+
+// spend reports whether css, a style sheet or style attribute, fits in
+// what is left of [maxCSS], and takes its size from it if so.
+func (s *sanitizer) spend(css []byte) bool {
+	if len(css) > s.cssLeft {
+		return false
+	}
+	s.cssLeft -= len(css)
+	return true
 }
 
 // copy writes the tokens of tokens that [Sanitize] keeps to s.out. It
@@ -212,7 +249,7 @@ func (s *sanitizer) copy(tokens *html.Tokenizer) error {
 				return err
 			}
 			return nil
-		// Text, or a raw text element's whole content, e.g. a script.
+		// Text, or a raw text element's whole content, e.g. a style sheet.
 		case html.TextToken:
 			s.text(tokens.Text())
 		// <p> or <br/>; the slash matters only to foreign elements.
@@ -234,6 +271,17 @@ func (s *sanitizer) text(text []byte) {
 	switch {
 	// Inside a dropped element: its content goes with it.
 	case s.depth > 0:
+	// The tokenizer reads a style element's content as one text.
+	case s.style:
+		s.style = false
+		if !s.spend(text) {
+			return
+		}
+		if css := s.stylesheet(text); len(css) > 0 {
+			s.out.WriteString("<style>")
+			s.out.Write(css)
+			s.out.WriteString("</style>")
+		}
 	// Text, escaped, so no < or & in it starts markup.
 	default:
 		s.out.WriteString(html.EscapeString(string(text)))
@@ -259,12 +307,45 @@ func (s *sanitizer) start(kind html.TokenType, tokens *html.Tokenizer) {
 		if !empty {
 			s.skipping, s.depth = element, 1
 		}
+	// Written with its content, by text, without its attributes; a style
+	// sheet a screen would not apply is dropped instead.
+	case element == atom.Style:
+		if applies(tokens) {
+			s.style = true
+		} else {
+			s.skipping, s.depth = element, 1
+		}
 	// Copied with the attributes it may keep.
 	case kept[element]:
 		s.tag(element, tokens)
 	// Unwrapped: the tag goes, its content stays.
 	default:
 	}
+}
+
+// applies reports whether a browser applies the style element whose
+// start tag tokens is at to a screen: its type, if any, is text/css, and
+// its media, if any, lists all or screen (HTML Standard 4.2.6). It reads
+// the tag's attributes.
+func applies(tokens *html.Tokenizer) bool {
+	for name, value := range attrs(tokens) {
+		value = strings.ToLower(strings.TrimSpace(value))
+		switch {
+		// e.g. type="text/plain", which a browser does not read as CSS.
+		case name == attrType && value != "" && value != mediaCSS:
+			return false
+		// e.g. media="print", for other media than a screen.
+		case name == attrMedia && value != "" && !slices.ContainsFunc(strings.Split(value, ","), screen):
+			return false
+		}
+	}
+	return true
+}
+
+// screen reports whether query, one of a media attribute's queries, is
+// a media type that applies to a screen, [mediaTypes].
+func screen(query string) bool {
+	return mediaTypes[strings.TrimSpace(query)]
 }
 
 // attrs yields the attributes of the tag tokens is at, as the tokenizer
@@ -324,6 +405,13 @@ func (s *sanitizer) attribute(element atom.Atom, name, value string) (string, bo
 		img := s.image(value)
 		s.note(img)
 		return img.url, img.url != ""
+	// Inline CSS, as far as [sanitizer.declarations] keeps it.
+	case name == attrStyle:
+		if !s.spend([]byte(value)) {
+			return "", false
+		}
+		css := s.declarations(value)
+		return string(css), len(css) > 0
 	// Layout, text, and accessibility attributes, copied; [sanitizer.tag]
 	// escapes the value.
 	case attributes[name], isAria(name):
@@ -352,6 +440,9 @@ func (s *sanitizer) end(element atom.Atom) {
 		if element == s.skipping {
 			s.depth--
 		}
+	// text wrote the style element whole, end tag included.
+	case element == atom.Style:
+		s.style = false
 	case kept[element]:
 		s.out.WriteString("</")
 		s.out.WriteString(element.String())
