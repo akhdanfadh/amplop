@@ -972,6 +972,46 @@ may also come as `data` in that answer. The fixtures in
 `internal/google/testdata` follow the shape of a recorded `format=full`
 response.
 
+## Showing HTML
+
+Content storage keeps a message's HTML as the sender wrote it. Each time
+a view shows it, `messagecontent.Sanitize` streams a copy that is safe to
+show, so a better rule reaches stored mail at once. It takes a `Policy`:
+the inline parts the HTML may show (`Display.Inline`), a function that
+builds a part's URL from its part ID alone, and whether remote images
+load (`RemoteBlocked`, the zero value's behaviour, or `RemoteAllowed`).
+The copy:
+
+- keeps sectioning, text, list, table, and image elements and the
+  presentational ones mail still uses, e.g. `center` and `font`, with
+  layout attributes, `class`, `id`, and `aria-*`. Scripts, `<style>`
+  and `style` attributes, forms, embedded content, SVG, MathML,
+  comments, and the sender's `<meta>`, `<base>`, and `<link>` are gone;
+  an unknown element keeps its text.
+- keeps links, `href` on `a` only, with absolute `http`, `https`,
+  `mailto`, and `tel` URLs, opening in a new tab. A relative URL would
+  resolve against inbok, and a URL with a space in it is dropped, as
+  bluemonday drops it; a scheme-relative one, `//host/path`, reads as
+  `https`.
+- turns `cid:` images and backgrounds into the part's URL, and drops
+  remote ones unless allowed, reporting them in `Sanitized.Blocked` so the
+  view can offer to load them. Only `img`'s `src` and the `background`
+  of `body` and table elements load an image. `data:` URLs are dropped.
+- starts with `<!DOCTYPE html>`, so the browser lays it out in standards
+  mode, as Gmail does.
+
+`Sanitized.Shown` lists the inline parts the HTML showed;
+`Display.Downloads` offers the rest as downloads after the attachments.
+Like `search.BodyText`, the sanitizer reads tokens and never builds a
+tree with `html.Parse`, which a crafted document can make use hundreds
+of megabytes. It writes every token again itself, so a browser reads the
+copy as the same tokens. A fuzz test checks that every copy parses into
+allowed elements only, that bluemonday's `UGCPolicy`, widened only by
+the extras mail needs, would remove nothing from it, and that
+sanitizing a copy without inline parts changes nothing (a second copy
+drops the relative part URLs of the first); run it longer with
+`go test -fuzz=FuzzSanitize ./internal/messagecontent`.
+
 ## Email addresses
 
 Every address inbok takes goes through `emailaddress.Parse`: setup, sign-in,

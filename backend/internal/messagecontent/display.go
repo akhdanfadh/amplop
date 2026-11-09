@@ -127,8 +127,8 @@ func (d *Display) merge(shown Display) {
 }
 
 // Downloads returns the parts a view offers as downloads: d's
-// attachments, then its inline parts whose IDs are not in shown, the IDs
-// of the inline parts its HTML bodies showed.
+// attachments, then its inline parts whose IDs are not in shown, the
+// [Sanitized.Shown] of its HTML bodies.
 func (d Display) Downloads(shown []string) []Part {
 	downloads := slices.Clone(d.Attachments)
 	// An image the HTML never refers to would otherwise be lost.

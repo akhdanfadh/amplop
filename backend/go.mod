@@ -16,6 +16,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/medama-io/go-useragent v1.2.5
 	github.com/meilisearch/meilisearch-go v0.36.3
+	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/moby/moby/api v1.55.0
 	github.com/pquerna/otp v1.5.0
 	github.com/pressly/goose/v3 v3.28.0 // keep equal to tools.mod's goose
@@ -48,6 +49,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.11 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.10 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.10 // indirect
+	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/boyter/go-string v1.0.5 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
@@ -81,6 +83,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.24 // indirect
 	github.com/googleapis/gax-go/v2 v2.27.0 // indirect
+	github.com/gorilla/css v1.0.1 // indirect
 	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
