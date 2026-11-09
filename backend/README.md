@@ -1957,6 +1957,50 @@ refresh token to `account_removals`, and saves the
 [account removal](#account-removal) job. Jobs already running for the
 account stop when `Access.Token` finds it gone.
 
+### Sending mail
+
+A member sends a new message from one of their connected accounts
+(`outgoingmessage`, US015). `outgoing_messages` keeps each message under a
+random `uuid`: its sending account, whose owner owns it, the account's
+address when it was saved (a reconnect may change the account's), To, Cc, and Bcc, subject,
+plain text body, status, failure reason, the Message-ID inbok gave it
+(`internet_message_id`, with its angle brackets), Gmail's message and
+thread IDs once sent (`provider_message_id`, `provider_thread_id`), and
+when it was created and sent. The recipient lists are JSON arrays of
+`{"name", "address"}`, as synchronized mail keeps addresses, with empty
+names for now. Like synchronized mail, it has no owner column of its own:
+reads join `connected_accounts` and match its `user_id`, so the owner is
+stored once, and a disconnect deletes the account's messages with it.
+
+`outgoingmessage.Service.Create` checks the content first:
+
+- 1 to 100 recipients across To, Cc, and Bcc, each through
+  `emailaddress.ParseRecipient`; a refused one is a
+  `*outgoingmessage.RecipientError` naming its list and index.
+- A subject of at most 500 characters without a line break or other
+  control character, and a body of at most 100,000 characters without NUL.
+  Both may be empty.
+
+It then reads the account under a key share lock, so a disconnect waits and
+then deletes the message too. Another member's account, or a missing one,
+is `ErrAccountNotFound`, and one Google refused is `ErrNeedsReconnect`.
+The message gets a Message-ID on the account's domain and is saved as
+`waiting`. A message moves through `waiting`, `sending`, then `sent`,
+`failed` with a reason (`refused`, `needs-reconnect`, `account-unusable`,
+or `gave-up`), or `unknown` when a send may have reached Gmail without an
+answer.
+
+The send builds the MIME message from the saved row with go-message:
+`From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the
+creation time in UTC as `Date`, the saved `Message-ID`, and
+quoted-printable UTF-8 `text/plain`. A subject holding `=?` is encoded
+whole, so a reader shows it as typed rather than decoding it. The same row
+gives the same bytes on every worker. Building checks again each value that
+becomes a header (the recipients, `From`, the subject, the `Message-ID`),
+so none can add one, whatever wrote the row; it does not apply the limits
+again, so lowering one leaves saved messages sendable. ADR006 records these
+choices.
+
 ## Search index
 
 Search finds a member's messages through Meilisearch, a derived index: a
@@ -2191,6 +2235,7 @@ httpapi --> passwordreset <-- repository/postgres
             passwordreset --> systememail, account
 httpapi --> connectedaccount <-- repository/postgres
                              <-- google
+            outgoingmessage <-- repository/postgres
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google

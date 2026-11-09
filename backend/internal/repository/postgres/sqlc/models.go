@@ -59,6 +59,24 @@ type EmailVerificationLink struct {
 	ExpiresAt time.Time
 }
 
+type OutgoingMessage struct {
+	ID                 uuid.UUID
+	ConnectedAccountID int64
+	FromAddress        string
+	ToAddresses        []byte
+	CcAddresses        []byte
+	BccAddresses       []byte
+	Subject            string
+	Body               string
+	InternetMessageID  string
+	Status             string
+	Failure            *string
+	ProviderMessageID  *string
+	ProviderThreadID   *string
+	CreatedAt          time.Time
+	SentAt             *time.Time
+}
+
 type PasswordResetAttempt struct {
 	ID           int64
 	ClientPrefix *string
