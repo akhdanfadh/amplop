@@ -897,6 +897,55 @@ actual range rather than copying the loopback range. With the Compose
 files in `deploy/`, [Using your own proxy](../deploy/README.md#using-your-own-proxy-instead-of-caddy)
 gives the address to trust.
 
+## Message parts
+
+An email's body is a tree of MIME parts: a `multipart/*` part holds
+others, and each leaf holds one thing, e.g. the text, the same text as
+HTML, a PDF, or an image the HTML shows with `<img src="cid:logo">`,
+naming the part whose `Content-ID` is `logo`. `messagecontent.Parse`
+reads that tree from `messagecontent.Received`, which a provider's
+technology package fills, and returns:
+
+- the part tree PostgreSQL keeps, one `Part` per node: the provider's
+  part ID (Gmail's `partId`), media type, declared charset, file name,
+  size, disposition, `Content-ID`, and kind;
+- the content of each text part that came with the message, converted to
+  UTF-8 by `DecodeText`. A part whose bytes the provider sends separately
+  (Gmail's `attachmentId`) has none; decode it with `DecodeText` once
+  fetched. Neither has a text part inside an attachment, e.g. a forwarded
+  message, which no view shows.
+
+These are inbok's own rules on top of a parsed tree. MIME libraries such
+as emersion's go-message or enmime read raw message bytes and decide no
+kinds or display; ADR009 ("Message parts") records why Gmail's parsed
+`format=full` is used instead, and where such a library fits later.
+
+Every string in a `Part` comes from the sender, so `Parse` makes it valid
+UTF-8 and drops control characters, which PostgreSQL refuses (NUL), and
+bidirectional formatting characters, which can make a program,
+`photo` U+202E `gpj.exe`, read as `photoexe.jpg`. A message of more
+than 1000 parts is `ErrTooManyParts`.
+
+A part's kind decides how a view treats it:
+
+| Kind | Rule |
+|-|-|
+| `multipart` | a `multipart/*` part, holding others |
+| `text` | `text/plain` or `text/html`, not marked `attachment`, no file name |
+| `inline` | an `image/*` part with a `Content-ID`, not marked `attachment` |
+| `attachment` | everything else, e.g. `text/calendar` or `message/rfc822` |
+
+`DecodeText` reads text as a browser reads a page, through
+`x/net/html/charset.DetermineEncoding` (the WHATWG Encoding Standard): a
+byte order mark first, then the declared charset, then a `<meta>`
+element in the first 1024 bytes, then UTF-8 if those bytes are valid
+UTF-8, else windows-1252. `us-ascii` and `iso-8859-1` read as
+windows-1252, which senders often mean. A charset the standard calls
+unsafe, e.g. `iso-2022-kr`, reads as one U+FFFD, as does each byte that
+cannot convert. Like a browser, it garbles UTF-8 labelled as
+windows-1252, or undeclared UTF-8 that starts after a first kilobyte of
+plain ASCII; both are rare in mail, which declares its charset.
+
 ## Email addresses
 
 Every address inbok takes goes through `emailaddress.Parse`: setup, sign-in,
