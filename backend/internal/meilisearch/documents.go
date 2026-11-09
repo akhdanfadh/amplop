@@ -1,0 +1,125 @@
+package meilisearch
+
+import (
+	"context"
+	"uuid"
+
+	meili "github.com/meilisearch/meilisearch-go"
+
+	"inbok/internal/search"
+)
+
+// document is a [search.Document] as Meilisearch stores it.
+//
+// DESIGN: user and account IDs are decimal strings, not numbers.
+// Meilisearch keeps a number as a 64-bit float, which cannot tell apart
+// IDs above 2^53, e.g. 2^53 and 2^53 + 1, so a filter on one would match
+// the other. A string matches exactly.
+type document struct {
+	ID                 string   `json:"id"`
+	OwnerUserID        string   `json:"owner_user_id"`
+	ConnectedAccountID string   `json:"connected_account_id"`
+	InternalDate       int64    `json:"internal_date"` // Unix seconds, which filters and sorts as a number
+	Subject            string   `json:"subject"`
+	From               string   `json:"from"`
+	To                 []string `json:"to"`
+	CC                 []string `json:"cc"`
+	BodyText           string   `json:"body_text"`
+	LabelIDs           []string `json:"label_ids"`
+	FromAddress        string   `json:"from_address"`
+	HasAttachments     bool     `json:"has_attachments"`
+}
+
+// Upsert adds documents to their owners' indexes, replacing whole any with
+// the same ID, and waits until Meilisearch has applied it. It returns
+// [search.ErrNoOwner] before writing any. When an owner's write fails,
+// the owners before it are written already; repeating the call is safe.
+func (i *Index) Upsert(ctx context.Context, documents []search.Document) error {
+	if err := search.ValidateDocuments(documents); err != nil {
+		return err
+	}
+	var owners []int64
+	rows := map[int64][]document{}
+	for _, d := range documents {
+		if _, ok := rows[d.OwnerUserID]; !ok {
+			owners = append(owners, d.OwnerUserID)
+		}
+		rows[d.OwnerUserID] = append(rows[d.OwnerUserID], document{
+			ID:                 d.ID.String(),
+			OwnerUserID:        decimal(d.OwnerUserID),
+			ConnectedAccountID: decimal(d.ConnectedAccountID),
+			InternalDate:       d.InternalDate.Unix(),
+			Subject:            d.Subject,
+			From:               d.From,
+			To:                 d.To,
+			CC:                 d.CC,
+			BodyText:           d.BodyText,
+			LabelIDs:           d.LabelIDs,
+			FromAddress:        d.FromAddress,
+			HasAttachments:     d.HasAttachments,
+		})
+	}
+	for _, owner := range owners {
+		if err := i.upsert(ctx, i.uid(owner), rows[owner]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// upsert adds rows to the index uid, then applies its settings, waiting
+// until Meilisearch has applied both.
+func (i *Index) upsert(ctx context.Context, uid string, rows []document) error {
+	// 1. Add the documents. Meilisearch would guess the primary key only
+	// from a document with exactly one field ending in "id", and these have
+	// three. AddDocuments replaces a document; UpdateDocuments would merge
+	// into it and keep a label the message lost.
+	key := fieldID
+	task, err := i.client.Index(uid).AddDocumentsWithContext(ctx, rows, &meili.DocumentOptions{PrimaryKey: &key})
+	if err := i.wait(ctx, "upsert search documents", task, err); err != nil {
+		return err
+	}
+
+	// 2. Apply the settings after the documents, every time. When the index
+	// was missing, e.g. a member's first write, or deleted by a rebuild at
+	// any moment before step 1, Meilisearch created it bare, and searches
+	// would fail on filters it does not allow. A repeated call repairs an
+	// index this step did not reach.
+	task, err = i.apply(ctx, uid)
+	return i.wait(ctx, "apply search settings", task, err)
+}
+
+// Delete removes owner's documents with these message IDs and waits until
+// Meilisearch has applied it. It returns [search.ErrNoOwner] before
+// deleting.
+func (i *Index) Delete(ctx context.Context, owner int64, ids []uuid.UUID) error {
+	if err := search.ValidateOwner(owner); err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	keys := make([]string, len(ids))
+	for n, id := range ids {
+		keys[n] = id.String()
+	}
+	task, err := i.client.Index(i.uid(owner)).DeleteDocumentsWithContext(ctx, keys, nil)
+	return ignoreMissing(i.wait(ctx, "delete search documents", task, err))
+}
+
+// DeleteAccount removes every document of owner's connected account and
+// waits until Meilisearch has applied it. It returns [search.ErrNoOwner]
+// before deleting.
+func (i *Index) DeleteAccount(ctx context.Context, owner, accountID int64) error {
+	if err := search.ValidateOwner(owner); err != nil {
+		return err
+	}
+	// The owner, as in every search, in case a document reached the wrong
+	// index.
+	filter := []string{
+		fieldOwner + " = " + quote(decimal(owner)),
+		fieldAccount + " = " + quote(decimal(accountID)),
+	}
+	task, err := i.client.Index(i.uid(owner)).DeleteDocumentsByFilterWithContext(ctx, filter, nil)
+	return ignoreMissing(i.wait(ctx, "delete an account's search documents", task, err))
+}

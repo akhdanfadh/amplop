@@ -61,7 +61,7 @@ services:
       - 127.0.0.1:${INBOK_GOOGLE_EMULATOR_PORT:-4000}:4000
 
   # The search index, pinned like deploy/compose.yaml's; change both
-  # together.
+  # together with the image in backend/internal/meilisearch's tests.
   meilisearch:
     image: getmeili/meilisearch:v1.56.1@sha256:b7ba431bf6f9b26cc86132798f3640964147a699cf23f026b74c6c05dbb1d60d
     environment:
