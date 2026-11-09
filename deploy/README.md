@@ -105,6 +105,9 @@ Gmail and everything else works. The project needs no billing account.
 
    Set both or neither: one alone stops inbok at startup.
 
+Members then connect their accounts on the Connected accounts page, which
+every page links once they sign in.
+
 Google can take from five minutes to a few hours to apply a new redirect
 URI; until then, connecting ends on Google's `redirect_uri_mismatch` page.
 If `INBOK_PUBLIC_URL` changes, change the redirect URI to match.
@@ -125,6 +128,12 @@ Google accounts in total.
 Leave the app In production rather than Testing. In Testing, only the
 test users you list can connect, and Google ends each refresh token after
 seven days, so every account would need reconnecting weekly.
+
+Give each stack its own client, e.g. one for this server and another for
+a trial: Google keeps at most 100 refresh tokens per Google account and
+client and silently ends the oldest, so connecting the same Google
+account again and again elsewhere could end this server's connection to
+it.
 
 ## The worker
 
@@ -194,8 +203,9 @@ mkdir -p ~/inbok-backups
 The encryption keys: `INBOK_ENCRYPTION_KEYS` from `.env`. They decrypt
 the TOTP secrets, the system email password, and connected Gmail
 accounts' refresh tokens stored in the database, so a stolen dump alone
-reveals none of them, and a restore needs every key its rows use. Store them elsewhere, e.g. in a password manager, and update
-that copy when you rotate keys.
+reveals none of them, and a restore needs every key its rows use. Store
+them elsewhere, e.g. in a password manager, and update that copy when you
+rotate keys.
 
 To restore, stop the services that use the database, load the dump, and
 start them again. `--single-transaction` makes the restore all or
@@ -349,7 +359,10 @@ docker compose --env-file .env.trial down -v
 ```
 
 Caddy then uses a certificate from its own local CA, which browsers warn
-about.
+about. To try Gmail there, create a client for the trial as
+[Connecting Gmail](#connecting-gmail) says, with the trial's
+`INBOK_PUBLIC_URL` in its redirect URI, rather than reusing your server's;
+[What Google limits](#what-google-limits) says why.
 
 ### Build caches
 

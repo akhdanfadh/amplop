@@ -514,8 +514,8 @@ For writes, a missing response or HTTP 5xx cannot confirm whether the change
 took effect. The message keeps any safe server explanation and asks the user
 to check before submitting again; ending signed-in browsers, changing a
 member, and disconnecting an account reload their list for that check.
-Elsewhere, an unreadable success response says the server reported success but its result could not be
-loaded. A received 4xx
+Elsewhere, an unreadable success response says the server reported
+success but its result could not be loaded. A received 4xx
 rejection keeps its normal explanation. Failed submissions keep the form's
 values; the request reference remains available when received, except
 under a refusal the fields show in full (see Forms).

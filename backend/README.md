@@ -767,10 +767,12 @@ than its authorization request's. The install fails if the patch no
 longer applies, e.g. after a version change;
 `google-emulator/pnpm-workspace.yaml` says how to change it.
 
-Where it still differs from Google, tests use small `httptest` stubs
-instead:
+Where it still differs from Google, a test that needs Google's behavior
+uses a small `httptest` stub instead:
 
 - A person cannot refuse or untick a permission on its consent page.
+- Its revocation endpoint answers 200 for any token, where Google
+  answers 400 `invalid_token` for one it does not know.
 - `history.list` never answers 404 for an old history ID, and nothing
   returns quota errors.
 - It ignores `access_type` and `prompt` and always returns a refresh
@@ -832,8 +834,9 @@ gives the address to trust.
 
 Every address inbok takes goes through `emailaddress.Parse`: setup, sign-in,
 `recover-admin`, registration, the system email From address, each
-message's recipient, and a connected Gmail account's email from Google. It trims surrounding spaces and tabs, accepts one bare address of
-at most 254 characters without hidden characters, and lowercases the letters
+message's recipient, and a connected Gmail account's email from Google.
+It trims surrounding spaces and tabs, accepts one bare address of at most
+254 characters without hidden characters, and lowercases the letters
 A to Z, local part included; other letters keep their case. Hidden
 characters are controls, invisible formatting such as a zero-width space or
 a right-to-left override, and Unicode spaces and separators. Anything else
@@ -841,7 +844,8 @@ is `emailaddress.ErrInvalid`, which handlers answer with a 422 on the field;
 Huma accepts hidden characters, so for those the service's 422 is the one a
 client sees. Saved addresses are compared
 exactly, and the `users` and `connected_accounts` tables refuse an email
-with an uppercase ASCII letter. New code that takes an address calls `Parse` in its service.
+with an uppercase ASCII letter. New code that takes an address calls
+`Parse` in its service.
 
 ADR025 in the project's decision records explains the choice and its cost: a
 mail server that treats the local part's case as meaningful is not

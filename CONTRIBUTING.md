@@ -48,11 +48,13 @@ them from `.env.example`.
 To try real Gmail instead, create a Google client as
 [Connecting Gmail](deploy/README.md#connecting-gmail) says, with
 `http://localhost:5173/api/v0/connected-accounts/google/callback` as its
-redirect URI; Google allows plain http on localhost. Leaving the app in
-Testing is enough for development, with yourself as a test user, but
-Google then ends its refresh tokens after seven days. In `.env`, set
-`INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET` to the client's
-and empty `INBOK_GOOGLE_BASE_URL`. Google sends the browser back to
+redirect URI; Google allows plain http on localhost. Use a client of its
+own, never a deployment's, as
+[What Google limits](deploy/README.md#what-google-limits) explains.
+Leaving the app in Testing is enough for development, with yourself as a
+test user, but Google then ends its refresh tokens after seven days. In
+`.env`, set `INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET` to
+the client's and empty `INBOK_GOOGLE_BASE_URL`. Google sends the browser back to
 `localhost:5173`, so on a remote development machine, browse through an
 SSH tunnel from your own computer:
 `ssh -N -L 5173:localhost:5173 <user>@<machine>`.
