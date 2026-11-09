@@ -16,7 +16,8 @@ These are for development. Self-hosting needs only Docker and git; see
 
 - Go 1.27.1 or newer
 - pnpm, which downloads the pinned pnpm and Node.js versions itself
-- Docker, for PostgreSQL, Mailpit, and the Go database tests
+- Docker, for PostgreSQL, Mailpit, the Google emulator, and the Go
+  database and Gmail tests
 - A C compiler, e.g. gcc, for SQLC, which `make generate` and
   `make check` run
 - GNU Make
@@ -26,13 +27,13 @@ These are for development. Self-hosting needs only Docker and git; see
 From the repository root:
 
 ```sh
-make db-start    # PostgreSQL and Mailpit; creates .env from .env.example
-make db-migrate  # create the tables
-make dev         # Go on 127.0.0.1:8080, the web app on localhost:5173
+make services-start  # PostgreSQL, Mailpit, Google emulator; creates .env
+make db-migrate      # create the tables
+make dev             # Go on 127.0.0.1:8080, the web app on localhost:5173
 ```
 
-Open `http://localhost:5173`. Ctrl+C stops both servers; `make db-stop`
-stops PostgreSQL and Mailpit and keeps the database.
+Open `http://localhost:5173`. Ctrl+C stops both servers;
+`make services-stop` stops the Docker services and keeps the database.
 
 To create the first administrator, follow
 [First administrator setup](backend/README.md#first-administrator-setup),

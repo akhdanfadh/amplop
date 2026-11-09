@@ -24,8 +24,12 @@ import type {
 } from '@tanstack/react-query';
 
 import {
+  ResponseAccountProviders,
+  ResponseAuthorization,
   ResponseChangedMember,
+  ResponseConnectedAccounts,
   ResponseCurrentSession,
+  ResponseDisconnectedAccount,
   ResponseEmailVerificationResult,
   ResponseEndedSessions,
   ResponseFirstAdmin,
@@ -163,6 +167,440 @@ export const useRequestEmailVerification = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getRequestEmailVerificationMutationOptions(options), queryClient);
+    }
+
+export const getListConnectedAccountsUrl = () => {
+
+
+
+
+  return `/api/v0/connected-accounts`
+}
+
+/**
+ * Lists the signed-in account's connected Gmail accounts.
+ * @summary List Connected Accounts
+ */
+export const listConnectedAccounts = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseConnectedAccounts> => {
+
+  return transport<ResponseConnectedAccounts>(getListConnectedAccountsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseConnectedAccounts
+  }
+);}
+
+
+
+
+
+export const getListConnectedAccountsQueryKey = () => {
+    return [
+    `/api/v0/connected-accounts`
+    ] as const;
+    }
+
+
+export const getListConnectedAccountsQueryOptions = <TData = Awaited<ReturnType<typeof listConnectedAccounts>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConnectedAccounts>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListConnectedAccountsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listConnectedAccounts>>> = ({ signal }) => listConnectedAccounts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listConnectedAccounts>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListConnectedAccountsQueryResult = NonNullable<Awaited<ReturnType<typeof listConnectedAccounts>>>
+export type ListConnectedAccountsQueryError = ErrorType<Problem>
+
+
+export function useListConnectedAccounts<TData = Awaited<ReturnType<typeof listConnectedAccounts>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConnectedAccounts>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listConnectedAccounts>>,
+          TError,
+          Awaited<ReturnType<typeof listConnectedAccounts>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListConnectedAccounts<TData = Awaited<ReturnType<typeof listConnectedAccounts>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConnectedAccounts>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listConnectedAccounts>>,
+          TError,
+          Awaited<ReturnType<typeof listConnectedAccounts>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListConnectedAccounts<TData = Awaited<ReturnType<typeof listConnectedAccounts>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConnectedAccounts>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List Connected Accounts
+ */
+
+export function useListConnectedAccounts<TData = Awaited<ReturnType<typeof listConnectedAccounts>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConnectedAccounts>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListConnectedAccountsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getConnectGmailUrl = () => {
+
+
+
+
+  return `/api/v0/connected-accounts/google`
+}
+
+/**
+ * Starts connecting a Gmail account: returns the address of Google's consent page. At most 5 connections or reconnections may be unfinished at once; each counts for 10 minutes unless finished.
+ * @summary Connect Gmail
+ */
+export const connectGmail = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseAuthorization> => {
+
+  return transport<ResponseAuthorization>(getConnectGmailUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+    ,
+    schema: ResponseAuthorization
+  }
+);}
+
+
+
+
+
+export const getConnectGmailMutationKey = () => ['connectGmail'] as const;
+
+export const getConnectGmailMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectGmail>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof connectGmail>>, TError,void, TContext> => {
+
+const mutationKey = getConnectGmailMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof connectGmail>>, void> = () => {
+
+
+          return  connectGmail(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConnectGmailMutationResult = NonNullable<Awaited<ReturnType<typeof connectGmail>>>
+
+    export type ConnectGmailMutationError = ErrorType<Problem>
+
+
+    /**
+ * @summary Connect Gmail
+ */
+export const useConnectGmail = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof connectGmail>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof connectGmail>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getConnectGmailMutationOptions(options), queryClient);
+    }
+
+export const getListAccountProvidersUrl = () => {
+
+
+
+
+  return `/api/v0/connected-accounts/providers`
+}
+
+/**
+ * Lists the providers the signed-in account can connect email accounts with, which depend on the instance's settings.
+ * @summary List Account Providers
+ */
+export const listAccountProviders = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseAccountProviders> => {
+
+  return transport<ResponseAccountProviders>(getListAccountProvidersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseAccountProviders
+  }
+);}
+
+
+
+
+
+export const getListAccountProvidersQueryKey = () => {
+    return [
+    `/api/v0/connected-accounts/providers`
+    ] as const;
+    }
+
+
+export const getListAccountProvidersQueryOptions = <TData = Awaited<ReturnType<typeof listAccountProviders>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountProviders>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAccountProvidersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAccountProviders>>> = ({ signal }) => listAccountProviders({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAccountProviders>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListAccountProvidersQueryResult = NonNullable<Awaited<ReturnType<typeof listAccountProviders>>>
+export type ListAccountProvidersQueryError = ErrorType<Problem>
+
+
+export function useListAccountProviders<TData = Awaited<ReturnType<typeof listAccountProviders>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountProviders>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAccountProviders>>,
+          TError,
+          Awaited<ReturnType<typeof listAccountProviders>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAccountProviders<TData = Awaited<ReturnType<typeof listAccountProviders>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountProviders>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listAccountProviders>>,
+          TError,
+          Awaited<ReturnType<typeof listAccountProviders>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListAccountProviders<TData = Awaited<ReturnType<typeof listAccountProviders>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountProviders>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List Account Providers
+ */
+
+export function useListAccountProviders<TData = Awaited<ReturnType<typeof listAccountProviders>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listAccountProviders>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListAccountProvidersQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDisconnectConnectedAccountUrl = (id: number,) => {
+
+
+
+
+  return `/api/v0/connected-accounts/${id}`
+}
+
+/**
+ * Deletes a connected account and everything inbok keeps for it. Afterwards inbok asks Google to end its permission, unless another member connected the same Google account.
+ * @summary Disconnect Account
+ */
+export const disconnectConnectedAccount = async (id: number, options?: Parameters<typeof transport>[1]): Promise<ResponseDisconnectedAccount> => {
+
+  return transport<ResponseDisconnectedAccount>(getDisconnectConnectedAccountUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+    ,
+    schema: ResponseDisconnectedAccount
+  }
+);}
+
+
+
+
+
+export const getDisconnectConnectedAccountMutationKey = () => ['disconnectConnectedAccount'] as const;
+
+export const getDisconnectConnectedAccountMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectConnectedAccount>>, TError,DisconnectConnectedAccountMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectConnectedAccount>>, TError,DisconnectConnectedAccountMutationVariables, TContext> => {
+
+const mutationKey = getDisconnectConnectedAccountMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectConnectedAccount>>, DisconnectConnectedAccountMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  disconnectConnectedAccount(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectConnectedAccountMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectConnectedAccount>>>
+
+    export type DisconnectConnectedAccountMutationError = ErrorType<Problem>
+    export type DisconnectConnectedAccountMutationVariables = {id: number}
+
+    /**
+ * @summary Disconnect Account
+ */
+export const useDisconnectConnectedAccount = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectConnectedAccount>>, TError,DisconnectConnectedAccountMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectConnectedAccount>>,
+        TError,
+        DisconnectConnectedAccountMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDisconnectConnectedAccountMutationOptions(options), queryClient);
+    }
+
+export const getReconnectConnectedAccountUrl = (id: number,) => {
+
+
+
+
+  return `/api/v0/connected-accounts/${id}/reconnect`
+}
+
+/**
+ * Starts reconnecting a connected account, e.g. one that needs reconnecting: returns the address of Google's consent page. The member must choose the same Google account there. Limits as for connecting.
+ * @summary Reconnect Account
+ */
+export const reconnectConnectedAccount = async (id: number, options?: Parameters<typeof transport>[1]): Promise<ResponseAuthorization> => {
+
+  return transport<ResponseAuthorization>(getReconnectConnectedAccountUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+    ,
+    schema: ResponseAuthorization
+  }
+);}
+
+
+
+
+
+export const getReconnectConnectedAccountMutationKey = () => ['reconnectConnectedAccount'] as const;
+
+export const getReconnectConnectedAccountMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reconnectConnectedAccount>>, TError,ReconnectConnectedAccountMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof reconnectConnectedAccount>>, TError,ReconnectConnectedAccountMutationVariables, TContext> => {
+
+const mutationKey = getReconnectConnectedAccountMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reconnectConnectedAccount>>, ReconnectConnectedAccountMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  reconnectConnectedAccount(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReconnectConnectedAccountMutationResult = NonNullable<Awaited<ReturnType<typeof reconnectConnectedAccount>>>
+
+    export type ReconnectConnectedAccountMutationError = ErrorType<Problem>
+    export type ReconnectConnectedAccountMutationVariables = {id: number}
+
+    /**
+ * @summary Reconnect Account
+ */
+export const useReconnectConnectedAccount = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reconnectConnectedAccount>>, TError,ReconnectConnectedAccountMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof reconnectConnectedAccount>>,
+        TError,
+        ReconnectConnectedAccountMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReconnectConnectedAccountMutationOptions(options), queryClient);
     }
 
 export const getRedeemEmailVerificationUrl = () => {

@@ -47,6 +47,10 @@ type Services struct {
 	Account                 accountService
 	Session                 sessionService
 	Throttle                setupThrottle
+	ConnectedAccounts       connectedAccountService
+	// Connections is nil when no Google client is configured, and Gmail is
+	// then not offered.
+	Connections connectionService
 }
 
 // New registers operations; logger receives one line per request. Build it
@@ -125,6 +129,7 @@ func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API 
 	registerMembers(api, services.Members)
 	registerRegistration(api, services.Registration, services.RegistrationRequests, services.RegistrationCompletion)
 	registerPasswordReset(api, services.PasswordResetRequests, services.PasswordResetCompletion)
+	registerConnectedAccounts(api, logger, services.ConnectedAccounts, services.Connections, services.Session)
 
 	documentRateLimits(api)
 	registerProblemTypes(api)

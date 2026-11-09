@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"inbok/internal/connectedaccount"
 	"inbok/internal/logging"
 	"inbok/internal/passwordreset"
 )
@@ -81,6 +82,19 @@ func (c *Client) EnqueuePasswordResetLink(ctx context.Context, tx pgx.Tx, attemp
 func (c *Client) EnqueuePasswordChangedNotice(ctx context.Context, tx pgx.Tx, userID int64, changedAt time.Time) error {
 	input := PasswordChangedNoticeInput{UserID: userID, ChangedAt: changedAt}
 	_, err := dbos.Enqueue[passwordreset.Outcome](c.client, emailQueue, passwordChangedNoticeWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+	)
+	return err
+}
+
+// EnqueueAccountRemoval saves, in tx, the account removal workflow for the
+// removal with removalID on the Google queue, so it commits or rolls
+// back with tx. Cancelling ctx stops its statements. It returns DBOS's
+// error, after which tx is aborted and must roll back.
+func (c *Client) EnqueueAccountRemoval(ctx context.Context, tx pgx.Tx, removalID int64) error {
+	input := AccountRemovalInput{RemovalID: removalID}
+	_, err := dbos.Enqueue[connectedaccount.RevokeOutcome](c.client, googleQueue, accountRemovalWorkflow, input,
 		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
 		dbos.WithEnqueueApplicationVersion(applicationVersion),
 	)

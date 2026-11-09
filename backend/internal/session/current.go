@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"uuid"
 
 	"inbok/internal/account"
 	"inbok/internal/randomsecret"
@@ -57,7 +58,9 @@ func (s *Service) Current(ctx context.Context, secret string) (Authenticated, er
 	// 2. Check the session under its lock: delete it when expired, or save
 	// its last use.
 	var expired bool
+	var id uuid.UUID
 	err = s.storage.UpdateSession(ctx, hash, func(state State) (Change, error) {
+		id = state.ID
 		checked, err := checkSession(state, s.now)
 		if errors.Is(err, errExpired) {
 			expired = true
@@ -105,5 +108,5 @@ func (s *Service) Current(ctx context.Context, secret string) (Authenticated, er
 		}
 	}
 
-	return Authenticated{Identity: identity, Session: Reference{hash: hash}}, nil
+	return Authenticated{Identity: identity, Session: Reference{hash: hash, id: id}}, nil
 }

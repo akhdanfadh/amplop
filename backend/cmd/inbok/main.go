@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,8 +15,10 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/config"
+	"inbok/internal/connectedaccount"
 	"inbok/internal/dbos"
 	"inbok/internal/emailverification"
+	"inbok/internal/google"
 	"inbok/internal/httpapi"
 	"inbok/internal/logging"
 	"inbok/internal/passwordreset"
@@ -140,6 +143,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
 	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
+	connectedAccounts := connectedaccount.NewService(db, cfg.Encryption)
 	services := httpapi.Services{
 		EmailVerification:       emailverification.NewService(db, mailer, cfg.PublicURL, time.Now),
 		Members:                 account.NewMembers(db, time.Now),
@@ -159,6 +163,13 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		Account:                 accounts,
 		Session:                 session.NewService(db, accounts, throttle, time.Now),
 		Throttle:                throttle,
+		ConnectedAccounts:       connectedAccounts,
+	}
+	if cfg.Google != nil {
+		// Only when configured, so the interface stays nil and Gmail is not
+		// offered otherwise.
+		client := googleClient(cfg.Google, cfg.PublicURL)
+		services.Connections = connectedaccount.NewConnections(db, connectedAccounts, client, time.Now)
 	}
 	api := httpapi.New(logger, services)
 	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {
@@ -178,6 +189,17 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 
 	// 7. Serve until ctx is cancelled.
 	return listen(ctx, cfg.HTTPAddr, api.Handler(), logger)
+}
+
+// googleClient returns the Google client for settings, sending members back
+// to the inbok served at publicURL.
+func googleClient(settings *config.Google, publicURL *url.URL) *google.Client {
+	return google.New(google.Settings{
+		ClientID:     settings.ClientID,
+		ClientSecret: settings.ClientSecret,
+		RedirectURL:  httpapi.GoogleCallbackURL(publicURL),
+		BaseURL:      settings.BaseURL,
+	}, time.Now)
 }
 
 // listen serves handler on addr until ctx is cancelled, then lets in-flight

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"inbok/internal/connectedaccount"
 	"inbok/internal/emailverification"
 	"inbok/internal/passwordreset"
 	"inbok/internal/registration"
@@ -178,6 +179,48 @@ func TestCleanupLinks(t *testing.T) {
 	left, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	require.NoError(t, err)
 	assert.Equal(t, []string{"03", "05", "06", "08", "within the hour"}, left)
+}
+
+// The cleanup deletes connect states that expired an hour or more ago.
+func TestCleanupConnectStates(t *testing.T) {
+	// Given states that expired an hour or more ago, less than an hour ago,
+	// and not yet.
+	url := migrated(t)
+	db, err := postgres.Open(t.Context(), url)
+	require.NoError(t, err)
+	t.Cleanup(db.Close)
+	conn, err := pgx.Connect(t.Context(), url)
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close(context.Background()) })
+
+	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	for _, sql := range []string{
+		"INSERT INTO users (email, password_hash, role) VALUES ('member@example.org', 'unused', 'member')",
+		"INSERT INTO sessions (token_hash, user_id, expires_at) SELECT '\\x01', id, now() + interval '1 day' FROM users",
+		`INSERT INTO connect_states (state_hash, user_id, session_id, code_verifier, created_at, expires_at)
+		SELECT decode(hash, 'hex'), s.user_id, s.id, 'verifier', v.expires_at - interval '10 minutes', v.expires_at FROM sessions s,
+		(VALUES ('01', $1::timestamptz - interval '1 hour'), ('02', $1 - interval '59 minutes'), ('03', $1 + interval '1 second')) AS v(hash, expires_at)`,
+	} {
+		args := []any{now}
+		if !strings.Contains(sql, "$1") {
+			args = nil
+		}
+		_, err = conn.Exec(t.Context(), sql, args...)
+		require.NoError(t, err)
+	}
+	worker := cleanupWorker(t, url, Services{ConnectStateCleanup: connectedaccount.NewStateCleanup(db, func() time.Time { return now })})
+
+	// When the cleanup runs.
+	deleted, err := triggerCleanup(t, worker)
+	require.NoError(t, err)
+
+	// Then only the state past the grace is gone.
+	assert.Equal(t, 1, deleted["connect states"])
+	rows, err := conn.Query(t.Context(), "SELECT encode(state_hash, 'hex') FROM connect_states ORDER BY 1")
+	require.NoError(t, err)
+	left, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	assert.Equal(t, []string{"02", "03"}, left)
 }
 
 // A run deletes DBOS's records of runs that succeeded at least 7 days ago

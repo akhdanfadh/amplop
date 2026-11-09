@@ -25,6 +25,9 @@ export function AccountNav({
         <Link to="/security" className={linkClass}>
           Security
         </Link>
+        <Link to="/connected-accounts" className={linkClass}>
+          Connected accounts
+        </Link>
         {adminAccess && (
           <>
             <Link to="/members" className={linkClass}>

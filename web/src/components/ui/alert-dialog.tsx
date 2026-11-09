@@ -123,8 +123,25 @@ function AlertDialogDescription({
   );
 }
 
-function AlertDialogAction({ className, ...props }: React.ComponentProps<typeof Button>) {
-  return <Button data-slot="alert-dialog-action" className={cn(className)} {...props} />;
+// AlertDialogAction is the dialog's confirming button. It ignores the later
+// clicks of a double-click, and stops their default action, such as
+// submitting a form: they land on it when the dialog opens over the button
+// that opened it. A keyboard press counts no clicks and is kept.
+function AlertDialogAction({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
+  return (
+    <Button
+      data-slot="alert-dialog-action"
+      className={cn(className)}
+      onClick={(event) => {
+        if (event.detail > 1) {
+          event.preventDefault();
+          return;
+        }
+        onClick?.(event);
+      }}
+      {...props}
+    />
+  );
 }
 
 function AlertDialogCancel({

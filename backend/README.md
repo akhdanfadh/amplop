@@ -7,7 +7,7 @@ shortcut for most commands here.
 
 ## Run the server
 
-`serve` needs PostgreSQL with its migrations applied; see Local database
+`serve` needs PostgreSQL with its migrations applied; see Local services
 in `CONTRIBUTING.md` and Migrations below. From the repository root, load
 `.env` and start the
 development server:
@@ -79,7 +79,9 @@ The worker reads these environment variables:
 | `INBOK_HTTP_ADDR` | `127.0.0.1:8081`; the image sets `0.0.0.0:8080` | Address the worker answers health checks on: port 8081 for the worker, 8080 for `serve`, so both run on one machine. `.env` sets `serve`'s, so the Make commands pass the worker `INBOK_WORKER_HTTP_ADDR` instead; `deploy/compose.yaml` sets `127.0.0.1:8081`. |
 | `INBOK_WORKER_ID` | `worker` | The name the worker resumes unfinished work under: 1 to 64 letters, digits, `.`, `-`, or `_`. |
 | `INBOK_PUBLIC_URL` | none, required | As for `serve`: links in the email the worker sends start with it, and its host names inbok to mail servers. |
-| `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password. |
+| `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of removed Gmail accounts. |
+| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with. Empty: the worker runs no removals and leaves them queued. |
+| `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
 
 DBOS's own `DBOS__APPVERSION` and `DBOS__VMID` would replace the version
 and the ID that decide which work a worker resumes (see below), so the
@@ -158,8 +160,9 @@ runs an older release started, e.g. with
 Every hour on the hour (UTC), the workflow `inbok.cleanup`, scheduled as
 `inbok.cleanup.hourly`, deletes rows nobody can use any more: email
 verification, registration, and password reset links that expired at
-least an hour ago, and password reset attempts that no limit has counted
-for at least an hour, both of their times being over 25 hours old. The
+least an hour ago, password reset attempts that no limit has counted
+for at least an hour, both of their times being over 25 hours old, and
+[Gmail connect states](#connecting) that expired at least an hour ago. The
 hour covers a worker clock running ahead of the API's, which checks
 expiry and limits with its own clock. Registration and password reset
 requests no longer delete these rows themselves; a user's own expired
@@ -287,6 +290,39 @@ late notice still tells. So a user may get the notice twice. The run logs `passw
 `user_id` and its outcome, a warning unless it was sent or skipped for a
 user gone or deactivated, or `password changed notice failed` with an
 error that names only where the send failed.
+
+### Account removal
+
+The workflow `inbok.account-removal`, run from the queue `inbok.google`,
+finishes what removing a Gmail account leaves to do once its row is gone:
+so far, asking Google to end inbok's permission. A
+[disconnect](#disconnecting) deletes the account, moves its sealed refresh
+token to an `account_removals` row, and saves the job, in one transaction,
+so the job's input is only the removal's ID and the token never sits in
+DBOS's tables. Every job that calls Google runs on `inbok.google`, so one
+limit on it protects the Google project's quota.
+
+Its step, `revoke token` (`connectedaccount.Removals.Revoke`), first
+checks whether another member has connected the same Google account: a
+revocation ends the Google account's whole grant to inbok's Google
+project, theirs included, so it is then left alone (`shared`). Otherwise it
+opens the token, sends it to Google's revocation endpoint in the request
+body, and deletes the removal (`revoked`). Google answers a token it no
+longer knows, e.g. one already revoked, with 400 `invalid_token`, which
+counts as revoked, so a step that runs twice is harmless. A token no key
+opens is dropped (`unreadable`). Any other failure is retried 5 more
+times, waiting 1, 2, 4, 8, then 15 minutes; after that, `discard token`
+deletes the removal unrevoked, so no sealed token is kept, and the token
+lapses unused. The run logs `account removal` with the `removal_id` and
+its outcome, or `account removal failed` with an error holding only
+Google's status and OAuth error code.
+
+The worker registers the workflow, and listens to `inbok.google`, only
+when `INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET` are set.
+DBOS would otherwise claim a removal it cannot run for that worker, and
+no other worker could take it. Removals saved while the settings were set
+wait in the queue, with their sealed tokens, until a worker that has them
+runs; one that never does leaves them there.
 
 ### Inspecting workflows
 
@@ -600,7 +636,10 @@ its request.
 | `INBOK_PUBLIC_URL` | none, required | The address users open inbok at, e.g. `https://mail.example.com`; see Public URL below. Invalid values stop startup. |
 | `INBOK_TRUSTED_PROXIES` | empty, trust none | Comma-separated proxy network ranges in CIDR notation. Invalid entries stop startup. |
 | `INBOK_SETUP_TOKEN` | empty, setup unavailable | Operator-generated first-admin setup token. If nonempty, at least 32 Unicode code points. |
-| `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets and the system email password; see Encryption keys below. Invalid entries stop startup. |
+| `INBOK_ENCRYPTION_KEYS` | none, required | Keys that encrypt stored TOTP secrets, the system email password, and connected Gmail accounts' refresh tokens; see Encryption keys below. Invalid entries stop startup. |
+| `INBOK_GOOGLE_CLIENT_ID` | empty, Gmail not offered | The Google OAuth client members connect Gmail accounts with. Set it and the secret together, or neither. |
+| `INBOK_GOOGLE_CLIENT_SECRET` | empty, Gmail not offered | That client's secret. Surrounding spaces are removed from both. |
+| `INBOK_GOOGLE_BASE_URL` | empty, Google itself | For development and tests only: one server on this machine that answers for Google, e.g. `http://127.0.0.1:4000`; see [Google emulator](#google-emulator). Any other host, or no client, stops startup. |
 | `GIN_MODE` | `debug`; the image sets `release` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
@@ -632,24 +671,31 @@ without leading zeros; each key is 32 random bytes in standard base64, from
 `openssl rand -base64 32`. Startup fails, without printing key material, if
 the list is empty or an entry is malformed or repeated.
 
-The first entry encrypts new TOTP secrets and a newly entered system email
-password with AES-256-GCM. Every entry can decrypt. Each stored secret
+The first entry encrypts new TOTP secrets, a newly entered system email
+password, and the refresh token of a newly connected or reconnected Gmail
+account with AES-256-GCM. Every entry can decrypt. Each stored secret
 records its key ID and is bound to what it belongs to: a TOTP secret to its
-user, the system email password to its mail server host, port, and username.
-A ciphertext copied elsewhere does not decrypt. Backup codes and account
+user; the system email password to its mail server host, port, and
+username; a refresh token to its member and connected account. A
+ciphertext copied elsewhere does not decrypt. Backup codes and account
 passwords use Argon2id hashes and do not depend on these keys.
 
 To rotate, generate a key, put it first under an unused ID, keep the old
 entries, and restart every API instance and worker with the same list.
 Existing secrets are not re-encrypted; each keeps its original key until
 that factor is removed and enrolled again, and the system email password
-keeps its key until an administrator saves a new password. Administrators
-cannot turn TOTP off, so their factors can need an old key indefinitely.
-Remove an old key only when neither query lists its ID:
+keeps its key until an administrator saves a new password, and a refresh
+token until its account is reconnected or connected again. A disconnected
+account's token keeps its key while it waits for the [account
+removal](#account-removal) job; without that key the job drops it without
+revoking. Administrators cannot turn TOTP off, so their factors can need an
+old key indefinitely. Remove an old key only when no query lists its ID:
 
 ```sql
 SELECT key_id, count(*) FROM user_totp GROUP BY key_id;
 SELECT password_key_id FROM system_email WHERE password_key_id IS NOT NULL;
+SELECT refresh_token_key_id, count(*) FROM connected_accounts GROUP BY refresh_token_key_id;
+SELECT refresh_token_key_id, count(*) FROM account_removals GROUP BY refresh_token_key_id;
 ```
 
 Back up the key list separately from database backups, so one stolen backup
@@ -661,7 +707,88 @@ turn TOTP off and enroll again. Administrators cannot remove the factor
 themselves; use host-operator recovery below. A lost key also makes the
 system email password unreadable: test messages fail with HTTP 500 and the
 settings lose their tested time until an administrator enters the password
-again and saves. The web app shows that 500 as a lost test result.
+again and saves. The web app shows that 500 as a lost test result. A lost
+key also makes the Gmail refresh tokens it sealed unreadable: Gmail work
+for those accounts fails with `connectedaccount.ErrTokenUnreadable` until
+each member disconnects the account and connects it again, which seals a
+new token with the first key. The accounts are not marked as needing a
+reconnect, since a worker started with a wrong key list would mark every
+account, so the Connected accounts page offers them no Reconnect.
+
+### Google emulator
+
+`compose.yaml` runs a Google emulator, so connecting Gmail works without a
+Google project: [emulate](https://github.com/vercel-labs/emulate)'s
+Google OAuth and Gmail API, version 0.13.0, with seeded mailboxes. Its
+image is built from `google-emulator/` in the repository with pnpm, since
+emulate publishes only an npm package. `.env.example` sets
+`INBOK_GOOGLE_BASE_URL=http://127.0.0.1:4000` and the development client
+the emulator registers, `inbok-dev.apps.googleusercontent.com`, fixed in
+`google-emulator/emulate.config.mjs` so a real client secret in `.env`
+never reaches the emulator. `INBOK_GOOGLE_EMULATOR_PORT` moves it to
+another port; Compose gives the emulator `INBOK_GOOGLE_BASE_URL` as its
+own address, the ID tokens' issuer, so the two agree.
+
+`INBOK_GOOGLE_BASE_URL` makes that one server answer for Google's sign-in
+and Gmail hosts, at the emulator's paths: `/o/oauth2/v2/auth`,
+`/oauth2/token`, `/oauth2/revoke`, and `/gmail/v1/`. It accepts only
+`localhost` or a loopback address, `http` or `https`, and refuses to start
+otherwise, or when no client is set: inbok sends that server members'
+authorization codes and refresh tokens, so a setting copied from a
+development `.env` cannot send them to another machine. For the same
+reason, while it is set, the client that carries them connects only to
+addresses on this machine, whatever `localhost` resolves to, and ignores
+proxy settings; with or without it, that client follows no redirects. A
+deployed server leaves it empty. To turn Gmail off, empty all three Google
+settings.
+
+The consent page lists the seeded accounts; choosing one agrees to every
+permission asked. `google-emulator/emulate.config.mjs` holds the seed:
+
+| Account | Mailbox |
+|---|---|
+| `alex@example.com` | three messages in two threads, a `Receipts` label |
+| `blair@example.com` | two messages |
+| `casey@example.com` | one message |
+| `unverified@example.com` | empty; its ID token says the address is not verified |
+| `testuser@gmail.com` | emulate's own: a few messages and a draft |
+
+The emulator keeps everything in memory. Restarting it, e.g. with
+`make services-stop` and `make services-start`, empties the mailboxes
+back to the seed and refuses every refresh token handed out before.
+Each account keeps its Google ID (`sub`) across restarts.
+
+A patch in `google-emulator/patches/`, which pnpm applies on install,
+changes emulate where inbok needs Gmail's behavior: it adds
+`users.getProfile`, keeps history IDs within 64 bits, as Gmail's are and
+as the Go client decodes them, lets a seed fix an account's `sub`, and
+refuses a code exchanged by another client or with another redirect URI
+than its authorization request's. The install fails if the patch no
+longer applies, e.g. after a version change;
+`google-emulator/pnpm-workspace.yaml` says how to change it.
+
+Where it still differs from Google, a test that needs Google's behavior
+uses a small `httptest` stub instead:
+
+- A person cannot refuse or untick a permission on its consent page.
+- Its revocation endpoint answers 200 for any token, where Google
+  answers 400 `invalid_token` for one it does not know.
+- `history.list` never answers 404 for an old history ID, and nothing
+  returns quota errors.
+- It ignores `access_type` and `prompt` and always returns a refresh
+  token.
+- A failed PKCE check leaves the code usable, and posting the consent
+  form directly redirects to any `redirect_uri`; only the consent page
+  checks it.
+- An empty mailbox's history ID is `0`, every ID token carries an `hd`
+  claim from the address's domain, and every response allows any origin.
+
+Go tests start their own emulator per test with `internal/googleemulator`,
+from the same Dockerfile, tagged `inbok-google-emulator:test` rather than
+Compose's `:local`. The first test in a run builds it, never taking an
+existing image as found, so a test cannot run a stale emulator. Docker
+answers from its cache unless `google-emulator/` changed; the first build
+needs network access for the npm registry.
 
 ## Reverse proxies
 
@@ -706,21 +833,23 @@ gives the address to trust.
 ## Email addresses
 
 Every address inbok takes goes through `emailaddress.Parse`: setup, sign-in,
-`recover-admin`, registration, the system email From address, and each
-message's recipient. It trims surrounding spaces and tabs, accepts one bare address of
-at most 254 characters without hidden characters, and lowercases the letters
+`recover-admin`, registration, the system email From address, each
+message's recipient, and a connected Gmail account's email from Google.
+It trims surrounding spaces and tabs, accepts one bare address of at most
+254 characters without hidden characters, and lowercases the letters
 A to Z, local part included; other letters keep their case. Hidden
 characters are controls, invisible formatting such as a zero-width space or
 a right-to-left override, and Unicode spaces and separators. Anything else
 is `emailaddress.ErrInvalid`, which handlers answer with a 422 on the field;
 Huma accepts hidden characters, so for those the service's 422 is the one a
 client sees. Saved addresses are compared
-exactly, and the `users` table refuses an email with an uppercase ASCII
-letter. New code that takes an address calls `Parse` in its service.
+exactly, and the `users` and `connected_accounts` tables refuse an email
+with an uppercase ASCII letter. New code that takes an address calls
+`Parse` in its service.
 
 ADR025 in the project's decision records explains the choice and its cost: a
 mail server that treats the local part's case as meaningful is not
-supported. Mail accounts that members connect are outside this rule.
+supported. ADR006 explains why connected Gmail accounts follow the rule.
 
 ## Password hashes
 
@@ -971,8 +1100,8 @@ docker exec -it inbok inbok recover-admin admin@example.com
 ```
 
 For piped input, use `docker exec -i` without `-t` so it uses the one-line
-input mode. This repository's development Compose file starts PostgreSQL
-and Mailpit; it does not run inbok itself.
+input mode. This repository's development Compose file starts PostgreSQL,
+Mailpit, and the Google emulator; it does not run inbok itself.
 
 Recovery checks that the account is an administrator, then replaces the
 password, removes TOTP and every backup code, ends all sessions and sign-in
@@ -1117,8 +1246,8 @@ ORDER BY id DESC;
 
 ### Testing with Mailpit
 
-`make db-start` also starts Mailpit, which accepts any message and shows it
-in a web page instead of delivering it. On the Settings page, save:
+`make services-start` also starts Mailpit, which accepts any message and
+shows it in a web page instead of delivering it. On the Settings page, save:
 
 | Field | Value |
 |---|---|
@@ -1507,6 +1636,82 @@ FROM password_reset_attempts
 ORDER BY id DESC;
 ```
 
+## Gmail accounts
+
+A member connects Gmail accounts with Google's consent page
+(`connectedaccount`), as ADR006 in the project's decision records
+decides. Only an instance with a Google client offers it:
+`INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET`, which the deploy
+guide's [Connecting Gmail](../deploy/README.md#connecting-gmail) section
+shows how to create. `serve` builds `connectedaccount.Connections` only
+then; without it, `GET /api/v0/connected-accounts/providers` answers
+`{"offered": []}` instead of `["gmail"]`, and the two starts below answer
+409 `gmail-not-configured`. In development the [Google emulator](#google-emulator)
+stands in for Google.
+
+### Connected accounts
+
+`connected_accounts` keeps each account's owner, `email`, Google's `sub`
+(`oauth_subject`), and its refresh token, sealed with
+`INBOK_ENCRYPTION_KEYS` and bound to the user and the account, as
+[Encryption keys](#encryption-keys) describes. A member connects a Google
+account once; two members may each connect it.
+
+`GET /api/v0/connected-accounts` lists the member's own accounts, oldest
+first: `id`, `provider` (`gmail`), `email`, `needsReconnectSince`, null
+while Google accepts the token, and `createdAt`. Google's `sub` stays on
+the server. Another member's account is answered as not found everywhere,
+404 `connected-account-not-found`, like a missing one.
+
+### Connecting
+
+1. `POST /api/v0/connected-accounts/google` starts a new connection, and
+   `POST /api/v0/connected-accounts/{id}/reconnect` one that replaces that
+   account's token. Each saves a state in `connect_states` and answers
+   `{"url"}`, Google's consent page, which the web app opens in the same
+   tab. The state is single use, bound to the member and the session,
+   expires in 10 minutes, and holds the PKCE verifier. A member may have 5
+   unfinished starts: a sixth answers 429 `connect-throttled` with
+   `Retry-After`, the wait until the oldest expires. A finished flow frees
+   its place at once, so only abandoned ones count.
+2. Google sends the browser to `GET /api/v0/connected-accounts/google/callback`
+   with the state and a code, or an error. The operation is public to the
+   access check and checks the session itself, so every outcome, a
+   missing session included, is a 303 to the web app's
+   `/connected-accounts?outcome=<outcome>`, never a Problem Details body.
+   The session cookie arrives because it is `SameSite=Lax` and Google's
+   redirect is a top-level GET, which `withCrossOrigin` lets through.
+   Without a Google client, e.g. one removed while a member was at
+   Google, it answers `failed` and leaves the state, which the flow never
+   used, to expire.
+3. `connectedaccount.Connections.Finish` deletes the state before any
+   check, so it is used up whatever follows; trades the code with the
+   verifier; checks the refresh token, the granted Gmail scope, and the
+   ID token's verified email; calls Gmail's `users.getProfile`, whose
+   mailbox must be the ID token's email; and saves the account, or
+   replaces the reconnected account's token.
+
+The outcomes, the contract's `ConnectOutcome`, are `connected` (a
+reconnect included), `cancelled`, `gmail-not-granted`,
+`email-not-verified`, `no-gmail` (Gmail's 400 `failedPrecondition`, "Mail
+service not enabled", e.g. for a Workspace account without Gmail),
+`already-connected`, `different-account` (a reconnect to another Google
+account), `expired` (a state unknown, used, expired, or from another
+session), and `failed`. A `failed` outcome logs `gmail connect failed`
+with an error holding no code, token, or query string; the request log
+records only the path. The callback operation's tag, `Redirects`, keeps
+it out of the web app's generated client: a call from the page would use
+up a state.
+
+### Disconnecting
+
+`DELETE /api/v0/connected-accounts/{id}` answers 200 with the deleted
+account. In one transaction it deletes the account, and with it the
+account's connect states and everything synchronized for it, moves the
+refresh token to `account_removals`, and saves the
+[account removal](#account-removal) job. Jobs already running for the
+account stop when `Access.Token` finds it gone.
+
 ## Logs and request IDs
 
 `serve` writes text logs to stderr, one line per request with its method,
@@ -1541,9 +1746,10 @@ against testify's usage rules, e.g. expected value first; `--fix`
 corrects most of them.
 
 Database tests start their own throwaway PostgreSQL in Docker
-([Testcontainers](https://golang.testcontainers.org)), so Docker must be
-running; without it they fail rather than skip. They never touch the
-Compose database.
+([Testcontainers](https://golang.testcontainers.org)), and Gmail tests
+their own [Google emulator](#google-emulator), so Docker must be running;
+without it they fail rather than skip. They never touch the Compose
+services.
 
 ## Writing tests
 
@@ -1679,6 +1885,8 @@ httpapi --> registration <-- repository/postgres
             registration --> systememail, account
 httpapi --> passwordreset <-- repository/postgres
             passwordreset --> systememail, account
+httpapi --> connectedaccount <-- repository/postgres
+                             <-- google
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -1710,6 +1918,15 @@ httpapi --> passwordreset <-- repository/postgres
   fills with `systememail`'s `Mailer`. A feature may import another's plain
   rules directly: `registration` uses `account.ValidatePassword` and
   `account.User`.
+- `google`, like `smtp`, is a technology package: it implements the
+  Google side `connectedaccount` declares for its connect flow, its token
+  access, and its revocations: the OAuth client, the ID token checks, the
+  refresh token trade, revocation, and Gmail's `users.getProfile`, with
+  `golang.org/x/oauth2` and
+  Google's Gmail client. Their types stay inside it; Gmail calls take
+  `connectedaccount`'s `AccessToken`.
+- `googleemulator` starts the [Google emulator](#google-emulator) for
+  tests, each with its own seed. Only tests import it.
 - `webapp` embeds the built web app and serves it as a static site:
   files, the shell for browser routes, caching, and the CSP. It knows the
   build's layout, not the web app's code. `httpapi` declares a `webApp`
@@ -1828,8 +2045,9 @@ For a job that runs once per request, follow the recovery notice
 2. `internal/dbos`: an input struct holding IDs and no personal data,
    the workflow registered under a fixed name with each step's retry
    policy, and a field in `Services` for the feature's type. A job that sends inbok's
-   email runs on `inbok.email` (`emailqueue.go`), which every such job
-   shares; another job registers its own queue the same way.
+   email runs on `inbok.email`, and one that calls Google on
+   `inbok.google` (`queue.go`), which every such job shares; another kind
+   of job adds its own queue there.
 3. `cmd/inbok/worker.go`: set that field.
 4. Save the workflow with the change that needs it, in one transaction.
    The feature's `Storage` method documents that it saves the job; its
@@ -1849,3 +2067,42 @@ For a job that runs once per request, follow the recovery notice
 5. The command that makes the change gives storage the client with
    `DB.WithWorkflows`, as `recover-admin` does; `serve` already has one,
    for jobs requests save.
+
+### Calling Gmail
+
+A job that calls Gmail, e.g. synchronization or sending, takes an access
+token for the account from `connectedaccount.Access.Token` when it
+starts, in the step that calls Gmail, and passes it to the `google`
+client's Gmail methods. A token lasts as long as Google's `expires_in`
+said, usually an hour; a step that may run longer takes another. `Token`
+does what Google's refresh tokens need:
+
+- It saves a replacement refresh token Google sends before handing out
+  the access token, and never revokes the one replaced.
+- When Google refuses the refresh token (`invalid_grant`), it marks the
+  account as needing a reconnect and returns
+  `connectedaccount.ErrNeedsReconnect`; it returns that again, without
+  asking Google, until the member reconnects. A job stops work for the
+  account on it, as on `ErrNotFound` for a disconnected account and
+  `ErrDeactivated` for a deactivated member's.
+- It writes only against the token it read, so a reconnect or another
+  job's replacement in between wins; it then reads again once, and
+  returns `ErrCredentialChanged` if the token changed again. Saving a
+  replacement clears a refusal another job recorded against the same
+  token, since Google accepted that token to send the replacement.
+- It reads the account under the member's share lock, as
+  ADR029 asks before provider work, and reads it again just before
+  returning, so an account disconnected, deactivated, or refused while
+  Google answered gets no token. Its checks hold at that last read; a job
+  that must not act for an account gone since, e.g. one sending mail,
+  checks again where it acts.
+
+Build `Access` in `cmd/inbok/worker.go` only when a Google client is
+configured, as `connectedaccount.Removals` is, so the job's field in
+`dbos.Services` stays nil otherwise: a nil `*Access` stored in it would
+pass the worker's nil check.
+
+Keep the token out of a step's output: DBOS saves outputs in the
+database. `AccessToken` saves as `{}` in JSON and prints as a
+placeholder, so a slip shows nothing, but a step should return what
+later steps need, never the token.

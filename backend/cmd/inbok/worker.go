@@ -9,8 +9,10 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/config"
+	"inbok/internal/connectedaccount"
 	"inbok/internal/dbos"
 	"inbok/internal/emailverification"
+	"inbok/internal/google"
 	"inbok/internal/passwordreset"
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
@@ -52,6 +54,11 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 	if err != nil {
 		return err
 	}
+	// The Google client revokes disconnected accounts' tokens.
+	googleSettings, err := config.GoogleSettings()
+	if err != nil {
+		return err
+	}
 
 	// 2. Count time in UTC. DBOS names each scheduled run after its time in
 	// the process's local zone, offset included, so workers in different zones would name one
@@ -67,15 +74,28 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 
 	sender := smtp.NewSender(publicURL.Hostname()).WithTimeout(backgroundSendTimeout)
 	mailer := systememail.NewMailer(db, keys, sender, logger)
-	w, err := dbos.NewWorker(url, id, dbos.Services{
+	services := dbos.Services{
 		EmailVerificationCleanup:    emailverification.NewCleanup(db, time.Now),
 		RegistrationCleanup:         registration.NewCleanup(db, time.Now),
 		PasswordResetCleanup:        passwordreset.NewCleanup(db, time.Now),
 		PasswordResetAttemptCleanup: passwordreset.NewAttemptCleanup(db, time.Now),
+		ConnectStateCleanup:         connectedaccount.NewStateCleanup(db, time.Now),
 		RecoveryNotices:             account.NewRecoveryNotices(db, mailer, publicURL),
 		PasswordResetLinks:          passwordreset.NewLinks(db, mailer, publicURL, time.Now),
 		PasswordChangedNotices:      passwordreset.NewNotices(db, mailer, publicURL),
-	}, logger)
+	}
+	if googleSettings != nil {
+		// Only when configured, so the interface stays nil: removals saved
+		// while a client was configured then wait for one. Revoking and
+		// refreshing send no redirect URI, so the worker's client has none.
+		client := google.New(google.Settings{
+			ClientID:     googleSettings.ClientID,
+			ClientSecret: googleSettings.ClientSecret,
+			BaseURL:      googleSettings.BaseURL,
+		}, time.Now)
+		services.AccountRemovals = connectedaccount.NewRemovals(db, keys, client)
+	}
+	w, err := dbos.NewWorker(url, id, services, logger)
 	if err != nil {
 		db.Close()
 		return fmt.Errorf("open DBOS: %w", err)

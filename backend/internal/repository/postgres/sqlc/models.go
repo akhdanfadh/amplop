@@ -11,12 +11,44 @@ import (
 	"uuid"
 )
 
+type AccountRemoval struct {
+	ID                     int64
+	UserID                 int64
+	AccountID              int64
+	Provider               string
+	OauthSubject           string
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
+}
+
 type AuditEvent struct {
 	ID           int64
 	OccurredAt   time.Time
 	Action       string
 	TargetUserID *int64
 	ActorUserID  *int64
+}
+
+type ConnectState struct {
+	StateHash    []byte
+	UserID       int64
+	SessionID    uuid.UUID
+	AccountID    *int64
+	CodeVerifier string
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+}
+
+type ConnectedAccount struct {
+	ID                     int64
+	UserID                 int64
+	Provider               string
+	Email                  string
+	OauthSubject           string
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
+	NeedsReconnectSince    *time.Time
+	CreatedAt              time.Time
 }
 
 type EmailVerificationLink struct {

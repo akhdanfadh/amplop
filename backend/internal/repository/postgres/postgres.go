@@ -21,6 +21,14 @@ type DB struct {
 type Workflows interface {
 	RecoveryWorkflows
 	PasswordResetWorkflows
+	ConnectedAccountWorkflows
+}
+
+// ConnectedAccountWorkflows saves the jobs of connected accounts.
+type ConnectedAccountWorkflows interface {
+	// EnqueueAccountRemoval saves, in tx, the workflow that finishes the
+	// account removal removalID: it revokes the kept refresh token at Google.
+	EnqueueAccountRemoval(ctx context.Context, tx pgx.Tx, removalID int64) error
 }
 
 // PasswordResetWorkflows saves the jobs of password reset.

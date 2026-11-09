@@ -11,7 +11,8 @@ the area you change before editing it:
 
 ## Done
 
-- `make check` passes. It needs Docker for the Go database tests.
+- `make check` passes. It needs Docker for the Go database and Google
+  emulator tests; the emulator's first build also needs the npm registry.
 - Generated code comes from `make generate`, committed with the change
   that caused it. Its generators own these paths:
   `backend/internal/repository/postgres/sqlc`, `api/generated`,
@@ -21,7 +22,7 @@ the area you change before editing it:
 
 - Trial runs use their own stack: copy `.env.example` to a file outside
   the repo, set other ports and a `COMPOSE_PROJECT_NAME`, and pass it as
-  `ENV_FILE`, e.g. `make db-start dev ENV_FILE=/tmp/trial.env`. The
+  `ENV_FILE`, e.g. `make services-start dev ENV_FILE=/tmp/trial.env`. The
   default `.env` stack holds the developer's own data.
 - New migrations come from `make db-migration NAME=add_x`, which puts
   the file in the migrations folder.

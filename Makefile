@@ -4,7 +4,7 @@
 #
 # Naming: when `make <verb>` exists, its parts are `<verb>-backend` and
 # `<verb>-web`, e.g. `make check` runs `check-backend` and `check-web`.
-# A command for one part only is `<part>-<verb>`, e.g. `db-start`.
+# A command for one part only is `<part>-<verb>`, e.g. `db-migrate`.
 
 # Settings for PostgreSQL, Go, and Goose; copied from .env.example on first
 # use. Another file runs a second copy beside yours, e.g. on other ports:
@@ -29,7 +29,7 @@ TESTIFYLINT := go -C backend tool -modfile=tools.mod testifylint
 
 .PHONY: help install image dev dev-backend dev-worker dev-web backend-serve \
 	backend-worker backend-build web-build web-preview web-add-ui \
-	db-start db-stop db-wipe db-migrate db-status db-rollback \
+	services-start services-stop services-wipe db-migrate db-status db-rollback \
 	db-reset db-migration \
 	generate generate-sqlc generate-api generate-web \
 	check check-backend check-web test test-backend test-web \
@@ -100,16 +100,20 @@ web-add-ui: ## Add a shadcn component, e.g. NAME=dialog
 	pnpm -C web exec shadcn add $(NAME)
 	pnpm -C web fix
 
-# Database
+# Local services: the Docker Compose services in compose.yaml
 
-db-start: $(ENV_FILE) ## Start PostgreSQL and Mailpit in Docker
-	$(WITH_ENV) docker compose up -d --wait
+# --build rebuilds the Google emulator's image when google-emulator/
+# changes; otherwise Docker reuses its cached layers.
+services-start: $(ENV_FILE) ## Start PostgreSQL, Mailpit, and the Google emulator in Docker
+	$(WITH_ENV) docker compose up -d --wait --build
 
-db-stop: $(ENV_FILE) ## Stop PostgreSQL and Mailpit, keeping the database
+services-stop: $(ENV_FILE) ## Stop the Docker services, keeping the database
 	$(WITH_ENV) docker compose down
 
-db-wipe: $(ENV_FILE) ## Stop PostgreSQL and Mailpit, deleting the database
+services-wipe: $(ENV_FILE) ## Stop the Docker services, deleting the database
 	$(WITH_ENV) docker compose down -v
+
+# Database
 
 db-migrate: $(ENV_FILE) ## Apply pending migrations
 	$(WITH_ENV) go -C backend run ./cmd/inbok migrate

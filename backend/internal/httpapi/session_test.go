@@ -107,7 +107,7 @@ func (referenceStorage) ReadSessionIdentity(context.Context, [sha256.Size]byte) 
 
 func (referenceStorage) UpdateSession(_ context.Context, hash [sha256.Size]byte, update func(session.State) (session.Change, error)) error {
 	now := time.Now()
-	_, err := update(session.State{TokenHash: hash, UserID: 42, CreatedAt: now, LastUsedAt: now, ExpiresAt: now.Add(time.Hour)})
+	_, err := update(session.State{TokenHash: hash, ID: uuid.New(), UserID: 42, CreatedAt: now, LastUsedAt: now, ExpiresAt: now.Add(time.Hour)})
 	return err
 }
 

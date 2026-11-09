@@ -30,7 +30,9 @@ Run every command here from this folder, `deploy/`.
    cp .env.example .env && chmod 600 .env
    ```
 
-2. Fill in every empty value in `.env`. Each one says how to generate it.
+2. Fill in every empty value in `.env` but the optional Gmail ones, which
+   [Connecting Gmail](#connecting-gmail) covers. Each says how to
+   generate it.
    Keep a copy of `INBOK_ENCRYPTION_KEYS` somewhere other than the server,
    e.g. a password manager: see [Backups](#backups). `INBOK_PUBLIC_URL`
    is already filled in from `INBOK_DOMAIN`.
@@ -58,12 +60,90 @@ Logs come from `docker compose logs inbok` (or `worker`, `caddy`,
 `postgres`, `migrate`). Every line inbok logs for a request carries its
 `request_id`, which the browser also receives in the `X-Request-ID` header.
 
+## Connecting Gmail
+
+Members connect their Gmail accounts through a Google OAuth client you
+create in your own Google Cloud project. Without one, inbok does not offer
+Gmail and everything else works. The project needs no billing account.
+
+1. Open the [Google Cloud console](https://console.cloud.google.com/) and
+   create a project, e.g. `inbok`.
+
+2. Turn on the
+   [Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com)
+   for it. Without it, every connection fails when inbok checks the
+   mailbox.
+
+3. Open [Google Auth Platform](https://console.cloud.google.com/auth/overview)
+   and click **Get started**. Name the app as members know your
+   installation, give your email for support and contact, and choose
+   **External** as the audience.
+
+4. Under **Data Access**, click **Add or remove scopes**, add `openid`,
+   `.../auth/userinfo.email`, and
+   `https://www.googleapis.com/auth/gmail.modify` (under **Manually add
+   scopes** if it is not listed), and save.
+
+5. Under **Audience**, click **Publish app**, so the status reads In
+   production. Do not submit it for verification; see
+   [What Google limits](#what-google-limits).
+
+6. Under **Clients**, click **Create client** and choose **Web
+   application**. Add one **Authorized redirect URI**: `INBOK_PUBLIC_URL`
+   followed by `/api/v0/connected-accounts/google/callback`, e.g.
+   `https://inbok.example.com/api/v0/connected-accounts/google/callback`.
+   It must match exactly, port included. Leave **Authorized JavaScript
+   origins** empty. Click **Create**, then **Download JSON** at once:
+   Google shows the secret only this time.
+
+7. Put the client ID and secret in `.env` as `INBOK_GOOGLE_CLIENT_ID` and
+   `INBOK_GOOGLE_CLIENT_SECRET`, and apply them:
+
+   ```sh
+   docker compose up -d
+   ```
+
+   Set both or neither: one alone stops inbok at startup.
+
+Members then connect their accounts on the Connected accounts page, which
+every page links once they sign in.
+
+Google can take from five minutes to a few hours to apply a new redirect
+URI; until then, connecting ends on Google's `redirect_uri_mismatch` page.
+If `INBOK_PUBLIC_URL` changes, change the redirect URI to match.
+
+To replace a lost or leaked secret, open the client under **Clients**,
+click **Add secret**, put the new secret in `.env`, and run
+`docker compose up -d`. Then disable and delete the old secret there.
+
+### What Google limits
+
+Every Gmail scope that reads mail is restricted, so members see Google's
+"Google hasn't verified this app" warning when they connect, and continue
+past it. Removing the warning needs Google's verification of restricted
+scopes, including a security assessment, which each installation would
+have to pass for itself. Until then, the project can connect at most 100
+Google accounts in total.
+
+Leave the app In production rather than Testing. In Testing, only the
+test users you list can connect, and Google ends each refresh token after
+seven days, so every account would need reconnecting weekly.
+
+Give each stack its own client, e.g. one for this server and another for
+a trial: Google keeps at most 100 refresh tokens per Google account and
+client and silently ends the oldest, so connecting the same Google
+account again and again elsewhere could end this server's connection to
+it.
+
 ## The worker
 
 `worker` runs inbok's background work, which it keeps in the database, so
 work survives a restart. It reaches PostgreSQL and, to send inbok's
 email, mail servers on the internet; it needs `INBOK_ENCRYPTION_KEYS` and
-`INBOK_PUBLIC_URL` like the server. It answers its health check on its own
+`INBOK_PUBLIC_URL` like the server, and the same `INBOK_GOOGLE_CLIENT_ID`
+and `INBOK_GOOGLE_CLIENT_SECRET`, which `compose.yaml` passes to both, for
+the job that asks Google to end inbok's permission for a Gmail account a
+member disconnects. It answers its health check on its own
 loopback address, so nothing else can reach it. Stopping, restarting, or replacing it is
 safe: work it left unfinished resumes when it starts again, from the step
 that had not finished, so a step can run twice. That relies on its
@@ -121,10 +201,11 @@ mkdir -p ~/inbok-backups
 ```
 
 The encryption keys: `INBOK_ENCRYPTION_KEYS` from `.env`. They decrypt
-the TOTP secrets and the system email password stored in the database,
-so a stolen dump alone reveals neither, and a restore needs every key its
-rows use. Store them elsewhere, e.g. in a password manager, and update
-that copy when you rotate keys.
+the TOTP secrets, the system email password, and connected Gmail
+accounts' refresh tokens stored in the database, so a stolen dump alone
+reveals none of them, and a restore needs every key its rows use. Store
+them elsewhere, e.g. in a password manager, and update that copy when you
+rotate keys.
 
 To restore, stop the services that use the database, load the dump, and
 start them again. `--single-transaction` makes the restore all or
@@ -278,7 +359,10 @@ docker compose --env-file .env.trial down -v
 ```
 
 Caddy then uses a certificate from its own local CA, which browsers warn
-about.
+about. To try Gmail there, create a client for the trial as
+[Connecting Gmail](#connecting-gmail) says, with the trial's
+`INBOK_PUBLIC_URL` in its redirect URI, rather than reusing your server's;
+[What Google limits](#what-google-limits) says why.
 
 ### Build caches
 
