@@ -3,7 +3,8 @@
 // PostgreSQL keeps what describes it and each content's ID (ADR009).
 //
 // messagecontent.go declares the store; part.go reads a message's part
-// tree, and text.go converts its text to UTF-8.
+// tree, text.go converts its text to UTF-8, and display.go chooses what a
+// view shows of it.
 package messagecontent
 
 import (

@@ -34,12 +34,14 @@ const (
 	DispositionAttachment Disposition = "attachment"
 )
 
-// Media types the parser tells apart.
+// Media types the parser and [Choose] tell apart.
 const (
-	mediaPlain     = "text/plain"
-	mediaHTML      = "text/html"
-	mediaMultipart = "multipart/"
-	mediaImage     = "image/"
+	mediaPlain       = "text/plain"
+	mediaHTML        = "text/html"
+	mediaAlternative = "multipart/alternative"
+	mediaRelated     = "multipart/related"
+	mediaMultipart   = "multipart/"
+	mediaImage       = "image/"
 )
 
 // Header fields and parameters the parser reads.
@@ -48,6 +50,7 @@ const (
 	headerDisposition = "Content-Disposition"
 	headerContentID   = "Content-ID"
 	paramCharset      = "charset"
+	paramStart        = "start"
 )
 
 // maxParts is the most parts [Parse] reads in one message. inbok's own
@@ -92,6 +95,9 @@ type Part struct {
 	ContentID   string // without angle brackets; "" when none
 	Kind        Kind
 	Parts       []Part
+	// Start is, for multipart/related, the Content-ID of the part shown
+	// (RFC 2387, section 3.2), without angle brackets; "" when none.
+	Start string
 }
 
 // Text is a text part's content, converted to UTF-8.
@@ -137,6 +143,7 @@ func parse(received Received, texts *[]Text) Part {
 		Size:        received.Size,
 		Disposition: dispositionOf(received.Header),
 		ContentID:   contentID(received.Header),
+		Start:       startOf(received.Header),
 	}
 	part.Kind = kindOf(part)
 
@@ -185,11 +192,24 @@ func charsetOf(header textproto.MIMEHeader) string {
 		if !ok || !strings.EqualFold(strings.TrimSpace(name), paramCharset) {
 			continue
 		}
-		label = strings.Trim(strings.TrimSpace(label), `"`)
-		label, _, _ = strings.Cut(label, " ")
-		return strings.ToLower(clean(label))
+		return strings.ToLower(clean(paramValue(label)))
 	}
 	return ""
+}
+
+// paramValue returns the value at the start of s, a parameter's text
+// after "=": a quoted string without its quotes, else a token, which ends
+// at white space (RFC 2045, section 5.1).
+func paramValue(s string) string {
+	s = strings.TrimSpace(s)
+	if quoted, ok := strings.CutPrefix(s, `"`); ok {
+		value, _, _ := strings.Cut(quoted, `"`)
+		return value
+	}
+	if end := strings.IndexAny(s, " \t"); end >= 0 {
+		return s[:end]
+	}
+	return s
 }
 
 // dispositionOf returns header's Content-Disposition type.
@@ -207,10 +227,25 @@ func dispositionOf(header textproto.MIMEHeader) Disposition {
 	return DispositionAttachment
 }
 
-// contentID returns header's Content-ID without its angle brackets
-// (RFC 2392), or "" when it has none.
+// contentID returns header's Content-ID, or "" when it has none.
 func contentID(header textproto.MIMEHeader) string {
-	id := strings.TrimSpace(header.Get(headerContentID))
+	return unbracket(header.Get(headerContentID))
+}
+
+// startOf returns the start parameter of header's Content-Type, or ""
+// when it has none or cannot be read.
+func startOf(header textproto.MIMEHeader) string {
+	_, params, err := mime.ParseMediaType(header.Get(headerContentType))
+	if err != nil {
+		return ""
+	}
+	return unbracket(params[paramStart])
+}
+
+// unbracket returns id, a Content-ID, without its angle brackets
+// (RFC 2392).
+func unbracket(id string) string {
+	id = strings.TrimSpace(id)
 	if strings.HasPrefix(id, "<") && strings.HasSuffix(id, ">") {
 		id = id[1 : len(id)-1]
 	}

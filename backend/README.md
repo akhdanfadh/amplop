@@ -908,7 +908,8 @@ technology package fills, and returns:
 
 - the part tree PostgreSQL keeps, one `Part` per node: the provider's
   part ID (Gmail's `partId`), media type, declared charset, file name,
-  size, disposition, `Content-ID`, and kind;
+  size, disposition, `Content-ID`, kind, and, for `multipart/related`,
+  its `start` parameter;
 - the content of each text part that came with the message, converted to
   UTF-8 by `DecodeText`. A part whose bytes the provider sends separately
   (Gmail's `attachmentId`) has none; decode it with `DecodeText` once
@@ -945,6 +946,20 @@ unsafe, e.g. `iso-2022-kr`, reads as one U+FFFD, as does each byte that
 cannot convert. Like a browser, it garbles UTF-8 labelled as
 windows-1252, or undeclared UTF-8 that starts after a first kilobyte of
 plain ASCII; both are rare in mail, which declares its charset.
+
+`messagecontent.Choose` picks what a view shows, when the message is
+shown, so a better rule reaches stored mail without fetching it again:
+
+- In `multipart/alternative`, the last alternative with HTML, else the
+  last with text. The others are the same message in another form, so
+  their parts, attachments included, are left out.
+- In `multipart/related`, the part its `start` parameter names, else the
+  first (RFC 2387). Its inline parts appear where its HTML refers to them
+  by `cid:`; when it has no HTML, they are offered as downloads. Other
+  parts in it are walked as in `multipart/mixed`.
+- In any other multipart, every part in order: several text parts show
+  one after another, and attachments, plus inline parts outside
+  `multipart/related`, are offered as downloads.
 
 ## Email addresses
 

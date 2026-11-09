@@ -176,12 +176,33 @@ func TestParseCharset(t *testing.T) {
 		{`text/plain; name=Foo Bar.txt; CHARSET="KOI8-R"`, "koi8-r"},
 		{"text/plain; charset=utf-8 format=flowed", "utf-8"},
 		{"text/plain; charset=utf-8;;", "utf-8"},
+		{`text/plain; charset="iso-8859-2" format=flowed`, "iso-8859-2"},
+		{"text/plain; charset=iso-8859-2\tformat=flowed", "iso-8859-2"},
+		{`text/plain; charset="iso-8859-2; name=Foo Bar.txt`, "iso-8859-2"},
 		{"text/plain; charset", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.contentType, func(t *testing.T) {
 			tree := parsed(t, Received{MediaType: "text/plain", Header: header("Content-Type", tt.contentType)})
 			assert.Equal(t, tt.want, tree.Charset)
+		})
+	}
+}
+
+func TestParseStart(t *testing.T) {
+	tests := []struct {
+		contentType string
+		want        string
+	}{
+		{"multipart/related", ""},
+		{`multipart/related; boundary="b"; start="<root@example.com>"; type="text/html"`, "root@example.com"},
+		{"multipart/related; start=root", "root"},
+		{"multipart/related; start=<a b>", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.contentType, func(t *testing.T) {
+			tree := parsed(t, Received{MediaType: "multipart/related", Header: header("Content-Type", tt.contentType)})
+			assert.Equal(t, tt.want, tree.Start)
 		})
 	}
 }
@@ -251,6 +272,18 @@ func TestParseTooManyParts(t *testing.T) {
 	require.ErrorIs(t, err, ErrTooManyParts)
 }
 
+// Parts are counted through the whole tree, not one level.
+func TestParseTooManyNestedParts(t *testing.T) {
+	root := Received{MediaType: "multipart/mixed"}
+	for range maxParts {
+		root = Received{MediaType: "multipart/mixed", Parts: []Received{root}}
+	}
+
+	_, _, err := Parse(root)
+
+	require.ErrorIs(t, err, ErrTooManyParts)
+}
+
 func TestParseMostParts(t *testing.T) {
 	root := Received{MediaType: "multipart/mixed", Parts: make([]Received, maxParts-1)}
 
@@ -275,4 +308,5 @@ func TestParseClean(t *testing.T) {
 	assert.Equal(t, "0", tree.ID)
 	assert.Equal(t, "abgpj.exe\uFFFD", tree.Filename)
 	assert.Equal(t, "logo", tree.ContentID)
+	assert.Equal(t, "utf-8", tree.Charset)
 }
