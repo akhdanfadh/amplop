@@ -6,15 +6,18 @@ import "slices"
 type Display struct {
 	Bodies      []Part // text parts to show, one after another
 	Attachments []Part // parts to offer as downloads, in message order
+	// Inline is the inline parts that HTML in [Display.Bodies] can show by
+	// Content-ID, in message order; see [Display.Downloads].
+	Inline []Part
 }
 
 // Choose returns what a view shows of the message whose part tree is
 // root: in multipart/alternative, the last alternative that has HTML,
 // else the last one that has text; in multipart/related, the part its
 // start parameter names, else its first, whose inline parts HTML shows
-// by Content-ID; in any other multipart,
-// every part in order. An inline part that no HTML of its
-// multipart/related can show is offered as a download.
+// by Content-ID; in any other multipart, every part in order. An inline
+// part that no HTML of its multipart/related can show is offered as a
+// download.
 //
 // DESIGN: It runs when a message is shown, on what PostgreSQL keeps, so
 // a better choice reaches stored mail without fetching it again (ADR009).
@@ -103,9 +106,14 @@ func (d *Display) addRelated(related Part) {
 	// Parts are added in message order, wherever the shown part is.
 	for i, part := range related.Parts {
 		switch {
+		// The shown part, in its place.
 		case i == root:
 			d.merge(shown)
-		case part.Kind != KindInline || !html:
+		// An image its HTML can show by cid:.
+		case part.Kind == KindInline && html:
+			d.Inline = append(d.Inline, part)
+		// Anything else, as in multipart/mixed.
+		default:
 			d.add(part)
 		}
 	}
@@ -115,6 +123,21 @@ func (d *Display) addRelated(related Part) {
 func (d *Display) merge(shown Display) {
 	d.Bodies = append(d.Bodies, shown.Bodies...)
 	d.Attachments = append(d.Attachments, shown.Attachments...)
+	d.Inline = append(d.Inline, shown.Inline...)
+}
+
+// Downloads returns the parts a view offers as downloads: d's
+// attachments, then its inline parts whose IDs are not in shown, the IDs
+// of the inline parts its HTML bodies showed.
+func (d Display) Downloads(shown []string) []Part {
+	downloads := slices.Clone(d.Attachments)
+	// An image the HTML never refers to would otherwise be lost.
+	for _, part := range d.Inline {
+		if !slices.Contains(shown, part.ID) {
+			downloads = append(downloads, part)
+		}
+	}
+	return downloads
 }
 
 // isHTML reports whether part is HTML.

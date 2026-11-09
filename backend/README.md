@@ -957,8 +957,10 @@ shown, so a better rule reaches stored mail without fetching it again:
   their parts, attachments included, are left out.
 - In `multipart/related`, the part its `start` parameter names, else the
   first (RFC 2387). Its inline parts appear where its HTML refers to them
-  by `cid:`; when it has no HTML, they are offered as downloads. Other
-  parts in it are walked as in `multipart/mixed`.
+  by `cid:`, listed in `Display.Inline`; when it has no HTML, they are
+  offered as downloads. `Display.Downloads` offers after the attachments
+  any inline part the HTML never showed. Other parts in it are walked as
+  in `multipart/mixed`.
 - In any other multipart, every part in order: several text parts show
   one after another, and attachments, plus inline parts outside
   `multipart/related`, are offered as downloads.

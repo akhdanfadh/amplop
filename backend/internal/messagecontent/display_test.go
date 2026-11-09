@@ -37,6 +37,7 @@ func TestChoose(t *testing.T) {
 		root            Part
 		wantBodies      []string
 		wantAttachments []string
+		wantInline      []string
 	}{
 		{
 			name:       "plain text only",
@@ -94,6 +95,7 @@ func TestChoose(t *testing.T) {
 				multipart(mediaRelated, "1", htmlPart("1.0"), imagePart("1.1")),
 			),
 			wantBodies: []string{"1.0"},
+			wantInline: []string{"1.1"},
 		},
 		{
 			name: "attachment inside the chosen alternative",
@@ -124,6 +126,7 @@ func TestChoose(t *testing.T) {
 			},
 			wantBodies:      []string{"1"},
 			wantAttachments: []string{"2"},
+			wantInline:      []string{"0"},
 		},
 		{
 			name: "related with start keeps message order",
@@ -148,6 +151,7 @@ func TestChoose(t *testing.T) {
 				Parts: []Part{htmlPart("0"), imagePart("1")},
 			},
 			wantBodies: []string{"0"},
+			wantInline: []string{"1"},
 		},
 		{
 			name:            "related with plain root offers its images",
@@ -172,6 +176,7 @@ func TestChoose(t *testing.T) {
 			),
 			wantBodies:      []string{"0.1"},
 			wantAttachments: []string{"2"},
+			wantInline:      []string{"1"},
 		},
 		{
 			name: "texts and image in mixed",
@@ -222,6 +227,7 @@ func TestChoose(t *testing.T) {
 
 			assert.Equal(t, tt.wantBodies, ids(shown.Bodies), "bodies")
 			assert.Equal(t, tt.wantAttachments, ids(shown.Attachments), "attachments")
+			assert.Equal(t, tt.wantInline, ids(shown.Inline), "inline")
 		})
 	}
 }
@@ -246,4 +252,17 @@ func TestChooseDeepAlternatives(t *testing.T) {
 	shown := Choose(root)
 
 	assert.Equal(t, []string{"leaf"}, ids(shown.Attachments))
+}
+
+// Inline parts no HTML body showed are offered after the attachments.
+func TestDownloads(t *testing.T) {
+	shown := Choose(multipart("multipart/mixed", "",
+		multipart(mediaRelated, "0", htmlPart("0.0"), imagePart("0.1"), imagePart("0.2"), imagePart("0.3")),
+		filePart("1"),
+	))
+
+	downloads := shown.Downloads([]string{"0.2"})
+
+	assert.Equal(t, []string{"1", "0.1", "0.3"}, ids(downloads))
+	assert.Equal(t, []string{"1"}, ids(shown.Attachments), "Downloads changed the attachments")
 }
