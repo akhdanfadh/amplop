@@ -162,7 +162,7 @@ Every hour on the hour (UTC), the workflow `inbok.cleanup`, scheduled as
 verification, registration, and password reset links that expired at
 least an hour ago, password reset attempts that no limit has counted
 for at least an hour, both of their times being over 25 hours old, and
-Gmail connect states that expired at least an hour ago. The
+[Gmail connect states](#connecting) that expired at least an hour ago. The
 hour covers a worker clock running ahead of the API's, which checks
 expiry and limits with its own clock. Registration and password reset
 requests no longer delete these rows themselves; a user's own expired
@@ -295,12 +295,12 @@ error that names only where the send failed.
 
 The workflow `inbok.account-removal`, run from the queue `inbok.google`,
 finishes what removing a Gmail account leaves to do once its row is gone:
-so far, asking Google to end inbok's permission. A disconnect deletes the
-account, moves its sealed refresh token to an `account_removals` row, and
-saves the job, in one transaction, so the job's input is only the
-removal's ID and the token never sits in DBOS's tables. Every job that calls
-Google runs on `inbok.google`, so one limit on it protects the Google
-project's quota.
+so far, asking Google to end inbok's permission. A
+[disconnect](#disconnecting) deletes the account, moves its sealed refresh
+token to an `account_removals` row, and saves the job, in one transaction,
+so the job's input is only the removal's ID and the token never sits in
+DBOS's tables. Every job that calls Google runs on `inbok.google`, so one
+limit on it protects the Google project's quota.
 
 Its step, `revoke token` (`connectedaccount.Removals.Revoke`), first
 checks whether another member has connected the same Google account: a
@@ -1632,6 +1632,82 @@ FROM password_reset_attempts
 ORDER BY id DESC;
 ```
 
+## Gmail accounts
+
+A member connects Gmail accounts with Google's consent page
+(`connectedaccount`), as ADR006 in the project's decision records
+decides. Only an instance with a Google client offers it:
+`INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET`, which the deploy
+guide's [Connecting Gmail](../deploy/README.md#connecting-gmail) section
+shows how to create. `serve` builds `connectedaccount.Connections` only
+then; without it, `GET /api/v0/connected-accounts/providers` answers
+`{"offered": []}` instead of `["gmail"]`, and the two starts below answer
+409 `gmail-not-configured`. In development the [Google emulator](#google-emulator)
+stands in for Google.
+
+### Connected accounts
+
+`connected_accounts` keeps each account's owner, `email`, Google's `sub`
+(`oauth_subject`), and its refresh token, sealed with
+`INBOK_ENCRYPTION_KEYS` and bound to the user and the account, as
+[Encryption keys](#encryption-keys) describes. A member connects a Google
+account once; two members may each connect it.
+
+`GET /api/v0/connected-accounts` lists the member's own accounts, oldest
+first: `id`, `provider` (`gmail`), `email`, `needsReconnectSince`, null
+while Google accepts the token, and `createdAt`. Google's `sub` stays on
+the server. Another member's account is answered as not found everywhere,
+404 `connected-account-not-found`, like a missing one.
+
+### Connecting
+
+1. `POST /api/v0/connected-accounts/google` starts a new connection, and
+   `POST /api/v0/connected-accounts/{id}/reconnect` one that replaces that
+   account's token. Each saves a state in `connect_states` and answers
+   `{"url"}`, Google's consent page, which the web app opens in the same
+   tab. The state is single use, bound to the member and the session,
+   expires in 10 minutes, and holds the PKCE verifier. A member may have 5
+   unfinished starts: a sixth answers 429 `connect-throttled` with
+   `Retry-After`, the wait until the oldest expires. A finished flow frees
+   its place at once, so only abandoned ones count.
+2. Google sends the browser to `GET /api/v0/connected-accounts/google/callback`
+   with the state and a code, or an error. The operation is public to the
+   access check and checks the session itself, so every outcome, a
+   missing session included, is a 303 to the web app's
+   `/connected-accounts?outcome=<outcome>`, never a Problem Details body.
+   The session cookie arrives because it is `SameSite=Lax` and Google's
+   redirect is a top-level GET, which `withCrossOrigin` lets through.
+   Without a Google client, e.g. one removed while a member was at
+   Google, it answers `failed` and leaves the state, which the flow never
+   used, to expire.
+3. `connectedaccount.Connections.Finish` deletes the state before any
+   check, so it is used up whatever follows; trades the code with the
+   verifier; checks the refresh token, the granted Gmail scope, and the
+   ID token's verified email; calls Gmail's `users.getProfile`, whose
+   mailbox must be the ID token's email; and saves the account, or
+   replaces the reconnected account's token.
+
+The outcomes, the contract's `ConnectOutcome`, are `connected` (a
+reconnect included), `cancelled`, `gmail-not-granted`,
+`email-not-verified`, `no-gmail` (Gmail's 400 `failedPrecondition`, "Mail
+service not enabled", e.g. for a Workspace account without Gmail),
+`already-connected`, `different-account` (a reconnect to another Google
+account), `expired` (a state unknown, used, expired, or from another
+session), and `failed`. A `failed` outcome logs `gmail connect failed`
+with an error holding no code, token, or query string; the request log
+records only the path. The callback operation's tag, `Redirects`, keeps
+it out of the web app's generated client: a call from the page would use
+up a state.
+
+### Disconnecting
+
+`DELETE /api/v0/connected-accounts/{id}` answers 200 with the deleted
+account. In one transaction it deletes the account, and with it the
+account's connect states and everything synchronized for it, moves the
+refresh token to `account_removals`, and saves the
+[account removal](#account-removal) job. Jobs already running for the
+account stop when `Access.Token` finds it gone.
+
 ## Logs and request IDs
 
 `serve` writes text logs to stderr, one line per request with its method,
@@ -1805,8 +1881,8 @@ httpapi --> registration <-- repository/postgres
             registration --> systememail, account
 httpapi --> passwordreset <-- repository/postgres
             passwordreset --> systememail, account
-connectedaccount <-- repository/postgres
-                 <-- google
+httpapi --> connectedaccount <-- repository/postgres
+                             <-- google
 ```
 
 - `probe`, like every feature package, holds the feature's types, its

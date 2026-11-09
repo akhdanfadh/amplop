@@ -5,7 +5,14 @@ import { defineConfig } from "orval";
 // each, from the OpenAPI document that Go exports.
 export default defineConfig({
   inbok: {
-    input: "../api/generated/openapi.json",
+    input: {
+      target: "../api/generated/openapi.json",
+      // Redirects are addresses another site sends the browser to, e.g.
+      // Google's return to inbok; a call from the web app would use up what
+      // they carry. Their schemas stay, e.g. ConnectOutcome, which the
+      // landing route reads.
+      filters: { mode: "exclude", tags: ["Redirects"], includeUnreferencedSchemas: true },
+    },
     output: {
       target: "src/api/generated/inbok.ts",
       // Delete the old output first, so a removed operation disappears.

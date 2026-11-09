@@ -51,8 +51,7 @@ func withAccess(api huma.API, service sessionService) func(huma.Context, func(hu
 		}
 
 		identity := current.Identity
-		allowed := identity.Access >= session.AccessMember && identity.Access <= session.AccessAdmin &&
-			(identity.User.Role == account.RoleMember || identity.User.Role == account.RoleAdmin)
+		allowed := memberAllowed(identity)
 		if level == session.AccessAdmin && identity.User.Role == account.RoleAdmin && identity.TOTPRequired {
 			writeProblem(humagin.Unwrap(ctx), totpRequiredProblem())
 			return
@@ -63,6 +62,12 @@ func withAccess(api huma.API, service sessionService) func(huma.Context, func(hu
 		}
 		next(huma.WithValue(ctx, sessionKey{}, current))
 	}
+}
+
+// memberAllowed reports whether identity may use member operations.
+func memberAllowed(identity session.Identity) bool {
+	return identity.Access >= session.AccessMember && identity.Access <= session.AccessAdmin &&
+		(identity.User.Role == account.RoleMember || identity.User.Role == account.RoleAdmin)
 }
 
 const unauthenticatedType = problemPrefix + "unauthenticated"

@@ -5,14 +5,20 @@
  * OpenAPI spec version: 0.0.0
  */
 
+export * from './accountProviders.zod';
+export * from './authorization.zod';
 export * from './changedMember.zod';
 export * from './confirmTOTPEnrollmentBody.zod';
+export * from './connectOutcome.zod';
+export * from './connectedAccount.zod';
+export * from './connectedAccounts.zod';
 export * from './createFirstAdminBody.zod';
 export * from './createProbeEventBody.zod';
 export * from './createSessionBody.zod';
 export * from './createSessionWithCodeBody.zod';
 export * from './currentSession.zod';
 export * from './disableTOTPBody.zod';
+export * from './disconnectedAccount.zod';
 export * from './emailVerificationResult.zod';
 export * from './emailVerificationSecret.zod';
 export * from './endedSessions.zod';
@@ -49,8 +55,12 @@ export * from './registrationRequestResult.zod';
 export * from './registrationSettings.zod';
 export * from './requestPasswordResetLinkBody.zod';
 export * from './requestRegistrationLinkBody.zod';
+export * from './responseAccountProviders.zod';
+export * from './responseAuthorization.zod';
 export * from './responseChangedMember.zod';
+export * from './responseConnectedAccounts.zod';
 export * from './responseCurrentSession.zod';
+export * from './responseDisconnectedAccount.zod';
 export * from './responseEmailVerificationResult.zod';
 export * from './responseEndedSessions.zod';
 export * from './responseFirstAdmin.zod';
