@@ -82,6 +82,8 @@ The worker reads these environment variables:
 | `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of removed Gmail accounts. |
 | `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with. Empty: the worker runs no removals and leaves them queued. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
+| `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. The worker applies the [search index](#search-index)'s settings when it starts. |
+| `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, which signs every request. |
 
 DBOS's own `DBOS__APPVERSION` and `DBOS__VMID` would replace the version
 and the ID that decide which work a worker resumes (see below), so the
@@ -1748,7 +1750,8 @@ only the index exists; nothing writes to it or searches it yet.
   filters need, since changing that list reindexes every message.
   Settings left out keep Meilisearch's defaults, e.g. its typo
   tolerance. Applying the same settings again, or from two processes at
-  once, changes nothing.
+  once, changes nothing. The worker calls `Prepare` when it starts,
+  before any job runs.
 - `searchtest` holds `Fake`, an `Index` in memory for tests of code
   that uses one, and `RunContract`, the tests both `Fake` and
   `meilisearch` pass, so the fake behaves as Meilisearch does apart from

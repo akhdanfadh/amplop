@@ -32,8 +32,9 @@ npm, and again after `google-emulator/` changes. PostgreSQL's and
 Meilisearch's data live in Docker volumes and survive `docker compose
 down`. To delete them and start empty, e.g. after changing the user or
 password in `.env`, run `docker compose down -v`. A `.env` from before
-Meilisearch lacks `INBOK_MEILISEARCH_KEY`, and Compose then stops with an
-error naming it; copy the line from `.env.example`.
+Meilisearch lacks `INBOK_MEILISEARCH_KEY` and `INBOK_MEILISEARCH_URL`:
+Compose then stops with an error naming the key, and the worker with one
+naming the URL. Copy both lines from `.env.example`.
 
 Mailpit catches mail sent to `127.0.0.1:1025` (`INBOK_MAILPIT_SMTP_PORT`)
 and shows it at `http://localhost:8025` (`INBOK_MAILPIT_WEB_PORT`). It deletes
@@ -63,7 +64,8 @@ SSH tunnel from your own computer:
 
 Meilisearch holds the search index on `127.0.0.1:7700`
 (`INBOK_MEILISEARCH_PORT`). Its web dashboard at `http://localhost:7700`
-asks for `INBOK_MEILISEARCH_KEY` and shows what the index holds. The
+asks for `INBOK_MEILISEARCH_KEY` and shows what the index holds, one
+Meilisearch index per member, e.g. `messages_1`. The
 index is rebuilt from PostgreSQL rather than kept, so losing its volume
 costs nothing but the rebuild; the command that rebuilds it comes with
 search itself. Each Meilisearch version gets a new volume,

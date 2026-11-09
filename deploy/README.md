@@ -140,13 +140,15 @@ it.
 ## The worker
 
 `worker` runs inbok's background work, which it keeps in the database, so
-work survives a restart. It reaches PostgreSQL and, to send inbok's
-email, mail servers on the internet; it needs `INBOK_ENCRYPTION_KEYS` and
-`INBOK_PUBLIC_URL` like the server, and the same `INBOK_GOOGLE_CLIENT_ID`
-and `INBOK_GOOGLE_CLIENT_SECRET`, which `compose.yaml` passes to both, for
-the job that asks Google to end inbok's permission for a Gmail account a
-member disconnects. It answers its health check on its own
-loopback address, so nothing else can reach it. Stopping, restarting, or replacing it is
+work survives a restart. It reaches PostgreSQL, the [search
+index](#the-search-index), and, to send inbok's email, mail servers on
+the internet; it needs `INBOK_ENCRYPTION_KEYS` and `INBOK_PUBLIC_URL`
+like the server, `INBOK_MEILISEARCH_KEY`, and the same
+`INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET`, which
+`compose.yaml` passes to both, for the job that asks Google to end
+inbok's permission for a Gmail account a member disconnects. It answers
+its health check on its own loopback address, so nothing else can reach
+it. Stopping, restarting, or replacing it is
 safe: work it left unfinished resumes when it starts again, from the step
 that had not finished, so a step can run twice. That relies on its
 `INBOK_WORKER_ID`, which defaults to `worker`; keep it. Do not scale it,
@@ -164,6 +166,11 @@ sits on the internal network with PostgreSQL, so the internet and Caddy
 cannot reach it. Apart from its health check, it answers only requests
 with a valid key: `INBOK_MEILISEARCH_KEY`, its master key, or a key made
 from it. Meilisearch's anonymous usage reports are turned off.
+
+The worker applies the index's settings each time it starts, and stops
+with an error, which `docker compose logs worker` shows, if Meilisearch
+does not accept them within a minute. The server does not need
+Meilisearch to start.
 
 Everything in it comes from the database, so its volume needs no
 [backup](#backups). The index is rebuilt instead, which an operator runs:

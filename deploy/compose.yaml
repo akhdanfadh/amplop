@@ -157,8 +157,13 @@ services:
       # with the same client as inbok.
       INBOK_GOOGLE_CLIENT_ID: ${INBOK_GOOGLE_CLIENT_ID:-}
       INBOK_GOOGLE_CLIENT_SECRET: ${INBOK_GOOGLE_CLIENT_SECRET:-}
+      # It applies the search index's settings when it starts.
+      INBOK_MEILISEARCH_URL: http://meilisearch:7700
+      INBOK_MEILISEARCH_KEY: ${INBOK_MEILISEARCH_KEY:?set it in deploy/.env}
     depends_on:
       postgres:
+        condition: service_healthy
+      meilisearch:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully

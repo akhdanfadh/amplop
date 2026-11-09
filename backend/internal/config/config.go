@@ -37,6 +37,9 @@ const (
 
 	envPublicURL = "INBOK_PUBLIC_URL"
 
+	envSearchURL = "INBOK_MEILISEARCH_URL"
+	envSearchKey = "INBOK_MEILISEARCH_KEY"
+
 	envWorkerID     = "INBOK_WORKER_ID"
 	defaultWorkerID = "worker"
 	// maxWorkerID and [notWorkerIDRune] are inbok's own limits: DBOS stores
@@ -195,6 +198,35 @@ func DatabaseURL() (string, error) {
 		return "", errNoDatabaseURL
 	}
 	return url, nil
+}
+
+// Errors for unusable search index settings. None includes the value.
+var (
+	errNoSearchURL = errors.New(envSearchURL + " is required: where Meilisearch answers, e.g. http://127.0.0.1:7700")
+	errSearchURL   = errors.New(envSearchURL + " must be http or https, a host, and an optional port, e.g. http://meilisearch:7700")
+	errNoSearchKey = errors.New(envSearchKey + " is required: Meilisearch's master key")
+)
+
+// SearchIndex reads where Meilisearch answers and its master key, which
+// have no defaults. Returns an error naming the setting, without the key,
+// if either is missing or the URL is not a server's address.
+func SearchIndex() (address, key string, err error) {
+	address = strings.TrimSpace(os.Getenv(envSearchURL))
+	if address == "" {
+		return "", "", errNoSearchURL
+	}
+	// The client adds each API path to the address, so it must be the
+	// server's origin alone, apart from one trailing slash.
+	parsed, err := url.Parse(address)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+		strings.TrimSuffix(address, "/") != parsed.Scheme+"://"+parsed.Host {
+		return "", "", errSearchURL
+	}
+	key = os.Getenv(envSearchKey)
+	if key == "" {
+		return "", "", errNoSearchKey
+	}
+	return strings.TrimSuffix(address, "/"), key, nil
 }
 
 // errWorkerID does not include the value.
