@@ -675,6 +675,43 @@ volume, and their gRPC ports) let anyone who reaches them read and write,
 so only the S3 port is published, to this machine only, and the deployment
 keeps SeaweedFS on a network of its own with inbok and the worker.
 
+Code reaches the store through `messagecontent.Store`, never the SDK. A
+`Ref` names one content: the connected account it came from and a content
+ID, which PostgreSQL keeps. The `s3` package alone builds object keys from
+it, `accounts/<account ID>/<content ID>`, so keys hold no addresses,
+subjects, or file names. The rules every caller relies on:
+
+- `Put` takes content it can seek in, e.g. a `bytes.Reader` or an open
+  file, and stores it from the current offset to the end. A repeated
+  `Put` replaces the content, so a retried job may repeat it. After an
+  error the object holds the old content or all of the new, never part
+  of either, e.g. when an upload was stored but its answer lost; call
+  `Put` again until it succeeds.
+- `Get` returns a stream the caller closes, or `ErrNotStored` when the
+  object is missing. That can happen while a row still names the content,
+  e.g. after a lost volume: fetch the content from the provider again.
+- `Delete` takes refs, `DeleteAccount` removes an account's whole prefix,
+  and `ListOlder` yields the refs last written before a time, for a sweep
+  of content no row names. SeaweedFS keeps those times to the second.
+
+`Put` needs content it can seek in because, over plain `http`, the SDK
+reads the body once to sign its SHA-256 and again to send it, and seeks
+back to retry. SeaweedFS refuses a body that does not match the signed
+hash, so an upload is never stored corrupted or in part.
+
+That does not protect against someone who can change the traffic. Over
+plain `http` nothing authenticates downloads, listings, or the store's
+answers, nor headers the signature leaves out, some of which SeaweedFS
+acts on (e.g. `X-Seaweedfs-Extract`, which unpacks a ZIP upload into
+other keys); and nothing encrypts content. The Compose files accept
+that, trusting the host and a network that only inbok, the worker, and
+SeaweedFS share; anywhere else, use an `https` endpoint.
+
+Feature tests use `messagecontenttest.Fake`, a store in memory.
+`messagecontenttest.RunContract` holds the tests both it and the `s3`
+package pass, so the fake behaves as SeaweedFS does; a behaviour every
+store must share goes there.
+
 ### Public URL
 
 `INBOK_PUBLIC_URL` is the origin users open inbok at: `https`, a host name
@@ -1977,6 +2014,7 @@ httpapi --> passwordreset <-- repository/postgres
 httpapi --> connectedaccount <-- repository/postgres
                              <-- google
             search <-- meilisearch
+            messagecontent <-- s3
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -1999,8 +2037,9 @@ httpapi --> connectedaccount <-- repository/postgres
   and imports features, never the other way around. `meilisearch`
   implements `search`'s `Index` the same way.
 - `s3` is the technology package for the
-  [Message content store](#message-content-store): it reaches the store
-  with AWS's Go SDK, whose types never leave the package.
+  [Message content store](#message-content-store): it implements the
+  `Store` interface that `messagecontent` declares, using AWS's Go SDK,
+  whose types never leave the package.
 - A leaf package holds one rule that several features share, such as
   `emailaddress` (the address rule), `attemptlimit` (the window count),
   `randomsecret` (emailed link secrets and their hashes), `clientprefix`
@@ -2044,13 +2083,15 @@ httpapi --> connectedaccount <-- repository/postgres
 ADR021 in the project's decision records explains this layout and the
 alternatives it was chosen over.
 
-### HTTP feature files
+### Files and sections
 
-Keep shared paths, service interfaces, handler dependencies, and the
-`register<Feature>` entry point at the top. That entry point calls a
-`register<Operation>` function for each operation.
-
-Group each operation under a three-line comment banner:
+A package splits into files by concept, named for its noun, as `smtp`
+does with `compose.go`, `signin.go`, and `redaction.go`. Give a part its
+own file when it stands alone and is worth testing on its own, such as
+`s3`'s `contentkey.go` (building and parsing object keys) beside
+`content.go` (the S3 calls). Within a long file, a three-line banner
+comment groups related code for readability, as
+[HTTP feature files](#http-feature-files) do for each operation:
 
 ```go
 // ========================
@@ -2058,9 +2099,17 @@ Group each operation under a three-line comment banner:
 // ========================
 ```
 
-Keep its constants, request and response types, input resolvers, registration,
-named handler, response helper, and error mapping together under that banner.
-Helpers used by only one operation stay in its section. Handler types and
+### HTTP feature files
+
+Keep shared paths, service interfaces, handler dependencies, and the
+`register<Feature>` entry point at the top. That entry point calls a
+`register<Operation>` function for each operation.
+
+Group each operation under a banner (see
+[Files and sections](#files-and-sections)), and keep its constants,
+request and response types, input resolvers, registration, named handler,
+response helper, and error mapping together under that banner. Helpers
+used by only one operation stay in its section. Handler types and
 methods are private; operations without dependencies can use plain functions.
 
 ## Adding a feature

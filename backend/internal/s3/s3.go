@@ -54,14 +54,7 @@ func Open(ctx context.Context, settings Settings) (*Store, error) {
 
 // open is [Open] for a given bucket.
 func open(ctx context.Context, settings Settings, bucket string) (*Store, error) {
-	client := s3api.New(s3api.Options{
-		BaseEndpoint: aws.String(settings.Endpoint.String()),
-		Region:       region,
-		// SeaweedFS serves buckets as paths, e.g. /inbok/<key>, not as host names.
-		UsePathStyle: true,
-		Credentials:  credentials.NewStaticCredentialsProvider(settings.AccessKeyID, settings.SecretAccessKey, ""),
-	})
-	store := &Store{client: client, bucket: bucket}
+	store := &Store{client: s3api.New(clientOptions(settings)), bucket: bucket}
 
 	ctx, cancel := context.WithTimeout(ctx, openTimeout)
 	defer cancel()
@@ -69,6 +62,22 @@ func open(ctx context.Context, settings Settings, bucket string) (*Store, error)
 		return nil, fmt.Errorf("create bucket %s: %w", bucket, err)
 	}
 	return store, nil
+}
+
+// clientOptions returns the SDK client's options for settings.
+func clientOptions(settings Settings) s3api.Options {
+	return s3api.Options{
+		BaseEndpoint: aws.String(settings.Endpoint.String()),
+		Region:       region,
+		// SeaweedFS serves buckets as paths, e.g. /inbok/<key>, not as host names.
+		UsePathStyle: true,
+		Credentials:  credentials.NewStaticCredentialsProvider(settings.AccessKeyID, settings.SecretAccessKey, ""),
+		// NOTE: Left unset, as [s3api.New] leaves them, the SDK sends no
+		// checksum with an upload and checks none a response sends;
+		// LoadDefaultConfig would set both to these.
+		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenSupported,
+		ResponseChecksumValidation: aws.ResponseChecksumValidationWhenSupported,
+	}
 }
 
 // createBucket creates the store's bucket, or does nothing if this

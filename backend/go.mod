@@ -6,6 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.47.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.15
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.8
+	github.com/aws/smithy-go v1.28.8
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/dbos-inc/dbos-transact-golang v1.8.0
 	github.com/emersion/go-message v0.18.2
@@ -47,7 +48,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.11 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.10 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.10 // indirect
-	github.com/aws/smithy-go v1.28.8 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/boyter/go-string v1.0.5 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
