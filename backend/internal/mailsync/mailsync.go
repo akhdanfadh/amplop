@@ -2,7 +2,8 @@
 // mailboxes from the provider into inbok, and keeps the copy current (ADR001).
 // The provider stays authoritative: a message gone there is deleted here. It
 // holds the types later features read, a [Mailbox], a [Message], and a
-// [SyncState], and the [Storage] that every synchronized write goes through.
+// [SyncState], the [Storage] that every synchronized write goes through, and
+// the [Provider] it reads mail from.
 //
 // DESIGN: The types follow JMAP Mail (RFC 8621), which fits both folders and
 // Gmail labels: a mailbox is a named set of messages with an optional [Role], a
