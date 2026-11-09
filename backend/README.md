@@ -1069,14 +1069,16 @@ returns it yet: the message endpoint, which also runs `Sanitize` into
 
 ## Email addresses
 
-Every address inbok takes goes through `emailaddress.Parse`: setup, sign-in,
-`recover-admin`, registration, the system email From address, each
-message's recipient, and a connected Gmail account's email from Google.
+Every address of inbok's own goes through `emailaddress.Parse`: setup,
+sign-in, `recover-admin`, registration, the system email From address, each
+system email's recipient, and a connected Gmail account's email from Google.
 It trims surrounding spaces and tabs, accepts one bare address of at most
-254 characters without hidden characters, and lowercases the letters
-A to Z, local part included; other letters keep their case. Hidden
-characters are controls, invisible formatting such as a zero-width space or
-a right-to-left override, and Unicode spaces and separators. Anything else
+254 octets in UTF-8 (RFC 5321's limit) without hidden characters, and
+lowercases the letters A to Z, local part included; other letters keep their
+case. Hidden characters are controls, invisible formatting such as a
+zero-width space or a right-to-left override, other characters Unicode
+draws as nothing, such as a variation selector or a Hangul filler, and
+Unicode spaces and separators. Anything else
 is `emailaddress.ErrInvalid`, which handlers answer with a 422 on the field;
 Huma accepts hidden characters, so for those the service's 422 is the one a
 client sees. Saved addresses are compared
@@ -1084,9 +1086,15 @@ exactly, and the `users` and `connected_accounts` tables refuse an email
 with an uppercase ASCII letter. New code that takes an address calls
 `Parse` in its service.
 
+The recipients of a member's own mail go through `emailaddress.ParseRecipient`
+instead: the same rule and trimming, but every letter keeps its case, since
+the recipient's server may treat the local part's case as meaningful
+(RFC 5321) and inbok only sends to them.
+
 ADR025 in the project's decision records explains the choice and its cost: a
 mail server that treats the local part's case as meaningful is not
-supported. ADR006 explains why connected Gmail accounts follow the rule.
+supported for inbok's own addresses. ADR006 explains why connected Gmail
+accounts follow the rule, and why recipients do not.
 
 ## Password hashes
 
