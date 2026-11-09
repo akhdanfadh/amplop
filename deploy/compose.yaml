@@ -157,10 +157,11 @@ services:
       # Caddy's own addresses below, and nothing else: a forwarded client
       # address from any other peer is ignored.
       INBOK_TRUSTED_PROXIES: 10.83.70.2/32,fd24:44bd:915f::2/128
+    # Not seaweedfs or meilisearch: inbok starts without them, so a cache
+    # or index that is down keeps no one from signing in. The worker waits
+    # for both.
     depends_on:
       postgres:
-        condition: service_healthy
-      seaweedfs:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully

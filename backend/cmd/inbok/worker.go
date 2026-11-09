@@ -96,6 +96,8 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 	}
 
 	// 4. Open the store for message content, creating its bucket if missing.
+	// The worker does so, not serve: it writes the content, and a store
+	// that is down then stops no one signing in.
 	if _, err := s3.Open(ctx, objectStore(store)); err != nil {
 		return fmt.Errorf("open object store: %w", err)
 	}
@@ -157,4 +159,13 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 
 	// 8. Answer health checks until ctx is cancelled.
 	return listen(ctx, addr, workerHealth(), logger)
+}
+
+// objectStore returns the s3 package's settings for the store in cfg.
+func objectStore(cfg config.S3) s3.Settings {
+	return s3.Settings{
+		Endpoint:        cfg.Endpoint,
+		AccessKeyID:     cfg.AccessKeyID,
+		SecretAccessKey: cfg.SecretAccessKey,
+	}
 }

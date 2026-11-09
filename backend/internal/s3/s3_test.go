@@ -21,8 +21,8 @@ func TestOpenCreatesBucket(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// A second process, e.g. the worker beside serve, opens the bucket the
-// first one created.
+// A later start, e.g. the worker's after a restart, opens the bucket an
+// earlier one created.
 func TestOpenExistingBucket(t *testing.T) {
 	bucket := newBucketName()
 	_, err := open(t.Context(), testSettings(), bucket)
@@ -33,8 +33,8 @@ func TestOpenExistingBucket(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// serve and the worker start together, so both may find the bucket
-// missing and create it at once.
+// Processes that open the store at once may all find the bucket missing
+// and create it together; each must succeed.
 func TestOpenConcurrent(t *testing.T) {
 	bucket := newBucketName()
 	const processes = 4

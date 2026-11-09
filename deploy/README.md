@@ -294,6 +294,12 @@ edit `.env` and run `docker compose up -d`: the old keys stop working and
 the content stays. `./upgrade.sh` brings SeaweedFS's newer pinned images
 with inbok's.
 
+The worker creates SeaweedFS's bucket each time it starts, and stops with
+an error, which `docker compose logs worker` shows, if SeaweedFS refuses
+the keys or does not answer within 10 seconds. The server does not need
+SeaweedFS to start; while SeaweedFS is down, only reading message content
+fails.
+
 ## Administrator recovery
 
 For an administrator who lost their password, authenticator, and backup

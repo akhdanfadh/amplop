@@ -7,9 +7,9 @@ shortcut for most commands here.
 
 ## Run the server
 
-`serve` needs PostgreSQL with its migrations applied, and SeaweedFS; see
-Local services in `CONTRIBUTING.md` and Migrations below. From the
-repository root, load `.env` and start the
+`serve` needs PostgreSQL with its migrations applied; see Local services
+in `CONTRIBUTING.md` and Migrations below. From the repository root, load
+`.env` and start the
 development server:
 
 ```sh
@@ -656,9 +656,11 @@ Message content, such as the text of a message, lives in an S3-compatible
 object store; PostgreSQL keeps what describes it. Every stack runs
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) for it, one container
 started with `weed mini`. Both `serve` and the worker read the three
-`INBOK_S3_*` settings and, at startup, create the bucket `inbok` if it is
-missing, so a wrong address or key stops them there. A store that does not
-answer fails startup within 10 seconds.
+`INBOK_S3_*` settings. The worker, which writes the content, creates the
+bucket `inbok` at startup if it is missing, so a wrong address or key
+stops it there, and a store that does not answer stops it within 10
+seconds. `serve` starts without contacting the store: the store is a
+cache, so while it is down, only requests that read content fail.
 
 `INBOK_S3_ENDPOINT` is the origin alone: `http` or `https`, a host, and an
 optional port. inbok adds the bucket and key to the path (path-style

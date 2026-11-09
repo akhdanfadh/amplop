@@ -84,7 +84,7 @@ func clientOptions(settings Settings) s3api.Options {
 // account already has it.
 func (s *Store) createBucket(ctx context.Context) error {
 	_, err := s.client.CreateBucket(ctx, &s3api.CreateBucketInput{Bucket: aws.String(s.bucket)})
-	// serve and the worker start together, so the other may have just created it.
+	// An earlier start, or another worker starting now, may have created it.
 	if _, ok := errors.AsType[*types.BucketAlreadyOwnedByYou](err); ok {
 		return nil
 	}
