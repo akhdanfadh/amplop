@@ -2147,6 +2147,64 @@ wrote the row; it does not apply the limits
 again, so lowering one leaves saved messages sendable. ADR006 records these
 choices.
 
+### Synchronized mail
+
+`mailsync` keeps a copy of each connected account's recent mail metadata
+and mailboxes, as ADR001 in the project's decision records decides; the
+provider stays authoritative. ADR001's "Synchronization rules" lists what
+synchronization does and where each rule comes from. So far only its
+storage exists; nothing synchronizes yet. The model follows JMAP Mail (RFC 8621), which covers
+both folders and Gmail labels, so the features that read mail never see
+Gmail's own encoding. Four tables hold it, each deleted with its account:
+
+- `mailboxes`: an account's Gmail labels, or later its folders, with the
+  provider's ID, its name as received (a nested Gmail label is one name
+  with slashes, e.g. `Work/Projects`), and a `role` for the special ones,
+  NULL for the member's own. The roles are the purposes in IANA's IMAP
+  Mailbox Name Attributes registry, as JMAP names them, e.g. `inbox`,
+  `sent`, `junk`, `trash`, or `snoozed`. ADR007 lists how Gmail's labels
+  map: `UNREAD` and `STARRED` are flags, not mailboxes.
+- `messages`: one row per provider message, with inbok's own random `id`
+  (a UUID, never derived from mail), Gmail's message and thread IDs, the
+  provider's own timestamp (`internal_date`, Gmail's `internalDate`), the
+  subject, the From, Reply-To, To, and Cc addresses as JSON lists of
+  `name` and `address`, the provider's `preview` (Gmail's snippet), `seen`
+  and `flagged`, and the `Message-ID`, `In-Reply-To`, and `References`
+  headers a reply threads with. No body: content storage keeps that. An
+  account has each Gmail message once, so a repeated step updates the
+  row, which keeps its `id`.
+- `message_mailboxes`: which mailboxes each message is in, perhaps none.
+  An archived Gmail message is in no inbox but keeps its other labels.
+  Each row names both sides with the account, through foreign keys on
+  (account, ID), so PostgreSQL refuses a membership that joins two
+  accounts' rows. Deleting a message or a mailbox deletes its rows.
+- `sync_states`: one row per account, with the full sync's `status`
+  (`waiting`, `running`, `complete`, or `failed`, with a `failure` code),
+  its progress, the Gmail `history_id` the next poll starts from, and
+  when a sync last finished. Gmail's history IDs are unsigned 64-bit, past
+  `bigint`'s range, so the column is `numeric(20,0)` and queries pass it
+  as decimal text.
+
+The migration lists, as comments, the columns IMAP and Outlook will need,
+such as a folder's UID validity and a message's UID in each folder.
+
+Every write goes through one method, `UpdateSyncedMail`: it locks the
+account's sync state, passes it to a function that returns a
+`mailsync.Change`, and writes the change in one transaction: the
+mailboxes, deleted messages, saved messages with their mailboxes, and the
+new state. A change that saves one message twice keeps the last, and one
+that deletes and saves a message only saves it, so the message keeps its
+`id` however often a step repeats. A saved message naming a mailbox the
+account does not have, e.g. a Gmail label made since the labels were
+listed, writes nothing and returns `mailsync.ErrUnknownMailbox`; so does
+any other error, e.g. a generation or count past the `integer` columns. A
+feature that must act on the same writes, e.g. indexing them for search,
+adds its job to that transaction. Each full sync starts a sync generation,
+and each message records the generation that last saved it, so a full
+sync that finishes can delete the messages it did not see without
+comparing clocks. Storage keeps one account's writes in order; checking
+that a step's generation is still the current one is the full sync's job.
+
 ## Search index
 
 Search finds a member's messages through Meilisearch, a derived index: a
@@ -2387,6 +2445,7 @@ httpapi --> connectedaccount <-- repository/postgres
                              <-- google
             outgoingmessage <-- repository/postgres
                             <-- google
+            mailsync <-- repository/postgres
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google

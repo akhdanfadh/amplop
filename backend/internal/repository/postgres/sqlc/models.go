@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"uuid"
 )
 
@@ -57,6 +58,40 @@ type EmailVerificationLink struct {
 	Email     string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+}
+
+type Mailbox struct {
+	ID                 uuid.UUID
+	ConnectedAccountID int64
+	ProviderMailboxID  string
+	Name               string
+	Role               *string
+}
+
+type Message struct {
+	ID                 uuid.UUID
+	ConnectedAccountID int64
+	ProviderMessageID  string
+	ProviderThreadID   string
+	InternalDate       time.Time
+	Subject            string
+	FromAddresses      []byte
+	ReplyToAddresses   []byte
+	ToAddresses        []byte
+	CcAddresses        []byte
+	Preview            string
+	Seen               bool
+	Flagged            bool
+	InternetMessageID  string
+	InReplyTo          []string
+	InternetReferences []string
+	SyncGeneration     int32
+}
+
+type MessageMailbox struct {
+	ConnectedAccountID int64
+	MessageID          uuid.UUID
+	MailboxID          uuid.UUID
 }
 
 type OutgoingMessage struct {
@@ -163,6 +198,17 @@ type SignInChallenge struct {
 	UserID    int64
 	ExpiresAt time.Time
 	Failures  int32
+}
+
+type SyncState struct {
+	ConnectedAccountID int64
+	Status             string
+	HistoryID          pgtype.Numeric
+	SyncGeneration     int32
+	PagesSynced        int32
+	MessagesSynced     int32
+	Failure            *string
+	LastSyncedAt       *time.Time
 }
 
 type SystemEmail struct {

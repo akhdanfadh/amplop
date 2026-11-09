@@ -1,0 +1,332 @@
+package postgres
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"slices"
+	"strconv"
+	"uuid"
+
+	"github.com/jackc/pgx/v5"
+
+	"inbok/internal/mailsync"
+	"inbok/internal/repository/postgres/sqlc"
+)
+
+// errStateRange means a sync state's generation or count is negative or
+// past what its integer column holds.
+var errStateRange = errors.New("sync state number is out of storage's range")
+
+// UpdateSyncedMail locks accountID's sync state, calls update with it, and
+// writes the change update returns, in one transaction: the mailboxes, the
+// deletes, the saves with their mailboxes, the earlier generations' deletes,
+// and the state. It returns the saved state, [mailsync.ErrNotFound] when the
+// account has no sync state, and [mailsync.ErrUnknownMailbox] when a saved
+// message names a mailbox the account does not have.
+func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func(mailsync.SyncState) (mailsync.Change, error)) (mailsync.SyncState, error) {
+	var written mailsync.SyncState
+	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+
+		// 1. Lock the state, so two steps for the account write one after
+		// the other and each sees what the one before saved.
+		row, err := queries.LockSyncState(ctx, accountID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mailsync.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock sync state: %w", err)
+		}
+		current, err := syncStateFromRow(row)
+		if err != nil {
+			return err
+		}
+
+		// 2. Let update decide, and refuse a state the columns cannot hold
+		// before writing anything stamped with it.
+		change, err := update(current)
+		if err != nil {
+			return err
+		}
+		state, err := syncStateParams(accountID, change.State)
+		if err != nil {
+			return err
+		}
+
+		// 3. Write the mailboxes before the messages that name them.
+		if err := writeMailboxes(ctx, tx, accountID, change.Mailboxes); err != nil {
+			return err
+		}
+
+		// 4. Delete before saving. A message both deleted and saved is only saved,
+		// in place, so it keeps its ID however often the change repeats.
+		saves, saved := lastSaves(change.Saved)
+		deletes := slices.DeleteFunc(slices.Clone(change.Deleted), func(providerID string) bool {
+			return saved[providerID]
+		})
+		if len(deletes) > 0 {
+			params := sqlc.DeleteMessagesParams{ConnectedAccountID: accountID, ProviderMessageIds: deletes}
+			if err := queries.DeleteMessages(ctx, params); err != nil {
+				return fmt.Errorf("delete messages: %w", err)
+			}
+		}
+		if err := saveMessages(ctx, tx, accountID, state.SyncGeneration, saves); err != nil {
+			return err
+		}
+
+		// 5. Delete what earlier generations saved only after this one's
+		// saves, which keep the messages they name.
+		if change.DeleteEarlier {
+			params := sqlc.DeleteEarlierMessagesParams{ConnectedAccountID: accountID, SyncGeneration: state.SyncGeneration}
+			if err := queries.DeleteEarlierMessages(ctx, params); err != nil {
+				return fmt.Errorf("delete earlier messages: %w", err)
+			}
+		}
+
+		if err := queries.UpdateSyncState(ctx, state); err != nil {
+			return fmt.Errorf("update sync state: %w", err)
+		}
+		written = change.State
+		written.AccountID = accountID
+		return nil
+	})
+	if err != nil {
+		return mailsync.SyncState{}, err
+	}
+	return written, nil
+}
+
+// writeMailboxes makes mailboxes accountID's mailboxes in tx: it adds or
+// updates each, and deletes the ones not listed. nil leaves them.
+func writeMailboxes(ctx context.Context, tx pgx.Tx, accountID int64, mailboxes []mailsync.Mailbox) error {
+	if mailboxes == nil {
+		return nil
+	}
+	queries := sqlc.New(tx)
+	providerIDs := make([]string, 0, len(mailboxes))
+	params := make([]sqlc.UpsertMailboxParams, 0, len(mailboxes))
+	for _, mailbox := range mailboxes {
+		providerIDs = append(providerIDs, mailbox.ProviderID)
+		p := sqlc.UpsertMailboxParams{
+			ConnectedAccountID: accountID,
+			ProviderMailboxID:  mailbox.ProviderID,
+			Name:               mailbox.Name,
+		}
+		if mailbox.Role != mailsync.RoleNone {
+			role := string(mailbox.Role)
+			p.Role = &role
+		}
+		params = append(params, p)
+	}
+
+	deleted := sqlc.DeleteUnlistedMailboxesParams{ConnectedAccountID: accountID, ProviderMailboxIds: providerIDs}
+	if err := queries.DeleteUnlistedMailboxes(ctx, deleted); err != nil {
+		return fmt.Errorf("delete unlisted mailboxes: %w", err)
+	}
+	var batchErr error
+	queries.UpsertMailbox(ctx, params).Exec(func(_ int, err error) {
+		batchErr = errors.Join(batchErr, err)
+	})
+	if batchErr != nil {
+		return fmt.Errorf("save mailboxes: %w", batchErr)
+	}
+	return nil
+}
+
+// lastSaves returns saved with one message per ProviderID, the last one
+// given, in the order of those last ones, and the set of their ProviderIDs.
+func lastSaves(saved []mailsync.Message) ([]mailsync.Message, map[string]bool) {
+	last := make(map[string]int, len(saved))
+	for i, message := range saved {
+		last[message.ProviderID] = i
+	}
+	saves := make([]mailsync.Message, 0, len(last))
+	providerIDs := make(map[string]bool, len(last))
+	for i, message := range saved {
+		if last[message.ProviderID] == i {
+			saves = append(saves, message)
+			providerIDs[message.ProviderID] = true
+		}
+	}
+	return saves, providerIDs
+}
+
+// saveMessages adds or updates accountID's messages in tx as saved by
+// generation, and replaces their mailboxes. Each ProviderID appears once.
+// It returns [mailsync.ErrUnknownMailbox] when one names a mailbox the
+// account does not have.
+func saveMessages(ctx context.Context, tx pgx.Tx, accountID int64, generation int32, messages []mailsync.Message) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	queries := sqlc.New(tx)
+
+	// 1. Save the messages, collecting their IDs, new or kept.
+	params := make([]sqlc.UpsertMessageParams, 0, len(messages))
+	for _, message := range messages {
+		p, err := messageParams(accountID, generation, message)
+		if err != nil {
+			return err
+		}
+		params = append(params, p)
+	}
+	ids := make([]uuid.UUID, len(messages))
+	var batchErr error
+	queries.UpsertMessage(ctx, params).QueryRow(func(i int, id uuid.UUID, err error) {
+		ids[i] = id
+		batchErr = errors.Join(batchErr, err)
+	})
+	if batchErr != nil {
+		return fmt.Errorf("save messages: %w", batchErr)
+	}
+
+	// 2. Replace their mailboxes with the ones each names now.
+	if err := queries.DeleteMessageMailboxes(ctx, ids); err != nil {
+		return fmt.Errorf("delete message mailboxes: %w", err)
+	}
+	var pairs sqlc.InsertMessageMailboxesParams
+	pairs.ConnectedAccountID = accountID
+	for i, message := range messages {
+		// A provider listing a mailbox twice for one message names one membership.
+		for _, providerID := range uniqueStrings(message.MailboxProviderIDs) {
+			pairs.MessageIds = append(pairs.MessageIds, ids[i])
+			pairs.ProviderMailboxIds = append(pairs.ProviderMailboxIds, providerID)
+		}
+	}
+	if len(pairs.MessageIds) == 0 {
+		return nil
+	}
+	inserted, err := queries.InsertMessageMailboxes(ctx, pairs)
+	if err != nil {
+		return fmt.Errorf("insert message mailboxes: %w", err)
+	}
+
+	// 3. A pair whose mailbox the account lacks inserted nothing.
+	if inserted != int64(len(pairs.MessageIds)) {
+		return mailsync.ErrUnknownMailbox
+	}
+	return nil
+}
+
+// uniqueStrings returns values without repeats, in their first order.
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
+			unique = append(unique, value)
+		}
+	}
+	return unique
+}
+
+// storedAddress is how a message's address lists are kept, one JSON
+// object per [mailsync.Address].
+type storedAddress struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
+}
+
+// messageParams returns message as the upsert's parameters for accountID's
+// generation.
+func messageParams(accountID int64, generation int32, message mailsync.Message) (sqlc.UpsertMessageParams, error) {
+	var lists [4][]byte
+	for i, addresses := range [][]mailsync.Address{message.From, message.ReplyTo, message.To, message.CC} {
+		stored := make([]storedAddress, 0, len(addresses))
+		for _, a := range addresses {
+			stored = append(stored, storedAddress(a))
+		}
+		raw, err := json.Marshal(stored)
+		if err != nil {
+			return sqlc.UpsertMessageParams{}, fmt.Errorf("encode addresses: %w", err)
+		}
+		lists[i] = raw
+	}
+	return sqlc.UpsertMessageParams{
+		ConnectedAccountID: accountID,
+		ProviderMessageID:  message.ProviderID,
+		ProviderThreadID:   message.ThreadID,
+		InternalDate:       message.InternalDate,
+		Subject:            message.Subject,
+		FromAddresses:      lists[0],
+		ReplyToAddresses:   lists[1],
+		ToAddresses:        lists[2],
+		CcAddresses:        lists[3],
+		Preview:            message.Preview,
+		Seen:               message.Seen,
+		Flagged:            message.Flagged,
+		InternetMessageID:  message.MessageID,
+		InReplyTo:          orEmpty(message.InReplyTo),
+		InternetReferences: orEmpty(message.References),
+		SyncGeneration:     generation,
+	}, nil
+}
+
+// orEmpty returns values, or an empty list for nil.
+func orEmpty(values []string) []string {
+	// pgx sends a nil slice as NULL, which the columns refuse.
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
+// syncStateParams returns state as accountID's update parameters. It returns
+// [errStateRange] for a generation or count the columns cannot hold.
+func syncStateParams(accountID int64, state mailsync.SyncState) (sqlc.UpdateSyncStateParams, error) {
+	var numbers [3]int32
+	for i, n := range []int{state.Generation, state.PagesSynced, state.MessagesSynced} {
+		if n < 0 || n > math.MaxInt32 {
+			return sqlc.UpdateSyncStateParams{}, errStateRange
+		}
+		numbers[i] = int32(n)
+	}
+	params := sqlc.UpdateSyncStateParams{
+		ConnectedAccountID: accountID,
+		Status:             string(state.Status),
+		SyncGeneration:     numbers[0],
+		PagesSynced:        numbers[1],
+		MessagesSynced:     numbers[2],
+		LastSyncedAt:       state.LastSyncedAt,
+	}
+	if state.HistoryID != nil {
+		historyID := strconv.FormatUint(*state.HistoryID, 10)
+		params.HistoryID = &historyID
+	}
+	if state.Failure != "" {
+		failure := string(state.Failure)
+		params.Failure = &failure
+	}
+	return params, nil
+}
+
+// syncStateFromRow converts a row to a sync state. It returns an error for a
+// history ID that is not a decimal uint64, which the column's check prevents.
+func syncStateFromRow(row sqlc.LockSyncStateRow) (mailsync.SyncState, error) {
+	state := mailsync.SyncState{
+		AccountID:      row.ConnectedAccountID,
+		Status:         mailsync.Status(row.Status),
+		Generation:     int(row.SyncGeneration),
+		PagesSynced:    int(row.PagesSynced),
+		MessagesSynced: int(row.MessagesSynced),
+	}
+	if row.HistoryID != "" {
+		historyID, err := strconv.ParseUint(row.HistoryID, 10, 64)
+		if err != nil {
+			return mailsync.SyncState{}, fmt.Errorf("read history id: %w", err)
+		}
+		state.HistoryID = &historyID
+	}
+	if row.Failure != nil {
+		state.Failure = mailsync.Failure(*row.Failure)
+	}
+	if row.LastSyncedAt != nil {
+		at := row.LastSyncedAt.UTC()
+		state.LastSyncedAt = &at
+	}
+	return state, nil
+}

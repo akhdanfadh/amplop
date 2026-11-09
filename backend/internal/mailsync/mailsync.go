@@ -1,0 +1,199 @@
+// Package mailsync copies each connected account's recent mail metadata and
+// mailboxes from the provider into inbok, and keeps the copy current (ADR001).
+// The provider stays authoritative: a message gone there is deleted here. It
+// holds the types later features read, a [Mailbox], a [Message], and a
+// [SyncState], and the [Storage] that every synchronized write goes through.
+//
+// DESIGN: The types follow JMAP Mail (RFC 8621), which fits both folders and
+// Gmail labels: a mailbox is a named set of messages with an optional [Role], a
+// message is in a set of mailboxes, and read and starred are flags on the
+// message. Provider rules, e.g. that Gmail's UNREAD label means not seen, stay
+// in the code that reads the provider, so features that read mail never see them.
+package mailsync
+
+import (
+	"context"
+	"errors"
+	"time"
+	"uuid"
+)
+
+var (
+	// ErrNotFound means the account has no sync state: it was disconnected,
+	// or never connected.
+	ErrNotFound = errors.New("synchronized account not found")
+	// ErrUnknownMailbox means a saved message names a mailbox the account
+	// does not have, e.g. a Gmail label made since the mailboxes were last
+	// listed. Nothing was written; listing the mailboxes again mends it.
+	ErrUnknownMailbox = errors.New("message names a mailbox the account does not have")
+)
+
+// Role is the purpose of a special mailbox, whatever its name: an attribute of
+// IANA's IMAP Mailbox Name Attributes registry that JMAP uses as a role,
+// lowercased (RFC 8621 section 2; RFC 6154, RFC 8457, RFC 9979). The empty role
+// is the member's own mailbox, or one the provider made for no listed purpose.
+type Role string
+
+const (
+	RoleNone      Role = ""
+	RoleAll       Role = "all"     // every message, perhaps but junk and trash, e.g. a server's All Mail folder
+	RoleArchive   Role = "archive" // a folder for archived mail; Gmail archives by leaving the inbox
+	RoleDrafts    Role = "drafts"
+	RoleFlagged   Role = "flagged"   // a folder of flagged messages, which IMAP servers may show
+	RoleImportant Role = "important" // what the provider judged important, e.g. Gmail's IMPORTANT
+	RoleInbox     Role = "inbox"
+	RoleJunk      Role = "junk"      // spam
+	RoleMemos     Role = "memos"     // the member's notes on other messages, stored as messages
+	RoleScheduled Role = "scheduled" // messages waiting to be sent later
+	RoleSent      Role = "sent"
+	RoleSnoozed   Role = "snoozed" // messages hidden until a time the member chose
+	RoleTrash     Role = "trash"
+)
+
+// Mailbox is one of an account's mailboxes: a Gmail label, or later a folder.
+type Mailbox struct {
+	// ProviderID is the provider's ID for it, e.g. Gmail's label ID, which
+	// [Message.MailboxProviderIDs] lists.
+	ProviderID string
+	// Name is the provider's, as received; a nested Gmail label is one name
+	// with slashes, e.g. Work/Projects.
+	Name string
+	Role Role
+}
+
+// Address is one entry of an address header: a display name, which may be
+// empty, and the address. An entry that was not an address keeps its
+// decoded text as the name and an empty address.
+type Address struct {
+	Name    string
+	Address string
+}
+
+// Message is the metadata of one provider message as inbok keeps it.
+type Message struct {
+	// ID is inbok's own, random, given when the message is first saved.
+	ID        uuid.UUID
+	AccountID int64
+	// ProviderID is the provider's ID for the message, e.g. Gmail's
+	// message ID, unique within the account.
+	ProviderID string
+	// ThreadID is the provider's ID for its conversation, e.g. Gmail's thread ID.
+	ThreadID string
+	// InternalDate is the provider's own timestamp, which the window counts
+	// from (ADR001): for Gmail, when Google accepted received mail, which
+	// the Date header cannot fake, though imported mail may take its Date.
+	InternalDate time.Time
+	Subject      string
+	From         []Address
+	ReplyTo      []Address
+	To           []Address
+	CC           []Address
+	// Preview is the provider's plain-text excerpt of the body, e.g.
+	// Gmail's snippet.
+	Preview string
+	// Seen is whether the member has read it.
+	Seen bool
+	// Flagged is whether the member starred it.
+	Flagged bool
+	// MailboxProviderIDs are the [Mailbox.ProviderID]s of the mailboxes it
+	// is in, perhaps none. An archived Gmail message is in no mailbox with
+	// [RoleInbox] but keeps its other labels.
+	MailboxProviderIDs []string
+	// MessageID is the Message-ID header's msg-id, with its angle brackets;
+	// empty when the header is missing.
+	MessageID string
+	// InReplyTo and References are the msg-ids of those headers, in order,
+	// each with its angle brackets; a reply threads with them and
+	// [Message.MessageID].
+	InReplyTo  []string
+	References []string
+}
+
+// Status is where an account's full sync stands, as the member sees it.
+type Status string
+
+const (
+	// StatusWaiting means a full sync is saved but has not started.
+	StatusWaiting Status = "waiting"
+	// StatusRunning means a full sync is copying messages.
+	StatusRunning Status = "running"
+	// StatusComplete means the last full sync finished; polls keep the
+	// copy current.
+	StatusComplete Status = "complete"
+	// StatusFailed means the last full sync stopped on [SyncState.Failure].
+	StatusFailed Status = "failed"
+)
+
+// Failure is why a full sync stopped.
+type Failure string
+
+const (
+	// FailureProvider means the provider kept failing past the retries.
+	FailureProvider Failure = "provider"
+	// FailureTokenUnreadable means the saved refresh token no longer opens,
+	// e.g. after a lost encryption key.
+	FailureTokenUnreadable Failure = "token-unreadable"
+	// FailureInternal means inbok failed for any other reason.
+	FailureInternal Failure = "internal"
+)
+
+// SyncState is where an account's synchronization stands.
+type SyncState struct {
+	AccountID int64
+	Status    Status
+	// HistoryID is the provider's position the next poll asks for changes
+	// since, e.g. Gmail's history ID; nil before a full sync records one.
+	HistoryID *uint64
+	// Generation numbers the account's full syncs from 1; 0 before the first
+	// starts. Each message records the generation that last saved it.
+	Generation int
+	// PagesSynced counts the pages the current full sync has saved, so a
+	// repeated page counts once.
+	PagesSynced int
+	// MessagesSynced counts the messages it has saved, the progress the
+	// member sees.
+	MessagesSynced int
+	// Failure is why the last full sync stopped; empty unless
+	// [SyncState.Status] is [StatusFailed].
+	Failure Failure
+	// LastSyncedAt is when a sync, full or poll, last finished; nil before
+	// the first.
+	LastSyncedAt *time.Time
+}
+
+// Change is what one synchronization step writes, all in one transaction.
+type Change struct {
+	// State replaces the account's sync state; its [SyncState.AccountID]
+	// is ignored.
+	State SyncState
+	// Mailboxes, when not nil, are all of the account's mailboxes: each is
+	// added or updated by [Mailbox.ProviderID], and one no longer listed is
+	// deleted, leaving its messages in their other mailboxes.
+	Mailboxes []Mailbox
+	// Saved are messages to add, or to update when the account already has
+	// one with the same [Message.ProviderID], which keeps its ID. Their
+	// mailboxes replace the ones saved before. When one ProviderID appears
+	// more than once, the last wins. Their ID and AccountID are ignored.
+	// Each records the [SyncState.Generation] of [Change.State].
+	Saved []Message
+	// Deleted are the ProviderIDs of messages to delete; one the account
+	// does not have, or one also in [Change.Saved], is skipped, so a
+	// repeated change keeps a saved message's ID.
+	Deleted []string
+	// DeleteEarlier deletes, after [Change.Saved], the account's messages
+	// that no step of the generation of [Change.State] saved: the provider
+	// no longer lists them.
+	DeleteEarlier bool
+}
+
+// Storage keeps synchronized mail.
+type Storage interface {
+	// UpdateSyncedMail locks accountID's sync state, calls update with it, and
+	// writes the [Change] update returns, in one transaction: the mailboxes, then
+	// the deletes, the saves, the earlier generations' deletes, and last the
+	// state. It returns the saved state, [ErrNotFound] when the account has no
+	// sync state, and [ErrUnknownMailbox] when a saved message names a mailbox
+	// the account does not have after the change's mailboxes. On any error it
+	// writes nothing; an error from update is returned unchanged.
+	UpdateSyncedMail(ctx context.Context, accountID int64, update func(SyncState) (Change, error)) (SyncState, error)
+}
