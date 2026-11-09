@@ -1752,6 +1752,13 @@ only the index exists; nothing writes to it or searches it yet.
   tolerance. Applying the same settings again, or from two processes at
   once, changes nothing. The worker calls `Prepare` when it starts,
   before any job runs.
+- `search.BodyText` turns a message's text parts, as content storage
+  keeps them, into a document's `BodyText`: every plain-text part when
+  one has text, else the text of every HTML part that a reader sees, as
+  the HTML Standard's default rendering decides it, read token by token
+  and never parsed into a tree with `html.Parse` (ADR005 says why). It
+  reads at most 1 MiB of a message's text parts of each format and cuts
+  the text at a word to at most 64 KiB.
 - `searchtest` holds `Fake`, an `Index` in memory for tests of code
   that uses one, and `RunContract`, the tests both `Fake` and
   `meilisearch` pass, so the fake behaves as Meilisearch does apart from
