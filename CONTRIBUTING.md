@@ -16,7 +16,7 @@ Commands that need `.env` copy it from `.env.example` when it is missing.
 
 ## Local services
 
-PostgreSQL, Mailpit, and a Google emulator run in Docker Compose
+PostgreSQL, Mailpit, Meilisearch, and a Google emulator run in Docker Compose
 (`compose.yaml`). From the repository root, create your local settings
 once, then start them in the background:
 
@@ -28,10 +28,13 @@ docker compose up -d --wait --build
 `--wait` returns once PostgreSQL accepts connections on `127.0.0.1:5432`
 (`INBOK_POSTGRES_PORT` in `.env`) and the others are ready. `--build`
 builds the emulator's image the first time, which downloads emulate from
-npm, and again after `google-emulator/` changes. PostgreSQL's data lives
-in a Docker volume and survives `docker compose down`. To delete it and
-start empty, e.g. after changing the user or password in `.env`, run
-`docker compose down -v`.
+npm, and again after `google-emulator/` changes. PostgreSQL's and
+Meilisearch's data live in Docker volumes and survive `docker compose
+down`. To delete them and start empty, e.g. after changing the user or
+password in `.env`, run `docker compose down -v`. A `.env` from before
+Meilisearch lacks `INBOK_MEILISEARCH_KEY` and `INBOK_MEILISEARCH_URL`:
+Compose then stops with an error naming the key, and the worker with one
+naming the URL. Copy both lines from `.env.example`.
 
 Mailpit catches mail sent to `127.0.0.1:1025` (`INBOK_MAILPIT_SMTP_PORT`)
 and shows it at `http://localhost:8025` (`INBOK_MAILPIT_WEB_PORT`). It deletes
@@ -58,6 +61,18 @@ the client's and empty `INBOK_GOOGLE_BASE_URL`. Google sends the browser back to
 `localhost:5173`, so on a remote development machine, browse through an
 SSH tunnel from your own computer:
 `ssh -N -L 5173:localhost:5173 <user>@<machine>`.
+
+Meilisearch holds the search index on `127.0.0.1:7700`
+(`INBOK_MEILISEARCH_PORT`). Its web dashboard at `http://localhost:7700`
+asks for `INBOK_MEILISEARCH_KEY` and shows what the index holds, one
+Meilisearch index per member, e.g. `messages_1`. The
+index is rebuilt from PostgreSQL rather than kept, so losing its volume
+costs nothing but the rebuild; the command that rebuilds it comes with
+search itself. Each Meilisearch version gets a new volume,
+since a version refuses to open another's data, so after
+`compose.yaml` moves to a new version the old volume stays behind;
+`docker volume ls` lists it, e.g. `inbok_meilisearch-1.56.1`, and
+`docker volume rm` deletes it.
 
 ## Changing the API
 

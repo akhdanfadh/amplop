@@ -82,6 +82,8 @@ The worker reads these environment variables:
 | `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of removed Gmail accounts. |
 | `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with. Empty: the worker runs no removals and leaves them queued. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
+| `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. The worker applies the [search index](#search-index)'s settings when it starts. |
+| `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, which signs every request. |
 
 DBOS's own `DBOS__APPVERSION` and `DBOS__VMID` would replace the version
 and the ID that decide which work a worker resumes (see below), so the
@@ -1712,6 +1714,65 @@ refresh token to `account_removals`, and saves the
 [account removal](#account-removal) job. Jobs already running for the
 account stop when `Access.Token` finds it gone.
 
+## Search index
+
+Search finds a member's messages through Meilisearch, a derived index: a
+searchable copy of message data that returns only message IDs, while the
+messages themselves load from PostgreSQL with the usual ownership check.
+ADR005 in the project's decision records explains the choices. So far
+only the index exists; nothing writes to it or searches it yet.
+
+- `search` declares the `Index` interface: `Prepare`, `Upsert`, `Delete`,
+  `DeleteAccount`, and `Search`, with its `Document`, `Query`, and
+  `Result` types. Each method may be called again with the same input,
+  e.g. by a job that retries, and returns once Meilisearch has applied
+  the change, so the next search sees it.
+- `Search`, `Delete`, and `DeleteAccount` take the owner as an argument
+  of their own and refuse an owner of 0, and each touches only that
+  member's documents, whatever IDs it is given: no search returns
+  another member's message, even for another member's account ID. The
+  caller passes the signed-in member, since no index can tell a wrong
+  member from the right one. A query is structured: accounts, labels to
+  leave out, and a page; callers never write Meilisearch's filters.
+- `meilisearch` implements `Index` with the official Go client,
+  `meilisearch-go`, with one Meilisearch index per member, named after
+  the member's user ID, e.g. `messages_42`. Every upsert applies the
+  settings after its documents, so a member's index has them however it
+  came to exist; until a member's first upsert, their searches find
+  nothing and their deletes do nothing. Searches and account deletes
+  also filter on the owner inside the member's index. Its errors carry
+  Meilisearch's error code, never the text of its reply, which can quote
+  a message. An error from a call cut short by its context wraps the
+  context's error, so a request's deadline still becomes a 503.
+- `Prepare` applies the settings to every member's index, and every
+  upsert to its member's: which fields a search matches, in order of
+  weight, and which it filters and sorts on, including the ones later
+  filters need, since changing that list reindexes every message.
+  Settings left out keep Meilisearch's defaults, e.g. its typo
+  tolerance. Applying the same settings again, or from two processes at
+  once, changes nothing. The worker calls `Prepare` when it starts,
+  before any job runs.
+- `search.BodyText` turns a message's text parts, as content storage
+  keeps them, into a document's `BodyText`: every plain-text part when
+  one has text, else the text of every HTML part that a reader sees, as
+  the HTML Standard's default rendering decides it, read token by token
+  and never parsed into a tree with `html.Parse` (ADR005 says why). It
+  reads at most 1 MiB of a message's text parts of each format and cuts
+  the text at a word to at most 64 KiB.
+- `searchtest` holds `Fake`, an `Index` in memory for tests of code
+  that uses one, and `RunContract`, the tests both `Fake` and
+  `meilisearch` pass, so the fake behaves as Meilisearch does apart from
+  text matching. Other features' fakes live unexported in the feature's
+  own tests; this one is shared and held to the contract, because a fake
+  that kept members apart less strictly than Meilisearch could let a
+  test pass while mail leaked between members. `meilisearch`'s tests run
+  against the image the Compose files use, through Testcontainers, like
+  the PostgreSQL tests.
+
+To see what the index holds during development, open Meilisearch's
+dashboard at `http://localhost:7700`, give it `INBOK_MEILISEARCH_KEY`,
+and pick a member's index.
+
 ## Logs and request IDs
 
 `serve` writes text logs to stderr, one line per request with its method,
@@ -1887,6 +1948,7 @@ httpapi --> passwordreset <-- repository/postgres
             passwordreset --> systememail, account
 httpapi --> connectedaccount <-- repository/postgres
                              <-- google
+            search <-- meilisearch
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -1906,7 +1968,8 @@ httpapi --> connectedaccount <-- repository/postgres
 - `smtp`, like `repository/postgres`, is a technology package: it
   implements the `Sender` interface that `systememail` declares, using the
   emersion SMTP libraries. A technology package is named for its technology
-  and imports features, never the other way around.
+  and imports features, never the other way around. `meilisearch`
+  implements `search`'s `Index` the same way.
 - A leaf package holds one rule that several features share, such as
   `emailaddress` (the address rule), `attemptlimit` (the window count),
   `randomsecret` (emailed link secrets and their hashes), `clientprefix`

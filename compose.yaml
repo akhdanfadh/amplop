@@ -60,5 +60,35 @@ services:
     ports:
       - 127.0.0.1:${INBOK_GOOGLE_EMULATOR_PORT:-4000}:4000
 
+  # The search index, pinned like deploy/compose.yaml's; change both
+  # together with the image in backend/internal/meilisearch's tests.
+  meilisearch:
+    image: getmeili/meilisearch:v1.56.1@sha256:b7ba431bf6f9b26cc86132798f3640964147a699cf23f026b74c6c05dbb1d60d
+    environment:
+      MEILI_MASTER_KEY: ${INBOK_MEILISEARCH_KEY:?add INBOK_MEILISEARCH_KEY to .env from .env.example}
+      # Development serves a web dashboard at the published port, which
+      # asks for the key.
+      MEILI_ENV: development
+      # Meilisearch sends anonymous usage data unless this is set.
+      MEILI_NO_ANALYTICS: "true"
+
+    # Only this machine can connect: serve and the worker run on the host.
+    ports:
+      - 127.0.0.1:${INBOK_MEILISEARCH_PORT:-7700}:7700
+
+    # NOTE: Named after the image's version, as in deploy/compose.yaml: a
+    # Meilisearch version refuses to open data another version wrote, so a
+    # new version starts on a new, empty volume.
+    volumes:
+      - meilisearch-1.56.1:/meili_data
+
+    # The image has curl. /health answers without the key.
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:7700/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
 volumes:
   postgres:
+  meilisearch-1.56.1:

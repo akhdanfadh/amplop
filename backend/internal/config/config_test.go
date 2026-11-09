@@ -509,3 +509,49 @@ func TestWorkerIDBad(t *testing.T) {
 		})
 	}
 }
+
+func TestSearchIndex(t *testing.T) {
+	cases := map[string]string{
+		"http://127.0.0.1:7700":      "http://127.0.0.1:7700",
+		" http://meilisearch:7700/ ": "http://meilisearch:7700",
+		"https://search.example.com": "https://search.example.com",
+	}
+	for value, want := range cases {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(envSearchURL, value)
+			t.Setenv(envSearchKey, "a-test-master-key")
+
+			address, key, err := SearchIndex()
+			require.NoError(t, err)
+
+			assert.Equal(t, want, address)
+			assert.Equal(t, "a-test-master-key", key)
+		})
+	}
+}
+
+// Neither setting has a default, and an error never shows the key.
+func TestSearchIndexBad(t *testing.T) {
+	const key = "a-test-master-key"
+	cases := map[string]struct{ address, key, want string }{
+		"no address":   {"", key, envSearchURL},
+		"no scheme":    {"meilisearch:7700", key, envSearchURL},
+		"other scheme": {"ftp://meilisearch:7700", key, envSearchURL},
+		"no host":      {"http://", key, envSearchURL},
+		"path":         {"http://meilisearch:7700/search", key, envSearchURL},
+		"query":        {"http://meilisearch:7700?a=1", key, envSearchURL},
+		"user":         {"http://" + key + "@meilisearch:7700", key, envSearchURL},
+		"no key":       {"http://meilisearch:7700", "", envSearchKey},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(envSearchURL, c.address)
+			t.Setenv(envSearchKey, c.key)
+
+			_, _, err := SearchIndex()
+
+			require.ErrorContains(t, err, c.want)
+			assert.NotContains(t, err.Error(), key)
+		})
+	}
+}
