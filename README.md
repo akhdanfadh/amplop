@@ -14,7 +14,7 @@ is removed before the first release.
 These are for development. Self-hosting needs only Docker and git; see
 [Self-hosting](#self-hosting).
 
-- Go 1.27.1 or newer
+- Go 1.27.3 or newer
 - pnpm, which downloads the pinned pnpm and Node.js versions itself
 - Docker, for PostgreSQL, Mailpit, Meilisearch, the Google emulator,
   and the Go database and Gmail tests
