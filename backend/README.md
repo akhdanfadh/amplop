@@ -904,7 +904,7 @@ others, and each leaf holds one thing, e.g. the text, the same text as
 HTML, a PDF, or an image the HTML shows with `<img src="cid:logo">`,
 naming the part whose `Content-ID` is `logo`. `messagecontent.Parse`
 reads that tree from `messagecontent.Received`, which a provider's
-technology package fills, and returns:
+technology package fills (`google` for Gmail), and returns:
 
 - the part tree PostgreSQL keeps, one `Part` per node: the provider's
   part ID (Gmail's `partId`), media type, declared charset, file name,
@@ -960,6 +960,13 @@ shown, so a better rule reaches stored mail without fetching it again:
 - In any other multipart, every part in order: several text parts show
   one after another, and attachments, plus inline parts outside
   `multipart/related`, are offered as downloads.
+
+Reports say Gmail's `attachmentId` changes between `messages.get` calls,
+so a part is named by its message and part ID, and its bytes are fetched
+with the `attachmentId` of a fresh `messages.get`; an attachment's bytes
+may also come as `data` in that answer. The fixtures in
+`internal/google/testdata` follow the shape of a recorded `format=full`
+response.
 
 ## Email addresses
 
@@ -2079,6 +2086,7 @@ httpapi --> connectedaccount <-- repository/postgres
                              <-- google
             search <-- meilisearch
             messagecontent <-- s3
+                           <-- google
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -2121,7 +2129,9 @@ httpapi --> connectedaccount <-- repository/postgres
   refresh token trade, revocation, and Gmail's `users.getProfile`, with
   `golang.org/x/oauth2` and
   Google's Gmail client. Their types stay inside it; Gmail calls take
-  `connectedaccount`'s `AccessToken`.
+  `connectedaccount`'s `AccessToken`. It also turns a Gmail message's
+  parts into `messagecontent.Received`, the provider-neutral input of
+  [Message parts](#message-parts).
 - `googleemulator` starts the [Google emulator](#google-emulator) for
   tests, each with its own seed. Only tests import it.
 - `webapp` embeds the built web app and serves it as a static site:

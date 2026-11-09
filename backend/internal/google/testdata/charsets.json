@@ -1,0 +1,150 @@
+{
+ "id": "19a2f0c1d2e3f405",
+ "threadId": "19a2f0c1d2e3f405",
+ "labelIds": [
+  "INBOX"
+ ],
+ "snippet": "Charsets",
+ "historyId": "759379",
+ "internalDate": "1793607300000",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/mixed",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Delivered-To",
+    "value": "ana@example.com"
+   },
+   {
+    "name": "From",
+    "value": "Ben <ben@example.org>"
+   },
+   {
+    "name": "To",
+    "value": "ana@example.com"
+   },
+   {
+    "name": "Subject",
+    "value": "Charsets"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 2 Nov 2026 09:15:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<fixture@example.org>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/mixed; boundary=\"broot\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=ISO-8859-1"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 12,
+     "data": "Q2Fm6SBjcuhtZQ0K"
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "text/html",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/html"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 42,
+     "data": "PG1ldGEgY2hhcnNldD0id2luZG93cy0xMjUxIj48cD7P8Oji5fI8L3A-"
+    }
+   },
+   {
+    "partId": "2",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=x-unknown-8bit"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 8,
+     "data": "bmHDr3ZlDQo="
+    }
+   },
+   {
+    "partId": "3",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 6,
+     "data": "ozEwMA0K"
+    }
+   },
+   {
+    "partId": "4",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=ISO-2022-JP"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 18,
+     "data": "GyRCJDMkcyRLJEEkTxsoQg0K"
+    }
+   }
+  ]
+ },
+ "sizeEstimate": 4096
+}

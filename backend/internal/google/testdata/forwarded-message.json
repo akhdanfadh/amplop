@@ -1,0 +1,149 @@
+{
+ "id": "19a2f0c1d2e3f405",
+ "threadId": "19a2f0c1d2e3f405",
+ "labelIds": [
+  "INBOX"
+ ],
+ "snippet": "Fwd: Original",
+ "historyId": "759379",
+ "internalDate": "1793607300000",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/mixed",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Delivered-To",
+    "value": "ana@example.com"
+   },
+   {
+    "name": "From",
+    "value": "Ben <ben@example.org>"
+   },
+   {
+    "name": "To",
+    "value": "ana@example.com"
+   },
+   {
+    "name": "Subject",
+    "value": "Fwd: Original"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 2 Nov 2026 09:15:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<fixture@example.org>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/mixed; boundary=\"broot\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=UTF-8"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 22,
+     "data": "Rm9yd2FyZGluZyB0aGlzIG9uZS4NCg=="
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "message/rfc822",
+    "filename": "Original.eml",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "message/rfc822; name=Original.eml"
+     },
+     {
+      "name": "Content-Disposition",
+      "value": "attachment; filename=Original.eml"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ81fixture",
+     "size": 1800
+    },
+    "parts": [
+     {
+      "partId": "1.0",
+      "mimeType": "multipart/alternative",
+      "filename": "",
+      "headers": [
+       {
+        "name": "Content-Type",
+        "value": "multipart/alternative; boundary=\"b1.0\""
+       }
+      ],
+      "body": {
+       "size": 0
+      },
+      "parts": [
+       {
+        "partId": "1.0.0",
+        "mimeType": "text/plain",
+        "filename": "",
+        "headers": [
+         {
+          "name": "Content-Type",
+          "value": "text/plain; charset=UTF-8"
+         },
+         {
+          "name": "Content-Transfer-Encoding",
+          "value": "quoted-printable"
+         }
+        ],
+        "body": {
+         "size": 16,
+         "data": "T3JpZ2luYWwgdGV4dC4NCg=="
+        }
+       },
+       {
+        "partId": "1.0.1",
+        "mimeType": "text/html",
+        "filename": "",
+        "headers": [
+         {
+          "name": "Content-Type",
+          "value": "text/html; charset=UTF-8"
+         },
+         {
+          "name": "Content-Transfer-Encoding",
+          "value": "quoted-printable"
+         }
+        ],
+        "body": {
+         "size": 23,
+         "data": "PHA-T3JpZ2luYWwgdGV4dC48L3A-DQo="
+        }
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "sizeEstimate": 4096
+}

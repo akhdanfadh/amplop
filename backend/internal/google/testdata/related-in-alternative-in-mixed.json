@@ -1,0 +1,198 @@
+{
+ "id": "19a2f0c1d2e3f405",
+ "threadId": "19a2f0c1d2e3f405",
+ "labelIds": [
+  "INBOX"
+ ],
+ "snippet": "Report with logo",
+ "historyId": "759379",
+ "internalDate": "1793607300000",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/mixed",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Delivered-To",
+    "value": "ana@example.com"
+   },
+   {
+    "name": "From",
+    "value": "Ben <ben@example.org>"
+   },
+   {
+    "name": "To",
+    "value": "ana@example.com"
+   },
+   {
+    "name": "Subject",
+    "value": "Report with logo"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 2 Nov 2026 09:15:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<fixture@example.org>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/mixed; boundary=\"broot\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "multipart/alternative",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "multipart/alternative; boundary=\"b0\""
+     }
+    ],
+    "body": {
+     "size": 0
+    },
+    "parts": [
+     {
+      "partId": "0.0",
+      "mimeType": "text/plain",
+      "filename": "",
+      "headers": [
+       {
+        "name": "Content-Type",
+        "value": "text/plain; charset=UTF-8"
+       },
+       {
+        "name": "Content-Transfer-Encoding",
+        "value": "quoted-printable"
+       }
+      ],
+      "body": {
+       "size": 28,
+       "data": "SGVsbG8sIGhlcmUgaXMgdGhlIHJlcG9ydC4NCg"
+      }
+     },
+     {
+      "partId": "0.1",
+      "mimeType": "multipart/related",
+      "filename": "",
+      "headers": [
+       {
+        "name": "Content-Type",
+        "value": "multipart/related; boundary=\"b0.1\""
+       }
+      ],
+      "body": {
+       "size": 0
+      },
+      "parts": [
+       {
+        "partId": "0.1.0",
+        "mimeType": "text/html",
+        "filename": "",
+        "headers": [
+         {
+          "name": "Content-Type",
+          "value": "text/html; charset=utf-8"
+         },
+         {
+          "name": "Content-Transfer-Encoding",
+          "value": "quoted-printable"
+         }
+        ],
+        "body": {
+         "size": 167,
+         "data": "PGh0bWw-PGJvZHk-PHA-SGVsbG8sIGhlcmUgaXMgdGhlIDxmb250IGNvbG9yPSIjZmYwMDAwIj5yZXBvcnQ8L2ZvbnQ-LjwvcD48aW1nIHNyYz0iY2lkOmxvZ28uRjBCNTM1REJAZXhhbXBsZS5vcmciIGFsdD0ibG9nbyIgd2lkdGg9IjEyMCIgaGVpZ2h0PSIxMjAiPjwvYm9keT48L2h0bWw-DQo="
+        }
+       },
+       {
+        "partId": "0.1.1",
+        "mimeType": "image/png",
+        "filename": "logo.png",
+        "headers": [
+         {
+          "name": "Content-Type",
+          "value": "image/png"
+         },
+         {
+          "name": "Content-Id",
+          "value": "<logo.F0B535DB@example.org>"
+         },
+         {
+          "name": "Content-Disposition",
+          "value": "inline; filename=logo.png"
+         },
+         {
+          "name": "Content-Transfer-Encoding",
+          "value": "base64"
+         }
+        ],
+        "body": {
+         "attachmentId": "ANGjdJ80x1x1fixture",
+         "size": 24388
+        }
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "partId": "1",
+    "mimeType": "application/pdf",
+    "filename": "report.pdf",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "application/pdf; name=report.pdf"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     },
+     {
+      "name": "Content-Disposition",
+      "value": "attachment; filename=report.pdf"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ81fixture",
+     "size": 934
+    }
+   },
+   {
+    "partId": "2",
+    "mimeType": "text/plain",
+    "filename": "cert.pem",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; name=cert.pem"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     },
+     {
+      "name": "Content-Disposition",
+      "value": "attachment; filename=cert.pem"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ82fixture",
+     "size": 2952
+    }
+   }
+  ]
+ },
+ "sizeEstimate": 4096
+}

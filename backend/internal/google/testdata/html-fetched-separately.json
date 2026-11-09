@@ -1,0 +1,93 @@
+{
+ "id": "19a2f0c1d2e3f405",
+ "threadId": "19a2f0c1d2e3f405",
+ "labelIds": [
+  "INBOX"
+ ],
+ "snippet": "Long newsletter",
+ "historyId": "759379",
+ "internalDate": "1793607300000",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/alternative",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Delivered-To",
+    "value": "ana@example.com"
+   },
+   {
+    "name": "From",
+    "value": "Ben <ben@example.org>"
+   },
+   {
+    "name": "To",
+    "value": "ana@example.com"
+   },
+   {
+    "name": "Subject",
+    "value": "Long newsletter"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 2 Nov 2026 09:15:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<fixture@example.org>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/alternative; boundary=\"broot\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=UTF-8"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 31,
+     "data": "V2Vla2x5IGRpZ2VzdCwgcGxhaW4gdmVyc2lvbi4NCg=="
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "text/html",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/html; charset=UTF-8"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ81fixture",
+     "size": 180000
+    }
+   }
+  ]
+ },
+ "sizeEstimate": 4096
+}

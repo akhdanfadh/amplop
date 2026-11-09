@@ -1,0 +1,120 @@
+{
+ "id": "19a2f0c1d2e3f405",
+ "threadId": "19a2f0c1d2e3f405",
+ "labelIds": [
+  "INBOX"
+ ],
+ "snippet": "Photo",
+ "historyId": "759379",
+ "internalDate": "1793607300000",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/mixed",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Delivered-To",
+    "value": "ana@example.com"
+   },
+   {
+    "name": "From",
+    "value": "Ben <ben@example.org>"
+   },
+   {
+    "name": "To",
+    "value": "ana@example.com"
+   },
+   {
+    "name": "Subject",
+    "value": "Photo"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 2 Nov 2026 09:15:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<fixture@example.org>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/mixed; boundary=\"broot\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=us-ascii"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 19,
+     "data": "QmVmb3JlIHRoZSBwaG90by4NCg=="
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "image/jpeg",
+    "filename": "photo.jpg",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "image/jpeg; name=\"photo.jpg\""
+     },
+     {
+      "name": "Content-Disposition",
+      "value": "inline; filename=\"photo.jpg\""
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     },
+     {
+      "name": "Content-Id",
+      "value": "<5A1E8C0B-7D2F@example.org>"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ81fixture",
+     "size": 40960
+    }
+   },
+   {
+    "partId": "2",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=us-ascii"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 18,
+     "data": "QWZ0ZXIgdGhlIHBob3RvLg0K"
+    }
+   }
+  ]
+ },
+ "sizeEstimate": 4096
+}
