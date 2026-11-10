@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -232,4 +233,227 @@ func TestOutgoingMessageNoSuchID(t *testing.T) {
 	_, err := o.messages.Get(t.Context(), o.member, uuid.New())
 
 	require.ErrorIs(t, err, outgoingmessage.ErrNotFound)
+}
+
+// A send reads a message whoever owns it.
+func TestOutgoingMessageToSend(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+
+	read, err := o.db.ReadOutgoingMessageToSend(t.Context(), created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, created, read)
+
+	_, err = o.db.ReadOutgoingMessageToSend(t.Context(), uuid.New())
+	require.ErrorIs(t, err, outgoingmessage.ErrNotFound)
+}
+
+// A transition saves the state update decides, read under the row's lock.
+func TestOutgoingMessageUpdate(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+	sentAt := time.Date(2026, 11, 9, 10, 31, 0, 0, time.UTC)
+
+	var seen outgoingmessage.Message
+	saved, err := o.db.UpdateOutgoingMessage(t.Context(), created.ID, func(current outgoingmessage.SendState) (outgoingmessage.Transition, error) {
+		seen = current.Message
+		assert.False(t, current.SenderDeactivated)
+		return outgoingmessage.Transition{
+			Status: outgoingmessage.StatusSent,
+			Sent:   outgoingmessage.Sent{ProviderMessageID: "gm-1", ProviderThreadID: "th-1"},
+			SentAt: &sentAt,
+		}, nil
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, created, seen)
+	assert.Equal(t, outgoingmessage.StatusSent, saved.Status)
+	assert.Equal(t, "gm-1", saved.ProviderMessageID)
+	assert.Equal(t, "th-1", saved.ProviderThreadID)
+	require.NotNil(t, saved.SentAt)
+	assert.True(t, sentAt.Equal(*saved.SentAt))
+	read, err := o.messages.Get(t.Context(), o.member, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, saved, read)
+}
+
+// Each failure reason the service gives is one the table takes.
+func TestOutgoingMessageFailures(t *testing.T) {
+	failures := []outgoingmessage.Failure{
+		outgoingmessage.FailureRefused, outgoingmessage.FailureSendingLimit,
+		outgoingmessage.FailureNeedsReconnect, outgoingmessage.FailureTokenUnreadable,
+		outgoingmessage.FailureDeactivated, outgoingmessage.FailureSenderChanged,
+		outgoingmessage.FailureGaveUp,
+	}
+	o := newOutgoingMessagesTest(t)
+	for _, failure := range failures {
+		created, err := o.messages.Create(t.Context(), o.member, o.draft())
+		require.NoError(t, err)
+
+		saved, err := o.db.UpdateOutgoingMessage(t.Context(), created.ID, func(outgoingmessage.SendState) (outgoingmessage.Transition, error) {
+			return outgoingmessage.Transition{Status: outgoingmessage.StatusFailed, Failure: failure}, nil
+		})
+
+		require.NoError(t, err, string(failure))
+		assert.Equal(t, failure, saved.Failure)
+	}
+}
+
+// A sender's new address is saved on the account; the message keeps the
+// address it was saved with.
+func TestOutgoingSenderEmail(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+
+	saved, err := o.db.UpdateOutgoingMessage(t.Context(), created.ID, func(outgoingmessage.SendState) (outgoingmessage.Transition, error) {
+		return outgoingmessage.Transition{
+			Status:      outgoingmessage.StatusFailed,
+			Failure:     outgoingmessage.FailureSenderChanged,
+			SenderEmail: "alex.renamed@example.com",
+		}, nil
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "alex@example.com", saved.From)
+	accounts, err := o.service.List(t.Context(), o.member)
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	assert.Equal(t, "alex.renamed@example.com", accounts[0].Email)
+}
+
+// An error from update saves nothing.
+func TestOutgoingUpdateError(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+	refused := errors.New("refused")
+
+	_, err = o.db.UpdateOutgoingMessage(t.Context(), created.ID, func(outgoingmessage.SendState) (outgoingmessage.Transition, error) {
+		return outgoingmessage.Transition{}, refused
+	})
+
+	require.ErrorIs(t, err, refused)
+	read, err := o.db.ReadOutgoingMessageToSend(t.Context(), created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, created, read)
+}
+
+// A message that went, e.g. with its account, cannot change.
+func TestOutgoingMessageUpdateGone(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	called := false
+
+	_, err := o.db.UpdateOutgoingMessage(t.Context(), uuid.New(), func(outgoingmessage.SendState) (outgoingmessage.Transition, error) {
+		called = true
+		return outgoingmessage.Transition{}, nil
+	})
+
+	require.ErrorIs(t, err, outgoingmessage.ErrNotFound)
+	assert.False(t, called)
+}
+
+// waitForLock waits until another connection waits for a lock in the
+// query named name.
+func (o outgoingMessagesTest) waitForLock(t *testing.T, name string) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		var waiting bool
+		err := o.conn.QueryRow(t.Context(), `SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE $1)`,
+			"%-- name: "+name+" %").Scan(&waiting)
+		require.NoError(t, err)
+		return waiting
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+// A deactivation in progress holds the read of the member until it
+// commits, so the send sees it (ADR029).
+func TestOutgoingSenderDeactivated(t *testing.T) {
+	// Given a deactivation that has locked the member and not committed.
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+	deactivation, err := o.db.pool.Begin(t.Context())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = deactivation.Rollback(context.Background()) })
+	_, err = deactivation.Exec(t.Context(), "UPDATE users SET deactivated_at = now() WHERE id = $1", o.member)
+	require.NoError(t, err)
+
+	// When a send step updates the message meanwhile.
+	seen := make(chan bool, 1)
+	done := make(chan error, 1)
+	go func() {
+		_, err := o.db.UpdateOutgoingMessage(t.Context(), created.ID, func(state outgoingmessage.SendState) (outgoingmessage.Transition, error) {
+			seen <- state.SenderDeactivated
+			return outgoingmessage.Transition{Status: state.Status}, nil
+		})
+		done <- err
+	}()
+
+	// Then it waits for the deactivation, and sees it once committed.
+	o.waitForLock(t, "LockOutgoingMessageMember")
+	require.NoError(t, deactivation.Commit(t.Context()))
+	require.NoError(t, <-done)
+	assert.True(t, <-seen)
+}
+
+// A send, a connect, and a disconnect of the same account at once all
+// finish: the send takes the member's lock before the message's, as the
+// connect does before the account's and the disconnect the account's
+// before the message's.
+func TestOutgoingLockOrder(t *testing.T) {
+	// Given a connect holding the member's lock, and a send waiting for it.
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+	state := newConnectState(o.member, insertConnectingSession(t, o.conn, o.member), o.account)
+	memberLocked := make(chan struct{})
+	release := make(chan struct{})
+	connectDone := make(chan error, 1)
+	go func() {
+		connectDone <- o.db.InsertConnectState(t.Context(), o.member, func([]time.Time) (connectedaccount.ConnectState, error) {
+			close(memberLocked)
+			<-release
+			return state, nil
+		})
+	}()
+	<-memberLocked
+	sendDone := make(chan error, 1)
+	go func() {
+		_, err := o.db.UpdateOutgoingMessage(t.Context(), created.ID, func(state outgoingmessage.SendState) (outgoingmessage.Transition, error) {
+			return outgoingmessage.Transition{Status: outgoingmessage.StatusSending}, nil
+		})
+		sendDone <- err
+	}()
+	o.waitForLock(t, "LockOutgoingMessageMember")
+
+	// When the account is disconnected, and then the connect goes on.
+	disconnectDone := make(chan error, 1)
+	go func() {
+		_, err := o.service.Disconnect(t.Context(), o.member, o.account)
+		disconnectDone <- err
+	}()
+	var disconnectErr error
+	select {
+	case disconnectErr = <-disconnectDone:
+	case <-time.After(3 * time.Second):
+		t.Error("the disconnect waited for the send")
+		close(release)
+		disconnectErr = <-disconnectDone
+		release = nil
+	}
+	if release != nil {
+		close(release)
+	}
+
+	// Then the disconnect wins without waiting, the send finds the message
+	// gone, and nothing deadlocks.
+	require.NoError(t, disconnectErr)
+	require.ErrorIs(t, <-sendDone, outgoingmessage.ErrNotFound)
+	if connectErr := <-connectDone; connectErr != nil {
+		assert.NotContains(t, connectErr.Error(), "deadlock")
+	}
 }

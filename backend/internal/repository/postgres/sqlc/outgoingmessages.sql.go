@@ -53,6 +53,52 @@ func (q *Queries) InsertOutgoingMessage(ctx context.Context, arg InsertOutgoingM
 	return i, err
 }
 
+const lockOutgoingMessage = `-- name: LockOutgoingMessage :one
+SELECT id, connected_account_id, from_address, to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id, status, failure, provider_message_id, provider_thread_id, created_at, sent_at FROM outgoing_messages WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// No key column changes, so foreign key checks on the row need not wait.
+func (q *Queries) LockOutgoingMessage(ctx context.Context, id uuid.UUID) (OutgoingMessage, error) {
+	row := q.db.QueryRow(ctx, lockOutgoingMessage, id)
+	var i OutgoingMessage
+	err := row.Scan(
+		&i.ID,
+		&i.ConnectedAccountID,
+		&i.FromAddress,
+		&i.ToAddresses,
+		&i.CcAddresses,
+		&i.BccAddresses,
+		&i.Subject,
+		&i.Body,
+		&i.InbokMessageID,
+		&i.Status,
+		&i.Failure,
+		&i.ProviderMessageID,
+		&i.ProviderThreadID,
+		&i.CreatedAt,
+		&i.SentAt,
+	)
+	return i, err
+}
+
+const lockOutgoingMessageMember = `-- name: LockOutgoingMessageMember :one
+SELECT (u.deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM outgoing_messages om
+JOIN connected_accounts ca ON ca.id = om.connected_account_id
+JOIN users u ON u.id = ca.user_id
+WHERE om.id = $1
+FOR SHARE OF u
+`
+
+// The share lock waits for a deactivation in progress, so the member's flag
+// is read as ADR029 asks before provider work.
+func (q *Queries) LockOutgoingMessageMember(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, lockOutgoingMessageMember, id)
+	var deactivated bool
+	err := row.Scan(&deactivated)
+	return deactivated, err
+}
+
 const lockOutgoingMessageSender = `-- name: LockOutgoingMessageSender :one
 SELECT id, email, (needs_reconnect_since IS NOT NULL)::boolean AS needs_reconnect
 FROM connected_accounts
@@ -99,6 +145,98 @@ type ReadOutgoingMessageParams struct {
 // A message belongs to its account's owner.
 func (q *Queries) ReadOutgoingMessage(ctx context.Context, arg ReadOutgoingMessageParams) (OutgoingMessage, error) {
 	row := q.db.QueryRow(ctx, readOutgoingMessage, arg.ID, arg.UserID)
+	var i OutgoingMessage
+	err := row.Scan(
+		&i.ID,
+		&i.ConnectedAccountID,
+		&i.FromAddress,
+		&i.ToAddresses,
+		&i.CcAddresses,
+		&i.BccAddresses,
+		&i.Subject,
+		&i.Body,
+		&i.InbokMessageID,
+		&i.Status,
+		&i.Failure,
+		&i.ProviderMessageID,
+		&i.ProviderThreadID,
+		&i.CreatedAt,
+		&i.SentAt,
+	)
+	return i, err
+}
+
+const readOutgoingMessageToSend = `-- name: ReadOutgoingMessageToSend :one
+SELECT id, connected_account_id, from_address, to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id, status, failure, provider_message_id, provider_thread_id, created_at, sent_at FROM outgoing_messages WHERE id = $1
+`
+
+func (q *Queries) ReadOutgoingMessageToSend(ctx context.Context, id uuid.UUID) (OutgoingMessage, error) {
+	row := q.db.QueryRow(ctx, readOutgoingMessageToSend, id)
+	var i OutgoingMessage
+	err := row.Scan(
+		&i.ID,
+		&i.ConnectedAccountID,
+		&i.FromAddress,
+		&i.ToAddresses,
+		&i.CcAddresses,
+		&i.BccAddresses,
+		&i.Subject,
+		&i.Body,
+		&i.InbokMessageID,
+		&i.Status,
+		&i.Failure,
+		&i.ProviderMessageID,
+		&i.ProviderThreadID,
+		&i.CreatedAt,
+		&i.SentAt,
+	)
+	return i, err
+}
+
+const updateConnectedAccountEmail = `-- name: UpdateConnectedAccountEmail :exec
+UPDATE connected_accounts SET email = $1 WHERE id = $2
+`
+
+type UpdateConnectedAccountEmailParams struct {
+	Email string
+	ID    int64
+}
+
+// Gmail's address for the account, which a send found changed.
+func (q *Queries) UpdateConnectedAccountEmail(ctx context.Context, arg UpdateConnectedAccountEmailParams) error {
+	_, err := q.db.Exec(ctx, updateConnectedAccountEmail, arg.Email, arg.ID)
+	return err
+}
+
+const updateOutgoingMessageStatus = `-- name: UpdateOutgoingMessageStatus :one
+UPDATE outgoing_messages SET
+    status = $1,
+    failure = $2,
+    provider_message_id = $3,
+    provider_thread_id = $4,
+    sent_at = $5
+WHERE id = $6
+RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id, status, failure, provider_message_id, provider_thread_id, created_at, sent_at
+`
+
+type UpdateOutgoingMessageStatusParams struct {
+	Status            string
+	Failure           *string
+	ProviderMessageID *string
+	ProviderThreadID  *string
+	SentAt            *time.Time
+	ID                uuid.UUID
+}
+
+func (q *Queries) UpdateOutgoingMessageStatus(ctx context.Context, arg UpdateOutgoingMessageStatusParams) (OutgoingMessage, error) {
+	row := q.db.QueryRow(ctx, updateOutgoingMessageStatus,
+		arg.Status,
+		arg.Failure,
+		arg.ProviderMessageID,
+		arg.ProviderThreadID,
+		arg.SentAt,
+		arg.ID,
+	)
 	var i OutgoingMessage
 	err := row.Scan(
 		&i.ID,

@@ -23,3 +23,34 @@ SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE om.id = @id AND ca.user_id = @user_id;
+
+-- name: ReadOutgoingMessageToSend :one
+SELECT * FROM outgoing_messages WHERE id = @id;
+
+-- name: LockOutgoingMessage :one
+-- No key column changes, so foreign key checks on the row need not wait.
+SELECT * FROM outgoing_messages WHERE id = @id FOR NO KEY UPDATE;
+
+-- name: UpdateOutgoingMessageStatus :one
+UPDATE outgoing_messages SET
+    status = @status,
+    failure = @failure,
+    provider_message_id = @provider_message_id,
+    provider_thread_id = @provider_thread_id,
+    sent_at = @sent_at
+WHERE id = @id
+RETURNING *;
+
+-- name: UpdateConnectedAccountEmail :exec
+-- Gmail's address for the account, which a send found changed.
+UPDATE connected_accounts SET email = @email WHERE id = @id;
+
+-- name: LockOutgoingMessageMember :one
+-- The share lock waits for a deactivation in progress, so the member's flag
+-- is read as ADR029 asks before provider work.
+SELECT (u.deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM outgoing_messages om
+JOIN connected_accounts ca ON ca.id = om.connected_account_id
+JOIN users u ON u.id = ca.user_id
+WHERE om.id = @id
+FOR SHARE OF u;

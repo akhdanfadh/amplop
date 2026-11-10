@@ -3,6 +3,8 @@ package outgoingmessage
 import (
 	"context"
 	"errors"
+	"time"
+	"uuid"
 
 	"inbok/internal/connectedaccount"
 )
@@ -64,4 +66,42 @@ type Provider interface {
 	// [ErrSentNotFound] when it read every such message and none matched,
 	// and [ErrCheckIncomplete] when it could not read them all.
 	FindSent(ctx context.Context, token connectedaccount.AccessToken, historyID, inbokMessageID string) (Sent, error)
+}
+
+// Transition is a message's next state, which a send decides and storage saves.
+type Transition struct {
+	Status Status
+	// Failure is set only when [Transition.Status] is [StatusFailed].
+	Failure Failure
+	// Sent and SentAt are set only when [Transition.Status] is [StatusSent].
+	Sent   Sent
+	SentAt *time.Time
+	// SenderEmail, when not empty, is the sending account's address now,
+	// saved on the account.
+	SenderEmail string
+}
+
+// SendState is a message as storage reads it under the message's lock,
+// with its sender's state.
+type SendState struct {
+	Message
+	// SenderDeactivated is whether the sending account's member is
+	// deactivated, read under the member's share lock, as ADR029 asks
+	// before provider work.
+	SenderDeactivated bool
+}
+
+// SendStorage keeps what sending reads and changes.
+type SendStorage interface {
+	// ReadOutgoingMessageToSend returns message messageID, or [ErrNotFound]
+	// when there is none, e.g. after its account was disconnected.
+	ReadOutgoingMessageToSend(ctx context.Context, messageID uuid.UUID) (Message, error)
+
+	// UpdateOutgoingMessage reads message messageID's sending member under
+	// the member's share lock, then locks the message, calls update with
+	// both, and saves the [Transition] update returns, with its sender's
+	// address on the account when it names one, in one transaction. It
+	// returns the saved message, or [ErrNotFound] when there is no such
+	// message. An error from update rolls back and is returned unchanged.
+	UpdateOutgoingMessage(ctx context.Context, messageID uuid.UUID, update func(SendState) (Transition, error)) (Message, error)
 }

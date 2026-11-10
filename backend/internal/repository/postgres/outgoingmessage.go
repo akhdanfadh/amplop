@@ -103,6 +103,98 @@ func (db *DB) ReadOutgoingMessage(ctx context.Context, userID int64, messageID u
 	return outgoingMessageFromRow(row)
 }
 
+// ReadOutgoingMessageToSend returns message messageID, whoever owns it, or
+// [outgoingmessage.ErrNotFound] when there is none.
+func (db *DB) ReadOutgoingMessageToSend(ctx context.Context, messageID uuid.UUID) (outgoingmessage.Message, error) {
+	row, err := sqlc.New(db.pool).ReadOutgoingMessageToSend(ctx, messageID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return outgoingmessage.Message{}, outgoingmessage.ErrNotFound
+	}
+	if err != nil {
+		return outgoingmessage.Message{}, fmt.Errorf("read outgoing message: %w", err)
+	}
+	return outgoingMessageFromRow(row)
+}
+
+// UpdateOutgoingMessage reads message messageID's sending member under the
+// member's share lock, then locks the message, calls update with both, and
+// saves the transition update returns, with the sender's address on the
+// account when it names one, in one transaction. It returns the saved
+// message, or [outgoingmessage.ErrNotFound] when there is no such message.
+func (db *DB) UpdateOutgoingMessage(ctx context.Context, messageID uuid.UUID, update func(outgoingmessage.SendState) (outgoingmessage.Transition, error)) (outgoingmessage.Message, error) {
+	var saved outgoingmessage.Message
+	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+
+		// 1. Read whether the member is deactivated, holding off a
+		// deactivation until this transaction ends. The member is locked
+		// before the message, as connecting locks them before the account
+		// and a disconnect the account before the message: the other order
+		// lets a send, a connect, and a disconnect wait on each other.
+		deactivated, err := queries.LockOutgoingMessageMember(ctx, messageID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return outgoingmessage.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock sending member: %w", err)
+		}
+
+		// 2. Lock the message, so the steps of one send save one after
+		// the other, and a disconnect waits and then deletes it. A
+		// disconnect since step 1 has already deleted it.
+		row, err := queries.LockOutgoingMessage(ctx, messageID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return outgoingmessage.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock outgoing message: %w", err)
+		}
+		current, err := outgoingMessageFromRow(row)
+		if err != nil {
+			return err
+		}
+
+		// 3. Let update decide.
+		next, err := update(outgoingmessage.SendState{Message: current, SenderDeactivated: deactivated})
+		if err != nil {
+			return err
+		}
+
+		// 4. Save the message's state, and the account's address.
+		updated, err := queries.UpdateOutgoingMessageStatus(ctx, sqlc.UpdateOutgoingMessageStatusParams{
+			ID:                messageID,
+			Status:            string(next.Status),
+			Failure:           nullable(string(next.Failure)),
+			ProviderMessageID: nullable(next.Sent.ProviderMessageID),
+			ProviderThreadID:  nullable(next.Sent.ProviderThreadID),
+			SentAt:            next.SentAt,
+		})
+		if err != nil {
+			return fmt.Errorf("update outgoing message: %w", err)
+		}
+		if next.SenderEmail != "" {
+			err := queries.UpdateConnectedAccountEmail(ctx, sqlc.UpdateConnectedAccountEmailParams{ID: row.ConnectedAccountID, Email: next.SenderEmail})
+			if err != nil {
+				return fmt.Errorf("update sending account's address: %w", err)
+			}
+		}
+		saved, err = outgoingMessageFromRow(updated)
+		return err
+	})
+	if err != nil {
+		return outgoingmessage.Message{}, err
+	}
+	return saved, nil
+}
+
+// nullable returns value, or nil when it is empty.
+func nullable(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
 // outgoingMessageFromRow returns row as a message, or an error when a
 // recipient list is not the JSON the table keeps.
 func outgoingMessageFromRow(row sqlc.OutgoingMessage) (outgoingmessage.Message, error) {
