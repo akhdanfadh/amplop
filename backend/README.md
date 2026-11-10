@@ -2054,6 +2054,9 @@ stored once, and a disconnect deletes the account's messages with it.
   control character, and a body of at most 100,000 characters without NUL.
   Both may be empty.
 
+The contract states the same limits (`maxItems`, `maxLength`), so the web
+and Huma refuse most of it first; the service checks again for every caller.
+
 It then saves in one transaction (`InsertOutgoingMessage`), in this order:
 
 1. It locks the member's `users` row, as a Gmail connect does, so one
@@ -2098,6 +2101,14 @@ the message, the order the send job and a disconnect use. `Service.List`
 returns the member's newest 50, without bodies, so a `failed` or `unknown`
 message, which synchronized mail may never show, can be found and sent
 again.
+
+The HTTP operations, tag Outgoing Messages, are Send Message
+(`POST /outgoing-messages`, which requires an `Idempotency-Key` header: a
+UUID, quoted as the IETF draft's Structured Field string or bare), List
+Outgoing Messages, Get Outgoing Message, and Send Message Again
+(`POST /outgoing-messages/{id}/send-again`). A refused account, missing
+recipients, and a refused address answer 422 on their field, e.g.
+`body.cc[2]`; a reused key answers 422 `idempotency-key-reused`.
 
 The send builds the MIME message from the saved row with go-message:
 `From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the

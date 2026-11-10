@@ -36,6 +36,8 @@ import {
   ResponseHealthStatus,
   ResponseListedMembers,
   ResponseListedSessions,
+  ResponseOutgoingMessage,
+  ResponseOutgoingMessages,
   ResponsePasswordResetRequestResult,
   ResponsePasswordResetResult,
   ResponseProbeEventCreated,
@@ -57,6 +59,7 @@ import type {
   EmailVerificationSecret,
   NewCodeSession,
   NewMember,
+  NewOutgoingMessage,
   NewPasswordFromLink,
   NewPasswordResetRequest,
   NewProbeEvent,
@@ -1049,6 +1052,378 @@ export const useReactivateMember = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getReactivateMemberMutationOptions(options), queryClient);
+    }
+
+export const getListOutgoingMessagesUrl = () => {
+
+
+
+
+  return `/api/v0/outgoing-messages`
+}
+
+/**
+ * Lists the messages the signed-in account sent from inbok, newest first, without their bodies, including those that failed or whose outcome is unknown.
+ * @summary List Outgoing Messages
+ */
+export const listOutgoingMessages = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessages> => {
+
+  return transport<ResponseOutgoingMessages>(getListOutgoingMessagesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseOutgoingMessages
+  }
+);}
+
+
+
+
+
+export const getListOutgoingMessagesQueryKey = () => {
+    return [
+    `/api/v0/outgoing-messages`
+    ] as const;
+    }
+
+
+export const getListOutgoingMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listOutgoingMessages>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOutgoingMessages>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOutgoingMessagesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOutgoingMessages>>> = ({ signal }) => listOutgoingMessages({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOutgoingMessages>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListOutgoingMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listOutgoingMessages>>>
+export type ListOutgoingMessagesQueryError = ErrorType<Problem>
+
+
+export function useListOutgoingMessages<TData = Awaited<ReturnType<typeof listOutgoingMessages>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOutgoingMessages>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listOutgoingMessages>>,
+          TError,
+          Awaited<ReturnType<typeof listOutgoingMessages>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListOutgoingMessages<TData = Awaited<ReturnType<typeof listOutgoingMessages>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOutgoingMessages>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listOutgoingMessages>>,
+          TError,
+          Awaited<ReturnType<typeof listOutgoingMessages>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListOutgoingMessages<TData = Awaited<ReturnType<typeof listOutgoingMessages>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOutgoingMessages>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List Outgoing Messages
+ */
+
+export function useListOutgoingMessages<TData = Awaited<ReturnType<typeof listOutgoingMessages>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listOutgoingMessages>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListOutgoingMessagesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendMessageUrl = () => {
+
+
+
+
+  return `/api/v0/outgoing-messages`
+}
+
+/**
+ * Saves a message from one of the signed-in account's connected accounts, waiting to be sent, and returns it. A background job sends it; read it again to follow its status. Sending counts toward the signed-in account's limit of 30 messages per 15 minutes and 200 per 24 hours, from all its connected accounts.
+ * @summary Send Message
+ */
+export const sendMessage = async (newOutgoingMessage: NewOutgoingMessage, options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessage> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseOutgoingMessage>(getSendMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newOutgoingMessage),
+    schema: ResponseOutgoingMessage
+  }
+);}
+
+
+
+
+
+export const getSendMessageMutationKey = () => ['sendMessage'] as const;
+
+export const getSendMessageMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMessage>>, TError,SendMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendMessage>>, TError,SendMessageMutationVariables, TContext> => {
+
+const mutationKey = getSendMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendMessage>>, SendMessageMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendMessage>>>
+    export type SendMessageMutationBody = NewOutgoingMessage
+    export type SendMessageMutationError = ErrorType<Problem>
+    export type SendMessageMutationVariables = {data: NewOutgoingMessage}
+
+    /**
+ * @summary Send Message
+ */
+export const useSendMessage = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMessage>>, TError,SendMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof sendMessage>>,
+        TError,
+        SendMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendMessageMutationOptions(options), queryClient);
+    }
+
+export const getGetOutgoingMessageUrl = (id: string,) => {
+
+
+
+
+  return `/api/v0/outgoing-messages/${id}`
+}
+
+/**
+ * Returns one of the signed-in account's outgoing messages with its body and status.
+ * @summary Get Outgoing Message
+ */
+export const getOutgoingMessage = async (id: string, options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessage> => {
+
+  return transport<ResponseOutgoingMessage>(getGetOutgoingMessageUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseOutgoingMessage
+  }
+);}
+
+
+
+
+
+export const getGetOutgoingMessageQueryKey = (id: string,) => {
+    return [
+    `/api/v0/outgoing-messages/${id}`
+    ] as const;
+    }
+
+
+export const getGetOutgoingMessageQueryOptions = <TData = Awaited<ReturnType<typeof getOutgoingMessage>>, TError = ErrorType<Problem>>(id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOutgoingMessage>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOutgoingMessageQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOutgoingMessage>>> = ({ signal }) => getOutgoingMessage(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOutgoingMessage>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetOutgoingMessageQueryResult = NonNullable<Awaited<ReturnType<typeof getOutgoingMessage>>>
+export type GetOutgoingMessageQueryError = ErrorType<Problem>
+
+
+export function useGetOutgoingMessage<TData = Awaited<ReturnType<typeof getOutgoingMessage>>, TError = ErrorType<Problem>>(
+ id: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOutgoingMessage>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getOutgoingMessage>>,
+          TError,
+          Awaited<ReturnType<typeof getOutgoingMessage>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetOutgoingMessage<TData = Awaited<ReturnType<typeof getOutgoingMessage>>, TError = ErrorType<Problem>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOutgoingMessage>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getOutgoingMessage>>,
+          TError,
+          Awaited<ReturnType<typeof getOutgoingMessage>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetOutgoingMessage<TData = Awaited<ReturnType<typeof getOutgoingMessage>>, TError = ErrorType<Problem>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOutgoingMessage>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get Outgoing Message
+ */
+
+export function useGetOutgoingMessage<TData = Awaited<ReturnType<typeof getOutgoingMessage>>, TError = ErrorType<Problem>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOutgoingMessage>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetOutgoingMessageQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendMessageAgainUrl = (id: string,) => {
+
+
+
+
+  return `/api/v0/outgoing-messages/${id}/send-again`
+}
+
+/**
+ * Saves a copy of a failed or unknown message, waiting to be sent from the same account's current address, and returns the copy. The message then names the copy in sentAgainAs, and sending it again returns the same copy, so it is sent again at most once. Sending counts toward the signed-in account's limit of 30 messages per 15 minutes and 200 per 24 hours, from all its connected accounts.
+ * @summary Send Message Again
+ */
+export const sendMessageAgain = async (id: string, options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessage> => {
+
+  return transport<ResponseOutgoingMessage>(getSendMessageAgainUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+    ,
+    schema: ResponseOutgoingMessage
+  }
+);}
+
+
+
+
+
+export const getSendMessageAgainMutationKey = () => ['sendMessageAgain'] as const;
+
+export const getSendMessageAgainMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMessageAgain>>, TError,SendMessageAgainMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendMessageAgain>>, TError,SendMessageAgainMutationVariables, TContext> => {
+
+const mutationKey = getSendMessageAgainMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendMessageAgain>>, SendMessageAgainMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  sendMessageAgain(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendMessageAgainMutationResult = NonNullable<Awaited<ReturnType<typeof sendMessageAgain>>>
+
+    export type SendMessageAgainMutationError = ErrorType<Problem>
+    export type SendMessageAgainMutationVariables = {id: string}
+
+    /**
+ * @summary Send Message Again
+ */
+export const useSendMessageAgain = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMessageAgain>>, TError,SendMessageAgainMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof sendMessageAgain>>,
+        TError,
+        SendMessageAgainMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendMessageAgainMutationOptions(options), queryClient);
     }
 
 export const getRequestPasswordResetLinkUrl = () => {

@@ -415,6 +415,64 @@
         ],
         "type": "object"
       },
+      "NewOutgoingMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "bcc": {
+            "items": {
+              "format": "email",
+              "maxLength": 254,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "body": {
+            "description": "Plain text.",
+            "maxLength": 100000,
+            "type": "string"
+          },
+          "cc": {
+            "items": {
+              "format": "email",
+              "maxLength": 254,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "connectedAccountId": {
+            "description": "The sending account, one of the signed-in account's connected accounts.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "subject": {
+            "description": "May be empty. No line breaks or other control characters.",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "to": {
+            "description": "To, Cc, and Bcc together need at least one address.",
+            "items": {
+              "format": "email",
+              "maxLength": 254,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array"
+          }
+        },
+        "required": [
+          "connectedAccountId",
+          "to",
+          "cc",
+          "bcc",
+          "subject",
+          "body"
+        ],
+        "type": "object"
+      },
       "NewPasswordFromLink": {
         "additionalProperties": false,
         "properties": {
@@ -631,6 +689,231 @@
         ],
         "type": "object"
       },
+      "OutgoingMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "bcc": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "body": {
+            "description": "Plain text.",
+            "type": "string"
+          },
+          "cc": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "connectedAccountId": {
+            "description": "The sending account. Disconnecting it deletes the message.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failure": {
+            "description": "Why the message failed; null unless status is failed. refused: Gmail refused the message, e.g. a recipient. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google could not be reached.",
+            "enum": [
+              "refused",
+              "sending-limit",
+              "needs-reconnect",
+              "token-unreadable",
+              "deactivated",
+              "sender-changed",
+              "gave-up",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from": {
+            "description": "The sending account's address when the message was saved.",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sentAgainAs": {
+            "description": "The copy this failed or unknown message was sent again as; null until then.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sentAt": {
+            "description": "When Gmail accepted the message; null unless status is sent.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and inbok cannot tell; check the account's Sent folder before sending it again.",
+            "enum": [
+              "waiting",
+              "sending",
+              "sent",
+              "failed",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "body",
+          "id",
+          "connectedAccountId",
+          "from",
+          "to",
+          "cc",
+          "bcc",
+          "subject",
+          "status",
+          "failure",
+          "sentAgainAs",
+          "createdAt",
+          "sentAt"
+        ],
+        "type": "object"
+      },
+      "OutgoingMessageSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "bcc": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cc": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "connectedAccountId": {
+            "description": "The sending account. Disconnecting it deletes the message.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "failure": {
+            "description": "Why the message failed; null unless status is failed. refused: Gmail refused the message, e.g. a recipient. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google could not be reached.",
+            "enum": [
+              "refused",
+              "sending-limit",
+              "needs-reconnect",
+              "token-unreadable",
+              "deactivated",
+              "sender-changed",
+              "gave-up",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from": {
+            "description": "The sending account's address when the message was saved.",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sentAgainAs": {
+            "description": "The copy this failed or unknown message was sent again as; null until then.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sentAt": {
+            "description": "When Gmail accepted the message; null unless status is sent.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and inbok cannot tell; check the account's Sent folder before sending it again.",
+            "enum": [
+              "waiting",
+              "sending",
+              "sent",
+              "failed",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "connectedAccountId",
+          "from",
+          "to",
+          "cc",
+          "bcc",
+          "subject",
+          "status",
+          "failure",
+          "sentAgainAs",
+          "createdAt",
+          "sentAt"
+        ],
+        "type": "object"
+      },
+      "OutgoingMessages": {
+        "additionalProperties": false,
+        "properties": {
+          "messages": {
+            "description": "The newest 50, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/OutgoingMessageSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "messages"
+        ],
+        "type": "object"
+      },
       "PasswordResetRequestResult": {
         "additionalProperties": false,
         "properties": {
@@ -776,6 +1059,7 @@
           "/api/v0/problems/fetch-destination-refused",
           "/api/v0/problems/forbidden",
           "/api/v0/problems/gmail-not-configured",
+          "/api/v0/problems/idempotency-key-reused",
           "/api/v0/problems/internal-error",
           "/api/v0/problems/invalid-credentials",
           "/api/v0/problems/invalid-request",
@@ -786,6 +1070,8 @@
           "/api/v0/problems/member-not-found",
           "/api/v0/problems/method-not-allowed",
           "/api/v0/problems/not-found",
+          "/api/v0/problems/not-sendable-again",
+          "/api/v0/problems/outgoing-message-not-found",
           "/api/v0/problems/password-reset-link-invalid",
           "/api/v0/problems/password-reset-throttled",
           "/api/v0/problems/registration-account-exists",
@@ -794,6 +1080,8 @@
           "/api/v0/problems/registration-throttled",
           "/api/v0/problems/request-timeout",
           "/api/v0/problems/request-too-large",
+          "/api/v0/problems/send-throttled",
+          "/api/v0/problems/sending-account-needs-reconnect",
           "/api/v0/problems/service-busy",
           "/api/v0/problems/session-is-current",
           "/api/v0/problems/session-not-found",
@@ -1024,6 +1312,30 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ListedSessions"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponseOutgoingMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/OutgoingMessage"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponseOutgoingMessages": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/OutgoingMessages"
           }
         },
         "required": [
@@ -1516,7 +1828,7 @@
     }
   },
   "info": {
-    "description": "## Shared errors\n\nErrors use application/problem+json. The HTTP status describes the broad\nfailure; type identifies the specific problem. The body includes type,\nstatus, title, and detail. Quote the X-Request-ID response header when\nreporting a failure.\n\nEach operation documents its specific failures with examples. Its default\nresponse covers the shared ones, which Problem types below marks Any, using\nthe same Problem schema. A 405 lists the route's methods in the Allow\nheader.\n\nBody errors apply to operations that accept a body. A default response\ndescribes the body format, not a replacement HTTP status.\n\nWrite requests require Sec-Fetch-Site or Origin. Command-line clients can\nsend an Origin matching the request's target.\n\nA browser request a route does not answer, e.g. an image naming an API\naddress, answers 403 with type fetch-destination-refused; the browser's\nSec-Fetch-Dest header says what it loads the answer as. Requests without\nthat header, e.g. from the command line, pass.\n\nWrites that need no session, such as sign-in, also limit how fast one client\ncan send each of them. Past that limit they answer 429 with type\ntoo-many-requests and Retry-After, before reading the request body.\n\nA request still waiting when its time runs out, e.g. for a busy resource,\nanswers 503 with type service-busy and Retry-After. A write may have taken\neffect before the time ran out.\n\nInput errors can include an errors list with field locations and safe\ncorrection messages. For example, a 422 response from POST /setup:\n\n~~~json\n{\n  \"type\": \"/api/v0/problems/validation-error\",\n  \"status\": 422,\n  \"title\": \"Invalid request\",\n  \"detail\": \"Correct the rejected request inputs.\",\n  \"errors\": [\n    {\"location\": \"body.password\", \"message\": \"Use 15 to 128 characters.\"}\n  ]\n}\n~~~\n\nUse the actual HTTP status for request decisions. Handle unfamiliar problem\ntypes by showing their safe detail. An intermediary, such as a proxy, may\nreturn an error without a Problem Details body.\n\n## Problem types\n\nEvery problem type this API documents. Any marks a shared type, which\nan operation can answer without documenting it; the others list the\ngroups whose operations document them.\n\n| Type | Status | Title | Answered by |\n| --- | --- | --- | --- |\n| `/api/v0/problems/account-deactivated` | 403 | Account deactivated | Sessions |\n| `/api/v0/problems/connect-throttled` | 429 | Too many connections | Connected Accounts |\n| `/api/v0/problems/connected-account-not-found` | 404 | Account not found | Connected Accounts |\n| `/api/v0/problems/counter-full` | 409 | Counter full | Probe |\n| `/api/v0/problems/cross-origin-request` | 403 | Cross-origin request blocked | Any |\n| `/api/v0/problems/email-already-verified` | 409 | Email already verified | Email Verification |\n| `/api/v0/problems/email-not-sent` | 502 | Email not sent | Email Verification, Registration |\n| `/api/v0/problems/email-verification-link-invalid` | 404 | Link not valid | Email Verification |\n| `/api/v0/problems/email-verification-throttled` | 429 | Too many links | Email Verification |\n| `/api/v0/problems/fetch-destination-refused` | 403 | Request kind refused | Any |\n| `/api/v0/problems/forbidden` | 403 | Access denied | Registration, Members, System Email |\n| `/api/v0/problems/gmail-not-configured` | 409 | Gmail not configured | Connected Accounts |\n| `/api/v0/problems/internal-error` | 500 | Internal error | Any |\n| `/api/v0/problems/invalid-credentials` | 401 | Sign-in failed | Sessions |\n| `/api/v0/problems/invalid-request` | 400 | Invalid request | Any |\n| `/api/v0/problems/invalid-sign-in-code` | 422 | Invalid sign-in code | Sessions |\n| `/api/v0/problems/invalid-totp-code` | 422 | Invalid authenticator code | Two-Factor Authentication |\n| `/api/v0/problems/invalid-totp-proof` | 422 | Invalid second-factor proof | Two-Factor Authentication |\n| `/api/v0/problems/member-is-administrator` | 409 | Member is an administrator | Members |\n| `/api/v0/problems/member-not-found` | 404 | Member not found | Members |\n| `/api/v0/problems/method-not-allowed` | 405 | Method not allowed | Any |\n| `/api/v0/problems/not-found` | 404 | Not found | Any |\n| `/api/v0/problems/password-reset-link-invalid` | 404 | Link not valid | Password Reset |\n| `/api/v0/problems/password-reset-throttled` | 429 | Too many password reset requests | Password Reset |\n| `/api/v0/problems/registration-account-exists` | 409 | Account exists | Registration |\n| `/api/v0/problems/registration-closed` | 409 | Registration not open | Registration |\n| `/api/v0/problems/registration-link-invalid` | 404 | Link not valid | Registration |\n| `/api/v0/problems/registration-throttled` | 429 | Too many registration requests | Registration |\n| `/api/v0/problems/request-timeout` | 408 | Request timeout | Any |\n| `/api/v0/problems/request-too-large` | 413 | Request too large | Any |\n| `/api/v0/problems/service-busy` | 503 | Service busy | Any |\n| `/api/v0/problems/session-is-current` | 409 | Session is current | Sessions |\n| `/api/v0/problems/session-not-found` | 404 | Session not found | Sessions |\n| `/api/v0/problems/setup-done` | 409 | Setup complete | Setup |\n| `/api/v0/problems/setup-token-invalid` | 403 | Setup token invalid | Setup |\n| `/api/v0/problems/setup-unconfigured` | 409 | Setup unavailable | Setup |\n| `/api/v0/problems/sign-in-challenge-invalid` | 401 | Sign in again | Sessions |\n| `/api/v0/problems/sign-in-throttled` | 429 | Too many attempts | Setup, Sessions |\n| `/api/v0/problems/system-email-not-configured` | 409 | System email not configured | Email Verification, System Email |\n| `/api/v0/problems/system-email-not-tested` | 409 | System email not tested | Registration |\n| `/api/v0/problems/too-many-requests` | 429 | Too many requests | Setup, Sessions, Email Verification, Password Reset, Registration, Probe |\n| `/api/v0/problems/totp-already-on` | 409 | Two-factor authentication already on | Two-Factor Authentication |\n| `/api/v0/problems/totp-disable-forbidden` | 403 | Two-factor authentication required | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-on` | 409 | Authenticator not enabled | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-pending` | 409 | Enrollment not started | Two-Factor Authentication |\n| `/api/v0/problems/totp-required` | 403 | TOTP required | Registration, Members, System Email |\n| `/api/v0/problems/totp-throttled` | 429 | Too many code attempts | Sessions, Two-Factor Authentication |\n| `/api/v0/problems/unauthenticated` | 401 | Sign-in required | Sessions, Two-Factor Authentication, Email Verification, Registration, Members, System Email, Connected Accounts |\n| `/api/v0/problems/unsupported-media-type` | 415 | Unsupported media type | Any |\n| `/api/v0/problems/validation-error` | 422 | Invalid request | Any |\n",
+    "description": "## Shared errors\n\nErrors use application/problem+json. The HTTP status describes the broad\nfailure; type identifies the specific problem. The body includes type,\nstatus, title, and detail. Quote the X-Request-ID response header when\nreporting a failure.\n\nEach operation documents its specific failures with examples. Its default\nresponse covers the shared ones, which Problem types below marks Any, using\nthe same Problem schema. A 405 lists the route's methods in the Allow\nheader.\n\nBody errors apply to operations that accept a body. A default response\ndescribes the body format, not a replacement HTTP status.\n\nWrite requests require Sec-Fetch-Site or Origin. Command-line clients can\nsend an Origin matching the request's target.\n\nA browser request a route does not answer, e.g. an image naming an API\naddress, answers 403 with type fetch-destination-refused; the browser's\nSec-Fetch-Dest header says what it loads the answer as. Requests without\nthat header, e.g. from the command line, pass.\n\nWrites that need no session, such as sign-in, also limit how fast one client\ncan send each of them. Past that limit they answer 429 with type\ntoo-many-requests and Retry-After, before reading the request body.\n\nA request still waiting when its time runs out, e.g. for a busy resource,\nanswers 503 with type service-busy and Retry-After. A write may have taken\neffect before the time ran out.\n\nInput errors can include an errors list with field locations and safe\ncorrection messages. For example, a 422 response from POST /setup:\n\n~~~json\n{\n  \"type\": \"/api/v0/problems/validation-error\",\n  \"status\": 422,\n  \"title\": \"Invalid request\",\n  \"detail\": \"Correct the rejected request inputs.\",\n  \"errors\": [\n    {\"location\": \"body.password\", \"message\": \"Use 15 to 128 characters.\"}\n  ]\n}\n~~~\n\nUse the actual HTTP status for request decisions. Handle unfamiliar problem\ntypes by showing their safe detail. An intermediary, such as a proxy, may\nreturn an error without a Problem Details body.\n\n## Problem types\n\nEvery problem type this API documents. Any marks a shared type, which\nan operation can answer without documenting it; the others list the\ngroups whose operations document them.\n\n| Type | Status | Title | Answered by |\n| --- | --- | --- | --- |\n| `/api/v0/problems/account-deactivated` | 403 | Account deactivated | Sessions |\n| `/api/v0/problems/connect-throttled` | 429 | Too many connections | Connected Accounts |\n| `/api/v0/problems/connected-account-not-found` | 404 | Account not found | Connected Accounts |\n| `/api/v0/problems/counter-full` | 409 | Counter full | Probe |\n| `/api/v0/problems/cross-origin-request` | 403 | Cross-origin request blocked | Any |\n| `/api/v0/problems/email-already-verified` | 409 | Email already verified | Email Verification |\n| `/api/v0/problems/email-not-sent` | 502 | Email not sent | Email Verification, Registration |\n| `/api/v0/problems/email-verification-link-invalid` | 404 | Link not valid | Email Verification |\n| `/api/v0/problems/email-verification-throttled` | 429 | Too many links | Email Verification |\n| `/api/v0/problems/fetch-destination-refused` | 403 | Request kind refused | Any |\n| `/api/v0/problems/forbidden` | 403 | Access denied | Registration, Members, System Email |\n| `/api/v0/problems/gmail-not-configured` | 409 | Gmail not configured | Connected Accounts |\n| `/api/v0/problems/idempotency-key-reused` | 422 | Idempotency key reused | Outgoing Messages |\n| `/api/v0/problems/internal-error` | 500 | Internal error | Any |\n| `/api/v0/problems/invalid-credentials` | 401 | Sign-in failed | Sessions |\n| `/api/v0/problems/invalid-request` | 400 | Invalid request | Any |\n| `/api/v0/problems/invalid-sign-in-code` | 422 | Invalid sign-in code | Sessions |\n| `/api/v0/problems/invalid-totp-code` | 422 | Invalid authenticator code | Two-Factor Authentication |\n| `/api/v0/problems/invalid-totp-proof` | 422 | Invalid second-factor proof | Two-Factor Authentication |\n| `/api/v0/problems/member-is-administrator` | 409 | Member is an administrator | Members |\n| `/api/v0/problems/member-not-found` | 404 | Member not found | Members |\n| `/api/v0/problems/method-not-allowed` | 405 | Method not allowed | Any |\n| `/api/v0/problems/not-found` | 404 | Not found | Any |\n| `/api/v0/problems/not-sendable-again` | 409 | Message not sendable again | Outgoing Messages |\n| `/api/v0/problems/outgoing-message-not-found` | 404 | Message not found | Outgoing Messages |\n| `/api/v0/problems/password-reset-link-invalid` | 404 | Link not valid | Password Reset |\n| `/api/v0/problems/password-reset-throttled` | 429 | Too many password reset requests | Password Reset |\n| `/api/v0/problems/registration-account-exists` | 409 | Account exists | Registration |\n| `/api/v0/problems/registration-closed` | 409 | Registration not open | Registration |\n| `/api/v0/problems/registration-link-invalid` | 404 | Link not valid | Registration |\n| `/api/v0/problems/registration-throttled` | 429 | Too many registration requests | Registration |\n| `/api/v0/problems/request-timeout` | 408 | Request timeout | Any |\n| `/api/v0/problems/request-too-large` | 413 | Request too large | Any |\n| `/api/v0/problems/send-throttled` | 429 | Too many messages | Outgoing Messages |\n| `/api/v0/problems/sending-account-needs-reconnect` | 409 | Account needs reconnecting | Outgoing Messages |\n| `/api/v0/problems/service-busy` | 503 | Service busy | Any |\n| `/api/v0/problems/session-is-current` | 409 | Session is current | Sessions |\n| `/api/v0/problems/session-not-found` | 404 | Session not found | Sessions |\n| `/api/v0/problems/setup-done` | 409 | Setup complete | Setup |\n| `/api/v0/problems/setup-token-invalid` | 403 | Setup token invalid | Setup |\n| `/api/v0/problems/setup-unconfigured` | 409 | Setup unavailable | Setup |\n| `/api/v0/problems/sign-in-challenge-invalid` | 401 | Sign in again | Sessions |\n| `/api/v0/problems/sign-in-throttled` | 429 | Too many attempts | Setup, Sessions |\n| `/api/v0/problems/system-email-not-configured` | 409 | System email not configured | Email Verification, System Email |\n| `/api/v0/problems/system-email-not-tested` | 409 | System email not tested | Registration |\n| `/api/v0/problems/too-many-requests` | 429 | Too many requests | Setup, Sessions, Email Verification, Password Reset, Registration, Probe |\n| `/api/v0/problems/totp-already-on` | 409 | Two-factor authentication already on | Two-Factor Authentication |\n| `/api/v0/problems/totp-disable-forbidden` | 403 | Two-factor authentication required | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-on` | 409 | Authenticator not enabled | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-pending` | 409 | Enrollment not started | Two-Factor Authentication |\n| `/api/v0/problems/totp-required` | 403 | TOTP required | Registration, Members, System Email |\n| `/api/v0/problems/totp-throttled` | 429 | Too many code attempts | Sessions, Two-Factor Authentication |\n| `/api/v0/problems/unauthenticated` | 401 | Sign-in required | Sessions, Two-Factor Authentication, Email Verification, Registration, Members, System Email, Connected Accounts, Outgoing Messages |\n| `/api/v0/problems/unsupported-media-type` | 415 | Unsupported media type | Any |\n| `/api/v0/problems/validation-error` | 422 | Invalid request | Any |\n",
     "title": "inbok",
     "version": "0.0.0"
   },
@@ -2625,6 +2937,463 @@
         "summary": "Reactivate Member",
         "tags": [
           "Members"
+        ]
+      }
+    },
+    "/outgoing-messages": {
+      "get": {
+        "description": "Lists the messages the signed-in account sent from inbok, newest first, without their bodies, including those that failed or whose outcome is unknown.",
+        "operationId": "listOutgoingMessages",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseOutgoingMessages"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List Outgoing Messages",
+        "tags": [
+          "Outgoing Messages"
+        ]
+      },
+      "post": {
+        "description": "Saves a message from one of the signed-in account's connected accounts, waiting to be sent, and returns it. A background job sends it; read it again to follow its status. Sending counts toward the signed-in account's limit of 30 messages per 15 minutes and 200 per 24 hours, from all its connected accounts.",
+        "operationId": "sendMessage",
+        "parameters": [
+          {
+            "description": "A new UUID for each message the client means to send, reused for every attempt to send that message, as a quoted string per the IETF Idempotency-Key draft, e.g. \"8e03978e-40d5-43e8-bc93-6894a57f9324\"; a bare UUID is accepted too. A repeat with the same key and request returns the message the first saved; with another request it is refused. Keys are the signed-in account's own, and a key lasts as long as its message.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "description": "A new UUID for each message the client means to send, reused for every attempt to send that message, as a quoted string per the IETF Idempotency-Key draft, e.g. \"8e03978e-40d5-43e8-bc93-6894a57f9324\"; a bare UUID is accepted too. A repeat with the same key and request returns the message the first saved; with another request it is refused. Keys are the signed-in account's own, and a key lasts as long as its message.",
+              "pattern": "^(\"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\"|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewOutgoingMessage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseOutgoingMessage"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/sending-account-needs-reconnect",
+                  "status": 409,
+                  "title": "Account needs reconnecting",
+                  "detail": "Google stopped accepting the sending account's permission. Reconnect it to send."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Google stopped accepting the sending account's permission, so nothing is sent from it until it is reconnected."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "invalidInput": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs."
+                    }
+                  },
+                  "invalidRecipient": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs.",
+                      "errors": [
+                        {
+                          "location": "body.cc[2]",
+                          "message": "Enter a valid value."
+                        }
+                      ]
+                    }
+                  },
+                  "keyReused": {
+                    "value": {
+                      "type": "/api/v0/problems/idempotency-key-reused",
+                      "status": 422,
+                      "title": "Idempotency key reused",
+                      "detail": "This Idempotency-Key was used for another request. Use a new key for a new message."
+                    }
+                  },
+                  "noAccount": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs.",
+                      "errors": [
+                        {
+                          "location": "body.connectedAccountId",
+                          "message": "Choose one of your connected accounts."
+                        }
+                      ]
+                    }
+                  },
+                  "noRecipients": {
+                    "value": {
+                      "type": "/api/v0/problems/validation-error",
+                      "status": 422,
+                      "title": "Invalid request",
+                      "detail": "Correct the rejected request inputs.",
+                      "errors": [
+                        {
+                          "location": "body.to",
+                          "message": "Add at least one recipient."
+                        }
+                      ]
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request inputs are invalid, the sending account is not one of the signed-in account's, or the Idempotency-Key was used for another request."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/send-throttled",
+                  "status": 429,
+                  "title": "Too many messages",
+                  "detail": "Too many messages were sent recently."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too many messages were sent recently.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Send Message",
+        "tags": [
+          "Outgoing Messages"
+        ]
+      }
+    },
+    "/outgoing-messages/{id}": {
+      "get": {
+        "description": "Returns one of the signed-in account's outgoing messages with its body and status.",
+        "operationId": "getOutgoingMessage",
+        "parameters": [
+          {
+            "description": "Outgoing message ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Outgoing message ID.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseOutgoingMessage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/outgoing-message-not-found",
+                  "status": 404,
+                  "title": "Message not found",
+                  "detail": "The message does not exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The signed-in account has no outgoing message with this id."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Outgoing Message",
+        "tags": [
+          "Outgoing Messages"
+        ]
+      }
+    },
+    "/outgoing-messages/{id}/send-again": {
+      "post": {
+        "description": "Saves a copy of a failed or unknown message, waiting to be sent from the same account's current address, and returns the copy. The message then names the copy in sentAgainAs, and sending it again returns the same copy, so it is sent again at most once. Sending counts toward the signed-in account's limit of 30 messages per 15 minutes and 200 per 24 hours, from all its connected accounts.",
+        "operationId": "sendMessageAgain",
+        "parameters": [
+          {
+            "description": "Outgoing message ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Outgoing message ID.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseOutgoingMessage"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/outgoing-message-not-found",
+                  "status": 404,
+                  "title": "Message not found",
+                  "detail": "The message does not exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The signed-in account has no outgoing message with this id."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "needsReconnect": {
+                    "value": {
+                      "type": "/api/v0/problems/sending-account-needs-reconnect",
+                      "status": 409,
+                      "title": "Account needs reconnecting",
+                      "detail": "Google stopped accepting the sending account's permission. Reconnect it to send."
+                    }
+                  },
+                  "notSendableAgain": {
+                    "value": {
+                      "type": "/api/v0/problems/not-sendable-again",
+                      "status": 409,
+                      "title": "Message not sendable again",
+                      "detail": "Only a failed message, or one whose outcome is unknown, can be sent again."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Google stopped accepting the sending account's permission, so nothing is sent from it until it is reconnected. Or the message is waiting, sending, or sent, so only a failed or unknown one is sent again."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/send-throttled",
+                  "status": 429,
+                  "title": "Too many messages",
+                  "detail": "Too many messages were sent recently."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too many messages were sent recently.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until one more attempt fits every limit, rounded up.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Send Message Again",
+        "tags": [
+          "Outgoing Messages"
         ]
       }
     },
@@ -5231,6 +6000,10 @@
     {
       "description": "Connect, list, reconnect, and disconnect the signed-in account's Gmail accounts.",
       "name": "Connected Accounts"
+    },
+    {
+      "description": "Send messages from the signed-in account's connected accounts, follow their status, and send a failed one again.",
+      "name": "Outgoing Messages"
     },
     {
       "description": "Addresses another site sends the browser to, e.g. Google after its consent page. Clients never call them; the web app's generated client leaves them out.",
