@@ -11,9 +11,10 @@ import (
 
 // Limits on a message's content, all inbok's choices.
 const (
-	// maxRecipients bounds To, Cc, and Bcc together, well under the 500
-	// Google allows a message sent through the Gmail API.
-	maxRecipients = 100
+	// MaxRecipients bounds each of To, Cc, and Bcc, so a limit belongs to one
+	// field a form can mark; 300 in all stays under the 500 Google allows a
+	// message sent through the Gmail API.
+	MaxRecipients = 100
 	// maxSubjectLength bounds a subject in characters, longer than any a
 	// person writes.
 	maxSubjectLength = 500
@@ -26,9 +27,9 @@ const (
 var (
 	// ErrNoRecipients means To, Cc, and Bcc are all empty.
 	ErrNoRecipients = errors.New("the message has no recipients")
-	// ErrTooManyRecipients means To, Cc, and Bcc hold more than 100
-	// addresses together.
-	ErrTooManyRecipients = errors.New("the message has too many recipients")
+	// ErrTooManyRecipients means To, Cc, or Bcc holds more than 100
+	// addresses; a [*TooManyRecipientsError] says which.
+	ErrTooManyRecipients = errors.New("a recipient list has too many addresses")
 	// ErrRecipientInvalid means a recipient is not one bare email address;
 	// a [*RecipientError] says which.
 	ErrRecipientInvalid = errors.New("a recipient is not a valid email address")
@@ -67,10 +68,36 @@ func (e *RecipientError) Is(target error) bool {
 	return target == ErrRecipientInvalid
 }
 
+// TooManyRecipientsError is [TooManyRecipientsError.Field] holding more than
+// 100 addresses. It matches [ErrTooManyRecipients].
+type TooManyRecipientsError struct {
+	Field Field
+}
+
+// Error names no address.
+func (e *TooManyRecipientsError) Error() string {
+	return ErrTooManyRecipients.Error()
+}
+
+// Is reports whether target is [ErrTooManyRecipients].
+func (e *TooManyRecipientsError) Is(target error) bool {
+	return target == ErrTooManyRecipients
+}
+
 // parseContent returns content with each recipient as
 // [emailaddress.ParseRecipient] spells it and each empty list non-nil, or
 // the first error in the order: recipients, subject, body.
 func parseContent(content Content) (Content, error) {
+	// Count before parsing, so a long list costs no parsing.
+	lists := []struct {
+		field     Field
+		addresses []string
+	}{{FieldTo, content.To}, {FieldCc, content.Cc}, {FieldBcc, content.Bcc}}
+	for _, list := range lists {
+		if len(list.addresses) > MaxRecipients {
+			return Content{}, &TooManyRecipientsError{Field: list.field}
+		}
+	}
 	to, err := parseRecipients(FieldTo, content.To)
 	if err != nil {
 		return Content{}, err
@@ -83,12 +110,8 @@ func parseContent(content Content) (Content, error) {
 	if err != nil {
 		return Content{}, err
 	}
-	count := len(to) + len(cc) + len(bcc)
-	if count == 0 {
+	if len(to)+len(cc)+len(bcc) == 0 {
 		return Content{}, ErrNoRecipients
-	}
-	if count > maxRecipients {
-		return Content{}, ErrTooManyRecipients
 	}
 	if utf8.RuneCountInString(content.Subject) > maxSubjectLength || !subjectSafe(content.Subject) {
 		return Content{}, ErrSubjectInvalid

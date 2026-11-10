@@ -2044,9 +2044,12 @@ stored once, and a disconnect deletes the account's messages with it.
 
 `outgoingmessage.Service.Create` checks the content first:
 
-- 1 to 100 recipients across To, Cc, and Bcc, each through
-  `emailaddress.ParseRecipient`; a refused one is a
-  `*outgoingmessage.RecipientError` naming its list and index.
+- At most 100 recipients in each of To, Cc, and Bcc
+  (`*outgoingmessage.TooManyRecipientsError` names the list), at least one
+  across them, each through `emailaddress.ParseRecipient`; a refused one
+  is a `*outgoingmessage.RecipientError` naming its list and index. A limit
+  per list belongs to one field the form can mark, which a limit across
+  three could not.
 - A subject of at most 500 characters without a line break or other
   control character, and a body of at most 100,000 characters without NUL.
   Both may be empty.

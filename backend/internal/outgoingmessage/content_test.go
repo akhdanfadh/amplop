@@ -76,17 +76,38 @@ func TestParseContentRecipient(t *testing.T) {
 	}
 }
 
+// Each list holds at most [MaxRecipients], counted on its own, and the three
+// together at least one.
 func TestParseContentCount(t *testing.T) {
 	most := testContent()
-	most.To = repeatAddress(maxRecipients - 2)
+	most.To = repeatAddress(MaxRecipients)
+	most.Cc = repeatAddress(MaxRecipients)
+	most.Bcc = repeatAddress(MaxRecipients)
 
 	_, err := parseContent(most)
 	require.NoError(t, err)
 
-	tooMany := testContent()
-	tooMany.To = repeatAddress(maxRecipients - 1)
-	_, err = parseContent(tooMany)
-	require.ErrorIs(t, err, ErrTooManyRecipients, "to, cc, and bcc count together")
+	for _, field := range []Field{FieldTo, FieldCc, FieldBcc} {
+		t.Run(string(field), func(t *testing.T) {
+			tooMany := testContent()
+			list := repeatAddress(MaxRecipients + 1)
+			switch field {
+			case FieldTo:
+				tooMany.To = list
+			case FieldCc:
+				tooMany.Cc = list
+			case FieldBcc:
+				tooMany.Bcc = list
+			}
+
+			_, err := parseContent(tooMany)
+
+			require.ErrorIs(t, err, ErrTooManyRecipients)
+			var countErr *TooManyRecipientsError
+			require.ErrorAs(t, err, &countErr)
+			assert.Equal(t, field, countErr.Field)
+		})
+	}
 
 	_, err = parseContent(Content{Subject: "Hello"})
 	require.ErrorIs(t, err, ErrNoRecipients)

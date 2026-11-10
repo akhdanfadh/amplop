@@ -246,7 +246,7 @@ func TestComposeInjection(t *testing.T) {
 // accepted, so lowering one leaves saved messages sendable.
 func TestComposeNoLimits(t *testing.T) {
 	message := testMessage()
-	message.To = repeatAddress(maxRecipients + 1)
+	message.To = repeatAddress(MaxRecipients + 1)
 	message.Subject = strings.Repeat("a", maxSubjectLength+1)
 	message.Body = strings.Repeat("b", maxBodyLength+1)
 
@@ -254,7 +254,7 @@ func TestComposeNoLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	header, body := readComposed(t, data)
-	assert.Len(t, addresses(t, header, "To"), maxRecipients+1)
+	assert.Len(t, addresses(t, header, "To"), MaxRecipients+1)
 	subject, err := header.Subject()
 	require.NoError(t, err)
 	assert.Equal(t, message.Subject, subject)

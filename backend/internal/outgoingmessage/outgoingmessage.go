@@ -160,7 +160,7 @@ func NewService(storage Storage) *Service {
 // It returns [ErrAccountNotFound] when userID has no account
 // draft.ConnectedAccountID, [ErrNeedsReconnect] when that account needs a
 // reconnect, and the content errors of [Content]'s rules: [ErrNoRecipients],
-// [ErrTooManyRecipients], a [*RecipientError], [ErrSubjectInvalid], or
+// a [*TooManyRecipientsError], a [*RecipientError], [ErrSubjectInvalid], or
 // [ErrBodyInvalid].
 func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Message, error) {
 	// 1. Refuse content that cannot be sent before any storage.

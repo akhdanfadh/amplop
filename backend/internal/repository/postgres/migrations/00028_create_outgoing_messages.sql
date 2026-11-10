@@ -14,10 +14,13 @@ CREATE TABLE outgoing_messages (
     from_address         text NOT NULL CHECK (char_length(from_address) BETWEEN 3 AND 254),
     -- Each a JSON array of {"name", "address"}, as synchronized messages keep
     -- theirs (JMAP's EmailAddress): addresses from emailaddress.ParseRecipient,
-    -- at most 100 in all, with an empty name until the form takes names.
-    to_addresses         jsonb NOT NULL CHECK (jsonb_typeof(to_addresses) = 'array'),
-    cc_addresses         jsonb NOT NULL CHECK (jsonb_typeof(cc_addresses) = 'array'),
-    bcc_addresses        jsonb NOT NULL CHECK (jsonb_typeof(bcc_addresses) = 'array'),
+    -- at most 100 in each, with an empty name until the form takes names.
+    to_addresses         jsonb NOT NULL CHECK (jsonb_typeof(to_addresses) = 'array'
+                         AND jsonb_array_length(to_addresses) <= 100),
+    cc_addresses         jsonb NOT NULL CHECK (jsonb_typeof(cc_addresses) = 'array'
+                         AND jsonb_array_length(cc_addresses) <= 100),
+    bcc_addresses        jsonb NOT NULL CHECK (jsonb_typeof(bcc_addresses) = 'array'
+                         AND jsonb_array_length(bcc_addresses) <= 100),
     subject              text NOT NULL CHECK (char_length(subject) <= 500),
     body                 text NOT NULL CHECK (char_length(body) <= 100000), -- plain text
     -- The ID inbok gave the message, with angle brackets, sent as its
@@ -38,7 +41,7 @@ CREATE TABLE outgoing_messages (
     sent_at              timestamptz, -- when Gmail accepted it
     CONSTRAINT outgoing_messages_recipients CHECK (
         jsonb_array_length(to_addresses) + jsonb_array_length(cc_addresses)
-        + jsonb_array_length(bcc_addresses) BETWEEN 1 AND 100),
+        + jsonb_array_length(bcc_addresses) >= 1),
     CONSTRAINT outgoing_messages_failure CHECK ((status = 'failed') = (failure IS NOT NULL)),
     CONSTRAINT outgoing_messages_sent_at CHECK ((status = 'sent') = (sent_at IS NOT NULL)),
     CONSTRAINT outgoing_messages_provider_message_id CHECK ((status = 'sent') = (provider_message_id IS NOT NULL)),
