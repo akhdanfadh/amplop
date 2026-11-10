@@ -444,11 +444,13 @@ scripts, and their text changes with every build, so `serve` reads the
 embedded shell at startup and allows each one by its SHA-256 hash; no
 other inline script runs. Nothing in the policy names a part of the web
 app's code: whatever the build's shell holds is allowed, and the web app
-keeps to the rest. API responses get no Content-Security-Policy; Huma's
-docs page at `/api/v0/docs` sets its own, since it loads scripts from
-unpkg.com. HTTPS-only (HSTS) is the proxy's header, because Go itself
-serves plain HTTP. `web/README.md` lists what the policy means for web
-code.
+keeps to the rest. A message body is the exception to `DENY`: the web
+app frames it, so it sends `SAMEORIGIN` and a policy of its own (see
+[Showing HTML](#showing-html)). Other API responses get no
+Content-Security-Policy; Huma's docs page at `/api/v0/docs` sets its
+own, since it loads scripts from unpkg.com. HTTPS-only (HSTS) is the
+proxy's header, because Go itself serves plain HTTP. `web/README.md`
+lists what the policy means for web code.
 
 ## API contract
 
@@ -1037,6 +1039,31 @@ widened only by the extras mail needs, would remove nothing from it,
 and that sanitizing a copy without inline parts changes nothing (a
 second copy drops the relative part URLs of the first); run it longer
 with `go test -fuzz=FuzzSanitize ./internal/messagecontent`.
+
+The web app shows each HTML body in a sandboxed iframe that loads the
+body from its own URL; `httpapi`'s `messageBody` builds that response.
+It sanitizes the whole copy first, so a store that fails midway gets an
+error answer rather than a message cut short, then sends it as
+`text/html; charset=utf-8` with `Cache-Control: no-store` and a
+Content-Security-Policy of its own, a second layer behind the sanitizer:
+
+```text
+sandbox allow-same-origin allow-popups allow-popups-to-escape-sandbox;
+default-src 'none'; style-src 'unsafe-inline'; form-action 'none';
+base-uri 'none'; frame-ancestors 'self'; img-src 'self'
+```
+
+Nothing in the body runs, and it loads nothing but its own CSS and
+images from inbok's origin, which `withFetchDest` limits to part URLs
+(see [API contract](#api-contract)); when remote content is allowed for
+the view, `img-src` adds `http:` and `https:`. `allow-same-origin` keeps
+the body on inbok's origin, so inline images load with the session
+cookie and the web app can size the frame. The response replaces the
+`X-Frame-Options: DENY` of [Security headers](#security-headers) with
+`SAMEORIGIN`. A `srcdoc` frame would take the web app's policy instead,
+which refuses the message's CSS; ADR009 records the trade-offs. No route
+returns it yet: the message endpoint, which also runs `Sanitize` into
+`io.Discard` to learn `Blocked` and `Shown`, comes with message bodies.
 
 ## Email addresses
 
@@ -2155,7 +2182,7 @@ httpapi --> passwordreset <-- repository/postgres
 httpapi --> connectedaccount <-- repository/postgres
                              <-- google
             search <-- meilisearch
-            messagecontent <-- s3
+httpapi --> messagecontent <-- s3
                            <-- google
 ```
 
