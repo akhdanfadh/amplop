@@ -17,6 +17,10 @@ var (
 	// or kept failing, past the retries, or asked to wait longer than a
 	// retry waits. Trying later may succeed.
 	ErrProviderBusy = errors.New("provider is rate limiting or unavailable")
+	// ErrUnauthorized means the provider refused the access token, e.g.
+	// after the member revoked inbok's access there. A new token may work,
+	// or show that the account needs reconnecting.
+	ErrUnauthorized = errors.New("provider refused the access token")
 )
 
 // ListQuery asks for one page of an account's messages.

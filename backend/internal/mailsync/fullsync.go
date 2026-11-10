@@ -27,11 +27,23 @@ var ErrSuperseded = errors.New("the account's full sync is no longer this one")
 // errProvider marks an error from a [Provider] call.
 var errProvider = errors.New("provider failed")
 
-// accountAccess hands out access tokens for connected accounts and says
-// whether their provider work may still run, e.g. [connectedaccount.Access].
+// accountAccess hands out access tokens for connected accounts, forgets
+// one the provider refused, and says whether their provider work may still
+// run, e.g. [connectedaccount.Access].
 type accountAccess interface {
 	Token(ctx context.Context, accountID int64) (connectedaccount.AccessToken, error)
+	Forget(accountID int64)
 	Check(ctx context.Context, accountID int64) error
+}
+
+// providerFailed returns err, from the provider call what for account
+// accountID, marked as the provider's. When the provider refused the access
+// token, it first makes access forget it, so the next try takes a new one.
+func providerFailed(access accountAccess, accountID int64, what string, err error) error {
+	if errors.Is(err, ErrUnauthorized) {
+		access.Forget(accountID)
+	}
+	return fmt.Errorf("%w: %s: %w", errProvider, what, err)
 }
 
 // Run is one full sync of an account, as each of its steps shares it.
@@ -127,7 +139,7 @@ func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 	// 2. List the mailboxes, which the pages' messages name.
 	mailboxes, err := s.provider.Mailboxes(ctx, token)
 	if err != nil {
-		return Run{}, fmt.Errorf("%w: list mailboxes: %w", errProvider, err)
+		return Run{}, providerFailed(s.access, accountID, "list mailboxes", err)
 	}
 	// nil would leave the saved mailboxes; none listed means none left.
 	if mailboxes == nil {
@@ -138,7 +150,7 @@ func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 	// replays every change made while the full sync ran (ADR001).
 	position, err := s.provider.Position(ctx, token)
 	if err != nil {
-		return Run{}, fmt.Errorf("%w: read position: %w", errProvider, err)
+		return Run{}, providerFailed(s.access, accountID, "read position", err)
 	}
 
 	// 4. Save them with a new generation, running, with no progress.
@@ -178,11 +190,11 @@ func (s *FullSync) CopyPage(ctx context.Context, accountID int64, run Run, page 
 	query := ListQuery{Since: run.Since, IncludeJunkAndTrash: true, PageToken: pageToken}
 	listed, err := s.provider.ListMessages(ctx, token, query)
 	if err != nil {
-		return "", fmt.Errorf("%w: list messages: %w", errProvider, err)
+		return "", providerFailed(s.access, accountID, "list messages", err)
 	}
 	fetched, err := s.provider.Messages(ctx, token, accountID, listed.ProviderIDs)
 	if err != nil {
-		return "", fmt.Errorf("%w: fetch messages: %w", errProvider, err)
+		return "", providerFailed(s.access, accountID, "fetch messages", err)
 	}
 
 	// 3. Keep the messages inside the window.
@@ -217,7 +229,7 @@ func (s *FullSync) CopyPage(ctx context.Context, accountID int64, run Run, page 
 		// them again mends it.
 		mailboxes, listErr := s.provider.Mailboxes(ctx, token)
 		if listErr != nil {
-			return "", fmt.Errorf("%w: list mailboxes: %w", errProvider, listErr)
+			return "", providerFailed(s.access, accountID, "list mailboxes", listErr)
 		}
 		if mailboxes == nil {
 			mailboxes = []Mailbox{}

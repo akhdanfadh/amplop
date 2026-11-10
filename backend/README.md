@@ -2790,11 +2790,19 @@ For a job that runs once per request, follow the recovery notice
 ### Calling Gmail
 
 A job that calls Gmail, e.g. synchronization or sending, takes an access
-token for the account from `connectedaccount.Access.Token` when it
-starts, in the step that calls Gmail, and passes it to the `google`
-client's Gmail methods. A token lasts as long as Google's `expires_in`
-said, usually an hour; a step that may run longer takes another. `Token`
-does what Google's refresh tokens need:
+token for the account from `connectedaccount.Access.Token` in each step
+that calls Gmail, and passes it to the `google` client's Gmail methods.
+A token lasts as long as Google's `expires_in` said, usually an hour.
+`Token` does what Google's refresh tokens need:
+
+- It keeps each account's access token in the worker's memory, never
+  stored, and hands it out again while its refresh token is still the
+  saved one and more than 5 minutes of it remain, a margin for the step
+  that takes it. Every call still reads the account first, so every stop
+  error comes as before, and drops the token of an account found stopped;
+  keeping a new token drops the expired ones. A job whose Gmail call
+  answers 401 calls `Access.Forget`, and its retry trades the refresh
+  token again.
 
 - It saves a replacement refresh token Google sends before handing out
   the access token, and never revokes the one replaced.

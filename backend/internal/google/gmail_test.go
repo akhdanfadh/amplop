@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/connectedaccount"
+	"inbok/internal/mailsync"
 )
 
 func TestProfile(t *testing.T) {
@@ -71,6 +72,19 @@ func TestProfileContextEnded(t *testing.T) {
 	_, err = client.Profile(ctx, connectedaccount.NewAccessToken("access-1"))
 
 	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+// Gmail's 401 for an access token it no longer accepts is told apart, so
+// the caller can take a new one.
+func TestGmailUnauthorized(t *testing.T) {
+	client, _ := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+		refuse(w, http.StatusUnauthorized, "authError")
+	})
+
+	_, err := client.Position(t.Context(), stubToken)
+
+	require.ErrorIs(t, err, mailsync.ErrUnauthorized)
+	assert.Contains(t, err.Error(), "401")
 }
 
 // Gmail's answer for a Google account without Gmail is told apart from

@@ -80,7 +80,7 @@ func (c *Client) Refresh(ctx context.Context, refreshToken string) (connectedacc
 		}
 		return connectedaccount.Renewal{}, err
 	}
-	renewal := connectedaccount.Renewal{AccessToken: connectedaccount.NewAccessToken(token.AccessToken)}
+	renewal := connectedaccount.Renewal{AccessToken: connectedaccount.NewAccessToken(token.AccessToken), Expiry: token.Expiry}
 	// x/oauth2 keeps the old refresh token when Google sends none.
 	if token.RefreshToken != refreshToken {
 		renewal.RefreshToken = token.RefreshToken

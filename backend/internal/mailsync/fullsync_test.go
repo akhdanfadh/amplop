@@ -186,10 +186,11 @@ func (f *fakeProvider) Changes(context.Context, connectedaccount.AccessToken, st
 }
 
 // fakeAccess hands out a token for every account, or fails with tokenErr,
-// and answers every check with checkErr.
+// answers every check with checkErr, and counts the tokens it forgets.
 type fakeAccess struct {
-	tokenErr error
-	checkErr error
+	tokenErr  error
+	checkErr  error
+	forgotten *int
 }
 
 func (f fakeAccess) Token(context.Context, int64) (connectedaccount.AccessToken, error) {
@@ -197,6 +198,12 @@ func (f fakeAccess) Token(context.Context, int64) (connectedaccount.AccessToken,
 		return connectedaccount.AccessToken{}, f.tokenErr
 	}
 	return connectedaccount.NewAccessToken("access"), nil
+}
+
+func (f fakeAccess) Forget(int64) {
+	if f.forgotten != nil {
+		*f.forgotten++
+	}
 }
 
 func (f fakeAccess) Check(context.Context, int64) error {
@@ -439,6 +446,7 @@ func TestFullSyncErrors(t *testing.T) {
 		"token storage failed":  {tokens: databaseDown, ending: EndingRetry, failure: FailureInternal},
 		"provider busy":         {provider: ErrProviderBusy, ending: EndingRetry, failure: FailureProvider},
 		"provider refused":      {provider: googleDown, ending: EndingRetry, failure: FailureProvider},
+		"token refused":         {provider: fmt.Errorf("%w: gmail api: 401", ErrUnauthorized), ending: EndingRetry, failure: FailureProvider},
 		"storage failed":        {storage: databaseDown, ending: EndingRetry, failure: FailureInternal},
 		"no sync state":         {storage: ErrNotFound, ending: EndingGone, failure: FailureInternal},
 	} {
@@ -503,4 +511,18 @@ func TestFullSyncStoppedLate(t *testing.T) {
 			assert.Equal(t, StatusRunning, storage.current().Status)
 		})
 	}
+}
+
+// A refused access token is forgotten, so the step's next try takes a new
+// one.
+func TestFullSyncUnauthorized(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusWaiting})
+	provider := &fakeProvider{err: fmt.Errorf("%w: gmail api: 401", ErrUnauthorized)}
+	forgotten := 0
+	s := NewFullSync(storage, provider, fakeAccess{forgotten: &forgotten}, func() time.Time { return syncNow })
+
+	_, err := s.Start(t.Context(), syncAccount)
+
+	require.ErrorIs(t, err, ErrUnauthorized)
+	assert.Equal(t, 1, forgotten)
 }
