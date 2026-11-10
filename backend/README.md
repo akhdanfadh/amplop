@@ -480,6 +480,19 @@ the missing-header rejection above; Go alone permits requests without both
 headers. There is no CSRF token or configured cross-origin exception. Keep the
 web app and API on the same origin, including the scheme, host, and port.
 
+A browser request also says what it loads the answer as, in
+`Sec-Fetch-Dest`. `withFetchDest` answers only the web app's `fetch()`
+calls (`empty`), and only a page load (`document`) for an operation
+tagged Redirects; anything else, e.g. an `<img>` naming an API path, gets
+a 403 `fetch-destination-refused` before the session check. An
+operation a browser loads another way lists its destinations under the
+`fetchDestKey` metadata, e.g. `iframe` for a message body. A request
+without the header, e.g. from curl, passes. The message view frames
+mail on inbok's origin, so an image in a message naming an API address,
+which the sanitizer keeps only as an absolute URL once the member loads
+remote content, would otherwise send that GET with the member's cookie;
+a GET still changes nothing.
+
 JSON success responses put their payload in `data`. Response schemas live
 only in the OpenAPI document: responses carry no `$schema` field or `Link`
 header. Operation IDs use camelCase. Each operation lists one tag from

@@ -18,6 +18,11 @@ describes the body format, not a replacement HTTP status.
 Write requests require Sec-Fetch-Site or Origin. Command-line clients can
 send an Origin matching the request's target.
 
+A browser request a route does not answer, e.g. an image naming an API
+address, answers 403 with type fetch-destination-refused; the browser's
+Sec-Fetch-Dest header says what it loads the answer as. Requests without
+that header, e.g. from the command line, pass.
+
 Writes that need no session, such as sign-in, also limit how fast one client
 can send each of them. Past that limit they answer 429 with type
 too-many-requests and Retry-After, before reading the request body.
