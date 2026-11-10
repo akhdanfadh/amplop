@@ -29,8 +29,6 @@ const (
 	// historyMessageAdded is the history type of a message added to the
 	// mailbox.
 	historyMessageAdded = "messageAdded"
-	// formatMetadata asks messages.get for the header only.
-	formatMetadata = "metadata"
 )
 
 // inbokMessageIDHeader is the header compose writes the message's ID in.
@@ -262,10 +260,4 @@ func headerValue(part *gmail.MessagePart, name string) string {
 		}
 	}
 	return ""
-}
-
-// isNotFound reports whether err is Gmail's 404.
-func isNotFound(err error) bool {
-	refused, ok := errors.AsType[*googleapi.Error](err)
-	return ok && refused.Code == http.StatusNotFound
 }

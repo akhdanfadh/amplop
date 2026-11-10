@@ -7,11 +7,11 @@
 // google.go builds the client for Google or the emulator; oauth.go asks for
 // consent, trades the code and refresh tokens, and revokes them; idtoken.go
 // checks the ID token; gmail.go opens Gmail for an access token and reads
-// the profile; mailbox.go and messages.go read an account's labels, history
-// ID, and message listing for mailsync, headers.go decodes message headers,
-// and retry.go backs off Gmail's rate limits; transport.go is the HTTP
-// client that carries codes and tokens; receivedpart.go turns a Gmail
-// message's parts into messagecontent's input.
+// the profile; mailbox.go and messages.go read an account's labels and
+// messages for mailsync, headers.go decodes their headers, and retry.go
+// backs off Gmail's rate limits; transport.go is the HTTP client that
+// carries codes and tokens; receivedpart.go turns a Gmail message's parts
+// into messagecontent's input.
 package google
 
 import (
@@ -59,6 +59,7 @@ type Client struct {
 	now       func() time.Time
 	// pause waits between retries; tests replace it.
 	pause func(context.Context, time.Duration) error
+	paces *paces
 }
 
 // New returns a client for settings, given a clock for the ID token's
@@ -99,6 +100,7 @@ func New(settings Settings, now func() time.Time) *Client {
 		normalize: settings.BaseURL != nil,
 		now:       now,
 		pause:     pause,
+		paces:     newPaces(),
 	}
 }
 
