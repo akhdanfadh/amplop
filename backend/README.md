@@ -2087,6 +2087,15 @@ got past the member's lock. A message moves through `waiting`, `sending`, then `
 `sender-changed`, or `gave-up`), or `unknown` when a send may have reached
 Gmail and no answer or check says whether.
 
+`Service.SendAgain` copies a `failed` or `unknown` message
+(`InsertOutgoingMessageCopy`): the same content from the same account, with
+the account's address now and a new ID and Message-ID, waiting with its own
+job and counted as an attempt. No request named the copy, so it has no key.
+The original's `sent_again_as` names the copy, so sending it again a second
+time returns that copy, and the member never sends one message twice by
+clicking twice. The transaction locks the member, then the account, then
+the message, the order the send job and a disconnect use.
+
 The send builds the MIME message from the saved row with go-message:
 `From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the
 creation time in UTC as `Date`, the saved ID as both `Message-ID` and

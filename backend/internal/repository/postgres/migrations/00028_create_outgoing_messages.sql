@@ -39,9 +39,14 @@ CREATE TABLE outgoing_messages (
     provider_thread_id   text CHECK (provider_thread_id <> ''),
     created_at           timestamptz NOT NULL DEFAULT now(), -- also the Date header
     sent_at              timestamptz, -- when Gmail accepted it
+    -- The copy a member sent again of this failed or unknown message; set
+    -- once, so sending it again twice returns the same copy (ADR006).
+    sent_again_as        uuid UNIQUE REFERENCES outgoing_messages (id) ON DELETE SET NULL,
     CONSTRAINT outgoing_messages_recipients CHECK (
         jsonb_array_length(to_addresses) + jsonb_array_length(cc_addresses)
         + jsonb_array_length(bcc_addresses) >= 1),
+    CONSTRAINT outgoing_messages_sent_again_as CHECK (
+        sent_again_as IS NULL OR status IN ('failed', 'unknown')),
     CONSTRAINT outgoing_messages_failure CHECK ((status = 'failed') = (failure IS NOT NULL)),
     CONSTRAINT outgoing_messages_sent_at CHECK ((status = 'sent') = (sent_at IS NOT NULL)),
     CONSTRAINT outgoing_messages_provider_message_id CHECK ((status = 'sent') = (provider_message_id IS NOT NULL)),

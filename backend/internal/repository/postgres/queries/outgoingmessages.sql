@@ -46,7 +46,7 @@ RETURNING id, status, created_at;
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, om.body,
     om.inbok_message_id, om.status, om.failure, om.provider_message_id,
-    om.provider_thread_id, om.created_at, om.sent_at
+    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE om.id = @id AND ca.user_id = @user_id;
@@ -56,6 +56,9 @@ SELECT om.*
 FROM outgoing_message_keys k
 JOIN outgoing_messages om ON om.id = k.message_id
 WHERE k.user_id = @user_id AND k.idempotency_key = @idempotency_key;
+
+-- name: SetOutgoingMessageSentAgain :exec
+UPDATE outgoing_messages SET sent_again_as = @sent_again_as WHERE id = @id;
 
 -- name: ReadOutgoingMessageToSend :one
 SELECT * FROM outgoing_messages WHERE id = @id;

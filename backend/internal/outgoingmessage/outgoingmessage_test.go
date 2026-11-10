@@ -78,6 +78,32 @@ type memoryKey struct {
 	key    uuid.UUID
 }
 
+func (m *memoryStorage) InsertOutgoingMessageCopy(ctx context.Context, attempt Attempt, messageID uuid.UUID, build func(CopyState) (NewMessage, error)) (Message, error) {
+	if m.deactivated {
+		return Message{}, ErrDeactivated
+	}
+	original, err := m.ReadOutgoingMessage(ctx, attempt.UserID, messageID)
+	if err != nil {
+		return Message{}, err
+	}
+	if original.SentAgainAs != nil {
+		return m.ReadOutgoingMessage(ctx, attempt.UserID, *original.SentAgainAs)
+	}
+	m.buildCalls++
+	sender := m.accounts[original.ConnectedAccountID].sender
+	next, err := build(CopyState{Original: original, Sender: sender, Attempts: m.attemptsSince(attempt)})
+	if err != nil {
+		return Message{}, err
+	}
+	copied := m.save(attempt, original.ConnectedAccountID, next)
+	for i := range m.messages {
+		if m.messages[i].ID == messageID {
+			m.messages[i].SentAgainAs = &copied.ID
+		}
+	}
+	return copied, nil
+}
+
 // attemptsSince returns the member's attempts after attempt.Since.
 func (m *memoryStorage) attemptsSince(attempt Attempt) []time.Time {
 	var counted []time.Time
@@ -346,6 +372,104 @@ func TestCreateLimitPerMember(t *testing.T) {
 	_, err = service.Create(t.Context(), 3, draft)
 
 	require.ErrorIs(t, err, ErrThrottled)
+}
+
+// sendAgainTest is a member's message that ended with status.
+func sendAgainTest(t *testing.T, status Status) (*memoryStorage, *Service, Message) {
+	t.Helper()
+	storage := newMemoryStorage()
+	now := createNow
+	service := newTestService(storage, &now)
+	_, err := service.Create(t.Context(), 3, testDraft())
+	require.NoError(t, err)
+	storage.messages[0].Status = status
+	if status == StatusFailed {
+		storage.messages[0].Failure = FailureSenderChanged
+	}
+	return storage, service, storage.messages[0]
+}
+
+// A copy has the original's content, a new ID and Message-ID, and the
+// account's address now, e.g. after a send found it changed.
+func TestSendAgain(t *testing.T) {
+	for _, status := range []Status{StatusFailed, StatusUnknown} {
+		t.Run(string(status), func(t *testing.T) {
+			storage, service, original := sendAgainTest(t, status)
+			account := storage.accounts[5]
+			account.sender.Email = "renamed@gmail.com"
+			storage.accounts[5] = account
+
+			copied, err := service.SendAgain(t.Context(), 3, original.ID)
+
+			require.NoError(t, err)
+			assert.NotEqual(t, original.ID, copied.ID)
+			assert.NotEqual(t, original.InbokMessageID, copied.InbokMessageID)
+			assert.Equal(t, original.Content, copied.Content)
+			assert.Equal(t, int64(5), copied.ConnectedAccountID)
+			assert.Equal(t, "renamed@gmail.com", copied.From)
+			assert.True(t, strings.HasSuffix(copied.InbokMessageID, "@gmail.com>"), copied.InbokMessageID)
+			assert.Equal(t, StatusWaiting, copied.Status)
+			read, err := service.Get(t.Context(), 3, original.ID)
+			require.NoError(t, err)
+			assert.Equal(t, &copied.ID, read.SentAgainAs)
+		})
+	}
+}
+
+// Sending a message again twice returns the one copy, counting one attempt.
+func TestSendAgainTwice(t *testing.T) {
+	storage, service, original := sendAgainTest(t, StatusUnknown)
+	first, err := service.SendAgain(t.Context(), 3, original.ID)
+	require.NoError(t, err)
+
+	second, err := service.SendAgain(t.Context(), 3, original.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, first, second)
+	assert.Len(t, storage.messages, 2)
+	assert.Len(t, storage.attempts[3], 2, "the create and one copy")
+}
+
+func TestSendAgainRefused(t *testing.T) {
+	for _, status := range []Status{StatusWaiting, StatusSending, StatusSent} {
+		t.Run(string(status), func(t *testing.T) {
+			storage, service, original := sendAgainTest(t, status)
+
+			_, err := service.SendAgain(t.Context(), 3, original.ID)
+
+			require.ErrorIs(t, err, ErrNotSendableAgain)
+			assert.Len(t, storage.messages, 1)
+		})
+	}
+}
+
+func TestSendAgainNeedsReconnect(t *testing.T) {
+	storage, service, original := sendAgainTest(t, StatusFailed)
+	account := storage.accounts[5]
+	account.sender.NeedsReconnect = true
+	storage.accounts[5] = account
+
+	_, err := service.SendAgain(t.Context(), 3, original.ID)
+
+	require.ErrorIs(t, err, ErrNeedsReconnect)
+}
+
+func TestSendAgainThrottled(t *testing.T) {
+	storage, service, original := sendAgainTest(t, StatusFailed)
+	fillAttempts(storage, 3, createNow, shortSendLimit.Max)
+
+	_, err := service.SendAgain(t.Context(), 3, original.ID)
+
+	require.ErrorIs(t, err, ErrThrottled)
+	assert.Nil(t, storage.messages[0].SentAgainAs)
+}
+
+func TestSendAgainOtherMembers(t *testing.T) {
+	_, service, original := sendAgainTest(t, StatusFailed)
+
+	_, err := service.SendAgain(t.Context(), 4, original.ID)
+
+	require.ErrorIs(t, err, ErrNotFound)
 }
 
 // disconnect deletes accountID's messages and their keys, as a disconnect

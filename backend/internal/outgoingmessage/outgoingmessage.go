@@ -1,7 +1,7 @@
 // Package outgoingmessage owns the messages members send from their
 // connected accounts (US015). [Service] checks a member's draft, gives it a
-// Message-ID, and saves it for the job that sends it, and reads back a
-// member's own messages with their status.
+// Message-ID, and saves it for the job that sends it, sends a failed message
+// again as a copy, and reads back a member's own messages with their status.
 package outgoingmessage
 
 import (
@@ -34,6 +34,9 @@ var (
 	// ErrKeyReused means a request's idempotency key already saved another
 	// of the member's messages: other content, or another sending account.
 	ErrKeyReused = errors.New("idempotency key already used for another message")
+	// ErrNotSendableAgain means the message is waiting, sending, or sent, so
+	// sending it again could send it twice.
+	ErrNotSendableAgain = errors.New("only a failed or unknown message can be sent again")
 )
 
 // ErrKeyExists is what [Storage] returns when the member already saved a
@@ -41,7 +44,7 @@ var (
 var ErrKeyExists = errors.New("a message with this idempotency key exists")
 
 // The member's send limit counts every message saved to send, from any of
-// their accounts (ADR006).
+// their accounts, including one sent again (ADR006).
 //
 // DESIGN: Gmail limits each account, but not what the members of one
 // instance share: its Google client's quota and standing, and the send
@@ -149,6 +152,9 @@ type Message struct {
 	CreatedAt         time.Time
 	// SentAt is when Gmail accepted the message; nil until then.
 	SentAt *time.Time
+	// SentAgainAs is the copy the member sent again of this failed or
+	// unknown message; nil until then.
+	SentAgainAs *uuid.UUID
 }
 
 // Sender is the account a message is sent from, as storage reads it.
@@ -185,6 +191,17 @@ type CreateState struct {
 	Attempts []time.Time
 }
 
+// CopyState is what storage reads, under the member's lock, for a message
+// sent again.
+type CopyState struct {
+	// Original is the message to send again.
+	Original Message
+	// Sender is the original's account as it is now.
+	Sender Sender
+	// Attempts are the times of the member's attempts after [Attempt.Since].
+	Attempts []time.Time
+}
+
 // Storage keeps outgoing messages.
 type Storage interface {
 	// InsertOutgoingMessage, in one transaction:
@@ -204,6 +221,24 @@ type Storage interface {
 	// It returns the saved message. An error from build rolls back and is
 	// returned unchanged.
 	InsertOutgoingMessage(ctx context.Context, attempt Attempt, accountID int64, key uuid.UUID, build func(CreateState) (NewMessage, error)) (Message, error)
+
+	// InsertOutgoingMessageCopy, in one transaction:
+	//  1. locks the member attempt.UserID, returning [ErrDeactivated] when
+	//     they are deactivated;
+	//  2. reads the member's message messageID, or returns [ErrNotFound];
+	//  3. returns the copy already sent again, when there is one, without
+	//     calling build;
+	//  4. reads the message's account, keeping it from being disconnected,
+	//     then locks the message; either gone returns [ErrNotFound];
+	//  5. calls build with both and the member's attempts after
+	//     attempt.Since;
+	//  6. saves the copy build returns as waiting, with the job that sends
+	//     it, the original's link to it, and an attempt as
+	//     [Storage.InsertOutgoingMessage] does, but no key.
+	//
+	// It returns the copy. An error from build rolls back and is returned
+	// unchanged.
+	InsertOutgoingMessageCopy(ctx context.Context, attempt Attempt, messageID uuid.UUID, build func(CopyState) (NewMessage, error)) (Message, error)
 
 	// ReadOutgoingMessage returns userID's message messageID, or
 	// [ErrNotFound] when userID has no such message.
@@ -289,6 +324,28 @@ func (s *Service) repeated(ctx context.Context, userID, accountID int64, key uui
 		return Message{}, ErrKeyReused
 	}
 	return earlier, nil
+}
+
+// SendAgain saves a copy of userID's failed or unknown message messageID,
+// waiting to be sent from the same account with a new ID and Message-ID, and
+// returns it. Sending a message again a second time returns the same copy.
+//
+// It returns [ErrNotFound] when userID has no such message,
+// [ErrNotSendableAgain] when it did not end failed or unknown,
+// [ErrNeedsReconnect] when its account needs a reconnect, [ErrDeactivated],
+// or an [*attemptlimit.Error] wrapping [ErrThrottled].
+func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
+	attempt := s.attempt(userID)
+	return s.storage.InsertOutgoingMessageCopy(ctx, attempt, messageID, func(state CopyState) (NewMessage, error) {
+		// Waiting or sending would make two sends of one message, and a sent
+		// message reached its recipients.
+		if state.Original.Status != StatusFailed && state.Original.Status != StatusUnknown {
+			return NewMessage{}, ErrNotSendableAgain
+		}
+		// The account's address now, which a send that failed
+		// sender-changed has saved.
+		return newMessage(state.Sender, state.Attempts, attempt.At, state.Original.Content)
+	})
 }
 
 // Get returns userID's message messageID, or [ErrNotFound] when userID has

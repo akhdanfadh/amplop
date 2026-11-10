@@ -687,3 +687,84 @@ func TestOutgoingDeactivated(t *testing.T) {
 	require.ErrorIs(t, err, outgoingmessage.ErrDeactivated)
 	assert.Equal(t, int64(0), o.countOutgoingMessages(t))
 }
+
+// failedMessage saves a message from the member and ends it failed.
+func (o outgoingMessagesTest) failedMessage(t *testing.T) outgoingmessage.Message {
+	t.Helper()
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+	_, err = o.conn.Exec(t.Context(), "UPDATE outgoing_messages SET status = 'failed', failure = 'gave-up' WHERE id = $1", created.ID)
+	require.NoError(t, err)
+	return created
+}
+
+// A copy is saved with its job and attempt, and the original names it; a
+// second request returns the same copy.
+func TestOutgoingMessageCopy(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	original := o.failedMessage(t)
+
+	copied, err := o.messages.SendAgain(t.Context(), o.member, original.ID)
+	require.NoError(t, err)
+	again, err := o.messages.SendAgain(t.Context(), o.member, original.ID)
+	require.NoError(t, err)
+
+	assert.Equal(t, copied.ID, again.ID)
+	assert.Equal(t, original.Content, copied.Content)
+	assert.Equal(t, outgoingmessage.StatusWaiting, copied.Status)
+	assert.ElementsMatch(t, []uuid.UUID{original.ID, copied.ID}, o.sendJobs(t))
+	assert.Equal(t, int64(2), o.countSendAttempts(t), "the create and one copy")
+	read, err := o.messages.Get(t.Context(), o.member, original.ID)
+	require.NoError(t, err)
+	assert.Equal(t, &copied.ID, read.SentAgainAs)
+	assert.Equal(t, outgoingmessage.StatusFailed, read.Status)
+}
+
+// Build gets the original as saved and its account as it is now.
+func TestOutgoingMessageCopyState(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	original := o.failedMessage(t)
+	_, err := o.conn.Exec(t.Context(), "UPDATE connected_accounts SET email = 'alex.new@example.com' WHERE id = $1", o.account)
+	require.NoError(t, err)
+	var got outgoingmessage.CopyState
+
+	_, err = o.db.InsertOutgoingMessageCopy(t.Context(), o.attempt(), original.ID, func(state outgoingmessage.CopyState) (outgoingmessage.NewMessage, error) {
+		got = state
+		return outgoingmessage.NewMessage{}, errors.New("stop")
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, original.ID, got.Original.ID)
+	assert.Equal(t, outgoingmessage.StatusFailed, got.Original.Status)
+	assert.Equal(t, "alex.new@example.com", got.Sender.Email)
+	assert.Len(t, got.Attempts, 1)
+	read, err := o.messages.Get(t.Context(), o.member, original.ID)
+	require.NoError(t, err)
+	assert.Nil(t, read.SentAgainAs, "a refusal links nothing")
+}
+
+func TestOutgoingCopyNotFound(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	original := o.failedMessage(t)
+
+	_, err := o.messages.SendAgain(t.Context(), o.otherMember, original.ID)
+	require.ErrorIs(t, err, outgoingmessage.ErrNotFound)
+
+	_, err = o.messages.SendAgain(t.Context(), o.member, uuid.New())
+	require.ErrorIs(t, err, outgoingmessage.ErrNotFound)
+}
+
+// Only a failed or unknown message names a copy.
+func TestOutgoingMessageCopyCheck(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+	other, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+
+	_, err = o.conn.Exec(t.Context(), "UPDATE outgoing_messages SET sent_again_as = $1 WHERE id = $2", other.ID, created.ID)
+
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr)
+	assert.Equal(t, "23514", pgErr.Code, "check violation")
+}

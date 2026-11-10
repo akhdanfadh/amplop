@@ -75,6 +75,7 @@ type OutgoingMessage struct {
 	ProviderThreadID   *string
 	CreatedAt          time.Time
 	SentAt             *time.Time
+	SentAgainAs        *uuid.UUID
 }
 
 type OutgoingMessageKey struct {

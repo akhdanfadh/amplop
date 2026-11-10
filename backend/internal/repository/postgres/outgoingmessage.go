@@ -98,6 +98,92 @@ func (db *DB) InsertOutgoingMessage(ctx context.Context, attempt outgoingmessage
 	return saved, nil
 }
 
+// InsertOutgoingMessageCopy locks the member attempt.UserID, reads their
+// message messageID, and returns the copy it was sent again as, if any.
+// Otherwise it reads the message's account under a key share lock, locks the
+// message, calls build with them and the member's attempts, and saves the
+// copy build returns as waiting, with its job, the original's link to it, and
+// the attempt, in one transaction. It returns the
+// copy, [outgoingmessage.ErrDeactivated], or [outgoingmessage.ErrNotFound]
+// when the member has no such message.
+func (db *DB) InsertOutgoingMessageCopy(ctx context.Context, attempt outgoingmessage.Attempt, messageID uuid.UUID, build func(outgoingmessage.CopyState) (outgoingmessage.NewMessage, error)) (outgoingmessage.Message, error) {
+	var saved outgoingmessage.Message
+	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+
+		// 1. Lock the member first, as every send does, so a second
+		// request finds the first one's copy committed.
+		if err := lockSendingMember(ctx, queries, attempt.UserID); err != nil {
+			return err
+		}
+
+		// 2. Read the message, and return a copy already made.
+		row, err := queries.ReadOutgoingMessage(ctx, sqlc.ReadOutgoingMessageParams{ID: messageID, UserID: attempt.UserID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return outgoingmessage.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("read outgoing message: %w", err)
+		}
+		if row.SentAgainAs != nil {
+			copied, err := queries.ReadOutgoingMessage(ctx, sqlc.ReadOutgoingMessageParams{ID: *row.SentAgainAs, UserID: attempt.UserID})
+			if err != nil {
+				return fmt.Errorf("read copy sent again: %w", err)
+			}
+			saved, err = outgoingMessageFromRow(copied)
+			return err
+		}
+
+		// 3. Lock the account, then the message, in the order a disconnect
+		// takes them; either gone means a disconnect deleted the message.
+		account, err := queries.LockOutgoingMessageSender(ctx, sqlc.LockOutgoingMessageSenderParams{ID: row.ConnectedAccountID, UserID: attempt.UserID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return outgoingmessage.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock sending account: %w", err)
+		}
+		row, err = queries.LockOutgoingMessage(ctx, messageID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return outgoingmessage.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock outgoing message: %w", err)
+		}
+		original, err := outgoingMessageFromRow(row)
+		if err != nil {
+			return err
+		}
+		attempts, err := queries.ListSendAttemptTimes(ctx, sqlc.ListSendAttemptTimesParams{UserID: attempt.UserID, Since: attempt.Since})
+		if err != nil {
+			return fmt.Errorf("list send attempts: %w", err)
+		}
+
+		// 4. Let build decide.
+		sender := outgoingmessage.Sender{ConnectedAccountID: account.ID, Email: account.Email, NeedsReconnect: account.NeedsReconnect}
+		next, err := build(outgoingmessage.CopyState{Original: original, Sender: sender, Attempts: attempts})
+		if err != nil {
+			return err
+		}
+
+		// 5. Save the copy, its job, and the attempt, and link the original
+		// to it. No request named the copy, so it has no key.
+		saved, err = db.saveOutgoingMessage(ctx, tx, attempt, row.ConnectedAccountID, next)
+		if err != nil {
+			return err
+		}
+		err = queries.SetOutgoingMessageSentAgain(ctx, sqlc.SetOutgoingMessageSentAgainParams{ID: messageID, SentAgainAs: &saved.ID})
+		if err != nil {
+			return fmt.Errorf("link message to its copy: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return outgoingmessage.Message{}, err
+	}
+	return saved, nil
+}
+
 // lockSendingMember locks userID's row, or returns
 // [outgoingmessage.ErrDeactivated] when the member is deactivated or gone.
 func lockSendingMember(ctx context.Context, queries *sqlc.Queries, userID int64) error {
@@ -319,6 +405,7 @@ func outgoingMessageFromRow(row sqlc.OutgoingMessage) (outgoingmessage.Message, 
 		Status:         outgoingmessage.Status(row.Status),
 		CreatedAt:      row.CreatedAt,
 		SentAt:         row.SentAt,
+		SentAgainAs:    row.SentAgainAs,
 	}
 	if row.Failure != nil {
 		message.Failure = outgoingmessage.Failure(*row.Failure)
