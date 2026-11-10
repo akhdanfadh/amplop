@@ -2191,7 +2191,10 @@ Four tables hold it, each deleted with its account:
   its progress, the `position` the next poll asks for changes since, and
   when a sync last finished. The position is text only the provider's
   code reads, e.g. Gmail's history ID in decimal, so storage neither
-  parses nor checks it.
+  parses nor checks it. `mailboxes` and `messages` reference this row
+  rather than the account's, so a disconnect deletes the account, then
+  the sync state, then the mail, the order a sync write locks them in:
+  the two never deadlock.
 
 The migration lists, as comments, the columns IMAP and Outlook will need,
 such as a folder's UID validity and a message's UID in each folder.

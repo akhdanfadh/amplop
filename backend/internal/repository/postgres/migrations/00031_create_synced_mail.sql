@@ -2,7 +2,7 @@
 -- Synchronized mail (ADR001): each connected account's mailboxes, the
 -- metadata of its messages, which mailboxes each message is in, and where
 -- its synchronization stands. The provider stays authoritative;
--- disconnecting deletes all of it with the account.
+-- disconnecting deletes the account's sync state, and with it the rest.
 --
 -- The model follows JMAP Mail (RFC 8621), which covers both IMAP folders
 -- and Gmail labels: a mailbox is a named set of messages with an optional
@@ -12,6 +12,32 @@
 -- from JMAP. Commented columns are what a later provider needs, kept here
 -- so the general shape stays visible; each is added with the provider that
 -- fills it.
+
+-- Where an account's synchronization stands, one row per account, saved with
+-- the account. status is the full sync's, which the member sees; later polls
+-- keep it complete and record only their time.
+--
+-- The account's mailboxes and messages reference this row, not the
+-- account's. A sync write locks this row first, so the foreign key checks of
+-- what it saves lock nothing it does not already hold; a disconnect locks
+-- the account, then by cascade this row, then the mail. Both take rows in
+-- that one order, so neither deadlocks the other. With the mail referencing
+-- the account, a write holding this row waited for the account's, which a
+-- disconnect held while it waited for this one.
+CREATE TABLE sync_states (
+    connected_account_id bigint PRIMARY KEY REFERENCES connected_accounts (id) ON DELETE CASCADE,
+    status               text NOT NULL CHECK (status IN ('waiting', 'running', 'complete', 'failed')),
+    -- Where the account stood at the provider when last read, which the next
+    -- poll asks for changes since: text only the provider's code reads, e.g.
+    -- Gmail's history ID. NULL until a full sync records one.
+    position             text CHECK (position <> ''),
+    sync_generation      integer NOT NULL DEFAULT 0 CHECK (sync_generation >= 0), -- the latest full sync's; 0 before the first
+    pages_synced         integer NOT NULL DEFAULT 0 CHECK (pages_synced >= 0), -- of the current full sync, so a repeated page counts once
+    messages_synced      integer NOT NULL DEFAULT 0 CHECK (messages_synced >= 0), -- the progress the member sees
+    failure              text CHECK (failure IN ('provider', 'token-unreadable', 'internal')),
+    last_synced_at       timestamptz, -- when a sync, full or poll, last finished
+    CONSTRAINT sync_states_failure_status CHECK ((status = 'failed') = (failure IS NOT NULL))
+);
 
 -- A mailbox: a Gmail label, or later an IMAP or Outlook folder. role marks
 -- the special ones by purpose, whatever their name: every attribute of
@@ -25,7 +51,7 @@
 -- e.g. Work/Projects. id is inbok's own.
 CREATE TABLE mailboxes (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    connected_account_id bigint NOT NULL REFERENCES connected_accounts (id) ON DELETE CASCADE,
+    connected_account_id bigint NOT NULL REFERENCES sync_states (connected_account_id) ON DELETE CASCADE,
     provider_mailbox_id  text NOT NULL CHECK (provider_mailbox_id <> ''), -- Gmail's label ID; later an IMAP MAILBOXID (RFC 8474) or folder name, or an Outlook folder's ID
     name                 text NOT NULL,
     role                 text CHECK (role IN ('all', 'archive', 'drafts', 'flagged', 'important', 'inbox',
@@ -53,7 +79,7 @@ CREATE UNIQUE INDEX mailboxes_account_provider_id_idx ON mailboxes (connected_ac
 -- keys, and URLs.
 CREATE TABLE messages (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    connected_account_id bigint NOT NULL REFERENCES connected_accounts (id) ON DELETE CASCADE,
+    connected_account_id bigint NOT NULL REFERENCES sync_states (connected_account_id) ON DELETE CASCADE,
     -- Gmail's message ID, the same in every label; later an IMAP EMAILID
     -- (RFC 8474) or an Outlook message ID.
     provider_message_id  text NOT NULL CHECK (provider_message_id <> ''),
@@ -115,26 +141,8 @@ CREATE TABLE message_mailboxes (
 -- Lists a mailbox's messages, and serves deleting a mailbox.
 CREATE INDEX message_mailboxes_mailbox_id_idx ON message_mailboxes (connected_account_id, mailbox_id);
 
--- Where an account's synchronization stands, one row per account, saved with
--- the account. status is the full sync's, which the member sees; later polls
--- keep it complete and record only their time.
-CREATE TABLE sync_states (
-    connected_account_id bigint PRIMARY KEY REFERENCES connected_accounts (id) ON DELETE CASCADE,
-    status               text NOT NULL CHECK (status IN ('waiting', 'running', 'complete', 'failed')),
-    -- Where the account stood at the provider when last read, which the next
-    -- poll asks for changes since: text only the provider's code reads, e.g.
-    -- Gmail's history ID. NULL until a full sync records one.
-    position             text CHECK (position <> ''),
-    sync_generation      integer NOT NULL DEFAULT 0 CHECK (sync_generation >= 0), -- the latest full sync's; 0 before the first
-    pages_synced         integer NOT NULL DEFAULT 0 CHECK (pages_synced >= 0), -- of the current full sync, so a repeated page counts once
-    messages_synced      integer NOT NULL DEFAULT 0 CHECK (messages_synced >= 0), -- the progress the member sees
-    failure              text CHECK (failure IN ('provider', 'token-unreadable', 'internal')),
-    last_synced_at       timestamptz, -- when a sync, full or poll, last finished
-    CONSTRAINT sync_states_failure_status CHECK ((status = 'failed') = (failure IS NOT NULL))
-);
-
 -- +goose Down
-DROP TABLE sync_states;
 DROP TABLE message_mailboxes;
 DROP TABLE messages;
 DROP TABLE mailboxes;
+DROP TABLE sync_states;

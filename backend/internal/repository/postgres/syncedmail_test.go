@@ -582,6 +582,40 @@ func TestSyncedMailDisconnect(t *testing.T) {
 	assert.Len(t, s.mailboxes(t, s.other), len(gmailMailboxes))
 }
 
+// A disconnect while a write holds the account's sync state waits for the
+// write, then deletes everything: the write's saves lock only rows under the
+// sync state it holds, so neither deadlocks the other.
+func TestSyncedMailDisconnectDuringWrite(t *testing.T) {
+	s := newSyncedMailTest(t).withMailboxes(t)
+	ctx := t.Context()
+	disconnected := make(chan error, 1)
+
+	_, writeErr := s.db.UpdateSyncedMail(ctx, s.account, func(current mailsync.SyncState) (mailsync.Change, error) {
+		// The write holds the sync state; the disconnect starts and waits.
+		go func() {
+			_, err := s.db.pool.Exec(ctx, "DELETE FROM connected_accounts WHERE id = $1", s.account)
+			disconnected <- err
+		}()
+		require.Eventually(t, func() bool {
+			var blocked bool
+			err := s.db.pool.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE 'DELETE FROM connected_accounts%')").Scan(&blocked)
+			return err == nil && blocked
+		}, 3*time.Second, 10*time.Millisecond)
+		// Saving a message checks the sync state it belongs to, which the
+		// write holds. Checking the account's row, which the disconnect
+		// holds, would deadlock.
+		return mailsync.Change{State: current, Saved: []mailsync.Message{syncedMessage("m1")}}, nil
+	})
+
+	require.NoError(t, writeErr)
+	require.NoError(t, <-disconnected)
+	var left int
+	require.NoError(t, s.conn.QueryRow(ctx, `
+		SELECT (SELECT count(*) FROM messages WHERE connected_account_id = $1)
+			+ (SELECT count(*) FROM sync_states WHERE connected_account_id = $1)`, s.account).Scan(&left))
+	assert.Equal(t, 0, left)
+}
+
 func TestSyncedMailChecks(t *testing.T) {
 	s := newSyncedMailTest(t)
 	for name, change := range map[string]mailsync.Change{
