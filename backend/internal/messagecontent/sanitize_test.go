@@ -98,9 +98,14 @@ var attacks = []sanitizeCase{
 	{"srcset", `<img srcset="https://tracker.example/p.gif 1x">`, `<img>`},
 	{"unknown element keeps its text", `<marquee>a</marquee><o:p>b</o:p>`, `ab`},
 	{"style breaking out of its element", `<style>a{font-family:"</style><script>alert(1)</script>"}</style>x`, `<style>a{}</style>&#34;}x`},
-	{"style's attributes", `<style media="screen" type="TEXT/CSS" onload="alert(1)">p{color:red}</style>`, `<style>p{color:red;}</style>`},
+	{"style's attributes", `<style media="screen" type="TEXT/CSS" onload="alert(1)">p{color:red}</style>`, `<style media="screen">p{color:red;}</style>`},
 	{"style for print only", `<style media="print">p{display:none}</style><p>x</p>`, `<p>x</p>`},
-	{"style for print and screen", `<style media="print, screen">p{color:red}</style>`, `<style>p{color:red;}</style>`},
+	{"style for print and screen", `<style media="print, screen">p{color:red}</style>`, `<style media="screen">p{color:red;}</style>`},
+	{"style for only screen", `<style media="only screen">p{color:red}</style>`, `<style media="only screen">p{color:red;}</style>`},
+	{"style for narrow screens", `<style media="screen and (max-width:600px)">p{color:red}</style>`, `<style media="screen and ( max-width : 600px )">p{color:red;}</style>`},
+	{"style for print or narrow screens", `<style media="print, (max-width:600px)">p{color:red}</style>`, `<style media="( max-width : 600px )">p{color:red;}</style>`},
+	{"style for a feature not kept", `<style media="screen and (hover:hover)">p{color:red}</style><p>x</p>`, `<p>x</p>`},
+	{"style media breaking out", `<style media='screen"><script>alert(1)</script>'>p{color:red}</style>x`, `x`},
 	{"style that is not css", `<style type="text/plain">p{display:none}</style><p>x</p>`, `<p>x</p>`},
 	{"link attribute on an element that is not a link", `<b href="https://example.com/">x</b>`, `<b>x</b>`},
 	{"image attribute on an element without images", `<div src="https://tracker.example/p.gif" background="https://tracker.example/p.gif">x</div>`, `<div>x</div>`},
@@ -440,6 +445,12 @@ func assertSafe(t testing.TB, doc string, remote Remote) {
 			assert.Empty(t, node.Namespace, "element %q", node.Data)
 			assert.True(t, kept[node.DataAtom] || node.DataAtom == atom.Style, "element %q", node.Data)
 			for _, attr := range node.Attr {
+				// A style element's one attribute, its media queries.
+				if node.DataAtom == atom.Style {
+					assert.Equal(t, attrMedia, attr.Key, "style attribute")
+					assertCSS(t, "@media "+attr.Val+"{}", remote)
+					continue
+				}
 				assertAttribute(t, attr)
 				if attr.Key == attrStyle {
 					assertCSS(t, attr.Val, remote)

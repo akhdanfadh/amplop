@@ -5,7 +5,6 @@ import (
 	"io"
 	"iter"
 	"net/url"
-	"slices"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -221,8 +220,10 @@ type sanitizer struct {
 	// and depth how many of it are open.
 	skipping atom.Atom
 	depth    int
-	// style is whether the next text is a style element's content.
+	// style is whether the next text is a style element's content, and
+	// media that element's media queries.
 	style bool
+	media []byte
 	// cssLeft is how many bytes of CSS the document may still have read.
 	cssLeft int
 }
@@ -278,7 +279,11 @@ func (s *sanitizer) text(text []byte) {
 			return
 		}
 		if css := s.stylesheet(text); len(css) > 0 {
-			s.out.WriteString("<style>")
+			s.out.WriteString("<style")
+			if len(s.media) > 0 {
+				s.attr(attrMedia, string(s.media))
+			}
+			s.out.WriteString(">")
 			s.out.Write(css)
 			s.out.WriteString("</style>")
 		}
@@ -286,6 +291,16 @@ func (s *sanitizer) text(text []byte) {
 	default:
 		s.out.WriteString(html.EscapeString(string(text)))
 	}
+}
+
+// attr writes the attribute name with value, quoted and escaped, inside
+// a start tag.
+func (s *sanitizer) attr(name, value string) {
+	s.out.WriteString(" ")
+	s.out.WriteString(name)
+	s.out.WriteString(`="`)
+	s.out.WriteString(html.EscapeString(value))
+	s.out.WriteString(`"`)
 }
 
 // start writes the start tag of kind that tokens is at, if its element
@@ -307,14 +322,15 @@ func (s *sanitizer) start(kind html.TokenType, tokens *html.Tokenizer) {
 		if !empty {
 			s.skipping, s.depth = element, 1
 		}
-	// Written with its content, by text, without its attributes; a style
-	// sheet a screen would not apply is dropped instead.
+	// Written with its content, by text, with its media queries only; a
+	// style sheet a screen would not apply is dropped instead.
 	case element == atom.Style:
-		if applies(tokens) {
-			s.style = true
-		} else {
+		media, ok := styleMedia(tokens)
+		if !ok {
 			s.skipping, s.depth = element, 1
+			return
 		}
+		s.style, s.media = true, media
 	// Copied with the attributes it may keep.
 	case kept[element]:
 		s.tag(element, tokens)
@@ -323,29 +339,29 @@ func (s *sanitizer) start(kind html.TokenType, tokens *html.Tokenizer) {
 	}
 }
 
-// applies reports whether a browser applies the style element whose
-// start tag tokens is at to a screen: its type, if any, is text/css, and
-// its media, if any, lists all or screen (HTML Standard 4.2.6). It reads
-// the tag's attributes.
-func applies(tokens *html.Tokenizer) bool {
+// styleMedia returns the media queries of the style element whose start
+// tag tokens is at, as [mediaList] keeps them, and whether a browser
+// applies the style sheet to a screen: its type, if any, is text/css, and
+// its media, if any, keeps a query (HTML Standard 4.2.6). It reads the
+// tag's attributes.
+func styleMedia(tokens *html.Tokenizer) ([]byte, bool) {
+	var media []byte
 	for name, value := range attrs(tokens) {
-		value = strings.ToLower(strings.TrimSpace(value))
+		value = strings.TrimSpace(value)
 		switch {
 		// e.g. type="text/plain", which a browser does not read as CSS.
-		case name == attrType && value != "" && value != mediaCSS:
-			return false
-		// e.g. media="print", for other media than a screen.
-		case name == attrMedia && value != "" && !slices.ContainsFunc(strings.Split(value, ","), screen):
-			return false
+		case name == attrType && value != "" && strings.ToLower(value) != mediaCSS:
+			return nil, false
+		// e.g. media="print", for other media than a screen, or a query
+		// with a feature Gmail does not support.
+		case name == attrMedia && value != "":
+			media = mediaList(value)
+			if media == nil {
+				return nil, false
+			}
 		}
 	}
-	return true
-}
-
-// screen reports whether query, one of a media attribute's queries, is
-// a media type that applies to a screen, [mediaTypes].
-func screen(query string) bool {
-	return mediaTypes[strings.TrimSpace(query)]
+	return media, true
 }
 
 // attrs yields the attributes of the tag tokens is at, as the tokenizer
@@ -379,11 +395,7 @@ func (s *sanitizer) tag(element atom.Atom, tokens *html.Tokenizer) {
 			continue
 		}
 		hasLink = hasLink || name == attrHref
-		s.out.WriteString(" ")
-		s.out.WriteString(name)
-		s.out.WriteString(`="`)
-		s.out.WriteString(html.EscapeString(value))
-		s.out.WriteString(`"`)
+		s.attr(name, value)
 	}
 	if element == atom.A && hasLink {
 		s.out.WriteString(linkTarget)

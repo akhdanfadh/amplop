@@ -445,6 +445,39 @@ func join(out, data []byte) []byte {
 	return append(out, data...)
 }
 
+// mediaList returns the queries of list, a style element's media
+// attribute, that [mediaQuery] passes, written again and separated by
+// commas, or nil if it passes none. A query it refuses, e.g. print,
+// matches no screen, or uses a feature Gmail does not support.
+func mediaList(list string) []byte {
+	lexer := css.NewLexer(cssinput.NewInputString(list))
+	var out []byte
+	var tokens []css.Token
+	for {
+		kind, data := lexer.Next()
+		// A comma or the end closes a query; a comma inside a feature
+		// splits it into two that mediaQuery refuses.
+		if kind != css.CommaToken && kind != css.ErrorToken {
+			tokens = append(tokens, css.Token{TokenType: kind, Data: bytes.Clone(data)})
+			continue
+		}
+		if q, ok := mediaQuery(tokens); ok && len(q) > 0 {
+			if len(out) > 0 {
+				out = append(out, ',')
+			}
+			out = join(out, q)
+		}
+		tokens = tokens[:0]
+		if kind == css.ErrorToken {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // mediaQuery returns tokens, an @media rule's query, written again, or
 // false unless it is a list of media types, and, only, and parenthesized
 // features with a value, as [mediaTypes], [mediaKeywords], and
