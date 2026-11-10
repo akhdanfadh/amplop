@@ -7,6 +7,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,6 +15,22 @@ import (
 	"inbok/internal/connectedaccount"
 	"inbok/internal/outgoingmessage"
 )
+
+// sendWorkflows saves each send job as a row of test_outgoing_message_jobs,
+// in the caller's transaction, or returns err; account removals go to
+// [removalWorkflows].
+type sendWorkflows struct {
+	removalWorkflows
+	err error
+}
+
+func (w sendWorkflows) EnqueueOutgoingMessage(ctx context.Context, tx pgx.Tx, messageID uuid.UUID) error {
+	if w.err != nil {
+		return w.err
+	}
+	_, err := tx.Exec(ctx, "INSERT INTO test_outgoing_message_jobs (message_id) VALUES ($1)", messageID)
+	return err
+}
 
 // outgoingMessagesTest is a migrated database with two members, each with
 // a connected account, and the outgoing message service on it.
@@ -27,6 +44,9 @@ type outgoingMessagesTest struct {
 func newOutgoingMessagesTest(t *testing.T) outgoingMessagesTest {
 	t.Helper()
 	c := newConnectedAccountsTest(t)
+	_, err := c.conn.Exec(t.Context(), "CREATE TABLE test_outgoing_message_jobs (message_id uuid NOT NULL)")
+	require.NoError(t, err)
+	c.db = c.db.WithWorkflows(sendWorkflows{})
 	account, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
 	require.NoError(t, err)
 	other, err := c.service.Connect(t.Context(), c.otherMember, blairIdentity, "refresh-2")
@@ -235,7 +255,39 @@ func TestOutgoingMessageNoSuchID(t *testing.T) {
 	require.ErrorIs(t, err, outgoingmessage.ErrNotFound)
 }
 
-// A send reads a message whoever owns it.
+// sendJobs lists the message IDs of the saved send jobs.
+func (o outgoingMessagesTest) sendJobs(t *testing.T) []uuid.UUID {
+	t.Helper()
+	rows, err := o.conn.Query(t.Context(), "SELECT message_id FROM test_outgoing_message_jobs")
+	require.NoError(t, err)
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	require.NoError(t, err)
+	return ids
+}
+
+// Saving a message saves its send job with it.
+func TestOutgoingMessageJob(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+
+	require.NoError(t, err)
+	assert.Equal(t, []uuid.UUID{created.ID}, o.sendJobs(t))
+}
+
+// A job that cannot be saved rolls the message back, so no message waits
+// without one.
+func TestOutgoingMessageJobFails(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	messages := outgoingmessage.NewService(o.db.WithWorkflows(sendWorkflows{err: errors.New("dbos down")}))
+
+	_, err := messages.Create(t.Context(), o.member, o.draft())
+
+	require.ErrorContains(t, err, "dbos down")
+	assert.Equal(t, int64(0), o.countOutgoingMessages(t))
+}
+
+// The job reads a message whoever owns it.
 func TestOutgoingMessageToSend(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
 	created, err := o.messages.Create(t.Context(), o.member, o.draft())

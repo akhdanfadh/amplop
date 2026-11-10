@@ -80,7 +80,7 @@ The worker reads these environment variables:
 | `INBOK_WORKER_ID` | `worker` | The name the worker resumes unfinished work under: 1 to 64 letters, digits, `.`, `-`, or `_`. |
 | `INBOK_PUBLIC_URL` | none, required | As for `serve`: links in the email the worker sends start with it, and its host names inbok to mail servers. |
 | `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of removed Gmail accounts. |
-| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with. Empty: the worker runs no removals and leaves them queued. |
+| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with and the [send](#sending-a-message) job sends with. Empty: the worker runs neither and leaves them queued. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
 | `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. The worker applies the [search index](#search-index)'s settings when it starts. |
 | `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, which signs every request. |
@@ -301,8 +301,9 @@ so far, asking Google to end inbok's permission. A
 [disconnect](#disconnecting) deletes the account, moves its sealed refresh
 token to an `account_removals` row, and saves the job, in one transaction,
 so the job's input is only the removal's ID and the token never sits in
-DBOS's tables. Every job that calls Google runs on `inbok.google`, so one
-limit on it protects the Google project's quota.
+DBOS's tables. Google work in the background runs on `inbok.google`;
+members' sends have a queue of their own, so they never wait behind it
+(see [Sending a message](#sending-a-message)).
 
 Its step, `revoke token` (`connectedaccount.Removals.Revoke`), first
 checks whether another member has connected the same Google account: a
@@ -325,6 +326,70 @@ DBOS would otherwise claim a removal it cannot run for that worker, and
 no other worker could take it. Removals saved while the settings were set
 wait in the queue, with their sealed tokens, until a worker that has them
 runs; one that never does leaves them there.
+
+### Sending a message
+
+The workflow `inbok.outgoing-message`, run from the queue
+`inbok.google-send`, sends a member's [outgoing message](#sending-mail).
+Saving the message saves the job in the same transaction, under the
+workflow ID `inbok.outgoing-message/<message id>`, so a message has one
+send; its input is only the message's ID. Sends have their own queue: a
+run keeps its place in a queue's limit until it ends, and priority only
+orders runs still waiting, so on `inbok.google` a send could wait hours
+behind long jobs once that queue has a limit. Neither queue has one yet.
+
+Gmail's `messages.send` has no idempotency key, so the message's status
+records how far sending got, and each step reads it first; a step run
+again after a crash does only what is left:
+
+1. `prepare send` (`outgoingmessage.Sending.Prepare`) takes an access
+   token and reads `users.getProfile`, noting the mailbox's history ID for
+   a later check. A token Google refused, one no key opens, or a
+   deactivated member ends the message `failed` with `needs-reconnect`,
+   `token-unreadable`, or `deactivated`.
+2. `send message` takes a token and reads `users.getProfile` again: when
+   Gmail names the account by another address than the message's `From`,
+   e.g. after Google renamed it, nothing is sent: the message fails with
+   `sender-changed` and the account takes Gmail's address, so the member's
+   next message shows it. The check is in this step because DBOS reuses an
+   earlier step's result after a restart, however old. The step then marks
+   the message `sending`, reading the member's deactivation again under
+   their share lock, and calls `messages.send`. Gmail's IDs end it `sent`.
+   An answer that says the message was not sent ends it `failed`:
+   `refused`, or `sending-limit` for Gmail's daily limit, a 429 whose text
+   names mail sending. A failure before any connection to Gmail, another
+   rate limit, or a refused access token puts it back to `waiting` and is
+   retried; a limit that outlasts the retries, e.g. Gmail's daily bandwidth
+   limit, ends it `gave-up`. Anything else, e.g. a dropped connection, a
+   timeout, a 5xx, or a 200 without an ID, is unanswered: the message stays
+   `sending`. Only no connection proves Gmail never had the request, since
+   Go reports a finished write after the fact. A step that finds the
+   message `sending` never sends again. Gmail, and the emulator, put a sent
+   message in Sent themselves.
+3. After an unanswered send, the run waits 2 minutes, then `check sent`
+   lists the messages Gmail added to Sent since the noted history ID
+   (`history.list`, up to 10 pages) and reads each one's
+   `X-Inbok-Message-Id`. Gmail replaces the `Message-ID` a client sets but
+   keeps that header. A match ends the message `sent`. No match, a message
+   deleted before it could be read, history Gmail no longer keeps, or no
+   token ends it `unknown`: it is never sent again, and the member decides.
+4. A step that keeps failing ends with `give up`: a `waiting` message
+   fails with `gave-up`, and a `sending` one, which may have gone, becomes
+   `unknown`. A `give up` that keeps failing too, e.g. with the database
+   down, is tried again every 15 minutes until it is saved, since a run
+   that ends with an error is not resumed.
+
+`prepare send` and `send message` are retried 5 more times, waiting 2, 4,
+8, 16, then 30 seconds, since the member is waiting; `check sent` 3 more
+times, waiting 30 seconds, 1, then 2 minutes. The run logs `outgoing
+message` with the `message_id` and the status it ended with, a warning
+unless `sent`, or `outgoing message step failed` with an error that holds
+only Gmail's status. The Gmail client is given a logger that drops
+everything: Google's own would write each request's body, the whole
+message, to stderr with `GOOGLE_SDK_GO_LOGGING_LEVEL=debug`. ADR006 records the rules and what they were chosen
+over. The worker registers the workflow, and listens to
+`inbok.google-send`, only when the Google settings are set, as for
+account removal.
 
 ### Inspecting workflows
 
@@ -862,8 +927,8 @@ uses a small `httptest` stub instead:
   returns quota errors.
 - `messages.send` keeps the `Message-ID` a client sets, where Gmail
   replaces it with its own (tested 2026-11-09), and it never times out
-  or drops a send, so sending's answers and its check are tested with
-  stubs too.
+  or drops a send, so the [send job](#sending-a-message)'s answers and
+  its check are tested with stubs too.
 - It ignores `access_type` and `prompt` and always returns a refresh
   token.
 - A failed PKCE check leaves the code usable, and posting the consent
@@ -1990,11 +2055,11 @@ It then reads the account under a key share lock, so a disconnect waits and
 then deletes the message too. Another member's account, or a missing one,
 is `ErrAccountNotFound`, and one Google refused is `ErrNeedsReconnect`.
 The message gets an ID on the account's domain and is saved as
-`waiting`. A message moves through `waiting`, `sending`, then `sent`,
-`failed` with a reason (`refused`, `sending-limit`, `needs-reconnect`,
-`token-unreadable`, `deactivated`, `sender-changed`, or `gave-up`), or
-`unknown` when a send may have reached Gmail and no answer or check says
-whether.
+`waiting`, with its [send job](#sending-a-message). A message moves through
+`waiting`, `sending`, then `sent`, `failed` with a reason (`refused`,
+`sending-limit`, `needs-reconnect`, `token-unreadable`, `deactivated`,
+`sender-changed`, or `gave-up`), or `unknown` when a send may have reached
+Gmail and no answer or check says whether.
 
 The send builds the MIME message from the saved row with go-message:
 `From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the
@@ -2424,9 +2489,10 @@ For a job that runs once per request, follow the recovery notice
 2. `internal/dbos`: an input struct holding IDs and no personal data,
    the workflow registered under a fixed name with each step's retry
    policy, and a field in `Services` for the feature's type. A job that sends inbok's
-   email runs on `inbok.email`, and one that calls Google on
-   `inbok.google` (`queue.go`), which every such job shares; another kind
-   of job adds its own queue there.
+   email runs on `inbok.email`, one that calls Google in the background on
+   `inbok.google`, and one a member waits for on Gmail, a send, on
+   `inbok.google-send` (`queue.go`), so it never waits behind long
+   background runs; another kind of job adds its own queue there.
 3. `cmd/inbok/worker.go`: set that field.
 4. Save the workflow with the change that needs it, in one transaction.
    The feature's `Storage` method documents that it saves the job; its

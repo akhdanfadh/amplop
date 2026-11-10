@@ -22,9 +22,9 @@ type storedRecipient struct {
 }
 
 // InsertOutgoingMessage reads userID's account accountID under a key share
-// lock, calls build with it, and saves the message build returns as
-// waiting, in one transaction. It returns the saved message, or
-// [outgoingmessage.ErrAccountNotFound] when userID has no such account.
+// lock, calls build with it, and saves the message build returns as waiting,
+// with the job that sends it, in one transaction. It returns the saved message,
+// or [outgoingmessage.ErrAccountNotFound] when userID has no such account.
 func (db *DB) InsertOutgoingMessage(ctx context.Context, userID, accountID int64, build func(outgoingmessage.Sender) (outgoingmessage.NewMessage, error)) (outgoingmessage.Message, error) {
 	var saved outgoingmessage.Message
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
@@ -72,6 +72,15 @@ func (db *DB) InsertOutgoingMessage(ctx context.Context, userID, accountID int64
 		})
 		if err != nil {
 			return fmt.Errorf("insert outgoing message: %w", err)
+		}
+
+		// 4. Save the job in this transaction, so it commits or rolls back
+		// with the message.
+		if db.workflows == nil {
+			return errNoWorkflows
+		}
+		if err := db.workflows.EnqueueOutgoingMessage(ctx, tx, row.ID); err != nil {
+			return fmt.Errorf("save outgoing message send: %w", err)
 		}
 		saved = outgoingmessage.Message{
 			ID:                 row.ID,

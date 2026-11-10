@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"time"
+	"uuid"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/jackc/pgx/v5"
@@ -12,6 +13,7 @@ import (
 
 	"inbok/internal/connectedaccount"
 	"inbok/internal/logging"
+	"inbok/internal/outgoingmessage"
 	"inbok/internal/passwordreset"
 )
 
@@ -96,6 +98,21 @@ func (c *Client) EnqueueAccountRemoval(ctx context.Context, tx pgx.Tx, removalID
 	input := AccountRemovalInput{RemovalID: removalID}
 	_, err := dbos.Enqueue[connectedaccount.RevokeOutcome](c.client, googleQueue, accountRemovalWorkflow, input,
 		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+	)
+	return err
+}
+
+// EnqueueOutgoingMessage saves, in tx, the send workflow for the outgoing
+// message with messageID on the Google send queue, so it commits or rolls
+// back with tx. The workflow's ID is the message's, so the message has one
+// send. Cancelling ctx stops its statements. It returns DBOS's error, after
+// which tx is aborted and must roll back.
+func (c *Client) EnqueueOutgoingMessage(ctx context.Context, tx pgx.Tx, messageID uuid.UUID) error {
+	input := OutgoingMessageInput{MessageID: messageID}
+	_, err := dbos.Enqueue[outgoingmessage.Status](c.client, googleSendQueue, outgoingMessageWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+		dbos.WithEnqueueWorkflowID(outgoingMessageWorkflowID(messageID)),
 		dbos.WithEnqueueApplicationVersion(applicationVersion),
 	)
 	return err

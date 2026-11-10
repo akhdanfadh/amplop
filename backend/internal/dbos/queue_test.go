@@ -21,7 +21,7 @@ func queueWorker(t *testing.T, url string) *Worker {
 // Restarting the worker keeps each queue's saved settings, e.g. a
 // concurrency limit set at runtime.
 func TestQueueKept(t *testing.T) {
-	for _, name := range []string{emailQueue, googleQueue} {
+	for _, name := range []string{emailQueue, googleQueue, googleSendQueue} {
 		t.Run(name, func(t *testing.T) {
 			// Given a worker whose queue got a limit while it ran.
 			url := migrated(t)
@@ -41,4 +41,12 @@ func TestQueueKept(t *testing.T) {
 			assert.Equal(t, new(1), queue.GetGlobalConcurrency())
 		})
 	}
+}
+
+// A worker takes runs only from the queues whose workflows it runs: without
+// Google settings, sends stay queued for a worker that has them.
+func TestListenedQueues(t *testing.T) {
+	assert.Equal(t, []string{emailQueue}, listenedQueues(Services{}))
+	assert.Equal(t, []string{emailQueue, googleQueue, googleSendQueue},
+		listenedQueues(Services{AccountRemovals: &fakeRemovals{}, OutgoingMessages: newFakeSends()}))
 }

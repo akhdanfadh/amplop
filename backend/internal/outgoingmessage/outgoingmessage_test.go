@@ -24,6 +24,8 @@ type memoryStorage struct {
 	messages []Message
 	// buildCalls counts calls to build, which run under the account's lock.
 	buildCalls int
+	// deactivated is whether every account's member is deactivated.
+	deactivated bool
 }
 
 func newMemoryStorage() *memoryStorage {

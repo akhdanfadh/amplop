@@ -133,12 +133,12 @@ type NewMessage struct {
 
 // Storage keeps outgoing messages.
 type Storage interface {
-	// InsertOutgoingMessage reads userID's account accountID, keeping it
-	// from being disconnected until the transaction ends, calls build with
-	// it, and saves the message build returns as waiting, in one
-	// transaction. It returns the saved message, or [ErrAccountNotFound]
-	// when userID has no such account. An error from build rolls back and
-	// is returned unchanged.
+	// InsertOutgoingMessage reads userID's account accountID, keeping it from
+	// being disconnected until the transaction ends, calls build with it, and
+	// saves the message build returns as waiting, with the job that sends it, in
+	// one transaction, so no message waits without a job. It returns the saved
+	// message, or [ErrAccountNotFound] when userID has no such account. An error
+	// from build rolls back and is returned unchanged.
 	InsertOutgoingMessage(ctx context.Context, userID, accountID int64, build func(Sender) (NewMessage, error)) (Message, error)
 
 	// ReadOutgoingMessage returns userID's message messageID, or

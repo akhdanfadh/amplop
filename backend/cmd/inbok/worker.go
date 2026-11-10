@@ -14,6 +14,7 @@ import (
 	"inbok/internal/emailverification"
 	"inbok/internal/google"
 	"inbok/internal/meilisearch"
+	"inbok/internal/outgoingmessage"
 	"inbok/internal/passwordreset"
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
@@ -130,6 +131,8 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 			BaseURL:      googleSettings.BaseURL,
 		}, time.Now)
 		services.AccountRemovals = connectedaccount.NewRemovals(db, keys, client)
+		access := connectedaccount.NewAccess(db, keys, client, time.Now)
+		services.OutgoingMessages = outgoingmessage.NewSending(db, access, client, time.Now)
 	}
 	w, err := dbos.NewWorker(url, id, services, logger)
 	if err != nil {

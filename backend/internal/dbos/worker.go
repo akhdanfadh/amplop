@@ -65,6 +65,7 @@ type Services struct {
 	PasswordResetLinks          passwordResetLinks
 	PasswordChangedNotices      passwordChangedNotices
 	AccountRemovals             accountRemovals
+	OutgoingMessages            outgoingMessages
 }
 
 // Worker runs inbok's workflows and schedules.
@@ -121,7 +122,7 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	if err := w.registerCleanup(w.cleanups(services)); err != nil {
 		return nil, errors.Join(fmt.Errorf("schedule cleanup: %w", err), w.Shutdown())
 	}
-	for _, queue := range []string{emailQueue, googleQueue} {
+	for _, queue := range []string{emailQueue, googleQueue, googleSendQueue} {
 		if err := w.registerQueue(queue); err != nil {
 			return nil, errors.Join(fmt.Errorf("register queue %s: %w", queue, err), w.Shutdown())
 		}
@@ -130,6 +131,7 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	w.registerPasswordResetLink(services.PasswordResetLinks)
 	w.registerPasswordChangedNotice(services.PasswordChangedNotices)
 	w.registerAccountRemoval(services.AccountRemovals)
+	w.registerOutgoingMessage(services.OutgoingMessages)
 
 	// 5. Listen only to the queues whose workflows this worker runs. DBOS
 	// listens to every queue by default and claims a run before finding its
@@ -140,11 +142,14 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 }
 
 // listenedQueues returns the queues a worker calling services takes runs
-// from: the Google queue only when it can revoke tokens.
+// from: each Google queue only when it runs that queue's workflows.
 func listenedQueues(services Services) []string {
 	queues := []string{emailQueue}
 	if services.AccountRemovals != nil {
 		queues = append(queues, googleQueue)
+	}
+	if services.OutgoingMessages != nil {
+		queues = append(queues, googleSendQueue)
 	}
 	return queues
 }
