@@ -11,20 +11,30 @@ import (
 	"uuid"
 )
 
-const deleteEarlierMessages = `-- name: DeleteEarlierMessages :exec
+const deleteEarlierMessages = `-- name: DeleteEarlierMessages :execrows
 DELETE FROM messages
-WHERE connected_account_id = $1 AND sync_generation < $2
+WHERE id IN (
+    SELECT earlier.id FROM messages earlier
+    WHERE earlier.connected_account_id = $1
+        AND earlier.sync_generation < $2
+    LIMIT $3
+)
 `
 
 type DeleteEarlierMessagesParams struct {
 	ConnectedAccountID int64
 	SyncGeneration     int32
+	MaxDeleted         int32
 }
 
-// The messages no step of the account's current generation saved.
-func (q *Queries) DeleteEarlierMessages(ctx context.Context, arg DeleteEarlierMessagesParams) error {
-	_, err := q.db.Exec(ctx, deleteEarlierMessages, arg.ConnectedAccountID, arg.SyncGeneration)
-	return err
+// Up to @max_deleted of the messages no step of the account's current
+// generation saved.
+func (q *Queries) DeleteEarlierMessages(ctx context.Context, arg DeleteEarlierMessagesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEarlierMessages, arg.ConnectedAccountID, arg.SyncGeneration, arg.MaxDeleted)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteMessageMailboxes = `-- name: DeleteMessageMailboxes :exec

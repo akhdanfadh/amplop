@@ -207,6 +207,7 @@ type SyncState struct {
 	PagesSynced        int32
 	MessagesSynced     int32
 	Failure            *string
+	FailedAt           *time.Time
 	LastSyncedAt       *time.Time
 }
 

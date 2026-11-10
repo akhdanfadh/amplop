@@ -14,8 +14,8 @@
 -- fills it.
 
 -- Where an account's synchronization stands, one row per account, saved with
--- the account. status is the full sync's, which the member sees; later polls
--- keep it complete and record only their time.
+-- the account. status is the full sync's, which the member sees; polls keep
+-- it complete and record only their time, or their failure.
 --
 -- The account's mailboxes and messages reference this row, not the
 -- account's. A sync write locks this row first, so the foreign key checks of
@@ -34,9 +34,14 @@ CREATE TABLE sync_states (
     sync_generation      integer NOT NULL DEFAULT 0 CHECK (sync_generation >= 0), -- the latest full sync's; 0 before the first
     pages_synced         integer NOT NULL DEFAULT 0 CHECK (pages_synced >= 0), -- of the current full sync, so a repeated page counts once
     messages_synced      integer NOT NULL DEFAULT 0 CHECK (messages_synced >= 0), -- the progress the member sees
+    -- Why the last sync, full or poll, failed, and when; NULL once one
+    -- succeeds. A failed full sync always has one; a complete account keeps a
+    -- failed poll's.
     failure              text CHECK (failure IN ('provider', 'token-unreadable', 'internal')),
+    failed_at            timestamptz,
     last_synced_at       timestamptz, -- when a sync, full or poll, last finished
-    CONSTRAINT sync_states_failure_status CHECK ((status = 'failed') = (failure IS NOT NULL))
+    CONSTRAINT sync_states_failed_failure CHECK (status <> 'failed' OR failure IS NOT NULL),
+    CONSTRAINT sync_states_failure_time CHECK ((failure IS NULL) = (failed_at IS NULL))
 );
 
 -- A mailbox: a Gmail label, or later an IMAP or Outlook folder. role marks

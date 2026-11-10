@@ -94,11 +94,18 @@ func running(generation int) mailsync.SyncState {
 // error, and returns the state it saved.
 func (s syncedMailTest) update(t *testing.T, accountID int64, change mailsync.Change) mailsync.SyncState {
 	t.Helper()
-	saved, err := s.db.UpdateSyncedMail(t.Context(), accountID, func(mailsync.SyncState) (mailsync.Change, error) {
+	return s.write(t, accountID, change).State
+}
+
+// write writes change to accountID's synced mail, failing the test on an
+// error, and returns what it wrote.
+func (s syncedMailTest) write(t *testing.T, accountID int64, change mailsync.Change) mailsync.Written {
+	t.Helper()
+	written, err := s.db.UpdateSyncedMail(t.Context(), accountID, func(mailsync.SyncState) (mailsync.Change, error) {
 		return change, nil
 	})
 	require.NoError(t, err)
-	return saved
+	return written
 }
 
 // withMailboxes gives both accounts [gmailMailboxes].
@@ -346,23 +353,43 @@ func TestSyncedMailDeleteThenSave(t *testing.T) {
 }
 
 func TestSyncedMailDeleteEarlier(t *testing.T) {
-	// Given generation 1 saved two messages, and another account's from
+	// Given generation 1 saved three messages, and another account's from
 	// the same generation number.
 	s := newSyncedMailTest(t).withMailboxes(t)
-	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("gone"), syncedMessage("kept")}})
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{
+		syncedMessage("gone-1"), syncedMessage("gone-2"), syncedMessage("kept"),
+	}})
 	s.update(t, s.other, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("theirs")}})
 	kept := s.messages(t, s.account)["kept"].ID
 
 	// When generation 2 saves one of them in the same change that deletes
-	// the earlier ones.
-	s.update(t, s.account, mailsync.Change{State: running(2), Saved: []mailsync.Message{syncedMessage("kept")}, DeleteEarlier: true})
+	// one earlier message, then deletes up to five more, then more again.
+	first := s.write(t, s.account, mailsync.Change{State: running(2), Saved: []mailsync.Message{syncedMessage("kept")}, DeleteEarlier: 1})
+	afterFirst := len(s.messages(t, s.account))
+	second := s.write(t, s.account, mailsync.Change{State: running(2), DeleteEarlier: 5})
+	third := s.write(t, s.account, mailsync.Change{State: running(2), DeleteEarlier: 5})
 
-	// Then only the one it did not save is gone, and the saved one keeps
-	// its ID.
+	// Then each change deletes at most its number of the ones generation 2
+	// did not save, and says how many; the saved one keeps its ID.
+	assert.Equal(t, []int{1, 1, 0}, []int{first.EarlierDeleted, second.EarlierDeleted, third.EarlierDeleted})
+	assert.Equal(t, 2, afterFirst)
 	saved := s.messages(t, s.account)
 	assert.Equal(t, []string{"kept"}, keys(saved))
 	assert.Equal(t, kept, saved["kept"].ID)
 	assert.Equal(t, []string{"theirs"}, keys(s.messages(t, s.other)))
+}
+
+// A message a change both saves and finds earlier is kept, with its ID:
+// the earlier generations' sweep runs after the change's saves.
+func TestSyncedMailSweepAfterSave(t *testing.T) {
+	s := newSyncedMailTest(t).withMailboxes(t)
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("kept")}})
+	kept := s.messages(t, s.account)["kept"].ID
+
+	written := s.write(t, s.account, mailsync.Change{State: running(2), Saved: []mailsync.Message{syncedMessage("kept")}, DeleteEarlier: 1000})
+
+	assert.Equal(t, 0, written.EarlierDeleted)
+	assert.Equal(t, kept, s.messages(t, s.account)["kept"].ID)
 }
 
 func TestSyncedMailMailboxes(t *testing.T) {
@@ -462,12 +489,38 @@ func TestSyncedMailStateWaiting(t *testing.T) {
 
 func TestSyncedMailStateFailed(t *testing.T) {
 	s := newSyncedMailTest(t)
-	failed := mailsync.SyncState{Status: mailsync.StatusFailed, Generation: 1, Failure: mailsync.FailureTokenUnreadable}
+	at := time.Date(2026, 11, 10, 9, 30, 0, 0, time.UTC)
+	failed := mailsync.SyncState{Status: mailsync.StatusFailed, Generation: 1, Failure: mailsync.FailureTokenUnreadable, FailedAt: &at}
 
-	saved := s.update(t, s.account, mailsync.Change{State: failed})
+	s.update(t, s.account, mailsync.Change{State: failed})
 
-	assert.Equal(t, mailsync.FailureTokenUnreadable, saved.Failure)
-	assert.Equal(t, mailsync.StatusFailed, saved.Status)
+	failed.AccountID = s.account
+	assert.Equal(t, failed, s.state(t))
+}
+
+// A complete account keeps a failed poll's failure: the full sync's status
+// and the last sync's failure are apart.
+func TestSyncedMailStatePollFailed(t *testing.T) {
+	s := newSyncedMailTest(t)
+	at := time.Date(2026, 11, 10, 9, 30, 0, 0, time.UTC)
+	complete := mailsync.SyncState{Status: mailsync.StatusComplete, Position: "4096", Generation: 1, Failure: mailsync.FailureProvider, FailedAt: &at}
+
+	s.update(t, s.account, mailsync.Change{State: complete})
+
+	complete.AccountID = s.account
+	assert.Equal(t, complete, s.state(t))
+}
+
+// state returns the account's saved sync state, read without a change.
+func (s syncedMailTest) state(t *testing.T) mailsync.SyncState {
+	t.Helper()
+	var state mailsync.SyncState
+	_, err := s.db.UpdateSyncedMail(t.Context(), s.account, func(current mailsync.SyncState) (mailsync.Change, error) {
+		state = current
+		return mailsync.Change{State: current}, nil
+	})
+	require.NoError(t, err)
+	return state
 }
 
 // A position comes back as the provider wrote it, and an empty one clears
@@ -585,7 +638,7 @@ func TestSyncedMailDisconnect(t *testing.T) {
 // A disconnect while a write holds the account's sync state waits for the
 // write, then deletes everything: the write's saves lock only rows under the
 // sync state it holds, so neither deadlocks the other.
-func TestSyncedMailDisconnectDuringWrite(t *testing.T) {
+func TestSyncedMailWriteDisconnect(t *testing.T) {
 	s := newSyncedMailTest(t).withMailboxes(t)
 	ctx := t.Context()
 	disconnected := make(chan error, 1)
@@ -618,14 +671,17 @@ func TestSyncedMailDisconnectDuringWrite(t *testing.T) {
 
 func TestSyncedMailChecks(t *testing.T) {
 	s := newSyncedMailTest(t)
+	failedAt := time.Date(2026, 11, 10, 9, 30, 0, 0, time.UTC)
 	for name, change := range map[string]mailsync.Change{
-		"failed without a failure":  {State: mailsync.SyncState{Status: mailsync.StatusFailed, Generation: 1}},
-		"a failure while running":   {State: mailsync.SyncState{Status: mailsync.StatusRunning, Generation: 1, Failure: mailsync.FailureInternal}},
-		"an unknown status":         {State: mailsync.SyncState{Status: "paused"}},
-		"a save before a full sync": {State: mailsync.SyncState{Status: mailsync.StatusWaiting}, Saved: []mailsync.Message{{ProviderID: "m1", ThreadID: "t1"}}},
-		"a message without an ID":   {State: running(1), Saved: []mailsync.Message{{ThreadID: "t1"}}},
-		"a mailbox without an ID":   {State: running(1), Mailboxes: []mailsync.Mailbox{{Name: "INBOX", Role: mailsync.RoleInbox}}},
-		"an unknown role":           {State: running(1), Mailboxes: []mailsync.Mailbox{{ProviderID: "INBOX", Role: "starred"}}},
+		"failed without a failure":   {State: mailsync.SyncState{Status: mailsync.StatusFailed, Generation: 1}},
+		"a failure without its time": {State: mailsync.SyncState{Status: mailsync.StatusRunning, Generation: 1, Failure: mailsync.FailureInternal}},
+		"a time without a failure":   {State: mailsync.SyncState{Status: mailsync.StatusComplete, Generation: 1, FailedAt: &failedAt}},
+		"a negative delete":          {State: running(1), DeleteEarlier: -1},
+		"an unknown status":          {State: mailsync.SyncState{Status: "paused"}},
+		"a save before a full sync":  {State: mailsync.SyncState{Status: mailsync.StatusWaiting}, Saved: []mailsync.Message{{ProviderID: "m1", ThreadID: "t1"}}},
+		"a message without an ID":    {State: running(1), Saved: []mailsync.Message{{ThreadID: "t1"}}},
+		"a mailbox without an ID":    {State: running(1), Mailboxes: []mailsync.Mailbox{{Name: "INBOX", Role: mailsync.RoleInbox}}},
+		"an unknown role":            {State: running(1), Mailboxes: []mailsync.Mailbox{{ProviderID: "INBOX", Role: "starred"}}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := s.db.UpdateSyncedMail(t.Context(), s.account, func(mailsync.SyncState) (mailsync.Change, error) {

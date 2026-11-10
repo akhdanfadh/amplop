@@ -15,18 +15,19 @@ import (
 	"inbok/internal/repository/postgres/sqlc"
 )
 
-// errStateRange means a sync state's generation or count is negative or
-// past what its integer column holds.
+// errStateRange means a sync state's generation or count, or a change's
+// number of earlier messages to delete, is negative or past what an
+// integer column or parameter holds.
 var errStateRange = errors.New("sync state number is out of storage's range")
 
 // UpdateSyncedMail locks accountID's sync state, calls update with it, and
 // writes the change update returns, in one transaction: the mailboxes, the
 // deletes, the saves with their mailboxes, the earlier generations' deletes,
-// and the state. It returns the saved state, [mailsync.ErrNotFound] when the
+// and the state. It returns what it wrote, [mailsync.ErrNotFound] when the
 // account has no sync state, and [mailsync.ErrUnknownMailbox] when a saved
 // message names a mailbox the account does not have.
-func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func(mailsync.SyncState) (mailsync.Change, error)) (mailsync.SyncState, error) {
-	var written mailsync.SyncState
+func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func(mailsync.SyncState) (mailsync.Change, error)) (mailsync.Written, error) {
+	var written mailsync.Written
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 
@@ -50,6 +51,9 @@ func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func
 		state, err := syncStateParams(accountID, change.State)
 		if err != nil {
 			return err
+		}
+		if change.DeleteEarlier < 0 || change.DeleteEarlier > math.MaxInt32 {
+			return errStateRange
 		}
 
 		// 3. Write the mailboxes before the messages that name them.
@@ -75,9 +79,15 @@ func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func
 
 		// 5. Delete what earlier generations saved only after this one's
 		// saves, which keep the messages they name.
-		if change.DeleteEarlier {
-			params := sqlc.DeleteEarlierMessagesParams{ConnectedAccountID: accountID, SyncGeneration: state.SyncGeneration}
-			if err := queries.DeleteEarlierMessages(ctx, params); err != nil {
+		var earlierDeleted int64
+		if change.DeleteEarlier > 0 {
+			params := sqlc.DeleteEarlierMessagesParams{
+				ConnectedAccountID: accountID,
+				SyncGeneration:     state.SyncGeneration,
+				MaxDeleted:         int32(change.DeleteEarlier),
+			}
+			earlierDeleted, err = queries.DeleteEarlierMessages(ctx, params)
+			if err != nil {
 				return fmt.Errorf("delete earlier messages: %w", err)
 			}
 		}
@@ -85,12 +95,13 @@ func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func
 		if err := queries.UpdateSyncState(ctx, state); err != nil {
 			return fmt.Errorf("update sync state: %w", err)
 		}
-		written = change.State
-		written.AccountID = accountID
+		written.State = change.State
+		written.State.AccountID = accountID
+		written.EarlierDeleted = int(earlierDeleted)
 		return nil
 	})
 	if err != nil {
-		return mailsync.SyncState{}, err
+		return mailsync.Written{}, err
 	}
 	return written, nil
 }
@@ -288,6 +299,7 @@ func syncStateParams(accountID int64, state mailsync.SyncState) (sqlc.UpdateSync
 		PagesSynced:        numbers[1],
 		MessagesSynced:     numbers[2],
 		Position:           state.Position,
+		FailedAt:           state.FailedAt,
 		LastSyncedAt:       state.LastSyncedAt,
 	}
 	if state.Failure != "" {
@@ -309,6 +321,10 @@ func syncStateFromRow(row sqlc.LockSyncStateRow) mailsync.SyncState {
 	}
 	if row.Failure != nil {
 		state.Failure = mailsync.Failure(*row.Failure)
+	}
+	if row.FailedAt != nil {
+		at := row.FailedAt.UTC()
+		state.FailedAt = &at
 	}
 	if row.LastSyncedAt != nil {
 		at := row.LastSyncedAt.UTC()

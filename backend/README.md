@@ -2187,14 +2187,17 @@ Four tables hold it, each deleted with its account:
   (account, ID), so PostgreSQL refuses a membership that joins two
   accounts' rows. Deleting a message or a mailbox deletes its rows.
 - `sync_states`: one row per account, with the full sync's `status`
-  (`waiting`, `running`, `complete`, or `failed`, with a `failure` code),
-  its progress, the `position` the next poll asks for changes since, and
-  when a sync last finished. The position is text only the provider's
-  code reads, e.g. Gmail's history ID in decimal, so storage neither
-  parses nor checks it. `mailboxes` and `messages` reference this row
-  rather than the account's, so a disconnect deletes the account, then
-  the sync state, then the mail, the order a sync write locks them in:
-  the two never deadlock.
+  (`waiting`, `running`, `complete`, or `failed`), its progress, the
+  `position` the next poll asks for changes since, and when a sync last
+  finished. `failure` and `failed_at` say why and when the last sync, full
+  or poll, failed, until one succeeds: `provider`, `token-unreadable`, or
+  `internal`. A `failed` full sync always has one, and a `complete` account
+  keeps a failed poll's. The position is text only the provider's code
+  reads, e.g. Gmail's history ID in decimal, so storage neither parses nor
+  checks it. `mailboxes` and `messages` reference this row rather than the
+  account's, so a disconnect deletes the account, then the sync state,
+  then the mail, the order a sync write locks them in: the two never
+  deadlock.
 
 The migration lists, as comments, the columns IMAP and Outlook will need,
 such as a folder's UID validity and a message's UID in each folder.
@@ -2212,9 +2215,10 @@ any other error, e.g. a generation or count past the `integer` columns. A
 feature that must act on the same writes, e.g. indexing them for search,
 adds its job to that transaction. Each full sync starts a sync generation,
 and each message records the generation that last saved it, so a full
-sync that finishes can delete the messages it did not see without
-comparing clocks. Storage keeps one account's writes in order; checking
-that a step's generation is still the current one is the full sync's job.
+sync that finishes can delete the messages it did not see, a batch per
+change, without comparing clocks. Storage keeps one account's writes in
+order; checking that a step's generation is still the current one is the
+full sync's job.
 
 `mailsync.Provider` is what synchronization reads from the provider, and
 the `google` client implements it for Gmail. Every method only reads and

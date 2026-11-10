@@ -46,7 +46,13 @@ DELETE FROM messages
 WHERE connected_account_id = @connected_account_id
     AND provider_message_id = ANY (@provider_message_ids::text[]);
 
--- name: DeleteEarlierMessages :exec
--- The messages no step of the account's current generation saved.
+-- name: DeleteEarlierMessages :execrows
+-- Up to @max_deleted of the messages no step of the account's current
+-- generation saved.
 DELETE FROM messages
-WHERE connected_account_id = @connected_account_id AND sync_generation < @sync_generation;
+WHERE id IN (
+    SELECT earlier.id FROM messages earlier
+    WHERE earlier.connected_account_id = @connected_account_id
+        AND earlier.sync_generation < @sync_generation
+    LIMIT @max_deleted
+);

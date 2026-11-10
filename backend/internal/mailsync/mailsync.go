@@ -125,7 +125,7 @@ const (
 	StatusFailed Status = "failed"
 )
 
-// Failure is why a full sync stopped.
+// Failure is why the last sync, full or poll, failed.
 type Failure string
 
 const (
@@ -155,9 +155,13 @@ type SyncState struct {
 	// MessagesSynced counts the messages it has saved, the progress the
 	// member sees.
 	MessagesSynced int
-	// Failure is why the last full sync stopped; empty unless
-	// [SyncState.Status] is [StatusFailed].
+	// Failure is why the last sync, full or poll, failed; empty once one
+	// succeeds. Never empty when [SyncState.Status] is [StatusFailed]; a
+	// complete account keeps a failed poll's.
 	Failure Failure
+	// FailedAt is when [SyncState.Failure] happened; nil exactly when it is
+	// empty.
+	FailedAt *time.Time
 	// LastSyncedAt is when a sync, full or poll, last finished; nil before
 	// the first.
 	LastSyncedAt *time.Time
@@ -182,10 +186,18 @@ type Change struct {
 	// does not have, or one also in [Change.Saved], is skipped, so a
 	// repeated change keeps a saved message's ID.
 	Deleted []string
-	// DeleteEarlier deletes, after [Change.Saved], the account's messages
-	// that no step of the generation of [Change.State] saved: the provider
-	// no longer lists them.
-	DeleteEarlier bool
+	// DeleteEarlier is how many, at most, of the account's messages that no
+	// step of the generation of [Change.State] saved to delete, after
+	// [Change.Saved]: the provider no longer lists them. 0 deletes none.
+	DeleteEarlier int
+}
+
+// Written is what [Storage.UpdateSyncedMail] wrote.
+type Written struct {
+	// State is the saved sync state.
+	State SyncState
+	// EarlierDeleted counts the messages [Change.DeleteEarlier] deleted.
+	EarlierDeleted int
 }
 
 // Storage keeps synchronized mail.
@@ -193,9 +205,9 @@ type Storage interface {
 	// UpdateSyncedMail locks accountID's sync state, calls update with it, and
 	// writes the [Change] update returns, in one transaction: the mailboxes, then
 	// the deletes, the saves, the earlier generations' deletes, and last the
-	// state. It returns the saved state, [ErrNotFound] when the account has no
+	// state. It returns what it wrote, [ErrNotFound] when the account has no
 	// sync state, and [ErrUnknownMailbox] when a saved message names a mailbox
 	// the account does not have after the change's mailboxes. On any error it
 	// writes nothing; an error from update is returned unchanged.
-	UpdateSyncedMail(ctx context.Context, accountID int64, update func(SyncState) (Change, error)) (SyncState, error)
+	UpdateSyncedMail(ctx context.Context, accountID int64, update func(SyncState) (Change, error)) (Written, error)
 }

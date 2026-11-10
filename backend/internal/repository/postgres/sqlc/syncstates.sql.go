@@ -12,7 +12,7 @@ import (
 
 const lockSyncState = `-- name: LockSyncState :one
 SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,
-    pages_synced, messages_synced, failure, last_synced_at
+    pages_synced, messages_synced, failure, failed_at, last_synced_at
 FROM sync_states
 WHERE connected_account_id = $1
 FOR NO KEY UPDATE
@@ -26,6 +26,7 @@ type LockSyncStateRow struct {
 	PagesSynced        int32
 	MessagesSynced     int32
 	Failure            *string
+	FailedAt           *time.Time
 	LastSyncedAt       *time.Time
 }
 
@@ -42,6 +43,7 @@ func (q *Queries) LockSyncState(ctx context.Context, connectedAccountID int64) (
 		&i.PagesSynced,
 		&i.MessagesSynced,
 		&i.Failure,
+		&i.FailedAt,
 		&i.LastSyncedAt,
 	)
 	return i, err
@@ -55,8 +57,9 @@ UPDATE sync_states SET
     pages_synced = $4,
     messages_synced = $5,
     failure = $6,
-    last_synced_at = $7
-WHERE connected_account_id = $8
+    failed_at = $7,
+    last_synced_at = $8
+WHERE connected_account_id = $9
 `
 
 type UpdateSyncStateParams struct {
@@ -66,6 +69,7 @@ type UpdateSyncStateParams struct {
 	PagesSynced        int32
 	MessagesSynced     int32
 	Failure            *string
+	FailedAt           *time.Time
 	LastSyncedAt       *time.Time
 	ConnectedAccountID int64
 }
@@ -78,6 +82,7 @@ func (q *Queries) UpdateSyncState(ctx context.Context, arg UpdateSyncStateParams
 		arg.PagesSynced,
 		arg.MessagesSynced,
 		arg.Failure,
+		arg.FailedAt,
 		arg.LastSyncedAt,
 		arg.ConnectedAccountID,
 	)
