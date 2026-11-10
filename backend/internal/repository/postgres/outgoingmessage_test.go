@@ -53,7 +53,7 @@ func newOutgoingMessagesTest(t *testing.T) outgoingMessagesTest {
 	require.NoError(t, err)
 	return outgoingMessagesTest{
 		connectedAccountsTest: c,
-		messages:              outgoingmessage.NewService(c.db),
+		messages:              outgoingmessage.NewService(c.db, time.Now),
 		account:               account.ID,
 		otherAccount:          other.ID,
 	}
@@ -137,25 +137,27 @@ func TestOutgoingMessageBuildError(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
 	refused := errors.New("refused")
 
-	_, err := o.db.InsertOutgoingMessage(t.Context(), o.member, o.account, func(outgoingmessage.Sender) (outgoingmessage.NewMessage, error) {
+	_, err := o.db.InsertOutgoingMessage(t.Context(), o.attempt(), o.account, func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
 		return outgoingmessage.NewMessage{}, refused
 	})
 
 	require.ErrorIs(t, err, refused)
 	assert.Equal(t, int64(0), o.countOutgoingMessages(t))
+	assert.Equal(t, int64(0), o.countSendAttempts(t), "a refusal counts no attempt")
 }
 
 func TestOutgoingMessageSender(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
-	var got outgoingmessage.Sender
+	var got outgoingmessage.CreateState
 
-	_, err := o.db.InsertOutgoingMessage(t.Context(), o.member, o.account, func(sender outgoingmessage.Sender) (outgoingmessage.NewMessage, error) {
-		got = sender
+	_, err := o.db.InsertOutgoingMessage(t.Context(), o.attempt(), o.account, func(state outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
+		got = state
 		return outgoingmessage.NewMessage{}, errors.New("stop")
 	})
 
 	require.Error(t, err)
-	assert.Equal(t, outgoingmessage.Sender{ConnectedAccountID: o.account, Email: "alex@example.com"}, got)
+	assert.Equal(t, outgoingmessage.Sender{ConnectedAccountID: o.account, Email: "alex@example.com"}, got.Sender)
+	assert.Empty(t, got.Attempts)
 }
 
 func TestOutgoingMessageNotYours(t *testing.T) {
@@ -279,7 +281,7 @@ func TestOutgoingMessageJob(t *testing.T) {
 // without one.
 func TestOutgoingMessageJobFails(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
-	messages := outgoingmessage.NewService(o.db.WithWorkflows(sendWorkflows{err: errors.New("dbos down")}))
+	messages := outgoingmessage.NewService(o.db.WithWorkflows(sendWorkflows{err: errors.New("dbos down")}), time.Now)
 
 	_, err := messages.Create(t.Context(), o.member, o.draft())
 
@@ -508,4 +510,71 @@ func TestOutgoingLockOrder(t *testing.T) {
 	if connectErr := <-connectDone; connectErr != nil {
 		assert.NotContains(t, connectErr.Error(), "deadlock")
 	}
+}
+
+// attempt returns the member's attempt to send now.
+func (o outgoingMessagesTest) attempt() outgoingmessage.Attempt {
+	now := time.Now().UTC()
+	return outgoingmessage.Attempt{UserID: o.member, At: now, Since: now.Add(-24 * time.Hour)}
+}
+
+// countSendAttempts returns how many send attempts are kept for anyone.
+func (o outgoingMessagesTest) countSendAttempts(t *testing.T) int64 {
+	t.Helper()
+	var count int64
+	require.NoError(t, o.conn.QueryRow(t.Context(), "SELECT count(*) FROM send_attempts").Scan(&count))
+	return count
+}
+
+// The member's attempts are counted across their accounts, kept when an
+// account is disconnected, and those no window counts are deleted.
+func TestOutgoingMessageAttempts(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	old := time.Now().Add(-25 * time.Hour)
+	_, err := o.conn.Exec(t.Context(), "INSERT INTO send_attempts (user_id, created_at) VALUES ($1, $2), ($3, $2)", o.member, old, o.otherMember)
+	require.NoError(t, err)
+	_, err = o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+
+	_, err = o.service.Disconnect(t.Context(), o.member, o.account)
+	require.NoError(t, err)
+
+	var mine, others int64
+	require.NoError(t, o.conn.QueryRow(t.Context(),
+		"SELECT count(*) FILTER (WHERE user_id = $1), count(*) FILTER (WHERE user_id = $2) FROM send_attempts",
+		o.member, o.otherMember).Scan(&mine, &others))
+	assert.Equal(t, int64(1), mine, "the old attempt deleted, the new one kept after the disconnect")
+	assert.Equal(t, int64(1), others, "another member's old attempt waits for their own send")
+}
+
+// Build gets the member's attempts in the window, and not another member's.
+func TestOutgoingAttemptTimes(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	attempt := o.attempt()
+	recent := attempt.At.Add(-time.Hour).Truncate(time.Microsecond)
+	_, err := o.conn.Exec(t.Context(),
+		"INSERT INTO send_attempts (user_id, created_at) VALUES ($1, $2), ($1, $3), ($4, $2)",
+		o.member, recent, attempt.Since, o.otherMember)
+	require.NoError(t, err)
+	var got []time.Time
+
+	_, err = o.db.InsertOutgoingMessage(t.Context(), attempt, o.account, func(state outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
+		got = state.Attempts
+		return outgoingmessage.NewMessage{}, errors.New("stop")
+	})
+
+	require.Error(t, err)
+	require.Len(t, got, 1, "the one at Since no longer counts")
+	assert.True(t, recent.Equal(got[0]))
+}
+
+func TestOutgoingDeactivated(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	_, err := o.conn.Exec(t.Context(), "UPDATE users SET deactivated_at = now() WHERE id = $1", o.member)
+	require.NoError(t, err)
+
+	_, err = o.messages.Create(t.Context(), o.member, o.draft())
+
+	require.ErrorIs(t, err, outgoingmessage.ErrDeactivated)
+	assert.Equal(t, int64(0), o.countOutgoingMessages(t))
 }

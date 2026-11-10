@@ -9,6 +9,8 @@ import (
 	"errors"
 	"time"
 	"uuid"
+
+	"inbok/internal/attemptlimit"
 )
 
 // Errors a caller shows the member. None includes an address or any other
@@ -23,6 +25,28 @@ var (
 	// ErrNeedsReconnect means Google refused the sending account's token,
 	// so nothing is sent from it until the member reconnects it.
 	ErrNeedsReconnect = errors.New("sending account needs reconnecting")
+	// ErrDeactivated means the member was deactivated, so they send nothing.
+	ErrDeactivated = errors.New("sending member is deactivated")
+	// ErrThrottled means the member asked to send too many messages recently;
+	// it comes wrapped in an [*attemptlimit.Error] that says how long to wait.
+	ErrThrottled = errors.New("too many messages sent recently")
+)
+
+// The member's send limit counts every message saved to send, from any of
+// their accounts (ADR006).
+//
+// DESIGN: Gmail limits each account, but not what the members of one
+// instance share: its Google client's quota and standing, and the send
+// queue. A person writing by hand stays far below the short window, while a
+// runaway client is stopped within seconds and then held to 2 a minute. The
+// long window stays under the 500 messages a day Gmail allows a personal
+// account, even all from one account, so one member's loop is stopped
+// before Gmail blocks the account for up to a day, in Gmail itself too. It
+// is no guarantee: Gmail counts the account's mail from every client, and
+// several members may connect one Google account.
+var (
+	shortSendLimit = attemptlimit.Limit{Window: 15 * time.Minute, Max: 30}
+	longSendLimit  = attemptlimit.Limit{Window: 24 * time.Hour, Max: 200}
 )
 
 // Status is how far sending a message has got.
@@ -131,15 +155,42 @@ type NewMessage struct {
 	InbokMessageID string
 }
 
+// Attempt is a member's request to send, which the send limit counts.
+type Attempt struct {
+	UserID int64
+	// At is when the member asked.
+	At time.Time
+	// Since is where the limit's longest window starts: earlier attempts no
+	// longer count.
+	Since time.Time
+}
+
+// CreateState is what storage reads, under the member's lock, for a new
+// message.
+type CreateState struct {
+	Sender Sender
+	// Attempts are the times of the member's attempts after [Attempt.Since].
+	Attempts []time.Time
+}
+
 // Storage keeps outgoing messages.
 type Storage interface {
-	// InsertOutgoingMessage reads userID's account accountID, keeping it from
-	// being disconnected until the transaction ends, calls build with it, and
-	// saves the message build returns as waiting, with the job that sends it, in
-	// one transaction, so no message waits without a job. It returns the saved
-	// message, or [ErrAccountNotFound] when userID has no such account. An error
-	// from build rolls back and is returned unchanged.
-	InsertOutgoingMessage(ctx context.Context, userID, accountID int64, build func(Sender) (NewMessage, error)) (Message, error)
+	// InsertOutgoingMessage, in one transaction:
+	//  1. locks the member attempt.UserID, so their attempts are counted one
+	//     at a time, returning [ErrDeactivated] when they are deactivated;
+	//  2. reads the member's account accountID, keeping it from being
+	//     disconnected until the transaction ends, or returns
+	//     [ErrAccountNotFound];
+	//  3. calls build with the account and the member's attempts after
+	//     attempt.Since;
+	//  4. saves the message build returns as waiting, with the job that sends
+	//     it, so no message waits without a job, and an attempt at
+	//     attempt.At, deleting the member's attempts at or before
+	//     attempt.Since.
+	//
+	// It returns the saved message. An error from build rolls back and is
+	// returned unchanged.
+	InsertOutgoingMessage(ctx context.Context, attempt Attempt, accountID int64, build func(CreateState) (NewMessage, error)) (Message, error)
 
 	// ReadOutgoingMessage returns userID's message messageID, or
 	// [ErrNotFound] when userID has no such message.
@@ -149,19 +200,22 @@ type Storage interface {
 // Service applies the rules for outgoing messages.
 type Service struct {
 	storage Storage
+	now     func() time.Time
 }
 
-// NewService supplies storage.
-func NewService(storage Storage) *Service {
-	return &Service{storage: storage}
+// NewService supplies storage and the clock the send limit counts by.
+func NewService(storage Storage, now func() time.Time) *Service {
+	return &Service{storage: storage, now: now}
 }
 
 // Create saves draft as userID's message, waiting to be sent, and returns it.
+//
 // It returns [ErrAccountNotFound] when userID has no account
 // draft.ConnectedAccountID, [ErrNeedsReconnect] when that account needs a
-// reconnect, and the content errors of [Content]'s rules: [ErrNoRecipients],
-// a [*TooManyRecipientsError], a [*RecipientError], [ErrSubjectInvalid], or
-// [ErrBodyInvalid].
+// reconnect, [ErrDeactivated], an [*attemptlimit.Error] wrapping
+// [ErrThrottled], and the content errors of [Content]'s rules:
+// [ErrNoRecipients], a [*TooManyRecipientsError], a [*RecipientError],
+// [ErrSubjectInvalid], or [ErrBodyInvalid].
 func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Message, error) {
 	// 1. Refuse content that cannot be sent before any storage.
 	content, err := parseContent(draft.Content)
@@ -169,17 +223,11 @@ func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Messag
 		return Message{}, err
 	}
 
-	// 2. With the account held, refuse one Google refused, and save.
-	return s.storage.InsertOutgoingMessage(ctx, userID, draft.ConnectedAccountID, func(sender Sender) (NewMessage, error) {
-		// A send would only fail, so the member hears it now and reconnects.
-		if sender.NeedsReconnect {
-			return NewMessage{}, ErrNeedsReconnect
-		}
-		messageID, err := newMessageID(sender.Email)
-		if err != nil {
-			return NewMessage{}, err
-		}
-		return NewMessage{From: sender.Email, Content: content, InbokMessageID: messageID}, nil
+	// 2. With the member and account held, refuse what would only fail or
+	// go over the limit, and save.
+	attempt := s.attempt(userID)
+	return s.storage.InsertOutgoingMessage(ctx, attempt, draft.ConnectedAccountID, func(state CreateState) (NewMessage, error) {
+		return newMessage(state.Sender, state.Attempts, attempt.At, content)
 	})
 }
 
@@ -187,4 +235,29 @@ func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Messag
 // no such message.
 func (s *Service) Get(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
 	return s.storage.ReadOutgoingMessage(ctx, userID, messageID)
+}
+
+// attempt returns userID's attempt to send now.
+func (s *Service) attempt(userID int64) Attempt {
+	now := s.now().UTC()
+	return Attempt{UserID: userID, At: now, Since: now.Add(-longSendLimit.Window)}
+}
+
+// newMessage returns content as a message to save from sender, or
+// [ErrNeedsReconnect] when Google refused sender's token, or an
+// [*attemptlimit.Error] wrapping [ErrThrottled] when the member's attempts
+// leave no room at now.
+func newMessage(sender Sender, attempts []time.Time, now time.Time, content Content) (NewMessage, error) {
+	// A send would only fail, so the member hears it now and reconnects.
+	if sender.NeedsReconnect {
+		return NewMessage{}, ErrNeedsReconnect
+	}
+	if wait := attemptlimit.Wait(attempts, now, shortSendLimit, longSendLimit); wait > 0 {
+		return NewMessage{}, &attemptlimit.Error{Err: ErrThrottled, Wait: wait}
+	}
+	messageID, err := newMessageID(sender.Email)
+	if err != nil {
+		return NewMessage{}, err
+	}
+	return NewMessage{From: sender.Email, Content: content, InbokMessageID: messageID}, nil
 }

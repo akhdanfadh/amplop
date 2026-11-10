@@ -2054,12 +2054,25 @@ stored once, and a disconnect deletes the account's messages with it.
   control character, and a body of at most 100,000 characters without NUL.
   Both may be empty.
 
-It then reads the account under a key share lock, so a disconnect waits and
-then deletes the message too. Another member's account, or a missing one,
-is `ErrAccountNotFound`, and one Google refused is `ErrNeedsReconnect`.
-The message gets an ID on the account's domain and is saved as
-`waiting`, with its [send job](#sending-a-message). A message moves through
-`waiting`, `sending`, then `sent`, `failed` with a reason (`refused`,
+It then saves in one transaction (`InsertOutgoingMessage`), in this order:
+
+1. It locks the member's `users` row, as a Gmail connect does, so one
+   member's sends are counted one at a time. A deactivated member is
+   `ErrDeactivated`.
+2. It reads the account under a key share lock, so a disconnect waits and
+   then deletes the message too. Another member's account, or a missing
+   one, is `ErrAccountNotFound`, and one Google refused is
+   `ErrNeedsReconnect`.
+3. The member's send limit, 30 per 15 minutes and 200 per 24 hours across
+   their accounts, counts `send_attempts` rows (the member and a time, no
+   content). They are kept apart from `outgoing_messages`, whose rows go
+   with their account, so a disconnect does not reset the count; a send
+   deletes the member's rows older than 24 hours. Over the limit is an
+   `*attemptlimit.Error` wrapping `ErrThrottled`.
+
+The message gets an ID on the account's domain and is saved as `waiting`
+with its attempt and its [send job](#sending-a-message). A message moves
+through `waiting`, `sending`, then `sent`, `failed` with a reason (`refused`,
 `sending-limit`, `needs-reconnect`, `token-unreadable`, `deactivated`,
 `sender-changed`, or `gave-up`), or `unknown` when a send may have reached
 Gmail and no answer or check says whether.

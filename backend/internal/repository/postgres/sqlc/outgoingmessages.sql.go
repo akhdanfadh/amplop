@@ -12,6 +12,21 @@ import (
 	"uuid"
 )
 
+const deleteOldSendAttempts = `-- name: DeleteOldSendAttempts :exec
+DELETE FROM send_attempts WHERE user_id = $1 AND created_at <= $2
+`
+
+type DeleteOldSendAttemptsParams struct {
+	UserID int64
+	Since  time.Time
+}
+
+// The member's attempts no window counts any more.
+func (q *Queries) DeleteOldSendAttempts(ctx context.Context, arg DeleteOldSendAttemptsParams) error {
+	_, err := q.db.Exec(ctx, deleteOldSendAttempts, arg.UserID, arg.Since)
+	return err
+}
+
 const insertOutgoingMessage = `-- name: InsertOutgoingMessage :one
 INSERT INTO outgoing_messages (connected_account_id, from_address,
     to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id)
@@ -51,6 +66,50 @@ func (q *Queries) InsertOutgoingMessage(ctx context.Context, arg InsertOutgoingM
 	var i InsertOutgoingMessageRow
 	err := row.Scan(&i.ID, &i.Status, &i.CreatedAt)
 	return i, err
+}
+
+const insertSendAttempt = `-- name: InsertSendAttempt :exec
+INSERT INTO send_attempts (user_id, created_at) VALUES ($1, $2)
+`
+
+type InsertSendAttemptParams struct {
+	UserID    int64
+	CreatedAt time.Time
+}
+
+func (q *Queries) InsertSendAttempt(ctx context.Context, arg InsertSendAttemptParams) error {
+	_, err := q.db.Exec(ctx, insertSendAttempt, arg.UserID, arg.CreatedAt)
+	return err
+}
+
+const listSendAttemptTimes = `-- name: ListSendAttemptTimes :many
+SELECT created_at FROM send_attempts
+WHERE user_id = $1 AND created_at > $2
+`
+
+type ListSendAttemptTimesParams struct {
+	UserID int64
+	Since  time.Time
+}
+
+func (q *Queries) ListSendAttemptTimes(ctx context.Context, arg ListSendAttemptTimesParams) ([]time.Time, error) {
+	rows, err := q.db.Query(ctx, listSendAttemptTimes, arg.UserID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []time.Time
+	for rows.Next() {
+		var created_at time.Time
+		if err := rows.Scan(&created_at); err != nil {
+			return nil, err
+		}
+		items = append(items, created_at)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockOutgoingMessage = `-- name: LockOutgoingMessage :one
@@ -125,6 +184,21 @@ func (q *Queries) LockOutgoingMessageSender(ctx context.Context, arg LockOutgoin
 	var i LockOutgoingMessageSenderRow
 	err := row.Scan(&i.ID, &i.Email, &i.NeedsReconnect)
 	return i, err
+}
+
+const lockSendingMember = `-- name: LockSendingMember :one
+SELECT (deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM users WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// Serializes a member's sends, so the limit counts every attempt, and reads
+// whether a deactivation committed first. No key column changes, so
+// rows referencing the user need not wait.
+func (q *Queries) LockSendingMember(ctx context.Context, userID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, lockSendingMember, userID)
+	var deactivated bool
+	err := row.Scan(&deactivated)
+	return deactivated, err
 }
 
 const readOutgoingMessage = `-- name: ReadOutgoingMessage :one

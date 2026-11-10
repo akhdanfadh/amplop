@@ -7,6 +7,24 @@ FROM connected_accounts
 WHERE id = @id AND user_id = @user_id
 FOR KEY SHARE;
 
+-- name: LockSendingMember :one
+-- Serializes a member's sends, so the limit counts every attempt, and reads
+-- whether a deactivation committed first. No key column changes, so
+-- rows referencing the user need not wait.
+SELECT (deactivated_at IS NOT NULL)::boolean AS deactivated
+FROM users WHERE id = @user_id FOR NO KEY UPDATE;
+
+-- name: ListSendAttemptTimes :many
+SELECT created_at FROM send_attempts
+WHERE user_id = @user_id AND created_at > @since;
+
+-- name: InsertSendAttempt :exec
+INSERT INTO send_attempts (user_id, created_at) VALUES (@user_id, @created_at);
+
+-- name: DeleteOldSendAttempts :exec
+-- The member's attempts no window counts any more.
+DELETE FROM send_attempts WHERE user_id = @user_id AND created_at <= @since;
+
 -- name: InsertOutgoingMessage :one
 INSERT INTO outgoing_messages (connected_account_id, from_address,
     to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id)

@@ -127,6 +127,12 @@ type RegistrationLink struct {
 	ExpiresAt time.Time
 }
 
+type SendAttempt struct {
+	ID        int64
+	UserID    int64
+	CreatedAt time.Time
+}
+
 type Session struct {
 	TokenHash    []byte
 	UserID       int64
