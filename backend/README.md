@@ -935,7 +935,11 @@ uses a small `httptest` stub instead:
 - Its revocation endpoint answers 200 for any token, where Google
   answers 400 `invalid_token` for one it does not know.
 - `history.list` never answers 404 for an old history ID, and nothing
-  returns quota errors.
+  returns quota errors. A deletion reaches history only by deleting a
+  message for good, which needs a wider scope than inbok's.
+- `messages.get` matches `metadataHeaders` only as written, e.g.
+  `Message-ID`, and its snippets carry no HTML escaping unless a seed
+  sets one.
 - `messages.send` keeps the `Message-ID` a client sets, where Gmail
   replaces it with its own (tested 2026-11-09), and it never times out
   or drops a send, so the [send job](#sending-a-message)'s answers and
@@ -2151,11 +2155,12 @@ choices.
 
 `mailsync` keeps a copy of each connected account's recent mail metadata
 and mailboxes, as ADR001 in the project's decision records decides; the
-provider stays authoritative. ADR001's "Synchronization rules" lists what
-synchronization does and where each rule comes from. So far only its
-storage exists; nothing synchronizes yet. The model follows JMAP Mail (RFC 8621), which covers
-both folders and Gmail labels, so the features that read mail never see
-Gmail's own encoding. Four tables hold it, each deleted with its account:
+provider stays authoritative. ADR001's "Synchronization rules" lists
+what synchronization does and where each rule comes from. So far its
+storage and its reads from Gmail exist; nothing synchronizes yet. The
+model follows JMAP Mail (RFC 8621), which covers both folders and Gmail
+labels, so the features that read mail never see Gmail's own encoding.
+Four tables hold it, each deleted with its account:
 
 - `mailboxes`: an account's Gmail labels, or later its folders, with the
   provider's ID, its name as received (a nested Gmail label is one name
@@ -2204,6 +2209,54 @@ and each message records the generation that last saved it, so a full
 sync that finishes can delete the messages it did not see without
 comparing clocks. Storage keeps one account's writes in order; checking
 that a step's generation is still the current one is the full sync's job.
+
+`mailsync.Provider` is what synchronization reads from the provider, and
+the `google` client implements it for Gmail. Every method only reads and
+takes an access token from [Calling Gmail](#calling-gmail):
+
+- `Mailboxes` lists the labels as mailboxes, `HistoryID` returns the
+  mailbox's current history ID (`users.getProfile`), and `ListMessages`
+  returns one page of 100 message IDs received after a time, newest
+  first, with or without Spam and Trash.
+- `Messages` fetches metadata (`messages.get` in `metadata` format) for
+  a page of IDs. Gmail's rules stay in `google`: `UNREAD` and `STARRED`
+  become `seen` and `flagged`, the other labels mailboxes, and the
+  snippet loses Gmail's HTML escaping. Headers are decoded with
+  go-message: RFC 2047 encoded words in any charset it knows, quoted
+  display names included, and address lists with groups. A list that
+  does not parse is mended as enmime does (white space inside `<...>`, a
+  missing comma), then parsed entry by entry, an entry that is no
+  address kept as its text. Msg-ids are read leniently, past phrases and
+  comments and across a fold, keeping their angle brackets. A message
+  Gmail no longer has comes back as gone.
+- `Changes` reads one page of `history.list` since a history ID: a
+  message added or relabelled is changed, to fetch again, and one
+  deleted is only deleted. Gmail's 404 for a history ID it no longer
+  keeps returns `mailsync.ErrHistoryExpired`, which means a full sync.
+
+What a sender writes is bounded: each Gmail answer at 4 MiB, and each
+header at 16 KiB, cut on a whole character before it is parsed; a
+longer `References` is read only at its first and last 8 KiB. Of what
+parses, each address list keeps 500 entries and `References` 50 msg-ids,
+the first and the last 49. Invalid UTF-8 and NUL, which PostgreSQL's
+`text` and `jsonb` refuse, become U+FFFD in every stored string. A
+message whose headers pass 4 MiB is fetched again without them. None of
+these can make a message fail to save, which would stop the account's
+sync.
+
+Gmail allows 6,000 quota units a minute per user, and a metadata fetch
+costs 20. An account's `Messages` calls spend at most four fifths of
+that, four fetches a second across calls, with at most four of a call in
+flight, leaving room for the same account's sends and polls. The pace is
+the process's own; one sync per account at a time keeps it whole. Each
+`Provider` call retries a 429, a 403 rate limit, a 500, 502, 503, or
+504, or a timeout after 1, 2, 4, and 8 seconds, each plus up to a second
+at random, or after the `Retry-After` Gmail sends; past five attempts,
+or for a `Retry-After` over 32 seconds, it returns
+`mailsync.ErrProviderBusy` for the job to try later. Errors keep only
+Gmail's status, never its text, and an answer that does not decode fails
+without quoting it. The Google client's own logging is off, since at
+`GOOGLE_SDK_GO_LOGGING_LEVEL=debug` it would log whole answers.
 
 ## Search index
 
@@ -2446,6 +2499,7 @@ httpapi --> connectedaccount <-- repository/postgres
             outgoingmessage <-- repository/postgres
                             <-- google
             mailsync <-- repository/postgres
+                     <-- google
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google
@@ -2488,9 +2542,10 @@ httpapi --> messagecontent <-- s3
 - `google`, like `smtp`, is a technology package: it implements the
   Google side `connectedaccount` declares for its connect flow, its token
   access, and its revocations: the OAuth client, the ID token checks, the
-  refresh token trade, revocation, and Gmail's `users.getProfile`; and
+  refresh token trade, revocation, and Gmail's `users.getProfile`;
   `outgoingmessage`'s `Provider`: `messages.send` and the check after an
-  unanswered send. It uses `golang.org/x/oauth2` and Google's Gmail
+  unanswered send; and `mailsync`'s `Provider`, the Gmail reads
+  synchronization makes. It uses `golang.org/x/oauth2` and Google's Gmail
   client, whose types stay inside it; Gmail calls take
   `connectedaccount`'s `AccessToken`. It also turns a Gmail message's
   parts into `messagecontent.Received`, the provider-neutral input of
@@ -2682,6 +2737,10 @@ Build `Access` in `cmd/inbok/worker.go` only when a Google client is
 configured, as `connectedaccount.Removals` is, so the job's field in
 `dbos.Services` stays nil otherwise: a nil `*Access` stored in it would
 pass the worker's nil check.
+
+The `mailsync.Provider` methods back off Gmail's rate limits themselves,
+as [Synchronized mail](#synchronized-mail) describes, and return
+`mailsync.ErrProviderBusy` once the retries run out.
 
 Keep the token out of a step's output: DBOS saves outputs in the
 database. `AccessToken` saves as `{}` in JSON and prints as a
