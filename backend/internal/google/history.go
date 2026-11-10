@@ -2,7 +2,9 @@ package google
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 
 	"google.golang.org/api/gmail/v1"
 
@@ -20,13 +22,23 @@ const (
 		"labelsAdded/message/id,labelsRemoved/message/id),historyId,nextPageToken"
 )
 
-// Changes returns one page of the mailbox's changes since historyID, from
-// history.list: a message added or with labels added or removed is
-// changed, and one deleted is deleted, whatever else happened to it. It
-// returns an error wrapping [mailsync.ErrHistoryExpired] when Gmail no
-// longer keeps history that old, which it answers with 404 (Gmail's
-// "Synchronize clients with Gmail" guide).
-func (c *Client) Changes(ctx context.Context, token connectedaccount.AccessToken, historyID uint64, pageToken string) (mailsync.ChangePage, error) {
+// errUnreadablePosition means a position is not a history ID
+// [Client.Position] wrote.
+var errUnreadablePosition = errors.New("position is not a gmail history id")
+
+// Changes returns one page of the account's changes since position, a history
+// ID, from history.list: a message added or with labels added or removed is
+// changed, and one deleted is deleted, whatever else happened to it. It returns
+// an error wrapping [mailsync.ErrPositionExpired] when position is not a
+// history ID, or when Gmail no longer keeps history that old, which it answers
+// with 404 (Gmail's "Synchronize clients with Gmail" guide).
+func (c *Client) Changes(ctx context.Context, token connectedaccount.AccessToken, position string, pageToken string) (mailsync.ChangePage, error) {
+	historyID, err := strconv.ParseUint(position, 10, 64)
+	if err != nil {
+		// Only a full sync replaces a position Gmail cannot read; the error
+		// leaves the text out.
+		return mailsync.ChangePage{}, fmt.Errorf("%w: %w", mailsync.ErrPositionExpired, errUnreadablePosition)
+	}
 	service, err := c.gmail(ctx, token)
 	if err != nil {
 		return mailsync.ChangePage{}, err
@@ -42,13 +54,13 @@ func (c *Client) Changes(ctx context.Context, token connectedaccount.AccessToken
 		return call.Context(ctx).Do()
 	})
 	if isNotFound(err) {
-		return mailsync.ChangePage{}, fmt.Errorf("%w: %w", mailsync.ErrHistoryExpired, redactGmail(err))
+		return mailsync.ChangePage{}, fmt.Errorf("%w: %w", mailsync.ErrPositionExpired, redactGmail(err))
 	}
 	if err != nil {
 		return mailsync.ChangePage{}, redactGmail(err)
 	}
 
-	page := mailsync.ChangePage{HistoryID: list.HistoryId, NextPageToken: list.NextPageToken}
+	page := mailsync.ChangePage{Position: formatHistoryID(list.HistoryId), NextPageToken: list.NextPageToken}
 
 	// 1. Collect every record's messages: those added or relabelled, to
 	// fetch again, and those deleted.
@@ -91,6 +103,12 @@ func (c *Client) Changes(ctx context.Context, token connectedaccount.AccessToken
 		}
 	}
 	return page, nil
+}
+
+// formatHistoryID returns historyID as a position: Gmail's discovery
+// document types it as an unsigned 64-bit integer, sent as decimal text.
+func formatHistoryID(historyID uint64) string {
+	return strconv.FormatUint(historyID, 10)
 }
 
 // appendMessageID appends m's ID to ids, unless m has none.

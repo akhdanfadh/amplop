@@ -97,10 +97,10 @@ func TestRetryRefusals(t *testing.T) {
 			handler, calls := profileAfter(2, tc.refuse)
 			client, p := stubGmail(t, handler)
 
-			historyID, err := client.HistoryID(t.Context(), stubToken)
+			position, err := client.Position(t.Context(), stubToken)
 
 			require.NoError(t, err)
-			assert.Equal(t, uint64(42), historyID)
+			assert.Equal(t, "42", position)
 			assert.Equal(t, int32(3), calls.Load())
 			waits := p.all()
 			require.Len(t, waits, 2)
@@ -119,7 +119,7 @@ func TestRetryNotRetried(t *testing.T) {
 			handler, calls := profileAfter(1, func(w http.ResponseWriter) { refuse(w, http.StatusForbidden, reason) })
 			client, p := stubGmail(t, handler)
 
-			_, err := client.HistoryID(t.Context(), stubToken)
+			_, err := client.Position(t.Context(), stubToken)
 
 			require.Error(t, err)
 			require.NotErrorIs(t, err, mailsync.ErrProviderBusy)
@@ -139,7 +139,7 @@ func TestRetryBusy(t *testing.T) {
 	})
 	client, p := stubGmail(t, handler)
 
-	_, err := client.HistoryID(t.Context(), stubToken)
+	_, err := client.Position(t.Context(), stubToken)
 
 	require.ErrorIs(t, err, mailsync.ErrProviderBusy)
 	assert.Contains(t, err.Error(), "429")
@@ -176,7 +176,7 @@ func TestRetryAfter(t *testing.T) {
 			})
 			client, p := stubGmail(t, handler)
 
-			_, err := client.HistoryID(t.Context(), stubToken)
+			_, err := client.Position(t.Context(), stubToken)
 
 			if tc.busy {
 				require.ErrorIs(t, err, mailsync.ErrProviderBusy)
@@ -202,7 +202,7 @@ func TestRetryCancelled(t *testing.T) {
 		return context.Canceled
 	}
 
-	_, err := client.HistoryID(ctx, stubToken)
+	_, err := client.Position(ctx, stubToken)
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Equal(t, int32(1), calls.Load())

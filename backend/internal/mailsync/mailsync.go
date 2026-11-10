@@ -142,9 +142,10 @@ const (
 type SyncState struct {
 	AccountID int64
 	Status    Status
-	// HistoryID is the provider's position the next poll asks for changes
-	// since, e.g. Gmail's history ID; nil before a full sync records one.
-	HistoryID *uint64
+	// Position is where the account stood at the provider when last read,
+	// which the next poll asks for changes since: text only the [Provider]
+	// reads, e.g. Gmail's history ID. Empty before a full sync records one.
+	Position string
 	// Generation numbers the account's full syncs from 1; 0 before the first
 	// starts. Each message records the generation that last saved it.
 	Generation int

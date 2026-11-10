@@ -54,20 +54,20 @@ const (
 	profileFields  = "historyId"
 )
 
-// HistoryID returns the mailbox's current history ID, from
-// users.getProfile.
-func (c *Client) HistoryID(ctx context.Context, token connectedaccount.AccessToken) (uint64, error) {
+// Position returns the account's current history ID, from
+// users.getProfile, as decimal text.
+func (c *Client) Position(ctx context.Context, token connectedaccount.AccessToken) (string, error) {
 	service, err := c.gmail(ctx, token)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 	profile, err := retry(ctx, c, func() (*gmail.Profile, error) {
 		return service.Users.GetProfile("me").Fields(profileFields).Context(ctx).Do()
 	})
 	if err != nil {
-		return 0, redactGmail(err)
+		return "", redactGmail(err)
 	}
-	return profile.HistoryId, nil
+	return formatHistoryID(profile.HistoryId), nil
 }
 
 // ListMessages returns one page of the account's messages Gmail received

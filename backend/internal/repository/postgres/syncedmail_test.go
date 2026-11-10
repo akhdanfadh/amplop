@@ -6,6 +6,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -86,8 +87,7 @@ func syncedMessage(providerID string) mailsync.Message {
 
 // running is the state of a full sync of generation that has started.
 func running(generation int) mailsync.SyncState {
-	historyID := uint64(4096)
-	return mailsync.SyncState{Status: mailsync.StatusRunning, HistoryID: &historyID, Generation: generation}
+	return mailsync.SyncState{Status: mailsync.StatusRunning, Position: "4096", Generation: generation}
 }
 
 // update writes change to accountID's synced mail, failing the test on an
@@ -423,12 +423,11 @@ func TestSyncedMailMailboxesEmpty(t *testing.T) {
 
 func TestSyncedMailState(t *testing.T) {
 	s := newSyncedMailTest(t)
-	historyID := uint64(math.MaxInt64)
 	at := time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC)
 	complete := mailsync.SyncState{
 		AccountID:      s.other, // ignored
 		Status:         mailsync.StatusComplete,
-		HistoryID:      &historyID,
+		Position:       "18446744073709551615",
 		Generation:     3,
 		PagesSynced:    7,
 		MessagesSynced: 640,
@@ -471,10 +470,17 @@ func TestSyncedMailStateFailed(t *testing.T) {
 	assert.Equal(t, mailsync.StatusFailed, saved.Status)
 }
 
-func TestSyncedMailHistoryIDRange(t *testing.T) {
+// A position comes back as the provider wrote it, and an empty one clears
+// it.
+func TestSyncedMailPosition(t *testing.T) {
 	s := newSyncedMailTest(t)
-	for _, historyID := range []uint64{0, math.MaxInt64 + 1, math.MaxUint64} {
-		state := mailsync.SyncState{Status: mailsync.StatusRunning, HistoryID: &historyID, Generation: 1}
+	for _, position := range []string{
+		"0",
+		`{"INBOX":{"uidvalidity":3857529045,"highestmodseq":90060115205545359}}`,
+		"https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=" + strings.Repeat("x", 2048),
+		"",
+	} {
+		state := mailsync.SyncState{Status: mailsync.StatusRunning, Position: position, Generation: 1}
 
 		s.update(t, s.account, mailsync.Change{State: state})
 
@@ -484,8 +490,7 @@ func TestSyncedMailHistoryIDRange(t *testing.T) {
 			return mailsync.Change{State: current}, nil
 		})
 		require.NoError(t, err)
-		require.NotNil(t, seen.HistoryID)
-		assert.Equal(t, historyID, *seen.HistoryID)
+		assert.Equal(t, position, seen.Position)
 	}
 }
 

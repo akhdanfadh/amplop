@@ -101,7 +101,7 @@ func TestGmailTooLarge(t *testing.T) {
 		_, _ = w.Write([]byte(`{"historyId":"42","emailAddress":"` + strings.Repeat("a", maxResponseBytes) + `"}`))
 	})
 
-	_, err := client.HistoryID(t.Context(), stubToken)
+	_, err := client.Position(t.Context(), stubToken)
 
 	require.ErrorIs(t, err, errResponseTooLarge)
 }
@@ -113,7 +113,7 @@ func TestGmailMalformed(t *testing.T) {
 		_, _ = w.Write([]byte(`{"historyId":"private-marker"}`))
 	})
 
-	_, err := client.HistoryID(t.Context(), stubToken)
+	_, err := client.Position(t.Context(), stubToken)
 
 	require.ErrorIs(t, err, errGmailAnswer)
 	assert.NotContains(t, err.Error(), "private-marker")
@@ -133,7 +133,7 @@ func TestGmailNoDebugLog(t *testing.T) {
 		_, _ = w.Write([]byte(`{"historyId":"42","emailAddress":"private-marker"}`))
 	})
 
-	_, err = client.HistoryID(t.Context(), stubToken)
+	_, err = client.Position(t.Context(), stubToken)
 	require.NoError(t, err)
 	os.Stderr = stderr
 	require.NoError(t, write.Close())

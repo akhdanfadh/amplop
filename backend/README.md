@@ -2185,10 +2185,10 @@ Four tables hold it, each deleted with its account:
   accounts' rows. Deleting a message or a mailbox deletes its rows.
 - `sync_states`: one row per account, with the full sync's `status`
   (`waiting`, `running`, `complete`, or `failed`, with a `failure` code),
-  its progress, the Gmail `history_id` the next poll starts from, and
-  when a sync last finished. Gmail's history IDs are unsigned 64-bit, past
-  `bigint`'s range, so the column is `numeric(20,0)` and queries pass it
-  as decimal text.
+  its progress, the `position` the next poll asks for changes since, and
+  when a sync last finished. The position is text only the provider's
+  code reads, e.g. Gmail's history ID in decimal, so storage neither
+  parses nor checks it.
 
 The migration lists, as comments, the columns IMAP and Outlook will need,
 such as a folder's UID validity and a message's UID in each folder.
@@ -2214,8 +2214,8 @@ that a step's generation is still the current one is the full sync's job.
 the `google` client implements it for Gmail. Every method only reads and
 takes an access token from [Calling Gmail](#calling-gmail):
 
-- `Mailboxes` lists the labels as mailboxes, `HistoryID` returns the
-  mailbox's current history ID (`users.getProfile`), and `ListMessages`
+- `Mailboxes` lists the labels as mailboxes, `Position` returns the
+  account's current history ID (`users.getProfile`), and `ListMessages`
   returns one page of 100 message IDs received after a time, newest
   first, with or without Spam and Trash.
 - `Messages` fetches metadata (`messages.get` in `metadata` format) for
@@ -2229,10 +2229,11 @@ takes an access token from [Calling Gmail](#calling-gmail):
   address kept as its text. Msg-ids are read leniently, past phrases and
   comments and across a fold, keeping their angle brackets. A message
   Gmail no longer has comes back as gone.
-- `Changes` reads one page of `history.list` since a history ID: a
+- `Changes` reads one page of `history.list` since a position: a
   message added or relabelled is changed, to fetch again, and one
   deleted is only deleted. Gmail's 404 for a history ID it no longer
-  keeps returns `mailsync.ErrHistoryExpired`, which means a full sync.
+  keeps returns `mailsync.ErrPositionExpired`, which means a full sync;
+  so does a position that is not a history ID, without asking Gmail.
 
 What a sender writes is bounded: each Gmail answer at 4 MiB, and each
 header at 16 KiB, cut on a whole character before it is parsed; a

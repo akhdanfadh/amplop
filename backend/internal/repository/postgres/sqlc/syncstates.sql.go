@@ -11,7 +11,7 @@ import (
 )
 
 const lockSyncState = `-- name: LockSyncState :one
-SELECT connected_account_id, status, coalesce(history_id::text, '')::text AS history_id, sync_generation,
+SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,
     pages_synced, messages_synced, failure, last_synced_at
 FROM sync_states
 WHERE connected_account_id = $1
@@ -21,7 +21,7 @@ FOR NO KEY UPDATE
 type LockSyncStateRow struct {
 	ConnectedAccountID int64
 	Status             string
-	HistoryID          string
+	Position           string
 	SyncGeneration     int32
 	PagesSynced        int32
 	MessagesSynced     int32
@@ -29,8 +29,7 @@ type LockSyncStateRow struct {
 	LastSyncedAt       *time.Time
 }
 
-// The history ID travels as decimal text, empty for none: pgx has no Go
-// integer for numeric, and Gmail's need all 64 unsigned bits.
+// The position travels as text, empty for none.
 // No key column changes, so foreign key checks on the row need not wait.
 func (q *Queries) LockSyncState(ctx context.Context, connectedAccountID int64) (LockSyncStateRow, error) {
 	row := q.db.QueryRow(ctx, lockSyncState, connectedAccountID)
@@ -38,7 +37,7 @@ func (q *Queries) LockSyncState(ctx context.Context, connectedAccountID int64) (
 	err := row.Scan(
 		&i.ConnectedAccountID,
 		&i.Status,
-		&i.HistoryID,
+		&i.Position,
 		&i.SyncGeneration,
 		&i.PagesSynced,
 		&i.MessagesSynced,
@@ -51,7 +50,7 @@ func (q *Queries) LockSyncState(ctx context.Context, connectedAccountID int64) (
 const updateSyncState = `-- name: UpdateSyncState :exec
 UPDATE sync_states SET
     status = $1,
-    history_id = $2::text::numeric,
+    position = nullif($2::text, ''),
     sync_generation = $3,
     pages_synced = $4,
     messages_synced = $5,
@@ -62,7 +61,7 @@ WHERE connected_account_id = $8
 
 type UpdateSyncStateParams struct {
 	Status             string
-	HistoryID          *string
+	Position           string
 	SyncGeneration     int32
 	PagesSynced        int32
 	MessagesSynced     int32
@@ -74,7 +73,7 @@ type UpdateSyncStateParams struct {
 func (q *Queries) UpdateSyncState(ctx context.Context, arg UpdateSyncStateParams) error {
 	_, err := q.db.Exec(ctx, updateSyncState,
 		arg.Status,
-		arg.HistoryID,
+		arg.Position,
 		arg.SyncGeneration,
 		arg.PagesSynced,
 		arg.MessagesSynced,

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strconv"
 	"uuid"
 
 	"github.com/jackc/pgx/v5"
@@ -40,10 +39,7 @@ func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func
 		if err != nil {
 			return fmt.Errorf("lock sync state: %w", err)
 		}
-		current, err := syncStateFromRow(row)
-		if err != nil {
-			return err
-		}
+		current := syncStateFromRow(row)
 
 		// 2. Let update decide, and refuse a state the columns cannot hold
 		// before writing anything stamped with it.
@@ -291,11 +287,8 @@ func syncStateParams(accountID int64, state mailsync.SyncState) (sqlc.UpdateSync
 		SyncGeneration:     numbers[0],
 		PagesSynced:        numbers[1],
 		MessagesSynced:     numbers[2],
+		Position:           state.Position,
 		LastSyncedAt:       state.LastSyncedAt,
-	}
-	if state.HistoryID != nil {
-		historyID := strconv.FormatUint(*state.HistoryID, 10)
-		params.HistoryID = &historyID
 	}
 	if state.Failure != "" {
 		failure := string(state.Failure)
@@ -304,22 +297,15 @@ func syncStateParams(accountID int64, state mailsync.SyncState) (sqlc.UpdateSync
 	return params, nil
 }
 
-// syncStateFromRow converts a row to a sync state. It returns an error for a
-// history ID that is not a decimal uint64, which the column's check prevents.
-func syncStateFromRow(row sqlc.LockSyncStateRow) (mailsync.SyncState, error) {
+// syncStateFromRow converts a row to a sync state.
+func syncStateFromRow(row sqlc.LockSyncStateRow) mailsync.SyncState {
 	state := mailsync.SyncState{
 		AccountID:      row.ConnectedAccountID,
 		Status:         mailsync.Status(row.Status),
 		Generation:     int(row.SyncGeneration),
 		PagesSynced:    int(row.PagesSynced),
 		MessagesSynced: int(row.MessagesSynced),
-	}
-	if row.HistoryID != "" {
-		historyID, err := strconv.ParseUint(row.HistoryID, 10, 64)
-		if err != nil {
-			return mailsync.SyncState{}, fmt.Errorf("read history id: %w", err)
-		}
-		state.HistoryID = &historyID
+		Position:       row.Position,
 	}
 	if row.Failure != nil {
 		state.Failure = mailsync.Failure(*row.Failure)
@@ -328,5 +314,5 @@ func syncStateFromRow(row sqlc.LockSyncStateRow) (mailsync.SyncState, error) {
 		at := row.LastSyncedAt.UTC()
 		state.LastSyncedAt = &at
 	}
-	return state, nil
+	return state
 }

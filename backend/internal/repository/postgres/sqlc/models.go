@@ -8,7 +8,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"uuid"
 )
 
@@ -203,7 +202,7 @@ type SignInChallenge struct {
 type SyncState struct {
 	ConnectedAccountID int64
 	Status             string
-	HistoryID          pgtype.Numeric
+	Position           *string
 	SyncGeneration     int32
 	PagesSynced        int32
 	MessagesSynced     int32

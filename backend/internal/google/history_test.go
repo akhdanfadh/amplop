@@ -12,14 +12,14 @@ import (
 	"inbok/internal/mailsync"
 )
 
-// A label change after a history ID is a change since it, and the page
-// moves the history ID on.
+// A label change after a position is a change since it, and the page
+// moves the position on.
 func TestChanges(t *testing.T) {
 	client, token := startMailbox(t, nil, []googleemulator.Message{
 		{ID: "m1", Mailbox: alexMailbox, From: "a@example.com", Subject: "Hi", LabelIDs: []string{"INBOX", "UNREAD"}},
 		{ID: "m2", Mailbox: alexMailbox, From: "a@example.com", Subject: "Hi", LabelIDs: []string{"INBOX"}},
 	})
-	start, err := client.HistoryID(t.Context(), token)
+	start, err := client.Position(t.Context(), token)
 	require.NoError(t, err)
 	service, err := client.gmail(t.Context(), token)
 	require.NoError(t, err)
@@ -33,10 +33,10 @@ func TestChanges(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"m1", "m2"}, page.Changed)
 	assert.Empty(t, page.Deleted)
-	assert.Greater(t, page.HistoryID, start)
+	assert.NotEqual(t, start, page.Position)
 	assert.Empty(t, page.NextPageToken)
 
-	again, err := client.Changes(t.Context(), token, page.HistoryID, "")
+	again, err := client.Changes(t.Context(), token, page.Position, "")
 	require.NoError(t, err)
 	assert.Empty(t, again.Changed)
 }
@@ -60,13 +60,13 @@ func TestChangesDeleted(t *testing.T) {
 		})
 	})
 
-	page, err := client.Changes(t.Context(), stubToken, 7, "next")
+	page, err := client.Changes(t.Context(), stubToken, "7", "next")
 
 	require.NoError(t, err)
 	assert.Equal(t, mailsync.ChangePage{
 		Changed:       []string{"a", "d"},
 		Deleted:       []string{"b", "c"},
-		HistoryID:     12,
+		Position:      "12",
 		NextPageToken: "after",
 	}, page)
 }
@@ -77,8 +77,25 @@ func TestChangesExpired(t *testing.T) {
 		refuse(w, http.StatusNotFound, "notFound")
 	})
 
-	_, err := client.Changes(t.Context(), stubToken, 7, "")
+	_, err := client.Changes(t.Context(), stubToken, "7", "")
 
-	require.ErrorIs(t, err, mailsync.ErrHistoryExpired)
+	require.ErrorIs(t, err, mailsync.ErrPositionExpired)
 	assert.Contains(t, err.Error(), "404")
+}
+
+// A position that is no history ID means a full sync too, without asking
+// Gmail, and the error leaves the text out.
+func TestChangesUnreadable(t *testing.T) {
+	for _, position := range []string{"", "-1", "private-marker", "18446744073709551616"} {
+		t.Run(position, func(t *testing.T) {
+			client, _ := stubGmail(t, func(http.ResponseWriter, *http.Request) {
+				t.Error("asked Gmail")
+			})
+
+			_, err := client.Changes(t.Context(), stubToken, position, "")
+
+			require.ErrorIs(t, err, mailsync.ErrPositionExpired)
+			assert.NotContains(t, err.Error(), "private-marker")
+		})
+	}
 }
