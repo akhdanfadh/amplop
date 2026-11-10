@@ -135,6 +135,8 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		access := connectedaccount.NewAccess(db, keys, client, time.Now)
 		services.OutgoingMessages = outgoingmessage.NewSending(db, access, client, time.Now)
 		services.FullSyncs = mailsync.NewFullSync(db, client, access, time.Now)
+		services.Polls = mailsync.NewPoll(db, client, access, time.Now)
+		services.SyncSchedule = mailsync.NewSchedule(db, client, access, time.Now)
 	}
 	w, err := dbos.NewWorker(url, id, services, logger)
 	if err != nil {

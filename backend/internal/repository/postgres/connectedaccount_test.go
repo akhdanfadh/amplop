@@ -29,8 +29,8 @@ type connectedAccountsTest struct {
 }
 
 // accountWorkflows saves each account removal job as a row of
-// test_account_removal_jobs, and each full sync job as a row of
-// test_full_sync_jobs, in the caller's transaction, or fails with
+// test_account_removal_jobs, and each sync job as a row of
+// test_sync_jobs, in the caller's transaction, or fails with
 // removalErr or syncErr.
 type accountWorkflows struct {
 	Workflows
@@ -46,18 +46,18 @@ func (w accountWorkflows) EnqueueAccountRemoval(ctx context.Context, tx pgx.Tx, 
 	return err
 }
 
-func (w accountWorkflows) EnqueueFullSync(ctx context.Context, tx pgx.Tx, accountID int64) error {
+func (w accountWorkflows) EnqueueSync(ctx context.Context, tx pgx.Tx, accountID int64) error {
 	if w.syncErr != nil {
 		return w.syncErr
 	}
-	_, err := tx.Exec(ctx, "INSERT INTO test_full_sync_jobs (account_id) VALUES ($1)", accountID)
+	_, err := tx.Exec(ctx, "INSERT INTO test_sync_jobs (account_id) VALUES ($1)", accountID)
 	return err
 }
 
-// fullSyncJobs lists the account IDs of the saved full sync jobs.
-func (c connectedAccountsTest) fullSyncJobs(t *testing.T) []int64 {
+// syncJobs lists the account IDs of the saved sync jobs.
+func (c connectedAccountsTest) syncJobs(t *testing.T) []int64 {
 	t.Helper()
-	rows, err := c.conn.Query(t.Context(), "SELECT account_id FROM test_full_sync_jobs ORDER BY account_id")
+	rows, err := c.conn.Query(t.Context(), "SELECT account_id FROM test_sync_jobs ORDER BY account_id")
 	require.NoError(t, err)
 	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
 	require.NoError(t, err)
@@ -92,7 +92,7 @@ func newConnectedAccountsTest(t *testing.T) connectedAccountsTest {
 	db, conn := setupStorage(t)
 	_, err := conn.Exec(t.Context(), "CREATE TABLE test_account_removal_jobs (removal_id bigint NOT NULL)")
 	require.NoError(t, err)
-	_, err = conn.Exec(t.Context(), "CREATE TABLE test_full_sync_jobs (account_id bigint NOT NULL)")
+	_, err = conn.Exec(t.Context(), "CREATE TABLE test_sync_jobs (account_id bigint NOT NULL)")
 	require.NoError(t, err)
 	db = db.WithWorkflows(accountWorkflows{})
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
@@ -179,7 +179,7 @@ func TestConnectedAccountConnectTwice(t *testing.T) {
 	require.ErrorIs(t, err, connectedaccount.ErrAlreadyConnected)
 	assert.Equal(t, int64(1), c.countConnectedAccounts(t))
 	assert.Equal(t, "refresh-1", c.storedToken(t, c.member, first.ID))
-	assert.Equal(t, []int64{first.ID}, c.fullSyncJobs(t), "only the first connect saves a full sync")
+	assert.Equal(t, []int64{first.ID}, c.syncJobs(t), "only the first connect saves a full sync")
 }
 
 // A connected account starts with its sync state waiting for the full
@@ -191,7 +191,7 @@ func TestConnectedAccountSyncSaved(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "waiting", c.syncStatus(t, account.ID))
-	assert.Equal(t, []int64{account.ID}, c.fullSyncJobs(t))
+	assert.Equal(t, []int64{account.ID}, c.syncJobs(t))
 }
 
 // A full sync that cannot be saved rolls the connect back, so no account

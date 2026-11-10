@@ -13,7 +13,6 @@ import (
 
 	"inbok/internal/connectedaccount"
 	"inbok/internal/logging"
-	"inbok/internal/mailsync"
 	"inbok/internal/outgoingmessage"
 	"inbok/internal/passwordreset"
 )
@@ -119,17 +118,17 @@ func (c *Client) EnqueueOutgoingMessage(ctx context.Context, tx pgx.Tx, messageI
 	return err
 }
 
-// EnqueueFullSync saves, in tx, the full sync workflow for the connected
-// account with accountID on the Google queue, so it commits or rolls back
-// with tx. Cancelling ctx stops its statements. It returns DBOS's error,
-// wrapping [dbos.ErrQueueDeduplicated] when the account's full sync is
-// already queued or running, after which tx is aborted and must roll back.
-func (c *Client) EnqueueFullSync(ctx context.Context, tx pgx.Tx, accountID int64) error {
-	input := FullSyncInput{AccountID: accountID}
-	_, err := dbos.Enqueue[mailsync.Status](c.client, googleQueue, fullSyncWorkflow, input,
+// EnqueueSync saves, in tx, the sync workflow for the connected account
+// with accountID on the Google queue, so it commits or rolls back with tx.
+// Cancelling ctx stops its statements. It returns DBOS's error, wrapping
+// [dbos.ErrQueueDeduplicated] when the account's sync is already queued or
+// running, after which tx is aborted and must roll back.
+func (c *Client) EnqueueSync(ctx context.Context, tx pgx.Tx, accountID int64) error {
+	input := SyncInput{AccountID: accountID}
+	_, err := dbos.Enqueue[SyncOutput](c.client, googleQueue, syncWorkflow, input,
 		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
 		dbos.WithEnqueueApplicationVersion(applicationVersion),
-		dbos.WithEnqueueDeduplicationID(fullSyncDeduplication(accountID)),
+		dbos.WithEnqueueDeduplicationID(syncDeduplication(accountID)),
 	)
 	return err
 }

@@ -192,8 +192,19 @@ type Change struct {
 	Updated []MessageUpdate
 	// DeleteEarlier is how many, at most, of the account's messages that no
 	// step of the generation of [Change.State] saved to delete, after
-	// [Change.Saved]: the provider no longer lists them. 0 deletes none.
+	// [Change.Saved]: the provider no longer has them. 0 deletes none.
 	DeleteEarlier int
+}
+
+// DueSync is an account whose synchronization the schedule may start,
+// with where its sync state stands.
+type DueSync struct {
+	AccountID int64
+	Status    Status
+	// Position is [SyncState.Position].
+	Position string
+	// Failure is [SyncState.Failure].
+	Failure Failure
 }
 
 // Written is what [Storage.UpdateSyncedMail] wrote.
@@ -209,13 +220,20 @@ type Storage interface {
 	// UpdateSyncedMail locks accountID's sync state, calls update with it, and
 	// writes the [Change] update returns, in one transaction: the mailboxes, then
 	// the deletes, the saves, the updates, the earlier generations' deletes,
-	// and last the state. It returns what it wrote, [ErrNotFound] when the
-	// account has no sync state, and [ErrUnknownMailbox] when a saved or updated
-	// message names a mailbox the account does not have after the change's
-	// mailboxes. On any error it
-	// writes nothing; an error from update is returned unchanged.
+	// and last the state. It returns what it wrote,
+	// [ErrNotFound] when the account has no sync state, and [ErrUnknownMailbox]
+	// when a saved or updated message names a mailbox the account does not have
+	// after the change's mailboxes. On any error it writes nothing; an error
+	// from update is returned unchanged.
 	UpdateSyncedMail(ctx context.Context, accountID int64, update func(SyncState) (Change, error)) (Written, error)
+	// SyncState returns accountID's sync state, or [ErrNotFound] when it has
+	// none.
+	SyncState(ctx context.Context, accountID int64) (SyncState, error)
 	// OldestMessage returns when the provider received accountID's oldest
 	// message, and false when it has none.
 	OldestMessage(ctx context.Context, accountID int64) (time.Time, bool, error)
+	// DueSyncs returns the accounts whose provider work may run, i.e. whose
+	// member is active and which need no reconnect, and that are complete,
+	// waiting, or failed at or before failedBefore.
+	DueSyncs(ctx context.Context, failedBefore time.Time) ([]DueSync, error)
 }

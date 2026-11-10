@@ -34,7 +34,10 @@ type fakeStorage struct {
 	state     SyncState
 	mailboxes []Mailbox
 	messages  map[string]storedMessage
-	// err, when set, fails every write.
+	// due is what DueSyncs returns, and failedBefore what it was asked.
+	due          []DueSync
+	failedBefore time.Time
+	// err, when set, fails every call.
 	err error
 }
 
@@ -114,6 +117,15 @@ func (f *fakeStorage) UpdateSyncedMail(_ context.Context, accountID int64, updat
 	return Written{State: f.state, EarlierDeleted: deleted}, nil
 }
 
+func (f *fakeStorage) SyncState(context.Context, int64) (SyncState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.gone {
+		return SyncState{}, ErrNotFound
+	}
+	return f.state, f.err
+}
+
 func (f *fakeStorage) OldestMessage(context.Context, int64) (time.Time, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -124,6 +136,14 @@ func (f *fakeStorage) OldestMessage(context.Context, int64) (time.Time, bool, er
 		}
 	}
 	return oldest, !oldest.IsZero(), f.err
+}
+
+// DueSyncs answers with f.due, which tests fill, and records failedBefore.
+func (f *fakeStorage) DueSyncs(_ context.Context, failedBefore time.Time) ([]DueSync, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failedBefore = failedBefore
+	return f.due, f.err
 }
 
 // stored returns the stored message with providerID.
@@ -157,10 +177,18 @@ func (f *fakeStorage) current() SyncState {
 type fakeProvider struct {
 	mailboxes []Mailbox
 	position  string
+	// positions are the positions of the accounts whose token is the key,
+	// e.g. access-7, and positionErr fails every Position call.
+	positions   map[string]string
+	positionErr error
 	// pages are the listing's pages of provider IDs, newest first.
 	pages    [][]string
 	messages map[string]Message
-	err      error
+	// changes are the pages of changes since position.
+	changes []ChangePage
+	err     error
+	// changesErr, when set, fails every Changes call.
+	changesErr error
 
 	mu      sync.Mutex
 	calls   []string
@@ -173,13 +201,25 @@ func (f *fakeProvider) record(call string) {
 	f.calls = append(f.calls, call)
 }
 
-func (f *fakeProvider) Mailboxes(context.Context, connectedaccount.AccessToken) ([]Mailbox, error) {
+func (f *fakeProvider) Mailboxes(_ context.Context, token connectedaccount.AccessToken) ([]Mailbox, error) {
 	f.record("mailboxes")
+	// The provider refuses a call without a token, as Gmail does.
+	if token.Value() == "" {
+		return nil, errors.New("no access token")
+	}
 	return slices.Clone(f.mailboxes), f.err
 }
 
-func (f *fakeProvider) Position(context.Context, connectedaccount.AccessToken) (string, error) {
+// Position returns the position positions holds for token's account, or
+// else f.position.
+func (f *fakeProvider) Position(_ context.Context, token connectedaccount.AccessToken) (string, error) {
 	f.record("position")
+	if f.positionErr != nil {
+		return "", f.positionErr
+	}
+	if position, ok := f.positions[token.Value()]; ok {
+		return position, f.err
+	}
 	return f.position, f.err
 }
 
@@ -191,18 +231,29 @@ func (f *fakeProvider) ListMessages(_ context.Context, _ connectedaccount.Access
 	if f.err != nil {
 		return MessagePage{}, f.err
 	}
-	page := 0
-	if query.PageToken != "" {
-		_, err := fmt.Sscanf(query.PageToken, "page-%d", &page)
-		if err != nil {
-			return MessagePage{}, err
-		}
+	pages := f.pages
+	page, err := pageOf(query.PageToken)
+	if err != nil {
+		return MessagePage{}, err
 	}
-	listed := MessagePage{ProviderIDs: f.pages[page]}
-	if page+1 < len(f.pages) {
+	if len(pages) == 0 {
+		return MessagePage{}, nil
+	}
+	listed := MessagePage{ProviderIDs: pages[page]}
+	if page+1 < len(pages) {
 		listed.NextPageToken = fmt.Sprintf("page-%d", page+1)
 	}
 	return listed, nil
+}
+
+// pageOf returns the page a fake page token names, 0 for none.
+func pageOf(token string) (int, error) {
+	if token == "" {
+		return 0, nil
+	}
+	var page int
+	_, err := fmt.Sscanf(token, "page-%d", &page)
+	return page, err
 }
 
 func (f *fakeProvider) Messages(_ context.Context, _ connectedaccount.AccessToken, _ int64, providerIDs []string) (Fetched, error) {
@@ -222,23 +273,46 @@ func (f *fakeProvider) Messages(_ context.Context, _ connectedaccount.AccessToke
 	return fetched, nil
 }
 
-func (f *fakeProvider) Changes(context.Context, connectedaccount.AccessToken, string, string) (ChangePage, error) {
-	return ChangePage{}, errors.New("a full sync reads no changes")
+func (f *fakeProvider) Changes(_ context.Context, _ connectedaccount.AccessToken, position string, pageToken string) (ChangePage, error) {
+	f.record("changes " + position)
+	if f.changesErr != nil {
+		return ChangePage{}, f.changesErr
+	}
+	if f.err != nil {
+		return ChangePage{}, f.err
+	}
+	page, err := pageOf(pageToken)
+	if err != nil {
+		return ChangePage{}, err
+	}
+	if len(f.changes) == 0 {
+		return ChangePage{}, errors.New("no changes set")
+	}
+	changes := f.changes[page]
+	if page+1 < len(f.changes) {
+		changes.NextPageToken = fmt.Sprintf("page-%d", page+1)
+	}
+	return changes, nil
 }
 
-// fakeAccess hands out a token for every account, or fails with tokenErr,
-// answers every check with checkErr, and counts the tokens it forgets.
+// fakeAccess hands out a token for every account, or fails with tokenErr
+// or the account's tokenErrs, answers every check with checkErr, and
+// counts the tokens it forgets.
 type fakeAccess struct {
 	tokenErr  error
+	tokenErrs map[int64]error
 	checkErr  error
 	forgotten *int
 }
 
-func (f fakeAccess) Token(context.Context, int64) (connectedaccount.AccessToken, error) {
+func (f fakeAccess) Token(_ context.Context, accountID int64) (connectedaccount.AccessToken, error) {
 	if f.tokenErr != nil {
 		return connectedaccount.AccessToken{}, f.tokenErr
 	}
-	return connectedaccount.NewAccessToken("access"), nil
+	if err := f.tokenErrs[accountID]; err != nil {
+		return connectedaccount.AccessToken{}, err
+	}
+	return connectedaccount.NewAccessToken(fmt.Sprintf("access-%d", accountID)), nil
 }
 
 func (f fakeAccess) Forget(int64) {
@@ -554,20 +628,6 @@ func TestFullSyncStoppedLate(t *testing.T) {
 	}
 }
 
-// A refused access token is forgotten, so the step's next try takes a new
-// one.
-func TestFullSyncUnauthorized(t *testing.T) {
-	storage := newFakeStorage(SyncState{Status: StatusWaiting})
-	provider := &fakeProvider{err: fmt.Errorf("%w: gmail api: 401", ErrUnauthorized)}
-	forgotten := 0
-	s := NewFullSync(storage, provider, fakeAccess{forgotten: &forgotten}, func() time.Time { return syncNow })
-
-	_, err := s.Start(t.Context(), syncAccount)
-
-	require.ErrorIs(t, err, ErrUnauthorized)
-	assert.Equal(t, 1, forgotten)
-}
-
 // A full sync of an account whose copy holds mail older than the window
 // reaches back to the oldest stored message: each is fetched again, so
 // its state is current, and one the provider no longer has is deleted.
@@ -605,4 +665,32 @@ func TestFullSyncWindow(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, syncNow.Add(-window), run.Since)
+}
+
+// A message naming a mailbox the provider no longer lists, e.g. one
+// deleted between the fetch and the save, is saved without it.
+func TestFullSyncDeletedMailbox(t *testing.T) {
+	labelled := inboxMessage("new", syncNow)
+	labelled.MailboxProviderIDs = []string{"INBOX", "Label_deleted"}
+	storage := newFakeStorage(SyncState{Status: StatusWaiting})
+	provider := &fakeProvider{mailboxes: syncMailboxes, pages: [][]string{{"new"}}, messages: map[string]Message{"new": labelled}}
+	s := NewFullSync(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+
+	runFullSync(t, s)
+
+	assert.Equal(t, []string{"INBOX"}, storage.stored("new").message.MailboxProviderIDs)
+}
+
+// A refused access token is forgotten, so the step's next try takes a new
+// one.
+func TestFullSyncUnauthorized(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusWaiting})
+	provider := &fakeProvider{err: fmt.Errorf("%w: gmail api: 401", ErrUnauthorized)}
+	forgotten := 0
+	s := NewFullSync(storage, provider, fakeAccess{forgotten: &forgotten}, func() time.Time { return syncNow })
+
+	_, err := s.Start(t.Context(), syncAccount)
+
+	require.ErrorIs(t, err, ErrUnauthorized)
+	assert.Equal(t, 1, forgotten)
 }

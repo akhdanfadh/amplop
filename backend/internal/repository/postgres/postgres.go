@@ -36,9 +36,9 @@ type OutgoingMessageWorkflows interface {
 
 // SyncWorkflows saves the jobs of mail synchronization.
 type SyncWorkflows interface {
-	// EnqueueFullSync saves, in tx, the workflow that copies account
-	// accountID's recent mail from its provider.
-	EnqueueFullSync(ctx context.Context, tx pgx.Tx, accountID int64) error
+	// EnqueueSync saves, in tx, the workflow that synchronizes account
+	// accountID's mail with its provider, a full sync for a new account.
+	EnqueueSync(ctx context.Context, tx pgx.Tx, accountID int64) error
 }
 
 // ConnectedAccountWorkflows saves the jobs of connected accounts.

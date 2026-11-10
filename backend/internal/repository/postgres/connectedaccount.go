@@ -51,16 +51,16 @@ func (db *DB) InsertConnectedAccount(ctx context.Context, account connectedaccou
 			return fmt.Errorf("insert connected account: %w", err)
 		}
 
-		// 4. Save the sync state and its full sync in this transaction, so
-		// no account is connected without them (ADR001).
+		// 4. Save the sync state and its first sync, a full one, in this
+		// transaction, so no account is connected without them (ADR001).
 		if err := queries.InsertSyncState(ctx, id); err != nil {
 			return fmt.Errorf("insert sync state: %w", err)
 		}
 		if db.workflows == nil {
 			return errNoWorkflows
 		}
-		if err := db.workflows.EnqueueFullSync(ctx, tx, id); err != nil {
-			return fmt.Errorf("save full sync: %w", err)
+		if err := db.workflows.EnqueueSync(ctx, tx, id); err != nil {
+			return fmt.Errorf("save sync: %w", err)
 		}
 		saved = connectedAccountFromRow(sqlc.InsertConnectedAccountRow(row))
 		return nil

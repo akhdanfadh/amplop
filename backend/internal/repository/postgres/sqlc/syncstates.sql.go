@@ -20,6 +20,53 @@ func (q *Queries) InsertSyncState(ctx context.Context, connectedAccountID int64)
 	return err
 }
 
+const listDueSyncs = `-- name: ListDueSyncs :many
+SELECT s.connected_account_id, s.status, coalesce(s.position, '')::text AS position, s.failure
+FROM sync_states s
+JOIN connected_accounts ca ON ca.id = s.connected_account_id
+JOIN users u ON u.id = ca.user_id
+WHERE ca.needs_reconnect_since IS NULL
+    AND u.deactivated_at IS NULL
+    AND (s.status IN ('complete', 'waiting')
+        OR (s.status = 'failed' AND s.failed_at <= $1))
+ORDER BY s.connected_account_id
+`
+
+type ListDueSyncsRow struct {
+	ConnectedAccountID int64
+	Status             string
+	Position           string
+	Failure            *string
+}
+
+// The accounts whose provider work may run, i.e. whose member is active and
+// which need no reconnect, and that are complete, waiting, or failed at or
+// before @failed_before.
+func (q *Queries) ListDueSyncs(ctx context.Context, failedBefore *time.Time) ([]ListDueSyncsRow, error) {
+	rows, err := q.db.Query(ctx, listDueSyncs, failedBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDueSyncsRow
+	for rows.Next() {
+		var i ListDueSyncsRow
+		if err := rows.Scan(
+			&i.ConnectedAccountID,
+			&i.Status,
+			&i.Position,
+			&i.Failure,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockSyncState = `-- name: LockSyncState :one
 SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,
     pages_synced, messages_synced, failure, failed_at, last_synced_at
@@ -45,6 +92,43 @@ type LockSyncStateRow struct {
 func (q *Queries) LockSyncState(ctx context.Context, connectedAccountID int64) (LockSyncStateRow, error) {
 	row := q.db.QueryRow(ctx, lockSyncState, connectedAccountID)
 	var i LockSyncStateRow
+	err := row.Scan(
+		&i.ConnectedAccountID,
+		&i.Status,
+		&i.Position,
+		&i.SyncGeneration,
+		&i.PagesSynced,
+		&i.MessagesSynced,
+		&i.Failure,
+		&i.FailedAt,
+		&i.LastSyncedAt,
+	)
+	return i, err
+}
+
+const readSyncState = `-- name: ReadSyncState :one
+SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,
+    pages_synced, messages_synced, failure, failed_at, last_synced_at
+FROM sync_states
+WHERE connected_account_id = $1
+`
+
+type ReadSyncStateRow struct {
+	ConnectedAccountID int64
+	Status             string
+	Position           string
+	SyncGeneration     int32
+	PagesSynced        int32
+	MessagesSynced     int32
+	Failure            *string
+	FailedAt           *time.Time
+	LastSyncedAt       *time.Time
+}
+
+// The same columns as LockSyncState, without the lock.
+func (q *Queries) ReadSyncState(ctx context.Context, connectedAccountID int64) (ReadSyncStateRow, error) {
+	row := q.db.QueryRow(ctx, readSyncState, connectedAccountID)
+	var i ReadSyncStateRow
 	err := row.Scan(
 		&i.ConnectedAccountID,
 		&i.Status,

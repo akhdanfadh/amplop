@@ -1,11 +1,15 @@
 package postgres
 
 import (
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
+	"google.golang.org/api/gmail/v1"
+	"google.golang.org/api/option"
 
 	"inbok/internal/googleemulator"
 	"inbok/internal/mailsync"
@@ -33,10 +37,48 @@ func runFullSync(t *testing.T, s *mailsync.FullSync, accountID int64) {
 	require.NoError(t, s.Finish(ctx, accountID, run))
 }
 
+// runPoll plans accountID's sync, which must be a poll, and runs every page
+// of it, each read once and applied part by part, as the workflow does.
+func runPoll(t *testing.T, p *mailsync.Poll, accountID int64) {
+	t.Helper()
+	plan, err := p.Plan(t.Context(), accountID)
+	require.NoError(t, err)
+	require.Equal(t, mailsync.KindPoll, plan.Kind)
+	token := ""
+	for {
+		page, err := p.ReadChanges(t.Context(), accountID, plan.Position, token)
+		require.NoError(t, err)
+		for part, more := 0, true; more; part++ {
+			more, err = p.ApplyChanges(t.Context(), accountID, plan.Position, token, page, part)
+			require.NoError(t, err)
+		}
+		if page.NextPageToken == "" {
+			return
+		}
+		token = page.NextPageToken
+	}
+}
+
+// gmailAt returns a Gmail client for accountID at the emulator, as the
+// member's own mail app would act on the account.
+func (f connectFlowTest) gmailAt(t *testing.T, accountID int64) *gmail.Service {
+	t.Helper()
+	token, err := f.access.Token(t.Context(), accountID)
+	require.NoError(t, err)
+	authorized := &http.Client{Transport: &oauth2.Transport{
+		Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token.Value()}),
+	}}
+	endpoint := f.emulator.BaseURL.Scheme + "://" + f.emulator.BaseURL.Host + "/"
+	service, err := gmail.NewService(t.Context(), option.WithHTTPClient(authorized), option.WithEndpoint(endpoint))
+	require.NoError(t, err)
+	return service
+}
+
 // An account connected through the emulator is copied whole by a full sync
 // through the Gmail client: its window, Spam and Trash included, with its
-// labels as mailboxes; and a second full sync keeps each message's ID.
-func TestFullSyncFlow(t *testing.T) {
+// labels as mailboxes; a second full sync keeps each message's ID; and the
+// schedule then finds the account changed, and a poll applies the change.
+func TestSyncFlow(t *testing.T) {
 	// Given alex's mailbox at the emulator, with a message older than the
 	// window.
 	recent := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
@@ -51,7 +93,7 @@ func TestFullSyncFlow(t *testing.T) {
 	)
 	account, err := f.consent(t, 0, mailbox)
 	require.NoError(t, err)
-	assert.Equal(t, []int64{account.ID}, f.fullSyncJobs(t), "connecting saves the full sync")
+	assert.Equal(t, []int64{account.ID}, f.syncJobs(t), "connecting saves the sync")
 	syncs := mailsync.NewFullSync(f.db, f.google, f.access, time.Now)
 	stored := syncedMailTest{db: f.db, conn: f.conn, account: account.ID}
 
@@ -78,6 +120,34 @@ func TestFullSyncFlow(t *testing.T) {
 		assert.Equal(t, message.ID, second[id].ID, "message %s keeps its ID", id)
 	}
 	assert.Equal(t, 2, stored.state(t).Generation)
+
+	// When the member archives one message and stars another in Gmail.
+	service := f.gmailAt(t, account.ID)
+	_, err = service.Users.Messages.Modify("me", "inbox", &gmail.ModifyMessageRequest{RemoveLabelIds: []string{"INBOX"}}).Do()
+	require.NoError(t, err)
+	_, err = service.Users.Messages.Modify("me", "receipt", &gmail.ModifyMessageRequest{AddLabelIds: []string{"STARRED"}}).Do()
+	require.NoError(t, err)
+
+	// Then the schedule finds the account due, and a poll applies both
+	// changes and moves the position.
+	due, err := mailsync.NewSchedule(f.db, f.google, f.access, time.Now).Due(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []int64{account.ID}, due)
+	before := stored.state(t).Position
+	runPoll(t, mailsync.NewPoll(f.db, f.google, f.access, time.Now), account.ID)
+	polled := stored.messages(t, account.ID)
+	assert.Empty(t, polled["inbox"].MailboxProviderIDs)
+	assert.True(t, polled["receipt"].Flagged)
+	assert.Equal(t, []string{"Label_1"}, polled["receipt"].MailboxProviderIDs)
+	assert.Equal(t, first["inbox"].ID, polled["inbox"].ID)
+	after := stored.state(t)
+	assert.NotEqual(t, before, after.Position)
+	assert.Equal(t, mailsync.StatusComplete, after.Status)
+
+	// And the schedule finds nothing more to do.
+	due, err = mailsync.NewSchedule(f.db, f.google, f.access, time.Now).Due(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, due)
 }
 
 // A full sync of a copy holding mail older than the window reaches back to

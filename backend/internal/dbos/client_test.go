@@ -303,15 +303,15 @@ func TestClientPasswordChangedNoticeRollback(t *testing.T) {
 	assert.Empty(t, changedNoticeWorkflows(t, conn))
 }
 
-// fullSyncWorkflows lists the full sync workflows saved in DBOS's tables:
+// syncWorkflows lists the sync workflows saved in DBOS's tables:
 // each one's status, queue, deduplication ID, and decoded input. DBOS saves
 // an input in workflow_input, as base64-encoded JSON.
-func fullSyncWorkflows(t *testing.T, conn *pgx.Conn) [][4]string {
+func syncWorkflows(t *testing.T, conn *pgx.Conn) [][4]string {
 	t.Helper()
 	rows, err := conn.Query(t.Context(), `
 		SELECT s.status, coalesce(s.queue_name, ''), coalesce(s.deduplication_id, ''), coalesce(i.inputs, '')
 		FROM dbos.workflow_status s LEFT JOIN dbos.workflow_input i USING (workflow_uuid)
-		WHERE s.name = $1`, fullSyncWorkflow)
+		WHERE s.name = $1`, syncWorkflow)
 	require.NoError(t, err)
 	var saved [][4]string
 	for rows.Next() {
@@ -337,14 +337,14 @@ func connectAdmin(t *testing.T, db *postgres.DB, conn *pgx.Conn) (connectedaccou
 	return connectedaccount.NewService(db, ring).Connect(t.Context(), admin, identity, "refresh-1")
 }
 
-// Connecting an account saves its full sync on the Google queue, with the
-// account's deduplication ID and only its ID as input; a second full sync
-// of the account is refused while the first waits.
-func TestClientFullSync(t *testing.T) {
+// Connecting an account saves its sync on the Google queue, with the
+// account's deduplication ID and only its ID as input; a second sync of the
+// account is refused while the first waits.
+func TestClientSync(t *testing.T) {
 	// Given storage that saves workflows with a Client.
 	db, conn, url := clientStack(t)
 
-	// When an account is connected, and its full sync enqueued again.
+	// When an account is connected, and its sync enqueued again.
 	account, err := connectAdmin(t, db, conn)
 	require.NoError(t, err)
 	client, err := NewClient(t.Context(), url, discard)
@@ -352,22 +352,22 @@ func TestClientFullSync(t *testing.T) {
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 	tx, err := conn.Begin(t.Context())
 	require.NoError(t, err)
-	again := client.EnqueueFullSync(t.Context(), tx, account.ID)
+	again := client.EnqueueSync(t.Context(), tx, account.ID)
 	require.NoError(t, tx.Rollback(t.Context()))
 
-	// Then one full sync waits, and the second was refused.
+	// Then one sync waits, and the second was refused.
 	require.ErrorIs(t, again, dbos.ErrQueueDeduplicated)
-	saved := fullSyncWorkflows(t, conn)
+	saved := syncWorkflows(t, conn)
 	require.Len(t, saved, 1)
 	assert.Equal(t, "ENQUEUED", saved[0][0])
 	assert.Equal(t, googleQueue, saved[0][1])
-	assert.Equal(t, fullSyncDeduplication(account.ID), saved[0][2])
+	assert.Equal(t, syncDeduplication(account.ID), saved[0][2])
 	assert.Contains(t, saved[0][3], `"AccountID":`+strconv.FormatInt(account.ID, 10))
 }
 
-// A connect that fails as it commits rolls its full sync back with it, so
-// no job copies an account that was never saved.
-func TestClientFullSyncRollback(t *testing.T) {
+// A connect that fails as it commits rolls its sync back with it, so no job
+// copies an account that was never saved.
+func TestClientSyncRollback(t *testing.T) {
 	// Given storage whose sync states fail as they commit, after the job is
 	// saved.
 	db, conn, _ := clientStack(t)
@@ -381,7 +381,7 @@ func TestClientFullSyncRollback(t *testing.T) {
 
 	// Then the connect fails, and neither the account nor its job is saved.
 	require.ErrorContains(t, err, "connect rejected")
-	assert.Empty(t, fullSyncWorkflows(t, conn))
+	assert.Empty(t, syncWorkflows(t, conn))
 	var accounts int
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM connected_accounts").Scan(&accounts))
 	assert.Equal(t, 0, accounts)

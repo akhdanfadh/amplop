@@ -758,6 +758,22 @@ func TestSyncedMailUpdateUnknown(t *testing.T) {
 	assert.Equal(t, before, s.messages(t, s.account))
 }
 
+// SyncState reads what the last change saved.
+func TestSyncState(t *testing.T) {
+	s := newSyncedMailTest(t)
+	at := time.Date(2026, 11, 10, 9, 30, 0, 0, time.UTC)
+	want := mailsync.SyncState{Status: mailsync.StatusComplete, Position: "4096", Generation: 2, PagesSynced: 3, MessagesSynced: 250, LastSyncedAt: &at}
+	s.update(t, s.account, mailsync.Change{State: want})
+
+	got, err := s.db.SyncState(t.Context(), s.account)
+
+	require.NoError(t, err)
+	want.AccountID = s.account
+	assert.Equal(t, want, got)
+	_, err = s.db.SyncState(t.Context(), s.account+100)
+	require.ErrorIs(t, err, mailsync.ErrNotFound)
+}
+
 // The oldest message is the account's own, and none is reported for an
 // account without messages.
 func TestOldestMessage(t *testing.T) {
@@ -775,4 +791,48 @@ func TestOldestMessage(t *testing.T) {
 	assert.False(t, none)
 	assert.True(t, found)
 	assert.Equal(t, syncedMessage("m1").InternalDate, oldest, "another account's older message is not this one's")
+}
+
+// Due syncs are the complete, waiting, and long-failed accounts whose
+// member is active and which need no reconnect.
+func TestDueSyncs(t *testing.T) {
+	s := newSyncedMailTest(t)
+	member := insertConnectingMember(t, s.conn, "second@example.com")
+	deactivated := insertConnectingMember(t, s.conn, "gone@example.com")
+	failedAt := time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC)
+	states := map[string]mailsync.SyncState{
+		"complete":      {Status: mailsync.StatusComplete, Position: "100", Generation: 1, Failure: mailsync.FailureProvider, FailedAt: &failedAt},
+		"waiting":       {Status: mailsync.StatusWaiting},
+		"running":       {Status: mailsync.StatusRunning, Generation: 1},
+		"failed long":   {Status: mailsync.StatusFailed, Generation: 1, Failure: mailsync.FailureProvider, FailedAt: &failedAt},
+		"failed recent": {Status: mailsync.StatusFailed, Generation: 1, Failure: mailsync.FailureProvider, FailedAt: new(failedAt.Add(time.Minute))},
+		"reconnect":     {Status: mailsync.StatusComplete, Position: "100", Generation: 1},
+		"deactivated":   {Status: mailsync.StatusComplete, Position: "100", Generation: 1},
+	}
+	ids := map[string]int64{}
+	for name, state := range states {
+		owner := member
+		if name == "deactivated" {
+			owner = deactivated
+		}
+		ids[name] = insertSyncingAccount(t, s.conn, owner, "sub-"+strings.ReplaceAll(name, " ", "-"))
+		s.update(t, ids[name], mailsync.Change{State: state})
+	}
+	_, err := s.conn.Exec(t.Context(), "UPDATE connected_accounts SET needs_reconnect_since = now() WHERE id = $1", ids["reconnect"])
+	require.NoError(t, err)
+	_, err = s.conn.Exec(t.Context(), "UPDATE users SET deactivated_at = now() WHERE id = $1", deactivated)
+	require.NoError(t, err)
+
+	due, err := s.db.DueSyncs(t.Context(), failedAt)
+
+	require.NoError(t, err)
+	want := []mailsync.DueSync{
+		{AccountID: s.account, Status: mailsync.StatusWaiting},
+		{AccountID: s.other, Status: mailsync.StatusWaiting},
+		{AccountID: ids["complete"], Status: mailsync.StatusComplete, Position: "100", Failure: mailsync.FailureProvider},
+		{AccountID: ids["waiting"], Status: mailsync.StatusWaiting},
+		{AccountID: ids["failed long"], Status: mailsync.StatusFailed, Failure: mailsync.FailureProvider},
+	}
+	slices.SortFunc(want, func(a, b mailsync.DueSync) int { return int(a.AccountID - b.AccountID) })
+	assert.Equal(t, want, due)
 }

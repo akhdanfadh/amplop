@@ -20,9 +20,10 @@ const (
 	deleteBatch = 1000
 )
 
-// ErrSuperseded means the account's sync state no longer belongs to the full
-// sync that asked: a newer one started, or this one already ended.
-var ErrSuperseded = errors.New("the account's full sync is no longer this one")
+// ErrSuperseded means the account's sync state no longer belongs to the sync
+// that asked: a newer full sync started, or this sync, full or poll,
+// already ended.
+var ErrSuperseded = errors.New("the account's sync is no longer this one")
 
 // errProvider marks an error from a [Provider] call.
 var errProvider = errors.New("provider failed")
@@ -56,25 +57,31 @@ type Run struct {
 	Since time.Time
 }
 
-// Ending is how an error from a [FullSync] step ends the full sync.
+// Ending is how an error from a step of a [FullSync] or a [Poll] ends the
+// sync.
 type Ending int
 
 const (
 	// EndingRetry means trying the step again may succeed: the provider or
-	// inbok failed. Past its retries, the full sync fails with [FailureOf].
+	// inbok failed. Past its retries, the sync fails with [FailureOf].
 	EndingRetry Ending = iota + 1
-	// EndingWait means the full sync waits for the member: the account needs
-	// reconnecting, or its member is deactivated. [FullSync.Wait] records it.
+	// EndingWait means the sync waits for the member: the account needs
+	// reconnecting, or its member is deactivated. [FullSync.Wait] records it
+	// for a full sync; a poll records nothing.
 	EndingWait
 	// EndingGone means nothing is left to record: the account was
-	// disconnected, or the full sync was superseded.
+	// disconnected, or the sync was superseded.
 	EndingGone
-	// EndingFail means trying again cannot help, so the full sync fails now
-	// with [FailureOf], e.g. on a refresh token no key opens.
+	// EndingFail means trying again cannot help, so the sync fails now with
+	// [FailureOf], e.g. on a refresh token no key opens.
 	EndingFail
+	// EndingResync means the provider no longer keeps the changes a poll
+	// asked for, so only a full sync brings the copy current.
+	EndingResync
 )
 
-// EndingOf returns how err, from a [FullSync] step, ends the full sync.
+// EndingOf returns how err, from a step of a [FullSync] or a [Poll], ends
+// the sync.
 func EndingOf(err error) Ending {
 	switch {
 	case errors.Is(err, connectedaccount.ErrNeedsReconnect), errors.Is(err, connectedaccount.ErrDeactivated):
@@ -83,12 +90,15 @@ func EndingOf(err error) Ending {
 		return EndingGone
 	case errors.Is(err, connectedaccount.ErrTokenUnreadable):
 		return EndingFail
+	case errors.Is(err, ErrPositionExpired):
+		return EndingResync
 	default:
 		return EndingRetry
 	}
 }
 
-// FailureOf returns the [Failure] err, from a [FullSync] step, records.
+// FailureOf returns the [Failure] err, from a step of a [FullSync] or a
+// [Poll], records.
 func FailureOf(err error) Failure {
 	switch {
 	case errors.Is(err, connectedaccount.ErrTokenUnreadable):
@@ -227,7 +237,7 @@ func (s *FullSync) CopyPage(ctx context.Context, accountID int64, run Run, page 
 
 	// 4. Save them, while the run is still the account's, counting the page
 	// once however often this step runs.
-	write := func(mailboxes []Mailbox) error {
+	write := func(mailboxes []Mailbox, saved []Message) error {
 		_, err := s.storage.UpdateSyncedMail(ctx, accountID, func(current SyncState) (Change, error) {
 			if !isRunning(current, run) {
 				return Change{}, ErrSuperseded
@@ -241,10 +251,11 @@ func (s *FullSync) CopyPage(ctx context.Context, accountID int64, run Run, page 
 		})
 		return err
 	}
-	err = write(nil)
+	err = write(nil, saved)
 	if errors.Is(err, ErrUnknownMailbox) {
-		// A message names a mailbox made since Start listed them; listing
-		// them again mends it.
+		// A message names a mailbox made since Start listed them, or one
+		// deleted since it was fetched: listing them again mends the
+		// first, and leaving out what is still unknown the second.
 		mailboxes, listErr := s.provider.Mailboxes(ctx, token)
 		if listErr != nil {
 			return "", providerFailed(s.access, accountID, "list mailboxes", listErr)
@@ -252,7 +263,8 @@ func (s *FullSync) CopyPage(ctx context.Context, accountID int64, run Run, page 
 		if mailboxes == nil {
 			mailboxes = []Mailbox{}
 		}
-		err = write(mailboxes)
+		known, _ := withKnownMailboxes(mailboxes, saved, nil)
+		err = write(mailboxes, known)
 	}
 	if err != nil {
 		return "", err
@@ -261,8 +273,7 @@ func (s *FullSync) CopyPage(ctx context.Context, accountID int64, run Run, page 
 }
 
 // DeleteEarlier deletes up to deleteBatch of account accountID's messages
-// that no step of run saved: the provider no longer lists them in the
-// window. It reports whether more may be left, and returns [ErrSuperseded]
+// that no step of run saved: the provider no longer has them. It reports whether more may be left, and returns [ErrSuperseded]
 // when run is no longer the account's full sync, or a stop error of
 // [connectedaccount.Access.Check] when its provider work stopped.
 func (s *FullSync) DeleteEarlier(ctx context.Context, accountID int64, run Run) (bool, error) {

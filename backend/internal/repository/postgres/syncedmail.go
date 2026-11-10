@@ -26,8 +26,8 @@ var errStateRange = errors.New("sync state number is out of storage's range")
 // deletes, the saves with their mailboxes, the updates, the earlier
 // generations' deletes, and the state. It returns what it wrote,
 // [mailsync.ErrNotFound] when the account has no sync state, and
-// [mailsync.ErrUnknownMailbox] when a saved or updated message names a mailbox
-// the account does not have.
+// [mailsync.ErrUnknownMailbox] when a saved or updated message names a
+// mailbox the account does not have.
 func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func(mailsync.SyncState) (mailsync.Change, error)) (mailsync.Written, error) {
 	var written mailsync.Written
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
@@ -204,9 +204,10 @@ func saveMessages(ctx context.Context, tx pgx.Tx, accountID int64, generation in
 }
 
 // updateMessages sets the flags and replaces the mailboxes of accountID's
-// messages that updates name, in tx, skipping those it does not have; when one
-// ProviderID appears more than once, the last wins. It returns
-// [mailsync.ErrUnknownMailbox] when one names a mailbox the account does not have.
+// messages that updates name, in tx, skipping those it does not have; when
+// one ProviderID appears more than once, the last wins. It returns
+// [mailsync.ErrUnknownMailbox] when one names a mailbox the account does not
+// have.
 func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []mailsync.MessageUpdate) error {
 	if len(updates) == 0 {
 		return nil
@@ -279,6 +280,51 @@ func replaceMailboxes(ctx context.Context, tx pgx.Tx, accountID int64, ids []uui
 		return mailsync.ErrUnknownMailbox
 	}
 	return nil
+}
+
+// SyncState returns accountID's sync state, or [mailsync.ErrNotFound] when
+// it has none.
+func (db *DB) SyncState(ctx context.Context, accountID int64) (mailsync.SyncState, error) {
+	row, err := sqlc.New(db.pool).ReadSyncState(ctx, accountID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return mailsync.SyncState{}, mailsync.ErrNotFound
+	}
+	if err != nil {
+		return mailsync.SyncState{}, fmt.Errorf("read sync state: %w", err)
+	}
+	return syncStateFromRow(sqlc.LockSyncStateRow(row)), nil
+}
+
+// OldestMessage returns when the provider received accountID's oldest
+// message, and false when it has none.
+func (db *DB) OldestMessage(ctx context.Context, accountID int64) (time.Time, bool, error) {
+	row, err := sqlc.New(db.pool).OldestMessage(ctx, accountID)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("find oldest message: %w", err)
+	}
+	if !row.Found {
+		return time.Time{}, false, nil
+	}
+	return row.Oldest.UTC(), true, nil
+}
+
+// DueSyncs returns, in account ID order, the accounts whose member is
+// active and which need no reconnect, and that are complete, waiting, or
+// failed at or before failedBefore.
+func (db *DB) DueSyncs(ctx context.Context, failedBefore time.Time) ([]mailsync.DueSync, error) {
+	rows, err := sqlc.New(db.pool).ListDueSyncs(ctx, &failedBefore)
+	if err != nil {
+		return nil, fmt.Errorf("list due syncs: %w", err)
+	}
+	due := make([]mailsync.DueSync, 0, len(rows))
+	for _, row := range rows {
+		sync := mailsync.DueSync{AccountID: row.ConnectedAccountID, Status: mailsync.Status(row.Status), Position: row.Position}
+		if row.Failure != nil {
+			sync.Failure = mailsync.Failure(*row.Failure)
+		}
+		due = append(due, sync)
+	}
+	return due, nil
 }
 
 // uniqueStrings returns values without repeats, in their first order.
@@ -394,17 +440,4 @@ func syncStateFromRow(row sqlc.LockSyncStateRow) mailsync.SyncState {
 		state.LastSyncedAt = &at
 	}
 	return state
-}
-
-// OldestMessage returns when the provider received accountID's oldest
-// message, and false when it has none.
-func (db *DB) OldestMessage(ctx context.Context, accountID int64) (time.Time, bool, error) {
-	row, err := sqlc.New(db.pool).OldestMessage(ctx, accountID)
-	if err != nil {
-		return time.Time{}, false, fmt.Errorf("find oldest message: %w", err)
-	}
-	if !row.Found {
-		return time.Time{}, false, nil
-	}
-	return row.Oldest.UTC(), true, nil
 }
