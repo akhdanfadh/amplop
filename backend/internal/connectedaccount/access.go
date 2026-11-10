@@ -31,6 +31,11 @@ var (
 // account as needing a reconnect.
 var ErrRefreshRefused = errors.New("google refused the refresh token")
 
+// ErrRefreshFailed means Google's token endpoint failed to answer a
+// refresh, e.g. during an outage, rather than refusing the token. Trying
+// later may succeed.
+var ErrRefreshFailed = errors.New("google failed to refresh the token")
+
 // AccessToken is a short-lived token for one account's Gmail, about an
 // hour at Google. It is never stored, and printing it with any verb or
 // saving it as JSON shows nothing.
@@ -147,8 +152,9 @@ func NewAccess(storage accessStorage, encryption keyring, google refresher, now 
 // It returns [ErrNotFound] when the account is gone, [ErrDeactivated],
 // [ErrNeedsReconnect] when Google refuses the refresh token, now or before,
 // [ErrTokenUnreadable], [ErrCredentialChanged] when the credential changed
-// twice while this call held it, and any other error as a failure that
-// may pass.
+// twice while this call held it, an error wrapping [ErrRefreshFailed] when
+// Google's token endpoint failed, and any other error, e.g. storage's, as
+// a failure that may pass.
 //
 // DESIGN: a refresh token Google replaces is left alone at Google, not
 // revoked: revoking it would end the grant the replacement belongs to
@@ -162,6 +168,24 @@ func (a *Access) Token(ctx context.Context, accountID int64) (AccessToken, error
 		return a.token(ctx, accountID)
 	}
 	return token, err
+}
+
+// Check returns nil when provider work may still run for account
+// accountID: the account exists, needs no reconnect, its member is active,
+// and its refresh token opens. It asks Google nothing, so it suits a step
+// that only writes inbok's own data. It returns the same stop errors as
+// [Access.Token]: [ErrNotFound], [ErrDeactivated], [ErrNeedsReconnect], or
+// [ErrTokenUnreadable]; any other error is storage's.
+func (a *Access) Check(ctx context.Context, accountID int64) error {
+	state, err := a.read(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	_, err = a.encryption.Open(state.Credential.KeyID, state.Credential.Ciphertext, tokenOwner(state.UserID, accountID))
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrTokenUnreadable, err)
+	}
+	return nil
 }
 
 // token is one attempt of [Access.Token], returning [ErrCredentialChanged]
@@ -192,7 +216,7 @@ func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error
 		return AccessToken{}, ErrNeedsReconnect
 	}
 	if err != nil {
-		return AccessToken{}, fmt.Errorf("refresh token: %w", err)
+		return AccessToken{}, fmt.Errorf("%w: %w", ErrRefreshFailed, err)
 	}
 
 	// 4. Save a replacement before the access token is used, so the old

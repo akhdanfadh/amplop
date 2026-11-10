@@ -2737,6 +2737,12 @@ does what Google's refresh tokens need:
   asking Google, until the member reconnects. A job stops work for the
   account on it, as on `ErrNotFound` for a disconnected account and
   `ErrDeactivated` for a deactivated member's.
+- When Google's token endpoint fails instead, e.g. in an outage, its
+  error wraps `connectedaccount.ErrRefreshFailed`, so a job can tell
+  Google's failure from its own storage's, which `Token` returns as is.
+- `Access.Check` answers the same stop errors, `ErrTokenUnreadable`
+  included, without asking Google, for a step that writes only inbok's
+  data but must still stop for a stopped account.
 - It writes only against the token it read, so a reconnect or another
   job's replacement in between wins; it then reads again once, and
   returns `ErrCredentialChanged` if the token changed again. Saving a
