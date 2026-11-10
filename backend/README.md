@@ -946,6 +946,9 @@ uses a small `httptest` stub instead:
   its check are tested with stubs too.
 - It ignores `access_type` and `prompt` and always returns a refresh
   token.
+- It ignores `fields` and answers whole resources, so no test catches a
+  field list that leaves out what inbok reads, e.g. history's
+  `labelIds`.
 - A failed PKCE check leaves the code usable, and posting the consent
   form directly redirects to any `redirect_uri`; only the consent page
   checks it.
@@ -2229,11 +2232,16 @@ takes an access token from [Calling Gmail](#calling-gmail):
   address kept as its text. Msg-ids are read leniently, past phrases and
   comments and across a fold, keeping their angle brackets. A message
   Gmail no longer has comes back as gone.
-- `Changes` reads one page of `history.list` since a position: a
-  message added or relabelled is changed, to fetch again, and one
-  deleted is only deleted. Gmail's 404 for a history ID it no longer
-  keeps returns `mailsync.ErrPositionExpired`, which means a full sync;
-  so does a position that is not a history ID, without asking Gmail.
+- `Changes` reads one page of `history.list` since a position and
+  sorts each message it names into one of three lists: deleted,
+  whatever else happened to it; added, to fetch whole; or relabelled, an
+  update naming each label it changed at its last change, `UNREAD` and
+  `STARRED` as `seen` and `flagged`. Gmail documents no order between
+  one record's added and removed labels, so a message a record both
+  labels and unlabels with one label is fetched whole too. Gmail's 404 for a history ID it no
+  longer keeps returns `mailsync.ErrPositionExpired`, which means a full
+  sync; so does a position that is not a history ID, without asking
+  Gmail.
 
 What a sender writes is bounded: each Gmail answer at 4 MiB, and each
 header at 16 KiB, cut on a whole character before it is parsed; a

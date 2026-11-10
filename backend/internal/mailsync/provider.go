@@ -50,13 +50,17 @@ type Fetched struct {
 }
 
 // ChangePage is one page of what changed in an account's mail since a
-// position.
+// position, each message in at most one of its lists.
 type ChangePage struct {
-	// Changed are the ProviderIDs of messages added, or whose mailboxes
-	// or flags changed, whose metadata is fetched again.
-	Changed []string
-	// Deleted are the ProviderIDs of messages the provider deleted. One
-	// deleted is not also in [ChangePage.Changed].
+	// Fetch are the ProviderIDs of messages whose metadata is fetched
+	// whole, e.g. those added.
+	Fetch []string
+	// Update are the changes to the mailboxes and flags of messages the
+	// provider had before the page, net of the page. The copy may not
+	// hold every one.
+	Update []MessageUpdate
+	// Deleted are the ProviderIDs of messages the provider deleted,
+	// whatever else happened to them in the page.
 	Deleted []string
 	// Position is where the account stands now: once the last page is
 	// written, the next poll asks for changes since it, as
@@ -64,6 +68,25 @@ type ChangePage struct {
 	Position string
 	// NextPageToken asks for the next page; empty on the last.
 	NextPageToken string
+}
+
+// MessageUpdate is how one message's mailboxes and flags changed. It says
+// where the message stands after the page on what the page changed, not
+// the steps in between, so applying it twice changes nothing more.
+type MessageUpdate struct {
+	// ProviderID is the message's [Message.ProviderID].
+	ProviderID string
+	// MailboxesAdded are the [Mailbox.ProviderID]s of mailboxes the
+	// message is in after the page and may not have been in before.
+	MailboxesAdded []string
+	// MailboxesRemoved are those of mailboxes it is not in after the page.
+	MailboxesRemoved []string
+	// Seen is [Message.Seen] after the page; nil when the page did not
+	// change it.
+	Seen *bool
+	// Flagged is [Message.Flagged] after the page; nil when the page did
+	// not change it.
+	Flagged *bool
 }
 
 // Provider reads an account's mail at its provider, with an access token
@@ -91,11 +114,10 @@ type Provider interface {
 	Messages(ctx context.Context, token connectedaccount.AccessToken, accountID int64, providerIDs []string) (Fetched, error)
 	// Changes returns one page of what changed since position, the
 	// [ChangePage.Position] of an earlier poll or a full sync's
-	// [Provider.Position], reduced to what to fetch again and what to
-	// delete; the order within the page is not kept, so pages are applied
-	// in order. pageToken is the [ChangePage.NextPageToken] of the page
-	// before; empty for the first. It returns [ErrPositionExpired] when
-	// the provider no longer keeps changes that old, or cannot read
-	// position.
+	// [Provider.Position], reduced to what to fetch, what to update, and what to
+	// delete; the order within the page is not kept, so pages are applied in
+	// order. pageToken is the [ChangePage.NextPageToken] of the page before;
+	// empty for the first. It returns [ErrPositionExpired] when the provider no
+	// longer keeps changes that old, or cannot read position.
 	Changes(ctx context.Context, token connectedaccount.AccessToken, position string, pageToken string) (ChangePage, error)
 }

@@ -19,7 +19,7 @@ const (
 	// historyFields are the parts of history.list's answer
 	// [Client.Changes] reads.
 	historyFields = "history(messagesAdded/message/id,messagesDeleted/message/id," +
-		"labelsAdded/message/id,labelsRemoved/message/id),historyId,nextPageToken"
+		"labelsAdded(message/id,labelIds),labelsRemoved(message/id,labelIds)),historyId,nextPageToken"
 )
 
 // errUnreadablePosition means a position is not a history ID
@@ -27,8 +27,9 @@ const (
 var errUnreadablePosition = errors.New("position is not a gmail history id")
 
 // Changes returns one page of the account's changes since position, a history
-// ID, from history.list: a message added or with labels added or removed is
-// changed, and one deleted is deleted, whatever else happened to it. It returns
+// ID, from history.list: a message deleted is deleted, whatever else happened
+// to it; one added is fetched; and one relabelled is updated, each label it
+// changed at its last change, UNREAD and STARRED as its flags. It returns
 // an error wrapping [mailsync.ErrPositionExpired] when position is not a
 // history ID, or when Gmail no longer keeps history that old, which it answers
 // with 404 (Gmail's "Synchronize clients with Gmail" guide).
@@ -62,59 +63,180 @@ func (c *Client) Changes(ctx context.Context, token connectedaccount.AccessToken
 
 	page := mailsync.ChangePage{Position: formatHistoryID(list.HistoryId), NextPageToken: list.NextPageToken}
 
-	// 1. Collect every record's messages: those added or relabelled, to
-	// fetch again, and those deleted.
-	var changed []string
-	deleted := make(map[string]bool)
-	for _, record := range list.History {
+	// 1. Collect every record in turn: Gmail returns them oldest first
+	// (history.list reference), so a label's last change in the page is
+	// where the message stands.
+	var changes pageChanges
+	for i, record := range list.History {
 		if record == nil {
 			continue
 		}
 		for _, m := range record.MessagesAdded {
 			if m != nil {
-				changed = appendMessageID(changed, m.Message)
+				changes.added(m.Message)
 			}
 		}
 		for _, m := range record.LabelsAdded {
 			if m != nil {
-				changed = appendMessageID(changed, m.Message)
+				changes.relabelled(m.Message, m.LabelIds, labelEvent{change: labelAdded, record: i})
 			}
 		}
 		for _, m := range record.LabelsRemoved {
 			if m != nil {
-				changed = appendMessageID(changed, m.Message)
+				changes.relabelled(m.Message, m.LabelIds, labelEvent{change: labelRemoved, record: i})
 			}
 		}
 		for _, m := range record.MessagesDeleted {
-			if m != nil && m.Message != nil && m.Message.Id != "" && !deleted[m.Message.Id] {
-				deleted[m.Message.Id] = true
-				page.Deleted = append(page.Deleted, m.Message.Id)
+			if m != nil {
+				changes.deleted(m.Message)
 			}
 		}
 	}
 
-	// 2. Only then leave the deleted out of the changed: a later record
-	// may delete a message an earlier one added or relabelled.
-	seen := make(map[string]bool, len(changed))
-	for _, id := range changed {
-		if !deleted[id] && !seen[id] {
-			seen[id] = true
-			page.Changed = append(page.Changed, id)
+	// 2. Only then sort each message: a later record may delete one an
+	// earlier record added or relabelled.
+	changes.fill(&page)
+	return page, nil
+}
+
+// labelChange is whether a history record added a label to a message or
+// removed it.
+type labelChange int
+
+const (
+	labelAdded labelChange = iota + 1
+	labelRemoved
+)
+
+// labelEvent is one change of a label on a message, and the index of the
+// history record that made it.
+type labelEvent struct {
+	change labelChange
+	record int
+}
+
+// pageChanges is what one history page did to each message it names, in
+// the order the messages first appear.
+type pageChanges struct {
+	ids  []string
+	byID map[string]*messageHistory
+}
+
+// messageHistory is what one history page did to one message.
+type messageHistory struct {
+	added   bool
+	deleted bool
+	// unclear means a record both added and removed one label, so where
+	// the message stands is not known from the page.
+	unclear bool
+	// labels are the labels the page changed, in the order first changed,
+	// and last their latest change.
+	labels []string
+	last   map[string]labelEvent
+}
+
+// added records that m was added.
+func (p *pageChanges) added(m *gmail.Message) {
+	if h := p.message(m); h != nil {
+		h.added = true
+	}
+}
+
+// deleted records that m was deleted.
+func (p *pageChanges) deleted(m *gmail.Message) {
+	if h := p.message(m); h != nil {
+		h.deleted = true
+	}
+}
+
+// relabelled records event for each of m's labelIDs, replacing an
+// earlier change of the label.
+func (p *pageChanges) relabelled(m *gmail.Message, labelIDs []string, event labelEvent) {
+	h := p.message(m)
+	if h == nil {
+		return
+	}
+	for _, label := range labelIDs {
+		if label == "" {
+			continue
+		}
+		earlier, ok := h.last[label]
+		if !ok {
+			h.labels = append(h.labels, label)
+		}
+		// NOTE: Gmail documents no order between one record's labelsAdded
+		// and labelsRemoved, so a label in both leaves the message's state
+		// unknown; fetching it whole finds out.
+		if ok && earlier.record == event.record && earlier.change != event.change {
+			h.unclear = true
+		}
+		h.last[label] = event
+	}
+}
+
+// message returns the history of m, starting one on first sight; nil when
+// m has no ID.
+func (p *pageChanges) message(m *gmail.Message) *messageHistory {
+	if m == nil || m.Id == "" {
+		return nil
+	}
+	if h, ok := p.byID[m.Id]; ok {
+		return h
+	}
+	if p.byID == nil {
+		p.byID = make(map[string]*messageHistory)
+	}
+	h := &messageHistory{last: make(map[string]labelEvent)}
+	p.byID[m.Id] = h
+	p.ids = append(p.ids, m.Id)
+	return h
+}
+
+// fill sorts each message into page: deleted whatever else happened to
+// it, fetched whole when added or unclear, and otherwise updated, unless
+// nothing changed.
+func (p *pageChanges) fill(page *mailsync.ChangePage) {
+	for _, id := range p.ids {
+		h := p.byID[id]
+		switch {
+		case h.deleted:
+			page.Deleted = append(page.Deleted, id)
+		case h.added || h.unclear:
+			page.Fetch = append(page.Fetch, id)
+		default:
+			if update, ok := h.update(id); ok {
+				page.Update = append(page.Update, update)
+			}
 		}
 	}
-	return page, nil
+}
+
+// update returns message id's net change, with UNREAD and STARRED as its
+// flags and every other label as a mailbox. It reports false when nothing
+// changed.
+func (h *messageHistory) update(id string) (mailsync.MessageUpdate, bool) {
+	update := mailsync.MessageUpdate{ProviderID: id}
+	for _, label := range h.labels {
+		on := h.last[label].change == labelAdded
+		switch {
+		case label == labelUnread:
+			seen := !on
+			update.Seen = &seen
+		case label == labelStarred:
+			update.Flagged = &on
+		case on:
+			update.MailboxesAdded = append(update.MailboxesAdded, label)
+		default:
+			update.MailboxesRemoved = append(update.MailboxesRemoved, label)
+		}
+	}
+	changed := update.Seen != nil || update.Flagged != nil ||
+		len(update.MailboxesAdded) > 0 || len(update.MailboxesRemoved) > 0
+	return update, changed
 }
 
 // formatHistoryID returns historyID as a position: Gmail's discovery
 // document types it as an unsigned 64-bit integer, sent as decimal text.
 func formatHistoryID(historyID uint64) string {
 	return strconv.FormatUint(historyID, 10)
-}
-
-// appendMessageID appends m's ID to ids, unless m has none.
-func appendMessageID(ids []string, m *gmail.Message) []string {
-	if m == nil || m.Id == "" {
-		return ids
-	}
-	return append(ids, m.Id)
 }
