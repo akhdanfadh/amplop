@@ -15,8 +15,9 @@ type Display struct {
 // root: in multipart/alternative, the last alternative that has HTML,
 // else the last one that has text; in multipart/related, the part its
 // start parameter names, else its first, whose inline parts HTML shows
-// by Content-ID; in any other multipart, every part in order. An inline
-// part that no HTML of its multipart/related can show is offered as a
+// by Content-ID, while every part under its other parts is offered as a
+// download; in any other multipart, every part in order. An inline part
+// that no HTML of its multipart/related can show is offered as a
 // download.
 //
 // DESIGN: It runs when a message is shown, on what PostgreSQL keeps, so
@@ -105,18 +106,37 @@ func (d *Display) addRelated(related Part) {
 	html := slices.ContainsFunc(shown.Bodies, isHTML)
 	// Parts are added in message order, wherever the shown part is.
 	for i, part := range related.Parts {
-		switch {
-		// The shown part, in its place.
-		case i == root:
+		if i == root {
 			d.merge(shown)
-		// An image its HTML can show by cid:.
-		case part.Kind == KindInline && html:
-			d.Inline = append(d.Inline, part)
-		// Anything else, as in multipart/mixed.
-		default:
-			d.add(part)
+			continue
+		}
+		// Any other part is something the shown one refers to (RFC 2387,
+		// section 3.2), never a body: its text would show twice, or pick
+		// an alternative the shown part would not.
+		for _, leaf := range leaves(part) {
+			switch {
+			// An image its HTML can show by cid:.
+			case leaf.Kind == KindInline && html:
+				d.Inline = append(d.Inline, leaf)
+			// Anything else, text included: a download, never lost.
+			default:
+				d.Attachments = append(d.Attachments, leaf)
+			}
 		}
 	}
+}
+
+// leaves returns part if it holds no parts, else the parts under it
+// that hold none, in message order.
+func leaves(part Part) []Part {
+	if part.Kind != KindMultipart {
+		return []Part{part}
+	}
+	var out []Part
+	for _, child := range part.Parts {
+		out = append(out, leaves(child)...)
+	}
+	return out
 }
 
 // merge appends shown to d.
