@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/validation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -153,4 +154,11 @@ func TestNumericCorrections(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "11.5", "response echoes rejected input")
 	assert.NotContains(t, response.Body.String(), `"value"`, "response echoes rejected input")
 	assert.Empty(t, probes.added, "rejected input reached the service")
+}
+
+// A list over its maxItems gets the limit in words, as a length does.
+func TestMaxItemsCorrection(t *testing.T) {
+	assert.Equal(t, "Use at most 100 items.", inputCorrection(validation.MsgExpectedMaxItems, 100))
+	assert.Equal(t, "Use at most 1 item.", inputCorrection(validation.MsgExpectedMaxItems, 1))
+	assert.Empty(t, inputCorrection(validation.MsgExpectedMaxItems, "100"), "an unknown argument keeps the generic text")
 }

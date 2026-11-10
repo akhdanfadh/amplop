@@ -71,9 +71,23 @@ func inputCorrection(format string, value any) string {
 			return fmt.Sprintf("Use at least %d %s.", limit, unit)
 		}
 		return fmt.Sprintf("Use at most %d %s.", limit, unit)
+	case validation.MsgExpectedMaxItems:
+		limit, ok := value.(int)
+		if !ok {
+			return ""
+		}
+		return maxItemsMessage(limit)
 	default:
 		return ""
 	}
+}
+
+// maxItemsMessage returns the correction for a list longer than limit.
+func maxItemsMessage(limit int) string {
+	if limit == 1 {
+		return "Use at most 1 item."
+	}
+	return fmt.Sprintf("Use at most %d items.", limit)
 }
 
 // ========================

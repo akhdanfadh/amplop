@@ -18,6 +18,7 @@ export function validationMessage(iss: z.core.$ZodRawIssue): string {
 
   const badLength = iss.code === "too_small" || iss.code === "too_big";
   if (schema instanceof z.ZodString && badLength) return lengthRule(schema);
+  if (schema instanceof z.ZodArray && iss.code === "too_big") return itemsRule(iss.maximum);
 
   return "Enter a valid value.";
 }
@@ -43,6 +44,12 @@ function lengthRule(schema: z.ZodString): string {
   if (min !== null) return `Must be at least ${characters(min)}.`;
   if (max !== null) return `Must be at most ${characters(max)}.`;
   return "Enter a valid value.";
+}
+
+// "Must have at most 100 items.", the rule the contract's maxItems sets.
+// Zod keeps no list limits on the schema, so the refused issue gives it.
+function itemsRule(max: number | bigint): string {
+  return max === 1 ? "Must have at most 1 item." : `Must have at most ${max} items.`;
 }
 
 // Zod reports "no limit" as null, Infinity, or the largest safe integer.

@@ -38,6 +38,18 @@ describe("validationMessage", () => {
     ["a number without limits", z.number(), Number.NaN, "Enter a number."],
     ["text with a minimum length", z.string().min(3), "ab", "Must be at least 3 characters."],
     ["text of at most one character", z.string().max(1), "ab", "Must be at most 1 character."],
+    [
+      "a list over its limit",
+      z.array(z.string()).max(100),
+      Array(101).fill("a"),
+      "Must have at most 100 items.",
+    ],
+    [
+      "a list of at most one item",
+      z.array(z.string()).max(1),
+      ["a", "b"],
+      "Must have at most 1 item.",
+    ],
   ])("states the rule for %s", (_case, schema, value, message) => {
     expect(messages(schema, value)).toEqual([message]);
   });
