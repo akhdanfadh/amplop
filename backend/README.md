@@ -2328,7 +2328,11 @@ generates typed Go methods, e.g. `LockProbeCounter`, into
 `backend/internal/repository/postgres/sqlc`; there, `models.go` lists
 every table's columns. Every feature's queries share that one package, so
 a query's name repeats its table's name, e.g. `InsertProbeEvent` for
-`probe_events`. Settings are in `backend/sqlc.yaml`. After
+`probe_events`. A query names every column it reads or returns, never
+`*`, even when it takes them all: a later migration that adds a column
+then changes no query by surprise, and a reader sees what each query
+reads. SQLC still maps a list of every column to the table's model, e.g.
+`sqlc.OutgoingMessage`. Settings are in `backend/sqlc.yaml`. After
 changing a query or a migration, regenerate from `backend` and commit the
 result; never edit it by hand:
 

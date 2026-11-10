@@ -52,7 +52,10 @@ JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE om.id = @id AND ca.user_id = @user_id;
 
 -- name: ReadOutgoingMessageByKey :one
-SELECT om.*
+SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
+    om.cc_addresses, om.bcc_addresses, om.subject, om.body,
+    om.inbok_message_id, om.status, om.failure, om.provider_message_id,
+    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as
 FROM outgoing_message_keys k
 JOIN outgoing_messages om ON om.id = k.message_id
 WHERE k.user_id = @user_id AND k.idempotency_key = @idempotency_key;
@@ -75,11 +78,17 @@ LIMIT @max_count;
 UPDATE outgoing_messages SET sent_again_as = @sent_again_as WHERE id = @id;
 
 -- name: ReadOutgoingMessageToSend :one
-SELECT * FROM outgoing_messages WHERE id = @id;
+SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
+    bcc_addresses, subject, body, inbok_message_id, status, failure,
+    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
+FROM outgoing_messages WHERE id = @id;
 
 -- name: LockOutgoingMessage :one
 -- No key column changes, so foreign key checks on the row need not wait.
-SELECT * FROM outgoing_messages WHERE id = @id FOR NO KEY UPDATE;
+SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
+    bcc_addresses, subject, body, inbok_message_id, status, failure,
+    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
+FROM outgoing_messages WHERE id = @id FOR NO KEY UPDATE;
 
 -- name: UpdateOutgoingMessageStatus :one
 UPDATE outgoing_messages SET
@@ -89,7 +98,9 @@ UPDATE outgoing_messages SET
     provider_thread_id = @provider_thread_id,
     sent_at = @sent_at
 WHERE id = @id
-RETURNING *;
+RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
+    bcc_addresses, subject, body, inbok_message_id, status, failure,
+    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as;
 
 -- name: UpdateConnectedAccountEmail :exec
 -- Gmail's address for the account, which a send found changed.

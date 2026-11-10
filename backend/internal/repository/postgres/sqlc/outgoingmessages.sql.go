@@ -205,7 +205,10 @@ func (q *Queries) ListSendAttemptTimes(ctx context.Context, arg ListSendAttemptT
 }
 
 const lockOutgoingMessage = `-- name: LockOutgoingMessage :one
-SELECT id, connected_account_id, from_address, to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id, status, failure, provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as FROM outgoing_messages WHERE id = $1 FOR NO KEY UPDATE
+SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
+    bcc_addresses, subject, body, inbok_message_id, status, failure,
+    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
+FROM outgoing_messages WHERE id = $1 FOR NO KEY UPDATE
 `
 
 // No key column changes, so foreign key checks on the row need not wait.
@@ -353,7 +356,10 @@ func (q *Queries) ReadOutgoingMessage(ctx context.Context, arg ReadOutgoingMessa
 }
 
 const readOutgoingMessageByKey = `-- name: ReadOutgoingMessageByKey :one
-SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses, om.cc_addresses, om.bcc_addresses, om.subject, om.body, om.inbok_message_id, om.status, om.failure, om.provider_message_id, om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as
+SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
+    om.cc_addresses, om.bcc_addresses, om.subject, om.body,
+    om.inbok_message_id, om.status, om.failure, om.provider_message_id,
+    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as
 FROM outgoing_message_keys k
 JOIN outgoing_messages om ON om.id = k.message_id
 WHERE k.user_id = $1 AND k.idempotency_key = $2
@@ -389,7 +395,10 @@ func (q *Queries) ReadOutgoingMessageByKey(ctx context.Context, arg ReadOutgoing
 }
 
 const readOutgoingMessageToSend = `-- name: ReadOutgoingMessageToSend :one
-SELECT id, connected_account_id, from_address, to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id, status, failure, provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as FROM outgoing_messages WHERE id = $1
+SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
+    bcc_addresses, subject, body, inbok_message_id, status, failure,
+    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
+FROM outgoing_messages WHERE id = $1
 `
 
 func (q *Queries) ReadOutgoingMessageToSend(ctx context.Context, id uuid.UUID) (OutgoingMessage, error) {
@@ -453,7 +462,9 @@ UPDATE outgoing_messages SET
     provider_thread_id = $4,
     sent_at = $5
 WHERE id = $6
-RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id, status, failure, provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
+RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
+    bcc_addresses, subject, body, inbok_message_id, status, failure,
+    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
 `
 
 type UpdateOutgoingMessageStatusParams struct {
