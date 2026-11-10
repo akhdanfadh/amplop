@@ -91,8 +91,8 @@ type Config struct {
 	Encryption     *encryption.Keyring // validated keys for stored secrets
 	Google         *Google             // nil: Gmail is not offered
 	HTTPAddr       string              // host:port to listen on, e.g. 0.0.0.0:8080
-	ObjectStore    S3                  // where message content is kept
 	PublicURL      *url.URL            // where users open inbok: scheme, host, and port only
+	S3             S3                  // where message content is kept
 	SetupToken     string              // empty disables first-admin setup
 	TrustedProxies []string            // CIDRs; empty ignores forwarded client addresses
 }
@@ -160,19 +160,19 @@ func Load() (Config, error) {
 	}
 	cfg.Encryption = keys
 
-	store, err := ObjectStore()
+	store, err := S3Settings()
 	if err != nil {
 		return Config{}, err
 	}
-	cfg.ObjectStore = store
+	cfg.S3 = store
 
 	return cfg, nil
 }
 
-// ObjectStore reads the S3 service that holds message content, which has
+// S3Settings reads the S3 service that holds message content, which has
 // no default. Returns an error naming the setting, without its value, if
 // one is missing or the endpoint is not an origin.
-func ObjectStore() (S3, error) {
+func S3Settings() (S3, error) {
 	endpoint, err := parseS3Endpoint(os.Getenv(envS3Endpoint))
 	if err != nil {
 		return S3{}, err
