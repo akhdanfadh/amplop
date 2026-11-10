@@ -24,6 +24,7 @@ type Workflows interface {
 	PasswordResetWorkflows
 	ConnectedAccountWorkflows
 	OutgoingMessageWorkflows
+	SyncWorkflows
 }
 
 // OutgoingMessageWorkflows saves the jobs of outgoing messages.
@@ -31,6 +32,13 @@ type OutgoingMessageWorkflows interface {
 	// EnqueueOutgoingMessage saves, in tx, the workflow that sends the
 	// outgoing message messageID.
 	EnqueueOutgoingMessage(ctx context.Context, tx pgx.Tx, messageID uuid.UUID) error
+}
+
+// SyncWorkflows saves the jobs of mail synchronization.
+type SyncWorkflows interface {
+	// EnqueueFullSync saves, in tx, the workflow that copies account
+	// accountID's recent mail from its provider.
+	EnqueueFullSync(ctx context.Context, tx pgx.Tx, accountID int64) error
 }
 
 // ConnectedAccountWorkflows saves the jobs of connected accounts.

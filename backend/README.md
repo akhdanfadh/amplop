@@ -79,8 +79,8 @@ The worker reads these environment variables:
 | `INBOK_HTTP_ADDR` | `127.0.0.1:8081`; the image sets `0.0.0.0:8080` | Address the worker answers health checks on: port 8081 for the worker, 8080 for `serve`, so both run on one machine. `.env` sets `serve`'s, so the Make commands pass the worker `INBOK_WORKER_HTTP_ADDR` instead; `deploy/compose.yaml` sets `127.0.0.1:8081`. |
 | `INBOK_WORKER_ID` | `worker` | The name the worker resumes unfinished work under: 1 to 64 letters, digits, `.`, `-`, or `_`. |
 | `INBOK_PUBLIC_URL` | none, required | As for `serve`: links in the email the worker sends start with it, and its host names inbok to mail servers. |
-| `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of removed Gmail accounts. |
-| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with and the [send](#sending-a-message) job sends with. Empty: the worker runs neither and leaves them queued. |
+| `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of Gmail accounts, connected or removed. |
+| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with, the [send](#sending-a-message) job sends with, and the [full sync](#full-sync) reads Gmail with. Empty: the worker runs none of them and leaves them queued. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
 | `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. The worker applies the [search index](#search-index)'s settings when it starts. |
 | `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, which signs every request. |
@@ -399,6 +399,72 @@ message, to stderr with `GOOGLE_SDK_GO_LOGGING_LEVEL=debug`. ADR006
 records the rules and what they were chosen over. The worker registers the
 workflow, and listens to `inbok.google-send`, only when the Google
 settings are set, as for account removal.
+
+### Full sync
+
+The workflow `inbok.full-sync`, run from the queue `inbok.google`, copies
+the last 90 days of a connected account's mail metadata and mailboxes, by
+Gmail's own received time, as [Synchronized mail](#synchronized-mail)
+describes. [Connecting](#connecting) an account saves its sync state,
+`waiting`, and its first full sync, in the transaction that saves the
+account. Its input is only the account's ID. Each step first checks that
+the account may still sync: a step that calls Gmail takes its own access
+token ([Calling Gmail](#calling-gmail)), so none is ever saved, and one
+that writes only inbok's data asks `Access.Check`, which reads the same
+state without calling Google.
+DBOS refuses a second full sync of an account while one is queued or
+running (its deduplication ID, `full-sync-<account ID>`), so an account
+has one at a time.
+
+Its steps are `mailsync.FullSync`'s methods, in order:
+
+1. `start` lists the mailboxes and reads the account's position
+   (`users.getProfile`) before listing any message, so the first poll
+   replays what changed while the full sync ran. It saves both with a new
+   sync generation, `running`, and the progress back at 0.
+2. `copy page`, once per page of 100 messages, newest first: it lists the
+   page, Spam and Trash included, fetches the messages' metadata, and
+   saves the ones received inside the window. Gmail's `after:` counts
+   whole seconds, so the step checks each message's own time at the
+   window's edge. A message gone before its fetch is deleted. Each page
+   counts once in the progress, however often its step runs. A message in
+   a label made since `start` lists the labels again.
+3. `delete earlier` deletes, up to 1,000 at a time, the account's messages
+   this generation did not save: the ones Gmail no longer has, and the
+   ones older than the window.
+4. `finish` records `complete`, the time, and no failure.
+
+Every step writes only while the account's sync state still has the
+step's generation and is `running`, so a full sync another one took over
+stops at its next step. A deactivation or a refused token that lands
+while a page's metadata is fetched does not stop that page's save: the
+page was read while the account could sync, and the next step stops. How
+a step's error ends the full sync is `mailsync.EndingOf`:
+
+| Error | Retried | Then |
+|---|---|---|
+| The account needs reconnecting, or its member is deactivated | no | `wait`: back to `waiting`, until the member reconnects or is reactivated |
+| The account was disconnected, or another full sync took over | no | nothing to record |
+| The refresh token no key opens | no | `fail`: `failed`, `token-unreadable` |
+| Gmail failing, e.g. `mailsync.ErrProviderBusy`, or Google's token endpoint failing (`connectedaccount.ErrRefreshFailed`) | 4 more times, within the step, waiting 30 seconds, then 1, 2, and 2 minutes | `fail`: `failed`, `provider` |
+| Anything else, e.g. the database, also while taking a token | the same | `fail`: `failed`, `internal` |
+
+A failure records its time, `failed_at`, and fails the run, so DBOS keeps
+it 30 days. The run logs `full sync step failed` with the step and an
+error holding only Gmail's status when a step runs out of retries, then
+`full sync failed` with the failure, or `full sync ended` with how it
+ended otherwise; each line carries the `account_id`. A step retries
+within itself and returns how it ended as a value, which DBOS records
+whole: DBOS records a step's error only as text, so a worker resumed
+after it would no longer know a Gmail failure from inbok's. Nothing
+starts a full sync again yet: the poll schedule will, for an account that
+is not complete, an hour after a failure.
+
+A full sync stopped with its worker resumes at the step it stopped in
+(see [Which worker resumes what](#which-worker-resumes-what)): updating
+the containers copies nothing twice. The worker registers the workflow,
+and listens to `inbok.google`, only with the Google settings, as for the
+[account removal](#account-removal).
 
 ### Inspecting workflows
 
@@ -2025,8 +2091,9 @@ the server. Another member's account is answered as not found everywhere,
    check, so it is used up whatever follows; trades the code with the
    verifier; checks the refresh token, the granted Gmail scope, and the
    ID token's verified email; calls Gmail's `users.getProfile`, whose
-   mailbox must be the ID token's email; and saves the account, or
-   replaces the reconnected account's token.
+   mailbox must be the ID token's email; and saves the account, with its
+   sync state and its [full sync](#full-sync), or replaces the reconnected
+   account's token.
 
 The outcomes, the contract's `ConnectOutcome`, are `connected` (a
 reconnect included), `cancelled`, `gmail-not-granted`,
@@ -2159,8 +2226,9 @@ choices.
 `mailsync` keeps a copy of each connected account's recent mail metadata
 and mailboxes, as ADR001 in the project's decision records decides; the
 provider stays authoritative. ADR001's "Synchronization rules" lists
-what synchronization does and where each rule comes from. So far its
-storage and its reads from Gmail exist; nothing synchronizes yet. The
+what synchronization does and where each rule comes from. A
+[full sync](#full-sync) copies an account when it is connected; polling
+for later changes does not exist yet. The
 model follows JMAP Mail (RFC 8621), which covers both folders and Gmail
 labels, so the features that read mail never see Gmail's own encoding.
 Four tables hold it, each deleted with its account:
@@ -2186,18 +2254,18 @@ Four tables hold it, each deleted with its account:
   Each row names both sides with the account, through foreign keys on
   (account, ID), so PostgreSQL refuses a membership that joins two
   accounts' rows. Deleting a message or a mailbox deletes its rows.
-- `sync_states`: one row per account, with the full sync's `status`
-  (`waiting`, `running`, `complete`, or `failed`), its progress, the
-  `position` the next poll asks for changes since, and when a sync last
-  finished. `failure` and `failed_at` say why and when the last sync, full
-  or poll, failed, until one succeeds: `provider`, `token-unreadable`, or
-  `internal`. A `failed` full sync always has one, and a `complete` account
-  keeps a failed poll's. The position is text only the provider's code
-  reads, e.g. Gmail's history ID in decimal, so storage neither parses nor
-  checks it. `mailboxes` and `messages` reference this row rather than the
-  account's, so a disconnect deletes the account, then the sync state,
-  then the mail, the order a sync write locks them in: the two never
-  deadlock.
+- `sync_states`: one row per account, saved with it, with the full
+  sync's `status` (`waiting`, `running`, `complete`, or `failed`), its
+  progress, the `position` the next poll asks for changes since, and when
+  a sync last finished. `failure` and `failed_at` say why and when the
+  last sync, full or poll, failed, until one succeeds: `provider`,
+  `token-unreadable`, or `internal`. A `failed` full sync always has one,
+  and a `complete` account keeps a failed poll's. The position is text
+  only the provider's code reads, e.g. Gmail's history ID in decimal, so
+  storage neither parses nor checks it. `mailboxes` and `messages`
+  reference this row rather than the account's, so a disconnect deletes
+  the account, then the sync state, then the mail, the order a sync write
+  locks them in: the two never deadlock.
 
 The migration lists, as comments, the columns IMAP and Outlook will need,
 such as a folder's UID validity and a message's UID in each folder.
@@ -2216,9 +2284,8 @@ feature that must act on the same writes, e.g. indexing them for search,
 adds its job to that transaction. Each full sync starts a sync generation,
 and each message records the generation that last saved it, so a full
 sync that finishes can delete the messages it did not see, a batch per
-change, without comparing clocks. Storage keeps one account's writes in
-order; checking that a step's generation is still the current one is the
-full sync's job.
+change, without comparing clocks. Storage keeps one account's writes in order; checking
+that a step's generation is still the current one is the full sync's job.
 
 `mailsync.Provider` is what synchronization reads from the provider, and
 the `google` client implements it for Gmail. Every method only reads and

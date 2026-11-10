@@ -17,10 +17,10 @@ import (
 )
 
 // sendWorkflows saves each send job as a row of test_outgoing_message_jobs,
-// in the caller's transaction, or returns err; account removals go to
-// [removalWorkflows].
+// in the caller's transaction, or returns err; account removals and full
+// syncs go to [accountWorkflows].
 type sendWorkflows struct {
-	removalWorkflows
+	accountWorkflows
 	err error
 }
 

@@ -4,14 +4,18 @@ import (
 	"context"
 	"encoding/base64"
 	"net/netip"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
+	"inbok/internal/connectedaccount"
+	"inbok/internal/encryption"
 	"inbok/internal/passwordreset"
 	"inbok/internal/randomsecret"
 	"inbok/internal/repository/postgres"
@@ -297,4 +301,88 @@ func TestClientPasswordChangedNoticeRollback(t *testing.T) {
 	// Then the reset fails and no notice is saved.
 	require.ErrorContains(t, err, "reset rejected")
 	assert.Empty(t, changedNoticeWorkflows(t, conn))
+}
+
+// fullSyncWorkflows lists the full sync workflows saved in DBOS's tables:
+// each one's status, queue, deduplication ID, and decoded input. DBOS saves
+// an input in workflow_input, as base64-encoded JSON.
+func fullSyncWorkflows(t *testing.T, conn *pgx.Conn) [][4]string {
+	t.Helper()
+	rows, err := conn.Query(t.Context(), `
+		SELECT s.status, coalesce(s.queue_name, ''), coalesce(s.deduplication_id, ''), coalesce(i.inputs, '')
+		FROM dbos.workflow_status s LEFT JOIN dbos.workflow_input i USING (workflow_uuid)
+		WHERE s.name = $1`, fullSyncWorkflow)
+	require.NoError(t, err)
+	var saved [][4]string
+	for rows.Next() {
+		var w [4]string
+		require.NoError(t, rows.Scan(&w[0], &w[1], &w[2], &w[3]))
+		decoded, err := base64.StdEncoding.DecodeString(w[3])
+		require.NoError(t, err)
+		w[3] = string(decoded)
+		saved = append(saved, w)
+	}
+	require.NoError(t, rows.Err())
+	return saved
+}
+
+// connectAdmin connects a Gmail account for admin@example.com through db.
+func connectAdmin(t *testing.T, db *postgres.DB, conn *pgx.Conn) (connectedaccount.Account, error) {
+	t.Helper()
+	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
+	require.NoError(t, err)
+	var admin int64
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT id FROM users WHERE email = 'admin@example.com'").Scan(&admin))
+	identity := connectedaccount.Identity{Subject: "100000000000000000001", Email: "admin@example.com"}
+	return connectedaccount.NewService(db, ring).Connect(t.Context(), admin, identity, "refresh-1")
+}
+
+// Connecting an account saves its full sync on the Google queue, with the
+// account's deduplication ID and only its ID as input; a second full sync
+// of the account is refused while the first waits.
+func TestClientFullSync(t *testing.T) {
+	// Given storage that saves workflows with a Client.
+	db, conn, url := clientStack(t)
+
+	// When an account is connected, and its full sync enqueued again.
+	account, err := connectAdmin(t, db, conn)
+	require.NoError(t, err)
+	client, err := NewClient(t.Context(), url, discard)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+	tx, err := conn.Begin(t.Context())
+	require.NoError(t, err)
+	again := client.EnqueueFullSync(t.Context(), tx, account.ID)
+	require.NoError(t, tx.Rollback(t.Context()))
+
+	// Then one full sync waits, and the second was refused.
+	require.ErrorIs(t, again, dbos.ErrQueueDeduplicated)
+	saved := fullSyncWorkflows(t, conn)
+	require.Len(t, saved, 1)
+	assert.Equal(t, "ENQUEUED", saved[0][0])
+	assert.Equal(t, googleQueue, saved[0][1])
+	assert.Equal(t, fullSyncDeduplication(account.ID), saved[0][2])
+	assert.Contains(t, saved[0][3], `"AccountID":`+strconv.FormatInt(account.ID, 10))
+}
+
+// A connect that fails as it commits rolls its full sync back with it, so
+// no job copies an account that was never saved.
+func TestClientFullSyncRollback(t *testing.T) {
+	// Given storage whose sync states fail as they commit, after the job is
+	// saved.
+	db, conn, _ := clientStack(t)
+	_, err := conn.Exec(t.Context(), `CREATE FUNCTION reject_state() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'connect rejected'; END $$`)
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), "CREATE CONSTRAINT TRIGGER reject_write AFTER INSERT ON sync_states DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_state()")
+	require.NoError(t, err)
+
+	// When an account is connected.
+	_, err = connectAdmin(t, db, conn)
+
+	// Then the connect fails, and neither the account nor its job is saved.
+	require.ErrorContains(t, err, "connect rejected")
+	assert.Empty(t, fullSyncWorkflows(t, conn))
+	var accounts int
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM connected_accounts").Scan(&accounts))
+	assert.Equal(t, 0, accounts)
 }

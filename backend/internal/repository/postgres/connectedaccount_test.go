@@ -28,19 +28,53 @@ type connectedAccountsTest struct {
 	otherMember int64
 }
 
-// removalWorkflows saves each account removal job as a row of
-// test_account_removal_jobs in the caller's transaction, or fails with err.
-type removalWorkflows struct {
+// accountWorkflows saves each account removal job as a row of
+// test_account_removal_jobs, and each full sync job as a row of
+// test_full_sync_jobs, in the caller's transaction, or fails with
+// removalErr or syncErr.
+type accountWorkflows struct {
 	Workflows
-	err error
+	removalErr error
+	syncErr    error
 }
 
-func (w removalWorkflows) EnqueueAccountRemoval(ctx context.Context, tx pgx.Tx, removalID int64) error {
-	if w.err != nil {
-		return w.err
+func (w accountWorkflows) EnqueueAccountRemoval(ctx context.Context, tx pgx.Tx, removalID int64) error {
+	if w.removalErr != nil {
+		return w.removalErr
 	}
 	_, err := tx.Exec(ctx, "INSERT INTO test_account_removal_jobs (removal_id) VALUES ($1)", removalID)
 	return err
+}
+
+func (w accountWorkflows) EnqueueFullSync(ctx context.Context, tx pgx.Tx, accountID int64) error {
+	if w.syncErr != nil {
+		return w.syncErr
+	}
+	_, err := tx.Exec(ctx, "INSERT INTO test_full_sync_jobs (account_id) VALUES ($1)", accountID)
+	return err
+}
+
+// fullSyncJobs lists the account IDs of the saved full sync jobs.
+func (c connectedAccountsTest) fullSyncJobs(t *testing.T) []int64 {
+	t.Helper()
+	rows, err := c.conn.Query(t.Context(), "SELECT account_id FROM test_full_sync_jobs ORDER BY account_id")
+	require.NoError(t, err)
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	require.NoError(t, err)
+	return ids
+}
+
+// syncStatus returns account accountID's sync status, or "" when it has
+// no sync state.
+func (c connectedAccountsTest) syncStatus(t *testing.T, accountID int64) string {
+	t.Helper()
+	var status string
+	err := c.conn.QueryRow(t.Context(), "SELECT status FROM sync_states WHERE connected_account_id = $1", accountID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ""
+	}
+	require.NoError(t, err)
+	return status
 }
 
 // removalJobs lists the removal IDs of the saved jobs.
@@ -58,7 +92,9 @@ func newConnectedAccountsTest(t *testing.T) connectedAccountsTest {
 	db, conn := setupStorage(t)
 	_, err := conn.Exec(t.Context(), "CREATE TABLE test_account_removal_jobs (removal_id bigint NOT NULL)")
 	require.NoError(t, err)
-	db = db.WithWorkflows(removalWorkflows{})
+	_, err = conn.Exec(t.Context(), "CREATE TABLE test_full_sync_jobs (account_id bigint NOT NULL)")
+	require.NoError(t, err)
+	db = db.WithWorkflows(accountWorkflows{})
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	require.NoError(t, err)
 	return connectedAccountsTest{
@@ -143,6 +179,36 @@ func TestConnectedAccountConnectTwice(t *testing.T) {
 	require.ErrorIs(t, err, connectedaccount.ErrAlreadyConnected)
 	assert.Equal(t, int64(1), c.countConnectedAccounts(t))
 	assert.Equal(t, "refresh-1", c.storedToken(t, c.member, first.ID))
+	assert.Equal(t, []int64{first.ID}, c.fullSyncJobs(t), "only the first connect saves a full sync")
+}
+
+// A connected account starts with its sync state waiting for the full
+// sync saved with it.
+func TestConnectedAccountSyncSaved(t *testing.T) {
+	c := newConnectedAccountsTest(t)
+
+	account, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, "waiting", c.syncStatus(t, account.ID))
+	assert.Equal(t, []int64{account.ID}, c.fullSyncJobs(t))
+}
+
+// A full sync that cannot be saved rolls the connect back, so no account
+// is left without one.
+func TestConnectedAccountSyncFails(t *testing.T) {
+	c := newConnectedAccountsTest(t)
+	failed := errors.New("queue unavailable")
+
+	_, err := connectedaccount.NewService(c.db.WithWorkflows(accountWorkflows{syncErr: failed}), c.ring).Connect(t.Context(), c.member, alexIdentity, "refresh-1")
+	_, plainErr := connectedaccount.NewService(&DB{pool: c.db.pool}, c.ring).Connect(t.Context(), c.member, alexIdentity, "refresh-1")
+
+	require.ErrorIs(t, err, failed)
+	require.ErrorIs(t, plainErr, errNoWorkflows)
+	assert.Equal(t, int64(0), c.countConnectedAccounts(t))
+	var states int
+	require.NoError(t, c.conn.QueryRow(t.Context(), "SELECT count(*) FROM sync_states").Scan(&states))
+	assert.Equal(t, 0, states)
 }
 
 // Two members may each connect the same Google account, with their own
@@ -335,7 +401,7 @@ func TestDisconnectRollback(t *testing.T) {
 	require.NoError(t, err)
 	failed := errors.New("enqueue failed")
 
-	_, failedErr := connectedaccount.NewService(c.db.WithWorkflows(removalWorkflows{err: failed}), c.ring).Disconnect(t.Context(), c.member, account.ID)
+	_, failedErr := connectedaccount.NewService(c.db.WithWorkflows(accountWorkflows{removalErr: failed}), c.ring).Disconnect(t.Context(), c.member, account.ID)
 	_, plainErr := connectedaccount.NewService(&DB{pool: c.db.pool}, c.ring).Disconnect(t.Context(), c.member, account.ID)
 
 	require.ErrorIs(t, failedErr, failed)

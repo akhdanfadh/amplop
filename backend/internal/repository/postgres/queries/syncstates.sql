@@ -1,3 +1,7 @@
+-- name: InsertSyncState :exec
+-- A new account's state: waiting for the full sync saved with it.
+INSERT INTO sync_states (connected_account_id, status) VALUES (@connected_account_id, 'waiting');
+
 -- name: LockSyncState :one
 -- The position travels as text, empty for none.
 SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,

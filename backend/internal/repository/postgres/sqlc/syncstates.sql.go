@@ -10,6 +10,16 @@ import (
 	"time"
 )
 
+const insertSyncState = `-- name: InsertSyncState :exec
+INSERT INTO sync_states (connected_account_id, status) VALUES ($1, 'waiting')
+`
+
+// A new account's state: waiting for the full sync saved with it.
+func (q *Queries) InsertSyncState(ctx context.Context, connectedAccountID int64) error {
+	_, err := q.db.Exec(ctx, insertSyncState, connectedAccountID)
+	return err
+}
+
 const lockSyncState = `-- name: LockSyncState :one
 SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,
     pages_synced, messages_synced, failure, failed_at, last_synced_at
