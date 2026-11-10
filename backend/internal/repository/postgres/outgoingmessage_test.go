@@ -69,7 +69,7 @@ func TestOutgoingMessageStorage(t *testing.T) {
 	assert.Equal(t, o.account, created.ConnectedAccountID)
 	assert.Equal(t, "alex@example.com", created.From)
 	assert.Equal(t, o.draft().Content, created.Content)
-	assert.Regexp(t, `^<[^<>@]+@example\.com>$`, created.InternetMessageID)
+	assert.Regexp(t, `^<[^<>@]+@example\.com>$`, created.InbokMessageID)
 	assert.Equal(t, outgoingmessage.StatusWaiting, created.Status)
 	assert.Empty(t, created.Failure)
 	assert.Empty(t, created.ProviderMessageID)

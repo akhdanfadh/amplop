@@ -31,7 +31,7 @@ func testMessage() Message {
 		ConnectedAccountID: 5,
 		From:               "me@gmail.com",
 		Content:            testContent(),
-		InternetMessageID:  "<LZ3K2.9F1Q@gmail.com>",
+		InbokMessageID:     "<LZ3K2.9F1Q@gmail.com>",
 		Status:             StatusWaiting,
 		CreatedAt:          time.Date(2026, 11, 9, 10, 30, 0, 0, time.UTC),
 	}
@@ -84,6 +84,8 @@ func TestCompose(t *testing.T) {
 	id, err := header.MessageID()
 	require.NoError(t, err)
 	assert.Equal(t, "LZ3K2.9F1Q@gmail.com", id)
+	// Gmail keeps this header though it replaces the Message-ID.
+	assert.Equal(t, "<LZ3K2.9F1Q@gmail.com>", header.Get("X-Inbok-Message-Id"))
 	mediaType, params, err := header.ContentType()
 	require.NoError(t, err)
 	assert.Equal(t, "text/plain", mediaType)
@@ -223,8 +225,8 @@ func TestComposeInjection(t *testing.T) {
 		{"subject", func(m *Message) { m.Subject = "Hi\r\nBcc: eve@example.net" }},
 		{"recipient", func(m *Message) { m.To = []string{"ann@example.com>\r\nBcc: <eve@example.net"} }},
 		{"from", func(m *Message) { m.From = "me@gmail.com\r\nBcc: eve@example.net" }},
-		{"message ID", func(m *Message) { m.InternetMessageID = "<x@gmail.com>\r\nBcc: <eve@example.net>" }},
-		{"message ID without brackets", func(m *Message) { m.InternetMessageID = "x@gmail.com" }},
+		{"message ID", func(m *Message) { m.InbokMessageID = "<x@gmail.com>\r\nBcc: <eve@example.net>" }},
+		{"message ID without brackets", func(m *Message) { m.InbokMessageID = "x@gmail.com" }},
 	}
 
 	for _, c := range cases {

@@ -68,7 +68,7 @@ type OutgoingMessage struct {
 	BccAddresses       []byte
 	Subject            string
 	Body               string
-	InternetMessageID  string
+	InbokMessageID     string
 	Status             string
 	Failure            *string
 	ProviderMessageID  *string

@@ -47,17 +47,26 @@ const (
 // Failure is why a message ended [StatusFailed].
 type Failure string
 
+// Each failure asks something different of the member, so each is its own.
 const (
 	// FailureRefused is Gmail refusing the message, e.g. a recipient it
 	// cannot deliver to.
 	FailureRefused Failure = "refused"
+	// FailureSendingLimit is Gmail's daily sending limit for the account,
+	// which lasts hours.
+	FailureSendingLimit Failure = "sending-limit"
 	// FailureNeedsReconnect is Google refusing the account's token.
 	FailureNeedsReconnect Failure = "needs-reconnect"
-	// FailureAccountUnusable is an account inbok cannot send from for another
-	// reason: its member was deactivated, or its token can no longer be read.
-	FailureAccountUnusable Failure = "account-unusable"
-	// FailureGaveUp is every attempt failing before Gmail could have the
-	// message, e.g. Google unreachable for longer than the retries last.
+	// FailureTokenUnreadable is a token inbok can no longer decrypt, e.g. its
+	// key was removed; reconnecting saves a new one.
+	FailureTokenUnreadable Failure = "token-unreadable"
+	// FailureDeactivated is the account's member being deactivated.
+	FailureDeactivated Failure = "deactivated"
+	// FailureSenderChanged is Gmail naming another address for the account
+	// than the message's [Message.From], e.g. after Google renamed it.
+	FailureSenderChanged Failure = "sender-changed"
+	// FailureGaveUp is every attempt ending without the message sent, e.g.
+	// Google unreachable for longer than the retries last.
 	FailureGaveUp Failure = "gave-up"
 )
 
@@ -89,10 +98,12 @@ type Message struct {
 	// kept though a reconnect may change the account's.
 	From string
 	Content
-	// InternetMessageID is the RFC 5322 Message-ID inbok gave the message,
-	// with its angle brackets, as synchronized mail keeps one.
-	InternetMessageID string
-	Status            Status
+	// InbokMessageID is the ID inbok gave the message, an RFC 5322
+	// Message-ID with its angle brackets, sent as its X-Inbok-Message-Id and
+	// Message-ID headers. Gmail replaces the Message-ID; synchronized mail
+	// keeps the one Gmail sent.
+	InbokMessageID string
+	Status         Status
 	// Failure is set only when [Message.Status] is [StatusFailed].
 	Failure Failure
 	// ProviderMessageID and ProviderThreadID are Gmail's IDs for the message
@@ -117,7 +128,7 @@ type NewMessage struct {
 	// From is the sending account's address.
 	From string
 	Content
-	InternetMessageID string
+	InbokMessageID string
 }
 
 // Storage keeps outgoing messages.
@@ -168,7 +179,7 @@ func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Messag
 		if err != nil {
 			return NewMessage{}, err
 		}
-		return NewMessage{From: sender.Email, Content: content, InternetMessageID: messageID}, nil
+		return NewMessage{From: sender.Email, Content: content, InbokMessageID: messageID}, nil
 	})
 }
 

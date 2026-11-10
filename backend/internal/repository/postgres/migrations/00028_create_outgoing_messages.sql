@@ -20,12 +20,16 @@ CREATE TABLE outgoing_messages (
     bcc_addresses        jsonb NOT NULL CHECK (jsonb_typeof(bcc_addresses) = 'array'),
     subject              text NOT NULL CHECK (char_length(subject) <= 500),
     body                 text NOT NULL CHECK (char_length(body) <= 100000), -- plain text
-    -- The Message-ID header inbok gave the message, with its angle brackets,
-    -- as synchronized messages keep theirs.
-    internet_message_id  text NOT NULL UNIQUE CHECK (internet_message_id LIKE '<%@%>'),
+    -- The ID inbok gave the message, with angle brackets, sent as its
+    -- X-Inbok-Message-Id and Message-ID headers. Gmail replaces the
+    -- Message-ID with its own, which synchronized mail keeps as
+    -- internet_message_id; the X- header stays, so a check after an
+    -- unanswered send finds the message by it (ADR006).
+    inbok_message_id     text NOT NULL UNIQUE CHECK (inbok_message_id LIKE '<%@%>'),
     status               text NOT NULL DEFAULT 'waiting'
                          CHECK (status IN ('waiting', 'sending', 'sent', 'failed', 'unknown')),
-    failure              text CHECK (failure IN ('refused', 'needs-reconnect', 'account-unusable', 'gave-up')),
+    failure              text CHECK (failure IN ('refused', 'sending-limit', 'needs-reconnect',
+                         'token-unreadable', 'deactivated', 'sender-changed', 'gave-up')),
     -- Gmail's IDs for the message and its thread, once it accepted the
     -- message; a reply is sent into the thread.
     provider_message_id  text CHECK (provider_message_id <> ''),

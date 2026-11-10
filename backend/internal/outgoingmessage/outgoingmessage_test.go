@@ -49,7 +49,7 @@ func (m *memoryStorage) InsertOutgoingMessage(_ context.Context, userID, account
 		ConnectedAccountID: accountID,
 		From:               next.From,
 		Content:            next.Content,
-		InternetMessageID:  next.InternetMessageID,
+		InbokMessageID:     next.InbokMessageID,
 		Status:             StatusWaiting,
 		CreatedAt:          time.Date(2026, 11, 9, 10, 30, 0, 0, time.UTC),
 	}
@@ -79,7 +79,7 @@ func TestCreate(t *testing.T) {
 	assert.Equal(t, "me@gmail.com", message.From)
 	assert.Equal(t, []string{"Ann@Example.com"}, message.To, "saved as parsed")
 	assert.Equal(t, StatusWaiting, message.Status)
-	assert.True(t, strings.HasSuffix(message.InternetMessageID, "@gmail.com>"), message.InternetMessageID)
+	assert.True(t, strings.HasSuffix(message.InbokMessageID, "@gmail.com>"), message.InbokMessageID)
 	read, err := service.Get(t.Context(), 3, message.ID)
 	require.NoError(t, err)
 	assert.Equal(t, message, read)

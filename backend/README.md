@@ -1963,8 +1963,8 @@ A member sends a new message from one of their connected accounts
 (`outgoingmessage`, US015). `outgoing_messages` keeps each message under a
 random `uuid`: its sending account, whose owner owns it, the account's
 address when it was saved (a reconnect may change the account's), To, Cc, and Bcc, subject,
-plain text body, status, failure reason, the Message-ID inbok gave it
-(`internet_message_id`, with its angle brackets), Gmail's message and
+plain text body, status, failure reason, the ID inbok gave it
+(`inbok_message_id`, a Message-ID with its angle brackets), Gmail's message and
 thread IDs once sent (`provider_message_id`, `provider_thread_id`), and
 when it was created and sent. The recipient lists are JSON arrays of
 `{"name", "address"}`, as synchronized mail keeps addresses, with empty
@@ -1984,19 +1984,22 @@ stored once, and a disconnect deletes the account's messages with it.
 It then reads the account under a key share lock, so a disconnect waits and
 then deletes the message too. Another member's account, or a missing one,
 is `ErrAccountNotFound`, and one Google refused is `ErrNeedsReconnect`.
-The message gets a Message-ID on the account's domain and is saved as
+The message gets an ID on the account's domain and is saved as
 `waiting`. A message moves through `waiting`, `sending`, then `sent`,
-`failed` with a reason (`refused`, `needs-reconnect`, `account-unusable`,
-or `gave-up`), or `unknown` when a send may have reached Gmail without an
-answer.
+`failed` with a reason (`refused`, `sending-limit`, `needs-reconnect`,
+`token-unreadable`, `deactivated`, `sender-changed`, or `gave-up`), or
+`unknown` when a send may have reached Gmail and no answer or check says
+whether.
 
 The send builds the MIME message from the saved row with go-message:
 `From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the
-creation time in UTC as `Date`, the saved `Message-ID`, and
-quoted-printable UTF-8 `text/plain`. A subject holding `=?` is encoded
+creation time in UTC as `Date`, the saved ID as both `Message-ID` and
+`X-Inbok-Message-Id`, and quoted-printable UTF-8 `text/plain`. Gmail
+replaces the `Message-ID` with its own, which synchronized mail keeps as
+`internet_message_id`; providers that keep a client's send the saved one. A subject holding `=?` is encoded
 whole, so a reader shows it as typed rather than decoding it. The same row
 gives the same bytes on every worker. Building checks again each value that
-becomes a header (the recipients, `From`, the subject, the `Message-ID`),
+becomes a header (the recipients, `From`, the subject, the ID),
 so none can add one, whatever wrote the row; it does not apply the limits
 again, so lowering one leaves saved messages sendable. ADR006 records these
 choices.

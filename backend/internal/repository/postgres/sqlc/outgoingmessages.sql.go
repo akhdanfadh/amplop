@@ -14,7 +14,7 @@ import (
 
 const insertOutgoingMessage = `-- name: InsertOutgoingMessage :one
 INSERT INTO outgoing_messages (connected_account_id, from_address,
-    to_addresses, cc_addresses, bcc_addresses, subject, body, internet_message_id)
+    to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id)
 VALUES ($1, $2,
     $3, $4, $5, $6, $7, $8)
 RETURNING id, status, created_at
@@ -28,7 +28,7 @@ type InsertOutgoingMessageParams struct {
 	BccAddresses       []byte
 	Subject            string
 	Body               string
-	InternetMessageID  string
+	InbokMessageID     string
 }
 
 type InsertOutgoingMessageRow struct {
@@ -46,7 +46,7 @@ func (q *Queries) InsertOutgoingMessage(ctx context.Context, arg InsertOutgoingM
 		arg.BccAddresses,
 		arg.Subject,
 		arg.Body,
-		arg.InternetMessageID,
+		arg.InbokMessageID,
 	)
 	var i InsertOutgoingMessageRow
 	err := row.Scan(&i.ID, &i.Status, &i.CreatedAt)
@@ -84,7 +84,7 @@ func (q *Queries) LockOutgoingMessageSender(ctx context.Context, arg LockOutgoin
 const readOutgoingMessage = `-- name: ReadOutgoingMessage :one
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, om.body,
-    om.internet_message_id, om.status, om.failure, om.provider_message_id,
+    om.inbok_message_id, om.status, om.failure, om.provider_message_id,
     om.provider_thread_id, om.created_at, om.sent_at
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
@@ -109,7 +109,7 @@ func (q *Queries) ReadOutgoingMessage(ctx context.Context, arg ReadOutgoingMessa
 		&i.BccAddresses,
 		&i.Subject,
 		&i.Body,
-		&i.InternetMessageID,
+		&i.InbokMessageID,
 		&i.Status,
 		&i.Failure,
 		&i.ProviderMessageID,

@@ -68,7 +68,7 @@ func (db *DB) InsertOutgoingMessage(ctx context.Context, userID, accountID int64
 			BccAddresses:       bcc,
 			Subject:            next.Subject,
 			Body:               next.Body,
-			InternetMessageID:  next.InternetMessageID,
+			InbokMessageID:     next.InbokMessageID,
 		})
 		if err != nil {
 			return fmt.Errorf("insert outgoing message: %w", err)
@@ -78,7 +78,7 @@ func (db *DB) InsertOutgoingMessage(ctx context.Context, userID, accountID int64
 			ConnectedAccountID: accountID,
 			From:               next.From,
 			Content:            next.Content,
-			InternetMessageID:  next.InternetMessageID,
+			InbokMessageID:     next.InbokMessageID,
 			Status:             outgoingmessage.Status(row.Status),
 			CreatedAt:          row.CreatedAt,
 		}
@@ -129,10 +129,10 @@ func outgoingMessageFromRow(row sqlc.OutgoingMessage) (outgoingmessage.Message, 
 			Subject: row.Subject,
 			Body:    row.Body,
 		},
-		InternetMessageID: row.InternetMessageID,
-		Status:            outgoingmessage.Status(row.Status),
-		CreatedAt:         row.CreatedAt,
-		SentAt:            row.SentAt,
+		InbokMessageID: row.InbokMessageID,
+		Status:         outgoingmessage.Status(row.Status),
+		CreatedAt:      row.CreatedAt,
+		SentAt:         row.SentAt,
 	}
 	if row.Failure != nil {
 		message.Failure = outgoingmessage.Failure(*row.Failure)

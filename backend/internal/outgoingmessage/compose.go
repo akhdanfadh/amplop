@@ -13,6 +13,11 @@ import (
 	"inbok/internal/emailaddress"
 )
 
+// inbokMessageIDHeader carries [Message.InbokMessageID]. Gmail keeps it
+// though it replaces the Message-ID (tested 2026-11-09, ADR006), so a check
+// after an unanswered send finds the message by it.
+const inbokMessageIDHeader = "X-Inbok-Message-Id"
+
 // fallbackMessageIDDomain stands in for a sending domain that cannot be a
 // Message-ID's right side.
 const fallbackMessageIDDomain = "localhost"
@@ -29,11 +34,12 @@ var errUnsafeHeader = errors.New("the sender, subject, or Message-ID cannot be w
 
 // compose returns message as an RFC 5322 message: From [Message.From], To,
 // Cc, and Bcc when not empty, Subject, Date when the member sent it,
-// Message-ID, and the body as quoted-printable UTF-8 plain text. The same
-// message always gives the same bytes. It returns an error, and no bytes,
-// for a value that cannot be written as a header: a [*RecipientError], or
-// [errUnsafeHeader] for From, the subject, or the Message-ID. It does not
-// apply [Content]'s limits, which decided what inbok accepted.
+// Message-ID and X-Inbok-Message-Id, both [Message.InbokMessageID], and the
+// body as quoted-printable UTF-8 plain text. The same message always gives
+// the same bytes. It returns an error, and no bytes, for a value that
+// cannot be written as a header: a [*RecipientError], or [errUnsafeHeader]
+// for From, the subject, or the Message-ID. It does not apply [Content]'s
+// limits, which decided what inbok accepted.
 func compose(message Message) ([]byte, error) {
 	// 1. Check each value that becomes a header, wherever the message came
 	// from: a stray character there starts another header line, e.g. a Bcc
@@ -55,7 +61,7 @@ func compose(message Message) ([]byte, error) {
 	if err != nil {
 		return nil, errUnsafeHeader
 	}
-	if !subjectSafe(message.Subject) || !messageIDSafe(message.InternetMessageID) {
+	if !subjectSafe(message.Subject) || !messageIDSafe(message.InbokMessageID) {
 		return nil, errUnsafeHeader
 	}
 
@@ -71,7 +77,10 @@ func compose(message Message) ([]byte, error) {
 	// UTC, as pgx reads a time in the worker's zone, so every worker writes
 	// the same Date.
 	header.SetDate(message.CreatedAt.UTC())
-	header.Set("Message-Id", message.InternetMessageID)
+	// Providers that keep a client's Message-ID send this one; Gmail
+	// replaces it.
+	header.Set("Message-Id", message.InbokMessageID)
+	header.Set(inbokMessageIDHeader, message.InbokMessageID)
 	header.SetContentType("text/plain", map[string]string{"charset": "utf-8"})
 
 	// 3. Write the body, which go-message encodes as quoted-printable.
