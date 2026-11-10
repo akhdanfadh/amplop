@@ -1,17 +1,20 @@
 // Package google is the technology package for Google: the OAuth client
 // members connect Gmail with, the checks on the ID token it returns, the
-// Gmail API calls connectedaccount needs, and the reading of a Gmail
-// message's parts for messagecontent. OAuth and Gmail types stay here;
+// Gmail API calls connectedaccount and mailsync need, and the reading of a
+// Gmail message's parts for messagecontent. OAuth and Gmail types stay here;
 // features see their own.
 //
 // google.go builds the client for Google or the emulator; oauth.go asks for
 // consent, trades the code and refresh tokens, and revokes them; idtoken.go
-// checks the ID token; gmail.go calls Gmail; transport.go is the HTTP client
-// that carries codes and tokens; receivedpart.go turns a Gmail message's
-// parts into messagecontent's input.
+// checks the ID token; gmail.go opens Gmail for an access token and reads
+// the profile; messages.go reads an account's history ID for mailsync,
+// headers.go decodes message headers, and retry.go backs off Gmail's rate
+// limits; transport.go is the HTTP client that carries codes and tokens;
+// receivedpart.go turns a Gmail message's parts into messagecontent's input.
 package google
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"time"
@@ -42,7 +45,7 @@ type Settings struct {
 	BaseURL *url.URL
 }
 
-// Client talks to Google for connectedaccount.
+// Client talks to Google for connectedaccount and mailsync.
 type Client struct {
 	oauth     *oauth2.Config
 	http      *http.Client
@@ -53,6 +56,8 @@ type Client struct {
 	// a base URL; Google's own issuers are compared exactly.
 	normalize bool
 	now       func() time.Time
+	// pause waits between retries; tests replace it.
+	pause func(context.Context, time.Duration) error
 }
 
 // New returns a client for settings, given a clock for the ID token's
@@ -92,6 +97,7 @@ func New(settings Settings, now func() time.Time) *Client {
 		gmailURL:  gmail,
 		normalize: settings.BaseURL != nil,
 		now:       now,
+		pause:     pause,
 	}
 }
 
