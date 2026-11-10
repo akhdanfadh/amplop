@@ -351,7 +351,10 @@ again after a crash does only what is left:
    Gmail names the account by another address than the message's `From`,
    e.g. after Google renamed it, nothing is sent: the message fails with
    `sender-changed` and the account takes Gmail's address, so the member's
-   next message shows it. The check is in this step because DBOS reuses an
+   next message shows it. Every save of a step locks the member, then the
+   account, then the message: a disconnect deletes the account and then
+   its messages, so saving the address after locking the message would
+   deadlock with it. The check is in this step because DBOS reuses an
    earlier step's result after a restart, however old. The step then marks
    the message `sending`, reading the member's deactivation again under
    their share lock, and calls `messages.send`. Gmail's IDs end it `sent`.

@@ -106,6 +106,17 @@ RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
 -- Gmail's address for the account, which a send found changed.
 UPDATE connected_accounts SET email = @email WHERE id = @id;
 
+-- name: LockOutgoingMessageAccount :exec
+-- Locks the account a message is sent from, which a send step may give
+-- Gmail's address. A disconnect deletes the account, then its messages, so
+-- the account is locked before the message too; no key column changes, so
+-- a send being saved from the account need not wait.
+SELECT ca.id
+FROM connected_accounts ca
+JOIN outgoing_messages om ON om.connected_account_id = ca.id
+WHERE om.id = @id
+FOR NO KEY UPDATE OF ca;
+
 -- name: LockOutgoingMessageMember :one
 -- The share lock waits for a deactivation in progress, so the member's flag
 -- is read as ADR029 asks before provider work.

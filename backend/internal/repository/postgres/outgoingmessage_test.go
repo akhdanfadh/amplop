@@ -425,6 +425,47 @@ func (o outgoingMessagesTest) waitForLock(t *testing.T, name string) {
 	}, 5*time.Second, 10*time.Millisecond)
 }
 
+// A send step that saves Gmail's new address and a disconnect of the same
+// account at once both finish: the step locks the account before the
+// message, the order a disconnect takes them in.
+func TestOutgoingSenderEmailDisconnect(t *testing.T) {
+	// Given a send step holding the message, about to save a new address.
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+	locked := make(chan struct{})
+	proceed := make(chan struct{})
+	updated := make(chan error, 1)
+	go func() {
+		_, err := o.db.UpdateOutgoingMessage(t.Context(), created.ID, func(outgoingmessage.SendState) (outgoingmessage.Transition, error) {
+			close(locked)
+			<-proceed
+			return outgoingmessage.Transition{
+				Status:      outgoingmessage.StatusFailed,
+				Failure:     outgoingmessage.FailureSenderChanged,
+				SenderEmail: "alex.renamed@example.com",
+			}, nil
+		})
+		updated <- err
+	}()
+	<-locked
+
+	// When the member disconnects the account meanwhile.
+	disconnected := make(chan error, 1)
+	go func() {
+		_, err := o.service.Disconnect(t.Context(), o.member, o.account)
+		disconnected <- err
+	}()
+	o.waitForLock(t, "DeleteConnectedAccount")
+	close(proceed)
+
+	// Then the step saves, and the disconnect deletes the account and the
+	// message after it, with no deadlock.
+	require.NoError(t, <-updated)
+	require.NoError(t, <-disconnected)
+	assert.Equal(t, int64(0), o.countOutgoingMessages(t))
+}
+
 // A deactivation in progress holds the read of the member until it
 // commits, so the send sees it (ADR029).
 func TestOutgoingSenderDeactivated(t *testing.T) {

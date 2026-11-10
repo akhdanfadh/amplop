@@ -316,10 +316,11 @@ func (db *DB) ReadOutgoingMessageToSend(ctx context.Context, messageID uuid.UUID
 }
 
 // UpdateOutgoingMessage reads message messageID's sending member under the
-// member's share lock, then locks the message, calls update with both, and
-// saves the transition update returns, with the sender's address on the
-// account when it names one, in one transaction. It returns the saved
-// message, or [outgoingmessage.ErrNotFound] when there is no such message.
+// member's share lock, then locks the account and the message, calls update
+// with the member and the message, and saves the transition update returns,
+// with the sender's address on the account when it names one, in one
+// transaction. It returns the saved message, or
+// [outgoingmessage.ErrNotFound] when there is no such message.
 func (db *DB) UpdateOutgoingMessage(ctx context.Context, messageID uuid.UUID, update func(outgoingmessage.SendState) (outgoingmessage.Transition, error)) (outgoingmessage.Message, error) {
 	var saved outgoingmessage.Message
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
@@ -338,9 +339,17 @@ func (db *DB) UpdateOutgoingMessage(ctx context.Context, messageID uuid.UUID, up
 			return fmt.Errorf("lock sending member: %w", err)
 		}
 
-		// 2. Lock the message, so the steps of one send save one after
-		// the other, and a disconnect waits and then deletes it. A
-		// disconnect since step 1 has already deleted it.
+		// 2. Lock the account before the message, the order a disconnect
+		// takes them in: step 5 may give the account Gmail's address, and
+		// locking it only then would deadlock with a disconnect holding
+		// the account and waiting for the message. A disconnect since step
+		// 1 has already deleted both.
+		if err := queries.LockOutgoingMessageAccount(ctx, messageID); err != nil {
+			return fmt.Errorf("lock sending account: %w", err)
+		}
+
+		// 3. Lock the message, so the steps of one send save one after
+		// the other, and a disconnect waits and then deletes it.
 		row, err := queries.LockOutgoingMessage(ctx, messageID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return outgoingmessage.ErrNotFound
@@ -353,13 +362,13 @@ func (db *DB) UpdateOutgoingMessage(ctx context.Context, messageID uuid.UUID, up
 			return err
 		}
 
-		// 3. Let update decide.
+		// 4. Let update decide.
 		next, err := update(outgoingmessage.SendState{Message: current, SenderDeactivated: deactivated})
 		if err != nil {
 			return err
 		}
 
-		// 4. Save the message's state, and the account's address.
+		// 5. Save the message's state, and the account's address.
 		updated, err := queries.UpdateOutgoingMessageStatus(ctx, sqlc.UpdateOutgoingMessageStatusParams{
 			ID:                messageID,
 			Status:            string(next.Status),

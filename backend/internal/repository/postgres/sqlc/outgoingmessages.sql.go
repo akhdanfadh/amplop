@@ -236,6 +236,23 @@ func (q *Queries) LockOutgoingMessage(ctx context.Context, id uuid.UUID) (Outgoi
 	return i, err
 }
 
+const lockOutgoingMessageAccount = `-- name: LockOutgoingMessageAccount :exec
+SELECT ca.id
+FROM connected_accounts ca
+JOIN outgoing_messages om ON om.connected_account_id = ca.id
+WHERE om.id = $1
+FOR NO KEY UPDATE OF ca
+`
+
+// Locks the account a message is sent from, which a send step may give
+// Gmail's address. A disconnect deletes the account, then its messages, so
+// the account is locked before the message too; no key column changes, so
+// a send being saved from the account need not wait.
+func (q *Queries) LockOutgoingMessageAccount(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, lockOutgoingMessageAccount, id)
+	return err
+}
+
 const lockOutgoingMessageMember = `-- name: LockOutgoingMessageMember :one
 SELECT (u.deactivated_at IS NOT NULL)::boolean AS deactivated
 FROM outgoing_messages om
