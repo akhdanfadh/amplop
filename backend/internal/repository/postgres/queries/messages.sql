@@ -72,3 +72,11 @@ FROM (
 WHERE m.connected_account_id = @connected_account_id
     AND m.provider_message_id = u.provider_message_id
 RETURNING m.id, m.provider_message_id;
+
+-- name: OldestMessage :one
+-- When the provider received the account's oldest message, and whether it
+-- has one; the time is the epoch when it has none.
+SELECT (count(*) > 0)::boolean AS found,
+    coalesce(min(internal_date), 'epoch')::timestamptz AS oldest
+FROM messages
+WHERE connected_account_id = @connected_account_id;

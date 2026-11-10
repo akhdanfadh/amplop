@@ -103,7 +103,10 @@ func FailureOf(err error) Failure {
 // FullSync copies the last 90 days of an account's mail from its provider,
 // newest first, in steps a workflow runs in order: [FullSync.Start], then
 // [FullSync.CopyPage] until the listing ends, then [FullSync.DeleteEarlier]
-// until none are left, then [FullSync.Finish]. A step that fails ends the
+// until none are left, then [FullSync.Finish]. The window reaches back to
+// the oldest message the copy holds, if that is older, so a full sync run
+// again after the provider lost the changes brings every stored message
+// current (ADR001, "Full sync"). A step that fails ends the
 // full sync with [FullSync.Wait] or [FullSync.Fail], as [EndingOf] says.
 // Every step is safe to repeat, and each first checks that the account's
 // provider work may still run: a step that calls the provider takes its own
@@ -127,7 +130,9 @@ func NewFullSync(storage Storage, provider Provider, access accountAccess, now f
 
 // Start begins account accountID's full sync: it saves the account's
 // mailboxes and current position, and a new generation, running, with no
-// progress. It returns the run its other steps share.
+// progress. It returns the run its other steps share, whose window starts
+// window before now, or just before the oldest message the copy holds if
+// that is earlier.
 func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 	// 1. Take an access token, which stops a stopped account before any
 	// provider call.
@@ -153,8 +158,21 @@ func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 		return Run{}, providerFailed(s.access, accountID, "read position", err)
 	}
 
-	// 4. Save them with a new generation, running, with no progress.
+	// 4. Reach back to the oldest stored message, so a full sync run again
+	// lists every message the copy holds and brings each current: the
+	// provider's changes since the last poll may be lost (ADR001).
 	since := s.now().UTC().Add(-window)
+	oldest, ok, err := s.storage.OldestMessage(ctx, accountID)
+	if err != nil {
+		return Run{}, err
+	}
+	// The pages keep messages received after since, so it sits a second
+	// before the oldest one.
+	if ok && !oldest.After(since) {
+		since = oldest.Add(-time.Second)
+	}
+
+	// 5. Save them with a new generation, running, with no progress.
 	written, err := s.storage.UpdateSyncedMail(ctx, accountID, func(current SyncState) (Change, error) {
 		state := current
 		state.Status = StatusRunning

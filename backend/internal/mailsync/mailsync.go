@@ -215,4 +215,7 @@ type Storage interface {
 	// mailboxes. On any error it
 	// writes nothing; an error from update is returned unchanged.
 	UpdateSyncedMail(ctx context.Context, accountID int64, update func(SyncState) (Change, error)) (Written, error)
+	// OldestMessage returns when the provider received accountID's oldest
+	// message, and false when it has none.
+	OldestMessage(ctx context.Context, accountID int64) (time.Time, bool, error)
 }

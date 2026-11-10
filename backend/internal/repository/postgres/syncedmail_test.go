@@ -757,3 +757,22 @@ func TestSyncedMailUpdateUnknown(t *testing.T) {
 	require.ErrorIs(t, err, mailsync.ErrUnknownMailbox)
 	assert.Equal(t, before, s.messages(t, s.account))
 }
+
+// The oldest message is the account's own, and none is reported for an
+// account without messages.
+func TestOldestMessage(t *testing.T) {
+	s := newSyncedMailTest(t).withMailboxes(t)
+	older := syncedMessage("older")
+	older.InternalDate = older.InternalDate.Add(-48 * time.Hour)
+	s.update(t, s.other, mailsync.Change{State: running(1), Saved: []mailsync.Message{older}})
+
+	_, none, err := s.db.OldestMessage(t.Context(), s.account)
+	require.NoError(t, err)
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("m1"), syncedMessage("m2")}})
+	oldest, found, err := s.db.OldestMessage(t.Context(), s.account)
+	require.NoError(t, err)
+
+	assert.False(t, none)
+	assert.True(t, found)
+	assert.Equal(t, syncedMessage("m1").InternalDate, oldest, "another account's older message is not this one's")
+}

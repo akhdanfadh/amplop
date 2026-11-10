@@ -404,8 +404,11 @@ settings are set, as for account removal.
 
 The workflow `inbok.full-sync`, run from the queue `inbok.google`, copies
 the last 90 days of a connected account's mail metadata and mailboxes, by
-Gmail's own received time, as [Synchronized mail](#synchronized-mail)
-describes. [Connecting](#connecting) an account saves its sync state,
+Gmail's own received time, or back to the oldest message the copy holds if
+that is older, as [Synchronized mail](#synchronized-mail) describes. A
+full sync run again, e.g. after Gmail lost the history a poll needs, then
+brings every stored message current, whatever its age; mail that aged out
+of the window stays until Gmail deletes it. [Connecting](#connecting) an account saves its sync state,
 `waiting`, and its first full sync, in the transaction that saves the
 account. Its input is only the account's ID. Each step first checks that
 the account may still sync: a step that calls Gmail takes its own access
@@ -430,8 +433,7 @@ Its steps are `mailsync.FullSync`'s methods, in order:
    counts once in the progress, however often its step runs. A message in
    a label made since `start` lists the labels again.
 3. `delete earlier` deletes, up to 1,000 at a time, the account's messages
-   this generation did not save: the ones Gmail no longer has, and the
-   ones older than the window.
+   this generation did not save: the ones Gmail no longer has.
 4. `finish` records `complete`, the time, and no failure.
 
 Every step writes only while the account's sync state still has the

@@ -114,6 +114,25 @@ func (f *fakeStorage) UpdateSyncedMail(_ context.Context, accountID int64, updat
 	return Written{State: f.state, EarlierDeleted: deleted}, nil
 }
 
+func (f *fakeStorage) OldestMessage(context.Context, int64) (time.Time, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var oldest time.Time
+	for _, stored := range f.messages {
+		if oldest.IsZero() || stored.message.InternalDate.Before(oldest) {
+			oldest = stored.message.InternalDate
+		}
+	}
+	return oldest, !oldest.IsZero(), f.err
+}
+
+// stored returns the stored message with providerID.
+func (f *fakeStorage) stored(providerID string) storedMessage {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.messages[providerID]
+}
+
 // saved returns the stored messages' provider IDs, sorted.
 func (f *fakeStorage) saved() []string {
 	f.mu.Lock()
@@ -547,4 +566,43 @@ func TestFullSyncUnauthorized(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrUnauthorized)
 	assert.Equal(t, 1, forgotten)
+}
+
+// A full sync of an account whose copy holds mail older than the window
+// reaches back to the oldest stored message: each is fetched again, so
+// its state is current, and one the provider no longer has is deleted.
+func TestFullSyncReachesOldest(t *testing.T) {
+	oldest := syncNow.Add(-window - 30*24*time.Hour)
+	storage := newFakeStorage(SyncState{Status: StatusComplete, Generation: 1, Position: "100"})
+	for _, m := range []Message{inboxMessage("old", oldest), inboxMessage("old-gone", oldest.Add(time.Hour))} {
+		storage.messages[m.ProviderID] = storedMessage{message: m, generation: 1}
+	}
+	read := inboxMessage("old", oldest)
+	read.MailboxProviderIDs = nil
+	read.Seen = true
+	provider := &fakeProvider{
+		mailboxes: syncMailboxes,
+		pages:     [][]string{{"new", "old"}},
+		messages:  map[string]Message{"new": inboxMessage("new", syncNow), "old": read},
+	}
+	s := NewFullSync(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+
+	run := runFullSync(t, s)
+
+	assert.Equal(t, oldest.Add(-time.Second), run.Since, "a second before the oldest, which pages keep after")
+	assert.Equal(t, provider.queries[0].Since, run.Since)
+	assert.Equal(t, []string{"new", "old"}, storage.saved())
+	assert.Equal(t, read, storage.stored("old").message, "the old message's state is current")
+}
+
+// A copy holding only mail inside the window, or none, keeps the window.
+func TestFullSyncWindow(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusComplete, Generation: 1})
+	storage.messages["recent"] = storedMessage{message: inboxMessage("recent", syncNow.Add(-time.Hour)), generation: 1}
+	s := NewFullSync(storage, &fakeProvider{mailboxes: syncMailboxes}, fakeAccess{}, func() time.Time { return syncNow })
+
+	run, err := s.Start(t.Context(), syncAccount)
+
+	require.NoError(t, err)
+	assert.Equal(t, syncNow.Add(-window), run.Since)
 }

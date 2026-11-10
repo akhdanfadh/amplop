@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"uuid"
 )
@@ -87,6 +88,27 @@ func (q *Queries) InsertMessageMailboxes(ctx context.Context, arg InsertMessageM
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const oldestMessage = `-- name: OldestMessage :one
+SELECT (count(*) > 0)::boolean AS found,
+    coalesce(min(internal_date), 'epoch')::timestamptz AS oldest
+FROM messages
+WHERE connected_account_id = $1
+`
+
+type OldestMessageRow struct {
+	Found  bool
+	Oldest time.Time
+}
+
+// When the provider received the account's oldest message, and whether it
+// has one; the time is the epoch when it has none.
+func (q *Queries) OldestMessage(ctx context.Context, connectedAccountID int64) (OldestMessageRow, error) {
+	row := q.db.QueryRow(ctx, oldestMessage, connectedAccountID)
+	var i OldestMessageRow
+	err := row.Scan(&i.Found, &i.Oldest)
+	return i, err
 }
 
 const updateMessageFlags = `-- name: UpdateMessageFlags :many

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"time"
 	"uuid"
 
 	"github.com/jackc/pgx/v5"
@@ -393,4 +394,17 @@ func syncStateFromRow(row sqlc.LockSyncStateRow) mailsync.SyncState {
 		state.LastSyncedAt = &at
 	}
 	return state
+}
+
+// OldestMessage returns when the provider received accountID's oldest
+// message, and false when it has none.
+func (db *DB) OldestMessage(ctx context.Context, accountID int64) (time.Time, bool, error) {
+	row, err := sqlc.New(db.pool).OldestMessage(ctx, accountID)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("find oldest message: %w", err)
+	}
+	if !row.Found {
+		return time.Time{}, false, nil
+	}
+	return row.Oldest.UTC(), true, nil
 }

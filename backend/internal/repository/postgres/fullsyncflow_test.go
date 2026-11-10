@@ -79,3 +79,39 @@ func TestFullSyncFlow(t *testing.T) {
 	}
 	assert.Equal(t, 2, stored.state(t).Generation)
 }
+
+// A full sync of a copy holding mail older than the window reaches back to
+// it: a message Gmail still has comes back as Gmail holds it now, and one
+// Gmail no longer has is deleted.
+func TestSyncFlowOlder(t *testing.T) {
+	// Given a copy holding the old message, which aged out of the window
+	// with a state Gmail has since changed, and another that Gmail deleted
+	// meanwhile.
+	old := time.Now().UTC().Add(-100 * 24 * time.Hour).Truncate(time.Second)
+	mailbox := alexIdentity.Email
+	f := newConnectFlowTest(t, nil,
+		googleemulator.Message{ID: "old", Mailbox: mailbox, From: "blair@example.com", Subject: "Old", Received: old},
+	)
+	account, err := f.consent(t, 0, mailbox)
+	require.NoError(t, err)
+	syncs := mailsync.NewFullSync(f.db, f.google, f.access, time.Now)
+	runFullSync(t, syncs, account.ID)
+	stored := syncedMailTest{db: f.db, conn: f.conn, account: account.ID}
+	stale := func(providerID string) mailsync.Message {
+		m := syncedMessage(providerID)
+		m.InternalDate = old
+		m.MailboxProviderIDs = nil
+		return m
+	}
+	stored.update(t, account.ID, mailsync.Change{State: stored.state(t), Saved: []mailsync.Message{stale("old"), stale("deleted-at-gmail")}})
+
+	// When the full sync runs again.
+	runFullSync(t, syncs, account.ID)
+
+	// Then the one Gmail still has is kept as Gmail holds it, and the other
+	// is gone.
+	after := stored.messages(t, account.ID)
+	assert.Equal(t, []string{"old"}, keys(after))
+	assert.Equal(t, "Old", after["old"].Subject)
+	assert.Equal(t, []string{"INBOX"}, after["old"].MailboxProviderIDs)
+}
