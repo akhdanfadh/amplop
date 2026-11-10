@@ -290,6 +290,7 @@ func TestClientOutgoingRollback(t *testing.T) {
 	// When the member sends a message.
 	_, err = outgoingmessage.NewService(db, time.Now).Create(t.Context(), member, outgoingmessage.Draft{
 		ConnectedAccountID: account.ID,
+		IdempotencyKey:     uuid.New(),
 		Content:            outgoingmessage.Content{To: []string{"blair@example.com"}, Subject: "Lunch", Body: "Friday?"},
 	})
 
@@ -319,6 +320,7 @@ func TestClientOutgoingMessage(t *testing.T) {
 	// When the member sends a message.
 	message, err := outgoingmessage.NewService(db, time.Now).Create(t.Context(), member, outgoingmessage.Draft{
 		ConnectedAccountID: account.ID,
+		IdempotencyKey:     uuid.New(),
 		Content:            outgoingmessage.Content{To: []string{"blair@example.com"}, Subject: "Lunch", Body: "Friday?"},
 	})
 	require.NoError(t, err)

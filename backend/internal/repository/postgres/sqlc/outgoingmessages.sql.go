@@ -68,6 +68,22 @@ func (q *Queries) InsertOutgoingMessage(ctx context.Context, arg InsertOutgoingM
 	return i, err
 }
 
+const insertOutgoingMessageKey = `-- name: InsertOutgoingMessageKey :exec
+INSERT INTO outgoing_message_keys (user_id, idempotency_key, message_id)
+VALUES ($1, $2, $3)
+`
+
+type InsertOutgoingMessageKeyParams struct {
+	UserID         int64
+	IdempotencyKey uuid.UUID
+	MessageID      uuid.UUID
+}
+
+func (q *Queries) InsertOutgoingMessageKey(ctx context.Context, arg InsertOutgoingMessageKeyParams) error {
+	_, err := q.db.Exec(ctx, insertOutgoingMessageKey, arg.UserID, arg.IdempotencyKey, arg.MessageID)
+	return err
+}
+
 const insertSendAttempt = `-- name: InsertSendAttempt :exec
 INSERT INTO send_attempts (user_id, created_at) VALUES ($1, $2)
 `
@@ -191,14 +207,32 @@ SELECT (deactivated_at IS NOT NULL)::boolean AS deactivated
 FROM users WHERE id = $1 FOR NO KEY UPDATE
 `
 
-// Serializes a member's sends, so the limit counts every attempt, and reads
-// whether a deactivation committed first. No key column changes, so
+// Serializes a member's sends, so the limit counts every attempt and a
+// repeated Idempotency-Key finds the message the first request saved, and
+// reads whether a deactivation committed first. No key column changes, so
 // rows referencing the user need not wait.
 func (q *Queries) LockSendingMember(ctx context.Context, userID int64) (bool, error) {
 	row := q.db.QueryRow(ctx, lockSendingMember, userID)
 	var deactivated bool
 	err := row.Scan(&deactivated)
 	return deactivated, err
+}
+
+const outgoingMessageKeyExists = `-- name: OutgoingMessageKeyExists :one
+SELECT EXISTS (SELECT 1 FROM outgoing_message_keys
+    WHERE user_id = $1 AND idempotency_key = $2)
+`
+
+type OutgoingMessageKeyExistsParams struct {
+	UserID         int64
+	IdempotencyKey uuid.UUID
+}
+
+func (q *Queries) OutgoingMessageKeyExists(ctx context.Context, arg OutgoingMessageKeyExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, outgoingMessageKeyExists, arg.UserID, arg.IdempotencyKey)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const readOutgoingMessage = `-- name: ReadOutgoingMessage :one
@@ -219,6 +253,41 @@ type ReadOutgoingMessageParams struct {
 // A message belongs to its account's owner.
 func (q *Queries) ReadOutgoingMessage(ctx context.Context, arg ReadOutgoingMessageParams) (OutgoingMessage, error) {
 	row := q.db.QueryRow(ctx, readOutgoingMessage, arg.ID, arg.UserID)
+	var i OutgoingMessage
+	err := row.Scan(
+		&i.ID,
+		&i.ConnectedAccountID,
+		&i.FromAddress,
+		&i.ToAddresses,
+		&i.CcAddresses,
+		&i.BccAddresses,
+		&i.Subject,
+		&i.Body,
+		&i.InbokMessageID,
+		&i.Status,
+		&i.Failure,
+		&i.ProviderMessageID,
+		&i.ProviderThreadID,
+		&i.CreatedAt,
+		&i.SentAt,
+	)
+	return i, err
+}
+
+const readOutgoingMessageByKey = `-- name: ReadOutgoingMessageByKey :one
+SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses, om.cc_addresses, om.bcc_addresses, om.subject, om.body, om.inbok_message_id, om.status, om.failure, om.provider_message_id, om.provider_thread_id, om.created_at, om.sent_at
+FROM outgoing_message_keys k
+JOIN outgoing_messages om ON om.id = k.message_id
+WHERE k.user_id = $1 AND k.idempotency_key = $2
+`
+
+type ReadOutgoingMessageByKeyParams struct {
+	UserID         int64
+	IdempotencyKey uuid.UUID
+}
+
+func (q *Queries) ReadOutgoingMessageByKey(ctx context.Context, arg ReadOutgoingMessageByKeyParams) (OutgoingMessage, error) {
+	row := q.db.QueryRow(ctx, readOutgoingMessageByKey, arg.UserID, arg.IdempotencyKey)
 	var i OutgoingMessage
 	err := row.Scan(
 		&i.ID,

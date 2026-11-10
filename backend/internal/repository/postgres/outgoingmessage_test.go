@@ -59,10 +59,12 @@ func newOutgoingMessagesTest(t *testing.T) outgoingMessagesTest {
 	}
 }
 
-// draft is a draft every rule accepts, from the member's account.
+// draft is a draft every rule accepts, from the member's account, with a
+// new key.
 func (o outgoingMessagesTest) draft() outgoingmessage.Draft {
 	return outgoingmessage.Draft{
 		ConnectedAccountID: o.account,
+		IdempotencyKey:     uuid.New(),
 		Content: outgoingmessage.Content{
 			To:      []string{"Ann@example.com"},
 			Cc:      []string{},
@@ -137,7 +139,7 @@ func TestOutgoingMessageBuildError(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
 	refused := errors.New("refused")
 
-	_, err := o.db.InsertOutgoingMessage(t.Context(), o.attempt(), o.account, func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
+	_, err := o.db.InsertOutgoingMessage(t.Context(), o.attempt(), o.account, uuid.New(), func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
 		return outgoingmessage.NewMessage{}, refused
 	})
 
@@ -150,7 +152,7 @@ func TestOutgoingMessageSender(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
 	var got outgoingmessage.CreateState
 
-	_, err := o.db.InsertOutgoingMessage(t.Context(), o.attempt(), o.account, func(state outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
+	_, err := o.db.InsertOutgoingMessage(t.Context(), o.attempt(), o.account, uuid.New(), func(state outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
 		got = state
 		return outgoingmessage.NewMessage{}, errors.New("stop")
 	})
@@ -526,6 +528,113 @@ func (o outgoingMessagesTest) countSendAttempts(t *testing.T) int64 {
 	return count
 }
 
+// A repeated key returns the first message: no second message, job, or
+// attempt.
+func TestOutgoingMessageRepeat(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	draft := o.draft()
+	first, err := o.messages.Create(t.Context(), o.member, draft)
+	require.NoError(t, err)
+
+	again, err := o.messages.Create(t.Context(), o.member, draft)
+
+	require.NoError(t, err)
+	assert.Equal(t, first, again)
+	assert.Equal(t, int64(1), o.countOutgoingMessages(t))
+	assert.Equal(t, []uuid.UUID{first.ID}, o.sendJobs(t))
+	assert.Equal(t, int64(1), o.countSendAttempts(t))
+}
+
+// A key the member used is refused before the account or the limit: here
+// the account does not exist, which a check in the other order would report.
+func TestOutgoingMessageKeyExists(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	draft := o.draft()
+	_, err := o.messages.Create(t.Context(), o.member, draft)
+	require.NoError(t, err)
+	called := false
+
+	_, err = o.db.InsertOutgoingMessage(t.Context(), o.attempt(), o.otherAccount+100, draft.IdempotencyKey, func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
+		called = true
+		return outgoingmessage.NewMessage{}, nil
+	})
+
+	require.ErrorIs(t, err, outgoingmessage.ErrKeyExists)
+	assert.False(t, called)
+}
+
+// A key is the member's own: another member's request with it saves its own
+// message, and neither member reads the other's by it.
+func TestOutgoingKeyPerMember(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	draft := o.draft()
+	mine, err := o.messages.Create(t.Context(), o.member, draft)
+	require.NoError(t, err)
+	draft.ConnectedAccountID = o.otherAccount
+
+	theirs, err := o.messages.Create(t.Context(), o.otherMember, draft)
+
+	require.NoError(t, err)
+	assert.NotEqual(t, mine.ID, theirs.ID)
+	read, err := o.db.ReadOutgoingMessageByKey(t.Context(), o.otherMember, draft.IdempotencyKey)
+	require.NoError(t, err)
+	assert.Equal(t, theirs.ID, read.ID)
+}
+
+// Two requests with one key at once save one message: the member's lock
+// makes the second wait for the first to commit, then find it.
+func TestOutgoingMessageRepeatRace(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	draft := o.draft()
+	results := make(chan error, 2)
+	ids := make(chan uuid.UUID, 2)
+
+	for range 2 {
+		go func() {
+			message, err := o.messages.Create(context.WithoutCancel(t.Context()), o.member, draft)
+			ids <- message.ID
+			results <- err
+		}()
+	}
+
+	require.NoError(t, <-results)
+	require.NoError(t, <-results)
+	first, second := <-ids, <-ids
+	assert.Equal(t, first, second)
+	assert.Equal(t, int64(1), o.countOutgoingMessages(t))
+}
+
+// A request with the same key that did not wait for the member's lock and
+// committed first still leaves one message for the key: the second request
+// gets ErrKeyExists from the key's primary key, not an internal error.
+func TestOutgoingMessageKeyRace(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	draft := o.draft()
+	tx, err := o.db.pool.Begin(t.Context())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+	var first uuid.UUID
+	require.NoError(t, tx.QueryRow(t.Context(), `INSERT INTO outgoing_messages (connected_account_id, from_address,
+		to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id)
+		VALUES ($1, 'alex@example.com', '[{"name": "", "address": "a@example.com"}]', '[]', '[]', '', '', '<x@example.com>')
+		RETURNING id`, o.account).Scan(&first))
+	_, err = tx.Exec(t.Context(), "INSERT INTO outgoing_message_keys (user_id, idempotency_key, message_id) VALUES ($1, $2, $3)",
+		o.member, draft.IdempotencyKey, first)
+	require.NoError(t, err)
+	done := make(chan error, 1)
+
+	go func() {
+		_, err := o.messages.Create(context.WithoutCancel(t.Context()), o.member, draft)
+		done <- err
+	}()
+	o.waitForLock(t, "InsertOutgoingMessageKey")
+	require.NoError(t, tx.Commit(t.Context()))
+
+	require.ErrorIs(t, <-done, outgoingmessage.ErrKeyReused, "the first message has other content")
+	assert.Equal(t, int64(1), o.countOutgoingMessages(t), "the second rolled back")
+	assert.Equal(t, int64(0), o.countSendAttempts(t))
+}
+
 // The member's attempts are counted across their accounts, kept when an
 // account is disconnected, and those no window counts are deleted.
 func TestOutgoingMessageAttempts(t *testing.T) {
@@ -558,7 +667,7 @@ func TestOutgoingAttemptTimes(t *testing.T) {
 	require.NoError(t, err)
 	var got []time.Time
 
-	_, err = o.db.InsertOutgoingMessage(t.Context(), attempt, o.account, func(state outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
+	_, err = o.db.InsertOutgoingMessage(t.Context(), attempt, o.account, uuid.New(), func(state outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
 		got = state.Attempts
 		return outgoingmessage.NewMessage{}, errors.New("stop")
 	})

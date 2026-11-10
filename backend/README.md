@@ -2057,13 +2057,22 @@ stored once, and a disconnect deletes the account's messages with it.
 It then saves in one transaction (`InsertOutgoingMessage`), in this order:
 
 1. It locks the member's `users` row, as a Gmail connect does, so one
-   member's sends are counted one at a time. A deactivated member is
+   member's sends are counted one at a time and a repeated key finds the
+   first request's message committed. A deactivated member is
    `ErrDeactivated`.
-2. It reads the account under a key share lock, so a disconnect waits and
+2. A request's `Idempotency-Key` the member already saved a message with is
+   `ErrKeyExists`, before the account or the limit, so a repeat is never
+   counted or refused for the attempt it repeats. The service then reads
+   that message: the same account and content return it, anything else is
+   `ErrKeyReused`. Keys are the member's own, in `outgoing_message_keys`
+   (member, key, message): another member's request with the same key is
+   another request. A key whose message a disconnect deleted meanwhile is
+   free again, and the request is saved as a new one.
+3. It reads the account under a key share lock, so a disconnect waits and
    then deletes the message too. Another member's account, or a missing
    one, is `ErrAccountNotFound`, and one Google refused is
    `ErrNeedsReconnect`.
-3. The member's send limit, 30 per 15 minutes and 200 per 24 hours across
+4. The member's send limit, 30 per 15 minutes and 200 per 24 hours across
    their accounts, counts `send_attempts` rows (the member and a time, no
    content). They are kept apart from `outgoing_messages`, whose rows go
    with their account, so a disconnect does not reset the count; a send
@@ -2071,8 +2080,9 @@ It then saves in one transaction (`InsertOutgoingMessage`), in this order:
    `*attemptlimit.Error` wrapping `ErrThrottled`.
 
 The message gets an ID on the account's domain and is saved as `waiting`
-with its attempt and its [send job](#sending-a-message). A message moves
-through `waiting`, `sending`, then `sent`, `failed` with a reason (`refused`,
+with its attempt, its [send job](#sending-a-message), and its key, whose
+primary key also refuses a second message for one key if a request ever
+got past the member's lock. A message moves through `waiting`, `sending`, then `sent`, `failed` with a reason (`refused`,
 `sending-limit`, `needs-reconnect`, `token-unreadable`, `deactivated`,
 `sender-changed`, or `gave-up`), or `unknown` when a send may have reached
 Gmail and no answer or check says whether.

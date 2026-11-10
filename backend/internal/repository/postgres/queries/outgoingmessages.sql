@@ -8,11 +8,20 @@ WHERE id = @id AND user_id = @user_id
 FOR KEY SHARE;
 
 -- name: LockSendingMember :one
--- Serializes a member's sends, so the limit counts every attempt, and reads
--- whether a deactivation committed first. No key column changes, so
+-- Serializes a member's sends, so the limit counts every attempt and a
+-- repeated Idempotency-Key finds the message the first request saved, and
+-- reads whether a deactivation committed first. No key column changes, so
 -- rows referencing the user need not wait.
 SELECT (deactivated_at IS NOT NULL)::boolean AS deactivated
 FROM users WHERE id = @user_id FOR NO KEY UPDATE;
+
+-- name: OutgoingMessageKeyExists :one
+SELECT EXISTS (SELECT 1 FROM outgoing_message_keys
+    WHERE user_id = @user_id AND idempotency_key = @idempotency_key);
+
+-- name: InsertOutgoingMessageKey :exec
+INSERT INTO outgoing_message_keys (user_id, idempotency_key, message_id)
+VALUES (@user_id, @idempotency_key, @message_id);
 
 -- name: ListSendAttemptTimes :many
 SELECT created_at FROM send_attempts
@@ -41,6 +50,12 @@ SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE om.id = @id AND ca.user_id = @user_id;
+
+-- name: ReadOutgoingMessageByKey :one
+SELECT om.*
+FROM outgoing_message_keys k
+JOIN outgoing_messages om ON om.id = k.message_id
+WHERE k.user_id = @user_id AND k.idempotency_key = @idempotency_key;
 
 -- name: ReadOutgoingMessageToSend :one
 SELECT * FROM outgoing_messages WHERE id = @id;

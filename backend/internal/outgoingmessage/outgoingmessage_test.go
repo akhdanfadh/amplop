@@ -3,6 +3,8 @@ package outgoingmessage
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -25,12 +27,16 @@ type memoryAccount struct {
 type memoryStorage struct {
 	accounts map[int64]memoryAccount
 	messages []Message
+	// keys are the IDs of the messages saved with each member's keys.
+	keys map[memoryKey]uuid.UUID
 	// attempts are every member's send attempts, by member.
 	attempts map[int64][]time.Time
 	// buildCalls counts calls to build, which run under the account's lock.
 	buildCalls int
 	// deactivated is whether every account's member is deactivated.
 	deactivated bool
+	// beforeKeyRead runs before ReadOutgoingMessageByKey, e.g. to disconnect.
+	beforeKeyRead func()
 }
 
 func newMemoryStorage() *memoryStorage {
@@ -40,13 +46,17 @@ func newMemoryStorage() *memoryStorage {
 			6: {userID: 3, sender: Sender{ConnectedAccountID: 6, Email: "stale@gmail.com", NeedsReconnect: true}},
 			8: {userID: 4, sender: Sender{ConnectedAccountID: 8, Email: "other@gmail.com"}},
 		},
+		keys:     map[memoryKey]uuid.UUID{},
 		attempts: map[int64][]time.Time{},
 	}
 }
 
-func (m *memoryStorage) InsertOutgoingMessage(_ context.Context, attempt Attempt, accountID int64, build func(CreateState) (NewMessage, error)) (Message, error) {
+func (m *memoryStorage) InsertOutgoingMessage(_ context.Context, attempt Attempt, accountID int64, key uuid.UUID, build func(CreateState) (NewMessage, error)) (Message, error) {
 	if m.deactivated {
 		return Message{}, ErrDeactivated
+	}
+	if _, ok := m.keys[memoryKey{attempt.UserID, key}]; ok {
+		return Message{}, ErrKeyExists
 	}
 	account, ok := m.accounts[accountID]
 	if !ok || account.userID != attempt.UserID {
@@ -57,7 +67,15 @@ func (m *memoryStorage) InsertOutgoingMessage(_ context.Context, attempt Attempt
 	if err != nil {
 		return Message{}, err
 	}
-	return m.save(attempt, accountID, next), nil
+	saved := m.save(attempt, accountID, next)
+	m.keys[memoryKey{attempt.UserID, key}] = saved.ID
+	return saved, nil
+}
+
+// memoryKey is one member's idempotency key.
+type memoryKey struct {
+	userID int64
+	key    uuid.UUID
 }
 
 // attemptsSince returns the member's attempts after attempt.Since.
@@ -96,6 +114,17 @@ func (m *memoryStorage) ReadOutgoingMessage(_ context.Context, userID int64, mes
 	return Message{}, ErrNotFound
 }
 
+func (m *memoryStorage) ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (Message, error) {
+	if m.beforeKeyRead != nil {
+		m.beforeKeyRead()
+	}
+	id, ok := m.keys[memoryKey{userID, key}]
+	if !ok {
+		return Message{}, ErrNotFound
+	}
+	return m.ReadOutgoingMessage(ctx, userID, id)
+}
+
 // createNow is the clock of every create test.
 var createNow = time.Date(2026, 11, 9, 10, 30, 0, 0, time.UTC)
 
@@ -104,9 +133,9 @@ func newTestService(storage *memoryStorage, now *time.Time) *Service {
 	return NewService(storage, func() time.Time { return *now })
 }
 
-// testDraft returns a draft from account 5.
+// testDraft returns a draft from account 5 with a new key.
 func testDraft() Draft {
-	return Draft{ConnectedAccountID: 5, Content: testContent()}
+	return Draft{ConnectedAccountID: 5, IdempotencyKey: uuid.New(), Content: testContent()}
 }
 
 func TestCreate(t *testing.T) {
@@ -116,7 +145,7 @@ func TestCreate(t *testing.T) {
 	content := testContent()
 	content.To = []string{" Ann@Example.com "}
 
-	message, err := service.Create(t.Context(), 3, Draft{ConnectedAccountID: 5, Content: content})
+	message, err := service.Create(t.Context(), 3, Draft{ConnectedAccountID: 5, IdempotencyKey: uuid.New(), Content: content})
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), message.ConnectedAccountID)
@@ -134,7 +163,7 @@ func TestCreateOtherMembersAccount(t *testing.T) {
 	now := createNow
 	service := newTestService(storage, &now)
 
-	_, err := service.Create(t.Context(), 3, Draft{ConnectedAccountID: 8, Content: testContent()})
+	_, err := service.Create(t.Context(), 3, Draft{ConnectedAccountID: 8, IdempotencyKey: uuid.New(), Content: testContent()})
 
 	require.ErrorIs(t, err, ErrAccountNotFound)
 	assert.Empty(t, storage.messages)
@@ -145,7 +174,7 @@ func TestCreateNeedsReconnect(t *testing.T) {
 	now := createNow
 	service := newTestService(storage, &now)
 
-	_, err := service.Create(t.Context(), 3, Draft{ConnectedAccountID: 6, Content: testContent()})
+	_, err := service.Create(t.Context(), 3, Draft{ConnectedAccountID: 6, IdempotencyKey: uuid.New(), Content: testContent()})
 
 	require.ErrorIs(t, err, ErrNeedsReconnect)
 	assert.Empty(t, storage.messages)
@@ -158,7 +187,7 @@ func TestCreateInvalidContent(t *testing.T) {
 	content := testContent()
 	content.Subject = "Hi\nthere"
 
-	_, err := service.Create(t.Context(), 3, Draft{ConnectedAccountID: 5, Content: content})
+	_, err := service.Create(t.Context(), 3, Draft{ConnectedAccountID: 5, IdempotencyKey: uuid.New(), Content: content})
 
 	require.ErrorIs(t, err, ErrSubjectInvalid)
 	assert.Zero(t, storage.buildCalls, "refused before storage locks anything")
@@ -184,6 +213,79 @@ func TestCreateDeactivated(t *testing.T) {
 	_, err := newTestService(storage, &now).Create(t.Context(), 3, testDraft())
 
 	require.ErrorIs(t, err, ErrDeactivated)
+}
+
+// A repeat of a key with the same draft returns the first message and saves
+// and counts nothing more, even once the member is at the limit.
+func TestCreateRepeated(t *testing.T) {
+	storage := newMemoryStorage()
+	now := createNow
+	service := newTestService(storage, &now)
+	draft := testDraft()
+	draft.To = []string{" Ann@Example.com "}
+	first, err := service.Create(t.Context(), 3, draft)
+	require.NoError(t, err)
+	fillAttempts(storage, 3, now, shortSendLimit.Max)
+
+	again, err := service.Create(t.Context(), 3, draft)
+
+	require.NoError(t, err)
+	assert.Equal(t, first, again)
+	assert.Len(t, storage.messages, 1)
+	assert.Len(t, storage.attempts[3], shortSendLimit.Max+1, "the repeat counts no attempt")
+}
+
+// A key that saved another of the member's messages is refused, whatever
+// differs.
+func TestCreateKeyReused(t *testing.T) {
+	cases := []struct {
+		name   string
+		change func(*Draft)
+	}{
+		{"other recipient", func(d *Draft) { d.Cc = []string{"cc@example.com"} }},
+		{"other subject", func(d *Draft) { d.Subject += "!" }},
+		{"other body", func(d *Draft) { d.Body += "!" }},
+		{"other account", func(d *Draft) { d.ConnectedAccountID = 7 }},
+		{"recipients reordered", func(d *Draft) { d.To = []string{"bob@example.org", "ann@example.com"} }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			storage := newMemoryStorage()
+			storage.accounts[7] = memoryAccount{userID: 3, sender: Sender{ConnectedAccountID: 7, Email: "work@gmail.com"}}
+			now := createNow
+			service := newTestService(storage, &now)
+			draft := testDraft()
+			draft.To = []string{"ann@example.com", "bob@example.org"}
+			_, err := service.Create(t.Context(), 3, draft)
+			require.NoError(t, err)
+			repeat := draft
+			repeat.Content.To = slices.Clone(draft.To)
+			c.change(&repeat)
+
+			_, err = service.Create(t.Context(), 3, repeat)
+
+			require.ErrorIs(t, err, ErrKeyReused)
+			assert.Len(t, storage.messages, 1)
+		})
+	}
+}
+
+// A key is the member's own: another member's request with the same key is
+// another request, and saves its own message.
+func TestCreateKeyPerMember(t *testing.T) {
+	storage := newMemoryStorage()
+	now := createNow
+	service := newTestService(storage, &now)
+	draft := testDraft()
+	mine, err := service.Create(t.Context(), 3, draft)
+	require.NoError(t, err)
+	draft.ConnectedAccountID = 8
+
+	theirs, err := service.Create(t.Context(), 4, draft)
+
+	require.NoError(t, err)
+	assert.NotEqual(t, mine.ID, theirs.ID)
+	assert.Len(t, storage.messages, 2)
 }
 
 // fillAttempts counts n attempts for userID at at.
@@ -239,8 +341,67 @@ func TestCreateLimitPerMember(t *testing.T) {
 	draft.ConnectedAccountID = 7
 	_, err := service.Create(t.Context(), 3, draft)
 	require.NoError(t, err, "member 4's attempts do not count")
+	draft.IdempotencyKey = uuid.New()
 
 	_, err = service.Create(t.Context(), 3, draft)
 
 	require.ErrorIs(t, err, ErrThrottled)
+}
+
+// disconnect deletes accountID's messages and their keys, as a disconnect
+// does.
+func (m *memoryStorage) disconnect(accountID int64) {
+	m.messages = slices.DeleteFunc(m.messages, func(message Message) bool {
+		if message.ConnectedAccountID != accountID {
+			return false
+		}
+		maps.DeleteFunc(m.keys, func(_ memoryKey, id uuid.UUID) bool { return id == message.ID })
+		return true
+	})
+}
+
+// A key whose message a disconnect deletes between finding the key and
+// reading the message is free again: the request is saved as a new one, not
+// refused for an account it may not name.
+func TestCreateKeyFreed(t *testing.T) {
+	storage := newMemoryStorage()
+	storage.accounts[7] = memoryAccount{userID: 3, sender: Sender{ConnectedAccountID: 7, Email: "work@gmail.com"}}
+	now := createNow
+	service := newTestService(storage, &now)
+	draft := testDraft()
+	_, err := service.Create(t.Context(), 3, draft)
+	require.NoError(t, err)
+	storage.beforeKeyRead = func() {
+		storage.beforeKeyRead = nil
+		storage.disconnect(5)
+	}
+	draft.ConnectedAccountID = 7
+
+	message, err := service.Create(t.Context(), 3, draft)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), message.ConnectedAccountID)
+	assert.Len(t, storage.messages, 1)
+}
+
+// A key freed every time ends with an error rather than looping.
+func TestCreateKeyFreedTwice(t *testing.T) {
+	storage := newMemoryStorage()
+	now := createNow
+	service := newTestService(storage, &now)
+	draft := testDraft()
+	_, err := service.Create(t.Context(), 3, draft)
+	require.NoError(t, err)
+	reads := 0
+	storage.beforeKeyRead = func() {
+		reads++
+		storage.disconnect(5)
+		// The member saves the key again from the same account.
+		storage.keys[memoryKey{3, draft.IdempotencyKey}] = uuid.New()
+	}
+
+	_, err = service.Create(t.Context(), 3, draft)
+
+	require.ErrorIs(t, err, errKeyFreed)
+	assert.Equal(t, 2, reads)
 }

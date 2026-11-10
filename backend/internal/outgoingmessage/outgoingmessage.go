@@ -7,6 +7,7 @@ package outgoingmessage
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 	"uuid"
 
@@ -30,7 +31,14 @@ var (
 	// ErrThrottled means the member asked to send too many messages recently;
 	// it comes wrapped in an [*attemptlimit.Error] that says how long to wait.
 	ErrThrottled = errors.New("too many messages sent recently")
+	// ErrKeyReused means a request's idempotency key already saved another
+	// of the member's messages: other content, or another sending account.
+	ErrKeyReused = errors.New("idempotency key already used for another message")
 )
+
+// ErrKeyExists is what [Storage] returns when the member already saved a
+// message with the idempotency key; [Service] reads it to compare.
+var ErrKeyExists = errors.New("a message with this idempotency key exists")
 
 // The member's send limit counts every message saved to send, from any of
 // their accounts (ADR006).
@@ -108,6 +116,10 @@ type Content struct {
 // [Draft.ConnectedAccountID].
 type Draft struct {
 	ConnectedAccountID int64
+	// IdempotencyKey is the client's key for this one draft, the same for
+	// every request that tries to send it, so a repeat saves no second
+	// message.
+	IdempotencyKey uuid.UUID
 	Content
 }
 
@@ -178,23 +190,28 @@ type Storage interface {
 	// InsertOutgoingMessage, in one transaction:
 	//  1. locks the member attempt.UserID, so their attempts are counted one
 	//     at a time, returning [ErrDeactivated] when they are deactivated;
-	//  2. reads the member's account accountID, keeping it from being
+	//  2. returns [ErrKeyExists] when the member saved a message with key;
+	//  3. reads the member's account accountID, keeping it from being
 	//     disconnected until the transaction ends, or returns
 	//     [ErrAccountNotFound];
-	//  3. calls build with the account and the member's attempts after
+	//  4. calls build with the account and the member's attempts after
 	//     attempt.Since;
-	//  4. saves the message build returns as waiting, with the job that sends
-	//     it, so no message waits without a job, and an attempt at
-	//     attempt.At, deleting the member's attempts at or before
-	//     attempt.Since.
+	//  5. saves the message build returns as waiting, with the job that sends
+	//     it, so no message waits without a job, an attempt at attempt.At,
+	//     deleting the member's attempts at or before attempt.Since, and key,
+	//     returning [ErrKeyExists] if another transaction saved it first.
 	//
 	// It returns the saved message. An error from build rolls back and is
 	// returned unchanged.
-	InsertOutgoingMessage(ctx context.Context, attempt Attempt, accountID int64, build func(CreateState) (NewMessage, error)) (Message, error)
+	InsertOutgoingMessage(ctx context.Context, attempt Attempt, accountID int64, key uuid.UUID, build func(CreateState) (NewMessage, error)) (Message, error)
 
 	// ReadOutgoingMessage returns userID's message messageID, or
 	// [ErrNotFound] when userID has no such message.
 	ReadOutgoingMessage(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error)
+
+	// ReadOutgoingMessageByKey returns userID's message saved with key, or
+	// [ErrNotFound] when userID has none.
+	ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (Message, error)
 }
 
 // Service applies the rules for outgoing messages.
@@ -209,13 +226,16 @@ func NewService(storage Storage, now func() time.Time) *Service {
 }
 
 // Create saves draft as userID's message, waiting to be sent, and returns it.
+// A repeat of a draft's idempotency key returns the message the first saved,
+// when it asks for the same content from the same account.
 //
 // It returns [ErrAccountNotFound] when userID has no account
 // draft.ConnectedAccountID, [ErrNeedsReconnect] when that account needs a
-// reconnect, [ErrDeactivated], an [*attemptlimit.Error] wrapping
-// [ErrThrottled], and the content errors of [Content]'s rules:
-// [ErrNoRecipients], a [*TooManyRecipientsError], a [*RecipientError],
-// [ErrSubjectInvalid], or [ErrBodyInvalid].
+// reconnect, [ErrKeyReused] when the key saved another message,
+// [ErrDeactivated], an [*attemptlimit.Error] wrapping [ErrThrottled], and
+// the content errors of [Content]'s rules: [ErrNoRecipients], a
+// [*TooManyRecipientsError], a [*RecipientError], [ErrSubjectInvalid], or
+// [ErrBodyInvalid].
 func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Message, error) {
 	// 1. Refuse content that cannot be sent before any storage.
 	content, err := parseContent(draft.Content)
@@ -223,12 +243,52 @@ func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Messag
 		return Message{}, err
 	}
 
-	// 2. With the member and account held, refuse what would only fail or
-	// go over the limit, and save.
 	attempt := s.attempt(userID)
-	return s.storage.InsertOutgoingMessage(ctx, attempt, draft.ConnectedAccountID, func(state CreateState) (NewMessage, error) {
-		return newMessage(state.Sender, state.Attempts, attempt.At, content)
-	})
+	for tries := 1; ; tries++ {
+		// 2. With the member and account held, refuse what would only fail
+		// or go over the limit, and save.
+		message, err := s.storage.InsertOutgoingMessage(ctx, attempt, draft.ConnectedAccountID, draft.IdempotencyKey, func(state CreateState) (NewMessage, error) {
+			return newMessage(state.Sender, state.Attempts, attempt.At, content)
+		})
+		if !errors.Is(err, ErrKeyExists) {
+			return message, err
+		}
+
+		// 3. A repeated request, e.g. one whose answer was lost, gets the
+		// message the first saved; the key's check comes before the limit's,
+		// so a repeat is never refused for the attempt it repeats.
+		message, err = s.repeated(ctx, userID, draft.ConnectedAccountID, draft.IdempotencyKey, content)
+		// A disconnect that deleted the key's message since step 2 freed the
+		// key, so the request is a new one, as it would have been a moment
+		// later. Once: freeing it again needs the member to save and
+		// disconnect it meanwhile.
+		if !errors.Is(err, errKeyFreed) || tries == 2 {
+			return message, err
+		}
+	}
+}
+
+// errKeyFreed means the message an idempotency key saved was deleted after
+// the key was found, which deleted the key too.
+var errKeyFreed = errors.New("idempotency key's message was deleted")
+
+// repeated returns userID's message saved with key when it is from account
+// accountID with content, [ErrKeyReused], or errKeyFreed when the message is
+// gone.
+func (s *Service) repeated(ctx context.Context, userID, accountID int64, key uuid.UUID, content Content) (Message, error) {
+	earlier, err := s.storage.ReadOutgoingMessageByKey(ctx, userID, key)
+	if errors.Is(err, ErrNotFound) {
+		return Message{}, errKeyFreed
+	}
+	if err != nil {
+		return Message{}, err
+	}
+	// The IETF Idempotency-Key draft refuses a key reused with another
+	// payload (draft-ietf-httpapi-idempotency-key-header, section 2.2).
+	if earlier.ConnectedAccountID != accountID || !sameContent(earlier.Content, content) {
+		return Message{}, ErrKeyReused
+	}
+	return earlier, nil
 }
 
 // Get returns userID's message messageID, or [ErrNotFound] when userID has
@@ -260,4 +320,11 @@ func newMessage(sender Sender, attempts []time.Time, now time.Time, content Cont
 		return NewMessage{}, err
 	}
 	return NewMessage{From: sender.Email, Content: content, InbokMessageID: messageID}, nil
+}
+
+// sameContent reports whether a and b are the same recipients, in order,
+// subject, and body.
+func sameContent(a, b Content) bool {
+	return slices.Equal(a.To, b.To) && slices.Equal(a.Cc, b.Cc) && slices.Equal(a.Bcc, b.Bcc) &&
+		a.Subject == b.Subject && a.Body == b.Body
 }

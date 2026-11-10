@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"uuid"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"inbok/internal/outgoingmessage"
 	"inbok/internal/repository/postgres/sqlc"
@@ -21,24 +23,39 @@ type storedRecipient struct {
 	Address string `json:"address"`
 }
 
-// InsertOutgoingMessage locks the member attempt.UserID, reads the member's
-// account accountID under a key share lock and the member's attempts, calls
-// build with them, and saves the message build returns as waiting, with its
-// job and the attempt, in one transaction. It returns the saved message,
-// [outgoingmessage.ErrDeactivated], or [outgoingmessage.ErrAccountNotFound]
-// when the member has no such account.
-func (db *DB) InsertOutgoingMessage(ctx context.Context, attempt outgoingmessage.Attempt, accountID int64, build func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error)) (outgoingmessage.Message, error) {
+// outgoingMessageKeyConstraint is the primary key PostgreSQL names for
+// outgoing_message_keys: one member's key.
+const outgoingMessageKeyConstraint = "outgoing_message_keys_pkey"
+
+// InsertOutgoingMessage locks the member attempt.UserID, refuses a key the
+// member saved a message with, reads the member's account accountID under a
+// key share lock and the member's attempts, calls build with them, and saves
+// the message build returns as waiting, with its job, the attempt, and key,
+// in one transaction. It returns the saved message,
+// [outgoingmessage.ErrDeactivated], [outgoingmessage.ErrKeyExists], or
+// [outgoingmessage.ErrAccountNotFound] when the member has no such account.
+func (db *DB) InsertOutgoingMessage(ctx context.Context, attempt outgoingmessage.Attempt, accountID int64, key uuid.UUID, build func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error)) (outgoingmessage.Message, error) {
 	var saved outgoingmessage.Message
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 
 		// 1. Lock the member before the account, as connecting does, so
-		// the member's attempts are counted one at a time.
+		// a repeated key finds the first request's message committed.
 		if err := lockSendingMember(ctx, queries, attempt.UserID); err != nil {
 			return err
 		}
 
-		// 2. Lock the account, so a disconnect waits and then deletes the
+		// 2. Refuse a used key before the limit, which a repeat must not
+		// count against.
+		exists, err := queries.OutgoingMessageKeyExists(ctx, sqlc.OutgoingMessageKeyExistsParams{UserID: attempt.UserID, IdempotencyKey: key})
+		if err != nil {
+			return fmt.Errorf("check idempotency key: %w", err)
+		}
+		if exists {
+			return outgoingmessage.ErrKeyExists
+		}
+
+		// 3. Lock the account, so a disconnect waits and then deletes the
 		// message with it.
 		account, err := queries.LockOutgoingMessageSender(ctx, sqlc.LockOutgoingMessageSenderParams{ID: accountID, UserID: attempt.UserID})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -52,16 +69,28 @@ func (db *DB) InsertOutgoingMessage(ctx context.Context, attempt outgoingmessage
 			return fmt.Errorf("list send attempts: %w", err)
 		}
 
-		// 3. Let build decide.
+		// 4. Let build decide.
 		sender := outgoingmessage.Sender{ConnectedAccountID: account.ID, Email: account.Email, NeedsReconnect: account.NeedsReconnect}
 		next, err := build(outgoingmessage.CreateState{Sender: sender, Attempts: attempts})
 		if err != nil {
 			return err
 		}
 
-		// 4. Save the message, its job, and the attempt.
+		// 5. Save the message, its job, the attempt, and the key.
 		saved, err = db.saveOutgoingMessage(ctx, tx, attempt, accountID, next)
-		return err
+		if err != nil {
+			return err
+		}
+		err = queries.InsertOutgoingMessageKey(ctx, sqlc.InsertOutgoingMessageKeyParams{UserID: attempt.UserID, IdempotencyKey: key, MessageID: saved.ID})
+		// A request with the same key that did not wait for the member's
+		// lock committed first; the key still names one message.
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgerrcode.UniqueViolation && pgErr.ConstraintName == outgoingMessageKeyConstraint {
+			return outgoingmessage.ErrKeyExists
+		}
+		if err != nil {
+			return fmt.Errorf("insert outgoing message key: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
 		return outgoingmessage.Message{}, err
@@ -151,6 +180,19 @@ func (db *DB) ReadOutgoingMessage(ctx context.Context, userID int64, messageID u
 	}
 	if err != nil {
 		return outgoingmessage.Message{}, fmt.Errorf("read outgoing message: %w", err)
+	}
+	return outgoingMessageFromRow(row)
+}
+
+// ReadOutgoingMessageByKey returns userID's message saved with key, or
+// [outgoingmessage.ErrNotFound] when userID has none.
+func (db *DB) ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (outgoingmessage.Message, error) {
+	row, err := sqlc.New(db.pool).ReadOutgoingMessageByKey(ctx, sqlc.ReadOutgoingMessageByKeyParams{IdempotencyKey: key, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return outgoingmessage.Message{}, outgoingmessage.ErrNotFound
+	}
+	if err != nil {
+		return outgoingmessage.Message{}, fmt.Errorf("read outgoing message by key: %w", err)
 	}
 	return outgoingMessageFromRow(row)
 }

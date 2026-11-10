@@ -77,6 +77,12 @@ type OutgoingMessage struct {
 	SentAt             *time.Time
 }
 
+type OutgoingMessageKey struct {
+	UserID         int64
+	IdempotencyKey uuid.UUID
+	MessageID      uuid.UUID
+}
+
 type PasswordResetAttempt struct {
 	ID           int64
 	ClientPrefix *string
