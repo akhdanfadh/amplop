@@ -11,8 +11,9 @@ export const ConnectedAccounts = zod.object({
   "createdAt": zod.iso.datetime({"offset":true}),
   "email": zod.string(),
   "id": zod.int(),
-  "needsReconnectSince": zod.iso.datetime({"offset":true}).nullable().describe('When Google stopped accepting the account\'s permission; null while it works. Reconnecting clears it.'),
-  "provider": zod.enum(['gmail'])
+  "needsReconnectSince": zod.iso.datetime({"offset":true}).nullable().describe('When Google stopped accepting the account\'s permission; null until it does. Reconnecting clears it.'),
+  "provider": zod.enum(['gmail']),
+  "status": zod.enum(['usable', 'needs-reconnect', 'token-unreadable']).describe('Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either.')
 })).describe('Oldest first.')
 })
 

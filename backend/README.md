@@ -862,10 +862,12 @@ settings lose their tested time until an administrator enters the password
 again and saves. The web app shows that 500 as a lost test result. A lost
 key also makes the Gmail refresh tokens it sealed unreadable: Gmail work
 for those accounts fails with `connectedaccount.ErrTokenUnreadable` until
-each member disconnects the account and connects it again, which seals a
-new token with the first key. The accounts are not marked as needing a
-reconnect, since a worker started with a wrong key list would mark every
-account, so the Connected accounts page offers them no Reconnect.
+each member reconnects the account, which seals a new token with the first
+key. Listing accounts opens each token to tell (`token-unreadable`), so
+the Connected accounts page marks such an account and offers Reconnect.
+Nothing is saved about it, since a server started
+with a wrong key list would otherwise mark every account: restoring the
+key makes the accounts usable again at the next read.
 
 ### Google emulator
 
@@ -1977,7 +1979,11 @@ account once; two members may each connect it.
 
 `GET /api/v0/connected-accounts` lists the member's own accounts, oldest
 first: `id`, `provider` (`gmail`), `email`, `needsReconnectSince`, null
-while Google accepts the token, and `createdAt`. Google's `sub` stays on
+while Google accepts the token, `status`, and `createdAt`. `status` is
+`needs-reconnect` once Google refused the token, `token-unreadable` when no
+configured key opens it, and `usable` otherwise; `Service.List` opens each
+token for it, saving nothing, so restoring a lost key makes an account
+usable again (see [Encryption keys](#encryption-keys)). Google's `sub` stays on
 the server. Another member's account is answered as not found everywhere,
 404 `connected-account-not-found`, like a missing one.
 

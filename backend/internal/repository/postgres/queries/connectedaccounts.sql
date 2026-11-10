@@ -31,7 +31,9 @@ WHERE id = @id AND user_id = @user_id
 RETURNING id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at;
 
 -- name: ListConnectedAccounts :many
-SELECT id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at
+-- With the credential, so the service can tell whether a key still opens it.
+SELECT id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at,
+    refresh_token_key_id, refresh_token_ciphertext
 FROM connected_accounts
 WHERE user_id = @user_id
 ORDER BY created_at, id;

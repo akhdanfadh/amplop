@@ -352,11 +352,16 @@ redirects to this page with `?outcome=`. The page validates it against the
 generated `ConnectOutcome`, ignores any other value, removes it from the
 address, so a reload or Back does not repeat it, and then shows its message.
 An account Google stopped accepting is marked "Needs reconnecting", with the
-date, and only it has Reconnect, which runs the same consent flow for that
-account, where the member must choose the same Google account. Disconnect
-asks first and says inbok removes the account with everything it keeps for
-it and asks Google to end its access. The row goes as soon as the server
-confirms. When the server has no Google client, the page says to ask an
+date, and so is one whose saved access inbok can't open, e.g. after a
+server key was lost, which the server checks at each read. Only these have
+Reconnect, which runs the same consent flow for that account, where the
+member must choose the same Google account. Disconnect
+asks first and says inbok removes the account with everything it saved for
+it and asks Google to end its access; for an account whose saved access
+inbok can't open, it says inbok can't ask Google, and that the member can
+remove inbok in their Google Account. The dialog leaves out that inbok does
+not ask when another member here connected the same Google account, whose
+access stays. The row goes as soon as the server confirms. When the server has no Google client, the page says to ask an
 administrator instead of offering Connect Gmail or Reconnect. A 401 from any
 read or write opens sign-in. A refused start rereads what it shows has
 changed: the providers on a 409, the list on a 404. A lost answer to a start

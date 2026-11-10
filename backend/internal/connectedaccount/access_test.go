@@ -152,7 +152,7 @@ func TestTokenReplacement(t *testing.T) {
 	_, err := a.access.Token(t.Context(), a.account.ID)
 	require.NoError(t, err)
 
-	assert.Equal(t, "refresh-2", openToken(t, a.ring, a.storage, member, a.account.ID))
+	assert.Equal(t, "refresh-2", storedToken(t, a.ring, a.storage, member, a.account.ID))
 }
 
 func TestTokenRefused(t *testing.T) {
@@ -164,7 +164,7 @@ func TestTokenRefused(t *testing.T) {
 	require.ErrorIs(t, err, ErrNeedsReconnect)
 	require.NotNil(t, a.needsReconnectSince(t))
 	assert.Equal(t, a.now, *a.needsReconnectSince(t))
-	assert.Equal(t, "refresh-1", openToken(t, a.ring, a.storage, member, a.account.ID), "the refused token is kept")
+	assert.Equal(t, "refresh-1", storedToken(t, a.ring, a.storage, member, a.account.ID), "the refused token is kept")
 }
 
 // An account that needs reconnecting is not tried at Google again.
@@ -216,7 +216,7 @@ func TestTokenReplacedRace(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "access-3", token.Value())
-	assert.Equal(t, "refresh-3", openToken(t, a.ring, a.storage, member, a.account.ID))
+	assert.Equal(t, "refresh-3", storedToken(t, a.ring, a.storage, member, a.account.ID))
 }
 
 // A credential that keeps changing is read again only once.
@@ -318,7 +318,7 @@ func TestTokenRotationRace(t *testing.T) {
 
 	assert.Equal(t, "access-1", token.Value())
 	assert.Nil(t, a.needsReconnectSince(t))
-	assert.Equal(t, "refresh-2", openToken(t, a.ring, a.storage, member, a.account.ID))
+	assert.Equal(t, "refresh-2", storedToken(t, a.ring, a.storage, member, a.account.ID))
 }
 
 func TestTokenDeactivated(t *testing.T) {
@@ -370,7 +370,7 @@ func TestTokenSealFails(t *testing.T) {
 	_, err := access.Token(t.Context(), a.account.ID)
 
 	require.ErrorIs(t, err, sealErr)
-	assert.Equal(t, "refresh-1", openToken(t, a.ring, a.storage, member, a.account.ID))
+	assert.Equal(t, "refresh-1", storedToken(t, a.ring, a.storage, member, a.account.ID))
 }
 
 // failingKeyring opens with Keyring but fails every seal with err.
