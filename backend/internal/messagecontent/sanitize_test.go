@@ -150,7 +150,7 @@ func TestSanitizeAttacks(t *testing.T) {
 			got, found := sanitize(t, tt.input, Policy{})
 
 			assert.Equal(t, tt.want, got)
-			checkSafe(t, doctype+got, RemoteBlocked)
+			assertSafe(t, doctype+got, RemoteBlocked)
 			assert.Empty(t, found.Shown)
 		})
 	}
@@ -188,7 +188,7 @@ func TestSanitizeLayouts(t *testing.T) {
 			got, found := sanitize(t, tt.input, Policy{})
 
 			assert.Equal(t, tt.want, got)
-			checkSafe(t, doctype+got, RemoteBlocked)
+			assertSafe(t, doctype+got, RemoteBlocked)
 			assert.False(t, found.Blocked)
 		})
 	}
@@ -412,19 +412,19 @@ func TestSanitizeNewsletters(t *testing.T) {
 			}
 			assert.NotContains(t, got, "mso")
 			assert.Equal(t, tt.wantBlocked, found.Blocked)
-			checkSafe(t, doctype+got, RemoteBlocked)
+			assertSafe(t, doctype+got, RemoteBlocked)
 		})
 	}
 }
 
-// checkSafe fails t unless doc, a copy [Sanitize] wrote under remote,
+// assertSafe fails t unless doc, a copy [Sanitize] wrote under remote,
 // parses as a browser parses it into kept HTML elements and style
 // elements only, with the attributes Sanitize writes, links and images
-// with the URLs it allows, CSS that [checkCSS] passes, and no comments,
-// and unless [checkReference] passes it.
-func checkSafe(t testing.TB, doc string, remote Remote) {
+// with the URLs it allows, CSS that [assertCSS] passes, and no comments,
+// and unless [assertReference] passes it.
+func assertSafe(t testing.TB, doc string, remote Remote) {
 	t.Helper()
-	checkReference(t, doc)
+	assertReference(t, doc)
 	tree, err := html.Parse(strings.NewReader(doc))
 	require.NoError(t, err)
 	for node := range tree.Descendants() {
@@ -434,22 +434,22 @@ func checkSafe(t testing.TB, doc string, remote Remote) {
 		case html.TextNode:
 			if node.Parent.DataAtom == atom.Style {
 				assert.NotContains(t, node.Data, "<", "style element")
-				checkCSS(t, node.Data, remote)
+				assertCSS(t, node.Data, remote)
 			}
 		case html.ElementNode:
 			assert.Empty(t, node.Namespace, "element %q", node.Data)
 			assert.True(t, kept[node.DataAtom] || node.DataAtom == atom.Style, "element %q", node.Data)
 			for _, attr := range node.Attr {
-				checkAttribute(t, attr)
+				assertAttribute(t, attr)
 				if attr.Key == attrStyle {
-					checkCSS(t, attr.Val, remote)
+					assertCSS(t, attr.Val, remote)
 				}
 			}
 		}
 	}
 }
 
-// checkCSS fails t unless a CSS tokenizer reads src, CSS [Sanitize]
+// assertCSS fails t unless a CSS tokenizer reads src, CSS [Sanitize]
 // wrote under remote, without comments or bad strings and URLs, with no
 // at-rule but @media, no function outside [functions], and no url() but
 // an inline part's or, under [RemoteAllowed], a remote one.
@@ -457,7 +457,7 @@ func checkSafe(t testing.TB, doc string, remote Remote) {
 // DESIGN: it tokenizes with the filter's own lexer, as Go has no other,
 // so it cannot see where that lexer and a browser's differ; the security
 // reviews checked that by running the copies in Chromium.
-func checkCSS(t testing.TB, src string, remote Remote) {
+func assertCSS(t testing.TB, src string, remote Remote) {
 	t.Helper()
 	lexer := css.NewLexer(cssinput.NewInputString(src))
 	for {
@@ -502,7 +502,7 @@ var reference = func() *bluemonday.Policy {
 		"reversed", "role", "rowspan", "rules", "scope", "size", "span",
 		"start", "summary", "text", "title", "type", "valign", "value",
 		"vlink", "vspace", "width").Globally()
-	// What a newsletter's CSS selects by and says; checkCSS judges CSS.
+	// What a newsletter's CSS selects by and says; assertCSS judges CSS.
 	p.AllowAttrs("class", "style").Globally()
 	// Elements bluemonday keeps only with an attribute: a link or image
 	// whose URL Sanitize dropped, showing its text or alt, and elements
@@ -512,10 +512,10 @@ var reference = func() *bluemonday.Policy {
 	return p
 }()
 
-// checkReference fails t if [reference] would remove an element or an
+// assertReference fails t if [reference] would remove an element or an
 // attribute from doc, a copy [Sanitize] wrote, so Sanitize keeps nothing
 // that bluemonday's rules, as widened for mail, do not.
-func checkReference(t testing.TB, doc string) {
+func assertReference(t testing.TB, doc string) {
 	t.Helper()
 	ours, theirs := shape(t, doc), shape(t, reference.Sanitize(doc))
 	for key, count := range ours {
@@ -525,7 +525,7 @@ func checkReference(t testing.TB, doc string) {
 
 // shape counts the elements of doc, an HTML document, and their
 // attributes, by name, e.g. "img" and "img[src]". It leaves out what
-// [checkCSS] judges, style elements, and what Sanitize writes itself or
+// [assertCSS] judges, style elements, and what Sanitize writes itself or
 // checks by name: target, rel, and aria-* attributes.
 func shape(t testing.TB, doc string) map[string]int {
 	t.Helper()
@@ -547,8 +547,8 @@ func shape(t testing.TB, doc string) map[string]int {
 	return counts
 }
 
-// checkAttribute fails t unless attr is one [Sanitize] may write.
-func checkAttribute(t testing.TB, attr html.Attribute) {
+// assertAttribute fails t unless attr is one [Sanitize] may write.
+func assertAttribute(t testing.TB, attr html.Attribute) {
 	t.Helper()
 	assert.Empty(t, attr.Namespace, "attribute %q", attr.Key)
 	switch attr.Key {
@@ -580,11 +580,11 @@ func FuzzSanitize(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, input string) {
 		blocked, _ := sanitize(t, input, policy)
-		checkSafe(t, doctype+blocked, RemoteBlocked)
+		assertSafe(t, doctype+blocked, RemoteBlocked)
 
 		// cid: URLs become relative part URLs, which a second copy drops.
 		allowed, _ := sanitize(t, input, Policy{Remote: RemoteAllowed})
-		checkSafe(t, doctype+allowed, RemoteAllowed)
+		assertSafe(t, doctype+allowed, RemoteAllowed)
 		again, _ := sanitize(t, doctype+allowed, Policy{Remote: RemoteAllowed})
 		assert.Equal(t, allowed, again, "a second copy differs")
 	})
