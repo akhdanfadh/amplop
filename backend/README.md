@@ -845,9 +845,10 @@ Each account keeps its Google ID (`sub`) across restarts.
 A patch in `google-emulator/patches/`, which pnpm applies on install,
 changes emulate where inbok needs Gmail's behavior: it adds
 `users.getProfile`, keeps history IDs within 64 bits, as Gmail's are and
-as the Go client decodes them, lets a seed fix an account's `sub`, and
+as the Go client decodes them, lets a seed fix an account's `sub`,
 refuses a code exchanged by another client or with another redirect URI
-than its authorization request's. The install fails if the patch no
+than its authorization request's, returns a sent message's other headers,
+e.g. `X-Inbok-Message-Id`, and matches `metadataHeaders` in any case. The install fails if the patch no
 longer applies, e.g. after a version change;
 `google-emulator/pnpm-workspace.yaml` says how to change it.
 
@@ -859,6 +860,10 @@ uses a small `httptest` stub instead:
   answers 400 `invalid_token` for one it does not know.
 - `history.list` never answers 404 for an old history ID, and nothing
   returns quota errors.
+- `messages.send` keeps the `Message-ID` a client sets, where Gmail
+  replaces it with its own (tested 2026-11-09), and it never times out
+  or drops a send, so sending's answers and its check are tested with
+  stubs too.
 - It ignores `access_type` and `prompt` and always returns a refresh
   token.
 - A failed PKCE check leaves the code usable, and posting the consent
@@ -2239,6 +2244,7 @@ httpapi --> passwordreset <-- repository/postgres
 httpapi --> connectedaccount <-- repository/postgres
                              <-- google
             outgoingmessage <-- repository/postgres
+                            <-- google
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google
@@ -2281,9 +2287,10 @@ httpapi --> messagecontent <-- s3
 - `google`, like `smtp`, is a technology package: it implements the
   Google side `connectedaccount` declares for its connect flow, its token
   access, and its revocations: the OAuth client, the ID token checks, the
-  refresh token trade, revocation, and Gmail's `users.getProfile`, with
-  `golang.org/x/oauth2` and
-  Google's Gmail client. Their types stay inside it; Gmail calls take
+  refresh token trade, revocation, and Gmail's `users.getProfile`; and
+  `outgoingmessage`'s `Provider`: `messages.send` and the check after an
+  unanswered send. It uses `golang.org/x/oauth2` and Google's Gmail
+  client, whose types stay inside it; Gmail calls take
   `connectedaccount`'s `AccessToken`. It also turns a Gmail message's
   parts into `messagecontent.Received`, the provider-neutral input of
   [Message parts](#message-parts).

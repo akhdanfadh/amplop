@@ -1,7 +1,8 @@
 # emulate 0.13.0 differs from Google where inbok depends on it; the patch
 # adds users.getProfile, keeps history IDs within 64 bits, lets a seed fix
-# an account's sub, and refuses a code exchanged by another client or with
-# another redirect URI. pnpm applies it on install and fails if it no
+# an account's sub, refuses a code exchanged by another client or with
+# another redirect URI, returns a sent message's other headers, e.g.
+# X-Inbok-Message-Id, and matches metadataHeaders in any case. pnpm applies it on install and fails if it no
 # longer applies. To change it: pnpm patch emulate@0.13.0, edit the
 # folder it names (the bundled dist/dist-*.js file), then
 # pnpm patch-commit <folder>. Drop an edit once emulate ships its fix.
