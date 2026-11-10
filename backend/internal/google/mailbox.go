@@ -10,6 +10,10 @@ import (
 )
 
 // Gmail's system labels inbok reads by ID (Gmail's labels guide).
+//
+// NOTE: Google's Go client exports none of these as constants; only Gmail's
+// guides list them, as text. A name Google changed would not fail the
+// build, only the reads.
 const (
 	labelInbox     = "INBOX"
 	labelSent      = "SENT"

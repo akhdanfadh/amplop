@@ -264,6 +264,10 @@ var metadataHeaders = []string{
 }
 
 // messages.get's formats inbok asks for.
+//
+// NOTE: Google's Go client exports none of these as constants; only its doc
+// comments list them, as text. A name Google changed would not fail the
+// build, only the calls.
 const (
 	formatMetadata = "metadata"
 	formatMinimal  = "minimal"
