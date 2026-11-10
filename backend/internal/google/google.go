@@ -7,10 +7,11 @@
 // google.go builds the client for Google or the emulator; oauth.go asks for
 // consent, trades the code and refresh tokens, and revokes them; idtoken.go
 // checks the ID token; gmail.go opens Gmail for an access token and reads
-// the profile; messages.go reads an account's history ID for mailsync,
-// headers.go decodes message headers, and retry.go backs off Gmail's rate
-// limits; transport.go is the HTTP client that carries codes and tokens;
-// receivedpart.go turns a Gmail message's parts into messagecontent's input.
+// the profile; mailbox.go and messages.go read an account's labels, history
+// ID, and message listing for mailsync, headers.go decodes message headers,
+// and retry.go backs off Gmail's rate limits; transport.go is the HTTP
+// client that carries codes and tokens; receivedpart.go turns a Gmail
+// message's parts into messagecontent's input.
 package google
 
 import (

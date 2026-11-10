@@ -26,8 +26,6 @@ import (
 // comments list them, as text. A name Google changed would not fail the
 // build, only the calls.
 const (
-	// labelSent is the label Gmail gives every message it sent.
-	labelSent = "SENT"
 	// historyMessageAdded is the history type of a message added to the
 	// mailbox.
 	historyMessageAdded = "messageAdded"
