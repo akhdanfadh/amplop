@@ -68,7 +68,10 @@ browser console logs no Content Security Policy violation:
   `src/components/ui/input-otp.tsx` does for input-otp.
 - Images, fonts, and requests: only inbok's own origin. No `data:` URLs,
   no CDNs, and no calls to other sites.
-- Framing: no site, inbok included, may show a page in a frame.
+- Framing: no site, inbok included, may show a page of the app in a
+  frame. A page may frame inbok's own URLs; the message view frames a
+  message body, whose response allows it (see
+  [Message view](#message-view)).
 
 Zod's compiled checks need `new Function`, so `src/zod-config.ts` turns
 them off with `z.config({ jitless: true })`. Zod reads that setting when a
@@ -113,6 +116,8 @@ Put shared code in the folder for its responsibility:
 - `src/features/connected-accounts`: the Connected accounts list with its
   connect, reconnect, and disconnect actions, and the page's wording,
   including each way a connection can end.
+- `src/features/messages`: an HTML body's frame and sizing it to the
+  body.
 - `src/components`: shared components, such as the password input and the
   request error under a form. `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -372,6 +377,33 @@ check when cached identity is being refreshed. Manual session checks attempt
 immediately despite the browser's offline indicator; editing or leaving the
 form invalidates their result. The original health
 and probe demo remains available at `/probe`.
+
+## Message view
+
+An HTML body is an iframe whose `src` is the body's URL on inbok's
+origin. The server sends it sanitized, with a Content-Security-Policy of
+its own ([Showing HTML](../backend/README.md#showing-html)). The frame's
+`sandbox` (`frame.ts`) repeats that policy's: no script runs, links open
+in a new tab, and the body keeps inbok's origin, so inline images load
+with the session cookie and the page can read the body's height. Never
+give the frame `allow-scripts`: together with `allow-same-origin`, a
+body could remove its own sandbox. Never show a body through `srcdoc` or
+`innerHTML`: it would take the app's policy, which refuses the message's
+CSS, and in the app's own page its HTML would no longer be isolated.
+
+The frame is as tall as its body, so the page scrolls the message.
+`watch` (`frame.ts`) shows the body as soon as its document has been
+read, without waiting for its images, whose load event a slow remote
+image would hold back. From then on a `ResizeObserver` on the body's
+root refits the frame whenever the body changes size: images arriving,
+a `details` element opening, or the frame's width rewrapping it. It sets
+the body's `html` and `body` to `height: auto` first, so mail that makes
+them 100% of the frame, plus padding, fits too. A frame whose document
+the page cannot read, or that is not HTML, e.g. an API error, or that is
+not read within 15 seconds, shows "Could not show this part of the
+message." with a retry, which returns focus to the frame or the button.
+The frame stays white in dark mode, since mail is written for a white
+page.
 
 ## Checks and tests
 
