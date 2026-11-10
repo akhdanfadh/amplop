@@ -701,3 +701,59 @@ func keys(messages map[string]mailsync.Message) []string {
 	sort.Strings(ids)
 	return ids
 }
+
+// An update replaces a stored message's mailboxes and flags and nothing
+// else; one for a message the account does not have, or another account's,
+// is skipped, and the last of two for one message wins.
+func TestSyncedMailUpdated(t *testing.T) {
+	s := newSyncedMailTest(t).withMailboxes(t)
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("m1"), syncedMessage("m2")}})
+	s.update(t, s.other, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("theirs")}})
+	before := s.messages(t, s.account)
+
+	s.update(t, s.account, mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{
+		{ProviderID: "m1", MailboxProviderIDs: []string{"INBOX"}, Seen: true},
+		{ProviderID: "m2", MailboxProviderIDs: []string{"TRASH", "TRASH"}},
+		{ProviderID: "m1", MailboxProviderIDs: []string{"Label_1"}, Seen: false, Flagged: true},
+		{ProviderID: "never-stored", MailboxProviderIDs: []string{"INBOX"}},
+		{ProviderID: "theirs", MailboxProviderIDs: []string{"SPAM"}},
+	}})
+
+	after := s.messages(t, s.account)
+	assert.Equal(t, []string{"m1", "m2"}, keys(after))
+	want := before["m1"]
+	want.MailboxProviderIDs = []string{"Label_1"}
+	want.Seen = false
+	want.Flagged = true
+	assert.Equal(t, want, after["m1"])
+	assert.Equal(t, []string{"TRASH"}, after["m2"].MailboxProviderIDs)
+	assert.False(t, after["m2"].Seen)
+	assert.False(t, after["m2"].Flagged)
+	assert.Equal(t, []string{"INBOX", "Label_1"}, s.messages(t, s.other)["theirs"].MailboxProviderIDs)
+}
+
+// An update to no mailbox leaves the message in none.
+func TestSyncedMailUpdateEmpty(t *testing.T) {
+	s := newSyncedMailTest(t).withMailboxes(t)
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("m1")}})
+
+	s.update(t, s.account, mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{{ProviderID: "m1", Seen: true}}})
+
+	assert.Empty(t, s.messages(t, s.account)["m1"].MailboxProviderIDs)
+}
+
+// An update naming a mailbox the account lacks writes nothing.
+func TestSyncedMailUpdateUnknown(t *testing.T) {
+	s := newSyncedMailTest(t).withMailboxes(t)
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("m1")}})
+	before := s.messages(t, s.account)
+
+	_, err := s.db.UpdateSyncedMail(t.Context(), s.account, func(mailsync.SyncState) (mailsync.Change, error) {
+		return mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{
+			{ProviderID: "m1", MailboxProviderIDs: []string{"Label_new"}, Seen: false},
+		}}, nil
+	})
+
+	require.ErrorIs(t, err, mailsync.ErrUnknownMailbox)
+	assert.Equal(t, before, s.messages(t, s.account))
+}

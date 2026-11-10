@@ -88,3 +88,57 @@ func (q *Queries) InsertMessageMailboxes(ctx context.Context, arg InsertMessageM
 	}
 	return result.RowsAffected(), nil
 }
+
+const updateMessageFlags = `-- name: UpdateMessageFlags :many
+UPDATE messages m SET
+    seen = u.seen,
+    flagged = u.flagged
+FROM (
+    SELECT unnest($2::text[]) AS provider_message_id,
+        unnest($3::boolean[]) AS seen,
+        unnest($4::boolean[]) AS flagged
+) AS u
+WHERE m.connected_account_id = $1
+    AND m.provider_message_id = u.provider_message_id
+RETURNING m.id, m.provider_message_id
+`
+
+type UpdateMessageFlagsParams struct {
+	ConnectedAccountID int64
+	ProviderMessageIds []string
+	Seen               []bool
+	Flagged            []bool
+}
+
+type UpdateMessageFlagsRow struct {
+	ID                uuid.UUID
+	ProviderMessageID string
+}
+
+// Sets the flags of the account's messages named, one per position of the
+// three lists, which have the same length; a message the account does not
+// have is skipped. Returns the IDs of those it has.
+func (q *Queries) UpdateMessageFlags(ctx context.Context, arg UpdateMessageFlagsParams) ([]UpdateMessageFlagsRow, error) {
+	rows, err := q.db.Query(ctx, updateMessageFlags,
+		arg.ConnectedAccountID,
+		arg.ProviderMessageIds,
+		arg.Seen,
+		arg.Flagged,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UpdateMessageFlagsRow
+	for rows.Next() {
+		var i UpdateMessageFlagsRow
+		if err := rows.Scan(&i.ID, &i.ProviderMessageID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

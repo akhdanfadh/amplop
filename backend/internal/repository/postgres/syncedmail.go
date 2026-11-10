@@ -22,10 +22,11 @@ var errStateRange = errors.New("sync state number is out of storage's range")
 
 // UpdateSyncedMail locks accountID's sync state, calls update with it, and
 // writes the change update returns, in one transaction: the mailboxes, the
-// deletes, the saves with their mailboxes, the earlier generations' deletes,
-// and the state. It returns what it wrote, [mailsync.ErrNotFound] when the
-// account has no sync state, and [mailsync.ErrUnknownMailbox] when a saved
-// message names a mailbox the account does not have.
+// deletes, the saves with their mailboxes, the updates, the earlier
+// generations' deletes, and the state. It returns what it wrote,
+// [mailsync.ErrNotFound] when the account has no sync state, and
+// [mailsync.ErrUnknownMailbox] when a saved or updated message names a mailbox
+// the account does not have.
 func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func(mailsync.SyncState) (mailsync.Change, error)) (mailsync.Written, error) {
 	var written mailsync.Written
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
@@ -74,6 +75,9 @@ func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func
 			}
 		}
 		if err := saveMessages(ctx, tx, accountID, state.SyncGeneration, saves); err != nil {
+			return err
+		}
+		if err := updateMessages(ctx, tx, accountID, change.Updated); err != nil {
 			return err
 		}
 
@@ -191,14 +195,72 @@ func saveMessages(ctx context.Context, tx pgx.Tx, accountID int64, generation in
 	}
 
 	// 2. Replace their mailboxes with the ones each names now.
+	mailboxes := make([][]string, len(messages))
+	for i, message := range messages {
+		mailboxes[i] = message.MailboxProviderIDs
+	}
+	return replaceMailboxes(ctx, tx, accountID, ids, mailboxes)
+}
+
+// updateMessages sets the flags and replaces the mailboxes of accountID's
+// messages that updates name, in tx, skipping those it does not have; when one
+// ProviderID appears more than once, the last wins. It returns
+// [mailsync.ErrUnknownMailbox] when one names a mailbox the account does not have.
+func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []mailsync.MessageUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	queries := sqlc.New(tx)
+
+	// 1. Set the flags, keeping each ProviderID's last update, and learn
+	// which messages the account has.
+	last := make(map[string]mailsync.MessageUpdate, len(updates))
+	params := sqlc.UpdateMessageFlagsParams{ConnectedAccountID: accountID}
+	for _, update := range updates {
+		if _, ok := last[update.ProviderID]; !ok {
+			params.ProviderMessageIds = append(params.ProviderMessageIds, update.ProviderID)
+		}
+		last[update.ProviderID] = update
+	}
+	for _, providerID := range params.ProviderMessageIds {
+		params.Seen = append(params.Seen, last[providerID].Seen)
+		params.Flagged = append(params.Flagged, last[providerID].Flagged)
+	}
+	rows, err := queries.UpdateMessageFlags(ctx, params)
+	if err != nil {
+		return fmt.Errorf("update message flags: %w", err)
+	}
+
+	// 2. Replace the mailboxes of those it has.
+	ids := make([]uuid.UUID, len(rows))
+	mailboxes := make([][]string, len(rows))
+	for i, row := range rows {
+		ids[i] = row.ID
+		mailboxes[i] = last[row.ProviderMessageID].MailboxProviderIDs
+	}
+	return replaceMailboxes(ctx, tx, accountID, ids, mailboxes)
+}
+
+// replaceMailboxes makes mailboxes[i] the mailboxes of accountID's message
+// with ids[i], in tx. It returns [mailsync.ErrUnknownMailbox] when one names
+// a mailbox the account does not have.
+func replaceMailboxes(ctx context.Context, tx pgx.Tx, accountID int64, ids []uuid.UUID, mailboxes [][]string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	queries := sqlc.New(tx)
+
+	// 1. Drop the memberships they had.
 	if err := queries.DeleteMessageMailboxes(ctx, ids); err != nil {
 		return fmt.Errorf("delete message mailboxes: %w", err)
 	}
+
+	// 2. Insert the ones they name now.
 	var pairs sqlc.InsertMessageMailboxesParams
 	pairs.ConnectedAccountID = accountID
-	for i, message := range messages {
+	for i, providerIDs := range mailboxes {
 		// A provider listing a mailbox twice for one message names one membership.
-		for _, providerID := range uniqueStrings(message.MailboxProviderIDs) {
+		for _, providerID := range uniqueStrings(providerIDs) {
 			pairs.MessageIds = append(pairs.MessageIds, ids[i])
 			pairs.ProviderMailboxIds = append(pairs.ProviderMailboxIds, providerID)
 		}

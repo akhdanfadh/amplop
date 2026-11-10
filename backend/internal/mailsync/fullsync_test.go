@@ -60,11 +60,22 @@ func (f *fakeStorage) UpdateSyncedMail(_ context.Context, accountID int64, updat
 	if change.Mailboxes != nil {
 		mailboxes = change.Mailboxes
 	}
-	for _, message := range change.Saved {
-		for _, id := range message.MailboxProviderIDs {
+	known := func(ids []string) bool {
+		for _, id := range ids {
 			if !slices.ContainsFunc(mailboxes, func(m Mailbox) bool { return m.ProviderID == id }) {
-				return Written{}, ErrUnknownMailbox
+				return false
 			}
+		}
+		return true
+	}
+	for _, message := range change.Saved {
+		if !known(message.MailboxProviderIDs) {
+			return Written{}, ErrUnknownMailbox
+		}
+	}
+	for _, update := range change.Updated {
+		if _, ok := f.messages[update.ProviderID]; ok && !known(update.MailboxProviderIDs) {
+			return Written{}, ErrUnknownMailbox
 		}
 	}
 
@@ -75,6 +86,17 @@ func (f *fakeStorage) UpdateSyncedMail(_ context.Context, accountID int64, updat
 	for _, message := range change.Saved {
 		f.messages[message.ProviderID] = storedMessage{message: message, generation: change.State.Generation}
 	}
+	for _, update := range change.Updated {
+		stored, ok := f.messages[update.ProviderID]
+		if !ok {
+			continue
+		}
+		stored.message.MailboxProviderIDs = update.MailboxProviderIDs
+		stored.message.Seen = update.Seen
+		stored.message.Flagged = update.Flagged
+		f.messages[update.ProviderID] = stored
+	}
+
 	var earlier []string
 	for id, stored := range f.messages {
 		if stored.generation < change.State.Generation {

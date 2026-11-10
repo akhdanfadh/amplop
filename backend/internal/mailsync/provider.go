@@ -26,7 +26,9 @@ var (
 // ListQuery asks for one page of an account's messages.
 type ListQuery struct {
 	// Since leaves out messages the provider received at or before it, by
-	// the provider's own timestamp.
+	// the provider's own timestamp. A provider may compare at a coarser
+	// time than it stamps, e.g. Gmail's whole seconds, so a page may hold
+	// messages just before it.
 	Since time.Time
 	// IncludeJunkAndTrash lists the messages in the mailboxes with
 	// [RoleJunk] and [RoleTrash] too; false leaves them out.
@@ -59,10 +61,13 @@ type ChangePage struct {
 	// Fetch are the ProviderIDs of messages whose metadata is fetched
 	// whole, e.g. those added.
 	Fetch []string
-	// Update are the changes to the mailboxes and flags of messages the
-	// provider had before the page, net of the page. The copy may not
-	// hold every one.
+	// Update are the mailboxes and flags of messages the provider had before the
+	// page, as they stand after it. The copy may not hold every one.
 	Update []MessageUpdate
+	// Reread are the ProviderIDs of messages the provider had before the
+	// page whose state the page does not give: each is fetched to learn
+	// it, and applied as an update. The copy may not hold every one.
+	Reread []string
 	// Deleted are the ProviderIDs of messages the provider deleted,
 	// whatever else happened to them in the page.
 	Deleted []string
@@ -74,23 +79,19 @@ type ChangePage struct {
 	NextPageToken string
 }
 
-// MessageUpdate is how one message's mailboxes and flags changed. It says
-// where the message stands after the page on what the page changed, not
-// the steps in between, so applying it twice changes nothing more.
+// MessageUpdate is where one message stands after a page: its mailboxes
+// and flags whole, not what changed, so applying it twice changes nothing
+// more, and it replaces whatever the copy held.
 type MessageUpdate struct {
 	// ProviderID is the message's [Message.ProviderID].
 	ProviderID string
-	// MailboxesAdded are the [Mailbox.ProviderID]s of mailboxes the
-	// message is in after the page and may not have been in before.
-	MailboxesAdded []string
-	// MailboxesRemoved are those of mailboxes it is not in after the page.
-	MailboxesRemoved []string
-	// Seen is [Message.Seen] after the page; nil when the page did not
-	// change it.
-	Seen *bool
-	// Flagged is [Message.Flagged] after the page; nil when the page did
-	// not change it.
-	Flagged *bool
+	// MailboxProviderIDs are the [Mailbox.ProviderID]s of all the mailboxes
+	// it is in, perhaps none, as [Message.MailboxProviderIDs].
+	MailboxProviderIDs []string
+	// Seen is [Message.Seen].
+	Seen bool
+	// Flagged is [Message.Flagged].
+	Flagged bool
 }
 
 // Provider reads an account's mail at its provider, with an access token
@@ -118,10 +119,10 @@ type Provider interface {
 	Messages(ctx context.Context, token connectedaccount.AccessToken, accountID int64, providerIDs []string) (Fetched, error)
 	// Changes returns one page of what changed since position, the
 	// [ChangePage.Position] of an earlier poll or a full sync's
-	// [Provider.Position], reduced to what to fetch, what to update, and what to
-	// delete; the order within the page is not kept, so pages are applied in
-	// order. pageToken is the [ChangePage.NextPageToken] of the page before;
-	// empty for the first. It returns [ErrPositionExpired] when the provider no
-	// longer keeps changes that old, or cannot read position.
+	// [Provider.Position], reduced to what to fetch, where updated messages
+	// stand, and what to delete; the order within the page is not kept, so pages
+	// are applied in order. pageToken is the [ChangePage.NextPageToken] of the
+	// page before; empty for the first. It returns [ErrPositionExpired] when the
+	// provider no longer keeps changes that old, or cannot read position.
 	Changes(ctx context.Context, token connectedaccount.AccessToken, position string, pageToken string) (ChangePage, error)
 }

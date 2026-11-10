@@ -12,8 +12,9 @@ import (
 	"inbok/internal/mailsync"
 )
 
-// Label changes after a position come back as updates, with UNREAD as
-// the seen flag, and the page moves the position on.
+// Label changes after a position come back as updates with each
+// message's whole state, UNREAD as the seen flag, and the page moves the
+// position on.
 func TestChanges(t *testing.T) {
 	client, token := startMailbox(t, nil, []googleemulator.Message{
 		{ID: "m1", Mailbox: alexMailbox, From: "a@example.com", Subject: "Hi", LabelIDs: []string{"INBOX", "UNREAD"}},
@@ -31,10 +32,9 @@ func TestChanges(t *testing.T) {
 	page, err := client.Changes(t.Context(), token, start, "")
 
 	require.NoError(t, err)
-	seen := true
 	assert.Equal(t, []mailsync.MessageUpdate{
-		{ProviderID: "m1", Seen: &seen},
-		{ProviderID: "m2", MailboxesAdded: []string{labelTrash}, MailboxesRemoved: []string{labelInbox}},
+		{ProviderID: "m1", MailboxProviderIDs: []string{labelInbox}, Seen: true},
+		{ProviderID: "m2", MailboxProviderIDs: []string{labelTrash}, Seen: true},
 	}, page.Update)
 	assert.Empty(t, page.Fetch)
 	assert.Empty(t, page.Deleted)
@@ -46,51 +46,50 @@ func TestChanges(t *testing.T) {
 	assert.Empty(t, again.Update)
 }
 
-// historyMessages returns history entries naming each of ids, with
-// labelIDs when given.
+// historyMessages returns history entries naming each of ids, their
+// message carrying labelIDs when given.
 func historyMessages(labelIDs []string, ids ...string) []map[string]any {
 	entries := make([]map[string]any, 0, len(ids))
 	for _, id := range ids {
-		entry := map[string]any{"message": map[string]any{"id": id}}
+		message := map[string]any{"id": id}
 		if labelIDs != nil {
-			entry["labelIds"] = labelIDs
+			message["labelIds"] = labelIDs
 		}
-		entries = append(entries, entry)
+		entries = append(entries, map[string]any{"message": message, "labelIds": []string{"ignored"}})
 	}
 	return entries
 }
 
-// A page is reduced per message: deleted wins, added is fetched whole,
-// and a relabelled message gets each label at its last change, UNREAD and
-// STARRED as flags; one a record both labels and unlabels with one label
-// is fetched whole, and a message the page did not change is left out.
+// A page is reduced per message: deleted wins, added is fetched whole, and
+// a relabelled message takes the whole label set of its last label record,
+// UNREAD and STARRED as flags, or is reread when that record carries none.
 func TestChangesReduced(t *testing.T) {
 	client, _ := stubGmail(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "7", r.URL.Query().Get("startHistoryId"))
 		assert.Equal(t, "next", r.URL.Query().Get("pageToken"))
-		// Neither this stub nor the emulator honours fields, so check the
-		// labels are asked for.
-		assert.Contains(t, r.URL.Query().Get("fields"), "labelsAdded(message/id,labelIds)")
-		assert.Contains(t, r.URL.Query().Get("fields"), "labelsRemoved(message/id,labelIds)")
+		// Neither this stub nor the emulator honours fields, so check each
+		// label record's message labels are asked for.
+		assert.Contains(t, r.URL.Query().Get("fields"), "labelsAdded/message(id,labelIds)")
+		assert.Contains(t, r.URL.Query().Get("fields"), "labelsRemoved/message(id,labelIds)")
 		gmailMessage(w, map[string]any{
 			"historyId":     "24",
 			"nextPageToken": "after",
 			"history": []map[string]any{
 				{"id": "8", "messagesAdded": historyMessages(nil, "a", "b")},
-				{"id": "9", "labelsAdded": historyMessages([]string{labelStarred}, "a")},
+				{"id": "9", "labelsAdded": historyMessages([]string{labelInbox, labelStarred}, "a")},
 				{"id": "10", "messagesDeleted": historyMessages(nil, "b", "c")},
-				{"id": "11", "labelsRemoved": historyMessages([]string{labelInbox}, "d")},
+				{"id": "11", "labelsRemoved": historyMessages([]string{"Label_1", labelUnread}, "d")},
 				{"id": "12", "messagesDeleted": historyMessages(nil, "c")},
-				{"id": "13", "labelsAdded": historyMessages([]string{"Label_1", labelUnread}, "d")},
-				{"id": "14", "labelsRemoved": historyMessages([]string{"Label_1"}, "d")},
-				{"id": "15", "labelsAdded": historyMessages([]string{labelStarred, labelTrash}, "e")},
-				{"id": "16", "labelsRemoved": historyMessages([]string{labelStarred}, "e")},
-				{"id": "17", "labelsAdded": historyMessages([]string{}, "f")},
+				{"id": "13", "labelsAdded": historyMessages([]string{labelInbox, "Label_1", labelUnread}, "d")},
+				{"id": "14", "labelsRemoved": historyMessages([]string{labelInbox, labelUnread}, "d")},
+				{"id": "15", "labelsAdded": historyMessages([]string{labelTrash, labelStarred}, "e")},
+				{"id": "16", "labelsRemoved": historyMessages([]string{labelTrash}, "e")},
+				{"id": "17", "labelsAdded": historyMessages(nil, "f")},
 				{"id": "18", "labelsAdded": historyMessages([]string{labelInbox}, "g")},
 				{"id": "19", "messagesDeleted": historyMessages(nil, "g")},
-				{"id": "20", "labelsRemoved": historyMessages([]string{labelUnread}, "h")},
-				{"id": "21", "labelsRemoved": historyMessages([]string{"Label_2"}, "i")},
-				{"id": "22", "labelsAdded": historyMessages([]string{"Label_2", labelStarred}, "i")},
+				{"id": "20", "labelsRemoved": historyMessages([]string{labelInbox, "Label_2"}, "h")},
+				{"id": "21", "labelsAdded": historyMessages(nil, "h")},
+				{"id": "22", "labelsAdded": historyMessages([]string{labelStarred}, "i")},
 				{
 					"id":            "23",
 					"labelsAdded":   historyMessages([]string{labelInbox}, "j"),
@@ -105,14 +104,14 @@ func TestChangesReduced(t *testing.T) {
 	page, err := client.Changes(t.Context(), stubToken, "7", "next")
 
 	require.NoError(t, err)
-	seen, unseen, flagged, unflagged := true, false, true, false
 	assert.Equal(t, mailsync.ChangePage{
-		Fetch: []string{"a", "j"},
+		Fetch:  []string{"a"},
+		Reread: []string{"f", "h"},
 		Update: []mailsync.MessageUpdate{
-			{ProviderID: "d", MailboxesRemoved: []string{labelInbox, "Label_1"}, Seen: &unseen},
-			{ProviderID: "e", MailboxesAdded: []string{labelTrash}, Flagged: &unflagged},
-			{ProviderID: "h", Seen: &seen},
-			{ProviderID: "i", MailboxesAdded: []string{"Label_2"}, Flagged: &flagged},
+			{ProviderID: "d", MailboxProviderIDs: []string{labelInbox}},
+			{ProviderID: "e", MailboxProviderIDs: []string{labelTrash}, Seen: true},
+			{ProviderID: "i", Seen: true, Flagged: true},
+			{ProviderID: "j", MailboxProviderIDs: []string{labelInbox}, Seen: true},
 		},
 		Deleted:       []string{"b", "c", "g"},
 		Position:      "24",

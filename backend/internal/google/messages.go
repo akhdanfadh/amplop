@@ -71,7 +71,7 @@ func (c *Client) Position(ctx context.Context, token connectedaccount.AccessToke
 }
 
 // ListMessages returns one page of the account's messages Gmail received
-// after query's Since, newest first, from messages.list.
+// after query's Since, in whole seconds, newest first, from messages.list.
 func (c *Client) ListMessages(ctx context.Context, token connectedaccount.AccessToken, query mailsync.ListQuery) (mailsync.MessagePage, error) {
 	service, err := c.gmail(ctx, token)
 	if err != nil {
@@ -298,18 +298,24 @@ func messageFromGmail(m *gmail.Message) mailsync.Message {
 		CC:           parseAddresses(h.get(headerCc)),
 		// Gmail sends the snippet HTML-escaped, e.g. an apostrophe as &#39;.
 		Preview:    cleanText(html.UnescapeString(m.Snippet)),
-		Seen:       !slices.Contains(m.LabelIds, labelUnread),
-		Flagged:    slices.Contains(m.LabelIds, labelStarred),
 		InReplyTo:  parseMsgIDs(h.get(headerInReplyTo)),
 		References: parseReferences(h.full(headerReferences)),
 	}
 	if ids := parseMsgIDs(h.get(headerMessageID)); len(ids) > 0 {
 		message.MessageID = ids[0]
 	}
-	for _, labelID := range m.LabelIds {
+	message.MailboxProviderIDs, message.Seen, message.Flagged = labelState(m.LabelIds)
+	return message
+}
+
+// labelState returns a message's labelIDs as inbok keeps them (ADR007,
+// "Gmail labels as mailboxes"): every label but UNREAD and STARRED as its
+// mailboxes, nil for none, and those two as whether it is seen and flagged.
+func labelState(labelIDs []string) (mailboxes []string, seen, flagged bool) {
+	for _, labelID := range labelIDs {
 		if !isFlag(labelID) {
-			message.MailboxProviderIDs = append(message.MailboxProviderIDs, labelID)
+			mailboxes = append(mailboxes, labelID)
 		}
 	}
-	return message
+	return mailboxes, !slices.Contains(labelIDs, labelUnread), slices.Contains(labelIDs, labelStarred)
 }

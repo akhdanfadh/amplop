@@ -2273,12 +2273,15 @@ such as a folder's UID validity and a message's UID in each folder.
 Every write goes through one method, `UpdateSyncedMail`: it locks the
 account's sync state, passes it to a function that returns a
 `mailsync.Change`, and writes the change in one transaction: the
-mailboxes, deleted messages, saved messages with their mailboxes, and the
-new state. A change that saves one message twice keeps the last, and one
+mailboxes, deleted messages, saved messages with their mailboxes, updated
+messages' mailboxes and flags, and the new state. An update for a message
+the account does not have is skipped. A change that saves one message
+twice keeps the last, and one
 that deletes and saves a message only saves it, so the message keeps its
-`id` however often a step repeats. A saved message naming a mailbox the
-account does not have, e.g. a Gmail label made since the labels were
-listed, writes nothing and returns `mailsync.ErrUnknownMailbox`; so does
+`id` however often a step repeats. A saved or updated message naming a
+mailbox the account does not have, e.g. a Gmail label made since the
+labels were listed, writes nothing and returns
+`mailsync.ErrUnknownMailbox`; so does
 any other error, e.g. a generation or count past the `integer` columns. A
 feature that must act on the same writes, e.g. indexing them for search,
 adds its job to that transaction. Each full sync starts a sync generation,
@@ -2307,15 +2310,16 @@ takes an access token from [Calling Gmail](#calling-gmail):
   comments and across a fold, keeping their angle brackets. A message
   Gmail no longer has comes back as gone.
 - `Changes` reads one page of `history.list` since a position and
-  sorts each message it names into one of three lists: deleted,
-  whatever else happened to it; added, to fetch whole; or relabelled, an
-  update naming each label it changed at its last change, `UNREAD` and
-  `STARRED` as `seen` and `flagged`. Gmail documents no order between
-  one record's added and removed labels, so a message a record both
-  labels and unlabels with one label is fetched whole too. Gmail's 404 for a history ID it no
+  sorts each message it names into one list: deleted, whatever else
+  happened to it; added, to fetch whole; relabelled, an update with the
+  whole label set its last label record carries, `UNREAD` and `STARRED`
+  as `seen` and `flagged`; or reread, when that record lists no labels,
+  since Gmail leaves out an empty list too. Each label record's message
+  lists its labels just after the record (observed on real Gmail; ADR001
+  "Reading Gmail"). Gmail's 404 for a history ID it no
   longer keeps returns `mailsync.ErrPositionExpired`, which means a full
   sync; so does a position that is not a history ID, without asking
-  Gmail.
+  Gmail. Gmail's 401 returns `mailsync.ErrUnauthorized`.
 
 What a sender writes is bounded: each Gmail answer at 4 MiB, and each
 header at 16 KiB, cut on a whole character before it is parsed; a

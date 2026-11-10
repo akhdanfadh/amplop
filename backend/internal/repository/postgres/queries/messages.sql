@@ -56,3 +56,19 @@ WHERE id IN (
         AND earlier.sync_generation < @sync_generation
     LIMIT @max_deleted
 );
+
+-- name: UpdateMessageFlags :many
+-- Sets the flags of the account's messages named, one per position of the
+-- three lists, which have the same length; a message the account does not
+-- have is skipped. Returns the IDs of those it has.
+UPDATE messages m SET
+    seen = u.seen,
+    flagged = u.flagged
+FROM (
+    SELECT unnest(@provider_message_ids::text[]) AS provider_message_id,
+        unnest(@seen::boolean[]) AS seen,
+        unnest(@flagged::boolean[]) AS flagged
+) AS u
+WHERE m.connected_account_id = @connected_account_id
+    AND m.provider_message_id = u.provider_message_id
+RETURNING m.id, m.provider_message_id;
