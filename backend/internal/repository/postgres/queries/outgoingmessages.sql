@@ -57,6 +57,20 @@ FROM outgoing_message_keys k
 JOIN outgoing_messages om ON om.id = k.message_id
 WHERE k.user_id = @user_id AND k.idempotency_key = @idempotency_key;
 
+-- name: ListOutgoingMessages :many
+-- The member's newest messages, without their bodies, which a list does not
+-- show and which may be 100,000 characters each.
+SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
+    om.cc_addresses, om.bcc_addresses, om.subject, ''::text AS body,
+    om.inbok_message_id, om.status, om.failure,
+    om.provider_message_id, om.provider_thread_id, om.created_at, om.sent_at,
+    om.sent_again_as
+FROM outgoing_messages om
+JOIN connected_accounts ca ON ca.id = om.connected_account_id
+WHERE ca.user_id = @user_id
+ORDER BY om.created_at DESC, om.id DESC
+LIMIT @max_count;
+
 -- name: SetOutgoingMessageSentAgain :exec
 UPDATE outgoing_messages SET sent_again_as = @sent_again_as WHERE id = @id;
 

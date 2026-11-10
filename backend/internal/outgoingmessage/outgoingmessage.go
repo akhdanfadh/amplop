@@ -60,6 +60,10 @@ var (
 	longSendLimit  = attemptlimit.Limit{Window: 24 * time.Hour, Max: 200}
 )
 
+// maxListed bounds [Service.List]: the newest messages, enough to find the
+// ones that ended without being sent.
+const maxListed = 50
+
 // Status is how far sending a message has got.
 type Status string
 
@@ -247,6 +251,10 @@ type Storage interface {
 	// ReadOutgoingMessageByKey returns userID's message saved with key, or
 	// [ErrNotFound] when userID has none.
 	ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (Message, error)
+
+	// ListOutgoingMessages returns userID's newest messages, at most limit,
+	// newest first, each with an empty [Content.Body].
+	ListOutgoingMessages(ctx context.Context, userID int64, limit int) ([]Message, error)
 }
 
 // Service applies the rules for outgoing messages.
@@ -352,6 +360,12 @@ func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UU
 // no such message.
 func (s *Service) Get(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
 	return s.storage.ReadOutgoingMessage(ctx, userID, messageID)
+}
+
+// List returns userID's newest 50 messages, newest first, each with an empty
+// [Content.Body].
+func (s *Service) List(ctx context.Context, userID int64) ([]Message, error) {
+	return s.storage.ListOutgoingMessages(ctx, userID, maxListed)
 }
 
 // attempt returns userID's attempt to send now.

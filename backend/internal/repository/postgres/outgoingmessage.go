@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"uuid"
 
 	"github.com/jackc/pgerrcode"
@@ -281,6 +282,24 @@ func (db *DB) ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uu
 		return outgoingmessage.Message{}, fmt.Errorf("read outgoing message by key: %w", err)
 	}
 	return outgoingMessageFromRow(row)
+}
+
+// ListOutgoingMessages returns userID's newest messages, at most limit,
+// newest first, each with an empty body.
+func (db *DB) ListOutgoingMessages(ctx context.Context, userID int64, limit int) ([]outgoingmessage.Message, error) {
+	rows, err := sqlc.New(db.pool).ListOutgoingMessages(ctx, sqlc.ListOutgoingMessagesParams{UserID: userID, MaxCount: int32(min(limit, math.MaxInt32))})
+	if err != nil {
+		return nil, fmt.Errorf("list outgoing messages: %w", err)
+	}
+	messages := make([]outgoingmessage.Message, 0, len(rows))
+	for _, row := range rows {
+		message, err := outgoingMessageFromRow(sqlc.OutgoingMessage(row))
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, message)
+	}
+	return messages, nil
 }
 
 // ReadOutgoingMessageToSend returns message messageID, whoever owns it, or

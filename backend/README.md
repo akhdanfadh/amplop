@@ -2094,7 +2094,10 @@ job and counted as an attempt. No request named the copy, so it has no key.
 The original's `sent_again_as` names the copy, so sending it again a second
 time returns that copy, and the member never sends one message twice by
 clicking twice. The transaction locks the member, then the account, then
-the message, the order the send job and a disconnect use.
+the message, the order the send job and a disconnect use. `Service.List`
+returns the member's newest 50, without bodies, so a `failed` or `unknown`
+message, which synchronized mail may never show, can be found and sent
+again.
 
 The send builds the MIME message from the saved row with go-message:
 `From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the

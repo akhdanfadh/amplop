@@ -151,6 +151,17 @@ func (m *memoryStorage) ReadOutgoingMessageByKey(ctx context.Context, userID int
 	return m.ReadOutgoingMessage(ctx, userID, id)
 }
 
+func (m *memoryStorage) ListOutgoingMessages(_ context.Context, userID int64, limit int) ([]Message, error) {
+	var listed []Message
+	for _, message := range slices.Backward(m.messages) {
+		if m.accounts[message.ConnectedAccountID].userID == userID && len(listed) < limit {
+			message.Body = ""
+			listed = append(listed, message)
+		}
+	}
+	return listed, nil
+}
+
 // createNow is the clock of every create test.
 var createNow = time.Date(2026, 11, 9, 10, 30, 0, 0, time.UTC)
 
@@ -470,6 +481,29 @@ func TestSendAgainOtherMembers(t *testing.T) {
 	_, err := service.SendAgain(t.Context(), 4, original.ID)
 
 	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// The list holds the member's newest messages only.
+func TestList(t *testing.T) {
+	storage := newMemoryStorage()
+	now := createNow
+	service := newTestService(storage, &now)
+	for range maxListed + 1 {
+		_, err := service.Create(t.Context(), 3, testDraft())
+		require.NoError(t, err)
+		now = now.Add(time.Hour)
+	}
+	draft := testDraft()
+	draft.ConnectedAccountID = 8
+	_, err := service.Create(t.Context(), 4, draft)
+	require.NoError(t, err)
+
+	listed, err := service.List(t.Context(), 3)
+
+	require.NoError(t, err)
+	require.Len(t, listed, maxListed)
+	assert.Equal(t, storage.messages[maxListed].ID, listed[0].ID, "newest first")
+	assert.Equal(t, storage.messages[1].ID, listed[maxListed-1].ID, "the oldest left out")
 }
 
 // disconnect deletes accountID's messages and their keys, as a disconnect

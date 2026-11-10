@@ -768,3 +768,28 @@ func TestOutgoingMessageCopyCheck(t *testing.T) {
 	require.ErrorAs(t, err, &pgErr)
 	assert.Equal(t, "23514", pgErr.Code, "check violation")
 }
+
+// The list is the member's newest messages first, without bodies.
+func TestOutgoingMessageList(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	var created []outgoingmessage.Message
+	for range 3 {
+		message, err := o.messages.Create(t.Context(), o.member, o.draft())
+		require.NoError(t, err)
+		created = append(created, message)
+	}
+	otherDraft := o.draft()
+	otherDraft.ConnectedAccountID = o.otherAccount
+	_, err := o.messages.Create(t.Context(), o.otherMember, otherDraft)
+	require.NoError(t, err)
+
+	listed, err := o.db.ListOutgoingMessages(t.Context(), o.member, 2)
+
+	require.NoError(t, err)
+	require.Len(t, listed, 2)
+	assert.Equal(t, created[2].ID, listed[0].ID)
+	assert.Equal(t, created[1].ID, listed[1].ID)
+	assert.Empty(t, listed[0].Body)
+	assert.Equal(t, created[2].Subject, listed[0].Subject)
+	assert.Equal(t, created[2].To, listed[0].To)
+}

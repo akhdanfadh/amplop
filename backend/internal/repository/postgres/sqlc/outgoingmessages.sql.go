@@ -98,6 +98,82 @@ func (q *Queries) InsertSendAttempt(ctx context.Context, arg InsertSendAttemptPa
 	return err
 }
 
+const listOutgoingMessages = `-- name: ListOutgoingMessages :many
+SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
+    om.cc_addresses, om.bcc_addresses, om.subject, ''::text AS body,
+    om.inbok_message_id, om.status, om.failure,
+    om.provider_message_id, om.provider_thread_id, om.created_at, om.sent_at,
+    om.sent_again_as
+FROM outgoing_messages om
+JOIN connected_accounts ca ON ca.id = om.connected_account_id
+WHERE ca.user_id = $1
+ORDER BY om.created_at DESC, om.id DESC
+LIMIT $2
+`
+
+type ListOutgoingMessagesParams struct {
+	UserID   int64
+	MaxCount int32
+}
+
+type ListOutgoingMessagesRow struct {
+	ID                 uuid.UUID
+	ConnectedAccountID int64
+	FromAddress        string
+	ToAddresses        []byte
+	CcAddresses        []byte
+	BccAddresses       []byte
+	Subject            string
+	Body               string
+	InbokMessageID     string
+	Status             string
+	Failure            *string
+	ProviderMessageID  *string
+	ProviderThreadID   *string
+	CreatedAt          time.Time
+	SentAt             *time.Time
+	SentAgainAs        *uuid.UUID
+}
+
+// The member's newest messages, without their bodies, which a list does not
+// show and which may be 100,000 characters each.
+func (q *Queries) ListOutgoingMessages(ctx context.Context, arg ListOutgoingMessagesParams) ([]ListOutgoingMessagesRow, error) {
+	rows, err := q.db.Query(ctx, listOutgoingMessages, arg.UserID, arg.MaxCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOutgoingMessagesRow
+	for rows.Next() {
+		var i ListOutgoingMessagesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConnectedAccountID,
+			&i.FromAddress,
+			&i.ToAddresses,
+			&i.CcAddresses,
+			&i.BccAddresses,
+			&i.Subject,
+			&i.Body,
+			&i.InbokMessageID,
+			&i.Status,
+			&i.Failure,
+			&i.ProviderMessageID,
+			&i.ProviderThreadID,
+			&i.CreatedAt,
+			&i.SentAt,
+			&i.SentAgainAs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSendAttemptTimes = `-- name: ListSendAttemptTimes :many
 SELECT created_at FROM send_attempts
 WHERE user_id = $1 AND created_at > $2
