@@ -116,8 +116,9 @@ Put shared code in the folder for its responsibility:
 - `src/features/connected-accounts`: the Connected accounts list with its
   connect, reconnect, and disconnect actions, and the page's wording,
   including each way a connection can end.
-- `src/features/messages`: an HTML body's frame and sizing it to the
-  body.
+- `src/features/messages`: the message view, its HTML and plain-text
+  bodies, sizing the body's frame, plain-text links, and the header's
+  wording.
 - `src/components`: shared components, such as the password input and the
   request error under a form. `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -380,6 +381,22 @@ and probe demo remains available at `/probe`.
 
 ## Message view
 
+`MessageView` (`src/features/messages/view.tsx`) shows one message: its
+subject, From, To, Cc, and when it arrived, then its bodies one after
+another. No route shows it yet; the inbox will, with the message from
+the API. Its props:
+
+- `header`: the header fields, which show while the body loads.
+- `content`: `pending` while the server fetches a body it has not
+  stored, `error` with a retry, or `success` with the bodies and whether
+  the server blocked remote images in them.
+
+Give it a `key` per message, so the next message starts afresh. Remote
+images stay blocked for another message's bodies even without one: the
+view remembers the URLs the member allowed, not a switch. Sender names
+show inside `<bdi>`, so a direction override in a name cannot reorder
+the address after it.
+
 An HTML body is an iframe whose `src` is the body's URL on inbok's
 origin. The server sends it sanitized, with a Content-Security-Policy of
 its own ([Showing HTML](../backend/README.md#showing-html)). The frame's
@@ -404,6 +421,15 @@ not read within 15 seconds, shows "Could not show this part of the
 message." with a retry, which returns focus to the frame or the button.
 The frame stays white in dark mode, since mail is written for a white
 page.
+
+When the server blocked remote images, a note says so and offers "Load
+remote content", which loads each HTML body again from its second URL,
+for this view only. A plain-text body is text, which React escapes,
+with its line breaks and spaces kept. `linkify-react` turns its web and
+email addresses into links; `links.ts` allows `http`, `https`, and
+`mailto` only, opens an address without a scheme over `https`, and
+leaves a link with a direction override in it as text, since its text
+would read differently from where it goes.
 
 ## Checks and tests
 
