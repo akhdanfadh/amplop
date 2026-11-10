@@ -172,6 +172,8 @@ var layouts = []sanitizeCase{
 	{"css media query Gmail lacks", `<style>@media print{p{color:red}}@media (prefers-color-scheme: dark){p{color:white}}p{color:blue}</style>`, `<style>p{color:blue;}</style>`},
 	{"css nested media", `<style>@media screen{@media (min-width:1px){p{color:red}}p{color:blue}}</style>`, `<style>@media screen{p{color:blue;}}</style>`},
 	{"css selectors", `<style>#a .b>c+d~e *,body{margin:0}</style>`, `<style>#a .b>c+d~e *,body{margin:0;}</style>`},
+	{"css viewport heights", `<p style="min-height:100vh;height:calc(50DVH - 2px);max-height:10vmin;padding:1e1cqh;width:50vw;margin:0">x</p>`, `<p style="width:50vw;margin:0;">x</p>`},
+	{"css viewport heights in vertical writing", `<p style="writing-mode:vertical-rl;height:100vi;width:30vb;padding:1svi 2cqi">x</p>`, `<p style="writing-mode:vertical-rl;">x</p>`},
 	{"css property case", `<p style="COLOR:Red">x</p>`, `<p style="color:Red;">x</p>`},
 	{"unclosed style", `<style>p{color:red`, `<style>p{color:red;}</style>`},
 	{"unclosed media", `<style>@media screen{p{color:red`, `<style>@media screen{p{color:red;}}</style>`},

@@ -1001,6 +1001,10 @@ The copy:
   load becomes `none`, so a background color still applies. `@import`,
   `@font-face`, escapes, and functions such as `var()` are dropped, and
   so is a style sheet a screen would not apply, e.g. `media="print"`.
+  A length in units of the viewport's height or logical axes, e.g.
+  `min-height:100vh` or `100vi`, drops its declaration: the message view
+  sizes its frame to the body, so such a length would grow with the
+  frame and cut the body off.
   CSS is written again with a space between tokens, so tokens the
   parser read apart, e.g. across a comment it dropped, cannot join into
   a comment or a name in the browser. At most 256 KiB of CSS is read per

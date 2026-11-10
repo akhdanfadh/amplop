@@ -89,6 +89,20 @@ var functions = words("rgb(", "rgba(", "hsl(", "hsla(", "calc(", "min(",
 	"max(", "clamp(", "linear-gradient(", "radial-gradient(",
 	"repeating-linear-gradient(", "repeating-radial-gradient(")
 
+// heightUnits are the viewport units of the block and inline axes and of height
+// (CSS Values and Units Level 4, 6.1.2), and the container units that fall back
+// to them when no container is set (CSS Containment Level 3, 6). A length in
+// one of them drops its declaration.
+//
+// DESIGN: the message view sizes its frame to the body, and the frame is the
+// body's viewport, so a length that follows the viewport's height follows the
+// body: min-height:100vh plus a margin ended below the frame. The logical units
+// go too, since a vertical writing mode, which Gmail's list allows, turns the
+// inline axis into the height. vw stays: the view sets the width.
+var heightUnits = words("vh", "svh", "lvh", "dvh", "vb", "svb", "lvb", "dvb",
+	"vi", "svi", "lvi", "dvi", "vmin", "svmin", "lvmin", "dvmin",
+	"vmax", "svmax", "lvmax", "dvmax", "cqh", "cqb", "cqi", "cqmin", "cqmax")
+
 // delims are the single characters a value may hold outside other
 // tokens: !important, the slash of font: 12px/1.5, and calc()'s
 // operators and decimal point.
@@ -269,10 +283,11 @@ func (s *sanitizer) declaration(out *bytes.Buffer, property []byte, values []css
 // value returns values written again, or false when one of them is not
 // allowed: a CSS escape, which can hide a name or a URL from a filter
 // (PortSwigger, "CSS: the bomb inside your inbox", 2026); a <, which
-// could end the style element; a function outside [functions]; or an
-// unterminated string or unbalanced parentheses. Each url() becomes
-// [sanitizer.image]'s URL, or [cssNone]; their inline parts and blocked
-// remote images are noted only when the value is kept.
+// could end the style element; a function outside [functions]; a length
+// in one of [heightUnits]; or an unterminated string or unbalanced
+// parentheses. Each url() becomes [sanitizer.image]'s URL, or [cssNone];
+// their inline parts and blocked remote images are noted only when the
+// value is kept.
 func (s *sanitizer) value(values []css.Token) ([]byte, bool) {
 	var out []byte
 	var images []imageURL
@@ -286,9 +301,14 @@ func (s *sanitizer) value(values []css.Token) ([]byte, bool) {
 		// Whitespace: [join] separates every token anyway.
 		case css.WhitespaceToken:
 			continue
-		// Keywords, numbers, lengths, colors, and commas, copied.
+		// Keywords, numbers, colors, and commas, copied.
 		case css.IdentToken, css.NumberToken, css.PercentageToken,
-			css.DimensionToken, css.HashToken, css.CommaToken:
+			css.HashToken, css.CommaToken:
+		// A length, unless its unit is one of [heightUnits].
+		case css.DimensionToken:
+			if heightUnits[string(lower(unit(data)))] {
+				return nil, false
+			}
 		// A quoted string, e.g. a font name.
 		case css.StringToken:
 			// A string the content ends inside would take in what follows.
@@ -334,6 +354,12 @@ func (s *sanitizer) value(values []css.Token) ([]byte, bool) {
 		s.note(img)
 	}
 	return out, true
+}
+
+// unit returns the unit of data, a dimension token: what follows its
+// last digit, since a unit holds no digits.
+func unit(data []byte) []byte {
+	return data[bytes.LastIndexAny(data, "0123456789")+1:]
 }
 
 // cssURL returns what to write for data, a url() token without
