@@ -16,9 +16,10 @@ const problemTypeSchemaName = "ProblemType"
 
 // sharedProblems returns the problems any operation can answer, whether or
 // not it shows them as examples: request failures, the cross-origin refusal,
-// and a request that timed out.
+// the refusal of a request of a kind the operation does not answer, and a
+// request that timed out.
 func sharedProblems() []*problem {
-	problems := []*problem{crossOriginProblem(), serviceBusyProblem()}
+	problems := []*problem{crossOriginProblem(), fetchDestProblem(), serviceBusyProblem()}
 	for _, status := range []int{
 		http.StatusBadRequest,
 		http.StatusNotFound,

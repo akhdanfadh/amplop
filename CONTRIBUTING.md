@@ -16,9 +16,9 @@ Commands that need `.env` copy it from `.env.example` when it is missing.
 
 ## Local services
 
-PostgreSQL, Mailpit, Meilisearch, and a Google emulator run in Docker Compose
-(`compose.yaml`). From the repository root, create your local settings
-once, then start them in the background:
+PostgreSQL, Mailpit, Meilisearch, SeaweedFS, and a Google emulator run in
+Docker Compose (`compose.yaml`). From the repository root, create your
+local settings once, then start them in the background:
 
 ```sh
 cp .env.example .env
@@ -28,13 +28,21 @@ docker compose up -d --wait --build
 `--wait` returns once PostgreSQL accepts connections on `127.0.0.1:5432`
 (`INBOK_POSTGRES_PORT` in `.env`) and the others are ready. `--build`
 builds the emulator's image the first time, which downloads emulate from
-npm, and again after `google-emulator/` changes. PostgreSQL's and
-Meilisearch's data live in Docker volumes and survive `docker compose
-down`. To delete them and start empty, e.g. after changing the user or
-password in `.env`, run `docker compose down -v`. A `.env` from before
-Meilisearch lacks `INBOK_MEILISEARCH_KEY` and `INBOK_MEILISEARCH_URL`:
-Compose then stops with an error naming the key, and the worker with one
-naming the URL. Copy both lines from `.env.example`.
+npm, and again after `google-emulator/` changes. PostgreSQL's,
+Meilisearch's, and SeaweedFS's data live in Docker volumes and survive
+`docker compose down`. To delete them and start empty, e.g. after
+changing the user or password in `.env`, run `docker compose down -v`. A
+`.env` from before Meilisearch lacks `INBOK_MEILISEARCH_KEY` and
+`INBOK_MEILISEARCH_URL`: Compose then stops with an error naming the key,
+and the worker with one naming the URL. Copy both lines from
+`.env.example`.
+
+SeaweedFS holds message content and answers on `127.0.0.1:8333`
+(`INBOK_SEAWEEDFS_PORT`); [Message content
+store](backend/README.md#message-content-store) explains its settings. A
+`.env` from before it lacks the `INBOK_S3_*` settings, which Compose,
+serve, and the worker need: Compose stops with an error naming a key.
+Copy them, and `INBOK_SEAWEEDFS_PORT`, from `.env.example`.
 
 Mailpit catches mail sent to `127.0.0.1:1025` (`INBOK_MAILPIT_SMTP_PORT`)
 and shows it at `http://localhost:8025` (`INBOK_MAILPIT_WEB_PORT`). It deletes

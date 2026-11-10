@@ -1,12 +1,14 @@
 // Package google is the technology package for Google: the OAuth client
-// members connect Gmail with, the checks on the ID token it returns, and the
-// Gmail API calls connectedaccount needs. OAuth and Gmail types stay here;
-// connectedaccount sees its own.
+// members connect Gmail with, the checks on the ID token it returns, the
+// Gmail API calls connectedaccount needs, and the reading of a Gmail
+// message's parts for messagecontent. OAuth and Gmail types stay here;
+// features see their own.
 //
 // google.go builds the client for Google or the emulator; oauth.go asks for
 // consent, trades the code and refresh tokens, and revokes them; idtoken.go
 // checks the ID token; gmail.go calls Gmail; transport.go is the HTTP client
-// that carries codes and tokens.
+// that carries codes and tokens; receivedpart.go turns a Gmail message's
+// parts into messagecontent's input.
 package google
 
 import (

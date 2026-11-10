@@ -115,9 +115,11 @@ func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API 
 	}}
 
 	api = humagin.NewWithGroup(router, group, config)
-	// Floods are refused before the access check and body parsing.
+	// Floods are refused before the access check and body parsing, and a
+	// request of a kind the operation does not answer, e.g. an image,
+	// before the access check reads its session.
 	limiter := newRateLimiter(time.Now)
-	api.UseMiddleware(withRateLimit(limiter), withAccess(api, services.Session))
+	api.UseMiddleware(withRateLimit(limiter), withFetchDest(), withAccess(api, services.Session))
 
 	registerHealth(api)
 	registerProbe(api, services.Probe)

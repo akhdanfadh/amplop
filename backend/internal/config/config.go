@@ -40,6 +40,10 @@ const (
 	envSearchURL = "INBOK_MEILISEARCH_URL"
 	envSearchKey = "INBOK_MEILISEARCH_KEY"
 
+	envS3Endpoint        = "INBOK_S3_ENDPOINT"
+	envS3AccessKeyID     = "INBOK_S3_ACCESS_KEY_ID"
+	envS3SecretAccessKey = "INBOK_S3_SECRET_ACCESS_KEY"
+
 	envWorkerID     = "INBOK_WORKER_ID"
 	defaultWorkerID = "worker"
 	// maxWorkerID and [notWorkerIDRune] are inbok's own limits: DBOS stores
@@ -62,6 +66,12 @@ var (
 	errPublicURLShape  = errors.New(envPublicURL + " must be only a scheme, a host name or IP address, and an optional port, e.g. https://mail.example.com")
 )
 
+// Errors for an unusable object store endpoint. None includes the value.
+var (
+	errNoS3Endpoint    = errors.New(envS3Endpoint + " is required: the S3 service that holds message content, e.g. http://127.0.0.1:8333")
+	errS3EndpointShape = errors.New(envS3Endpoint + " must be only http or https, a host, and an optional port, e.g. http://seaweedfs:8333")
+)
+
 // Errors for unusable Google settings. None includes a value.
 var (
 	errGoogleClientPair   = errors.New(envGoogleClientID + " and " + envGoogleClientSecret + " must be set together; leave both empty to not offer Gmail")
@@ -82,6 +92,7 @@ type Config struct {
 	Google         *Google             // nil: Gmail is not offered
 	HTTPAddr       string              // host:port to listen on, e.g. 0.0.0.0:8080
 	PublicURL      *url.URL            // where users open inbok: scheme, host, and port only
+	S3             S3                  // where message content is kept
 	SetupToken     string              // empty disables first-admin setup
 	TrustedProxies []string            // CIDRs; empty ignores forwarded client addresses
 }
@@ -96,7 +107,16 @@ type Google struct {
 	BaseURL *url.URL
 }
 
-// Load reads the environment. Encryption keys are required; optional settings use defaults.
+// S3 names the S3-compatible service that holds message content and the
+// keys inbok signs in with.
+type S3 struct {
+	Endpoint        *url.URL // scheme, host, and port only, e.g. http://seaweedfs:8333
+	AccessKeyID     string
+	SecretAccessKey string
+}
+
+// Load reads the environment. Encryption keys, the public URL, and the
+// object store are required; optional settings use defaults.
 func Load() (Config, error) {
 	addr, err := HTTPAddr()
 	if err != nil {
@@ -140,7 +160,57 @@ func Load() (Config, error) {
 	}
 	cfg.Encryption = keys
 
+	store, err := S3Settings()
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.S3 = store
+
 	return cfg, nil
+}
+
+// S3Settings reads the S3 service that holds message content, which has
+// no default. Returns an error naming the setting, without its value, if
+// one is missing or the endpoint is not an origin.
+func S3Settings() (S3, error) {
+	endpoint, err := parseS3Endpoint(os.Getenv(envS3Endpoint))
+	if err != nil {
+		return S3{}, err
+	}
+	store := S3{
+		Endpoint:        endpoint,
+		AccessKeyID:     os.Getenv(envS3AccessKeyID),
+		SecretAccessKey: os.Getenv(envS3SecretAccessKey),
+	}
+	// Taken as they are otherwise: a space may belong to the key.
+	if strings.TrimSpace(store.AccessKeyID) == "" {
+		return S3{}, fmt.Errorf("%s is required", envS3AccessKeyID)
+	}
+	if strings.TrimSpace(store.SecretAccessKey) == "" {
+		return S3{}, fmt.Errorf("%s is required", envS3SecretAccessKey)
+	}
+	return store, nil
+}
+
+// parseS3Endpoint returns value as a URL with only an http or https
+// scheme, a host, and an optional port. It returns an error naming
+// INBOK_S3_ENDPOINT when value is empty or is not such an origin.
+func parseS3Endpoint(value string) (*url.URL, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, errNoS3Endpoint
+	}
+	// Plain http is for a store on a private network, as in Compose: SigV4
+	// signs requests without sending the secret, but content travels
+	// unencrypted. The SDK appends the bucket and key to the path
+	// (path-style addressing), so the endpoint must be an origin alone.
+	origin, err := parseOrigin(value, func(scheme string, _ bool) bool {
+		return scheme == "http" || scheme == "https"
+	})
+	if err != nil {
+		return nil, errS3EndpointShape
+	}
+	return origin, nil
 }
 
 // PublicURL reads the address users open inbok at, which has no default.

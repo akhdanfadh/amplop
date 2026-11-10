@@ -1,11 +1,11 @@
 # Self-hosting inbok
 
 This folder runs inbok on one server with Docker Compose: PostgreSQL,
-Meilisearch for search, a one-off migration, the inbok server, its
-background worker, and Caddy for HTTPS. No inbok image is pulled from a
-registry: Compose builds it on the server from this repository, using
-pinned base images, and runs it beside pinned PostgreSQL, Meilisearch,
-and Caddy images.
+Meilisearch for search, SeaweedFS for message content, a one-off
+migration, the inbok server, its background worker, and Caddy for HTTPS.
+No inbok image is pulled from a registry: Compose builds it on the server
+from this repository, using pinned base images, and runs it beside pinned
+PostgreSQL, Meilisearch, SeaweedFS, and Caddy images.
 
 Run every command here from this folder, `deploy/`.
 
@@ -43,9 +43,9 @@ Run every command here from this folder, `deploy/`.
    docker compose up -d --build
    ```
 
-   `docker compose ps -a` shows `postgres`, `meilisearch`, `inbok`, and
-   `worker` as `healthy`, `caddy` running, and `migrate` exited with
-   code 0.
+   `docker compose ps -a` shows `postgres`, `meilisearch`, `seaweedfs`,
+   `inbok`, and `worker` as `healthy`, `caddy` running, and `migrate`
+   exited with code 0.
 
 4. Open `https://<your domain>/setup`, enter `INBOK_SETUP_TOKEN`, and
    create the first administrator. Then sign in and set up two-factor
@@ -58,9 +58,9 @@ Run every command here from this folder, `deploy/`.
    ```
 
 Logs come from `docker compose logs inbok` (or `worker`, `caddy`,
-`postgres`, `meilisearch`, `migrate`). Every line inbok logs for a
-request carries its `request_id`, which the browser also receives in the
-`X-Request-ID` header.
+`postgres`, `meilisearch`, `seaweedfs`, `migrate`). Every line inbok
+logs for a request carries its `request_id`, which the browser also
+receives in the `X-Request-ID` header.
 
 ## Connecting Gmail
 
@@ -141,14 +141,15 @@ it.
 
 `worker` runs inbok's background work, which it keeps in the database, so
 work survives a restart. It reaches PostgreSQL, the [search
-index](#the-search-index), and, to send inbok's email, mail servers on
-the internet; it needs `INBOK_ENCRYPTION_KEYS` and `INBOK_PUBLIC_URL`
-like the server, `INBOK_MEILISEARCH_KEY`, and the same
-`INBOK_GOOGLE_CLIENT_ID` and `INBOK_GOOGLE_CLIENT_SECRET`, which
-`compose.yaml` passes to both, for the job that asks Google to end
-inbok's permission for a Gmail account a member disconnects. It answers
-its health check on its own loopback address, so nothing else can reach
-it. Stopping, restarting, or replacing it is
+index](#the-search-index), SeaweedFS, and, to send inbok's email, mail
+servers on the internet; it needs `INBOK_ENCRYPTION_KEYS`,
+`INBOK_PUBLIC_URL`, and the SeaweedFS keys like the server,
+`INBOK_MEILISEARCH_KEY`, and the same `INBOK_GOOGLE_CLIENT_ID` and
+`INBOK_GOOGLE_CLIENT_SECRET`, which `compose.yaml` passes to both, for
+the job that asks Google to end inbok's permission for a Gmail account a
+member disconnects. It answers its health check on its own loopback
+address, so nothing else can reach it. Stopping, restarting, or
+replacing it is
 safe: work it left unfinished resumes when it starts again, from the step
 that had not finished, so a step can run twice. That relies on its
 `INBOK_WORKER_ID`, which defaults to `worker`; keep it. Do not scale it,
@@ -267,10 +268,37 @@ it is empty. Nor does Meilisearch's: after a restore, rebuild the
 [search index](#the-search-index) from the restored database, since the
 index still holds what changed after the dump was made.
 
+The `seaweedfs` volume needs no backup either: it holds
+[message content](#message-content), a cache of what Gmail has. After a
+restore, or with an empty volume, inbok fetches content that is missing
+again from Gmail when it needs it, and removes content that no message
+refers to any more. Mail Gmail has deleted since cannot be fetched again.
+
 `docker compose down -v` deletes the volumes, including the only copy of
 the database. Plain `docker compose down` keeps them. Neither deletes the
 Meilisearch volumes of earlier versions, which `compose.yaml` no longer
 names; `docker volume rm` does.
+
+## Message content
+
+The text of messages, and attachments once someone opens them, live in
+SeaweedFS's `seaweedfs` volume. inbok does not encrypt them, so anyone who
+can read the server's disk can read cached mail: encrypt the disk that
+holds Docker's volumes, e.g. with LUKS when installing the server.
+
+SeaweedFS checks `INBOK_S3_ACCESS_KEY_ID` and `INBOK_S3_SECRET_ACCESS_KEY`
+on its S3 port only; its other ports let anyone who reaches them read and
+write. So it has no published port and shares its network, `content`,
+with `inbok` and `worker` alone; keep it that way. To change the keys,
+edit `.env` and run `docker compose up -d`: the old keys stop working and
+the content stays. `./upgrade.sh` brings SeaweedFS's newer pinned images
+with inbok's.
+
+The worker creates SeaweedFS's bucket each time it starts, and stops with
+an error, which `docker compose logs worker` shows, if SeaweedFS refuses
+the keys or does not answer within 10 seconds. The server does not need
+SeaweedFS to start; while SeaweedFS is down, only reading message content
+fails.
 
 ## Administrator recovery
 

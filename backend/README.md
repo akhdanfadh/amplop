@@ -444,11 +444,13 @@ scripts, and their text changes with every build, so `serve` reads the
 embedded shell at startup and allows each one by its SHA-256 hash; no
 other inline script runs. Nothing in the policy names a part of the web
 app's code: whatever the build's shell holds is allowed, and the web app
-keeps to the rest. API responses get no Content-Security-Policy; Huma's
-docs page at `/api/v0/docs` sets its own, since it loads scripts from
-unpkg.com. HTTPS-only (HSTS) is the proxy's header, because Go itself
-serves plain HTTP. `web/README.md` lists what the policy means for web
-code.
+keeps to the rest. A message body is the exception to `DENY`: the web
+app frames it, so it sends `SAMEORIGIN` and a policy of its own (see
+[Showing HTML](#showing-html)). Other API responses get no
+Content-Security-Policy; Huma's docs page at `/api/v0/docs` sets its
+own, since it loads scripts from unpkg.com. HTTPS-only (HSTS) is the
+proxy's header, because Go itself serves plain HTTP. `web/README.md`
+lists what the policy means for web code.
 
 ## API contract
 
@@ -479,6 +481,19 @@ for Fetch Metadata and Origin checks, including setup and sign-in. It adds
 the missing-header rejection above; Go alone permits requests without both
 headers. There is no CSRF token or configured cross-origin exception. Keep the
 web app and API on the same origin, including the scheme, host, and port.
+
+A browser request also says what it loads the answer as, in
+`Sec-Fetch-Dest`. `withFetchDest` answers only the web app's `fetch()`
+calls (`empty`), and only a page load (`document`) for an operation
+tagged Redirects; anything else, e.g. an `<img>` naming an API path, gets
+a 403 `fetch-destination-refused` before the session check. An
+operation a browser loads another way lists its destinations under the
+`fetchDestKey` metadata, e.g. `iframe` for a message body. A request
+without the header, e.g. from curl, passes. The message view frames
+mail on inbok's origin, so an image in a message naming an API address,
+which the sanitizer keeps only as an absolute URL once the member loads
+remote content, would otherwise send that GET with the member's cookie;
+a GET still changes nothing.
 
 JSON success responses put their payload in `data`. Response schemas live
 only in the OpenAPI document: responses carry no `$schema` field or `Link`
@@ -642,10 +657,77 @@ its request.
 | `INBOK_GOOGLE_CLIENT_ID` | empty, Gmail not offered | The Google OAuth client members connect Gmail accounts with. Set it and the secret together, or neither. |
 | `INBOK_GOOGLE_CLIENT_SECRET` | empty, Gmail not offered | That client's secret. Surrounding spaces are removed from both. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | For development and tests only: one server on this machine that answers for Google, e.g. `http://127.0.0.1:4000`; see [Google emulator](#google-emulator). Any other host, or no client, stops startup. |
+| `INBOK_S3_ENDPOINT` | none, required | The S3 service that holds message content, e.g. `http://127.0.0.1:8333`; see Message content store below. |
+| `INBOK_S3_ACCESS_KEY_ID` | none, required | The key ID inbok signs in to it with. |
+| `INBOK_S3_SECRET_ACCESS_KEY` | none, required | The secret for that key ID. |
 | `GIN_MODE` | `debug`; the image sets `release` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
 machine.
+
+### Message content store
+
+Message content, such as the text of a message, lives in an S3-compatible
+object store; PostgreSQL keeps what describes it. Every stack runs
+[SeaweedFS](https://github.com/seaweedfs/seaweedfs) for it, one container
+started with `weed mini`. Both `serve` and the worker read the three
+`INBOK_S3_*` settings. The worker, which writes the content, creates the
+bucket `inbok` at startup if it is missing, so a wrong address or key
+stops it there, and a store that does not answer stops it within 10
+seconds. `serve` starts without contacting the store: the store is a
+cache, so while it is down, only requests that read content fail.
+
+`INBOK_S3_ENDPOINT` is the origin alone: `http` or `https`, a host, and an
+optional port. inbok adds the bucket and key to the path (path-style
+addressing). Plain `http` suits a store on a private network, as in the
+Compose files: requests are signed, so the secret never travels, but the
+content does, unencrypted. The keys are taken as they are.
+
+SeaweedFS makes the keys in its own `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` its admin identity on every start, and the Compose
+files pass inbok's keys there. To change them, change them in `.env` and
+start SeaweedFS again; the old key stops working and the content stays.
+SeaweedFS's S3 port checks the keys, but its other ports (master, filer,
+volume, and their gRPC ports) let anyone who reaches them read and write,
+so only the S3 port is published, to this machine only, and the deployment
+keeps SeaweedFS on a network of its own with inbok and the worker.
+
+Code reaches the store through `messagecontent.Store`, never the SDK. A
+`Ref` names one content: the connected account it came from and a content
+ID, which PostgreSQL keeps. The `s3` package alone builds object keys from
+it, `accounts/<account ID>/<content ID>`, so keys hold no addresses,
+subjects, or file names. The rules every caller relies on:
+
+- `Put` takes content it can seek in, e.g. a `bytes.Reader` or an open
+  file, and stores it from the current offset to the end. A repeated
+  `Put` replaces the content, so a retried job may repeat it. After an
+  error the object holds the old content or all of the new, never part
+  of either, e.g. when an upload was stored but its answer lost; call
+  `Put` again until it succeeds.
+- `Get` returns a stream the caller closes, or `ErrNotStored` when the
+  object is missing. That can happen while a row still names the content,
+  e.g. after a lost volume: fetch the content from the provider again.
+- `Delete` takes refs, `DeleteAccount` removes an account's whole prefix,
+  and `ListOlder` yields the refs last written before a time, for a sweep
+  of content no row names. SeaweedFS keeps those times to the second.
+
+`Put` needs content it can seek in because, over plain `http`, the SDK
+reads the body once to sign its SHA-256 and again to send it, and seeks
+back to retry. SeaweedFS refuses a body that does not match the signed
+hash, so an upload is never stored corrupted or in part.
+
+That does not protect against someone who can change the traffic. Over
+plain `http` nothing authenticates downloads, listings, or the store's
+answers, nor headers the signature leaves out, some of which SeaweedFS
+acts on (e.g. `X-Seaweedfs-Extract`, which unpacks a ZIP upload into
+other keys); and nothing encrypts content. The Compose files accept
+that, trusting the host and a network that only inbok, the worker, and
+SeaweedFS share; anywhere else, use an `https` endpoint.
+
+Feature tests use `messagecontenttest.Fake`, a store in memory.
+`messagecontenttest.RunContract` holds the tests both it and the `s3`
+package pass, so the fake behaves as SeaweedFS does; a behaviour every
+store must share goes there.
 
 ### Public URL
 
@@ -831,6 +913,159 @@ clients. A container proxy has a different connection address; trust its
 actual range rather than copying the loopback range. With the Compose
 files in `deploy/`, [Using your own proxy](../deploy/README.md#using-your-own-proxy-instead-of-caddy)
 gives the address to trust.
+
+## Message parts
+
+An email's body is a tree of MIME parts: a `multipart/*` part holds
+others, and each leaf holds one thing, e.g. the text, the same text as
+HTML, a PDF, or an image the HTML shows with `<img src="cid:logo">`,
+naming the part whose `Content-ID` is `logo`. `messagecontent.Parse`
+reads that tree from `messagecontent.Received`, which a provider's
+technology package fills (`google` for Gmail), and returns:
+
+- the part tree PostgreSQL keeps, one `Part` per node: the provider's
+  part ID (Gmail's `partId`), media type, declared charset, file name,
+  size, disposition, `Content-ID`, kind, and, for `multipart/related`,
+  its `start` parameter;
+- the content of each text part that came with the message, converted to
+  UTF-8 by `DecodeText`. A part whose bytes the provider sends separately
+  (Gmail's `attachmentId`) has none; decode it with `DecodeText` once
+  fetched. Neither has a text part inside an attachment, e.g. a forwarded
+  message, which no view shows.
+
+These are inbok's own rules on top of a parsed tree. MIME libraries such
+as emersion's go-message or enmime read raw message bytes and decide no
+kinds or display; ADR009 ("Message parts") records why Gmail's parsed
+`format=full` is used instead, and where such a library fits later.
+
+Every string in a `Part` comes from the sender, so `Parse` makes it valid
+UTF-8 and drops control characters, which PostgreSQL refuses (NUL), and
+bidirectional formatting characters, which can make a program,
+`photo` U+202E `gpj.exe`, read as `photoexe.jpg`. A message of more
+than 1000 parts is `ErrTooManyParts`.
+
+A part's kind decides how a view treats it:
+
+| Kind | Rule |
+|-|-|
+| `multipart` | a `multipart/*` part, holding others |
+| `text` | `text/plain` or `text/html`, not marked `attachment`, no file name |
+| `inline` | an `image/*` part with a `Content-ID`, not marked `attachment` |
+| `attachment` | everything else, e.g. `text/calendar` or `message/rfc822` |
+
+`DecodeText` reads text as a browser reads a page, through
+`x/net/html/charset.DetermineEncoding` (the WHATWG Encoding Standard): a
+byte order mark first, then the declared charset, then a `<meta>`
+element in the first 1024 bytes, then UTF-8 if those bytes are valid
+UTF-8, else windows-1252. `us-ascii` and `iso-8859-1` read as
+windows-1252, which senders often mean. A charset the standard calls
+unsafe, e.g. `iso-2022-kr`, reads as one U+FFFD, as does each byte that
+cannot convert. Like a browser, it garbles UTF-8 labelled as
+windows-1252, or undeclared UTF-8 that starts after a first kilobyte of
+plain ASCII; both are rare in mail, which declares its charset.
+
+`messagecontent.Choose` picks what a view shows, when the message is
+shown, so a better rule reaches stored mail without fetching it again:
+
+- In `multipart/alternative`, the last alternative with HTML, else the
+  last with text. The others are the same message in another form, so
+  their parts, attachments included, are left out.
+- In `multipart/related`, the part its `start` parameter names, else the
+  first (RFC 2387). Its inline parts appear where its HTML refers to them
+  by `cid:`, listed in `Display.Inline`; when it has no HTML, they are
+  offered as downloads. `Display.Downloads` offers after the attachments
+  any inline part the HTML never showed. Its other parts are what the
+  shown part refers to, so nothing under them is a body: an image is
+  inline as above, anything else is offered as a download.
+- In any other multipart, every part in order: several text parts show
+  one after another, and attachments, plus inline parts outside
+  `multipart/related`, are offered as downloads.
+
+Reports say Gmail's `attachmentId` changes between `messages.get` calls,
+so a part is named by its message and part ID, and its bytes are fetched
+with the `attachmentId` of a fresh `messages.get`; an attachment's bytes
+may also come as `data` in that answer. The fixtures in
+`internal/google/testdata` follow the shape of a recorded `format=full`
+response.
+
+## Showing HTML
+
+Content storage keeps a message's HTML as the sender wrote it. Each time
+a view shows it, `messagecontent.Sanitize` streams a copy that is safe to
+show, so a better rule reaches stored mail at once. It takes a `Policy`:
+the inline parts the HTML may show (`Display.Inline`), a function that
+builds a part's URL from its part ID alone, and whether remote images
+load (`RemoteBlocked`, the zero value's behaviour, or `RemoteAllowed`).
+The copy:
+
+- keeps sectioning, text, list, table, and image elements and the
+  presentational ones mail still uses, e.g. `center` and `font`, with
+  layout attributes, `class`, `id`, and `aria-*`. Scripts, forms,
+  embedded content, SVG, MathML, comments, and the sender's `<meta>`,
+  `<base>`, and `<link>` are gone; an unknown element keeps its text.
+- keeps links, `href` on `a` only, with absolute `http`, `https`,
+  `mailto`, and `tel` URLs, opening in a new tab. A relative URL would
+  resolve against inbok, and a URL with a space in it is dropped, as
+  bluemonday drops it; a scheme-relative one, `//host/path`, reads as
+  `https`.
+- turns `cid:` images and backgrounds into the part's URL, and drops
+  remote ones unless allowed, reporting them in `Sanitized.Blocked` so the
+  view can offer to load them. Only `img`'s `src` and the `background`
+  of `body` and table elements load an image. `data:` URLs are dropped.
+- keeps `<style>` and `style` attributes, filtered to the CSS properties,
+  selectors, and media queries Gmail documents. A `url()` that may not
+  load becomes `none`, so a background color still applies. `@import`,
+  `@font-face`, escapes, and functions such as `var()` are dropped, and
+  so is a style sheet a screen would not apply, e.g. `media="print"`. A
+  style element's `media` keeps the queries an `@media` rule may have.
+  A length in units of the viewport's height or logical axes, e.g.
+  `min-height:100vh` or `100vi`, drops its declaration: the message view
+  sizes its frame to the body, so such a length would grow with the
+  frame and cut the body off.
+  CSS is written again with a space between tokens, so tokens the
+  parser read apart, e.g. across a comment it dropped, cannot join into
+  a comment or a name in the browser. At most 256 KiB of CSS is read per
+  document, since the parser holds a declaration's tokens at once.
+- starts with `<!DOCTYPE html>`, so the browser lays it out in standards
+  mode, as Gmail does.
+
+`Sanitized.Shown` lists the inline parts the HTML showed;
+`Display.Downloads` offers the rest as downloads after the attachments.
+Like `search.BodyText`, the sanitizer reads tokens and never builds a
+tree with `html.Parse`, which a crafted document can make use hundreds
+of megabytes. It writes every token again itself, so a browser reads the
+copy as the same tokens. A fuzz test checks that every copy parses into
+allowed elements only, that its CSS has no comment, at-rule but
+`@media`, or `url()` it may not load, that bluemonday's `UGCPolicy`,
+widened only by the extras mail needs, would remove nothing from it,
+and that sanitizing a copy without inline parts changes nothing (a
+second copy drops the relative part URLs of the first); run it longer
+with `go test -fuzz=FuzzSanitize ./internal/messagecontent`.
+
+The web app shows each HTML body in a sandboxed iframe that loads the
+body from its own URL; `httpapi`'s `messageBody` builds that response.
+It sanitizes the whole copy first, so a store that fails midway gets an
+error answer rather than a message cut short, then sends it as
+`text/html; charset=utf-8` with `Cache-Control: no-store` and a
+Content-Security-Policy of its own, a second layer behind the sanitizer:
+
+```text
+sandbox allow-same-origin allow-popups allow-popups-to-escape-sandbox;
+default-src 'none'; style-src 'unsafe-inline'; form-action 'none';
+base-uri 'none'; frame-ancestors 'self'; img-src 'self'
+```
+
+Nothing in the body runs, and it loads nothing but its own CSS and
+images from inbok's origin, which `withFetchDest` limits to part URLs
+(see [API contract](#api-contract)); when remote content is allowed for
+the view, `img-src` adds `http:` and `https:`. `allow-same-origin` keeps
+the body on inbok's origin, so inline images load with the session
+cookie and the web app can size the frame. The response replaces the
+`X-Frame-Options: DENY` of [Security headers](#security-headers) with
+`SAMEORIGIN`. A `srcdoc` frame would take the web app's policy instead,
+which refuses the message's CSS; ADR009 records the trade-offs. No route
+returns it yet: the message endpoint, which also runs `Sanitize` into
+`io.Discard` to learn `Blocked` and `Shown`, comes with message bodies.
 
 ## Email addresses
 
@@ -1807,10 +2042,10 @@ against testify's usage rules, e.g. expected value first; `--fix`
 corrects most of them.
 
 Database tests start their own throwaway PostgreSQL in Docker
-([Testcontainers](https://golang.testcontainers.org)), and Gmail tests
-their own [Google emulator](#google-emulator), so Docker must be running;
-without it they fail rather than skip. They never touch the Compose
-services.
+([Testcontainers](https://golang.testcontainers.org)), Gmail tests their
+own [Google emulator](#google-emulator), and the `s3` package's tests
+their own SeaweedFS, so Docker must be running; without it they fail
+rather than skip. They never touch the Compose services.
 
 ## Writing tests
 
@@ -1949,6 +2184,8 @@ httpapi --> passwordreset <-- repository/postgres
 httpapi --> connectedaccount <-- repository/postgres
                              <-- google
             search <-- meilisearch
+httpapi --> messagecontent <-- s3
+                           <-- google
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -1970,6 +2207,10 @@ httpapi --> connectedaccount <-- repository/postgres
   emersion SMTP libraries. A technology package is named for its technology
   and imports features, never the other way around. `meilisearch`
   implements `search`'s `Index` the same way.
+- `s3` is the technology package for the
+  [Message content store](#message-content-store): it implements the
+  `Store` interface that `messagecontent` declares, using AWS's Go SDK,
+  whose types never leave the package.
 - A leaf package holds one rule that several features share, such as
   `emailaddress` (the address rule), `attemptlimit` (the window count),
   `randomsecret` (emailed link secrets and their hashes), `clientprefix`
@@ -1987,7 +2228,9 @@ httpapi --> connectedaccount <-- repository/postgres
   refresh token trade, revocation, and Gmail's `users.getProfile`, with
   `golang.org/x/oauth2` and
   Google's Gmail client. Their types stay inside it; Gmail calls take
-  `connectedaccount`'s `AccessToken`.
+  `connectedaccount`'s `AccessToken`. It also turns a Gmail message's
+  parts into `messagecontent.Received`, the provider-neutral input of
+  [Message parts](#message-parts).
 - `googleemulator` starts the [Google emulator](#google-emulator) for
   tests, each with its own seed. Only tests import it.
 - `webapp` embeds the built web app and serves it as a static site:
@@ -2013,13 +2256,15 @@ httpapi --> connectedaccount <-- repository/postgres
 ADR021 in the project's decision records explains this layout and the
 alternatives it was chosen over.
 
-### HTTP feature files
+### Files and sections
 
-Keep shared paths, service interfaces, handler dependencies, and the
-`register<Feature>` entry point at the top. That entry point calls a
-`register<Operation>` function for each operation.
-
-Group each operation under a three-line comment banner:
+A package splits into files by concept, named for its noun, as `smtp`
+does with `compose.go`, `signin.go`, and `redaction.go`. Give a part its
+own file when it stands alone and is worth testing on its own, such as
+`s3`'s `contentkey.go` (building and parsing object keys) beside
+`content.go` (the S3 calls). Within a long file, a three-line banner
+comment groups related code for readability, as
+[HTTP feature files](#http-feature-files) do for each operation:
 
 ```go
 // ========================
@@ -2027,9 +2272,17 @@ Group each operation under a three-line comment banner:
 // ========================
 ```
 
-Keep its constants, request and response types, input resolvers, registration,
-named handler, response helper, and error mapping together under that banner.
-Helpers used by only one operation stay in its section. Handler types and
+### HTTP feature files
+
+Keep shared paths, service interfaces, handler dependencies, and the
+`register<Feature>` entry point at the top. That entry point calls a
+`register<Operation>` function for each operation.
+
+Group each operation under a banner (see
+[Files and sections](#files-and-sections)), and keep its constants,
+request and response types, input resolvers, registration, named handler,
+response helper, and error mapping together under that banner. Helpers
+used by only one operation stay in its section. Handler types and
 methods are private; operations without dependencies can use plain functions.
 
 ## Adding a feature

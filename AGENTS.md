@@ -39,6 +39,11 @@ the area you change before editing it:
   it with `retryAfterProblem`, which adds `Retry-After`.
 - A write with public access gets `withRateLimit`'s per-client limit and
   its documented 429 automatically; add nothing by hand.
+- An operation answers only the web app's `fetch()` calls, and one tagged
+  Redirects only a page load, through `withFetchDest`. One a browser
+  loads another way, e.g. a message body in a frame or an image, lists
+  its `Sec-Fetch-Dest` values under `fetchDestKey`. A GET changes
+  nothing either way.
 - Services take a `*slog.Logger` from `cmd/inbok`, built by `logging.New`.
   Log with the request's context, e.g. `logger.WarnContext(ctx, ...)`, so the
   line carries its `request_id`.

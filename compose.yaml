@@ -89,6 +89,35 @@ services:
       timeout: 5s
       retries: 15
 
+  # Holds message content behind an S3 API. Pinned like deploy/compose.yaml
+  # and the Go tests' image in backend/internal/s3; change all three
+  # together.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.52@sha256:57877e32bb90073b37dc109b438ba66e84fd5ed9ced5f5c04f56444ef243ce59
+    # One process runs every SeaweedFS part. A command replaces the image's
+    # whole default, so -dir=/data, which keeps the data in the volume, is
+    # repeated. The usage report SeaweedFS sends by default is off.
+    command: mini -dir=/data -master.telemetry=false
+    # SeaweedFS makes these its admin identity when it has no S3
+    # configuration file.
+    environment:
+      AWS_ACCESS_KEY_ID: ${INBOK_S3_ACCESS_KEY_ID:?add INBOK_S3_ACCESS_KEY_ID to .env from .env.example}
+      AWS_SECRET_ACCESS_KEY: ${INBOK_S3_SECRET_ACCESS_KEY:?add INBOK_S3_SECRET_ACCESS_KEY to .env from .env.example}
+
+    # Only the S3 port, which checks the keys, and only to this machine.
+    # SeaweedFS's other ports let anyone read and write, so none is
+    # published.
+    ports:
+      - 127.0.0.1:${INBOK_SEAWEEDFS_PORT:-8333}:8333
+    volumes:
+      - seaweedfs:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
 volumes:
   postgres:
   meilisearch-1.56.1:
+  seaweedfs:

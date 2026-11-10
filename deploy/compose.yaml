@@ -1,6 +1,7 @@
-# A self-hosted inbok: PostgreSQL, Meilisearch for search, a one-off
-# migration, the inbok server, its background worker, and Caddy for HTTPS.
-# Values come from deploy/.env; copy .env.example.
+# A self-hosted inbok: PostgreSQL, Meilisearch for search, SeaweedFS for
+# message content, a one-off migration, the inbok server, its background
+# worker, and Caddy for HTTPS. Values come from deploy/.env; copy
+# .env.example.
 # From deploy/, start it with docker compose up -d --build, and upgrade it
 # with ./upgrade.sh. The repository root's compose.yaml is for development.
 #
@@ -14,6 +15,11 @@ name: inbok-deploy
 # migrate, inbok, and worker connect with this URL. The password is hex, so it needs
 # no escaping here.
 x-database-url: &database-url postgres://inbok:${INBOK_POSTGRES_PASSWORD:?set it in deploy/.env}@postgres:5432/inbok?sslmode=disable
+
+# inbok and worker keep message content in SeaweedFS with these keys,
+# which SeaweedFS takes as its admin identity on every start.
+x-s3-access-key-id: &s3-access-key-id ${INBOK_S3_ACCESS_KEY_ID:?set it in deploy/.env}
+x-s3-secret-access-key: &s3-secret-access-key ${INBOK_S3_SECRET_ACCESS_KEY:?set it in deploy/.env}
 
 services:
   postgres:
@@ -79,6 +85,34 @@ services:
     networks:
       - db
 
+  # Holds message content behind an S3 API: a cache of what Gmail has, so
+  # its volume needs no backup. The image's version matches compose.yaml
+  # and the Go tests' in backend/internal/s3; change all three together.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.52@sha256:57877e32bb90073b37dc109b438ba66e84fd5ed9ced5f5c04f56444ef243ce59
+    restart: unless-stopped
+    # One process runs every SeaweedFS part. A command replaces the image's
+    # whole default, so -dir=/data, which keeps the data in the volume, is
+    # repeated. The usage report SeaweedFS sends by default is off.
+    command: mini -dir=/data -master.telemetry=false
+    environment:
+      AWS_ACCESS_KEY_ID: *s3-access-key-id
+      AWS_SECRET_ACCESS_KEY: *s3-secret-access-key
+    volumes:
+      - seaweedfs:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 2s
+
+    # No published port, and on content only: its S3 port checks the keys,
+    # but its other ports let anyone who reaches them read and write.
+    networks:
+      - content
+
   # Applies pending migrations, then exits. Every docker compose up or
   # start runs it again, which does nothing once the database is current.
   migrate:
@@ -117,9 +151,15 @@ services:
       # Both empty: Gmail is not offered.
       INBOK_GOOGLE_CLIENT_ID: ${INBOK_GOOGLE_CLIENT_ID:-}
       INBOK_GOOGLE_CLIENT_SECRET: ${INBOK_GOOGLE_CLIENT_SECRET:-}
+      INBOK_S3_ENDPOINT: http://seaweedfs:8333
+      INBOK_S3_ACCESS_KEY_ID: *s3-access-key-id
+      INBOK_S3_SECRET_ACCESS_KEY: *s3-secret-access-key
       # Caddy's own addresses below, and nothing else: a forwarded client
       # address from any other peer is ignored.
       INBOK_TRUSTED_PROXIES: 10.83.70.2/32,fd24:44bd:915f::2/128
+    # Not seaweedfs or meilisearch: inbok starts without them, so a cache
+    # or index that is down keeps no one from signing in. The worker waits
+    # for both.
     depends_on:
       postgres:
         condition: service_healthy
@@ -131,6 +171,7 @@ services:
     networks:
       - edge
       - db
+      - content
 
   # Runs background work. Restarting or replacing it is safe: work it left
   # unfinished resumes when it starts again under the same INBOK_WORKER_ID,
@@ -160,10 +201,15 @@ services:
       # It applies the search index's settings when it starts.
       INBOK_MEILISEARCH_URL: http://meilisearch:7700
       INBOK_MEILISEARCH_KEY: ${INBOK_MEILISEARCH_KEY:?set it in deploy/.env}
+      INBOK_S3_ENDPOINT: http://seaweedfs:8333
+      INBOK_S3_ACCESS_KEY_ID: *s3-access-key-id
+      INBOK_S3_SECRET_ACCESS_KEY: *s3-secret-access-key
     depends_on:
       postgres:
         condition: service_healthy
       meilisearch:
+        condition: service_healthy
+      seaweedfs:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -172,6 +218,7 @@ services:
     networks:
       - edge
       - db
+      - content
 
   caddy:
     image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
@@ -229,10 +276,19 @@ networks:
   db:
     internal: true
 
+  # SeaweedFS, inbok, and worker, with no internet access. Only the two
+  # services that hold its keys can reach it, since its ports other than
+  # S3 need none.
+  content:
+    internal: true
+
 # docker compose down -v deletes these: postgres holds the only copy of the
-# database, and caddy-data the certificates. Plain down keeps them.
+# database, and caddy-data the certificates. seaweedfs holds message
+# content, which inbok fetches again from Gmail when it is gone. Plain down
+# keeps them.
 volumes:
   postgres:
   meilisearch-1.56.1:
+  seaweedfs:
   caddy-data:
   caddy-config:
