@@ -971,6 +971,17 @@ other keys); and nothing encrypts content. The Compose files accept
 that, trusting the host and a network that only inbok, the worker, and
 SeaweedFS share; anywhere else, use an `https` endpoint.
 
+The store's calls fail once a connection delivers no bytes for five
+minutes (the SDK's read timeout, which it never sets for S3 by itself),
+so a store that takes a request and never answers cannot hold a job or a
+request for good; a slow but moving download still ends. An upload taking
+over five minutes fails too, since the store sends nothing until the body
+is in: fine on a private network, not for a store far away. The timeout counts
+silence on a connection, not on one request: over HTTP/2, which Go uses
+only with an `https` endpoint, other requests on the connection can keep
+one that stalls alive. `DEBT.md` in the decision records holds the fix
+for when an `https` store is used.
+
 Feature tests use `messagecontenttest.Fake`, a store in memory.
 `messagecontenttest.RunContract` holds the tests both it and the `s3`
 package pass, so the fake behaves as SeaweedFS does; a behaviour every

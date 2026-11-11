@@ -1,11 +1,15 @@
 package s3
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	s3api "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -76,4 +80,31 @@ func TestOpenUnreachable(t *testing.T) {
 	_, err := open(t.Context(), settings, newBucketName())
 
 	require.Error(t, err)
+}
+
+// Every call fails once the store stops sending bytes, rather than waiting
+// for good: here a store that takes a request and never answers.
+func TestReadTimeout(t *testing.T) {
+	built, ok := clientOptions(testSettings()).HTTPClient.(*awshttp.BuildableClient)
+	require.True(t, ok)
+	timeout, set := built.GetReadTimeout()
+	require.True(t, set)
+	assert.Equal(t, readTimeout, timeout)
+
+	stop := make(chan struct{})
+	silent := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-stop }))
+	t.Cleanup(silent.Close)
+	t.Cleanup(func() { close(stop) })
+	settings := testSettings()
+	settings.Endpoint, _ = url.Parse(silent.URL)
+	store := &Store{bucket: defaultBucket, client: s3api.New(clientOptions(settings), func(o *s3api.Options) {
+		o.HTTPClient = built.WithReadTimeout(50 * time.Millisecond)
+		o.RetryMaxAttempts = 1
+	})}
+
+	start := time.Now()
+	err := store.DeleteAccount(t.Context(), 7)
+
+	require.Error(t, err)
+	assert.Less(t, time.Since(start), 5*time.Second)
 }

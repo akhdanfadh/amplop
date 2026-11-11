@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	s3api "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -30,6 +31,16 @@ const (
 	// openTimeout bounds [Open]'s bucket check, so a store that never
 	// answers fails startup instead of hanging it.
 	openTimeout = 10 * time.Second
+
+	// readTimeout is the longest a connection may deliver no bytes before
+	// a call fails: a store that accepts a request and never answers would
+	// otherwise hold its caller, a job or a request, for good. It restarts
+	// with every byte, so a slow download of a large attachment still
+	// ends. While a request's body uploads the store sends nothing, so an
+	// upload taking longer fails too; on the store's private network a
+	// Gmail message's 25 MB at most takes well under a second. Five
+	// minutes is the SDK's default for services it does not exempt.
+	readTimeout = 5 * time.Minute
 )
 
 // Settings say which S3 service holds content and how to sign in to it.
@@ -72,6 +83,11 @@ func clientOptions(settings Settings) s3api.Options {
 		// SeaweedFS serves buckets as paths, e.g. /inbok/<key>, not as host names.
 		UsePathStyle: true,
 		Credentials:  credentials.NewStaticCredentialsProvider(settings.AccessKeyID, settings.SecretAccessKey, ""),
+		// NOTE: The SDK sets no read timeout for S3: its default (v1.47.7) is
+		// off, and S3 is exempt from it, since a timeout can fire while the
+		// caller's own upload is still being sent. inbok's uploads are small,
+		// on a private network, so inbok sets one itself.
+		HTTPClient: awshttp.NewBuildableClient().WithReadTimeout(readTimeout),
 		// NOTE: Left unset, as [s3api.New] leaves them, the SDK sends no
 		// checksum with an upload and checks none a response sends;
 		// LoadDefaultConfig would set both to these.
