@@ -1,6 +1,7 @@
 package mailsync
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -37,6 +38,8 @@ type fakeStorage struct {
 	// due is what DueSyncs returns, and failedBefore what it was asked.
 	due          []DueSync
 	failedBefore time.Time
+	// confirmed is what ConfirmSynced was given, in account ID order.
+	confirmed []Confirmed
 	// err, when set, fails every call.
 	err error
 }
@@ -144,6 +147,15 @@ func (f *fakeStorage) DueSyncs(_ context.Context, failedBefore time.Time) ([]Due
 	defer f.mu.Unlock()
 	f.failedBefore = failedBefore
 	return f.due, f.err
+}
+
+// ConfirmSynced records confirmed in f.confirmed.
+func (f *fakeStorage) ConfirmSynced(_ context.Context, confirmed []Confirmed) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.confirmed = append(f.confirmed, confirmed...)
+	slices.SortFunc(f.confirmed, func(a, b Confirmed) int { return cmp.Compare(a.AccountID, b.AccountID) })
+	return f.err
 }
 
 // stored returns the stored message with providerID.

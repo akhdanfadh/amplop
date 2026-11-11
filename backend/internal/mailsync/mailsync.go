@@ -156,8 +156,9 @@ type SyncState struct {
 	// FailedAt is when [SyncState.Failure] happened; nil exactly when it is
 	// empty.
 	FailedAt *time.Time
-	// LastSyncedAt is when a sync, full or poll, last finished; nil before
-	// the first.
+	// LastSyncedAt is when inbok last confirmed its copy matched the
+	// provider: when a sync, full or poll, last finished, or a check found
+	// the position unchanged; nil before the first.
 	LastSyncedAt *time.Time
 }
 
@@ -201,6 +202,16 @@ type DueSync struct {
 	Failure Failure
 }
 
+// Confirmed is a complete account whose position at the provider was found
+// unchanged, so its copy matched the provider at a time.
+type Confirmed struct {
+	AccountID int64
+	// Position is the stored [SyncState.Position] the provider's matched.
+	Position string
+	// At is when the provider answered.
+	At time.Time
+}
+
 // Written is what [Storage.UpdateSyncedMail] wrote.
 type Written struct {
 	// State is the saved sync state.
@@ -230,4 +241,9 @@ type Storage interface {
 	// member is active and which need no reconnect, and that are complete,
 	// waiting, or failed at or before failedBefore.
 	DueSyncs(ctx context.Context, failedBefore time.Time) ([]DueSync, error)
+	// ConfirmSynced records each of confirmed as its account's
+	// [SyncState.LastSyncedAt], where the account is still complete at its
+	// [Confirmed.Position] with no failure and the time moves forward, so a
+	// sync that finished meanwhile keeps its own.
+	ConfirmSynced(ctx context.Context, confirmed []Confirmed) error
 }

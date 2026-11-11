@@ -28,9 +28,12 @@ func TestScheduleDue(t *testing.T) {
 
 	due, err := s.Due(t.Context())
 
+	// Then the ones that need a sync start it, and the one that did not
+	// move is recorded as synced when the provider answered.
 	require.NoError(t, err)
 	assert.Equal(t, []int64{1, 2, 3}, due)
 	assert.Equal(t, syncNow.Add(-failedRetryAfter), storage.failedBefore)
+	assert.Equal(t, []Confirmed{{AccountID: 4, Position: "200", At: syncNow}}, storage.confirmed)
 }
 
 // A check a stopped account refuses starts nothing; one that fails for
@@ -58,6 +61,7 @@ func TestScheduleCheckFails(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []int64{3, 5}, due)
+	assert.Empty(t, storage.confirmed, "a check that failed confirms nothing")
 }
 
 // A position read with a refused token forgets the token and starts the
@@ -148,6 +152,7 @@ func TestScheduleBudget(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Empty(t, due, "a check the budget cut short says nothing of the account")
+	assert.Empty(t, storage.confirmed)
 }
 
 // Each minute's run starts its checks one account further on.
@@ -175,4 +180,26 @@ func TestScheduleRecovers(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []int64{1}, due)
+	assert.Empty(t, storage.confirmed, "the poll confirms it once it clears the failure")
+}
+
+// A quiet account is confirmed at the time the provider answered its
+// check, not when the run started.
+func TestScheduleConfirmsAnswerTime(t *testing.T) {
+	storage := newFakeStorage(SyncState{})
+	storage.due = []DueSync{{AccountID: 1, Status: StatusComplete, Position: "100"}}
+	var mu sync.Mutex
+	tick := syncNow
+	clock := func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		tick = tick.Add(time.Second)
+		return tick
+	}
+	s := NewSchedule(storage, &fakeProvider{position: "100"}, fakeAccess{}, clock)
+
+	_, err := s.Due(t.Context())
+
+	require.NoError(t, err)
+	assert.Equal(t, []Confirmed{{AccountID: 1, Position: "100", At: syncNow.Add(2 * time.Second)}}, storage.confirmed)
 }

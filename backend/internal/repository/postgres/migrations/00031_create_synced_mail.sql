@@ -37,7 +37,9 @@ CREATE TABLE sync_states (
     -- failed poll's.
     failure              text CHECK (failure IN ('provider', 'token-unreadable', 'internal')),
     failed_at            timestamptz,
-    last_synced_at       timestamptz, -- when a sync, full or poll, last finished
+    -- When inbok last confirmed its copy matched the provider: a sync, full
+    -- or poll, finished, or the minute's check found the position unchanged.
+    last_synced_at       timestamptz,
     CONSTRAINT sync_states_failed_failure CHECK (status <> 'failed' OR failure IS NOT NULL),
     CONSTRAINT sync_states_failure_time CHECK ((failure IS NULL) = (failed_at IS NULL))
 );

@@ -435,7 +435,13 @@ accounts whose member is active and which need no reconnect, then:
   overlap; each minute starts at another account, and those not reached
   wait for the next minute. A check that fails starts a sync anyway, whose
   retries decide the failure, unless a failure is already recorded; one a
-  stopped account refuses starts nothing.
+  stopped account refuses starts nothing. A check that finds the position
+  unchanged on an account with no failure records `last_synced_at` as the
+  time Gmail answered, in one statement after the checks
+  (`ConfirmSynced`), only where the account is still `complete` at that
+  position and only forward, so a poll that finished meanwhile keeps its
+  own. `last_synced_at` so means when inbok last confirmed its copy, and a
+  time minutes old on a `complete` account means syncing stopped.
 
 The run enqueues `inbok.sync` for each, keeping a sync already queued or
 running. An idle account then costs one run a minute in all, the
@@ -2323,7 +2329,7 @@ Four tables hold it, each deleted with its account:
 - `sync_states`: one row per account, saved with it, with the full sync's
   `status` (`waiting`, `running`, `complete`, or `failed`), its
   `sync_generation`, the `position` the next poll asks for changes since,
-  and when a sync last finished. `failure` and `failed_at` say why and
+  and when inbok last confirmed the copy (`last_synced_at`). `failure` and `failed_at` say why and
   when the last sync, full or poll, failed, until one succeeds:
   `provider`, `token-unreadable`, or `internal`. A `failed` full sync
   always has one, and a `complete` account keeps a failed poll's. The

@@ -833,3 +833,44 @@ func TestDueSyncs(t *testing.T) {
 	slices.SortFunc(want, func(a, b mailsync.DueSync) int { return int(a.AccountID - b.AccountID) })
 	assert.Equal(t, want, due)
 }
+
+// A check that found an account's position unchanged records its time,
+// only on a complete account at that position with no failure, and only
+// forward.
+func TestConfirmSynced(t *testing.T) {
+	s := newSyncedMailTest(t)
+	member := insertConnectingMember(t, s.conn, "second@example.com")
+	before := time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
+	checked := before.Add(time.Minute)
+	states := map[string]mailsync.SyncState{
+		"quiet":    {Status: mailsync.StatusComplete, Position: "100", Generation: 1, LastSyncedAt: &before},
+		"moved":    {Status: mailsync.StatusComplete, Position: "150", Generation: 1, LastSyncedAt: &before},
+		"failure":  {Status: mailsync.StatusComplete, Position: "100", Generation: 1, LastSyncedAt: &before, Failure: mailsync.FailureProvider, FailedAt: &before},
+		"running":  {Status: mailsync.StatusRunning, Position: "100", Generation: 2, LastSyncedAt: &before},
+		"later":    {Status: mailsync.StatusComplete, Position: "100", Generation: 1, LastSyncedAt: new(checked.Add(time.Second))},
+		"no time":  {Status: mailsync.StatusComplete, Position: "100", Generation: 1},
+		"untested": {Status: mailsync.StatusComplete, Position: "100", Generation: 1, LastSyncedAt: &before},
+	}
+	ids := map[string]int64{}
+	var confirmed []mailsync.Confirmed
+	for name, state := range states {
+		ids[name] = insertSyncingAccount(t, s.conn, member, "sub-"+strings.ReplaceAll(name, " ", "-"))
+		s.update(t, ids[name], mailsync.Change{State: state})
+		if name != "untested" {
+			confirmed = append(confirmed, mailsync.Confirmed{AccountID: ids[name], Position: "100", At: checked})
+		}
+	}
+
+	require.NoError(t, s.db.ConfirmSynced(t.Context(), confirmed))
+
+	want := map[string]time.Time{
+		"quiet": checked, "moved": before, "failure": before, "running": before,
+		"later": checked.Add(time.Second), "no time": checked, "untested": before,
+	}
+	for name, at := range want {
+		state, err := s.db.SyncState(t.Context(), ids[name])
+		require.NoError(t, err)
+		require.NotNil(t, state.LastSyncedAt, name)
+		assert.Equal(t, at, *state.LastSyncedAt, name)
+	}
+}

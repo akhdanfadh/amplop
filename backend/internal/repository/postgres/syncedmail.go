@@ -327,6 +327,26 @@ func (db *DB) DueSyncs(ctx context.Context, failedBefore time.Time) ([]mailsync.
 	return due, nil
 }
 
+// ConfirmSynced records each of confirmed as its account's last sync time,
+// where the account is still complete at the position confirmed with no
+// failure, and the time moves forward.
+func (db *DB) ConfirmSynced(ctx context.Context, confirmed []mailsync.Confirmed) error {
+	params := sqlc.ConfirmSyncedParams{
+		ConnectedAccountIds: make([]int64, len(confirmed)),
+		Positions:           make([]string, len(confirmed)),
+		CheckedAts:          make([]time.Time, len(confirmed)),
+	}
+	for i, c := range confirmed {
+		params.ConnectedAccountIds[i] = c.AccountID
+		params.Positions[i] = c.Position
+		params.CheckedAts[i] = c.At
+	}
+	if err := sqlc.New(db.pool).ConfirmSynced(ctx, params); err != nil {
+		return fmt.Errorf("confirm synced: %w", err)
+	}
+	return nil
+}
+
 // uniqueStrings returns values without repeats, in their first order.
 func uniqueStrings(values []string) []string {
 	seen := make(map[string]bool, len(values))

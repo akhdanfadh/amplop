@@ -10,6 +10,37 @@ import (
 	"time"
 )
 
+const confirmSynced = `-- name: ConfirmSynced :exec
+UPDATE sync_states s
+SET last_synced_at = c.checked_at
+FROM (
+    SELECT unnest($1::bigint[]) AS connected_account_id,
+        unnest($2::text[]) AS position,
+        unnest($3::timestamptz[]) AS checked_at
+) c
+WHERE s.connected_account_id = c.connected_account_id
+    AND s.position = c.position
+    AND s.status = 'complete'
+    AND s.failure IS NULL
+    -- Checked here, not with greatest(), so a time that would not move
+    -- writes no new row version.
+    AND (s.last_synced_at IS NULL OR s.last_synced_at < c.checked_at)
+`
+
+type ConfirmSyncedParams struct {
+	ConnectedAccountIds []int64
+	Positions           []string
+	CheckedAts          []time.Time
+}
+
+// Records each account's check time as when its copy last matched the
+// provider, where it is still complete at the position checked with no
+// failure, and only forward, so a sync that finished since keeps its own.
+func (q *Queries) ConfirmSynced(ctx context.Context, arg ConfirmSyncedParams) error {
+	_, err := q.db.Exec(ctx, confirmSynced, arg.ConnectedAccountIds, arg.Positions, arg.CheckedAts)
+	return err
+}
+
 const insertSyncState = `-- name: InsertSyncState :exec
 INSERT INTO sync_states (connected_account_id, status) VALUES ($1, 'waiting')
 `

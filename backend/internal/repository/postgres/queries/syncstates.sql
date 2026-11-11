@@ -41,3 +41,22 @@ WHERE ca.needs_reconnect_since IS NULL
     AND (s.status IN ('complete', 'waiting')
         OR (s.status = 'failed' AND s.failed_at <= @failed_before))
 ORDER BY s.connected_account_id;
+
+-- name: ConfirmSynced :exec
+-- Records each account's check time as when its copy last matched the
+-- provider, where it is still complete at the position checked with no
+-- failure, and only forward, so a sync that finished since keeps its own.
+UPDATE sync_states s
+SET last_synced_at = c.checked_at
+FROM (
+    SELECT unnest(@connected_account_ids::bigint[]) AS connected_account_id,
+        unnest(@positions::text[]) AS position,
+        unnest(@checked_ats::timestamptz[]) AS checked_at
+) c
+WHERE s.connected_account_id = c.connected_account_id
+    AND s.position = c.position
+    AND s.status = 'complete'
+    AND s.failure IS NULL
+    -- Checked here, not with greatest(), so a time that would not move
+    -- writes no new row version.
+    AND (s.last_synced_at IS NULL OR s.last_synced_at < c.checked_at);

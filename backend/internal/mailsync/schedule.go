@@ -58,7 +58,9 @@ func NewSchedule(storage Storage, provider Provider, access accountAccess, now f
 // one too, unless a failure is already recorded for it, so the poll's
 // retries decide what to record, once. A check that a stopped account
 // refuses starts nothing, and complete accounts not checked within
-// checkBudget wait for the next run.
+// checkBudget wait for the next run. A complete account with no failure
+// whose position did not move is recorded as synced when the provider
+// answered (ADR001, "Polling"), after every check.
 func (s *Schedule) Due(ctx context.Context) ([]int64, error) {
 	now := s.now()
 	due, err := s.storage.DueSyncs(ctx, now.Add(-failedRetryAfter))
@@ -67,15 +69,21 @@ func (s *Schedule) Due(ctx context.Context) ([]int64, error) {
 	}
 
 	var (
-		mu       sync.Mutex
-		started  []int64
-		complete []DueSync
-		wg       sync.WaitGroup
+		mu        sync.Mutex
+		started   []int64
+		confirmed []Confirmed
+		complete  []DueSync
+		wg        sync.WaitGroup
 	)
 	start := func(accountID int64) {
 		mu.Lock()
 		defer mu.Unlock()
 		started = append(started, accountID)
+	}
+	confirm := func(c Confirmed) {
+		mu.Lock()
+		defer mu.Unlock()
+		confirmed = append(confirmed, c)
 	}
 	for _, account := range due {
 		if account.Status == StatusComplete {
@@ -99,14 +107,22 @@ func (s *Schedule) Due(ctx context.Context) ([]int64, error) {
 		}
 		wg.Go(func() {
 			defer func() { <-slots }()
-			if s.moved(budget, account) {
+			switch checked := s.check(budget, account); checked.outcome {
+			case checkMoved:
 				start(account.AccountID)
+			case checkQuiet:
+				confirm(Confirmed{AccountID: account.AccountID, Position: account.Position, At: checked.at})
 			}
 		})
 	}
 	wg.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if len(confirmed) > 0 {
+		if err := s.storage.ConfirmSynced(ctx, confirmed); err != nil {
+			return nil, err
+		}
 	}
 	slices.Sort(started)
 	return started, nil
@@ -123,24 +139,50 @@ func rotated(accounts []DueSync, now time.Time) []DueSync {
 	return append(slices.Clone(accounts[offset:]), accounts[:offset]...)
 }
 
-// moved reports whether complete account's sync should start: its position
-// at the provider differs from the stored one or a failure is recorded, or
-// the position could not be read, within checkTimeout, while no failure is
-// recorded. ctx carries the run's budget.
-func (s *Schedule) moved(ctx context.Context, account DueSync) bool {
+// checkOutcome is what one complete account's check found.
+type checkOutcome int
+
+const (
+	// checkUnknown means the check says nothing of the account: it
+	// stopped, or the run's budget cut the check short.
+	checkUnknown checkOutcome = iota + 1
+	// checkMoved means the account's sync should start.
+	checkMoved
+	// checkQuiet means the account is synced: its position did not move
+	// and no failure is recorded.
+	checkQuiet
+)
+
+// checked is a check's outcome, and for checkQuiet when the provider
+// answered.
+type checked struct {
+	outcome checkOutcome
+	at      time.Time
+}
+
+// check returns what complete account's check finds, within checkTimeout:
+// checkMoved when its position at the provider differs from the stored one
+// or a failure is recorded, or when the position could not be read while no
+// failure is recorded, and checkQuiet when the position did not move and no
+// failure is recorded. ctx carries the run's budget.
+func (s *Schedule) check(ctx context.Context, account DueSync) checked {
 	budget := ctx
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
 	position, err := s.position(ctx, account.AccountID)
 	switch {
+	case err == nil && (position != account.Position || account.Failure != ""):
+		return checked{outcome: checkMoved}
 	case err == nil:
-		return position != account.Position || account.Failure != ""
+		return checked{outcome: checkQuiet, at: s.now().UTC()}
 	case errors.Is(err, errStopped), budget.Err() != nil:
 		// A check the run's budget cut short says nothing of the account.
-		return false
+		return checked{outcome: checkUnknown}
+	case account.Failure == "":
+		return checked{outcome: checkMoved}
 	default:
-		return account.Failure == ""
+		return checked{outcome: checkUnknown}
 	}
 }
 
