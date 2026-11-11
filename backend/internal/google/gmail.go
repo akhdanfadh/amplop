@@ -46,25 +46,29 @@ func (c *Client) Profile(ctx context.Context, accessToken connectedaccount.Acces
 // gmail returns a Gmail client that sends accessToken with every request,
 // over the client's own HTTP client.
 func (c *Client) gmail(ctx context.Context, accessToken connectedaccount.AccessToken) (*gmail.Service, error) {
-	authorized := &http.Client{
-		Transport: &oauth2.Transport{
-			Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken.Value()}),
-			Base:   c.http.Transport,
-		},
-		Timeout:       c.http.Timeout,
-		CheckRedirect: c.http.CheckRedirect,
-	}
 	// The endpoint is always set, so no environment setting the Google client
 	// reads, e.g. GOOGLE_CLOUD_UNIVERSE_DOMAIN, can send the token elsewhere,
 	// and so is a logger that drops everything: with
 	// GOOGLE_SDK_GO_LOGGING_LEVEL=debug the client's own logger writes each
 	// request's body, a whole message for messages.send, to stderr.
-	service, err := gmail.NewService(ctx, option.WithHTTPClient(authorized), option.WithEndpoint(c.gmailURL),
+	service, err := gmail.NewService(ctx, option.WithHTTPClient(c.authorized(accessToken)), option.WithEndpoint(c.gmailURL),
 		option.WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		return nil, fmt.Errorf("gmail client: %w", err)
 	}
 	return service, nil
+}
+
+// authorized returns an HTTP client that sends accessToken with every
+// request, over the client's own transport, so with its deadline.
+func (c *Client) authorized(accessToken connectedaccount.AccessToken) *http.Client {
+	return &http.Client{
+		Transport: &oauth2.Transport{
+			Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken.Value()}),
+			Base:   c.http.Transport,
+		},
+		CheckRedirect: c.http.CheckRedirect,
+	}
 }
 
 // noGmail reports whether err is Gmail's answer for a Google account without

@@ -153,7 +153,7 @@ func TestSendTimeout(t *testing.T) {
 		<-release
 	})
 	t.Cleanup(func() { close(release) })
-	client.http.Timeout = 200 * time.Millisecond
+	client.http = httpClient(reachLoopback, 200*time.Millisecond)
 
 	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"))
 
@@ -170,7 +170,7 @@ func TestSendWriteUnfinished(t *testing.T) {
 		<-release
 	})
 	t.Cleanup(func() { close(release) })
-	client.http.Timeout = 200 * time.Millisecond
+	client.http = httpClient(reachLoopback, 200*time.Millisecond)
 	large := append(rawMessage("<a@b>"), []byte(strings.Repeat("x", 4<<20))...)
 
 	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), large)
