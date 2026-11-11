@@ -71,6 +71,33 @@ func (q *Queries) ListMessageParts(ctx context.Context, arg ListMessagePartsPara
 	return items, nil
 }
 
+const listUnusedBlobs = `-- name: ListUnusedBlobs :many
+SELECT given.id::uuid AS id
+FROM unnest($1::uuid[]) AS given (id)
+WHERE NOT EXISTS (SELECT 1 FROM message_parts p WHERE p.blob_id = given.id)
+`
+
+// Those of the blob IDs no part names.
+func (q *Queries) ListUnusedBlobs(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listUnusedBlobs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const messageHasParts = `-- name: MessageHasParts :one
 SELECT EXISTS (SELECT 1 FROM message_parts p WHERE p.message_id = m.id)::boolean AS has_parts
 FROM messages m

@@ -69,6 +69,7 @@ type Services struct {
 	FullSyncs                   fullSyncs
 	Polls                       polls
 	SyncSchedule                dueSyncs
+	MessageContentCleanup       expired
 }
 
 // Worker runs inbok's workflows and schedules.

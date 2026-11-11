@@ -15,6 +15,7 @@ import (
 	"inbok/internal/google"
 	"inbok/internal/mailsync"
 	"inbok/internal/meilisearch"
+	"inbok/internal/messagecontent"
 	"inbok/internal/outgoingmessage"
 	"inbok/internal/passwordreset"
 	"inbok/internal/registration"
@@ -100,7 +101,8 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 	// 4. Open the store for message content, creating its bucket if missing.
 	// The worker does so, not serve: it writes the content, and a store
 	// that is down then stops no one signing in.
-	if _, err := s3.Open(ctx, s3Settings(store)); err != nil {
+	content, err := s3.Open(ctx, s3Settings(store))
+	if err != nil {
 		return fmt.Errorf("open object store: %w", err)
 	}
 
@@ -121,6 +123,7 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		RecoveryNotices:             account.NewRecoveryNotices(db, mailer, publicURL),
 		PasswordResetLinks:          passwordreset.NewLinks(db, mailer, publicURL, time.Now),
 		PasswordChangedNotices:      passwordreset.NewNotices(db, mailer, publicURL),
+		MessageContentCleanup:       messagecontent.NewCleanup(content, db, time.Now),
 	}
 	if googleSettings != nil {
 		// Only when configured, so the interface stays nil: removals saved

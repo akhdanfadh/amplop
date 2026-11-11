@@ -20,3 +20,9 @@ SELECT path, provider_part_id, media_type, charset, filename, size, disposition,
 FROM message_parts
 WHERE connected_account_id = @connected_account_id AND message_id = @message_id
 ORDER BY path;
+
+-- name: ListUnusedBlobs :many
+-- Those of the blob IDs no part names.
+SELECT given.id::uuid AS id
+FROM unnest(@ids::uuid[]) AS given (id)
+WHERE NOT EXISTS (SELECT 1 FROM message_parts p WHERE p.blob_id = given.id);

@@ -178,7 +178,11 @@ protection: redeeming refuses an expired link whether or not its row is
 still there. While the worker is down, expired rows, which hold a token
 hash and an email address, simply stay longer. The same run also deletes
 old workflow runs, as [Inspecting workflows](#inspecting-workflows)
-describes. Each run logs `deleted expired rows` with a count when it
+describes, and last sweeps the [message content store](#message-content-store)
+of blobs no message part names that were written over a day ago, up to
+1,000 a step: what a save that failed between storing content and saving
+its rows left behind. Each sweep step lists the store from the start, so
+a large store costs a listing an hour. Each run logs `deleted expired rows` with a count when it
 deleted any, and records the counts as its output.
 
 ### Recovery notice
@@ -962,7 +966,12 @@ ADR009 sets, since the store and PostgreSQL share no transaction:
 
 So a row never names content that was never stored. A failure between the
 two, or two saves of one message racing before either commits, leaves
-content no row names. A retry before the rows commit stores the content
+content no row names, which the [hourly cleanup](#scheduled-cleanup)
+sweeps once it is a day old; a save gives up after an hour, so none in
+progress outlasts that margin. The hour is the client's: in the rare case
+that a commit lands later still, e.g. after a database outage, a row may
+name a blob the sweep deleted, which opening the message repairs as
+below. A retry before the rows commit stores the content
 again under new IDs: a job's step output may hold no mail, so the IDs
 cannot be recorded before the fetch that tells how many parts there are.
 Saving a message whose rows are saved stores its content again under the

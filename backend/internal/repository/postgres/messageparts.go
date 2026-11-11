@@ -190,3 +190,12 @@ func partFromRow(row sqlc.ListMessagePartsRow) messagecontent.Part {
 	}
 	return part
 }
+
+// UnusedBlobs returns those of ids that no part names.
+func (db *DB) UnusedBlobs(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
+	unused, err := sqlc.New(db.pool).ListUnusedBlobs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list unused blobs: %w", err)
+	}
+	return unused, nil
+}

@@ -390,3 +390,19 @@ func workflowIDs(t *testing.T, conn *pgx.Conn) []string {
 	require.NoError(t, err)
 	return ids
 }
+
+// The hourly cleanup sweeps content no part names, after every other kind.
+func TestCleanupUnusedContent(t *testing.T) {
+	unused := &expiredRows{batches: []int{2}}
+	worker := cleanupWorker(t, migrated(t), Services{MessageContentCleanup: unused})
+
+	deleted, err := triggerCleanup(t, worker)
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, deleted["unused message content"])
+	names := make([]string, 0)
+	for _, c := range worker.cleanups(Services{ConnectStateCleanup: unused, MessageContentCleanup: unused}) {
+		names = append(names, c.name)
+	}
+	assert.Equal(t, "unused message content", names[len(names)-1])
+}

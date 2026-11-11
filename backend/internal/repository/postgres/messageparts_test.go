@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"slices"
 	"testing"
 	"uuid"
 
@@ -52,6 +53,28 @@ func storedTree() messagecontent.Part {
 		}},
 		{ID: "1", MediaType: "application/pdf", Filename: "Laporan Q3.pdf", Size: 90210, Disposition: messagecontent.DispositionAttachment, Kind: messagecontent.KindAttachment},
 	}}
+}
+
+// compareUUIDs orders UUIDs by their bytes.
+func compareUUIDs(a, b uuid.UUID) int {
+	return slices.Compare(a[:], b[:])
+}
+
+// blobIDs returns the blob IDs root's parts name, sorted.
+func blobIDs(root messagecontent.Part) []uuid.UUID {
+	var ids []uuid.UUID
+	var walk func(messagecontent.Part)
+	walk = func(part messagecontent.Part) {
+		if part.BlobID != uuid.Nil() {
+			ids = append(ids, part.BlobID)
+		}
+		for _, child := range part.Parts {
+			walk(child)
+		}
+	}
+	walk(root)
+	slices.SortFunc(ids, compareUUIDs)
+	return ids
 }
 
 // A saved tree reads back whole, in order, with its blob IDs; a
@@ -143,6 +166,24 @@ func TestMessagePartsDisconnect(t *testing.T) {
 	var parts int
 	require.NoError(t, s.conn.QueryRow(t.Context(), "SELECT count(*) FROM message_parts").Scan(&parts))
 	assert.Zero(t, parts)
+}
+
+// The sweep learns which blobs no part names.
+func TestMessagePartsUnused(t *testing.T) {
+	s := newMessagePartsTest(t)
+	ids := s.save(t, "m1")
+	tree := storedTree()
+	_, err := s.db.SaveMessageParts(t.Context(), s.account, ids[0], tree)
+	require.NoError(t, err)
+	orphan := uuid.New()
+
+	unused, err := s.db.UnusedBlobs(t.Context(), append(blobIDs(tree), orphan))
+	require.NoError(t, err)
+	assert.Equal(t, []uuid.UUID{orphan}, unused)
+
+	unused, err = s.db.UnusedBlobs(t.Context(), nil)
+	require.NoError(t, err)
+	assert.Empty(t, unused)
 }
 
 // The table refuses what no part can be.

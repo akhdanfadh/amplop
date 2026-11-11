@@ -5,12 +5,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 	"uuid"
 )
 
 // ErrMessageNotFound means the account has no such synchronized message,
 // e.g. synchronization deleted it while its content was fetched.
 var ErrMessageNotFound = errors.New("messagecontent: message not found")
+
+// saveLimit bounds [Contents.Save], inbok's choice: well inside the day
+// that content no part names waits before [Cleanup] deletes it, so a save
+// whose rows are slow to commit, e.g. behind a lock, does not name a blob
+// the sweep deleted meanwhile.
+const saveLimit = time.Hour
 
 // Storage keeps the part rows that describe each message's stored
 // content (ADR009, "What is stored").
@@ -27,6 +34,8 @@ type Storage interface {
 	// MessageParts returns the part tree of account accountID's message
 	// messageID, and false when it has none, or no such message.
 	MessageParts(ctx context.Context, accountID int64, messageID uuid.UUID) (Part, bool, error)
+	// UnusedBlobs returns those of ids that no part names.
+	UnusedBlobs(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error)
 }
 
 // Contents keeps messages' content: the bytes in a [Store], and the part
@@ -46,18 +55,20 @@ func NewContents(store Store, storage Storage) *Contents {
 // messageID, each of those parts naming its content. Parts without a
 // [Text], e.g. attachments, are saved unstored. A message whose parts are
 // saved already keeps them, and its content is stored again under the IDs
-// they name, which restores content the store lost. It returns
-// [ErrMessageNotFound] when the account has no such message, and the
-// store's or storage's error.
+// they name, which restores content the store lost. It gives up after an
+// hour. It returns [ErrMessageNotFound] when the account has no such
+// message, and the store's or storage's error.
 //
 // DESIGN: The store and PostgreSQL share no transaction, so content is
 // stored before the row that names it: a row never names content that was
-// never stored, and a failure leaves at worst content no row names
-// (ADR009, "Writing and deleting"). A retry
+// never stored, and a failure leaves at worst content no row names, which
+// [Cleanup] deletes a day later (ADR009, "Writing and deleting"). A retry
 // before the rows commit stores the content again under new IDs: a job's
 // step output may not hold mail, so the IDs could not be recorded before
 // the fetch that tells how many there are.
 func (c *Contents) Save(ctx context.Context, accountID int64, messageID uuid.UUID, root Part, texts []Text) error {
+	ctx, cancel := context.WithTimeout(ctx, saveLimit)
+	defer cancel()
 	byPart := make(map[string][]byte, len(texts))
 	for _, text := range texts {
 		byPart[text.PartID] = text.Content
