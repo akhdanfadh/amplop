@@ -59,11 +59,11 @@ func insertSyncingAccount(t *testing.T, conn *pgx.Conn, userID int64, subject st
 // gmailMailboxes are mailboxes as a Gmail account lists them, ordered by
 // provider ID.
 var gmailMailboxes = []mailsync.Mailbox{
-	{ProviderID: "CATEGORY_SOCIAL", Name: "CATEGORY_SOCIAL", Role: mailsync.RoleNone},
-	{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox},
-	{ProviderID: "Label_1", Name: "Receipts", Role: mailsync.RoleNone},
-	{ProviderID: "SPAM", Name: "SPAM", Role: mailsync.RoleJunk},
-	{ProviderID: "TRASH", Name: "TRASH", Role: mailsync.RoleTrash},
+	{ProviderID: "CATEGORY_SOCIAL", Name: "CATEGORY_SOCIAL", Role: mailsync.RoleNone, MadeBy: mailsync.MadeByProvider},
+	{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox, MadeBy: mailsync.MadeByProvider},
+	{ProviderID: "Label_1", Name: "Receipts", Role: mailsync.RoleNone, MadeBy: mailsync.MadeByMember},
+	{ProviderID: "SPAM", Name: "SPAM", Role: mailsync.RoleJunk, MadeBy: mailsync.MadeByProvider},
+	{ProviderID: "TRASH", Name: "TRASH", Role: mailsync.RoleTrash, MadeBy: mailsync.MadeByProvider},
 }
 
 // syncedMessage returns a message with every field set, under providerID,
@@ -161,12 +161,12 @@ func (s syncedMailTest) messages(t *testing.T, accountID int64) map[string]mails
 func (s syncedMailTest) mailboxes(t *testing.T, accountID int64) []mailsync.Mailbox {
 	t.Helper()
 	rows, err := s.conn.Query(t.Context(), `
-		SELECT provider_mailbox_id, name, coalesce(role, '') FROM mailboxes
+		SELECT provider_mailbox_id, name, coalesce(role, ''), made_by FROM mailboxes
 		WHERE connected_account_id = $1 ORDER BY provider_mailbox_id`, accountID)
 	require.NoError(t, err)
 	mailboxes, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (mailsync.Mailbox, error) {
 		var m mailsync.Mailbox
-		err := row.Scan(&m.ProviderID, &m.Name, &m.Role)
+		err := row.Scan(&m.ProviderID, &m.Name, &m.Role, &m.MadeBy)
 		return m, err
 	})
 	require.NoError(t, err)
@@ -277,7 +277,7 @@ func TestSyncedMailUnknownMailbox(t *testing.T) {
 	// Given a saved message, and a Label_9 that only the other account has.
 	s := newSyncedMailTest(t).withMailboxes(t)
 	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("m0")}})
-	s.update(t, s.other, mailsync.Change{State: running(1), Mailboxes: append(slices.Clone(gmailMailboxes), mailsync.Mailbox{ProviderID: "Label_9", Name: "New"})})
+	s.update(t, s.other, mailsync.Change{State: running(1), Mailboxes: append(slices.Clone(gmailMailboxes), mailsync.Mailbox{ProviderID: "Label_9", Name: "New", MadeBy: mailsync.MadeByMember})})
 	before := s.messages(t, s.account)
 	unknown := syncedMessage("m1")
 	unknown.MailboxProviderIDs = []string{"INBOX", "Label_9"}
@@ -301,7 +301,7 @@ func TestSyncedMailNewMailbox(t *testing.T) {
 
 	s.update(t, s.account, mailsync.Change{
 		State:     running(1),
-		Mailboxes: append(slices.Clone(gmailMailboxes), mailsync.Mailbox{ProviderID: "Label_9", Name: "New"}),
+		Mailboxes: append(slices.Clone(gmailMailboxes), mailsync.Mailbox{ProviderID: "Label_9", Name: "New", MadeBy: mailsync.MadeByMember}),
 		Saved:     []mailsync.Message{message},
 	})
 
@@ -409,8 +409,8 @@ func TestSyncedMailMailboxRename(t *testing.T) {
 	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("m1")}})
 	receipts := s.mailboxID(t, s.account, "Label_1")
 	renamed := []mailsync.Mailbox{
-		{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox},
-		{ProviderID: "Label_1", Name: "Bills", Role: mailsync.RoleNone},
+		{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox, MadeBy: mailsync.MadeByProvider},
+		{ProviderID: "Label_1", Name: "Bills", Role: mailsync.RoleNone, MadeBy: mailsync.MadeByMember},
 	}
 
 	s.update(t, s.account, mailsync.Change{State: running(1), Mailboxes: renamed})
@@ -431,7 +431,7 @@ func TestSyncedMailMailboxesKept(t *testing.T) {
 func TestSyncedMailMailboxUnlisted(t *testing.T) {
 	s := newSyncedMailTest(t).withMailboxes(t)
 	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("m1")}})
-	inboxOnly := []mailsync.Mailbox{{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox}}
+	inboxOnly := []mailsync.Mailbox{{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox, MadeBy: mailsync.MadeByProvider}}
 
 	s.update(t, s.account, mailsync.Change{State: running(1), Mailboxes: inboxOnly})
 

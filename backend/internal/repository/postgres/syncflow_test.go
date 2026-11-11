@@ -113,7 +113,7 @@ func TestSyncFlow(t *testing.T) {
 	assert.Equal(t, mailsync.StatusComplete, firstState.Status)
 	assert.NotEmpty(t, firstState.Position)
 	assert.Equal(t, 1, firstState.Generation)
-	assert.Contains(t, stored.mailboxes(t, account.ID), mailsync.Mailbox{ProviderID: "Label_1", Name: "Receipts"})
+	assert.Contains(t, stored.mailboxes(t, account.ID), mailsync.Mailbox{ProviderID: "Label_1", Name: "Receipts", MadeBy: mailsync.MadeByMember})
 	second := stored.messages(t, account.ID)
 	for id, message := range first {
 		assert.Equal(t, message.ID, second[id].ID, "message %s keeps its ID", id)

@@ -138,6 +138,7 @@ func writeMailboxes(ctx context.Context, tx pgx.Tx, accountID int64, mailboxes [
 			ConnectedAccountID: accountID,
 			ProviderMailboxID:  mailbox.ProviderID,
 			Name:               mailbox.Name,
+			MadeBy:             string(mailbox.MadeBy),
 		}
 		if mailbox.Role != mailsync.RoleNone {
 			role := string(mailbox.Role)

@@ -67,6 +67,7 @@ type Mailbox struct {
 	ProviderMailboxID  string
 	Name               string
 	Role               *string
+	MadeBy             string
 }
 
 type Message struct {

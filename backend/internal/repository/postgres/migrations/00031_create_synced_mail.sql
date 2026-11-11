@@ -56,7 +56,10 @@ CREATE TABLE sync_states (
 -- Gmail's inbox tabs. Unlike JMAP, two mailboxes of an account may share a
 -- role, as two IMAP folders may report one special use. name is the
 -- provider's, as received: a nested Gmail label is one name with slashes,
--- e.g. Work/Projects. id is inbok's own.
+-- e.g. Work/Projects. made_by is who made it: the provider, for its own
+-- purpose, e.g. Gmail's INBOX or CATEGORY_SOCIAL, or the member; the
+-- labels a member sees have no role and are the member's. id is inbok's
+-- own.
 CREATE TABLE mailboxes (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     connected_account_id bigint NOT NULL REFERENCES sync_states (connected_account_id) ON DELETE CASCADE,
@@ -64,6 +67,7 @@ CREATE TABLE mailboxes (
     name                 text NOT NULL,
     role                 text CHECK (role IN ('all', 'archive', 'drafts', 'flagged', 'important', 'inbox',
                              'junk', 'memos', 'scheduled', 'sent', 'snoozed', 'trash')),
+    made_by              text NOT NULL CHECK (made_by IN ('provider', 'member')),
     -- IMAP and Outlook, not yet supported:
     -- parent_id         uuid REFERENCES mailboxes (id) ON DELETE CASCADE, -- Outlook's folder tree; Gmail and IMAP nest by name
     -- role_choice       text, -- a role the member picked, for an IMAP server without SPECIAL-USE (RFC 6154)

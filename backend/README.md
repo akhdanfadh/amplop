@@ -2631,7 +2631,10 @@ Four tables hold it, each deleted with its account:
   NULL for the member's own. The roles are the purposes in IANA's IMAP
   Mailbox Name Attributes registry, as JMAP names them, e.g. `inbox`,
   `sent`, `junk`, `trash`, or `snoozed`. ADR007 lists how Gmail's labels
-  map: `UNREAD` and `STARRED` are flags, not mailboxes.
+  map: `UNREAD` and `STARRED` are flags, not mailboxes. `made_by` says
+  who made it: the `provider`, for Gmail's labels of type `system`, e.g.
+  `INBOX` or `CATEGORY_SOCIAL`, or the `member`; the labels a member sees
+  have no role and are the member's.
 - `messages`: one row per provider message, with inbok's own random `id`
   (a UUID, never derived from mail), Gmail's message and thread IDs, the
   provider's own timestamp (`internal_date`, Gmail's `internalDate`), the

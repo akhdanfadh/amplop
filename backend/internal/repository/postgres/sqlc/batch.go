@@ -95,11 +95,12 @@ func (b *InsertMessagePartBatchResults) Close() error {
 }
 
 const upsertMailbox = `-- name: UpsertMailbox :batchexec
-INSERT INTO mailboxes (connected_account_id, provider_mailbox_id, name, role)
-VALUES ($1, $2, $3, $4)
+INSERT INTO mailboxes (connected_account_id, provider_mailbox_id, name, role, made_by)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (connected_account_id, provider_mailbox_id) DO UPDATE SET
     name = excluded.name,
-    role = excluded.role
+    role = excluded.role,
+    made_by = excluded.made_by
 `
 
 type UpsertMailboxBatchResults struct {
@@ -113,6 +114,7 @@ type UpsertMailboxParams struct {
 	ProviderMailboxID  string
 	Name               string
 	Role               *string
+	MadeBy             string
 }
 
 // A mailbox the account already has keeps its row and ID, and so its
@@ -125,6 +127,7 @@ func (q *Queries) UpsertMailbox(ctx context.Context, arg []UpsertMailboxParams) 
 			a.ProviderMailboxID,
 			a.Name,
 			a.Role,
+			a.MadeBy,
 		}
 		batch.Queue(upsertMailbox, vals...)
 	}

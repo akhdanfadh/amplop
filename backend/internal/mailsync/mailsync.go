@@ -60,7 +60,23 @@ type Mailbox struct {
 	// with slashes, e.g. Work/Projects.
 	Name string
 	Role Role
+	// MadeBy is who made it. The labels a member sees are their own: no
+	// role, made by the member.
+	MadeBy Maker
 }
+
+// Maker is who made a mailbox.
+type Maker string
+
+const (
+	// MadeByProvider is a mailbox the provider made for its own purpose,
+	// e.g. Gmail's INBOX or CATEGORY_SOCIAL, or Outlook's well-known
+	// folders.
+	MadeByProvider Maker = "provider"
+	// MadeByMember is a mailbox the member made, e.g. a Gmail label of
+	// their own, or any IMAP folder.
+	MadeByMember Maker = "member"
+)
 
 // Address is one entry of an address header: a display name, which may be
 // empty, and the address. An entry that was not an address keeps its

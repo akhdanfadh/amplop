@@ -25,6 +25,10 @@ const (
 	labelStarred   = "STARRED"
 )
 
+// labelTypeSystem is the type labels.list gives the labels Gmail made,
+// as opposed to "user" for the member's (Gmail's labels reference).
+const labelTypeSystem = "system"
+
 // labelRoles are the system labels that are mailboxes with a role
 // (ADR007, "Gmail labels as mailboxes"). Every other label is a mailbox
 // without one, but for [labelUnread] and [labelStarred], which are flags.
@@ -38,14 +42,15 @@ var labelRoles = map[string]mailsync.Role{
 }
 
 // Mailboxes returns the account's labels, from labels.list, as mailboxes,
-// all but UNREAD and STARRED, which are flags.
+// all but UNREAD and STARRED, which are flags. Gmail's own labels are made
+// by the provider, the rest by the member.
 func (c *Client) Mailboxes(ctx context.Context, token connectedaccount.AccessToken) ([]mailsync.Mailbox, error) {
 	service, err := c.gmail(ctx, token)
 	if err != nil {
 		return nil, err
 	}
 	list, err := retry(ctx, c, func() (*gmail.ListLabelsResponse, error) {
-		return service.Users.Labels.List(gmailUser).Fields("labels(id,name)").Context(ctx).Do()
+		return service.Users.Labels.List(gmailUser).Fields("labels(id,name,type)").Context(ctx).Do()
 	})
 	if err != nil {
 		return nil, redactGmail(err)
@@ -59,9 +64,18 @@ func (c *Client) Mailboxes(ctx context.Context, token connectedaccount.AccessTok
 			ProviderID: label.Id,
 			Name:       cleanText(label.Name),
 			Role:       labelRoles[label.Id],
+			MadeBy:     maker(label.Type),
 		})
 	}
 	return mailboxes, nil
+}
+
+// maker returns who made a label of labelType.
+func maker(labelType string) mailsync.Maker {
+	if labelType == labelTypeSystem {
+		return mailsync.MadeByProvider
+	}
+	return mailsync.MadeByMember
 }
 
 // isFlag reports whether labelID is a label inbok keeps as a flag on the
