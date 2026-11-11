@@ -188,7 +188,7 @@ func (p *Poll) ReadChanges(ctx context.Context, accountID int64, position, pageT
 	// 2. Read the page.
 	page, err := p.provider.Changes(ctx, token, position, pageToken)
 	if err != nil {
-		return ChangePage{}, providerFailed(p.access, accountID, "read changes", err)
+		return ChangePage{}, providerFailed("read changes", err)
 	}
 	return page, nil
 }
@@ -246,7 +246,7 @@ func (p *Poll) ApplyChanges(ctx context.Context, accountID int64, from PollFrom,
 	if len(work.fetch) > 0 {
 		fetched, err := p.provider.Messages(ctx, token, accountID, work.fetch)
 		if err != nil {
-			return false, providerFailed(p.access, accountID, "fetch messages", err)
+			return false, providerFailed("fetch messages", err)
 		}
 		for _, message := range fetched.Messages {
 			if !work.reread[message.ProviderID] {
@@ -340,7 +340,7 @@ func (p *Poll) Fail(ctx context.Context, accountID int64, position string, failu
 func (p *Poll) mailboxes(ctx context.Context, token connectedaccount.AccessToken, accountID int64) ([]Mailbox, error) {
 	mailboxes, err := p.provider.Mailboxes(ctx, token)
 	if err != nil {
-		return nil, providerFailed(p.access, accountID, "list mailboxes", err)
+		return nil, providerFailed("list mailboxes", err)
 	}
 	if mailboxes == nil {
 		mailboxes = []Mailbox{}

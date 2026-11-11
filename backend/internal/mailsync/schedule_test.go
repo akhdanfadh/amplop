@@ -64,22 +64,6 @@ func TestScheduleCheckFails(t *testing.T) {
 	assert.Empty(t, storage.confirmed, "a check that failed confirms nothing")
 }
 
-// A position read with a refused token forgets the token and starts the
-// sync, whose retries take a new one.
-func TestScheduleUnauthorized(t *testing.T) {
-	storage := newFakeStorage(SyncState{})
-	storage.due = []DueSync{{AccountID: 1, Status: StatusComplete, Position: "100"}}
-	provider := &fakeProvider{positionErr: fmt.Errorf("%w: gmail api: 401", ErrUnauthorized)}
-	forgotten := 0
-	s := NewSchedule(storage, provider, fakeAccess{forgotten: &forgotten}, func() time.Time { return syncNow })
-
-	due, err := s.Due(t.Context())
-
-	require.NoError(t, err)
-	assert.Equal(t, []int64{1}, due)
-	assert.Equal(t, 1, forgotten)
-}
-
 // blockingProvider answers positions only once released, counting the
 // checks in flight and the most at once.
 type blockingProvider struct {

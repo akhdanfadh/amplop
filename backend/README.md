@@ -546,9 +546,9 @@ a step's error ends the sync is `mailsync.EndingOf`:
 | Anything else, e.g. the database, also while taking a token | the same | `fail`: `failed`, `internal` | `poll fail`: `internal` |
 
 Gmail's 401 for an access token it no longer accepts is retried like
-Gmail failing, after the step makes `Access` forget the token, so the
-retry trades the refresh token again: a grant the member revoked then
-ends as needing a reconnect.
+Gmail failing. The `google` client has already dropped the token from
+`Access` (below), so the retry trades the refresh token again: a grant
+the member revoked then ends as needing a reconnect.
 
 A failure records its time, `failed_at`, and fails the run, so DBOS keeps
 it 30 days. The run logs `sync step failed` with the step and an error
@@ -2432,7 +2432,7 @@ takes an access token from [Calling Gmail](#calling-gmail):
   "Reading Gmail"). Gmail's 404 for a history ID it no
   longer keeps returns `mailsync.ErrPositionExpired`, which means a full
   sync; so does a position that is not a history ID, without asking
-  Gmail. Gmail's 401 returns `mailsync.ErrUnauthorized`.
+  Gmail.
 
 What a sender writes is bounded: each Gmail answer at 4 MiB, and each
 header at 16 KiB, cut on a whole character before it is parsed; a
@@ -2918,9 +2918,11 @@ A token lasts as long as Google's `expires_in` said, usually an hour.
   saved one and more than 5 minutes of it remain, a margin for the step
   that takes it. Every call still reads the account first, so every stop
   error comes as before, and drops the token of an account found stopped;
-  keeping a new token drops the expired ones. A job whose Gmail call
-  answers 401 calls `Access.Forget`, and its retry trades the refresh
-  token again.
+  keeping a new token drops the expired ones. When any Gmail call
+  answers 401, the `google` client's transport calls the token's
+  `Refused`, which drops it from `Access` unless a newer one replaced it,
+  so the job's next try, a send's or a sync's, trades the refresh token
+  again. No feature handles the 401 itself.
 
 - It saves a replacement refresh token Google sends before handing out
   the access token, and never revokes the one replaced.

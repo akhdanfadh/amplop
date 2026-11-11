@@ -13,7 +13,7 @@ import (
 // traded for a new one, inbok's choice: a margin for the step that takes
 // it, which uses it for at most a page of calls, usually a minute or two
 // with their retries. A call Gmail refuses as expired makes the step take
-// a new one, through [Access.Forget].
+// a new one, through [AccessToken.Refused].
 const tokenRenewBefore = 5 * time.Minute
 
 // Errors [Access.Token] returns. None includes a token or email.
@@ -49,9 +49,18 @@ var ErrRefreshFailed = errors.New("google failed to refresh the token")
 // saving it as JSON shows nothing.
 type AccessToken struct {
 	value string
+	// keptBy is the [Access] that handed the token out and keeps it, nil
+	// for one from [NewAccessToken].
+	keptBy *keeper
 }
 
-// NewAccessToken returns value as an access token.
+// keeper is the [Access] keeping an access token for account accountID.
+type keeper struct {
+	access    *Access
+	accountID int64
+}
+
+// NewAccessToken returns value as an access token no [Access] keeps.
 func NewAccessToken(value string) AccessToken {
 	return AccessToken{value: value}
 }
@@ -59,6 +68,19 @@ func NewAccessToken(value string) AccessToken {
 // Value returns the token itself, for the request that carries it.
 func (t AccessToken) Value() string {
 	return t.value
+}
+
+// Refused tells the [Access] that handed t out that the provider refused
+// it, e.g. after the member revoked inbok's access at Google, so its next
+// [Access.Token] for the account trades the refresh token again rather
+// than handing t out. It does nothing for a token from [NewAccessToken].
+//
+// DESIGN: the provider's client calls it where it sees the refusal, so no
+// feature that calls the provider has to (ADR006).
+func (t AccessToken) Refused() {
+	if t.keptBy != nil {
+		t.keptBy.access.refused(t.keptBy.accountID, t.value)
+	}
 }
 
 // String returns a placeholder, so printing the token leaks nothing.
@@ -197,13 +219,21 @@ func (a *Access) Token(ctx context.Context, accountID int64) (AccessToken, error
 	return token, err
 }
 
-// Forget drops the access token kept for account accountID, so the next
-// [Access.Token] trades the refresh token again: Gmail refused the kept
-// one, e.g. after the member revoked inbok's access at Google.
-func (a *Access) Forget(accountID int64) {
+// forget drops the access token kept for account accountID.
+func (a *Access) forget(accountID int64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.kept, accountID)
+}
+
+// refused drops the access token kept for account accountID if it is
+// still value, which the provider refused; a newer one traded since stays.
+func (a *Access) refused(accountID int64, value string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if kept, ok := a.kept[accountID]; ok && kept.token.value == value {
+		delete(a.kept, accountID)
+	}
 }
 
 // Check returns nil when provider work may still run for account
@@ -231,7 +261,7 @@ func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error
 	// work has stopped, dropping any token kept for it.
 	state, err := a.read(ctx, accountID)
 	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrDeactivated) || errors.Is(err, ErrNeedsReconnect) {
-		a.Forget(accountID)
+		a.forget(accountID)
 	}
 	if err != nil {
 		return AccessToken{}, err
@@ -289,7 +319,9 @@ func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error
 		return AccessToken{}, ErrCredentialChanged
 	}
 
-	// 7. Keep it for the next calls, under the credential now saved.
+	// 7. Keep it for the next calls, under the credential now saved, as a
+	// token that can report its refusal.
+	renewal.AccessToken.keptBy = &keeper{access: a, accountID: accountID}
 	a.keep(accountID, renewal, saved)
 	return renewal.AccessToken, nil
 }

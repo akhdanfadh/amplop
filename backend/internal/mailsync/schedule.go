@@ -198,7 +198,7 @@ func (s *Schedule) position(ctx context.Context, accountID int64) (string, error
 	}
 	position, err := s.provider.Position(ctx, token)
 	if err != nil {
-		return "", providerFailed(s.access, accountID, "read position", err)
+		return "", providerFailed("read position", err)
 	}
 	return position, nil
 }

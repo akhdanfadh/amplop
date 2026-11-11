@@ -356,13 +356,11 @@ func (f *fakeProvider) Changes(_ context.Context, _ connectedaccount.AccessToken
 }
 
 // fakeAccess hands out a token for every account, or fails with tokenErr
-// or the account's tokenErrs, answers every check with checkErr, and
-// counts the tokens it forgets.
+// or the account's tokenErrs, and answers every check with checkErr.
 type fakeAccess struct {
 	tokenErr  error
 	tokenErrs map[int64]error
 	checkErr  error
-	forgotten *int
 }
 
 func (f fakeAccess) Token(_ context.Context, accountID int64) (connectedaccount.AccessToken, error) {
@@ -373,12 +371,6 @@ func (f fakeAccess) Token(_ context.Context, accountID int64) (connectedaccount.
 		return connectedaccount.AccessToken{}, err
 	}
 	return connectedaccount.NewAccessToken(fmt.Sprintf("access-%d", accountID)), nil
-}
-
-func (f fakeAccess) Forget(int64) {
-	if f.forgotten != nil {
-		*f.forgotten++
-	}
 }
 
 func (f fakeAccess) Check(context.Context, int64) error {
@@ -598,7 +590,6 @@ func TestFullSyncErrors(t *testing.T) {
 		"token storage failed":  {tokens: databaseDown, ending: EndingRetry, failure: FailureInternal},
 		"provider busy":         {provider: ErrProviderBusy, ending: EndingRetry, failure: FailureProvider},
 		"provider refused":      {provider: googleDown, ending: EndingRetry, failure: FailureProvider},
-		"token refused":         {provider: fmt.Errorf("%w: gmail api: 401", ErrUnauthorized), ending: EndingRetry, failure: FailureProvider},
 		"storage failed":        {storage: databaseDown, ending: EndingRetry, failure: FailureInternal},
 		"no sync state":         {storage: ErrNotFound, ending: EndingGone, failure: FailureInternal},
 	} {
@@ -716,18 +707,4 @@ func TestFullSyncDeletedMailbox(t *testing.T) {
 	runFullSync(t, s)
 
 	assert.Equal(t, []string{"INBOX"}, storage.stored("new").message.MailboxProviderIDs)
-}
-
-// A refused access token is forgotten, so the step's next try takes a new
-// one.
-func TestFullSyncUnauthorized(t *testing.T) {
-	storage := newFakeStorage(SyncState{Status: StatusWaiting})
-	provider := &fakeProvider{err: fmt.Errorf("%w: gmail api: 401", ErrUnauthorized)}
-	forgotten := 0
-	s := NewFullSync(storage, provider, fakeAccess{forgotten: &forgotten}, func() time.Time { return syncNow })
-
-	_, err := s.Start(t.Context(), syncAccount)
-
-	require.ErrorIs(t, err, ErrUnauthorized)
-	assert.Equal(t, 1, forgotten)
 }

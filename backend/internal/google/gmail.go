@@ -62,16 +62,37 @@ func (c *Client) gmail(ctx context.Context, accessToken connectedaccount.AccessT
 }
 
 // authorized returns an HTTP client that sends accessToken with every
-// request, over the client's own transport, so with its deadline, and
-// reads at most [maxResponseBytes] of each answer.
+// request, over the client's own transport, so with its deadline, reads at
+// most [maxResponseBytes] of each answer, and reports accessToken refused
+// when Gmail answers 401.
 func (c *Client) authorized(accessToken connectedaccount.AccessToken) *http.Client {
 	return &http.Client{
-		Transport: &oauth2.Transport{
-			Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken.Value()}),
-			Base:   cappedTransport{base: c.http.Transport},
+		Transport: refusalTransport{
+			base: &oauth2.Transport{
+				Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken.Value()}),
+				Base:   cappedTransport{base: c.http.Transport},
+			},
+			refused: accessToken.Refused,
 		},
 		CheckRedirect: c.http.CheckRedirect,
 	}
+}
+
+// refusalTransport sends requests over base and calls refused when an
+// answer is 401: Gmail no longer accepts the access token, e.g. once the
+// member revoked inbok's access (Gmail's "Resolve errors" guide).
+type refusalTransport struct {
+	base    http.RoundTripper
+	refused func()
+}
+
+// RoundTrip sends req over the base transport.
+func (t refusalTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	res, err := t.base.RoundTrip(req)
+	if err == nil && res.StatusCode == http.StatusUnauthorized {
+		t.refused()
+	}
+	return res, err
 }
 
 // noGmail reports whether err is Gmail's answer for a Google account without
@@ -91,11 +112,11 @@ var errGmailAnswer = errors.New("gmail api: unreadable answer")
 
 // redactGmail returns err, from the Gmail API, without any of Gmail's
 // answer, for the same reason as [redactToken]: an error answer as only its
-// HTTP status, wrapping [mailsync.ErrUnauthorized] for a 401, and an answer
-// that could not be decoded as [errGmailAnswer], since a decoding error can
-// quote it. A transport error keeps its operation and inbok's own request
-// URL, and its cause only when that cannot hold the answer: the context
-// ending, a timeout, or a network failure. The context's own error, which callers compare, is returned as
+// HTTP status, and an answer that could not be decoded as
+// [errGmailAnswer], since a decoding error can quote it. A transport error
+// keeps its operation and inbok's own request URL, and its cause only when
+// that cannot hold the answer: the context ending, a timeout, or a network
+// failure. The context's own error, which callers compare, is returned as
 // it is, and so is [retry]'s [mailsync.ErrProviderBusy], already redacted.
 //
 // NOTE: net/http also reports an answer it cannot parse, e.g. a malformed
@@ -105,11 +126,6 @@ func redactGmail(err error) error {
 		return err
 	}
 	if refused, ok := errors.AsType[*googleapi.Error](err); ok {
-		// Gmail answers 401 for an access token it no longer accepts, e.g. once the
-		// member revoked inbok's access (Gmail's "Resolve errors" guide).
-		if refused.Code == http.StatusUnauthorized {
-			return fmt.Errorf("%w: gmail api: %d", mailsync.ErrUnauthorized, refused.Code)
-		}
 		return fmt.Errorf("gmail api: %d", refused.Code)
 	}
 	if failed, ok := errors.AsType[*url.Error](err); ok {

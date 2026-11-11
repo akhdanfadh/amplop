@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/connectedaccount"
-	"inbok/internal/mailsync"
 )
 
 func TestProfile(t *testing.T) {
@@ -74,17 +73,26 @@ func TestProfileContextEnded(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
-// Gmail's 401 for an access token it no longer accepts is told apart, so
-// the caller can take a new one.
-func TestGmailUnauthorized(t *testing.T) {
-	client, _ := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
-		refuse(w, http.StatusUnauthorized, "authError")
-	})
+// A 401 from Gmail reports the access token refused; other answers do
+// not.
+func TestRefusalTransport(t *testing.T) {
+	for _, c := range []struct {
+		status  int
+		refused int
+	}{{http.StatusUnauthorized, 1}, {http.StatusForbidden, 0}, {http.StatusOK, 0}} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(c.status)
+		}))
+		t.Cleanup(server.Close)
+		refused := 0
+		client := &http.Client{Transport: refusalTransport{base: http.DefaultTransport, refused: func() { refused++ }}}
 
-	_, err := client.Position(t.Context(), stubToken)
+		res, err := client.Get(server.URL)
 
-	require.ErrorIs(t, err, mailsync.ErrUnauthorized)
-	assert.Contains(t, err.Error(), "401")
+		require.NoError(t, err)
+		require.NoError(t, res.Body.Close())
+		assert.Equal(t, c.refused, refused, "status %d", c.status)
+	}
 }
 
 // Gmail's answer for a Google account without Gmail is told apart from

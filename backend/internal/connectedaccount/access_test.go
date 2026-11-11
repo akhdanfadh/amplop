@@ -484,20 +484,44 @@ func TestTokenKeptDropped(t *testing.T) {
 	assert.Len(t, a.access.kept, 1, "the other account's expired token is dropped")
 }
 
-// A forgotten token is traded anew, so a revoked grant meets Google's
-// refusal.
-func TestTokenForget(t *testing.T) {
+// A token the provider refused is traded anew, so a revoked grant meets
+// Google's refusal.
+func TestAccessTokenRefused(t *testing.T) {
 	a := newAccessTest(t)
 	a.expiringAnswers()
-	_, err := a.access.Token(t.Context(), a.account.ID)
+	token, err := a.access.Token(t.Context(), a.account.ID)
 	require.NoError(t, err)
 
-	a.access.Forget(a.account.ID)
+	token.Refused()
 	a.google.answer = func(int) (Renewal, error) { return Renewal{}, ErrRefreshRefused }
 	_, err = a.access.Token(t.Context(), a.account.ID)
 
 	require.ErrorIs(t, err, ErrNeedsReconnect)
 	assert.Len(t, a.google.refreshed, 2)
+}
+
+// A late refusal of an older token keeps the one traded since, which the
+// provider has not refused.
+func TestAccessTokenRefusedOlder(t *testing.T) {
+	a := newAccessTest(t)
+	a.expiringAnswers()
+	older, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+	older.Refused()
+	newer, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+
+	older.Refused()
+	again, err := a.access.Token(t.Context(), a.account.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, newer.Value(), again.Value())
+	assert.Len(t, a.google.refreshed, 2)
+}
+
+// A token no Access keeps reports its refusal to no one.
+func TestAccessTokenRefusedUnkept(t *testing.T) {
+	assert.NotPanics(t, NewAccessToken("access-1").Refused)
 }
 
 // Check answers whether provider work may run, with Token's stop errors,
