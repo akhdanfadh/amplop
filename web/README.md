@@ -364,8 +364,9 @@ it and asks Google to end its access; for an account whose saved access
 inbok can't open, it says inbok can't ask Google, and that the member can
 remove inbok in their Google Account. The dialog leaves out that inbok does
 not ask when another member here connected the same Google account, whose
-access stays. The row goes as soon as the server confirms. When the server has no Google client, the page says to ask an
-administrator instead of offering Connect Gmail or Reconnect. A 401 from any
+access stays. The row goes as soon as the server confirms. When the
+server has no Google client, the page says to ask an administrator
+instead of offering Connect Gmail or Reconnect. A 401 from any
 read or write opens sign-in. A refused start rereads what it shows has
 changed: the providers on a 409, the list on a 404. A lost answer to a start
 just asks for another try, since an unused start expires; a lost answer to a

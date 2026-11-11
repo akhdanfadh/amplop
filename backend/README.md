@@ -389,10 +389,10 @@ message` with the `message_id` and the status it ended with, a warning
 unless `sent`, or `outgoing message step failed` with an error that holds
 only Gmail's status. The Gmail client is given a logger that drops
 everything: Google's own would write each request's body, the whole
-message, to stderr with `GOOGLE_SDK_GO_LOGGING_LEVEL=debug`. ADR006 records the rules and what they were chosen
-over. The worker registers the workflow, and listens to
-`inbok.google-send`, only when the Google settings are set, as for
-account removal.
+message, to stderr with `GOOGLE_SDK_GO_LOGGING_LEVEL=debug`. ADR006
+records the rules and what they were chosen over. The worker registers the
+workflow, and listens to `inbok.google-send`, only when the Google
+settings are set, as for account removal.
 
 ### Inspecting workflows
 
@@ -918,8 +918,8 @@ changes emulate where inbok needs Gmail's behavior: it adds
 as the Go client decodes them, lets a seed fix an account's `sub`,
 refuses a code exchanged by another client or with another redirect URI
 than its authorization request's, returns a sent message's other headers,
-e.g. `X-Inbok-Message-Id`, and matches `metadataHeaders` in any case. The install fails if the patch no
-longer applies, e.g. after a version change;
+e.g. `X-Inbok-Message-Id`, and matches `metadataHeaders` in any case. The
+install fails if the patch no longer applies, e.g. after a version change;
 `google-emulator/pnpm-workspace.yaml` says how to change it.
 
 Where it still differs from Google, a test that needs Google's behavior
@@ -2041,15 +2041,16 @@ account stop when `Access.Token` finds it gone.
 A member sends a new message from one of their connected accounts
 (`outgoingmessage`, US015). `outgoing_messages` keeps each message under a
 random `uuid`: its sending account, whose owner owns it, the account's
-address when it was saved (a reconnect may change the account's), To, Cc, and Bcc, subject,
-plain text body, status, failure reason, the ID inbok gave it
-(`inbok_message_id`, a Message-ID with its angle brackets), Gmail's message and
-thread IDs once sent (`provider_message_id`, `provider_thread_id`), and
-when it was created and sent. The recipient lists are JSON arrays of
-`{"name", "address"}`, as synchronized mail keeps addresses, with empty
-names for now. Like synchronized mail, it has no owner column of its own:
-reads join `connected_accounts` and match its `user_id`, so the owner is
-stored once, and a disconnect deletes the account's messages with it.
+address when it was saved (a reconnect may change the account's), To, Cc,
+and Bcc, subject, plain text body, status, failure reason, the ID inbok
+gave it (`inbok_message_id`, a Message-ID with its angle brackets),
+Gmail's message and thread IDs once sent (`provider_message_id`,
+`provider_thread_id`), and when it was created and sent. The recipient
+lists are JSON arrays of `{"name", "address"}`, as synchronized mail keeps
+addresses, with empty names for now. Like synchronized mail, it has no
+owner column of its own: reads join `connected_accounts` and match its
+`user_id`, so the owner is stored once, and a disconnect deletes the
+account's messages with it.
 
 `outgoingmessage.Service.Create` checks the content first:
 
@@ -2096,10 +2097,11 @@ It then saves in one transaction (`InsertOutgoingMessage`), in this order:
 The message gets an ID on the account's domain and is saved as `waiting`
 with its attempt, its [send job](#sending-a-message), and its key, whose
 primary key also refuses a second message for one key if a request ever
-got past the member's lock. A message moves through `waiting`, `sending`, then `sent`, `failed` with a reason (`refused`,
-`sending-limit`, `needs-reconnect`, `token-unreadable`, `deactivated`,
-`sender-changed`, or `gave-up`), or `unknown` when a send may have reached
-Gmail and no answer or check says whether.
+got past the member's lock. A message moves through `waiting`, `sending`,
+then `sent`, `failed` with a reason (`refused`, `sending-limit`,
+`needs-reconnect`, `token-unreadable`, `deactivated`, `sender-changed`, or
+`gave-up`), or `unknown` when a send may have reached Gmail and no answer
+or check says whether.
 
 `Service.SendAgain` copies a `failed` or `unknown` message
 (`InsertOutgoingMessageCopy`): the same content from the same account, with
@@ -2119,18 +2121,23 @@ UUID, quoted as the IETF draft's Structured Field string or bare), List
 Outgoing Messages, Get Outgoing Message, and Send Message Again
 (`POST /outgoing-messages/{id}/send-again`). A refused account, missing
 recipients, and a refused address answer 422 on their field, e.g.
-`body.cc[2]`; a reused key answers 422 `idempotency-key-reused`.
+`body.cc[2]`; a reused key answers 422 `idempotency-key-reused`. Over the
+send limit answers 429 `send-throttled` with `Retry-After`. Another
+member's message, or a missing one, answers 404
+`outgoing-message-not-found`, and sending again a message that is
+`waiting`, `sending`, or `sent` answers 409 `not-sendable-again`.
 
 The send builds the MIME message from the saved row with go-message:
 `From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the
 creation time in UTC as `Date`, the saved ID as both `Message-ID` and
 `X-Inbok-Message-Id`, and quoted-printable UTF-8 `text/plain`. Gmail
 replaces the `Message-ID` with its own, which synchronized mail keeps as
-`internet_message_id`; providers that keep a client's send the saved one. A subject holding `=?` is encoded
-whole, so a reader shows it as typed rather than decoding it. The same row
-gives the same bytes on every worker. Building checks again each value that
-becomes a header (the recipients, `From`, the subject, the ID),
-so none can add one, whatever wrote the row; it does not apply the limits
+`internet_message_id`; providers that keep a client's send the saved one.
+A subject holding `=?` is encoded whole, so a reader shows it as typed
+rather than decoding it. The same row gives the same bytes on every
+worker. Building checks again each value that becomes a header (the
+recipients, `From`, the subject, the ID), so none can add one, whatever
+wrote the row; it does not apply the limits
 again, so lowering one leaves saved messages sendable. ADR006 records these
 choices.
 
