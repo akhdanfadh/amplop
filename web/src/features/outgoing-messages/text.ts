@@ -1,12 +1,15 @@
 import type { OutgoingMessageSummary, ProblemType } from "@/api/generated/model";
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
+import type { LeaveWarningText } from "@/components/leave-warning";
 
 type Status = OutgoingMessageSummary["status"];
 type Failure = NonNullable<OutgoingMessageSummary["failure"]>;
 
 const notFound = 404;
 const conflict = 409;
+const unprocessable = 422;
+const keyReusedType: ProblemType = "/api/v0/problems/idempotency-key-reused";
 const needsReconnectType: ProblemType = "/api/v0/problems/sending-account-needs-reconnect";
 const notSendableAgainType: ProblemType = "/api/v0/problems/not-sendable-again";
 const messageNotFoundType: ProblemType = "/api/v0/problems/outgoing-message-not-found";
@@ -88,6 +91,12 @@ export function reconnectAdvised(message: Pick<MessageState, "failure">): boolea
   return message.failure === "needs-reconnect" || message.failure === "token-unreadable";
 }
 
+// keyReused reports whether err is the API's refusal of an Idempotency-Key
+// that saved another message: an earlier try's, before the member's edits.
+export function keyReused(err: ApiError | null): boolean {
+  return err?.status === unprocessable && err.problem?.type === keyReusedType;
+}
+
 // needsReconnect reports whether err is the API's refusal of an account
 // that must be reconnected before it sends.
 export function needsReconnect(err: ApiError | null): boolean {
@@ -103,6 +112,12 @@ export function sendableAgain(message: MessageState): boolean {
   return message.status === "failed" && message.failure !== "refused";
 }
 
+// editable reports whether the member is offered to edit message into a
+// new one: a refused message, which sending again would not fix.
+export function editable(message: MessageState): boolean {
+  return message.status === "failed" && message.failure === "refused";
+}
+
 // recipientSummary names the first recipient of a message and how many
 // others it has, e.g. "ana@example.com and 2 others".
 export function recipientSummary(
@@ -114,6 +129,19 @@ export function recipientSummary(
   const others = all.length - 1;
   if (others === 0) return first;
   return `${first} and ${others} ${others === 1 ? "other" : "others"}`;
+}
+
+// sendErrorMessage words a Send Message that failed.
+export function sendErrorMessage(err: ApiError): string {
+  if (err.status === unprocessable && err.problem?.type === keyReusedType)
+    return "An earlier try may have saved this message before your last edits. Check the Outbox before sending again.";
+  if (uncertainOutcome(err))
+    // The request's Idempotency-Key makes a repeat return what the first saved.
+    return uncertainMessage(
+      err,
+      "We couldn't confirm whether your message was saved. Sending again is safe: it won't be sent twice.",
+    );
+  return userMessage(err);
 }
 
 // sendAgainErrorMessage words a Send Message Again that failed.
@@ -135,4 +163,48 @@ export function sendAgainErrorMessage(err: ApiError): string {
 export function readErrorMessage(err: ApiError): string {
   if (err.status === notFound && err.problem?.type === messageNotFoundType) return messageGone;
   return `Could not load this message. ${userMessage(err)}`;
+}
+
+// What leaving the compose form asks: while it saves; after a try that may
+// have saved the message; or with typed input that was surely not sent.
+const leaveSending: LeaveWarningText = {
+  title: "Leave while sending?",
+  description:
+    "Your message is still being saved. If you leave, check the Outbox to see whether it was.",
+  stay: "Stay",
+  leave: "Leave",
+  leaveVariant: "default",
+};
+const leaveUnconfirmed: LeaveWarningText = {
+  title: "Leave without checking?",
+  description:
+    "An earlier try may have saved this message, and it may be sent. Check the Outbox before writing it again.",
+  stay: "Stay",
+  leave: "Leave",
+  leaveVariant: "default",
+};
+const leaveTyped: LeaveWarningText = {
+  title: "Discard this message?",
+  description: "It hasn't been sent, and what you typed will be lost.",
+  stay: "Keep editing",
+  leave: "Discard",
+  leaveVariant: "destructive",
+};
+
+// mayHaveSaved reports whether err leaves a message possibly saved: a lost
+// answer, or a key an earlier try used before the member's edits.
+export function mayHaveSaved(err: ApiError): boolean {
+  return uncertainOutcome(err) || keyReused(err);
+}
+
+// The state of the compose form that decides what leaving it asks: a send
+// running; an earlier try that may have saved the message; or typed input
+// that surely was not sent.
+export type LeaveState = "sending" | "unconfirmed" | "typed";
+
+// leaveText returns what leaving the compose form asks in state.
+export function leaveText(state: LeaveState): LeaveWarningText {
+  if (state === "sending") return leaveSending;
+  if (state === "unconfirmed") return leaveUnconfirmed;
+  return leaveTyped;
 }

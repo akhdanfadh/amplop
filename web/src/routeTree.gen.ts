@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ComposeRouteImport } from './routes/compose'
 import { Route as ConnectedAccountsRouteImport } from './routes/connected-accounts'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as MembersRouteImport } from './routes/members'
@@ -28,6 +29,11 @@ import { Route as RegisterCompleteRouteImport } from './routes/register/complete
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComposeRoute = ComposeRouteImport.update({
+  id: '/compose',
+  path: '/compose',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectedAccountsRoute = ConnectedAccountsRouteImport.update({
@@ -103,6 +109,7 @@ const RegisterCompleteRoute = RegisterCompleteRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/compose': typeof ComposeRoute
   '/connected-accounts': typeof ConnectedAccountsRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/members': typeof MembersRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/compose': typeof ComposeRoute
   '/connected-accounts': typeof ConnectedAccountsRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/members': typeof MembersRoute
@@ -138,6 +146,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/compose': typeof ComposeRoute
   '/connected-accounts': typeof ConnectedAccountsRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/members': typeof MembersRoute
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/compose'
     | '/connected-accounts'
     | '/forgot-password'
     | '/members'
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/compose'
     | '/connected-accounts'
     | '/forgot-password'
     | '/members'
@@ -191,6 +202,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/compose'
     | '/connected-accounts'
     | '/forgot-password'
     | '/members'
@@ -209,6 +221,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ComposeRoute: typeof ComposeRoute
   ConnectedAccountsRoute: typeof ConnectedAccountsRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   MembersRoute: typeof MembersRoute
@@ -232,6 +245,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compose': {
+      id: '/compose'
+      path: '/compose'
+      fullPath: '/compose'
+      preLoaderRoute: typeof ComposeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connected-accounts': {
@@ -337,6 +357,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ComposeRoute: ComposeRoute,
   ConnectedAccountsRoute: ConnectedAccountsRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   MembersRoute: MembersRoute,

@@ -2,7 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 import type { OutgoingMessageSummary, ProblemType } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
 import {
+  editable,
   inProgress,
+  keyReused,
+  leaveText,
+  mayHaveSaved,
   needsReconnect,
   reconnectAdvised,
   statusLabel,
@@ -10,6 +14,7 @@ import {
   readErrorMessage,
   recipientSummary,
   sendAgainErrorMessage,
+  sendErrorMessage,
   sendableAgain,
   statusText,
   type MessageState,
@@ -71,7 +76,7 @@ describe("statusText", () => {
   });
 });
 
-describe("sendableAgain", () => {
+describe("sendableAgain and editable", () => {
   it("offers Send again for unknown and failed messages, except refused ones", () => {
     expect(sendableAgain({ ...waiting, status: "unknown" })).toBe(true);
     expect(sendableAgain(failed("gave-up"))).toBe(true);
@@ -84,6 +89,11 @@ describe("sendableAgain", () => {
     const copy = "0b9f3a52-5f1d-4a8e-9a43-5f0c2b6b1c11";
     expect(sendableAgain({ ...failed("gave-up"), sentAgainAs: copy })).toBe(false);
   });
+
+  it("offers editing only a refused message", () => {
+    expect(editable(failed("refused"))).toBe(true);
+    expect(editable(failed("gave-up"))).toBe(false);
+  });
 });
 
 describe("recipientSummary", () => {
@@ -94,6 +104,26 @@ describe("recipientSummary", () => {
     [{ to: ["a@x.io", "b@x.io"], cc: [], bcc: ["c@x.io"] }, "a@x.io and 2 others"],
   ])("summarizes %j", (lists, summary) => {
     expect(recipientSummary(lists)).toBe(summary);
+  });
+});
+
+describe("sendErrorMessage", () => {
+  it("asks for a look at the Outbox when the key saved another message", () => {
+    expect(sendErrorMessage(problem(422, "/api/v0/problems/idempotency-key-reused"))).toBe(
+      "An earlier try may have saved this message before your last edits. Check the Outbox before sending again.",
+    );
+  });
+
+  it("says sending again is safe after a lost answer", () => {
+    expect(sendErrorMessage(new ApiError("network", { method: "POST" }))).toBe(
+      "We couldn't confirm whether your message was saved. Sending again is safe: it won't be sent twice.",
+    );
+  });
+
+  it("keeps the server's explanation of a refusal", () => {
+    expect(sendErrorMessage(problem(409, "/api/v0/problems/sending-account-needs-reconnect"))).toBe(
+      "The server's detail.",
+    );
   });
 });
 
@@ -158,6 +188,35 @@ describe("status helpers", () => {
     expect(needsReconnect(problem(409, reconnect))).toBe(true);
     expect(needsReconnect(problem(422, reconnect))).toBe(false);
     expect(needsReconnect(null)).toBe(false);
+    expect(keyReused(problem(422, "/api/v0/problems/idempotency-key-reused"))).toBe(true);
+    expect(keyReused(problem(409, "/api/v0/problems/idempotency-key-reused"))).toBe(false);
+  });
+});
+
+describe("leaveText", () => {
+  it("asks to stay while a send is saving", () => {
+    expect(leaveText("sending").title).toBe("Leave while sending?");
+  });
+
+  it("warns that an earlier try may have saved the message", () => {
+    const text = leaveText("unconfirmed");
+    expect(text.description).toContain("may have saved this message");
+    expect(text.leaveVariant).toBe("default");
+  });
+
+  it("says typed input is lost when nothing was saved", () => {
+    expect(leaveText("typed")).toMatchObject({ leave: "Discard", leaveVariant: "destructive" });
+  });
+});
+
+describe("mayHaveSaved", () => {
+  it("is true for a lost answer and a key an earlier try used", () => {
+    expect(mayHaveSaved(new ApiError("network", { method: "POST" }))).toBe(true);
+    expect(mayHaveSaved(problem(422, "/api/v0/problems/idempotency-key-reused"))).toBe(true);
+  });
+
+  it("is false for a refusal that saved nothing", () => {
+    expect(mayHaveSaved(problem(422, "/api/v0/problems/validation-error"))).toBe(false);
   });
 });
 
@@ -170,6 +229,7 @@ describe("errors with a wait", () => {
       receivedAt: Date.UTC(2026, 10, 10, 10, 0, 0),
       problem: { type: "/api/v0/problems/send-throttled", status: 429, title: "Too many messages" },
     });
+    expect(sendErrorMessage(err)).toMatch(/^Too many messages\. Try again after /);
     expect(sendAgainErrorMessage(err)).toMatch(/^Too many messages\. Try again after /);
   });
 });

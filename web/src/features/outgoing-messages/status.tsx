@@ -20,9 +20,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { formatReceived } from "@/features/messages/text";
 import {
+  editable,
   needsReconnect,
   reconnectAdvised,
   sendAgainErrorMessage,
@@ -39,9 +40,10 @@ const buttonClass = `h-auto min-h-11 w-fit whitespace-normal ${focusClass}`;
 const linkClass = `inline-flex min-h-11 items-center underline underline-offset-4 ${focusClass}`;
 
 // MessageStatus shows what happened to message and what the member can do
-// next: send it again, or open the copy it was sent again as. current is
-// the sending account's address now, when known. onSentAgain receives the
-// copy a Send again saved; onUnauthorized runs on a 401.
+// next: send it again, edit it into a new message, or open the copy it was
+// sent again as. current is the sending account's address now, when known.
+// onSentAgain receives the copy a Send again saved; onUnauthorized runs on
+// a 401.
 export function MessageStatus({
   message,
   current,
@@ -160,6 +162,15 @@ export function MessageStatus({
           >
             {again.isPending ? "Sending again..." : "Send again"}
           </Button>
+        )}
+        {editable(message) && (
+          <Link
+            to="/compose"
+            search={{ edit: message.id }}
+            className={buttonVariants({ className: buttonClass })}
+          >
+            Edit and send
+          </Link>
         )}
         {reconnect && (
           <Link to="/connected-accounts" className={linkClass}>

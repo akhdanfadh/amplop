@@ -119,6 +119,9 @@ Put shared code in the folder for its responsibility:
 - `src/features/messages`: the message view, its HTML and plain-text
   bodies, sizing the body's frame, plain-text links, and the header's
   wording.
+- `src/features/outgoing-messages`: the compose form and its schema, the
+  Outbox list, one message's status with Send again and Edit and send, and
+  their wording.
 - `src/components`: shared components, such as the password input and the
   request error under a form. `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -384,20 +387,60 @@ immediately despite the browser's offline indicator; editing or leaving the
 form invalidates their result. The original health
 and probe demo remains available at `/probe`.
 
-Every signed-in page also links Outbox (`/outbox`), until the mail layout
-gives sending its own place. The Outbox lists the member's newest 50
-messages from inbok, newest first, with each status, and reads the list
-again every 5 seconds while one is waiting or sending. Each opens its own
-page at `/outbox/$id`, which reads only an ID that is a UUID, since the
-client puts it in the API's path as is. The page shows the status above
-the message, read again every 2 seconds until the send ends, and announces
-it, first after the page has rendered. A failed reread stops the polling
-and says the status may be out of date, with Try again. A failed message
-says why and what to do, and an `unknown` one says to check the account's
-Sent folder in Gmail. Send again copies a failed or unknown message into a
-new one from the same account and opens it; for an `unknown` message it
-asks first, since the first may have gone out. A message is sent again at
-most once, so its page then links the copy instead.
+Every signed-in page also links New message (`/compose`) and Outbox
+(`/outbox`), until the mail layout gives sending its own place. The
+compose form sends from one of the member's connected accounts, chosen in
+From and shown by its address. From starts with none chosen, so the member
+picks the address recipients see; Edit and send keeps the opened message's
+account while it can send. One that needs reconnecting is listed but can't
+be chosen, and a member with no usable account gets a link to Connected
+accounts instead. Once shown, the form stays, even if a later read finds
+no usable account, so typed input is never dropped; a 401 then, e.g. a
+session ended from another tab, keeps the form too, with an alert to copy
+what was typed and sign in, and the leave warning still asks before going.
+To, Cc, and Bcc each take bare addresses separated by commas, semicolons,
+or spaces, at most 100 per list, with at least one recipient in all. A
+refused address is named in its field's error. `/compose?edit=<id>` starts
+the form with that message's content as a new message, saying the opened
+one stays as it is and asking for another account when the message's own
+can't send; `composeSearch` drops an `edit` that is not a UUID, so the
+form starts empty. Each `edit`, or none, gets a form of its own.
+
+Leaving the form asks first: a link, Back, or Forward opens a dialog
+(`LeaveWarning`, `components/leave-warning.tsx`, on TanStack Router's
+`useBlocker`), and closing or reloading the tab gets the browser's own
+question, the only one a page may show there. With typed input it offers
+"Keep editing" and "Discard"; while the message is being saved, or after a
+try whose answer was lost, it says the message may have been saved and to
+check the Outbox, from then on, even after edits and with nothing typed.
+Send saves the message, which the server sends in the background, and
+opens its page.
+
+Each message the form sends carries an `Idempotency-Key`: a UUID made when
+the form opens, sent as a quoted string, and kept for every try of that
+message, so a repeated request returns the message the first one saved
+instead of saving another. The form therefore retries a lost answer by
+itself, and after an answer it never got, sending again is safe. After
+edits, the server refuses the key if an earlier try saved the old content;
+the form then asks the member to check the Outbox, and the next Send uses
+a new key, as a new message. A refusal because the account needs
+reconnecting rereads the accounts and links Connected accounts.
+
+The Outbox lists the member's newest 50 messages from inbok, newest first,
+with each status, and reads the list again every 5 seconds while one is
+waiting or sending; its New message button opens the compose form. Each
+opens its own page at `/outbox/$id`, which reads only an ID that is a
+UUID, since the client puts it in the API's path as is. The page shows the
+status above the message, read again every 2 seconds until the send ends,
+and announces it, first after the page has rendered. A failed reread stops
+the polling and says the status may be out of date, with Try again. A
+failed message says why and what to do, and an `unknown` one says to check
+the account's Sent folder in Gmail. Send again copies a failed or unknown
+message into a new one from the same account and opens it; for an
+`unknown` message it asks first, since the first may have gone out. A
+message is sent again at most once, so its page then links the copy
+instead. A message Gmail refused offers Edit and send instead, which opens
+the compose form filled with its content, as a new message.
 
 ## Message view
 
@@ -627,9 +670,9 @@ reads do not retry. HTTP 408 and 504 responses are separate from a local timeout
 and remain eligible for retries.
 The default applies to reads; writes have automatic retry explicitly disabled.
 An operation must guarantee safe repetition before opting into write retries.
-Such an operation opts in with `repeatableWriteRetry` from
-`src/api/retry.ts`: the same failures and waits as a read, each attempt
-with the same payload and key.
+Send Message (with its `Idempotency-Key`) and Send Message Again do, and
+opt in with `repeatableWriteRetry` from `src/api/retry.ts`: the same
+failures and waits as a read, each attempt with the same payload and key.
 
 Writes use `networkMode: "always"` with `retry: false`. Query attempts them even
 when its browser connectivity indicator says offline. That indicator can be

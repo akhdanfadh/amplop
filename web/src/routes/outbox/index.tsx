@@ -1,9 +1,10 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useGetCurrentSession, useListOutgoingMessages } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
 import { AccountNav } from "@/components/account-nav";
+import { buttonVariants } from "@/components/ui/button";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { OutgoingMessageList } from "@/features/outgoing-messages/list";
 import { ReadError } from "@/components/read-error";
@@ -51,9 +52,20 @@ function Outbox(): ReactElement {
     <>
       <AccountNav account={current.data?.data} />
       <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-        <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-          Outbox
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
+            Outbox
+          </h1>
+          <Link
+            to="/compose"
+            className={buttonVariants({
+              className:
+                "h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid",
+            })}
+          >
+            New message
+          </Link>
+        </div>
         <p>
           The newest 50 messages you sent from inbok, with whether each one was sent. Messages sent
           from Gmail itself aren&apos;t listed.
