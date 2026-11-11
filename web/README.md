@@ -462,6 +462,10 @@ TypeScript 6, install the `TypeScriptTeam.native-preview` extension.
 
 ## Styling and components
 
+How screens look, are laid out, and are worded (tokens, components,
+layout, patterns, wording) is in [DESIGN.md](DESIGN.md); read it before
+changing any screen.
+
 Styling uses [Tailwind CSS](https://tailwindcss.com): utility classes in
 `className`, generated from `src/styles.css`. `pnpm fix` sorts them in
 Tailwind's recommended order. For class autocomplete, install the

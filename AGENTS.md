@@ -7,6 +7,7 @@ the area you change before editing it:
 - Go code: `backend/README.md`, especially Package layout and Adding a
   feature.
 - Web code: `web/README.md`.
+- A screen, component, or interface text: `web/DESIGN.md`.
 - Setup, Make commands, or an API change: `CONTRIBUTING.md`.
 
 ## Done
