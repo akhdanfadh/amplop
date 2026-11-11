@@ -186,10 +186,12 @@ const leaveSending: LeaveWarningText = {
   leave: "Leave",
   leaveVariant: "default",
 };
+// The member may be leaving to check the Outbox, as the error says, so this
+// does not assume where they go.
 const leaveUnconfirmed: LeaveWarningText = {
-  title: "Leave without checking?",
+  title: "Leave this page?",
   description:
-    "An earlier try may have saved this message, and it may be sent. Check the Outbox before writing it again.",
+    "An earlier try may have saved this message, and it may be sent. What you typed here won't be kept.",
   stay: "Stay",
   leave: "Leave",
   leaveVariant: "default",

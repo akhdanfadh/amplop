@@ -289,6 +289,14 @@ export function ComposeForm({
       </Button>
 
       <RequestError errors={summary} requestId={send.error?.requestId}>
+        {/* A new tab lets the member check without losing the edits here. */}
+        {keyReused(send.error) && (
+          <p>
+            <Link to="/outbox" target="_blank" className={linkClass}>
+              Open the Outbox in a new tab
+            </Link>
+          </p>
+        )}
         {reconnect && (
           <p>
             <Link to="/connected-accounts" className={linkClass}>

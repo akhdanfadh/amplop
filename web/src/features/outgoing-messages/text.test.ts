@@ -205,10 +205,17 @@ describe("leaveText", () => {
     expect(leaveText("sending").title).toBe("Leave while sending?");
   });
 
-  it("warns that an earlier try may have saved the message", () => {
-    const text = leaveText("unconfirmed");
-    expect(text.description).toContain("may have saved this message");
-    expect(text.leaveVariant).toBe("default");
+  // Its error sends the member to the Outbox, so the question must not
+  // assume they leave without checking: it fits any destination.
+  it("warns that an earlier try may have saved the message, wherever the member goes", () => {
+    expect(leaveText("unconfirmed")).toEqual({
+      title: "Leave this page?",
+      description:
+        "An earlier try may have saved this message, and it may be sent. What you typed here won't be kept.",
+      stay: "Stay",
+      leave: "Leave",
+      leaveVariant: "default",
+    });
   });
 
   it("says typed input is lost when nothing was saved", () => {

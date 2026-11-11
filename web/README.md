@@ -411,9 +411,11 @@ Leaving the form asks first: a link, Back, or Forward opens a dialog
 (`LeaveWarning`, `components/leave-warning.tsx`, on TanStack Router's
 `useBlocker`), and closing or reloading the tab gets the browser's own
 question, the only one a page may show there. With typed input it offers
-"Keep editing" and "Discard"; while the message is being saved, or after a
-try whose answer was lost, it says the message may have been saved and to
-check the Outbox, from then on, even after edits and with nothing typed.
+"Keep editing" and "Discard"; while the message is being saved, it says to
+check the Outbox; after a try whose answer was lost, from then on, even
+after edits and with nothing typed, it says an earlier try may have saved
+the message and that what was typed won't be kept, without assuming where
+the member goes, who may be going to check.
 Send saves the message, which the server sends in the background, and
 opens its page.
 
@@ -423,8 +425,9 @@ message, so a repeated request returns the message the first one saved
 instead of saving another. The form therefore retries a lost answer by
 itself, and after an answer it never got, sending again is safe. After
 edits, the server refuses the key if an earlier try saved the old content;
-the form then asks the member to check the Outbox, and the next Send uses
-a new key, as a new message. A refusal because the account needs
+the form then asks the member to check the Outbox, with a link that opens
+it in a new tab so the edits stay, and the next Send uses a new key, as a
+new message. A refusal because the account needs
 reconnecting rereads the accounts and links Connected accounts.
 
 The Outbox lists the member's newest 50 messages from inbok, newest first,
