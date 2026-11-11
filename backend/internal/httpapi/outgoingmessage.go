@@ -132,6 +132,9 @@ func outgoingMessageProblem(err error) error {
 		return newProblem(http.StatusNotFound, outgoingMessageNotFoundType, "Message not found", "The message does not exist.")
 	case errors.Is(err, outgoingmessage.ErrNeedsReconnect):
 		return newProblem(http.StatusConflict, sendingAccountNeedsReconnectType, "Account needs reconnecting", "Google stopped accepting the sending account's permission. Reconnect it to send.")
+	// The same type: either way the member reconnects the account.
+	case errors.Is(err, outgoingmessage.ErrTokenUnreadable):
+		return newProblem(http.StatusConflict, sendingAccountNeedsReconnectType, "Account needs reconnecting", "inbok can't open the permission it saved for the sending account. Reconnect it to send.")
 	case errors.Is(err, outgoingmessage.ErrThrottled):
 		return retryAfterProblem(newProblem(http.StatusTooManyRequests, sendThrottledType, "Too many messages", "Too many messages were sent recently."), err)
 	// The member was deactivated after the session was checked.
@@ -155,8 +158,11 @@ func outgoingMessageResponses(api huma.API, statuses ...int) map[string]*huma.Re
 // sendResponses adds the failures every send shares to responses.
 func sendResponses(responses map[string]*huma.Response) {
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
-	conflict.Description = "Google stopped accepting the sending account's permission, so nothing is sent from it until it is reconnected."
-	conflict.Content[problemContentType].Example = outgoingMessageProblem(outgoingmessage.ErrNeedsReconnect)
+	conflict.Description = "The sending account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Nothing is sent from it until its permission is usable again."
+	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
+		"needsReconnect":  {Value: outgoingMessageProblem(outgoingmessage.ErrNeedsReconnect)},
+		"tokenUnreadable": {Value: outgoingMessageProblem(outgoingmessage.ErrTokenUnreadable)},
+	}
 
 	throttled := responses[strconv.Itoa(http.StatusTooManyRequests)]
 	throttled.Description = "Too many messages were sent recently."
@@ -399,12 +405,7 @@ func sendAgainResponses(api huma.API) map[string]*huma.Response {
 	// A second 409 meaning, with its own type.
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
 	conflict.Description += " Or the message is waiting, sending, or sent, so only a failed or unknown one is sent again."
-	media := conflict.Content[problemContentType]
-	media.Examples = map[string]*huma.Example{
-		"needsReconnect":   {Value: media.Example},
-		"notSendableAgain": {Value: sendAgainProblem(outgoingmessage.ErrNotSendableAgain)},
-	}
-	media.Example = nil
+	conflict.Content[problemContentType].Examples["notSendableAgain"] = &huma.Example{Value: sendAgainProblem(outgoingmessage.ErrNotSendableAgain)}
 	return responses
 }
 

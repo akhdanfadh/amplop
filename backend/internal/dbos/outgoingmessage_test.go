@@ -279,7 +279,8 @@ func TestClientOutgoingRollback(t *testing.T) {
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT id FROM users WHERE email = 'admin@example.com'").Scan(&member))
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	require.NoError(t, err)
-	account, err := connectedaccount.NewService(db, ring).Connect(t.Context(), member,
+	accounts := connectedaccount.NewService(db, ring)
+	account, err := accounts.Connect(t.Context(), member,
 		connectedaccount.Identity{Subject: "100000000000000000001", Email: "alex@example.com"}, "refresh-secret-1")
 	require.NoError(t, err)
 	_, err = conn.Exec(t.Context(), `CREATE FUNCTION reject_message() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'message rejected'; END $$`)
@@ -288,7 +289,7 @@ func TestClientOutgoingRollback(t *testing.T) {
 	require.NoError(t, err)
 
 	// When the member sends a message.
-	_, err = outgoingmessage.NewService(db, time.Now).Create(t.Context(), member, outgoingmessage.Draft{
+	_, err = outgoingmessage.NewService(db, accounts, time.Now).Create(t.Context(), member, outgoingmessage.Draft{
 		ConnectedAccountID: account.ID,
 		IdempotencyKey:     uuid.New(),
 		Content:            outgoingmessage.Content{To: []string{"blair@example.com"}, Subject: "Lunch", Body: "Friday?"},
@@ -313,12 +314,13 @@ func TestClientOutgoingMessage(t *testing.T) {
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT id FROM users WHERE email = 'admin@example.com'").Scan(&member))
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	require.NoError(t, err)
-	account, err := connectedaccount.NewService(db, ring).Connect(t.Context(), member,
+	accounts := connectedaccount.NewService(db, ring)
+	account, err := accounts.Connect(t.Context(), member,
 		connectedaccount.Identity{Subject: "100000000000000000001", Email: "alex@example.com"}, "refresh-secret-1")
 	require.NoError(t, err)
 
 	// When the member sends a message.
-	message, err := outgoingmessage.NewService(db, time.Now).Create(t.Context(), member, outgoingmessage.Draft{
+	message, err := outgoingmessage.NewService(db, accounts, time.Now).Create(t.Context(), member, outgoingmessage.Draft{
 		ConnectedAccountID: account.ID,
 		IdempotencyKey:     uuid.New(),
 		Content:            outgoingmessage.Content{To: []string{"blair@example.com"}, Subject: "Lunch", Body: "Friday?"},

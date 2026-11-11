@@ -3058,18 +3058,30 @@
           "409": {
             "content": {
               "application/problem+json": {
-                "example": {
-                  "type": "/api/v0/problems/sending-account-needs-reconnect",
-                  "status": 409,
-                  "title": "Account needs reconnecting",
-                  "detail": "Google stopped accepting the sending account's permission. Reconnect it to send."
+                "examples": {
+                  "needsReconnect": {
+                    "value": {
+                      "type": "/api/v0/problems/sending-account-needs-reconnect",
+                      "status": 409,
+                      "title": "Account needs reconnecting",
+                      "detail": "Google stopped accepting the sending account's permission. Reconnect it to send."
+                    }
+                  },
+                  "tokenUnreadable": {
+                    "value": {
+                      "type": "/api/v0/problems/sending-account-needs-reconnect",
+                      "status": 409,
+                      "title": "Account needs reconnecting",
+                      "detail": "inbok can't open the permission it saved for the sending account. Reconnect it to send."
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Google stopped accepting the sending account's permission, so nothing is sent from it until it is reconnected."
+            "description": "The sending account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Nothing is sent from it until its permission is usable again."
           },
           "422": {
             "content": {
@@ -3350,6 +3362,14 @@
                       "title": "Message not sendable again",
                       "detail": "Only a failed message, or one whose outcome is unknown, can be sent again."
                     }
+                  },
+                  "tokenUnreadable": {
+                    "value": {
+                      "type": "/api/v0/problems/sending-account-needs-reconnect",
+                      "status": 409,
+                      "title": "Account needs reconnecting",
+                      "detail": "inbok can't open the permission it saved for the sending account. Reconnect it to send."
+                    }
                   }
                 },
                 "schema": {
@@ -3357,7 +3377,7 @@
                 }
               }
             },
-            "description": "Google stopped accepting the sending account's permission, so nothing is sent from it until it is reconnected. Or the message is waiting, sending, or sent, so only a failed or unknown one is sent again."
+            "description": "The sending account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Nothing is sent from it until its permission is usable again. Or the message is waiting, sending, or sent, so only a failed or unknown one is sent again."
           },
           "429": {
             "content": {

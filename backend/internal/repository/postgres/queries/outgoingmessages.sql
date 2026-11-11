@@ -2,7 +2,9 @@
 -- The key share lock keeps the account from being deleted, and with it the
 -- message about to be saved, until the transaction ends; it does not wait
 -- for a token being replaced.
-SELECT id, email, (needs_reconnect_since IS NOT NULL)::boolean AS needs_reconnect
+-- The credential lets the service refuse an account whose token no key opens.
+SELECT id, email, (needs_reconnect_since IS NOT NULL)::boolean AS needs_reconnect,
+    refresh_token_key_id, refresh_token_ciphertext
 FROM connected_accounts
 WHERE id = @id AND user_id = @user_id
 FOR KEY SHARE;

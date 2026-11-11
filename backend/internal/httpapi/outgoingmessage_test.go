@@ -198,6 +198,7 @@ func TestSendMessageRefused(t *testing.T) {
 		input      map[string]any
 	}{
 		{"needs reconnect", outgoingmessage.ErrNeedsReconnect, http.StatusConflict, sendingAccountNeedsReconnectType, "", nil},
+		{"token unreadable", outgoingmessage.ErrTokenUnreadable, http.StatusConflict, sendingAccountNeedsReconnectType, "", nil},
 		{"throttled", throttled, http.StatusTooManyRequests, sendThrottledType, "90", nil},
 		{"key reused", outgoingmessage.ErrKeyReused, http.StatusUnprocessableEntity, idempotencyKeyReusedType, "", nil},
 		{"deactivated meanwhile", outgoingmessage.ErrDeactivated, http.StatusUnauthorized, unauthenticatedType, "", nil},
@@ -318,6 +319,7 @@ func TestSendMessageAgainRefused(t *testing.T) {
 	}{
 		{"not failed", outgoingmessage.ErrNotSendableAgain, http.StatusConflict, notSendableAgainType, ""},
 		{"needs reconnect", outgoingmessage.ErrNeedsReconnect, http.StatusConflict, sendingAccountNeedsReconnectType, ""},
+		{"token unreadable", outgoingmessage.ErrTokenUnreadable, http.StatusConflict, sendingAccountNeedsReconnectType, ""},
 		{"not found", outgoingmessage.ErrNotFound, http.StatusNotFound, outgoingMessageNotFoundType, ""},
 		{"throttled", throttled, http.StatusTooManyRequests, sendThrottledType, "90"},
 		{"deactivated meanwhile", outgoingmessage.ErrDeactivated, http.StatusUnauthorized, unauthenticatedType, ""},

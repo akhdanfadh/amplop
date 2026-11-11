@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"inbok/internal/connectedaccount"
 	"inbok/internal/outgoingmessage"
 	"inbok/internal/repository/postgres/sqlc"
 )
@@ -71,7 +72,7 @@ func (db *DB) InsertOutgoingMessage(ctx context.Context, attempt outgoingmessage
 		}
 
 		// 4. Let build decide.
-		sender := outgoingmessage.Sender{ConnectedAccountID: account.ID, Email: account.Email, NeedsReconnect: account.NeedsReconnect}
+		sender := senderFromRow(account)
 		next, err := build(outgoingmessage.CreateState{Sender: sender, Attempts: attempts})
 		if err != nil {
 			return err
@@ -161,7 +162,7 @@ func (db *DB) InsertOutgoingMessageCopy(ctx context.Context, attempt outgoingmes
 		}
 
 		// 4. Let build decide.
-		sender := outgoingmessage.Sender{ConnectedAccountID: account.ID, Email: account.Email, NeedsReconnect: account.NeedsReconnect}
+		sender := senderFromRow(account)
 		next, err := build(outgoingmessage.CopyState{Original: original, Sender: sender, Attempts: attempts})
 		if err != nil {
 			return err
@@ -473,4 +474,14 @@ func recipientsFromJSON(raw []byte) ([]string, error) {
 		addresses = append(addresses, recipient.Address)
 	}
 	return addresses, nil
+}
+
+// senderFromRow converts a locked sending account to the sender it is.
+func senderFromRow(row sqlc.LockOutgoingMessageSenderRow) outgoingmessage.Sender {
+	return outgoingmessage.Sender{
+		ConnectedAccountID: row.ID,
+		Email:              row.Email,
+		NeedsReconnect:     row.NeedsReconnect,
+		Credential:         connectedaccount.Credential{KeyID: row.RefreshTokenKeyID, Ciphertext: row.RefreshTokenCiphertext},
+	}
 }

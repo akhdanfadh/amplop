@@ -864,8 +864,8 @@ key also makes the Gmail refresh tokens it sealed unreadable: Gmail work
 for those accounts fails with `connectedaccount.ErrTokenUnreadable` until
 each member reconnects the account, which seals a new token with the first
 key. Listing accounts opens each token to tell (`token-unreadable`), so
-the Connected accounts page marks such an account and offers Reconnect.
-Nothing is saved about it, since a server started
+the Connected accounts page marks such an account and offers Reconnect,
+and sending refuses it. Nothing is saved about it, since a server started
 with a wrong key list would otherwise mark every account: restoring the
 key makes the accounts usable again at the next read.
 
@@ -2082,8 +2082,10 @@ It then saves in one transaction (`InsertOutgoingMessage`), in this order:
    free again, and the request is saved as a new one.
 3. It reads the account under a key share lock, so a disconnect waits and
    then deletes the message too. Another member's account, or a missing
-   one, is `ErrAccountNotFound`, and one Google refused is
-   `ErrNeedsReconnect`.
+   one, is `ErrAccountNotFound`, one Google refused is
+   `ErrNeedsReconnect`, and one whose token no configured key opens is
+   `ErrTokenUnreadable` (`connectedaccount.Service.CheckToken`). Both answer
+   409 `sending-account-needs-reconnect`: either way the member reconnects.
 4. The member's send limit, 30 per 15 minutes and 200 per 24 hours across
    their accounts, counts `send_attempts` rows (the member and a time, no
    content). They are kept apart from `outgoing_messages`, whose rows go

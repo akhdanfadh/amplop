@@ -99,7 +99,7 @@ type sendTest struct {
 func newSendTest(t *testing.T) *sendTest {
 	t.Helper()
 	storage := newMemoryStorage()
-	message, err := NewService(storage, func() time.Time { return sendNow }).Create(t.Context(), 3, testDraft())
+	message, err := NewService(storage, keyTokens{}, func() time.Time { return sendNow }).Create(t.Context(), 3, testDraft())
 	require.NoError(t, err)
 	tokens := &fakeTokens{}
 	provider := &fakeProvider{

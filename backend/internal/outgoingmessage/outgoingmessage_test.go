@@ -3,6 +3,7 @@ package outgoingmessage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/attemptlimit"
+	"inbok/internal/connectedaccount"
 )
 
 // memoryAccount is a connected account as storage reads it for a send.
@@ -44,6 +46,7 @@ func newMemoryStorage() *memoryStorage {
 		accounts: map[int64]memoryAccount{
 			5: {userID: 3, sender: Sender{ConnectedAccountID: 5, Email: "me@gmail.com"}},
 			6: {userID: 3, sender: Sender{ConnectedAccountID: 6, Email: "stale@gmail.com", NeedsReconnect: true}},
+			9: {userID: 3, sender: Sender{ConnectedAccountID: 9, Email: "lost@gmail.com", Credential: connectedaccount.Credential{KeyID: lostKeyID}}},
 			8: {userID: 4, sender: Sender{ConnectedAccountID: 8, Email: "other@gmail.com"}},
 		},
 		keys:     map[memoryKey]uuid.UUID{},
@@ -165,9 +168,23 @@ func (m *memoryStorage) ListOutgoingMessages(_ context.Context, userID int64, li
 // createNow is the clock of every create test.
 var createNow = time.Date(2026, 11, 9, 10, 30, 0, 0, time.UTC)
 
+// lostKeyID is the ID of a key [keyTokens] no longer has.
+const lostKeyID = "lost"
+
+// keyTokens opens every token except one sealed with [lostKeyID], as a key
+// list without that key would.
+type keyTokens struct{}
+
+func (keyTokens) CheckToken(_, _ int64, credential connectedaccount.Credential) error {
+	if credential.KeyID == lostKeyID {
+		return fmt.Errorf("%w: no key %s", connectedaccount.ErrTokenUnreadable, lostKeyID)
+	}
+	return nil
+}
+
 // newTestService returns a service over storage whose clock reads *now.
 func newTestService(storage *memoryStorage, now *time.Time) *Service {
-	return NewService(storage, func() time.Time { return *now })
+	return NewService(storage, keyTokens{}, func() time.Time { return *now })
 }
 
 // testDraft returns a draft from account 5 with a new key.
@@ -215,6 +232,54 @@ func TestCreateNeedsReconnect(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrNeedsReconnect)
 	assert.Empty(t, storage.messages)
+}
+
+// A token no key opens could only fail to send, so it is refused before
+// the limit counts an attempt.
+func TestCreateTokenUnreadable(t *testing.T) {
+	storage := newMemoryStorage()
+	now := createNow
+	service := newTestService(storage, &now)
+
+	_, err := service.Create(t.Context(), 3, Draft{ConnectedAccountID: 9, IdempotencyKey: uuid.New(), Content: testContent()})
+
+	require.ErrorIs(t, err, ErrTokenUnreadable)
+	assert.Empty(t, storage.messages)
+	assert.Empty(t, storage.attempts[3])
+}
+
+// At the limit, the member still hears that the account needs reconnecting,
+// which waiting would not fix.
+func TestCreateTokenUnreadableAtLimit(t *testing.T) {
+	storage := newMemoryStorage()
+	now := createNow
+	service := newTestService(storage, &now)
+	fillAttempts(storage, 3, now, shortSendLimit.Max)
+
+	_, err := service.Create(t.Context(), 3, Draft{ConnectedAccountID: 9, IdempotencyKey: uuid.New(), Content: testContent()})
+
+	require.ErrorIs(t, err, ErrTokenUnreadable)
+	require.NotErrorIs(t, err, ErrThrottled)
+}
+
+// A repeat of a request whose message was saved before the token became
+// unreadable gets that message back: the key is checked before the account.
+func TestCreateRepeatedTokenUnreadable(t *testing.T) {
+	storage := newMemoryStorage()
+	now := createNow
+	service := newTestService(storage, &now)
+	draft := testDraft()
+	first, err := service.Create(t.Context(), 3, draft)
+	require.NoError(t, err)
+	account := storage.accounts[5]
+	account.sender.Credential = connectedaccount.Credential{KeyID: lostKeyID}
+	storage.accounts[5] = account
+
+	again, err := service.Create(t.Context(), 3, draft)
+
+	require.NoError(t, err)
+	assert.Equal(t, first, again)
+	assert.Len(t, storage.messages, 1)
 }
 
 func TestCreateInvalidContent(t *testing.T) {
@@ -463,6 +528,18 @@ func TestSendAgainNeedsReconnect(t *testing.T) {
 	_, err := service.SendAgain(t.Context(), 3, original.ID)
 
 	require.ErrorIs(t, err, ErrNeedsReconnect)
+}
+
+func TestSendAgainTokenUnreadable(t *testing.T) {
+	storage, service, original := sendAgainTest(t, StatusFailed)
+	account := storage.accounts[5]
+	account.sender.Credential = connectedaccount.Credential{KeyID: lostKeyID}
+	storage.accounts[5] = account
+
+	_, err := service.SendAgain(t.Context(), 3, original.ID)
+
+	require.ErrorIs(t, err, ErrTokenUnreadable)
+	assert.Nil(t, storage.messages[0].SentAgainAs)
 }
 
 func TestSendAgainThrottled(t *testing.T) {

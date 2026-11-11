@@ -53,7 +53,7 @@ func newOutgoingMessagesTest(t *testing.T) outgoingMessagesTest {
 	require.NoError(t, err)
 	return outgoingMessagesTest{
 		connectedAccountsTest: c,
-		messages:              outgoingmessage.NewService(c.db, time.Now),
+		messages:              outgoingmessage.NewService(c.db, c.service, time.Now),
 		account:               account.ID,
 		otherAccount:          other.ID,
 	}
@@ -158,7 +158,11 @@ func TestOutgoingMessageSender(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.Equal(t, outgoingmessage.Sender{ConnectedAccountID: o.account, Email: "alex@example.com"}, got.Sender)
+	assert.Equal(t, o.account, got.Sender.ConnectedAccountID)
+	assert.Equal(t, "alex@example.com", got.Sender.Email)
+	assert.False(t, got.Sender.NeedsReconnect)
+	// The sealed token, which the service checks a key still opens.
+	require.NoError(t, o.service.CheckToken(o.member, o.account, got.Sender.Credential))
 	assert.Empty(t, got.Attempts)
 }
 
@@ -283,7 +287,7 @@ func TestOutgoingMessageJob(t *testing.T) {
 // without one.
 func TestOutgoingMessageJobFails(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
-	messages := outgoingmessage.NewService(o.db.WithWorkflows(sendWorkflows{err: errors.New("dbos down")}), time.Now)
+	messages := outgoingmessage.NewService(o.db.WithWorkflows(sendWorkflows{err: errors.New("dbos down")}), o.service, time.Now)
 
 	_, err := messages.Create(t.Context(), o.member, o.draft())
 

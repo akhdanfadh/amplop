@@ -12,6 +12,7 @@ import (
 	"uuid"
 
 	"inbok/internal/attemptlimit"
+	"inbok/internal/connectedaccount"
 )
 
 // Errors a caller shows the member. None includes an address or any other
@@ -26,6 +27,10 @@ var (
 	// ErrNeedsReconnect means Google refused the sending account's token,
 	// so nothing is sent from it until the member reconnects it.
 	ErrNeedsReconnect = errors.New("sending account needs reconnecting")
+	// ErrTokenUnreadable means no configured key opens the sending account's
+	// saved token, so nothing is sent from it until the member reconnects it
+	// or an administrator restores the key.
+	ErrTokenUnreadable = errors.New("sending account's token is unreadable")
 	// ErrDeactivated means the member was deactivated, so they send nothing.
 	ErrDeactivated = errors.New("sending member is deactivated")
 	// ErrThrottled means the member asked to send too many messages recently;
@@ -167,6 +172,9 @@ type Sender struct {
 	Email              string
 	// NeedsReconnect is whether Google refused the account's token.
 	NeedsReconnect bool
+	// Credential is the account's sealed refresh token, only to check that a
+	// key still opens it.
+	Credential connectedaccount.Credential
 }
 
 // NewMessage is a message to save, before it has an ID.
@@ -257,15 +265,26 @@ type Storage interface {
 	ListOutgoingMessages(ctx context.Context, userID int64, limit int) ([]Message, error)
 }
 
+// tokenChecker tells whether a configured key opens an account's saved
+// refresh token; [connectedaccount.Service] does.
+type tokenChecker interface {
+	// CheckToken returns an error wrapping
+	// [connectedaccount.ErrTokenUnreadable] when no key opens credential,
+	// the token of userID's account accountID.
+	CheckToken(userID, accountID int64, credential connectedaccount.Credential) error
+}
+
 // Service applies the rules for outgoing messages.
 type Service struct {
 	storage Storage
+	tokens  tokenChecker
 	now     func() time.Time
 }
 
-// NewService supplies storage and the clock the send limit counts by.
-func NewService(storage Storage, now func() time.Time) *Service {
-	return &Service{storage: storage, now: now}
+// NewService supplies storage, what checks a sending account's token, and
+// the clock the send limit counts by.
+func NewService(storage Storage, tokens tokenChecker, now func() time.Time) *Service {
+	return &Service{storage: storage, tokens: tokens, now: now}
 }
 
 // Create saves draft as userID's message, waiting to be sent, and returns it.
@@ -274,11 +293,11 @@ func NewService(storage Storage, now func() time.Time) *Service {
 //
 // It returns [ErrAccountNotFound] when userID has no account
 // draft.ConnectedAccountID, [ErrNeedsReconnect] when that account needs a
-// reconnect, [ErrKeyReused] when the key saved another message,
-// [ErrDeactivated], an [*attemptlimit.Error] wrapping [ErrThrottled], and
-// the content errors of [Content]'s rules: [ErrNoRecipients], a
-// [*TooManyRecipientsError], a [*RecipientError], [ErrSubjectInvalid], or
-// [ErrBodyInvalid].
+// reconnect, [ErrTokenUnreadable] when no key opens its token,
+// [ErrKeyReused] when the key saved another message, [ErrDeactivated], an
+// [*attemptlimit.Error] wrapping [ErrThrottled], and the content errors of
+// [Content]'s rules: [ErrNoRecipients], a [*TooManyRecipientsError], a
+// [*RecipientError], [ErrSubjectInvalid], or [ErrBodyInvalid].
 func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Message, error) {
 	// 1. Refuse content that cannot be sent before any storage.
 	content, err := parseContent(draft.Content)
@@ -291,6 +310,9 @@ func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Messag
 		// 2. With the member and account held, refuse what would only fail
 		// or go over the limit, and save.
 		message, err := s.storage.InsertOutgoingMessage(ctx, attempt, draft.ConnectedAccountID, draft.IdempotencyKey, func(state CreateState) (NewMessage, error) {
+			if err := s.checkSender(userID, state.Sender); err != nil {
+				return NewMessage{}, err
+			}
 			return newMessage(state.Sender, state.Attempts, attempt.At, content)
 		})
 		if !errors.Is(err, ErrKeyExists) {
@@ -340,7 +362,8 @@ func (s *Service) repeated(ctx context.Context, userID, accountID int64, key uui
 //
 // It returns [ErrNotFound] when userID has no such message,
 // [ErrNotSendableAgain] when it did not end failed or unknown,
-// [ErrNeedsReconnect] when its account needs a reconnect, [ErrDeactivated],
+// [ErrNeedsReconnect] when its account needs a reconnect,
+// [ErrTokenUnreadable] when no key opens its token, [ErrDeactivated],
 // or an [*attemptlimit.Error] wrapping [ErrThrottled].
 func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
 	attempt := s.attempt(userID)
@@ -349,6 +372,9 @@ func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UU
 		// message reached its recipients.
 		if state.Original.Status != StatusFailed && state.Original.Status != StatusUnknown {
 			return NewMessage{}, ErrNotSendableAgain
+		}
+		if err := s.checkSender(userID, state.Sender); err != nil {
+			return NewMessage{}, err
 		}
 		// The account's address now, which a send that failed
 		// sender-changed has saved.
@@ -374,15 +400,30 @@ func (s *Service) attempt(userID int64) Attempt {
 	return Attempt{UserID: userID, At: now, Since: now.Add(-longSendLimit.Window)}
 }
 
-// newMessage returns content as a message to save from sender, or
-// [ErrNeedsReconnect] when Google refused sender's token, or an
+// checkSender returns [ErrNeedsReconnect] when Google refused userID's
+// sender's token, [ErrTokenUnreadable] when no key opens it, and nil when a
+// send from it can go out.
+//
+// DESIGN: both refusals come before the send limit: a send would only fail,
+// so the member hears it now and reconnects, and the attempt is not
+// counted.
+func (s *Service) checkSender(userID int64, sender Sender) error {
+	if sender.NeedsReconnect {
+		return ErrNeedsReconnect
+	}
+	if err := s.tokens.CheckToken(userID, sender.ConnectedAccountID, sender.Credential); err != nil {
+		if errors.Is(err, connectedaccount.ErrTokenUnreadable) {
+			return ErrTokenUnreadable
+		}
+		return err
+	}
+	return nil
+}
+
+// newMessage returns content as a message to save from sender, or an
 // [*attemptlimit.Error] wrapping [ErrThrottled] when the member's attempts
 // leave no room at now.
 func newMessage(sender Sender, attempts []time.Time, now time.Time, content Content) (NewMessage, error) {
-	// A send would only fail, so the member hears it now and reconnects.
-	if sender.NeedsReconnect {
-		return NewMessage{}, ErrNeedsReconnect
-	}
 	if wait := attemptlimit.Wait(attempts, now, shortSendLimit, longSendLimit); wait > 0 {
 		return NewMessage{}, &attemptlimit.Error{Err: ErrThrottled, Wait: wait}
 	}

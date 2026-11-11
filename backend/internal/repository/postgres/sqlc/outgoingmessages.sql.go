@@ -272,7 +272,8 @@ func (q *Queries) LockOutgoingMessageMember(ctx context.Context, id uuid.UUID) (
 }
 
 const lockOutgoingMessageSender = `-- name: LockOutgoingMessageSender :one
-SELECT id, email, (needs_reconnect_since IS NOT NULL)::boolean AS needs_reconnect
+SELECT id, email, (needs_reconnect_since IS NOT NULL)::boolean AS needs_reconnect,
+    refresh_token_key_id, refresh_token_ciphertext
 FROM connected_accounts
 WHERE id = $1 AND user_id = $2
 FOR KEY SHARE
@@ -284,18 +285,27 @@ type LockOutgoingMessageSenderParams struct {
 }
 
 type LockOutgoingMessageSenderRow struct {
-	ID             int64
-	Email          string
-	NeedsReconnect bool
+	ID                     int64
+	Email                  string
+	NeedsReconnect         bool
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
 }
 
 // The key share lock keeps the account from being deleted, and with it the
 // message about to be saved, until the transaction ends; it does not wait
 // for a token being replaced.
+// The credential lets the service refuse an account whose token no key opens.
 func (q *Queries) LockOutgoingMessageSender(ctx context.Context, arg LockOutgoingMessageSenderParams) (LockOutgoingMessageSenderRow, error) {
 	row := q.db.QueryRow(ctx, lockOutgoingMessageSender, arg.ID, arg.UserID)
 	var i LockOutgoingMessageSenderRow
-	err := row.Scan(&i.ID, &i.Email, &i.NeedsReconnect)
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.NeedsReconnect,
+		&i.RefreshTokenKeyID,
+		&i.RefreshTokenCiphertext,
+	)
 	return i, err
 }
 
