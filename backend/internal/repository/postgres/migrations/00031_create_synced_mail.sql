@@ -127,8 +127,7 @@ CREATE TABLE messages (
 
 -- A retried sync updates the row it saved before rather than adding one.
 CREATE UNIQUE INDEX messages_account_provider_id_idx ON messages (connected_account_id, provider_message_id);
--- Lists an account's messages by date, and deletes those older than the
--- window.
+-- Lists an account's messages by date, and finds its oldest.
 CREATE INDEX messages_account_internal_date_idx ON messages (connected_account_id, internal_date);
 
 -- Which mailboxes a message is in; none for a Gmail message with no label,
