@@ -142,10 +142,10 @@ func NewFullSync(storage Storage, provider Provider, access accountAccess, now f
 }
 
 // Start begins account accountID's full sync: it saves the account's
-// mailboxes and current position, and a new generation, running, with no
-// progress. It returns the run its other steps share, whose window starts
-// window before now, or just before the oldest message the copy holds if
-// that is earlier.
+// mailboxes and current position, and a new generation, running. Its
+// progress counts the messages saved with that generation. It returns the
+// run its other steps share, whose window starts window before now, or
+// just before the oldest message the copy holds if that is earlier.
 func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 	// 1. Take an access token, which stops a stopped account before any
 	// provider call.
@@ -185,14 +185,12 @@ func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 		since = oldest.Add(-time.Second)
 	}
 
-	// 5. Save them with a new generation, running, with no progress.
+	// 5. Save them with a new generation, running.
 	written, err := s.storage.UpdateSyncedMail(ctx, accountID, func(current SyncState) (Change, error) {
 		state := current
 		state.Status = StatusRunning
 		state.Position = position
 		state.Generation = current.Generation + 1
-		state.PagesSynced = 0
-		state.MessagesSynced = 0
 		return Change{State: state, Mailboxes: mailboxes}, nil
 	})
 	if err != nil {
@@ -201,13 +199,12 @@ func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 	return Run{Generation: written.State.Generation, Since: since, Position: position}, nil
 }
 
-// CopyPage copies listing page page, counted from 0, of run's window for
-// account accountID, asking with pageToken, empty for the first. It saves
-// the messages listed and deletes the ones gone before their fetch, and it
-// counts the page, once however often it repeats, in the progress. It
-// returns the next page's token, empty after the last, and [ErrSuperseded]
-// when run is no longer the account's full sync.
-func (s *FullSync) CopyPage(ctx context.Context, accountID int64, run Run, page int, pageToken string) (string, error) {
+// CopyPage copies the listing page of run's window for account accountID
+// that pageToken asks for, empty for the first. It saves the messages
+// listed, with run's generation, and deletes the ones gone before their
+// fetch. It returns the next page's token, empty after the last, and
+// [ErrSuperseded] when run is no longer the account's full sync.
+func (s *FullSync) CopyPage(ctx context.Context, accountID int64, run Run, pageToken string) (string, error) {
 	// 1. Take an access token, which stops a stopped account before any
 	// provider call.
 	token, err := s.access.Token(ctx, accountID)
@@ -238,19 +235,13 @@ func (s *FullSync) CopyPage(ctx context.Context, accountID int64, run Run, page 
 		}
 	}
 
-	// 4. Save them, while the run is still the account's, counting the page
-	// once however often this step runs.
+	// 4. Save them, while the run is still the account's.
 	write := func(mailboxes []Mailbox, saved []Message) error {
 		_, err := s.storage.UpdateSyncedMail(ctx, accountID, func(current SyncState) (Change, error) {
 			if !isRunning(current, run) {
 				return Change{}, ErrSuperseded
 			}
-			state := current
-			if page >= current.PagesSynced {
-				state.PagesSynced = page + 1
-				state.MessagesSynced = current.MessagesSynced + len(saved)
-			}
-			return Change{State: state, Mailboxes: mailboxes, Saved: saved, Deleted: fetched.Gone}, nil
+			return Change{State: current, Mailboxes: mailboxes, Saved: saved, Deleted: fetched.Gone}, nil
 		})
 		return err
 	}

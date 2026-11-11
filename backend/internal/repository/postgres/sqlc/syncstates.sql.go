@@ -69,7 +69,7 @@ func (q *Queries) ListDueSyncs(ctx context.Context, failedBefore *time.Time) ([]
 
 const lockSyncState = `-- name: LockSyncState :one
 SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,
-    pages_synced, messages_synced, failure, failed_at, last_synced_at
+    failure, failed_at, last_synced_at
 FROM sync_states
 WHERE connected_account_id = $1
 FOR NO KEY UPDATE
@@ -80,8 +80,6 @@ type LockSyncStateRow struct {
 	Status             string
 	Position           string
 	SyncGeneration     int32
-	PagesSynced        int32
-	MessagesSynced     int32
 	Failure            *string
 	FailedAt           *time.Time
 	LastSyncedAt       *time.Time
@@ -97,8 +95,6 @@ func (q *Queries) LockSyncState(ctx context.Context, connectedAccountID int64) (
 		&i.Status,
 		&i.Position,
 		&i.SyncGeneration,
-		&i.PagesSynced,
-		&i.MessagesSynced,
 		&i.Failure,
 		&i.FailedAt,
 		&i.LastSyncedAt,
@@ -108,7 +104,7 @@ func (q *Queries) LockSyncState(ctx context.Context, connectedAccountID int64) (
 
 const readSyncState = `-- name: ReadSyncState :one
 SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,
-    pages_synced, messages_synced, failure, failed_at, last_synced_at
+    failure, failed_at, last_synced_at
 FROM sync_states
 WHERE connected_account_id = $1
 `
@@ -118,8 +114,6 @@ type ReadSyncStateRow struct {
 	Status             string
 	Position           string
 	SyncGeneration     int32
-	PagesSynced        int32
-	MessagesSynced     int32
 	Failure            *string
 	FailedAt           *time.Time
 	LastSyncedAt       *time.Time
@@ -134,8 +128,6 @@ func (q *Queries) ReadSyncState(ctx context.Context, connectedAccountID int64) (
 		&i.Status,
 		&i.Position,
 		&i.SyncGeneration,
-		&i.PagesSynced,
-		&i.MessagesSynced,
 		&i.Failure,
 		&i.FailedAt,
 		&i.LastSyncedAt,
@@ -148,20 +140,16 @@ UPDATE sync_states SET
     status = $1,
     position = nullif($2::text, ''),
     sync_generation = $3,
-    pages_synced = $4,
-    messages_synced = $5,
-    failure = $6,
-    failed_at = $7,
-    last_synced_at = $8
-WHERE connected_account_id = $9
+    failure = $4,
+    failed_at = $5,
+    last_synced_at = $6
+WHERE connected_account_id = $7
 `
 
 type UpdateSyncStateParams struct {
 	Status             string
 	Position           string
 	SyncGeneration     int32
-	PagesSynced        int32
-	MessagesSynced     int32
 	Failure            *string
 	FailedAt           *time.Time
 	LastSyncedAt       *time.Time
@@ -173,8 +161,6 @@ func (q *Queries) UpdateSyncState(ctx context.Context, arg UpdateSyncStateParams
 		arg.Status,
 		arg.Position,
 		arg.SyncGeneration,
-		arg.PagesSynced,
-		arg.MessagesSynced,
 		arg.Failure,
 		arg.FailedAt,
 		arg.LastSyncedAt,

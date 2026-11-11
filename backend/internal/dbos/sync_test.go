@@ -57,7 +57,13 @@ func (f *fakeSyncs) Start(context.Context, int64) (mailsync.Run, error) {
 	return syncRun, nil
 }
 
-func (f *fakeSyncs) CopyPage(ctx context.Context, _ int64, run mailsync.Run, page int, pageToken string) (string, error) {
+func (f *fakeSyncs) CopyPage(ctx context.Context, _ int64, run mailsync.Run, pageToken string) (string, error) {
+	page := 0
+	if pageToken != "" {
+		if _, err := fmt.Sscanf(pageToken, "page-%d", &page); err != nil {
+			return "", err
+		}
+	}
 	f.record(fmt.Sprintf("copy %d %q", page, pageToken))
 	if run != syncRun {
 		return "", errors.New("copy of another run")

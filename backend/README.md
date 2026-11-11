@@ -472,13 +472,12 @@ of the window stays until Gmail deletes it. Its steps are
 1. `start` lists the mailboxes and reads the account's position
    (`users.getProfile`) before listing any message, so the first poll
    replays what changed while the full sync ran. It saves both with a new
-   sync generation, `running`, and the progress back at 0.
+   sync generation, `running`.
 2. `copy page`, once per page of 100 messages, newest first: it lists the
    page, Spam and Trash included, fetches the messages' metadata, and
    saves the ones received inside the window. Gmail's `after:` counts
    whole seconds, so the step checks each message's own time at the
-   window's edge. A message gone before its fetch is deleted. Each page
-   counts once in the progress, however often its step runs. A message in
+   window's edge. A message gone before its fetch is deleted. A message in
    a label made since `start` lists the labels again, and one in a label
    deleted since is saved without it. Every 4 pages the run polls, with the
    poll's steps scoped to the running full sync, so mail that arrives
@@ -489,6 +488,10 @@ of the window stays until Gmail deletes it. Its steps are
 3. `delete earlier` deletes, up to 1,000 at a time, the account's messages
    this generation did not save: the ones Gmail no longer has.
 4. `finish` records `complete`, the time, and no failure.
+
+A running full sync's progress is not stored: it is the number of the
+account's messages stamped with its generation, which a repeated page or
+a poll during the copy counts once each.
 
 Every full sync step writes only while the account's sync state still has
 the step's generation and is `running`, so a full sync another one took
@@ -2317,18 +2320,18 @@ Four tables hold it, each deleted with its account:
   Each row names both sides with the account, through foreign keys on
   (account, ID), so PostgreSQL refuses a membership that joins two
   accounts' rows. Deleting a message or a mailbox deletes its rows.
-- `sync_states`: one row per account, saved with it, with the full
-  sync's `status` (`waiting`, `running`, `complete`, or `failed`), its
-  progress, the `position` the next poll asks for changes since, and when
-  a sync last finished. `failure` and `failed_at` say why and when the
-  last sync, full or poll, failed, until one succeeds: `provider`,
-  `token-unreadable`, or `internal`. A `failed` full sync always has one,
-  and a `complete` account keeps a failed poll's. The position is text
-  only the provider's code reads, e.g. Gmail's history ID in decimal, so
-  storage neither parses nor checks it. `mailboxes` and `messages`
-  reference this row rather than the account's, so a disconnect deletes
-  the account, then the sync state, then the mail, the order a sync write
-  locks them in: the two never deadlock.
+- `sync_states`: one row per account, saved with it, with the full sync's
+  `status` (`waiting`, `running`, `complete`, or `failed`), its
+  `sync_generation`, the `position` the next poll asks for changes since,
+  and when a sync last finished. `failure` and `failed_at` say why and
+  when the last sync, full or poll, failed, until one succeeds:
+  `provider`, `token-unreadable`, or `internal`. A `failed` full sync
+  always has one, and a `complete` account keeps a failed poll's. The
+  position is text only the provider's code reads, e.g. Gmail's history ID
+  in decimal, so storage neither parses nor checks it. `mailboxes` and
+  `messages` reference this row rather than the account's, so a disconnect
+  deletes the account, then the sync state, then the mail, the order a
+  sync write locks them in: the two never deadlock.
 
 The migration lists, as comments, the columns IMAP and Outlook will need,
 such as a folder's UID validity and a message's UID in each folder.

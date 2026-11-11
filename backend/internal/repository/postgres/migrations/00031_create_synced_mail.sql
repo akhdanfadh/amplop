@@ -32,8 +32,6 @@ CREATE TABLE sync_states (
     -- Gmail's history ID. NULL until a full sync records one.
     position             text CHECK (position <> ''),
     sync_generation      integer NOT NULL DEFAULT 0 CHECK (sync_generation >= 0), -- the latest full sync's; 0 before the first
-    pages_synced         integer NOT NULL DEFAULT 0 CHECK (pages_synced >= 0), -- of the current full sync, so a repeated page counts once
-    messages_synced      integer NOT NULL DEFAULT 0 CHECK (messages_synced >= 0), -- the progress the member sees
     -- Why the last sync, full or poll, failed, and when; NULL once one
     -- succeeds. A failed full sync always has one; a complete account keeps a
     -- failed poll's.

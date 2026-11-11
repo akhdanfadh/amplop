@@ -5,7 +5,7 @@ INSERT INTO sync_states (connected_account_id, status) VALUES (@connected_accoun
 -- name: LockSyncState :one
 -- The position travels as text, empty for none.
 SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,
-    pages_synced, messages_synced, failure, failed_at, last_synced_at
+    failure, failed_at, last_synced_at
 FROM sync_states
 WHERE connected_account_id = @connected_account_id
 -- No key column changes, so foreign key checks on the row need not wait.
@@ -16,8 +16,6 @@ UPDATE sync_states SET
     status = @status,
     position = nullif(@position::text, ''),
     sync_generation = @sync_generation,
-    pages_synced = @pages_synced,
-    messages_synced = @messages_synced,
     failure = @failure,
     failed_at = @failed_at,
     last_synced_at = @last_synced_at
@@ -26,7 +24,7 @@ WHERE connected_account_id = @connected_account_id;
 -- name: ReadSyncState :one
 -- The same columns as LockSyncState, without the lock.
 SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,
-    pages_synced, messages_synced, failure, failed_at, last_synced_at
+    failure, failed_at, last_synced_at
 FROM sync_states
 WHERE connected_account_id = @connected_account_id;
 

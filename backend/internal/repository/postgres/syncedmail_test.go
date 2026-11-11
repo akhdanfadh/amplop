@@ -452,13 +452,11 @@ func TestSyncedMailState(t *testing.T) {
 	s := newSyncedMailTest(t)
 	at := time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC)
 	complete := mailsync.SyncState{
-		AccountID:      s.other, // ignored
-		Status:         mailsync.StatusComplete,
-		Position:       "18446744073709551615",
-		Generation:     3,
-		PagesSynced:    7,
-		MessagesSynced: 640,
-		LastSyncedAt:   &at,
+		AccountID:    s.other, // ignored
+		Status:       mailsync.StatusComplete,
+		Position:     "18446744073709551615",
+		Generation:   3,
+		LastSyncedAt: &at,
 	}
 
 	saved := s.update(t, s.account, mailsync.Change{State: complete})
@@ -551,8 +549,7 @@ func TestSyncedMailStateRange(t *testing.T) {
 	s := newSyncedMailTest(t).withMailboxes(t)
 	for name, state := range map[string]mailsync.SyncState{
 		"a generation past int32": {Status: mailsync.StatusRunning, Generation: math.MaxInt32 + 1},
-		"a negative page count":   {Status: mailsync.StatusRunning, Generation: 1, PagesSynced: -1},
-		"a message count past it": {Status: mailsync.StatusRunning, Generation: 1, MessagesSynced: math.MaxInt32 + 1},
+		"a negative generation":   {Status: mailsync.StatusRunning, Generation: -1},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := s.db.UpdateSyncedMail(t.Context(), s.account, func(mailsync.SyncState) (mailsync.Change, error) {
@@ -596,13 +593,13 @@ func TestSyncedMailConcurrent(t *testing.T) {
 	s := newSyncedMailTest(t)
 	const updates = 8
 
-	// Each update counts one more page than the state it was given.
+	// Each update counts one more generation than the state it was given.
 	var wg sync.WaitGroup
 	errs := make([]error, updates)
 	for i := range updates {
 		wg.Go(func() {
 			_, errs[i] = s.db.UpdateSyncedMail(t.Context(), s.account, func(current mailsync.SyncState) (mailsync.Change, error) {
-				current.PagesSynced++
+				current.Generation++
 				return mailsync.Change{State: current}, nil
 			})
 		})
@@ -612,11 +609,11 @@ func TestSyncedMailConcurrent(t *testing.T) {
 	for _, err := range errs {
 		require.NoError(t, err)
 	}
-	var pages, otherPages int
-	require.NoError(t, s.conn.QueryRow(t.Context(), "SELECT pages_synced FROM sync_states WHERE connected_account_id = $1", s.account).Scan(&pages))
-	require.NoError(t, s.conn.QueryRow(t.Context(), "SELECT pages_synced FROM sync_states WHERE connected_account_id = $1", s.other).Scan(&otherPages))
-	assert.Equal(t, updates, pages, "each update saw the one before")
-	assert.Equal(t, 0, otherPages)
+	var generation, otherGeneration int
+	require.NoError(t, s.conn.QueryRow(t.Context(), "SELECT sync_generation FROM sync_states WHERE connected_account_id = $1", s.account).Scan(&generation))
+	require.NoError(t, s.conn.QueryRow(t.Context(), "SELECT sync_generation FROM sync_states WHERE connected_account_id = $1", s.other).Scan(&otherGeneration))
+	assert.Equal(t, updates, generation, "each update saw the one before")
+	assert.Equal(t, 0, otherGeneration)
 }
 
 func TestSyncedMailDisconnect(t *testing.T) {
@@ -762,7 +759,7 @@ func TestSyncedMailUpdateUnknown(t *testing.T) {
 func TestSyncState(t *testing.T) {
 	s := newSyncedMailTest(t)
 	at := time.Date(2026, 11, 10, 9, 30, 0, 0, time.UTC)
-	want := mailsync.SyncState{Status: mailsync.StatusComplete, Position: "4096", Generation: 2, PagesSynced: 3, MessagesSynced: 250, LastSyncedAt: &at}
+	want := mailsync.SyncState{Status: mailsync.StatusComplete, Position: "4096", Generation: 2, LastSyncedAt: &at}
 	s.update(t, s.account, mailsync.Change{State: want})
 
 	got, err := s.db.SyncState(t.Context(), s.account)

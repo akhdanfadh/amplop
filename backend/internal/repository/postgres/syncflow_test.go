@@ -23,8 +23,8 @@ func runFullSync(t *testing.T, s *mailsync.FullSync, accountID int64) {
 	run, err := s.Start(ctx, accountID)
 	require.NoError(t, err)
 	token := ""
-	for page := 0; ; page++ {
-		token, err = s.CopyPage(ctx, accountID, run, page, token)
+	for {
+		token, err = s.CopyPage(ctx, accountID, run, token)
 		require.NoError(t, err)
 		if token == "" {
 			break
@@ -113,7 +113,6 @@ func TestSyncFlow(t *testing.T) {
 	assert.Equal(t, mailsync.StatusComplete, firstState.Status)
 	assert.NotEmpty(t, firstState.Position)
 	assert.Equal(t, 1, firstState.Generation)
-	assert.Equal(t, 4, firstState.MessagesSynced)
 	assert.Contains(t, stored.mailboxes(t, account.ID), mailsync.Mailbox{ProviderID: "Label_1", Name: "Receipts"})
 	second := stored.messages(t, account.ID)
 	for id, message := range first {
@@ -201,7 +200,7 @@ func TestSyncFlowPollDuringCopy(t *testing.T) {
 	syncs := mailsync.NewFullSync(f.db, f.google, f.access, time.Now)
 	run, err := syncs.Start(t.Context(), account.ID)
 	require.NoError(t, err)
-	_, err = syncs.CopyPage(t.Context(), account.ID, run, 0, "")
+	_, err = syncs.CopyPage(t.Context(), account.ID, run, "")
 	require.NoError(t, err)
 
 	// When the member archives the message, and the run polls before its

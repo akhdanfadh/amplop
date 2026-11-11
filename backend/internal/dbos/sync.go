@@ -45,7 +45,7 @@ type SyncOutput struct {
 // fullSyncs runs the steps of full syncs, e.g. [mailsync.FullSync].
 type fullSyncs interface {
 	Start(ctx context.Context, accountID int64) (mailsync.Run, error)
-	CopyPage(ctx context.Context, accountID int64, run mailsync.Run, page int, pageToken string) (string, error)
+	CopyPage(ctx context.Context, accountID int64, run mailsync.Run, pageToken string) (string, error)
 	DeleteEarlier(ctx context.Context, accountID int64, run mailsync.Run) (bool, error)
 	Finish(ctx context.Context, accountID int64, run mailsync.Run) error
 	Wait(ctx context.Context, accountID int64, run mailsync.Run) error
@@ -404,7 +404,7 @@ func runFullSync(ctx dbos.Context, syncs fullSyncs, polls polls, accountID int64
 	position, polling := run.Position, true
 	for page := 0; ; page++ {
 		copied, err := syncStep(ctx, logger, "copy page", func(stepCtx context.Context) (string, error) {
-			return syncs.CopyPage(stepCtx, accountID, run, page, pageToken)
+			return syncs.CopyPage(stepCtx, accountID, run, pageToken)
 		})
 		if err != nil {
 			return "", err

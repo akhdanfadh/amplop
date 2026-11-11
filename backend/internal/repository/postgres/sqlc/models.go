@@ -204,8 +204,6 @@ type SyncState struct {
 	Status             string
 	Position           *string
 	SyncGeneration     int32
-	PagesSynced        int32
-	MessagesSynced     int32
 	Failure            *string
 	FailedAt           *time.Time
 	LastSyncedAt       *time.Time

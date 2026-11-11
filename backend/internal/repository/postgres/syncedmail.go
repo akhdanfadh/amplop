@@ -16,9 +16,9 @@ import (
 	"inbok/internal/repository/postgres/sqlc"
 )
 
-// errStateRange means a sync state's generation or count, or a change's
-// number of earlier messages to delete, is negative or past what an
-// integer column or parameter holds.
+// errStateRange means a sync state's generation, or a change's number of
+// earlier messages to delete, is negative or past what an integer column
+// or parameter holds.
 var errStateRange = errors.New("sync state number is out of storage's range")
 
 // UpdateSyncedMail locks accountID's sync state, calls update with it, and
@@ -392,21 +392,15 @@ func orEmpty(values []string) []string {
 }
 
 // syncStateParams returns state as accountID's update parameters. It returns
-// [errStateRange] for a generation or count the columns cannot hold.
+// [errStateRange] for a generation the column cannot hold.
 func syncStateParams(accountID int64, state mailsync.SyncState) (sqlc.UpdateSyncStateParams, error) {
-	var numbers [3]int32
-	for i, n := range []int{state.Generation, state.PagesSynced, state.MessagesSynced} {
-		if n < 0 || n > math.MaxInt32 {
-			return sqlc.UpdateSyncStateParams{}, errStateRange
-		}
-		numbers[i] = int32(n)
+	if state.Generation < 0 || state.Generation > math.MaxInt32 {
+		return sqlc.UpdateSyncStateParams{}, errStateRange
 	}
 	params := sqlc.UpdateSyncStateParams{
 		ConnectedAccountID: accountID,
 		Status:             string(state.Status),
-		SyncGeneration:     numbers[0],
-		PagesSynced:        numbers[1],
-		MessagesSynced:     numbers[2],
+		SyncGeneration:     int32(state.Generation),
 		Position:           state.Position,
 		FailedAt:           state.FailedAt,
 		LastSyncedAt:       state.LastSyncedAt,
@@ -421,12 +415,10 @@ func syncStateParams(accountID int64, state mailsync.SyncState) (sqlc.UpdateSync
 // syncStateFromRow converts a row to a sync state.
 func syncStateFromRow(row sqlc.LockSyncStateRow) mailsync.SyncState {
 	state := mailsync.SyncState{
-		AccountID:      row.ConnectedAccountID,
-		Status:         mailsync.Status(row.Status),
-		Generation:     int(row.SyncGeneration),
-		PagesSynced:    int(row.PagesSynced),
-		MessagesSynced: int(row.MessagesSynced),
-		Position:       row.Position,
+		AccountID:  row.ConnectedAccountID,
+		Status:     mailsync.Status(row.Status),
+		Generation: int(row.SyncGeneration),
+		Position:   row.Position,
 	}
 	if row.Failure != nil {
 		state.Failure = mailsync.Failure(*row.Failure)

@@ -149,12 +149,6 @@ type SyncState struct {
 	// Generation numbers the account's full syncs from 1; 0 before the first
 	// starts. Each message records the generation that last saved it.
 	Generation int
-	// PagesSynced counts the pages the current full sync has saved, so a
-	// repeated page counts once.
-	PagesSynced int
-	// MessagesSynced counts the messages it has saved, the progress the
-	// member sees.
-	MessagesSynced int
 	// Failure is why the last sync, full or poll, failed; empty once one
 	// succeeds. Never empty when [SyncState.Status] is [StatusFailed]; a
 	// complete account keeps a failed poll's.

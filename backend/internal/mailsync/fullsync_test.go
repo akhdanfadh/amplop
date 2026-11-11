@@ -345,8 +345,8 @@ func runFullSync(t *testing.T, s *FullSync) Run {
 	run, err := s.Start(ctx, syncAccount)
 	require.NoError(t, err)
 	token := ""
-	for page := 0; ; page++ {
-		token, err = s.CopyPage(ctx, syncAccount, run, page, token)
+	for {
+		token, err = s.CopyPage(ctx, syncAccount, run, token)
 		require.NoError(t, err)
 		if token == "" {
 			break
@@ -366,7 +366,7 @@ func TestFullSync(t *testing.T) {
 	// at the window's edge, an older one, and one gone before its fetch.
 	since := syncNow.Add(-window)
 	failedAt := syncNow.Add(-time.Hour)
-	storage := newFakeStorage(SyncState{Status: StatusFailed, Generation: 1, Failure: FailureProvider, FailedAt: &failedAt, PagesSynced: 3, MessagesSynced: 9})
+	storage := newFakeStorage(SyncState{Status: StatusFailed, Generation: 1, Failure: FailureProvider, FailedAt: &failedAt})
 	storage.messages["deleted-at-provider"] = storedMessage{message: inboxMessage("deleted-at-provider", syncNow), generation: 1}
 	provider := &fakeProvider{
 		mailboxes: syncMailboxes,
@@ -385,42 +385,19 @@ func TestFullSync(t *testing.T) {
 
 	// Then only the message inside the window is kept, the rest are
 	// deleted, and the state is complete at the position read before
-	// listing, with the progress of both pages and no failure.
+	// listing, with no failure.
 	assert.Equal(t, Run{Generation: 2, Since: since, Position: "4096"}, run)
 	assert.Equal(t, []string{"new"}, storage.saved())
 	assert.Equal(t, syncMailboxes, storage.mailboxes)
 	assert.Equal(t, SyncState{
 		AccountID: syncAccount, Status: StatusComplete, Position: "4096", Generation: 2,
-		PagesSynced: 2, MessagesSynced: 1, LastSyncedAt: &syncNow,
+		LastSyncedAt: &syncNow,
 	}, storage.current())
 	assert.Equal(t, []string{"mailboxes", "position", "list", "messages", "list", "messages"}, provider.calls)
 	for _, query := range provider.queries {
 		assert.Equal(t, since, query.Since)
 		assert.True(t, query.IncludeJunkAndTrash, "Spam and Trash are copied (ADR001)")
 	}
-}
-
-// A page saved twice, e.g. by a step retried after its write, counts once.
-func TestFullSyncPageRepeated(t *testing.T) {
-	storage := newFakeStorage(SyncState{Status: StatusWaiting})
-	provider := &fakeProvider{
-		mailboxes: syncMailboxes,
-		position:  "4096",
-		pages:     [][]string{{"m1", "m2"}},
-		messages:  map[string]Message{"m1": inboxMessage("m1", syncNow), "m2": inboxMessage("m2", syncNow)},
-	}
-	s := NewFullSync(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
-	run, err := s.Start(t.Context(), syncAccount)
-	require.NoError(t, err)
-
-	for range 2 {
-		_, err := s.CopyPage(t.Context(), syncAccount, run, 0, "")
-		require.NoError(t, err)
-	}
-
-	state := storage.current()
-	assert.Equal(t, 1, state.PagesSynced)
-	assert.Equal(t, 2, state.MessagesSynced)
 }
 
 // A full sync that a newer one superseded writes nothing more, and its end
@@ -439,7 +416,7 @@ func TestFullSyncSuperseded(t *testing.T) {
 	_, err = s.Start(t.Context(), syncAccount)
 	require.NoError(t, err)
 
-	_, copyErr := s.CopyPage(t.Context(), syncAccount, older, 0, "")
+	_, copyErr := s.CopyPage(t.Context(), syncAccount, older, "")
 	_, deleteErr := s.DeleteEarlier(t.Context(), syncAccount, older)
 	finishErr := s.Finish(t.Context(), syncAccount, older)
 	failErr := s.Fail(t.Context(), syncAccount, older, FailureInternal)
@@ -472,7 +449,7 @@ func TestFullSyncNewMailbox(t *testing.T) {
 	label := Mailbox{ProviderID: "Label_9", Name: "Receipts"}
 	provider.mailboxes = append(slices.Clone(syncMailboxes), label)
 
-	_, err = s.CopyPage(t.Context(), syncAccount, run, 0, "")
+	_, err = s.CopyPage(t.Context(), syncAccount, run, "")
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"m1"}, storage.saved())
@@ -503,12 +480,12 @@ func TestFullSyncSweepBatches(t *testing.T) {
 }
 
 func TestFullSyncWait(t *testing.T) {
-	storage := newFakeStorage(SyncState{Status: StatusRunning, Generation: 2, Position: "4096", PagesSynced: 1, MessagesSynced: 5})
+	storage := newFakeStorage(SyncState{Status: StatusRunning, Generation: 2, Position: "4096"})
 	s := NewFullSync(storage, &fakeProvider{}, fakeAccess{}, func() time.Time { return syncNow })
 
 	require.NoError(t, s.Wait(t.Context(), syncAccount, Run{Generation: 2}))
 
-	assert.Equal(t, SyncState{AccountID: syncAccount, Status: StatusWaiting, Generation: 2, Position: "4096", PagesSynced: 1, MessagesSynced: 5}, storage.current())
+	assert.Equal(t, SyncState{AccountID: syncAccount, Status: StatusWaiting, Generation: 2, Position: "4096"}, storage.current())
 }
 
 func TestFullSyncFail(t *testing.T) {
@@ -595,7 +572,7 @@ func TestFullSyncEnded(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Wait(t.Context(), syncAccount, run))
 
-	_, err = s.CopyPage(t.Context(), syncAccount, run, 0, "")
+	_, err = s.CopyPage(t.Context(), syncAccount, run, "")
 
 	require.ErrorIs(t, err, ErrSuperseded)
 	assert.Empty(t, storage.saved())
