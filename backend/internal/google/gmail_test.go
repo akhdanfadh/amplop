@@ -1,6 +1,7 @@
 package google
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -49,6 +50,24 @@ func TestProfileRefusalRedacted(t *testing.T) {
 	assert.Contains(t, err.Error(), "403")
 	assert.NotContains(t, err.Error(), "secret page body")
 	require.NotErrorIs(t, err, connectedaccount.ErrNoGmail)
+}
+
+// A call whose context ends reports the context's error, which callers
+// compare with errors.Is, rather than an unreadable answer.
+func TestProfileContextEnded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+	base, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	client := New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect, BaseURL: base}, time.Now)
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	t.Cleanup(cancel)
+
+	_, err = client.Profile(ctx, connectedaccount.NewAccessToken("access-1"))
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 // Gmail's answer for a Google account without Gmail is told apart from

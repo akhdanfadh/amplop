@@ -88,7 +88,8 @@ var errGmailAnswer = errors.New("gmail api: unreadable answer")
 // [errGmailAnswer], since a decoding error can quote it. A transport error
 // keeps its operation and inbok's own request URL, and its cause only when
 // that cannot hold the answer: the context ending, a timeout, or a network
-// failure.
+// failure. The context's own error, which callers compare, is returned as
+// it is.
 //
 // NOTE: net/http also reports an answer it cannot parse, e.g. a malformed
 // Content-Length or Location, as a [*url.Error] whose cause quotes it.
@@ -102,11 +103,14 @@ func redactGmail(err error) error {
 	if failed, ok := errors.AsType[*url.Error](err); ok {
 		return &url.Error{Op: failed.Op, URL: failed.URL, Err: transportCause(failed.Err)}
 	}
-	return errGmailAnswer
+	// NOTE: when the context has ended, Google's client returns the
+	// context's error in place of the transport's (gensupport's send).
+	return transportCause(err)
 }
 
-// transportCause returns cause, a [*url.Error]'s, when it cannot hold
-// Gmail's answer, and [errGmailAnswer] otherwise.
+// transportCause returns cause, a transport failure or the context's
+// error, when it cannot hold Gmail's answer, and [errGmailAnswer]
+// otherwise.
 func transportCause(cause error) error {
 	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 		return cause
