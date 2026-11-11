@@ -55,6 +55,9 @@ type Run struct {
 	// Since is where the window starts: the full sync copies the messages
 	// the provider received after it.
 	Since time.Time
+	// Position is the [SyncState.Position] [FullSync.Start] saved, which the
+	// run's first poll during the copy reads changes since.
+	Position string
 }
 
 // Ending is how an error from a step of a [FullSync] or a [Poll] ends the
@@ -195,7 +198,7 @@ func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 	if err != nil {
 		return Run{}, err
 	}
-	return Run{Generation: written.State.Generation, Since: since}, nil
+	return Run{Generation: written.State.Generation, Since: since, Position: position}, nil
 }
 
 // CopyPage copies listing page page, counted from 0, of run's window for

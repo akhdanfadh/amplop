@@ -57,7 +57,7 @@ type fullSyncs interface {
 type polls interface {
 	Plan(ctx context.Context, accountID int64) (mailsync.Plan, error)
 	ReadChanges(ctx context.Context, accountID int64, position, pageToken string) (mailsync.ChangePage, error)
-	ApplyChanges(ctx context.Context, accountID int64, position, pageToken string, page mailsync.ChangePage, part int) (bool, error)
+	ApplyChanges(ctx context.Context, accountID int64, from mailsync.PollFrom, pageToken string, page mailsync.ChangePage, part int) (bool, error)
 	Fail(ctx context.Context, accountID int64, position string, failure mailsync.Failure) error
 }
 
@@ -66,6 +66,12 @@ type polls interface {
 type dueSyncs interface {
 	Due(ctx context.Context) ([]int64, error)
 }
+
+// pollEveryPages is how many full sync pages run between the polls inside
+// the full sync's run, inbok's choice: at about 25 seconds a page, new mail
+// arrives within about two minutes while a long copy goes on (ADR001,
+// "Polling"). Counted in pages, so a resumed run polls where the first did.
+const pollEveryPages = 4
 
 // syncRetries spans about five minutes, 30 seconds, then 1, 2, and 2 minutes,
 // retried within each step: each Gmail call has already retried its own rate
@@ -259,53 +265,74 @@ func runSync(ctx dbos.Context, full fullSyncs, polls polls, input SyncInput, log
 		}
 		logger.InfoContext(ctx, "poll needs a full sync", "outcome", "resync")
 	}
-	status, err := runFullSync(ctx, full, accountID, logger)
+	status, err := runFullSync(ctx, full, polls, accountID, logger)
 	return SyncOutput{Kind: mailsync.KindFull, Status: status}, err
 }
 
-// runPoll applies account accountID's changes since position, page by page,
-// each read once and then applied part by part, and returns what it did,
-// logging to logger how a poll that did not succeed ended. It reports
-// true, with nothing done, when the provider no longer keeps those changes,
-// so a full sync must run instead. It returns an error wrapping
+// runPoll applies account accountID's changes since position, and returns
+// what it did, logging to logger how a poll that did not succeed ended. It
+// reports true, with nothing done, when the provider no longer keeps those
+// changes, so a full sync must run instead. It returns an error wrapping
 // errSyncFailed when it failed, an error recording the failure, or the
 // context's error when the worker is stopping.
+func runPoll(ctx dbos.Context, polls polls, accountID int64, position string, logger *slog.Logger) (SyncOutput, bool, error) {
+	polled, err := pollPages(ctx, polls, accountID, mailsync.PollFrom{Scope: mailsync.PollComplete, Position: position}, logger)
+	if err != nil {
+		return SyncOutput{}, false, err
+	}
+	if polled.ending != 0 {
+		return endPollStep(ctx, polls, accountID, position, polled.ending, polled.failure, logger)
+	}
+	return SyncOutput{Kind: mailsync.KindPoll, Status: mailsync.StatusComplete}, false, nil
+}
+
+// polled is how a poll's pages went: the position after the last one, or
+// how a step's error ended the poll.
+type polled struct {
+	position string
+	ending   mailsync.Ending
+	failure  mailsync.Failure
+}
+
+// pollPages applies account accountID's changes since from's position, page
+// by page, each read once and then applied part by part, and returns the
+// position after them, or how a step's error ended the poll. It returns an
+// error only when the worker is stopping.
 //
 // DESIGN: Each page is recorded by its read step, IDs only, so its parts
 // apply exactly what was read however the provider's later answers differ.
-func runPoll(ctx dbos.Context, polls polls, accountID int64, position string, logger *slog.Logger) (SyncOutput, bool, error) {
-	done := SyncOutput{Kind: mailsync.KindPoll, Status: mailsync.StatusComplete}
+func pollPages(ctx dbos.Context, polls polls, accountID int64, from mailsync.PollFrom, logger *slog.Logger) (polled, error) {
 	pageToken := ""
 	for {
 		// 1. Read the page.
 		read, err := syncStep(ctx, logger, "read changes", func(stepCtx context.Context) (mailsync.ChangePage, error) {
-			return polls.ReadChanges(stepCtx, accountID, position, pageToken)
+			return polls.ReadChanges(stepCtx, accountID, from.Position, pageToken)
 		})
 		if err != nil {
-			return SyncOutput{}, false, err
+			return polled{}, err
 		}
 		if read.Ending != 0 {
-			return endPollStep(ctx, polls, accountID, position, read.Ending, read.Failure, logger)
+			return polled{ending: read.Ending, failure: read.Failure}, nil
 		}
 		page := read.Value
 
 		// 2. Apply it part by part.
 		for part, more := 0, true; more; part++ {
 			applied, err := syncStep(ctx, logger, "apply changes", func(stepCtx context.Context) (bool, error) {
-				return polls.ApplyChanges(stepCtx, accountID, position, pageToken, page, part)
+				return polls.ApplyChanges(stepCtx, accountID, from, pageToken, page, part)
 			})
 			if err != nil {
-				return SyncOutput{}, false, err
+				return polled{}, err
 			}
 			if applied.Ending != 0 {
-				return endPollStep(ctx, polls, accountID, position, applied.Ending, applied.Failure, logger)
+				return polled{ending: applied.Ending, failure: applied.Failure}, nil
 			}
 			more = applied.Value
 		}
 
 		// 3. Go on to the next page, if any.
 		if page.NextPageToken == "" {
-			return done, false, nil
+			return polled{position: page.Position}, nil
 		}
 		pageToken = page.NextPageToken
 	}
@@ -351,13 +378,13 @@ func endPoll(ctx dbos.Context, polls polls, accountID int64, position string, fa
 	return errors.Join(fmt.Errorf("%w: poll: %s", errSyncFailed, failure), err)
 }
 
-// runFullSync runs account accountID's full sync and returns the status it
-// left: complete, waiting, failed, or empty when the account went or a newer
-// full sync took over. It logs to logger how a full sync that did not
-// complete ended. It returns an error wrapping errSyncFailed when it failed,
-// an error recording the end, or the context's error when the worker is
-// stopping.
-func runFullSync(ctx dbos.Context, syncs fullSyncs, accountID int64, logger *slog.Logger) (mailsync.Status, error) {
+// runFullSync runs account accountID's full sync, polling with polls every
+// pollEveryPages pages of the copy, and returns the status it left:
+// complete, waiting, failed, or empty when the account went or a newer full
+// sync took over. It logs to logger how a full sync that did not complete
+// ended. It returns an error wrapping errSyncFailed when it failed, an error
+// recording the end, or the context's error when the worker is stopping.
+func runFullSync(ctx dbos.Context, syncs fullSyncs, polls polls, accountID int64, logger *slog.Logger) (mailsync.Status, error) {
 	// 1. Start a generation, with the position read before listing.
 	started, err := syncStep(ctx, logger, "start", func(stepCtx context.Context) (mailsync.Run, error) {
 		return syncs.Start(stepCtx, accountID)
@@ -371,8 +398,10 @@ func runFullSync(ctx dbos.Context, syncs fullSyncs, accountID int64, logger *slo
 	run := started.Value
 
 	// 2. Copy the window page by page, newest first; each page's token
-	// comes from the step before.
+	// comes from the step before. Every pollEveryPages pages, poll, so mail
+	// that arrived meanwhile need not wait for the copy to end.
 	pageToken := ""
+	position, polling := run.Position, true
 	for page := 0; ; page++ {
 		copied, err := syncStep(ctx, logger, "copy page", func(stepCtx context.Context) (string, error) {
 			return syncs.CopyPage(stepCtx, accountID, run, page, pageToken)
@@ -387,6 +416,25 @@ func runFullSync(ctx dbos.Context, syncs fullSyncs, accountID int64, logger *slo
 			break
 		}
 		pageToken = copied.Value
+		if !polling || (page+1)%pollEveryPages != 0 {
+			continue
+		}
+		from := mailsync.PollFrom{Scope: mailsync.PollDuringCopy, Position: position, Generation: run.Generation}
+		result, err := pollPages(ctx, polls, accountID, from, logger)
+		if err != nil {
+			return "", err
+		}
+		switch result.ending {
+		case 0:
+			position = result.position
+		case mailsync.EndingResync:
+			// Only a copy running past the provider's history, over a week,
+			// gets here; the poll after it starts the next full sync.
+			logger.InfoContext(ctx, "polls during the full sync stopped", "outcome", "resync")
+			polling = false
+		default:
+			return endFullSync(ctx, syncs, accountID, run, result.ending, result.failure, logger)
+		}
 	}
 
 	// 3. Delete what the provider no longer has, only once every page is

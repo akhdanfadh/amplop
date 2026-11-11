@@ -49,7 +49,7 @@ func runPoll(t *testing.T, p *mailsync.Poll, accountID int64) {
 		page, err := p.ReadChanges(t.Context(), accountID, plan.Position, token)
 		require.NoError(t, err)
 		for part, more := 0, true; more; part++ {
-			more, err = p.ApplyChanges(t.Context(), accountID, plan.Position, token, page, part)
+			more, err = p.ApplyChanges(t.Context(), accountID, mailsync.PollFrom{Scope: mailsync.PollComplete, Position: plan.Position}, token, page, part)
 			require.NoError(t, err)
 		}
 		if page.NextPageToken == "" {
@@ -184,4 +184,54 @@ func TestSyncFlowOlder(t *testing.T) {
 	assert.Equal(t, []string{"old"}, keys(after))
 	assert.Equal(t, "Old", after["old"].Subject)
 	assert.Equal(t, []string{"INBOX"}, after["old"].MailboxProviderIDs)
+}
+
+// A poll inside a running full sync applies what changed since its start,
+// against PostgreSQL and the emulator: the copy goes on, the sweep keeps
+// what the poll wrote, and the finish leaves the position the poll moved.
+func TestSyncFlowPollDuringCopy(t *testing.T) {
+	// Given a full sync started and its page copied.
+	recent := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
+	mailbox := alexIdentity.Email
+	f := newConnectFlowTest(t, nil,
+		googleemulator.Message{ID: "inbox", Mailbox: mailbox, From: "blair@example.com", Subject: "Inbox", Received: recent},
+	)
+	account, err := f.consent(t, 0, mailbox)
+	require.NoError(t, err)
+	syncs := mailsync.NewFullSync(f.db, f.google, f.access, time.Now)
+	run, err := syncs.Start(t.Context(), account.ID)
+	require.NoError(t, err)
+	_, err = syncs.CopyPage(t.Context(), account.ID, run, 0, "")
+	require.NoError(t, err)
+
+	// When the member archives the message, and the run polls before its
+	// sweep and finish. (The emulator deletes a message only with the full
+	// mail scope inbok does not ask for, so deletions are covered in
+	// mailsync's TestFullSyncPollDeletes.)
+	_, err = f.gmailAt(t, account.ID).Users.Messages.Modify("me", "inbox", &gmail.ModifyMessageRequest{RemoveLabelIds: []string{"INBOX"}}).Do()
+	require.NoError(t, err)
+	polls := mailsync.NewPoll(f.db, f.google, f.access, time.Now)
+	from := mailsync.PollFrom{Scope: mailsync.PollDuringCopy, Position: run.Position, Generation: run.Generation}
+	page, err := polls.ReadChanges(t.Context(), account.ID, from.Position, "")
+	require.NoError(t, err)
+	for part, more := 0, true; more; part++ {
+		more, err = polls.ApplyChanges(t.Context(), account.ID, from, "", page, part)
+		require.NoError(t, err)
+	}
+	for more := true; more; {
+		more, err = syncs.DeleteEarlier(t.Context(), account.ID, run)
+		require.NoError(t, err)
+	}
+	require.NoError(t, syncs.Finish(t.Context(), account.ID, run))
+
+	// Then the message is archived, and the state complete at the
+	// position the poll moved to.
+	stored := syncedMailTest{db: f.db, conn: f.conn, account: account.ID}
+	after := stored.messages(t, account.ID)
+	assert.Equal(t, []string{"inbox"}, keys(after))
+	assert.Empty(t, after["inbox"].MailboxProviderIDs)
+	state := stored.state(t)
+	assert.Equal(t, mailsync.StatusComplete, state.Status)
+	assert.Equal(t, page.Position, state.Position)
+	assert.NotEqual(t, run.Position, state.Position)
 }

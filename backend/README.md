@@ -412,7 +412,7 @@ at once. [Connecting](#connecting) an account saves its sync state,
 
 Its first step, `plan`, reads the account's sync state and records which
 sync to run, so a resumed run makes the same choice: a `complete` account
-polls, and any other runs a full sync. A poll that Gmail answers 404, for
+polls, and any other runs a full sync, which polls between its pages too. A poll that Gmail answers 404, for
 history it no longer keeps, goes on into a full sync in the same run. The
 run's output names the kind it ran, `poll` or `full`, and the status it
 left. Each step that calls Gmail takes its own access token
@@ -480,7 +480,12 @@ of the window stays until Gmail deletes it. Its steps are
    window's edge. A message gone before its fetch is deleted. Each page
    counts once in the progress, however often its step runs. A message in
    a label made since `start` lists the labels again, and one in a label
-   deleted since is saved without it.
+   deleted since is saved without it. Every 4 pages the run polls, with the
+   poll's steps scoped to the running full sync, so mail that arrives
+   during a long copy appears within about two minutes. Such a poll writes
+   while the account runs at the run's generation, its saves are kept by
+   the sweep, and its last part moves only the position; a failure fails
+   the full sync, and a 404 stops these polls.
 3. `delete earlier` deletes, up to 1,000 at a time, the account's messages
    this generation did not save: the ones Gmail no longer has.
 4. `finish` records `complete`, the time, and no failure.

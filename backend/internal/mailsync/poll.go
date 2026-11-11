@@ -21,6 +21,41 @@ const (
 	KindFull Kind = "full"
 )
 
+// PollScope is which account state a poll applies changes in.
+type PollScope int
+
+const (
+	// PollComplete is a poll of an account whose full sync is complete.
+	PollComplete PollScope = iota + 1
+	// PollDuringCopy is a poll inside a running full sync's run, so new mail
+	// arrives while a long copy goes on (ADR001, "Polling").
+	PollDuringCopy
+)
+
+// PollFrom is where a poll applies changes from, and the account state it
+// expects throughout.
+type PollFrom struct {
+	Scope PollScope
+	// Position is the stored [SyncState.Position] the poll reads changes
+	// since.
+	Position string
+	// Generation is the running full sync's [SyncState.Generation] for
+	// [PollDuringCopy]; unused for [PollComplete].
+	Generation int
+}
+
+// holds reports whether state is still the one f expects: at f's position,
+// and complete, or running at f's generation, as f's scope says.
+func (f PollFrom) holds(state SyncState) bool {
+	if state.Position != f.Position {
+		return false
+	}
+	if f.Scope == PollDuringCopy {
+		return state.Status == StatusRunning && state.Generation == f.Generation
+	}
+	return state.Status == StatusComplete
+}
+
 // Plan is what one sync run for an account does.
 type Plan struct {
 	Kind Kind
@@ -42,7 +77,8 @@ const (
 // Poll applies what changed in an account's mail at its provider since the
 // stored position, in steps a workflow runs in order: [Poll.Plan], then,
 // for [KindPoll], for each page of changes [Poll.ReadChanges] once and
-// [Poll.ApplyChanges] for each of its parts. A step that fails ends the
+// [Poll.ApplyChanges] for each of its parts. A running full sync runs the
+// same steps with [PollDuringCopy] between its pages. A step that fails ends the
 // poll as [EndingOf] says: [EndingResync] with a full sync in its place,
 // [EndingFail] with [Poll.Fail], and any other with nothing recorded, since
 // a poll leaves the account complete. Every step is safe to repeat.
@@ -106,18 +142,21 @@ func (p *Poll) ReadChanges(ctx context.Context, accountID int64, position, pageT
 }
 
 // ApplyChanges applies part part, counted from 0, of page, the page of
-// account accountID's changes since position that [Poll.ReadChanges] read
-// with pageToken. A part deletes up to applyWrites messages, writes where
+// account accountID's changes since from's position that [Poll.ReadChanges]
+// read with pageToken. A part deletes up to applyWrites messages, writes where
 // up to applyWrites updated messages stand, or fetches up to applyFetches
 // messages: those added are saved, and those reread are applied as updates.
 // An update to a message the copy does not hold is skipped: only mail older
 // than the account's first window is not held (ADR001). The first part of
 // the first page also lists the mailboxes, whose creation, renaming, and
 // deletion the changes do not name. The last part of the last page records
-// the position after it, and the sync as finished now without a failure.
-// It reports whether more parts follow, and returns [ErrSuperseded] when
-// the account is no longer complete at position.
-func (p *Poll) ApplyChanges(ctx context.Context, accountID int64, position, pageToken string, page ChangePage, part int) (bool, error) {
+// the position after it; for [PollComplete], also the sync as finished now
+// without a failure, which a full sync's [FullSync.Finish] records for
+// [PollDuringCopy]. A message saved takes the account's generation, so the
+// sweep of a running full sync keeps it. It reports whether more parts
+// follow, and returns [ErrSuperseded] when the account is no longer as from
+// expects.
+func (p *Poll) ApplyChanges(ctx context.Context, accountID int64, from PollFrom, pageToken string, page ChangePage, part int) (bool, error) {
 	parts := pageParts(page)
 	if part < 0 || part >= len(parts) {
 		return false, fmt.Errorf("part %d of a page of %d", part, len(parts))
@@ -172,17 +211,24 @@ func (p *Poll) ApplyChanges(ctx context.Context, accountID int64, position, page
 		change.Deleted = append(change.Deleted, fetched.Gone...)
 	}
 
-	// 4. Write the part, while the account is still complete at position.
+	// 4. Write the part, while the account is still as from expects. The
+	// last part may find its own position already written: it committed
+	// before its step was recorded, and runs again on a resumed run, which
+	// would otherwise leave a running full sync stranded.
 	last := page.NextPageToken == "" && part == len(parts)-1
+	done := from
+	done.Position = page.Position
 	write := func(change Change) error {
 		_, err := p.storage.UpdateSyncedMail(ctx, accountID, func(current SyncState) (Change, error) {
-			if current.Status != StatusComplete || current.Position != position {
+			if !from.holds(current) && !(last && done.holds(current)) {
 				return Change{}, ErrSuperseded
 			}
 			change.State = current
 			if last {
-				now := p.now().UTC()
 				change.State.Position = page.Position
+			}
+			if last && from.Scope == PollComplete {
+				now := p.now().UTC()
 				change.State.LastSyncedAt = &now
 				change.State.Failure = ""
 				change.State.FailedAt = nil

@@ -41,7 +41,7 @@ type fakeSyncs struct {
 }
 
 // syncRun is the run the fake's Start returns.
-var syncRun = mailsync.Run{Generation: 3, Since: time.Date(2026, 8, 12, 9, 30, 0, 0, time.UTC)}
+var syncRun = mailsync.Run{Generation: 3, Since: time.Date(2026, 8, 12, 9, 30, 0, 0, time.UTC), Position: "100"}
 
 func (f *fakeSyncs) record(call string) {
 	f.mu.Lock()
@@ -160,15 +160,19 @@ func (f *fakePolls) ReadChanges(_ context.Context, _ int64, position, pageToken 
 			return mailsync.ChangePage{}, err
 		}
 	}
-	read := mailsync.ChangePage{Fetch: []string{fmt.Sprintf("m%d", page)}, Position: "200"}
+	read := mailsync.ChangePage{Fetch: []string{fmt.Sprintf("m%d", page)}, Position: position + "+"}
 	if page+1 < f.pages {
 		read.NextPageToken = fmt.Sprintf("changes-%d", page+1)
 	}
 	return read, nil
 }
 
-func (f *fakePolls) ApplyChanges(_ context.Context, _ int64, position, pageToken string, page mailsync.ChangePage, part int) (bool, error) {
-	f.record(fmt.Sprintf("apply %s %q %v %d", position, pageToken, page.Fetch, part))
+func (f *fakePolls) ApplyChanges(_ context.Context, _ int64, from mailsync.PollFrom, pageToken string, page mailsync.ChangePage, part int) (bool, error) {
+	call := fmt.Sprintf("apply %s %q %v %d", from.Position, pageToken, page.Fetch, part)
+	if from.Scope == mailsync.PollDuringCopy {
+		call = fmt.Sprintf("apply during %d %s", from.Generation, call)
+	}
+	f.record(call)
 	return part+1 < max(f.parts, 1), nil
 }
 
@@ -286,14 +290,14 @@ type blockingPolls struct {
 	blocked   chan struct{}
 }
 
-func (b *blockingPolls) ApplyChanges(ctx context.Context, accountID int64, position, pageToken string, page mailsync.ChangePage, part int) (bool, error) {
+func (b *blockingPolls) ApplyChanges(ctx context.Context, accountID int64, from mailsync.PollFrom, pageToken string, page mailsync.ChangePage, part int) (bool, error) {
 	if part == b.blockPart {
 		b.record("blocked")
 		b.blocked <- struct{}{}
 		<-ctx.Done()
 		return false, ctx.Err()
 	}
-	return b.fakePolls.ApplyChanges(ctx, accountID, position, pageToken, page, part)
+	return b.fakePolls.ApplyChanges(ctx, accountID, from, pageToken, page, part)
 }
 
 // A poll whose changes the provider no longer keeps goes on to a full
@@ -389,6 +393,60 @@ func TestSyncPlanGone(t *testing.T) {
 	assert.Equal(t, SyncOutput{}, output)
 	calls, _ := syncs.recorded()
 	assert.Empty(t, calls)
+}
+
+// A full sync polls every pollEveryPages pages of its copy, each poll
+// reading from where the one before left the position, and never after the
+// last page.
+func TestSyncFullPolls(t *testing.T) {
+	syncs := &fakeSyncs{pages: 2*pollEveryPages + 1, deleteBatches: 1}
+	polls := &fakePolls{plan: mailsync.Plan{Kind: mailsync.KindFull}, pages: 1}
+	worker := syncWorker(t, migrated(t), syncs, polls)
+	t.Cleanup(func() { assert.NoError(t, worker.Shutdown()) })
+
+	output, err := enqueueSync(t, worker).GetResult(dbos.WithHandleTimeout(wait))
+
+	require.NoError(t, err)
+	assert.Equal(t, SyncOutput{Kind: mailsync.KindFull, Status: mailsync.StatusComplete}, output)
+	assert.Equal(t, []string{
+		"plan 7",
+		`read 100 ""`, `apply during 3 apply 100 "" [m0] 0`,
+		`read 100+ ""`, `apply during 3 apply 100+ "" [m0] 0`,
+	}, polls.recorded())
+	calls, _ := syncs.recorded()
+	assert.Len(t, calls, 1+2*pollEveryPages+1+2, "start, every page, the sweep, and the finish")
+}
+
+// A poll during the copy that Gmail answers 404 stops the polls, and the
+// copy goes on to complete.
+func TestSyncFullPollsResync(t *testing.T) {
+	syncs := &fakeSyncs{pages: 2*pollEveryPages + 1, deleteBatches: 1}
+	polls := &fakePolls{plan: mailsync.Plan{Kind: mailsync.KindFull}, readErr: fmt.Errorf("%w: gmail api: 404", mailsync.ErrPositionExpired)}
+	worker := syncWorker(t, migrated(t), syncs, polls)
+	t.Cleanup(func() { assert.NoError(t, worker.Shutdown()) })
+
+	output, err := enqueueSync(t, worker).GetResult(dbos.WithHandleTimeout(wait))
+
+	require.NoError(t, err)
+	assert.Equal(t, mailsync.StatusComplete, output.Status)
+	assert.Equal(t, []string{"plan 7", `read 100 ""`}, polls.recorded(), "one poll tried, none after")
+}
+
+// A poll during the copy that fails fails the full sync, as any of its
+// steps does.
+func TestSyncFullPollFails(t *testing.T) {
+	syncs := &fakeSyncs{pages: 2 * pollEveryPages}
+	polls := &fakePolls{plan: mailsync.Plan{Kind: mailsync.KindFull}, readErr: fmt.Errorf("%w: no key", connectedaccount.ErrTokenUnreadable)}
+	worker := syncWorker(t, migrated(t), syncs, polls)
+	t.Cleanup(func() { assert.NoError(t, worker.Shutdown()) })
+
+	output, err := enqueueSync(t, worker).GetResult(dbos.WithHandleTimeout(wait))
+
+	require.ErrorContains(t, err, "sync failed: full: token-unreadable")
+	assert.Equal(t, mailsync.StatusFailed, output.Status)
+	calls, ended := syncs.recorded()
+	assert.Equal(t, "fail token-unreadable", calls[len(calls)-1])
+	assert.Equal(t, []mailsync.Run{syncRun}, ended)
 }
 
 // Each way a step's error ends the full sync records its end once,

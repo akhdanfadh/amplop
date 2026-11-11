@@ -386,7 +386,7 @@ func TestFullSync(t *testing.T) {
 	// Then only the message inside the window is kept, the rest are
 	// deleted, and the state is complete at the position read before
 	// listing, with the progress of both pages and no failure.
-	assert.Equal(t, Run{Generation: 2, Since: since}, run)
+	assert.Equal(t, Run{Generation: 2, Since: since, Position: "4096"}, run)
 	assert.Equal(t, []string{"new"}, storage.saved())
 	assert.Equal(t, syncMailboxes, storage.mailboxes)
 	assert.Equal(t, SyncState{

@@ -9,6 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// complete100 is a poll of a complete account at position 100.
+var complete100 = PollFrom{Scope: PollComplete, Position: "100"}
+
 var pollMailboxes = []Mailbox{
 	{ProviderID: "INBOX", Name: "INBOX", Role: RoleInbox},
 	{ProviderID: "Label_work", Name: "Work"},
@@ -35,7 +38,7 @@ func runPoll(t *testing.T, p *Poll, position string) {
 		page, err := p.ReadChanges(t.Context(), syncAccount, position, token)
 		require.NoError(t, err)
 		for part, more := 0, true; more; part++ {
-			more, err = p.ApplyChanges(t.Context(), syncAccount, position, token, page, part)
+			more, err = p.ApplyChanges(t.Context(), syncAccount, PollFrom{Scope: PollComplete, Position: position}, token, page, part)
 			require.NoError(t, err)
 		}
 		if page.NextPageToken == "" {
@@ -175,7 +178,7 @@ func TestPollParts(t *testing.T) {
 func TestPollPartRange(t *testing.T) {
 	p, _ := newPollTest(&fakeProvider{mailboxes: pollMailboxes})
 
-	_, err := p.ApplyChanges(t.Context(), syncAccount, "100", "", ChangePage{Position: "200"}, 1)
+	_, err := p.ApplyChanges(t.Context(), syncAccount, complete100, "", ChangePage{Position: "200"}, 1)
 
 	require.Error(t, err)
 }
@@ -192,9 +195,9 @@ func TestPollPositionHeld(t *testing.T) {
 	page, err := p.ReadChanges(t.Context(), syncAccount, "100", "")
 	require.NoError(t, err)
 
-	more, err := p.ApplyChanges(t.Context(), syncAccount, "100", "", page, 0)
+	more, err := p.ApplyChanges(t.Context(), syncAccount, complete100, "", page, 0)
 	require.NoError(t, err)
-	more2, err := p.ApplyChanges(t.Context(), syncAccount, "100", "", page, 1)
+	more2, err := p.ApplyChanges(t.Context(), syncAccount, complete100, "", page, 1)
 	require.NoError(t, err)
 
 	assert.True(t, more)
@@ -216,10 +219,10 @@ func TestPollLastPageParts(t *testing.T) {
 	page, err := p.ReadChanges(t.Context(), syncAccount, "100", "")
 	require.NoError(t, err)
 
-	_, err = p.ApplyChanges(t.Context(), syncAccount, "100", "", page, 0)
+	_, err = p.ApplyChanges(t.Context(), syncAccount, complete100, "", page, 0)
 	require.NoError(t, err)
 	between := storage.current().Position
-	_, err = p.ApplyChanges(t.Context(), syncAccount, "100", "", page, 1)
+	_, err = p.ApplyChanges(t.Context(), syncAccount, complete100, "", page, 1)
 	require.NoError(t, err)
 
 	assert.Equal(t, "100", between)
@@ -245,7 +248,7 @@ func TestPollSuperseded(t *testing.T) {
 
 			page, err := p.ReadChanges(t.Context(), syncAccount, "100", "")
 			require.NoError(t, err)
-			_, err = p.ApplyChanges(t.Context(), syncAccount, "100", "", page, 0)
+			_, err = p.ApplyChanges(t.Context(), syncAccount, complete100, "", page, 0)
 
 			require.ErrorIs(t, err, ErrSuperseded)
 			assert.Equal(t, EndingGone, EndingOf(err))
@@ -267,13 +270,13 @@ func TestPollNewMailbox(t *testing.T) {
 	p, storage := newPollTest(provider, inboxMessage("moved", syncNow.Add(-time.Hour)))
 	first, err := p.ReadChanges(t.Context(), syncAccount, "100", "")
 	require.NoError(t, err)
-	_, err = p.ApplyChanges(t.Context(), syncAccount, "100", "", first, 0)
+	_, err = p.ApplyChanges(t.Context(), syncAccount, complete100, "", first, 0)
 	require.NoError(t, err)
 
 	provider.mailboxes = append(pollMailboxes, Mailbox{ProviderID: "Label_new", Name: "New"})
 	second, err := p.ReadChanges(t.Context(), syncAccount, "100", first.NextPageToken)
 	require.NoError(t, err)
-	_, err = p.ApplyChanges(t.Context(), syncAccount, "100", first.NextPageToken, second, 0)
+	_, err = p.ApplyChanges(t.Context(), syncAccount, complete100, first.NextPageToken, second, 0)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"Label_new"}, storage.stored("moved").message.MailboxProviderIDs)
@@ -335,4 +338,133 @@ func TestPollFailEnded(t *testing.T) {
 
 	storage.gone = true
 	require.NoError(t, p.Fail(t.Context(), syncAccount, "100", FailureProvider))
+}
+
+// A poll inside a running full sync writes while the account runs at the
+// run's generation and position: its saves take that generation, so the
+// sweep keeps them, and its last part moves only the position, leaving the
+// time and any failure to the full sync's finish.
+func TestPollDuringCopy(t *testing.T) {
+	provider := &fakeProvider{
+		mailboxes: pollMailboxes,
+		messages:  map[string]Message{"arrived": inboxMessage("arrived", syncNow)},
+		changes:   []ChangePage{{Fetch: []string{"arrived"}, Position: "150"}},
+	}
+	storage := newFakeStorage(SyncState{Status: StatusRunning, Generation: 2, Position: "100", Failure: FailureProvider})
+	storage.mailboxes = pollMailboxes
+	p := NewPoll(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+	from := PollFrom{Scope: PollDuringCopy, Position: "100", Generation: 2}
+	page, err := p.ReadChanges(t.Context(), syncAccount, from.Position, "")
+	require.NoError(t, err)
+
+	_, err = p.ApplyChanges(t.Context(), syncAccount, from, "", page, 0)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, storage.stored("arrived").generation)
+	state := storage.current()
+	assert.Equal(t, "150", state.Position)
+	assert.Equal(t, StatusRunning, state.Status)
+	assert.Nil(t, state.LastSyncedAt)
+	assert.Equal(t, FailureProvider, state.Failure, "the full sync's finish clears it")
+}
+
+// A poll writes only in the account state its scope expects.
+func TestPollScopes(t *testing.T) {
+	for name, tc := range map[string]struct {
+		from  PollFrom
+		state SyncState
+	}{
+		"during a copy, the account complete":  {from: PollFrom{Scope: PollDuringCopy, Position: "100", Generation: 2}, state: SyncState{Status: StatusComplete, Generation: 2, Position: "100"}},
+		"during a copy, a newer full sync":     {from: PollFrom{Scope: PollDuringCopy, Position: "100", Generation: 2}, state: SyncState{Status: StatusRunning, Generation: 3, Position: "100"}},
+		"during a copy, the position moved":    {from: PollFrom{Scope: PollDuringCopy, Position: "100", Generation: 2}, state: SyncState{Status: StatusRunning, Generation: 2, Position: "150"}},
+		"complete, the account running a copy": {from: complete100, state: SyncState{Status: StatusRunning, Generation: 2, Position: "100"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			storage := newFakeStorage(tc.state)
+			p := NewPoll(storage, &fakeProvider{mailboxes: pollMailboxes}, fakeAccess{}, func() time.Time { return syncNow })
+
+			_, err := p.ApplyChanges(t.Context(), syncAccount, tc.from, "", ChangePage{Position: "200"}, 0)
+
+			require.ErrorIs(t, err, ErrSuperseded)
+			assert.Equal(t, tc.state.Position, storage.current().Position)
+		})
+	}
+}
+
+// The last part of a poll that committed before its step was recorded runs
+// again on a resumed run and succeeds, in either scope, rather than ending
+// the sync as superseded.
+func TestPollLastPartAgain(t *testing.T) {
+	for name, tc := range map[string]struct {
+		from  PollFrom
+		state SyncState
+	}{
+		"complete":    {from: complete100, state: SyncState{Status: StatusComplete, Generation: 1, Position: "100"}},
+		"during copy": {from: PollFrom{Scope: PollDuringCopy, Position: "100", Generation: 2}, state: SyncState{Status: StatusRunning, Generation: 2, Position: "100"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			provider := &fakeProvider{
+				mailboxes: pollMailboxes,
+				messages:  map[string]Message{"arrived": inboxMessage("arrived", syncNow)},
+				changes:   []ChangePage{{Fetch: []string{"arrived"}, Position: "150"}},
+			}
+			storage := newFakeStorage(tc.state)
+			storage.mailboxes = pollMailboxes
+			p := NewPoll(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+			page, err := p.ReadChanges(t.Context(), syncAccount, tc.from.Position, "")
+			require.NoError(t, err)
+			_, err = p.ApplyChanges(t.Context(), syncAccount, tc.from, "", page, 0)
+			require.NoError(t, err)
+
+			_, err = p.ApplyChanges(t.Context(), syncAccount, tc.from, "", page, 0)
+
+			require.NoError(t, err)
+			assert.Equal(t, "150", storage.current().Position)
+			assert.Equal(t, []string{"arrived"}, storage.saved())
+		})
+	}
+}
+
+// Only the last part accepts its own position already written: an earlier
+// part finding the position moved was superseded.
+func TestPollEarlierPartMoved(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusComplete, Generation: 1, Position: "150"})
+	page := ChangePage{Deleted: []string{"x"}, Fetch: []string{"y"}, Position: "150"}
+	p := NewPoll(storage, &fakeProvider{mailboxes: pollMailboxes}, fakeAccess{}, func() time.Time { return syncNow })
+
+	_, err := p.ApplyChanges(t.Context(), syncAccount, complete100, "next", page, 0)
+
+	require.ErrorIs(t, err, ErrSuperseded)
+}
+
+// A message a poll during the copy deletes stays gone through the sweep and
+// the finish, whether the copy reached it already or had yet to.
+func TestFullSyncPollDeletes(t *testing.T) {
+	// Given a re-run copying, which has saved one message, with another
+	// from the generation before not reached yet.
+	storage := newFakeStorage(SyncState{Status: StatusRunning, Generation: 2, Position: "100"})
+	storage.mailboxes = pollMailboxes
+	storage.messages["copied"] = storedMessage{message: inboxMessage("copied", syncNow), generation: 2}
+	storage.messages["not-reached"] = storedMessage{message: inboxMessage("not-reached", syncNow.Add(-time.Hour)), generation: 1}
+	storage.messages["kept"] = storedMessage{message: inboxMessage("kept", syncNow), generation: 2}
+	provider := &fakeProvider{mailboxes: pollMailboxes, changes: []ChangePage{{Deleted: []string{"copied", "not-reached"}, Position: "150"}}}
+	p := NewPoll(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+	s := NewFullSync(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+	run := Run{Generation: 2, Position: "100"}
+	from := PollFrom{Scope: PollDuringCopy, Position: "100", Generation: 2}
+
+	// When the run polls, then sweeps and finishes.
+	page, err := p.ReadChanges(t.Context(), syncAccount, from.Position, "")
+	require.NoError(t, err)
+	_, err = p.ApplyChanges(t.Context(), syncAccount, from, "", page, 0)
+	require.NoError(t, err)
+	for more := true; more; {
+		more, err = s.DeleteEarlier(t.Context(), syncAccount, run)
+		require.NoError(t, err)
+	}
+	require.NoError(t, s.Finish(t.Context(), syncAccount, run))
+
+	// Then both are gone and the rest kept.
+	assert.Equal(t, []string{"kept"}, storage.saved())
+	assert.Equal(t, "150", storage.current().Position)
 }
