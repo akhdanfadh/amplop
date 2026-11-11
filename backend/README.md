@@ -524,9 +524,10 @@ of the window stays until Gmail deletes it. Its steps are
    this generation did not save: the ones Gmail no longer has.
 4. `finish` records `complete`, the time, and no failure.
 
-A running full sync's progress is not stored: it is the number of the
-account's messages stamped with its generation, which a repeated page or
-a poll during the copy counts once each.
+A running full sync's progress is not stored: the list counts the
+account's messages stamped with its generation, through the account's
+message index, which a repeated page or a poll during the copy counts
+once each.
 
 Every full sync step writes only while the account's sync state still has
 the step's generation and is `running`, so a full sync another one took
@@ -2159,13 +2160,22 @@ account once; two members may each connect it.
 
 `GET /api/v0/connected-accounts` lists the member's own accounts, oldest
 first: `id`, `provider` (`gmail`), `email`, `needsReconnectSince`, null
-while Google accepts the token, `status`, and `createdAt`. `status` is
-`needs-reconnect` once Google refused the token, `token-unreadable` when no
-configured key opens it, and `usable` otherwise; `Service.List` opens each
-token for it, saving nothing, so restoring a lost key makes an account
-usable again (see [Encryption keys](#encryption-keys)). Google's `sub` stays on
-the server. Another member's account is answered as not found everywhere,
-404 `connected-account-not-found`, like a missing one.
+while Google accepts the token, `status`, `createdAt`, and `sync`.
+`status` is `needs-reconnect` once Google refused the token,
+`token-unreadable` when no configured key opens it, and `usable`
+otherwise; `Service.List` opens each token for it, saving nothing, so
+restoring a lost key makes an account usable again (see [Encryption
+keys](#encryption-keys)). `sync` is where the account's
+[sync](#synchronization) stands: `status`, `messagesSoFar` while running,
+`lastSyncedAt`, `failure`, and `failedAt`. The handler composes
+`connectedaccount`'s list with `mailsync`'s reports, since `mailsync`
+depends on `connectedaccount`; an account disconnected between the two
+reads is left out. `syncStopped` is true when no run of
+`inbok.sync.minutely` succeeded in the last 5 minutes, which the server
+asks DBOS (`dbos.Client.SyncScheduleSucceeded`): no worker runs, a worker
+runs without the Google settings, or its runs fail. Google's `sub` stays
+on the server. Another member's account is answered as not found
+everywhere, 404 `connected-account-not-found`, like a missing one.
 
 ### Connecting
 
@@ -2360,15 +2370,15 @@ Four tables hold it, each deleted with its account:
   `sync_generation`, the `position` the next poll asks for changes since,
   when inbok last confirmed the copy (`last_synced_at`), and when the
   member last asked to sync now (`sync_requested_at`), which only that
-  request writes, for its limit and a poll's recheck. `failure` and `failed_at` say why and
-  when the last sync, full or poll, failed, until one succeeds:
-  `provider`, `token-unreadable`, or `internal`. A `failed` full sync
-  always has one, and a `complete` account keeps a failed poll's. The
-  position is text only the provider's code reads, e.g. Gmail's history ID
-  in decimal, so storage neither parses nor checks it. `mailboxes` and
-  `messages` reference this row rather than the account's, so a disconnect
-  deletes the account, then the sync state, then the mail, the order a
-  sync write locks them in: the two never deadlock.
+  request writes, for its limit and a poll's recheck. `failure` and
+  `failed_at` say why and when the last sync, full or poll, failed, until
+  one succeeds: `provider`, `token-unreadable`, or `internal`. A `failed`
+  full sync always has one, and a `complete` account keeps a failed
+  poll's. The position is text only the provider's code reads, e.g.
+  Gmail's history ID in decimal, so storage neither parses nor checks it.
+  `mailboxes` and `messages` reference this row rather than the account's,
+  so a disconnect deletes the account, then the sync state, then the mail,
+  the order a sync write locks them in: the two never deadlock.
 
 The migration lists, as comments, the columns IMAP and Outlook will need,
 such as a folder's UID validity and a message's UID in each folder.

@@ -16,14 +16,31 @@ import (
 	"inbok/internal/mailsync"
 )
 
-// fakeSyncs answers with reports by account and requestErr, and records
-// what it was asked.
+// fakeSyncs answers with reports by account, stopped, and requestErr, and
+// records what it was asked.
 type fakeSyncs struct {
 	reports    map[int64]mailsync.Report
+	stopped    bool
 	requestErr error
 
+	read              []int64
 	userID, accountID int64
 	requests          int
+}
+
+func (f *fakeSyncs) Reports(_ context.Context, accountIDs []int64) ([]mailsync.Report, error) {
+	f.read = accountIDs
+	var reports []mailsync.Report
+	for _, id := range accountIDs {
+		if report, ok := f.reports[id]; ok {
+			reports = append(reports, report)
+		}
+	}
+	return reports, nil
+}
+
+func (f *fakeSyncs) Stopped(context.Context) (bool, error) {
+	return f.stopped, nil
 }
 
 func (f *fakeSyncs) Request(_ context.Context, userID, accountID int64) (mailsync.Report, error) {

@@ -44,8 +44,11 @@ type connectedAccountService interface {
 	Disconnect(ctx context.Context, userID, accountID int64) (connectedaccount.Account, error)
 }
 
-// syncService starts an account's sync when its member asks.
+// syncService reports where accounts' synchronization stands and starts an
+// account's sync when its member asks.
 type syncService interface {
+	Reports(ctx context.Context, accountIDs []int64) ([]mailsync.Report, error)
+	Stopped(ctx context.Context) (bool, error)
 	Request(ctx context.Context, userID, accountID int64) (mailsync.Report, error)
 }
 
@@ -139,7 +142,35 @@ func accountNotFoundResponse(responses map[string]*huma.Response) {
 // ========================
 
 type connectedAccounts struct {
-	Accounts []connectedAccount `json:"accounts" nullable:"false" doc:"Oldest first."`
+	Accounts []listedAccount `json:"accounts" nullable:"false" doc:"Oldest first."`
+	// SyncStopped is the whole inbok's, not an account's.
+	SyncStopped bool `json:"syncStopped" doc:"Whether syncing has stopped on this inbok: no run of the every-minute sync schedule succeeded in the last 5 minutes, e.g. as no worker runs. Only an administrator can fix it."`
+}
+
+// listedAccount is a [connectedAccount] with where its sync stands.
+//
+// NOTE: Huma documents no field of an embedded struct whose type is
+// unexported, so the fields are repeated rather than embedded.
+type listedAccount struct {
+	ID                  int64                     `json:"id"`
+	Provider            connectedaccount.Provider `json:"provider" enum:"gmail"`
+	Email               string                    `json:"email"`
+	NeedsReconnectSince *time.Time                `json:"needsReconnectSince" nullable:"true" doc:"When Google stopped accepting the account's permission; null until it does. Reconnecting clears it."`
+	Status              connectedaccount.Status   `json:"status" enum:"usable,needs-reconnect,token-unreadable" doc:"Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either."`
+	CreatedAt           time.Time                 `json:"createdAt"`
+	Sync                accountSync               `json:"sync"`
+}
+
+func listedAccountOf(account connectedaccount.Account, report mailsync.Report) listedAccount {
+	return listedAccount{
+		ID:                  account.ID,
+		Provider:            account.Provider,
+		Email:               account.Email,
+		NeedsReconnectSince: account.NeedsReconnectSince,
+		Status:              account.Status,
+		CreatedAt:           account.CreatedAt,
+		Sync:                accountSyncOf(report),
+	}
 }
 
 func registerConnectedAccountList(api huma.API, handler connectedAccountHandler) {
@@ -149,7 +180,7 @@ func registerConnectedAccountList(api huma.API, handler connectedAccountHandler)
 		Path:        connectedAccountsPath,
 		Summary:     "List Connected Accounts",
 		Tags:        []string{tagConnectedAccounts},
-		Description: "Lists the signed-in account's connected Gmail accounts.",
+		Description: "Lists the signed-in account's connected Gmail accounts, each with where its sync stands, and whether syncing has stopped on this inbok.",
 		Metadata:    map[string]any{accessKey: session.AccessMember},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   memberResponses(api),
@@ -158,13 +189,42 @@ func registerConnectedAccountList(api huma.API, handler connectedAccountHandler)
 
 func (h connectedAccountHandler) handleListConnectedAccounts(ctx context.Context, _ *struct{}) (*output[connectedAccounts], error) {
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+
+	// 1. List the member's accounts, which says whose sync states may be
+	// read.
 	accounts, err := h.accounts.List(ctx, user.ID)
 	if err != nil {
 		return nil, err
 	}
-	listed := connectedAccounts{Accounts: make([]connectedAccount, 0, len(accounts))}
+
+	// 2. Read their sync states. mailsync depends on connectedaccount, so
+	// the two reads are composed here (ADR001, "Polling").
+	ids := make([]int64, len(accounts))
+	for i, account := range accounts {
+		ids[i] = account.ID
+	}
+	reports, err := h.syncs.Reports(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	stopped, err := h.syncs.Stopped(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Pair them; an account disconnected between the reads has no sync
+	// state left, and is left out.
+	byAccount := make(map[int64]mailsync.Report, len(reports))
+	for _, report := range reports {
+		byAccount[report.AccountID] = report
+	}
+	listed := connectedAccounts{Accounts: make([]listedAccount, 0, len(accounts)), SyncStopped: stopped}
 	for _, account := range accounts {
-		listed.Accounts = append(listed.Accounts, connectedAccountOf(account))
+		report, ok := byAccount[account.ID]
+		if !ok {
+			continue
+		}
+		listed.Accounts = append(listed.Accounts, listedAccountOf(account, report))
 	}
 	return respondData(listed), nil
 }

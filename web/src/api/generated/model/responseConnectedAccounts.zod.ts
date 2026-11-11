@@ -14,8 +14,16 @@ export const ResponseConnectedAccounts = zod.object({
   "id": zod.int(),
   "needsReconnectSince": zod.iso.datetime({"offset":true}).nullable().describe('When Google stopped accepting the account\'s permission; null until it does. Reconnecting clears it.'),
   "provider": zod.enum(['gmail']),
-  "status": zod.enum(['usable', 'needs-reconnect', 'token-unreadable']).describe('Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either.')
-})).describe('Oldest first.')
+  "status": zod.enum(['usable', 'needs-reconnect', 'token-unreadable']).describe('Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either.'),
+  "sync": zod.object({
+  "failedAt": zod.iso.datetime({"offset":true}).nullable().describe('When failure happened; null exactly when it is.'),
+  "failure": zod.union([zod.literal('provider'),zod.literal('token-unreadable'),zod.literal('internal'),zod.literal(null)]).nullable().describe('Why the last sync, full or poll, failed; null once one succeeds. provider: Gmail kept failing, and inbok tries again. token-unreadable: the saved permission can no longer be read. internal: inbok failed. A complete account keeps a failed poll\'s.'),
+  "lastSyncedAt": zod.iso.datetime({"offset":true}).nullable().describe('When inbok last confirmed its copy matched Gmail: a sync finished, or the every-minute check found nothing new; null before the first.'),
+  "messagesSoFar": zod.int().nullable().describe('How many messages the running full sync has copied; null unless status is running. Gmail gives no total.'),
+  "status": zod.enum(['waiting', 'running', 'complete', 'failed']).describe('waiting: the first full sync, or the next after a reconnect, has not started. running: a full sync copies the last 90 days; new mail still arrives. complete: the copy is current, and kept so every minute. failed: the last full sync failed; inbok tries again an hour later.')
+})
+})).describe('Oldest first.'),
+  "syncStopped": zod.boolean().describe('Whether syncing has stopped on this inbok: no run of the every-minute sync schedule succeeded in the last 5 minutes, e.g. as no worker runs. Only an administrator can fix it.')
 })
 })
 

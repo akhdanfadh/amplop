@@ -154,6 +154,54 @@ func (c *Client) EnqueueSync(ctx context.Context, tx pgx.Tx, accountID int64) (b
 	return true, savepoint.Commit(ctx)
 }
 
+// SyncScheduleSucceeded reports whether a run of the minute's sync
+// schedule created after since succeeded. It stops when ctx ends, and
+// returns DBOS's error, joined with ctx's when ctx ended first.
+func (c *Client) SyncScheduleSucceeded(ctx context.Context, since time.Time) (bool, error) {
+	// DBOS's calls run with its own context, not the one given, so the read
+	// takes a copy of DBOS's that ctx's end cancels: a stalled read must not
+	// outlive the request.
+	//
+	// NOTE: dbos.Client has no way to derive a context; the client
+	// dbos.NewClient returns is a dbos.Context, which has (v1.8.0).
+	// TestClientScoped checks it on each upgrade.
+	scoped, ok := c.client.(dbos.Context)
+	if !ok {
+		return false, errNotScoped
+	}
+	scoped, cancel := dbos.WithTimeout(scoped, scheduleReadTimeout)
+	defer cancel()
+	stop := context.AfterFunc(ctx, cancel)
+	defer stop()
+
+	runs, err := dbos.ListWorkflows(scoped,
+		dbos.WithFilterScheduleName(syncSchedule),
+		dbos.WithFilterStatus(dbos.WorkflowStatusSuccess),
+		dbos.WithFilterCreatedAfter(since),
+		dbos.WithFilterLimit(1),
+		dbos.WithFilterLoadInput(false),
+		dbos.WithFilterLoadOutput(false),
+	)
+	// The cancel above makes DBOS report a cancellation, so ctx's own
+	// error goes with it: a request past its deadline then answers 503.
+	if err != nil && ctx.Err() != nil {
+		return false, errors.Join(ctx.Err(), err)
+	}
+	if err != nil {
+		return false, err
+	}
+	return len(runs) > 0, nil
+}
+
+// errNotScoped means the DBOS client cannot take a deadline, which an SDK
+// upgrade may cause.
+var errNotScoped = errors.New("DBOS client cannot take a deadline")
+
+// scheduleReadTimeout bounds [Client.SyncScheduleSucceeded] when its
+// caller sets no shorter deadline, inbok's choice: under a request's
+// 10-second work limit.
+const scheduleReadTimeout = 5 * time.Second
+
 // callerTx is a transaction whose statements run with ctx, whatever context
 // they are given.
 //

@@ -1,6 +1,7 @@
 package mailsync
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -15,10 +16,22 @@ import (
 // syncMember owns syncAccount in the service's tests.
 const syncMember = 11
 
+// fakeRuns answers whether the schedule succeeded, recording since.
+type fakeRuns struct {
+	succeeded bool
+	err       error
+	since     time.Time
+}
+
+func (f *fakeRuns) SyncScheduleSucceeded(_ context.Context, since time.Time) (bool, error) {
+	f.since = since
+	return f.succeeded, f.err
+}
+
 func newServiceTest(state SyncState) (*Service, *fakeStorage) {
 	storage := newFakeStorage(state)
 	storage.owner = syncMember
-	return NewService(storage, func() time.Time { return syncNow }), storage
+	return NewService(storage, &fakeRuns{succeeded: true}, func() time.Time { return syncNow }), storage
 }
 
 func TestServiceRequest(t *testing.T) {
@@ -79,4 +92,25 @@ func TestServiceRequestRefused(t *testing.T) {
 	require.ErrorIs(t, otherErr, ErrNotFound)
 	assert.Nil(t, storage.requestedAt)
 	assert.Zero(t, storage.enqueued)
+}
+
+func TestServiceStopped(t *testing.T) {
+	for name, tc := range map[string]struct {
+		succeeded bool
+		stopped   bool
+	}{
+		"a run succeeded": {succeeded: true},
+		"none did":        {stopped: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			runs := &fakeRuns{succeeded: tc.succeeded}
+			s := NewService(newFakeStorage(SyncState{}), runs, func() time.Time { return syncNow })
+
+			stopped, err := s.Stopped(t.Context())
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.stopped, stopped)
+			assert.Equal(t, syncNow.Add(-stoppedAfter), runs.since)
+		})
+	}
 }

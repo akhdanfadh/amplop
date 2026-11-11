@@ -19,6 +19,7 @@ import (
 	"inbok/internal/account"
 	"inbok/internal/attemptlimit"
 	"inbok/internal/connectedaccount"
+	"inbok/internal/mailsync"
 	"inbok/internal/session"
 )
 
@@ -91,30 +92,36 @@ func TestGoogleCallbackURL(t *testing.T) {
 // Connected account list
 // ========================
 
-// The list never shows Google's ID for an account.
+// The list shows each account with its sync, and never Google's ID for
+// it.
 func TestListConnectedAccounts(t *testing.T) {
 	refused := alexAccount
 	refused.NeedsReconnectSince = &alexRefused
 	refused.Status = connectedaccount.StatusNeedsReconnect
 	unreadable := alexAccount
 	unreadable.Status = connectedaccount.StatusTokenUnreadable
+	const waitingJSON = `"sync":{"status":"waiting","messagesSoFar":null,"lastSyncedAt":null,"failure":null,"failedAt":null}`
 	for _, c := range []struct {
 		name     string
 		accounts []connectedaccount.Account
+		stopped  bool
 		want     string
 	}{
-		{"none", []connectedaccount.Account{}, `{"data":{"accounts":[]}}`},
-		{"one", []connectedaccount.Account{alexAccount}, `{"data":{"accounts":[` + alexJSON + `]}}`},
-		{"needs reconnecting", []connectedaccount.Account{refused},
+		{"none", []connectedaccount.Account{}, false, `{"data":{"accounts":[],"syncStopped":false}}`},
+		{"one", []connectedaccount.Account{alexAccount}, false,
+			`{"data":{"accounts":[` + alexJSON[:len(alexJSON)-1] + `,` + waitingJSON + `}],"syncStopped":false}}`},
+		{"needs reconnecting", []connectedaccount.Account{refused}, false,
 			`{"data":{"accounts":[{"id":3,"provider":"gmail","email":"alex@example.com",` +
-				`"needsReconnectSince":"2026-11-06T09:00:00Z","status":"needs-reconnect","createdAt":"2026-11-05T09:00:00Z"}]}}`},
-		{"token unreadable", []connectedaccount.Account{unreadable},
+				`"needsReconnectSince":"2026-11-06T09:00:00Z","status":"needs-reconnect","createdAt":"2026-11-05T09:00:00Z",` + waitingJSON + `}],"syncStopped":false}}`},
+		{"token unreadable", []connectedaccount.Account{unreadable}, false,
 			`{"data":{"accounts":[{"id":3,"provider":"gmail","email":"alex@example.com",` +
-				`"needsReconnectSince":null,"status":"token-unreadable","createdAt":"2026-11-05T09:00:00Z"}]}}`},
+				`"needsReconnectSince":null,"status":"token-unreadable","createdAt":"2026-11-05T09:00:00Z",` + waitingJSON + `}],"syncStopped":false}}`},
+		{"syncing stopped", []connectedaccount.Account{}, true, `{"data":{"accounts":[],"syncStopped":true}}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			accounts := &fakeConnectedAccounts{accounts: c.accounts}
-			api := New(discard, Services{ConnectedAccounts: accounts, Session: memberSessions(account.RoleMember)})
+			syncs := &fakeSyncs{reports: map[int64]mailsync.Report{3: {AccountID: 3, Status: mailsync.StatusWaiting}}, stopped: c.stopped}
+			api := New(discard, Services{ConnectedAccounts: accounts, Syncs: syncs, Session: memberSessions(account.RoleMember)})
 
 			response := requestAuthenticated(api, http.MethodGet, "/connected-accounts", "")
 
@@ -125,6 +132,29 @@ func TestListConnectedAccounts(t *testing.T) {
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 		})
 	}
+}
+
+// The list reads only the member's accounts' sync states, and leaves out
+// an account disconnected between the reads.
+func TestListConnectedAccountsSync(t *testing.T) {
+	blair := alexAccount
+	blair.ID, blair.Email = 4, "blair@example.com"
+	accounts := &fakeConnectedAccounts{accounts: []connectedaccount.Account{alexAccount, blair}}
+	syncs := &fakeSyncs{reports: map[int64]mailsync.Report{
+		3: {AccountID: 3, Status: mailsync.StatusRunning, MessagesSoFar: 250, FailedAt: &alexRefused, Failure: mailsync.FailureProvider, LastSyncedAt: &alexCreated, RequestedAt: &alexRefused},
+	}}
+	api := New(discard, Services{ConnectedAccounts: accounts, Syncs: syncs, Session: memberSessions(account.RoleMember)})
+
+	response := requestAuthenticated(api, http.MethodGet, "/connected-accounts", "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, []int64{3, 4}, syncs.read)
+	listed := decodeJSON(t, response.Body.Bytes())["data"].(map[string]any)["accounts"].([]any)
+	require.Len(t, listed, 1)
+	assert.Equal(t, map[string]any{
+		"status": "running", "messagesSoFar": float64(250), "lastSyncedAt": "2026-11-05T09:00:00Z",
+		"failure": "provider", "failedAt": "2026-11-06T09:00:00Z",
+	}, listed[0].(map[string]any)["sync"])
 }
 
 // ========================

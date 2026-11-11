@@ -175,13 +175,18 @@
           "accounts": {
             "description": "Oldest first.",
             "items": {
-              "$ref": "#/components/schemas/ConnectedAccount"
+              "$ref": "#/components/schemas/ListedAccount"
             },
             "type": "array"
+          },
+          "syncStopped": {
+            "description": "Whether syncing has stopped on this inbok: no run of the every-minute sync schedule succeeded in the last 5 minutes, e.g. as no worker runs. Only an administrator can fix it.",
+            "type": "boolean"
           }
         },
         "required": [
-          "accounts"
+          "accounts",
+          "syncStopped"
         ],
         "type": "object"
       },
@@ -315,6 +320,58 @@
         "required": [
           "location",
           "message"
+        ],
+        "type": "object"
+      },
+      "ListedAccount": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "needsReconnectSince": {
+            "description": "When Google stopped accepting the account's permission; null until it does. Reconnecting clears it.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "enum": [
+              "gmail"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "description": "Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either.",
+            "enum": [
+              "usable",
+              "needs-reconnect",
+              "token-unreadable"
+            ],
+            "type": "string"
+          },
+          "sync": {
+            "$ref": "#/components/schemas/AccountSync"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "email",
+          "needsReconnectSince",
+          "status",
+          "createdAt",
+          "sync"
         ],
         "type": "object"
       },
@@ -2043,7 +2100,7 @@
     },
     "/connected-accounts": {
       "get": {
-        "description": "Lists the signed-in account's connected Gmail accounts.",
+        "description": "Lists the signed-in account's connected Gmail accounts, each with where its sync stands, and whether syncing has stopped on this inbok.",
         "operationId": "listConnectedAccounts",
         "responses": {
           "200": {

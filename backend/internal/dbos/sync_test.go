@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -710,6 +711,32 @@ func TestSyncScheduleStarts(t *testing.T) {
 	assert.Equal(t, []string{"sync-7", "sync-8"}, deduplication)
 }
 
+// The client finds a successful run of the schedule only once one ran
+// after the time it is given.
+func TestScheduleSucceeded(t *testing.T) {
+	url := migrated(t)
+	worker := scheduleWorker(t, url, fakeDue{}, fullPlan())
+	client, err := NewClient(t.Context(), url, discard)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+	before := time.Now().Add(-time.Minute)
+
+	none, err := client.SyncScheduleSucceeded(t.Context(), before)
+	require.NoError(t, err)
+	handle, err := dbos.TriggerSchedule[int](worker.ctx, syncSchedule)
+	require.NoError(t, err)
+	_, err = handle.GetResult(dbos.WithHandleTimeout(wait))
+	require.NoError(t, err)
+	succeeded, err := client.SyncScheduleSucceeded(t.Context(), before)
+	require.NoError(t, err)
+	later, err := client.SyncScheduleSucceeded(t.Context(), time.Now().Add(time.Minute))
+	require.NoError(t, err)
+
+	assert.False(t, none)
+	assert.True(t, succeeded)
+	assert.False(t, later)
+}
+
 // A worker without Google deletes the schedule an earlier start saved, so
 // no run fires for a workflow it lacks.
 func TestSyncScheduleDeleted(t *testing.T) {
@@ -759,4 +786,30 @@ func TestSyncRetryStopped(t *testing.T) {
 	assert.Equal(t, stepResult[string]{}, result)
 	assert.Equal(t, 1, tries)
 	assert.Less(t, time.Since(started), 5*time.Second)
+}
+
+// A schedule read whose caller gives up stops, even while DBOS's table is
+// locked, so a request never holds a connection past its end, and reports
+// the caller's deadline, which the API answers with 503.
+func TestClientScoped(t *testing.T) {
+	url := migrated(t)
+	client, err := NewClient(t.Context(), url, discard)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+	conn, err := pgx.Connect(t.Context(), url)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, conn.Close(context.Background())) })
+	tx, err := conn.Begin(t.Context())
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, tx.Rollback(context.Background())) })
+	_, err = tx.Exec(t.Context(), "LOCK TABLE dbos.workflow_status IN ACCESS EXCLUSIVE MODE")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err = client.SyncScheduleSucceeded(ctx, time.Now().Add(-time.Minute))
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(started), 2*time.Second)
 }

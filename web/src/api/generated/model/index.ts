@@ -26,6 +26,7 @@ export * from './endedSessions.zod';
 export * from './firstAdmin.zod';
 export * from './healthStatus.zod';
 export * from './inputError.zod';
+export * from './listedAccount.zod';
 export * from './listedMembers.zod';
 export * from './listedSession.zod';
 export * from './listedSessions.zod';

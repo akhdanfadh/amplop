@@ -167,7 +167,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		Throttle:                throttle,
 		ConnectedAccounts:       connectedAccounts,
 		OutgoingMessages:        outgoingmessage.NewService(db, connectedAccounts, time.Now),
-		Syncs:                   mailsync.NewService(db, time.Now),
+		Syncs:                   mailsync.NewService(db, jobs, time.Now),
 	}
 	if cfg.Google != nil {
 		// Only when configured, so the interface stays nil and Gmail is not

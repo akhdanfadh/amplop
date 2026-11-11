@@ -17,6 +17,10 @@ const (
 	// minute would refuse a member's second click while waiting for a
 	// mail (ADR001, "Polling").
 	requestWindow = 15 * time.Second
+	// stoppedAfter is how long without a successful run of the minute's
+	// schedule means syncing has stopped, inbok's choice: five missed
+	// minutes, so a worker's restart or one failed run shows nothing.
+	stoppedAfter = 5 * time.Minute
 )
 
 // requestLimit allows one request to sync an account per [requestWindow].
@@ -52,15 +56,44 @@ type SyncRequest struct {
 	RequestedAt *time.Time
 }
 
-// Service starts an account's sync when its member asks.
+// scheduleRuns says whether the minute's sync schedule runs, e.g. the DBOS
+// client.
+type scheduleRuns interface {
+	// SyncScheduleSucceeded reports whether a run of the sync schedule
+	// created after since succeeded.
+	SyncScheduleSucceeded(ctx context.Context, since time.Time) (bool, error)
+}
+
+// Service reports where members' accounts' synchronization stands, and
+// starts an account's sync when its member asks.
 type Service struct {
 	storage Storage
+	runs    scheduleRuns
 	now     func() time.Time
 }
 
-// NewService returns a [Service] given storage and a clock.
-func NewService(storage Storage, now func() time.Time) *Service {
-	return &Service{storage: storage, now: now}
+// NewService returns a [Service] given storage, the schedule's runs, and a
+// clock.
+func NewService(storage Storage, runs scheduleRuns, now func() time.Time) *Service {
+	return &Service{storage: storage, runs: runs, now: now}
+}
+
+// Reports returns the reports of those of accountIDs that have a sync
+// state, in account ID order. The caller checks that the accounts are the
+// member's.
+func (s *Service) Reports(ctx context.Context, accountIDs []int64) ([]Report, error) {
+	return s.storage.Reports(ctx, accountIDs)
+}
+
+// Stopped reports whether syncing has stopped on this inbok: no run of the
+// minute's schedule succeeded within stoppedAfter, e.g. as no worker runs,
+// or it runs without a Google client (ADR001, "Polling").
+func (s *Service) Stopped(ctx context.Context) (bool, error) {
+	succeeded, err := s.runs.SyncScheduleSucceeded(ctx, s.now().Add(-stoppedAfter))
+	if err != nil {
+		return false, err
+	}
+	return !succeeded, nil
 }
 
 // Request starts the sync of userID's account accountID now, unless one is

@@ -182,7 +182,7 @@ export const getListConnectedAccountsUrl = () => {
 }
 
 /**
- * Lists the signed-in account's connected Gmail accounts.
+ * Lists the signed-in account's connected Gmail accounts, each with where its sync stands, and whether syncing has stopped on this inbok.
  * @summary List Connected Accounts
  */
 export const listConnectedAccounts = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseConnectedAccounts> => {
