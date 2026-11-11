@@ -80,7 +80,8 @@ type connectedAccount struct {
 	ID                  int64                     `json:"id"`
 	Provider            connectedaccount.Provider `json:"provider" enum:"gmail"`
 	Email               string                    `json:"email"`
-	NeedsReconnectSince *time.Time                `json:"needsReconnectSince" nullable:"true" doc:"When Google stopped accepting the account's permission; null while it works. Reconnecting clears it."`
+	NeedsReconnectSince *time.Time                `json:"needsReconnectSince" nullable:"true" doc:"When Google stopped accepting the account's permission; null until it does. Reconnecting clears it."`
+	Status              connectedaccount.Status   `json:"status" enum:"usable,needs-reconnect,token-unreadable" doc:"Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either."`
 	CreatedAt           time.Time                 `json:"createdAt"`
 }
 
@@ -90,6 +91,7 @@ func connectedAccountOf(account connectedaccount.Account) connectedAccount {
 		Provider:            account.Provider,
 		Email:               account.Email,
 		NeedsReconnectSince: account.NeedsReconnectSince,
+		Status:              account.Status,
 		CreatedAt:           account.CreatedAt,
 	}
 }

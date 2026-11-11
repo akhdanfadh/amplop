@@ -13,8 +13,11 @@ export type MessageHeader = {
   from: Address[];
   to: Address[];
   cc: Address[];
+  // Only a message the member sent has Bcc recipients to show.
+  bcc?: Address[];
   subject: string;
-  // When the message arrived, as an ISO 8601 timestamp.
+  // When the message arrived, as an ISO 8601 timestamp; for one the member
+  // sent, when Gmail took it, or else when inbok saved it.
   receivedAt: string;
 };
 
@@ -67,6 +70,7 @@ function Header({ header, subject }: { header: MessageHeader; subject: string })
         <AddressRow label="From" addresses={header.from} />
         <AddressRow label="To" addresses={header.to} />
         <AddressRow label="Cc" addresses={header.cc} />
+        <AddressRow label="Bcc" addresses={header.bcc ?? []} />
         <dt className="text-muted-foreground">Date</dt>
         <dd>
           <time dateTime={header.receivedAt} title={received.full}>

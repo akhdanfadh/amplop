@@ -80,7 +80,7 @@ The worker reads these environment variables:
 | `INBOK_WORKER_ID` | `worker` | The name the worker resumes unfinished work under: 1 to 64 letters, digits, `.`, `-`, or `_`. |
 | `INBOK_PUBLIC_URL` | none, required | As for `serve`: links in the email the worker sends start with it, and its host names inbok to mail servers. |
 | `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of removed Gmail accounts. |
-| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with. Empty: the worker runs no removals and leaves them queued. |
+| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with and the [send](#sending-a-message) job sends with. Empty: the worker runs neither and leaves them queued. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
 | `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. The worker applies the [search index](#search-index)'s settings when it starts. |
 | `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, which signs every request. |
@@ -301,8 +301,9 @@ so far, asking Google to end inbok's permission. A
 [disconnect](#disconnecting) deletes the account, moves its sealed refresh
 token to an `account_removals` row, and saves the job, in one transaction,
 so the job's input is only the removal's ID and the token never sits in
-DBOS's tables. Every job that calls Google runs on `inbok.google`, so one
-limit on it protects the Google project's quota.
+DBOS's tables. Google work in the background runs on `inbok.google`;
+members' sends have a queue of their own, so they never wait behind it
+(see [Sending a message](#sending-a-message)).
 
 Its step, `revoke token` (`connectedaccount.Removals.Revoke`), first
 checks whether another member has connected the same Google account: a
@@ -325,6 +326,79 @@ DBOS would otherwise claim a removal it cannot run for that worker, and
 no other worker could take it. Removals saved while the settings were set
 wait in the queue, with their sealed tokens, until a worker that has them
 runs; one that never does leaves them there.
+
+### Sending a message
+
+The workflow `inbok.outgoing-message`, run from the queue
+`inbok.google-send`, sends a member's [outgoing message](#sending-mail).
+Saving the message saves the job in the same transaction, under the
+workflow ID `inbok.outgoing-message/<message id>`, so a message has one
+send; its input is only the message's ID. Sends have their own queue: a
+run keeps its place in a queue's limit until it ends, and priority only
+orders runs still waiting, so on `inbok.google` a send could wait hours
+behind long jobs once that queue has a limit. Neither queue has one yet.
+
+Gmail's `messages.send` has no idempotency key, so the message's status
+records how far sending got, and each step reads it first; a step run
+again after a crash does only what is left:
+
+1. `prepare send` (`outgoingmessage.Sending.Prepare`) takes an access
+   token and reads `users.getProfile`, noting the mailbox's history ID for
+   a later check. A token Google refused, one no key opens, or a
+   deactivated member ends the message `failed` with `needs-reconnect`,
+   `token-unreadable`, or `deactivated`.
+2. `send message` takes a token and reads `users.getProfile` again: when
+   Gmail names the account by another address than the message's `From`,
+   e.g. after Google renamed it, nothing is sent: the message fails with
+   `sender-changed` and the account takes Gmail's address, so the member's
+   next message shows it. Every save of a step locks the member, then the
+   account, then the message: a disconnect deletes the account and then
+   its messages, so saving the address after locking the message would
+   deadlock with it. The check is in this step because DBOS reuses an
+   earlier step's result after a restart, however old. The step then marks
+   the message `sending`, reading the member's deactivation again under
+   their share lock, and calls `messages.send`. From that call on, a stop,
+   e.g. the worker shutting down, cancels neither the request, which keeps
+   its 30-second deadline, nor saving its answer: cutting it off would turn
+   an answered send, or one that never left, into `unknown`. Gmail's IDs end
+   it `sent`.
+   An answer that says the message was not sent ends it `failed`:
+   `refused`, or `sending-limit` for Gmail's daily limit, a 429 whose text
+   names mail sending. A failure before any connection to Gmail, another
+   rate limit, or a refused access token puts it back to `waiting` and is
+   retried; a limit that outlasts the retries, e.g. Gmail's daily bandwidth
+   limit, ends it `gave-up`. Anything else, e.g. a dropped connection, a
+   timeout, a 5xx, or a 200 without an ID, is unanswered: the message stays
+   `sending`. Only no connection proves Gmail never had the request, since
+   Go reports a finished write after the fact. A step that finds the
+   message `sending` never sends again. Gmail, and the emulator, put a sent
+   message in Sent themselves.
+3. After an unanswered send, the run waits 2 minutes, then `check sent`
+   lists the messages Gmail added to Sent since the noted history ID
+   (`history.list`, up to 10 pages) and reads each one's
+   `X-Inbok-Message-Id`. Gmail replaces the `Message-ID` a client sets but
+   keeps that header. A match ends the message `sent`, with Gmail's own
+   time for it (`internalDate`), not the check's, which runs minutes later,
+   as the member's mailbox shows it. No match, a message deleted before it
+   could be read, history Gmail no longer keeps, or no token ends it
+   `unknown`: it is never sent again, and the member decides.
+4. A step that keeps failing ends with `give up`: a `waiting` message
+   fails with `gave-up`, and a `sending` one, which may have gone, becomes
+   `unknown`. A `give up` that keeps failing too, e.g. with the database
+   down, is tried again every 15 minutes until it is saved, since a run
+   that ends with an error is not resumed.
+
+`prepare send` and `send message` are retried 5 more times, waiting 2, 4,
+8, 16, then 30 seconds, since the member is waiting; `check sent` 3 more
+times, waiting 30 seconds, 1, then 2 minutes. The run logs `outgoing
+message` with the `message_id` and the status it ended with, a warning
+unless `sent`, or `outgoing message step failed` with an error that holds
+only Gmail's status. The Gmail client is given a logger that drops
+everything: Google's own would write each request's body, the whole
+message, to stderr with `GOOGLE_SDK_GO_LOGGING_LEVEL=debug`. ADR006
+records the rules and what they were chosen over. The worker registers the
+workflow, and listens to `inbok.google-send`, only when the Google
+settings are set, as for account removal.
 
 ### Inspecting workflows
 
@@ -794,10 +868,12 @@ settings lose their tested time until an administrator enters the password
 again and saves. The web app shows that 500 as a lost test result. A lost
 key also makes the Gmail refresh tokens it sealed unreadable: Gmail work
 for those accounts fails with `connectedaccount.ErrTokenUnreadable` until
-each member disconnects the account and connects it again, which seals a
-new token with the first key. The accounts are not marked as needing a
-reconnect, since a worker started with a wrong key list would mark every
-account, so the Connected accounts page offers them no Reconnect.
+each member reconnects the account, which seals a new token with the first
+key. Listing accounts opens each token to tell (`token-unreadable`), so
+the Connected accounts page marks such an account and offers Reconnect,
+and sending refuses it. Nothing is saved about it, since a server started
+with a wrong key list would otherwise mark every account: restoring the
+key makes the accounts usable again at the next read.
 
 ### Google emulator
 
@@ -845,10 +921,11 @@ Each account keeps its Google ID (`sub`) across restarts.
 A patch in `google-emulator/patches/`, which pnpm applies on install,
 changes emulate where inbok needs Gmail's behavior: it adds
 `users.getProfile`, keeps history IDs within 64 bits, as Gmail's are and
-as the Go client decodes them, lets a seed fix an account's `sub`, and
+as the Go client decodes them, lets a seed fix an account's `sub`,
 refuses a code exchanged by another client or with another redirect URI
-than its authorization request's. The install fails if the patch no
-longer applies, e.g. after a version change;
+than its authorization request's, returns a sent message's other headers,
+e.g. `X-Inbok-Message-Id`, and matches `metadataHeaders` in any case. The
+install fails if the patch no longer applies, e.g. after a version change;
 `google-emulator/pnpm-workspace.yaml` says how to change it.
 
 Where it still differs from Google, a test that needs Google's behavior
@@ -859,6 +936,10 @@ uses a small `httptest` stub instead:
   answers 400 `invalid_token` for one it does not know.
 - `history.list` never answers 404 for an old history ID, and nothing
   returns quota errors.
+- `messages.send` keeps the `Message-ID` a client sets, where Gmail
+  replaces it with its own (tested 2026-11-09), and it never times out
+  or drops a send, so the [send job](#sending-a-message)'s answers and
+  its check are tested with stubs too.
 - It ignores `access_type` and `prompt` and always returns a refresh
   token.
 - A failed PKCE check leaves the code usable, and posting the consent
@@ -1069,14 +1150,16 @@ returns it yet: the message endpoint, which also runs `Sanitize` into
 
 ## Email addresses
 
-Every address inbok takes goes through `emailaddress.Parse`: setup, sign-in,
-`recover-admin`, registration, the system email From address, each
-message's recipient, and a connected Gmail account's email from Google.
+Every address of inbok's own goes through `emailaddress.Parse`: setup,
+sign-in, `recover-admin`, registration, the system email From address, each
+system email's recipient, and a connected Gmail account's email from Google.
 It trims surrounding spaces and tabs, accepts one bare address of at most
-254 characters without hidden characters, and lowercases the letters
-A to Z, local part included; other letters keep their case. Hidden
-characters are controls, invisible formatting such as a zero-width space or
-a right-to-left override, and Unicode spaces and separators. Anything else
+254 octets in UTF-8 (RFC 5321's limit) without hidden characters, and
+lowercases the letters A to Z, local part included; other letters keep their
+case. Hidden characters are controls, invisible formatting such as a
+zero-width space or a right-to-left override, other characters Unicode
+draws as nothing, such as a variation selector or a Hangul filler, and
+Unicode spaces and separators. Anything else
 is `emailaddress.ErrInvalid`, which handlers answer with a 422 on the field;
 Huma accepts hidden characters, so for those the service's 422 is the one a
 client sees. Saved addresses are compared
@@ -1084,9 +1167,15 @@ exactly, and the `users` and `connected_accounts` tables refuse an email
 with an uppercase ASCII letter. New code that takes an address calls
 `Parse` in its service.
 
+The recipients of a member's own mail go through `emailaddress.ParseRecipient`
+instead: the same rule and trimming, but every letter keeps its case, since
+the recipient's server may treat the local part's case as meaningful
+(RFC 5321) and inbok only sends to them.
+
 ADR025 in the project's decision records explains the choice and its cost: a
 mail server that treats the local part's case as meaningful is not
-supported. ADR006 explains why connected Gmail accounts follow the rule.
+supported for inbok's own addresses. ADR006 explains why connected Gmail
+accounts follow the rule, and why recipients do not.
 
 ## Password hashes
 
@@ -1896,7 +1985,11 @@ account once; two members may each connect it.
 
 `GET /api/v0/connected-accounts` lists the member's own accounts, oldest
 first: `id`, `provider` (`gmail`), `email`, `needsReconnectSince`, null
-while Google accepts the token, and `createdAt`. Google's `sub` stays on
+while Google accepts the token, `status`, and `createdAt`. `status` is
+`needs-reconnect` once Google refused the token, `token-unreadable` when no
+configured key opens it, and `usable` otherwise; `Service.List` opens each
+token for it, saving nothing, so restoring a lost key makes an account
+usable again (see [Encryption keys](#encryption-keys)). Google's `sub` stays on
 the server. Another member's account is answered as not found everywhere,
 404 `connected-account-not-found`, like a missing one.
 
@@ -1948,6 +2041,111 @@ account's connect states and everything synchronized for it, moves the
 refresh token to `account_removals`, and saves the
 [account removal](#account-removal) job. Jobs already running for the
 account stop when `Access.Token` finds it gone.
+
+### Sending mail
+
+A member sends a new message from one of their connected accounts
+(`outgoingmessage`, US015). `outgoing_messages` keeps each message under a
+random `uuid`: its sending account, whose owner owns it, the account's
+address when it was saved (a reconnect may change the account's), To, Cc,
+and Bcc, subject, plain text body, status, failure reason, the ID inbok
+gave it (`inbok_message_id`, a Message-ID with its angle brackets),
+Gmail's message and thread IDs once sent (`provider_message_id`,
+`provider_thread_id`), and when it was created and sent. The recipient
+lists are JSON arrays of `{"name", "address"}`, as synchronized mail keeps
+addresses, with empty names for now. Like synchronized mail, it has no
+owner column of its own: reads join `connected_accounts` and match its
+`user_id`, so the owner is stored once, and a disconnect deletes the
+account's messages with it.
+
+`outgoingmessage.Service.Create` checks the content first:
+
+- At most 100 recipients in each of To, Cc, and Bcc
+  (`*outgoingmessage.TooManyRecipientsError` names the list), at least one
+  across them, each through `emailaddress.ParseRecipient`; a refused one
+  is a `*outgoingmessage.RecipientError` naming its list and index. A limit
+  per list belongs to one field the form can mark, which a limit across
+  three could not.
+- A subject of at most 500 characters without a line break or other
+  control character, and a body of at most 100,000 characters without NUL.
+  Both may be empty.
+
+The contract states the same limits (`maxItems`, `maxLength`), so the web
+and Huma refuse most of it first; the service checks again for every caller.
+
+It then saves in one transaction (`InsertOutgoingMessage`), in this order:
+
+1. It locks the member's `users` row, as a Gmail connect does, so one
+   member's sends are counted one at a time and a repeated key finds the
+   first request's message committed. A deactivated member is
+   `ErrDeactivated`.
+2. A request's `Idempotency-Key` the member already saved a message with is
+   `ErrKeyExists`, before the account or the limit, so a repeat is never
+   counted or refused for the attempt it repeats. The service then reads
+   that message: the same account and content return it, anything else is
+   `ErrKeyReused`. Keys are the member's own, in `outgoing_message_keys`
+   (member, key, message): another member's request with the same key is
+   another request. A key whose message a disconnect deleted meanwhile is
+   free again, and the request is saved as a new one.
+3. It reads the account under a key share lock, so a disconnect waits and
+   then deletes the message too. Another member's account, or a missing
+   one, is `ErrAccountNotFound`, one Google refused is
+   `ErrNeedsReconnect`, and one whose token no configured key opens is
+   `ErrTokenUnreadable` (`connectedaccount.Service.CheckToken`). Both answer
+   409 `sending-account-needs-reconnect`: either way the member reconnects.
+4. The member's send limit, 30 per 15 minutes and 200 per 24 hours across
+   their accounts, counts `send_attempts` rows (the member and a time, no
+   content). They are kept apart from `outgoing_messages`, whose rows go
+   with their account, so a disconnect does not reset the count; a send
+   deletes the member's rows older than 24 hours. Over the limit is an
+   `*attemptlimit.Error` wrapping `ErrThrottled`.
+
+The message gets an ID on the account's domain and is saved as `waiting`
+with its attempt, its [send job](#sending-a-message), and its key, whose
+primary key also refuses a second message for one key if a request ever
+got past the member's lock. A message moves through `waiting`, `sending`,
+then `sent`, `failed` with a reason (`refused`, `sending-limit`,
+`needs-reconnect`, `token-unreadable`, `deactivated`, `sender-changed`, or
+`gave-up`), or `unknown` when a send may have reached Gmail and no answer
+or check says whether.
+
+`Service.SendAgain` copies a `failed` or `unknown` message
+(`InsertOutgoingMessageCopy`): the same content from the same account, with
+the account's address now and a new ID and Message-ID, waiting with its own
+job and counted as an attempt. No request named the copy, so it has no key.
+The original's `sent_again_as` names the copy, so sending it again a second
+time returns that copy, and the member never sends one message twice by
+clicking twice. The transaction locks the member, then the account, then
+the message, the order the send job and a disconnect use. `Service.List`
+returns the member's newest 50, without bodies, so a `failed` or `unknown`
+message, which synchronized mail may never show, can be found and sent
+again.
+
+The HTTP operations, tag Outgoing Messages, are Send Message
+(`POST /outgoing-messages`, which requires an `Idempotency-Key` header: a
+UUID, quoted as the IETF draft's Structured Field string or bare), List
+Outgoing Messages, Get Outgoing Message, and Send Message Again
+(`POST /outgoing-messages/{id}/send-again`). A refused account, missing
+recipients, and a refused address answer 422 on their field, e.g.
+`body.cc[2]`; a reused key answers 422 `idempotency-key-reused`. Over the
+send limit answers 429 `send-throttled` with `Retry-After`. Another
+member's message, or a missing one, answers 404
+`outgoing-message-not-found`, and sending again a message that is
+`waiting`, `sending`, or `sent` answers 409 `not-sendable-again`.
+
+The send builds the MIME message from the saved row with go-message:
+`From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the
+creation time in UTC as `Date`, the saved ID as both `Message-ID` and
+`X-Inbok-Message-Id`, and quoted-printable UTF-8 `text/plain`. Gmail
+replaces the `Message-ID` with its own, which synchronized mail keeps as
+`internet_message_id`; providers that keep a client's send the saved one.
+A subject holding `=?` is encoded whole, so a reader shows it as typed
+rather than decoding it. The same row gives the same bytes on every
+worker. Building checks again each value that becomes a header (the
+recipients, `From`, the subject, the ID), so none can add one, whatever
+wrote the row; it does not apply the limits
+again, so lowering one leaves saved messages sendable. ADR006 records these
+choices.
 
 ## Search index
 
@@ -2154,7 +2352,11 @@ generates typed Go methods, e.g. `LockProbeCounter`, into
 `backend/internal/repository/postgres/sqlc`; there, `models.go` lists
 every table's columns. Every feature's queries share that one package, so
 a query's name repeats its table's name, e.g. `InsertProbeEvent` for
-`probe_events`. Settings are in `backend/sqlc.yaml`. After
+`probe_events`. A query names every column it reads or returns, never
+`*`, even when it takes them all: a later migration that adds a column
+then changes no query by surprise, and a reader sees what each query
+reads. SQLC still maps a list of every column to the table's model, e.g.
+`sqlc.OutgoingMessage`. Settings are in `backend/sqlc.yaml`. After
 changing a query or a migration, regenerate from `backend` and commit the
 result; never edit it by hand:
 
@@ -2183,6 +2385,8 @@ httpapi --> passwordreset <-- repository/postgres
             passwordreset --> systememail, account
 httpapi --> connectedaccount <-- repository/postgres
                              <-- google
+            outgoingmessage <-- repository/postgres
+                            <-- google
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google
@@ -2225,9 +2429,10 @@ httpapi --> messagecontent <-- s3
 - `google`, like `smtp`, is a technology package: it implements the
   Google side `connectedaccount` declares for its connect flow, its token
   access, and its revocations: the OAuth client, the ID token checks, the
-  refresh token trade, revocation, and Gmail's `users.getProfile`, with
-  `golang.org/x/oauth2` and
-  Google's Gmail client. Their types stay inside it; Gmail calls take
+  refresh token trade, revocation, and Gmail's `users.getProfile`; and
+  `outgoingmessage`'s `Provider`: `messages.send` and the check after an
+  unanswered send. It uses `golang.org/x/oauth2` and Google's Gmail
+  client, whose types stay inside it; Gmail calls take
   `connectedaccount`'s `AccessToken`. It also turns a Gmail message's
   parts into `messagecontent.Received`, the provider-neutral input of
   [Message parts](#message-parts).
@@ -2361,9 +2566,10 @@ For a job that runs once per request, follow the recovery notice
 2. `internal/dbos`: an input struct holding IDs and no personal data,
    the workflow registered under a fixed name with each step's retry
    policy, and a field in `Services` for the feature's type. A job that sends inbok's
-   email runs on `inbok.email`, and one that calls Google on
-   `inbok.google` (`queue.go`), which every such job shares; another kind
-   of job adds its own queue there.
+   email runs on `inbok.email`, one that calls Google in the background on
+   `inbok.google`, and one a member waits for on Gmail, a send, on
+   `inbok.google-send` (`queue.go`), so it never waits behind long
+   background runs; another kind of job adds its own queue there.
 3. `cmd/inbok/worker.go`: set that field.
 4. Save the workflow with the change that needs it, in one transaction.
    The feature's `Storage` method documents that it saves the job; its

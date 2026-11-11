@@ -11,6 +11,7 @@ package connectedaccount
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -53,6 +54,22 @@ type Identity struct {
 	Email   string
 }
 
+// Status says whether inbok can use an account's permission at Google now.
+type Status string
+
+const (
+	// StatusUsable is an account whose saved refresh token opens and that
+	// Google has not refused.
+	StatusUsable Status = "usable"
+	// StatusNeedsReconnect is an account whose refresh token Google refused;
+	// [Account.NeedsReconnectSince] says when.
+	StatusNeedsReconnect Status = "needs-reconnect"
+	// StatusTokenUnreadable is an account whose saved refresh token no
+	// configured key opens. It is worked out at each read, not saved, so
+	// restoring the key makes the account usable again (ADR006).
+	StatusTokenUnreadable Status = "token-unreadable"
+)
+
 // Account is a connected account as members see it. It never carries the
 // refresh token.
 type Account struct {
@@ -67,6 +84,15 @@ type Account struct {
 	// nil when it last accepted it.
 	NeedsReconnectSince *time.Time
 	CreatedAt           time.Time
+	// Status is whether inbok can use the account now, as [Service] read it.
+	Status Status
+}
+
+// StoredAccount is an account with its sealed refresh token, as storage
+// keeps it.
+type StoredAccount struct {
+	Account
+	Credential Credential
 }
 
 // Credential is a sealed refresh token and the ID of the key that sealed
@@ -107,14 +133,15 @@ type Storage interface {
 	// An error from update rolls back and is returned unchanged.
 	UpdateConnectedAccount(ctx context.Context, userID, accountID int64, update func(Account) (Reconnection, error)) (Account, error)
 
-	// ListConnectedAccounts returns userID's accounts, oldest first.
-	ListConnectedAccounts(ctx context.Context, userID int64) ([]Account, error)
+	// ListConnectedAccounts returns userID's accounts with their
+	// credentials, oldest first.
+	ListConnectedAccounts(ctx context.Context, userID int64) ([]StoredAccount, error)
 
 	// DeleteConnectedAccount deletes userID's account accountID, keeps its
 	// credential as a removal, and saves the job that revokes it, in one
-	// transaction. It returns the deleted account, or [ErrNotFound] when
-	// userID has no such account.
-	DeleteConnectedAccount(ctx context.Context, userID, accountID int64) (Account, error)
+	// transaction. It returns the deleted account with its credential, or
+	// [ErrNotFound] when userID has no such account.
+	DeleteConnectedAccount(ctx context.Context, userID, accountID int64) (StoredAccount, error)
 }
 
 type sealer interface {
@@ -124,11 +151,12 @@ type sealer interface {
 // Service applies the rules for connected accounts.
 type Service struct {
 	storage    Storage
-	encryption sealer
+	encryption keyring
 }
 
-// NewService supplies storage and the keys that seal refresh tokens.
-func NewService(storage Storage, encryption sealer) *Service {
+// NewService supplies storage and the keys that seal refresh tokens and
+// open them to check they still can be.
+func NewService(storage Storage, encryption keyring) *Service {
 	return &Service{storage: storage, encryption: encryption}
 }
 
@@ -145,9 +173,9 @@ func (s *Service) Connect(ctx context.Context, userID int64, identity Identity, 
 
 	// 2. Seal the token for the ID storage gives the account, and save it.
 	account := NewAccount{UserID: userID, Provider: ProviderGmail, Email: email, Subject: identity.Subject}
-	return s.storage.InsertConnectedAccount(ctx, account, func(accountID int64) (Credential, error) {
+	return usable(s.storage.InsertConnectedAccount(ctx, account, func(accountID int64) (Credential, error) {
 		return seal(s.encryption, userID, accountID, refreshToken)
-	})
+	}))
 }
 
 // Reconnect replaces the refresh token of userID's account accountID with
@@ -170,26 +198,74 @@ func (s *Service) Reconnect(ctx context.Context, userID, accountID int64, identi
 	}
 
 	// 3. Under the lock, refuse another Google account, and replace.
-	return s.storage.UpdateConnectedAccount(ctx, userID, accountID, func(current Account) (Reconnection, error) {
+	return usable(s.storage.UpdateConnectedAccount(ctx, userID, accountID, func(current Account) (Reconnection, error) {
 		// Another Google account's token would read and send another
 		// mailbox under this account's name and history.
 		if current.Subject != identity.Subject {
 			return Reconnection{}, ErrDifferentAccount
 		}
 		return Reconnection{Email: email, Credential: credential}, nil
-	})
+	}))
 }
 
-// List returns userID's accounts, oldest first.
+// List returns userID's accounts, oldest first, each with its status now.
 func (s *Service) List(ctx context.Context, userID int64) ([]Account, error) {
-	return s.storage.ListConnectedAccounts(ctx, userID)
+	stored, err := s.storage.ListConnectedAccounts(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	accounts := make([]Account, 0, len(stored))
+	for _, account := range stored {
+		accounts = append(accounts, s.withStatus(account))
+	}
+	return accounts, nil
 }
 
 // Disconnect deletes userID's account accountID with its credential, which a
 // job then revokes at Google ([Removals.Revoke]), and returns the deleted
-// account. It returns [ErrNotFound] when userID has no such account.
+// account with the status it had. It returns [ErrNotFound] when userID has
+// no such account.
 func (s *Service) Disconnect(ctx context.Context, userID, accountID int64) (Account, error) {
-	return s.storage.DeleteConnectedAccount(ctx, userID, accountID)
+	deleted, err := s.storage.DeleteConnectedAccount(ctx, userID, accountID)
+	if err != nil {
+		return Account{}, err
+	}
+	return s.withStatus(deleted), nil
+}
+
+// CheckToken returns [ErrTokenUnreadable] when no configured key opens
+// credential, the sealed refresh token of userID's account accountID, and
+// nil when one does.
+func (s *Service) CheckToken(userID, accountID int64, credential Credential) error {
+	token, err := openToken(s.encryption, userID, accountID, credential)
+	// Only whether it opens matters; the token leaves memory sooner.
+	clear(token)
+	return err
+}
+
+// withStatus returns stored's account with its status: needing a reconnect
+// once Google refused its token, else whether a configured key opens it.
+func (s *Service) withStatus(stored StoredAccount) Account {
+	account := stored.Account
+	switch {
+	case account.NeedsReconnectSince != nil:
+		account.Status = StatusNeedsReconnect
+	case s.CheckToken(account.UserID, account.ID, stored.Credential) != nil:
+		account.Status = StatusTokenUnreadable
+	default:
+		account.Status = StatusUsable
+	}
+	return account
+}
+
+// usable returns account, just saved with a newly sealed refresh token, as
+// usable, and err as is.
+func usable(account Account, err error) (Account, error) {
+	if err != nil {
+		return Account{}, err
+	}
+	account.Status = StatusUsable
+	return account, nil
 }
 
 // seal returns refreshToken sealed with encryption for userID's account
@@ -200,6 +276,16 @@ func seal(encryption sealer, userID, accountID int64, refreshToken string) (Cred
 		return Credential{}, err
 	}
 	return Credential{KeyID: keyID, Ciphertext: ciphertext}, nil
+}
+
+// openToken returns credential, the sealed refresh token of userID's account
+// accountID, opened with keys, or an error wrapping [ErrTokenUnreadable].
+func openToken(keys opener, userID, accountID int64, credential Credential) ([]byte, error) {
+	token, err := keys.Open(credential.KeyID, credential.Ciphertext, tokenOwner(userID, accountID))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrTokenUnreadable, err)
+	}
+	return token, nil
 }
 
 // parseIdentity returns identity's email as [emailaddress.Parse] spells it,

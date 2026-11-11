@@ -177,9 +177,9 @@ func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error
 	// 2. Open the refresh token. An unreadable one is not recorded as
 	// needing a reconnect: a worker started with a wrong key list would
 	// mark every account (ADR006).
-	refreshToken, err := a.encryption.Open(state.Credential.KeyID, state.Credential.Ciphertext, tokenOwner(state.UserID, accountID))
+	refreshToken, err := openToken(a.encryption, state.UserID, accountID, state.Credential)
 	if err != nil {
-		return AccessToken{}, fmt.Errorf("%w: %w", ErrTokenUnreadable, err)
+		return AccessToken{}, err
 	}
 
 	// 3. Trade it at Google. A refusal is recorded only against the token

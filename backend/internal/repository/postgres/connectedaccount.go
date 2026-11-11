@@ -47,7 +47,7 @@ func (db *DB) InsertConnectedAccount(ctx context.Context, account connectedaccou
 	if err != nil {
 		return connectedaccount.Account{}, fmt.Errorf("insert connected account: %w", err)
 	}
-	return connectedAccountFromRow(sqlc.ListConnectedAccountsRow(row)), nil
+	return connectedAccountFromRow(sqlc.InsertConnectedAccountRow(row)), nil
 }
 
 // UpdateConnectedAccount saves, for userID's account accountID, the email and
@@ -70,7 +70,7 @@ func (db *DB) UpdateConnectedAccount(ctx context.Context, userID, accountID int6
 		}
 
 		// 2. Let update decide.
-		next, err := update(connectedAccountFromRow(sqlc.ListConnectedAccountsRow(row)))
+		next, err := update(connectedAccountFromRow(sqlc.InsertConnectedAccountRow(row)))
 		if err != nil {
 			return err
 		}
@@ -86,7 +86,7 @@ func (db *DB) UpdateConnectedAccount(ctx context.Context, userID, accountID int6
 		if err != nil {
 			return fmt.Errorf("update connected account: %w", err)
 		}
-		saved = connectedAccountFromRow(sqlc.ListConnectedAccountsRow(updated))
+		saved = connectedAccountFromRow(sqlc.InsertConnectedAccountRow(updated))
 		return nil
 	})
 	if err != nil {
@@ -96,14 +96,14 @@ func (db *DB) UpdateConnectedAccount(ctx context.Context, userID, accountID int6
 }
 
 // ListConnectedAccounts returns userID's accounts, oldest first.
-func (db *DB) ListConnectedAccounts(ctx context.Context, userID int64) ([]connectedaccount.Account, error) {
+func (db *DB) ListConnectedAccounts(ctx context.Context, userID int64) ([]connectedaccount.StoredAccount, error) {
 	rows, err := sqlc.New(db.pool).ListConnectedAccounts(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list connected accounts: %w", err)
 	}
-	accounts := make([]connectedaccount.Account, 0, len(rows))
+	accounts := make([]connectedaccount.StoredAccount, 0, len(rows))
 	for _, row := range rows {
-		accounts = append(accounts, connectedAccountFromRow(row))
+		accounts = append(accounts, storedAccountFromRow(row))
 	}
 	return accounts, nil
 }
@@ -112,8 +112,8 @@ func (db *DB) ListConnectedAccounts(ctx context.Context, userID int64) ([]connec
 // credential to an account removal, and saves the job that revokes it, in
 // one transaction. It returns the deleted account, or
 // [connectedaccount.ErrNotFound] when userID has no such account.
-func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int64) (connectedaccount.Account, error) {
-	var deleted connectedaccount.Account
+func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int64) (connectedaccount.StoredAccount, error) {
+	var deleted connectedaccount.StoredAccount
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 
@@ -148,14 +148,11 @@ func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int6
 		if err := db.workflows.EnqueueAccountRemoval(ctx, tx, removalID); err != nil {
 			return fmt.Errorf("save account removal: %w", err)
 		}
-		deleted = connectedAccountFromRow(sqlc.ListConnectedAccountsRow{
-			ID: row.ID, UserID: row.UserID, Provider: row.Provider, Email: row.Email,
-			OauthSubject: row.OauthSubject, NeedsReconnectSince: row.NeedsReconnectSince, CreatedAt: row.CreatedAt,
-		})
+		deleted = storedAccountFromRow(sqlc.ListConnectedAccountsRow(row))
 		return nil
 	})
 	if err != nil {
-		return connectedaccount.Account{}, err
+		return connectedaccount.StoredAccount{}, err
 	}
 	return deleted, nil
 }
@@ -244,9 +241,23 @@ func (db *DB) MarkConnectedAccountReconnect(ctx context.Context, accountID int64
 	return nil
 }
 
-// connectedAccountFromRow converts a row to an account. Every query returns the
-// same columns, so each row type converts to this one.
-func connectedAccountFromRow(row sqlc.ListConnectedAccountsRow) connectedaccount.Account {
+// storedAccountFromRow converts a row with a credential to an account with
+// it. List and delete return the same columns, so each row type converts to
+// this one.
+func storedAccountFromRow(row sqlc.ListConnectedAccountsRow) connectedaccount.StoredAccount {
+	return connectedaccount.StoredAccount{
+		Account: connectedAccountFromRow(sqlc.InsertConnectedAccountRow{
+			ID: row.ID, UserID: row.UserID, Provider: row.Provider, Email: row.Email,
+			OauthSubject: row.OauthSubject, NeedsReconnectSince: row.NeedsReconnectSince, CreatedAt: row.CreatedAt,
+		}),
+		Credential: connectedaccount.Credential{KeyID: row.RefreshTokenKeyID, Ciphertext: row.RefreshTokenCiphertext},
+	}
+}
+
+// connectedAccountFromRow converts a row to an account. Every query without
+// the credential returns the same columns, so each row type converts to this
+// one.
+func connectedAccountFromRow(row sqlc.InsertConnectedAccountRow) connectedaccount.Account {
 	account := connectedaccount.Account{
 		ID:        row.ID,
 		UserID:    row.UserID,

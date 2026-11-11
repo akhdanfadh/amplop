@@ -147,22 +147,26 @@ func (q *Queries) InsertConnectedAccount(ctx context.Context, arg InsertConnecte
 }
 
 const listConnectedAccounts = `-- name: ListConnectedAccounts :many
-SELECT id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at
+SELECT id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at,
+    refresh_token_key_id, refresh_token_ciphertext
 FROM connected_accounts
 WHERE user_id = $1
 ORDER BY created_at, id
 `
 
 type ListConnectedAccountsRow struct {
-	ID                  int64
-	UserID              int64
-	Provider            string
-	Email               string
-	OauthSubject        string
-	NeedsReconnectSince *time.Time
-	CreatedAt           time.Time
+	ID                     int64
+	UserID                 int64
+	Provider               string
+	Email                  string
+	OauthSubject           string
+	NeedsReconnectSince    *time.Time
+	CreatedAt              time.Time
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
 }
 
+// With the credential, so the service can tell whether a key still opens it.
 func (q *Queries) ListConnectedAccounts(ctx context.Context, userID int64) ([]ListConnectedAccountsRow, error) {
 	rows, err := q.db.Query(ctx, listConnectedAccounts, userID)
 	if err != nil {
@@ -180,6 +184,8 @@ func (q *Queries) ListConnectedAccounts(ctx context.Context, userID int64) ([]Li
 			&i.OauthSubject,
 			&i.NeedsReconnectSince,
 			&i.CreatedAt,
+			&i.RefreshTokenKeyID,
+			&i.RefreshTokenCiphertext,
 		); err != nil {
 			return nil, err
 		}

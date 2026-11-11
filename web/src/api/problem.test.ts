@@ -452,6 +452,21 @@ describe("formErrors", () => {
     });
   });
 
+  it("marks a list rendered as one field with its items' errors", () => {
+    const err = unprocessable([
+      { location: "body.to[3]", message: "Enter a valid value." },
+      { location: "body.top[0]", message: "Enter a whole number." },
+      { location: "body.to", message: "Add at least one recipient." },
+    ]);
+
+    expect(formErrors(err, ["to"])).toEqual({
+      fields: {
+        to: [{ message: "Enter a valid value." }, { message: "Add at least one recipient." }],
+      },
+      unmatched: [{ message: "Enter a whole number." }],
+    });
+  });
+
   it("keeps whole-body errors in the summary and gives blank messages a fallback", () => {
     const err = unprocessable([
       { location: "body", message: "Correct the submitted input." },

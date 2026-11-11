@@ -86,7 +86,7 @@ func New(settings Settings, now func() time.Time) *Client {
 			RedirectURL:  settings.RedirectURL,
 			Scopes:       scopes,
 		},
-		http:      httpClient(reach),
+		http:      httpClient(reach, requestTimeout),
 		issuers:   issuers,
 		revokeURL: revoke,
 		gmailURL:  gmail,

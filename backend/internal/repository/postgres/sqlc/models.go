@@ -59,6 +59,31 @@ type EmailVerificationLink struct {
 	ExpiresAt time.Time
 }
 
+type OutgoingMessage struct {
+	ID                 uuid.UUID
+	ConnectedAccountID int64
+	FromAddress        string
+	ToAddresses        []byte
+	CcAddresses        []byte
+	BccAddresses       []byte
+	Subject            string
+	Body               string
+	InbokMessageID     string
+	Status             string
+	Failure            *string
+	ProviderMessageID  *string
+	ProviderThreadID   *string
+	CreatedAt          time.Time
+	SentAt             *time.Time
+	SentAgainAs        *uuid.UUID
+}
+
+type OutgoingMessageKey struct {
+	UserID         int64
+	IdempotencyKey uuid.UUID
+	MessageID      uuid.UUID
+}
+
 type PasswordResetAttempt struct {
 	ID           int64
 	ClientPrefix *string
@@ -107,6 +132,12 @@ type RegistrationLink struct {
 	Email     string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+}
+
+type SendAttempt struct {
+	ID        int64
+	UserID    int64
+	CreatedAt time.Time
 }
 
 type Session struct {

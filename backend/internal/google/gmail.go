@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"slices"
 
 	"golang.org/x/oauth2"
@@ -17,6 +20,9 @@ import (
 
 // reasonFailedPrecondition is the reason Gmail gives, with a 400, for a
 // Google account that has no Gmail ("Mail service not enabled").
+//
+// NOTE: neither Gmail's client nor googleapi exports it;
+// [googleapi.ErrorItem.Reason] is a plain string.
 const reasonFailedPrecondition = "failedPrecondition"
 
 // Profile returns the Gmail mailbox accessToken reaches, from
@@ -40,21 +46,29 @@ func (c *Client) Profile(ctx context.Context, accessToken connectedaccount.Acces
 // gmail returns a Gmail client that sends accessToken with every request,
 // over the client's own HTTP client.
 func (c *Client) gmail(ctx context.Context, accessToken connectedaccount.AccessToken) (*gmail.Service, error) {
-	authorized := &http.Client{
-		Transport: &oauth2.Transport{
-			Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken.Value()}),
-			Base:   c.http.Transport,
-		},
-		Timeout:       c.http.Timeout,
-		CheckRedirect: c.http.CheckRedirect,
-	}
 	// The endpoint is always set, so no environment setting the Google client
-	// reads, e.g. GOOGLE_CLOUD_UNIVERSE_DOMAIN, can send the token elsewhere.
-	service, err := gmail.NewService(ctx, option.WithHTTPClient(authorized), option.WithEndpoint(c.gmailURL))
+	// reads, e.g. GOOGLE_CLOUD_UNIVERSE_DOMAIN, can send the token elsewhere,
+	// and so is a logger that drops everything: with
+	// GOOGLE_SDK_GO_LOGGING_LEVEL=debug the client's own logger writes each
+	// request's body, a whole message for messages.send, to stderr.
+	service, err := gmail.NewService(ctx, option.WithHTTPClient(c.authorized(accessToken)), option.WithEndpoint(c.gmailURL),
+		option.WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		return nil, fmt.Errorf("gmail client: %w", err)
 	}
 	return service, nil
+}
+
+// authorized returns an HTTP client that sends accessToken with every
+// request, over the client's own transport, so with its deadline.
+func (c *Client) authorized(accessToken connectedaccount.AccessToken) *http.Client {
+	return &http.Client{
+		Transport: &oauth2.Transport{
+			Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken.Value()}),
+			Base:   c.http.Transport,
+		},
+		CheckRedirect: c.http.CheckRedirect,
+	}
 }
 
 // noGmail reports whether err is Gmail's answer for a Google account without
@@ -69,12 +83,47 @@ func noGmail(err error) bool {
 	})
 }
 
-// redactGmail returns err, from the Gmail API, as only its HTTP status, for
-// the same reason as [redactToken].
+// errGmailAnswer stands in for an answer from Gmail that could not be read.
+var errGmailAnswer = errors.New("gmail api: unreadable answer")
+
+// redactGmail returns err, from the Gmail API, without any of Gmail's
+// answer, for the same reason as [redactToken]: an error answer as only its
+// HTTP status, and an answer that could not be decoded as
+// [errGmailAnswer], since a decoding error can quote it. A transport error
+// keeps its operation and inbok's own request URL, and its cause only when
+// that cannot hold the answer: the context ending, a timeout, or a network
+// failure. The context's own error, which callers compare, is returned as
+// it is.
+//
+// NOTE: net/http also reports an answer it cannot parse, e.g. a malformed
+// Content-Length or Location, as a [*url.Error] whose cause quotes it.
 func redactGmail(err error) error {
-	var refused *googleapi.Error
-	if !errors.As(err, &refused) {
-		return err
+	if err == nil {
+		return nil
 	}
-	return fmt.Errorf("gmail api: %d", refused.Code)
+	if refused, ok := errors.AsType[*googleapi.Error](err); ok {
+		return fmt.Errorf("gmail api: %d", refused.Code)
+	}
+	if failed, ok := errors.AsType[*url.Error](err); ok {
+		return &url.Error{Op: failed.Op, URL: failed.URL, Err: transportCause(failed.Err)}
+	}
+	// NOTE: when the context has ended, Google's client returns the
+	// context's error in place of the transport's (gensupport's send).
+	return transportCause(err)
+}
+
+// transportCause returns cause, a transport failure or the context's
+// error, when it cannot hold Gmail's answer, and [errGmailAnswer]
+// otherwise.
+func transportCause(cause error) error {
+	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
+		return cause
+	}
+	if _, ok := errors.AsType[*net.OpError](cause); ok {
+		return cause
+	}
+	if timeout, ok := errors.AsType[net.Error](cause); ok && timeout.Timeout() {
+		return cause
+	}
+	return errGmailAnswer
 }

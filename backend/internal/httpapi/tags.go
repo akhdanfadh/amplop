@@ -14,6 +14,7 @@ const (
 	tagMembers           = "Members"
 	tagSystemEmail       = "System Email"
 	tagConnectedAccounts = "Connected Accounts"
+	tagOutgoingMessages  = "Outgoing Messages"
 	tagRedirects         = "Redirects"
 	tagHealth            = "Health"
 	tagProbe             = "Probe"
@@ -32,6 +33,7 @@ func apiTags() []*huma.Tag {
 		{Name: tagMembers, Description: "List, deactivate, and reactivate accounts. Administrators only."},
 		{Name: tagSystemEmail, Description: "The instance's own sender of links and notices. Administrators only."},
 		{Name: tagConnectedAccounts, Description: "Connect, list, reconnect, and disconnect the signed-in account's Gmail accounts."},
+		{Name: tagOutgoingMessages, Description: "Send messages from the signed-in account's connected accounts, follow their status, and send a failed one again."},
 		{Name: tagRedirects, Description: "Addresses another site sends the browser to, e.g. Google after its consent page. Clients never call them; the web app's generated client leaves them out."},
 		{Name: tagHealth, Description: "Whether the process answers requests."},
 		{Name: tagProbe, Description: "An example feature that exercises the whole stack. It goes before the first release."},

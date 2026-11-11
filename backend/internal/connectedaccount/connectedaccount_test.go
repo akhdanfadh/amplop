@@ -79,23 +79,23 @@ func (m *memoryStorage) UpdateConnectedAccount(_ context.Context, userID, accoun
 	return m.accounts[i].account, nil
 }
 
-func (m *memoryStorage) ListConnectedAccounts(_ context.Context, userID int64) ([]Account, error) {
+func (m *memoryStorage) ListConnectedAccounts(_ context.Context, userID int64) ([]StoredAccount, error) {
 	// Empty, not nil, as PostgreSQL storage returns it.
-	accounts := []Account{}
+	accounts := []StoredAccount{}
 	for _, s := range m.accounts {
 		if s.account.UserID == userID {
-			accounts = append(accounts, s.account)
+			accounts = append(accounts, StoredAccount{Account: s.account, Credential: s.credential})
 		}
 	}
 	return accounts, nil
 }
 
-func (m *memoryStorage) DeleteConnectedAccount(_ context.Context, userID, accountID int64) (Account, error) {
+func (m *memoryStorage) DeleteConnectedAccount(_ context.Context, userID, accountID int64) (StoredAccount, error) {
 	i := m.find(userID, accountID)
 	if i < 0 {
-		return Account{}, ErrNotFound
+		return StoredAccount{}, ErrNotFound
 	}
-	deleted := m.accounts[i].account
+	deleted := StoredAccount{Account: m.accounts[i].account, Credential: m.accounts[i].credential}
 	m.keepRemoval(userID, accountID)
 	return deleted, nil
 }
@@ -149,9 +149,9 @@ func newTestService(t *testing.T) (*Service, *memoryStorage, *encryption.Keyring
 	return NewService(storage, ring), storage, ring
 }
 
-// openToken returns the refresh token in storage's account accountID,
+// storedToken returns the refresh token in storage's account accountID,
 // opened as that account of userID.
-func openToken(t *testing.T, ring *encryption.Keyring, storage *memoryStorage, userID, accountID int64) string {
+func storedToken(t *testing.T, ring *encryption.Keyring, storage *memoryStorage, userID, accountID int64) string {
 	t.Helper()
 	i := storage.find(userID, accountID)
 	require.GreaterOrEqual(t, i, 0, "account not stored")
@@ -172,7 +172,7 @@ func TestConnect(t *testing.T) {
 	assert.Equal(t, "alex@example.com", account.Email)
 	assert.Equal(t, alexSubject, account.Subject)
 	assert.Nil(t, account.NeedsReconnectSince)
-	assert.Equal(t, "refresh-1", openToken(t, ring, storage, member, account.ID))
+	assert.Equal(t, "refresh-1", storedToken(t, ring, storage, member, account.ID))
 }
 
 // The sealed token opens only as its own account of its own user.
@@ -210,8 +210,8 @@ func TestConnectSameAccountTwoMembers(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotEqual(t, first.ID, second.ID)
-	assert.Equal(t, "refresh-1", openToken(t, ring, storage, member, first.ID))
-	assert.Equal(t, "refresh-2", openToken(t, ring, storage, otherMember, second.ID))
+	assert.Equal(t, "refresh-1", storedToken(t, ring, storage, member, first.ID))
+	assert.Equal(t, "refresh-2", storedToken(t, ring, storage, otherMember, second.ID))
 }
 
 func TestConnectRefused(t *testing.T) {
@@ -254,7 +254,7 @@ func TestReconnect(t *testing.T) {
 	assert.Equal(t, account.ID, reconnected.ID)
 	assert.Equal(t, "alex.rivera@example.com", reconnected.Email)
 	assert.Nil(t, reconnected.NeedsReconnectSince)
-	assert.Equal(t, "refresh-2", openToken(t, ring, storage, member, account.ID))
+	assert.Equal(t, "refresh-2", storedToken(t, ring, storage, member, account.ID))
 }
 
 func TestReconnectDifferentAccount(t *testing.T) {
@@ -266,7 +266,7 @@ func TestReconnectDifferentAccount(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrDifferentAccount)
 	assert.Equal(t, "alex@example.com", storage.accounts[0].account.Email)
-	assert.Equal(t, "refresh-1", openToken(t, ring, storage, member, account.ID))
+	assert.Equal(t, "refresh-1", storedToken(t, ring, storage, member, account.ID))
 }
 
 // A member cannot reconnect, or learn of, another member's account.
@@ -278,7 +278,7 @@ func TestReconnectOtherMembersAccount(t *testing.T) {
 	_, err = service.Reconnect(t.Context(), member, account.ID, alex, "refresh-2")
 
 	require.ErrorIs(t, err, ErrNotFound)
-	assert.Equal(t, "refresh-1", openToken(t, ring, storage, otherMember, account.ID))
+	assert.Equal(t, "refresh-1", storedToken(t, ring, storage, otherMember, account.ID))
 }
 
 func TestReconnectNoRefreshToken(t *testing.T) {
@@ -289,7 +289,7 @@ func TestReconnectNoRefreshToken(t *testing.T) {
 	_, err = service.Reconnect(t.Context(), member, account.ID, alex, "")
 
 	require.ErrorIs(t, err, errNoRefreshToken)
-	assert.Equal(t, "refresh-1", openToken(t, ring, storage, member, account.ID))
+	assert.Equal(t, "refresh-1", storedToken(t, ring, storage, member, account.ID))
 }
 
 func TestList(t *testing.T) {
@@ -305,6 +305,48 @@ func TestList(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, []Account{first, second}, accounts)
+}
+
+// An account's status is worked out at each read: a refused token needs a
+// reconnect, and one no configured key opens is unreadable until a key that
+// opens it is back.
+func TestListStatus(t *testing.T) {
+	service, storage, _ := newTestService(t)
+	_, err := service.Connect(t.Context(), member, alex, "refresh-1")
+	require.NoError(t, err)
+	_, err = service.Connect(t.Context(), member, blair, "refresh-2")
+	require.NoError(t, err)
+	refused := time.Date(2026, 11, 9, 8, 0, 0, 0, time.UTC)
+	storage.accounts[1].account.NeedsReconnectSince = &refused
+	otherKey, err := encryption.New("2:AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=")
+	require.NoError(t, err)
+
+	statuses := func(service *Service) []Status {
+		accounts, err := service.List(t.Context(), member)
+		require.NoError(t, err)
+		var got []Status
+		for _, account := range accounts {
+			got = append(got, account.Status)
+		}
+		return got
+	}
+
+	assert.Equal(t, []Status{StatusUsable, StatusNeedsReconnect}, statuses(service))
+	assert.Equal(t, []Status{StatusTokenUnreadable, StatusNeedsReconnect}, statuses(NewService(storage, otherKey)),
+		"a key list without the sealing key")
+	assert.Equal(t, []Status{StatusUsable, StatusNeedsReconnect}, statuses(service), "the key back")
+}
+
+func TestCheckToken(t *testing.T) {
+	service, storage, _ := newTestService(t)
+	account, err := service.Connect(t.Context(), member, alex, "refresh-1")
+	require.NoError(t, err)
+	credential := storage.accounts[0].credential
+
+	require.NoError(t, service.CheckToken(member, account.ID, credential))
+	// The token is bound to its member and account.
+	require.ErrorIs(t, service.CheckToken(otherMember, account.ID, credential), ErrTokenUnreadable)
+	require.ErrorIs(t, service.CheckToken(member, account.ID+1, credential), ErrTokenUnreadable)
 }
 
 func TestListEmpty(t *testing.T) {
@@ -342,12 +384,16 @@ func TestDisconnectOtherMembersAccount(t *testing.T) {
 	assert.Empty(t, storage.removals)
 }
 
-// failingSealer refuses to seal, as a keyring cannot today but another
-// sealer may.
+// failingSealer refuses to seal or open, as a keyring cannot seal today but
+// another sealer may.
 type failingSealer struct{ err error }
 
 func (f failingSealer) Seal([]byte, string) (string, []byte, error) {
 	return "", nil, f.err
+}
+
+func (f failingSealer) Open(string, []byte, string) ([]byte, error) {
+	return nil, f.err
 }
 
 func TestConnectSealFails(t *testing.T) {

@@ -22,6 +22,13 @@ export function AccountNav({
         <Link to="/" className={linkClass}>
           Home
         </Link>
+        {/* Until the mail layout gives sending its own place. */}
+        <Link to="/compose" className={linkClass}>
+          New message
+        </Link>
+        <Link to="/outbox" className={linkClass}>
+          Outbox
+        </Link>
         <Link to="/security" className={linkClass}>
           Security
         </Link>

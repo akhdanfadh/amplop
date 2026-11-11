@@ -9,9 +9,15 @@ const (
 	// limit on it, e.g. sends at once, protects the SMTP account.
 	emailQueue = "inbok.email"
 
-	// googleQueue runs every workflow that calls Google, so one limit on it
-	// protects the Google project's quota.
+	// googleQueue runs the workflows that call Google for background work,
+	// e.g. revoking a disconnected account's token.
 	googleQueue = "inbok.google"
+
+	// googleSendQueue runs the workflows that send members' messages through
+	// Gmail. A run keeps its place in a queue's limit until it ends, and
+	// priority orders only waiting runs, so a member's send would wait
+	// behind long runs on googleQueue were it there (ADR004).
+	googleSendQueue = "inbok.google-send"
 )
 
 // registerQueue registers the queue name, keeping its saved settings if it

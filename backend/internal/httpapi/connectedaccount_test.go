@@ -72,11 +72,11 @@ var (
 	alexRefused = time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
 	alexAccount = connectedaccount.Account{
 		ID: 3, UserID: 42, Provider: connectedaccount.ProviderGmail, Email: "alex@example.com",
-		Subject: "100000000000000000001", CreatedAt: alexCreated,
+		Subject: "100000000000000000001", CreatedAt: alexCreated, Status: connectedaccount.StatusUsable,
 	}
 )
 
-const alexJSON = `{"id":3,"provider":"gmail","email":"alex@example.com","needsReconnectSince":null,"createdAt":"2026-11-05T09:00:00Z"}`
+const alexJSON = `{"id":3,"provider":"gmail","email":"alex@example.com","needsReconnectSince":null,"status":"usable","createdAt":"2026-11-05T09:00:00Z"}`
 
 // TestGoogleCallbackURL: Google's client registers the callback under the
 // public URL, at the path the setup guide names.
@@ -95,6 +95,9 @@ func TestGoogleCallbackURL(t *testing.T) {
 func TestListConnectedAccounts(t *testing.T) {
 	refused := alexAccount
 	refused.NeedsReconnectSince = &alexRefused
+	refused.Status = connectedaccount.StatusNeedsReconnect
+	unreadable := alexAccount
+	unreadable.Status = connectedaccount.StatusTokenUnreadable
 	for _, c := range []struct {
 		name     string
 		accounts []connectedaccount.Account
@@ -104,7 +107,10 @@ func TestListConnectedAccounts(t *testing.T) {
 		{"one", []connectedaccount.Account{alexAccount}, `{"data":{"accounts":[` + alexJSON + `]}}`},
 		{"needs reconnecting", []connectedaccount.Account{refused},
 			`{"data":{"accounts":[{"id":3,"provider":"gmail","email":"alex@example.com",` +
-				`"needsReconnectSince":"2026-11-06T09:00:00Z","createdAt":"2026-11-05T09:00:00Z"}]}}`},
+				`"needsReconnectSince":"2026-11-06T09:00:00Z","status":"needs-reconnect","createdAt":"2026-11-05T09:00:00Z"}]}}`},
+		{"token unreadable", []connectedaccount.Account{unreadable},
+			`{"data":{"accounts":[{"id":3,"provider":"gmail","email":"alex@example.com",` +
+				`"needsReconnectSince":null,"status":"token-unreadable","createdAt":"2026-11-05T09:00:00Z"}]}}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			accounts := &fakeConnectedAccounts{accounts: c.accounts}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,6 +23,14 @@ type Workflows interface {
 	RecoveryWorkflows
 	PasswordResetWorkflows
 	ConnectedAccountWorkflows
+	OutgoingMessageWorkflows
+}
+
+// OutgoingMessageWorkflows saves the jobs of outgoing messages.
+type OutgoingMessageWorkflows interface {
+	// EnqueueOutgoingMessage saves, in tx, the workflow that sends the
+	// outgoing message messageID.
+	EnqueueOutgoingMessage(ctx context.Context, tx pgx.Tx, messageID uuid.UUID) error
 }
 
 // ConnectedAccountWorkflows saves the jobs of connected accounts.

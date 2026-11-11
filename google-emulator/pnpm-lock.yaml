@@ -163,7 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  emulate@0.13.0: dfe7d590e6658c07ed8b4f928e8f437f796e7922884eca4a48905af7a58648c0
+  emulate@0.13.0: 4b6c6c11d420765323670d02a31139dd4b9c82d5cd9c5da8da7bddca1460eda2
 
 importers:
 
@@ -171,7 +171,7 @@ importers:
     dependencies:
       emulate:
         specifier: 0.13.0
-        version: 0.13.0(patch_hash=dfe7d590e6658c07ed8b4f928e8f437f796e7922884eca4a48905af7a58648c0)
+        version: 0.13.0(patch_hash=4b6c6c11d420765323670d02a31139dd4b9c82d5cd9c5da8da7bddca1460eda2)
 
 packages:
 
@@ -195,7 +195,7 @@ snapshots:
 
   commander@14.0.3: {}
 
-  emulate@0.13.0(patch_hash=dfe7d590e6658c07ed8b4f928e8f437f796e7922884eca4a48905af7a58648c0):
+  emulate@0.13.0(patch_hash=4b6c6c11d420765323670d02a31139dd4b9c82d5cd9c5da8da7bddca1460eda2):
     dependencies:
       commander: 14.0.3
       picocolors: 1.1.1

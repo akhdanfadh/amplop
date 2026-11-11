@@ -1,5 +1,5 @@
 diff --git a/dist/dist-EESUF62H.js b/dist/dist-EESUF62H.js
-index 6eacbd77fe56aeeaa681400b8806320060ad6206..837ccbe617fa33d4c1ac90ae297e303b459f7c15 100644
+index 6eacbd77fe56aeeaa681400b8806320060ad6206..ba6f590e59ab587c16feae4ade13fbb954dd1d39 100644
 --- a/dist/dist-EESUF62H.js
 +++ b/dist/dist-EESUF62H.js
 @@ -89,7 +89,10 @@ function generateDraftId() {
@@ -14,7 +14,53 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..837ccbe617fa33d4c1ac90ae297e303b
    let next = BigInt(`${Date.now()}${entropy}`);
    if (next <= lastGeneratedHistoryId) {
      next = lastGeneratedHistoryId + 1n;
-@@ -2619,6 +2622,20 @@ function driveRoutes({ app, store }) {
+@@ -615,7 +618,10 @@ function getThreadMessages(gs, userEmail, threadId, options) {
+ }
+ function formatMessageResource(gs, message, format, metadataHeaders = []) {
+   const headers = buildHeaders(message);
+-  const filteredHeaders = format === "metadata" && metadataHeaders.length > 0 ? headers.filter((header) => metadataHeaders.includes(header.name)) : headers;
++  // inbok: Gmail matches metadataHeaders in any case, e.g. Message-ID
++  // returns its Message-Id; emulate matched the exact spelling.
++  const wanted = metadataHeaders.map((name) => name.toLowerCase());
++  const filteredHeaders = format === "metadata" && metadataHeaders.length > 0 ? headers.filter((header) => wanted.includes(header.name.toLowerCase())) : headers;
+   const base = {
+     id: message.gmail_id,
+     threadId: message.thread_id,
+@@ -1048,7 +1054,32 @@ function buildHeaders(message) {
+     { name: "References", value: message.references },
+     { name: "In-Reply-To", value: message.in_reply_to }
+   ];
+-  return headers.filter((header) => Boolean(header.value));
++  return [...headers.filter((header) => Boolean(header.value)), ...rawExtraHeaders(message.raw, headers)];
++}
++// inbok: the other headers of a sent, inserted, or imported message, as
++// written. Gmail keeps them, e.g. an X- header a client adds, and returns
++// them; emulate kept only the fields above.
++function rawExtraHeaders(raw, known) {
++  if (!raw) return [];
++  const names = new Set(known.map((header) => header.name.toLowerCase()));
++  const decoded = decodeBase64Like(raw).toString("utf8").replace(/\r\n/g, "\n");
++  const end = decoded.indexOf("\n\n");
++  const extra = [];
++  for (const line of (end >= 0 ? decoded.slice(0, end) : decoded).split("\n")) {
++    if ((line.startsWith(" ") || line.startsWith("\t")) && extra.length > 0) {
++      extra[extra.length - 1].value = `${extra[extra.length - 1].value} ${line.trim()}`.trim();
++      continue;
++    }
++    const separator = line.indexOf(":");
++    if (separator <= 0) continue;
++    const name = line.slice(0, separator).trim();
++    if (names.has(name.toLowerCase())) {
++      extra.push({ name, value: "", skip: true });
++      continue;
++    }
++    extra.push({ name, value: line.slice(separator + 1).trim() });
++  }
++  return extra.filter((header) => !header.skip).map(({ name, value }) => ({ name, value }));
+ }
+ function buildPayload(gs, message, headers, format) {
+   const textBody = message.body_text ?? null;
+@@ -2619,6 +2650,20 @@ function driveRoutes({ app, store }) {
  var WATCH_STATE_KEY = "google.gmail.watchStates";
  function historyRoutes({ app, store }) {
    const gs = getGoogleStore(store);
@@ -35,7 +81,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..837ccbe617fa33d4c1ac90ae297e303b
    app.get("/gmail/v1/users/:userId/history", (c) => {
      const authEmail = requireGmailUser(c);
      if (authEmail instanceof Response) return authEmail;
-@@ -3636,6 +3653,12 @@ function oauthRoutes({ app, store, baseUrl, tokenMap }) {
+@@ -3636,6 +3681,12 @@ function oauthRoutes({ app, store, baseUrl, tokenMap }) {
        pendingMap.delete(code);
        return c.json({ error: "invalid_grant", error_description: "The code is incorrect or expired." }, 400);
      }
@@ -48,7 +94,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..837ccbe617fa33d4c1ac90ae297e303b
      if (pending.codeChallenge != null) {
        if (code_verifier === void 0) {
          return c.json({ error: "invalid_grant", error_description: "PKCE verification failed." }, 400);
-@@ -3989,6 +4012,9 @@ var routeScopes = {
+@@ -3989,6 +4040,9 @@ var routeScopes = {
    "PATCH /gmail/v1/users/:userId/labels/:id": gmailLabels,
    "DELETE /gmail/v1/users/:userId/labels/:id": gmailLabels,
    "GET /gmail/v1/users/:userId/history": gmailRead,
@@ -58,7 +104,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..837ccbe617fa33d4c1ac90ae297e303b
    "POST /gmail/v1/users/:userId/watch": gmailRead,
    "POST /gmail/v1/users/:userId/stop": gmailRead,
    "GET /gmail/v1/users/:userId/settings/filters": gmailSettingsRead,
-@@ -4200,7 +4226,10 @@ function seedFromConfig(store, _baseUrl, config) {
+@@ -4200,7 +4254,10 @@ function seedFromConfig(store, _baseUrl, config) {
        if (!existing) {
          const nameParts = (user.name ?? "").split(/\s+/).filter(Boolean);
          gs.users.insert({

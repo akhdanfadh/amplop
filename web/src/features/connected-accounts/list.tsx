@@ -260,9 +260,10 @@ export function AccountList({
               Disconnect <span translate="no">{confirming?.email}</span>?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the account from inbok, with everything inbok keeps for it. inbok also
-              asks Google to end its access, unless another member here connected the same Google
-              account. Your mail in Gmail isn&apos;t changed.
+              {confirming?.status === "token-unreadable"
+                ? "inbok removes this account and everything it saved for it. It can't ask Google to end its access, so you can remove inbok in your Google Account."
+                : "inbok removes this account and everything it saved for it, and asks Google to end its access."}{" "}
+              Your mail in Gmail stays as it is.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -306,7 +307,7 @@ function AccountRow({
   onDisconnect: () => void;
 }): ReactElement {
   const detailsId = `account-${account.id}`;
-  const needsReconnect = account.needsReconnectSince !== null;
+  const needsReconnect = account.status !== "usable";
 
   return (
     <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-4">
@@ -316,29 +317,12 @@ function AccountRow({
           {needsReconnect && <Badge variant="destructive">Needs reconnecting</Badge>}
         </p>
         <p id={detailsId} className="text-sm text-muted-foreground">
-          {account.needsReconnectSince !== null ? (
-            <>
-              Google stopped accepting inbok&apos;s access on{" "}
-              <time dateTime={account.needsReconnectSince} className="whitespace-nowrap">
-                {formatDate(account.needsReconnectSince)}
-              </time>
-              .{gmailOffered && " Reconnect and choose this same Google account."}
-            </>
-          ) : (
-            <>
-              Connected on{" "}
-              <time dateTime={account.createdAt} className="whitespace-nowrap">
-                {formatDate(account.createdAt)}
-              </time>
-              .
-            </>
-          )}
+          <AccountNote account={account} gmailOffered={gmailOffered} />
         </p>
       </div>
       <div className="flex flex-wrap gap-3">
-        {/* Only Google's refusal marks an account. One whose saved
-            permission inbok can't read is not marked, since restoring the
-            key fixes it without the member. */}
+        {/* An unreadable token is read anew each time, so a restored key
+            takes the button away again without the member. */}
         {gmailOffered && needsReconnect && (
           <Button
             id={reconnectId(account.id)}
@@ -366,6 +350,43 @@ function AccountRow({
         </Button>
       </div>
     </li>
+  );
+}
+
+// AccountNote says how account stands: since when Google refused it, that
+// inbok can no longer use its saved access, or when it was connected. The
+// first two say to reconnect while gmailOffered.
+function AccountNote({
+  account,
+  gmailOffered,
+}: {
+  account: ConnectedAccount;
+  gmailOffered: boolean;
+}): ReactElement {
+  const reconnect = gmailOffered && " Reconnect and choose this same Google account.";
+  if (account.status === "token-unreadable")
+    return <>inbok can no longer use the access it saved for this account.{reconnect}</>;
+  if (account.status === "needs-reconnect") {
+    if (account.needsReconnectSince === null)
+      return <>Google stopped accepting inbok&apos;s access.{reconnect}</>;
+    return (
+      <>
+        Google stopped accepting inbok&apos;s access on{" "}
+        <time dateTime={account.needsReconnectSince} className="whitespace-nowrap">
+          {formatDate(account.needsReconnectSince)}
+        </time>
+        .{reconnect}
+      </>
+    );
+  }
+  return (
+    <>
+      Connected on{" "}
+      <time dateTime={account.createdAt} className="whitespace-nowrap">
+        {formatDate(account.createdAt)}
+      </time>
+      .
+    </>
   );
 }
 

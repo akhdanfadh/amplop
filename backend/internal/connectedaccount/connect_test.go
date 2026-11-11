@@ -263,7 +263,7 @@ func TestFinishConnects(t *testing.T) {
 	assert.Equal(t, testCode, c.google.code)
 	assert.Equal(t, c.google.verifier, c.google.exchangeVerifier)
 	assert.Equal(t, "access-1", c.google.accessToken.Value())
-	assert.Equal(t, "refresh-1", openToken(t, c.ring, c.storage, member, account.ID), "the refresh token is saved, not the access token")
+	assert.Equal(t, "refresh-1", storedToken(t, c.ring, c.storage, member, account.ID), "the refresh token is saved, not the access token")
 	assert.Empty(t, c.storage.states, "the state is used up")
 }
 
@@ -278,7 +278,7 @@ func TestFinishReconnects(t *testing.T) {
 
 	assert.Equal(t, account.ID, reconnected.ID)
 	assert.Len(t, c.storage.accounts, 1)
-	assert.Equal(t, "refresh-1", openToken(t, c.ring, c.storage, member, account.ID))
+	assert.Equal(t, "refresh-1", storedToken(t, c.ring, c.storage, member, account.ID))
 }
 
 func TestFinishReconnectDifferentAccount(t *testing.T) {
@@ -290,7 +290,7 @@ func TestFinishReconnectDifferentAccount(t *testing.T) {
 	_, err = c.finish(t, state)
 
 	require.ErrorIs(t, err, ErrDifferentAccount)
-	assert.Equal(t, "refresh-0", openToken(t, c.ring, c.storage, member, account.ID))
+	assert.Equal(t, "refresh-0", storedToken(t, c.ring, c.storage, member, account.ID))
 }
 
 // An account disconnected between the callback taking its state and the
@@ -318,7 +318,7 @@ func TestFinishAlreadyConnected(t *testing.T) {
 	_, err = c.finish(t, state)
 
 	require.ErrorIs(t, err, ErrAlreadyConnected)
-	assert.Equal(t, "refresh-0", openToken(t, c.ring, c.storage, member, account.ID))
+	assert.Equal(t, "refresh-0", storedToken(t, c.ring, c.storage, member, account.ID))
 }
 
 // A state works only in the session and for the member that started it,
