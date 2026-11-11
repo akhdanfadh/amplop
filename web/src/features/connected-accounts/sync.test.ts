@@ -1,17 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { AccountSync, ConnectedAccounts, ListedAccount } from "@/api/generated/model";
-import { ApiError } from "@/api/transport";
-import {
-  busyRefresh,
-  failureWords,
-  formatMoment,
-  idleRefresh,
-  refreshInterval,
-  runningText,
-  syncErrorMessage,
-  syncStartedMessage,
-  syncView,
-} from "./sync";
+import { busyRefresh, idleRefresh, refreshInterval, syncView } from "./sync";
 
 const email = "mail@example.com";
 const earlier = "2026-11-11T09:00:00Z";
@@ -42,14 +31,6 @@ function account(
 
 function list(accounts: ListedAccount[]): ConnectedAccounts {
   return { accounts, syncStopped: false };
-}
-
-function refused(status: number, type: string): ApiError {
-  return new ApiError("http", {
-    method: "POST",
-    status,
-    problem: { type, status, title: "Refused", detail: "Refused." },
-  });
 }
 
 describe("syncView", () => {
@@ -104,60 +85,5 @@ describe("refreshInterval", () => {
       expect(refreshInterval(list([account({ status: "waiting" }, status)]), now, 0)).toBe(
         idleRefresh,
       );
-  });
-});
-
-describe("wording", () => {
-  it("counts the messages copied", () => {
-    expect(runningText(1)).toBe(
-      "Copying your last 90 days of mail into inbok: 1 message so far. New mail shows up in the meantime.",
-    );
-    expect(runningText(0)).toMatch(/: 0 messages so far\./);
-  });
-
-  it("words a failure by its cause and what happens next", () => {
-    expect(failureWords("provider", "complete")).toEqual({
-      before: "Couldn't get mail from Gmail at",
-      after: ". inbok will try again.",
-    });
-    expect(failureWords("provider", "failed").after).toBe(". inbok will try again within an hour.");
-    for (const failure of ["token-unreadable", "internal"] as const)
-      expect(failureWords(failure, "failed")).toEqual({
-        before: "Couldn't get mail at",
-        after: " because of a problem on inbok's side. Ask your administrator.",
-      });
-  });
-
-  it("shows a time with its date only on another day", () => {
-    const now = new Date(2026, 10, 11, 12, 0);
-    const today = new Date(2026, 10, 11, 9, 30).toISOString();
-    const yesterday = new Date(2026, 10, 10, 9, 30).toISOString();
-    expect(formatMoment(today, now)).not.toMatch(/2026/);
-    expect(formatMoment(yesterday, now)).toMatch(/2026/);
-  });
-
-  it("says a Check now started", () => {
-    expect(syncStartedMessage(email)).toBe(`Checking ${email} for new mail.`);
-  });
-});
-
-describe("syncErrorMessage", () => {
-  it("words each refusal by its type", () => {
-    expect(
-      syncErrorMessage(refused(404, "/api/v0/problems/connected-account-not-found"), email),
-    ).toBe(`${email} is no longer connected.`);
-    expect(syncErrorMessage(refused(409, "/api/v0/problems/account-needs-reconnect"), email)).toBe(
-      `Reconnect ${email} before checking it for mail.`,
-    );
-    expect(syncErrorMessage(refused(429, "/api/v0/problems/sync-throttled"), email)).toBe(
-      `inbok checked ${email} just now. Try again in a few seconds.`,
-    );
-  });
-
-  it("asks for a look when the outcome is unknown", () => {
-    const lost = new ApiError("network", { method: "POST" });
-    expect(syncErrorMessage(lost, email)).toBe(
-      `Couldn't tell whether inbok started checking ${email}. See its status below.`,
-    );
   });
 });

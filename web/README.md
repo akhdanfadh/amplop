@@ -377,8 +377,9 @@ Google only while the page is still open. The browser's back-forward cache
 can restore the page locked as it left for Google, so a restored page
 unlocks its buttons and rereads the list.
 
-Each account that needs no reconnect also says where its sync stands
-(`src/features/connected-accounts/sync.ts`), the first that applies, in
+Each account inbok can use (`status` `usable`) also says where its sync
+stands, under the line about its connection: `sync.ts` picks the first
+that applies, and `text.ts` words it, in
 the member's terms of getting their mail rather than "sync": "Getting
 ready to copy your mail."; "Copying your last 90 days of mail into inbok:
 N messages so far. New mail shows up in the meantime."; on a failure,
@@ -391,15 +392,16 @@ when it is not today. A complete account has Check now, and a failed one
 Try again, which start its sync at once. The notice says "Checking ...
 for new mail.", and the list is read every 2 seconds for the next 30, so
 the new checked time and any new mail show; the page does not track when
-that check ends (ADR001, "Polling"). A 429 reads "inbok checked ... just
-now", a 409 asks to reconnect the account first, and both reread the
-list. When syncing has stopped on the instance, a status banner says
+that check ends (ADR001, "Polling"). A 429 reads "inbok started checking
+... moments ago. See its status below.", since a check already started
+and there is nothing to retry; a 409 asks to reconnect the account first;
+both reread the list. When syncing has stopped on the instance, a status banner says
 "inbok has stopped getting new mail for every account. Ask your
 administrator."; the buttons stay, since a worker may still run the
 member's sync. The list is read again every 2 seconds while a sync is
 waiting or copying, or after a Check now as above, and otherwise every
-minute, so the checked time stays current; an account that needs
-reconnecting waits for its member, so it does not count.
+minute, so the checked time stays current; an account inbok cannot use
+waits for its member, so it does not count.
 
 Signing out deletes the current session, clears account caches, and opens
 sign-in. A 401 also completes sign-out because that session is already absent

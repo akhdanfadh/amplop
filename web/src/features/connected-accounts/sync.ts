@@ -1,11 +1,4 @@
-import type {
-  AccountSync,
-  ConnectedAccounts,
-  ListedAccount,
-  ProblemType,
-} from "@/api/generated/model";
-import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
-import type { ApiError } from "@/api/transport";
+import type { AccountSync, ConnectedAccounts, ListedAccount } from "@/api/generated/model";
 
 // How often the list is read again: often while a sync moves, so its
 // progress and outcome show, else each minute, so the checked time stays
@@ -15,16 +8,6 @@ export const idleRefresh = 60_000;
 // How long after a Check now the list is read often, inbok's choice: a check
 // that finds a few messages ends within seconds, so its time and mail show.
 export const syncNowRefresh = 30_000;
-
-const notFound = 404;
-const conflict = 409;
-const tooManyRequests = 429;
-const accountNotFoundType: ProblemType = "/api/v0/problems/connected-account-not-found";
-const needsReconnectType: ProblemType = "/api/v0/problems/account-needs-reconnect";
-const throttledType: ProblemType = "/api/v0/problems/sync-throttled";
-const sameDay = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
-const otherDay = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-const count = new Intl.NumberFormat();
 
 // SyncFailure is why an account's last sync failed.
 export type SyncFailure = NonNullable<AccountSync["failure"]>;
@@ -87,57 +70,4 @@ export function refreshInterval(
   if (now < fastUntil) return busyRefresh;
   if (!list) return idleRefresh;
   return list.accounts.some(syncBusy) ? busyRefresh : idleRefresh;
-}
-
-// formatMoment shows iso as a clock time in the reader's locale and time
-// zone, with its date unless it falls on the same day as now.
-export function formatMoment(iso: string, now: Date = new Date()): string {
-  const at = new Date(iso);
-  return at.toDateString() === now.toDateString() ? sameDay.format(at) : otherDay.format(at);
-}
-
-// runningText says how far a running full sync has copied.
-export function runningText(messagesSoFar: number): string {
-  const messages = messagesSoFar === 1 ? "message" : "messages";
-  return `Copying your last 90 days of mail into inbok: ${count.format(messagesSoFar)} ${messages} so far. New mail shows up in the meantime.`;
-}
-
-// FailureWords are the words around a failure's time: before it, and
-// after it, with why when it is inbok's, and what happens next.
-export type FailureWords = { before: string; after: string };
-
-// failureWords returns the words that tell the member about failure on an
-// account with status, in the member's terms: getting their mail.
-export function failureWords(failure: SyncFailure, status: FailedStatus): FailureWords {
-  if (failure !== "provider")
-    return {
-      before: "Couldn't get mail at",
-      after: " because of a problem on inbok's side. Ask your administrator.",
-    };
-  const retry = status === "failed" ? " within an hour" : "";
-  return { before: "Couldn't get mail from Gmail at", after: `. inbok will try again${retry}.` };
-}
-
-// syncErrorMessage describes a Check now of email that the server refused
-// or whose outcome is unknown.
-export function syncErrorMessage(err: ApiError, email: string): string {
-  // Only the API's own problem types say why; a missing route says nothing.
-  const type = err.problem?.type;
-  if (err.status === notFound && type === accountNotFoundType)
-    return `${email} is no longer connected.`;
-  if (err.status === conflict && type === needsReconnectType)
-    return `Reconnect ${email} before checking it for mail.`;
-  if (err.status === tooManyRequests && type === throttledType)
-    return `inbok checked ${email} just now. Try again in a few seconds.`;
-  if (uncertainOutcome(err))
-    return uncertainMessage(
-      err,
-      `Couldn't tell whether inbok started checking ${email}. See its status below.`,
-    );
-  return `Couldn't check ${email} for mail. ${userMessage(err)}`;
-}
-
-// syncStartedMessage says a Check now of email was accepted.
-export function syncStartedMessage(email: string): string {
-  return `Checking ${email} for new mail.`;
 }

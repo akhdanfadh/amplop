@@ -28,16 +28,26 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { syncView, type SyncView } from "./sync";
 import {
+  checkedAtText,
+  checkingText,
+  checkNowText,
+  disconnectedMessage,
+  disconnectErrorMessage,
   failureWords,
+  formatDate,
   formatMoment,
   runningText,
+  startErrorMessage,
   syncErrorMessage,
   syncStartedMessage,
-  syncView,
-  type SyncView,
-} from "./sync";
-import { disconnectedMessage, disconnectErrorMessage, formatDate, startErrorMessage } from "./text";
+  syncStoppedText,
+  syncWaitingText,
+  tryAgainText,
+  upToDateAsOfText,
+  upToDateText,
+} from "./text";
 
 const unauthorized = 401;
 const notFound = 404;
@@ -269,9 +279,7 @@ export function AccountList({
       )}
       {/* Stays mounted so a stop found by a later read is announced. */}
       <output className={syncStopped ? "rounded-md border border-destructive p-4" : "sr-only"}>
-        {syncStopped
-          ? "inbok has stopped getting new mail for every account. Ask your administrator."
-          : ""}
+        {syncStopped ? syncStoppedText : ""}
       </output>
       {!gmailOffered && (
         <p>
@@ -419,7 +427,7 @@ function AccountRow({
             disabled={disabled}
             onClick={onSync}
           >
-            {syncing ? "Checking..." : view.kind === "failed" ? "Try again" : "Check now"}
+            {syncing ? checkingText : view.kind === "failed" ? tryAgainText : checkNowText}
             <span className="sr-only"> {account.email}</span>
           </Button>
         )}
@@ -495,7 +503,7 @@ function AccountNote({
 // SyncStatus words view, where an account's sync stands (ADR001, "Polling").
 function SyncStatus({ view }: { view: SyncView }): ReactElement {
   const className = "text-sm text-muted-foreground";
-  if (view.kind === "waiting") return <p className={className}>Getting ready to copy your mail.</p>;
+  if (view.kind === "waiting") return <p className={className}>{syncWaitingText}</p>;
   if (view.kind === "running")
     return <p className={className}>{runningText(view.messagesSoFar)}</p>;
   if (view.kind === "failed") {
@@ -507,16 +515,16 @@ function SyncStatus({ view }: { view: SyncView }): ReactElement {
         {view.upToDateAt !== null && (
           <>
             {" "}
-            Your mail here is up to date as of <Moment iso={view.upToDateAt} />.
+            {upToDateAsOfText} <Moment iso={view.upToDateAt} />.
           </>
         )}
       </p>
     );
   }
-  if (view.checkedAt === null) return <p className={className}>Up to date.</p>;
+  if (view.checkedAt === null) return <p className={className}>{upToDateText}</p>;
   return (
     <p className={className}>
-      Up to date, checked at <Moment iso={view.checkedAt} />.
+      {checkedAtText} <Moment iso={view.checkedAt} />.
     </p>
   );
 }
