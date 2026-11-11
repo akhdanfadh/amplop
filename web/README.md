@@ -611,6 +611,9 @@ reads do not retry. HTTP 408 and 504 responses are separate from a local timeout
 and remain eligible for retries.
 The default applies to reads; writes have automatic retry explicitly disabled.
 An operation must guarantee safe repetition before opting into write retries.
+Such an operation opts in with `repeatableWriteRetry` from
+`src/api/retry.ts`: the same failures and waits as a read, each attempt
+with the same payload and key.
 
 Writes use `networkMode: "always"` with `retry: false`. Query attempts them even
 when its browser connectivity indicator says offline. That indicator can be
@@ -665,10 +668,12 @@ announcing each change, so give each `FieldError` an `id` and name it in
 the field's `aria-describedby`; an error nothing names is never read.
 If Go still rejects a value, e.g. after a rule changed in Go before
 `pnpm generate`, `formErrors` from `src/api/problem.ts` attaches the server's
-safe messages only to fields that the form renders. Editing a field clears its
-server error. TanStack Form also drops it when a check on leaving the field
-passes, so every field leaves through `blurKeepingSubmitErrors`
-(`src/lib/blur-keeping-submit-errors.ts`), which puts it back. Rejected
+safe messages only to fields that the form renders; an item's error,
+e.g. `body.to[3]`, marks a list the form renders as one field. Editing a
+field clears its server error. TanStack Form also drops it when a check on
+leaving the field passes, so every field leaves through
+`blurKeepingSubmitErrors` (`src/lib/blur-keeping-submit-errors.ts`), which
+puts it back. Rejected
 inputs outside those fields stay visible in the request summary below the
 form, which `formSummary` builds and `RequestError`
 (`src/components/request-error.tsx`) shows as an alert, announced as it

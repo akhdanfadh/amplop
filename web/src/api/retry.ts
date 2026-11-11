@@ -29,6 +29,17 @@ export const retryOptions = {
   mutations: { retry: false, networkMode: "always" },
 } satisfies DefaultOptions;
 
+// repeatableWriteRetry is for a write whose operation makes repeating it
+// safe, e.g. Send Message with its Idempotency-Key: it retries the same
+// failures as a read, with the same waits. The mutation must reuse its
+// payload and key on every attempt.
+export const repeatableWriteRetry: {
+  // Typed with ApiError, the generated hooks' error, so spreading these into
+  // a hook's options keeps that error type.
+  retry: (failures: number, err: ApiError) => boolean;
+  retryDelay: (failures: number, err: ApiError) => number;
+} = { retry: shouldRetry, retryDelay };
+
 // Only recognized temporary failures qualify for another read attempt.
 function shouldRetry(failures: number, err: Error): boolean {
   if (failures >= maxRetries || !(err instanceof ApiError)) return false;

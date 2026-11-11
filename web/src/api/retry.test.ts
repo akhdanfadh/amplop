@@ -1,8 +1,13 @@
 import { CancelledError, MutationObserver, QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { getCreateProbeEventMutationOptions, getGetHealthQueryOptions } from "./generated/inbok";
+import {
+  getCreateProbeEventMutationOptions,
+  getGetHealthQueryOptions,
+  getSendMessageAgainMutationOptions,
+  getSendMessageMutationOptions,
+} from "./generated/inbok";
 import type { ProblemType } from "./generated/model";
-import { retryOptions } from "./retry";
+import { repeatableWriteRetry, retryOptions } from "./retry";
 
 const serviceBusyType: ProblemType = "/api/v0/problems/service-busy";
 const clients: QueryClient[] = [];
@@ -342,5 +347,85 @@ describe("read retries", () => {
 
     expect(attempts).toHaveLength(1);
     await expect(result).resolves.toMatchObject({ status: httpStatus.unavailable });
+  });
+});
+
+describe("repeatable write retries", () => {
+  it("sends Send Message again with the same key and body after a lost answer", async () => {
+    const sent: { key: string | null; body: unknown }[] = [];
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementationOnce(async (_, init) => {
+        sent.push({ key: new Headers(init?.headers).get("Idempotency-Key"), body: init?.body });
+        throw new TypeError("Failed to fetch");
+      })
+      .mockImplementation(async (_, init) => {
+        sent.push({ key: new Headers(init?.headers).get("Idempotency-Key"), body: init?.body });
+        return new Response("Unavailable", { status: httpStatus.unavailable });
+      });
+    vi.stubGlobal("fetch", fetch);
+    const key = '"8e03978e-40d5-43e8-bc93-6894a57f9324"';
+    const mutation = new MutationObserver(
+      client(),
+      getSendMessageMutationOptions({
+        mutation: repeatableWriteRetry,
+        request: { headers: { "Idempotency-Key": key } },
+      }),
+    );
+    const data = {
+      connectedAccountId: 1,
+      to: ["ana@example.com"],
+      cc: [],
+      bcc: [],
+      subject: "",
+      body: "",
+    };
+    const result = mutation.mutate({ data }).catch((err: unknown) => err);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(result).resolves.toMatchObject({ status: httpStatus.unavailable });
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(new Set(sent.map(({ key: sentKey }) => sentKey))).toEqual(new Set([key]));
+    expect(new Set(sent.map(({ body }) => body))).toEqual(new Set([JSON.stringify(data)]));
+  });
+
+  it("sends Send Message Again again after a lost answer", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValue(new Response("Unavailable", { status: httpStatus.unavailable }));
+    vi.stubGlobal("fetch", fetch);
+    const mutation = new MutationObserver(
+      client(),
+      getSendMessageAgainMutationOptions({ mutation: repeatableWriteRetry }),
+    );
+    const result = mutation
+      .mutate({ id: "0b9f3a52-5f1d-4a8e-9a43-5f0c2b6b1c11" })
+      .catch((err: unknown) => err);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(result).resolves.toMatchObject({ status: httpStatus.unavailable });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("never repeats a refusal, e.g. a reused key", async () => {
+    const attempts = respond(httpStatus.unprocessable);
+    const mutation = new MutationObserver(
+      client(),
+      getSendMessageMutationOptions({ mutation: repeatableWriteRetry }),
+    );
+    const data = {
+      connectedAccountId: 1,
+      to: ["ana@example.com"],
+      cc: [],
+      bcc: [],
+      subject: "",
+      body: "",
+    };
+    const result = mutation.mutate({ data }).catch((err: unknown) => err);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(result).resolves.toMatchObject({ status: httpStatus.unprocessable });
+    expect(attempts).toHaveLength(1);
   });
 });

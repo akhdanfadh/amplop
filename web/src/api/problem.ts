@@ -155,14 +155,17 @@ export type FormErrors = {
 };
 
 // Match only rendered fields; errors for other inputs stay visible in the summary.
+// An item of a list a form renders as one field, e.g. body.to[3] for a
+// field "to", marks that field.
 export function formErrors(err: ApiError, fieldNames: readonly string[]): FormErrors {
   const fields = new Map<string, InputMessage[]>();
   const unmatched: InputMessage[] = [];
 
   for (const { location, message } of err.problem?.errors ?? []) {
     const input = { message: message.trim() || rejected };
-    const name = location.startsWith(bodyPrefix) ? location.slice(bodyPrefix.length) : undefined;
-    if (!name || !fieldNames.includes(name)) {
+    const path = location.startsWith(bodyPrefix) ? location.slice(bodyPrefix.length) : undefined;
+    const name = path === undefined ? undefined : renderedField(path, fieldNames);
+    if (!name) {
       unmatched.push(input);
       continue;
     }
@@ -173,6 +176,14 @@ export function formErrors(err: ApiError, fieldNames: readonly string[]): FormEr
   }
 
   return { fields: Object.fromEntries(fields), unmatched };
+}
+
+// renderedField returns the field in fieldNames that path names: path
+// itself, or the list holding the item at path. It returns undefined when
+// no rendered field holds path.
+function renderedField(path: string, fieldNames: readonly string[]): string | undefined {
+  if (fieldNames.includes(path)) return path;
+  return fieldNames.find((name) => path.startsWith(`${name}[`));
 }
 
 // formSummary returns the messages for the summary under a form's button
