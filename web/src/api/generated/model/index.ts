@@ -6,6 +6,7 @@
  */
 
 export * from './accountProviders.zod';
+export * from './accountSync.zod';
 export * from './authorization.zod';
 export * from './changedMember.zod';
 export * from './confirmTOTPEnrollmentBody.zod';
@@ -60,6 +61,7 @@ export * from './registrationSettings.zod';
 export * from './requestPasswordResetLinkBody.zod';
 export * from './requestRegistrationLinkBody.zod';
 export * from './responseAccountProviders.zod';
+export * from './responseAccountSync.zod';
 export * from './responseAuthorization.zod';
 export * from './responseChangedMember.zod';
 export * from './responseConnectedAccounts.zod';

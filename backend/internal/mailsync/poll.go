@@ -62,6 +62,20 @@ type Plan struct {
 	// Position is where a poll asks for changes since: the account's
 	// [SyncState.Position]. Empty for a full sync.
 	Position string
+	// RequestedAt is the account's [Report.RequestedAt] as the plan read
+	// it, before a poll's first read: a request that changes it is
+	// followed by another poll (see [Poll.Recheck]).
+	RequestedAt *time.Time
+}
+
+// Recheck is whether a poll that finished polls once more.
+type Recheck struct {
+	// Again is whether a member asked to sync since the poll's first read
+	// may have started.
+	Again bool
+	// RequestedAt is the account's [Report.RequestedAt] as read now,
+	// before the next poll's first read.
+	RequestedAt *time.Time
 }
 
 const (
@@ -77,7 +91,8 @@ const (
 // Poll applies what changed in an account's mail at its provider since the
 // stored position, in steps a workflow runs in order: [Poll.Plan], then,
 // for [KindPoll], for each page of changes [Poll.ReadChanges] once and
-// [Poll.ApplyChanges] for each of its parts. A running full sync runs the
+// [Poll.ApplyChanges] for each of its parts, then [Poll.Recheck], which
+// may start the same steps again from the new position. A running full sync runs the
 // same steps with [PollDuringCopy] between its pages. A step that fails ends the
 // poll as [EndingOf] says: [EndingResync] with a full sync in its place,
 // [EndingFail] with [Poll.Fail], and any other with nothing recorded, since
@@ -104,21 +119,58 @@ func NewPoll(storage Storage, provider Provider, access accountAccess, now func(
 }
 
 // Plan returns what account accountID's sync run does: a poll from its
-// position once its full sync is complete, and otherwise a full sync. The
+// position once its full sync is complete, and otherwise a full sync, with
+// the request time it saw, which [Poll.Recheck] compares. The
 // first step of either stops for a stopped account. It returns
 // [ErrNotFound] when the account has no sync state.
 //
 // DESIGN: One sync runs for an account at a time, so the status read here
 // holds until this run changes it.
 func (p *Poll) Plan(ctx context.Context, accountID int64) (Plan, error) {
+	requestedAt, err := p.requestedAt(ctx, accountID)
+	if err != nil {
+		return Plan{}, err
+	}
 	state, err := p.storage.SyncState(ctx, accountID)
 	if err != nil {
 		return Plan{}, err
 	}
 	if state.Status != StatusComplete {
-		return Plan{Kind: KindFull}, nil
+		return Plan{Kind: KindFull, RequestedAt: requestedAt}, nil
 	}
-	return Plan{Kind: KindPoll, Position: state.Position}, nil
+	return Plan{Kind: KindPoll, Position: state.Position, RequestedAt: requestedAt}, nil
+}
+
+// Recheck reports whether account accountID's poll, which finished, polls
+// once more: its member asked to sync since the poll read seen, its
+// [Report.RequestedAt] before its first read, so the poll may have missed
+// mail sent before the request (ADR001, "Polling"). It returns
+// [ErrNotFound] when the account has no sync state.
+//
+// DESIGN: The stored value is compared, not the clocks: the request's time
+// comes from the server, and the worker's clock may differ. Every request
+// writes a new time, and the request limit keeps two apart, so a changed
+// value means a newer request.
+func (p *Poll) Recheck(ctx context.Context, accountID int64, seen *time.Time) (Recheck, error) {
+	requestedAt, err := p.requestedAt(ctx, accountID)
+	if err != nil {
+		return Recheck{}, err
+	}
+	changed := requestedAt != nil && (seen == nil || !requestedAt.Equal(*seen))
+	return Recheck{Again: changed, RequestedAt: requestedAt}, nil
+}
+
+// requestedAt returns account accountID's [Report.RequestedAt], or
+// [ErrNotFound] when it has no sync state.
+func (p *Poll) requestedAt(ctx context.Context, accountID int64) (*time.Time, error) {
+	reports, err := p.storage.Reports(ctx, []int64{accountID})
+	if err != nil {
+		return nil, err
+	}
+	if len(reports) == 0 {
+		return nil, ErrNotFound
+	}
+	return reports[0].RequestedAt, nil
 }
 
 // ReadChanges returns one page of account accountID's changes since

@@ -246,4 +246,15 @@ type Storage interface {
 	// [Confirmed.Position] with no failure and the time moves forward, so a
 	// sync that finished meanwhile keeps its own.
 	ConfirmSynced(ctx context.Context, confirmed []Confirmed) error
+	// Reports returns the reports of those of accountIDs that have a sync
+	// state, in account ID order.
+	Reports(ctx context.Context, accountIDs []int64) ([]Report, error)
+	// RequestSync, in one transaction: 1. locks userID's account
+	// accountID's sync state; 2. calls request with what it finds; 3.
+	// records the time request returns as [Report.RequestedAt]; and 4.
+	// saves the account's sync run, unless one is already queued or
+	// running, which keeps its place. It returns the account's report
+	// after, and [ErrNotFound] when userID has no account accountID. An
+	// error from request is returned unchanged, and nothing is written.
+	RequestSync(ctx context.Context, userID, accountID int64, request func(SyncRequest) (time.Time, error)) (Report, error)
 }

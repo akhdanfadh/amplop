@@ -21,6 +21,7 @@ import (
 	"inbok/internal/google"
 	"inbok/internal/httpapi"
 	"inbok/internal/logging"
+	"inbok/internal/mailsync"
 	"inbok/internal/outgoingmessage"
 	"inbok/internal/passwordreset"
 	"inbok/internal/probe"
@@ -166,6 +167,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		Throttle:                throttle,
 		ConnectedAccounts:       connectedAccounts,
 		OutgoingMessages:        outgoingmessage.NewService(db, connectedAccounts, time.Now),
+		Syncs:                   mailsync.NewService(db, time.Now),
 	}
 	if cfg.Google != nil {
 		// Only when configured, so the interface stays nil and Gmail is not

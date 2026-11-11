@@ -61,6 +61,43 @@ func (f *fakeProvider) count(call string) int {
 	return n
 }
 
+// A poll polls once more only when the stored request time changed since
+// the one it saw, whatever the clocks say.
+func TestPollRecheck(t *testing.T) {
+	seen := syncNow.Add(-time.Minute)
+	for name, tc := range map[string]struct {
+		seen, stored *time.Time
+		again        bool
+	}{
+		"never requested":          {},
+		"no newer request":         {seen: &seen, stored: &seen},
+		"the first request":        {stored: &seen, again: true},
+		"a newer request":          {seen: &seen, stored: new(seen.Add(time.Second)), again: true},
+		"a newer request, earlier": {seen: &seen, stored: new(seen.Add(-time.Hour)), again: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			storage := newFakeStorage(SyncState{Status: StatusComplete, Position: "100"})
+			storage.requestedAt = tc.stored
+			p := NewPoll(storage, &fakeProvider{}, fakeAccess{}, func() time.Time { return syncNow })
+
+			recheck, err := p.Recheck(t.Context(), syncAccount, tc.seen)
+
+			require.NoError(t, err)
+			assert.Equal(t, Recheck{Again: tc.again, RequestedAt: tc.stored}, recheck)
+		})
+	}
+}
+
+func TestPollRecheckGone(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusComplete})
+	storage.gone = true
+	p := NewPoll(storage, &fakeProvider{}, fakeAccess{}, func() time.Time { return syncNow })
+
+	_, err := p.Recheck(t.Context(), syncAccount, nil)
+
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
 func TestPollPlan(t *testing.T) {
 	for name, tc := range map[string]struct {
 		status Status

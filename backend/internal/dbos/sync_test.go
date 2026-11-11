@@ -125,14 +125,17 @@ func (f *fakeSyncs) recorded() ([]string, []mailsync.Run) {
 
 // fakePolls plans plan, or fails with planErr, polls pages pages of
 // changes of parts parts each, failing a read as readErr says, and records
-// each call with its account. A plan with planBlocked set reports on it and
-// waits for its context to end.
+// each call with its account. Its first again rechecks ask for another
+// poll, each seeing a request time a minute after the one it was given, or
+// after syncNow for none. A plan with
+// planBlocked set reports on it and waits for its context to end.
 type fakePolls struct {
 	plan        mailsync.Plan
 	planErr     error
 	pages       int
 	parts       int
 	readErr     error
+	again       int
 	planBlocked chan int64
 
 	mu    sync.Mutex
@@ -181,6 +184,23 @@ func (f *fakePolls) ApplyChanges(_ context.Context, _ int64, from mailsync.PollF
 	f.record(call)
 	return part+1 < max(f.parts, 1), nil
 }
+
+func (f *fakePolls) Recheck(_ context.Context, _ int64, seen *time.Time) (mailsync.Recheck, error) {
+	from := syncNow
+	if seen != nil {
+		from = *seen
+	}
+	f.record("recheck " + from.Format(time.TimeOnly))
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	again := f.again > 0
+	f.again--
+	next := from.Add(time.Minute)
+	return mailsync.Recheck{Again: again, RequestedAt: &next}, nil
+}
+
+// syncNow is the request time fakePolls counts from when none was seen.
+var syncNow = time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)
 
 func (f *fakePolls) Fail(_ context.Context, _ int64, position string, failure mailsync.Failure) error {
 	f.record(fmt.Sprintf("poll fail %s %s", position, failure))
@@ -255,9 +275,30 @@ func TestSyncPoll(t *testing.T) {
 		"plan 7",
 		`read 100 ""`, `apply 100 "" [m0] 0`, `apply 100 "" [m0] 1`,
 		`read 100 "changes-1"`, `apply 100 "changes-1" [m1] 0`, `apply 100 "changes-1" [m1] 1`,
+		"recheck 00:00:00",
 	}, polls.recorded())
 	calls, _ := syncs.recorded()
 	assert.Empty(t, calls)
+}
+
+// A poll whose member asked to sync since its reads began polls again from
+// where it ended, each time with the request time it saw, until none did.
+func TestSyncPollAgain(t *testing.T) {
+	requested := time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
+	polls := &fakePolls{plan: mailsync.Plan{Kind: mailsync.KindPoll, Position: "100", RequestedAt: &requested}, pages: 1, again: 2}
+	worker := syncWorker(t, migrated(t), &fakeSyncs{}, polls)
+	t.Cleanup(func() { assert.NoError(t, worker.Shutdown()) })
+
+	output, err := enqueueSync(t, worker).GetResult(dbos.WithHandleTimeout(wait))
+
+	require.NoError(t, err)
+	assert.Equal(t, SyncOutput{Kind: mailsync.KindPoll, Status: mailsync.StatusComplete}, output)
+	assert.Equal(t, []string{
+		"plan 7",
+		`read 100 ""`, `apply 100 "" [m0] 0`, "recheck 09:00:00",
+		`read 100+ ""`, `apply 100+ "" [m0] 0`, "recheck 09:01:00",
+		`read 100++ ""`, `apply 100++ "" [m0] 0`, "recheck 09:02:00",
+	}, polls.recorded())
 }
 
 // A worker stopped during a poll resumes at the part it reached, applying
@@ -285,7 +326,7 @@ func TestSyncPollResume(t *testing.T) {
 	require.NoError(t, err)
 	_, err = again.GetResult(dbos.WithHandleTimeout(wait))
 	require.NoError(t, err)
-	assert.Equal(t, []string{`apply 100 "" [m0] 1`, `apply 100 "" [m0] 2`}, resumed.recorded())
+	assert.Equal(t, []string{`apply 100 "" [m0] 1`, `apply 100 "" [m0] 2`, "recheck 00:00:00"}, resumed.recorded())
 }
 
 // blockingPolls is fakePolls whose apply of blockPart reports on blocked

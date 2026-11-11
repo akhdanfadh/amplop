@@ -40,6 +40,12 @@ type fakeStorage struct {
 	failedBefore time.Time
 	// confirmed is what ConfirmSynced was given, in account ID order.
 	confirmed []Confirmed
+	// requestedAt is the account's request time, and needsReconnect and
+	// owner what RequestSync finds; enqueued counts the runs it saved.
+	requestedAt    *time.Time
+	needsReconnect bool
+	owner          int64
+	enqueued       int
 	// err, when set, fails every call.
 	err error
 }
@@ -147,6 +153,48 @@ func (f *fakeStorage) DueSyncs(_ context.Context, failedBefore time.Time) ([]Due
 	defer f.mu.Unlock()
 	f.failedBefore = failedBefore
 	return f.due, f.err
+}
+
+// Reports returns the state's report, for syncAccount only.
+func (f *fakeStorage) Reports(_ context.Context, accountIDs []int64) ([]Report, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.gone || !slices.Contains(accountIDs, syncAccount) {
+		return []Report{}, nil
+	}
+	return []Report{f.report()}, nil
+}
+
+// report returns the state's report; f.mu must be held.
+func (f *fakeStorage) report() Report {
+	return Report{
+		AccountID:    syncAccount,
+		Status:       f.state.Status,
+		Failure:      f.state.Failure,
+		FailedAt:     f.state.FailedAt,
+		LastSyncedAt: f.state.LastSyncedAt,
+		RequestedAt:  f.requestedAt,
+	}
+}
+
+// RequestSync answers for syncAccount of f.owner, recording the time
+// request returns and counting a run.
+func (f *fakeStorage) RequestSync(_ context.Context, userID, accountID int64, request func(SyncRequest) (time.Time, error)) (Report, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.gone || userID != f.owner || accountID != syncAccount {
+		return Report{}, ErrNotFound
+	}
+	at, err := request(SyncRequest{NeedsReconnect: f.needsReconnect, RequestedAt: f.requestedAt})
+	if err != nil {
+		return Report{}, err
+	}
+	f.requestedAt = &at
+	f.enqueued++
+	return f.report(), nil
 }
 
 // ConfirmSynced records confirmed in f.confirmed.

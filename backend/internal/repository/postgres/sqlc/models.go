@@ -207,6 +207,7 @@ type SyncState struct {
 	Failure            *string
 	FailedAt           *time.Time
 	LastSyncedAt       *time.Time
+	SyncRequestedAt    *time.Time
 }
 
 type SystemEmail struct {

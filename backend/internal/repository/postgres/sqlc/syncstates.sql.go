@@ -98,6 +98,95 @@ func (q *Queries) ListDueSyncs(ctx context.Context, failedBefore *time.Time) ([]
 	return items, nil
 }
 
+const listSyncReports = `-- name: ListSyncReports :many
+SELECT s.connected_account_id, s.status, s.failure, s.failed_at, s.last_synced_at, s.sync_requested_at,
+    CASE WHEN s.status = 'running' THEN (
+        SELECT count(*) FROM messages m
+        WHERE m.connected_account_id = s.connected_account_id AND m.sync_generation = s.sync_generation
+    ) ELSE 0 END::bigint AS messages_so_far
+FROM sync_states s
+WHERE s.connected_account_id = ANY($1::bigint[])
+ORDER BY s.connected_account_id
+`
+
+type ListSyncReportsRow struct {
+	ConnectedAccountID int64
+	Status             string
+	Failure            *string
+	FailedAt           *time.Time
+	LastSyncedAt       *time.Time
+	SyncRequestedAt    *time.Time
+	MessagesSoFar      int64
+}
+
+// The accounts' sync states as the member sees them. A running full sync's
+// progress counts the messages stamped with its generation, through the
+// account's message index: an index on the generation would cost every
+// re-fetch its in-place (HOT) update.
+func (q *Queries) ListSyncReports(ctx context.Context, connectedAccountIds []int64) ([]ListSyncReportsRow, error) {
+	rows, err := q.db.Query(ctx, listSyncReports, connectedAccountIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSyncReportsRow
+	for rows.Next() {
+		var i ListSyncReportsRow
+		if err := rows.Scan(
+			&i.ConnectedAccountID,
+			&i.Status,
+			&i.Failure,
+			&i.FailedAt,
+			&i.LastSyncedAt,
+			&i.SyncRequestedAt,
+			&i.MessagesSoFar,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockRequestAccount = `-- name: LockRequestAccount :one
+SELECT (needs_reconnect_since IS NOT NULL)::boolean AS needs_reconnect
+FROM connected_accounts
+WHERE id = $1 AND user_id = $2
+FOR SHARE
+`
+
+type LockRequestAccountParams struct {
+	ID     int64
+	UserID int64
+}
+
+// Whether a member's account needs reconnecting, locked so it cannot
+// change, or the account go, until a request to sync it ends.
+func (q *Queries) LockRequestAccount(ctx context.Context, arg LockRequestAccountParams) (bool, error) {
+	row := q.db.QueryRow(ctx, lockRequestAccount, arg.ID, arg.UserID)
+	var needs_reconnect bool
+	err := row.Scan(&needs_reconnect)
+	return needs_reconnect, err
+}
+
+const lockSyncRequest = `-- name: LockSyncRequest :one
+SELECT sync_requested_at
+FROM sync_states
+WHERE connected_account_id = $1
+FOR NO KEY UPDATE
+`
+
+// An account's last request time, locked for a request to sync it now.
+func (q *Queries) LockSyncRequest(ctx context.Context, connectedAccountID int64) (*time.Time, error) {
+	row := q.db.QueryRow(ctx, lockSyncRequest, connectedAccountID)
+	var sync_requested_at *time.Time
+	err := row.Scan(&sync_requested_at)
+	return sync_requested_at, err
+}
+
 const lockSyncState = `-- name: LockSyncState :one
 SELECT connected_account_id, status, coalesce(position, '')::text AS position, sync_generation,
     failure, failed_at, last_synced_at
@@ -164,6 +253,21 @@ func (q *Queries) ReadSyncState(ctx context.Context, connectedAccountID int64) (
 		&i.LastSyncedAt,
 	)
 	return i, err
+}
+
+const updateSyncRequestedAt = `-- name: UpdateSyncRequestedAt :exec
+UPDATE sync_states SET sync_requested_at = $1
+WHERE connected_account_id = $2
+`
+
+type UpdateSyncRequestedAtParams struct {
+	SyncRequestedAt    *time.Time
+	ConnectedAccountID int64
+}
+
+func (q *Queries) UpdateSyncRequestedAt(ctx context.Context, arg UpdateSyncRequestedAtParams) error {
+	_, err := q.db.Exec(ctx, updateSyncRequestedAt, arg.SyncRequestedAt, arg.ConnectedAccountID)
+	return err
 }
 
 const updateSyncState = `-- name: UpdateSyncState :exec

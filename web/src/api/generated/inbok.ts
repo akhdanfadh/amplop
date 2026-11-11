@@ -25,6 +25,7 @@ import type {
 
 import {
   ResponseAccountProviders,
+  ResponseAccountSync,
   ResponseAuthorization,
   ResponseChangedMember,
   ResponseConnectedAccounts,
@@ -604,6 +605,82 @@ export const useReconnectConnectedAccount = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getReconnectConnectedAccountMutationOptions(options), queryClient);
+    }
+
+export const getSyncConnectedAccountUrl = (id: number,) => {
+
+
+
+
+  return `/api/v0/connected-accounts/${id}/sync`
+}
+
+/**
+ * Starts a connected account's sync now instead of at the next minute: a check for new mail, or a full sync when one is due. A sync already waiting or running keeps its place, with the same answer; it checks for mail again before it ends, or the next minute's check does. One request per account every 15 seconds.
+ * @summary Sync Account Now
+ */
+export const syncConnectedAccount = async (id: number, options?: Parameters<typeof transport>[1]): Promise<ResponseAccountSync> => {
+
+  return transport<ResponseAccountSync>(getSyncConnectedAccountUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+    ,
+    schema: ResponseAccountSync
+  }
+);}
+
+
+
+
+
+export const getSyncConnectedAccountMutationKey = () => ['syncConnectedAccount'] as const;
+
+export const getSyncConnectedAccountMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncConnectedAccount>>, TError,SyncConnectedAccountMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncConnectedAccount>>, TError,SyncConnectedAccountMutationVariables, TContext> => {
+
+const mutationKey = getSyncConnectedAccountMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncConnectedAccount>>, SyncConnectedAccountMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  syncConnectedAccount(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncConnectedAccountMutationResult = NonNullable<Awaited<ReturnType<typeof syncConnectedAccount>>>
+
+    export type SyncConnectedAccountMutationError = ErrorType<Problem>
+    export type SyncConnectedAccountMutationVariables = {id: number}
+
+    /**
+ * @summary Sync Account Now
+ */
+export const useSyncConnectedAccount = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncConnectedAccount>>, TError,SyncConnectedAccountMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof syncConnectedAccount>>,
+        TError,
+        SyncConnectedAccountMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSyncConnectedAccountMutationOptions(options), queryClient);
     }
 
 export const getRedeemEmailVerificationUrl = () => {

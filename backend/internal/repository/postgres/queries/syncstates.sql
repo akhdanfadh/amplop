@@ -60,3 +60,36 @@ WHERE s.connected_account_id = c.connected_account_id
     -- Checked here, not with greatest(), so a time that would not move
     -- writes no new row version.
     AND (s.last_synced_at IS NULL OR s.last_synced_at < c.checked_at);
+
+-- name: LockRequestAccount :one
+-- Whether a member's account needs reconnecting, locked so it cannot
+-- change, or the account go, until a request to sync it ends.
+SELECT (needs_reconnect_since IS NOT NULL)::boolean AS needs_reconnect
+FROM connected_accounts
+WHERE id = @id AND user_id = @user_id
+FOR SHARE;
+
+-- name: LockSyncRequest :one
+-- An account's last request time, locked for a request to sync it now.
+SELECT sync_requested_at
+FROM sync_states
+WHERE connected_account_id = @connected_account_id
+FOR NO KEY UPDATE;
+
+-- name: UpdateSyncRequestedAt :exec
+UPDATE sync_states SET sync_requested_at = @sync_requested_at
+WHERE connected_account_id = @connected_account_id;
+
+-- name: ListSyncReports :many
+-- The accounts' sync states as the member sees them. A running full sync's
+-- progress counts the messages stamped with its generation, through the
+-- account's message index: an index on the generation would cost every
+-- re-fetch its in-place (HOT) update.
+SELECT s.connected_account_id, s.status, s.failure, s.failed_at, s.last_synced_at, s.sync_requested_at,
+    CASE WHEN s.status = 'running' THEN (
+        SELECT count(*) FROM messages m
+        WHERE m.connected_account_id = s.connected_account_id AND m.sync_generation = s.sync_generation
+    ) ELSE 0 END::bigint AS messages_so_far
+FROM sync_states s
+WHERE s.connected_account_id = ANY(@connected_account_ids::bigint[])
+ORDER BY s.connected_account_id;

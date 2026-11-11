@@ -22,8 +22,10 @@ import (
 // syncedMailTest is a migrated database with one member who has two
 // connected accounts, each with a sync state that is waiting.
 type syncedMailTest struct {
-	db      *DB
-	conn    *pgx.Conn
+	db   *DB
+	conn *pgx.Conn
+	// member owns account and other.
+	member  int64
 	account int64
 	other   int64
 }
@@ -35,6 +37,7 @@ func newSyncedMailTest(t *testing.T) syncedMailTest {
 	return syncedMailTest{
 		db:      db,
 		conn:    conn,
+		member:  member,
 		account: insertSyncingAccount(t, conn, member, "sub-alex"),
 		other:   insertSyncingAccount(t, conn, member, "sub-blair"),
 	}
@@ -873,4 +876,109 @@ func TestConfirmSynced(t *testing.T) {
 		require.NotNil(t, state.LastSyncedAt, name)
 		assert.Equal(t, at, *state.LastSyncedAt, name)
 	}
+}
+
+// A running full sync's progress counts the messages its generation saved;
+// an account without a sync state is left out.
+func TestSyncReports(t *testing.T) {
+	s := newSyncedMailTest(t).withMailboxes(t)
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("m1"), syncedMessage("m2")}})
+	s.update(t, s.account, mailsync.Change{State: running(2), Saved: []mailsync.Message{syncedMessage("m2"), syncedMessage("m3"), syncedMessage("m4")}})
+	// A flag update leaves a message's generation, so m1 still counts for
+	// the earlier one.
+	s.update(t, s.account, mailsync.Change{State: running(2), Updated: []mailsync.MessageUpdate{{ProviderID: "m1", Seen: true, MailboxProviderIDs: []string{"INBOX"}}}})
+	failedAt := time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
+	complete := mailsync.SyncState{Status: mailsync.StatusComplete, Position: "100", Generation: 1, LastSyncedAt: &failedAt, Failure: mailsync.FailureProvider, FailedAt: &failedAt}
+	s.update(t, s.other, mailsync.Change{State: complete, Saved: []mailsync.Message{syncedMessage("m1")}})
+
+	reports, err := s.db.Reports(t.Context(), []int64{s.other, s.account, s.other + 100})
+
+	require.NoError(t, err)
+	assert.Equal(t, []mailsync.Report{
+		{AccountID: s.account, Status: mailsync.StatusRunning, MessagesSoFar: 3},
+		{AccountID: s.other, Status: mailsync.StatusComplete, Failure: mailsync.FailureProvider, FailedAt: &failedAt, LastSyncedAt: &failedAt},
+	}, reports)
+}
+
+// syncRequestTest is a syncedMailTest whose storage saves sync jobs.
+func syncRequestTest(t *testing.T) syncedMailTest {
+	t.Helper()
+	s := newSyncedMailTest(t)
+	createJobTables(t, s.conn)
+	s.db = s.db.WithWorkflows(accountWorkflows{})
+	return s
+}
+
+// syncJobs counts the saved sync jobs of accountID.
+func (s syncedMailTest) syncJobs(t *testing.T, accountID int64) int {
+	t.Helper()
+	var n int
+	require.NoError(t, s.conn.QueryRow(t.Context(), "SELECT count(*) FROM test_sync_jobs WHERE account_id = $1", accountID).Scan(&n))
+	return n
+}
+
+// A request records its time and saves a sync job; a second, while the
+// first job waits, finds the first time and keeps the one job.
+func TestRequestSync(t *testing.T) {
+	s := syncRequestTest(t)
+	first := time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
+	second := first.Add(time.Minute)
+
+	var found []mailsync.SyncRequest
+	request := func(at time.Time) func(mailsync.SyncRequest) (time.Time, error) {
+		return func(r mailsync.SyncRequest) (time.Time, error) {
+			found = append(found, r)
+			return at, nil
+		}
+	}
+	firstReport, err := s.db.RequestSync(t.Context(), s.member, s.account, request(first))
+	require.NoError(t, err)
+	secondReport, err := s.db.RequestSync(t.Context(), s.member, s.account, request(second))
+	require.NoError(t, err)
+
+	assert.Equal(t, []mailsync.SyncRequest{{}, {RequestedAt: &first}}, found)
+	assert.Equal(t, mailsync.Report{AccountID: s.account, Status: mailsync.StatusWaiting, RequestedAt: &first}, firstReport)
+	assert.Equal(t, &second, secondReport.RequestedAt)
+	assert.Equal(t, 1, s.syncJobs(t, s.account))
+	assert.Zero(t, s.syncJobs(t, s.other))
+}
+
+// A request finds that the account needs reconnecting.
+func TestRequestSyncNeedsReconnect(t *testing.T) {
+	s := syncRequestTest(t)
+	_, err := s.conn.Exec(t.Context(), "UPDATE connected_accounts SET needs_reconnect_since = now() WHERE id = $1", s.account)
+	require.NoError(t, err)
+
+	var found mailsync.SyncRequest
+	refused := errors.New("refused")
+	_, err = s.db.RequestSync(t.Context(), s.member, s.account, func(r mailsync.SyncRequest) (time.Time, error) {
+		found = r
+		return time.Time{}, refused
+	})
+
+	require.ErrorIs(t, err, refused)
+	assert.True(t, found.NeedsReconnect)
+	state, err := s.db.Reports(t.Context(), []int64{s.account})
+	require.NoError(t, err)
+	assert.Nil(t, state[0].RequestedAt, "a refused request writes nothing")
+	assert.Zero(t, s.syncJobs(t, s.account))
+}
+
+// Another member's account, or one gone, is not found, before request is
+// called.
+func TestRequestSyncNotFound(t *testing.T) {
+	s := syncRequestTest(t)
+	stranger := insertConnectingMember(t, s.conn, "stranger@example.com")
+
+	called := false
+	request := func(mailsync.SyncRequest) (time.Time, error) {
+		called = true
+		return time.Now(), nil
+	}
+	_, strangerErr := s.db.RequestSync(t.Context(), stranger, s.account, request)
+	_, goneErr := s.db.RequestSync(t.Context(), s.member, s.other+100, request)
+
+	require.ErrorIs(t, strangerErr, mailsync.ErrNotFound)
+	require.ErrorIs(t, goneErr, mailsync.ErrNotFound)
+	assert.False(t, called)
 }

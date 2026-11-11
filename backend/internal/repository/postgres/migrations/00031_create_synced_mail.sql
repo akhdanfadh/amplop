@@ -40,6 +40,9 @@ CREATE TABLE sync_states (
     -- When inbok last confirmed its copy matched the provider: a sync, full
     -- or poll, finished, or the minute's check found the position unchanged.
     last_synced_at       timestamptz,
+    -- The server's time of the member's last request to sync now, which
+    -- the request limit counts and a poll compares with its first read.
+    sync_requested_at    timestamptz,
     CONSTRAINT sync_states_failed_failure CHECK (status <> 'failed' OR failure IS NOT NULL),
     CONSTRAINT sync_states_failure_time CHECK ((failure IS NULL) = (failed_at IS NULL))
 );

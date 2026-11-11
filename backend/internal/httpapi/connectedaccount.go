@@ -14,6 +14,7 @@ import (
 	"uuid"
 
 	"inbok/internal/connectedaccount"
+	"inbok/internal/mailsync"
 	"inbok/internal/session"
 )
 
@@ -43,6 +44,11 @@ type connectedAccountService interface {
 	Disconnect(ctx context.Context, userID, accountID int64) (connectedaccount.Account, error)
 }
 
+// syncService starts an account's sync when its member asks.
+type syncService interface {
+	Request(ctx context.Context, userID, accountID int64) (mailsync.Report, error)
+}
+
 // connectionService runs the Gmail connect flow. It is nil when no Google
 // client is configured, and Gmail is then not offered.
 type connectionService interface {
@@ -53,14 +59,16 @@ type connectionService interface {
 type connectedAccountHandler struct {
 	accounts    connectedAccountService
 	connections connectionService
+	syncs       syncService
 	sessions    sessionService
 	logger      *slog.Logger
 }
 
-func registerConnectedAccounts(api huma.API, logger *slog.Logger, accounts connectedAccountService, connections connectionService, sessions sessionService) {
-	handler := connectedAccountHandler{accounts: accounts, connections: connections, sessions: sessions, logger: logger}
+func registerConnectedAccounts(api huma.API, logger *slog.Logger, accounts connectedAccountService, connections connectionService, syncs syncService, sessions sessionService) {
+	handler := connectedAccountHandler{accounts: accounts, connections: connections, syncs: syncs, sessions: sessions, logger: logger}
 
 	registerConnectedAccountList(api, handler)
+	registerAccountSync(api, handler)
 	registerAccountProviders(api, handler)
 	registerGmailConnect(api, handler)
 	registerAccountReconnect(api, handler)

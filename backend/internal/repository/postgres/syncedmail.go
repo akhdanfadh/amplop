@@ -347,6 +347,112 @@ func (db *DB) ConfirmSynced(ctx context.Context, confirmed []mailsync.Confirmed)
 	return nil
 }
 
+// Reports returns the reports of those of accountIDs that have a sync
+// state, in account ID order, a running full sync's progress counted from
+// the messages stamped with its generation.
+func (db *DB) Reports(ctx context.Context, accountIDs []int64) ([]mailsync.Report, error) {
+	rows, err := sqlc.New(db.pool).ListSyncReports(ctx, accountIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list sync reports: %w", err)
+	}
+	reports := make([]mailsync.Report, 0, len(rows))
+	for _, row := range rows {
+		reports = append(reports, reportFromRow(row))
+	}
+	return reports, nil
+}
+
+// RequestSync locks userID's account accountID's sync state, calls request
+// with what it finds, records the time request returns as the account's
+// request time, and saves the account's sync run unless one is already
+// queued or running, in one transaction. It returns the account's report
+// after, and [mailsync.ErrNotFound] when userID has no account accountID.
+func (db *DB) RequestSync(ctx context.Context, userID, accountID int64, request func(mailsync.SyncRequest) (time.Time, error)) (mailsync.Report, error) {
+	if db.workflows == nil {
+		return mailsync.Report{}, errNoWorkflows
+	}
+	var report mailsync.Report
+	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+
+		// 1. Lock the account, so its need to reconnect holds until this
+		// commits; first, as a disconnect locks it before the sync state.
+		needsReconnect, err := queries.LockRequestAccount(ctx, sqlc.LockRequestAccountParams{ID: accountID, UserID: userID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mailsync.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock request account: %w", err)
+		}
+
+		// 2. Lock the state, so two requests count the limit one after the
+		// other.
+		requestedAt, err := queries.LockSyncRequest(ctx, accountID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return mailsync.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock sync request: %w", err)
+		}
+
+		// 3. Let request decide, and record its time.
+		at, err := request(mailsync.SyncRequest{NeedsReconnect: needsReconnect, RequestedAt: inUTC(requestedAt)})
+		if err != nil {
+			return err
+		}
+		params := sqlc.UpdateSyncRequestedAtParams{ConnectedAccountID: accountID, SyncRequestedAt: &at}
+		if err := queries.UpdateSyncRequestedAt(ctx, params); err != nil {
+			return fmt.Errorf("record sync request: %w", err)
+		}
+
+		// 4. Save the run. One already queued or running keeps its place,
+		// and its poll's recheck reads the time just recorded.
+		if _, err := db.workflows.EnqueueSync(ctx, tx, accountID); err != nil {
+			return fmt.Errorf("save sync: %w", err)
+		}
+
+		// 5. Read the report the member is answered with.
+		rows, err := queries.ListSyncReports(ctx, []int64{accountID})
+		if err != nil {
+			return fmt.Errorf("list sync reports: %w", err)
+		}
+		if len(rows) == 0 {
+			return mailsync.ErrNotFound
+		}
+		report = reportFromRow(rows[0])
+		return nil
+	})
+	if err != nil {
+		return mailsync.Report{}, err
+	}
+	return report, nil
+}
+
+// reportFromRow converts a row to a report.
+func reportFromRow(row sqlc.ListSyncReportsRow) mailsync.Report {
+	report := mailsync.Report{
+		AccountID:     row.ConnectedAccountID,
+		Status:        mailsync.Status(row.Status),
+		MessagesSoFar: int(row.MessagesSoFar),
+		FailedAt:      inUTC(row.FailedAt),
+		LastSyncedAt:  inUTC(row.LastSyncedAt),
+		RequestedAt:   inUTC(row.SyncRequestedAt),
+	}
+	if row.Failure != nil {
+		report.Failure = mailsync.Failure(*row.Failure)
+	}
+	return report
+}
+
+// inUTC returns a copy of at in UTC, or nil for nil.
+func inUTC(at *time.Time) *time.Time {
+	if at == nil {
+		return nil
+	}
+	utc := at.UTC()
+	return &utc
+}
+
 // uniqueStrings returns values without repeats, in their first order.
 func uniqueStrings(values []string) []string {
 	seen := make(map[string]bool, len(values))

@@ -451,6 +451,31 @@ The run enqueues `inbok.sync` for each, keeping a sync already queued or
 running. An idle account then costs one run a minute in all, the
 schedule's, and 1 unit of its Gmail quota.
 
+**Sync now.** `POST /api/v0/connected-accounts/{id}/sync`
+(`mailsync.Service.Request`) enqueues `inbok.sync` for one of the member's
+accounts at once, skipping the minute's wait, the check, and the hour
+after a failure; the plan still chooses poll or full sync. One transaction
+locks the sync state, refuses another member's account and one that needs
+reconnecting, allows one request per account every 15 seconds, records
+`sync_requested_at`, and enqueues as above. It locks the account's row
+(`FOR SHARE`) before the sync state, the order a disconnect takes, so the
+reconnect state it read holds until it commits. The limit is there because
+a poll that finds nothing ends in about a second, so a script could
+otherwise leave a run in DBOS's tables every second. `plan` records the
+`sync_requested_at` it read, and a poll that succeeds reads it again (the
+step `recheck`): when it changed, a request came since the poll's reads
+began, so it polls again from the new position. The stored values are
+compared, not times, since the server writes the request and the worker's
+clock may differ. A request so starts a read of Gmail after it, and its
+mail shows within seconds. A request that lands after that last look,
+while the run ends, finds the run and starts none; the next minute's check
+then starts its poll, as without the request, unless the account has a
+failure recorded and its checks keep failing, when it waits for a check
+that succeeds or, after a failed full sync, the hour's retry (ADR001
+accepts this: Gmail is failing then anyway). The page does not track when
+a request is answered: that would take exact bookkeeping across the two
+processes' clocks.
+
 **A poll** reads each page of `history.list` since the stored position
 once, as the step `read changes` (`mailsync.Poll.ReadChanges`), which
 records the page's IDs and label IDs, no mail. Then `apply changes`
@@ -2333,7 +2358,9 @@ Four tables hold it, each deleted with its account:
 - `sync_states`: one row per account, saved with it, with the full sync's
   `status` (`waiting`, `running`, `complete`, or `failed`), its
   `sync_generation`, the `position` the next poll asks for changes since,
-  and when inbok last confirmed the copy (`last_synced_at`). `failure` and `failed_at` say why and
+  when inbok last confirmed the copy (`last_synced_at`), and when the
+  member last asked to sync now (`sync_requested_at`), which only that
+  request writes, for its limit and a poll's recheck. `failure` and `failed_at` say why and
   when the last sync, full or poll, failed, until one succeeds:
   `provider`, `token-unreadable`, or `internal`. A `failed` full sync
   always has one, and a `complete` account keeps a failed poll's. The
@@ -2661,7 +2688,8 @@ httpapi --> connectedaccount <-- repository/postgres
                              <-- google
             outgoingmessage <-- repository/postgres
                             <-- google
-            mailsync <-- repository/postgres
+httpapi --> mailsync <-- repository/postgres
+            mailsync --> connectedaccount
                      <-- google
             search <-- meilisearch
 httpapi --> messagecontent <-- s3

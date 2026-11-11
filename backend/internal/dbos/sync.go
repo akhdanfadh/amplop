@@ -58,6 +58,7 @@ type polls interface {
 	Plan(ctx context.Context, accountID int64) (mailsync.Plan, error)
 	ReadChanges(ctx context.Context, accountID int64, position, pageToken string) (mailsync.ChangePage, error)
 	ApplyChanges(ctx context.Context, accountID int64, from mailsync.PollFrom, pageToken string, page mailsync.ChangePage, part int) (bool, error)
+	Recheck(ctx context.Context, accountID int64, seen *time.Time) (mailsync.Recheck, error)
 	Fail(ctx context.Context, accountID int64, position string, failure mailsync.Failure) error
 }
 
@@ -259,7 +260,7 @@ func runSync(ctx dbos.Context, full fullSyncs, polls polls, input SyncInput, log
 
 	// 2. Poll, and go on to a full sync only when the changes are gone.
 	if planned.Value.Kind == mailsync.KindPoll {
-		polled, resync, err := runPoll(ctx, polls, accountID, planned.Value.Position, logger)
+		polled, resync, err := runPoll(ctx, polls, accountID, planned.Value.Position, planned.Value.RequestedAt, logger)
 		if !resync {
 			return polled, err
 		}
@@ -269,21 +270,40 @@ func runSync(ctx dbos.Context, full fullSyncs, polls polls, input SyncInput, log
 	return SyncOutput{Kind: mailsync.KindFull, Status: status}, err
 }
 
-// runPoll applies account accountID's changes since position, and returns
-// what it did, logging to logger how a poll that did not succeed ended. It
-// reports true, with nothing done, when the provider no longer keeps those
-// changes, so a full sync must run instead. It returns an error wrapping
-// errSyncFailed when it failed, an error recording the failure, or the
-// context's error when the worker is stopping.
-func runPoll(ctx dbos.Context, polls polls, accountID int64, position string, logger *slog.Logger) (SyncOutput, bool, error) {
-	polled, err := pollPages(ctx, polls, accountID, mailsync.PollFrom{Scope: mailsync.PollComplete, Position: position}, logger)
-	if err != nil {
-		return SyncOutput{}, false, err
+// runPoll applies account accountID's changes since position, and again
+// from where it ended while its member asked to sync since its reads
+// began, when the account's request time was seen. It returns what it did, logging to logger how a poll that
+// did not succeed ended. It reports true, with nothing done, when the
+// provider no longer keeps those changes, so a full sync must run instead.
+// It returns an error wrapping errSyncFailed when it failed, an error
+// recording the failure, or the context's error when the worker is
+// stopping.
+func runPoll(ctx dbos.Context, polls polls, accountID int64, position string, seen *time.Time, logger *slog.Logger) (SyncOutput, bool, error) {
+	done := SyncOutput{Kind: mailsync.KindPoll, Status: mailsync.StatusComplete}
+	for {
+		// 1. Apply the changes.
+		polled, err := pollPages(ctx, polls, accountID, mailsync.PollFrom{Scope: mailsync.PollComplete, Position: position}, logger)
+		if err != nil {
+			return SyncOutput{}, false, err
+		}
+		if polled.ending != 0 {
+			return endPollStep(ctx, polls, accountID, position, polled.ending, polled.failure, logger)
+		}
+
+		// 2. Poll again when a request came after the reads began, so the
+		// read that answers it starts after it (ADR001, "Polling"). The
+		// poll succeeded whatever this step finds.
+		recheck, err := syncStep(ctx, logger, "recheck", func(stepCtx context.Context) (mailsync.Recheck, error) {
+			return polls.Recheck(stepCtx, accountID, seen)
+		})
+		if err != nil {
+			return SyncOutput{}, false, err
+		}
+		if recheck.Ending != 0 || !recheck.Value.Again {
+			return done, false, nil
+		}
+		position, seen = polled.position, recheck.Value.RequestedAt
 	}
-	if polled.ending != 0 {
-		return endPollStep(ctx, polls, accountID, position, polled.ending, polled.failure, logger)
-	}
-	return SyncOutput{Kind: mailsync.KindPoll, Status: mailsync.StatusComplete}, false, nil
 }
 
 // polled is how a poll's pages went: the position after the last one, or
