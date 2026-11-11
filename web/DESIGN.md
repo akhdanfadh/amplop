@@ -49,11 +49,11 @@ both themes. A new pair is checked before use (antislop-human's
 | `sheet` (new)                    | `#ffffff`             | `#ffffff`             | The message body's sheet, white in both themes    |
 | `muted-foreground`               | `#666666`             | `#a3a3a3`             | Secondary text, meta, snippets                    |
 | `border`                         | `#e3e3e3`             | `#2e2e2e`             | Hairlines; decoration only                        |
-| `input`                          | `#8a8a8a`             | `#808080`             | Field outlines (3:1, WCAG 1.4.11)                 |
+| `input`                          | `#848484`             | `#808080`             | Field outlines (3:1, WCAG 1.4.11)                 |
 | `accent`                         | `#ececec`             | `#2e2e2e`             | Hover surface (shadcn's name; not a brand colour) |
 | `primary` / `primary-foreground` | `#2557d6` / `#ffffff` | `#86a8ff` / `#1c1c1c` | Primary buttons, links, the focus ring            |
 | `selection` (new)                | `#e5eaf6`             | `#272a33`             | The open row, the current nav item                |
-| `destructive`                    | `#a8000a`             | `#ffa3a5`             | Text and icons on its 10% tint (20% in dark)      |
+| `destructive`                    | `#a8000a`             | `#ffa3a5`             | Text and icons on its 8% tint (12% in dark)       |
 | `success` (new)                  | `#0f6630`             | `#4ade80`             | Same tint rule                                    |
 | `warning` (new)                  | `#904500`             | `#fbbf24`             | Same tint rule                                    |
 | `info` (new)                     | = `primary`           | = `primary`           | Same tint rule                                    |
@@ -76,6 +76,27 @@ accounts are connected and stored with the account:
 
 No account colour is blue, red, or pure green, so an account never reads as
 a link or a status.
+
+**Measured contrast**, the worst pair per token over every surface it can
+sit on (background, card, sidebar, accent, selection), WCAG 2 formula,
+checked 2026-11-11. A hover tint is one step stronger (12%, 16% in dark);
+only the destructive button uses it. Recheck a row when its token or a
+surface changes.
+
+| Token                       | Needs | Light (worst surface) | Dark (worst surface) |
+| --------------------------- | ----- | --------------------- | -------------------- |
+| `foreground`                | 4.5   | 16.43 (selection)     | 8.26 (highlight)     |
+| `muted-foreground`          | 4.5   | 4.77 (selection)      | 5.38 (accent)        |
+| `primary` as link text      | 4.5   | 5.11 (selection)      | 5.86 (accent)        |
+| `primary-foreground`        | 4.5   | 6.15 (primary)        | 7.35 (primary)       |
+| `destructive` on its tint   | 4.5   | 5.62 (selection)      | 5.57 (accent)        |
+| `destructive` on hover tint | 4.5   | 5.22 (selection)      | 5.10 (accent)        |
+| `success` on its tint       | 4.5   | 5.23 (selection)      | 6.05 (accent)        |
+| `warning` on its tint       | 4.5   | 5.12 (selection)      | 6.24 (accent)        |
+| `info` on its tint          | 4.5   | 4.57 (selection)      | 4.69 (accent)        |
+| `input` (field outlines)    | 3     | 3.10 (selection)      | 3.44 (accent)        |
+| `ring`                      | 3     | 5.11 (selection)      | 5.86 (accent)        |
+| `account-1` ... `account-8` | 3     | 3.06 (2 on selection) | 3.21 (3 on accent)   |
 
 ### Type
 
