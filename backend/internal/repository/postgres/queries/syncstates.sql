@@ -30,15 +30,17 @@ WHERE connected_account_id = @connected_account_id;
 
 -- name: ListDueSyncs :many
 -- The accounts whose provider work may run, i.e. whose member is active and
--- which need no reconnect, and that are complete, waiting, or failed at or
--- before @failed_before.
+-- which need no reconnect, and that are complete, waiting, running, or
+-- failed at or before @failed_before.
 SELECT s.connected_account_id, s.status, coalesce(s.position, '')::text AS position, s.failure
 FROM sync_states s
 JOIN connected_accounts ca ON ca.id = s.connected_account_id
 JOIN users u ON u.id = ca.user_id
 WHERE ca.needs_reconnect_since IS NULL
     AND u.deactivated_at IS NULL
-    AND (s.status IN ('complete', 'waiting')
+    -- A running account's live run comes back from DBOS's deduplication;
+    -- one whose run ended without recording how gets a new one.
+    AND (s.status IN ('complete', 'waiting', 'running')
         OR (s.status = 'failed' AND s.failed_at <= @failed_before))
 ORDER BY s.connected_account_id;
 

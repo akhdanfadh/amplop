@@ -432,6 +432,10 @@ accounts whose member is active and which need no reconnect, then:
 - a `waiting` account, and one `failed` an hour ago or longer, starts a
   sync, so a reconnect, a reactivation, or a passing outage needs no code
   of its own;
+- a `running` account starts one too: DBOS gives back the run that still
+  lives, and one that ended without recording how, e.g. when the database
+  stayed down past the last step's retries, gets a new full sync rather
+  than staying `running` for good;
 - a `complete` account starts one when Gmail's current history ID
   (`users.getProfile`, 1 unit) differs from its stored position, or when
   a failure is recorded, which the poll then clears. The checks run ten

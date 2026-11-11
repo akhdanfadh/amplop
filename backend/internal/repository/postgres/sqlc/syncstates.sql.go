@@ -58,7 +58,9 @@ JOIN connected_accounts ca ON ca.id = s.connected_account_id
 JOIN users u ON u.id = ca.user_id
 WHERE ca.needs_reconnect_since IS NULL
     AND u.deactivated_at IS NULL
-    AND (s.status IN ('complete', 'waiting')
+    -- A running account's live run comes back from DBOS's deduplication;
+    -- one whose run ended without recording how gets a new one.
+    AND (s.status IN ('complete', 'waiting', 'running')
         OR (s.status = 'failed' AND s.failed_at <= $1))
 ORDER BY s.connected_account_id
 `
@@ -71,8 +73,8 @@ type ListDueSyncsRow struct {
 }
 
 // The accounts whose provider work may run, i.e. whose member is active and
-// which need no reconnect, and that are complete, waiting, or failed at or
-// before @failed_before.
+// which need no reconnect, and that are complete, waiting, running, or
+// failed at or before @failed_before.
 func (q *Queries) ListDueSyncs(ctx context.Context, failedBefore *time.Time) ([]ListDueSyncsRow, error) {
 	rows, err := q.db.Query(ctx, listDueSyncs, failedBefore)
 	if err != nil {

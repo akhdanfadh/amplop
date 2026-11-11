@@ -51,16 +51,21 @@ func NewSchedule(storage Storage, provider Provider, access accountAccess, now f
 }
 
 // Due returns, in ID order, the accounts whose provider work may run and
-// whose sync run should start: those waiting for a full sync, those whose
-// full sync failed failedRetryAfter ago or longer, and those complete whose
-// position at the provider moved, or that have a failure recorded, which a
-// poll clears. A complete account whose position could not be read starts
-// one too, unless a failure is already recorded for it, so the poll's
-// retries decide what to record, once. A check that a stopped account
-// refuses starts nothing, and complete accounts not checked within
-// checkBudget wait for the next run. A complete account with no failure
-// whose position did not move is recorded as synced when the provider
-// answered (ADR001, "Polling"), after every check.
+// whose sync run should start: those waiting for a full sync, those running
+// one, those whose full sync failed failedRetryAfter ago or longer, and
+// those complete whose position at the provider moved, or that have a
+// failure recorded, which a poll clears. A complete account whose position
+// could not be read starts one too, unless a failure is already recorded
+// for it, so the poll's retries decide what to record, once. A check that a
+// stopped account refuses starts nothing, and complete accounts not checked
+// within checkBudget wait for the next run. A complete account with no
+// failure whose position did not move is recorded as synced when the
+// provider answered (ADR001, "Polling"), after every check.
+//
+// DESIGN: a running account is started again because a run can end without
+// recording how, e.g. when storage stayed down past the last step's
+// retries, which would leave it running with no run. Starting one whose run
+// still lives gives that run back (one sync per account).
 func (s *Schedule) Due(ctx context.Context) ([]int64, error) {
 	now := s.now()
 	due, err := s.storage.DueSyncs(ctx, now.Add(-failedRetryAfter))

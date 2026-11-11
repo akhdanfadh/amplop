@@ -14,10 +14,11 @@ import (
 )
 
 func TestScheduleDue(t *testing.T) {
-	// Given accounts waiting, failed long enough ago, complete with a
-	// position that moved, and complete with one that did not.
+	// Given accounts waiting, running, failed long enough ago, complete
+	// with a position that moved, and complete with one that did not.
 	storage := newFakeStorage(SyncState{})
 	storage.due = []DueSync{
+		{AccountID: 5, Status: StatusRunning},
 		{AccountID: 4, Status: StatusComplete, Position: "200"},
 		{AccountID: 3, Status: StatusComplete, Position: "100"},
 		{AccountID: 2, Status: StatusFailed, Failure: FailureProvider},
@@ -28,10 +29,11 @@ func TestScheduleDue(t *testing.T) {
 
 	due, err := s.Due(t.Context())
 
-	// Then the ones that need a sync start it, and the one that did not
+	// Then the ones that need a sync start it, the running one too, whose
+	// run may have ended without recording how, and the one that did not
 	// move is recorded as synced when the provider answered.
 	require.NoError(t, err)
-	assert.Equal(t, []int64{1, 2, 3}, due)
+	assert.Equal(t, []int64{1, 2, 3, 5}, due)
 	assert.Equal(t, syncNow.Add(-failedRetryAfter), storage.failedBefore)
 	assert.Equal(t, []Confirmed{{AccountID: 4, Position: "200", At: syncNow}}, storage.confirmed)
 }
@@ -169,7 +171,7 @@ func TestScheduleRecovers(t *testing.T) {
 
 // A quiet account is confirmed at the time the provider answered its
 // check, not when the run started.
-func TestScheduleConfirmsAnswerTime(t *testing.T) {
+func TestScheduleAnswerTime(t *testing.T) {
 	storage := newFakeStorage(SyncState{})
 	storage.due = []DueSync{{AccountID: 1, Status: StatusComplete, Position: "100"}}
 	var mu sync.Mutex

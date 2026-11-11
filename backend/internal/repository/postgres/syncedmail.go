@@ -309,8 +309,8 @@ func (db *DB) OldestMessage(ctx context.Context, accountID int64) (time.Time, bo
 }
 
 // DueSyncs returns, in account ID order, the accounts whose member is
-// active and which need no reconnect, and that are complete, waiting, or
-// failed at or before failedBefore.
+// active and which need no reconnect, and that are complete, waiting,
+// running, or failed at or before failedBefore.
 func (db *DB) DueSyncs(ctx context.Context, failedBefore time.Time) ([]mailsync.DueSync, error) {
 	rows, err := sqlc.New(db.pool).ListDueSyncs(ctx, &failedBefore)
 	if err != nil {

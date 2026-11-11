@@ -239,7 +239,7 @@ type Storage interface {
 	OldestMessage(ctx context.Context, accountID int64) (time.Time, bool, error)
 	// DueSyncs returns the accounts whose provider work may run, i.e. whose
 	// member is active and which need no reconnect, and that are complete,
-	// waiting, or failed at or before failedBefore.
+	// waiting, running, or failed at or before failedBefore.
 	DueSyncs(ctx context.Context, failedBefore time.Time) ([]DueSync, error)
 	// ConfirmSynced records each of confirmed as its account's
 	// [SyncState.LastSyncedAt], where the account is still complete at its

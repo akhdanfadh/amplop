@@ -793,8 +793,8 @@ func TestOldestMessage(t *testing.T) {
 	assert.Equal(t, syncedMessage("m1").InternalDate, oldest, "another account's older message is not this one's")
 }
 
-// Due syncs are the complete, waiting, and long-failed accounts whose
-// member is active and which need no reconnect.
+// Due syncs are the complete, waiting, running, and long-failed accounts
+// whose member is active and which need no reconnect.
 func TestDueSyncs(t *testing.T) {
 	s := newSyncedMailTest(t)
 	member := insertConnectingMember(t, s.conn, "second@example.com")
@@ -831,6 +831,7 @@ func TestDueSyncs(t *testing.T) {
 		{AccountID: s.other, Status: mailsync.StatusWaiting},
 		{AccountID: ids["complete"], Status: mailsync.StatusComplete, Position: "100", Failure: mailsync.FailureProvider},
 		{AccountID: ids["waiting"], Status: mailsync.StatusWaiting},
+		{AccountID: ids["running"], Status: mailsync.StatusRunning},
 		{AccountID: ids["failed long"], Status: mailsync.StatusFailed, Failure: mailsync.FailureProvider},
 	}
 	slices.SortFunc(want, func(a, b mailsync.DueSync) int { return int(a.AccountID - b.AccountID) })
