@@ -27,6 +27,10 @@ import (
 // [googleapi.ErrorItem.Reason] is a plain string.
 const reasonFailedPrecondition = "failedPrecondition"
 
+// gmailUser is the userId of every Gmail call: Gmail's special value for
+// the account the access token reaches (Gmail API reference, users).
+const gmailUser = "me"
+
 // Profile returns the Gmail mailbox accessToken reaches, from
 // users.getProfile. It returns an error wrapping [connectedaccount.ErrNoGmail]
 // when the Google account has no Gmail.
@@ -35,7 +39,7 @@ func (c *Client) Profile(ctx context.Context, accessToken connectedaccount.Acces
 	if err != nil {
 		return connectedaccount.Profile{}, err
 	}
-	profile, err := service.Users.GetProfile("me").Context(ctx).Do()
+	profile, err := service.Users.GetProfile(gmailUser).Context(ctx).Do()
 	if noGmail(err) {
 		return connectedaccount.Profile{}, fmt.Errorf("%w: %w", connectedaccount.ErrNoGmail, redactGmail(err))
 	}
@@ -86,7 +90,8 @@ type refusalTransport struct {
 	refused func()
 }
 
-// RoundTrip sends req over the base transport.
+// RoundTrip sends req over the base transport and returns its answer and
+// error as they are, after calling refused for a 401.
 func (t refusalTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	res, err := t.base.RoundTrip(req)
 	if err == nil && res.StatusCode == http.StatusUnauthorized {
@@ -170,7 +175,9 @@ type cappedTransport struct {
 	base http.RoundTripper
 }
 
-// RoundTrip sends req over the base transport.
+// RoundTrip sends req over the base transport and returns its answer with
+// a body that reads [errResponseTooLarge] past [maxResponseBytes], or the
+// base transport's error.
 func (t cappedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	res, err := t.base.RoundTrip(req)
 	if err != nil {
@@ -187,7 +194,9 @@ type cappedBody struct {
 	left int64
 }
 
-// Read reads into p, at most what is left.
+// Read reads into p, at most what is left, and returns how many bytes it
+// read and the body's error, or [errResponseTooLarge] once a byte remains
+// past the cap.
 func (b *cappedBody) Read(p []byte) (int, error) {
 	if b.left <= 0 {
 		var probe [1]byte

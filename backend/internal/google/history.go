@@ -45,7 +45,7 @@ func (c *Client) Changes(ctx context.Context, token connectedaccount.AccessToken
 	if err != nil {
 		return mailsync.ChangePage{}, err
 	}
-	call := service.Users.History.List("me").
+	call := service.Users.History.List(gmailUser).
 		StartHistoryId(historyID).
 		MaxResults(historyPageSize).
 		Fields(historyFields)

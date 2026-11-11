@@ -24,9 +24,9 @@ func TestChanges(t *testing.T) {
 	require.NoError(t, err)
 	service, err := client.gmail(t.Context(), token)
 	require.NoError(t, err)
-	_, err = service.Users.Messages.Modify("me", "m1", &gmail.ModifyMessageRequest{RemoveLabelIds: []string{"UNREAD"}}).Do()
+	_, err = service.Users.Messages.Modify(gmailUser, "m1", &gmail.ModifyMessageRequest{RemoveLabelIds: []string{"UNREAD"}}).Do()
 	require.NoError(t, err)
-	_, err = service.Users.Messages.Trash("me", "m2").Do()
+	_, err = service.Users.Messages.Trash(gmailUser, "m2").Do()
 	require.NoError(t, err)
 
 	page, err := client.Changes(t.Context(), token, start, "")

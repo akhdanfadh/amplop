@@ -102,11 +102,15 @@ func retryWait(err error, attempt int, now time.Time) (time.Duration, bool) {
 	return wait + rand.N(backoffJitter), true
 }
 
+// retryAfterHeader is the header in which a server asks for a wait (RFC
+// 9110 section 10.2.3).
+const retryAfterHeader = "Retry-After"
+
 // retryAfter returns the wait a Retry-After header in h asks for at now,
 // in seconds or as a date (RFC 9110 section 10.2.3), and whether there was
 // a usable one.
 func retryAfter(h http.Header, now time.Time) (time.Duration, bool) {
-	value := h.Get("Retry-After")
+	value := h.Get(retryAfterHeader)
 	if value == "" {
 		return 0, false
 	}

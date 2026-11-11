@@ -45,7 +45,7 @@ func (c *Client) Mailboxes(ctx context.Context, token connectedaccount.AccessTok
 		return nil, err
 	}
 	list, err := retry(ctx, c, func() (*gmail.ListLabelsResponse, error) {
-		return service.Users.Labels.List("me").Fields("labels(id,name)").Context(ctx).Do()
+		return service.Users.Labels.List(gmailUser).Fields("labels(id,name)").Context(ctx).Do()
 	})
 	if err != nil {
 		return nil, redactGmail(err)

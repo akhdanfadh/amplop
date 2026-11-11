@@ -62,7 +62,7 @@ func (c *Client) Position(ctx context.Context, token connectedaccount.AccessToke
 		return "", err
 	}
 	profile, err := retry(ctx, c, func() (*gmail.Profile, error) {
-		return service.Users.GetProfile("me").Fields(profileFields).Context(ctx).Do()
+		return service.Users.GetProfile(gmailUser).Fields(profileFields).Context(ctx).Do()
 	})
 	if err != nil {
 		return "", redactGmail(err)
@@ -77,7 +77,7 @@ func (c *Client) ListMessages(ctx context.Context, token connectedaccount.Access
 	if err != nil {
 		return mailsync.MessagePage{}, err
 	}
-	call := service.Users.Messages.List("me").
+	call := service.Users.Messages.List(gmailUser).
 		// Gmail's after: takes seconds since the epoch for an exact time;
 		// a date means midnight Pacific time (Gmail's "Search and filter
 		// messages" guide).
@@ -231,7 +231,7 @@ func (c *Client) fetchMetadata(ctx context.Context, service *gmail.Service, pace
 			if err := pace.WaitN(ctx, metadataUnits); err != nil {
 				return nil, err
 			}
-			call := service.Users.Messages.Get("me", providerID).Format(format).Fields(fields)
+			call := service.Users.Messages.Get(gmailUser, providerID).Format(format).Fields(fields)
 			if format == formatMetadata {
 				call = call.MetadataHeaders(metadataHeaders...)
 			}
