@@ -8,6 +8,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { OutgoingMessageList } from "@/features/outgoing-messages/list";
 import { ReadError } from "@/components/read-error";
+import { pollWhile } from "@/features/outgoing-messages/poll";
 import { inProgress } from "@/features/outgoing-messages/text";
 
 const unauthorized = 401;
@@ -26,10 +27,9 @@ function Outbox(): ReactElement {
   const current = useGetCurrentSession();
   const list = useListOutgoingMessages({
     query: {
-      refetchInterval: (query) =>
-        query.state.data?.data.messages.some((message) => inProgress(message.status))
-          ? pollMs
-          : false,
+      refetchInterval: pollWhile(pollMs, (data) =>
+        data.data.messages.some((message) => inProgress(message.status)),
+      ),
     },
   });
   const expired = [current.error, list.error].some((err) => err?.status === unauthorized);

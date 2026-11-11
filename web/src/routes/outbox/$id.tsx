@@ -13,6 +13,7 @@ import { ReadError } from "@/components/read-error";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { MessageView } from "@/features/messages/view";
 import { messageContent, messageHeader } from "@/features/outgoing-messages/message";
+import { pollWhile } from "@/features/outgoing-messages/poll";
 import { MessageStatus } from "@/features/outgoing-messages/status";
 import { inProgress, messageGone, readErrorMessage } from "@/features/outgoing-messages/text";
 
@@ -44,12 +45,7 @@ function OutgoingMessagePage(): ReactElement {
   const read = useGetOutgoingMessage(id, {
     query: {
       enabled: valid,
-      refetchInterval: (query) => {
-        // A failed read waits for Try again rather than repeating.
-        if (query.state.status === "error") return false;
-        const status = query.state.data?.data.status;
-        return status && inProgress(status) ? pollMs : false;
-      },
+      refetchInterval: pollWhile(pollMs, (data) => inProgress(data.data.status)),
     },
   });
   // The sending account's address now, which Send again sends from.

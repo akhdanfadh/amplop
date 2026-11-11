@@ -120,8 +120,8 @@ Put shared code in the folder for its responsibility:
   bodies, sizing the body's frame, plain-text links, and the header's
   wording.
 - `src/features/outgoing-messages`: the compose form and its schema, the
-  Outbox list, one message's status with Send again and Edit and send, and
-  their wording.
+  Outbox list, one message's status with Send again and Edit and send,
+  their wording, and when their pages read again (`pollWhile`).
 - `src/components`: shared components, such as the password input and the
   request error under a form. `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -433,8 +433,9 @@ waiting or sending; its New message button opens the compose form. Each
 opens its own page at `/outbox/$id`, which reads only an ID that is a
 UUID, since the client puts it in the API's path as is. The page shows the
 status above the message, read again every 2 seconds until the send ends,
-and announces it, first after the page has rendered. A failed reread stops
-the polling and says the status may be out of date, with Try again. A
+and announces it, first after the page has rendered. On both pages a
+failed reread stops the polling and says what is shown may be out of
+date, with Try again, which starts it again. A
 failed message says why and what to do, and an `unknown` one says to check
 the account's Sent folder in Gmail. Send again copies a failed or unknown
 message into a new one from the same account and opens it; for an
