@@ -384,12 +384,28 @@ immediately despite the browser's offline indicator; editing or leaving the
 form invalidates their result. The original health
 and probe demo remains available at `/probe`.
 
+Every signed-in page also links Outbox (`/outbox`), until the mail layout
+gives sending its own place. The Outbox lists the member's newest 50
+messages from inbok, newest first, with each status, and reads the list
+again every 5 seconds while one is waiting or sending. Each opens its own
+page at `/outbox/$id`, which reads only an ID that is a UUID, since the
+client puts it in the API's path as is. The page shows the status above
+the message, read again every 2 seconds until the send ends, and announces
+it, first after the page has rendered. A failed reread stops the polling
+and says the status may be out of date, with Try again. A failed message
+says why and what to do, and an `unknown` one says to check the account's
+Sent folder in Gmail. Send again copies a failed or unknown message into a
+new one from the same account and opens it; for an `unknown` message it
+asks first, since the first may have gone out. A message is sent again at
+most once, so its page then links the copy instead.
+
 ## Message view
 
 `MessageView` (`src/features/messages/view.tsx`) shows one message: its
-subject, From, To, Cc, and when it arrived, then its bodies one after
-another. No route shows it yet; the inbox will, with the message from
-the API. Its props:
+subject, From, To, Cc, Bcc for a message the member sent, and when it
+arrived, then its bodies one after another. An outgoing message's page
+shows it with its plain-text body; the inbox will show synchronized
+messages, with the message from the API. Its props:
 
 - `header`: the header fields, which show while the body loads.
 - `content`: `pending` while the server fetches a body it has not

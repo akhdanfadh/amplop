@@ -20,6 +20,8 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
+import { Route as OutboxIndexRouteImport } from './routes/outbox/index'
+import { Route as OutboxIdRouteImport } from './routes/outbox/$id'
 import { Route as RegisterIndexRouteImport } from './routes/register/index'
 import { Route as RegisterCompleteRouteImport } from './routes/register/complete'
 
@@ -78,6 +80,16 @@ const VerifyEmailRoute = VerifyEmailRouteImport.update({
   path: '/verify-email',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OutboxIndexRoute = OutboxIndexRouteImport.update({
+  id: '/outbox/',
+  path: '/outbox/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OutboxIdRoute = OutboxIdRouteImport.update({
+  id: '/outbox/$id',
+  path: '/outbox/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RegisterIndexRoute = RegisterIndexRouteImport.update({
   id: '/register/',
   path: '/register/',
@@ -101,7 +113,9 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/verify-email': typeof VerifyEmailRoute
+  '/outbox/$id': typeof OutboxIdRoute
   '/register/complete': typeof RegisterCompleteRoute
+  '/outbox/': typeof OutboxIndexRoute
   '/register/': typeof RegisterIndexRoute
 }
 export interface FileRoutesByTo {
@@ -116,7 +130,9 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/verify-email': typeof VerifyEmailRoute
+  '/outbox/$id': typeof OutboxIdRoute
   '/register/complete': typeof RegisterCompleteRoute
+  '/outbox': typeof OutboxIndexRoute
   '/register': typeof RegisterIndexRoute
 }
 export interface FileRoutesById {
@@ -132,7 +148,9 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/verify-email': typeof VerifyEmailRoute
+  '/outbox/$id': typeof OutboxIdRoute
   '/register/complete': typeof RegisterCompleteRoute
+  '/outbox/': typeof OutboxIndexRoute
   '/register/': typeof RegisterIndexRoute
 }
 export interface FileRouteTypes {
@@ -149,7 +167,9 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/verify-email'
+    | '/outbox/$id'
     | '/register/complete'
+    | '/outbox/'
     | '/register/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -164,7 +184,9 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/verify-email'
+    | '/outbox/$id'
     | '/register/complete'
+    | '/outbox'
     | '/register'
   id:
     | '__root__'
@@ -179,7 +201,9 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/verify-email'
+    | '/outbox/$id'
     | '/register/complete'
+    | '/outbox/'
     | '/register/'
   fileRoutesById: FileRoutesById
 }
@@ -195,7 +219,9 @@ export interface RootRouteChildren {
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
+  OutboxIdRoute: typeof OutboxIdRoute
   RegisterCompleteRoute: typeof RegisterCompleteRoute
+  OutboxIndexRoute: typeof OutboxIndexRoute
   RegisterIndexRoute: typeof RegisterIndexRoute
 }
 
@@ -278,6 +304,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VerifyEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/outbox/': {
+      id: '/outbox/'
+      path: '/outbox'
+      fullPath: '/outbox/'
+      preLoaderRoute: typeof OutboxIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/outbox/$id': {
+      id: '/outbox/$id'
+      path: '/outbox/$id'
+      fullPath: '/outbox/$id'
+      preLoaderRoute: typeof OutboxIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/register/': {
       id: '/register/'
       path: '/register'
@@ -307,7 +347,9 @@ const rootRouteChildren: RootRouteChildren = {
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
   VerifyEmailRoute: VerifyEmailRoute,
+  OutboxIdRoute: OutboxIdRoute,
   RegisterCompleteRoute: RegisterCompleteRoute,
+  OutboxIndexRoute: OutboxIndexRoute,
   RegisterIndexRoute: RegisterIndexRoute,
 }
 export const routeTree = rootRouteImport
