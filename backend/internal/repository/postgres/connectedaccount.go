@@ -59,7 +59,7 @@ func (db *DB) InsertConnectedAccount(ctx context.Context, account connectedaccou
 		if db.workflows == nil {
 			return errNoWorkflows
 		}
-		if err := db.workflows.EnqueueSync(ctx, tx, id); err != nil {
+		if _, err := db.workflows.EnqueueSync(ctx, tx, id); err != nil {
 			return fmt.Errorf("save sync: %w", err)
 		}
 		saved = connectedAccountFromRow(sqlc.InsertConnectedAccountRow(row))

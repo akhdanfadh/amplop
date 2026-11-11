@@ -409,6 +409,10 @@ of an account while one is queued or running (its deduplication ID,
 `sync-<account ID>`), so a poll and a full sync of one account never run
 at once. [Connecting](#connecting) an account saves its sync state,
 `waiting`, and its first sync, in the transaction that saves the account.
+The enqueue runs in a savepoint (`dbos.Client.EnqueueSync`): DBOS refuses
+its return-existing policy inside a caller's transaction, and its
+duplicate would abort the whole transaction, so a sync already queued or
+running rolls back only the savepoint and keeps its place.
 
 Its first step, `plan`, reads the account's sync state and records which
 sync to run, so a resumed run makes the same choice: a `complete` account

@@ -2,6 +2,7 @@ package dbos
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 	"uuid"
@@ -118,19 +119,39 @@ func (c *Client) EnqueueOutgoingMessage(ctx context.Context, tx pgx.Tx, messageI
 	return err
 }
 
-// EnqueueSync saves, in tx, the sync workflow for the connected account
-// with accountID on the Google queue, so it commits or rolls back with tx.
-// Cancelling ctx stops its statements. It returns DBOS's error, wrapping
-// [dbos.ErrQueueDeduplicated] when the account's sync is already queued or
-// running, after which tx is aborted and must roll back.
-func (c *Client) EnqueueSync(ctx context.Context, tx pgx.Tx, accountID int64) error {
+// EnqueueSync saves, in a savepoint of tx, the sync workflow for the
+// connected account with accountID on the Google queue, so it commits or
+// rolls back with tx. Cancelling ctx stops its statements. It reports
+// false, saving nothing and leaving tx usable, when the account's sync is
+// already queued or running. It returns DBOS's other errors, after which
+// tx is aborted and must roll back.
+//
+// DESIGN: DBOS refuses its return-existing policy inside a caller's
+// transaction, and a duplicate fails the insert, which aborts the
+// transaction it ran in; the savepoint confines that to the enqueue.
+func (c *Client) EnqueueSync(ctx context.Context, tx pgx.Tx, accountID int64) (bool, error) {
+	// 1. Open the savepoint before DBOS's insert, which a duplicate fails.
+	savepoint, err := tx.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	// 2. Enqueue in it.
 	input := SyncInput{AccountID: accountID}
-	_, err := dbos.Enqueue[SyncOutput](c.client, googleQueue, syncWorkflow, input,
-		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+	_, err = dbos.Enqueue[SyncOutput](c.client, googleQueue, syncWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: savepoint, ctx: ctx}),
 		dbos.WithEnqueueApplicationVersion(applicationVersion),
 		dbos.WithEnqueueDeduplicationID(syncDeduplication(accountID)),
 	)
-	return err
+
+	// 3. Undo only the savepoint on a duplicate, which leaves tx usable.
+	if errors.Is(err, dbos.ErrQueueDeduplicated) {
+		return false, savepoint.Rollback(ctx)
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, savepoint.Commit(ctx)
 }
 
 // callerTx is a transaction whose statements run with ctx, whatever context

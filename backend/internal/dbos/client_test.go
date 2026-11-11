@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -339,7 +338,8 @@ func connectAdmin(t *testing.T, db *postgres.DB, conn *pgx.Conn) (connectedaccou
 
 // Connecting an account saves its sync on the Google queue, with the
 // account's deduplication ID and only its ID as input; a second sync of the
-// account is refused while the first waits.
+// account is not saved while the first waits, and leaves its transaction
+// usable.
 func TestClientSync(t *testing.T) {
 	// Given storage that saves workflows with a Client.
 	db, conn, url := clientStack(t)
@@ -352,11 +352,14 @@ func TestClientSync(t *testing.T) {
 	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 	tx, err := conn.Begin(t.Context())
 	require.NoError(t, err)
-	again := client.EnqueueSync(t.Context(), tx, account.ID)
-	require.NoError(t, tx.Rollback(t.Context()))
+	enqueued, err := client.EnqueueSync(t.Context(), tx, account.ID)
+	require.NoError(t, err)
+	_, usable := tx.Exec(t.Context(), "SELECT 1")
+	require.NoError(t, tx.Commit(t.Context()))
 
-	// Then one sync waits, and the second was refused.
-	require.ErrorIs(t, again, dbos.ErrQueueDeduplicated)
+	// Then one sync waits, and the second was not saved.
+	assert.False(t, enqueued)
+	require.NoError(t, usable)
 	saved := syncWorkflows(t, conn)
 	require.Len(t, saved, 1)
 	assert.Equal(t, "ENQUEUED", saved[0][0])

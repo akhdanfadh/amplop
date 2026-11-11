@@ -31,7 +31,8 @@ type connectedAccountsTest struct {
 // accountWorkflows saves each account removal job as a row of
 // test_account_removal_jobs, and each sync job as a row of
 // test_sync_jobs, in the caller's transaction, or fails with
-// removalErr or syncErr.
+// removalErr or syncErr. A second sync job of one account is not saved,
+// as DBOS's deduplication refuses it.
 type accountWorkflows struct {
 	Workflows
 	removalErr error
@@ -46,12 +47,21 @@ func (w accountWorkflows) EnqueueAccountRemoval(ctx context.Context, tx pgx.Tx, 
 	return err
 }
 
-func (w accountWorkflows) EnqueueSync(ctx context.Context, tx pgx.Tx, accountID int64) error {
+func (w accountWorkflows) EnqueueSync(ctx context.Context, tx pgx.Tx, accountID int64) (bool, error) {
 	if w.syncErr != nil {
-		return w.syncErr
+		return false, w.syncErr
 	}
-	_, err := tx.Exec(ctx, "INSERT INTO test_sync_jobs (account_id) VALUES ($1)", accountID)
-	return err
+	tag, err := tx.Exec(ctx, "INSERT INTO test_sync_jobs (account_id) VALUES ($1) ON CONFLICT DO NOTHING", accountID)
+	return tag.RowsAffected() == 1, err
+}
+
+// createJobTables creates the tables accountWorkflows saves jobs in.
+func createJobTables(t *testing.T, conn *pgx.Conn) {
+	t.Helper()
+	_, err := conn.Exec(t.Context(), "CREATE TABLE test_account_removal_jobs (removal_id bigint NOT NULL)")
+	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), "CREATE TABLE test_sync_jobs (account_id bigint NOT NULL UNIQUE)")
+	require.NoError(t, err)
 }
 
 // syncJobs lists the account IDs of the saved sync jobs.
@@ -90,10 +100,7 @@ func (c connectedAccountsTest) removalJobs(t *testing.T) []int64 {
 func newConnectedAccountsTest(t *testing.T) connectedAccountsTest {
 	t.Helper()
 	db, conn := setupStorage(t)
-	_, err := conn.Exec(t.Context(), "CREATE TABLE test_account_removal_jobs (removal_id bigint NOT NULL)")
-	require.NoError(t, err)
-	_, err = conn.Exec(t.Context(), "CREATE TABLE test_sync_jobs (account_id bigint NOT NULL)")
-	require.NoError(t, err)
+	createJobTables(t, conn)
 	db = db.WithWorkflows(accountWorkflows{})
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	require.NoError(t, err)
