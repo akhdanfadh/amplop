@@ -9,7 +9,7 @@ import (
 	"inbok/internal/messagecontent"
 )
 
-// accountsPrefix starts every content key: accounts/<account>/<content ID>
+// accountsPrefix starts every content key: accounts/<account>/<blob ID>
 // (ADR009).
 const accountsPrefix = "accounts/"
 

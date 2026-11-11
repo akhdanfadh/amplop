@@ -939,10 +939,43 @@ volume, and their gRPC ports) let anyone who reaches them read and write,
 so only the S3 port is published, to this machine only, and the deployment
 keeps SeaweedFS on a network of its own with inbok and the worker.
 
+What describes the content is in PostgreSQL's `message_parts`: one row
+per MIME part of each message whose content was fetched, a message having
+rows for all its parts or none. A row keeps the part's place in the tree
+(`path`, the index of each part on the way down from the top part),
+Gmail's `partId`, media type, charset, file name, size, disposition,
+`Content-ID`, a `multipart/related` part's `start`, its kind (see
+[Message parts](#message-parts)), and the blob ID its bytes are stored
+under: at once for a text part, and for an attachment or inline part once
+a member first asks for it. The blob ID is JMAP's `blobId` (RFC 8621,
+section 4.1.4), not the part's `Content-ID`, which is `mime_content_id`. Rows reference their message with the account,
+deleted with it.
+
+`messagecontent.Contents.Save` writes a message's content in the order
+ADR009 sets, since the store and PostgreSQL share no transaction:
+
+1. Store each text part's content under a new random blob ID.
+2. Save the rows in one transaction (`SaveMessageParts`), which locks the
+   account's sync state first, as every write to its mail does, so a
+   sync write deleting the message waits for it rather than deadlocking.
+   A message whose parts are saved already keeps them.
+
+So a row never names content that was never stored. A failure between the
+two, or two saves of one message racing before either commits, leaves
+content no row names. A retry before the rows commit stores the content
+again under new IDs: a job's step output may hold no mail, so the IDs
+cannot be recorded before the fetch that tells how many parts there are.
+Saving a message whose rows are saved stores its content again under the
+IDs they name. A row naming content the store no longer has, e.g. after a
+lost volume, reads as not stored: fetching the message again and saving
+it puts the content back under the same ID. So a lost volume refills
+message by message as members open mail, not all at once in the
+background.
+
 Code reaches the store through `messagecontent.Store`, never the SDK. A
-`Ref` names one content: the connected account it came from and a content
+`Ref` names one content: the connected account it came from and a blob
 ID, which PostgreSQL keeps. The `s3` package alone builds object keys from
-it, `accounts/<account ID>/<content ID>`, so keys hold no addresses,
+it, `accounts/<account ID>/<blob ID>`, so keys hold no addresses,
 subjects, or file names. The rules every caller relies on:
 
 - `Put` takes content it can seek in, e.g. a `bytes.Reader` or an open
@@ -2754,6 +2787,7 @@ httpapi --> mailsync <-- repository/postgres
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google
+                           <-- repository/postgres
 ```
 
 - `probe`, like every feature package, holds the feature's types, its

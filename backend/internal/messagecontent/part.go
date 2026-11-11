@@ -6,6 +6,7 @@ import (
 	"net/textproto"
 	"strings"
 	"unicode"
+	"uuid"
 )
 
 // Kind says what a [Part] is to a reader of the message.
@@ -98,6 +99,10 @@ type Part struct {
 	// Start is, for multipart/related, the Content-ID of the part shown
 	// (RFC 2387, section 3.2), without angle brackets; "" when none.
 	Start string
+	// BlobID is the ID ([Ref.ID]) the part's content is stored under, or
+	// the nil UUID while it is not stored: JMAP's blobId (RFC 8621,
+	// section 4.1.4), not the part's Content-ID.
+	BlobID uuid.UUID
 }
 
 // Text is a text part's content, converted to UTF-8.
