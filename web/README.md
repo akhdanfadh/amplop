@@ -675,12 +675,13 @@ Send Message (with its `Idempotency-Key`) and Send Message Again do, and
 opt in with `repeatableWriteRetry` from `src/api/retry.ts`: the same
 failures and waits as a read, each attempt with the same payload and key.
 
-Writes use `networkMode: "always"` with `retry: false`. Query attempts them even
-when its browser connectivity indicator says offline. That indicator can be
-wrong about whether a self-hosted API is reachable. A failed write reports its
-communication failure instead of waiting for reconnection. Reconnecting never
-submits it again; another attempt requires the user to submit. The form keeps
-entered values after a failed attempt.
+Writes use `networkMode: "always"` and, unless they opt in as above,
+`retry: false`. Query attempts them even when its browser connectivity
+indicator says offline. That indicator can be wrong about whether a
+self-hosted API is reachable. A failed write reports its communication failure
+instead of waiting for reconnection. Reconnecting never submits it again;
+another attempt, beyond an opted-in write's own retries, requires the user to
+submit. The form keeps entered values after a failed attempt.
 
 Normal retry waits are 1 and 2 seconds. On 429 and 503, a usable `Retry-After`
 can extend that wait, using integer seconds or an HTTP date. Invalid or absent
@@ -704,9 +705,9 @@ requests keep their original behavior.
 Query owns retries for eligible failures; each new attempt has a fresh timeout.
 The timeout does not bound the complete read operation: earlier attempts,
 retry waits, and offline pauses are separate. Later refetches on focus or
-reconnection are separate operations too. Writes are attempted once, so a
-timeout ends the submission and leaves the form's values available with the
-uncertain-outcome message above.
+reconnection are separate operations too. A timeout ends a write's
+submission, an opted-in write's retries included, and leaves the form's
+values available with the uncertain-outcome message above.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.

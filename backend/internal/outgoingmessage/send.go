@@ -107,11 +107,13 @@ type SendStorage interface {
 	ReadOutgoingMessageToSend(ctx context.Context, messageID uuid.UUID) (Message, error)
 
 	// UpdateOutgoingMessage reads message messageID's sending member under
-	// the member's share lock, then locks the message, calls update with
-	// both, and saves the [Transition] update returns, with its sender's
-	// address on the account when it names one, in one transaction. It
-	// returns the saved message, or [ErrNotFound] when there is no such
-	// message. An error from update rolls back and is returned unchanged.
+	// the member's share lock, then locks the message's account, then the
+	// message, calls update with both, and saves the [Transition] update
+	// returns, with its sender's address on the account when it names one,
+	// in one transaction. The account comes before the message because a
+	// disconnect locks them in that order. It returns the saved message, or
+	// [ErrNotFound] when there is no such message. An error from update
+	// rolls back and is returned unchanged.
 	UpdateOutgoingMessage(ctx context.Context, messageID uuid.UUID, update func(SendState) (Transition, error)) (Message, error)
 }
 
