@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -41,6 +42,7 @@ func GoogleCallbackURL(publicURL *url.URL) string {
 
 type connectedAccountService interface {
 	List(ctx context.Context, userID int64) ([]connectedaccount.Account, error)
+	Rename(ctx context.Context, userID, accountID int64, name string) (connectedaccount.Account, error)
 	Disconnect(ctx context.Context, userID, accountID int64) (connectedaccount.Account, error)
 }
 
@@ -76,6 +78,7 @@ func registerConnectedAccounts(api huma.API, logger *slog.Logger, accounts conne
 	registerGmailConnect(api, handler)
 	registerAccountReconnect(api, handler)
 	registerGoogleCallback(api, handler)
+	registerAccountRename(api, handler)
 	registerAccountDisconnect(api, handler)
 }
 
@@ -94,6 +97,8 @@ type connectedAccount struct {
 	NeedsReconnectSince *time.Time                `json:"needsReconnectSince" nullable:"true" doc:"When Google stopped accepting the account's permission; null until it does. Reconnecting clears it."`
 	Status              connectedaccount.Status   `json:"status" enum:"usable,needs-reconnect,token-unreadable" doc:"Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either."`
 	CreatedAt           time.Time                 `json:"createdAt"`
+	Name                *string                   `json:"name" nullable:"true" doc:"What the member calls the account, shown instead of its email; null until they choose one."`
+	Color               int                       `json:"color" minimum:"1" maximum:"8" doc:"The account's colour, one of eight the web app defines, given at connect: the lowest the member's other accounts use least."`
 }
 
 func connectedAccountOf(account connectedaccount.Account) connectedAccount {
@@ -104,7 +109,18 @@ func connectedAccountOf(account connectedaccount.Account) connectedAccount {
 		NeedsReconnectSince: account.NeedsReconnectSince,
 		Status:              account.Status,
 		CreatedAt:           account.CreatedAt,
+		Name:                accountName(account),
+		Color:               account.Color,
 	}
+}
+
+// accountName returns account's name, or nil when the member has chosen
+// none.
+func accountName(account connectedaccount.Account) *string {
+	if account.Name == "" {
+		return nil
+	}
+	return &account.Name
 }
 
 // connectedAccountProblem maps the errors every operation on one account
@@ -158,6 +174,8 @@ type listedAccount struct {
 	NeedsReconnectSince *time.Time                `json:"needsReconnectSince" nullable:"true" doc:"When Google stopped accepting the account's permission; null until it does. Reconnecting clears it."`
 	Status              connectedaccount.Status   `json:"status" enum:"usable,needs-reconnect,token-unreadable" doc:"Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either."`
 	CreatedAt           time.Time                 `json:"createdAt"`
+	Name                *string                   `json:"name" nullable:"true" doc:"What the member calls the account, shown instead of its email; null until they choose one."`
+	Color               int                       `json:"color" minimum:"1" maximum:"8" doc:"The account's colour, one of eight the web app defines, given at connect: the lowest the member's other accounts use least."`
 	Sync                accountSync               `json:"sync"`
 }
 
@@ -169,6 +187,8 @@ func listedAccountOf(account connectedaccount.Account, report mailsync.Report) l
 		NeedsReconnectSince: account.NeedsReconnectSince,
 		Status:              account.Status,
 		CreatedAt:           account.CreatedAt,
+		Name:                accountName(account),
+		Color:               account.Color,
 		Sync:                accountSyncOf(report),
 	}
 }
@@ -525,6 +545,65 @@ func callbackOutcome(err error) connectOutcome {
 	default:
 		return outcomeFailed
 	}
+}
+
+// ========================
+// Connected account rename
+// ========================
+
+type accountRenameInput struct {
+	ID   int64 `path:"id" minimum:"1" doc:"Connected account ID from the list."`
+	Body struct {
+		Name string `json:"name" maxLength:"64" doc:"The account's new name, at most 64 characters as sent. The white space around it is dropped; empty, or only white space, clears it."`
+	}
+}
+
+type renamedAccount struct {
+	Account connectedAccount `json:"account"`
+}
+
+func registerAccountRename(api huma.API, handler connectedAccountHandler) {
+	responses := memberResponses(api, http.StatusNotFound, http.StatusUnprocessableEntity)
+	accountNotFoundResponse(responses)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "renameConnectedAccount",
+		Method:      http.MethodPatch,
+		Path:        connectedAccountsPath + "/{id}",
+		Summary:     "Rename Account",
+		Tags:        []string{tagConnectedAccounts},
+		Description: "Sets the name the web app shows for a connected account instead of its email, or clears it. Only inbok keeps the name; Google's account is unchanged.",
+		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:   responses,
+	}, handler.handleRenameAccount)
+}
+
+func (h connectedAccountHandler) handleRenameAccount(ctx context.Context, in *accountRenameInput) (*output[renamedAccount], error) {
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	account, err := h.accounts.Rename(ctx, user.ID, in.ID, in.Body.Name)
+	if err != nil {
+		return nil, accountRenameProblem(err)
+	}
+	return respondData(renamedAccount{Account: connectedAccountOf(account)}), nil
+}
+
+// accountRenameProblem maps the errors of renaming an account.
+func accountRenameProblem(err error) error {
+	var message string
+	switch {
+	case errors.Is(err, connectedaccount.ErrNameTooLong):
+		// Huma's own maxLength failure reads the same, so the response does
+		// not depend on which check refused the name.
+		message = fmt.Sprintf("Use at most %d characters.", connectedaccount.MaxNameLength)
+	case errors.Is(err, connectedaccount.ErrNameInvalid):
+		message = "Enter a name without line breaks or other control characters."
+	default:
+		return connectedAccountProblem(err)
+	}
+	invalid := requestProblem(http.StatusUnprocessableEntity)
+	invalid.Errors = []inputError{{Location: "body.name", Message: message}}
+	return invalid
 }
 
 // ========================

@@ -62,7 +62,10 @@ both themes. A new pair is checked before use (antislop-human's
 | `ring`                           | = `primary`           | = `primary`           | Focus ring                                        |
 
 **Account colours** (`account-1` ... `account-8`), handed out in the order
-accounts are connected and stored with the account:
+accounts are connected and stored with the account. Each new account takes
+the lowest colour the member's other accounts use least: a disconnected
+account's colour goes to the next one connected, and a ninth account
+repeats one, its name telling them apart.
 
 | #   | Light             | Dark      | Note                                                            |
 | --- | ----------------- | --------- | --------------------------------------------------------------- |

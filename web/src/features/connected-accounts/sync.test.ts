@@ -25,6 +25,8 @@ function account(
     needsReconnectSince: status === "needs-reconnect" ? earlier : null,
     status,
     createdAt: earlier,
+    name: null,
+    color: 1,
     sync: { ...idle, ...sync },
   };
 }

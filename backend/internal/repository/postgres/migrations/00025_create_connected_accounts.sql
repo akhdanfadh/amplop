@@ -13,6 +13,12 @@ CREATE TABLE connected_accounts (
     refresh_token_ciphertext bytea NOT NULL CHECK (octet_length(refresh_token_ciphertext) > 0),
     needs_reconnect_since    timestamptz, -- NULL: the provider accepted the token when last used
     created_at               timestamptz NOT NULL DEFAULT now(),
+    -- What the member calls the account, shown instead of its address; NULL
+    -- until they choose one.
+    name                     text CHECK (name <> '' AND char_length(name) <= 64),
+    -- The account's mark, one of the eight account colours of web/DESIGN.md,
+    -- given at connect: the lowest the member's other accounts use least.
+    color                    smallint NOT NULL CHECK (color BETWEEN 1 AND 8),
     -- As users_email_lowercase: emailaddress.Parse lowercases A to Z.
     CONSTRAINT connected_accounts_email_lowercase CHECK (email = lower(email COLLATE "C"))
 );

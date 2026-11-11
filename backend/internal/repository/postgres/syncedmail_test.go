@@ -49,8 +49,8 @@ func insertSyncingAccount(t *testing.T, conn *pgx.Conn, userID int64, subject st
 	t.Helper()
 	var id int64
 	require.NoError(t, conn.QueryRow(t.Context(), `
-		INSERT INTO connected_accounts (user_id, provider, email, oauth_subject, refresh_token_key_id, refresh_token_ciphertext)
-		VALUES ($1, 'gmail', $2 || '@example.com', $2, '1', '\x01') RETURNING id`, userID, subject).Scan(&id))
+		INSERT INTO connected_accounts (user_id, provider, email, oauth_subject, refresh_token_key_id, refresh_token_ciphertext, color)
+		VALUES ($1, 'gmail', $2 || '@example.com', $2, '1', '\x01', 1) RETURNING id`, userID, subject).Scan(&id))
 	_, err := conn.Exec(t.Context(), "INSERT INTO sync_states (connected_account_id, status) VALUES ($1, 'waiting')", id)
 	require.NoError(t, err)
 	return id

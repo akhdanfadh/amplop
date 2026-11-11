@@ -26,6 +26,8 @@ const listed: ListedAccount = {
   id: account.id,
   provider: "gmail",
   email: account.email,
+  name: account.name,
+  color: account.color,
   status: "usable",
   createdAt: "2026-11-01T00:00:00Z",
   needsReconnectSince: null,

@@ -2403,7 +2403,16 @@ account once; two members may each connect it.
 
 `GET /api/v0/connected-accounts` lists the member's own accounts, oldest
 first: `id`, `provider` (`gmail`), `email`, `needsReconnectSince`, null
-while Google accepts the token, `status`, `createdAt`, and `sync`.
+while Google accepts the token, `status`, `createdAt`, `name`, `color`,
+and `sync`. `name` is what the member calls the account, null until they
+set one with `PATCH /api/v0/connected-accounts/{id}`, which refuses more
+than 64 characters as sent, or a line break or other control character
+(422 on `body.name`), trims white space, and clears the name when nothing
+is left. `color` is the account's mark in the web app, 1 to 8, given at
+connect: the lowest the member's other accounts use least, so a
+disconnected account's colour goes to the next and a ninth account
+starts the eight again. Two connects of one member at once take their
+colours in turn, under a lock on the member's colours.
 `status` is `needs-reconnect` once Google refused the token,
 `token-unreadable` when no configured key opens it, and `usable`
 otherwise; `Service.List` opens each token for it, saving nothing, so
@@ -2933,12 +2942,13 @@ Goose knows only inbok's files: `goose reset` and `make db-reset` leave
 the `dbos` schema in place. To empty that too, run `DROP SCHEMA dbos CASCADE;` in `psql`; the
 next `migrate` creates it again.
 
-Until the first release, a schema change edits the migration that made
-the table, and every database that applied it is reset with
-`make db-reset`, losing its data; inbok keeps no compatibility with
-unreleased schemas (ADR001, "Conversations"). From the first release on,
-never edit a migration a shared database has already applied; add a new
-one.
+Until the first release, inbok is deployed nowhere, so a schema change
+edits the migration that made the table rather than adding one that
+alters it; inbok keeps no compatibility with unreleased schemas (ADR001,
+"Conversations"). A database that already applied it, e.g. your `.env`
+stack, then needs `make db-reset`, losing its data, and its accounts
+connected again. After the first release, never edit a migration a
+deployed database has applied; add a new one.
 
 ## Queries
 

@@ -49,6 +49,8 @@ type ConnectedAccount struct {
 	RefreshTokenCiphertext []byte
 	NeedsReconnectSince    *time.Time
 	CreatedAt              time.Time
+	Name                   *string
+	Color                  int16
 }
 
 type EmailVerificationLink struct {

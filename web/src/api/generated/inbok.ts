@@ -47,6 +47,7 @@ import {
   ResponseRegistrationAvailability,
   ResponseRegistrationRequestResult,
   ResponseRegistrationSettings,
+  ResponseRenamedAccount,
   ResponseSentEmailVerification,
   ResponseSetupStatus,
   ResponseSignInResult,
@@ -58,6 +59,7 @@ import {
   ResponseTotpStatus
 } from './model';
 import type {
+  AccountRenameInputBody,
   EmailVerificationSecret,
   NewCodeSession,
   NewMember,
@@ -531,6 +533,97 @@ export const useDisconnectConnectedAccount = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getDisconnectConnectedAccountMutationOptions(options), queryClient);
+    }
+
+export const getRenameConnectedAccountUrl = (id: number,) => {
+
+
+
+
+  return `/api/v0/connected-accounts/${id}`
+}
+
+/**
+ * Sets the name the web app shows for a connected account instead of its email, or clears it. Only inbok keeps the name; Google's account is unchanged.
+ * @summary Rename Account
+ */
+export const renameConnectedAccount = async (id: number,
+    accountRenameInputBody: AccountRenameInputBody, options?: Parameters<typeof transport>[1]): Promise<ResponseRenamedAccount> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseRenamedAccount>(getRenameConnectedAccountUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(accountRenameInputBody),
+    schema: ResponseRenamedAccount
+  }
+);}
+
+
+
+
+
+export const getRenameConnectedAccountMutationKey = () => ['renameConnectedAccount'] as const;
+
+export const getRenameConnectedAccountMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renameConnectedAccount>>, TError,RenameConnectedAccountMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof renameConnectedAccount>>, TError,RenameConnectedAccountMutationVariables, TContext> => {
+
+const mutationKey = getRenameConnectedAccountMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof renameConnectedAccount>>, RenameConnectedAccountMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  renameConnectedAccount(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RenameConnectedAccountMutationResult = NonNullable<Awaited<ReturnType<typeof renameConnectedAccount>>>
+    export type RenameConnectedAccountMutationBody = AccountRenameInputBody
+    export type RenameConnectedAccountMutationError = ErrorType<Problem>
+    export type RenameConnectedAccountMutationVariables = {id: number;data: AccountRenameInputBody}
+
+    /**
+ * @summary Rename Account
+ */
+export const useRenameConnectedAccount = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renameConnectedAccount>>, TError,RenameConnectedAccountMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof renameConnectedAccount>>,
+        TError,
+        RenameConnectedAccountMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRenameConnectedAccountMutationOptions(options), queryClient);
     }
 
 export const getReconnectConnectedAccountUrl = (id: number,) => {

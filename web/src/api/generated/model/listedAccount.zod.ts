@@ -6,10 +6,15 @@
  */
 import * as zod from 'zod';
 
+export const listedAccountColorMax = 8;
+
+
 export const ListedAccount = zod.object({
+  "color": zod.int().min(1).max(listedAccountColorMax).describe('The account\'s colour, one of eight the web app defines, given at connect: the lowest the member\'s other accounts use least.'),
   "createdAt": zod.iso.datetime({"offset":true}),
   "email": zod.string(),
   "id": zod.int(),
+  "name": zod.string().nullable().describe('What the member calls the account, shown instead of its email; null until they choose one.'),
   "needsReconnectSince": zod.iso.datetime({"offset":true}).nullable().describe('When Google stopped accepting the account\'s permission; null until it does. Reconnecting clears it.'),
   "provider": zod.enum(['gmail']),
   "status": zod.enum(['usable', 'needs-reconnect', 'token-unreadable']).describe('Whether inbok can use the account, as far as it knows now. usable: the saved permission opens and Google has not refused it, which it may still do at the next use. needs-reconnect: Google stopped accepting its permission, since needsReconnectSince. token-unreadable: no key inbok has opens the permission it saved, e.g. after a server key was lost; checked at each read, so restoring the key makes it usable again. Reconnecting fixes either.'),

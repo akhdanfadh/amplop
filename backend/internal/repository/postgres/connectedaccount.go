@@ -34,7 +34,14 @@ func (db *DB) InsertConnectedAccount(ctx context.Context, account connectedaccou
 			return err
 		}
 
-		// 3. Insert, unless the user already has the provider's subject.
+		// 3. Wait for another connect of the user to end. The insert's
+		// colour then counts that connect's account, which a statement
+		// started before its commit would not see.
+		if err := queries.LockAccountColors(ctx, account.UserID); err != nil {
+			return fmt.Errorf("lock account colours: %w", err)
+		}
+
+		// 4. Insert, unless the user already has the provider's subject.
 		row, err := queries.InsertConnectedAccount(ctx, sqlc.InsertConnectedAccountParams{
 			ID:                     id,
 			UserID:                 account.UserID,
@@ -51,7 +58,7 @@ func (db *DB) InsertConnectedAccount(ctx context.Context, account connectedaccou
 			return fmt.Errorf("insert connected account: %w", err)
 		}
 
-		// 4. Save the sync state and its first sync, a full one, in this
+		// 5. Save the sync state and its first sync, a full one, in this
 		// transaction, so no account is connected without them (ADR001).
 		if err := queries.InsertSyncState(ctx, id); err != nil {
 			return fmt.Errorf("insert sync state: %w", err)
@@ -184,6 +191,20 @@ func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int6
 	return deleted, nil
 }
 
+// RenameConnectedAccount sets the name of userID's account accountID,
+// clearing it when empty, and returns the account with its credential. It
+// returns [connectedaccount.ErrNotFound] when userID has no such account.
+func (db *DB) RenameConnectedAccount(ctx context.Context, userID, accountID int64, name string) (connectedaccount.StoredAccount, error) {
+	row, err := sqlc.New(db.pool).RenameConnectedAccount(ctx, sqlc.RenameConnectedAccountParams{Name: name, ID: accountID, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return connectedaccount.StoredAccount{}, connectedaccount.ErrNotFound
+	}
+	if err != nil {
+		return connectedaccount.StoredAccount{}, fmt.Errorf("rename connected account: %w", err)
+	}
+	return storedAccountFromRow(sqlc.ListConnectedAccountsRow(row)), nil
+}
+
 // ReadAccountRemoval returns removal removalID, with whether a
 // connected account is the same Google account, or
 // [connectedaccount.ErrNotFound] when there is none.
@@ -276,6 +297,7 @@ func storedAccountFromRow(row sqlc.ListConnectedAccountsRow) connectedaccount.St
 		Account: connectedAccountFromRow(sqlc.InsertConnectedAccountRow{
 			ID: row.ID, UserID: row.UserID, Provider: row.Provider, Email: row.Email,
 			OauthSubject: row.OauthSubject, NeedsReconnectSince: row.NeedsReconnectSince, CreatedAt: row.CreatedAt,
+			Name: row.Name, Color: row.Color,
 		}),
 		Credential: connectedaccount.Credential{KeyID: row.RefreshTokenKeyID, Ciphertext: row.RefreshTokenCiphertext},
 	}
@@ -292,6 +314,10 @@ func connectedAccountFromRow(row sqlc.InsertConnectedAccountRow) connectedaccoun
 		Email:     row.Email,
 		Subject:   row.OauthSubject,
 		CreatedAt: row.CreatedAt.UTC(),
+		Color:     int(row.Color),
+	}
+	if row.Name != nil {
+		account.Name = *row.Name
 	}
 	if row.NeedsReconnectSince != nil {
 		since := row.NeedsReconnectSince.UTC()

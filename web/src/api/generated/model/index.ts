@@ -6,6 +6,7 @@
  */
 
 export * from './accountProviders.zod';
+export * from './accountRenameInputBody.zod';
 export * from './accountSync.zod';
 export * from './authorization.zod';
 export * from './changedMember.zod';
@@ -62,6 +63,8 @@ export * from './registeredMember.zod';
 export * from './registrationAvailability.zod';
 export * from './registrationRequestResult.zod';
 export * from './registrationSettings.zod';
+export * from './renameConnectedAccountBody.zod';
+export * from './renamedAccount.zod';
 export * from './replyToMessageBody.zod';
 export * from './replyToMessageHeaders.zod';
 export * from './requestPasswordResetLinkBody.zod';
@@ -89,6 +92,7 @@ export * from './responseRegisteredMember.zod';
 export * from './responseRegistrationAvailability.zod';
 export * from './responseRegistrationRequestResult.zod';
 export * from './responseRegistrationSettings.zod';
+export * from './responseRenamedAccount.zod';
 export * from './responseSentEmailVerification.zod';
 export * from './responseSetupStatus.zod';
 export * from './responseSignInResult.zod';

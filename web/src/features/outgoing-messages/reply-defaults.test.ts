@@ -12,6 +12,8 @@ const studio: ConnectedAccount = {
   id: 7,
   provider: "gmail",
   email: "studio@example.com",
+  name: null,
+  color: 1,
   status: "usable",
   createdAt: "2026-11-01T00:00:00Z",
   needsReconnectSince: null,
