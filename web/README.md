@@ -114,8 +114,8 @@ Put shared code in the folder for its responsibility:
 - `src/features/password-reset`: the `/forgot-password` and
   `/reset-password` forms, the reset form's schema, and their wording.
 - `src/features/connected-accounts`: the Connected accounts list with its
-  connect, reconnect, and disconnect actions, and the page's wording,
-  including each way a connection can end.
+  connect, reconnect, sync, and disconnect actions, and the page's wording,
+  including each way a connection can end and where each sync stands.
 - `src/features/messages`: the message view, its HTML and plain-text
   bodies, sizing the body's frame, plain-text links, and the header's
   wording.
@@ -376,6 +376,30 @@ accounts, so the list may be out of date." and Try again. A start goes to
 Google only while the page is still open. The browser's back-forward cache
 can restore the page locked as it left for Google, so a restored page
 unlocks its buttons and rereads the list.
+
+Each account that needs no reconnect also says where its sync stands
+(`src/features/connected-accounts/sync.ts`), the first that applies, in
+the member's terms of getting their mail rather than "sync": "Getting
+ready to copy your mail."; "Copying your last 90 days of mail into inbok:
+N messages so far. New mail shows up in the meantime."; on a failure,
+"Couldn't get mail from Gmail at" a time, then "inbok will try again.", or
+"within an hour" after a failed full sync, or "Couldn't get mail at" a
+time "because of a problem on inbok's side. Ask your administrator.", and
+on an account that was complete, "Your mail here is up to date as of" a
+time; else "Up to date, checked at" a time. A time shows its date only
+when it is not today. A complete account has Check now, and a failed one
+Try again, which start its sync at once. The notice says "Checking ...
+for new mail.", and the list is read every 2 seconds for the next 30, so
+the new checked time and any new mail show; the page does not track when
+that check ends (ADR001, "Polling"). A 429 reads "inbok checked ... just
+now", a 409 asks to reconnect the account first, and both reread the
+list. When syncing has stopped on the instance, a status banner says
+"inbok has stopped getting new mail for every account. Ask your
+administrator."; the buttons stay, since a worker may still run the
+member's sync. The list is read again every 2 seconds while a sync is
+waiting or copying, or after a Check now as above, and otherwise every
+minute, so the checked time stays current; an account that needs
+reconnecting waits for its member, so it does not count.
 
 Signing out deletes the current session, clears account caches, and opens
 sign-in. A 401 also completes sign-out because that session is already absent

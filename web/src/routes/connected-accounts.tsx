@@ -11,6 +11,7 @@ import { userMessage } from "@/api/problem";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { AccountList } from "@/features/connected-accounts/list";
 import { connectSearch } from "@/features/connected-accounts/search";
+import { refreshInterval, syncNowRefresh } from "@/features/connected-accounts/sync";
 import { outcomeNotice } from "@/features/connected-accounts/text";
 import { AccountNav } from "@/components/account-nav";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,14 @@ function ConnectedAccounts(): ReactElement {
   const [landed, setLanded] = useState<ConnectOutcome>();
   const [writeExpired, setWriteExpired] = useState(false);
   const current = useGetCurrentSession();
-  const list = useListConnectedAccounts();
+  // When the fast reads after the last Check now end, in milliseconds since
+  // the epoch.
+  const [fastUntil, setFastUntil] = useState(0);
+  const list = useListConnectedAccounts({
+    query: {
+      refetchInterval: (query) => refreshInterval(query.state.data?.data, Date.now(), fastUntil),
+    },
+  });
   const providers = useListAccountProviders();
   const expired =
     writeExpired ||
@@ -135,10 +143,12 @@ function ConnectedAccounts(): ReactElement {
           <AccountList
             accounts={accounts}
             gmailOffered={offered.includes("gmail")}
+            syncStopped={list.data?.data.syncStopped ?? false}
             // A refused start rereads the providers, which can remove the
             // button that had focus.
             fetching={list.isFetching || providers.isFetching}
             onWriteStart={() => setLanded(undefined)}
+            onSyncStarted={() => setFastUntil(Date.now() + syncNowRefresh)}
             onUnauthorized={() => setWriteExpired(true)}
           />
         )}

@@ -6,9 +6,11 @@ import {
   useConnectGmail,
   useDisconnectConnectedAccount,
   useReconnectConnectedAccount,
+  useSyncConnectedAccount,
 } from "@/api/generated/inbok";
 import type {
-  ConnectedAccount,
+  ListedAccount,
+  ResponseAccountSync,
   ResponseAuthorization,
   ResponseConnectedAccounts,
   ResponseDisconnectedAccount,
@@ -26,6 +28,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  failureWords,
+  formatMoment,
+  runningText,
+  syncErrorMessage,
+  syncStartedMessage,
+  syncView,
+  type SyncView,
+} from "./sync";
 import { disconnectedMessage, disconnectErrorMessage, formatDate, startErrorMessage } from "./text";
 
 const unauthorized = 401;
@@ -37,23 +48,30 @@ const buttonClass = `h-auto min-h-11 w-fit whitespace-normal ${focusClass}`;
 const outlineClass = `${buttonClass} border-muted-foreground`;
 const connectId = "connect-gmail";
 
-// AccountList lists the member's connected accounts, connects Gmail,
-// reconnects an account that needs it, and disconnects one. accounts is the
-// server's list, oldest first; gmailOffered says whether the instance has a
-// Google client, without which only disconnecting is offered. fetching marks
-// the list as being reread. onWriteStart runs as a write begins, so the page
-// can drop an older message; onUnauthorized runs on a write's 401.
+// AccountList lists the member's connected accounts with where each one's
+// sync stands, connects Gmail, reconnects an account that needs it, starts
+// an account's sync, and disconnects one. accounts is the server's list,
+// oldest first; gmailOffered says whether the instance has a Google client,
+// without which only disconnecting is offered, and syncStopped whether
+// syncing has stopped on the instance, which a banner says.
+// fetching marks the list as being reread. onWriteStart runs as a write
+// begins, so the page can drop an older message; onSyncStarted runs when
+// the server accepts a Check now; onUnauthorized runs on a write's 401.
 export function AccountList({
   accounts,
   gmailOffered,
+  syncStopped,
   fetching,
   onWriteStart,
+  onSyncStarted,
   onUnauthorized,
 }: {
-  accounts: ConnectedAccount[];
+  accounts: ListedAccount[];
   gmailOffered: boolean;
+  syncStopped: boolean;
   fetching: boolean;
   onWriteStart: () => void;
+  onSyncStarted: () => void;
   onUnauthorized: () => void;
 }): ReactElement {
   const client = useQueryClient();
@@ -62,13 +80,15 @@ export function AccountList({
   // heading when the write removed it.
   const restoreFocus = useRef<string | null>(null);
   // The account the dialog asks about, kept while it closes so its text stays.
-  const [confirming, setConfirming] = useState<ConnectedAccount | null>(null);
+  const [confirming, setConfirming] = useState<ListedAccount | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   // Set by the dialog's confirm button. The disconnect starts once the dialog
   // has closed: started earlier, the dialog would give focus back to a button
   // the write has disabled or the reread has removed.
   const confirmed = useRef(false);
   const [disconnected, setDisconnected] = useState("");
+  // The email of the account the last Check now named.
+  const [syncEmail, setSyncEmail] = useState("");
   // openGoogle goes with each mutate call rather than here: the hook's own
   // callbacks still run after the page has closed, and would take the member
   // to Google from wherever they went.
@@ -86,18 +106,35 @@ export function AccountList({
       onSettled: rereadAccounts,
     },
   });
+  const sync = useSyncConnectedAccount({
+    mutation: {
+      gcTime: 0,
+      onSuccess: saveSync,
+      onError: (err: ApiError) => {
+        if (err.status === unauthorized) onUnauthorized();
+      },
+      onSettled: rereadAccounts,
+    },
+  });
   // A successful start keeps the page locked while the browser leaves for Google.
   const leaving = connect.isSuccess || reconnect.isSuccess;
-  const pending = connect.isPending || reconnect.isPending || disconnect.isPending || leaving;
+  const pending =
+    connect.isPending || reconnect.isPending || disconnect.isPending || sync.isPending || leaving;
   const startError = connect.error ?? reconnect.error;
-  const notice = disconnect.isSuccess ? disconnectedMessage(disconnected) : "";
+  const notice = disconnect.isSuccess
+    ? disconnectedMessage(disconnected)
+    : sync.isSuccess
+      ? syncStartedMessage(syncEmail)
+      : "";
   const failure =
     startError && startError.status !== unauthorized
       ? startErrorMessage(startError)
       : disconnect.error && disconnect.error.status !== unauthorized
         ? disconnectErrorMessage(disconnect.error, disconnected)
-        : "";
-  const failedRequest = startError ?? disconnect.error;
+        : sync.error && sync.error.status !== unauthorized
+          ? syncErrorMessage(sync.error, syncEmail)
+          : "";
+  const failedRequest = startError ?? disconnect.error ?? sync.error;
 
   useEffect(() => {
     // A disabled button loses focus, so give it back once the list is reread.
@@ -155,7 +192,26 @@ export function AccountList({
     );
   }
 
-  // rereadAccounts rereads the list after any disconnect outcome.
+  // saveSync puts the sync state in result into the cached list, and has
+  // the page read the list often while the check runs.
+  function saveSync(result: ResponseAccountSync, { id }: { id: number }): void {
+    onSyncStarted();
+    client.setQueryData<ResponseConnectedAccounts>(getListConnectedAccountsQueryKey(), (list) =>
+      list
+        ? {
+            ...list,
+            data: {
+              ...list.data,
+              accounts: list.data.accounts.map((a) =>
+                a.id === id ? { ...a, sync: result.data } : a,
+              ),
+            },
+          }
+        : list,
+    );
+  }
+
+  // rereadAccounts rereads the list after any disconnect or sync outcome.
   function rereadAccounts(): void {
     // Every outcome, including a lost response, is settled by the server's list.
     void client.invalidateQueries({ queryKey: getListConnectedAccountsQueryKey() });
@@ -167,6 +223,7 @@ export function AccountList({
     connect.reset();
     reconnect.reset();
     disconnect.reset();
+    sync.reset();
     restoreFocus.current = focusId;
     onWriteStart();
   }
@@ -177,13 +234,20 @@ export function AccountList({
     connect.mutate(undefined, { onSuccess: openGoogle });
   }
 
-  function startReconnect(account: ConnectedAccount): void {
+  function startSync(account: ListedAccount): void {
+    if (pending) return;
+    begin(syncId(account.id));
+    setSyncEmail(account.email);
+    sync.mutate({ id: account.id });
+  }
+
+  function startReconnect(account: ListedAccount): void {
     if (pending) return;
     begin(reconnectId(account.id));
     reconnect.mutate({ id: account.id }, { onSuccess: openGoogle });
   }
 
-  function startDisconnect(account: ConnectedAccount): void {
+  function startDisconnect(account: ListedAccount): void {
     if (pending) return;
     begin(disconnectId(account.id));
     setDisconnected(account.email);
@@ -203,6 +267,12 @@ export function AccountList({
           Request reference: <code className="break-all">{failedRequest.requestId}</code>
         </p>
       )}
+      {/* Stays mounted so a stop found by a later read is announced. */}
+      <output className={syncStopped ? "rounded-md border border-destructive p-4" : "sr-only"}>
+        {syncStopped
+          ? "inbok has stopped getting new mail for every account. Ask your administrator."
+          : ""}
+      </output>
       {!gmailOffered && (
         <p>
           Gmail isn&apos;t set up on this inbok, so accounts can&apos;t be connected or reconnected.
@@ -223,7 +293,10 @@ export function AccountList({
                 reconnect.variables?.id === account.id
               }
               disconnecting={disconnect.isPending && disconnect.variables?.id === account.id}
+              syncable={gmailOffered}
+              syncing={sync.isPending && sync.variables?.id === account.id}
               disabled={pending}
+              onSync={() => startSync(account)}
               onReconnect={() => startReconnect(account)}
               onDisconnect={() => {
                 confirmed.current = false;
@@ -289,25 +362,37 @@ export function AccountList({
   );
 }
 
+// AccountRow shows account, where its sync stands, and its actions.
+// syncable says whether a sync can be started, which needs a Google client.
 function AccountRow({
   account,
   gmailOffered,
   reconnecting,
   disconnecting,
+  syncable,
+  syncing,
   disabled,
+  onSync,
   onReconnect,
   onDisconnect,
 }: {
-  account: ConnectedAccount;
+  account: ListedAccount;
   gmailOffered: boolean;
   reconnecting: boolean;
   disconnecting: boolean;
+  syncable: boolean;
+  syncing: boolean;
   disabled: boolean;
+  onSync: () => void;
   onReconnect: () => void;
   onDisconnect: () => void;
 }): ReactElement {
   const detailsId = `account-${account.id}`;
   const needsReconnect = account.status !== "usable";
+  const view = syncView(account.sync);
+  // A sync that is waiting or copying needs no start.
+  const showSync =
+    syncable && !needsReconnect && view.kind !== "waiting" && view.kind !== "running";
 
   return (
     <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-4">
@@ -319,8 +404,25 @@ function AccountRow({
         <p id={detailsId} className="text-sm text-muted-foreground">
           <AccountNote account={account} gmailOffered={gmailOffered} />
         </p>
+        {/* An account inbok cannot use cannot sync; the line above says
+            what to do. */}
+        {!needsReconnect && <SyncStatus view={view} />}
       </div>
       <div className="flex flex-wrap gap-3">
+        {showSync && (
+          <Button
+            id={syncId(account.id)}
+            type="button"
+            variant="outline"
+            className={outlineClass}
+            aria-describedby={detailsId}
+            disabled={disabled}
+            onClick={onSync}
+          >
+            {syncing ? "Checking..." : view.kind === "failed" ? "Try again" : "Check now"}
+            <span className="sr-only"> {account.email}</span>
+          </Button>
+        )}
         {/* An unreadable token is read anew each time, so a restored key
             takes the button away again without the member. */}
         {gmailOffered && needsReconnect && (
@@ -360,7 +462,7 @@ function AccountNote({
   account,
   gmailOffered,
 }: {
-  account: ConnectedAccount;
+  account: ListedAccount;
   gmailOffered: boolean;
 }): ReactElement {
   const reconnect = gmailOffered && " Reconnect and choose this same Google account.";
@@ -390,12 +492,55 @@ function AccountNote({
   );
 }
 
+// SyncStatus words view, where an account's sync stands (ADR001, "Polling").
+function SyncStatus({ view }: { view: SyncView }): ReactElement {
+  const className = "text-sm text-muted-foreground";
+  if (view.kind === "waiting") return <p className={className}>Getting ready to copy your mail.</p>;
+  if (view.kind === "running")
+    return <p className={className}>{runningText(view.messagesSoFar)}</p>;
+  if (view.kind === "failed") {
+    const words = failureWords(view.failure, view.status);
+    return (
+      <p className={className}>
+        {words.before} <Moment iso={view.failedAt} />
+        {words.after}
+        {view.upToDateAt !== null && (
+          <>
+            {" "}
+            Your mail here is up to date as of <Moment iso={view.upToDateAt} />.
+          </>
+        )}
+      </p>
+    );
+  }
+  if (view.checkedAt === null) return <p className={className}>Up to date.</p>;
+  return (
+    <p className={className}>
+      Up to date, checked at <Moment iso={view.checkedAt} />.
+    </p>
+  );
+}
+
+// Moment shows iso as a time, with its date unless it is today.
+function Moment({ iso }: { iso: string }): ReactElement {
+  return (
+    <time dateTime={iso} className="whitespace-nowrap">
+      {formatMoment(iso)}
+    </time>
+  );
+}
+
 // openGoogle sends this tab to Google's consent page from result, which
 // returns to this page with the outcome.
 function openGoogle(result: ResponseAuthorization): void {
   // The address comes from inbok's own server, which also serves this app,
   // so it is trusted as the app's code is.
   window.location.assign(result.data.url);
+}
+
+// syncId returns the id of the Check now button for accountId.
+function syncId(accountId: number): string {
+  return `sync-${accountId}`;
 }
 
 // reconnectId returns the id of the Reconnect button for accountId.
