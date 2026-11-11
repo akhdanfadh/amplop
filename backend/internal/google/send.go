@@ -26,13 +26,9 @@ import (
 // comments list them, as text. A name Google changed would not fail the
 // build, only the calls.
 const (
-	// labelSent is the label Gmail gives every message it sent.
-	labelSent = "SENT"
 	// historyMessageAdded is the history type of a message added to the
 	// mailbox.
 	historyMessageAdded = "messageAdded"
-	// formatMetadata asks messages.get for the header only.
-	formatMetadata = "metadata"
 )
 
 // inbokMessageIDHeader is the header compose writes the message's ID in.
@@ -72,7 +68,7 @@ func (c *Client) Mailbox(ctx context.Context, accessToken connectedaccount.Acces
 	if err != nil {
 		return outgoingmessage.Mailbox{}, err
 	}
-	profile, err := service.Users.GetProfile("me").Context(ctx).Do()
+	profile, err := service.Users.GetProfile(gmailUser).Context(ctx).Do()
 	if err != nil {
 		return outgoingmessage.Mailbox{}, redactGmail(err)
 	}
@@ -111,7 +107,7 @@ func (c *Client) Send(ctx context.Context, accessToken connectedaccount.AccessTo
 
 	// 2. Send, and sort the end by what it says of the message.
 	message := &gmail.Message{Raw: base64.URLEncoding.EncodeToString(raw)}
-	sent, err := service.Users.Messages.Send("me", message).Context(traced).Do()
+	sent, err := service.Users.Messages.Send(gmailUser, message).Context(traced).Do()
 	if err == nil && sent.Id != "" {
 		return outgoingmessage.Sent{ProviderMessageID: sent.Id, ProviderThreadID: sent.ThreadId}, nil
 	}
@@ -185,7 +181,7 @@ func (c *Client) FindSent(ctx context.Context, accessToken connectedaccount.Acce
 	// 2. Read each one's ID header. One deleted meanwhile cannot be read,
 	// so it might have been this message.
 	for _, id := range added {
-		message, err := service.Users.Messages.Get("me", id).Format(formatMetadata).
+		message, err := service.Users.Messages.Get(gmailUser, id).Format(formatMetadata).
 			MetadataHeaders(inbokMessageIDHeader).Context(ctx).Do()
 		if isNotFound(err) {
 			complete = false
@@ -215,7 +211,7 @@ func (c *Client) FindSent(ctx context.Context, accessToken connectedaccount.Acce
 func sentSince(ctx context.Context, service *gmail.Service, start uint64) ([]string, bool, error) {
 	var ids []string
 	seen := map[string]bool{}
-	call := service.Users.History.List("me").StartHistoryId(start).
+	call := service.Users.History.List(gmailUser).StartHistoryId(start).
 		HistoryTypes(historyMessageAdded).LabelId(labelSent)
 	pageToken := ""
 	for range maxCheckPages {
@@ -264,10 +260,4 @@ func headerValue(part *gmail.MessagePart, name string) string {
 		}
 	}
 	return ""
-}
-
-// isNotFound reports whether err is Gmail's 404.
-func isNotFound(err error) bool {
-	refused, ok := errors.AsType[*googleapi.Error](err)
-	return ok && refused.Code == http.StatusNotFound
 }

@@ -1,0 +1,710 @@
+package mailsync
+
+import (
+	"cmp"
+	"context"
+	"errors"
+	"fmt"
+	"slices"
+	"sort"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"inbok/internal/connectedaccount"
+)
+
+// syncNow is the fake clock's time.
+var syncNow = time.Date(2026, 11, 10, 9, 30, 0, 0, time.UTC)
+
+// storedMessage is a message in [fakeStorage], with the generation that
+// last saved it.
+type storedMessage struct {
+	message    Message
+	generation int
+}
+
+// fakeStorage keeps one account's synchronized mail in memory, writing
+// each change as [Storage.UpdateSyncedMail] documents.
+type fakeStorage struct {
+	mu        sync.Mutex
+	gone      bool
+	state     SyncState
+	mailboxes []Mailbox
+	messages  map[string]storedMessage
+	// due is what DueSyncs returns, and failedBefore what it was asked.
+	due          []DueSync
+	failedBefore time.Time
+	// confirmed is what ConfirmSynced was given, in account ID order.
+	confirmed []Confirmed
+	// requestedAt is the account's request time, and needsReconnect and
+	// owner what RequestSync finds; enqueued counts the runs it saved.
+	requestedAt    *time.Time
+	needsReconnect bool
+	owner          int64
+	enqueued       int
+	// err, when set, fails every call.
+	err error
+}
+
+func newFakeStorage(state SyncState) *fakeStorage {
+	return &fakeStorage{state: state, messages: make(map[string]storedMessage)}
+}
+
+func (f *fakeStorage) UpdateSyncedMail(_ context.Context, accountID int64, update func(SyncState) (Change, error)) (Written, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return Written{}, f.err
+	}
+	if f.gone {
+		return Written{}, ErrNotFound
+	}
+	change, err := update(f.state)
+	if err != nil {
+		return Written{}, err
+	}
+
+	mailboxes := f.mailboxes
+	if change.Mailboxes != nil {
+		mailboxes = change.Mailboxes
+	}
+	known := func(ids []string) bool {
+		for _, id := range ids {
+			if !slices.ContainsFunc(mailboxes, func(m Mailbox) bool { return m.ProviderID == id }) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, message := range change.Saved {
+		if !known(message.MailboxProviderIDs) {
+			return Written{}, ErrUnknownMailbox
+		}
+	}
+	for _, update := range change.Updated {
+		if _, ok := f.messages[update.ProviderID]; ok && !known(update.MailboxProviderIDs) {
+			return Written{}, ErrUnknownMailbox
+		}
+	}
+
+	f.mailboxes = mailboxes
+	for _, id := range change.Deleted {
+		delete(f.messages, id)
+	}
+	for _, message := range change.Saved {
+		f.messages[message.ProviderID] = storedMessage{message: message, generation: change.State.Generation}
+	}
+	for _, update := range change.Updated {
+		stored, ok := f.messages[update.ProviderID]
+		if !ok {
+			continue
+		}
+		stored.message.MailboxProviderIDs = update.MailboxProviderIDs
+		stored.message.Seen = update.Seen
+		stored.message.Flagged = update.Flagged
+		f.messages[update.ProviderID] = stored
+	}
+
+	var earlier []string
+	for id, stored := range f.messages {
+		if stored.generation < change.State.Generation {
+			earlier = append(earlier, id)
+		}
+	}
+	sort.Strings(earlier)
+	deleted := min(change.DeleteEarlier, len(earlier))
+	for _, id := range earlier[:deleted] {
+		delete(f.messages, id)
+	}
+
+	f.state = change.State
+	f.state.AccountID = accountID
+	return Written{State: f.state, EarlierDeleted: deleted}, nil
+}
+
+func (f *fakeStorage) SyncState(context.Context, int64) (SyncState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.gone {
+		return SyncState{}, ErrNotFound
+	}
+	return f.state, f.err
+}
+
+func (f *fakeStorage) OldestMessage(context.Context, int64) (time.Time, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var oldest time.Time
+	for _, stored := range f.messages {
+		if oldest.IsZero() || stored.message.InternalDate.Before(oldest) {
+			oldest = stored.message.InternalDate
+		}
+	}
+	return oldest, !oldest.IsZero(), f.err
+}
+
+// DueSyncs answers with f.due, which tests fill, and records failedBefore.
+func (f *fakeStorage) DueSyncs(_ context.Context, failedBefore time.Time) ([]DueSync, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failedBefore = failedBefore
+	return f.due, f.err
+}
+
+// Reports returns the state's report, for syncAccount only.
+func (f *fakeStorage) Reports(_ context.Context, accountIDs []int64) ([]Report, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.gone || !slices.Contains(accountIDs, syncAccount) {
+		return []Report{}, nil
+	}
+	return []Report{f.report()}, nil
+}
+
+// report returns the state's report; f.mu must be held.
+func (f *fakeStorage) report() Report {
+	return Report{
+		AccountID:    syncAccount,
+		Status:       f.state.Status,
+		Failure:      f.state.Failure,
+		FailedAt:     f.state.FailedAt,
+		LastSyncedAt: f.state.LastSyncedAt,
+		RequestedAt:  f.requestedAt,
+	}
+}
+
+// RequestSync answers for syncAccount of f.owner, recording the time
+// request returns and counting a run.
+func (f *fakeStorage) RequestSync(_ context.Context, userID, accountID int64, request func(SyncRequest) (time.Time, error)) (Report, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.gone || userID != f.owner || accountID != syncAccount {
+		return Report{}, ErrNotFound
+	}
+	at, err := request(SyncRequest{NeedsReconnect: f.needsReconnect, RequestedAt: f.requestedAt})
+	if err != nil {
+		return Report{}, err
+	}
+	f.requestedAt = &at
+	f.enqueued++
+	return f.report(), nil
+}
+
+// ConfirmSynced records confirmed in f.confirmed.
+func (f *fakeStorage) ConfirmSynced(_ context.Context, confirmed []Confirmed) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.confirmed = append(f.confirmed, confirmed...)
+	slices.SortFunc(f.confirmed, func(a, b Confirmed) int { return cmp.Compare(a.AccountID, b.AccountID) })
+	return f.err
+}
+
+// stored returns the stored message with providerID.
+func (f *fakeStorage) stored(providerID string) storedMessage {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.messages[providerID]
+}
+
+// saved returns the stored messages' provider IDs, sorted.
+func (f *fakeStorage) saved() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ids := make([]string, 0, len(f.messages))
+	for id := range f.messages {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// current returns the stored sync state.
+func (f *fakeStorage) current() SyncState {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.state
+}
+
+// fakeProvider answers from fixed mailboxes, a position, listing pages,
+// and messages, and records the calls it gets.
+type fakeProvider struct {
+	mailboxes []Mailbox
+	position  string
+	// positions are the positions of the accounts whose token is the key,
+	// e.g. access-7, and positionErr fails every Position call.
+	positions   map[string]string
+	positionErr error
+	// pages are the listing's pages of provider IDs, newest first.
+	pages    [][]string
+	messages map[string]Message
+	// changes are the pages of changes since position.
+	changes []ChangePage
+	err     error
+	// changesErr, when set, fails every Changes call.
+	changesErr error
+
+	mu      sync.Mutex
+	calls   []string
+	queries []ListQuery
+}
+
+func (f *fakeProvider) record(call string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, call)
+}
+
+func (f *fakeProvider) Mailboxes(_ context.Context, token connectedaccount.AccessToken) ([]Mailbox, error) {
+	f.record("mailboxes")
+	// The provider refuses a call without a token, as Gmail does.
+	if token.Value() == "" {
+		return nil, errors.New("no access token")
+	}
+	return slices.Clone(f.mailboxes), f.err
+}
+
+// Position returns the position positions holds for token's account, or
+// else f.position.
+func (f *fakeProvider) Position(_ context.Context, token connectedaccount.AccessToken) (string, error) {
+	f.record("position")
+	if f.positionErr != nil {
+		return "", f.positionErr
+	}
+	if position, ok := f.positions[token.Value()]; ok {
+		return position, f.err
+	}
+	return f.position, f.err
+}
+
+func (f *fakeProvider) ListMessages(_ context.Context, _ connectedaccount.AccessToken, query ListQuery) (MessagePage, error) {
+	f.record("list")
+	f.mu.Lock()
+	f.queries = append(f.queries, query)
+	f.mu.Unlock()
+	if f.err != nil {
+		return MessagePage{}, f.err
+	}
+	pages := f.pages
+	page, err := pageOf(query.PageToken)
+	if err != nil {
+		return MessagePage{}, err
+	}
+	if len(pages) == 0 {
+		return MessagePage{}, nil
+	}
+	listed := MessagePage{ProviderIDs: pages[page]}
+	if page+1 < len(pages) {
+		listed.NextPageToken = fmt.Sprintf("page-%d", page+1)
+	}
+	return listed, nil
+}
+
+// pageOf returns the page a fake page token names, 0 for none.
+func pageOf(token string) (int, error) {
+	if token == "" {
+		return 0, nil
+	}
+	var page int
+	_, err := fmt.Sscanf(token, "page-%d", &page)
+	return page, err
+}
+
+func (f *fakeProvider) Messages(_ context.Context, _ connectedaccount.AccessToken, _ int64, providerIDs []string) (Fetched, error) {
+	f.record("messages")
+	if f.err != nil {
+		return Fetched{}, f.err
+	}
+	var fetched Fetched
+	for _, id := range providerIDs {
+		message, ok := f.messages[id]
+		if !ok {
+			fetched.Gone = append(fetched.Gone, id)
+			continue
+		}
+		fetched.Messages = append(fetched.Messages, message)
+	}
+	return fetched, nil
+}
+
+func (f *fakeProvider) Changes(_ context.Context, _ connectedaccount.AccessToken, position string, pageToken string) (ChangePage, error) {
+	f.record("changes " + position)
+	if f.changesErr != nil {
+		return ChangePage{}, f.changesErr
+	}
+	if f.err != nil {
+		return ChangePage{}, f.err
+	}
+	page, err := pageOf(pageToken)
+	if err != nil {
+		return ChangePage{}, err
+	}
+	if len(f.changes) == 0 {
+		return ChangePage{}, errors.New("no changes set")
+	}
+	changes := f.changes[page]
+	if page+1 < len(f.changes) {
+		changes.NextPageToken = fmt.Sprintf("page-%d", page+1)
+	}
+	return changes, nil
+}
+
+// fakeAccess hands out a token for every account, or fails with tokenErr
+// or the account's tokenErrs, and answers every check with checkErr.
+type fakeAccess struct {
+	tokenErr  error
+	tokenErrs map[int64]error
+	checkErr  error
+}
+
+func (f fakeAccess) Token(_ context.Context, accountID int64) (connectedaccount.AccessToken, error) {
+	if f.tokenErr != nil {
+		return connectedaccount.AccessToken{}, f.tokenErr
+	}
+	if err := f.tokenErrs[accountID]; err != nil {
+		return connectedaccount.AccessToken{}, err
+	}
+	return connectedaccount.NewAccessToken(fmt.Sprintf("access-%d", accountID)), nil
+}
+
+func (f fakeAccess) Check(context.Context, int64) error {
+	return f.checkErr
+}
+
+// inboxMessage returns a message in INBOX received at date.
+func inboxMessage(providerID string, date time.Time) Message {
+	return Message{
+		ProviderID: providerID, ThreadID: "t-" + providerID, InternalDate: date,
+		Subject: "Subject " + providerID, MailboxProviderIDs: []string{"INBOX"},
+	}
+}
+
+var syncMailboxes = []Mailbox{{ProviderID: "INBOX", Name: "INBOX", Role: RoleInbox}}
+
+const syncAccount = 7
+
+// runFullSync runs every step of a full sync of syncAccount in order, as the
+// workflow does, and returns its run.
+func runFullSync(t *testing.T, s *FullSync) Run {
+	t.Helper()
+	ctx := t.Context()
+	run, err := s.Start(ctx, syncAccount)
+	require.NoError(t, err)
+	token := ""
+	for {
+		token, err = s.CopyPage(ctx, syncAccount, run, token)
+		require.NoError(t, err)
+		if token == "" {
+			break
+		}
+	}
+	for more := true; more; {
+		more, err = s.DeleteEarlier(ctx, syncAccount, run)
+		require.NoError(t, err)
+	}
+	require.NoError(t, s.Finish(ctx, syncAccount, run))
+	return run
+}
+
+func TestFullSync(t *testing.T) {
+	// Given an account whose last full sync failed and saved a message the
+	// provider no longer lists, and a provider listing two pages: a message
+	// at the window's edge, an older one, and one gone before its fetch.
+	since := syncNow.Add(-window)
+	failedAt := syncNow.Add(-time.Hour)
+	storage := newFakeStorage(SyncState{Status: StatusFailed, Generation: 1, Failure: FailureProvider, FailedAt: &failedAt})
+	storage.messages["deleted-at-provider"] = storedMessage{message: inboxMessage("deleted-at-provider", syncNow), generation: 1}
+	provider := &fakeProvider{
+		mailboxes: syncMailboxes,
+		position:  "4096",
+		pages:     [][]string{{"new", "gone"}, {"edge", "old"}},
+		messages: map[string]Message{
+			"new":  inboxMessage("new", syncNow.Add(-time.Hour)),
+			"edge": inboxMessage("edge", since),
+			"old":  inboxMessage("old", since.Add(-time.Second)),
+		},
+	}
+	s := NewFullSync(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+
+	// When it runs.
+	run := runFullSync(t, s)
+
+	// Then only the message inside the window is kept, the rest are
+	// deleted, and the state is complete at the position read before
+	// listing, with no failure.
+	assert.Equal(t, Run{Generation: 2, Since: since, Position: "4096"}, run)
+	assert.Equal(t, []string{"new"}, storage.saved())
+	assert.Equal(t, syncMailboxes, storage.mailboxes)
+	assert.Equal(t, SyncState{
+		AccountID: syncAccount, Status: StatusComplete, Position: "4096", Generation: 2,
+		LastSyncedAt: &syncNow,
+	}, storage.current())
+	assert.Equal(t, []string{"mailboxes", "position", "list", "messages", "list", "messages"}, provider.calls)
+	for _, query := range provider.queries {
+		assert.Equal(t, since, query.Since)
+		assert.True(t, query.IncludeJunkAndTrash, "Spam and Trash are copied (ADR001)")
+	}
+}
+
+// A full sync that a newer one superseded writes nothing more, and its end
+// records nothing.
+func TestFullSyncSuperseded(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusWaiting})
+	provider := &fakeProvider{
+		mailboxes: syncMailboxes,
+		position:  "4096",
+		pages:     [][]string{{"m1"}},
+		messages:  map[string]Message{"m1": inboxMessage("m1", syncNow)},
+	}
+	s := NewFullSync(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+	older, err := s.Start(t.Context(), syncAccount)
+	require.NoError(t, err)
+	_, err = s.Start(t.Context(), syncAccount)
+	require.NoError(t, err)
+
+	_, copyErr := s.CopyPage(t.Context(), syncAccount, older, "")
+	_, deleteErr := s.DeleteEarlier(t.Context(), syncAccount, older)
+	finishErr := s.Finish(t.Context(), syncAccount, older)
+	failErr := s.Fail(t.Context(), syncAccount, older, FailureInternal)
+
+	require.ErrorIs(t, copyErr, ErrSuperseded)
+	require.ErrorIs(t, deleteErr, ErrSuperseded)
+	require.ErrorIs(t, finishErr, ErrSuperseded)
+	require.NoError(t, failErr)
+	assert.Equal(t, EndingGone, EndingOf(copyErr))
+	assert.Empty(t, storage.saved())
+	assert.Equal(t, StatusRunning, storage.current().Status)
+	assert.Equal(t, 2, storage.current().Generation)
+}
+
+// A message in a mailbox made since the start is saved once the mailboxes
+// are listed again.
+func TestFullSyncNewMailbox(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusWaiting})
+	labelled := inboxMessage("m1", syncNow)
+	labelled.MailboxProviderIDs = []string{"INBOX", "Label_9"}
+	provider := &fakeProvider{
+		mailboxes: syncMailboxes,
+		position:  "4096",
+		pages:     [][]string{{"m1"}},
+		messages:  map[string]Message{"m1": labelled},
+	}
+	s := NewFullSync(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+	run, err := s.Start(t.Context(), syncAccount)
+	require.NoError(t, err)
+	label := Mailbox{ProviderID: "Label_9", Name: "Receipts"}
+	provider.mailboxes = append(slices.Clone(syncMailboxes), label)
+
+	_, err = s.CopyPage(t.Context(), syncAccount, run, "")
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"m1"}, storage.saved())
+	assert.Contains(t, storage.mailboxes, label)
+}
+
+// Earlier messages are deleted a batch at a time, and the last batch says
+// none are left.
+func TestFullSyncSweepBatches(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusRunning, Generation: 2})
+	for i := range deleteBatch + 1 {
+		id := fmt.Sprintf("m%05d", i)
+		storage.messages[id] = storedMessage{message: inboxMessage(id, syncNow), generation: 1}
+	}
+	s := NewFullSync(storage, &fakeProvider{}, fakeAccess{}, func() time.Time { return syncNow })
+	run := Run{Generation: 2}
+
+	first, err := s.DeleteEarlier(t.Context(), syncAccount, run)
+	require.NoError(t, err)
+	afterFirst := len(storage.saved())
+	second, err := s.DeleteEarlier(t.Context(), syncAccount, run)
+	require.NoError(t, err)
+
+	assert.True(t, first, "a full batch may leave more")
+	assert.Equal(t, 1, afterFirst)
+	assert.False(t, second)
+	assert.Empty(t, storage.saved())
+}
+
+func TestFullSyncWait(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusRunning, Generation: 2, Position: "4096"})
+	s := NewFullSync(storage, &fakeProvider{}, fakeAccess{}, func() time.Time { return syncNow })
+
+	require.NoError(t, s.Wait(t.Context(), syncAccount, Run{Generation: 2}))
+
+	assert.Equal(t, SyncState{AccountID: syncAccount, Status: StatusWaiting, Generation: 2, Position: "4096"}, storage.current())
+}
+
+func TestFullSyncFail(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusRunning, Generation: 2})
+	s := NewFullSync(storage, &fakeProvider{}, fakeAccess{}, func() time.Time { return syncNow })
+
+	require.NoError(t, s.Fail(t.Context(), syncAccount, Run{Generation: 2}, FailureProvider))
+
+	assert.Equal(t, SyncState{AccountID: syncAccount, Status: StatusFailed, Generation: 2, Failure: FailureProvider, FailedAt: &syncNow}, storage.current())
+}
+
+// A full sync that ended before its start gave it a generation ends the
+// account's state as it is, e.g. a complete one whose position expired.
+func TestFullSyncEndBeforeStart(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusComplete, Generation: 1, Position: "4096"})
+	s := NewFullSync(storage, &fakeProvider{}, fakeAccess{}, func() time.Time { return syncNow })
+
+	require.NoError(t, s.Wait(t.Context(), syncAccount, Run{}))
+
+	assert.Equal(t, StatusWaiting, storage.current().Status)
+}
+
+// Ending a full sync of a disconnected account records nothing and is no
+// error.
+func TestFullSyncEndGone(t *testing.T) {
+	storage := newFakeStorage(SyncState{})
+	storage.gone = true
+	s := NewFullSync(storage, &fakeProvider{}, fakeAccess{}, func() time.Time { return syncNow })
+
+	assert.NoError(t, s.Fail(t.Context(), syncAccount, Run{Generation: 1}, FailureInternal))
+	assert.NoError(t, s.Wait(t.Context(), syncAccount, Run{Generation: 1}))
+}
+
+// Each step's error says how the full sync ends and what it records.
+func TestFullSyncErrors(t *testing.T) {
+	googleDown := errors.New("google unavailable")
+	databaseDown := errors.New("database unavailable")
+	for name, tc := range map[string]struct {
+		tokens   error
+		provider error
+		storage  error
+		ending   Ending
+		failure  Failure
+	}{
+		"needs reconnecting":    {tokens: connectedaccount.ErrNeedsReconnect, ending: EndingWait, failure: FailureInternal},
+		"deactivated":           {tokens: connectedaccount.ErrDeactivated, ending: EndingWait, failure: FailureInternal},
+		"disconnected":          {tokens: connectedaccount.ErrNotFound, ending: EndingGone, failure: FailureInternal},
+		"unreadable token":      {tokens: fmt.Errorf("%w: no key", connectedaccount.ErrTokenUnreadable), ending: EndingFail, failure: FailureTokenUnreadable},
+		"token endpoint failed": {tokens: fmt.Errorf("%w: %w", connectedaccount.ErrRefreshFailed, googleDown), ending: EndingRetry, failure: FailureProvider},
+		"token storage failed":  {tokens: databaseDown, ending: EndingRetry, failure: FailureInternal},
+		"provider busy":         {provider: ErrProviderBusy, ending: EndingRetry, failure: FailureProvider},
+		"provider refused":      {provider: googleDown, ending: EndingRetry, failure: FailureProvider},
+		"storage failed":        {storage: databaseDown, ending: EndingRetry, failure: FailureInternal},
+		"no sync state":         {storage: ErrNotFound, ending: EndingGone, failure: FailureInternal},
+	} {
+		t.Run(name, func(t *testing.T) {
+			storage := newFakeStorage(SyncState{Status: StatusWaiting})
+			storage.err = tc.storage
+			provider := &fakeProvider{mailboxes: syncMailboxes, position: "4096", err: tc.provider}
+			s := NewFullSync(storage, provider, fakeAccess{tokenErr: tc.tokens}, func() time.Time { return syncNow })
+
+			_, err := s.Start(t.Context(), syncAccount)
+
+			require.Error(t, err)
+			assert.Equal(t, tc.ending, EndingOf(err))
+			assert.Equal(t, tc.failure, FailureOf(err))
+		})
+	}
+}
+
+// A full sync that already ended, e.g. back to waiting, writes nothing
+// more, though its generation is still the account's.
+func TestFullSyncEnded(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusWaiting})
+	provider := &fakeProvider{
+		mailboxes: syncMailboxes,
+		position:  "4096",
+		pages:     [][]string{{"m1"}},
+		messages:  map[string]Message{"m1": inboxMessage("m1", syncNow)},
+	}
+	s := NewFullSync(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+	run, err := s.Start(t.Context(), syncAccount)
+	require.NoError(t, err)
+	require.NoError(t, s.Wait(t.Context(), syncAccount, run))
+
+	_, err = s.CopyPage(t.Context(), syncAccount, run, "")
+
+	require.ErrorIs(t, err, ErrSuperseded)
+	assert.Empty(t, storage.saved())
+}
+
+// A stopped account stops the steps that write only inbok's data too: a
+// member deactivated after the last page leaves the earlier messages and
+// the state as they were.
+func TestFullSyncStoppedLate(t *testing.T) {
+	for name, stop := range map[string]error{
+		"deactivated":        connectedaccount.ErrDeactivated,
+		"needs reconnecting": connectedaccount.ErrNeedsReconnect,
+		"unreadable token":   connectedaccount.ErrTokenUnreadable,
+	} {
+		t.Run(name, func(t *testing.T) {
+			storage := newFakeStorage(SyncState{Status: StatusRunning, Generation: 2})
+			storage.messages["earlier"] = storedMessage{message: inboxMessage("earlier", syncNow), generation: 1}
+			s := NewFullSync(storage, &fakeProvider{}, fakeAccess{checkErr: stop}, func() time.Time { return syncNow })
+			run := Run{Generation: 2}
+
+			_, deleteErr := s.DeleteEarlier(t.Context(), syncAccount, run)
+			finishErr := s.Finish(t.Context(), syncAccount, run)
+
+			require.ErrorIs(t, deleteErr, stop)
+			require.ErrorIs(t, finishErr, stop)
+			assert.Equal(t, EndingOf(stop), EndingOf(deleteErr))
+			assert.Equal(t, []string{"earlier"}, storage.saved())
+			assert.Equal(t, StatusRunning, storage.current().Status)
+		})
+	}
+}
+
+// A full sync of an account whose copy holds mail older than the window
+// reaches back to the oldest stored message: each is fetched again, so
+// its state is current, and one the provider no longer has is deleted.
+func TestFullSyncReachesOldest(t *testing.T) {
+	oldest := syncNow.Add(-window - 30*24*time.Hour)
+	storage := newFakeStorage(SyncState{Status: StatusComplete, Generation: 1, Position: "100"})
+	for _, m := range []Message{inboxMessage("old", oldest), inboxMessage("old-gone", oldest.Add(time.Hour))} {
+		storage.messages[m.ProviderID] = storedMessage{message: m, generation: 1}
+	}
+	read := inboxMessage("old", oldest)
+	read.MailboxProviderIDs = nil
+	read.Seen = true
+	provider := &fakeProvider{
+		mailboxes: syncMailboxes,
+		pages:     [][]string{{"new", "old"}},
+		messages:  map[string]Message{"new": inboxMessage("new", syncNow), "old": read},
+	}
+	s := NewFullSync(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+
+	run := runFullSync(t, s)
+
+	assert.Equal(t, oldest.Add(-time.Second), run.Since, "a second before the oldest, which pages keep after")
+	assert.Equal(t, provider.queries[0].Since, run.Since)
+	assert.Equal(t, []string{"new", "old"}, storage.saved())
+	assert.Equal(t, read, storage.stored("old").message, "the old message's state is current")
+}
+
+// A copy holding only mail inside the window, or none, keeps the window.
+func TestFullSyncWindow(t *testing.T) {
+	storage := newFakeStorage(SyncState{Status: StatusComplete, Generation: 1})
+	storage.messages["recent"] = storedMessage{message: inboxMessage("recent", syncNow.Add(-time.Hour)), generation: 1}
+	s := NewFullSync(storage, &fakeProvider{mailboxes: syncMailboxes}, fakeAccess{}, func() time.Time { return syncNow })
+
+	run, err := s.Start(t.Context(), syncAccount)
+
+	require.NoError(t, err)
+	assert.Equal(t, syncNow.Add(-window), run.Since)
+}
+
+// A message naming a mailbox the provider no longer lists, e.g. one
+// deleted between the fetch and the save, is saved without it.
+func TestFullSyncDeletedMailbox(t *testing.T) {
+	labelled := inboxMessage("new", syncNow)
+	labelled.MailboxProviderIDs = []string{"INBOX", "Label_deleted"}
+	storage := newFakeStorage(SyncState{Status: StatusWaiting})
+	provider := &fakeProvider{mailboxes: syncMailboxes, pages: [][]string{{"new"}}, messages: map[string]Message{"new": labelled}}
+	s := NewFullSync(storage, provider, fakeAccess{}, func() time.Time { return syncNow })
+
+	runFullSync(t, s)
+
+	assert.Equal(t, []string{"INBOX"}, storage.stored("new").message.MailboxProviderIDs)
+}

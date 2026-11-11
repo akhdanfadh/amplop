@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/api/option"
 
 	"inbok/internal/connectedaccount"
+	"inbok/internal/mailsync"
 )
 
 // reasonFailedPrecondition is the reason Gmail gives, with a 400, for a
@@ -25,6 +27,10 @@ import (
 // [googleapi.ErrorItem.Reason] is a plain string.
 const reasonFailedPrecondition = "failedPrecondition"
 
+// gmailUser is the userId of every Gmail call: Gmail's special value for
+// the account the access token reaches (Gmail API reference, users).
+const gmailUser = "me"
+
 // Profile returns the Gmail mailbox accessToken reaches, from
 // users.getProfile. It returns an error wrapping [connectedaccount.ErrNoGmail]
 // when the Google account has no Gmail.
@@ -33,7 +39,7 @@ func (c *Client) Profile(ctx context.Context, accessToken connectedaccount.Acces
 	if err != nil {
 		return connectedaccount.Profile{}, err
 	}
-	profile, err := service.Users.GetProfile("me").Context(ctx).Do()
+	profile, err := service.Users.GetProfile(gmailUser).Context(ctx).Do()
 	if noGmail(err) {
 		return connectedaccount.Profile{}, fmt.Errorf("%w: %w", connectedaccount.ErrNoGmail, redactGmail(err))
 	}
@@ -44,7 +50,7 @@ func (c *Client) Profile(ctx context.Context, accessToken connectedaccount.Acces
 }
 
 // gmail returns a Gmail client that sends accessToken with every request,
-// over the client's own HTTP client.
+// over [Client.authorized]'s HTTP client.
 func (c *Client) gmail(ctx context.Context, accessToken connectedaccount.AccessToken) (*gmail.Service, error) {
 	// The endpoint is always set, so no environment setting the Google client
 	// reads, e.g. GOOGLE_CLOUD_UNIVERSE_DOMAIN, can send the token elsewhere,
@@ -60,15 +66,38 @@ func (c *Client) gmail(ctx context.Context, accessToken connectedaccount.AccessT
 }
 
 // authorized returns an HTTP client that sends accessToken with every
-// request, over the client's own transport, so with its deadline.
+// request, over the client's own transport, so with its deadline, reads at
+// most [maxResponseBytes] of each answer, and reports accessToken refused
+// when Gmail answers 401.
 func (c *Client) authorized(accessToken connectedaccount.AccessToken) *http.Client {
 	return &http.Client{
-		Transport: &oauth2.Transport{
-			Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken.Value()}),
-			Base:   c.http.Transport,
+		Transport: refusalTransport{
+			base: &oauth2.Transport{
+				Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken.Value()}),
+				Base:   cappedTransport{base: c.http.Transport},
+			},
+			refused: accessToken.Refused,
 		},
 		CheckRedirect: c.http.CheckRedirect,
 	}
+}
+
+// refusalTransport sends requests over base and calls refused when an
+// answer is 401: Gmail no longer accepts the access token, e.g. once the
+// member revoked inbok's access (Gmail's "Resolve errors" guide).
+type refusalTransport struct {
+	base    http.RoundTripper
+	refused func()
+}
+
+// RoundTrip sends req over the base transport and returns its answer and
+// error as they are, after calling refused for a 401.
+func (t refusalTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	res, err := t.base.RoundTrip(req)
+	if err == nil && res.StatusCode == http.StatusUnauthorized {
+		t.refused()
+	}
+	return res, err
 }
 
 // noGmail reports whether err is Gmail's answer for a Google account without
@@ -93,13 +122,13 @@ var errGmailAnswer = errors.New("gmail api: unreadable answer")
 // keeps its operation and inbok's own request URL, and its cause only when
 // that cannot hold the answer: the context ending, a timeout, or a network
 // failure. The context's own error, which callers compare, is returned as
-// it is.
+// it is, and so is [retry]'s [mailsync.ErrProviderBusy], already redacted.
 //
 // NOTE: net/http also reports an answer it cannot parse, e.g. a malformed
 // Content-Length or Location, as a [*url.Error] whose cause quotes it.
 func redactGmail(err error) error {
-	if err == nil {
-		return nil
+	if err == nil || errors.Is(err, mailsync.ErrProviderBusy) {
+		return err
 	}
 	if refused, ok := errors.AsType[*googleapi.Error](err); ok {
 		return fmt.Errorf("gmail api: %d", refused.Code)
@@ -113,11 +142,15 @@ func redactGmail(err error) error {
 }
 
 // transportCause returns cause, a transport failure or the context's
-// error, when it cannot hold Gmail's answer, and [errGmailAnswer]
-// otherwise.
+// error, when it cannot hold Gmail's answer, [errResponseTooLarge] for an
+// answer past the cap, and [errGmailAnswer] otherwise.
 func transportCause(cause error) error {
 	if errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded) {
 		return cause
+	}
+	// inbok's own cap, which quotes nothing; a caller compares it.
+	if errors.Is(cause, errResponseTooLarge) {
+		return errResponseTooLarge
 	}
 	if _, ok := errors.AsType[*net.OpError](cause); ok {
 		return cause
@@ -126,4 +159,57 @@ func transportCause(cause error) error {
 		return cause
 	}
 	return errGmailAnswer
+}
+
+// maxResponseBytes bounds one Gmail answer, inbok's choice: far past a
+// page of IDs or history, or a message's metadata, while a sender's
+// oversized headers stop here rather than in memory.
+const maxResponseBytes = 4 << 20
+
+// errResponseTooLarge means a Gmail answer passed [maxResponseBytes].
+var errResponseTooLarge = errors.New("gmail answer is too large")
+
+// cappedTransport sends requests over base and returns answers whose body
+// reads [errResponseTooLarge] past [maxResponseBytes].
+type cappedTransport struct {
+	base http.RoundTripper
+}
+
+// RoundTrip sends req over the base transport and returns its answer with
+// a body that reads [errResponseTooLarge] past [maxResponseBytes], or the
+// base transport's error.
+func (t cappedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	res, err := t.base.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	res.Body = &cappedBody{ReadCloser: res.Body, left: maxResponseBytes}
+	return res, nil
+}
+
+// cappedBody reads its body until left runs out, then returns
+// [errResponseTooLarge] if any byte remains.
+type cappedBody struct {
+	io.ReadCloser
+	left int64
+}
+
+// Read reads into p, at most what is left, and returns how many bytes it
+// read and the body's error, or [errResponseTooLarge] once a byte remains
+// past the cap.
+func (b *cappedBody) Read(p []byte) (int, error) {
+	if b.left <= 0 {
+		var probe [1]byte
+		n, err := b.ReadCloser.Read(probe[:])
+		if n > 0 {
+			return 0, errResponseTooLarge
+		}
+		return 0, err
+	}
+	if int64(len(p)) > b.left {
+		p = p[:b.left]
+	}
+	n, err := b.ReadCloser.Read(p)
+	b.left -= int64(n)
+	return n, err
 }

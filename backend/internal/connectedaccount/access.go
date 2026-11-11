@@ -5,8 +5,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
+
+// tokenRenewBefore is how long before its expiry a kept access token is
+// traded for a new one, inbok's choice: a margin for the step that takes
+// it, which uses it for at most a page of calls, usually a minute or two
+// with their retries. A call Gmail refuses as expired makes the step take
+// a new one, through [AccessToken.Refused].
+const tokenRenewBefore = 5 * time.Minute
 
 // Errors [Access.Token] returns. None includes a token or email.
 var (
@@ -31,14 +39,28 @@ var (
 // account as needing a reconnect.
 var ErrRefreshRefused = errors.New("google refused the refresh token")
 
+// ErrRefreshFailed means Google's token endpoint failed to answer a
+// refresh, e.g. during an outage, rather than refusing the token. Trying
+// later may succeed.
+var ErrRefreshFailed = errors.New("google failed to refresh the token")
+
 // AccessToken is a short-lived token for one account's Gmail, about an
 // hour at Google. It is never stored, and printing it with any verb or
 // saving it as JSON shows nothing.
 type AccessToken struct {
 	value string
+	// keptBy is the [Access] that handed the token out and keeps it, nil
+	// for one from [NewAccessToken].
+	keptBy *keeper
 }
 
-// NewAccessToken returns value as an access token.
+// keeper is the [Access] keeping an access token for account accountID.
+type keeper struct {
+	access    *Access
+	accountID int64
+}
+
+// NewAccessToken returns value as an access token no [Access] keeps.
 func NewAccessToken(value string) AccessToken {
 	return AccessToken{value: value}
 }
@@ -46,6 +68,19 @@ func NewAccessToken(value string) AccessToken {
 // Value returns the token itself, for the request that carries it.
 func (t AccessToken) Value() string {
 	return t.value
+}
+
+// Refused tells the [Access] that handed t out that the provider refused
+// it, e.g. after the member revoked inbok's access at Google, so its next
+// [Access.Token] for the account trades the refresh token again rather
+// than handing t out. It does nothing for a token from [NewAccessToken].
+//
+// DESIGN: the provider's client calls it where it sees the refusal, so no
+// feature that calls the provider has to (ADR006).
+func (t AccessToken) Refused() {
+	if t.keptBy != nil {
+		t.keptBy.access.refused(t.keptBy.accountID, t.value)
+	}
 }
 
 // String returns a placeholder, so printing the token leaks nothing.
@@ -61,6 +96,9 @@ func (t AccessToken) GoString() string {
 // Renewal is what Google returns for a refresh token.
 type Renewal struct {
 	AccessToken AccessToken
+	// Expiry is when the access token stops working; zero when Google did
+	// not say.
+	Expiry time.Time
 	// RefreshToken replaces the saved one; empty when Google keeps it.
 	RefreshToken string `json:"-"`
 }
@@ -124,35 +162,52 @@ type accessStorage interface {
 
 // Access hands out access tokens for connected accounts, for the jobs that
 // call Gmail. It exists only when a Google client is configured.
+//
+// DESIGN: Each account's access token is kept in memory and handed out
+// again until shortly before it expires (ADR006, "Access tokens are reused
+// within a worker"), while every call still reads the account: a schedule
+// that checks every account each minute would otherwise trade every
+// refresh token at Google each minute. It is never stored.
 type Access struct {
 	storage    accessStorage
 	encryption keyring
 	google     refresher
 	now        func() time.Time
+
+	mu   sync.Mutex
+	kept map[int64]keptToken
+}
+
+// keptToken is an access token [Access] hands out again, with when it
+// expires and the sealed refresh token it was traded for.
+type keptToken struct {
+	token      AccessToken
+	expiry     time.Time
+	ciphertext []byte
 }
 
 // NewAccess returns token access given storage, the keys that sealed the
 // refresh tokens, a configured Google client, and a clock.
 func NewAccess(storage accessStorage, encryption keyring, google refresher, now func() time.Time) *Access {
-	return &Access{storage: storage, encryption: encryption, google: google, now: now}
+	return &Access{storage: storage, encryption: encryption, google: google, now: now, kept: make(map[int64]keptToken)}
 }
 
-// Token returns an access token for account accountID's Gmail, traded at
-// Google for its saved refresh token. A job takes one when it starts and
-// another before it expires, about an hour later. Its checks hold when it
-// last reads the account, just before returning; a job that must not act
-// for an account gone or a member deactivated since checks again where it
-// acts.
+// Token returns an access token for account accountID's Gmail: one it traded at
+// Google for the saved refresh token before, while that token is still saved
+// and more than tokenRenewBefore remains of it, or else a new one. A job takes
+// one in each step that calls Gmail. Its checks hold when it last reads the
+// account, just before returning; a job that must not act for an account gone
+// or a member deactivated since checks again where it acts.
 //
 // It returns [ErrNotFound] when the account is gone, [ErrDeactivated],
 // [ErrNeedsReconnect] when Google refuses the refresh token, now or before,
 // [ErrTokenUnreadable], [ErrCredentialChanged] when the credential changed
-// twice while this call held it, and any other error as a failure that
-// may pass.
+// twice while this call held it, an error wrapping [ErrRefreshFailed] when
+// Google's token endpoint failed, and any other error, e.g. storage's, as a
+// failure that may pass.
 //
-// DESIGN: a refresh token Google replaces is left alone at Google, not
-// revoked: revoking it would end the grant the replacement belongs to
-// (ADR006).
+// DESIGN: a refresh token Google replaces is left alone at Google, not revoked:
+// revoking it would end the grant the replacement belongs to (ADR006).
 func (a *Access) Token(ctx context.Context, accountID int64) (AccessToken, error) {
 	token, err := a.token(ctx, accountID)
 	// A credential that changed while this call held it, by a reconnect or
@@ -164,12 +219,50 @@ func (a *Access) Token(ctx context.Context, accountID int64) (AccessToken, error
 	return token, err
 }
 
+// forget drops the access token kept for account accountID.
+func (a *Access) forget(accountID int64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.kept, accountID)
+}
+
+// refused drops the access token kept for account accountID if it is
+// still value, which the provider refused; a newer one traded since stays.
+func (a *Access) refused(accountID int64, value string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if kept, ok := a.kept[accountID]; ok && kept.token.value == value {
+		delete(a.kept, accountID)
+	}
+}
+
+// Check returns nil when provider work may still run for account
+// accountID: the account exists, needs no reconnect, its member is active,
+// and its refresh token opens. It asks Google nothing, so it suits a step
+// that only writes inbok's own data. It returns the same stop errors as
+// [Access.Token]: [ErrNotFound], [ErrDeactivated], [ErrNeedsReconnect], or
+// [ErrTokenUnreadable]; any other error is storage's.
+func (a *Access) Check(ctx context.Context, accountID int64) error {
+	state, err := a.read(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	_, err = a.encryption.Open(state.Credential.KeyID, state.Credential.Ciphertext, tokenOwner(state.UserID, accountID))
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrTokenUnreadable, err)
+	}
+	return nil
+}
+
 // token is one attempt of [Access.Token], returning [ErrCredentialChanged]
 // when the credential it read changed before it could write.
 func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error) {
 	// 1. Read the account, and stop before Google for one whose provider
-	// work has stopped.
+	// work has stopped, dropping any token kept for it.
 	state, err := a.read(ctx, accountID)
+	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrDeactivated) || errors.Is(err, ErrNeedsReconnect) {
+		a.forget(accountID)
+	}
 	if err != nil {
 		return AccessToken{}, err
 	}
@@ -182,7 +275,13 @@ func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error
 		return AccessToken{}, err
 	}
 
-	// 3. Trade it at Google. A refusal is recorded only against the token
+	// 3. Hand out the token kept for this credential while it lasts. A
+	// reconnect or a replacement saved other bytes, so it is traded anew.
+	if token, ok := a.keptFor(accountID, state.Credential.Ciphertext); ok {
+		return token, nil
+	}
+
+	// 4. Trade it at Google. A refusal is recorded only against the token
 	// refused: one a reconnect saved meanwhile has not been tried.
 	renewal, err := a.google.Refresh(ctx, string(refreshToken))
 	if errors.Is(err, ErrRefreshRefused) {
@@ -192,10 +291,10 @@ func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error
 		return AccessToken{}, ErrNeedsReconnect
 	}
 	if err != nil {
-		return AccessToken{}, fmt.Errorf("refresh token: %w", err)
+		return AccessToken{}, fmt.Errorf("%w: %w", ErrRefreshFailed, err)
 	}
 
-	// 4. Save a replacement before the access token is used, so the old
+	// 5. Save a replacement before the access token is used, so the old
 	// refresh token is dropped only once the new one is stored.
 	saved := state.Credential.Ciphertext
 	if renewal.RefreshToken != "" {
@@ -209,7 +308,7 @@ func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error
 		saved = next.Ciphertext
 	}
 
-	// 5. Read the account again, so a disconnect, deactivation, or refusal
+	// 6. Read the account again, so a disconnect, deactivation, or refusal
 	// while Google answered stops the job too, and a credential changed
 	// meanwhile is read again.
 	latest, err := a.read(ctx, accountID)
@@ -219,7 +318,43 @@ func (a *Access) token(ctx context.Context, accountID int64) (AccessToken, error
 	if !bytes.Equal(latest.Credential.Ciphertext, saved) {
 		return AccessToken{}, ErrCredentialChanged
 	}
+
+	// 7. Keep it for the next calls, under the credential now saved, as a
+	// token that can report its refusal.
+	renewal.AccessToken.keptBy = &keeper{access: a, accountID: accountID}
+	a.keep(accountID, renewal, saved)
 	return renewal.AccessToken, nil
+}
+
+// keptFor returns the access token kept for account accountID if it was
+// traded for the sealed refresh token ciphertext and more than
+// tokenRenewBefore remains of it.
+func (a *Access) keptFor(accountID int64, ciphertext []byte) (AccessToken, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	kept, ok := a.kept[accountID]
+	if !ok || !bytes.Equal(kept.ciphertext, ciphertext) || !a.now().Before(kept.expiry.Add(-tokenRenewBefore)) {
+		return AccessToken{}, false
+	}
+	return kept.token, true
+}
+
+// keep keeps renewal's access token for account accountID, traded for the
+// sealed refresh token ciphertext, unless Google gave no expiry, and drops
+// the expired tokens of other accounts, e.g. one disconnected since.
+func (a *Access) keep(accountID int64, renewal Renewal, ciphertext []byte) {
+	if renewal.Expiry.IsZero() {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	now := a.now()
+	for id, kept := range a.kept {
+		if !now.Before(kept.expiry) {
+			delete(a.kept, id)
+		}
+	}
+	a.kept[accountID] = keptToken{token: renewal.AccessToken, expiry: renewal.Expiry, ciphertext: ciphertext}
 }
 
 // read returns account accountID's state. It returns [ErrNotFound],

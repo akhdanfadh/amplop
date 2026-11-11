@@ -120,10 +120,11 @@ type Reconnection struct {
 // Storage keeps connected accounts.
 type Storage interface {
 	// InsertConnectedAccount gives account an ID, calls seal with it, and
-	// saves account with the credential seal returns. It returns the saved
-	// account, or [ErrAlreadyConnected] when account.UserID already has
-	// account.Subject from account.Provider. An error from seal is returned
-	// unchanged and saves nothing.
+	// saves account with the credential seal returns, its sync state,
+	// waiting, and the job of its first full sync, in one transaction. It
+	// returns the saved account, or [ErrAlreadyConnected] when
+	// account.UserID already has account.Subject from account.Provider. An
+	// error from seal is returned unchanged; any error saves nothing.
 	InsertConnectedAccount(ctx context.Context, account NewAccount, seal func(accountID int64) (Credential, error)) (Account, error)
 
 	// UpdateConnectedAccount locks userID's account accountID, calls update

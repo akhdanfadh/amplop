@@ -56,6 +56,7 @@ var loopback = netip.MustParseAddr("127.0.0.1")
 type Seed struct {
 	Users    []User
 	Clients  []Client
+	Labels   []Label
 	Messages []Message
 }
 
@@ -76,14 +77,67 @@ type Client struct {
 	RedirectURIs []string
 }
 
-// Message is one message in a seeded mailbox.
+// Label is a custom label in a seeded mailbox. A message's custom label
+// ID that no Label names is made with the ID as its name.
+type Label struct {
+	ID      string
+	Mailbox string // the email of the user it belongs to
+	Name    string
+}
+
+// Message is one message in a seeded mailbox. Each header field is sent as
+// written, so it may carry encoded words.
 type Message struct {
 	ID       string
+	ThreadID string // empty gets one from the emulator
 	Mailbox  string // the email of the user it belongs to
 	From     string
+	To       string // empty is the mailbox's own address
+	Cc       string
+	ReplyTo  string
 	Subject  string
 	Body     string
+	// Snippet replaces the one the emulator derives from [Message.Body], e.g. with
+	// HTML entities as Gmail sends them.
+	Snippet string
+	// LabelIDs nil is INBOX alone.
 	LabelIDs []string
+	// Received is Gmail's internalDate; zero is when the emulator starts.
+	Received   time.Time
+	MessageID  string
+	InReplyTo  string
+	References string
+}
+
+// messageConfig returns m as the emulator's config spells a message,
+// leaving out what m leaves empty so the emulator fills it.
+func messageConfig(m Message) map[string]any {
+	labels := m.LabelIDs
+	if labels == nil {
+		labels = []string{"INBOX"}
+	}
+	to := m.To
+	if to == "" {
+		to = m.Mailbox
+	}
+	config := map[string]any{
+		"id": m.ID, "user_email": m.Mailbox, "to": to, "from": m.From,
+		"subject": m.Subject, "body_text": m.Body, "label_ids": labels,
+	}
+	optional := map[string]string{
+		"thread_id": m.ThreadID, "cc": m.Cc, "reply_to": m.ReplyTo, "snippet": m.Snippet,
+		"message_id": m.MessageID, "in_reply_to": m.InReplyTo, "references": m.References,
+	}
+	for key, value := range optional {
+		if value != "" {
+			config[key] = value
+		}
+	}
+	if !m.Received.IsZero() {
+		// Milliseconds since the epoch, as Gmail's internalDate.
+		config["internal_date"] = strconv.FormatInt(m.Received.UnixMilli(), 10)
+	}
+	return config
 }
 
 // Emulator is a running emulator.
@@ -309,16 +363,13 @@ func configFile(seed Seed) (string, error) {
 			"client_id": c.ID, "client_secret": c.Secret, "redirect_uris": c.RedirectURIs,
 		})
 	}
+	labels := make([]map[string]any, 0, len(seed.Labels))
+	for _, l := range seed.Labels {
+		labels = append(labels, map[string]any{"id": l.ID, "user_email": l.Mailbox, "name": l.Name})
+	}
 	messages := make([]map[string]any, 0, len(seed.Messages))
 	for _, m := range seed.Messages {
-		labels := m.LabelIDs
-		if labels == nil {
-			labels = []string{"INBOX"}
-		}
-		messages = append(messages, map[string]any{
-			"id": m.ID, "user_email": m.Mailbox, "to": m.Mailbox, "from": m.From,
-			"subject": m.Subject, "body_text": m.Body, "label_ids": labels,
-		})
+		messages = append(messages, messageConfig(m))
 	}
 	config, err := json.Marshal(map[string]any{"google": map[string]any{
 		// Without it the emulator answers Gmail calls without checking the
@@ -326,6 +377,7 @@ func configFile(seed Seed) (string, error) {
 		"strict_scopes": true,
 		"users":         users,
 		"oauth_clients": clients,
+		"labels":        labels,
 		"messages":      messages,
 	}})
 	if err != nil {

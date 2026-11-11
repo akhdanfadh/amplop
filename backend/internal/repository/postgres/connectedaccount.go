@@ -13,41 +13,62 @@ import (
 )
 
 // InsertConnectedAccount saves account with the credential seal returns for
-// its ID, and returns the saved account. It returns
+// its ID, with its sync state, waiting, and the job of its first full sync,
+// in one transaction, and returns the saved account. It returns
 // [connectedaccount.ErrAlreadyConnected] when account.UserID already has
 // account.Subject from account.Provider; the ID taken is then never used.
 func (db *DB) InsertConnectedAccount(ctx context.Context, account connectedaccount.NewAccount, seal func(int64) (connectedaccount.Credential, error)) (connectedaccount.Account, error) {
-	queries := sqlc.New(db.pool)
+	var saved connectedaccount.Account
+	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
 
-	// 1. Take the ID first: the sealed token is bound to it.
-	id, err := queries.NextConnectedAccountID(ctx)
-	if err != nil {
-		return connectedaccount.Account{}, fmt.Errorf("take connected account id: %w", err)
-	}
+		// 1. Take the ID first: the sealed token is bound to it.
+		id, err := queries.NextConnectedAccountID(ctx)
+		if err != nil {
+			return fmt.Errorf("take connected account id: %w", err)
+		}
 
-	// 2. Seal the token for that ID.
-	credential, err := seal(id)
+		// 2. Seal the token for that ID.
+		credential, err := seal(id)
+		if err != nil {
+			return err
+		}
+
+		// 3. Insert, unless the user already has the provider's subject.
+		row, err := queries.InsertConnectedAccount(ctx, sqlc.InsertConnectedAccountParams{
+			ID:                     id,
+			UserID:                 account.UserID,
+			Provider:               string(account.Provider),
+			Email:                  account.Email,
+			OauthSubject:           account.Subject,
+			RefreshTokenKeyID:      credential.KeyID,
+			RefreshTokenCiphertext: credential.Ciphertext,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return connectedaccount.ErrAlreadyConnected
+		}
+		if err != nil {
+			return fmt.Errorf("insert connected account: %w", err)
+		}
+
+		// 4. Save the sync state and its first sync, a full one, in this
+		// transaction, so no account is connected without them (ADR001).
+		if err := queries.InsertSyncState(ctx, id); err != nil {
+			return fmt.Errorf("insert sync state: %w", err)
+		}
+		if db.workflows == nil {
+			return errNoWorkflows
+		}
+		if _, err := db.workflows.EnqueueSync(ctx, tx, id); err != nil {
+			return fmt.Errorf("save sync: %w", err)
+		}
+		saved = connectedAccountFromRow(sqlc.InsertConnectedAccountRow(row))
+		return nil
+	})
 	if err != nil {
 		return connectedaccount.Account{}, err
 	}
-
-	// 3. Insert, unless the user already has the provider's subject.
-	row, err := queries.InsertConnectedAccount(ctx, sqlc.InsertConnectedAccountParams{
-		ID:                     id,
-		UserID:                 account.UserID,
-		Provider:               string(account.Provider),
-		Email:                  account.Email,
-		OauthSubject:           account.Subject,
-		RefreshTokenKeyID:      credential.KeyID,
-		RefreshTokenCiphertext: credential.Ciphertext,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return connectedaccount.Account{}, connectedaccount.ErrAlreadyConnected
-	}
-	if err != nil {
-		return connectedaccount.Account{}, fmt.Errorf("insert connected account: %w", err)
-	}
-	return connectedAccountFromRow(sqlc.InsertConnectedAccountRow(row)), nil
+	return saved, nil
 }
 
 // UpdateConnectedAccount saves, for userID's account accountID, the email and

@@ -15,6 +15,17 @@ type retries struct {
 	ceiling  time.Duration
 }
 
+// wait returns how long to wait after try n, counted from 0, before the
+// next: base, then twice as long each time, at most ceiling. It is r's
+// schedule without DBOS's variation, for a step that retries itself.
+func (r retries) wait(n int) time.Duration {
+	d := r.base
+	for range n {
+		d = min(2*d, r.ceiling)
+	}
+	return d
+}
+
 // options returns r as DBOS step options.
 func (r retries) options() []dbos.StepOption {
 	return []dbos.StepOption{

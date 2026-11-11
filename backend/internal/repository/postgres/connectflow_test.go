@@ -23,6 +23,9 @@ const (
 // connectFlowTest is the whole flow and the token access after it:
 // PostgreSQL, the Google emulator with alex and blair, and a member signed
 // in.
+//
+// newConnectFlowTest seeds the emulator with messages and labels, e.g. for
+// a full sync after connecting.
 type connectFlowTest struct {
 	connectedAccountsTest
 	emulator    *googleemulator.Emulator
@@ -32,7 +35,7 @@ type connectFlowTest struct {
 	session     uuid.UUID
 }
 
-func newConnectFlowTest(t *testing.T) connectFlowTest {
+func newConnectFlowTest(t *testing.T, labels []googleemulator.Label, messages ...googleemulator.Message) connectFlowTest {
 	t.Helper()
 	c := newConnectedAccountsTest(t)
 	emulator := googleemulator.Start(t, googleemulator.Seed{
@@ -40,7 +43,9 @@ func newConnectFlowTest(t *testing.T) connectFlowTest {
 			{Email: alexIdentity.Email, Name: "Alex Rivera", UID: alexIdentity.Subject},
 			{Email: blairIdentity.Email, Name: "Blair Chen", UID: blairIdentity.Subject},
 		},
-		Clients: []googleemulator.Client{{ID: flowClientID, Secret: flowSecret, RedirectURIs: []string{flowRedirect}}},
+		Clients:  []googleemulator.Client{{ID: flowClientID, Secret: flowSecret, RedirectURIs: []string{flowRedirect}}},
+		Labels:   labels,
+		Messages: messages,
 	})
 	client := google.New(google.Settings{
 		ClientID: flowClientID, ClientSecret: flowSecret, RedirectURL: flowRedirect, BaseURL: emulator.BaseURL,
@@ -68,7 +73,7 @@ func (f connectFlowTest) consent(t *testing.T, accountID int64, email string) (c
 }
 
 func TestConnectFlow(t *testing.T) {
-	f := newConnectFlowTest(t)
+	f := newConnectFlowTest(t, nil)
 
 	account, err := f.consent(t, 0, alexIdentity.Email)
 	require.NoError(t, err)
@@ -80,7 +85,7 @@ func TestConnectFlow(t *testing.T) {
 }
 
 func TestConnectFlowReconnect(t *testing.T) {
-	f := newConnectFlowTest(t)
+	f := newConnectFlowTest(t, nil)
 	account, err := f.consent(t, 0, alexIdentity.Email)
 	require.NoError(t, err)
 	before := f.storedToken(t, f.member, account.ID)
@@ -93,7 +98,7 @@ func TestConnectFlowReconnect(t *testing.T) {
 }
 
 func TestConnectFlowReconnectDifferentAccount(t *testing.T) {
-	f := newConnectFlowTest(t)
+	f := newConnectFlowTest(t, nil)
 	account, err := f.consent(t, 0, alexIdentity.Email)
 	require.NoError(t, err)
 	before := f.storedToken(t, f.member, account.ID)
@@ -105,7 +110,7 @@ func TestConnectFlowReconnectDifferentAccount(t *testing.T) {
 }
 
 func TestConnectFlowAlreadyConnected(t *testing.T) {
-	f := newConnectFlowTest(t)
+	f := newConnectFlowTest(t, nil)
 	_, err := f.consent(t, 0, alexIdentity.Email)
 	require.NoError(t, err)
 
@@ -118,7 +123,7 @@ func TestConnectFlowAlreadyConnected(t *testing.T) {
 // The emulator's page cannot decline, so the redirect Google sends then is
 // given directly.
 func TestConnectFlowCancelled(t *testing.T) {
-	f := newConnectFlowTest(t)
+	f := newConnectFlowTest(t, nil)
 	page, err := f.connections.Start(t.Context(), f.member, f.session, 0)
 	require.NoError(t, err)
 	consentURL, err := url.Parse(page)
@@ -133,7 +138,7 @@ func TestConnectFlowCancelled(t *testing.T) {
 
 // A job's token reaches the connected mailbox.
 func TestConnectFlowToken(t *testing.T) {
-	f := newConnectFlowTest(t)
+	f := newConnectFlowTest(t, nil)
 	account, err := f.consent(t, 0, alexIdentity.Email)
 	require.NoError(t, err)
 
@@ -148,7 +153,7 @@ func TestConnectFlowToken(t *testing.T) {
 func TestConnectFlowTokenRevoked(t *testing.T) {
 	// Given a connected account whose member removed inbok's access at
 	// Google.
-	f := newConnectFlowTest(t)
+	f := newConnectFlowTest(t, nil)
 	account, err := f.consent(t, 0, alexIdentity.Email)
 	require.NoError(t, err)
 	f.emulator.Revoke(t, f.storedToken(t, f.member, account.ID))

@@ -27,8 +27,8 @@ func rawMessage(inbokID string) []byte {
 		"Content-Type: text/plain; charset=utf-8\r\n\r\nFriday?\r\n")
 }
 
-// stubGmail returns a client whose Gmail is handler.
-func stubGmail(t *testing.T, handler http.HandlerFunc) *Client {
+// stubSendGmail returns a client whose Gmail is handler.
+func stubSendGmail(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -104,7 +104,7 @@ func TestSendAnswers(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			client := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+			client := stubSendGmail(t, func(w http.ResponseWriter, _ *http.Request) {
 				gmailError(w, c.status, c.message, c.reason)
 			})
 
@@ -119,7 +119,7 @@ func TestSendAnswers(t *testing.T) {
 // The request goes as messages.send expects: raw, base64url.
 func TestSendRequest(t *testing.T) {
 	var body map[string]string
-	client := stubGmail(t, func(w http.ResponseWriter, r *http.Request) {
+	client := stubSendGmail(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/gmail/v1/users/me/messages/send", r.URL.Path)
 		assert.Equal(t, "Bearer access-1", r.Header.Get("Authorization"))
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
@@ -136,7 +136,7 @@ func TestSendRequest(t *testing.T) {
 
 // A connection dropped after the whole request went may have sent it.
 func TestSendDropped(t *testing.T) {
-	client := stubGmail(t, func(w http.ResponseWriter, r *http.Request) {
+	client := stubSendGmail(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
 		conn, _, err := w.(http.Hijacker).Hijack()
 		if assert.NoError(t, err) {
@@ -152,7 +152,7 @@ func TestSendDropped(t *testing.T) {
 // An answer that times out after the whole request went may have sent it.
 func TestSendTimeout(t *testing.T) {
 	release := make(chan struct{})
-	client := stubGmail(t, func(_ http.ResponseWriter, r *http.Request) {
+	client := stubSendGmail(t, func(_ http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
 		<-release
 	})
@@ -169,7 +169,7 @@ func TestSendTimeout(t *testing.T) {
 // HTTP/2. Only no connection at all proves a message was not sent.
 func TestSendWriteUnfinished(t *testing.T) {
 	release := make(chan struct{})
-	client := stubGmail(t, func(_ http.ResponseWriter, r *http.Request) {
+	client := stubSendGmail(t, func(_ http.ResponseWriter, r *http.Request) {
 		_, _ = io.ReadFull(r.Body, make([]byte, 10))
 		<-release
 	})
@@ -185,7 +185,7 @@ func TestSendWriteUnfinished(t *testing.T) {
 // A 200 without Gmail's ID took the message but cannot name it, so the
 // check finds it; it is never retried.
 func TestSendNoID(t *testing.T) {
-	client := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+	client := stubSendGmail(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"threadId": "th-1"})
 	})
 
@@ -196,7 +196,7 @@ func TestSendNoID(t *testing.T) {
 
 // An answer that cannot be decoded keeps none of its text.
 func TestSendUnreadableAnswer(t *testing.T) {
-	client := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+	client := stubSendGmail(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id": "gm-1", "historyId": "secret page body"}`))
 	})
@@ -210,7 +210,7 @@ func TestSendUnreadableAnswer(t *testing.T) {
 // net/http reports an answer it cannot parse as a transport error quoting
 // it, e.g. a malformed Content-Length; none of it is kept.
 func TestMailboxMalformedAnswer(t *testing.T) {
-	client := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+	client := stubSendGmail(t, func(w http.ResponseWriter, _ *http.Request) {
 		conn, buffered, err := w.(http.Hijacker).Hijack()
 		if !assert.NoError(t, err) {
 			return
@@ -230,7 +230,7 @@ func TestMailboxMalformedAnswer(t *testing.T) {
 // Gmail client logs nothing, so no message reaches stderr.
 func TestSendNoSDKLog(t *testing.T) {
 	t.Setenv("GOOGLE_SDK_GO_LOGGING_LEVEL", "debug")
-	client := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+	client := stubSendGmail(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{"id": "gm-1", "threadId": "th-1"})
 	})
 	read, write, err := os.Pipe()
@@ -267,7 +267,7 @@ func TestSendUnreachable(t *testing.T) {
 // headers names it; a message missing from headers answers 404.
 func sentStub(t *testing.T, pages [][]string, headers map[string][2]string) *Client {
 	t.Helper()
-	return stubGmail(t, func(w http.ResponseWriter, r *http.Request) {
+	return stubSendGmail(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/gmail/v1/users/me/history":
 			assert.Equal(t, "1200", r.URL.Query().Get("startHistoryId"))
@@ -342,7 +342,7 @@ func TestFindSentDeleted(t *testing.T) {
 
 // Gmail answers 404 for history it no longer keeps.
 func TestFindSentExpired(t *testing.T) {
-	client := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+	client := stubSendGmail(t, func(w http.ResponseWriter, _ *http.Request) {
 		gmailError(w, http.StatusNotFound, "Requested entity was not found.", "notFound")
 	})
 
@@ -370,7 +370,7 @@ func TestFindSentTooMany(t *testing.T) {
 // A check that fails for a reason that may pass says neither found nor
 // not found, and keeps none of Gmail's text.
 func TestFindSentFails(t *testing.T) {
-	client := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+	client := stubSendGmail(t, func(w http.ResponseWriter, _ *http.Request) {
 		gmailError(w, http.StatusServiceUnavailable, "secret page body", "backendError")
 	})
 

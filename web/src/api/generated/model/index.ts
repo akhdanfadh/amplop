@@ -6,6 +6,7 @@
  */
 
 export * from './accountProviders.zod';
+export * from './accountSync.zod';
 export * from './authorization.zod';
 export * from './changedMember.zod';
 export * from './confirmTOTPEnrollmentBody.zod';
@@ -25,6 +26,7 @@ export * from './endedSessions.zod';
 export * from './firstAdmin.zod';
 export * from './healthStatus.zod';
 export * from './inputError.zod';
+export * from './listedAccount.zod';
 export * from './listedMembers.zod';
 export * from './listedSession.zod';
 export * from './listedSessions.zod';
@@ -60,6 +62,7 @@ export * from './registrationSettings.zod';
 export * from './requestPasswordResetLinkBody.zod';
 export * from './requestRegistrationLinkBody.zod';
 export * from './responseAccountProviders.zod';
+export * from './responseAccountSync.zod';
 export * from './responseAuthorization.zod';
 export * from './responseChangedMember.zod';
 export * from './responseConnectedAccounts.zod';

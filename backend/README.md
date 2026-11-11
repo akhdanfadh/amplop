@@ -79,8 +79,8 @@ The worker reads these environment variables:
 | `INBOK_HTTP_ADDR` | `127.0.0.1:8081`; the image sets `0.0.0.0:8080` | Address the worker answers health checks on: port 8081 for the worker, 8080 for `serve`, so both run on one machine. `.env` sets `serve`'s, so the Make commands pass the worker `INBOK_WORKER_HTTP_ADDR` instead; `deploy/compose.yaml` sets `127.0.0.1:8081`. |
 | `INBOK_WORKER_ID` | `worker` | The name the worker resumes unfinished work under: 1 to 64 letters, digits, `.`, `-`, or `_`. |
 | `INBOK_PUBLIC_URL` | none, required | As for `serve`: links in the email the worker sends start with it, and its host names inbok to mail servers. |
-| `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of removed Gmail accounts. |
-| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with and the [send](#sending-a-message) job sends with. Empty: the worker runs neither and leaves them queued. |
+| `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of Gmail accounts, connected or removed. |
+| `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with, the [send](#sending-a-message) job sends with, and the [syncs](#synchronization) read Gmail with. Empty: the worker runs none of them and leaves them queued. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
 | `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. The worker applies the [search index](#search-index)'s settings when it starts. |
 | `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, which signs every request. |
@@ -399,6 +399,178 @@ message, to stderr with `GOOGLE_SDK_GO_LOGGING_LEVEL=debug`. ADR006
 records the rules and what they were chosen over. The worker registers the
 workflow, and listens to `inbok.google-send`, only when the Google
 settings are set, as for account removal.
+
+### Synchronization
+
+Every sync of a connected account's mail is the workflow `inbok.sync`, run
+from the queue `inbok.google`, as [Synchronized mail](#synchronized-mail)
+describes. Its input is only the account's ID. DBOS refuses a second sync
+of an account while one is queued or running (its deduplication ID,
+`sync-<account ID>`), so a poll and a full sync of one account never run
+at once. [Connecting](#connecting) an account saves its sync state,
+`waiting`, and its first sync, in the transaction that saves the account.
+The enqueue runs in a savepoint (`dbos.Client.EnqueueSync`): DBOS refuses
+its return-existing policy inside a caller's transaction, and its
+duplicate would abort the whole transaction, so a sync already queued or
+running rolls back only the savepoint and keeps its place.
+
+Its first step, `plan`, reads the account's sync state and records which
+sync to run, so a resumed run makes the same choice: a `complete` account
+polls, and any other runs a full sync, which polls between its pages too. A poll that Gmail answers 404, for
+history it no longer keeps, goes on into a full sync in the same run. The
+run's output names the kind it ran, `poll` or `full`, and the status it
+left. Each step that calls Gmail takes its own access token
+([Calling Gmail](#calling-gmail)), so none is ever saved, and one that
+writes only inbok's data asks `Access.Check`, which reads the same state
+without calling Google.
+
+**The schedule.** The workflow `inbok.sync-schedule` runs at the start of
+every minute, in UTC (the schedule `inbok.sync.minutely`), and does not
+make up for minutes the worker was down. `mailsync.Schedule.Due` picks the
+accounts whose member is active and which need no reconnect, then:
+
+- a `waiting` account, and one `failed` an hour ago or longer, starts a
+  sync, so a reconnect, a reactivation, or a passing outage needs no code
+  of its own;
+- a `running` account starts one too: DBOS gives back the run that still
+  lives, and one that ended without recording how, e.g. when the database
+  stayed down past the last step's retries, gets a new full sync rather
+  than staying `running` for good;
+- a `complete` account starts one when Gmail's current history ID
+  (`users.getProfile`, 1 unit) differs from its stored position, or when
+  a failure is recorded, which the poll then clears. The checks run ten
+  at a time, 20 seconds at most each and 40 seconds in all, so runs never
+  overlap; each minute starts at another account, and those not reached
+  wait for the next minute. A check that fails starts a sync anyway, whose
+  retries decide the failure, unless a failure is already recorded; one a
+  stopped account refuses starts nothing. A check that finds the position
+  unchanged on an account with no failure records `last_synced_at` as the
+  time Gmail answered, in one statement after the checks
+  (`ConfirmSynced`), only where the account is still `complete` at that
+  position and only forward, so a poll that finished meanwhile keeps its
+  own. `last_synced_at` so means when inbok last confirmed its copy, and a
+  time minutes old on a `complete` account means syncing stopped.
+
+The run enqueues `inbok.sync` for each, keeping a sync already queued or
+running. An idle account then costs one run a minute in all, the
+schedule's, and 1 unit of its Gmail quota.
+
+**Sync now.** `POST /api/v0/connected-accounts/{id}/sync`
+(`mailsync.Service.Request`) enqueues `inbok.sync` for one of the member's
+accounts at once, skipping the minute's wait, the check, and the hour
+after a failure; the plan still chooses poll or full sync. One transaction
+locks the sync state, refuses another member's account and one that needs
+reconnecting, allows one request per account every 15 seconds, records
+`sync_requested_at`, and enqueues as above. It locks the account's row
+(`FOR SHARE`) before the sync state, the order a disconnect takes, so the
+reconnect state it read holds until it commits. The limit is there because
+a poll that finds nothing ends in about a second, so a script could
+otherwise leave a run in DBOS's tables every second. `plan` records the
+`sync_requested_at` it read, and a poll that succeeds reads it again (the
+step `recheck`): when it changed, a request came since the poll's reads
+began, so it polls again from the new position. The stored values are
+compared, not times, since the server writes the request and the worker's
+clock may differ. A request so starts a read of Gmail after it, and its
+mail shows within seconds. A request that lands after that last look,
+while the run ends, finds the run and starts none; the next minute's check
+then starts its poll, as without the request, unless the account has a
+failure recorded and its checks keep failing, when it waits for a check
+that succeeds or, after a failed full sync, the hour's retry (ADR001
+accepts this: Gmail is failing then anyway). The page does not track when
+a request is answered: that would take exact bookkeeping across the two
+processes' clocks.
+
+**A poll** reads each page of `history.list` since the stored position
+once, as the step `read changes` (`mailsync.Poll.ReadChanges`), which
+records the page's IDs and label IDs, no mail. Then `apply changes`
+(`Poll.ApplyChanges`) applies the page in parts: the deletes, then where
+each updated message stands, its whole label set as its mailboxes and
+flags, 1,000 at a time; then the messages added, fetched and saved 100 at
+a time; then those whose record named no labels, fetched 100 at a time to
+learn their state. A page naming thousands of messages, e.g. a bulk
+import, is so applied in short steps, and a stopped worker resumes at the
+part it reached. An update to a message the copy does not hold is
+skipped: only mail older than the account's first window is not held.
+The first part of the first page also lists the labels, whose creation,
+renaming, or deletion history does not report; a recorded label the
+listing no longer has was deleted since, and is left out. Only the last
+part of the last page moves the position, records the time, and clears a
+failure, so a poll stopped for good starts over from the stored position,
+and each part writes only while the account is still `complete` at that
+position. A poll never changes the status the member
+sees: a stopped account or a newer sync ends it with nothing recorded,
+and a failure records `failure` and `failed_at` beside `complete`.
+
+**A full sync** copies the last 90 days of the account's mail metadata and
+mailboxes, by Gmail's own received time, or back to the oldest message the
+copy holds if that is older: a full sync run again after a 404 then
+brings every stored message current, whatever its age. Mail that aged out
+of the window stays until Gmail deletes it. Its steps are
+`mailsync.FullSync`'s methods, in order:
+
+1. `start` lists the mailboxes and reads the account's position
+   (`users.getProfile`) before listing any message, so the first poll
+   replays what changed while the full sync ran. It saves both with a new
+   sync generation, `running`.
+2. `copy page`, once per page of 100 messages, newest first: it lists the
+   page, Spam and Trash included, fetches the messages' metadata, and
+   saves the ones received inside the window. Gmail's `after:` counts
+   whole seconds, so the step checks each message's own time at the
+   window's edge. A message gone before its fetch is deleted. A message in
+   a label made since `start` lists the labels again, and one in a label
+   deleted since is saved without it. Every 4 pages the run polls, with the
+   poll's steps scoped to the running full sync, so mail that arrives
+   during a long copy appears within about two minutes. Such a poll writes
+   while the account runs at the run's generation, its saves are kept by
+   the sweep, and its last part moves only the position; a failure fails
+   the full sync, and a 404 stops these polls.
+3. `delete earlier` deletes, up to 1,000 at a time, the account's messages
+   this generation did not save: the ones Gmail no longer has.
+4. `finish` records `complete`, the time, and no failure.
+
+A running full sync's progress is not stored: the list counts the
+account's messages stamped with its generation, through the account's
+message index, which a repeated page or a poll during the copy counts
+once each.
+
+Every full sync step writes only while the account's sync state still has
+the step's generation and is `running`, so a full sync another one took
+over stops at its next step. A deactivation or a refused token that lands
+while a page's metadata is fetched does not stop that page's save: the
+page was read while the account could sync, and the next step stops. How
+a step's error ends the sync is `mailsync.EndingOf`:
+
+| Error | Retried | Then, for a full sync | Then, for a poll |
+|---|---|---|---|
+| The account needs reconnecting, or its member is deactivated | no | `wait`: back to `waiting`, until the member reconnects or is reactivated | nothing to record |
+| The account was disconnected, or another sync took over | no | nothing to record | nothing to record |
+| Gmail no longer keeps the history asked for (404) | no | | a full sync, in the same run |
+| The refresh token no key opens | no | `fail`: `failed`, `token-unreadable` | `poll fail`: `token-unreadable` |
+| Gmail failing, e.g. `mailsync.ErrProviderBusy`, or Google's token endpoint failing (`connectedaccount.ErrRefreshFailed`) | 4 more times, within the step, waiting 30 seconds, then 1, 2, and 2 minutes | `fail`: `failed`, `provider` | `poll fail`: `provider` |
+| Anything else, e.g. the database, also while taking a token | the same | `fail`: `failed`, `internal` | `poll fail`: `internal` |
+
+Gmail's 401 for an access token it no longer accepts is retried like
+Gmail failing. The `google` client has already dropped the token from
+`Access` (below), so the retry trades the refresh token again: a grant
+the member revoked then ends as needing a reconnect.
+
+A failure records its time, `failed_at`, and fails the run, so DBOS keeps
+it 30 days. The run logs `sync step failed` with the step and an error
+holding only Gmail's status when a step runs out of retries, then
+`full sync failed` or `poll failed` with the failure, or `full sync
+ended`, `poll ended`, or `sync ended` with how it ended otherwise; each
+line carries the `account_id`. A step retries within itself and returns
+how it ended as a value, which DBOS records whole: DBOS records a step's
+error only as text, so a worker resumed after it would no longer know a
+Gmail failure from inbok's.
+
+A sync stopped with its worker resumes at the step it stopped in (see
+[Which worker resumes what](#which-worker-resumes-what)): updating the
+containers copies nothing twice, and polls go on from the stored
+position. The worker registers both workflows and the schedule, and
+listens to `inbok.google`, only with the Google settings, as for the
+[account removal](#account-removal); without them it deletes the schedule
+an earlier start saved.
 
 ### Inspecting workflows
 
@@ -935,13 +1107,20 @@ uses a small `httptest` stub instead:
 - Its revocation endpoint answers 200 for any token, where Google
   answers 400 `invalid_token` for one it does not know.
 - `history.list` never answers 404 for an old history ID, and nothing
-  returns quota errors.
+  returns quota errors. A deletion reaches history only by deleting a
+  message for good, which needs a wider scope than inbok's.
+- `messages.get` matches `metadataHeaders` only as written, e.g.
+  `Message-ID`, and its snippets carry no HTML escaping unless a seed
+  sets one.
 - `messages.send` keeps the `Message-ID` a client sets, where Gmail
   replaces it with its own (tested 2026-11-09), and it never times out
   or drops a send, so the [send job](#sending-a-message)'s answers and
   its check are tested with stubs too.
 - It ignores `access_type` and `prompt` and always returns a refresh
   token.
+- It ignores `fields` and answers whole resources, so no test catches a
+  field list that leaves out what inbok reads, e.g. history's
+  `labelIds`.
 - A failed PKCE check leaves the code usable, and posting the consent
   form directly redirects to any `redirect_uri`; only the consent page
   checks it.
@@ -1985,13 +2164,22 @@ account once; two members may each connect it.
 
 `GET /api/v0/connected-accounts` lists the member's own accounts, oldest
 first: `id`, `provider` (`gmail`), `email`, `needsReconnectSince`, null
-while Google accepts the token, `status`, and `createdAt`. `status` is
-`needs-reconnect` once Google refused the token, `token-unreadable` when no
-configured key opens it, and `usable` otherwise; `Service.List` opens each
-token for it, saving nothing, so restoring a lost key makes an account
-usable again (see [Encryption keys](#encryption-keys)). Google's `sub` stays on
-the server. Another member's account is answered as not found everywhere,
-404 `connected-account-not-found`, like a missing one.
+while Google accepts the token, `status`, `createdAt`, and `sync`.
+`status` is `needs-reconnect` once Google refused the token,
+`token-unreadable` when no configured key opens it, and `usable`
+otherwise; `Service.List` opens each token for it, saving nothing, so
+restoring a lost key makes an account usable again (see [Encryption
+keys](#encryption-keys)). `sync` is where the account's
+[sync](#synchronization) stands: `status`, `messagesSoFar` while running,
+`lastSyncedAt`, `failure`, and `failedAt`. The handler composes
+`connectedaccount`'s list with `mailsync`'s reports, since `mailsync`
+depends on `connectedaccount`; an account disconnected between the two
+reads is left out. `syncStopped` is true when no run of
+`inbok.sync.minutely` succeeded in the last 5 minutes, which the server
+asks DBOS (`dbos.Client.SyncScheduleSucceeded`): no worker runs, a worker
+runs without the Google settings, or its runs fail. Google's `sub` stays
+on the server. Another member's account is answered as not found
+everywhere, 404 `connected-account-not-found`, like a missing one.
 
 ### Connecting
 
@@ -2018,8 +2206,9 @@ the server. Another member's account is answered as not found everywhere,
    check, so it is used up whatever follows; trades the code with the
    verifier; checks the refresh token, the granted Gmail scope, and the
    ID token's verified email; calls Gmail's `users.getProfile`, whose
-   mailbox must be the ID token's email; and saves the account, or
-   replaces the reconnected account's token.
+   mailbox must be the ID token's email; and saves the account, with its
+   sync state and its first [sync](#synchronization), or replaces the reconnected
+   account's token.
 
 The outcomes, the contract's `ConnectOutcome`, are `connected` (a
 reconnect included), `cancelled`, `gmail-not-granted`,
@@ -2146,6 +2335,132 @@ recipients, `From`, the subject, the ID), so none can add one, whatever
 wrote the row; it does not apply the limits
 again, so lowering one leaves saved messages sendable. ADR006 records these
 choices.
+
+### Synchronized mail
+
+`mailsync` keeps a copy of each connected account's recent mail metadata
+and mailboxes, as ADR001 in the project's decision records decides; the
+provider stays authoritative. ADR001's "Synchronization rules" lists
+what synchronization does and where each rule comes from. A
+[sync](#synchronization) copies an account when it is connected, and
+polls keep the copy current. The
+model follows JMAP Mail (RFC 8621), which covers both folders and Gmail
+labels, so the features that read mail never see Gmail's own encoding.
+Four tables hold it, each deleted with its account:
+
+- `mailboxes`: an account's Gmail labels, or later its folders, with the
+  provider's ID, its name as received (a nested Gmail label is one name
+  with slashes, e.g. `Work/Projects`), and a `role` for the special ones,
+  NULL for the member's own. The roles are the purposes in IANA's IMAP
+  Mailbox Name Attributes registry, as JMAP names them, e.g. `inbox`,
+  `sent`, `junk`, `trash`, or `snoozed`. ADR007 lists how Gmail's labels
+  map: `UNREAD` and `STARRED` are flags, not mailboxes.
+- `messages`: one row per provider message, with inbok's own random `id`
+  (a UUID, never derived from mail), Gmail's message and thread IDs, the
+  provider's own timestamp (`internal_date`, Gmail's `internalDate`), the
+  subject, the From, Reply-To, To, and Cc addresses as JSON lists of
+  `name` and `address`, the provider's `preview` (Gmail's snippet), `seen`
+  and `flagged`, and the `Message-ID`, `In-Reply-To`, and `References`
+  headers a reply threads with. No body: content storage keeps that. An
+  account has each Gmail message once, so a repeated step updates the
+  row, which keeps its `id`.
+- `message_mailboxes`: which mailboxes each message is in, perhaps none.
+  An archived Gmail message is in no inbox but keeps its other labels.
+  Each row names both sides with the account, through foreign keys on
+  (account, ID), so PostgreSQL refuses a membership that joins two
+  accounts' rows. Deleting a message or a mailbox deletes its rows.
+- `sync_states`: one row per account, saved with it, with the full sync's
+  `status` (`waiting`, `running`, `complete`, or `failed`), its
+  `sync_generation`, the `position` the next poll asks for changes since,
+  when inbok last confirmed the copy (`last_synced_at`), and when the
+  member last asked to sync now (`sync_requested_at`), which only that
+  request writes, for its limit and a poll's recheck. `failure` and
+  `failed_at` say why and when the last sync, full or poll, failed, until
+  one succeeds: `provider`, `token-unreadable`, or `internal`. A `failed`
+  full sync always has one, and a `complete` account keeps a failed
+  poll's. The position is text only the provider's code reads, e.g.
+  Gmail's history ID in decimal, so storage neither parses nor checks it.
+  `mailboxes` and `messages` reference this row rather than the account's,
+  so a disconnect deletes the account, then the sync state, then the mail,
+  the order a sync write locks them in: the two never deadlock.
+
+The migration lists, as comments, the columns IMAP and Outlook will need,
+such as a folder's UID validity and a message's UID in each folder.
+
+Every write goes through one method, `UpdateSyncedMail`: it locks the
+account's sync state, passes it to a function that returns a
+`mailsync.Change`, and writes the change in one transaction: the
+mailboxes, deleted messages, saved messages with their mailboxes,
+updated messages' mailboxes and flags, the sweep of earlier generations,
+and the new state. An update for a message the account does not have is
+skipped. A change that saves one message twice keeps the last, and one
+that deletes and saves a message only saves it, so the message keeps its
+`id` however often a step repeats. A saved or updated message naming a
+mailbox the account does not have, e.g. a Gmail label made since the
+labels were listed, writes nothing and returns
+`mailsync.ErrUnknownMailbox`; so does any other error, e.g. a generation
+or count past the `integer` columns. A feature that must act on the same
+writes, e.g. indexing them for search, adds its job to that transaction.
+Each full sync starts a sync generation, and each message records the
+generation that last saved it, so a full sync that finishes can delete
+the messages it did not see, a batch per change, without comparing
+clocks. Storage keeps one account's writes in order; checking that a
+step's generation is still the current one is the full sync's job.
+
+`mailsync.Provider` is what synchronization reads from the provider, and
+the `google` client implements it for Gmail. Every method only reads and
+takes an access token from [Calling Gmail](#calling-gmail):
+
+- `Mailboxes` lists the labels as mailboxes, `Position` returns the
+  account's current history ID (`users.getProfile`), and `ListMessages`
+  returns one page of 100 message IDs received after a time, in whole
+  seconds, newest first, with or without Spam and Trash.
+- `Messages` fetches metadata (`messages.get` in `metadata` format) for
+  a page of IDs. Gmail's rules stay in `google`: `UNREAD` and `STARRED`
+  become `seen` and `flagged`, the other labels mailboxes, and the
+  snippet loses Gmail's HTML escaping. Headers are decoded with
+  go-message: RFC 2047 encoded words in any charset it knows, quoted
+  display names included, and address lists with groups. A list that
+  does not parse is mended as enmime does (white space inside `<...>`, a
+  missing comma), then parsed entry by entry, an entry that is no
+  address kept as its text. Msg-ids are read leniently, past phrases and
+  comments and across a fold, keeping their angle brackets. A message
+  Gmail no longer has comes back as gone.
+- `Changes` reads one page of `history.list` since a position and
+  sorts each message it names into one list: deleted, whatever else
+  happened to it; added, to fetch whole; relabelled, an update with the
+  whole label set its last label record carries, `UNREAD` and `STARRED`
+  as `seen` and `flagged`; or reread, when that record lists no labels,
+  since Gmail leaves out an empty list too. Each label record's message
+  lists its labels just after the record (observed on real Gmail; ADR001
+  "Reading Gmail"). Gmail's 404 for a history ID it no
+  longer keeps returns `mailsync.ErrPositionExpired`, which means a full
+  sync; so does a position that is not a history ID, without asking
+  Gmail.
+
+What a sender writes is bounded: each Gmail answer at 4 MiB, and each
+header at 16 KiB, cut on a whole character before it is parsed; a
+longer `References` is read only at its first and last 8 KiB. Of what
+parses, each address list keeps 500 entries and `References` 50 msg-ids,
+the first and the last 49. Invalid UTF-8 and NUL, which PostgreSQL's
+`text` and `jsonb` refuse, become U+FFFD in every stored string. A
+message whose headers pass 4 MiB is fetched again without them. None of
+these can make a message fail to save, which would stop the account's
+sync.
+
+Gmail allows 6,000 quota units a minute per user, and a metadata fetch
+costs 20. An account's `Messages` calls spend at most four fifths of
+that, four fetches a second across calls, with at most four of a call in
+flight, leaving room for the same account's sends and polls. The pace is
+the process's own; one sync per account at a time keeps it whole. Each
+`Provider` call retries a 429, a 403 rate limit, a 500, 502, 503, or
+504, or a timeout after 1, 2, 4, and 8 seconds, each plus up to a second
+at random, or after the `Retry-After` Gmail sends; past five attempts,
+or for a `Retry-After` over 32 seconds, it returns
+`mailsync.ErrProviderBusy` for the job to try later. Errors keep only
+Gmail's status, never its text, and an answer that does not decode fails
+without quoting it. The Google client's own logging is off, since at
+`GOOGLE_SDK_GO_LOGGING_LEVEL=debug` it would log whole answers.
 
 ## Search index
 
@@ -2387,6 +2702,9 @@ httpapi --> connectedaccount <-- repository/postgres
                              <-- google
             outgoingmessage <-- repository/postgres
                             <-- google
+httpapi --> mailsync <-- repository/postgres
+            mailsync --> connectedaccount
+                     <-- google
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google
@@ -2429,9 +2747,10 @@ httpapi --> messagecontent <-- s3
 - `google`, like `smtp`, is a technology package: it implements the
   Google side `connectedaccount` declares for its connect flow, its token
   access, and its revocations: the OAuth client, the ID token checks, the
-  refresh token trade, revocation, and Gmail's `users.getProfile`; and
+  refresh token trade, revocation, and Gmail's `users.getProfile`;
   `outgoingmessage`'s `Provider`: `messages.send` and the check after an
-  unanswered send. It uses `golang.org/x/oauth2` and Google's Gmail
+  unanswered send; and `mailsync`'s `Provider`, the Gmail reads
+  synchronization makes. It uses `golang.org/x/oauth2` and Google's Gmail
   client, whose types stay inside it; Gmail calls take
   `connectedaccount`'s `AccessToken`. It also turns a Gmail message's
   parts into `messagecontent.Received`, the provider-neutral input of
@@ -2593,11 +2912,21 @@ For a job that runs once per request, follow the recovery notice
 ### Calling Gmail
 
 A job that calls Gmail, e.g. synchronization or sending, takes an access
-token for the account from `connectedaccount.Access.Token` when it
-starts, in the step that calls Gmail, and passes it to the `google`
-client's Gmail methods. A token lasts as long as Google's `expires_in`
-said, usually an hour; a step that may run longer takes another. `Token`
-does what Google's refresh tokens need:
+token for the account from `connectedaccount.Access.Token` in each step
+that calls Gmail, and passes it to the `google` client's Gmail methods.
+A token lasts as long as Google's `expires_in` said, usually an hour.
+`Token` does what Google's refresh tokens need:
+
+- It keeps each account's access token in the worker's memory, never
+  stored, and hands it out again while its refresh token is still the
+  saved one and more than 5 minutes of it remain, a margin for the step
+  that takes it. Every call still reads the account first, so every stop
+  error comes as before, and drops the token of an account found stopped;
+  keeping a new token drops the expired ones. When any Gmail call
+  answers 401, the `google` client's transport calls the token's
+  `Refused`, which drops it from `Access` unless a newer one replaced it,
+  so the job's next try, a send's or a sync's, trades the refresh token
+  again. No feature handles the 401 itself.
 
 - It saves a replacement refresh token Google sends before handing out
   the access token, and never revokes the one replaced.
@@ -2607,6 +2936,12 @@ does what Google's refresh tokens need:
   asking Google, until the member reconnects. A job stops work for the
   account on it, as on `ErrNotFound` for a disconnected account and
   `ErrDeactivated` for a deactivated member's.
+- When Google's token endpoint fails instead, e.g. in an outage, its
+  error wraps `connectedaccount.ErrRefreshFailed`, so a job can tell
+  Google's failure from its own storage's, which `Token` returns as is.
+- `Access.Check` answers the same stop errors, `ErrTokenUnreadable`
+  included, without asking Google, for a step that writes only inbok's
+  data but must still stop for a stopped account.
 - It writes only against the token it read, so a reconnect or another
   job's replacement in between wins; it then reads again once, and
   returns `ErrCredentialChanged` if the token changed again. Saving a
@@ -2623,6 +2958,10 @@ Build `Access` in `cmd/inbok/worker.go` only when a Google client is
 configured, as `connectedaccount.Removals` is, so the job's field in
 `dbos.Services` stays nil otherwise: a nil `*Access` stored in it would
 pass the worker's nil check.
+
+The `mailsync.Provider` methods back off Gmail's rate limits themselves,
+as [Synchronized mail](#synchronized-mail) describes, and return
+`mailsync.ErrProviderBusy` once the retries run out.
 
 Keep the token out of a step's output: DBOS saves outputs in the
 database. `AccessToken` saves as `{}` in JSON and prints as a

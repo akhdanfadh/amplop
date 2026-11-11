@@ -4,9 +4,14 @@ import { ApiError } from "@/api/transport";
 import {
   disconnectedMessage,
   disconnectErrorMessage,
+  failureWords,
   formatDate,
+  formatMoment,
   outcomeNotice,
+  runningText,
   startErrorMessage,
+  syncErrorMessage,
+  syncStartedMessage,
 } from "./text";
 
 const httpStatus = {
@@ -17,6 +22,15 @@ const httpStatus = {
   internalServerError: 500,
 };
 const email = "mail@example.com";
+
+// refusal returns the server's refusal with status and problem type.
+function refusal(status: number, type: string): ApiError {
+  return new ApiError("http", {
+    method: "POST",
+    status,
+    problem: { type, status, title: "Refused", detail: "Refused." },
+  });
+}
 
 describe("connect outcomes", () => {
   it("words every outcome the contract lists", () => {
@@ -169,6 +183,63 @@ describe("disconnect messages", () => {
     const unreadable = new ApiError("response", { status: httpStatus.ok, method: "DELETE" });
     expect(disconnectErrorMessage(unreadable, email)).toBe(
       "Could not confirm whether mail@example.com is disconnected. Check the list before trying again.",
+    );
+  });
+});
+
+describe("wording", () => {
+  it("counts the messages copied", () => {
+    expect(runningText(1)).toBe(
+      "Copying your last 90 days of mail into inbok: 1 message so far. New mail shows up in the meantime.",
+    );
+    expect(runningText(0)).toMatch(/: 0 messages so far\./);
+    // A comma for thousands whatever the reader's locale.
+    expect(runningText(2140)).toMatch(/: 2,140 messages so far\./);
+  });
+
+  it("words a failure by its cause and what happens next", () => {
+    expect(failureWords("provider", "complete")).toEqual({
+      before: "Couldn't get mail from Gmail at",
+      after: ". inbok will try again.",
+    });
+    expect(failureWords("provider", "failed").after).toBe(". inbok will try again within an hour.");
+    for (const failure of ["token-unreadable", "internal"] as const)
+      expect(failureWords(failure, "failed")).toEqual({
+        before: "Couldn't get mail at",
+        after: " because of a problem on inbok's side. Ask your administrator.",
+      });
+  });
+
+  it("shows a time with its date only on another day", () => {
+    const now = new Date(2026, 10, 11, 12, 0);
+    const today = new Date(2026, 10, 11, 9, 30).toISOString();
+    const yesterday = new Date(2026, 10, 10, 9, 30).toISOString();
+    expect(formatMoment(today, now)).not.toMatch(/2026/);
+    expect(formatMoment(yesterday, now)).toMatch(/2026/);
+  });
+
+  it("says a Check now started", () => {
+    expect(syncStartedMessage(email)).toBe(`Checking ${email} for new mail.`);
+  });
+});
+
+describe("syncErrorMessage", () => {
+  it("words each refusal by its type", () => {
+    expect(
+      syncErrorMessage(refusal(404, "/api/v0/problems/connected-account-not-found"), email),
+    ).toBe(`${email} is no longer connected.`);
+    expect(syncErrorMessage(refusal(409, "/api/v0/problems/account-needs-reconnect"), email)).toBe(
+      `Reconnect ${email} before checking it for mail.`,
+    );
+    expect(syncErrorMessage(refusal(429, "/api/v0/problems/sync-throttled"), email)).toBe(
+      `inbok started checking ${email} moments ago. See its status below.`,
+    );
+  });
+
+  it("asks for a look when the outcome is unknown", () => {
+    const lost = new ApiError("network", { method: "POST" });
+    expect(syncErrorMessage(lost, email)).toBe(
+      `Couldn't tell whether inbok started checking ${email}. See its status below.`,
     );
   });
 });

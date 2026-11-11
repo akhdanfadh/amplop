@@ -355,6 +355,7 @@ func TestTokenGoogleFails(t *testing.T) {
 	_, err := a.access.Token(t.Context(), a.account.ID)
 
 	require.ErrorIs(t, err, unavailable)
+	require.ErrorIs(t, err, ErrRefreshFailed, "a job can tell Google's failure from inbok's")
 	require.NotErrorIs(t, err, ErrNeedsReconnect)
 	assert.Nil(t, a.needsReconnectSince(t))
 }
@@ -370,7 +371,200 @@ func TestTokenSealFails(t *testing.T) {
 	_, err := access.Token(t.Context(), a.account.ID)
 
 	require.ErrorIs(t, err, sealErr)
+	require.NotErrorIs(t, err, ErrRefreshFailed, "inbok's own failure is not Google's")
 	assert.Equal(t, "refresh-1", storedToken(t, a.ring, a.storage, member, a.account.ID))
+}
+
+// expiringAnswers makes Google answer the nth refresh with access-<n+1>,
+// expiring an hour after a's clock reads at the time.
+func (a *accessTest) expiringAnswers() {
+	a.google.answer = func(n int) (Renewal, error) {
+		return Renewal{AccessToken: NewAccessToken(fmt.Sprintf("access-%d", n+1)), Expiry: a.now.Add(time.Hour)}, nil
+	}
+}
+
+// A token is handed out again while more than tokenRenewBefore remains,
+// without asking Google, and traded anew after.
+func TestTokenKept(t *testing.T) {
+	a := newAccessTest(t)
+	a.expiringAnswers()
+
+	first, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+	a.now = a.now.Add(time.Hour - tokenRenewBefore - time.Second)
+	again, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+	a.now = a.now.Add(time.Second)
+	renewed, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+
+	assert.Equal(t, "access-1", first.Value())
+	assert.Equal(t, "access-1", again.Value())
+	assert.Equal(t, "access-2", renewed.Value())
+	assert.Equal(t, []string{"refresh-1", "refresh-1"}, a.google.refreshed)
+}
+
+// A kept token still stops for a stopped account: every call reads it.
+func TestTokenKeptStopped(t *testing.T) {
+	a := newAccessTest(t)
+	a.expiringAnswers()
+	_, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+
+	a.storage.deactivated = map[int64]bool{member: true}
+	_, err = a.access.Token(t.Context(), a.account.ID)
+
+	require.ErrorIs(t, err, ErrDeactivated)
+	assert.Len(t, a.google.refreshed, 1)
+}
+
+// A reconnect saves another credential, so the token kept for the old one
+// is not handed out.
+func TestTokenKeptReconnect(t *testing.T) {
+	a := newAccessTest(t)
+	a.expiringAnswers()
+	_, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+
+	a.reconnect(t, "refresh-2")
+	token, err := a.access.Token(t.Context(), a.account.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, "access-2", token.Value())
+	assert.Equal(t, []string{"refresh-1", "refresh-2"}, a.google.refreshed)
+}
+
+// A token kept under a replacement is the one handed out next.
+func TestTokenKeptReplacement(t *testing.T) {
+	a := newAccessTest(t)
+	a.google.answer = func(n int) (Renewal, error) {
+		return Renewal{AccessToken: NewAccessToken("access-1"), Expiry: a.now.Add(time.Hour), RefreshToken: "refresh-2"}, nil
+	}
+	_, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+
+	_, err = a.access.Token(t.Context(), a.account.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"refresh-1"}, a.google.refreshed)
+}
+
+// A token Google gives no expiry for is not kept.
+func TestTokenNoExpiry(t *testing.T) {
+	a := newAccessTest(t)
+
+	for range 2 {
+		_, err := a.access.Token(t.Context(), a.account.ID)
+		require.NoError(t, err)
+	}
+
+	assert.Equal(t, []string{"refresh-1", "refresh-1"}, a.google.refreshed)
+}
+
+// A stopped account's kept token is dropped, and so is an expired one
+// when another is kept.
+func TestTokenKeptDropped(t *testing.T) {
+	a := newAccessTest(t)
+	a.expiringAnswers()
+	_, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+
+	a.storage.deactivated = map[int64]bool{member: true}
+	_, err = a.access.Token(t.Context(), a.account.ID)
+	require.ErrorIs(t, err, ErrDeactivated)
+	assert.Empty(t, a.access.kept)
+
+	a.storage.deactivated = nil
+	_, err = a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+	a.access.kept[a.account.ID+1] = keptToken{expiry: a.now.Add(-time.Second)}
+	a.now = a.now.Add(time.Hour)
+	_, err = a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+	assert.Len(t, a.access.kept, 1, "the other account's expired token is dropped")
+}
+
+// A token the provider refused is traded anew, so a revoked grant meets
+// Google's refusal.
+func TestAccessTokenRefused(t *testing.T) {
+	a := newAccessTest(t)
+	a.expiringAnswers()
+	token, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+
+	token.Refused()
+	a.google.answer = func(int) (Renewal, error) { return Renewal{}, ErrRefreshRefused }
+	_, err = a.access.Token(t.Context(), a.account.ID)
+
+	require.ErrorIs(t, err, ErrNeedsReconnect)
+	assert.Len(t, a.google.refreshed, 2)
+}
+
+// A late refusal of an older token keeps the one traded since, which the
+// provider has not refused.
+func TestAccessTokenRefusedOlder(t *testing.T) {
+	a := newAccessTest(t)
+	a.expiringAnswers()
+	older, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+	older.Refused()
+	newer, err := a.access.Token(t.Context(), a.account.ID)
+	require.NoError(t, err)
+
+	older.Refused()
+	again, err := a.access.Token(t.Context(), a.account.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, newer.Value(), again.Value())
+	assert.Len(t, a.google.refreshed, 2)
+}
+
+// A token no Access keeps reports its refusal to no one.
+func TestAccessTokenRefusedUnkept(t *testing.T) {
+	assert.NotPanics(t, NewAccessToken("access-1").Refused)
+}
+
+// Check answers whether provider work may run, with Token's stop errors,
+// and never asks Google.
+func TestCheck(t *testing.T) {
+	otherKeys, err := encryption.New("1:AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=")
+	require.NoError(t, err)
+	for name, tc := range map[string]struct {
+		stop func(a *accessTest) *Access
+		want error
+	}{
+		"usable": {stop: func(a *accessTest) *Access { return a.access }},
+		"deactivated": {stop: func(a *accessTest) *Access {
+			a.storage.deactivated = map[int64]bool{member: true}
+			return a.access
+		}, want: ErrDeactivated},
+		"needs reconnecting": {stop: func(a *accessTest) *Access {
+			a.storage.accounts[a.storage.find(member, a.account.ID)].account.NeedsReconnectSince = &a.now
+			return a.access
+		}, want: ErrNeedsReconnect},
+		"disconnected": {stop: func(a *accessTest) *Access {
+			_, err := a.accounts.Disconnect(t.Context(), member, a.account.ID)
+			require.NoError(t, err)
+			return a.access
+		}, want: ErrNotFound},
+		"unreadable token": {stop: func(a *accessTest) *Access {
+			return NewAccess(a.storage, otherKeys, a.google, func() time.Time { return a.now })
+		}, want: ErrTokenUnreadable},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := newAccessTest(t)
+			access := tc.stop(a)
+
+			err := access.Check(t.Context(), a.account.ID)
+
+			if tc.want == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, tc.want)
+			}
+			assert.Empty(t, a.google.refreshed)
+		})
+	}
 }
 
 // failingKeyring opens with Keyring but fails every seal with err.

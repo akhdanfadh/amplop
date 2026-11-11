@@ -2,9 +2,12 @@ package google
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +73,28 @@ func TestProfileContextEnded(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
+// A 401 from Gmail reports the access token refused; other answers do
+// not.
+func TestRefusalTransport(t *testing.T) {
+	for _, c := range []struct {
+		status  int
+		refused int
+	}{{http.StatusUnauthorized, 1}, {http.StatusForbidden, 0}, {http.StatusOK, 0}} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(c.status)
+		}))
+		t.Cleanup(server.Close)
+		refused := 0
+		client := &http.Client{Transport: refusalTransport{base: http.DefaultTransport, refused: func() { refused++ }}}
+
+		res, err := client.Get(server.URL)
+
+		require.NoError(t, err)
+		require.NoError(t, res.Body.Close())
+		assert.Equal(t, c.refused, refused, "status %d", c.status)
+	}
+}
+
 // Gmail's answer for a Google account without Gmail is told apart from
 // other refusals, still without the body.
 func TestProfileNoGmail(t *testing.T) {
@@ -89,4 +114,53 @@ func TestProfileNoGmail(t *testing.T) {
 
 	require.ErrorIs(t, err, connectedaccount.ErrNoGmail)
 	assert.NotContains(t, err.Error(), "Mail service")
+}
+
+// An answer past the cap fails the call rather than being read whole.
+func TestGmailTooLarge(t *testing.T) {
+	client, _ := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"historyId":"42","emailAddress":"` + strings.Repeat("a", maxResponseBytes) + `"}`))
+	})
+
+	_, err := client.Position(t.Context(), stubToken)
+
+	require.ErrorIs(t, err, errResponseTooLarge)
+}
+
+// An answer that does not decode fails the call without quoting it.
+func TestGmailMalformed(t *testing.T) {
+	client, _ := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"historyId":"private-marker"}`))
+	})
+
+	_, err := client.Position(t.Context(), stubToken)
+
+	require.ErrorIs(t, err, errGmailAnswer)
+	assert.NotContains(t, err.Error(), "private-marker")
+}
+
+// The Google client's debug logging, which would log whole answers, stays
+// off whatever the environment says.
+func TestGmailNoDebugLog(t *testing.T) {
+	t.Setenv("GOOGLE_SDK_GO_LOGGING_LEVEL", "debug")
+	read, write, err := os.Pipe()
+	require.NoError(t, err)
+	stderr := os.Stderr
+	os.Stderr = write
+	t.Cleanup(func() { os.Stderr = stderr })
+	client, _ := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"historyId":"42","emailAddress":"private-marker"}`))
+	})
+
+	_, err = client.Position(t.Context(), stubToken)
+	require.NoError(t, err)
+	os.Stderr = stderr
+	require.NoError(t, write.Close())
+	logged, err := io.ReadAll(read)
+	require.NoError(t, err)
+
+	assert.NotContains(t, string(logged), "private-marker")
 }

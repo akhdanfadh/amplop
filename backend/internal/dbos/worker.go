@@ -66,6 +66,9 @@ type Services struct {
 	PasswordChangedNotices      passwordChangedNotices
 	AccountRemovals             accountRemovals
 	OutgoingMessages            outgoingMessages
+	FullSyncs                   fullSyncs
+	Polls                       polls
+	SyncSchedule                dueSyncs
 }
 
 // Worker runs inbok's workflows and schedules.
@@ -122,6 +125,9 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	if err := w.registerCleanup(w.cleanups(services)); err != nil {
 		return nil, errors.Join(fmt.Errorf("schedule cleanup: %w", err), w.Shutdown())
 	}
+	if err := w.registerSyncSchedule(services.SyncSchedule); err != nil {
+		return nil, errors.Join(fmt.Errorf("schedule sync: %w", err), w.Shutdown())
+	}
 	for _, queue := range []string{emailQueue, googleQueue, googleSendQueue} {
 		if err := w.registerQueue(queue); err != nil {
 			return nil, errors.Join(fmt.Errorf("register queue %s: %w", queue, err), w.Shutdown())
@@ -132,6 +138,7 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	w.registerPasswordChangedNotice(services.PasswordChangedNotices)
 	w.registerAccountRemoval(services.AccountRemovals)
 	w.registerOutgoingMessage(services.OutgoingMessages)
+	w.registerSync(services.FullSyncs, services.Polls)
 
 	// 5. Listen only to the queues whose workflows this worker runs. DBOS
 	// listens to every queue by default and claims a run before finding its
@@ -145,7 +152,7 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 // from: each Google queue only when it runs that queue's workflows.
 func listenedQueues(services Services) []string {
 	queues := []string{emailQueue}
-	if services.AccountRemovals != nil {
+	if services.AccountRemovals != nil || services.FullSyncs != nil || services.Polls != nil {
 		queues = append(queues, googleQueue)
 	}
 	if services.OutgoingMessages != nil {

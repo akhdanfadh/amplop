@@ -52,6 +52,7 @@ type Services struct {
 	// then not offered.
 	Connections      connectionService
 	OutgoingMessages outgoingMessageService
+	Syncs            syncService
 }
 
 // New registers operations; logger receives one line per request. Build it
@@ -132,7 +133,7 @@ func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API 
 	registerMembers(api, services.Members)
 	registerRegistration(api, services.Registration, services.RegistrationRequests, services.RegistrationCompletion)
 	registerPasswordReset(api, services.PasswordResetRequests, services.PasswordResetCompletion)
-	registerConnectedAccounts(api, logger, services.ConnectedAccounts, services.Connections, services.Session)
+	registerConnectedAccounts(api, logger, services.ConnectedAccounts, services.Connections, services.Syncs, services.Session)
 	registerOutgoingMessages(api, services.OutgoingMessages)
 
 	documentRateLimits(api)

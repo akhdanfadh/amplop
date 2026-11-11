@@ -2,6 +2,7 @@ package dbos
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 	"uuid"
@@ -117,6 +118,89 @@ func (c *Client) EnqueueOutgoingMessage(ctx context.Context, tx pgx.Tx, messageI
 	)
 	return err
 }
+
+// EnqueueSync saves, in a savepoint of tx, the sync workflow for the
+// connected account with accountID on the Google queue, so it commits or
+// rolls back with tx. Cancelling ctx stops its statements. It reports
+// false, saving nothing and leaving tx usable, when the account's sync is
+// already queued or running. It returns DBOS's other errors, after which
+// tx is aborted and must roll back.
+//
+// DESIGN: DBOS refuses its return-existing policy inside a caller's
+// transaction, and a duplicate fails the insert, which aborts the
+// transaction it ran in; the savepoint confines that to the enqueue.
+func (c *Client) EnqueueSync(ctx context.Context, tx pgx.Tx, accountID int64) (bool, error) {
+	// 1. Open the savepoint before DBOS's insert, which a duplicate fails.
+	savepoint, err := tx.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	// 2. Enqueue in it.
+	input := SyncInput{AccountID: accountID}
+	_, err = dbos.Enqueue[SyncOutput](c.client, googleQueue, syncWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: savepoint, ctx: ctx}),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+		dbos.WithEnqueueDeduplicationID(syncDeduplication(accountID)),
+	)
+
+	// 3. Undo only the savepoint on a duplicate, which leaves tx usable.
+	if errors.Is(err, dbos.ErrQueueDeduplicated) {
+		return false, savepoint.Rollback(ctx)
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, savepoint.Commit(ctx)
+}
+
+// SyncScheduleSucceeded reports whether a run of the minute's sync
+// schedule created after since succeeded. It stops when ctx ends, and
+// returns DBOS's error, joined with ctx's when ctx ended first.
+func (c *Client) SyncScheduleSucceeded(ctx context.Context, since time.Time) (bool, error) {
+	// DBOS's calls run with its own context, not the one given, so the read
+	// takes a copy of DBOS's that ctx's end cancels: a stalled read must not
+	// outlive the request.
+	//
+	// NOTE: dbos.Client has no way to derive a context; the client
+	// dbos.NewClient returns is a dbos.Context, which has (v1.8.0).
+	// TestClientScoped checks it on each upgrade.
+	scoped, ok := c.client.(dbos.Context)
+	if !ok {
+		return false, errNotScoped
+	}
+	scoped, cancel := dbos.WithTimeout(scoped, scheduleReadTimeout)
+	defer cancel()
+	stop := context.AfterFunc(ctx, cancel)
+	defer stop()
+
+	runs, err := dbos.ListWorkflows(scoped,
+		dbos.WithFilterScheduleName(syncSchedule),
+		dbos.WithFilterStatus(dbos.WorkflowStatusSuccess),
+		dbos.WithFilterCreatedAfter(since),
+		dbos.WithFilterLimit(1),
+		dbos.WithFilterLoadInput(false),
+		dbos.WithFilterLoadOutput(false),
+	)
+	// The cancel above makes DBOS report a cancellation, so ctx's own
+	// error goes with it: a request past its deadline then answers 503.
+	if err != nil && ctx.Err() != nil {
+		return false, errors.Join(ctx.Err(), err)
+	}
+	if err != nil {
+		return false, err
+	}
+	return len(runs) > 0, nil
+}
+
+// errNotScoped means the DBOS client cannot take a deadline, which an SDK
+// upgrade may cause.
+var errNotScoped = errors.New("DBOS client cannot take a deadline")
+
+// scheduleReadTimeout bounds [Client.SyncScheduleSucceeded] when its
+// caller sets no shorter deadline, inbok's choice: under a request's
+// 10-second work limit.
+const scheduleReadTimeout = 5 * time.Second
 
 // callerTx is a transaction whose statements run with ctx, whatever context
 // they are given.

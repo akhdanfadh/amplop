@@ -157,6 +157,7 @@ func TestRefresh(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Empty(t, renewal.RefreshToken, "Google kept the refresh token")
+	assert.False(t, renewal.Expiry.IsZero(), "Google says when the access token expires")
 	profile, err := client.Profile(t.Context(), renewal.AccessToken)
 	require.NoError(t, err)
 	assert.Equal(t, "alex@example.com", profile.Email)
