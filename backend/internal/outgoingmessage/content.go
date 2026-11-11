@@ -18,8 +18,11 @@ const (
 	// maxSubjectLength bounds a subject in characters, longer than any a
 	// person writes.
 	maxSubjectLength = 500
-	// maxBodyLength bounds a body in characters: at most 4 bytes each, or 6
-	// as a JSON escape, it fits the API's 1 MB request body.
+	// maxBodyLength bounds a body in characters. Written as the web app's
+	// JSON.stringify writes it, at most 4 bytes each, or 6 for an escaped
+	// control character, it fits Huma's 1 MiB request body. A client that
+	// escapes each character outside the Basic Multilingual Plane as a \u
+	// pair, 12 bytes, can get a 413 near the limit (ADR006).
 	maxBodyLength = 100_000
 )
 
