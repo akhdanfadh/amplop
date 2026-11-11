@@ -23,13 +23,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { formatReceived } from "@/features/messages/text";
 import {
-  editable,
   needsReconnect,
-  reconnectAdvised,
+  nextSteps,
   sendAgainErrorMessage,
-  sendableAgain,
   statusLabel,
-  statusText,
   statusVariant,
 } from "./text";
 
@@ -82,14 +79,15 @@ export function MessageStatus({
     },
   });
   const sent = message.sentAt === null ? undefined : formatReceived(message.sentAt);
-  const reconnect = reconnectAdvised(message) || needsReconnect(again.error);
+  const steps = nextSteps(message, current);
+  const reconnect = steps.offers.includes("reconnect") || needsReconnect(again.error);
 
   useEffect(() => {
     // After the first paint, when the empty region is in place.
     const frame = requestAnimationFrame(() => setAnnounced(true));
     return () => cancelAnimationFrame(frame);
   }, []);
-  const sendable = sendableAgain(message);
+  const sendable = steps.offers.includes("send-again");
   useEffect(() => {
     if (!again.error || again.isPending) return;
     // 1. The button lost focus while disabled; give it back once.
@@ -128,20 +126,19 @@ export function MessageStatus({
               .
             </>
           ) : (
-            statusText(message, current)
+            steps.text
           )}
         </output>
       </div>
 
       {message.sentAgainAs !== null && (
         <p>
-          This message was sent again as a new one.{" "}
           <Link
             to="/outbox/$id"
             params={{ id: message.sentAgainAs }}
             className={`underline underline-offset-4 ${focusClass}`}
           >
-            Open the new message
+            See how the new try went
           </Link>
         </p>
       )}
@@ -163,7 +160,7 @@ export function MessageStatus({
             {again.isPending ? "Sending again..." : "Send again"}
           </Button>
         )}
-        {editable(message) && (
+        {steps.offers.includes("edit") && (
           <Link
             to="/compose"
             search={{ edit: message.id }}

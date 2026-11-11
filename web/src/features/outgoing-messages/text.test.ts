@@ -2,22 +2,20 @@ import { describe, expect, it } from "vite-plus/test";
 import type { OutgoingMessageSummary, ProblemType } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
 import {
-  editable,
   inProgress,
   keyReused,
   leaveText,
   mayHaveSaved,
   needsReconnect,
-  reconnectAdvised,
+  nextSteps,
   statusLabel,
   statusVariant,
   readErrorMessage,
   recipientSummary,
   sendAgainErrorMessage,
   sendErrorMessage,
-  sendableAgain,
-  statusText,
   type MessageState,
+  type Offer,
 } from "./text";
 
 type Failure = NonNullable<OutgoingMessageSummary["failure"]>;
@@ -45,9 +43,11 @@ function problem(status: number, type: ProblemType): ApiError {
   });
 }
 
-describe("statusText", () => {
+describe("nextSteps", () => {
+  const copy = "0b9f3a52-5f1d-4a8e-9a43-5f0c2b6b1c11";
+
   it("says the account to check for an unknown outcome", () => {
-    expect(statusText({ ...waiting, status: "unknown" })).toBe(
+    expect(nextSteps({ ...waiting, status: "unknown" }).text).toBe(
       "inbok couldn't confirm whether Gmail sent this message. Check the Sent folder of me@example.com in Gmail before sending it again.",
     );
   });
@@ -63,36 +63,49 @@ describe("statusText", () => {
     ["deactivated", "Your inbok account was deactivated"],
     ["gave-up", "Google didn't take this message after several tries"],
   ])("words %s", (failure, words) => {
-    const text = statusText(failed(failure));
+    const { text } = nextSteps(failed(failure));
     expect(text.startsWith("Not sent. ")).toBe(true);
     expect(text).toContain(words);
   });
 
   it("names the address Send again uses after a sender change, when known", () => {
-    expect(statusText(failed("sender-changed"), "new@example.com")).toContain(
+    expect(nextSteps(failed("sender-changed"), "new@example.com").text).toContain(
       "sends it from new@example.com.",
     );
-    expect(statusText(failed("sender-changed"))).toContain("sends it from the new address.");
-  });
-});
-
-describe("sendableAgain and editable", () => {
-  it("offers Send again for unknown and failed messages, except refused ones", () => {
-    expect(sendableAgain({ ...waiting, status: "unknown" })).toBe(true);
-    expect(sendableAgain(failed("gave-up"))).toBe(true);
-    expect(sendableAgain(failed("refused"))).toBe(false);
-    expect(sendableAgain({ ...waiting, status: "sent" })).toBe(false);
-    expect(sendableAgain(waiting)).toBe(false);
+    expect(nextSteps(failed("sender-changed")).text).toContain("sends it from the new address.");
   });
 
-  it("offers nothing more for a message already sent again", () => {
-    const copy = "0b9f3a52-5f1d-4a8e-9a43-5f0c2b6b1c11";
-    expect(sendableAgain({ ...failed("gave-up"), sentAgainAs: copy })).toBe(false);
+  it.each<[string, MessageState, Offer[]]>([
+    ["waiting", waiting, []],
+    ["sending", { ...waiting, status: "sending" }, []],
+    ["sent", { ...waiting, status: "sent" }, []],
+    ["unknown", { ...waiting, status: "unknown" }, ["send-again"]],
+    ["refused", failed("refused"), ["edit"]],
+    ["sending-limit", failed("sending-limit"), ["send-again"]],
+    ["needs-reconnect", failed("needs-reconnect"), ["send-again", "reconnect"]],
+    ["token-unreadable", failed("token-unreadable"), ["send-again", "reconnect"]],
+    ["deactivated", failed("deactivated"), ["send-again"]],
+    ["sender-changed", failed("sender-changed"), ["send-again"]],
+    ["gave-up", failed("gave-up"), ["send-again"]],
+  ])("offers what a %s message allows", (_, message, offers) => {
+    expect(nextSteps(message).offers).toEqual(offers);
   });
 
-  it("offers editing only a refused message", () => {
-    expect(editable(failed("refused"))).toBe(true);
-    expect(editable(failed("gave-up"))).toBe(false);
+  // Each reason's own text says to send it again or reconnect; once a copy
+  // exists, following it would send the message twice.
+  it.each<[string, MessageState, string]>([
+    [
+      "failed",
+      { ...failed("needs-reconnect"), sentAgainAs: copy },
+      "Not sent. You already tried sending it again.",
+    ],
+    [
+      "unknown",
+      { ...waiting, status: "unknown", sentAgainAs: copy },
+      "inbok couldn't confirm whether Gmail sent this message. You already tried sending it again.",
+    ],
+  ])("offers nothing more for a %s message already sent again", (_, message, text) => {
+    expect(nextSteps(message)).toEqual({ text, offers: [] });
   });
 });
 
@@ -175,12 +188,6 @@ describe("status helpers", () => {
     expect(inProgress("sending")).toBe(true);
     expect(inProgress("unknown")).toBe(false);
     expect(inProgress("sent")).toBe(false);
-  });
-
-  it("advises reconnecting for the two failures a reconnect fixes", () => {
-    expect(reconnectAdvised({ failure: "needs-reconnect" })).toBe(true);
-    expect(reconnectAdvised({ failure: "token-unreadable" })).toBe(true);
-    expect(reconnectAdvised({ failure: "gave-up" })).toBe(false);
   });
 
   it("tells problems apart by status and type together", () => {

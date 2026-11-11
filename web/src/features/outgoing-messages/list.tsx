@@ -42,7 +42,7 @@ function MessageRow({ message }: { message: OutgoingMessageSummary }): ReactElem
           {subjectText(message.subject)}
         </Link>
         <Badge variant={statusVariant(message.status)}>{statusLabel(message.status)}</Badge>
-        {message.sentAgainAs !== null && <Badge variant="outline">Sent again</Badge>}
+        {message.sentAgainAs !== null && <Badge variant="outline">Tried again</Badge>}
       </p>
       <p className="text-sm wrap-break-word">
         Recipients: <span translate="no">{recipientSummary(message)}</span>

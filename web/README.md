@@ -439,9 +439,12 @@ failed message says why and what to do, and an `unknown` one says to check
 the account's Sent folder in Gmail. Send again copies a failed or unknown
 message into a new one from the same account and opens it; for an
 `unknown` message it asks first, since the first may have gone out. A
-message is sent again at most once, so its page then links the copy
-instead. A message Gmail refused offers Edit and send instead, which opens
-the compose form filled with its content, as a new message.
+message is sent again at most once, so its page then says so and links the
+copy, and drops the reason's advice and every action, which would send it
+twice. A message Gmail refused offers Edit and send instead, which opens
+the compose form filled with its content, as a new message. One function,
+`nextSteps` (`src/features/outgoing-messages/text.ts`), works out both what
+a message's page says and what it offers, so the two cannot disagree.
 
 ## Message view
 

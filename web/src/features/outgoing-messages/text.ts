@@ -66,12 +66,44 @@ const statusTexts: Record<Exclude<Status, "failed">, (from: string) => string> =
     `inbok couldn't confirm whether Gmail sent this message. Check the Sent folder of ${from} in Gmail before sending it again.`,
 };
 
-// statusText says what happened to message and what the member can do.
-// current is the sending account's address now, when known.
-export function statusText(message: MessageState, current?: string): string {
-  if (message.status !== "failed") return statusTexts[message.status](message.from);
+// What the member can do with a message from its page: send it again in
+// one step, edit it into a new message, or reconnect its account.
+export type Offer = "send-again" | "edit" | "reconnect";
+
+// NextSteps is what a message's page says happened and what it offers.
+export type NextSteps = { text: string; offers: Offer[] };
+
+// A message sent again already has a copy: it offers nothing more, so no
+// text sends the member to send it twice.
+const sentAgainTexts: Partial<Record<Status, string>> = {
+  failed: "Not sent. You already tried sending it again.",
+  unknown:
+    "inbok couldn't confirm whether Gmail sent this message. You already tried sending it again.",
+};
+
+// nextSteps says what happened to message and what the member can do
+// next. current is the sending account's address now, when known.
+export function nextSteps(message: MessageState, current?: string): NextSteps {
+  const again = message.sentAgainAs === null ? undefined : sentAgainTexts[message.status];
+  if (again !== undefined) return { text: again, offers: [] };
+  if (message.status === "unknown")
+    return { text: statusTexts.unknown(message.from), offers: ["send-again"] };
+  if (message.status !== "failed")
+    return { text: statusTexts[message.status](message.from), offers: [] };
   const failure = message.failure && failures[message.failure];
-  return failure ? `Not sent. ${failure(message.from, current)}` : "Not sent.";
+  const text = failure ? `Not sent. ${failure(message.from, current)}` : "Not sent.";
+  return { text, offers: failureOffers(message.failure) };
+}
+
+// failureOffers returns what a message failed for failure offers. Gmail
+// would refuse a refused message again, so it is edited instead; a
+// reconnect fixes an account Google stopped accepting or whose saved
+// access inbok cannot open.
+function failureOffers(failure: Failure | null): Offer[] {
+  if (failure === "refused") return ["edit"];
+  if (failure === "needs-reconnect" || failure === "token-unreadable")
+    return ["send-again", "reconnect"];
+  return ["send-again"];
 }
 
 // inProgress reports whether status can still change by itself.
@@ -85,12 +117,6 @@ export function statusVariant(status: Status): "destructive" | "secondary" {
   return status === "failed" || status === "unknown" ? "destructive" : "secondary";
 }
 
-// reconnectAdvised reports whether message failed for a reason that
-// reconnecting its account fixes.
-export function reconnectAdvised(message: Pick<MessageState, "failure">): boolean {
-  return message.failure === "needs-reconnect" || message.failure === "token-unreadable";
-}
-
 // keyReused reports whether err is the API's refusal of an Idempotency-Key
 // that saved another message: an earlier try's, before the member's edits.
 export function keyReused(err: ApiError | null): boolean {
@@ -101,21 +127,6 @@ export function keyReused(err: ApiError | null): boolean {
 // that must be reconnected before it sends.
 export function needsReconnect(err: ApiError | null): boolean {
   return err?.status === conflict && err.problem?.type === needsReconnectType;
-}
-
-// sendableAgain reports whether the member can send message again in one
-// step: a failed or unknown message not sent again yet. A refused one is
-// edited into a new message instead, since Gmail would refuse it again.
-export function sendableAgain(message: MessageState): boolean {
-  if (message.sentAgainAs !== null) return false;
-  if (message.status === "unknown") return true;
-  return message.status === "failed" && message.failure !== "refused";
-}
-
-// editable reports whether the member is offered to edit message into a
-// new one: a refused message, which sending again would not fix.
-export function editable(message: MessageState): boolean {
-  return message.status === "failed" && message.failure === "refused";
 }
 
 // recipientSummary names the first recipient of a message and how many
