@@ -60,7 +60,8 @@ type Provider interface {
 	// Send sends raw, an RFC 5322 message, from the mailbox. When the message is
 	// not known to be sent, it returns only [ErrRefused], [ErrSendingLimit],
 	// [ErrNotSent], or [ErrUnanswered], and [ErrNotSent] only when Gmail said so
-	// or no part of the request can have reached it.
+	// or no part of the request can have reached it. It ends by its own
+	// deadline, since [Sending.Send] calls it with a context no stop cancels.
 	Send(ctx context.Context, token connectedaccount.AccessToken, raw []byte) (Sent, error)
 
 	// FindSent returns the message Gmail added to Sent after historyID
@@ -246,7 +247,13 @@ func (s *Sending) Send(ctx context.Context, messageID uuid.UUID) (Status, error)
 		return statusOf(latest, err), ignoreGone(err)
 	}
 
-	// 5. Send, and save what Gmail answered.
+	// 5. Send, and save what Gmail answered. From here a stop, e.g. the
+	// worker shutting down, cancels neither: cutting the request off would
+	// leave the message sending, and the check would end a send Gmail
+	// answered, or one that never left, unknown. The request keeps the
+	// provider's own deadline; a worker killed meanwhile resumes the step,
+	// which finds the message sending and checks it.
+	ctx = context.WithoutCancel(ctx)
 	sent, err := s.provider.Send(ctx, token, raw)
 	switch {
 	case err == nil:

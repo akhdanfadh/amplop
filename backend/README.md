@@ -357,7 +357,11 @@ again after a crash does only what is left:
    deadlock with it. The check is in this step because DBOS reuses an
    earlier step's result after a restart, however old. The step then marks
    the message `sending`, reading the member's deactivation again under
-   their share lock, and calls `messages.send`. Gmail's IDs end it `sent`.
+   their share lock, and calls `messages.send`. From that call on, a stop,
+   e.g. the worker shutting down, cancels neither the request, which keeps
+   its 30-second deadline, nor saving its answer: cutting it off would turn
+   an answered send, or one that never left, into `unknown`. Gmail's IDs end
+   it `sent`.
    An answer that says the message was not sent ends it `failed`:
    `refused`, or `sending-limit` for Gmail's daily limit, a 429 whose text
    names mail sending. A failure before any connection to Gmail, another

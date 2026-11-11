@@ -25,7 +25,11 @@ func (m *memoryStorage) ReadOutgoingMessageToSend(_ context.Context, messageID u
 	return Message{}, ErrNotFound
 }
 
-func (m *memoryStorage) UpdateOutgoingMessage(_ context.Context, messageID uuid.UUID, update func(SendState) (Transition, error)) (Message, error) {
+func (m *memoryStorage) UpdateOutgoingMessage(ctx context.Context, messageID uuid.UUID, update func(SendState) (Transition, error)) (Message, error) {
+	// A database refuses work for a cancelled context, too.
+	if err := ctx.Err(); err != nil {
+		return Message{}, err
+	}
 	for i, message := range m.messages {
 		if message.ID != messageID {
 			continue
@@ -68,16 +72,25 @@ type fakeProvider struct {
 	found      Sent
 	findErr    error
 
-	sends []string
-	finds []string
+	// during runs inside Send, e.g. to stop the step while the request is
+	// out.
+	during func()
+
+	sends      []string
+	sendCtxErr error
+	finds      []string
 }
 
 func (f *fakeProvider) Mailbox(context.Context, connectedaccount.AccessToken) (Mailbox, error) {
 	return f.mailbox, f.mailboxErr
 }
 
-func (f *fakeProvider) Send(_ context.Context, _ connectedaccount.AccessToken, raw []byte) (Sent, error) {
+func (f *fakeProvider) Send(ctx context.Context, _ connectedaccount.AccessToken, raw []byte) (Sent, error) {
 	f.sends = append(f.sends, string(raw))
+	if f.during != nil {
+		f.during()
+	}
+	f.sendCtxErr = ctx.Err()
 	return f.sent, f.sendErr
 }
 
@@ -295,6 +308,34 @@ func TestSendNotSent(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrNotSent)
 	assert.Equal(t, StatusWaiting, s.read(t).Status)
+}
+
+// A stop while the request is out, e.g. the worker shutting down, cancels
+// neither the request nor saving its answer, so it never makes an answered
+// send, or one that did not leave, unknown.
+func TestSendStopped(t *testing.T) {
+	cases := []struct {
+		name    string
+		sendErr error
+		status  Status
+	}{
+		{"sent", nil, StatusSent},
+		{"not sent", ErrNotSent, StatusWaiting},
+		{"refused", ErrRefused, StatusFailed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newSendTest(t)
+			s.provider.sendErr = tc.sendErr
+			ctx, stop := context.WithCancel(t.Context())
+			s.provider.during = stop
+
+			_, _ = s.sending.Send(ctx, s.message.ID)
+
+			require.NoError(t, s.provider.sendCtxErr, "the request was cancelled")
+			assert.Equal(t, tc.status, s.read(t).Status)
+		})
+	}
 }
 
 // An unanswered send leaves the message sending for the check, and a
