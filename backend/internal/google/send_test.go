@@ -72,7 +72,11 @@ func TestSendAndFind(t *testing.T) {
 
 	found, err := client.FindSent(t.Context(), token, mailbox.HistoryID, "<send-1@example.com>")
 	require.NoError(t, err)
-	assert.Equal(t, sent, found)
+	assert.Equal(t, sent.ProviderMessageID, found.ProviderMessageID)
+	assert.Equal(t, sent.ProviderThreadID, found.ProviderThreadID)
+	// messages.send gives no time; the check reads Gmail's own.
+	assert.True(t, sent.At.IsZero())
+	assert.False(t, found.At.IsZero())
 
 	_, err = client.FindSent(t.Context(), token, mailbox.HistoryID, "<other@example.com>")
 	require.ErrorIs(t, err, outgoingmessage.ErrSentNotFound)
@@ -292,7 +296,7 @@ func sentStub(t *testing.T, pages [][]string, headers map[string][2]string) *Cli
 				gmailError(w, http.StatusNotFound, "Requested entity was not found.", "notFound")
 				return
 			}
-			writeJSON(w, map[string]any{"id": id, "threadId": "th-" + id, "payload": map[string]any{
+			writeJSON(w, map[string]any{"id": id, "threadId": "th-" + id, "internalDate": "1794366415000", "payload": map[string]any{
 				"headers": []any{map[string]string{"name": header[0], "value": header[1]}},
 			}})
 		default:
@@ -302,7 +306,8 @@ func sentStub(t *testing.T, pages [][]string, headers map[string][2]string) *Cli
 }
 
 // Gmail spells a header its own way; the check matches the name in any
-// case and the value exactly, across pages.
+// case and the value exactly, across pages, and keeps Gmail's own time for
+// the message.
 func TestFindSent(t *testing.T) {
 	client := sentStub(t, [][]string{{"gm-1"}, {"gm-2"}}, map[string][2]string{
 		"gm-1": {"X-Inbok-Message-Id", "<other@example.com>"},
@@ -312,7 +317,11 @@ func TestFindSent(t *testing.T) {
 	found, err := client.FindSent(t.Context(), connectedaccount.NewAccessToken("access-1"), "1200", "<mine@example.com>")
 
 	require.NoError(t, err)
-	assert.Equal(t, outgoingmessage.Sent{ProviderMessageID: "gm-2", ProviderThreadID: "th-gm-2"}, found)
+	assert.Equal(t, outgoingmessage.Sent{
+		ProviderMessageID: "gm-2",
+		ProviderThreadID:  "th-gm-2",
+		At:                time.Date(2026, 11, 11, 3, 6, 55, 0, time.UTC),
+	}, found)
 }
 
 // A message deleted before the check might have been this one, so the

@@ -377,9 +377,11 @@ again after a crash does only what is left:
    lists the messages Gmail added to Sent since the noted history ID
    (`history.list`, up to 10 pages) and reads each one's
    `X-Inbok-Message-Id`. Gmail replaces the `Message-ID` a client sets but
-   keeps that header. A match ends the message `sent`. No match, a message
-   deleted before it could be read, history Gmail no longer keeps, or no
-   token ends it `unknown`: it is never sent again, and the member decides.
+   keeps that header. A match ends the message `sent`, with Gmail's own
+   time for it (`internalDate`), not the check's, which runs minutes later,
+   as the member's mailbox shows it. No match, a message deleted before it
+   could be read, history Gmail no longer keeps, or no token ends it
+   `unknown`: it is never sent again, and the member decides.
 4. A step that keeps failing ends with `give up`: a `waiting` message
    fails with `gave-up`, and a `sending` one, which may have gone, becomes
    `unknown`. A `give up` that keeps failing too, e.g. with the database

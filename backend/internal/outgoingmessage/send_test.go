@@ -393,16 +393,22 @@ func TestSendStopError(t *testing.T) {
 	assert.Empty(t, s.provider.sends)
 }
 
+// A message the check finds keeps Gmail's own time for it, not the
+// check's, which runs minutes later.
 func TestCheckFound(t *testing.T) {
 	s := newSendTest(t)
 	s.setStatus(t, StatusSending)
-	s.provider.found = Sent{ProviderMessageID: "gm-2", ProviderThreadID: "th-2"}
+	gmailTime := sendNow.Add(-2 * time.Minute)
+	s.provider.found = Sent{ProviderMessageID: "gm-2", ProviderThreadID: "th-2", At: gmailTime}
 
 	status, err := s.sending.Check(t.Context(), s.message.ID, "1200")
 
 	require.NoError(t, err)
 	assert.Equal(t, StatusSent, status)
-	assert.Equal(t, "gm-2", s.read(t).ProviderMessageID)
+	message := s.read(t)
+	assert.Equal(t, "gm-2", message.ProviderMessageID)
+	require.NotNil(t, message.SentAt)
+	assert.Equal(t, gmailTime, *message.SentAt)
 	assert.Equal(t, []string{"1200 " + s.message.InbokMessageID}, s.provider.finds)
 }
 

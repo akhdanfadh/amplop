@@ -45,10 +45,13 @@ type Mailbox struct {
 	HistoryID string
 }
 
-// Sent is Gmail's IDs for a message it accepted.
+// Sent is Gmail's IDs for a message it accepted, and its time for it.
 type Sent struct {
 	ProviderMessageID string
 	ProviderThreadID  string
+	// At is Gmail's own time for the message (its internalDate), zero when
+	// the answer does not give one, as messages.send's does not.
+	At time.Time
 }
 
 // Provider is Gmail as sending needs it. Each call takes an access token for
@@ -257,8 +260,7 @@ func (s *Sending) Send(ctx context.Context, messageID uuid.UUID) (Status, error)
 	sent, err := s.provider.Send(ctx, token, raw)
 	switch {
 	case err == nil:
-		at := s.now().UTC()
-		return s.end(ctx, messageID, Transition{Status: StatusSent, Sent: sent, SentAt: &at})
+		return s.end(ctx, messageID, Transition{Status: StatusSent, Sent: sent, SentAt: s.sentAt(sent)})
 	case errors.Is(err, ErrRefused):
 		return s.end(ctx, messageID, Transition{Status: StatusFailed, Failure: FailureRefused})
 	case errors.Is(err, ErrSendingLimit):
@@ -298,8 +300,7 @@ func (s *Sending) Check(ctx context.Context, messageID uuid.UUID, historyID stri
 	sent, err := s.provider.FindSent(ctx, token, historyID, message.InbokMessageID)
 	switch {
 	case err == nil:
-		at := s.now().UTC()
-		return s.end(ctx, messageID, Transition{Status: StatusSent, Sent: sent, SentAt: &at})
+		return s.end(ctx, messageID, Transition{Status: StatusSent, Sent: sent, SentAt: s.sentAt(sent)})
 	case errors.Is(err, ErrSentNotFound), errors.Is(err, ErrCheckIncomplete):
 		// Not finding it does not prove Gmail never took it (ADR006).
 		return s.end(ctx, messageID, Transition{Status: StatusUnknown})
@@ -347,6 +348,18 @@ func (s *Sending) stopped(ctx context.Context, messageID uuid.UUID, err error, s
 	}
 	ended, err := s.end(ctx, messageID, next)
 	return ended, true, err
+}
+
+// sentAt returns when a message Gmail took was sent: Gmail's own time for
+// it when the answer gives one, e.g. a check run minutes later, and now
+// otherwise, when Gmail has just answered the send.
+func (s *Sending) sentAt(sent Sent) *time.Time {
+	at := sent.At
+	if at.IsZero() {
+		at = s.now()
+	}
+	at = at.UTC()
+	return &at
 }
 
 // end saves next for message messageID unless it already ended, and returns

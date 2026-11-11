@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/googleapi"
@@ -194,7 +195,11 @@ func (c *Client) FindSent(ctx context.Context, accessToken connectedaccount.Acce
 			return outgoingmessage.Sent{}, redactGmail(err)
 		}
 		if headerValue(message.Payload, inbokMessageIDHeader) == inbokMessageID {
-			return outgoingmessage.Sent{ProviderMessageID: message.Id, ProviderThreadID: message.ThreadId}, nil
+			return outgoingmessage.Sent{
+				ProviderMessageID: message.Id,
+				ProviderThreadID:  message.ThreadId,
+				At:                gmailTime(message.InternalDate),
+			}, nil
 		}
 	}
 	if !complete {
@@ -236,6 +241,15 @@ func sentSince(ctx context.Context, service *gmail.Service, start uint64) ([]str
 		pageToken = page.NextPageToken
 	}
 	return ids, false, nil
+}
+
+// gmailTime returns ms, Gmail's internalDate in milliseconds since the
+// epoch, as a time, or the zero time when Gmail gave none.
+func gmailTime(ms int64) time.Time {
+	if ms <= 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms).UTC()
 }
 
 // headerValue returns the value of part's header name, which Gmail spells

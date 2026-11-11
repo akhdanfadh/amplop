@@ -63,7 +63,7 @@ type outgoingMessageSummary struct {
 	Failure            *outgoingmessage.Failure `json:"failure" nullable:"true" enum:"refused,sending-limit,needs-reconnect,token-unreadable,deactivated,sender-changed,gave-up" doc:"Why the message failed; null unless status is failed. refused: Gmail refused the message; edit it into a new one. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached."`
 	SentAgainAs        *uuid.UUID               `json:"sentAgainAs" nullable:"true" format:"uuid" doc:"The copy this failed or unknown message was sent again as; null until then."`
 	CreatedAt          time.Time                `json:"createdAt"`
-	SentAt             *time.Time               `json:"sentAt" nullable:"true" doc:"When Gmail accepted the message; null unless status is sent."`
+	SentAt             *time.Time               `json:"sentAt" nullable:"true" doc:"When Gmail took the message: Gmail's own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent."`
 }
 
 // TransformSchema lets failure be null.

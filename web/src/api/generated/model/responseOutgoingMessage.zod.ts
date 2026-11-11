@@ -17,7 +17,7 @@ export const ResponseOutgoingMessage = zod.object({
   "from": zod.string().describe('The sending account\'s address when the message was saved.'),
   "id": zod.uuid(),
   "sentAgainAs": zod.uuid().nullable().describe('The copy this failed or unknown message was sent again as; null until then.'),
-  "sentAt": zod.iso.datetime({"offset":true}).nullable().describe('When Gmail accepted the message; null unless status is sent.'),
+  "sentAt": zod.iso.datetime({"offset":true}).nullable().describe('When Gmail took the message: Gmail\'s own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent.'),
   "status": zod.enum(['waiting', 'sending', 'sent', 'failed', 'unknown']).describe('waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure\'s reason. unknown: it may have reached Gmail, and inbok cannot tell; check the account\'s Sent folder before sending it again.'),
   "subject": zod.string(),
   "to": zod.array(zod.string())

@@ -761,7 +761,7 @@
             ]
           },
           "sentAt": {
-            "description": "When Gmail accepted the message; null unless status is sent.",
+            "description": "When Gmail took the message: Gmail's own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent.",
             "format": "date-time",
             "type": [
               "string",
@@ -864,7 +864,7 @@
             ]
           },
           "sentAt": {
-            "description": "When Gmail accepted the message; null unless status is sent.",
+            "description": "When Gmail took the message: Gmail's own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent.",
             "format": "date-time",
             "type": [
               "string",
