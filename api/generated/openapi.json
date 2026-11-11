@@ -728,7 +728,7 @@
             "type": "string"
           },
           "failure": {
-            "description": "Why the message failed; null unless status is failed. refused: Gmail refused the message, e.g. a recipient. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google could not be reached.",
+            "description": "Why the message failed; null unless status is failed. refused: Gmail refused the message; edit it into a new one. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached.",
             "enum": [
               "refused",
               "sending-limit",
@@ -831,7 +831,7 @@
             "type": "string"
           },
           "failure": {
-            "description": "Why the message failed; null unless status is failed. refused: Gmail refused the message, e.g. a recipient. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google could not be reached.",
+            "description": "Why the message failed; null unless status is failed. refused: Gmail refused the message; edit it into a new one. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached.",
             "enum": [
               "refused",
               "sending-limit",
