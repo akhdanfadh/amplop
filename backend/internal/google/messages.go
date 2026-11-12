@@ -55,8 +55,8 @@ const (
 // else (Gmail's performance tips, "Partial response").
 const (
 	listFields     = "messages/id,nextPageToken"
-	metadataFields = "id,threadId,labelIds,snippet,internalDate,payload/headers"
-	minimalFields  = "id,threadId,labelIds,snippet,internalDate"
+	metadataFields = "id,threadId,labelIds,historyId,snippet,internalDate,payload/headers"
+	minimalFields  = "id,threadId,labelIds,historyId,snippet,internalDate"
 	profileFields  = "historyId"
 )
 
@@ -334,6 +334,7 @@ func messageFromGmail(m *gmail.Message) mailsync.Message {
 		message.MessageID = ids[0]
 	}
 	message.MailboxProviderIDs, message.Seen, message.Flagged = labelState(m.LabelIds)
+	message.Version = m.HistoryId
 	return message
 }
 

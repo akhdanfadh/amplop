@@ -63,6 +63,7 @@ func threadMessage(providerID, thread string, day int, sender string, mailboxes 
 		From:               []mailsync.Address{{Name: sender, Address: sender + "@example.com"}},
 		Preview:            "Preview of " + providerID,
 		MailboxProviderIDs: mailboxes,
+		Version:            1,
 	}
 }
 
@@ -237,7 +238,7 @@ func TestConversationFlags(t *testing.T) {
 
 	// When a poll reads it archived, read, and starred.
 	s.update(t, s.account, mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{
-		{ProviderID: "m1", MailboxProviderIDs: []string{"Label_1"}, Seen: true, Flagged: true},
+		{ProviderID: "m1", MailboxProviderIDs: []string{"Label_1"}, Seen: true, Flagged: true, Version: 2},
 	}})
 
 	// Then it leaves the inbox, keeps its label, and is read and starred.

@@ -21,6 +21,19 @@ import (
 // or parameter holds.
 var errStateRange = errors.New("sync state number is out of storage's range")
 
+// errVersionRange means a message's provider version is 0, which no
+// provider gives, or past what a bigint column holds.
+var errVersionRange = errors.New("message version is out of storage's range")
+
+// storedVersion returns version as the provider_version column holds it, or
+// [errVersionRange].
+func storedVersion(version uint64) (int64, error) {
+	if version == 0 || version > math.MaxInt64 {
+		return 0, errVersionRange
+	}
+	return int64(version), nil
+}
+
 // UpdateSyncedMail locks accountID's sync state, calls update with it, and
 // writes the change update returns, in one transaction: the mailboxes, the
 // deletes, the saves with their mailboxes, the updates, the earlier
@@ -232,11 +245,13 @@ func saveMessages(ctx context.Context, tx pgx.Tx, accountID int64, generation in
 	return replaceMailboxes(ctx, tx, accountID, ids, mailboxes)
 }
 
-// updateMessages sets the flags and replaces the mailboxes of accountID's
-// messages that updates name, in tx, skipping those it does not have; when
-// one ProviderID appears more than once, the last wins. It returns the
-// threads of the messages it updated, and [mailsync.ErrUnknownMailbox] when
-// one names a mailbox the account does not have.
+// updateMessages sets the flags, version, and mailboxes of accountID's
+// messages that updates name, in tx, skipping those it does not have and
+// those it holds at a newer version; when one ProviderID appears more than
+// once, the last wins. It returns the threads of the messages it updated,
+// [errVersionRange] for an update without a version, and
+// [mailsync.ErrUnknownMailbox] when one names a mailbox the account does
+// not have.
 func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []mailsync.MessageUpdate) ([]string, error) {
 	if len(updates) == 0 {
 		return nil, nil
@@ -244,7 +259,7 @@ func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []m
 	queries := sqlc.New(tx)
 
 	// 1. Set the flags, keeping each ProviderID's last update, and learn
-	// which messages the account has.
+	// which messages the account has at a version no newer.
 	last := make(map[string]mailsync.MessageUpdate, len(updates))
 	params := sqlc.UpdateMessageFlagsParams{ConnectedAccountID: accountID}
 	for _, update := range updates {
@@ -254,8 +269,13 @@ func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []m
 		last[update.ProviderID] = update
 	}
 	for _, providerID := range params.ProviderMessageIds {
+		version, err := storedVersion(last[providerID].Version)
+		if err != nil {
+			return nil, err
+		}
 		params.Seen = append(params.Seen, last[providerID].Seen)
 		params.Flagged = append(params.Flagged, last[providerID].Flagged)
+		params.ProviderVersions = append(params.ProviderVersions, version)
 	}
 	rows, err := queries.UpdateMessageFlags(ctx, params)
 	if err != nil {
@@ -507,6 +527,10 @@ type storedAddress struct {
 // messageParams returns message as the upsert's parameters for accountID's
 // generation.
 func messageParams(accountID int64, generation int32, message mailsync.Message) (sqlc.UpsertMessageParams, error) {
+	version, err := storedVersion(message.Version)
+	if err != nil {
+		return sqlc.UpsertMessageParams{}, err
+	}
 	var lists [4][]byte
 	for i, addresses := range [][]mailsync.Address{message.From, message.ReplyTo, message.To, message.CC} {
 		raw, err := encodeAddresses(addresses)
@@ -532,6 +556,7 @@ func messageParams(accountID int64, generation int32, message mailsync.Message) 
 		InReplyTo:          orEmpty(message.InReplyTo),
 		InternetReferences: orEmpty(message.References),
 		SyncGeneration:     generation,
+		ProviderVersion:    version,
 	}, nil
 }
 

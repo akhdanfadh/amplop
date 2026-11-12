@@ -104,6 +104,7 @@ func TestMessages(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"missing"}, fetched.Gone)
 	require.Len(t, fetched.Messages, 2)
+	assert.NotZero(t, fetched.Messages[0].Version)
 	assert.Equal(t, mailsync.Message{
 		ProviderID:         "m1",
 		ThreadID:           "t1",
@@ -120,6 +121,7 @@ func TestMessages(t *testing.T) {
 		MessageID:          "<m1@example.com>",
 		InReplyTo:          []string{"<p2@example.com>"},
 		References:         []string{"<p1@example.com>", "<p2@example.com>"},
+		Version:            fetched.Messages[0].Version,
 	}, fetched.Messages[0])
 	read := fetched.Messages[1]
 	assert.Equal(t, "m2", read.ProviderID)

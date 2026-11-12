@@ -244,11 +244,11 @@ const upsertMessage = `-- name: UpsertMessage :batchone
 INSERT INTO messages (connected_account_id, provider_message_id, provider_thread_id,
     internal_date, subject, from_addresses, reply_to_addresses, to_addresses,
     cc_addresses, preview, seen, flagged, internet_message_id, in_reply_to,
-    internet_references, sync_generation)
+    internet_references, sync_generation, provider_version)
 VALUES ($1, $2, $3,
     $4, $5, $6, $7, $8,
     $9, $10, $11, $12, $13, $14,
-    $15, $16)
+    $15, $16, $17)
 ON CONFLICT (connected_account_id, provider_message_id) DO UPDATE SET
     provider_thread_id = excluded.provider_thread_id,
     internal_date = excluded.internal_date,
@@ -263,7 +263,8 @@ ON CONFLICT (connected_account_id, provider_message_id) DO UPDATE SET
     internet_message_id = excluded.internet_message_id,
     in_reply_to = excluded.in_reply_to,
     internet_references = excluded.internet_references,
-    sync_generation = excluded.sync_generation
+    sync_generation = excluded.sync_generation,
+    provider_version = excluded.provider_version
 RETURNING id
 `
 
@@ -290,6 +291,7 @@ type UpsertMessageParams struct {
 	InReplyTo          []string
 	InternetReferences []string
 	SyncGeneration     int32
+	ProviderVersion    int64
 }
 
 // A message the account already has keeps its row and ID, so a repeated
@@ -314,6 +316,7 @@ func (q *Queries) UpsertMessage(ctx context.Context, arg []UpsertMessageParams) 
 			a.InReplyTo,
 			a.InternetReferences,
 			a.SyncGeneration,
+			a.ProviderVersion,
 		}
 		batch.Queue(upsertMessage, vals...)
 	}

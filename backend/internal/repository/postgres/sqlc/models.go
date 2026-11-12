@@ -107,6 +107,7 @@ type Message struct {
 	Preview            string
 	Seen               bool
 	Flagged            bool
+	ProviderVersion    int64
 	InternetMessageID  string
 	InReplyTo          []string
 	InternetReferences []string

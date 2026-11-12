@@ -156,14 +156,17 @@ func (q *Queries) OldestMessage(ctx context.Context, connectedAccountID int64) (
 const updateMessageFlags = `-- name: UpdateMessageFlags :many
 UPDATE messages m SET
     seen = u.seen,
-    flagged = u.flagged
+    flagged = u.flagged,
+    provider_version = u.provider_version
 FROM (
     SELECT unnest($2::text[]) AS provider_message_id,
         unnest($3::boolean[]) AS seen,
-        unnest($4::boolean[]) AS flagged
+        unnest($4::boolean[]) AS flagged,
+        unnest($5::bigint[]) AS provider_version
 ) AS u
 WHERE m.connected_account_id = $1
     AND m.provider_message_id = u.provider_message_id
+    AND m.provider_version <= u.provider_version
 RETURNING m.id, m.provider_message_id, m.provider_thread_id
 `
 
@@ -172,6 +175,7 @@ type UpdateMessageFlagsParams struct {
 	ProviderMessageIds []string
 	Seen               []bool
 	Flagged            []bool
+	ProviderVersions   []int64
 }
 
 type UpdateMessageFlagsRow struct {
@@ -180,15 +184,17 @@ type UpdateMessageFlagsRow struct {
 	ProviderThreadID  string
 }
 
-// Sets the flags of the account's messages named, one per position of the
-// three lists, which have the same length; a message the account does not
-// have is skipped. Returns the IDs and threads of those it has.
+// Sets the flags and version of the account's messages named, one per
+// position of the four lists, which have the same length. A message the
+// account does not have is skipped, and so is one whose stored version is
+// newer. Returns the IDs and threads of those it set.
 func (q *Queries) UpdateMessageFlags(ctx context.Context, arg UpdateMessageFlagsParams) ([]UpdateMessageFlagsRow, error) {
 	rows, err := q.db.Query(ctx, updateMessageFlags,
 		arg.ConnectedAccountID,
 		arg.ProviderMessageIds,
 		arg.Seen,
 		arg.Flagged,
+		arg.ProviderVersions,
 	)
 	if err != nil {
 		return nil, err

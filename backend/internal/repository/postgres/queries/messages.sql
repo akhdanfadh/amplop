@@ -4,11 +4,11 @@
 INSERT INTO messages (connected_account_id, provider_message_id, provider_thread_id,
     internal_date, subject, from_addresses, reply_to_addresses, to_addresses,
     cc_addresses, preview, seen, flagged, internet_message_id, in_reply_to,
-    internet_references, sync_generation)
+    internet_references, sync_generation, provider_version)
 VALUES (@connected_account_id, @provider_message_id, @provider_thread_id,
     @internal_date, @subject, @from_addresses, @reply_to_addresses, @to_addresses,
     @cc_addresses, @preview, @seen, @flagged, @internet_message_id, @in_reply_to,
-    @internet_references, @sync_generation)
+    @internet_references, @sync_generation, @provider_version)
 ON CONFLICT (connected_account_id, provider_message_id) DO UPDATE SET
     provider_thread_id = excluded.provider_thread_id,
     internal_date = excluded.internal_date,
@@ -23,7 +23,8 @@ ON CONFLICT (connected_account_id, provider_message_id) DO UPDATE SET
     internet_message_id = excluded.internet_message_id,
     in_reply_to = excluded.in_reply_to,
     internet_references = excluded.internet_references,
-    sync_generation = excluded.sync_generation
+    sync_generation = excluded.sync_generation,
+    provider_version = excluded.provider_version
 RETURNING id;
 
 -- name: DeleteMessageMailboxes :exec
@@ -88,19 +89,23 @@ SELECT (SELECT count(*) FROM deleted)::bigint AS deleted,
     ), '{}')::uuid[] AS blob_ids;
 
 -- name: UpdateMessageFlags :many
--- Sets the flags of the account's messages named, one per position of the
--- three lists, which have the same length; a message the account does not
--- have is skipped. Returns the IDs and threads of those it has.
+-- Sets the flags and version of the account's messages named, one per
+-- position of the four lists, which have the same length. A message the
+-- account does not have is skipped, and so is one whose stored version is
+-- newer. Returns the IDs and threads of those it set.
 UPDATE messages m SET
     seen = u.seen,
-    flagged = u.flagged
+    flagged = u.flagged,
+    provider_version = u.provider_version
 FROM (
     SELECT unnest(@provider_message_ids::text[]) AS provider_message_id,
         unnest(@seen::boolean[]) AS seen,
-        unnest(@flagged::boolean[]) AS flagged
+        unnest(@flagged::boolean[]) AS flagged,
+        unnest(@provider_versions::bigint[]) AS provider_version
 ) AS u
 WHERE m.connected_account_id = @connected_account_id
     AND m.provider_message_id = u.provider_message_id
+    AND m.provider_version <= u.provider_version
 RETURNING m.id, m.provider_message_id, m.provider_thread_id;
 
 -- name: OldestMessage :one

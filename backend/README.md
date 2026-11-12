@@ -2690,6 +2690,18 @@ the messages it did not see, a batch per change, without comparing
 clocks. Storage keeps one account's writes in order; checking that a
 step's generation is still the current one is the full sync's job.
 
+Writes can still land out of the order Gmail made them, e.g. a poll page
+read before a change at Gmail and written after a newer write. So each
+message keeps `provider_version`, the provider's change number its state
+was read at, which grows with every change: Gmail's `historyId` of a
+fetched message, or the ID of the history record a poll's update comes
+from. An update read at an older version than the stored one is
+skipped, its mailboxes and conversation too, so a late write never
+undoes a newer one. A save is written whatever its version: a full
+sync's stale save is followed by a poll from before it, which brings the
+newer state back. A message or update without a version, or past a
+`bigint`, writes nothing.
+
 `mailsync.Provider` is what synchronization reads from the provider, and
 the `google` client implements it for Gmail. Every method only reads and
 takes an access token from [Calling Gmail](#calling-gmail):
@@ -2713,8 +2725,9 @@ takes an access token from [Calling Gmail](#calling-gmail):
   sorts each message it names into one list: deleted, whatever else
   happened to it; added, to fetch whole; relabelled, an update with the
   whole label set its last label record carries, `UNREAD` and `STARRED`
-  as `seen` and `flagged`; or reread, when that record lists no labels,
-  since Gmail leaves out an empty list too. Each label record's message
+  as `seen` and `flagged`, at the record's ID as its version; or reread,
+  when that record lists no labels, since Gmail leaves out an empty list
+  too. Each label record's message
   lists its labels just after the record (observed on real Gmail; ADR001
   "Reading Gmail"). Gmail's 404 for a history ID it no
   longer keeps returns `mailsync.ErrPositionExpired`, which means a full

@@ -116,6 +116,9 @@ type Message struct {
 	// is in, perhaps none. An archived Gmail message is in no mailbox with
 	// [RoleInbox] but keeps its other labels.
 	MailboxProviderIDs []string
+	// Version is the provider's change number this state was read at,
+	// which grows with every change, e.g. Gmail's historyId; never 0.
+	Version uint64
 	// MessageID is the Message-ID header's msg-id, with its angle brackets;
 	// empty when the header is missing.
 	MessageID string
@@ -198,7 +201,8 @@ type Change struct {
 	// repeated change keeps a saved message's ID.
 	Deleted []string
 	// Updated replace the mailboxes and flags of messages the account has,
-	// after [Change.Saved]; one it does not have is skipped. When one
+	// after [Change.Saved]; one it does not have is skipped, and so is one
+	// whose stored [Message.Version] is newer than the update's. When one
 	// ProviderID appears more than once, the last wins.
 	Updated []MessageUpdate
 	// DeleteEarlier is how many, at most, of the account's messages that no

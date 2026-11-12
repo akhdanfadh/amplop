@@ -113,6 +113,12 @@ CREATE TABLE messages (
     preview              text NOT NULL, -- the provider's plain-text excerpt of the body: Gmail's snippet
     seen                 boolean NOT NULL, -- read: IMAP \Seen, JMAP $seen; Gmail's UNREAD label is its absence
     flagged              boolean NOT NULL, -- starred: IMAP \Flagged, JMAP $flagged; Gmail's STARRED label
+    -- The provider's change number this state was read at, which grows
+    -- with every change: Gmail's historyId, of the message or of the
+    -- history record that changed it; later IMAP's MODSEQ, at most 63 bits
+    -- (RFC 7162). An update read at an older number is skipped, so a late
+    -- write never undoes a newer one.
+    provider_version     bigint NOT NULL CHECK (provider_version > 0),
     -- answered          boolean NOT NULL, -- IMAP \Answered, JMAP $answered; Gmail does not expose it
     -- The headers a reply threads with (RFC 5322 section 3.6.4), each
     -- msg-id with its angle brackets.

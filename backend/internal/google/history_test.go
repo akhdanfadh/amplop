@@ -2,6 +2,7 @@ package google
 
 import (
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,8 +14,8 @@ import (
 )
 
 // Label changes after a position come back as updates with each
-// message's whole state, UNREAD as the seen flag, and the page moves the
-// position on.
+// message's whole state, UNREAD as the seen flag, at a version past the
+// start, and the page moves the position on.
 func TestChanges(t *testing.T) {
 	client, token := startMailbox(t, nil, []googleemulator.Message{
 		{ID: "m1", Mailbox: alexMailbox, From: "a@example.com", Subject: "Hi", LabelIDs: []string{"INBOX", "UNREAD"}},
@@ -32,10 +33,16 @@ func TestChanges(t *testing.T) {
 	page, err := client.Changes(t.Context(), token, start, "")
 
 	require.NoError(t, err)
+	updates, versions := versionless(page.Update)
 	assert.Equal(t, []mailsync.MessageUpdate{
 		{ProviderID: "m1", MailboxProviderIDs: []string{labelInbox}, Seen: true},
 		{ProviderID: "m2", MailboxProviderIDs: []string{labelTrash}, Seen: true},
-	}, page.Update)
+	}, updates)
+	first, err := strconv.ParseUint(start, 10, 64)
+	require.NoError(t, err)
+	for _, version := range versions {
+		assert.Greater(t, version, first)
+	}
 	assert.Empty(t, page.Fetch)
 	assert.Empty(t, page.Deleted)
 	assert.NotEqual(t, start, page.Position)
@@ -44,6 +51,18 @@ func TestChanges(t *testing.T) {
 	again, err := client.Changes(t.Context(), token, page.Position, "")
 	require.NoError(t, err)
 	assert.Empty(t, again.Update)
+}
+
+// versionless returns updates without their versions, and the versions.
+func versionless(updates []mailsync.MessageUpdate) ([]mailsync.MessageUpdate, []uint64) {
+	stripped := make([]mailsync.MessageUpdate, len(updates))
+	versions := make([]uint64, len(updates))
+	for i, update := range updates {
+		versions[i] = update.Version
+		update.Version = 0
+		stripped[i] = update
+	}
+	return stripped, versions
 }
 
 // historyMessages returns history entries naming each of ids, their
@@ -62,7 +81,8 @@ func historyMessages(labelIDs []string, ids ...string) []map[string]any {
 
 // A page is reduced per message: deleted wins, added is fetched whole, and
 // a relabelled message takes the whole label set of its last label record,
-// UNREAD and STARRED as flags, or is reread when that record carries none.
+// UNREAD and STARRED as flags, at that record's ID as its version, or is
+// reread when that record carries none.
 func TestChangesReduced(t *testing.T) {
 	client, _ := stubGmail(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "7", r.URL.Query().Get("startHistoryId"))
@@ -71,6 +91,7 @@ func TestChangesReduced(t *testing.T) {
 		// label record's message labels are asked for.
 		assert.Contains(t, r.URL.Query().Get("fields"), "labelsAdded/message(id,labelIds)")
 		assert.Contains(t, r.URL.Query().Get("fields"), "labelsRemoved/message(id,labelIds)")
+		assert.Contains(t, r.URL.Query().Get("fields"), "history(id,")
 		gmailMessage(w, map[string]any{
 			"historyId":     "24",
 			"nextPageToken": "after",
@@ -108,10 +129,10 @@ func TestChangesReduced(t *testing.T) {
 		Fetch:  []string{"a"},
 		Reread: []string{"f", "h"},
 		Update: []mailsync.MessageUpdate{
-			{ProviderID: "d", MailboxProviderIDs: []string{labelInbox}},
-			{ProviderID: "e", MailboxProviderIDs: []string{labelTrash}, Seen: true},
-			{ProviderID: "i", Seen: true, Flagged: true},
-			{ProviderID: "j", MailboxProviderIDs: []string{labelInbox}, Seen: true},
+			{ProviderID: "d", MailboxProviderIDs: []string{labelInbox}, Version: 14},
+			{ProviderID: "e", MailboxProviderIDs: []string{labelTrash}, Seen: true, Version: 16},
+			{ProviderID: "i", Seen: true, Flagged: true, Version: 22},
+			{ProviderID: "j", MailboxProviderIDs: []string{labelInbox}, Seen: true, Version: 23},
 		},
 		Deleted:       []string{"b", "c", "g"},
 		Position:      "24",

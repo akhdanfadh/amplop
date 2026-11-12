@@ -77,7 +77,8 @@ type ChangePage struct {
 
 // MessageUpdate is where one message stands after a page: its mailboxes
 // and flags whole, not what changed, so applying it twice changes nothing
-// more, and it replaces whatever the copy held.
+// more, and it replaces whatever the copy held, unless the copy's state is
+// of a newer [MessageUpdate.Version].
 type MessageUpdate struct {
 	// ProviderID is the message's [Message.ProviderID].
 	ProviderID string
@@ -88,6 +89,10 @@ type MessageUpdate struct {
 	Seen bool
 	// Flagged is [Message.Flagged].
 	Flagged bool
+	// Version is the provider's change number this state was read at, as
+	// [Message.Version]. The update is skipped for a message whose stored
+	// version is newer, so a late write never undoes a newer one.
+	Version uint64
 }
 
 // Provider reads an account's mail at its provider, with an access token

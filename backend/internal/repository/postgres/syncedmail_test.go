@@ -85,6 +85,7 @@ func syncedMessage(providerID string) mailsync.Message {
 		MessageID:          "<report-" + providerID + "@example.co.id>",
 		InReplyTo:          []string{"<request@example.com>"},
 		References:         []string{"<thread@example.com>", "<request@example.com>"},
+		Version:            1,
 	}
 }
 
@@ -126,7 +127,7 @@ func (s syncedMailTest) messages(t *testing.T, accountID int64) map[string]mails
 	rows, err := s.conn.Query(t.Context(), `
 		SELECT m.id, m.connected_account_id, m.provider_message_id, m.provider_thread_id, m.internal_date, m.subject,
 			m.from_addresses, m.reply_to_addresses, m.to_addresses, m.cc_addresses, m.preview, m.seen, m.flagged,
-			m.internet_message_id, m.in_reply_to, m.internet_references,
+			m.internet_message_id, m.in_reply_to, m.internet_references, m.provider_version,
 			array(SELECT mb.provider_mailbox_id FROM message_mailboxes mm JOIN mailboxes mb ON mb.id = mm.mailbox_id
 				WHERE mm.message_id = m.id ORDER BY mb.provider_mailbox_id)
 		FROM messages m WHERE m.connected_account_id = $1`, accountID)
@@ -137,9 +138,11 @@ func (s syncedMailTest) messages(t *testing.T, accountID int64) map[string]mails
 	for rows.Next() {
 		var m mailsync.Message
 		var from, replyTo, to, cc []byte
+		var version int64
 		require.NoError(t, rows.Scan(&m.ID, &m.AccountID, &m.ProviderID, &m.ThreadID, &m.InternalDate, &m.Subject,
 			&from, &replyTo, &to, &cc, &m.Preview, &m.Seen, &m.Flagged, &m.MessageID, &m.InReplyTo, &m.References,
-			&m.MailboxProviderIDs))
+			&version, &m.MailboxProviderIDs))
+		m.Version = uint64(version)
 		m.InternalDate = m.InternalDate.UTC()
 		for _, field := range []struct {
 			raw  []byte
@@ -208,7 +211,7 @@ func TestSyncedMailSaveMessages(t *testing.T) {
 
 func TestSyncedMailSaveEmptyLists(t *testing.T) {
 	s := newSyncedMailTest(t)
-	unlabelled := mailsync.Message{ProviderID: "m1", ThreadID: "t1", InternalDate: time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)}
+	unlabelled := mailsync.Message{ProviderID: "m1", ThreadID: "t1", InternalDate: time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), Version: 2}
 
 	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{unlabelled}})
 
@@ -673,15 +676,18 @@ func TestSyncedMailChecks(t *testing.T) {
 	s := newSyncedMailTest(t)
 	failedAt := time.Date(2026, 11, 10, 9, 30, 0, 0, time.UTC)
 	for name, change := range map[string]mailsync.Change{
-		"failed without a failure":   {State: mailsync.SyncState{Status: mailsync.StatusFailed, Generation: 1}},
-		"a failure without its time": {State: mailsync.SyncState{Status: mailsync.StatusRunning, Generation: 1, Failure: mailsync.FailureInternal}},
-		"a time without a failure":   {State: mailsync.SyncState{Status: mailsync.StatusComplete, Generation: 1, FailedAt: &failedAt}},
-		"a negative delete":          {State: running(1), DeleteEarlier: -1},
-		"an unknown status":          {State: mailsync.SyncState{Status: "paused"}},
-		"a save before a full sync":  {State: mailsync.SyncState{Status: mailsync.StatusWaiting}, Saved: []mailsync.Message{{ProviderID: "m1", ThreadID: "t1"}}},
-		"a message without an ID":    {State: running(1), Saved: []mailsync.Message{{ThreadID: "t1"}}},
-		"a mailbox without an ID":    {State: running(1), Mailboxes: []mailsync.Mailbox{{Name: "INBOX", Role: mailsync.RoleInbox}}},
-		"an unknown role":            {State: running(1), Mailboxes: []mailsync.Mailbox{{ProviderID: "INBOX", Role: "starred"}}},
+		"failed without a failure":    {State: mailsync.SyncState{Status: mailsync.StatusFailed, Generation: 1}},
+		"a failure without its time":  {State: mailsync.SyncState{Status: mailsync.StatusRunning, Generation: 1, Failure: mailsync.FailureInternal}},
+		"a time without a failure":    {State: mailsync.SyncState{Status: mailsync.StatusComplete, Generation: 1, FailedAt: &failedAt}},
+		"a negative delete":           {State: running(1), DeleteEarlier: -1},
+		"an unknown status":           {State: mailsync.SyncState{Status: "paused"}},
+		"a save before a full sync":   {State: mailsync.SyncState{Status: mailsync.StatusWaiting}, Saved: []mailsync.Message{{ProviderID: "m1", ThreadID: "t1", Version: 1}}},
+		"a message without an ID":     {State: running(1), Saved: []mailsync.Message{{ThreadID: "t1", Version: 1}}},
+		"a save without a version":    {State: running(1), Saved: []mailsync.Message{{ProviderID: "m1", ThreadID: "t1"}}},
+		"an update without a version": {State: running(1), Updated: []mailsync.MessageUpdate{{ProviderID: "m1"}}},
+		"a version past a bigint":     {State: running(1), Updated: []mailsync.MessageUpdate{{ProviderID: "m1", Version: math.MaxInt64 + 1}}},
+		"a mailbox without an ID":     {State: running(1), Mailboxes: []mailsync.Mailbox{{Name: "INBOX", Role: mailsync.RoleInbox}}},
+		"an unknown role":             {State: running(1), Mailboxes: []mailsync.Mailbox{{ProviderID: "INBOX", Role: "starred"}}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := s.db.UpdateSyncedMail(t.Context(), s.account, func(mailsync.SyncState) (mailsync.Change, error) {
@@ -712,11 +718,11 @@ func TestSyncedMailUpdated(t *testing.T) {
 	before := s.messages(t, s.account)
 
 	s.update(t, s.account, mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{
-		{ProviderID: "m1", MailboxProviderIDs: []string{"INBOX"}, Seen: true},
-		{ProviderID: "m2", MailboxProviderIDs: []string{"TRASH", "TRASH"}},
-		{ProviderID: "m1", MailboxProviderIDs: []string{"Label_1"}, Seen: false, Flagged: true},
-		{ProviderID: "never-stored", MailboxProviderIDs: []string{"INBOX"}},
-		{ProviderID: "theirs", MailboxProviderIDs: []string{"SPAM"}},
+		{ProviderID: "m1", MailboxProviderIDs: []string{"INBOX"}, Seen: true, Version: 2},
+		{ProviderID: "m2", MailboxProviderIDs: []string{"TRASH", "TRASH"}, Version: 2},
+		{ProviderID: "m1", MailboxProviderIDs: []string{"Label_1"}, Seen: false, Flagged: true, Version: 2},
+		{ProviderID: "never-stored", MailboxProviderIDs: []string{"INBOX"}, Version: 2},
+		{ProviderID: "theirs", MailboxProviderIDs: []string{"SPAM"}, Version: 2},
 	}})
 
 	after := s.messages(t, s.account)
@@ -725,6 +731,7 @@ func TestSyncedMailUpdated(t *testing.T) {
 	want.MailboxProviderIDs = []string{"Label_1"}
 	want.Seen = false
 	want.Flagged = true
+	want.Version = 2
 	assert.Equal(t, want, after["m1"])
 	assert.Equal(t, []string{"TRASH"}, after["m2"].MailboxProviderIDs)
 	assert.False(t, after["m2"].Seen)
@@ -732,12 +739,55 @@ func TestSyncedMailUpdated(t *testing.T) {
 	assert.Equal(t, []string{"INBOX", "Label_1"}, s.messages(t, s.other)["theirs"].MailboxProviderIDs)
 }
 
+// An update read at an older version than the stored message's is
+// skipped, flags, mailboxes, and conversation alike, so a late write never
+// undoes a newer one; one at the same version or newer is written. A save
+// is written whatever its version: the poll after a full sync starts
+// before it and brings anything newer back.
+func TestSyncedMailUpdateStale(t *testing.T) {
+	// Given a message stored at version 5.
+	s := newSyncedMailTest(t).withMailboxes(t)
+	stored := syncedMessage("m1")
+	stored.Version = 5
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{stored}})
+	before := s.messages(t, s.account)["m1"]
+	conversation := s.conversations(t, s.account)["thread-m1"]
+
+	// When an update read at version 4 arrives.
+	s.update(t, s.account, mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{
+		{ProviderID: "m1", MailboxProviderIDs: []string{"TRASH"}, Version: 4},
+	}})
+
+	// Then nothing changes.
+	assert.Equal(t, before, s.messages(t, s.account)["m1"])
+	assert.Equal(t, conversation, s.conversations(t, s.account)["thread-m1"])
+
+	// When updates at version 5, then 6, arrive, then a save at 3.
+	s.update(t, s.account, mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{
+		{ProviderID: "m1", MailboxProviderIDs: []string{"INBOX"}, Seen: true, Version: 5},
+	}})
+	same := s.messages(t, s.account)["m1"]
+	s.update(t, s.account, mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{
+		{ProviderID: "m1", MailboxProviderIDs: []string{"TRASH"}, Version: 6},
+	}})
+	newer := s.messages(t, s.account)["m1"]
+	older := syncedMessage("m1")
+	older.Version = 3
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{older}})
+
+	// Then each is written.
+	assert.Equal(t, []string{"INBOX"}, same.MailboxProviderIDs)
+	assert.Equal(t, []string{"TRASH"}, newer.MailboxProviderIDs)
+	assert.Equal(t, uint64(6), newer.Version)
+	assert.Equal(t, uint64(3), s.messages(t, s.account)["m1"].Version)
+}
+
 // An update to no mailbox leaves the message in none.
 func TestSyncedMailUpdateEmpty(t *testing.T) {
 	s := newSyncedMailTest(t).withMailboxes(t)
 	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{syncedMessage("m1")}})
 
-	s.update(t, s.account, mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{{ProviderID: "m1", Seen: true}}})
+	s.update(t, s.account, mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{{ProviderID: "m1", Seen: true, Version: 2}}})
 
 	assert.Empty(t, s.messages(t, s.account)["m1"].MailboxProviderIDs)
 }
@@ -750,7 +800,7 @@ func TestSyncedMailUpdateUnknown(t *testing.T) {
 
 	_, err := s.db.UpdateSyncedMail(t.Context(), s.account, func(mailsync.SyncState) (mailsync.Change, error) {
 		return mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{
-			{ProviderID: "m1", MailboxProviderIDs: []string{"Label_new"}, Seen: false},
+			{ProviderID: "m1", MailboxProviderIDs: []string{"Label_new"}, Seen: false, Version: 2},
 		}}, nil
 	})
 
@@ -887,7 +937,7 @@ func TestSyncReports(t *testing.T) {
 	s.update(t, s.account, mailsync.Change{State: running(2), Saved: []mailsync.Message{syncedMessage("m2"), syncedMessage("m3"), syncedMessage("m4")}})
 	// A flag update leaves a message's generation, so m1 still counts for
 	// the earlier one.
-	s.update(t, s.account, mailsync.Change{State: running(2), Updated: []mailsync.MessageUpdate{{ProviderID: "m1", Seen: true, MailboxProviderIDs: []string{"INBOX"}}}})
+	s.update(t, s.account, mailsync.Change{State: running(2), Updated: []mailsync.MessageUpdate{{ProviderID: "m1", Seen: true, MailboxProviderIDs: []string{"INBOX"}, Version: 2}}})
 	failedAt := time.Date(2026, 11, 11, 9, 0, 0, 0, time.UTC)
 	complete := mailsync.SyncState{Status: mailsync.StatusComplete, Position: "100", Generation: 1, LastSyncedAt: &failedAt, Failure: mailsync.FailureProvider, FailedAt: &failedAt}
 	s.update(t, s.other, mailsync.Change{State: complete, Saved: []mailsync.Message{syncedMessage("m1")}})
