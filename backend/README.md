@@ -2735,6 +2735,7 @@ httpapi --> messagecontent <-- s3
   whose types never leave the package.
 - A leaf package holds one rule that several features share, such as
   `emailaddress` (the address rule), `attemptlimit` (the window count),
+  `msgid` (which msg-ids inbok writes, and how sync trims References),
   `randomsecret` (emailed link secrets and their hashes), `clientprefix`
   (which addresses count as one client), or `logging` (how loggers are
   built and tagged with the request). It

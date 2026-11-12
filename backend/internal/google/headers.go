@@ -14,6 +14,7 @@ import (
 	"google.golang.org/api/gmail/v1"
 
 	"inbok/internal/mailsync"
+	"inbok/internal/msgid"
 )
 
 // Limits on header text, which the sender writes. A header longer than
@@ -26,9 +27,6 @@ const (
 	// maxAddresses per list is inbok's choice: Gmail's own limit on the
 	// recipients of a message it sends (Gmail's usage limits).
 	maxAddresses = 500
-	// maxReferences is inbok's choice. Netnews trims References the same way,
-	// keeping the first msg-id and the last two (RFC 5537 section 3.4.4).
-	maxReferences = 50
 )
 
 // The headers a message's metadata is read from, spelled as the emulator
@@ -436,11 +434,10 @@ func msgIDEnd(rest string) (int, bool) {
 	return end, end >= 0
 }
 
-// parseReferences returns the msg-ids of value, a References header, at
-// most [maxReferences]: the first, the thread's start, and the last ones,
-// the nearest parents, since a reply's References is its parent's followed
-// by the parent's Message-ID (RFC 5322 section 3.6.4). A value past
-// [maxHeaderBytes] is read only at its start and end, which hold those.
+// parseReferences returns the msg-ids of value, a References header,
+// trimmed by [msgid.TrimReferences] to the thread's start and the nearest
+// parents. A value past [maxHeaderBytes] is read only at its start and end,
+// which hold those.
 func parseReferences(value string) []string {
 	var ids []string
 	if len(value) <= maxHeaderBytes {
@@ -452,14 +449,5 @@ func parseReferences(value string) []string {
 		ids = parseMsgIDs(value[:maxHeaderBytes/2])
 		ids = append(ids, parseMsgIDs(value[len(value)-maxHeaderBytes/2:])...)
 	}
-	return trimReferences(ids)
-}
-
-// trimReferences returns ids, a References list, at most [maxReferences]
-// long: the first and the last ones.
-func trimReferences(ids []string) []string {
-	if len(ids) <= maxReferences {
-		return ids
-	}
-	return append([]string{ids[0]}, ids[len(ids)-maxReferences+1:]...)
+	return msgid.TrimReferences(ids)
 }

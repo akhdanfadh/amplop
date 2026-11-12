@@ -12,6 +12,8 @@ import (
 	"github.com/emersion/go-message/mail"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/msgid"
 )
 
 // Line limits of the composed message.
@@ -282,20 +284,23 @@ func TestNewMessageID(t *testing.T) {
 
 	assert.True(t, strings.HasPrefix(first, "<"), first)
 	assert.True(t, strings.HasSuffix(first, "@gmail.com>"), first)
-	assert.True(t, messageIDSafe(first), first)
+	assert.True(t, msgid.Writable(first), first)
 	assert.NotEqual(t, first, second)
 	assert.NotContains(t, first, "me@", "the left side holds nothing of the address")
 }
 
-// The right side must be a dot-atom (RFC 5322); a domain that is not one
-// gives way to a fixed one.
+// The right side must be a dot-atom (RFC 5322) that leaves the ID
+// writable; a domain that is not one gives way to a fixed one.
 func TestNewMessageIDDomain(t *testing.T) {
+	// A valid address whose domain is too long for a 250-octet ID.
+	long := strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 49)
 	cases := []struct {
 		name, email string
 	}{
 		{"non-ASCII", "me@bücher.de"},
 		{"literal", "me@[127.0.0.1]"},
 		{"no domain", "me"},
+		{"long domain", "me@" + long},
 	}
 
 	for _, c := range cases {
@@ -304,6 +309,21 @@ func TestNewMessageIDDomain(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.True(t, strings.HasSuffix(id, "@"+fallbackMessageIDDomain+">"), id)
+			assert.True(t, msgid.Writable(id), id)
 		})
 	}
+}
+
+// A message from an account with a long domain still composes.
+func TestComposeLongSenderDomain(t *testing.T) {
+	email := "me@" + strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 49)
+	id, err := newMessageID(email)
+	require.NoError(t, err)
+	message := testMessage()
+	message.From = email
+	message.InbokMessageID = id
+
+	_, err = compose(message)
+
+	require.NoError(t, err)
 }
