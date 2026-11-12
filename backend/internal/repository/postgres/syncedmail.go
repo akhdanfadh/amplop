@@ -24,7 +24,8 @@ var errStateRange = errors.New("sync state number is out of storage's range")
 // UpdateSyncedMail locks accountID's sync state, calls update with it, and
 // writes the change update returns, in one transaction: the mailboxes, the
 // deletes, the saves with their mailboxes, the updates, the earlier
-// generations' deletes, and the state. It returns what it wrote,
+// generations' deletes, the job deleting the deleted messages' content,
+// and the state. It returns what it wrote,
 // [mailsync.ErrNotFound] when the account has no sync state, and
 // [mailsync.ErrUnknownMailbox] when a saved or updated message names a
 // mailbox the account does not have.
@@ -69,9 +70,11 @@ func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func
 		deletes := slices.DeleteFunc(slices.Clone(change.Deleted), func(providerID string) bool {
 			return saved[providerID]
 		})
+		var deletedBlobs []uuid.UUID
 		if len(deletes) > 0 {
 			params := sqlc.DeleteMessagesParams{ConnectedAccountID: accountID, ProviderMessageIds: deletes}
-			if err := queries.DeleteMessages(ctx, params); err != nil {
+			deletedBlobs, err = queries.DeleteMessages(ctx, params)
+			if err != nil {
 				return fmt.Errorf("delete messages: %w", err)
 			}
 		}
@@ -91,10 +94,19 @@ func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func
 				SyncGeneration:     state.SyncGeneration,
 				MaxDeleted:         int32(change.DeleteEarlier),
 			}
-			earlierDeleted, err = queries.DeleteEarlierMessages(ctx, params)
+			earlier, err := queries.DeleteEarlierMessages(ctx, params)
 			if err != nil {
 				return fmt.Errorf("delete earlier messages: %w", err)
 			}
+			earlierDeleted = earlier.Deleted
+			deletedBlobs = append(deletedBlobs, earlier.BlobIds...)
+		}
+
+		// 6. Save the job that deletes the deleted messages' blobs. A worker
+		// sees it only once this commits, and a rollback drops it, so no
+		// row ever names a deleted blob (ADR009).
+		if err := db.deleteBlobsAfter(ctx, tx, accountID, deletedBlobs); err != nil {
+			return err
 		}
 
 		if err := queries.UpdateSyncState(ctx, state); err != nil {

@@ -49,4 +49,5 @@ func TestListenedQueues(t *testing.T) {
 	assert.Equal(t, []string{emailQueue}, listenedQueues(Services{}))
 	assert.Equal(t, []string{emailQueue, googleQueue, googleSendQueue},
 		listenedQueues(Services{AccountRemovals: &fakeRemovals{}, OutgoingMessages: newFakeSends()}))
+	assert.Equal(t, []string{emailQueue, contentQueue}, listenedQueues(Services{MessageContent: &fakeContent{}}))
 }

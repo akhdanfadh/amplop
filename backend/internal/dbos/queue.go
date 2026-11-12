@@ -18,6 +18,10 @@ const (
 	// priority orders only waiting runs, so a member's send would wait
 	// behind long runs on googleQueue were it there (ADR004).
 	googleSendQueue = "inbok.google-send"
+
+	// contentQueue runs the workflows that delete message content from
+	// the content store, which call no provider.
+	contentQueue = "inbok.content"
 )
 
 // registerQueue registers the queue name, keeping its saved settings if it

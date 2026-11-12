@@ -25,6 +25,14 @@ type Workflows interface {
 	ConnectedAccountWorkflows
 	OutgoingMessageWorkflows
 	SyncWorkflows
+	MessageContentWorkflows
+}
+
+// MessageContentWorkflows saves the jobs of message content.
+type MessageContentWorkflows interface {
+	// EnqueueContentDeletion saves, in tx, the workflow that deletes account
+	// accountID's blobs with blobIDs from the content store.
+	EnqueueContentDeletion(ctx context.Context, tx pgx.Tx, accountID int64, blobIDs []uuid.UUID) error
 }
 
 // OutgoingMessageWorkflows saves the jobs of outgoing messages.

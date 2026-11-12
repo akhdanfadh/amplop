@@ -181,7 +181,8 @@ old workflow runs, as [Inspecting workflows](#inspecting-workflows)
 describes, and last sweeps the [message content store](#message-content-store)
 of blobs no message part names that were written over a day ago, up to
 1,000 a step: what a save that failed between storing content and saving
-its rows left behind. Each sweep step lists the store from the start, so
+its rows left behind, and what a [content deletion](#content-deletion)
+that gave up left. Each sweep step lists the store from the start, so
 a large store costs a listing an hour. Each run logs `deleted expired rows` with a count when it
 deleted any, and records the counts as its output.
 
@@ -330,6 +331,25 @@ DBOS would otherwise claim a removal it cannot run for that worker, and
 no other worker could take it. Removals saved while the settings were set
 wait in the queue, with their sealed tokens, until a worker that has them
 runs; one that never does leaves them there.
+
+### Content deletion
+
+The workflow `inbok.content-deletion`, run from the queue `inbok.content`,
+deletes the stored content of messages synchronization deleted. A sync
+write that deletes messages with stored content saves the job in its own
+transaction (`UpdateSyncedMail`), with the account's ID and the blob IDs
+the deleted parts named. Saving it only adds a row to DBOS's queue, which
+no worker sees until the transaction commits; a rollback removes it with
+the rest. So the blobs go only once the rows that named them are gone. Its one step, `delete content`, deletes them from the
+[message content store](#message-content-store), which takes a blob
+already gone as deleted; it is retried 5 more times, waiting 1, 2, 4, 8,
+then 15 minutes. A run that gives up logs `content deletion failed` and
+fails; the hourly sweep deletes those blobs a day later.
+
+The worker saves these jobs from its own steps, so it opens a DBOS client
+for its storage, as `serve` does: DBOS refuses a workflow's own context in
+a caller's transaction. Every worker runs the workflow and listens to
+`inbok.content`.
 
 ### Sending a message
 
@@ -979,7 +999,9 @@ IDs they name. A row naming content the store no longer has, e.g. after a
 lost volume, reads as not stored: fetching the message again and saving
 it puts the content back under the same ID. So a lost volume refills
 message by message as members open mail, not all at once in the
-background.
+background. Deleting goes the other way: rows first, then content.
+[Content deletion](#content-deletion) deletes the blobs deleted
+messages' rows named, after their transaction commits.
 
 Code reaches the store through `messagecontent.Store`, never the SDK. A
 `Ref` names one content: the connected account it came from and a blob
@@ -1021,8 +1043,9 @@ over five minutes fails too, since the store sends nothing until the body
 is in: fine on a private network, not for a store far away. The timeout counts
 silence on a connection, not on one request: over HTTP/2, which Go uses
 only with an `https` endpoint, other requests on the connection can keep
-one that stalls alive. `DEBT.md` in the decision records holds the fix
-for when an `https` store is used.
+one that stalls alive. That can hold only a content job, which the sweep
+backs up; `DEBT.md` in the decision records holds the fix for when an
+`https` store is used.
 
 Feature tests use `messagecontenttest.Fake`, a store in memory.
 `messagecontenttest.RunContract` holds the tests both it and the `s3`
@@ -2476,7 +2499,8 @@ account's sync state, passes it to a function that returns a
 `mailsync.Change`, and writes the change in one transaction: the
 mailboxes, deleted messages, saved messages with their mailboxes,
 updated messages' mailboxes and flags, the sweep of earlier generations,
-and the new state. An update for a message the account does not have is
+the [content deletion](#content-deletion) of what the deleted messages
+had stored, and the new state. An update for a message the account does not have is
 skipped. A change that saves one message twice keeps the last, and one
 that deletes and saves a message only saves it, so the message keeps its
 `id` however often a step repeats. A saved or updated message naming a
@@ -2858,8 +2882,8 @@ httpapi --> messagecontent <-- s3
   interfaces it declares, in `dbos.Services`, which `cmd/inbok` fills, e.g.
   with `emailverification.Cleanup`; like other technology packages it may
   import a feature's plain types, e.g. `account.NoticeOutcome`, while
-  features never import DBOS. Its `Client` saves workflows from a process
-  that runs none, e.g. `recover-admin`, inside a storage transaction: it
+  features never import DBOS. Its `Client` saves workflows inside a storage
+  transaction, from `recover-admin`, `serve`, or a worker's own steps: it
   implements `repository/postgres`'s `Workflows`, and the two meet on
   pgx's `pgx.Tx`, which DBOS's API takes, without importing each other
   outside tests. It is the only package besides `repository/postgres`
@@ -2997,7 +3021,7 @@ For a job that runs once per request, follow the recovery notice
    so another feature's job changes no fake of yours.
 5. The command that makes the change gives storage the client with
    `DB.WithWorkflows`, as `recover-admin` does; `serve` already has one,
-   for jobs requests save.
+   for jobs requests save, and so has the worker, for jobs its steps save.
 
 ### Calling Gmail
 

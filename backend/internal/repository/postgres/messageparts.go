@@ -199,3 +199,19 @@ func (db *DB) UnusedBlobs(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, er
 	}
 	return unused, nil
 }
+
+// deleteBlobsAfter saves, in tx, the job that deletes accountID's blobs
+// with blobIDs, the content of messages tx deletes, once tx commits. It
+// saves nothing for no IDs.
+func (db *DB) deleteBlobsAfter(ctx context.Context, tx pgx.Tx, accountID int64, blobIDs []uuid.UUID) error {
+	if len(blobIDs) == 0 {
+		return nil
+	}
+	if db.workflows == nil {
+		return errNoWorkflows
+	}
+	if err := db.workflows.EnqueueContentDeletion(ctx, tx, accountID, blobIDs); err != nil {
+		return fmt.Errorf("save content deletion: %w", err)
+	}
+	return nil
+}

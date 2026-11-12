@@ -1,10 +1,13 @@
 package postgres
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"testing"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -12,14 +15,35 @@ import (
 	"inbok/internal/messagecontent"
 )
 
-// messagePartsTest is a [syncedMailTest] with the accounts' mailboxes.
+// contentWorkflows saves each content deletion job as rows of
+// test_content_deletions, one per blob ID, in the caller's transaction,
+// or fails with err.
+type contentWorkflows struct {
+	Workflows
+	err error
+}
+
+func (w contentWorkflows) EnqueueContentDeletion(ctx context.Context, tx pgx.Tx, accountID int64, blobIDs []uuid.UUID) error {
+	if w.err != nil {
+		return w.err
+	}
+	_, err := tx.Exec(ctx, "INSERT INTO test_content_deletions (account_id, blob_id) SELECT $1, unnest($2::uuid[])", accountID, blobIDs)
+	return err
+}
+
+// messagePartsTest is a [syncedMailTest] whose storage saves content
+// deletion jobs through [contentWorkflows].
 type messagePartsTest struct {
 	syncedMailTest
 }
 
 func newMessagePartsTest(t *testing.T) messagePartsTest {
 	t.Helper()
-	return messagePartsTest{syncedMailTest: newSyncedMailTest(t).withMailboxes(t)}
+	s := newSyncedMailTest(t).withMailboxes(t)
+	_, err := s.conn.Exec(t.Context(), "CREATE TABLE test_content_deletions (account_id bigint NOT NULL, blob_id uuid NOT NULL)")
+	require.NoError(t, err)
+	s.db = s.db.WithWorkflows(contentWorkflows{})
+	return messagePartsTest{syncedMailTest: s}
 }
 
 // save saves messages with providerIDs to the account and returns their
@@ -53,6 +77,17 @@ func storedTree() messagecontent.Part {
 		}},
 		{ID: "1", MediaType: "application/pdf", Filename: "Laporan Q3.pdf", Size: 90210, Disposition: messagecontent.DispositionAttachment, Kind: messagecontent.KindAttachment},
 	}}
+}
+
+// deletions returns the blob IDs of the saved deletion jobs, sorted.
+func (s messagePartsTest) deletions(t *testing.T) []uuid.UUID {
+	t.Helper()
+	rows, err := s.conn.Query(t.Context(), "SELECT blob_id FROM test_content_deletions WHERE account_id = $1", s.account)
+	require.NoError(t, err)
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	require.NoError(t, err)
+	slices.SortFunc(ids, compareUUIDs)
+	return ids
 }
 
 // compareUUIDs orders UUIDs by their bytes.
@@ -151,6 +186,73 @@ func TestMessagePartsSaveNotFound(t *testing.T) {
 			assert.ErrorIs(t, err, messagecontent.ErrMessageNotFound)
 		})
 	}
+}
+
+// Deleting messages deletes their parts and saves the job deleting the
+// blobs they name; an earlier generation's sweep does too.
+func TestMessagePartsDeleted(t *testing.T) {
+	s := newMessagePartsTest(t)
+	ids := s.save(t, "gone", "swept", "kept")
+	trees := make([]messagecontent.Part, len(ids))
+	for i, id := range ids {
+		trees[i] = storedTree()
+		_, err := s.db.SaveMessageParts(t.Context(), s.account, id, trees[i])
+		require.NoError(t, err)
+	}
+
+	s.update(t, s.account, mailsync.Change{State: running(1), Deleted: []string{"gone"}})
+	assert.Equal(t, blobIDs(trees[0]), s.deletions(t))
+	_, ok, err := s.db.MessageParts(t.Context(), s.account, ids[0])
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	s.update(t, s.account, mailsync.Change{State: running(2), Saved: []mailsync.Message{syncedMessage("kept")}})
+	written := s.write(t, s.account, mailsync.Change{State: running(2), DeleteEarlier: 10})
+	assert.Equal(t, 1, written.EarlierDeleted)
+	want := append(blobIDs(trees[0]), blobIDs(trees[1])...)
+	slices.SortFunc(want, compareUUIDs)
+	assert.Equal(t, want, s.deletions(t))
+
+	got, ok, err := s.db.MessageParts(t.Context(), s.account, ids[2])
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, trees[2], got)
+}
+
+// Deleting messages without stored content saves no job, so storage
+// without workflows still deletes them.
+func TestMessagePartsNoContent(t *testing.T) {
+	s := newMessagePartsTest(t)
+	ids := s.save(t, "m1", "m2")
+	unstored := messagecontent.Part{ID: "", MediaType: "application/pdf", Kind: messagecontent.KindAttachment}
+	_, err := s.db.SaveMessageParts(t.Context(), s.account, ids[0], unstored)
+	require.NoError(t, err)
+	s.db = s.db.WithWorkflows(nil)
+
+	s.update(t, s.account, mailsync.Change{State: running(1), Deleted: []string{"m1", "m2"}})
+
+	assert.Empty(t, s.messages(t, s.account))
+	assert.Empty(t, s.deletions(t))
+}
+
+// A deletion job that cannot be saved deletes nothing.
+func TestMessagePartsJobFails(t *testing.T) {
+	s := newMessagePartsTest(t)
+	ids := s.save(t, "m1")
+	_, err := s.db.SaveMessageParts(t.Context(), s.account, ids[0], storedTree())
+	require.NoError(t, err)
+	refused := errors.New("queue refused")
+	s.db = s.db.WithWorkflows(contentWorkflows{err: refused})
+
+	_, err = s.db.UpdateSyncedMail(t.Context(), s.account, func(mailsync.SyncState) (mailsync.Change, error) {
+		return mailsync.Change{State: running(1), Deleted: []string{"m1"}}, nil
+	})
+	require.ErrorIs(t, err, refused)
+
+	assert.Contains(t, s.messages(t, s.account), "m1")
+	_, ok, err := s.db.MessageParts(t.Context(), s.account, ids[0])
+	require.NoError(t, err)
+	assert.True(t, ok)
 }
 
 // Disconnecting deletes the account's parts with its mail.
