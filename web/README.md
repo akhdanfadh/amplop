@@ -70,8 +70,9 @@ browser console logs no Content Security Policy violation:
   React Aria's iOS scroll lock adds a `<style>` while an overlay is open,
   which the policy blocks, and an iPhone's console logs that violation;
   the rule's effect, `overscroll-behavior: contain`, comes instead from
-  `overscroll-contain` on each overlay's scrolling area (a dialog), so
-  scrolling past its end never moves the page behind.
+  `overscroll-contain` on each overlay's scrolling area (the sidebar's
+  content, a dialog), so scrolling past its end never moves the page
+  behind.
 - Images, fonts, and requests: only inbok's own origin. No `data:` URLs,
   no CDNs, and no calls to other sites.
 - Framing: no site, inbok included, may show a page of the app in a
@@ -631,6 +632,16 @@ from the registry here:
 - The shell's components each say how they differ in a `DESIGN:`
   paragraph on their main part; read it before `shadcn add --overwrite`,
   which would bring the registry's version back. In short:
+  - `sidebar`: one left sidebar that collapses to a rail; the window's
+    layout (`useLayout`), not CSS breakpoints, picks sidebar, rail, or
+    drawer; in the rail layout the rail expands into the drawer, over the
+    content; its owner stores the open state (no cookie). `Sidebar` is a
+    named `nav`, its menus are lists, `SidebarInset` is a `div`. No
+    variants, `SidebarRail`, `SidebarInput`, `SidebarGroupAction`, or
+    `sm`/`lg` sizes. `useSidebar()` gives the app `rail`, `isDrawer`, and
+    `dismiss()`, which closes the drawer.
+  - `sheet`: DESIGN.md's dialog look and timing; a side sheet's width
+    comes from `--sheet-width`.
   - `popover`: holds a dialog, so it can mix links, buttons, and a toggle
     group, which a menu can't. `toggle-group`: a segmented control (the
     theme choice); every item needs an `id`; its keys are React Aria's
@@ -644,11 +655,21 @@ from the registry here:
     words found nowhere else: inside a dialog or drawer, assistive
     technology never reads it. Its `aria-describedby` repeats an icon
     button's name, which is React Aria's doing.
+  - `skeleton` does not pulse.
+- No `drawer`: shadcn's `drawer` is a swipeable panel, usually from the
+  bottom, and the React Aria registry's still builds it on Base UI, a
+  second component library. The sidebar's drawer is shadcn's `sheet`, a
+  side panel on React Aria's `ModalOverlay`. React Aria's own `Sheet`
+  (1.22) adds swiping, but is new and built on scroll-driven animations,
+  which not every browser has yet (ADR031 follow-ups).
 - Enter and exit animations use DESIGN.md's easing; with reduced motion,
   `src/styles.css` keeps their fades and drops their movement.
 - Focus rings use React Aria's `data-focus-visible` and the `focus-ring`
   utility from `src/styles.css`, never `:focus-visible` on a React Aria
   part ([shadcn-ui/ui#11258](https://github.com/shadcn-ui/ui/issues/11258)).
+- A mark made of a fill or a shadow (the open item's bar, the chosen
+  theme, a popover's outline) gets a `forced-colors:` variant that keeps
+  it in Windows' contrast themes, which drop both.
   Text fields ring on any focus (`data-focused`), a click included.
 
 React Aria components take React Aria props: `isDisabled`, not

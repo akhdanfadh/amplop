@@ -128,7 +128,9 @@ text).
   no one-off values such as `mt-[13px]`.
 - **Control height:** 36 px for a fine pointer, 44 px for a coarse one
   (`pointer-coarse:`), set in the components themselves, never per page.
-  Nav rows 32 px (44 px coarse); list rows 76 px.
+  Nav rows 32 px (44 px coarse); list rows 76 px. Buttons in dense bars
+  (the sidebar's header, a toast, a drawer's close) 32 px (44 px coarse),
+  so they sit level with the nav rows beside them.
 - **Radius:** `--radius: 0.5rem`: controls 8, menu items 6, menus about
   10, cards and the message sheet 12, dialogs 14. Pills only for status
   badges and account chips.
@@ -159,18 +161,19 @@ A script in the root route's head applies the class before the first paint
 
 shadcn/ui's **React Aria flavour** for every component, added with
 `make web-add-ui NAME=...` into `src/components/ui`, which is our code to
-edit. Icons are `lucide-react`, 16 px, in the text colour of their role.
+edit, each with its first caller. Icons are `lucide-react`, 16 px, in the
+text colour of their role.
 
 | Need                                         | Component                                                       |
 | -------------------------------------------- | --------------------------------------------------------------- |
-| Sidebar, rail, phone drawer                  | `sidebar`                                                       |
+| Sidebar, rail, drawer                        | `sidebar`                                                       |
 | List and reading-pane split                  | `resizable`                                                     |
 | Member menu with the theme choice            | `popover` holding a `toggle-group`                              |
 | More menus                                   | `dropdown-menu`                                                 |
 | Right-click row menu                         | `context-menu`                                                  |
 | Names for icon buttons                       | `tooltip`                                                       |
 | Undo and error toasts                        | `toast.tsx` on React Aria's Toast (see below)                   |
-| Phone editors and search                     | `drawer` / `sheet`                                              |
+| Phone editors and search                     | `sheet`                                                         |
 | From picker in compose                       | `select` (shows the account mark)                               |
 | Search box and its dropdown, recipient chips | `combobox`                                                      |
 | Placeholder rows, spinners, empty states     | `skeleton`, `spinner`, `empty`                                  |
@@ -206,8 +209,8 @@ the same component.
 | Window         | Layout                                                                           |
 | -------------- | -------------------------------------------------------------------------------- |
 | 1280 px and up | Sidebar 240 px, list 380 px (drag 300-560), reading pane the rest (at least 480) |
-| 1024-1279      | Sidebar starts as a 56 px rail; expanding slides over the list                   |
-| 780-1023       | Sidebar as a drawer from a menu button; list and reading pane                    |
+| 1024-1279      | Sidebar starts as a 56 px rail (68 px coarse); expanding opens it as a drawer    |
+| 780-1023       | Sidebar as a drawer from the sidebar button; list and reading pane               |
 | Under 780      | One pane at a time: the list or the conversation                                 |
 
 The sidebar collapses with its button (always at the far left of its
@@ -250,7 +253,12 @@ TOTP, and role in `beforeLoad` before anything draws.
   the current nav item has its background and bar), Sign out. Its keys
   are React Aria's toolbar keys: arrows move, Space or Enter chooses.
 - Unread: name and count in 600 weight and `foreground`; counts only on
-  Inbox, accounts, and labels. Selected: `selection` background.
+  Inbox, accounts, and labels. Selected: `selection` background and a 2 px
+  bar in `foreground` at its left edge, never bold. Icons keep one column,
+  open or as a rail. What follows a name (a count, status words) sits in
+  the row after it and keeps its width; a long name or address is cut
+  short with an ellipsis before it, never overlapped. A count is read
+  with its meaning, e.g. "12 unread".
 
 ### Message list
 
