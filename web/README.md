@@ -656,6 +656,11 @@ from the registry here:
     technology never reads it. Its `aria-describedby` repeats an icon
     button's name, which is React Aria's doing.
   - `skeleton` does not pulse.
+- `toast` is ours: the registry offers only `sonner` (see DESIGN.md).
+  `showUndo` shows a result with Undo and closes itself after 10 s;
+  `showError` shows a failure until the member closes it, and not again
+  while it shows; `closeToasts` closes all, e.g. on sign-out. It is React
+  Aria's alpha toast (`UNSTABLE_`), so recheck it after an upgrade.
 - No `drawer`: shadcn's `drawer` is a swipeable panel, usually from the
   bottom, and the React Aria registry's still builds it on Base UI, a
   second component library. The sidebar's drawer is shadcn's `sheet`, a
@@ -667,10 +672,12 @@ from the registry here:
 - Focus rings use React Aria's `data-focus-visible` and the `focus-ring`
   utility from `src/styles.css`, never `:focus-visible` on a React Aria
   part ([shadcn-ui/ui#11258](https://github.com/shadcn-ui/ui/issues/11258)).
+  Text fields ring on any focus (`data-focused`), a click included.
+  `focus-ring-inset` draws it inside the edge, for a toast, whose dark
+  surface the outer ring would not stand out on.
 - A mark made of a fill or a shadow (the open item's bar, the chosen
   theme, a popover's outline) gets a `forced-colors:` variant that keeps
   it in Windows' contrast themes, which drop both.
-  Text fields ring on any focus (`data-focused`), a click included.
 
 React Aria components take React Aria props: `isDisabled`, not
 `disabled`; `onPress`, not `onClick`; `isSelected` and `onChange` on a

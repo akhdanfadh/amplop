@@ -92,37 +92,24 @@
   --background: #fafafa;
   --foreground: #0a0a0a;
   --card: #ffffff;
-  --card-foreground: var(--foreground);
   --popover: #ffffff;
-  --popover-foreground: var(--foreground);
   --sheet: #ffffff;
   --sheet-foreground: #0a0a0a;
   --primary: #2557d6;
   --primary-foreground: #ffffff;
   --secondary: #f2f2f2;
-  --secondary-foreground: var(--foreground);
   --muted: #f2f2f2;
   --muted-foreground: #666666;
   --accent: #ececec;
-  --accent-foreground: var(--foreground);
   --selection: #e5eaf6;
   --destructive: #a8000a;
   --success: #0f6630;
   --warning: #904500;
-  --info: var(--primary);
   --highlight: #fff3b0;
   --border: #e3e3e3;
   --input: #848484;
-  --ring: var(--primary);
 
   --sidebar: #f2f2f2;
-  --sidebar-foreground: var(--foreground);
-  --sidebar-primary: var(--primary);
-  --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: var(--accent);
-  --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--ring);
 
   --account-1: #dd5309;
   --account-2: #0891b2;
@@ -176,6 +163,27 @@
   --dialog-shadow: 0 16px 40px rgb(0 0 0 / 50%);
 }
 
+/* Tokens derived from others, declared for .dark as well as :root. A
+ * custom property's var() resolves where it is declared, so without this
+ * an element with the dark class inside a light page, e.g. a toast, would
+ * inherit --ring and the rest from the light values. */
+:root,
+.dark {
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
+  --info: var(--primary);
+  --ring: var(--primary);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
 /* While the theme switches (applyTheme in src/lib/theme.ts), nothing fades
  * from the old colours to the new. Durations of zero, not "none": React
  * Aria removes a closing tooltip or menu when its exit animation finishes,
@@ -212,6 +220,13 @@
 @utility focus-ring {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* The same ring drawn inside the element, for one whose edge meets a
+ * surface of the ring's own colour (a toast). */
+@utility focus-ring-inset {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 
 @layer base {
