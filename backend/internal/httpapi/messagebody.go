@@ -46,8 +46,7 @@ const (
 // while a response brings its own (ADR009). The whole copy is sanitized before
 // the answer starts, so a store that fails midway gets an error answer, which
 // the view shows as a failure, rather than a message cut short that reads as
-// complete; the copy is about the size of the stored HTML. No route returns it
-// yet; the message endpoint that does comes with message bodies.
+// complete; the copy is about the size of the stored HTML.
 func messageBody(html io.Reader, policy messagecontent.Policy) (*huma.StreamResponse, error) {
 	var body bytes.Buffer
 	if _, err := messagecontent.Sanitize(&body, html, policy); err != nil {

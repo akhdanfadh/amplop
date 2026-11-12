@@ -15,13 +15,9 @@ import (
 	"inbok/internal/session"
 )
 
-const (
-	outgoingMessagesPath = "/outgoing-messages"
-	messagesPath         = "/messages"
-)
+const outgoingMessagesPath = "/outgoing-messages"
 
 const (
-	messageNotFoundType              = problemPrefix + "message-not-found"
 	outgoingMessageNotFoundType      = problemPrefix + "outgoing-message-not-found"
 	sendingAccountNeedsReconnectType = problemPrefix + "sending-account-needs-reconnect"
 	notSendableAgainType             = problemPrefix + "not-sendable-again"
@@ -408,7 +404,7 @@ func replyResponses(api huma.API) map[string]*huma.Response {
 // replyProblem maps the errors of replying to a message.
 func replyProblem(err error) error {
 	if errors.Is(err, outgoingmessage.ErrAnsweredNotFound) {
-		return newProblem(http.StatusNotFound, messageNotFoundType, "Message not found", "The message does not exist. It may have been deleted.")
+		return messageNotFound()
 	}
 	return outgoingMessageSendProblem(err)
 }

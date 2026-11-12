@@ -99,8 +99,9 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 	}
 
 	// 4. Open the store for message content, creating its bucket if missing.
-	// The worker does so, not serve: it writes the content, and a store
-	// that is down then stops no one signing in.
+	// The worker does so, not serve: it writes most content, and a store
+	// that is down then stops no one signing in; serve connects without
+	// asking.
 	content, err := s3.Open(ctx, s3Settings(store))
 	if err != nil {
 		return fmt.Errorf("open object store: %w", err)

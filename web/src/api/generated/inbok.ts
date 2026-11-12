@@ -37,6 +37,7 @@ import {
   ResponseHealthStatus,
   ResponseListedMembers,
   ResponseListedSessions,
+  ResponseMessageContent,
   ResponseOutgoingMessage,
   ResponseOutgoingMessages,
   ResponsePasswordResetRequestResult,
@@ -1131,6 +1132,109 @@ export const useReactivateMember = <TError = ErrorType<Problem>,
       > => {
       return useMutation(getReactivateMemberMutationOptions(options), queryClient);
     }
+
+export const getGetMessageContentUrl = (id: string,) => {
+
+
+
+
+  return `/api/v0/messages/${id}/content`
+}
+
+/**
+ * Returns what the view of one of the signed-in account's messages shows: its bodies, whether its HTML refers to remote images, and its attachments. Content not stored yet, e.g. of a message older than the 90 days kept in the background, is fetched from the mail provider first, which can take a few seconds.
+ * @summary Get Message Content
+ */
+export const getMessageContent = async (id: string, options?: Parameters<typeof transport>[1]): Promise<ResponseMessageContent> => {
+
+  return transport<ResponseMessageContent>(getGetMessageContentUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseMessageContent
+  }
+);}
+
+
+
+
+
+export const getGetMessageContentQueryKey = (id: string,) => {
+    return [
+    `/api/v0/messages/${id}/content`
+    ] as const;
+    }
+
+
+export const getGetMessageContentQueryOptions = <TData = Awaited<ReturnType<typeof getMessageContent>>, TError = ErrorType<Problem>>(id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMessageContent>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMessageContentQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMessageContent>>> = ({ signal }) => getMessageContent(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMessageContent>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetMessageContentQueryResult = NonNullable<Awaited<ReturnType<typeof getMessageContent>>>
+export type GetMessageContentQueryError = ErrorType<Problem>
+
+
+export function useGetMessageContent<TData = Awaited<ReturnType<typeof getMessageContent>>, TError = ErrorType<Problem>>(
+ id: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMessageContent>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getMessageContent>>,
+          TError,
+          Awaited<ReturnType<typeof getMessageContent>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetMessageContent<TData = Awaited<ReturnType<typeof getMessageContent>>, TError = ErrorType<Problem>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMessageContent>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getMessageContent>>,
+          TError,
+          Awaited<ReturnType<typeof getMessageContent>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetMessageContent<TData = Awaited<ReturnType<typeof getMessageContent>>, TError = ErrorType<Problem>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMessageContent>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get Message Content
+ */
+
+export function useGetMessageContent<TData = Awaited<ReturnType<typeof getMessageContent>>, TError = ErrorType<Problem>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getMessageContent>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetMessageContentQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getReplyToMessageUrl = (id: string,) => {
 

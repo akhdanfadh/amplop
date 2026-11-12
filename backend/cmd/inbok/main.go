@@ -22,11 +22,13 @@ import (
 	"inbok/internal/httpapi"
 	"inbok/internal/logging"
 	"inbok/internal/mailsync"
+	"inbok/internal/messagecontent"
 	"inbok/internal/outgoingmessage"
 	"inbok/internal/passwordreset"
 	"inbok/internal/probe"
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
+	"inbok/internal/s3"
 	"inbok/internal/session"
 	"inbok/internal/smtp"
 	"inbok/internal/systememail"
@@ -169,11 +171,21 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		OutgoingMessages:        outgoingmessage.NewService(db, connectedAccounts, time.Now),
 		Syncs:                   mailsync.NewService(db, jobs, time.Now),
 	}
+	// Without the bucket check of the worker's s3.Open: a store that is
+	// down then stops no one signing in, only reading message content.
+	content := s3.New(s3Settings(cfg.S3))
+	services.MessageContent = messagecontent.NewReader(content, db, nil)
 	if cfg.Google != nil {
 		// Only when configured, so the interface stays nil and Gmail is not
 		// offered otherwise.
 		client := googleClient(cfg.Google, cfg.PublicURL)
 		services.Connections = connectedaccount.NewConnections(db, connectedAccounts, client, time.Now)
+		// Content a member opens before the worker stored it is fetched in
+		// the request, at this process's own Gmail pace (ADR009, "Fetching
+		// content").
+		access := connectedaccount.NewAccess(db, cfg.Encryption, client, time.Now)
+		fetcher := messagecontent.NewFetcher(messagecontent.NewContents(content, db), db, client, access, time.Now, logger)
+		services.MessageContent = messagecontent.NewReader(content, db, fetcher)
 	}
 	api := httpapi.New(logger, services)
 	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {

@@ -1028,7 +1028,7 @@ Message content, such as the text of a message, lives in an S3-compatible
 object store; PostgreSQL keeps what describes it. Every stack runs
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) for it, one container
 started with `weed mini`. Both `serve` and the worker read the three
-`INBOK_S3_*` settings. The worker, which writes the content, creates the
+`INBOK_S3_*` settings. The worker, which writes most content, creates the
 bucket `inbok` at startup if it is missing, so a wrong address or key
 stops it there, and a store that does not answer stops it within 10
 seconds. `serve` starts without contacting the store: the store is a
@@ -1149,9 +1149,10 @@ over five minutes fails too, since the store sends nothing until the body
 is in: fine on a private network, not for a store far away. The timeout counts
 silence on a connection, not on one request: over HTTP/2, which Go uses
 only with an `https` endpoint, other requests on the connection can keep
-one that stalls alive. That can hold only a content job, which the sweep
-backs up; `DEBT.md` in the decision records holds the fix for when an
-`https` store is used.
+one that stalls alive. That can hold a content job, which the sweep
+backs up, or a member's download, whose read has no request deadline so
+a large file reaches a slow client; `DEBT.md` in the decision records
+holds the fix for when an `https` store is used.
 
 Feature tests use `messagecontenttest.Fake`, a store in memory.
 `messagecontenttest.RunContract` holds the tests both it and the `s3`
@@ -1526,9 +1527,43 @@ the body on inbok's origin, so inline images load with the session
 cookie and the web app can size the frame. The response replaces the
 `X-Frame-Options: DENY` of [Security headers](#security-headers) with
 `SAMEORIGIN`. A `srcdoc` frame would take the web app's policy instead,
-which refuses the message's CSS; ADR009 records the trade-offs. No route
-returns it yet: the message endpoint, which also runs `Sanitize` into
-`io.Discard` to learn `Blocked` and `Shown`, comes with message bodies.
+which refuses the message's CSS; ADR009 records the trade-offs.
+
+Three operations under the Messages tag serve a message's content, each
+through `messagecontent.Reader`, which finds the message only in the
+signed-in member's own connected accounts:
+
+- `GET /messages/{id}/content` returns what the view shows, as
+  `messagecontent.Choose` picks it: the bodies in order, whether an HTML
+  body refers to remote images, and the downloads. An HTML body comes as
+  two body URLs, remote images blocked and allowed; the reader runs
+  `Sanitize` into `io.Discard` to learn `Blocked` and `Shown`, the inline
+  parts the HTML shows, which `Display.Downloads` leaves out. A plain-text
+  body comes inline, clipped at 102 KiB on a character boundary with
+  `clipped` set, and its part URL holds the whole text.
+- `GET /messages/{id}/bodies/{part}` returns `messageBody` for an HTML
+  part the view shows as a body, with `?remote=allowed` for the copy
+  that loads remote images. It lists `iframe` under `fetchDestKey`.
+- `GET /messages/{id}/parts/{part}` returns a part the view shows or
+  offers, as stored: a text body in UTF-8, anything else as received. It
+  serves PNG, JPEG, GIF, and WebP inline with `nosniff`, and anything
+  else, SVG included, as an attachment under
+  `Content-Security-Policy: sandbox; default-src 'none'`. It lists
+  `image`, `document`, and `empty` under `fetchDestKey`: an image in a
+  body, a download or a part opened in a tab, and the web app's calls.
+
+`{part}` is the part's place, `0` for the top part and then each index on
+the way down, e.g. `0.1.2`, the `path` of its row; Gmail's `partId` of
+the top part is empty, which a path segment cannot carry. Content not
+stored, e.g. of a message older than the background fetch's 90 days or
+an attachment never downloaded, is fetched in the request through
+`FetchMessage` or `FetchPart`, with `serve`'s own Google client at its
+own pace. That keeps the request's 10 seconds: a provider that keeps
+refusing answers 503 `mail-provider-busy` with `Retry-After: 30`, or the
+shared `service-busy` once the backoff outlasts the request. The part
+route reads the stored copy without that deadline and moves the write's
+deadline 5 minutes on, so a large attachment reaches a slow client; the
+store's read timeout still ends a read that stalls.
 
 ## Email addresses
 
