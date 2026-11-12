@@ -1025,13 +1025,15 @@ Content arrives through `messagecontent.Fetcher`:
 - `FetchMessage` fetches one message as when a member opens it. Saved
   rows stay, so fetching again only puts back text the store lost.
 - `FetchPart` fetches an attachment or inline part on first request, or
-  any part whose content the store lost, through `Provider.PartContent`,
-  by the message and the part's saved part ID, never by anything a
-  request names. A text part's bytes are converted to UTF-8.
-  `Contents.SavePart` stores them first, then names the blob in the
-  part's row in a transaction that locks the account's sync state. A row
-  that names a blob already keeps it, leaving the other copy to the
-  sweep.
+  any part whose content the store lost. A fresh `messages.get` (60
+  units) gives the part's bytes when Gmail sends them in the answer, or
+  else its `attachmentId`, since Gmail does not promise an old one keeps
+  working, and none is ever taken from a request; then
+  `messages.attachments.get` (20 units more, answers up to 64 MiB)
+  returns them. A text part's are converted to UTF-8. `Contents.SavePart`
+  stores them first, then names the blob in the part's row in a
+  transaction that locks the account's sync state. A row that names a
+  blob already keeps it, leaving the other copy to the sweep.
 
 Code reaches the store through `messagecontent.Store`, never the SDK. A
 `Ref` names one content: the connected account it came from and a blob
@@ -2596,9 +2598,10 @@ takes an access token from [Calling Gmail](#calling-gmail):
   sync; so does a position that is not a history ID, without asking
   Gmail.
 
-What a sender writes is bounded: each Gmail answer at 4 MiB, and each
-header at 16 KiB, cut on a whole character before it is parsed; a
-longer `References` is read only at its first and last 8 KiB. Of what
+What a sender writes is bounded: each Gmail answer at 4 MiB, but a
+message's content at 16 MiB in full format and 64 MiB for an attachment,
+and each header at 16 KiB, cut on a whole character before it is parsed;
+a longer `References` is read only at its first and last 8 KiB. Of what
 parses, each address list keeps 500 entries and `References` 50 msg-ids,
 the first and the last 49. Invalid UTF-8 and NUL, which PostgreSQL's
 `text` and `jsonb` refuse, become U+FFFD in every stored string. A
@@ -2606,17 +2609,21 @@ message whose headers pass 4 MiB is fetched again without them. None of
 these can make a message fail to save, which would stop the account's
 sync.
 
-Gmail allows 6,000 quota units a minute per user, and a metadata fetch
-costs 20. An account's `Messages` calls spend at most four fifths of
-that, four fetches a second across calls, with at most four of a call in
-flight, leaving room for the same account's sends and polls. The pace is
-the process's own; one sync per account at a time keeps it whole. A call
-whose wait for the pace would outlast its context's deadline returns
-`mailsync.ErrProviderBusy` at once, sending nothing. Each `Provider`
-call retries a 429, a 403 rate limit, a 500, 502, 503, or 504, or a
-timeout after 1, 2, 4, and 8 seconds, each plus up to a second at
-random, or after the `Retry-After` Gmail sends; past five attempts, or
-for a `Retry-After` over 32 seconds, it returns
+Gmail allows 6,000 quota units a minute per user; a metadata fetch costs
+20, a full one 60, and an attachment 20. An account's `Messages`,
+`Message`, and `PartContent` calls spend at most four fifths of that
+across calls: four metadata fetches a second, with at most four of a
+call in flight, or four full ones every three seconds. That leaves room
+for the same account's sends and polls, and for the messages a member
+opens. The pace is the process's own; one sync per account at a time
+keeps the worker's whole, while another process's fetches, e.g. for a
+member who opens a message, use that process's own, inside the room
+left. A call whose wait for the pace would outlast its context's
+deadline returns `mailsync.ErrProviderBusy` at once, sending nothing.
+Each `Provider` call retries a 429, a 403 rate limit, a 500, 502, 503,
+or 504, or a timeout after 1, 2, 4, and 8 seconds, each plus up to a
+second at random, or after the `Retry-After` Gmail sends; past five
+attempts, or for a `Retry-After` over 32 seconds, it returns
 `mailsync.ErrProviderBusy` for the job to try later. Errors keep only
 Gmail's status, never its text, and an answer that does not decode fails
 without quoting it. The Google client's own logging is off, since at
@@ -2873,6 +2880,7 @@ httpapi --> mailsync <-- repository/postgres
 httpapi --> messagecontent <-- s3
                            <-- google
                            <-- repository/postgres
+            messagecontent --> connectedaccount
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -2918,8 +2926,10 @@ httpapi --> messagecontent <-- s3
   unanswered send; and `mailsync`'s `Provider`, the Gmail reads
   synchronization makes. It uses `golang.org/x/oauth2` and Google's Gmail
   client, whose types stay inside it; Gmail calls take
-  `connectedaccount`'s `AccessToken`. It also turns a Gmail message's
-  parts into `messagecontent.Received`, the provider-neutral input of
+  `connectedaccount`'s `AccessToken`. It also implements
+  `messagecontent`'s `Provider`, a message's content in full format and
+  one part's bytes, turning a Gmail message's parts into
+  `messagecontent.Received`, the provider-neutral input of
   [Message parts](#message-parts).
 - `googleemulator` starts the [Google emulator](#google-emulator) for
   tests, each with its own seed. Only tests import it.

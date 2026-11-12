@@ -205,15 +205,16 @@ func TestMessagesPaceDeadline(t *testing.T) {
 		calls.Add(1)
 		stubMessage(0)(w, r)
 	})
-	_, err := client.Messages(t.Context(), stubToken, testAccountID, []string{"m1"})
+	// Empty the bucket.
+	_, err := client.Messages(t.Context(), stubToken, testAccountID, messageIDs(burstFetches))
 	require.NoError(t, err)
 
 	short, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
-	_, err = client.Messages(short, stubToken, testAccountID, []string{"m2"})
+	_, err = client.Messages(short, stubToken, testAccountID, []string{"next"})
 	require.ErrorIs(t, err, mailsync.ErrProviderBusy)
 	require.NoError(t, short.Err(), "refused before the deadline")
-	assert.Equal(t, int32(1), calls.Load(), "the refused fetch sent nothing")
+	assert.Equal(t, int32(burstFetches), calls.Load(), "the refused fetch sent nothing")
 
 	ended, stop := context.WithCancel(t.Context())
 	stop()
@@ -242,6 +243,10 @@ func messageIDs(n int) []string {
 // perFetch is how long the pace makes each fetch after the first wait.
 const perFetch = time.Minute * metadataUnits / fetchUnitsPerMinute
 
+// burstFetches is how many metadata fetches a full pace lets go at once:
+// its bucket holds a full fetch's units.
+const burstFetches = fullUnits / metadataUnits
+
 // An account's fetches are paced across calls, so many small calls go no
 // faster than one large one; another account has its own pace.
 func TestMessagesPace(t *testing.T) {
@@ -249,7 +254,7 @@ func TestMessagesPace(t *testing.T) {
 		t.Skip("waits for the pace")
 	}
 	client, _ := stubGmail(t, stubMessage(0))
-	const calls = 6
+	const calls = 8
 
 	start := time.Now()
 	for i := range calls {
@@ -262,8 +267,8 @@ func TestMessagesPace(t *testing.T) {
 	require.NoError(t, err)
 	other := time.Since(start)
 
-	// The first goes at once; each later one waits its units' share.
-	assert.GreaterOrEqual(t, paced, perFetch*(calls-1)-perFetch/2)
+	// The first few go at once; each later one waits its units' share.
+	assert.GreaterOrEqual(t, paced, perFetch*(calls-burstFetches)-perFetch/2)
 	assert.Less(t, other, perFetch/2)
 }
 

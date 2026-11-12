@@ -6,6 +6,7 @@ package googleemulator
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -96,7 +97,11 @@ type Message struct {
 	Cc       string
 	ReplyTo  string
 	Subject  string
-	Body     string
+	Body     string // the text/plain body
+	HTML     string // the text/html body
+	// Raw is the whole message as sent (RFC 5322), whose attachments the
+	// emulator serves by attachmentId; fields set above replace its own.
+	Raw string
 	// Snippet replaces the one the emulator derives from [Message.Body], e.g. with
 	// HTML entities as Gmail sends them.
 	Snippet string
@@ -122,11 +127,15 @@ func messageConfig(m Message) map[string]any {
 	}
 	config := map[string]any{
 		"id": m.ID, "user_email": m.Mailbox, "to": to, "from": m.From,
-		"subject": m.Subject, "body_text": m.Body, "label_ids": labels,
+		"subject": m.Subject, "label_ids": labels,
 	}
 	optional := map[string]string{
 		"thread_id": m.ThreadID, "cc": m.Cc, "reply_to": m.ReplyTo, "snippet": m.Snippet,
 		"message_id": m.MessageID, "in_reply_to": m.InReplyTo, "references": m.References,
+		"body_text": m.Body, "body_html": m.HTML,
+	}
+	if m.Raw != "" {
+		config["raw"] = base64.URLEncoding.EncodeToString([]byte(m.Raw))
 	}
 	for key, value := range optional {
 		if value != "" {

@@ -175,5 +175,5 @@ func TestNoClientTimeout(t *testing.T) {
 	client := New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect}, time.Now)
 
 	assert.Zero(t, client.http.Timeout)
-	assert.Zero(t, client.authorized(connectedaccount.NewAccessToken("access-1")).Timeout)
+	assert.Zero(t, client.authorized(connectedaccount.NewAccessToken("access-1"), maxResponseBytes).Timeout)
 }

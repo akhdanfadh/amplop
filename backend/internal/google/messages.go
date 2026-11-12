@@ -20,20 +20,26 @@ import (
 	"inbok/internal/mailsync"
 )
 
-// Gmail's per-user quota and what a metadata fetch costs of it (Gmail's
-// usage limits): 6,000 units a minute per user per project, and 20 for a
-// messages.get in metadata format.
+// Gmail's per-user quota and what each fetch costs of it (Gmail's usage
+// limits): 6,000 units a minute per user per project, 20 for a
+// messages.get in metadata format, 60 in full format, and 20 for a
+// messages.attachments.get.
 const (
 	userUnitsPerMinute = 6000
 	metadataUnits      = 20
+	fullUnits          = 60
+	attachmentUnits    = 20
 )
 
 const (
 	// fetchUnitsPerMinute is the share of [userUnitsPerMinute] one account's
 	// fetches spend, inbok's choice: four fifths, leaving room for the same
-	// account's sends (100 units each) and polls meanwhile. That paces
-	// fetches at 4 a second. The pace is this process's: one sync per
-	// account at a time keeps the account's fetches in one process.
+	// account's sends (100 units each), polls, and the messages its member
+	// opens meanwhile. That paces metadata fetches at 4 a second, full ones
+	// at 4 every 3 seconds. The pace is this process's: the worker runs
+	// one sync per account at a time, while another process's fetches,
+	// e.g. for a member who opens a message, share its own process's pace,
+	// inside the room left.
 	fetchUnitsPerMinute = userUnitsPerMinute * 4 / 5
 	// fetchConcurrency bounds one call's fetches in flight, inbok's choice.
 	// Gmail also limits a user's concurrent requests, at a number it does
@@ -198,10 +204,11 @@ func (p *paces) take(accountID int64) *rate.Limiter {
 		}
 	}
 
-	// 3. Take the account's pace, or start a full one.
+	// 3. Take the account's pace, or start a full one. Its bucket holds the
+	// costliest fetch, which could never wait for more than the bucket holds.
 	current, ok := p.byAccount[accountID]
 	if !ok {
-		current = &pace{limiter: rate.NewLimiter(rate.Limit(float64(fetchUnitsPerMinute)/60), metadataUnits)}
+		current = &pace{limiter: rate.NewLimiter(rate.Limit(float64(fetchUnitsPerMinute)/60), fullUnits)}
 		p.byAccount[accountID] = current
 	}
 
