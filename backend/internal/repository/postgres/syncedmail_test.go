@@ -692,10 +692,10 @@ func TestSyncedMailChecks(t *testing.T) {
 	}
 }
 
-// keys returns messages' provider IDs, sorted.
-func keys(messages map[string]mailsync.Message) []string {
-	ids := make([]string, 0, len(messages))
-	for id := range messages {
+// keys returns the keys of byID, e.g. messages' provider IDs, sorted.
+func keys[V any](byID map[string]V) []string {
+	ids := make([]string, 0, len(byID))
+	for id := range byID {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)

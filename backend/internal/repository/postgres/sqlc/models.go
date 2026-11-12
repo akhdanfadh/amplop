@@ -53,6 +53,29 @@ type ConnectedAccount struct {
 	Color                  int16
 }
 
+type Conversation struct {
+	ID                 uuid.UUID
+	ConnectedAccountID int64
+	ProviderThreadID   string
+	LatestDate         time.Time
+	Subject            string
+	Preview            string
+	LatestFrom         []byte
+	Participants       []byte
+	MessageCount       int32
+	Unread             bool
+	Flagged            bool
+	InAllMail          bool
+}
+
+type ConversationMailbox struct {
+	ConnectedAccountID int64
+	ConversationID     uuid.UUID
+	MailboxID          uuid.UUID
+	LatestDate         time.Time
+	Unread             bool
+}
+
 type EmailVerificationLink struct {
 	TokenHash []byte
 	UserID    int64

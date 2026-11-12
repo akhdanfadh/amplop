@@ -140,6 +140,8 @@ CREATE TABLE messages (
 CREATE UNIQUE INDEX messages_account_provider_id_idx ON messages (connected_account_id, provider_message_id);
 -- Lists an account's messages by date, and finds its oldest.
 CREATE INDEX messages_account_internal_date_idx ON messages (connected_account_id, internal_date);
+-- Finds a thread's messages, which its conversation is derived from.
+CREATE INDEX messages_account_thread_idx ON messages (connected_account_id, provider_thread_id);
 
 -- Which mailboxes a message is in; none for a Gmail message with no label,
 -- where JMAP would ask for at least one. Both sides are named with the

@@ -2672,12 +2672,13 @@ account's sync state, passes it to a function that returns a
 `mailsync.Change`, and writes the change in one transaction: the
 mailboxes, deleted messages, saved messages with their mailboxes,
 updated messages' mailboxes and flags, the sweep of earlier generations,
-the [content deletion](#content-deletion) of what the deleted messages
-had stored, and the new state.
-An update for a message the account does not have is
-skipped. A change that saves one message twice keeps the last, and one
-that deletes and saves a message only saves it, so the message keeps its
-`id` however often a step repeats. A saved or updated message naming a
+the conversations of every thread these touched, the
+[content deletion](#content-deletion) of what the deleted messages had
+stored, and the new state. An update for a message the account does not
+have is skipped. A change that saves one message twice keeps the last,
+and one that deletes and saves a message only saves it, so the message
+keeps its `id` however often a step repeats. A saved or updated message
+naming a
 mailbox the account does not have, e.g. a Gmail label made since the
 labels were listed, writes nothing and returns
 `mailsync.ErrUnknownMailbox`; so does any other error, e.g. a generation
@@ -2750,6 +2751,45 @@ five attempts, or for a `Retry-After` over 32 seconds, it returns
 Gmail's status, never its text, and an answer that does not decode fails
 without quoting it. The Google client's own logging is off, since at
 `GOOGLE_SDK_GO_LOGGING_LEVEL=debug` it would log whole answers.
+
+### Conversations
+
+The mail lists show conversations: an account's messages that share
+Gmail's thread ID (ADR031). Two tables keep them, derived from the
+synchronized mail so a list reads one index and never groups messages
+(ADR001, "Conversations"):
+
+- `conversations`: one row per thread with a message to show, with
+  inbok's own random `id`, which the web app's URLs and the other mail
+  features use, and every column a list row shows: the newest message's
+  date (`latest_date`), preview, and From, the oldest message's subject as
+  sent, up to 10 senders in date order, the message count, and whether a
+  message is unread or flagged. The row is made from the thread's
+  visible messages, those in neither Spam nor Trash and no drafts; a
+  thread with none is made from its Spam and Trash messages, and a thread
+  of drafts alone has no row. `in_all_mail` says it has a visible
+  message.
+- `conversation_mailboxes`: the mailboxes each conversation is in: those
+  holding a visible message of it, and Spam and Trash when they hold any.
+  Each row repeats the conversation's date and unread, so one index
+  serves a mailbox's list and its unread count.
+
+The rules are one Go function, `conversation.Derive`, which turns a
+thread's messages, each with its mailboxes' roles, into the row and the
+mailboxes, or into no row for a thread of drafts alone; its tests need no
+database. Both tables are written only by `deriveConversations` in
+`repository/postgres`, which `UpdateSyncedMail` runs for the threads its
+change touched, after every other write of the change: it reads those
+threads' messages, derives each, deletes the rows of threads left with
+nothing to show, and saves the rest, which keep their `id`. Every write to the mail tables goes
+through `UpdateSyncedMail`, which keeps the two right. SQL run by hand,
+or a write to `messages`, `message_mailboxes`, or `mailboxes` added
+anywhere else, leaves them stale: such a write must go through
+`UpdateSyncedMail` or derive the threads it touched. So does a change to
+how a row is derived, which leaves existing rows as they were until
+their thread is written again. ADR001 lists the fixes considered, and
+`DEBT.md` holds the planned one: a rules version that `inbok migrate`
+derives every thread again on.
 
 ## Search index
 
@@ -2999,6 +3039,8 @@ httpapi --> connectedaccount <-- repository/postgres
 httpapi --> mailsync <-- repository/postgres
             mailsync --> connectedaccount
                      <-- google
+            conversation <-- repository/postgres
+            conversation --> mailsync
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google

@@ -42,24 +42,30 @@ JOIN mailboxes mb ON mb.connected_account_id = @connected_account_id
     AND mb.provider_mailbox_id = pair.provider_mailbox_id;
 
 -- name: DeleteMessages :one
--- Returns the blob IDs the deleted messages' parts named. Every
--- part of the statement reads the rows as they were before it, so the
--- select sees the parts the delete cascades to.
+-- Returns each deleted message's thread, whose conversation changes, and
+-- the blob IDs their parts named. Every part of the statement reads the
+-- rows as they were before it, so the select sees the parts the delete
+-- cascades to.
 WITH deleted AS (
     DELETE FROM messages m
     WHERE m.connected_account_id = @connected_account_id
         AND m.provider_message_id = ANY (@provider_message_ids::text[])
-    RETURNING m.id
+    RETURNING m.id, m.provider_thread_id
 )
-SELECT coalesce(array_agg(p.blob_id), '{}')::uuid[] AS blob_ids
-FROM message_parts p
-JOIN deleted d ON d.id = p.message_id
-WHERE p.blob_id IS NOT NULL;
+SELECT coalesce((
+        SELECT array_agg(d.provider_thread_id) FROM deleted d
+    ), '{}')::text[] AS thread_ids,
+    coalesce((
+        SELECT array_agg(p.blob_id)
+        FROM message_parts p
+        JOIN deleted d ON d.id = p.message_id
+        WHERE p.blob_id IS NOT NULL
+    ), '{}')::uuid[] AS blob_ids;
 
 -- name: DeleteEarlierMessages :one
 -- Deletes up to @max_deleted of the messages no step of the account's
--- current generation saved. Returns how many, and the blob IDs their
--- parts named, as DeleteMessages does.
+-- current generation saved. Returns how many, and their threads and the
+-- blob IDs their parts named, as DeleteMessages does.
 WITH deleted AS (
     DELETE FROM messages m
     WHERE m.id IN (
@@ -68,9 +74,12 @@ WITH deleted AS (
             AND earlier.sync_generation < @sync_generation
         LIMIT @max_deleted
     )
-    RETURNING m.id
+    RETURNING m.id, m.provider_thread_id
 )
 SELECT (SELECT count(*) FROM deleted)::bigint AS deleted,
+    coalesce((
+        SELECT array_agg(d.provider_thread_id) FROM deleted d
+    ), '{}')::text[] AS thread_ids,
     coalesce((
         SELECT array_agg(p.blob_id)
         FROM message_parts p
@@ -81,7 +90,7 @@ SELECT (SELECT count(*) FROM deleted)::bigint AS deleted,
 -- name: UpdateMessageFlags :many
 -- Sets the flags of the account's messages named, one per position of the
 -- three lists, which have the same length; a message the account does not
--- have is skipped. Returns the IDs of those it has.
+-- have is skipped. Returns the IDs and threads of those it has.
 UPDATE messages m SET
     seen = u.seen,
     flagged = u.flagged
@@ -92,7 +101,7 @@ FROM (
 ) AS u
 WHERE m.connected_account_id = @connected_account_id
     AND m.provider_message_id = u.provider_message_id
-RETURNING m.id, m.provider_message_id;
+RETURNING m.id, m.provider_message_id, m.provider_thread_id;
 
 -- name: OldestMessage :one
 -- When the provider received the account's oldest message, and whether it

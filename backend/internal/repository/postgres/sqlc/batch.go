@@ -94,6 +94,90 @@ func (b *InsertMessagePartBatchResults) Close() error {
 	return b.br.Close()
 }
 
+const upsertConversation = `-- name: UpsertConversation :batchone
+INSERT INTO conversations (connected_account_id, provider_thread_id, latest_date, subject, preview,
+    latest_from, participants, message_count, unread, flagged, in_all_mail)
+VALUES ($1, $2, $3, $4, $5,
+    $6, $7, $8, $9, $10, $11)
+ON CONFLICT (connected_account_id, provider_thread_id) DO UPDATE SET
+    latest_date = excluded.latest_date,
+    subject = excluded.subject,
+    preview = excluded.preview,
+    latest_from = excluded.latest_from,
+    participants = excluded.participants,
+    message_count = excluded.message_count,
+    unread = excluded.unread,
+    flagged = excluded.flagged,
+    in_all_mail = excluded.in_all_mail
+RETURNING id
+`
+
+type UpsertConversationBatchResults struct {
+	br     pgx.BatchResults
+	tot    int
+	closed bool
+}
+
+type UpsertConversationParams struct {
+	ConnectedAccountID int64
+	ProviderThreadID   string
+	LatestDate         time.Time
+	Subject            string
+	Preview            string
+	LatestFrom         []byte
+	Participants       []byte
+	MessageCount       int32
+	Unread             bool
+	Flagged            bool
+	InAllMail          bool
+}
+
+// A thread that has a conversation already keeps its row and ID.
+func (q *Queries) UpsertConversation(ctx context.Context, arg []UpsertConversationParams) *UpsertConversationBatchResults {
+	batch := &pgx.Batch{}
+	for _, a := range arg {
+		vals := []interface{}{
+			a.ConnectedAccountID,
+			a.ProviderThreadID,
+			a.LatestDate,
+			a.Subject,
+			a.Preview,
+			a.LatestFrom,
+			a.Participants,
+			a.MessageCount,
+			a.Unread,
+			a.Flagged,
+			a.InAllMail,
+		}
+		batch.Queue(upsertConversation, vals...)
+	}
+	br := q.db.SendBatch(ctx, batch)
+	return &UpsertConversationBatchResults{br, len(arg), false}
+}
+
+func (b *UpsertConversationBatchResults) QueryRow(f func(int, uuid.UUID, error)) {
+	defer b.br.Close()
+	for t := 0; t < b.tot; t++ {
+		var id uuid.UUID
+		if b.closed {
+			if f != nil {
+				f(t, id, ErrBatchAlreadyClosed)
+			}
+			continue
+		}
+		row := b.br.QueryRow()
+		err := row.Scan(&id)
+		if f != nil {
+			f(t, id, err)
+		}
+	}
+}
+
+func (b *UpsertConversationBatchResults) Close() error {
+	b.closed = true
+	return b.br.Close()
+}
+
 const upsertMailbox = `-- name: UpsertMailbox :batchexec
 INSERT INTO mailboxes (connected_account_id, provider_mailbox_id, name, role, made_by)
 VALUES ($1, $2, $3, $4, $5)

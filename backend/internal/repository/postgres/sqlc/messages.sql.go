@@ -21,9 +21,12 @@ WITH deleted AS (
             AND earlier.sync_generation < $2
         LIMIT $3
     )
-    RETURNING m.id
+    RETURNING m.id, m.provider_thread_id
 )
 SELECT (SELECT count(*) FROM deleted)::bigint AS deleted,
+    coalesce((
+        SELECT array_agg(d.provider_thread_id) FROM deleted d
+    ), '{}')::text[] AS thread_ids,
     coalesce((
         SELECT array_agg(p.blob_id)
         FROM message_parts p
@@ -39,17 +42,18 @@ type DeleteEarlierMessagesParams struct {
 }
 
 type DeleteEarlierMessagesRow struct {
-	Deleted int64
-	BlobIds []uuid.UUID
+	Deleted   int64
+	ThreadIds []string
+	BlobIds   []uuid.UUID
 }
 
 // Deletes up to @max_deleted of the messages no step of the account's
-// current generation saved. Returns how many, and the blob IDs their
-// parts named, as DeleteMessages does.
+// current generation saved. Returns how many, and their threads and the
+// blob IDs their parts named, as DeleteMessages does.
 func (q *Queries) DeleteEarlierMessages(ctx context.Context, arg DeleteEarlierMessagesParams) (DeleteEarlierMessagesRow, error) {
 	row := q.db.QueryRow(ctx, deleteEarlierMessages, arg.ConnectedAccountID, arg.SyncGeneration, arg.MaxDeleted)
 	var i DeleteEarlierMessagesRow
-	err := row.Scan(&i.Deleted, &i.BlobIds)
+	err := row.Scan(&i.Deleted, &i.ThreadIds, &i.BlobIds)
 	return i, err
 }
 
@@ -67,12 +71,17 @@ WITH deleted AS (
     DELETE FROM messages m
     WHERE m.connected_account_id = $1
         AND m.provider_message_id = ANY ($2::text[])
-    RETURNING m.id
+    RETURNING m.id, m.provider_thread_id
 )
-SELECT coalesce(array_agg(p.blob_id), '{}')::uuid[] AS blob_ids
-FROM message_parts p
-JOIN deleted d ON d.id = p.message_id
-WHERE p.blob_id IS NOT NULL
+SELECT coalesce((
+        SELECT array_agg(d.provider_thread_id) FROM deleted d
+    ), '{}')::text[] AS thread_ids,
+    coalesce((
+        SELECT array_agg(p.blob_id)
+        FROM message_parts p
+        JOIN deleted d ON d.id = p.message_id
+        WHERE p.blob_id IS NOT NULL
+    ), '{}')::uuid[] AS blob_ids
 `
 
 type DeleteMessagesParams struct {
@@ -80,14 +89,20 @@ type DeleteMessagesParams struct {
 	ProviderMessageIds []string
 }
 
-// Returns the blob IDs the deleted messages' parts named. Every
-// part of the statement reads the rows as they were before it, so the
-// select sees the parts the delete cascades to.
-func (q *Queries) DeleteMessages(ctx context.Context, arg DeleteMessagesParams) ([]uuid.UUID, error) {
+type DeleteMessagesRow struct {
+	ThreadIds []string
+	BlobIds   []uuid.UUID
+}
+
+// Returns each deleted message's thread, whose conversation changes, and
+// the blob IDs their parts named. Every part of the statement reads the
+// rows as they were before it, so the select sees the parts the delete
+// cascades to.
+func (q *Queries) DeleteMessages(ctx context.Context, arg DeleteMessagesParams) (DeleteMessagesRow, error) {
 	row := q.db.QueryRow(ctx, deleteMessages, arg.ConnectedAccountID, arg.ProviderMessageIds)
-	var blob_ids []uuid.UUID
-	err := row.Scan(&blob_ids)
-	return blob_ids, err
+	var i DeleteMessagesRow
+	err := row.Scan(&i.ThreadIds, &i.BlobIds)
+	return i, err
 }
 
 const insertMessageMailboxes = `-- name: InsertMessageMailboxes :execrows
@@ -149,7 +164,7 @@ FROM (
 ) AS u
 WHERE m.connected_account_id = $1
     AND m.provider_message_id = u.provider_message_id
-RETURNING m.id, m.provider_message_id
+RETURNING m.id, m.provider_message_id, m.provider_thread_id
 `
 
 type UpdateMessageFlagsParams struct {
@@ -162,11 +177,12 @@ type UpdateMessageFlagsParams struct {
 type UpdateMessageFlagsRow struct {
 	ID                uuid.UUID
 	ProviderMessageID string
+	ProviderThreadID  string
 }
 
 // Sets the flags of the account's messages named, one per position of the
 // three lists, which have the same length; a message the account does not
-// have is skipped. Returns the IDs of those it has.
+// have is skipped. Returns the IDs and threads of those it has.
 func (q *Queries) UpdateMessageFlags(ctx context.Context, arg UpdateMessageFlagsParams) ([]UpdateMessageFlagsRow, error) {
 	rows, err := q.db.Query(ctx, updateMessageFlags,
 		arg.ConnectedAccountID,
@@ -181,7 +197,7 @@ func (q *Queries) UpdateMessageFlags(ctx context.Context, arg UpdateMessageFlags
 	var items []UpdateMessageFlagsRow
 	for rows.Next() {
 		var i UpdateMessageFlagsRow
-		if err := rows.Scan(&i.ID, &i.ProviderMessageID); err != nil {
+		if err := rows.Scan(&i.ID, &i.ProviderMessageID, &i.ProviderThreadID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

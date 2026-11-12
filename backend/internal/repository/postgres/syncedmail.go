@@ -24,7 +24,8 @@ var errStateRange = errors.New("sync state number is out of storage's range")
 // UpdateSyncedMail locks accountID's sync state, calls update with it, and
 // writes the change update returns, in one transaction: the mailboxes, the
 // deletes, the saves with their mailboxes, the updates, the earlier
-// generations' deletes, the job deleting the deleted messages' content,
+// generations' deletes, the conversations of every thread these touched,
+// the job deleting the deleted messages' content,
 // and the state. It returns what it wrote,
 // [mailsync.ErrNotFound] when the account has no sync state, and
 // [mailsync.ErrUnknownMailbox] when a saved or updated message names a
@@ -70,20 +71,28 @@ func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func
 		deletes := slices.DeleteFunc(slices.Clone(change.Deleted), func(providerID string) bool {
 			return saved[providerID]
 		})
+		var threads []string
 		var deletedBlobs []uuid.UUID
 		if len(deletes) > 0 {
 			params := sqlc.DeleteMessagesParams{ConnectedAccountID: accountID, ProviderMessageIds: deletes}
-			deletedBlobs, err = queries.DeleteMessages(ctx, params)
+			deleted, err := queries.DeleteMessages(ctx, params)
 			if err != nil {
 				return fmt.Errorf("delete messages: %w", err)
 			}
+			threads = append(threads, deleted.ThreadIds...)
+			deletedBlobs = deleted.BlobIds
 		}
 		if err := saveMessages(ctx, tx, accountID, state.SyncGeneration, saves); err != nil {
 			return err
 		}
-		if err := updateMessages(ctx, tx, accountID, change.Updated); err != nil {
+		for _, message := range saves {
+			threads = append(threads, message.ThreadID)
+		}
+		updated, err := updateMessages(ctx, tx, accountID, change.Updated)
+		if err != nil {
 			return err
 		}
+		threads = append(threads, updated...)
 
 		// 5. Delete what earlier generations saved only after this one's
 		// saves, which keep the messages they name.
@@ -99,10 +108,17 @@ func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func
 				return fmt.Errorf("delete earlier messages: %w", err)
 			}
 			earlierDeleted = earlier.Deleted
+			threads = append(threads, earlier.ThreadIds...)
 			deletedBlobs = append(deletedBlobs, earlier.BlobIds...)
 		}
 
-		// 6. Save the job that deletes the deleted messages' blobs. A worker
+		// 6. Derive the touched threads' conversations from the messages
+		// they have now, which every step above has written.
+		if err := deriveConversations(ctx, tx, accountID, uniqueStrings(threads)); err != nil {
+			return err
+		}
+
+		// 7. Save the job that deletes the deleted messages' blobs. A worker
 		// sees it only once this commits, and a rollback drops it, so no
 		// row ever names a deleted blob (ADR009).
 		if err := db.deleteBlobsAfter(ctx, tx, accountID, deletedBlobs); err != nil {
@@ -218,12 +234,12 @@ func saveMessages(ctx context.Context, tx pgx.Tx, accountID int64, generation in
 
 // updateMessages sets the flags and replaces the mailboxes of accountID's
 // messages that updates name, in tx, skipping those it does not have; when
-// one ProviderID appears more than once, the last wins. It returns
-// [mailsync.ErrUnknownMailbox] when one names a mailbox the account does not
-// have.
-func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []mailsync.MessageUpdate) error {
+// one ProviderID appears more than once, the last wins. It returns the
+// threads of the messages it updated, and [mailsync.ErrUnknownMailbox] when
+// one names a mailbox the account does not have.
+func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []mailsync.MessageUpdate) ([]string, error) {
 	if len(updates) == 0 {
-		return nil
+		return nil, nil
 	}
 	queries := sqlc.New(tx)
 
@@ -243,17 +259,19 @@ func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []m
 	}
 	rows, err := queries.UpdateMessageFlags(ctx, params)
 	if err != nil {
-		return fmt.Errorf("update message flags: %w", err)
+		return nil, fmt.Errorf("update message flags: %w", err)
 	}
 
 	// 2. Replace the mailboxes of those it has.
 	ids := make([]uuid.UUID, len(rows))
 	mailboxes := make([][]string, len(rows))
+	threads := make([]string, len(rows))
 	for i, row := range rows {
 		ids[i] = row.ID
 		mailboxes[i] = last[row.ProviderMessageID].MailboxProviderIDs
+		threads[i] = row.ProviderThreadID
 	}
-	return replaceMailboxes(ctx, tx, accountID, ids, mailboxes)
+	return threads, replaceMailboxes(ctx, tx, accountID, ids, mailboxes)
 }
 
 // replaceMailboxes makes mailboxes[i] the mailboxes of accountID's message
@@ -491,13 +509,9 @@ type storedAddress struct {
 func messageParams(accountID int64, generation int32, message mailsync.Message) (sqlc.UpsertMessageParams, error) {
 	var lists [4][]byte
 	for i, addresses := range [][]mailsync.Address{message.From, message.ReplyTo, message.To, message.CC} {
-		stored := make([]storedAddress, 0, len(addresses))
-		for _, a := range addresses {
-			stored = append(stored, storedAddress(a))
-		}
-		raw, err := json.Marshal(stored)
+		raw, err := encodeAddresses(addresses)
 		if err != nil {
-			return sqlc.UpsertMessageParams{}, fmt.Errorf("encode addresses: %w", err)
+			return sqlc.UpsertMessageParams{}, err
 		}
 		lists[i] = raw
 	}
@@ -519,6 +533,20 @@ func messageParams(accountID int64, generation int32, message mailsync.Message) 
 		InternetReferences: orEmpty(message.References),
 		SyncGeneration:     generation,
 	}, nil
+}
+
+// encodeAddresses returns addresses as messages keep them, a JSON array of
+// [storedAddress].
+func encodeAddresses(addresses []mailsync.Address) ([]byte, error) {
+	stored := make([]storedAddress, 0, len(addresses))
+	for _, a := range addresses {
+		stored = append(stored, storedAddress(a))
+	}
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return nil, fmt.Errorf("encode addresses: %w", err)
+	}
+	return raw, nil
 }
 
 // orEmpty returns values, or an empty list for nil.
