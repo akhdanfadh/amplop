@@ -63,7 +63,10 @@ type SidebarContextProps = SidebarState & {
 // An item opens a page, as a link that can be the current page, or acts,
 // as a button.
 type SidebarButtonProps =
-  | (Omit<LinkProps, "className" | "ref"> & { href: string; isActive?: boolean })
+  | (Omit<LinkProps, "className" | "ref"> & {
+      href: NonNullable<LinkProps["href"]>;
+      isActive?: boolean;
+    })
   | (Omit<ButtonProps, "className" | "ref"> & { href?: never; isActive?: never });
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);

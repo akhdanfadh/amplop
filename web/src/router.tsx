@@ -27,6 +27,7 @@ export function getRouter(): Router<typeof routeTree> {
 
   const router = createRouter({
     routeTree,
+    context: { queryClient },
     defaultPendingMs: pendingAfterMs,
     // NOTE: on the first load TanStack shows a pending page's view at once,
     // without defaultPendingMs, and holds it defaultPendingMinMs from then

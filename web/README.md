@@ -175,6 +175,18 @@ the root shows it when the code around the pages fails. Each state names
 the tab and moves focus to its heading; after Try again the pending view
 takes focus, unless focus is on something still shown.
 
+The root (`src/routes/__root.tsx`) fixes React Aria's locale to `en-US`,
+so its own words, e.g. a toast's Close, and its direction never follow
+the browser's language; sends React Aria's links through the router; and
+holds the one toast region. A React Aria link to a page in the app takes
+TanStack Router's options, written with its `linkOptions`, e.g.
+`href={linkOptions({ to: "/outbox/$id", params: { id } })}`, which
+TypeScript checks against the routes, params included; a bare object
+misses a param left out. Its `routerOptions`, e.g. `replace`, reach the
+router, and a path written as a string is a type error. Only a link that
+leaves the app, a `#fragment`, or a file the server sends (`/api/...`) is
+a string.
+
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page
 redirects to `/setup`, including direct sign-in, demo, and unknown URLs.
