@@ -230,6 +230,20 @@ func (db *DB) MessageProviderID(ctx context.Context, accountID int64, messageID 
 	return id, nil
 }
 
+// UserMessageAccount returns the connected account of user userID's
+// message messageID, or [messagecontent.ErrMessageNotFound] when none of
+// the user's accounts has it.
+func (db *DB) UserMessageAccount(ctx context.Context, userID int64, messageID uuid.UUID) (int64, error) {
+	accountID, err := sqlc.New(db.pool).GetUserMessageAccount(ctx, sqlc.GetUserMessageAccountParams{ID: messageID, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, messagecontent.ErrMessageNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read message account: %w", err)
+	}
+	return accountID, nil
+}
+
 // SavePartBlob names blobID as the content of the part at path of account
 // accountID's message messageID, unless the part names a blob already,
 // which it keeps, and returns the blob ID the part names, in one

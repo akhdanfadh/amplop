@@ -340,6 +340,21 @@ func TestMessageProviderID(t *testing.T) {
 	require.ErrorIs(t, err, messagecontent.ErrMessageNotFound)
 }
 
+// A message is found only through its own member's accounts.
+func TestUserMessageAccount(t *testing.T) {
+	s := newMessagePartsTest(t)
+	message := s.save(t, "m1")[0]
+	stranger := insertConnectingMember(t, s.conn, "stranger@example.com")
+
+	accountID, err := s.db.UserMessageAccount(t.Context(), s.member, message)
+	require.NoError(t, err)
+	assert.Equal(t, s.account, accountID)
+	_, err = s.db.UserMessageAccount(t.Context(), stranger, message)
+	require.ErrorIs(t, err, messagecontent.ErrMessageNotFound)
+	_, err = s.db.UserMessageAccount(t.Context(), s.member, uuid.New())
+	require.ErrorIs(t, err, messagecontent.ErrMessageNotFound)
+}
+
 // A part's blob is named once: a later save keeps the first and returns
 // it; a part or message that is not there is not found.
 func TestSavePartBlob(t *testing.T) {

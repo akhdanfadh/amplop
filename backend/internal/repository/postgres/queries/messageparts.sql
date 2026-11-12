@@ -37,3 +37,11 @@ WHERE connected_account_id = @connected_account_id AND id = @id;
 UPDATE message_parts SET blob_id = coalesce(blob_id, @blob_id::uuid)
 WHERE connected_account_id = @connected_account_id AND message_id = @message_id AND path = @path
 RETURNING blob_id;
+
+-- name: GetUserMessageAccount :one
+-- The connected account of the user's message; no row when none of the
+-- user's accounts has it.
+SELECT m.connected_account_id
+FROM messages m
+JOIN connected_accounts a ON a.id = m.connected_account_id
+WHERE m.id = @id AND a.user_id = @user_id;

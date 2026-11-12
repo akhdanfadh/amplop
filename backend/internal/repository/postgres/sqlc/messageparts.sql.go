@@ -28,6 +28,27 @@ func (q *Queries) GetMessageProviderID(ctx context.Context, arg GetMessageProvid
 	return provider_message_id, err
 }
 
+const getUserMessageAccount = `-- name: GetUserMessageAccount :one
+SELECT m.connected_account_id
+FROM messages m
+JOIN connected_accounts a ON a.id = m.connected_account_id
+WHERE m.id = $1 AND a.user_id = $2
+`
+
+type GetUserMessageAccountParams struct {
+	ID     uuid.UUID
+	UserID int64
+}
+
+// The connected account of the user's message; no row when none of the
+// user's accounts has it.
+func (q *Queries) GetUserMessageAccount(ctx context.Context, arg GetUserMessageAccountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getUserMessageAccount, arg.ID, arg.UserID)
+	var connected_account_id int64
+	err := row.Scan(&connected_account_id)
+	return connected_account_id, err
+}
+
 const listMessageParts = `-- name: ListMessageParts :many
 SELECT path, provider_part_id, media_type, charset, filename, size, disposition,
     mime_content_id, related_start, kind, blob_id
