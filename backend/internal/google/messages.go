@@ -37,9 +37,9 @@ const (
 	// account's sends (100 units each), polls, and the messages its member
 	// opens meanwhile. That paces metadata fetches at 4 a second, full ones
 	// at 4 every 3 seconds. The pace is this process's: the worker runs
-	// one sync per account at a time, while another process's fetches,
-	// e.g. for a member who opens a message, share its own process's pace,
-	// inside the room left.
+	// one sync and one body fetch per account at a time, while the API's
+	// fetches for a member who opens a message share its own process's
+	// pace, inside the room left (ADR009, "Fetching content").
 	fetchUnitsPerMinute = userUnitsPerMinute * 4 / 5
 	// fetchConcurrency bounds one call's fetches in flight, inbok's choice.
 	// Gmail also limits a user's concurrent requests, at a number it does

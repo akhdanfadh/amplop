@@ -493,7 +493,8 @@ accounts whose member is active and which need no reconnect, then:
 
 The run enqueues `inbok.sync` for each, keeping a sync already queued or
 running. An idle account then costs one run a minute in all, the
-schedule's, and 1 unit of its Gmail quota.
+schedule's, and 1 unit of its Gmail quota;
+[message bodies](#message-bodies) have a minute's schedule of their own.
 
 **Sync now.** `POST /api/v0/connected-accounts/{id}/sync`
 (`mailsync.Service.Request`) enqueues `inbok.sync` for one of the member's
@@ -611,6 +612,76 @@ position. The worker registers both workflows and the schedule, and
 listens to `inbok.google`, only with the Google settings, as for the
 [account removal](#account-removal); without them it deletes the schedule
 an earlier start saved.
+
+### Message bodies
+
+The workflow `inbok.message-bodies`, run from the queue `inbok.google`,
+fetches the content of recent mail in the background, so a member opens
+it without waiting and search finds it by its text. Its input is only the
+account's ID: the account's own data lists what to fetch. A message needs
+its body while it has no part rows, Gmail received it in the last 90 days,
+it is in no Spam or Trash mailbox (ADR001 keeps those metadata only), and
+its fetch has not failed for good in the last day (`body_failed_at`).
+
+The workflow `inbok.message-bodies-schedule` runs at the start of every
+minute, in UTC (the schedule `inbok.message-bodies.minutely`), and its
+step `pick due bodies` (`messagecontent.Fetcher.DueAccounts`) makes one
+query for the accounts whose member is active, which need no reconnect,
+whose full sync is `complete`, and which have a message needing its body.
+The rule's policy is Go's: the window (`mailsync.Window`), the day's
+skip, and the mailboxes left out (`mailsync.MetadataOnlyRoles`), which
+the queries take as parameters.
+For each, it enqueues `inbok.message-bodies`, keeping one already queued
+or running (its deduplication ID, `message-bodies-<account ID>`); its
+output is how many it asked for. Bodies so wait for an account's first
+copy, which with the whole pace fills the mail list up to four times as
+fast. A later full sync, after Gmail dropped the account's history, can
+start while a body run is going; the run keeps on, sharing the pace
+(ADR009, "Fetching content", accepts it). The accounts are found from their data
+each minute, not from events: a quiet account, which gets no sync run,
+still has a run that ended at its limit or failed, or a message whose day
+passed, picked up within a minute. A pick that fails fails the run, and
+an enqueue that fails is skipped; they log `message body check failed`
+or `message body fetch not started`, and the next minute tries again.
+The schedule is apart from the sync schedule, whose successful runs tell
+members that syncing works (`syncStopped`, [Connected
+accounts](#connected-accounts)), so body work that stalls, e.g. behind a
+lock, never makes syncing look stopped.
+
+Each step, `fetch bodies` (`Fetcher.FetchDue`), takes an access token and
+the 20 newest messages that need their body, asked again each step, so
+mail arriving during a long fetch goes first. It fetches them one at a
+time with `messages.get` in full format (60 units, on the account's pace
+that sync's fetches share: about 80 messages a minute), reads each part
+tree ([Message parts](#message-parts)), fetches a text part Gmail sends
+by `attachmentId` on its own, and saves the message as the
+[message content store](#message-content-store) describes. A message
+Gmail no longer has (404 or 410), whose answer passes 16 MiB, which
+Gmail refuses (a 4xx other than 401, 403, 408, or 429), whose answer
+does not decode or has no value, or with over 1,000 parts records
+`body_failed_at`, logs `message body fetch failed` with its `message_id`,
+and the step goes on; one synchronization deleted meanwhile is passed
+over. Any other error, e.g. Gmail's rate limits or a 5xx past their
+retries, a network failure, or the store or database down, concerns the
+whole account: it ends the run, logged as `message body fetch failed`
+with the `account_id`, without retries, and the next minute starts
+another. A per-message problem that shows only as such an error, e.g. a
+5xx one message alone causes, would end every run at that message; inbok
+accepts that unlikely case. An account that needs a reconnect, has a
+deactivated member, is gone, or has a token no key opens ends the run
+quietly, as the sync records why.
+
+A run takes at most 50 steps, about 1,000 messages: some 12 minutes when
+each message's text comes in its first answer, longer when text comes
+separately or calls are retried. It so stays short to resume, and holds
+its place in `inbok.google`'s limit, if one is set, for a bounded number
+of messages; the next minute's schedule goes on. A mailbox with 10,000
+messages in 90 days so has its list after about 42 minutes and its bodies
+about 2 hours later.
+
+The worker registers both workflows and the schedule only with the Google
+settings, as for the [account removal](#account-removal); without them it
+deletes the schedule an earlier start saved.
 
 ### Inspecting workflows
 
@@ -1020,9 +1091,12 @@ background. Deleting goes the other way: rows first, then content.
 messages' rows named, after their transaction commits, and a
 disconnected account's whole key prefix after the disconnect commits.
 
-Content arrives through `messagecontent.Fetcher`:
+Content arrives through `messagecontent.Fetcher`, in three ways:
 
-- `FetchMessage` fetches one message as when a member opens it. Saved
+- [Message bodies](#message-bodies) fetches recent mail in the
+  background.
+- `FetchMessage` fetches one message as when a member opens it: whatever
+  its date or mailbox, and even when its background fetch failed. Saved
   rows stay, so fetching again only puts back text the store lost.
 - `FetchPart` fetches an attachment or inline part on first request, or
   any part whose content the store lost. A fresh `messages.get` (60
@@ -2615,15 +2689,15 @@ Gmail allows 6,000 quota units a minute per user; a metadata fetch costs
 across calls: four metadata fetches a second, with at most four of a
 call in flight, or four full ones every three seconds. That leaves room
 for the same account's sends and polls, and for the messages a member
-opens. The pace is the process's own; one sync per account at a time
-keeps the worker's whole, while another process's fetches, e.g. for a
-member who opens a message, use that process's own, inside the room
-left. A call whose wait for the pace would outlast its context's
-deadline returns `mailsync.ErrProviderBusy` at once, sending nothing.
-Each `Provider` call retries a 429, a 403 rate limit, a 500, 502, 503,
-or 504, or a timeout after 1, 2, 4, and 8 seconds, each plus up to a
-second at random, or after the `Retry-After` Gmail sends; past five
-attempts, or for a `Retry-After` over 32 seconds, it returns
+opens. The pace is the process's own; one sync and one body fetch per
+account at a time keep the worker's whole, while another process's
+fetches, e.g. for a member who opens a message, use that process's own,
+inside the room left. A call whose wait for the pace would outlast its
+context's deadline returns `mailsync.ErrProviderBusy` at once, sending
+nothing. Each `Provider` call retries a 429, a 403 rate limit, a 500,
+502, 503, or 504, or a timeout after 1, 2, 4, and 8 seconds, each plus
+up to a second at random, or after the `Retry-After` Gmail sends; past
+five attempts, or for a `Retry-After` over 32 seconds, it returns
 `mailsync.ErrProviderBusy` for the job to try later. Errors keep only
 Gmail's status, never its text, and an answer that does not decode fails
 without quoting it. The Google client's own logging is off, since at

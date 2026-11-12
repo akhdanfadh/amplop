@@ -152,6 +152,7 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		services.FullSyncs = mailsync.NewFullSync(db, client, access, time.Now)
 		services.Polls = mailsync.NewPoll(db, client, access, time.Now)
 		services.SyncSchedule = mailsync.NewSchedule(db, client, access, time.Now)
+		services.MessageBodies = messagecontent.NewFetcher(messagecontent.NewContents(content, db), db, client, access, time.Now, logger)
 	}
 	w, err := dbos.NewWorker(url, id, services, logger)
 	if err != nil {
