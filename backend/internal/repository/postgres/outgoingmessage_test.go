@@ -7,12 +7,14 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/connectedaccount"
+	"inbok/internal/mailsync"
 	"inbok/internal/outgoingmessage"
 )
 
@@ -139,7 +141,7 @@ func TestOutgoingMessageBuildError(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
 	refused := errors.New("refused")
 
-	_, err := o.db.InsertOutgoingMessage(t.Context(), o.attempt(), o.account, uuid.New(), func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
+	_, err := o.db.InsertOutgoingMessage(t.Context(), o.attempt(), outgoingmessage.Request{AccountID: o.account, Key: uuid.New()}, func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
 		return outgoingmessage.NewMessage{}, refused
 	})
 
@@ -152,7 +154,7 @@ func TestOutgoingMessageSender(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
 	var got outgoingmessage.CreateState
 
-	_, err := o.db.InsertOutgoingMessage(t.Context(), o.attempt(), o.account, uuid.New(), func(state outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
+	_, err := o.db.InsertOutgoingMessage(t.Context(), o.attempt(), outgoingmessage.Request{AccountID: o.account, Key: uuid.New()}, func(state outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
 		got = state
 		return outgoingmessage.NewMessage{}, errors.New("stop")
 	})
@@ -205,7 +207,8 @@ func TestOutgoingMessageRenamed(t *testing.T) {
 	assert.Equal(t, "alex@example.com", read.From)
 }
 
-// Only a sent message has a sent time and a Gmail ID, and it has both.
+// Only a sent message has a sent time and a Gmail ID, and it has both and a
+// thread, which a reply has from when it is saved.
 func TestOutgoingMessageSentState(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
 	created, err := o.messages.Create(t.Context(), o.member, o.draft())
@@ -215,7 +218,6 @@ func TestOutgoingMessageSentState(t *testing.T) {
 	}{
 		{"waiting with a sent time", "sent_at = now()"},
 		{"waiting with a Gmail ID", "provider_message_id = 'gmail-1'"},
-		{"waiting with a thread ID", "provider_thread_id = 'thread-1'"},
 		{"sent without a Gmail ID", "status = 'sent', sent_at = now(), provider_thread_id = 'thread-1'"},
 		{"sent without a thread ID", "status = 'sent', sent_at = now(), provider_message_id = 'gmail-1'"},
 		{"sent without a sent time", "status = 'sent', provider_message_id = 'gmail-1', provider_thread_id = 'thread-1'"},
@@ -599,7 +601,7 @@ func TestOutgoingMessageKeyExists(t *testing.T) {
 	require.NoError(t, err)
 	called := false
 
-	_, err = o.db.InsertOutgoingMessage(t.Context(), o.attempt(), o.otherAccount+100, draft.IdempotencyKey, func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
+	_, err = o.db.InsertOutgoingMessage(t.Context(), o.attempt(), outgoingmessage.Request{AccountID: o.otherAccount + 100, Key: draft.IdempotencyKey}, func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
 		called = true
 		return outgoingmessage.NewMessage{}, nil
 	})
@@ -621,7 +623,7 @@ func TestOutgoingKeyPerMember(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotEqual(t, mine.ID, theirs.ID)
-	read, err := o.db.ReadOutgoingMessageByKey(t.Context(), o.otherMember, draft.IdempotencyKey)
+	read, _, err := o.db.ReadOutgoingMessageByKey(t.Context(), o.otherMember, draft.IdempotencyKey)
 	require.NoError(t, err)
 	assert.Equal(t, theirs.ID, read.ID)
 }
@@ -712,7 +714,7 @@ func TestOutgoingAttemptTimes(t *testing.T) {
 	require.NoError(t, err)
 	var got []time.Time
 
-	_, err = o.db.InsertOutgoingMessage(t.Context(), attempt, o.account, uuid.New(), func(state outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
+	_, err = o.db.InsertOutgoingMessage(t.Context(), attempt, outgoingmessage.Request{AccountID: o.account, Key: uuid.New()}, func(state outgoingmessage.CreateState) (outgoingmessage.NewMessage, error) {
 		got = state.Attempts
 		return outgoingmessage.NewMessage{}, errors.New("stop")
 	})
@@ -837,4 +839,165 @@ func TestOutgoingMessageList(t *testing.T) {
 	assert.Empty(t, listed[0].Body)
 	assert.Equal(t, created[2].Subject, listed[0].Subject)
 	assert.Equal(t, created[2].To, listed[0].To)
+}
+
+// answered saves a synchronized message, providerID, in accountID, and
+// returns its ID.
+func (o outgoingMessagesTest) answered(t *testing.T, accountID int64, providerID string) uuid.UUID {
+	t.Helper()
+	_, err := o.db.UpdateSyncedMail(t.Context(), accountID, func(mailsync.SyncState) (mailsync.Change, error) {
+		return mailsync.Change{State: running(1), Mailboxes: gmailMailboxes, Saved: []mailsync.Message{syncedMessage(providerID)}}, nil
+	})
+	require.NoError(t, err)
+	var id uuid.UUID
+	require.NoError(t, o.conn.QueryRow(t.Context(),
+		"SELECT id FROM messages WHERE connected_account_id = $1 AND provider_message_id = $2", accountID, providerID).Scan(&id))
+	return id
+}
+
+// reply is a reply every rule accepts, from the member's account to
+// answeredID, with a new key.
+func (o outgoingMessagesTest) reply(answeredID uuid.UUID) outgoingmessage.Reply {
+	draft := o.draft()
+	return outgoingmessage.Reply{
+		ConnectedAccountID: o.account,
+		IdempotencyKey:     uuid.New(),
+		AnsweredMessageID:  answeredID,
+		To:                 draft.To,
+		Cc:                 draft.Cc,
+		Bcc:                draft.Bcc,
+		Body:               draft.Body,
+	}
+}
+
+// A reply is saved with the answered message's subject, threading, and
+// thread, and read back with them.
+func TestOutgoingReply(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	answeredID := o.answered(t, o.account, "m1")
+
+	created, err := o.messages.Reply(t.Context(), o.member, o.reply(answeredID))
+	require.NoError(t, err)
+
+	assert.Equal(t, "Re: Quarterly report", created.Subject)
+	assert.Equal(t, outgoingmessage.Threading{
+		InReplyTo:  "<report-m1@example.co.id>",
+		References: []string{"<thread@example.com>", "<request@example.com>", "<report-m1@example.co.id>"},
+	}, created.Threading)
+	assert.Equal(t, "thread-m1", created.ProviderThreadID)
+	read, err := o.messages.Get(t.Context(), o.member, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, created, read)
+	listed, err := o.messages.List(t.Context(), o.member)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, created.Threading, listed[0].Threading)
+}
+
+// A new message is saved with no threading.
+func TestOutgoingNoThreading(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+
+	read, err := o.messages.Get(t.Context(), o.member, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, outgoingmessage.Threading{References: []string{}}, read.Threading)
+	assert.Empty(t, read.ProviderThreadID)
+}
+
+// Another member's message, or one gone, is not answered: nothing is saved
+// or counted.
+func TestOutgoingReplyNotFound(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	theirs := o.answered(t, o.otherAccount, "m1")
+
+	for name, answeredID := range map[string]uuid.UUID{"another member's": theirs, "none": uuid.New()} {
+		t.Run(name, func(t *testing.T) {
+			_, err := o.messages.Reply(t.Context(), o.member, o.reply(answeredID))
+
+			require.ErrorIs(t, err, outgoingmessage.ErrAnsweredNotFound)
+			assert.Equal(t, int64(0), o.countOutgoingMessages(t))
+			assert.Equal(t, int64(0), o.countSendAttempts(t))
+		})
+	}
+}
+
+// A repeated reply returns the first, even after a sync deleted the
+// answered message; the key keeps which message it answered.
+func TestOutgoingReplyRepeat(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	answeredID := o.answered(t, o.account, "m1")
+	reply := o.reply(answeredID)
+	first, err := o.messages.Reply(t.Context(), o.member, reply)
+	require.NoError(t, err)
+	_, err = o.conn.Exec(t.Context(), "DELETE FROM messages WHERE id = $1", answeredID)
+	require.NoError(t, err)
+
+	again, err := o.messages.Reply(t.Context(), o.member, reply)
+	require.NoError(t, err)
+	assert.Equal(t, first, again)
+
+	reply.AnsweredMessageID = uuid.New()
+	_, err = o.messages.Reply(t.Context(), o.member, reply)
+	require.ErrorIs(t, err, outgoingmessage.ErrKeyReused)
+	draft := o.draft()
+	draft.IdempotencyKey = reply.IdempotencyKey
+	draft.Subject = first.Subject
+	_, err = o.messages.Create(t.Context(), o.member, draft)
+	require.ErrorIs(t, err, outgoingmessage.ErrKeyReused)
+	assert.Equal(t, int64(1), o.countOutgoingMessages(t))
+}
+
+// A reply keeps its thread through every status a send saves, and a send
+// again copies its threading.
+func TestOutgoingReplyThreadKept(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Reply(t.Context(), o.member, o.reply(o.answered(t, o.account, "m1")))
+	require.NoError(t, err)
+
+	for _, next := range []outgoingmessage.Transition{
+		{Status: outgoingmessage.StatusSending},
+		{Status: outgoingmessage.StatusWaiting},
+		{Status: outgoingmessage.StatusFailed, Failure: outgoingmessage.FailureRefused},
+	} {
+		saved, err := o.db.UpdateOutgoingMessage(t.Context(), created.ID, func(outgoingmessage.SendState) (outgoingmessage.Transition, error) {
+			return next, nil
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "thread-m1", saved.ProviderThreadID, string(next.Status))
+	}
+
+	copied, err := o.messages.SendAgain(t.Context(), o.member, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, created.Threading, copied.Threading)
+	assert.Equal(t, "thread-m1", copied.ProviderThreadID)
+	assert.Equal(t, created.Subject, copied.Subject)
+}
+
+// The table refuses an In-Reply-To without angle brackets, a missing
+// References list, and one longer than 50; msgid.Writable, not the table,
+// decides which msg-ids are written.
+func TestOutgoingReplyColumns(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+	cases := []struct {
+		name, set string
+	}{
+		{"in-reply-to without brackets", "in_reply_to = 'a@example.com'"},
+		{"references not a list", "internet_references = NULL"},
+		{"too many references", "internet_references = array_fill('<a@example.com>'::text, ARRAY[51])"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := o.conn.Exec(t.Context(), "UPDATE outgoing_messages SET "+c.set+" WHERE id = $1", created.ID)
+
+			var pgErr *pgconn.PgError
+			require.ErrorAs(t, err, &pgErr)
+			assert.Contains(t, []string{pgerrcode.CheckViolation, pgerrcode.NotNullViolation}, pgErr.Code)
+		})
+	}
 }

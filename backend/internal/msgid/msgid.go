@@ -1,8 +1,8 @@
 // Package msgid holds inbok's rules for the msg-ids that thread mail: the
 // Message-ID, In-Reply-To, and References headers (RFC 5322 section 3.6.4).
-// Sync trims References with it; whatever msg-id inbok writes, e.g. its own
-// Message-IDs, passes [Writable] first. Sync's parser stays more lenient,
-// since matching received mail is another job.
+// Sync shares the References trim; whatever inbok writes, a reply's
+// threading and its own Message-IDs, passes [Writable] first. Sync's parser
+// stays more lenient, since matching received mail is another job.
 package msgid
 
 import "strings"

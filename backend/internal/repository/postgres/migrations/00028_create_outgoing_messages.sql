@@ -29,12 +29,20 @@ CREATE TABLE outgoing_messages (
     -- internet_message_id; the X- header stays, so a check after an
     -- unanswered send finds the message by it (ADR006).
     inbok_message_id     text NOT NULL UNIQUE CHECK (inbok_message_id LIKE '<%@%>'),
+    -- A reply's threading headers (RFC 5322 section 3.6.4), worked out from
+    -- the answered message when the reply is saved, so sending it needs that
+    -- message no more: In-Reply-To, NULL when the answered message has no
+    -- Message-ID inbok may write (msgid.Writable), and References, oldest
+    -- first, empty for a new message (ADR006, Replies).
+    in_reply_to          text CHECK (in_reply_to LIKE '<%>'),
+    internet_references  text[] NOT NULL DEFAULT '{}' CHECK (cardinality(internet_references) <= 50),
     status               text NOT NULL DEFAULT 'waiting'
                          CHECK (status IN ('waiting', 'sending', 'sent', 'failed', 'unknown')),
     failure              text CHECK (failure IN ('refused', 'sending-limit', 'needs-reconnect',
                          'token-unreadable', 'deactivated', 'sender-changed', 'gave-up')),
-    -- Gmail's IDs for the message and its thread, once it accepted the
-    -- message; a reply is sent into the thread.
+    -- Gmail's IDs for the message, once it accepted the message, and its
+    -- thread: for a reply from the account holding the answered message, the
+    -- thread it is sent into, set when saved; otherwise once it is sent.
     provider_message_id  text CHECK (provider_message_id <> ''),
     provider_thread_id   text CHECK (provider_thread_id <> ''),
     created_at           timestamptz NOT NULL DEFAULT now(), -- also the Date header
@@ -50,7 +58,7 @@ CREATE TABLE outgoing_messages (
     CONSTRAINT outgoing_messages_failure CHECK ((status = 'failed') = (failure IS NOT NULL)),
     CONSTRAINT outgoing_messages_sent_at CHECK ((status = 'sent') = (sent_at IS NOT NULL)),
     CONSTRAINT outgoing_messages_provider_message_id CHECK ((status = 'sent') = (provider_message_id IS NOT NULL)),
-    CONSTRAINT outgoing_messages_provider_thread_id CHECK ((status = 'sent') = (provider_thread_id IS NOT NULL))
+    CONSTRAINT outgoing_messages_provider_thread_id CHECK (status <> 'sent' OR provider_thread_id IS NOT NULL)
 );
 
 -- Deleting an account finds its messages, and a member's recent messages

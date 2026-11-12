@@ -103,6 +103,8 @@ type OutgoingMessage struct {
 	Subject            string
 	Body               string
 	InbokMessageID     string
+	InReplyTo          *string
+	InternetReferences []string
 	Status             string
 	Failure            *string
 	ProviderMessageID  *string
@@ -113,9 +115,10 @@ type OutgoingMessage struct {
 }
 
 type OutgoingMessageKey struct {
-	UserID         int64
-	IdempotencyKey uuid.UUID
-	MessageID      uuid.UUID
+	UserID            int64
+	IdempotencyKey    uuid.UUID
+	MessageID         uuid.UUID
+	AnsweredMessageID *uuid.UUID
 }
 
 type PasswordResetAttempt struct {

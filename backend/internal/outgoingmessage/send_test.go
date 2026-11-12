@@ -39,7 +39,10 @@ func (m *memoryStorage) UpdateOutgoingMessage(ctx context.Context, messageID uui
 			return Message{}, err
 		}
 		message.Status, message.Failure, message.SentAt = next.Status, next.Failure, next.SentAt
-		message.ProviderMessageID, message.ProviderThreadID = next.Sent.ProviderMessageID, next.Sent.ProviderThreadID
+		message.ProviderMessageID = next.Sent.ProviderMessageID
+		if next.Sent.ProviderThreadID != "" {
+			message.ProviderThreadID = next.Sent.ProviderThreadID
+		}
 		m.messages[i] = message
 		if next.SenderEmail != "" {
 			account := m.accounts[message.ConnectedAccountID]
@@ -77,6 +80,7 @@ type fakeProvider struct {
 	during func()
 
 	sends      []string
+	threadIDs  []string
 	sendCtxErr error
 	finds      []string
 }
@@ -85,8 +89,9 @@ func (f *fakeProvider) Mailbox(context.Context, connectedaccount.AccessToken) (M
 	return f.mailbox, f.mailboxErr
 }
 
-func (f *fakeProvider) Send(ctx context.Context, _ connectedaccount.AccessToken, raw []byte) (Sent, error) {
+func (f *fakeProvider) Send(ctx context.Context, _ connectedaccount.AccessToken, raw []byte, threadID string) (Sent, error) {
 	f.sends = append(f.sends, string(raw))
+	f.threadIDs = append(f.threadIDs, threadID)
 	if f.during != nil {
 		f.during()
 	}
@@ -112,6 +117,7 @@ type sendTest struct {
 func newSendTest(t *testing.T) *sendTest {
 	t.Helper()
 	storage := newMemoryStorage()
+	storage.answered[answeredID] = testAnswered()
 	message, err := NewService(storage, keyTokens{}, func() time.Time { return sendNow }).Create(t.Context(), 3, testDraft())
 	require.NoError(t, err)
 	tokens := &fakeTokens{}
@@ -479,4 +485,20 @@ func TestGiveUp(t *testing.T) {
 			assert.Equal(t, c.failure, s.read(t).Failure)
 		})
 	}
+}
+
+// A reply goes into the thread it was saved for; a new message into none.
+func TestSendThread(t *testing.T) {
+	s := newSendTest(t)
+	reply, err := NewService(s.storage, keyTokens{}, func() time.Time { return sendNow }).Reply(t.Context(), 3, testReply())
+	require.NoError(t, err)
+
+	_, err = s.sending.Send(t.Context(), s.message.ID)
+	require.NoError(t, err)
+	status, err := s.sending.Send(t.Context(), reply.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, StatusSent, status)
+	assert.Equal(t, []string{"", "t-1"}, s.provider.threadIDs)
+	assert.Contains(t, s.provider.sends[1], "In-Reply-To: <c@example.com>")
 }

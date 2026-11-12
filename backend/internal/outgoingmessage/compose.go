@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -29,18 +30,19 @@ const fallbackMessageIDDomain = "localhost"
 // whole groups of 4, hold 45 bytes.
 const maxEncodedWordText = 45
 
-// errUnsafeHeader means the From address, subject, or Message-ID could add
-// a header or is not one value.
-var errUnsafeHeader = errors.New("the sender, subject, or Message-ID cannot be written as a header")
+// errUnsafeHeader means the From address, subject, or a msg-id could add a
+// header or is not one value.
+var errUnsafeHeader = errors.New("the sender, subject, or a msg-id cannot be written as a header")
 
 // compose returns message as an RFC 5322 message: From [Message.From], To,
 // Cc, and Bcc when not empty, Subject, Date when the member sent it,
-// Message-ID and X-Inbok-Message-Id, both [Message.InbokMessageID], and the
-// body as quoted-printable UTF-8 plain text. The same message always gives
-// the same bytes. It returns an error, and no bytes, for a value that
-// cannot be written as a header: a [*RecipientError], or [errUnsafeHeader]
-// for From, the subject, or the Message-ID. It does not apply [Content]'s
-// limits, which decided what inbok accepted.
+// Message-ID and X-Inbok-Message-Id, both [Message.InbokMessageID],
+// In-Reply-To and References when not empty, and the body as
+// quoted-printable UTF-8 plain text. The same message always gives the same
+// bytes. It returns an error, and no bytes, for a value that cannot be
+// written as a header: a [*RecipientError], or [errUnsafeHeader] for From,
+// the subject, or a msg-id. It does not apply [Content]'s limits, which
+// decided what inbok accepted.
 func compose(message Message) ([]byte, error) {
 	// 1. Check each value that becomes a header, wherever the message came
 	// from: a stray character there starts another header line, e.g. a Bcc
@@ -62,7 +64,9 @@ func compose(message Message) ([]byte, error) {
 	if err != nil {
 		return nil, errUnsafeHeader
 	}
-	if !subjectSafe(message.Subject) || !msgid.Writable(message.InbokMessageID) {
+	if !subjectSafe(message.Subject) || !msgid.Writable(message.InbokMessageID) ||
+		message.InReplyTo != "" && !msgid.Writable(message.InReplyTo) ||
+		slices.ContainsFunc(message.References, func(id string) bool { return !msgid.Writable(id) }) {
 		return nil, errUnsafeHeader
 	}
 
@@ -82,6 +86,14 @@ func compose(message Message) ([]byte, error) {
 	// replaces it.
 	header.Set("Message-Id", message.InbokMessageID)
 	header.Set(inbokMessageIDHeader, message.InbokMessageID)
+	if message.InReplyTo != "" {
+		header.Set("In-Reply-To", message.InReplyTo)
+	}
+	// The writer folds at the spaces between msg-ids; msgid.Writable keeps
+	// each shorter than a line.
+	if len(message.References) > 0 {
+		header.Set("References", strings.Join(message.References, " "))
+	}
 	header.SetContentType("text/plain", map[string]string{"charset": "utf-8"})
 
 	// 3. Write the body, which go-message encodes as quoted-printable.

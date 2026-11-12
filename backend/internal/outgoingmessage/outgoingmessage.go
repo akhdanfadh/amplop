@@ -1,7 +1,8 @@
 // Package outgoingmessage owns the messages members send from their
-// connected accounts (US015). [Service] checks a member's draft, gives it a
-// Message-ID, and saves it for the job that sends it, sends a failed message
-// again as a copy, and reads back a member's own messages with their status.
+// connected accounts (US015), new ones and replies (US009). [Service] checks
+// a member's draft, gives it a Message-ID, and saves it for the job that
+// sends it, sends a failed message again as a copy, and reads back a
+// member's own messages with their status.
 package outgoingmessage
 
 import (
@@ -24,6 +25,10 @@ var (
 	// ErrAccountNotFound means the member has no connected account with
 	// that ID, including one another member connected.
 	ErrAccountNotFound = errors.New("sending account not found")
+	// ErrAnsweredNotFound means the member has no synchronized message with
+	// the ID a reply answers, including one another member's account holds,
+	// or one deleted since.
+	ErrAnsweredNotFound = errors.New("answered message not found")
 	// ErrNeedsReconnect means Google refused the sending account's token,
 	// so nothing is sent from it until the member reconnects it.
 	ErrNeedsReconnect = errors.New("sending account needs reconnecting")
@@ -37,7 +42,8 @@ var (
 	// it comes wrapped in an [*attemptlimit.Error] that says how long to wait.
 	ErrThrottled = errors.New("too many messages sent recently")
 	// ErrKeyReused means a request's idempotency key already saved another
-	// of the member's messages: other content, or another sending account.
+	// of the member's messages: other content, another sending account, or
+	// another answered message.
 	ErrKeyReused = errors.New("idempotency key already used for another message")
 	// ErrNotSendableAgain means the message is waiting, sending, or sent, so
 	// sending it again could send it twice.
@@ -151,14 +157,17 @@ type Message struct {
 	// Message-ID headers. Gmail replaces the Message-ID; synchronized mail
 	// keeps the one Gmail sent.
 	InbokMessageID string
-	Status         Status
+	Threading
+	Status Status
 	// Failure is set only when [Message.Status] is [StatusFailed].
 	Failure Failure
-	// ProviderMessageID and ProviderThreadID are Gmail's IDs for the message
-	// and its thread, set once it is sent.
+	// ProviderMessageID is Gmail's ID for the message, set once it is sent.
 	ProviderMessageID string
-	ProviderThreadID  string
-	CreatedAt         time.Time
+	// ProviderThreadID is Gmail's ID for the message's thread: for a reply
+	// from the answered message's account, the thread it is sent into, set
+	// when saved; for any other message, set once it is sent.
+	ProviderThreadID string
+	CreatedAt        time.Time
 	// SentAt is when Gmail accepted the message; nil until then.
 	SentAt *time.Time
 	// SentAgainAs is the copy the member sent again of this failed or
@@ -177,12 +186,54 @@ type Sender struct {
 	Credential connectedaccount.Credential
 }
 
+// Threading is what threads a reply with the message it answers: its
+// In-Reply-To and References headers (RFC 5322 section 3.6.4), each msg-id
+// with its angle brackets and [msgid.Writable]. A new message has neither.
+type Threading struct {
+	// InReplyTo is the answered message's Message-ID, or empty when it has
+	// none that can be written.
+	InReplyTo string
+	// References is the thread's msg-ids, oldest first, at most
+	// [msgid.MaxReferences]; empty, never nil, when there are none.
+	References []string
+}
+
 // NewMessage is a message to save, before it has an ID.
 type NewMessage struct {
 	// From is the sending account's address.
 	From string
 	Content
 	InbokMessageID string
+	Threading
+	// ProviderThreadID is the Gmail thread a reply is sent into, or empty.
+	ProviderThreadID string
+}
+
+// Answered is the synchronized message a reply answers, as storage reads it.
+type Answered struct {
+	// ConnectedAccountID is the account that holds the message.
+	ConnectedAccountID int64
+	// ProviderThreadID is Gmail's ID for its thread in that account.
+	ProviderThreadID string
+	Subject          string
+	// InternetMessageID, InReplyTo, and References are its own threading
+	// headers as synchronized, each msg-id with its angle brackets;
+	// InternetMessageID is empty when it has none.
+	InternetMessageID string
+	InReplyTo         []string
+	References        []string
+}
+
+// Request is what a request to send saves a message under: the sending
+// account, the request's idempotency key, and for a reply, the answered
+// message. A repeat with the key is the same request only when it names the
+// same account and answered message.
+type Request struct {
+	AccountID int64
+	Key       uuid.UUID
+	// AnsweredID is the member's synchronized message a reply answers; nil
+	// for a new message.
+	AnsweredID *uuid.UUID
 }
 
 // Attempt is a member's request to send, which the send limit counts.
@@ -201,6 +252,8 @@ type CreateState struct {
 	Sender Sender
 	// Attempts are the times of the member's attempts after [Attempt.Since].
 	Attempts []time.Time
+	// Answered is the message a reply answers; nil for a new message.
+	Answered *Answered
 }
 
 // CopyState is what storage reads, under the member's lock, for a message
@@ -219,20 +272,23 @@ type Storage interface {
 	// InsertOutgoingMessage, in one transaction:
 	//  1. locks the member attempt.UserID, so their attempts are counted one
 	//     at a time, returning [ErrDeactivated] when they are deactivated;
-	//  2. returns [ErrKeyExists] when the member saved a message with key;
-	//  3. reads the member's account accountID, keeping it from being
-	//     disconnected until the transaction ends, or returns
+	//  2. returns [ErrKeyExists] when the member saved a message with
+	//     request.Key;
+	//  3. reads the member's account request.AccountID, keeping it from
+	//     being disconnected until the transaction ends, or returns
 	//     [ErrAccountNotFound];
-	//  4. calls build with the account and the member's attempts after
-	//     attempt.Since;
+	//  4. reads the member's synchronized message request.AnsweredID, when
+	//     set, or returns [ErrAnsweredNotFound], and calls build with it, the
+	//     account, and the member's attempts after attempt.Since;
 	//  5. saves the message build returns as waiting, with the job that sends
 	//     it, so no message waits without a job, an attempt at attempt.At,
-	//     deleting the member's attempts at or before attempt.Since, and key,
-	//     returning [ErrKeyExists] if another transaction saved it first.
+	//     deleting the member's attempts at or before attempt.Since, and
+	//     request, returning [ErrKeyExists] if another transaction saved its
+	//     key first.
 	//
 	// It returns the saved message. An error from build rolls back and is
 	// returned unchanged.
-	InsertOutgoingMessage(ctx context.Context, attempt Attempt, accountID int64, key uuid.UUID, build func(CreateState) (NewMessage, error)) (Message, error)
+	InsertOutgoingMessage(ctx context.Context, attempt Attempt, request Request, build func(CreateState) (NewMessage, error)) (Message, error)
 
 	// InsertOutgoingMessageCopy, in one transaction:
 	//  1. locks the member attempt.UserID, returning [ErrDeactivated] when
@@ -256,9 +312,9 @@ type Storage interface {
 	// [ErrNotFound] when userID has no such message.
 	ReadOutgoingMessage(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error)
 
-	// ReadOutgoingMessageByKey returns userID's message saved with key, or
-	// [ErrNotFound] when userID has none.
-	ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (Message, error)
+	// ReadOutgoingMessageByKey returns userID's message saved with key and
+	// the request that saved it, or [ErrNotFound] when userID has none.
+	ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (Message, Request, error)
 
 	// ListOutgoingMessages returns userID's newest messages, at most limit,
 	// newest first, each with an empty [Content.Body].
@@ -299,8 +355,15 @@ func NewService(storage Storage, tokens tokenChecker, now func() time.Time) *Ser
 // [Content]'s rules: [ErrNoRecipients], a [*TooManyRecipientsError], a
 // [*RecipientError], [ErrSubjectInvalid], or [ErrBodyInvalid].
 func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Message, error) {
+	request := Request{AccountID: draft.ConnectedAccountID, Key: draft.IdempotencyKey}
+	return s.create(ctx, userID, request, draft.Content)
+}
+
+// create saves content as userID's message for request, as [Service.Create]
+// and [Service.Reply] describe.
+func (s *Service) create(ctx context.Context, userID int64, request Request, content Content) (Message, error) {
 	// 1. Refuse content that cannot be sent before any storage.
-	content, err := parseContent(draft.Content)
+	content, err := parseContent(content)
 	if err != nil {
 		return Message{}, err
 	}
@@ -309,11 +372,15 @@ func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Messag
 	for tries := 1; ; tries++ {
 		// 2. With the member and account held, refuse what would only fail
 		// or go over the limit, and save.
-		message, err := s.storage.InsertOutgoingMessage(ctx, attempt, draft.ConnectedAccountID, draft.IdempotencyKey, func(state CreateState) (NewMessage, error) {
+		message, err := s.storage.InsertOutgoingMessage(ctx, attempt, request, func(state CreateState) (NewMessage, error) {
 			if err := s.checkSender(userID, state.Sender); err != nil {
 				return NewMessage{}, err
 			}
-			return newMessage(state.Sender, state.Attempts, attempt.At, content)
+			next, err := newMessage(state.Sender, state.Attempts, attempt.At, content)
+			if err != nil || state.Answered == nil {
+				return next, err
+			}
+			return replyTo(next, state.Sender, *state.Answered), nil
 		})
 		if !errors.Is(err, ErrKeyExists) {
 			return message, err
@@ -322,7 +389,7 @@ func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Messag
 		// 3. A repeated request, e.g. one whose answer was lost, gets the
 		// message the first saved; the key's check comes before the limit's,
 		// so a repeat is never refused for the attempt it repeats.
-		message, err = s.repeated(ctx, userID, draft.ConnectedAccountID, draft.IdempotencyKey, content)
+		message, err = s.repeated(ctx, userID, request, content)
 		// A disconnect that deleted the key's message since step 2 freed the
 		// key, so the request is a new one, as it would have been a moment
 		// later. Once: freeing it again needs the member to save and
@@ -337,20 +404,24 @@ func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Messag
 // the key was found, which deleted the key too.
 var errKeyFreed = errors.New("idempotency key's message was deleted")
 
-// repeated returns userID's message saved with key when it is from account
-// accountID with content, [ErrKeyReused], or errKeyFreed when the message is
-// gone.
-func (s *Service) repeated(ctx context.Context, userID, accountID int64, key uuid.UUID, content Content) (Message, error) {
-	earlier, err := s.storage.ReadOutgoingMessageByKey(ctx, userID, key)
+// repeated returns userID's message saved with request's key when the
+// request that saved it is request with content, [ErrKeyReused], or
+// errKeyFreed when the message is gone.
+func (s *Service) repeated(ctx context.Context, userID int64, request Request, content Content) (Message, error) {
+	earlier, saved, err := s.storage.ReadOutgoingMessageByKey(ctx, userID, request.Key)
 	if errors.Is(err, ErrNotFound) {
 		return Message{}, errKeyFreed
 	}
 	if err != nil {
 		return Message{}, err
 	}
+	// A reply's subject is the answered message's, not the request's.
+	if request.AnsweredID != nil {
+		content.Subject = earlier.Subject
+	}
 	// The IETF Idempotency-Key draft refuses a key reused with another
 	// payload (draft-ietf-httpapi-idempotency-key-header, section 2.2).
-	if earlier.ConnectedAccountID != accountID || !sameContent(earlier.Content, content) {
+	if saved.AccountID != request.AccountID || !sameAnswered(saved.AnsweredID, request.AnsweredID) || !sameContent(earlier.Content, content) {
 		return Message{}, ErrKeyReused
 	}
 	return earlier, nil
@@ -378,7 +449,15 @@ func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UU
 		}
 		// The account's address now, which a send that failed
 		// sender-changed has saved.
-		return newMessage(state.Sender, state.Attempts, attempt.At, state.Original.Content)
+		next, err := newMessage(state.Sender, state.Attempts, attempt.At, state.Original.Content)
+		if err != nil {
+			return NewMessage{}, err
+		}
+		// A reply's copy answers the same message, in the same thread: the
+		// account is the original's.
+		next.Threading = state.Original.Threading
+		next.ProviderThreadID = state.Original.ProviderThreadID
+		return next, nil
 	})
 }
 
@@ -431,7 +510,16 @@ func newMessage(sender Sender, attempts []time.Time, now time.Time, content Cont
 	if err != nil {
 		return NewMessage{}, err
 	}
-	return NewMessage{From: sender.Email, Content: content, InbokMessageID: messageID}, nil
+	return NewMessage{From: sender.Email, Content: content, InbokMessageID: messageID, Threading: Threading{References: []string{}}}, nil
+}
+
+// sameAnswered reports whether a and b name the same answered message, or
+// both none.
+func sameAnswered(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // sameContent reports whether a and b are the same recipients, in order,
