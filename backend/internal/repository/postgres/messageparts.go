@@ -215,3 +215,73 @@ func (db *DB) deleteBlobsAfter(ctx context.Context, tx pgx.Tx, accountID int64, 
 	}
 	return nil
 }
+
+// MessageProviderID returns the provider's ID of account accountID's
+// message messageID, or [messagecontent.ErrMessageNotFound] when there is
+// no such message.
+func (db *DB) MessageProviderID(ctx context.Context, accountID int64, messageID uuid.UUID) (string, error) {
+	id, err := sqlc.New(db.pool).GetMessageProviderID(ctx, sqlc.GetMessageProviderIDParams{ConnectedAccountID: accountID, ID: messageID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", messagecontent.ErrMessageNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("read message provider id: %w", err)
+	}
+	return id, nil
+}
+
+// SavePartBlob names blobID as the content of the part at path of account
+// accountID's message messageID, unless the part names a blob already,
+// which it keeps, and returns the blob ID the part names, in one
+// transaction that first locks the account's sync state. It returns
+// [messagecontent.ErrMessageNotFound] when the account is gone, and
+// [messagecontent.ErrPartNotFound] when its message has no part there.
+func (db *DB) SavePartBlob(ctx context.Context, accountID int64, messageID uuid.UUID, path []int, blobID uuid.UUID) (uuid.UUID, error) {
+	stored := make([]int32, len(path))
+	for i, index := range path {
+		// A path past storage's range names no saved part.
+		if index < 0 || index > math.MaxInt32 {
+			return uuid.Nil(), messagecontent.ErrPartNotFound
+		}
+		stored[i] = int32(index)
+	}
+	var named uuid.UUID
+	err := db.withSyncStateLock(ctx, accountID, func(queries *sqlc.Queries) error {
+		blob, err := queries.SetMessagePartBlob(ctx, sqlc.SetMessagePartBlobParams{
+			BlobID: blobID, ConnectedAccountID: accountID, MessageID: messageID, Path: stored,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return messagecontent.ErrPartNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("set message part blob: %w", err)
+		}
+		// The update sets one when none was, so the row names one now.
+		named = *blob
+		return nil
+	})
+	return named, err
+}
+
+// withSyncStateLock runs write in a transaction that first locks account
+// accountID's sync state. It returns [messagecontent.ErrMessageNotFound]
+// when the account has no sync state, and write's error.
+func (db *DB) withSyncStateLock(ctx context.Context, accountID int64, write func(*sqlc.Queries) error) error {
+	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+
+		// 1. Lock the sync state, as every write to the account's mail does
+		// first (ADR001, "Lock order"), so a sync write waits, rather than
+		// deadlocks, on the rows the write takes after it.
+		_, err := queries.LockSyncState(ctx, accountID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return messagecontent.ErrMessageNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock sync state: %w", err)
+		}
+
+		// 2. Write.
+		return write(queries)
+	})
+}

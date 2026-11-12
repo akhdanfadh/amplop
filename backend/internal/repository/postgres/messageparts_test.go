@@ -327,3 +327,42 @@ func TestMessagePartsChecks(t *testing.T) {
 		})
 	}
 }
+
+// A message's provider ID is read for its own account only.
+func TestMessageProviderID(t *testing.T) {
+	s := newMessagePartsTest(t)
+	message := s.save(t, "m1")[0]
+
+	id, err := s.db.MessageProviderID(t.Context(), s.account, message)
+	require.NoError(t, err)
+	assert.Equal(t, "m1", id)
+	_, err = s.db.MessageProviderID(t.Context(), s.other, message)
+	require.ErrorIs(t, err, messagecontent.ErrMessageNotFound)
+}
+
+// A part's blob is named once: a later save keeps the first and returns
+// it; a part or message that is not there is not found.
+func TestSavePartBlob(t *testing.T) {
+	s := newMessagePartsTest(t)
+	message := s.save(t, "m1")[0]
+	_, err := s.db.SaveMessageParts(t.Context(), s.account, message, storedTree())
+	require.NoError(t, err)
+	first, second := uuid.New(), uuid.New()
+
+	named, err := s.db.SavePartBlob(t.Context(), s.account, message, []int{1}, first)
+	require.NoError(t, err)
+	assert.Equal(t, first, named)
+	named, err = s.db.SavePartBlob(t.Context(), s.account, message, []int{1}, second)
+	require.NoError(t, err)
+	assert.Equal(t, first, named)
+	root, _, err := s.db.MessageParts(t.Context(), s.account, message)
+	require.NoError(t, err)
+	assert.Equal(t, first, root.Parts[1].BlobID)
+
+	for name, path := range map[string][]int{"past the end": {2}, "negative": {-1}, "past storage": {1 << 40}} {
+		_, err := s.db.SavePartBlob(t.Context(), s.account, message, path, uuid.New())
+		require.ErrorIs(t, err, messagecontent.ErrPartNotFound, name)
+	}
+	_, err = s.db.SavePartBlob(t.Context(), s.other, message, []int{1}, uuid.New())
+	require.ErrorIs(t, err, messagecontent.ErrPartNotFound)
+}

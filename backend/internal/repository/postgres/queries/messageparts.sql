@@ -26,3 +26,14 @@ ORDER BY path;
 SELECT given.id::uuid AS id
 FROM unnest(@ids::uuid[]) AS given (id)
 WHERE NOT EXISTS (SELECT 1 FROM message_parts p WHERE p.blob_id = given.id);
+
+-- name: GetMessageProviderID :one
+SELECT provider_message_id FROM messages
+WHERE connected_account_id = @connected_account_id AND id = @id;
+
+-- name: SetMessagePartBlob :one
+-- Names @blob_id as the part's content unless the part names one already,
+-- and returns the blob the part names.
+UPDATE message_parts SET blob_id = coalesce(blob_id, @blob_id::uuid)
+WHERE connected_account_id = @connected_account_id AND message_id = @message_id AND path = @path
+RETURNING blob_id;

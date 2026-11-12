@@ -80,6 +80,42 @@ func (m *partsMemory) UnusedBlobs(_ context.Context, ids []uuid.UUID) ([]uuid.UU
 	return unused, nil
 }
 
+func (m *partsMemory) SavePartBlob(_ context.Context, accountID int64, messageID uuid.UUID, path []int, blobID uuid.UUID) (uuid.UUID, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	root, ok := m.trees[messageID]
+	if account := m.messages[messageID]; !ok || account != accountID {
+		return uuid.Nil(), messagecontent.ErrPartNotFound
+	}
+	// The trees share no parts with their callers, so a copy is changed.
+	root = clonePart(root)
+	part := &root
+	for _, i := range path {
+		if i < 0 || i >= len(part.Parts) {
+			return uuid.Nil(), messagecontent.ErrPartNotFound
+		}
+		part = &part.Parts[i]
+	}
+	if part.BlobID == uuid.Nil() {
+		part.BlobID = blobID
+	}
+	m.trees[messageID] = root
+	return part.BlobID, nil
+}
+
+// clonePart returns a copy of part sharing no slice with it.
+func clonePart(part messagecontent.Part) messagecontent.Part {
+	if part.Parts == nil {
+		return part
+	}
+	children := make([]messagecontent.Part, len(part.Parts))
+	for i, child := range part.Parts {
+		children[i] = clonePart(child)
+	}
+	part.Parts = children
+	return part
+}
+
 // flatten returns root and every part under it, depth first.
 func flatten(root messagecontent.Part) []messagecontent.Part {
 	parts := []messagecontent.Part{root}

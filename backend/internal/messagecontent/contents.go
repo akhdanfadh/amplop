@@ -36,6 +36,14 @@ type Storage interface {
 	MessageParts(ctx context.Context, accountID int64, messageID uuid.UUID) (Part, bool, error)
 	// UnusedBlobs returns those of ids that no part names.
 	UnusedBlobs(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error)
+	// SavePartBlob names blobID as the content of the part at path of
+	// account accountID's message messageID, unless the part names a blob
+	// already, which it keeps, and returns the blob ID the part names. It
+	// returns [ErrMessageNotFound] when the account is gone, and
+	// [ErrPartNotFound] when its message has no part there. In one
+	// transaction, it 1. locks the account's sync state, as every write to
+	// the account's mail does first; 2. names the blob.
+	SavePartBlob(ctx context.Context, accountID int64, messageID uuid.UUID, path []int, blobID uuid.UUID) (uuid.UUID, error)
 }
 
 // Contents keeps messages' content: the bytes in a [Store], and the part
@@ -137,4 +145,34 @@ func storedIDs(part Part, ids map[string]uuid.UUID) {
 	for _, child := range part.Parts {
 		storedIDs(child, ids)
 	}
+}
+
+// SavePart stores content as the content of part, the part at path of
+// account accountID's message messageID, under the blob ID part names or
+// else a new one, then names it in the part's row, and returns part naming
+// the blob its row names. When another save named a blob first, the row
+// keeps that one, and this content is left for [Cleanup]. It gives up
+// after an hour. It returns [ErrMessageNotFound] when the account is gone,
+// [ErrPartNotFound] when its message has no part there, and the store's or
+// storage's error.
+func (c *Contents) SavePart(ctx context.Context, accountID int64, messageID uuid.UUID, path []int, part Part, content []byte) (Part, error) {
+	ctx, cancel := context.WithTimeout(ctx, saveLimit)
+	defer cancel()
+
+	// 1. Store the content first, as [Contents.Save] does.
+	ref := Ref{Account: accountID, ID: part.BlobID}
+	if ref.ID == uuid.Nil() {
+		ref.ID = uuid.New()
+	}
+	if err := c.store.Put(ctx, ref, bytes.NewReader(content)); err != nil {
+		return Part{}, fmt.Errorf("store part %q: %w", part.ID, err)
+	}
+
+	// 2. Name it in the part's row.
+	named, err := c.storage.SavePartBlob(ctx, accountID, messageID, path, ref.ID)
+	if err != nil {
+		return Part{}, fmt.Errorf("save part blob: %w", err)
+	}
+	part.BlobID = named
+	return part, nil
 }

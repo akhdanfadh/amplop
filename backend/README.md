@@ -1020,6 +1020,19 @@ background. Deleting goes the other way: rows first, then content.
 messages' rows named, after their transaction commits, and a
 disconnected account's whole key prefix after the disconnect commits.
 
+Content arrives through `messagecontent.Fetcher`:
+
+- `FetchMessage` fetches one message as when a member opens it. Saved
+  rows stay, so fetching again only puts back text the store lost.
+- `FetchPart` fetches an attachment or inline part on first request, or
+  any part whose content the store lost, through `Provider.PartContent`,
+  by the message and the part's saved part ID, never by anything a
+  request names. A text part's bytes are converted to UTF-8.
+  `Contents.SavePart` stores them first, then names the blob in the
+  part's row in a transaction that locks the account's sync state. A row
+  that names a blob already keeps it, leaving the other copy to the
+  sweep.
+
 Code reaches the store through `messagecontent.Store`, never the SDK. A
 `Ref` names one content: the connected account it came from and a blob
 ID, which PostgreSQL keeps. The `s3` package alone builds object keys from
@@ -1289,8 +1302,8 @@ technology package fills (`google` for Gmail), and returns:
   converted the bytes to (`Received.ContentCharset`; Gmail's inline text
   is UTF-8), or else the part's declared charset, through `DecodeText`. A
   part whose bytes the provider sends separately (Gmail's `attachmentId`)
-  has none; decode it with `DecodeFrom` once fetched, with the charset the
-  provider reports for those bytes. Neither has a text part inside an
+  has none; decode it with `DecodeFrom` once fetched, with the charset
+  `Provider.PartContent` reports. Neither has a text part inside an
   attachment, e.g. a forwarded message, which no view shows.
 
 These are inbok's own rules on top of a parsed tree. MIME libraries such

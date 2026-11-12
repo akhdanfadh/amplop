@@ -11,6 +11,23 @@ import (
 	"uuid"
 )
 
+const getMessageProviderID = `-- name: GetMessageProviderID :one
+SELECT provider_message_id FROM messages
+WHERE connected_account_id = $1 AND id = $2
+`
+
+type GetMessageProviderIDParams struct {
+	ConnectedAccountID int64
+	ID                 uuid.UUID
+}
+
+func (q *Queries) GetMessageProviderID(ctx context.Context, arg GetMessageProviderIDParams) (string, error) {
+	row := q.db.QueryRow(ctx, getMessageProviderID, arg.ConnectedAccountID, arg.ID)
+	var provider_message_id string
+	err := row.Scan(&provider_message_id)
+	return provider_message_id, err
+}
+
 const listMessageParts = `-- name: ListMessageParts :many
 SELECT path, provider_part_id, media_type, charset, filename, size, disposition,
     mime_content_id, related_start, kind, blob_id
@@ -116,4 +133,31 @@ func (q *Queries) MessageHasParts(ctx context.Context, arg MessageHasPartsParams
 	var has_parts bool
 	err := row.Scan(&has_parts)
 	return has_parts, err
+}
+
+const setMessagePartBlob = `-- name: SetMessagePartBlob :one
+UPDATE message_parts SET blob_id = coalesce(blob_id, $1::uuid)
+WHERE connected_account_id = $2 AND message_id = $3 AND path = $4
+RETURNING blob_id
+`
+
+type SetMessagePartBlobParams struct {
+	BlobID             uuid.UUID
+	ConnectedAccountID int64
+	MessageID          uuid.UUID
+	Path               []int32
+}
+
+// Names @blob_id as the part's content unless the part names one already,
+// and returns the blob the part names.
+func (q *Queries) SetMessagePartBlob(ctx context.Context, arg SetMessagePartBlobParams) (*uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, setMessagePartBlob,
+		arg.BlobID,
+		arg.ConnectedAccountID,
+		arg.MessageID,
+		arg.Path,
+	)
+	var blob_id *uuid.UUID
+	err := row.Scan(&blob_id)
+	return blob_id, err
 }
