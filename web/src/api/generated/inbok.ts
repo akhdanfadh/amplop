@@ -66,6 +66,7 @@ import type {
   NewProbeEvent,
   NewRegistrationRequest,
   NewRegistrationSettings,
+  NewReply,
   NewSession,
   NewSetup,
   NewSystemEmailSettings,
@@ -1129,6 +1130,97 @@ export const useReactivateMember = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getReactivateMemberMutationOptions(options), queryClient);
+    }
+
+export const getReplyToMessageUrl = (id: string,) => {
+
+
+
+
+  return `/api/v0/messages/${id}/replies`
+}
+
+/**
+ * Saves a reply to one of the signed-in account's messages, from one of its connected accounts, waiting to be sent, and returns it as an outgoing message. Its subject is the answered message's, cut at 500 characters, with "Re: " added when it has none and still fits, and it carries the In-Reply-To and References headers that thread it when the answered message has a valid Message-ID. Sent from the account that holds the answered message, it asks Gmail for that message's thread; from another account, it carries only the headers, which Gmail may thread it by. Sending counts toward the signed-in account's limit of 30 messages per 15 minutes and 200 per 24 hours, from all its connected accounts.
+ * @summary Reply to Message
+ */
+export const replyToMessage = async (id: string,
+    newReply: NewReply, options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessage> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseOutgoingMessage>(getReplyToMessageUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(newReply),
+    schema: ResponseOutgoingMessage
+  }
+);}
+
+
+
+
+
+export const getReplyToMessageMutationKey = () => ['replyToMessage'] as const;
+
+export const getReplyToMessageMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replyToMessage>>, TError,ReplyToMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof replyToMessage>>, TError,ReplyToMessageMutationVariables, TContext> => {
+
+const mutationKey = getReplyToMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof replyToMessage>>, ReplyToMessageMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  replyToMessage(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReplyToMessageMutationResult = NonNullable<Awaited<ReturnType<typeof replyToMessage>>>
+    export type ReplyToMessageMutationBody = NewReply
+    export type ReplyToMessageMutationError = ErrorType<Problem>
+    export type ReplyToMessageMutationVariables = {id: string;data: NewReply}
+
+    /**
+ * @summary Reply to Message
+ */
+export const useReplyToMessage = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replyToMessage>>, TError,ReplyToMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof replyToMessage>>,
+        TError,
+        ReplyToMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReplyToMessageMutationOptions(options), queryClient);
     }
 
 export const getListOutgoingMessagesUrl = () => {

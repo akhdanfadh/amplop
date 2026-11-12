@@ -28,8 +28,15 @@ type fakeOutgoingMessages struct {
 
 	userID    int64
 	draft     outgoingmessage.Draft
+	reply     outgoingmessage.Reply
 	messageID uuid.UUID
 	calls     int
+}
+
+func (f *fakeOutgoingMessages) Reply(_ context.Context, userID int64, reply outgoingmessage.Reply) (outgoingmessage.Message, error) {
+	f.calls++
+	f.userID, f.reply = userID, reply
+	return f.message, f.err
 }
 
 func (f *fakeOutgoingMessages) Create(_ context.Context, userID int64, draft outgoingmessage.Draft) (outgoingmessage.Message, error) {
@@ -336,6 +343,105 @@ func TestSendMessageAgainRefused(t *testing.T) {
 	}
 }
 
+// ========================
+// Reply to message
+// ========================
+
+// answeredMessageID is the synchronized message the reply tests answer.
+var answeredMessageID = uuid.MustParse("0a1b2c3d-0000-4000-8000-0000000000bb")
+
+const replyRequest = `{"connectedAccountId":3,"to":["Ann@example.com"],"cc":[],"bcc":["cat@example.com"],"body":"Are you free?"}`
+
+// requestReply sends body to Reply to Message for answeredMessageID with
+// key as its Idempotency-Key.
+func requestReply(api *API, key, body string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, "/api/v0/messages/"+answeredMessageID.String()+"/replies", strings.NewReader(body))
+	request.Header.Set("Origin", "http://"+request.Host)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", key)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
+	response := httptest.NewRecorder()
+	api.Handler().ServeHTTP(response, request)
+	return response
+}
+
+// A reply comes back as the message it saved, with the subject the server
+// gave it.
+func TestReplyToMessage(t *testing.T) {
+	saved := lunch
+	saved.Subject = "Re: Lunch"
+	messages := &fakeOutgoingMessages{message: saved}
+	api := newOutgoingMessagesAPI(messages)
+
+	response := requestReply(api, lunchKey.String(), replyRequest)
+
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{`+strings.Replace(lunchSummaryJSON, `"subject":"Lunch"`, `"subject":"Re: Lunch"`, 1)+`,"body":"Are you free?"}}`, response.Body.String())
+	assert.Equal(t, int64(42), messages.userID)
+	assert.Equal(t, outgoingmessage.Reply{
+		ConnectedAccountID: 3,
+		IdempotencyKey:     lunchKey,
+		AnsweredMessageID:  answeredMessageID,
+		To:                 []string{"Ann@example.com"},
+		Cc:                 []string{},
+		Bcc:                []string{"cat@example.com"},
+		Body:               "Are you free?",
+	}, messages.reply)
+}
+
+// A reply takes no subject, and its key is checked as a send's.
+func TestReplyToMessageInvalid(t *testing.T) {
+	for _, c := range []struct {
+		name, key, body, location string
+	}{
+		{"subject", lunchKey.String(), strings.Replace(replyRequest, `"body"`, `"subject":"Lunch","body"`, 1), "body.subject"},
+		{"key not a UUID", "lunch-1", replyRequest, "header.Idempotency-Key"},
+		{"key opens a quote", `"0a1b2c3d-0000-4000-8000-0000000000aa`, replyRequest, "header.Idempotency-Key"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			messages := &fakeOutgoingMessages{message: lunch}
+			api := newOutgoingMessagesAPI(messages)
+
+			response := requestReply(api, c.key, c.body)
+
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+			problem := decodeJSON(t, response.Body.Bytes())
+			assert.Equal(t, problemPrefix+"validation-error", problem["type"])
+			errors, ok := problem["errors"].([]any)
+			require.True(t, ok)
+			require.Len(t, errors, 1)
+			assert.Equal(t, c.location, errors[0].(map[string]any)["location"])
+			assert.Zero(t, messages.calls)
+		})
+	}
+}
+
+// A reply fails as a send does, and with a 404 when the answered message is
+// not the member's or is gone.
+func TestReplyToMessageRefused(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		err  error
+		code int
+		typ  string
+	}{
+		{"answered message not found", outgoingmessage.ErrAnsweredNotFound, http.StatusNotFound, messageNotFoundType},
+		{"needs reconnect", outgoingmessage.ErrNeedsReconnect, http.StatusConflict, sendingAccountNeedsReconnectType},
+		{"key reused", outgoingmessage.ErrKeyReused, http.StatusUnprocessableEntity, idempotencyKeyReusedType},
+		{"other member's account", outgoingmessage.ErrAccountNotFound, http.StatusUnprocessableEntity, problemPrefix + "validation-error"},
+		{"throttled", &attemptlimit.Error{Err: outgoingmessage.ErrThrottled, Wait: time.Minute}, http.StatusTooManyRequests, sendThrottledType},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			api := newOutgoingMessagesAPI(&fakeOutgoingMessages{err: c.err})
+
+			response := requestReply(api, lunchKey.String(), replyRequest)
+
+			require.Equal(t, c.code, response.Code, response.Body.String())
+			assert.Equal(t, c.typ, decodeJSON(t, response.Body.Bytes())["type"])
+		})
+	}
+}
+
 // Every outgoing message operation is member level, and the documented
 // problems carry the types the web compares.
 func TestOutgoingMessagesOpenAPI(t *testing.T) {
@@ -349,6 +455,7 @@ func TestOutgoingMessagesOpenAPI(t *testing.T) {
 		{doc.Paths[outgoingMessagesPath].Get, "listOutgoingMessages", []int{http.StatusOK, http.StatusUnauthorized}},
 		{doc.Paths[outgoingMessagesPath+"/{id}"].Get, "getOutgoingMessage", []int{http.StatusOK, http.StatusUnauthorized, http.StatusNotFound}},
 		{doc.Paths[outgoingMessagesPath+"/{id}/send-again"].Post, "sendMessageAgain", []int{http.StatusCreated, http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests}},
+		{doc.Paths[messagesPath+"/{id}/replies"].Post, "replyToMessage", []int{http.StatusCreated, http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests}},
 	} {
 		op := c.operation
 		require.NotNil(t, op, c.id)
@@ -361,7 +468,7 @@ func TestOutgoingMessagesOpenAPI(t *testing.T) {
 	}
 
 	types := problemTypes(doc)
-	for _, typ := range []string{outgoingMessageNotFoundType, sendingAccountNeedsReconnectType, notSendableAgainType, idempotencyKeyReusedType, sendThrottledType} {
+	for _, typ := range []string{outgoingMessageNotFoundType, sendingAccountNeedsReconnectType, notSendableAgainType, idempotencyKeyReusedType, sendThrottledType, messageNotFoundType} {
 		assert.Contains(t, types, typ)
 	}
 }

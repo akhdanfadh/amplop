@@ -2338,9 +2338,11 @@ new message, is `ErrKeyReused`.
 
 The HTTP operations, tag Outgoing Messages, are Send Message
 (`POST /outgoing-messages`, which requires an `Idempotency-Key` header: a
-UUID, quoted as the IETF draft's Structured Field string or bare), List
-Outgoing Messages, Get Outgoing Message, and Send Message Again
-(`POST /outgoing-messages/{id}/send-again`). A refused account, missing
+UUID, quoted as the IETF draft's Structured Field string or bare), Reply
+to Message (`POST /messages/{id}/replies`, the same header and body
+without `subject`; a message the member does not have answers 404
+`message-not-found`), List Outgoing Messages, Get Outgoing Message, and
+Send Message Again (`POST /outgoing-messages/{id}/send-again`). A refused account, missing
 recipients, and a refused address answer 422 on their field, e.g.
 `body.cc[2]`; a reused key answers 422 `idempotency-key-reused`. Over the
 send limit answers 429 `send-throttled` with `Retry-After`. Another
