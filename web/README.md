@@ -914,7 +914,10 @@ except operations tagged `Redirects`: another site sends the browser
 there, e.g. Google's return after its consent page, and a call from the
 app would use up what they carry. `orval.config.ts` leaves them out but
 keeps every schema, e.g. `ConnectOutcome`, the outcome Google's return
-lands on the `/connected-accounts` page with.
+lands on the `/connected-accounts` page with. It also leaves out every
+operation whose success answers something other than JSON, e.g. a
+message body for a frame or an attachment: the browser loads those
+itself from the URLs a JSON answer gives, and transport reads only JSON.
 `model` holds each type as a [Zod](https://zod.dev) schema, which checks
 a value while the app runs. `getHealth()` returns the success body, e.g.
 `{ data: { status: "ok" } }`. If a contract change breaks code that uses
