@@ -13,12 +13,12 @@ import (
 
 // The mailboxes of one account, by role.
 var (
-	inbox    = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000001"), Role: mailsync.RoleInbox}
-	sent     = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000002"), Role: mailsync.RoleSent}
-	spam     = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000003"), Role: mailsync.RoleJunk}
-	trash    = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000004"), Role: mailsync.RoleTrash}
-	drafts   = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000005"), Role: mailsync.RoleDrafts}
-	receipts = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000006")}
+	inbox    = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000001"), Role: mailsync.RoleInbox, MadeBy: mailsync.MadeByProvider}
+	sent     = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000002"), Role: mailsync.RoleSent, MadeBy: mailsync.MadeByProvider}
+	spam     = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000003"), Role: mailsync.RoleJunk, MadeBy: mailsync.MadeByProvider}
+	trash    = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000004"), Role: mailsync.RoleTrash, MadeBy: mailsync.MadeByProvider}
+	drafts   = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000005"), Role: mailsync.RoleDrafts, MadeBy: mailsync.MadeByProvider}
+	receipts = Mailbox{ID: uuid.MustParse("00000000-0000-4000-8000-000000000006"), MadeBy: mailsync.MadeByMember}
 )
 
 // sender returns an address for name at example.com.

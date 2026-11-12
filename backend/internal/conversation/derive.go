@@ -2,6 +2,8 @@
 // that share the provider's thread, as one row of the unified inbox
 // (ADR031). [Derive] applies the rules that make a thread's row and places,
 // which storage keeps derived for every thread a sync write touches.
+// [Service] lists and reads them for one member, across their connected
+// accounts or one of them.
 //
 // DESIGN: The rules (ADR001, "Conversations"): a draft shows nowhere, which
 // inbok cannot open yet; a message in Spam or Trash counts only there. A
@@ -26,13 +28,15 @@ import (
 // a long thread's would grow without end. inbok's choice.
 const maxParticipants = 10
 
-// Mailbox is a mailbox a message is in, as the rules read it.
+// Mailbox is a mailbox a message is in.
 type Mailbox struct {
-	ID   uuid.UUID
-	Role mailsync.Role
+	ID     uuid.UUID
+	Role   mailsync.Role
+	MadeBy mailsync.Maker
 }
 
-// Message is one message of a thread, as the rules read it.
+// Message is one message of a thread, without its body: what the rules
+// read, and what a conversation shows of each message.
 type Message struct {
 	ID uuid.UUID
 	// Date is the provider's own timestamp, [mailsync.Message.InternalDate].
@@ -40,6 +44,9 @@ type Message struct {
 	Subject string
 	Preview string
 	From    []mailsync.Address
+	ReplyTo []mailsync.Address
+	To      []mailsync.Address
+	CC      []mailsync.Address
 	Seen    bool
 	Flagged bool
 	// Mailboxes are the mailboxes it is in, perhaps none.
@@ -79,7 +86,7 @@ func Derive(messages []Message) (Summary, bool) {
 	// 1. Leave out drafts, and find the visible messages among the rest.
 	var kept, visible []Message
 	for _, m := range messages {
-		if m.has(mailsync.RoleDrafts) {
+		if m.draft() {
 			continue
 		}
 		kept = append(kept, m)
@@ -168,6 +175,33 @@ func places(messages []Message) []uuid.UUID {
 	}
 	slices.SortFunc(ids, uuid.UUID.Compare)
 	return slices.Compact(ids)
+}
+
+// InSpam reports whether m is in Spam, and so counts only there.
+func (m Message) InSpam() bool {
+	return m.has(mailsync.RoleJunk)
+}
+
+// InTrash reports whether m is in Trash, and so counts only there.
+func (m Message) InTrash() bool {
+	return m.has(mailsync.RoleTrash)
+}
+
+// LabelIDs returns the IDs of the member's own mailboxes m is in, those
+// with no role that the member made, in the order of [Message.Mailboxes].
+func (m Message) LabelIDs() []uuid.UUID {
+	ids := []uuid.UUID{}
+	for _, mailbox := range m.Mailboxes {
+		if mailbox.Role == mailsync.RoleNone && mailbox.MadeBy == mailsync.MadeByMember {
+			ids = append(ids, mailbox.ID)
+		}
+	}
+	return ids
+}
+
+// draft reports whether m is a draft, which shows nowhere.
+func (m Message) draft() bool {
+	return m.has(mailsync.RoleDrafts)
 }
 
 // has reports whether m is in a mailbox of role.

@@ -12,6 +12,58 @@ import (
 	"uuid"
 )
 
+const countAllMailConversationsAfter = `-- name: CountAllMailConversationsAfter :one
+SELECT count(*)::integer FROM conversations
+WHERE connected_account_id = ANY ($1::bigint[]) AND in_all_mail AND latest_date > $2
+`
+
+type CountAllMailConversationsAfterParams struct {
+	AccountIds []int64
+	After      time.Time
+}
+
+func (q *Queries) CountAllMailConversationsAfter(ctx context.Context, arg CountAllMailConversationsAfterParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countAllMailConversationsAfter, arg.AccountIds, arg.After)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countMailboxConversationsAfter = `-- name: CountMailboxConversationsAfter :one
+SELECT count(DISTINCT conversation_id)::integer FROM conversation_mailboxes
+WHERE mailbox_id = ANY ($1::uuid[]) AND latest_date > $2
+`
+
+type CountMailboxConversationsAfterParams struct {
+	MailboxIds []uuid.UUID
+	After      time.Time
+}
+
+func (q *Queries) CountMailboxConversationsAfter(ctx context.Context, arg CountMailboxConversationsAfterParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countMailboxConversationsAfter, arg.MailboxIds, arg.After)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countStarredConversationsAfter = `-- name: CountStarredConversationsAfter :one
+SELECT count(*)::integer FROM conversations
+WHERE connected_account_id = ANY ($1::bigint[]) AND in_all_mail AND flagged
+    AND latest_date > $2
+`
+
+type CountStarredConversationsAfterParams struct {
+	AccountIds []int64
+	After      time.Time
+}
+
+func (q *Queries) CountStarredConversationsAfter(ctx context.Context, arg CountStarredConversationsAfterParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countStarredConversationsAfter, arg.AccountIds, arg.After)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const deleteConversationMailboxes = `-- name: DeleteConversationMailboxes :exec
 DELETE FROM conversation_mailboxes WHERE conversation_id = ANY ($1::uuid[])
 `
@@ -60,6 +112,414 @@ type InsertConversationMailboxesParams struct {
 func (q *Queries) InsertConversationMailboxes(ctx context.Context, arg InsertConversationMailboxesParams) error {
 	_, err := q.db.Exec(ctx, insertConversationMailboxes, arg.ConversationIds, arg.MailboxIds, arg.ConnectedAccountID)
 	return err
+}
+
+const listAllMailConversationIDs = `-- name: ListAllMailConversationIDs :many
+SELECT page.id, page.latest_date
+FROM unnest($1::bigint[]) AS account (id)
+CROSS JOIN LATERAL (
+    SELECT c.id, c.latest_date FROM conversations c
+    WHERE c.connected_account_id = account.id AND c.in_all_mail
+        AND (c.latest_date, c.id) < ($2::timestamptz, $3::uuid)
+    ORDER BY c.latest_date DESC, c.id DESC
+    LIMIT $4
+) AS page
+ORDER BY page.latest_date DESC, page.id DESC
+LIMIT $4
+`
+
+type ListAllMailConversationIDsParams struct {
+	AccountIds []int64
+	BeforeDate time.Time
+	BeforeID   uuid.UUID
+	MaxRows    int32
+}
+
+type ListAllMailConversationIDsRow struct {
+	ID         uuid.UUID
+	LatestDate time.Time
+}
+
+// As ListMailboxConversationIDs, for the accounts' visible conversations.
+func (q *Queries) ListAllMailConversationIDs(ctx context.Context, arg ListAllMailConversationIDsParams) ([]ListAllMailConversationIDsRow, error) {
+	rows, err := q.db.Query(ctx, listAllMailConversationIDs,
+		arg.AccountIds,
+		arg.BeforeDate,
+		arg.BeforeID,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllMailConversationIDsRow
+	for rows.Next() {
+		var i ListAllMailConversationIDsRow
+		if err := rows.Scan(&i.ID, &i.LatestDate); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listConversationMessages = `-- name: ListConversationMessages :many
+SELECT m.id, m.internal_date, m.subject, m.from_addresses, m.reply_to_addresses, m.to_addresses,
+    m.cc_addresses, m.preview, m.seen, m.flagged,
+    coalesce(array_agg(mb.id ORDER BY mb.name, mb.id) FILTER (WHERE mb.id IS NOT NULL), '{}')::uuid[] AS mailbox_ids,
+    coalesce(array_agg(coalesce(mb.role, '') ORDER BY mb.name, mb.id) FILTER (WHERE mb.id IS NOT NULL), '{}')::text[] AS mailbox_roles,
+    coalesce(array_agg(mb.made_by ORDER BY mb.name, mb.id) FILTER (WHERE mb.id IS NOT NULL), '{}')::text[] AS mailbox_makers
+FROM conversations c
+JOIN messages m ON m.connected_account_id = c.connected_account_id
+    AND m.provider_thread_id = c.provider_thread_id
+LEFT JOIN message_mailboxes mm ON mm.message_id = m.id
+LEFT JOIN mailboxes mb ON mb.id = mm.mailbox_id
+WHERE c.id = $1
+GROUP BY m.id
+ORDER BY m.internal_date, m.id
+`
+
+type ListConversationMessagesRow struct {
+	ID               uuid.UUID
+	InternalDate     time.Time
+	Subject          string
+	FromAddresses    []byte
+	ReplyToAddresses []byte
+	ToAddresses      []byte
+	CcAddresses      []byte
+	Preview          string
+	Seen             bool
+	Flagged          bool
+	MailboxIds       []uuid.UUID
+	MailboxRoles     []string
+	MailboxMakers    []string
+}
+
+// Every message of the conversation's thread, drafts too, oldest first,
+// each with the IDs, roles, and makers of its mailboxes by name, an empty
+// role for none.
+func (q *Queries) ListConversationMessages(ctx context.Context, id uuid.UUID) ([]ListConversationMessagesRow, error) {
+	rows, err := q.db.Query(ctx, listConversationMessages, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListConversationMessagesRow
+	for rows.Next() {
+		var i ListConversationMessagesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.InternalDate,
+			&i.Subject,
+			&i.FromAddresses,
+			&i.ReplyToAddresses,
+			&i.ToAddresses,
+			&i.CcAddresses,
+			&i.Preview,
+			&i.Seen,
+			&i.Flagged,
+			&i.MailboxIds,
+			&i.MailboxRoles,
+			&i.MailboxMakers,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listConversationUnreadCounts = `-- name: ListConversationUnreadCounts :many
+SELECT ca.id,
+    (SELECT count(*) FROM conversations c
+        WHERE c.connected_account_id = ca.id AND c.in_all_mail AND c.unread)::integer AS all_mail,
+    (SELECT count(*) FROM conversations c
+        WHERE c.connected_account_id = ca.id AND c.in_all_mail AND c.unread AND c.flagged)::integer AS starred
+FROM connected_accounts ca
+WHERE ca.user_id = $1
+ORDER BY ca.created_at, ca.id
+`
+
+type ListConversationUnreadCountsRow struct {
+	ID      int64
+	AllMail int32
+	Starred int32
+}
+
+// The member's accounts, oldest first, with how many of their visible
+// conversations, and of the flagged ones, are unread.
+func (q *Queries) ListConversationUnreadCounts(ctx context.Context, userID int64) ([]ListConversationUnreadCountsRow, error) {
+	rows, err := q.db.Query(ctx, listConversationUnreadCounts, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListConversationUnreadCountsRow
+	for rows.Next() {
+		var i ListConversationUnreadCountsRow
+		if err := rows.Scan(&i.ID, &i.AllMail, &i.Starred); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMailboxConversationIDs = `-- name: ListMailboxConversationIDs :many
+SELECT DISTINCT page.conversation_id, page.latest_date
+FROM unnest($1::uuid[]) AS box (id)
+CROSS JOIN LATERAL (
+    SELECT cm.conversation_id, cm.latest_date FROM conversation_mailboxes cm
+    WHERE cm.mailbox_id = box.id
+        AND (cm.latest_date, cm.conversation_id) < ($2::timestamptz, $3::uuid)
+    ORDER BY cm.latest_date DESC, cm.conversation_id DESC
+    LIMIT $4
+) AS page
+ORDER BY page.latest_date DESC, page.conversation_id DESC
+LIMIT $4
+`
+
+type ListMailboxConversationIDsParams struct {
+	MailboxIds []uuid.UUID
+	BeforeDate time.Time
+	BeforeID   uuid.UUID
+	MaxRows    int32
+}
+
+type ListMailboxConversationIDsRow struct {
+	ConversationID uuid.UUID
+	LatestDate     time.Time
+}
+
+// A page of the mailboxes' conversations, newest first, older than the
+// cursor: each mailbox's page from its index, merged.
+func (q *Queries) ListMailboxConversationIDs(ctx context.Context, arg ListMailboxConversationIDsParams) ([]ListMailboxConversationIDsRow, error) {
+	rows, err := q.db.Query(ctx, listMailboxConversationIDs,
+		arg.MailboxIds,
+		arg.BeforeDate,
+		arg.BeforeID,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMailboxConversationIDsRow
+	for rows.Next() {
+		var i ListMailboxConversationIDsRow
+		if err := rows.Scan(&i.ConversationID, &i.LatestDate); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMailboxLabelUnreadCounts = `-- name: ListMailboxLabelUnreadCounts :many
+SELECT mb.connected_account_id, mb.id, mb.name,
+    (SELECT count(*) FROM conversation_mailboxes cm WHERE cm.mailbox_id = mb.id AND cm.unread)::integer AS unread
+FROM mailboxes mb
+JOIN connected_accounts ca ON ca.id = mb.connected_account_id
+WHERE ca.user_id = $1 AND mb.role IS NULL AND mb.made_by = 'member'
+ORDER BY mb.name, mb.id
+`
+
+type ListMailboxLabelUnreadCountsRow struct {
+	ConnectedAccountID int64
+	ID                 uuid.UUID
+	Name               string
+	Unread             int32
+}
+
+// The member's own labels, those with no role that the member made, by
+// name, with how many of their conversations are unread.
+func (q *Queries) ListMailboxLabelUnreadCounts(ctx context.Context, userID int64) ([]ListMailboxLabelUnreadCountsRow, error) {
+	rows, err := q.db.Query(ctx, listMailboxLabelUnreadCounts, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMailboxLabelUnreadCountsRow
+	for rows.Next() {
+		var i ListMailboxLabelUnreadCountsRow
+		if err := rows.Scan(
+			&i.ConnectedAccountID,
+			&i.ID,
+			&i.Name,
+			&i.Unread,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMailboxRoleUnreadCounts = `-- name: ListMailboxRoleUnreadCounts :many
+SELECT mb.connected_account_id, mb.role::text AS role,
+    count(DISTINCT cm.conversation_id)::integer AS unread
+FROM mailboxes mb
+JOIN connected_accounts ca ON ca.id = mb.connected_account_id
+LEFT JOIN conversation_mailboxes cm ON cm.mailbox_id = mb.id AND cm.unread
+WHERE ca.user_id = $1 AND mb.role IS NOT NULL
+GROUP BY mb.connected_account_id, mb.role
+`
+
+type ListMailboxRoleUnreadCountsRow struct {
+	ConnectedAccountID int64
+	Role               string
+	Unread             int32
+}
+
+// For each role of the member's accounts' mailboxes, how many
+// conversations in a mailbox of that role are unread, each once.
+func (q *Queries) ListMailboxRoleUnreadCounts(ctx context.Context, userID int64) ([]ListMailboxRoleUnreadCountsRow, error) {
+	rows, err := q.db.Query(ctx, listMailboxRoleUnreadCounts, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMailboxRoleUnreadCountsRow
+	for rows.Next() {
+		var i ListMailboxRoleUnreadCountsRow
+		if err := rows.Scan(&i.ConnectedAccountID, &i.Role, &i.Unread); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMemberConnectedAccountIDs = `-- name: ListMemberConnectedAccountIDs :many
+SELECT id FROM connected_accounts
+WHERE user_id = $1 AND ($2::bigint = 0 OR id = $2)
+ORDER BY created_at, id
+`
+
+type ListMemberConnectedAccountIDsParams struct {
+	UserID    int64
+	AccountID int64
+}
+
+// The member's accounts, or the one named, oldest first.
+func (q *Queries) ListMemberConnectedAccountIDs(ctx context.Context, arg ListMemberConnectedAccountIDsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listMemberConnectedAccountIDs, arg.UserID, arg.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoleMailboxIDs = `-- name: ListRoleMailboxIDs :many
+SELECT id FROM mailboxes
+WHERE connected_account_id = ANY ($1::bigint[]) AND role = $2::text
+`
+
+type ListRoleMailboxIDsParams struct {
+	AccountIds []int64
+	Role       string
+}
+
+func (q *Queries) ListRoleMailboxIDs(ctx context.Context, arg ListRoleMailboxIDsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listRoleMailboxIDs, arg.AccountIds, arg.Role)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStarredConversationIDs = `-- name: ListStarredConversationIDs :many
+SELECT page.id, page.latest_date
+FROM unnest($1::bigint[]) AS account (id)
+CROSS JOIN LATERAL (
+    SELECT c.id, c.latest_date FROM conversations c
+    WHERE c.connected_account_id = account.id AND c.in_all_mail AND c.flagged
+        AND (c.latest_date, c.id) < ($2::timestamptz, $3::uuid)
+    ORDER BY c.latest_date DESC, c.id DESC
+    LIMIT $4
+) AS page
+ORDER BY page.latest_date DESC, page.id DESC
+LIMIT $4
+`
+
+type ListStarredConversationIDsParams struct {
+	AccountIds []int64
+	BeforeDate time.Time
+	BeforeID   uuid.UUID
+	MaxRows    int32
+}
+
+type ListStarredConversationIDsRow struct {
+	ID         uuid.UUID
+	LatestDate time.Time
+}
+
+// As ListAllMailConversationIDs, for the flagged ones.
+func (q *Queries) ListStarredConversationIDs(ctx context.Context, arg ListStarredConversationIDsParams) ([]ListStarredConversationIDsRow, error) {
+	rows, err := q.db.Query(ctx, listStarredConversationIDs,
+		arg.AccountIds,
+		arg.BeforeDate,
+		arg.BeforeID,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStarredConversationIDsRow
+	for rows.Next() {
+		var i ListStarredConversationIDsRow
+		if err := rows.Scan(&i.ID, &i.LatestDate); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listThreadMessages = `-- name: ListThreadMessages :many
@@ -129,4 +589,112 @@ func (q *Queries) ListThreadMessages(ctx context.Context, arg ListThreadMessages
 		return nil, err
 	}
 	return items, nil
+}
+
+const readConversationRows = `-- name: ReadConversationRows :many
+SELECT c.id, c.connected_account_id, c.latest_date, c.subject, c.preview, c.latest_from,
+    c.participants, c.message_count, c.unread, c.flagged, c.in_all_mail,
+    coalesce(places.inbox, false)::boolean AS in_inbox,
+    coalesce(places.sent, false)::boolean AS in_sent,
+    coalesce(places.spam, false)::boolean AS in_spam,
+    coalesce(places.trash, false)::boolean AS in_trash,
+    coalesce(places.label_ids, '{}')::uuid[] AS label_ids
+FROM conversations c
+JOIN connected_accounts ca ON ca.id = c.connected_account_id
+LEFT JOIN LATERAL (
+    SELECT bool_or(mb.role = 'inbox') AS inbox,
+        bool_or(mb.role = 'sent') AS sent,
+        bool_or(mb.role = 'junk') AS spam,
+        bool_or(mb.role = 'trash') AS trash,
+        array_agg(mb.id ORDER BY mb.name, mb.id) FILTER (WHERE mb.role IS NULL AND mb.made_by = 'member') AS label_ids
+    FROM conversation_mailboxes cm
+    JOIN mailboxes mb ON mb.id = cm.mailbox_id
+    WHERE cm.conversation_id = c.id
+) AS places ON true
+WHERE c.id = ANY ($1::uuid[]) AND ca.user_id = $2
+`
+
+type ReadConversationRowsParams struct {
+	Ids    []uuid.UUID
+	UserID int64
+}
+
+type ReadConversationRowsRow struct {
+	ID                 uuid.UUID
+	ConnectedAccountID int64
+	LatestDate         time.Time
+	Subject            string
+	Preview            string
+	LatestFrom         []byte
+	Participants       []byte
+	MessageCount       int32
+	Unread             bool
+	Flagged            bool
+	InAllMail          bool
+	InInbox            bool
+	InSent             bool
+	InSpam             bool
+	InTrash            bool
+	LabelIds           []uuid.UUID
+}
+
+// The member's conversations of those named, each with the places it is
+// in: the views by role, and the member's own labels by name.
+func (q *Queries) ReadConversationRows(ctx context.Context, arg ReadConversationRowsParams) ([]ReadConversationRowsRow, error) {
+	rows, err := q.db.Query(ctx, readConversationRows, arg.Ids, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReadConversationRowsRow
+	for rows.Next() {
+		var i ReadConversationRowsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConnectedAccountID,
+			&i.LatestDate,
+			&i.Subject,
+			&i.Preview,
+			&i.LatestFrom,
+			&i.Participants,
+			&i.MessageCount,
+			&i.Unread,
+			&i.Flagged,
+			&i.InAllMail,
+			&i.InInbox,
+			&i.InSent,
+			&i.InSpam,
+			&i.InTrash,
+			&i.LabelIds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const readMemberLabelAccount = `-- name: ReadMemberLabelAccount :one
+SELECT mb.connected_account_id
+FROM mailboxes mb
+JOIN connected_accounts ca ON ca.id = mb.connected_account_id
+WHERE mb.id = $1 AND ca.user_id = $2 AND mb.role IS NULL AND mb.made_by = 'member'
+`
+
+type ReadMemberLabelAccountParams struct {
+	ID     uuid.UUID
+	UserID int64
+}
+
+// The account of the member's label, which the member names as a place:
+// a mailbox of theirs with no role that they made. Other mailboxes are
+// places only as views, by role.
+func (q *Queries) ReadMemberLabelAccount(ctx context.Context, arg ReadMemberLabelAccountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, readMemberLabelAccount, arg.ID, arg.UserID)
+	var connected_account_id int64
+	err := row.Scan(&connected_account_id)
+	return connected_account_id, err
 }

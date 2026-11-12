@@ -298,10 +298,15 @@ last two redirect into settings, so settings can move without the server.
 ### Message list
 
 - **Rows are conversations** (one per provider thread), newest first by
-  the newest message in the view; search results are messages.
+  their newest message; search results are messages. A conversation is in
+  a view when one of its messages is. Its row, the same in every view, is
+  made from its messages outside Spam and Trash, or from its Spam and
+  Trash ones when it has no other; Gmail drafts are not shown. So a reply
+  moves its conversation up in every view it is in, as in Gmail's
+  conversation view.
 - **Row, three lines:** who (first names, "me", count) and date / subject
   and markers / snippet. A 28 px initials avatar ringed in the account
-  colour leads (initials of the newest sender in the view); filtered to one
+  colour leads (initials of the newest message's sender); filtered to one
   account, the ring is dropped. Unread rows are 600 weight. Markers: an
   attachment clip, a star filled in the text colour.
 - **Dates:** today the time (the browser's 12 or 24 hour clock),

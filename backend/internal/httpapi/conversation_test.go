@@ -1,0 +1,248 @@
+package httpapi
+
+import (
+	"context"
+	"net/http"
+	"testing"
+	"time"
+	"uuid"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"inbok/internal/account"
+	"inbok/internal/conversation"
+	"inbok/internal/mailsync"
+)
+
+type fakeConversations struct {
+	rows     []conversation.Conversation
+	messages []conversation.Message
+	counts   []conversation.PlaceCount
+	count    int
+	err      error
+
+	userID  int64
+	query   conversation.Query
+	place   conversation.Place
+	account int64
+	after   time.Time
+	id      uuid.UUID
+	calls   int
+}
+
+func (f *fakeConversations) List(_ context.Context, userID int64, query conversation.Query) ([]conversation.Conversation, error) {
+	f.calls++
+	f.userID, f.query = userID, query
+	return f.rows, f.err
+}
+
+func (f *fakeConversations) CountAfter(_ context.Context, userID int64, place conversation.Place, account int64, after time.Time) (int, error) {
+	f.calls++
+	f.userID, f.place, f.account, f.after = userID, place, account, after
+	return f.count, f.err
+}
+
+func (f *fakeConversations) Places(_ context.Context, userID int64) ([]conversation.PlaceCount, error) {
+	f.calls++
+	f.userID = userID
+	return f.counts, f.err
+}
+
+func (f *fakeConversations) Get(_ context.Context, userID int64, id uuid.UUID) (conversation.Conversation, []conversation.Message, error) {
+	f.calls++
+	f.userID, f.id = userID, id
+	if f.err != nil {
+		return conversation.Conversation{}, nil, f.err
+	}
+	return f.rows[0], f.messages, nil
+}
+
+func newConversationsAPI(conversations *fakeConversations) *API {
+	return New(discard, Services{Conversations: conversations, Session: memberSessions(account.RoleMember)})
+}
+
+var (
+	reportID      = uuid.MustParse("0b1b2c3d-0000-4000-8000-000000000001")
+	receiptsLabel = uuid.MustParse("0b1b2c3d-0000-4000-8000-0000000000aa")
+	reportDate    = time.Date(2026, 11, 9, 10, 30, 0, 0, time.UTC)
+	report        = conversation.Conversation{
+		ID: reportID, AccountID: 3, LatestDate: reportDate, Subject: "Quarterly report", Preview: "Numbers attached",
+		LatestFrom:   []mailsync.Address{{Name: "Asha K", Address: "asha@example.com"}},
+		Participants: []mailsync.Address{{Name: "Asha K", Address: "asha@example.com"}, {Address: "alex@example.com"}},
+		MessageCount: 2, Unread: true, Flagged: true, InInbox: true, InAllMail: true, LabelIDs: []uuid.UUID{receiptsLabel},
+	}
+)
+
+const reportJSON = `{"id":"0b1b2c3d-0000-4000-8000-000000000001","accountId":3,"date":"2026-11-09T10:30:00Z",` +
+	`"subject":"Quarterly report","preview":"Numbers attached",` +
+	`"latestFrom":[{"name":"Asha K","address":"asha@example.com"}],` +
+	`"participants":[{"name":"Asha K","address":"asha@example.com"},{"name":"","address":"alex@example.com"}],` +
+	`"messageCount":2,"unread":true,"starred":true,"inbox":true,"sent":false,"allMail":true,"spam":false,"trash":false,` +
+	`"labelIds":["0b1b2c3d-0000-4000-8000-0000000000aa"]}`
+
+// ========================
+// Conversation list
+// ========================
+
+func TestListConversations(t *testing.T) {
+	conversations := &fakeConversations{rows: []conversation.Conversation{report}}
+	api := newConversationsAPI(conversations)
+
+	response := requestAuthenticated(api, http.MethodGet, "/conversations?place=inbox", "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"conversations":[`+reportJSON+`]}}`, response.Body.String())
+	assert.Equal(t, int64(42), conversations.userID)
+	assert.Equal(t, conversation.Query{Place: conversation.Place{View: conversation.ViewInbox}, Limit: conversation.DefaultLimit}, conversations.query,
+		"every account, from the newest")
+}
+
+func TestListConversationsPage(t *testing.T) {
+	conversations := &fakeConversations{rows: []conversation.Conversation{}}
+	api := newConversationsAPI(conversations)
+
+	response := requestAuthenticated(api, http.MethodGet, "/conversations?place="+receiptsLabel.String()+
+		"&account=3&before=2026-11-09T10:30:00.123Z&beforeId="+reportID.String()+"&limit=51", "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"conversations":[]}}`, response.Body.String())
+	assert.Equal(t, conversation.Query{
+		Place:   conversation.Place{Mailbox: receiptsLabel},
+		Account: 3,
+		Before:  &conversation.Cursor{Date: time.Date(2026, 11, 9, 10, 30, 0, 123_000_000, time.UTC), ID: reportID},
+		Limit:   51,
+	}, conversations.query)
+}
+
+func TestListConversationsInvalid(t *testing.T) {
+	for _, c := range []struct {
+		name, query, location string
+	}{
+		{"no place", "", "query.place"},
+		{"an unknown view", "place=drafts", "query.place"},
+		{"a date alone", "place=inbox&before=2026-11-09T10:30:00Z", "query.beforeId"},
+		{"an id alone", "place=inbox&beforeId=" + reportID.String(), "query.before"},
+		{"too many", "place=inbox&limit=101", "query.limit"},
+		{"no account", "place=inbox&account=0", "query.account"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			conversations := &fakeConversations{}
+			api := newConversationsAPI(conversations)
+
+			response := requestAuthenticated(api, http.MethodGet, "/conversations?"+c.query, "")
+
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+			errs, ok := decodeJSON(t, response.Body.Bytes())["errors"].([]any)
+			require.True(t, ok, response.Body.String())
+			require.Len(t, errs, 1)
+			assert.Equal(t, c.location, errs[0].(map[string]any)["location"])
+			assert.Zero(t, conversations.calls)
+		})
+	}
+}
+
+func TestListConversationsNotFound(t *testing.T) {
+	for err, want := range map[error]string{
+		conversation.ErrPlaceNotFound:   placeNotFoundType,
+		conversation.ErrAccountNotFound: connectedAccountNotFoundType,
+	} {
+		conversations := &fakeConversations{err: err}
+		api := newConversationsAPI(conversations)
+
+		response := requestAuthenticated(api, http.MethodGet, "/conversations?place="+receiptsLabel.String(), "")
+
+		require.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
+		assert.Equal(t, want, decodeJSON(t, response.Body.Bytes())["type"])
+	}
+}
+
+// ========================
+// New conversation count
+// ========================
+
+func TestCountNewConversations(t *testing.T) {
+	conversations := &fakeConversations{count: 4}
+	api := newConversationsAPI(conversations)
+
+	response := requestAuthenticated(api, http.MethodGet, "/conversations/new-count?place=starred&account=3&after=2026-11-09T10:30:00Z", "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"count":4}}`, response.Body.String())
+	assert.Equal(t, conversation.Place{View: conversation.ViewStarred}, conversations.place)
+	assert.Equal(t, int64(3), conversations.account)
+	assert.Equal(t, reportDate, conversations.after)
+}
+
+func TestCountAfterNoAnchor(t *testing.T) {
+	conversations := &fakeConversations{}
+	api := newConversationsAPI(conversations)
+
+	response := requestAuthenticated(api, http.MethodGet, "/conversations/new-count?place=inbox", "")
+
+	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+	assert.Zero(t, conversations.calls)
+}
+
+// ========================
+// Place list
+// ========================
+
+func TestListPlaces(t *testing.T) {
+	conversations := &fakeConversations{counts: []conversation.PlaceCount{
+		{Account: 3, Place: conversation.Place{View: conversation.ViewInbox}, Unread: 2},
+		{Account: 3, Place: conversation.Place{Mailbox: receiptsLabel}, Name: "Bills/2026", Unread: 1},
+	}}
+	api := newConversationsAPI(conversations)
+
+	response := requestAuthenticated(api, http.MethodGet, "/places", "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"places":[`+
+		`{"accountId":3,"place":"inbox","name":null,"unread":2},`+
+		`{"accountId":3,"place":"0b1b2c3d-0000-4000-8000-0000000000aa","name":"Bills/2026","unread":1}]}}`, response.Body.String())
+	assert.Equal(t, int64(42), conversations.userID)
+}
+
+// ========================
+// Conversation read
+// ========================
+
+func TestGetConversation(t *testing.T) {
+	messageID := uuid.MustParse("0b1b2c3d-0000-4000-8000-0000000000bb")
+	conversations := &fakeConversations{
+		rows: []conversation.Conversation{report},
+		messages: []conversation.Message{{
+			ID: messageID, Date: reportDate, Subject: "Quarterly report",
+			From:    []mailsync.Address{{Name: "Asha K", Address: "asha@example.com"}},
+			ReplyTo: []mailsync.Address{}, To: []mailsync.Address{{Address: "alex@example.com"}}, CC: []mailsync.Address{},
+			Preview: "Numbers attached", Flagged: true,
+			Mailboxes: []conversation.Mailbox{
+				{ID: uuid.New(), Role: mailsync.RoleTrash, MadeBy: mailsync.MadeByProvider},
+				{ID: receiptsLabel, MadeBy: mailsync.MadeByMember},
+			},
+		}},
+	}
+	api := newConversationsAPI(conversations)
+
+	response := requestAuthenticated(api, http.MethodGet, "/conversations/"+reportID.String(), "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"conversation":`+reportJSON+`,"messages":[{`+
+		`"id":"0b1b2c3d-0000-4000-8000-0000000000bb","date":"2026-11-09T10:30:00Z","subject":"Quarterly report",`+
+		`"from":[{"name":"Asha K","address":"asha@example.com"}],"replyTo":[],"to":[{"name":"","address":"alex@example.com"}],"cc":[],`+
+		`"preview":"Numbers attached","unread":true,"starred":true,"spam":false,"trash":true,`+
+		`"labelIds":["0b1b2c3d-0000-4000-8000-0000000000aa"]}]}}`, response.Body.String())
+	assert.Equal(t, reportID, conversations.id)
+	assert.Equal(t, int64(42), conversations.userID)
+}
+
+func TestGetConversationNotFound(t *testing.T) {
+	conversations := &fakeConversations{err: conversation.ErrNotFound}
+	api := newConversationsAPI(conversations)
+
+	response := requestAuthenticated(api, http.MethodGet, "/conversations/"+reportID.String(), "")
+
+	require.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
+	assert.Equal(t, conversationNotFoundType, decodeJSON(t, response.Body.Bytes())["type"])
+}

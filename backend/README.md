@@ -2791,6 +2791,40 @@ their thread is written again. ADR001 lists the fixes considered, and
 `DEBT.md` holds the planned one: a rules version that `inbok migrate`
 derives every thread again on.
 
+`conversation` reads them for the member, all under `/api/v0` and the
+Conversations tag. Each read first checks that the place's label, the
+account filter, or the conversation is the member's, then reads with the
+IDs it found, in one read-only snapshot:
+
+- `GET /conversations?place=&account=&before=&beforeId=&limit=` lists a
+  page, 50 by default and at most 100, newest first, then by `id`
+  descending. `place` is a view, `inbox`, `starred`, `sent`, `all`
+  (every visible conversation), `spam`, or `trash`, or the mailbox ID of
+  one of the member's labels (no role, made by the member); `account`
+  limits it to one account. A next page passes the last
+  row's `date` and `id` as `before` and `beforeId`; asking for 51 tells
+  whether one follows. Each page reads each mailbox's or account's index
+  and merges them. Each row carries the place flags `inbox`, `sent`,
+  `allMail`, `spam`, and `trash`, `starred`, and `labelIds`, so a client
+  can tell which lists hold it; Starred is `starred` and `allMail`.
+- `GET /conversations/new-count?place=&account=&after=` counts a place's
+  conversations dated after `after`, the newest one a list shows.
+- `GET /places` lists each account's six views and its labels, with
+  each one's unread conversations, in a stable order; the web app orders
+  them for display.
+- `GET /conversations/{id}` returns a conversation's row and its
+  messages but drafts, oldest first, with their headers, read and starred
+  state, labels, and whether each is in Spam or Trash; no body. The
+  repository returns every message with its mailboxes, and
+  `conversation`'s rules leave out the drafts and mark Spam and Trash.
+
+A label of another member answers 404 `place-not-found`, an account
+filter of another member 404 `connected-account-not-found`, and another
+member's conversation 404 `conversation-not-found`. On 20,000 synthetic
+conversations over three accounts (PostgreSQL 18, 2026-11-11) a page
+reads in about 3 ms, deep pages included, and every unread count in
+about 11 ms.
+
 ## Search index
 
 Search finds a member's messages through Meilisearch, a derived index: a
@@ -3039,7 +3073,7 @@ httpapi --> connectedaccount <-- repository/postgres
 httpapi --> mailsync <-- repository/postgres
             mailsync --> connectedaccount
                      <-- google
-            conversation <-- repository/postgres
+httpapi --> conversation <-- repository/postgres
             conversation --> mailsync
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
