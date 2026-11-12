@@ -12,7 +12,7 @@ export const placesPlacesItemUnreadMin = 0;
 export const Places = zod.object({
   "places": zod.array(zod.object({
   "accountId": zod.int(),
-  "name": zod.string().nullable().describe('A label\'s name as the provider sends it, a nested Gmail label with slashes, e.g. Work/Projects; null for a view.'),
+  "name": zod.string().nullable().describe('A label\'s name as the provider names it, nesting included, e.g. Work/Projects for a Gmail label nested with slashes; null for a view.'),
   "place": zod.string().describe('A view\'s name or a label\'s id, as the place of List Conversations takes it.'),
   "unread": zod.int().min(placesPlacesItemUnreadMin).describe('How many of its conversations are unread.')
 })).describe('Every place of each connected account, in a stable order: the accounts oldest first, each with its views, inbox, starred, sent, all, spam, and trash, then its labels by name. The web app orders them for display. Gmail\'s own labels, e.g. its inbox categories, are not places.')

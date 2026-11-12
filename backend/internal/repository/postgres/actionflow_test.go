@@ -104,7 +104,7 @@ func TestActionFlowLate(t *testing.T) {
 	_, err = f.gmailAt(t, account.ID).Users.Messages.Modify("me", "m1", &gmail.ModifyMessageRequest{AddLabelIds: []string{"STARRED"}}).Do()
 	require.NoError(t, err)
 	runPoll(t, mailsync.NewPoll(f.db, f.google, f.access, time.Now), account.ID)
-	require.NoError(t, f.db.UpdateMessageLabels(t.Context(), account.ID, answer))
+	require.NoError(t, f.db.UpdateMessages(t.Context(), account.ID, answer))
 
 	// Then inbok keeps the newer state: read and starred, as Gmail has it.
 	message := stored.messages(t, account.ID)["m1"]

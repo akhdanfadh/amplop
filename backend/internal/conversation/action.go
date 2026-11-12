@@ -54,9 +54,10 @@ func (a Action) Opposite() Action {
 }
 
 // MaxActionIDs is how many conversations one action changes at most,
-// inbok's choice: a page at [MaxLimit]. Each costs a Gmail call of 10 or 20
-// of the member's 6,000 quota units a minute (Gmail's usage limits), so
-// one action spends at most a third of a minute's.
+// inbok's choice: a page at [MaxLimit]. Each costs a provider call, e.g. a
+// Gmail call of 10 or 20 of the member's 6,000 quota units a minute
+// (Gmail's usage limits), so one action spends at most a third of a
+// minute's.
 const MaxActionIDs = MaxLimit
 
 // Errors of [ActionService.Apply] a caller shows the member.
@@ -117,12 +118,12 @@ type ActionStorage interface {
 	// threads, leaving out any that is not theirs.
 	ListThreads(ctx context.Context, userID int64, ids []uuid.UUID) ([]Thread, error)
 
-	// UpdateMessageLabels writes updates to accountID's messages and their
+	// UpdateMessages writes updates to accountID's messages and their
 	// conversations, as [mailsync.Storage.UpdateSyncedMail] writes
 	// [mailsync.Change.Updated], keeping the sync state. A mailbox the
 	// account does not have yet is left out; the next sync adds it. It
 	// returns [mailsync.ErrNotFound] when the account has no sync state.
-	UpdateMessageLabels(ctx context.Context, accountID int64, updates []mailsync.MessageUpdate) error
+	UpdateMessages(ctx context.Context, accountID int64, updates []mailsync.MessageUpdate) error
 
 	// ReadConversations returns userID's conversations of ids, in the
 	// order of ids, leaving out any that is not theirs.
@@ -158,8 +159,8 @@ var actionBudget = 7 * time.Second
 var actionReserve = 3 * time.Second
 
 // actionConcurrency bounds one account's provider calls in flight, inbok's
-// choice, as package google bounds its fetches: Gmail limits a user's
-// concurrent requests at a number it does not publish.
+// choice, as package google bounds its fetches: providers limit a user's
+// concurrent requests, Gmail at a number it does not publish.
 const actionConcurrency = 4
 
 // ActionService applies a member's actions at the provider, then writes
@@ -342,7 +343,7 @@ func (a *ActionService) applyAccount(ctx, budget context.Context, action Action,
 	if len(outcome.changed) == 0 {
 		return nil
 	}
-	err = a.storage.UpdateMessageLabels(ctx, outcome.accountID, written)
+	err = a.storage.UpdateMessages(ctx, outcome.accountID, written)
 	if errors.Is(err, mailsync.ErrNotFound) {
 		// The account was removed meanwhile, with its conversations.
 		for _, id := range outcome.changed {

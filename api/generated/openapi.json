@@ -1569,7 +1569,7 @@
             "type": "integer"
           },
           "name": {
-            "description": "A label's name as the provider sends it, a nested Gmail label with slashes, e.g. Work/Projects; null for a view.",
+            "description": "A label's name as the provider names it, nesting included, e.g. Work/Projects for a Gmail label nested with slashes; null for a view.",
             "type": [
               "string",
               "null"
@@ -5833,7 +5833,7 @@
     },
     "/places": {
       "get": {
-        "description": "Lists the places of each of the signed-in account's connected accounts, its views and labels, with how many of their conversations are unread.",
+        "description": "Lists the places of each of the signed-in account's connected accounts, its views and labels, with how many of their conversations are unread. A label is a mailbox the member made at the provider: a Gmail label, and later an IMAP folder, shown alike. The provider's own mailboxes are places only through the views.",
         "operationId": "listPlaces",
         "responses": {
           "200": {

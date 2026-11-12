@@ -2402,7 +2402,7 @@ export const getListPlacesUrl = () => {
 }
 
 /**
- * Lists the places of each of the signed-in account's connected accounts, its views and labels, with how many of their conversations are unread.
+ * Lists the places of each of the signed-in account's connected accounts, its views and labels, with how many of their conversations are unread. A label is a mailbox the member made at the provider: a Gmail label, and later an IMAP folder, shown alike. The provider's own mailboxes are places only through the views.
  * @summary List Places
  */
 export const listPlaces = async ( options?: Parameters<typeof transport>[1]): Promise<ResponsePlaces> => {

@@ -52,7 +52,7 @@ func (f *fakeActionStorage) ListThreads(_ context.Context, _ int64, ids []uuid.U
 	return found, f.listErr
 }
 
-func (f *fakeActionStorage) UpdateMessageLabels(ctx context.Context, accountID int64, updates []mailsync.MessageUpdate) error {
+func (f *fakeActionStorage) UpdateMessages(ctx context.Context, accountID int64, updates []mailsync.MessageUpdate) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err := ctx.Err(); err != nil {

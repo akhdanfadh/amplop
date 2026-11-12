@@ -2853,7 +2853,7 @@ writes only what Gmail answers (ADR031, "Mail actions as built"):
    is which label, and returns each message's labels as Gmail answered,
    at Gmail's version.
 3. It writes those labels through `UpdateSyncedMail`
-   (`UpdateMessageLabels`), which derives the conversations again and
+   (`UpdateMessages`), which derives the conversations again and
    keeps the sync state; a label made since the last sync is left out
    until the next poll lists it, and a message a poll has meanwhile
    brought to a newer version keeps it.

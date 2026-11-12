@@ -272,7 +272,7 @@ const placesPath = "/places"
 type placeCount struct {
 	AccountID int64   `json:"accountId"`
 	Place     string  `json:"place" doc:"A view's name or a label's id, as the place of List Conversations takes it."`
-	Name      *string `json:"name" nullable:"true" doc:"A label's name as the provider sends it, a nested Gmail label with slashes, e.g. Work/Projects; null for a view."`
+	Name      *string `json:"name" nullable:"true" doc:"A label's name as the provider names it, nesting included, e.g. Work/Projects for a Gmail label nested with slashes; null for a view."`
 	Unread    int     `json:"unread" minimum:"0" doc:"How many of its conversations are unread."`
 }
 
@@ -287,10 +287,11 @@ func registerPlaceList(api huma.API, handler conversationHandler) {
 		Path:        placesPath,
 		Summary:     "List Places",
 		Tags:        []string{tagConversations},
-		Description: "Lists the places of each of the signed-in account's connected accounts, its views and labels, with how many of their conversations are unread.",
-		Metadata:    map[string]any{accessKey: session.AccessMember},
-		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
-		Responses:   memberResponses(api),
+		Description: "Lists the places of each of the signed-in account's connected accounts, its views and labels, with how many of their conversations are unread. " +
+			"A label is a mailbox the member made at the provider: a Gmail label, and later an IMAP folder, shown alike. The provider's own mailboxes are places only through the views.",
+		Metadata:  map[string]any{accessKey: session.AccessMember},
+		Security:  []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses: memberResponses(api),
 	}, handler.handleListPlaces)
 }
 

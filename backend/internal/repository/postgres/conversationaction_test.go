@@ -35,7 +35,7 @@ func TestListThreads(t *testing.T) {
 // Labels written for an action change the messages and their conversation,
 // which keeps its ID and moves between places, and leave the sync state as
 // it was.
-func TestUpdateMessageLabels(t *testing.T) {
+func TestUpdateMessages(t *testing.T) {
 	// Given an unread inbox conversation of two messages, and one the
 	// action leaves alone.
 	c := newConversationReadTest(t)
@@ -49,7 +49,7 @@ func TestUpdateMessageLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	// When Gmail answers an archive and read with both messages' labels.
-	err = c.db.UpdateMessageLabels(t.Context(), c.account, []mailsync.MessageUpdate{
+	err = c.db.UpdateMessages(t.Context(), c.account, []mailsync.MessageUpdate{
 		{ProviderID: "m1", MailboxProviderIDs: []string{"Label_1"}, Seen: true, Version: 2},
 		{ProviderID: "m2", Seen: true, Flagged: true, Version: 2},
 	})
@@ -71,7 +71,7 @@ func TestUpdateMessageLabels(t *testing.T) {
 // A label Gmail answered with that inbok has not listed yet is left out
 // and the rest of the change written; a poll at the same version, which
 // lists the label first, then adds it back.
-func TestUpdateLabelsNewMailbox(t *testing.T) {
+func TestUpdateMessagesNewMailbox(t *testing.T) {
 	// Given a stored inbox message, and Gmail's answer naming a label
 	// made since the last sync.
 	c := newConversationReadTest(t)
@@ -79,7 +79,7 @@ func TestUpdateLabelsNewMailbox(t *testing.T) {
 	answer := []mailsync.MessageUpdate{{ProviderID: "m1", MailboxProviderIDs: []string{"INBOX", "Label_new"}, Seen: true, Version: 20}}
 
 	// When the action writes it, then the poll that lists the label.
-	err := c.db.UpdateMessageLabels(t.Context(), c.account, answer)
+	err := c.db.UpdateMessages(t.Context(), c.account, answer)
 	require.NoError(t, err)
 	written := c.messages(t, c.account)["m1"]
 	c.update(t, c.account, mailsync.Change{State: running(1), Mailboxes: withNewLabel(), Updated: answer})
@@ -92,13 +92,13 @@ func TestUpdateLabelsNewMailbox(t *testing.T) {
 
 // An action's answer written after a poll has listed its new label, at
 // the same version, keeps that label.
-func TestUpdateLabelsAfterPoll(t *testing.T) {
+func TestUpdateMessagesAfterPoll(t *testing.T) {
 	c := newConversationReadTest(t)
 	c.saveTo(t, c.account, threadMessage("m1", "t1", 1, "asha", "INBOX"))
 	answer := []mailsync.MessageUpdate{{ProviderID: "m1", MailboxProviderIDs: []string{"INBOX", "Label_new"}, Seen: true, Version: 20}}
 	c.update(t, c.account, mailsync.Change{State: running(1), Mailboxes: withNewLabel(), Updated: answer})
 
-	err := c.db.UpdateMessageLabels(t.Context(), c.account, answer)
+	err := c.db.UpdateMessages(t.Context(), c.account, answer)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"INBOX", "Label_new"}, c.messages(t, c.account)["m1"].MailboxProviderIDs)
@@ -112,10 +112,10 @@ func withNewLabel() []mailsync.Mailbox {
 
 // An account without a sync state, e.g. one removed meanwhile, is not
 // found.
-func TestUpdateLabelsNoAccount(t *testing.T) {
+func TestUpdateMessagesNoAccount(t *testing.T) {
 	c := newConversationReadTest(t)
 
-	err := c.db.UpdateMessageLabels(t.Context(), c.account+1000, []mailsync.MessageUpdate{{ProviderID: "m1", Version: 2}})
+	err := c.db.UpdateMessages(t.Context(), c.account+1000, []mailsync.MessageUpdate{{ProviderID: "m1", Version: 2}})
 
 	require.ErrorIs(t, err, mailsync.ErrNotFound)
 }

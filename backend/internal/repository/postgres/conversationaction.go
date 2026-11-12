@@ -25,7 +25,7 @@ func (db *DB) ListThreads(ctx context.Context, userID int64, ids []uuid.UUID) ([
 	return threads, nil
 }
 
-// UpdateMessageLabels writes updates to accountID's messages and their
+// UpdateMessages writes updates to accountID's messages and their
 // conversations through [DB.UpdateSyncedMail], keeping the sync state,
 // leaving out a mailbox the account does not have yet. It returns
 // [mailsync.ErrNotFound] when the account has no sync state.
@@ -35,7 +35,7 @@ func (db *DB) ListThreads(ctx context.Context, userID int64, ids []uuid.UUID) ([
 // written over a poll that already added that label at the same version;
 // a poll after it, at the same version, adds the label back (ADR001,
 // "Reading Gmail").
-func (db *DB) UpdateMessageLabels(ctx context.Context, accountID int64, updates []mailsync.MessageUpdate) error {
+func (db *DB) UpdateMessages(ctx context.Context, accountID int64, updates []mailsync.MessageUpdate) error {
 	_, err := db.updateSyncedMail(ctx, accountID, func(queries *sqlc.Queries, current mailsync.SyncState) (mailsync.Change, error) {
 		// A label made at the provider since the last sync listed the
 		// mailboxes: the next poll lists it and adds the message to it.

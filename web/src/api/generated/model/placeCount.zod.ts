@@ -11,7 +11,7 @@ export const placeCountUnreadMin = 0;
 
 export const PlaceCount = zod.object({
   "accountId": zod.int(),
-  "name": zod.string().nullable().describe('A label\'s name as the provider sends it, a nested Gmail label with slashes, e.g. Work/Projects; null for a view.'),
+  "name": zod.string().nullable().describe('A label\'s name as the provider names it, nesting included, e.g. Work/Projects for a Gmail label nested with slashes; null for a view.'),
   "place": zod.string().describe('A view\'s name or a label\'s id, as the place of List Conversations takes it.'),
   "unread": zod.int().min(placeCountUnreadMin).describe('How many of its conversations are unread.')
 })
