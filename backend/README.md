@@ -2880,7 +2880,7 @@ httpapi --> mailsync <-- repository/postgres
 httpapi --> messagecontent <-- s3
                            <-- google
                            <-- repository/postgres
-            messagecontent --> connectedaccount
+            messagecontent --> connectedaccount, mailsync
 ```
 
 - `probe`, like every feature package, holds the feature's types, its

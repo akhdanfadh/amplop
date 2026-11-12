@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	// window is how far back a full sync copies, by the provider's own
+	// Window is how far back a full sync copies, by the provider's own
 	// timestamp (US026; ADR001).
-	window = 90 * 24 * time.Hour
+	Window = 90 * 24 * time.Hour
 	// deleteBatch is the most earlier messages one [FullSync.DeleteEarlier]
 	// deletes, inbok's choice, so one transaction stays short however much
 	// the provider deleted, and the content and search work later branches
@@ -110,6 +110,13 @@ func FailureOf(err error) Failure {
 	}
 }
 
+// MetadataOnlyRoles returns the roles of the mailboxes whose messages
+// inbok keeps as metadata only, never fetching their bodies in the
+// background: spam and trash (ADR001).
+func MetadataOnlyRoles() []Role {
+	return []Role{RoleJunk, RoleTrash}
+}
+
 // FullSync copies the last 90 days of an account's mail from its provider,
 // newest first, in steps a workflow runs in order: [FullSync.Start], then
 // [FullSync.CopyPage] until the listing ends, then [FullSync.DeleteEarlier]
@@ -171,7 +178,7 @@ func (s *FullSync) Start(ctx context.Context, accountID int64) (Run, error) {
 	// 4. Reach back to the oldest stored message, so a full sync run again
 	// lists every message the copy holds and brings each current: the
 	// provider's changes since the last poll may be lost (ADR001).
-	since := s.now().UTC().Add(-window)
+	since := s.now().UTC().Add(-Window)
 	oldest, ok, err := s.storage.OldestMessage(ctx, accountID)
 	if err != nil {
 		return Run{}, err

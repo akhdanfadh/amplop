@@ -85,6 +85,7 @@ type Message struct {
 	InReplyTo          []string
 	InternetReferences []string
 	SyncGeneration     int32
+	BodyFailedAt       *time.Time
 }
 
 type MessageMailbox struct {

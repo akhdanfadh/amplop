@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 	"uuid"
 
 	"inbok/internal/connectedaccount"
+	"inbok/internal/mailsync"
 )
 
 // Errors a [Provider] returns, which end a fetch for good: fetching again
@@ -26,6 +29,17 @@ var (
 // ErrPartNotFound means a message has no saved part at a path, or only a
 // multipart there, which has no content of its own.
 var ErrPartNotFound = errors.New("messagecontent: message part not found")
+
+const (
+	// bodyBatch is how many messages one [Fetcher.FetchDue] fetches, inbok's
+	// choice: at Gmail's 80 a minute, a step of about 15 seconds.
+	bodyBatch = 20
+	// retryFailedAfter is how long the background fetch skips a message
+	// whose fetch failed for good, inbok's choice: such a failure seldom
+	// passes, so the minute's fetch does not ask again each time, while a
+	// provider that changes its mind is asked again the next day.
+	retryFailedAfter = 24 * time.Hour
+)
 
 // Provider fetches a message's content from its provider, with an access
 // token for the account. Each method only reads, so a retried call
@@ -52,8 +66,43 @@ type accountAccess interface {
 	Token(ctx context.Context, accountID int64) (connectedaccount.AccessToken, error)
 }
 
-// FetchStorage keeps what a [Fetcher] reads about messages.
+// PendingBody is a message whose body the background fetch takes.
+type PendingBody struct {
+	ID         uuid.UUID
+	ProviderID string
+}
+
+// DueFilter is which messages without parts the background fetch takes:
+// inbok's policy, which storage applies.
+type DueFilter struct {
+	// Since leaves out messages received before it, by the provider's own
+	// timestamp.
+	Since time.Time
+	// FailedSince leaves out messages whose fetch failed for good at or
+	// after it.
+	FailedSince time.Time
+	// ExcludedRoles leaves out messages in a mailbox with any of these
+	// roles.
+	ExcludedRoles []mailsync.Role
+}
+
+// FetchStorage keeps what a [Fetcher] reads about messages and records
+// of its fetches.
 type FetchStorage interface {
+	// AccountsWithDueBodies returns, in ID order, the accounts whose member
+	// is active, which need no reconnect, whose full sync is complete, and
+	// for which [FetchStorage.MessagesNeedingBodies] lists at least one
+	// message for filter.
+	AccountsWithDueBodies(ctx context.Context, filter DueFilter) ([]int64, error)
+	// MessagesNeedingBodies returns up to limit of account accountID's
+	// messages without parts that filter keeps, newest first.
+	MessagesNeedingBodies(ctx context.Context, accountID int64, filter DueFilter, limit int) ([]PendingBody, error)
+	// MarkBodyFailed records at as when fetching account accountID's
+	// message messageID's body last failed for good. It returns
+	// [ErrMessageNotFound] when the account has no such message. In one
+	// transaction, it 1. locks the account's sync state, as every write to
+	// the account's mail does first; 2. records the time.
+	MarkBodyFailed(ctx context.Context, accountID int64, messageID uuid.UUID, at time.Time) error
 	// MessageProviderID returns the provider's ID of account accountID's
 	// message messageID, or [ErrMessageNotFound] when there is no such
 	// message.
@@ -64,25 +113,120 @@ type FetchStorage interface {
 }
 
 // Fetcher fetches messages' content from their provider and keeps it in
-// [Contents]: a message or part a member opens.
+// [Contents]: in the background, the bodies of the recent messages a
+// member would read next, and on request, a message or part a member
+// opens (ADR009, "Fetching content").
 type Fetcher struct {
 	contents *Contents
 	storage  FetchStorage
 	provider Provider
 	access   accountAccess
+	now      func() time.Time
+	logger   *slog.Logger
 }
 
 // NewFetcher returns a [Fetcher] keeping content in contents, given
-// storage, the provider it fetches from, and access to its accounts'
-// tokens.
-func NewFetcher(contents *Contents, storage FetchStorage, provider Provider, access accountAccess) *Fetcher {
-	return &Fetcher{contents: contents, storage: storage, provider: provider, access: access}
+// storage, the provider it fetches from, access to its accounts' tokens,
+// a clock, and a logger for the messages whose fetch fails for good.
+func NewFetcher(contents *Contents, storage FetchStorage, provider Provider, access accountAccess, now func() time.Time, logger *slog.Logger) *Fetcher {
+	return &Fetcher{contents: contents, storage: storage, provider: provider, access: access, now: now, logger: logger}
+}
+
+// Batch is what one [Fetcher.FetchDue] did.
+type Batch struct {
+	Saved  int  // messages whose content it saved
+	Failed int  // messages whose fetch failed for good
+	More   bool // whether more messages may be due
+}
+
+// DueAccounts returns the accounts whose messages' bodies the background
+// fetch takes: those whose member is active, which need no reconnect,
+// whose full sync is complete, and which have a message received in the
+// last 90 days without parts, in no junk or trash mailbox, whose fetch
+// has not failed in the last day.
+//
+// DESIGN: Bodies wait for the full sync, which copies metadata at the
+// whole of the account's provider pace: a member waits for the list, while
+// a body is fetched when they open its message anyway. The accounts are
+// found from their data each time, not from events, so a run that ended
+// at its limit or failed, or a failure's day that passed, is picked up the
+// next time without anything having to remember it (ADR009, "Fetching
+// content").
+func (f *Fetcher) DueAccounts(ctx context.Context) ([]int64, error) {
+	accounts, err := f.storage.AccountsWithDueBodies(ctx, f.dueFilter())
+	if err != nil {
+		return nil, fmt.Errorf("list accounts with due bodies: %w", err)
+	}
+	return accounts, nil
+}
+
+// FetchDue fetches and saves the content of up to 20 of account
+// accountID's messages whose bodies are due, as [Fetcher.DueAccounts]
+// counts them, newest first, one at a time. A message whose fetch fails for good is recorded and skipped for a
+// day. It returns what it did, the access error that stops the account's
+// provider work, or the first other error, which ends the batch: the next
+// one fetches the rest.
+func (f *Fetcher) FetchDue(ctx context.Context, accountID int64) (Batch, error) {
+	// 1. Take an access token, which stops a stopped account before any
+	// provider call.
+	token, err := f.access.Token(ctx, accountID)
+	if err != nil {
+		return Batch{}, err
+	}
+
+	// 2. Take the newest messages due. Asked again each batch, so mail that
+	// arrives during a long fetch goes first.
+	pending, err := f.storage.MessagesNeedingBodies(ctx, accountID, f.dueFilter(), bodyBatch)
+	if err != nil {
+		return Batch{}, fmt.Errorf("list messages needing bodies: %w", err)
+	}
+
+	// 3. Fetch each in turn: one fetch at a time keeps the account's pace
+	// free for a sync's fetches meanwhile.
+	batch := Batch{More: len(pending) == bodyBatch}
+	for _, message := range pending {
+		err := f.fetch(ctx, token, accountID, message.ID, message.ProviderID)
+		switch {
+		case err == nil:
+			batch.Saved++
+		// Synchronization deleted it meanwhile.
+		case errors.Is(err, ErrMessageNotFound):
+		case failsForGood(err):
+			f.logger.WarnContext(ctx, "message body fetch failed", "account_id", accountID, "message_id", message.ID, "err", err)
+			if err := f.storage.MarkBodyFailed(ctx, accountID, message.ID, f.now().UTC()); err != nil && !errors.Is(err, ErrMessageNotFound) {
+				return batch, fmt.Errorf("mark body failed: %w", err)
+			}
+			batch.Failed++
+		default:
+			return batch, err
+		}
+	}
+	return batch, nil
+}
+
+// dueFilter returns the background fetch's policy as of now: the last 90
+// days, failures skipped for a day, and no spam or trash.
+func (f *Fetcher) dueFilter() DueFilter {
+	now := f.now().UTC()
+	return DueFilter{
+		Since:         now.Add(-mailsync.Window),
+		FailedSince:   now.Add(-retryFailedAfter),
+		ExcludedRoles: mailsync.MetadataOnlyRoles(),
+	}
+}
+
+// failsForGood reports whether err, from fetching one message, fails it
+// whenever it is fetched soon again.
+func failsForGood(err error) bool {
+	return errors.Is(err, ErrGone) || errors.Is(err, ErrTooLarge) || errors.Is(err, ErrUnreadable) ||
+		errors.Is(err, ErrTooManyParts)
 }
 
 // FetchMessage fetches account accountID's message messageID's content
-// from its provider and saves it, as when a member opens it. A message
-// whose parts are saved keeps them, and its text is stored again under
-// the IDs they name, which restores text the store lost. It returns [ErrMessageNotFound], an
+// from its provider and saves it, whatever its date, mailbox, or earlier
+// failure, as when a member opens it. A message whose parts are saved
+// keeps them, and its text is stored again under the IDs they name, which
+// restores text the store lost. It returns [ErrMessageNotFound], an
 // access error from [connectedaccount.Access.Token], a [Provider]'s
 // errors, [ErrTooManyParts], or a store's or storage's error.
 func (f *Fetcher) FetchMessage(ctx context.Context, accountID int64, messageID uuid.UUID) error {
