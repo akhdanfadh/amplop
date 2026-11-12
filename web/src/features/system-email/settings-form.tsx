@@ -14,7 +14,6 @@ import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldError,
   FieldGroup,
@@ -69,8 +68,6 @@ const checkedMessages = {
   different: "The saved settings don't match this form. Save to replace them.",
 };
 
-const inputClass =
-  "h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid dark:aria-invalid:border-destructive";
 // Password managers ignore autocomplete="off"; these keep them from filling
 // in, or saving, the inbok sign-in as the mail server's account.
 const notInbokSignIn = {
@@ -220,7 +217,6 @@ export function SettingsForm({
                 <Input
                   id={id}
                   name={field.name}
-                  className={inputClass}
                   placeholder="smtp.example.com"
                   autoComplete="off"
                   autoCapitalize="none"
@@ -251,7 +247,7 @@ export function SettingsForm({
                 <Input
                   id={id}
                   name={field.name}
-                  className={`${inputClass} w-32`}
+                  className="w-32"
                   type="number"
                   inputMode="numeric"
                   autoComplete="off"
@@ -284,21 +280,19 @@ export function SettingsForm({
                 <RadioGroup
                   name={field.name}
                   value={field.state.value}
-                  readOnly={locked}
+                  isReadOnly={locked}
+                  isInvalid={errors.length > 0}
                   aria-labelledby={`${id}-legend`}
-                  aria-invalid={errors.length > 0}
                   aria-describedby={errors.length > 0 ? `${id}-error` : undefined}
-                  onValueChange={(value) => {
-                    // Base UI types the value as unknown; keep only an offered mode.
+                  onChange={(value) => {
+                    // React Aria types the value as a string; keep only an offered mode.
                     const option = securityOptions.find((offered) => offered.value === value);
                     if (option) field.handleChange(option.value);
                   }}
                 >
                   {securityOptions.map((option) => (
-                    <Field key={option.value} orientation="horizontal">
+                    <div key={option.value} className="flex flex-col">
                       <RadioGroupItem
-                        className="border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-                        id={`${id}-${option.value}`}
                         value={option.value}
                         // Focus lands on a radio, not the group, so each names the error.
                         aria-describedby={
@@ -307,14 +301,13 @@ export function SettingsForm({
                             : `${id}-${option.value}-description`
                         }
                         onBlur={() => blurKeepingSubmitErrors(field)}
-                      />
-                      <FieldContent>
-                        <FieldLabel htmlFor={`${id}-${option.value}`}>{option.label}</FieldLabel>
-                        <FieldDescription id={`${id}-${option.value}-description`}>
-                          {option.description}
-                        </FieldDescription>
-                      </FieldContent>
-                    </Field>
+                      >
+                        {option.label}
+                      </RadioGroupItem>
+                      <FieldDescription id={`${id}-${option.value}-description`} className="ml-6">
+                        {option.description}
+                      </FieldDescription>
+                    </div>
                   ))}
                 </RadioGroup>
                 <FieldError id={`${id}-error`} errors={errors} />
@@ -333,7 +326,6 @@ export function SettingsForm({
                 <Input
                   id={id}
                   name={field.name}
-                  className={inputClass}
                   autoComplete="off"
                   {...notInbokSignIn}
                   autoCapitalize="none"
@@ -398,7 +390,6 @@ export function SettingsForm({
                 <Input
                   id={id}
                   name={field.name}
-                  className={inputClass}
                   type="email"
                   placeholder="inbok@example.com"
                   autoComplete="off"
@@ -430,7 +421,6 @@ export function SettingsForm({
                 <Input
                   id={id}
                   name={field.name}
-                  className={inputClass}
                   autoComplete="off"
                   readOnly={locked}
                   aria-invalid={errors.length > 0}
@@ -500,8 +490,9 @@ function focusFirstInvalid(
 ): boolean {
   const name = settingsFields.find((field) => errorCount(field));
   if (!name) return false;
-  // Base UI names a hidden input for the radios; the checked radio takes focus.
-  const selector = name === "security" ? '[role="radio"][aria-checked="true"]' : `[name="${name}"]`;
+  // React Aria's radios are native inputs sharing the field's name; the
+  // checked one takes focus.
+  const selector = name === "security" ? `[name="${name}"]:checked` : `[name="${name}"]`;
   element?.querySelector<HTMLElement>(selector)?.focus();
   return true;
 }

@@ -18,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription } from "@/components/ui/field";
 import { Switch } from "@/components/ui/switch";
 import {
   confirmation,
@@ -32,7 +32,6 @@ import {
 
 const unauthorized = 401;
 const forbidden = 403;
-const switchId = "registration-switch";
 const statusId = "registration-status";
 const noteId = "registration-note";
 const focusClass =
@@ -56,7 +55,6 @@ export function RegistrationSection({
 }): ReactElement {
   const client = useQueryClient();
   const testedAt = useRef(emailTestedAt);
-  const switchRef = useRef<HTMLElement>(null);
   // The change the dialog asks about stays after it closes, so its text does
   // not switch during the closing animation.
   const [dialog, setDialog] = useState<{ change: RegistrationChange; shown: boolean }>({
@@ -130,32 +128,27 @@ export function RegistrationSection({
       </div>
 
       <div className="flex flex-col gap-3">
-        <Field orientation="horizontal">
+        <Field>
           {/* Follows the saved status, never the click: a change waits for
               the dialog and the server. */}
           <Switch
-            ref={switchRef}
-            id={switchId}
-            // A 44px hit area, like the page's other controls.
-            className={`after:-inset-y-3.5 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 ${focusClass}`}
-            checked={status !== "closed"}
-            // Not disabled: Base UI would drop a disabled switch from the tab
-            // order, and keyboard users would never hear why it is blocked.
-            // Read-only also keeps focus on the switch while it saves.
-            readOnly={blocked || isPending}
-            aria-disabled={blocked || undefined}
+            className={blocked ? "opacity-50" : undefined}
+            isSelected={status !== "closed"}
+            // Not disabled: a disabled switch leaves the tab order, and
+            // keyboard users would never hear why it is blocked. Read-only
+            // also keeps focus on the switch while it saves.
+            isReadOnly={blocked || isPending}
             aria-describedby={blocked ? `${statusId} ${noteId}` : statusId}
-            onCheckedChange={() => {
+            onChange={() => {
               if (blocked || isPending) return;
               setDialog({ change, shown: true });
             }}
-          />
-          <FieldContent>
-            <FieldLabel htmlFor={switchId}>Open registration</FieldLabel>
-            <FieldDescription id={statusId}>
-              {isPending ? pendingMessage(asked) : statusMessage(unknown ? "unknown" : status)}
-            </FieldDescription>
-          </FieldContent>
+          >
+            Open registration
+          </Switch>
+          <FieldDescription id={statusId}>
+            {isPending ? pendingMessage(asked) : statusMessage(unknown ? "unknown" : status)}
+          </FieldDescription>
         </Field>
         {blocked && <p id={noteId}>{untestedMessage()}</p>}
       </div>
@@ -164,9 +157,10 @@ export function RegistrationSection({
         open={dialog.shown}
         onOpenChange={(shown) => setDialog((last) => ({ ...last, shown }))}
       >
-        {/* With no trigger, focus would go back to whatever had it before, e.g.
-            the page after a label click in Safari. */}
-        <AlertDialogContent finalFocus={switchRef}>
+        {/* With no trigger, focus goes back to the switch, which had it:
+            React Aria focuses the switch when its label is pressed too
+            (switch.browser.test.tsx). */}
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{asking.title}</AlertDialogTitle>
             <AlertDialogDescription>{asking.description}</AlertDialogDescription>

@@ -139,16 +139,17 @@ export function ProbeForm(): ReactElement {
           {(field) => {
             const errors = shown(field.state.meta, submitted);
             return (
-              <Field orientation="horizontal" data-invalid={errors.length > 0}>
+              <Field data-invalid={errors.length > 0}>
                 <Checkbox
                   id={field.name}
-                  disabled={create.isPending}
-                  aria-invalid={errors.length > 0}
+                  isDisabled={create.isPending}
+                  isInvalid={errors.length > 0}
                   aria-describedby={errors.length > 0 ? `${field.name}-error` : undefined}
-                  checked={field.state.value}
-                  onCheckedChange={(checked) => field.handleChange(checked)}
-                />
-                <FieldLabel htmlFor={field.name}>Highlighted</FieldLabel>
+                  isSelected={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                >
+                  Highlighted
+                </Checkbox>
                 <FieldError id={`${field.name}-error`} errors={errors} />
               </Field>
             );

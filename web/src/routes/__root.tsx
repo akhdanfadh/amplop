@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import appCss from "../styles.css?url";
+import pressableCss from "../react-aria-pressable.css?url";
 import { SetupGate } from "@/features/setup/gate";
 import { themeScript, watchTheme } from "@/lib/theme";
 
@@ -12,7 +13,13 @@ export const Route = createRootRoute({
       { title: "inbok" },
     ],
     // A <link> in the prerendered shell, so the page never shows unstyled.
-    links: [{ rel: "stylesheet", href: appCss }],
+    links: [
+      // React Aria skips its own copy of this rule when it finds the id;
+      // the file says why. First, as React Aria would place its copy, so
+      // the app's touch-* utilities override it.
+      { rel: "stylesheet", href: pressableCss, id: "react-aria-pressable-style" },
+      { rel: "stylesheet", href: appCss },
+    ],
     // In the prerendered shell's head, so the page never shows the wrong
     // theme first. The server's Content-Security-Policy allows the shell's
     // inline scripts by hash.

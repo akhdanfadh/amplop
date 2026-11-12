@@ -173,10 +173,7 @@ export function SignInForm({
                   {name === "password" ? (
                     <PasswordInput label="password" {...inputProps} />
                   ) : (
-                    <Input
-                      className="h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid dark:aria-invalid:border-destructive"
-                      {...inputProps}
-                    />
+                    <Input {...inputProps} />
                   )}
                   <FieldError id={`${id}-error`} errors={errors} />
                 </Field>

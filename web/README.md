@@ -135,6 +135,9 @@ Put shared code in the folder for its responsibility:
   link's secret.
 - `src/routes`: route registration and page composition.
 - `src/test`: setup for the browser tests.
+- `src/styles.css`: the tokens and base styles. Beside it,
+  `react-aria-pressable.css` holds a React Aria rule the
+  Content-Security-Policy would otherwise block; the file says why.
 
 Keep feature folders flat until they need more structure. File names can omit
 what the folder already says, e.g. `features/setup/form.tsx` exports
@@ -594,17 +597,36 @@ Styling uses [Tailwind CSS](https://tailwindcss.com): utility classes in
 Tailwind's recommended order. For class autocomplete, install the
 Tailwind CSS IntelliSense extension (VS Code: `bradlc.vscode-tailwindcss`).
 
-UI components come from [shadcn/ui](https://ui.shadcn.com). Its CLI copies
+UI components come from [shadcn/ui](https://ui.shadcn.com)'s React Aria
+flavour (`aria-nova` in `components.json`): each is a styled
+[React Aria Components](https://react-aria.adobe.com) part, except
+`button`, `badge`, and `alert-dialog`, which still use Base UI. Its CLI copies
 each component's source into `src/components/ui`, where it becomes our
-code to edit; there is no component library to upgrade. Settings are in
-`components.json`, and the theme (colors, radius, dark mode) is in
-`src/styles.css`. From `web`, add a component with the pinned CLI, then
-format it:
+code to edit; there is no component library to upgrade. The theme (tokens,
+fonts, dark mode) is in `src/styles.css`. From `web`, add a component with
+the pinned CLI, then format it:
 
 ```sh
 pnpm exec shadcn add dialog
 pnpm fix
 ```
+
+After adding one, read it: some aria-nova files lag React Aria. Ours differ
+from the registry here:
+
+- `checkbox`, `switch`, `radio-group`: built on React Aria's
+  `CheckboxField`/`CheckboxButton` (and the Switch and Radio pairs), which
+  replace the deprecated `Checkbox`, `Switch`, and `Radio`. The label is
+  the component's children.
+- `table`, `native-select`, `input-otp`: plain HTML (the registry's
+  `table` is React Aria's interactive grid, wrong for read-only rows).
+- Focus rings use React Aria's `data-focus-visible` and the `focus-ring`
+  utility from `src/styles.css`, never `:focus-visible` on a React Aria
+  part ([shadcn-ui/ui#11258](https://github.com/shadcn-ui/ui/issues/11258)).
+  Text fields ring on any focus (`data-focused`), a click included.
+
+React Aria components take React Aria props: `isDisabled`, not
+`disabled`; `isSelected` and `onChange` on a checkbox or switch.
 
 `AlertDialogAction`, the confirming button of a dialog that asks first,
 ignores the later clicks of a double-click: a dialog can open with that
