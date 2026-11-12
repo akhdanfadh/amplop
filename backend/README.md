@@ -1101,8 +1101,8 @@ e.g. `X-Inbok-Message-Id`, and matches `metadataHeaders` in any case. The
 install fails if the patch no longer applies, e.g. after a version change;
 `google-emulator/pnpm-workspace.yaml` says how to change it. Unpatched,
 emulate puts a sent message in the `threadId` it is given, and without one
-threads it by `In-Reply-To` and `References` alone, where Gmail also
-compares the subject.
+threads it by `In-Reply-To` and `References` alone, where Gmail starts a
+new thread (ADR006, "Replies").
 
 Where it still differs from Google, a test that needs Google's behavior
 uses a small `httptest` stub instead:
@@ -2328,7 +2328,9 @@ whole (a longer one is cut, and a control character becomes a space);
 In-Reply-To and References by RFC 5322
 section 3.6.4 (`msgid.Writable` drops a msg-id outside RFC 5322's current
 syntax, and `msgid.TrimReferences` keeps 50); and its
-`provider_thread_id` when sent from the account that holds it. These
+`provider_thread_id` when sent from the account that holds it, since a
+thread ID belongs to one mailbox: a reply from another account starts a
+new thread in that account's Gmail. These
 are copied onto the row, which keeps no link to `messages`: a sync may
 delete the answered message, and the reply needs nothing more of it.
 Saving a status without a thread keeps the one saved, and send again
@@ -2685,8 +2687,12 @@ Goose knows only inbok's files: `goose reset` and `make db-reset` leave
 the `dbos` schema in place. To empty that too, run `DROP SCHEMA dbos CASCADE;` in `psql`; the
 next `migrate` creates it again.
 
-Never edit a migration a shared database has already applied; add a new
-one. The probe's tables are an exception until the first release.
+Until the first release, a schema change edits the migration that made
+the table, and every database that applied it is reset with
+`make db-reset`, losing its data; inbok keeps no compatibility with
+unreleased schemas (ADR001, "Conversations"). From the first release on,
+never edit a migration a shared database has already applied; add a new
+one.
 
 ## Queries
 
