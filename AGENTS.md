@@ -14,6 +14,8 @@ the area you change before editing it:
 
 - `make check` passes. It needs Docker for the Go database and Google
   emulator tests; the emulator's first build also needs the npm registry.
+  The web's browser tests need Playwright's Chromium, installed once with
+  `pnpm -C web exec playwright install chromium`.
 - Generated code comes from `make generate`, committed with the change
   that caused it. Its generators own these paths:
   `backend/internal/repository/postgres/sqlc`, `api/generated`,

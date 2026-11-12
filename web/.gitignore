@@ -1,3 +1,5 @@
 .tanstack/
 dist/
 node_modules/
+# Vitest browser mode: screenshots of failed tests.
+.vitest/

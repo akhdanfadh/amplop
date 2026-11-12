@@ -86,10 +86,12 @@ schema is created, and schemas are created as their modules load, so
 The app uses [Vite+](https://viteplus.dev), whose `vp` command runs
 Vite. It is installed with the other dependencies, so the `pnpm` scripts
 need no global install. Vite+ replaces the `vite` package with its own
-copy and includes Vitest; `pnpm-workspace.yaml` pins all three, and they
-must change together. To upgrade, change the `vite-plus` version there,
-run `pnpm install`, then `pnpm exec vp migrate` to move `vite` and
-`vitest` to the versions it includes.
+copy and includes Vitest; `pnpm-workspace.yaml` pins all three, with
+Vitest's Playwright browser provider, `@vitest/browser-playwright`, and
+the four must change together. To upgrade, change the `vite-plus` version
+there, run `pnpm install`, then `pnpm exec vp migrate` to move `vite` and
+`vitest` to the versions it includes, and set
+`@vitest/browser-playwright` to the same version as `vitest`.
 
 ## Source layout
 
@@ -132,6 +134,7 @@ Put shared code in the folder for its responsibility:
 - `src/hooks`: React hooks shared by features, such as a page reading its
   link's secret.
 - `src/routes`: route registration and page composition.
+- `src/test`: setup for the browser tests.
 
 Keep feature folders flat until they need more structure. File names can omit
 what the folder already says, e.g. `features/setup/form.tsx` exports
@@ -545,15 +548,37 @@ error. To format on save and see lint errors while typing, install the
 Oxc extension in your editor (VS Code: `oxc.oxc-vscode`; others:
 <https://viteplus.dev/guide/ide-integration>).
 
-Run the unit tests, files named `*.test.ts` next to the code they test:
+Tests sit next to the code they test, in two Vitest projects set up in
+`vite.config.ts`:
+
+- `unit`: files named `*.test.ts`, run in Node, for code without a page.
+- `browser`: files named `*.browser.test.tsx`, run in a real Chromium that
+  [Playwright](https://playwright.dev) drives ([Vitest browser
+  mode](https://vitest.dev/guide/browser/)), for components and anything
+  that needs focus, pointer events, layout, or storage. Render with
+  `render` from `vitest-browser-react`; find elements with `page` and
+  interact with `userEvent` from `vite-plus/test/browser/context`, which
+  send real browser input. `src/test/browser-setup.ts` loads the app's
+  stylesheet first.
+
+The browser project needs Playwright's Chromium, once per machine and
+again after a Playwright upgrade. From `web`:
+
+```sh
+pnpm exec playwright install chromium
+```
+
+Run every test, one project, or one file:
 
 ```sh
 pnpm test
+pnpm exec vp test run --project browser
+pnpm exec vp test run src/lib/theme.browser.test.tsx
 ```
 
 Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
 functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the
-latter.
+latter. `make check` runs both projects, headless.
 
 The project uses TypeScript 7. If your VS Code still checks types with
 TypeScript 6, install the `TypeScriptTeam.native-preview` extension.

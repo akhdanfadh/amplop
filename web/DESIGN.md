@@ -457,8 +457,9 @@ Before a web checkpoint is done:
 - Empty, loading, and failure states seen, not only the happy path.
 - antislop's delivery checklist (the antislop skills) with its results in
   the checkpoint report.
-- Component behaviour tested in Vitest's browser mode (real Chromium);
-  React Aria's test utilities drive its components.
+- Component behaviour tested in Vitest's browser mode (real Chromium),
+  driven by Vitest's `userEvent`, which sends real input
+  (`web/README.md`, "Checks and tests").
 
 ## Not now
 

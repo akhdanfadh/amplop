@@ -177,7 +177,7 @@ test: test-backend test-web ## Run all tests
 test-backend: ## Go tests
 	go -C backend test ./...
 
-test-web: ## Web unit tests
+test-web: ## Web unit and browser tests (browser tests need Playwright's Chromium)
 	pnpm -C web test
 
 fix: fix-backend fix-web ## Fix formatting and what lint can fix
