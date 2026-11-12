@@ -356,7 +356,7 @@ func registerReplyToMessage(api huma.API, handler outgoingMessageHandler) {
 		Tags:        []string{tagOutgoingMessages},
 		Description: "Saves a reply to one of the signed-in account's messages, from one of its connected accounts, waiting to be sent, and returns it as an outgoing message. " +
 			"Its subject is the answered message's, cut at 500 characters, with \"Re: \" added when it has none and still fits, and it carries the In-Reply-To and References headers that thread it when the answered message has a valid Message-ID. " +
-			"Sent from the account that holds the answered message, it asks Gmail for that message's thread; from another account, it carries only the headers, which Gmail may thread it by. " +
+			"Sent from the account that holds the answered message, it asks Gmail for that message's thread; from another account, it carries only the headers and starts a new thread in that account's Gmail. " +
 			sendLimitDescription,
 		Metadata:      map[string]any{accessKey: session.AccessMember},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},

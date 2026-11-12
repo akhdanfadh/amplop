@@ -3261,7 +3261,7 @@
     },
     "/messages/{id}/replies": {
       "post": {
-        "description": "Saves a reply to one of the signed-in account's messages, from one of its connected accounts, waiting to be sent, and returns it as an outgoing message. Its subject is the answered message's, cut at 500 characters, with \"Re: \" added when it has none and still fits, and it carries the In-Reply-To and References headers that thread it when the answered message has a valid Message-ID. Sent from the account that holds the answered message, it asks Gmail for that message's thread; from another account, it carries only the headers, which Gmail may thread it by. Sending counts toward the signed-in account's limit of 30 messages per 15 minutes and 200 per 24 hours, from all its connected accounts.",
+        "description": "Saves a reply to one of the signed-in account's messages, from one of its connected accounts, waiting to be sent, and returns it as an outgoing message. Its subject is the answered message's, cut at 500 characters, with \"Re: \" added when it has none and still fits, and it carries the In-Reply-To and References headers that thread it when the answered message has a valid Message-ID. Sent from the account that holds the answered message, it asks Gmail for that message's thread; from another account, it carries only the headers and starts a new thread in that account's Gmail. Sending counts toward the signed-in account's limit of 30 messages per 15 minutes and 200 per 24 hours, from all its connected accounts.",
         "operationId": "replyToMessage",
         "parameters": [
           {
