@@ -62,6 +62,17 @@ func TestOpenDefaultBucket(t *testing.T) {
 	assert.Equal(t, "inbok", store.bucket)
 }
 
+// [New] asks the store nothing, so serve starts while the store is down,
+// and uses the bucket [Open] creates.
+func TestNew(t *testing.T) {
+	settings := testSettings()
+	settings.Endpoint = &url.URL{Scheme: "http", Host: "127.0.0.1:1"}
+
+	store := New(settings)
+
+	assert.Equal(t, defaultBucket, store.bucket)
+}
+
 func TestOpenWrongSecret(t *testing.T) {
 	settings := testSettings()
 	settings.SecretAccessKey = "wrong"

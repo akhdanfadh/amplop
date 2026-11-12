@@ -63,6 +63,13 @@ func Open(ctx context.Context, settings Settings) (*Store, error) {
 	return open(ctx, settings, defaultBucket)
 }
 
+// New returns the store of inbok's bucket in the S3 service in settings,
+// without asking the service anything: a call fails once the service
+// cannot be reached, or the bucket is missing until [Open] creates it.
+func New(settings Settings) *Store {
+	return &Store{client: s3api.New(clientOptions(settings)), bucket: defaultBucket}
+}
+
 // open is [Open] for a given bucket.
 func open(ctx context.Context, settings Settings, bucket string) (*Store, error) {
 	store := &Store{client: s3api.New(clientOptions(settings)), bucket: bucket}
