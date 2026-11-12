@@ -141,6 +141,7 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	w.registerPasswordChangedNotice(services.PasswordChangedNotices)
 	w.registerAccountRemoval(services.AccountRemovals)
 	w.registerContentDeletion(services.MessageContent)
+	w.registerAccountContentDeletion(services.MessageContent)
 	w.registerOutgoingMessage(services.OutgoingMessages)
 	w.registerSync(services.FullSyncs, services.Polls)
 

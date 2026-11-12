@@ -18,6 +18,7 @@ import (
 	"inbok/internal/encryption"
 	"inbok/internal/mailsync"
 	"inbok/internal/messagecontent"
+	"inbok/internal/repository/postgres"
 )
 
 // fakeContent records what it is asked to delete, and answers err.
@@ -105,9 +106,53 @@ func TestContentRetryPolicy(t *testing.T) {
 	assert.Equal(t, retries{attempts: 5, base: time.Minute, ceiling: 15 * time.Minute}, contentRetries)
 }
 
+// A disconnected account's content is deleted by prefix; a store that
+// keeps failing is retried with its policy, and the run fails, leaving
+// the content for the sweep.
+func TestAccountContentDeletion(t *testing.T) {
+	quickRetries(t, &contentRetries)
+	for name, storeErr := range map[string]error{"deleted": nil, "store down": errors.New("store down")} {
+		t.Run(name, func(t *testing.T) {
+			store := &fakeContent{err: storeErr}
+			worker := contentWorker(t, migrated(t), store)
+
+			handle, err := dbos.Enqueue[struct{}](worker.ctx, contentQueue, accountContentDeletionWorkflow, AccountContentDeletionInput{AccountID: 9})
+			require.NoError(t, err)
+			_, err = handle.GetResult(dbos.WithHandleTimeout(wait))
+
+			_, accounts, calls := store.state()
+			if storeErr != nil {
+				require.ErrorContains(t, err, "store down")
+				assert.Equal(t, 6, calls, "the first attempt and 5 retries")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, []int64{9}, accounts)
+		})
+	}
+}
+
+// A disconnect saves the deletion of the account's content beside its
+// removal, which a worker without Google settings runs.
+func TestClientAccountContent(t *testing.T) {
+	s := newContentStack(t)
+
+	var member int64
+	require.NoError(t, s.conn.QueryRow(t.Context(), "SELECT user_id FROM connected_accounts WHERE id = $1", s.account).Scan(&member))
+	_, err := s.db.DeleteConnectedAccount(t.Context(), member, s.account)
+	require.NoError(t, err)
+
+	store := &fakeContent{}
+	contentWorker(t, s.url, store)
+	require.Eventually(t, func() bool { _, accounts, _ := store.state(); return len(accounts) == 1 }, wait, 50*time.Millisecond)
+	_, accounts, _ := store.state()
+	assert.Equal(t, []int64{s.account}, accounts)
+}
+
 // contentStack is a [clientStack] with a connected account holding one
 // synchronized message whose parts name stored blobs.
 type contentStack struct {
+	db      *postgres.DB
 	conn    *pgx.Conn
 	url     string
 	update  func(context.Context, mailsync.Change) error
@@ -146,7 +191,7 @@ func newContentStack(t *testing.T) contentStack {
 		},
 	})
 	require.NoError(t, err)
-	return contentStack{conn: conn, url: url, update: update, account: account.ID, blobs: blobs}
+	return contentStack{db: db, conn: conn, url: url, update: update, account: account.ID, blobs: blobs}
 }
 
 // contentDeletions returns the statuses of the content deletion runs.

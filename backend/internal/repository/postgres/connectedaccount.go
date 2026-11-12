@@ -130,9 +130,10 @@ func (db *DB) ListConnectedAccounts(ctx context.Context, userID int64) ([]connec
 }
 
 // DeleteConnectedAccount deletes userID's account accountID, moves its
-// credential to an account removal, and saves the job that revokes it, in
-// one transaction. It returns the deleted account, or
-// [connectedaccount.ErrNotFound] when userID has no such account.
+// credential to an account removal, and saves the jobs that revoke it and
+// that delete the account's stored content, in one transaction. It returns
+// the deleted account, or [connectedaccount.ErrNotFound] when userID has
+// no such account.
 func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int64) (connectedaccount.StoredAccount, error) {
 	var deleted connectedaccount.StoredAccount
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
@@ -161,13 +162,18 @@ func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int6
 			return fmt.Errorf("insert account removal: %w", err)
 		}
 
-		// 3. Save the job in this transaction, so it commits or rolls back
-		// with the disconnect.
+		// 3. Save the jobs in this transaction, so they commit or roll back
+		// with the disconnect: one revokes the token at Google, the other
+		// deletes the account's content from the store, so neither waits
+		// on the other's service.
 		if db.workflows == nil {
 			return errNoWorkflows
 		}
 		if err := db.workflows.EnqueueAccountRemoval(ctx, tx, removalID); err != nil {
 			return fmt.Errorf("save account removal: %w", err)
+		}
+		if err := db.workflows.EnqueueAccountContentDeletion(ctx, tx, row.ID); err != nil {
+			return fmt.Errorf("save account content deletion: %w", err)
 		}
 		deleted = storedAccountFromRow(sqlc.ListConnectedAccountsRow(row))
 		return nil

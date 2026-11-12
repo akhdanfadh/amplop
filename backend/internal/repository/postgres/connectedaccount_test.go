@@ -29,14 +29,24 @@ type connectedAccountsTest struct {
 }
 
 // accountWorkflows saves each account removal job as a row of
-// test_account_removal_jobs, and each sync job as a row of
+// test_account_removal_jobs, each account content deletion as a row of
+// test_account_content_jobs, and each sync job as a row of
 // test_sync_jobs, in the caller's transaction, or fails with
-// removalErr or syncErr. A second sync job of one account is not saved,
-// as DBOS's deduplication refuses it.
+// removalErr, contentErr, or syncErr. A second sync job of one account is
+// not saved, as DBOS's deduplication refuses it.
 type accountWorkflows struct {
 	Workflows
 	removalErr error
+	contentErr error
 	syncErr    error
+}
+
+func (w accountWorkflows) EnqueueAccountContentDeletion(ctx context.Context, tx pgx.Tx, accountID int64) error {
+	if w.contentErr != nil {
+		return w.contentErr
+	}
+	_, err := tx.Exec(ctx, "INSERT INTO test_account_content_jobs (account_id) VALUES ($1)", accountID)
+	return err
 }
 
 func (w accountWorkflows) EnqueueAccountRemoval(ctx context.Context, tx pgx.Tx, removalID int64) error {
@@ -62,6 +72,8 @@ func createJobTables(t *testing.T, conn *pgx.Conn) {
 	require.NoError(t, err)
 	_, err = conn.Exec(t.Context(), "CREATE TABLE test_sync_jobs (account_id bigint NOT NULL UNIQUE)")
 	require.NoError(t, err)
+	_, err = conn.Exec(t.Context(), "CREATE TABLE test_account_content_jobs (account_id bigint NOT NULL)")
+	require.NoError(t, err)
 }
 
 // syncJobs lists the account IDs of the saved sync jobs.
@@ -85,6 +97,17 @@ func (c connectedAccountsTest) syncStatus(t *testing.T, accountID int64) string 
 	}
 	require.NoError(t, err)
 	return status
+}
+
+// contentJobs lists the account IDs of the saved account content
+// deletions.
+func (c connectedAccountsTest) contentJobs(t *testing.T) []int64 {
+	t.Helper()
+	rows, err := c.conn.Query(t.Context(), "SELECT account_id FROM test_account_content_jobs ORDER BY account_id")
+	require.NoError(t, err)
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	require.NoError(t, err)
+	return ids
 }
 
 // removalJobs lists the removal IDs of the saved jobs.
@@ -379,6 +402,7 @@ func TestConnectedAccountDisconnect(t *testing.T) {
 		UserID: c.member, AccountID: account.ID,
 		Credential: connectedaccount.Credential{KeyID: keyID, Ciphertext: ciphertext},
 	}, removal)
+	assert.Equal(t, []int64{account.ID}, c.contentJobs(t))
 
 	t.Run("again", func(t *testing.T) {
 		_, err := c.service.Disconnect(t.Context(), c.member, account.ID)
@@ -400,19 +424,23 @@ func TestConnectedAccountDisconnectOtherMembersAccount(t *testing.T) {
 	assert.Empty(t, c.removalJobs(t))
 }
 
-// A disconnect whose job cannot be saved keeps the account and saves no
-// removal.
+// A disconnect whose jobs cannot be saved keeps the account and saves no
+// removal and no content deletion.
 func TestDisconnectRollback(t *testing.T) {
 	c := newConnectedAccountsTest(t)
 	account, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
 	require.NoError(t, err)
 	failed := errors.New("enqueue failed")
 
-	_, failedErr := connectedaccount.NewService(c.db.WithWorkflows(accountWorkflows{removalErr: failed}), c.ring).Disconnect(t.Context(), c.member, account.ID)
+	_, removalErr := connectedaccount.NewService(c.db.WithWorkflows(accountWorkflows{removalErr: failed}), c.ring).Disconnect(t.Context(), c.member, account.ID)
+	_, contentErr := connectedaccount.NewService(c.db.WithWorkflows(accountWorkflows{contentErr: failed}), c.ring).Disconnect(t.Context(), c.member, account.ID)
 	_, plainErr := connectedaccount.NewService(&DB{pool: c.db.pool}, c.ring).Disconnect(t.Context(), c.member, account.ID)
 
-	require.ErrorIs(t, failedErr, failed)
+	require.ErrorIs(t, removalErr, failed)
+	require.ErrorIs(t, contentErr, failed)
 	require.ErrorIs(t, plainErr, errNoWorkflows)
+	assert.Empty(t, c.removalJobs(t))
+	assert.Empty(t, c.contentJobs(t))
 	assert.Equal(t, int64(1), c.countConnectedAccounts(t))
 	var removals int64
 	require.NoError(t, c.conn.QueryRow(t.Context(), "SELECT count(*) FROM account_removals").Scan(&removals))

@@ -33,6 +33,9 @@ type MessageContentWorkflows interface {
 	// EnqueueContentDeletion saves, in tx, the workflow that deletes account
 	// accountID's blobs with blobIDs from the content store.
 	EnqueueContentDeletion(ctx context.Context, tx pgx.Tx, accountID int64, blobIDs []uuid.UUID) error
+	// EnqueueAccountContentDeletion saves, in tx, the workflow that deletes all
+	// of disconnected account accountID's content from the content store.
+	EnqueueAccountContentDeletion(ctx context.Context, tx pgx.Tx, accountID int64) error
 }
 
 // OutgoingMessageWorkflows saves the jobs of outgoing messages.

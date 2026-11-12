@@ -183,8 +183,9 @@ of blobs no message part names that were written over a day ago, up to
 1,000 a step: what a save that failed between storing content and saving
 its rows left behind, and what a [content deletion](#content-deletion)
 that gave up left. Each sweep step lists the store from the start, so
-a large store costs a listing an hour. Each run logs `deleted expired rows` with a count when it
-deleted any, and records the counts as its output.
+a large store costs a listing an hour. Each run logs `deleted expired
+rows` with a count when it deleted any, and records the counts as its
+output.
 
 ### Recovery notice
 
@@ -306,7 +307,10 @@ so far, asking Google to end inbok's permission. A
 [disconnect](#disconnecting) deletes the account, moves its sealed refresh
 token to an `account_removals` row, and saves the job, in one transaction,
 so the job's input is only the removal's ID and the token never sits in
-DBOS's tables. Google work in the background runs on `inbok.google`;
+DBOS's tables. The same transaction saves the deletion of the account's
+stored content, a job of its own (see [Content deletion](#content-deletion)),
+so a content store that fails never holds the revocation.
+Google work in the background runs on `inbok.google`;
 members' sends have a queue of their own, so they never wait behind it
 (see [Sending a message](#sending-a-message)).
 
@@ -340,11 +344,22 @@ write that deletes messages with stored content saves the job in its own
 transaction (`UpdateSyncedMail`), with the account's ID and the blob IDs
 the deleted parts named. Saving it only adds a row to DBOS's queue, which
 no worker sees until the transaction commits; a rollback removes it with
-the rest. So the blobs go only once the rows that named them are gone. Its one step, `delete content`, deletes them from the
+the rest. So the blobs go only once the rows that named them are gone.
+Its one step, `delete content`, deletes them from the
 [message content store](#message-content-store), which takes a blob
 already gone as deleted; it is retried 5 more times, waiting 1, 2, 4, 8,
 then 15 minutes. A run that gives up logs `content deletion failed` and
 fails; the hourly sweep deletes those blobs a day later.
+
+The workflow `inbok.account-content-deletion`, on the same queue, deletes
+a disconnected account's whole key prefix. A [disconnect](#disconnecting)
+saves it, with the account's ID, in the transaction that saves the
+[account removal](#account-removal); it is a job of its own so that
+neither waits on the other's service, and so a worker without Google
+settings still runs it. Its one step, `delete account content`, is
+retried the same way; a run that gives up logs `account content deletion
+failed`, and the sweep deletes the blobs a day later, since the account's
+part rows went with it.
 
 The worker saves these jobs from its own steps, so it opens a DBOS client
 for its storage, as `serve` does: DBOS refuses a workflow's own context in
@@ -972,7 +987,8 @@ Gmail's `partId`, media type, charset, file name, size, disposition,
 [Message parts](#message-parts)), and the blob ID its bytes are stored
 under: at once for a text part, and for an attachment or inline part once
 a member first asks for it. The blob ID is JMAP's `blobId` (RFC 8621,
-section 4.1.4), not the part's `Content-ID`, which is `mime_content_id`. Rows reference their message with the account,
+section 4.1.4), not the part's `Content-ID`, which is `mime_content_id`.
+Rows reference their message with the account,
 deleted with it.
 
 `messagecontent.Contents.Save` writes a message's content in the order
@@ -1001,7 +1017,8 @@ it puts the content back under the same ID. So a lost volume refills
 message by message as members open mail, not all at once in the
 background. Deleting goes the other way: rows first, then content.
 [Content deletion](#content-deletion) deletes the blobs deleted
-messages' rows named, after their transaction commits.
+messages' rows named, after their transaction commits, and a
+disconnected account's whole key prefix after the disconnect commits.
 
 Code reaches the store through `messagecontent.Store`, never the SDK. A
 `Ref` names one content: the connected account it came from and a blob
@@ -2308,7 +2325,9 @@ up a state.
 account. In one transaction it deletes the account, and with it the
 account's connect states and everything synchronized for it, moves the
 refresh token to `account_removals`, and saves the
-[account removal](#account-removal) job. Jobs already running for the
+[account removal](#account-removal) job and the job that deletes the
+account's stored content ([Content deletion](#content-deletion)).
+Jobs already running for the
 account stop when `Access.Token` finds it gone.
 
 ### Sending mail
@@ -2500,7 +2519,8 @@ account's sync state, passes it to a function that returns a
 mailboxes, deleted messages, saved messages with their mailboxes,
 updated messages' mailboxes and flags, the sweep of earlier generations,
 the [content deletion](#content-deletion) of what the deleted messages
-had stored, and the new state. An update for a message the account does not have is
+had stored, and the new state.
+An update for a message the account does not have is
 skipped. A change that saves one message twice keeps the last, and one
 that deletes and saves a message only saves it, so the message keeps its
 `id` however often a step repeats. A saved or updated message naming a

@@ -134,6 +134,20 @@ func (c *Client) EnqueueContentDeletion(ctx context.Context, tx pgx.Tx, accountI
 	return err
 }
 
+// EnqueueAccountContentDeletion saves, in tx, the workflow that deletes
+// all content of the disconnected account with accountID on the content
+// queue, so it commits or rolls back with tx. Cancelling ctx stops its
+// statements. It returns DBOS's error, after which tx is aborted and must
+// roll back.
+func (c *Client) EnqueueAccountContentDeletion(ctx context.Context, tx pgx.Tx, accountID int64) error {
+	input := AccountContentDeletionInput{AccountID: accountID}
+	_, err := dbos.Enqueue[struct{}](c.client, contentQueue, accountContentDeletionWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+	)
+	return err
+}
+
 // EnqueueSync saves, in a savepoint of tx, the sync workflow for the
 // connected account with accountID on the Google queue, so it commits or
 // rolls back with tx. Cancelling ctx stops its statements. It reports

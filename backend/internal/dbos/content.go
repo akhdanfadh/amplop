@@ -10,10 +10,12 @@ import (
 	"inbok/internal/messagecontent"
 )
 
-// contentDeletionWorkflow names the content deletion in DBOS's tables,
-// where enqueued runs outlive the code that made them. Its runs use
-// [contentQueue].
-const contentDeletionWorkflow = "inbok.content-deletion"
+// The content deletions' names in DBOS's tables, where enqueued runs
+// outlive the code that made them. Their runs use [contentQueue].
+const (
+	contentDeletionWorkflow        = "inbok.content-deletion"
+	accountContentDeletionWorkflow = "inbok.account-content-deletion"
+)
 
 // ContentDeletionInput is the content deletion workflow's input: the
 // blobs of messages a transaction deleted, by ID, which names no mail.
@@ -22,9 +24,16 @@ type ContentDeletionInput struct {
 	BlobIDs   []uuid.UUID
 }
 
+// AccountContentDeletionInput is the account content deletion workflow's
+// input: the disconnected account whose content goes.
+type AccountContentDeletionInput struct {
+	AccountID int64
+}
+
 // contentStore deletes stored message content, e.g. s3.Store.
 type contentStore interface {
 	Delete(ctx context.Context, refs []messagecontent.Ref) error
+	DeleteAccount(ctx context.Context, account int64) error
 }
 
 // contentRetries spans about half an hour, like [noticeRetries]: enough
@@ -66,4 +75,35 @@ func runContentDeletion(ctx dbos.Context, store contentStore, input ContentDelet
 		return 0, err
 	}
 	return len(refs), nil
+}
+
+// registerAccountContentDeletion registers the workflow that deletes a
+// disconnected account's content from store, or nothing when store is nil.
+//
+// DESIGN: A job of its own, not a step of the account removal, so a store
+// that fails or stalls never holds the token's revocation, and a worker
+// without Google settings still deletes the content.
+func (w *Worker) registerAccountContentDeletion(store contentStore) {
+	if store == nil {
+		return
+	}
+	run := func(ctx dbos.Context, input AccountContentDeletionInput) (struct{}, error) {
+		return struct{}{}, runAccountContentDeletion(ctx, store, input, w.logger)
+	}
+	dbos.RegisterWorkflow(w.ctx, run, dbos.WithWorkflowName(accountContentDeletionWorkflow))
+}
+
+// runAccountContentDeletion deletes all of input's account's content from
+// store. When the store keeps failing past the retries, it logs to logger
+// and returns the store's error; the sweep deletes the content a day
+// later, as no part names it any more.
+func runAccountContentDeletion(ctx dbos.Context, store contentStore, input AccountContentDeletionInput, logger *slog.Logger) error {
+	// Deleting is repeat-safe: an empty prefix deletes nothing.
+	_, err := dbos.RunAsStep(ctx, func(stepCtx context.Context) (struct{}, error) {
+		return struct{}{}, store.DeleteAccount(stepCtx, input.AccountID)
+	}, append(contentRetries.options(), dbos.WithStepName("delete account content"))...)
+	if err != nil && ctx.Err() == nil {
+		logger.WarnContext(ctx, "account content deletion failed", "account_id", input.AccountID, "err", err)
+	}
+	return err
 }
