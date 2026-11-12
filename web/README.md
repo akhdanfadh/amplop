@@ -586,6 +586,12 @@ ignores the later clicks of a double-click: a dialog can open with that
 button under the pointer, and the second click would confirm what the member
 never read. Enter and Space still confirm.
 
+The theme is light, dark, or the system's, kept per browser in
+`localStorage` by `src/lib/theme.ts`; `useTheme` from `src/hooks` reads
+and changes it. A script in the root route's head marks the page dark
+before the first paint; the shell's Content-Security-Policy allows it by
+hash.
+
 Data tables use [TanStack Table](https://tanstack.com/table), which supplies
 the rows and columns while shadcn's `Table` components render them. It is
 used even for a plain list, so every table shares typed column definitions

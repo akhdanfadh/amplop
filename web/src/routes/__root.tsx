@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 import appCss from "../styles.css?url";
 import { SetupGate } from "@/features/setup/gate";
+import { themeScript, watchTheme } from "@/lib/theme";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -12,6 +13,10 @@ export const Route = createRootRoute({
     ],
     // A <link> in the prerendered shell, so the page never shows unstyled.
     links: [{ rel: "stylesheet", href: appCss }],
+    // In the prerendered shell's head, so the page never shows the wrong
+    // theme first. The server's Content-Security-Policy allows the shell's
+    // inline scripts by hash.
+    scripts: [{ children: themeScript }],
   }),
   shellComponent: RootDocument,
   notFoundComponent: NotFound,
@@ -20,8 +25,12 @@ export const Route = createRootRoute({
 // The HTML document around every route. The build prerenders it once into
 // the static shell; the browser fills in the matched route.
 function RootDocument({ children }: { children: ReactNode }) {
+  // Follow the system theme and other tabs' choices for as long as the app runs.
+  useEffect(() => watchTheme(), []);
+
   return (
-    <html lang="en">
+    // The head script sets the class before React starts.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
@@ -35,5 +44,5 @@ function RootDocument({ children }: { children: ReactNode }) {
 
 // Shown for any URL without a route, e.g. a mistyped path.
 function NotFound() {
-  return <p className="p-8 text-gray-600">Page not found.</p>;
+  return <p className="p-8 text-muted-foreground">Page not found.</p>;
 }

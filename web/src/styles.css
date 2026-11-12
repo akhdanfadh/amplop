@@ -3,7 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/ibm-plex-sans";
 
-/* The page is dark while <html> has the class dark. */
+/* The theme script in src/routes/__root.tsx puts .dark on <html>. */
 @custom-variant dark (&:is(.dark *));
 
 /* Tokens: the values are in web/DESIGN.md "Tokens", where each pair's
