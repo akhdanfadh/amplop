@@ -68,6 +68,10 @@ describe("AlertDialog", () => {
     const dialog = page.getByRole("alertdialog", { name: "Disconnect Studio?" });
     await expect.element(dialog).toHaveAccessibleDescription("Your mail in Gmail stays as it is.");
     await expect.element(page.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    // A tall dialog scrolls in its overlay, and stops there, not the page.
+    const overlay = document.querySelector("[data-slot=alert-dialog-overlay]");
+    if (!overlay) throw new Error("no overlay");
+    expect(getComputedStyle(overlay).overscrollBehaviorY).toBe("contain");
   });
 
   it("runs the action and returns focus to the opening button", async () => {

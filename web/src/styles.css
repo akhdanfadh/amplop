@@ -169,8 +169,10 @@
   --account-7: #f9a8d4;
   --account-8: #facc15;
 
-  /* Menus rely on a lighter surface and a hairline instead of a shadow. */
-  --popover-shadow: none;
+  /* Menus rely on a lighter surface and a hairline instead of a shadow.
+   * A shadow of nothing, not "none", which would void the ring utility's
+   * hairline that Tailwind lists in the same box-shadow. */
+  --popover-shadow: 0 0 #0000;
   --dialog-shadow: 0 16px 40px rgb(0 0 0 / 50%);
 }
 
@@ -186,6 +188,22 @@
   transition-delay: 0s;
   animation-duration: 0s;
   animation-delay: 0s;
+}
+
+/* Reduced motion turns movement into fades (DESIGN.md "Motion"): menus and
+ * tooltips keep their fade but neither slide nor zoom. Unlayered, so it
+ * wins over the animation utilities, which sit in Tailwind's layers. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    --tw-enter-translate-x: 0;
+    --tw-enter-translate-y: 0;
+    --tw-enter-scale: 1;
+    --tw-enter-rotate: 0;
+    --tw-exit-translate-x: 0;
+    --tw-exit-translate-y: 0;
+    --tw-exit-scale: 1;
+    --tw-exit-rotate: 0;
+  }
 }
 
 /* The focus ring every focusable element shows (DESIGN.md "Focus"). React

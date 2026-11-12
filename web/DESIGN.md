@@ -141,7 +141,9 @@ text).
   colour, background, border, opacity, and transform only
   (`transition-colors`, never `transition-all`). Reduced motion turns
   movement into fades. A theme change switches every colour at once, with
-  no fades. Nothing loops except a spinner while work is actually running.
+  no fades. A tooltip shows after the pointer rests 500 ms, then the next
+  ones at once; keyboard focus shows it at once. Nothing loops except a
+  spinner while work is actually running.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
   focusable element, defined once in the components.
 - **Links:** primary colour, underlined; the underline thickens on hover.
@@ -163,7 +165,8 @@ edit. Icons are `lucide-react`, 16 px, in the text colour of their role.
 | -------------------------------------------- | --------------------------------------------------------------- |
 | Sidebar, rail, phone drawer                  | `sidebar`                                                       |
 | List and reading-pane split                  | `resizable`                                                     |
-| Member menu, More menus, theme choice        | `dropdown-menu`                                                 |
+| Member menu with the theme choice            | `popover` holding a `toggle-group`                              |
+| More menus                                   | `dropdown-menu`                                                 |
 | Right-click row menu                         | `context-menu`                                                  |
 | Names for icon buttons                       | `tooltip`                                                       |
 | Undo and error toasts                        | `toast.tsx` on React Aria's Toast (see below)                   |
@@ -242,7 +245,10 @@ TOTP, and role in `beforeLoad` before anything draws.
   "Sync failed".
 - Outbox, only while a message is waiting, sending, failed, or unknown.
 - The member at the bottom, opening the member menu: Settings, Theme
-  (Light, Dark, System), Sign out.
+  (Light, Dark, System, side by side, as icons named by tooltips; the
+  chosen one has the `selection` background and an `input` outline, as
+  the current nav item has its background and bar), Sign out. Its keys
+  are React Aria's toolbar keys: arrows move, Space or Enter chooses.
 - Unread: name and count in 600 weight and `foreground`; counts only on
   Inbox, accounts, and labels. Selected: `selection` background.
 
