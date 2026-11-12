@@ -25,8 +25,7 @@ import {
 
 const emptyValues = { email: "", password: "", confirmPassword: "" };
 const emailId = "register-email";
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const focusClass = "focus-visible:focus-ring";
 const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 const inputs = [
@@ -174,7 +173,6 @@ export function CompleteForm({
                   autoComplete="username"
                   autoCapitalize="none"
                   spellCheck={false}
-                  className={`h-11 border-muted-foreground dark:aria-invalid:border-destructive ${focusClass}`}
                   disabled={redeem.isPending}
                   aria-invalid={errors.length > 0}
                   aria-describedby={
@@ -244,8 +242,8 @@ export function CompleteForm({
       <Button
         ref={submitRef}
         type="submit"
-        className={`h-auto min-h-11 whitespace-normal ${focusClass}`}
-        disabled={redeem.isPending}
+        className="whitespace-normal"
+        isDisabled={redeem.isPending}
       >
         {redeem.isPending ? "Creating account..." : "Create account"}
       </Button>

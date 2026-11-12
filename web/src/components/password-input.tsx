@@ -20,12 +20,11 @@ export function PasswordInput({
       <InputGroupInput {...props} type={visible ? "text" : "password"} />
       <InputGroupAddon align="inline-end" className="py-0">
         <InputGroupButton
-          className="size-8 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid pointer-coarse:size-11"
           size="icon-sm"
           aria-label={`${visible ? "Hide" : "Show"} ${label}`}
           aria-controls={props.id}
-          disabled={props.disabled}
-          onClick={() => setVisible((previous) => !previous)}
+          isDisabled={props.disabled}
+          onPress={() => setVisible((previous) => !previous)}
         >
           <Icon aria-hidden="true" data-icon="inline-end" />
         </InputGroupButton>

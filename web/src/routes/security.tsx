@@ -68,9 +68,8 @@ function Security() {
             <Button
               type="button"
               variant="outline"
-              className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-              disabled={current.isFetching}
-              onClick={() => void current.refetch()}
+              isDisabled={current.isFetching}
+              onPress={() => void current.refetch()}
             >
               Try again
             </Button>
@@ -114,9 +113,9 @@ function Security() {
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 w-fit border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            disabled={!ready || writing || ending || sending || hasCodes || signOut.isPending}
-            onClick={() => signOut.mutate()}
+            className="w-fit"
+            isDisabled={!ready || writing || ending || sending || hasCodes || signOut.isPending}
+            onPress={() => signOut.mutate()}
           >
             {signOut.isPending ? "Signing out..." : "Sign out of this browser"}
           </Button>

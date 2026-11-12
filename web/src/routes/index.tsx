@@ -87,11 +87,11 @@ function Home(): ReactElement {
             </div>
             <Button
               ref={retryRef}
-              className="h-auto min-h-11 border-muted-foreground whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
+              className="whitespace-normal"
               type="button"
               variant="outline"
-              disabled={current.isFetching}
-              onClick={() => void current.refetch()}
+              isDisabled={current.isFetching}
+              onPress={() => void current.refetch()}
             >
               {current.isFetching ? "Checking your session..." : "Try again"}
             </Button>
@@ -108,7 +108,7 @@ function Home(): ReactElement {
                 by email.{" "}
                 <Link
                   to="/security"
-                  className="underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
+                  className="underline underline-offset-4 focus-visible:focus-ring"
                 >
                   Verify it in Security
                 </Link>
@@ -117,11 +117,11 @@ function Home(): ReactElement {
             )}
             <Button
               ref={signOutRef}
-              className="h-auto min-h-11 w-fit whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
+              className="w-fit whitespace-normal"
               type="button"
               variant="outline"
-              disabled={signOut.isPending}
-              onClick={() => signOut.mutate()}
+              isDisabled={signOut.isPending}
+              onPress={() => signOut.mutate()}
             >
               {signOut.isPending ? "Signing out..." : "Sign out"}
             </Button>
@@ -135,9 +135,8 @@ function Home(): ReactElement {
               <Button
                 type="button"
                 variant="outline"
-                disabled={current.isFetching}
-                className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-                onClick={() => void current.refetch()}
+                isDisabled={current.isFetching}
+                onPress={() => void current.refetch()}
               >
                 {current.isFetching ? "Checking your session..." : "Check session"}
               </Button>

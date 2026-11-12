@@ -12,7 +12,6 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
@@ -34,8 +33,6 @@ const unauthorized = 401;
 const forbidden = 403;
 const statusId = "registration-status";
 const noteId = "registration-note";
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
 
 // RegistrationSection says whether visitors can create accounts and opens or
 // closes registration. settings is the last read and checkedAt when it
@@ -153,32 +150,23 @@ export function RegistrationSection({
         {blocked && <p id={noteId}>{untestedMessage()}</p>}
       </div>
 
+      {/* With no trigger, focus goes back to the switch, which had it:
+          React Aria focuses the switch when its label is pressed too
+          (switch.browser.test.tsx). */}
       <AlertDialog
-        open={dialog.shown}
+        isOpen={dialog.shown}
         onOpenChange={(shown) => setDialog((last) => ({ ...last, shown }))}
       >
-        {/* With no trigger, focus goes back to the switch, which had it:
-            React Aria focuses the switch when its label is pressed too
-            (switch.browser.test.tsx). */}
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{asking.title}</AlertDialogTitle>
-            <AlertDialogDescription>{asking.description}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className={`min-h-11 border-muted-foreground ${focusClass}`}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              type="button"
-              className={`min-h-11 ${focusClass}`}
-              disabled={isPending}
-              onClick={confirm}
-            >
-              {asking.action}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{asking.title}</AlertDialogTitle>
+          <AlertDialogDescription>{asking.description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction type="button" onPress={confirm}>
+            {asking.action}
+          </AlertDialogAction>
+        </AlertDialogFooter>
       </AlertDialog>
 
       {error && (

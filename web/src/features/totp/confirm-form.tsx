@@ -137,9 +137,9 @@ export function ConfirmForm({
                     <Button
                       type="button"
                       variant="link"
-                      className="min-h-11 w-fit whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-                      disabled={pending || locked || checking}
-                      onClick={changeKind}
+                      className="w-fit whitespace-normal"
+                      isDisabled={pending || locked || checking}
+                      onPress={changeKind}
                     >
                       {kind === "authenticator" ? "Use a backup code" : "Use authenticator app"}
                     </Button>
@@ -189,8 +189,8 @@ export function ConfirmForm({
       <Button
         ref={submitRef}
         type="submit"
-        className="h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-        disabled={pending || locked || checking}
+        className="whitespace-normal"
+        isDisabled={pending || locked || checking}
       >
         {pending ? config.pending : config.action}
       </Button>

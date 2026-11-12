@@ -4,8 +4,7 @@ import { CompleteForm } from "@/features/registration/complete-form";
 import { completePath } from "@/features/registration/path";
 import { useLinkSecret } from "@/hooks/use-link-secret";
 
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const focusClass = "focus-visible:focus-ring";
 const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 export const Route = createFileRoute("/register/complete")({

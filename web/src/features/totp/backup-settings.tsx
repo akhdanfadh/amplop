@@ -86,9 +86,8 @@ export function BackupSettings({
                 ref={checkRef}
                 type="button"
                 variant="outline"
-                className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-                disabled={locked || checking}
-                onClick={onCheck}
+                isDisabled={locked || checking}
+                onPress={onCheck}
               >
                 {checking ? "Checking backup-code status..." : "Check backup-code status"}
               </Button>
@@ -97,9 +96,8 @@ export function BackupSettings({
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            disabled={locked || pending || checking || uncertain}
-            onClick={() => {
+            isDisabled={locked || pending || checking || uncertain}
+            onPress={() => {
               onEdit();
               restoreFocus.current = true;
               setReplacing(false);
@@ -113,9 +111,8 @@ export function BackupSettings({
           ref={replaceRef}
           type="button"
           variant="outline"
-          className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-          disabled={locked || checking}
-          onClick={() => setReplacing(true)}
+          isDisabled={locked || checking}
+          onPress={() => setReplacing(true)}
         >
           Replace backup codes
         </Button>

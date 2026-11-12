@@ -158,7 +158,7 @@ export function ProbeForm(): ReactElement {
       </FieldGroup>
 
       {/* Disabled while saving, so a second click or Enter sends nothing. */}
-      <Button ref={submitRef} type="submit" disabled={create.isPending}>
+      <Button ref={submitRef} type="submit" isDisabled={create.isPending}>
         {create.isPending ? "Adding..." : "Add event"}
       </Button>
 

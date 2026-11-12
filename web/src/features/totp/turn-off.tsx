@@ -68,9 +68,8 @@ export function TurnOff({
                 ref={checkRef}
                 type="button"
                 variant="outline"
-                className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-                disabled={locked || checking}
-                onClick={onCheck}
+                isDisabled={locked || checking}
+                onPress={onCheck}
               >
                 {checking ? "Checking two-factor status..." : "Check two-factor status"}
               </Button>
@@ -79,9 +78,8 @@ export function TurnOff({
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            disabled={locked || pending || checking || uncertain}
-            onClick={() => {
+            isDisabled={locked || pending || checking || uncertain}
+            onPress={() => {
               onEdit();
               restoreFocus.current = true;
               setConfirming(false);
@@ -95,9 +93,9 @@ export function TurnOff({
           ref={openRef}
           type="button"
           variant="outline"
-          className="h-auto min-h-11 w-fit border-muted-foreground whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-          disabled={locked || checking}
-          onClick={() => setConfirming(true)}
+          className="w-fit whitespace-normal"
+          isDisabled={locked || checking}
+          onPress={() => setConfirming(true)}
         >
           Turn off two-factor authentication
         </Button>

@@ -66,11 +66,11 @@ function Setup(): ReactElement {
 
       {current !== "done" && !status.isPending && (
         <Button
-          className="h-auto min-h-11 border-muted-foreground whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid dark:border-muted-foreground"
+          className="whitespace-normal"
           type="button"
           variant="outline"
-          disabled={status.isFetching}
-          onClick={() => void status.refetch()}
+          isDisabled={status.isFetching}
+          onPress={() => void status.refetch()}
         >
           {status.isFetching
             ? "Checking setup status..."

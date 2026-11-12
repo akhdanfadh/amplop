@@ -23,9 +23,7 @@ import { ComposeSchema, composeFields, composeRequest, type ComposeValues } from
 import { keyReused, leaveText, mayHaveSaved, needsReconnect, sendErrorMessage } from "./text";
 
 const unauthorized = 401;
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
-const inputClass = `h-11 border-muted-foreground dark:aria-invalid:border-destructive ${focusClass}`;
+const focusClass = "focus-visible:focus-ring";
 const linkClass = `inline-flex min-h-11 items-center underline underline-offset-4 ${focusClass}`;
 
 // The recipient lists, each one text field.
@@ -149,7 +147,6 @@ export function ComposeForm({
                 <NativeSelect
                   id={id}
                   name={field.name}
-                  className={inputClass}
                   // A select cannot be read-only; a change while sending
                   // would not reach the request anyway.
                   disabled={send.isPending}
@@ -197,7 +194,6 @@ export function ComposeForm({
                   <Input
                     id={id}
                     name={field.name}
-                    className={inputClass}
                     // Not type="email" multiple: browsers rewrite its value
                     // while typing, dropping the space after a comma.
                     type="text"
@@ -238,7 +234,6 @@ export function ComposeForm({
                 <Input
                   id={id}
                   name={field.name}
-                  className={inputClass}
                   readOnly={send.isPending}
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors)}
@@ -262,7 +257,7 @@ export function ComposeForm({
                 <Textarea
                   id={id}
                   name={field.name}
-                  className={`min-h-60 border-muted-foreground dark:aria-invalid:border-destructive ${focusClass}`}
+                  className="min-h-60"
                   readOnly={send.isPending}
                   aria-invalid={errors.length > 0}
                   aria-describedby={describedBy(id, errors, `${id}-description`)}
@@ -282,8 +277,8 @@ export function ComposeForm({
       <Button
         ref={submitRef}
         type="submit"
-        className={`h-auto min-h-11 w-fit whitespace-normal ${focusClass}`}
-        disabled={send.isPending}
+        className="w-fit whitespace-normal"
+        isDisabled={send.isPending}
       >
         {send.isPending ? "Sending..." : "Send"}
       </Button>

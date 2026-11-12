@@ -16,7 +16,7 @@ function Probe(): ReactElement {
   return (
     <main className="flex flex-col items-start gap-4 p-8">
       <h1 className="text-3xl font-bold">inbok</h1>
-      <Button type="button" disabled={health.isFetching} onClick={() => void health.refetch()}>
+      <Button type="button" isDisabled={health.isFetching} onPress={() => void health.refetch()}>
         Check health
       </Button>
       <output>{show(health)}</output>

@@ -2,8 +2,7 @@ import { useEffect, useRef, type ReactElement } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { RequestForm } from "@/features/password-reset/request-form";
 
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const focusClass = "focus-visible:focus-ring";
 const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 export const Route = createFileRoute("/forgot-password")({

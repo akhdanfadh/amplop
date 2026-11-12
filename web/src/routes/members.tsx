@@ -82,7 +82,7 @@ function Members(): ReactElement {
                 {" "}
                 <Link
                   to="/security"
-                  className="underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
+                  className="underline underline-offset-4 focus-visible:focus-ring"
                 >
                   Set up two-factor authentication
                 </Link>
@@ -102,9 +102,9 @@ function Members(): ReactElement {
             <Button
               type="button"
               variant="outline"
-              className="min-h-11 w-fit border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-              disabled={current.isFetching || list.isFetching}
-              onClick={() => {
+              className="w-fit"
+              isDisabled={current.isFetching || list.isFetching}
+              onPress={() => {
                 void current.refetch();
                 void list.refetch();
               }}
@@ -122,9 +122,9 @@ function Members(): ReactElement {
             <Button
               type="button"
               variant="outline"
-              className="min-h-11 w-fit border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-              disabled={list.isFetching}
-              onClick={() => void list.refetch()}
+              className="w-fit"
+              isDisabled={list.isFetching}
+              onPress={() => void list.refetch()}
             >
               Try again
             </Button>

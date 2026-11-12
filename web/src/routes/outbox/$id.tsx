@@ -23,7 +23,7 @@ const notFound = 404;
 // sends end within seconds.
 const pollMs = 2_000;
 const linkClass =
-  "inline-flex min-h-11 w-fit items-center underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+  "inline-flex min-h-11 w-fit items-center underline underline-offset-4 focus-visible:focus-ring";
 
 // A message's ID, which the client puts in the API's path as is.
 const messageId = z.uuid();

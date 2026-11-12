@@ -166,7 +166,7 @@ edit. Icons are `lucide-react`, 16 px, in the text colour of their role.
 | Member menu, More menus, theme choice        | `dropdown-menu`                                                 |
 | Right-click row menu                         | `context-menu`                                                  |
 | Names for icon buttons                       | `tooltip`                                                       |
-| Undo and error toasts                        | `toast`                                                         |
+| Undo and error toasts                        | `toast.tsx` on React Aria's Toast (see below)                   |
 | Phone editors and search                     | `drawer` / `sheet`                                              |
 | From picker in compose                       | `select` (shows the account mark)                               |
 | Search box and its dropdown, recipient chips | `combobox`                                                      |
@@ -175,6 +175,16 @@ edit. Icons are `lucide-react`, 16 px, in the text colour of their role.
 | Status                                       | `badge` with tones neutral, info, success, warning, destructive |
 | Initials avatars                             | `avatar`, plus the account ring                                 |
 | Confirmations                                | `alert-dialog`                                                  |
+
+**Toasts** use React Aria's own
+[Toast](https://react-aria.adobe.com/Toast), wrapped in inbok's
+`src/components/ui/toast.tsx`: it pauses its timer while hovered or
+focused, and F6 reaches it. React Aria labels it alpha (`UNSTABLE_`
+names); `DEBT.md` gets an entry when the toast is built. shadcn's React
+Aria flavour offers only `sonner`, whose runtime `<style>` the
+Content-Security-Policy blocks and whose timer keeps running when the
+keyboard reaches Undo. For the demo: Undo toasts last 10 s, error toasts
+stay until closed, and toasts stack newest first.
 
 **The message list** is inbok's own `src/components/ui/grid-list.tsx` on
 React Aria's [GridList](https://react-aria.adobe.com/GridList) inside its

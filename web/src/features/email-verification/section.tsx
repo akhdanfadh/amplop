@@ -88,9 +88,9 @@ export function EmailVerificationSection({
             ref={buttonRef}
             type="button"
             variant="outline"
-            className="h-auto min-h-11 w-fit border-muted-foreground whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            disabled={locked || send.isPending}
-            onClick={() => {
+            className="w-fit whitespace-normal"
+            isDisabled={locked || send.isPending}
+            onPress={() => {
               if (locked || send.isPending) return;
               refocus.current = true;
               send.mutate();

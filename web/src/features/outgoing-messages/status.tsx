@@ -13,7 +13,6 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
@@ -31,9 +30,8 @@ import {
 } from "./text";
 
 const unauthorized = 401;
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
-const buttonClass = `h-auto min-h-11 w-fit whitespace-normal ${focusClass}`;
+const focusClass = "focus-visible:focus-ring";
+const buttonClass = "w-fit whitespace-normal";
 const linkClass = `inline-flex min-h-11 items-center underline underline-offset-4 ${focusClass}`;
 
 // MessageStatus shows what happened to message and what the member can do
@@ -61,9 +59,6 @@ export function MessageStatus({
   // The Send again error focus last moved for.
   const focusedFor = useRef<unknown>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  // Set by the dialog's confirm button; the send starts once it has closed,
-  // so focus returns to a button that is not yet disabled.
-  const confirmed = useRef(false);
   const again = useSendMessageAgain({
     mutation: {
       // A repeat returns the copy the first saved.
@@ -90,7 +85,8 @@ export function MessageStatus({
   const sendable = steps.offers.includes("send-again");
   useEffect(() => {
     if (!again.error || again.isPending) return;
-    // 1. The button lost focus while disabled; give it back once.
+    // 1. Move focus to the button once per failure, so the error after it
+    // is read next.
     if (focusedFor.current !== again.error) {
       focusedFor.current = again.error;
       (buttonRef.current ?? sectionRef.current)?.focus();
@@ -149,11 +145,12 @@ export function MessageStatus({
             ref={buttonRef}
             type="button"
             className={buttonClass}
-            disabled={again.isPending}
-            onClick={() => {
+            // Pending, not disabled: focus stays here while it sends, and
+            // comes back here when the dialog closes.
+            isPending={again.isPending}
+            onPress={() => {
               // An unknown message may already have gone out, so ask first.
               if (message.status !== "unknown") return sendAgain();
-              confirmed.current = false;
               setDialogOpen(true);
             }}
           >
@@ -181,40 +178,21 @@ export function MessageStatus({
         requestId={again.error?.requestId}
       />
 
-      <AlertDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onOpenChangeComplete={(open) => {
-          if (open || !confirmed.current) return;
-          confirmed.current = false;
-          sendAgain();
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Send this message again?</AlertDialogTitle>
-            <AlertDialogDescription className="wrap-anywhere">
-              It may already have been sent. Check the Sent folder of{" "}
-              <span translate="no">{message.from}</span> in Gmail first: if it&apos;s there, sending
-              it again sends it twice.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className={`min-h-11 border-muted-foreground ${focusClass}`}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              type="button"
-              className={`min-h-11 ${focusClass}`}
-              onClick={() => {
-                confirmed.current = true;
-                setDialogOpen(false);
-              }}
-            >
-              Send again
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
+      <AlertDialog isOpen={dialogOpen} onOpenChange={setDialogOpen}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Send this message again?</AlertDialogTitle>
+          <AlertDialogDescription className="wrap-anywhere">
+            It may already have been sent. Check the Sent folder of{" "}
+            <span translate="no">{message.from}</span> in Gmail first: if it&apos;s there, sending
+            it again sends it twice.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction type="button" onPress={sendAgain}>
+            Send again
+          </AlertDialogAction>
+        </AlertDialogFooter>
       </AlertDialog>
     </section>
   );

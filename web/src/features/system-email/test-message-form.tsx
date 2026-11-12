@@ -130,7 +130,6 @@ export function TestMessageForm({
               <Input
                 id={id}
                 name={field.name}
-                className="h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid dark:aria-invalid:border-destructive"
                 type="email"
                 autoComplete="email"
                 autoCapitalize="none"
@@ -155,8 +154,8 @@ export function TestMessageForm({
         ref={buttonRef}
         type="submit"
         variant="outline"
-        className="h-auto min-h-11 w-fit border-muted-foreground whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-        disabled={locked}
+        className="w-fit whitespace-normal"
+        isDisabled={locked}
       >
         {send.isPending ? "Sending test message..." : "Send test message"}
       </Button>

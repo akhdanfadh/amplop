@@ -86,9 +86,8 @@ export function SetupGate({ children }: { children: ReactNode }) {
             <Button
               type="button"
               variant="outline"
-              disabled={status.isFetching}
-              className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-              onClick={() => void status.refetch()}
+              isDisabled={status.isFetching}
+              onPress={() => void status.refetch()}
             >
               {status.isFetching ? "Checking setup status..." : "Try again"}
             </Button>

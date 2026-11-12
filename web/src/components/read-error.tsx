@@ -2,8 +2,7 @@ import type { ReactElement } from "react";
 import type { ApiError } from "@/api/transport";
 import { Button } from "@/components/ui/button";
 
-const buttonClass =
-  "h-auto min-h-11 w-fit border-muted-foreground whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const buttonClass = "w-fit whitespace-normal";
 
 // ReadError says that a read the page needs failed, with message, the
 // error's request reference, and Try again, which runs onRetry and is
@@ -31,8 +30,8 @@ export function ReadError({
         type="button"
         variant="outline"
         className={buttonClass}
-        disabled={retrying}
-        onClick={onRetry}
+        isDisabled={retrying}
+        onPress={onRetry}
       >
         Try again
       </Button>

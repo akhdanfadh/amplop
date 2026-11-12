@@ -5,8 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { canChange, formatDate, roleName, type MemberChange } from "./text";
 
-const buttonClass =
-  "min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
 const actionLabels: Record<MemberChange, string> = {
   deactivate: "Deactivate",
   reactivate: "Reactivate",
@@ -128,9 +126,11 @@ function ActionCell({
       id={actionId(member.id)}
       type="button"
       variant="outline"
-      className={buttonClass}
-      disabled={meta.disabled}
-      onClick={() => meta.onChoose(change, member)}
+      // The button whose write runs stays focusable as pending, so focus
+      // has a place when the dialog closes; the rest are disabled.
+      isDisabled={meta.disabled && running === null}
+      isPending={running !== null}
+      onPress={() => meta.onChoose(change, member)}
     >
       {running ? runningLabels[running] : actionLabels[change]}
       <span className="sr-only"> {member.email}</span>

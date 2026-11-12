@@ -5,8 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatReceived, subjectText } from "@/features/messages/text";
 import { recipientSummary, statusLabel, statusVariant } from "./text";
 
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const focusClass = "focus-visible:focus-ring";
 
 // OutgoingMessageList lists messages, the member's newest first, each a
 // link to its own page with its status.

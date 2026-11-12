@@ -17,8 +17,7 @@ import { AccountNav } from "@/components/account-nav";
 import { Button } from "@/components/ui/button";
 
 const unauthorized = 401;
-const buttonClass =
-  "min-h-11 w-fit border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const buttonClass = "w-fit";
 
 export const Route = createFileRoute("/connected-accounts")({
   validateSearch: connectSearch,
@@ -110,8 +109,8 @@ function ConnectedAccounts(): ReactElement {
               type="button"
               variant="outline"
               className={buttonClass}
-              disabled={list.isFetching || providers.isFetching}
-              onClick={() => {
+              isDisabled={list.isFetching || providers.isFetching}
+              onPress={() => {
                 // Only a read that has nothing to show is tried again.
                 if (!list.data) void list.refetch();
                 if (!providers.data) void providers.refetch();
@@ -131,8 +130,8 @@ function ConnectedAccounts(): ReactElement {
               type="button"
               variant="outline"
               className={buttonClass}
-              disabled={list.isFetching}
-              onClick={() => void list.refetch()}
+              isDisabled={list.isFetching}
+              onPress={() => void list.refetch()}
             >
               Try again
             </Button>

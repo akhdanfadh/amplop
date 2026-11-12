@@ -7,8 +7,7 @@ import { CodeForm } from "@/features/auth/code-form";
 import { useSetup } from "@/features/setup/gate";
 import { clearAccountCache } from "@/features/auth/session-cache";
 
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const focusClass = "focus-visible:focus-ring";
 const noticeId = "sign-in-notice";
 const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 

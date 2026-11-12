@@ -76,8 +76,7 @@ const notInbokSignIn = {
   "data-bwignore": true,
   "data-form-type": "other",
 };
-const buttonClass =
-  "h-auto min-h-11 w-fit whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const buttonClass = "w-fit whitespace-normal";
 
 // SettingsForm replaces the system email settings. saved is the last read,
 // absent before the first save; onCheck reads them again; onSaved runs when
@@ -445,7 +444,7 @@ export function SettingsForm({
 
       {/* Disabled while saving, so a second click or Enter sends nothing.
           Inputs are read-only instead, so they keep focus and stay readable. */}
-      <Button ref={saveRef} className={buttonClass} type="submit" disabled={locked || testing}>
+      <Button ref={saveRef} className={buttonClass} type="submit" isDisabled={locked || testing}>
         {save.isPending ? "Saving settings..." : "Save settings"}
       </Button>
 
@@ -458,9 +457,9 @@ export function SettingsForm({
             ref={checkRef}
             type="button"
             variant="outline"
-            className={`${buttonClass} border-muted-foreground`}
-            disabled={checking}
-            onClick={() => void check()}
+            className={buttonClass}
+            isDisabled={checking}
+            onPress={() => void check()}
           >
             {checking ? "Checking saved settings..." : "Check saved settings"}
           </Button>

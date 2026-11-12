@@ -3,7 +3,7 @@ import { cn } from "cn";
 import type { CurrentSession } from "@/api/generated/model";
 
 const linkClass =
-  "inline-flex min-h-11 items-center underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+  "inline-flex min-h-11 items-center underline underline-offset-4 focus-visible:focus-ring";
 
 // AccountNav links the account's pages. account is the page's current
 // session, absent while it loads; Members and Settings are shown only with

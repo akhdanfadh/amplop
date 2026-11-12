@@ -42,7 +42,7 @@ export function HtmlBody({ url, title }: { url: string; title: string }): ReactE
       {state === "failed" && (
         <div className="flex flex-col items-start gap-3" role="alert">
           <p>Could not show this part of the message.</p>
-          <Button ref={retryButton} type="button" variant="outline" onClick={retry}>
+          <Button ref={retryButton} type="button" variant="outline" onPress={retry}>
             Try again
           </Button>
         </div>
@@ -56,7 +56,7 @@ export function HtmlBody({ url, title }: { url: string; title: string }): ReactE
         referrerPolicy="no-referrer"
         // Mail is written for a white page, whatever the app's theme.
         className={
-          state === "failed" ? "hidden" : "block h-0 w-full rounded-md bg-white scheme-light"
+          state === "failed" ? "hidden" : "block h-0 w-full rounded-md bg-sheet scheme-light"
         }
       />
     </div>

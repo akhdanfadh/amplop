@@ -5,8 +5,7 @@ import { userMessage } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { RequestForm } from "@/features/registration/request-form";
 
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const focusClass = "focus-visible:focus-ring";
 const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 // Shown is the last answer the page showed about registration, "none"
@@ -70,8 +69,8 @@ function Register(): ReactElement {
             ref={retryRef}
             type="button"
             variant="outline"
-            className={`min-h-11 w-fit border-muted-foreground ${focusClass}`}
-            onClick={() => void availability.refetch()}
+            className="w-fit"
+            onPress={() => void availability.refetch()}
           >
             Try again
           </Button>

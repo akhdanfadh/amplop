@@ -87,7 +87,7 @@ function Settings(): ReactElement {
                 {" "}
                 <Link
                   to="/security"
-                  className="underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
+                  className="underline underline-offset-4 focus-visible:focus-ring"
                 >
                   Set up two-factor authentication
                 </Link>
@@ -107,9 +107,9 @@ function Settings(): ReactElement {
             <Button
               type="button"
               variant="outline"
-              className="min-h-11 w-fit border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-              disabled={reads.some((read) => read.isFetching)}
-              onClick={() => {
+              className="w-fit"
+              isDisabled={reads.some((read) => read.isFetching)}
+              onPress={() => {
                 for (const read of reads) void read.refetch();
               }}
             >

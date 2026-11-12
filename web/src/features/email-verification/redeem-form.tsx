@@ -11,8 +11,7 @@ import { Button } from "@/components/ui/button";
 import { linkInvalid, redeemErrorMessage } from "./text";
 
 const unauthorized = 401;
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const focusClass = "focus-visible:focus-ring";
 const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 // RedeemForm verifies an email address with secret, the text after # in an
@@ -114,8 +113,8 @@ export function RedeemForm({ secret }: { secret: string }): ReactElement {
       <Button
         ref={buttonRef}
         type="submit"
-        className={`h-auto min-h-11 w-fit whitespace-normal ${focusClass}`}
-        disabled={redeem.isPending}
+        className="w-fit whitespace-normal"
+        isDisabled={redeem.isPending}
       >
         {redeem.isPending ? "Verifying email..." : "Verify email"}
       </Button>

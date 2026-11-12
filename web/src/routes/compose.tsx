@@ -17,8 +17,7 @@ import { composeSearch } from "@/features/outgoing-messages/search";
 import { readErrorMessage } from "@/features/outgoing-messages/text";
 
 const unauthorized = 401;
-const linkClass =
-  "underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const linkClass = "underline underline-offset-4 focus-visible:focus-ring";
 
 export const Route = createFileRoute("/compose")({
   validateSearch: composeSearch,

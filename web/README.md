@@ -599,8 +599,7 @@ Tailwind CSS IntelliSense extension (VS Code: `bradlc.vscode-tailwindcss`).
 
 UI components come from [shadcn/ui](https://ui.shadcn.com)'s React Aria
 flavour (`aria-nova` in `components.json`): each is a styled
-[React Aria Components](https://react-aria.adobe.com) part, except
-`button`, `badge`, and `alert-dialog`, which still use Base UI. Its CLI copies
+[React Aria Components](https://react-aria.adobe.com) part. Its CLI copies
 each component's source into `src/components/ui`, where it becomes our
 code to edit; there is no component library to upgrade. The theme (tokens,
 fonts, dark mode) is in `src/styles.css`. From `web`, add a component with
@@ -618,6 +617,9 @@ from the registry here:
   `CheckboxField`/`CheckboxButton` (and the Switch and Radio pairs), which
   replace the deprecated `Checkbox`, `Switch`, and `Radio`. The label is
   the component's children.
+- `alert-dialog`: one `AlertDialog` holds the overlay and the dialog (no
+  `AlertDialogContent`); `AlertDialogDescription` is React Aria's
+  description slot, so the dialog is described by it; Cancel takes focus.
 - `table`, `native-select`, `input-otp`: plain HTML (the registry's
   `table` is React Aria's interactive grid, wrong for read-only rows).
 - Focus rings use React Aria's `data-focus-visible` and the `focus-ring`
@@ -626,12 +628,22 @@ from the registry here:
   Text fields ring on any focus (`data-focused`), a click included.
 
 React Aria components take React Aria props: `isDisabled`, not
-`disabled`; `isSelected` and `onChange` on a checkbox or switch.
+`disabled`; `onPress`, not `onClick`; `isSelected` and `onChange` on a
+checkbox or switch. A disabled button leaves the tab order, so the button
+that opened a confirmation gets `isPending` while the write it started
+runs: it keeps focus, so focus has a place when the dialog closes, and
+ignores presses. Its label says what is running, e.g. "Disconnecting...":
+React Aria announces the label, not a busy state ([Button,
+Pending](https://react-aria.adobe.com/Button#pending)). Other buttons the
+write blocks get `isDisabled`. Any other button that runs its own request
+(form submits, Home's Sign out, Try again) still uses `isDisabled` until
+the forms branch moves them to one pending pattern.
 
 `AlertDialogAction`, the confirming button of a dialog that asks first,
-ignores the later clicks of a double-click: a dialog can open with that
-button under the pointer, and the second click would confirm what the member
-never read. Enter and Space still confirm.
+ignores a mouse or touch press that starts within 500 ms of the dialog
+opening: a dialog can open with that button under the pointer, and the
+second click of a double-click would confirm what the member never read.
+Enter and Space still confirm at once.
 
 The theme is light, dark, or the system's, kept per browser in
 `localStorage` by `src/lib/theme.ts`; `useTheme` from `src/hooks` reads

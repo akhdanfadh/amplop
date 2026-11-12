@@ -20,7 +20,6 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
@@ -52,10 +51,7 @@ import {
 const unauthorized = 401;
 const notFound = 404;
 const conflict = 409;
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
-const buttonClass = `h-auto min-h-11 w-fit whitespace-normal ${focusClass}`;
-const outlineClass = `${buttonClass} border-muted-foreground`;
+const buttonClass = "w-fit whitespace-normal";
 const connectId = "connect-gmail";
 
 // AccountList lists the member's connected accounts with where each one's
@@ -92,10 +88,6 @@ export function AccountList({
   // The account the dialog asks about, kept while it closes so its text stays.
   const [confirming, setConfirming] = useState<ListedAccount | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  // Set by the dialog's confirm button. The disconnect starts once the dialog
-  // has closed: started earlier, the dialog would give focus back to a button
-  // the write has disabled or the reread has removed.
-  const confirmed = useRef(false);
   const [disconnected, setDisconnected] = useState("");
   // The email of the account the last Check now named.
   const [syncEmail, setSyncEmail] = useState("");
@@ -307,7 +299,6 @@ export function AccountList({
               onSync={() => startSync(account)}
               onReconnect={() => startReconnect(account)}
               onDisconnect={() => {
-                confirmed.current = false;
                 setConfirming(account);
                 setDialogOpen(true);
               }}
@@ -320,51 +311,36 @@ export function AccountList({
           id={connectId}
           type="button"
           className={buttonClass}
-          disabled={pending}
-          onClick={startConnect}
+          isDisabled={pending}
+          onPress={startConnect}
         >
           {connect.isPending || connect.isSuccess ? "Opening Google..." : "Connect Gmail"}
         </Button>
       )}
-      <AlertDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onOpenChangeComplete={(open) => {
-          if (open || !confirmed.current || !confirming) return;
-          confirmed.current = false;
-          startDisconnect(confirming);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="wrap-anywhere">
-              Disconnect <span translate="no">{confirming?.email}</span>?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirming?.status === "token-unreadable"
-                ? "inbok removes this account and everything it saved for it. It can't ask Google to end its access, so you can remove inbok in your Google Account."
-                : "inbok removes this account and everything it saved for it, and asks Google to end its access."}{" "}
-              Your mail in Gmail stays as it is.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className={`min-h-11 border-muted-foreground ${focusClass}`}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              type="button"
-              variant="destructive"
-              className={`min-h-11 ${focusClass}`}
-              disabled={pending}
-              onClick={() => {
-                confirmed.current = true;
-                setDialogOpen(false);
-              }}
-            >
-              Disconnect
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
+      <AlertDialog isOpen={dialogOpen} onOpenChange={setDialogOpen}>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="wrap-anywhere">
+            Disconnect <span translate="no">{confirming?.email}</span>?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {confirming?.status === "token-unreadable"
+              ? "inbok removes this account and everything it saved for it. It can't ask Google to end its access, so you can remove inbok in your Google Account."
+              : "inbok removes this account and everything it saved for it, and asks Google to end its access."}{" "}
+            Your mail in Gmail stays as it is.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            type="button"
+            variant="destructive"
+            onPress={() => {
+              if (confirming) startDisconnect(confirming);
+            }}
+          >
+            Disconnect
+          </AlertDialogAction>
+        </AlertDialogFooter>
       </AlertDialog>
     </section>
   );
@@ -372,6 +348,9 @@ export function AccountList({
 
 // AccountRow shows account, where its sync stands, and its actions.
 // syncable says whether a sync can be started, which needs a Google client.
+// While disabled, the button whose write runs stays focusable as pending,
+// so focus has a place when the disconnect dialog closes; the rest are
+// disabled.
 function AccountRow({
   account,
   gmailOffered,
@@ -422,10 +401,11 @@ function AccountRow({
             id={syncId(account.id)}
             type="button"
             variant="outline"
-            className={outlineClass}
+            className={buttonClass}
             aria-describedby={detailsId}
-            disabled={disabled}
-            onClick={onSync}
+            isDisabled={disabled && !syncing}
+            isPending={syncing}
+            onPress={onSync}
           >
             {syncing ? checkingText : view.kind === "failed" ? tryAgainText : checkNowText}
             <span className="sr-only"> {account.email}</span>
@@ -439,8 +419,9 @@ function AccountRow({
             type="button"
             className={buttonClass}
             aria-describedby={detailsId}
-            disabled={disabled}
-            onClick={onReconnect}
+            isDisabled={disabled && !reconnecting}
+            isPending={reconnecting}
+            onPress={onReconnect}
           >
             {reconnecting ? "Opening Google..." : "Reconnect"}
             <span className="sr-only"> {account.email}</span>
@@ -450,10 +431,11 @@ function AccountRow({
           id={disconnectId(account.id)}
           type="button"
           variant="outline"
-          className={outlineClass}
+          className={buttonClass}
           aria-describedby={detailsId}
-          disabled={disabled}
-          onClick={onDisconnect}
+          isDisabled={disabled && !disconnecting}
+          isPending={disconnecting}
+          onPress={onDisconnect}
         >
           {disconnecting ? "Disconnecting..." : "Disconnect"}
           <span className="sr-only"> {account.email}</span>

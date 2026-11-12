@@ -74,29 +74,15 @@ export function BackupCodes({
         ))}
       </ul>
       <div className="flex flex-wrap gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-          onClick={() => void copyCodes()}
-        >
+        <Button type="button" variant="outline" onPress={() => void copyCodes()}>
           Copy codes
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-          onClick={downloadCodes}
-        >
+        <Button type="button" variant="outline" onPress={downloadCodes}>
           Download codes
         </Button>
       </div>
       <output>{message}</output>
-      <Button
-        type="button"
-        className="h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-        onClick={onDone}
-      >
+      <Button type="button" className="whitespace-normal" onPress={onDone}>
         I've saved these codes
       </Button>
     </section>

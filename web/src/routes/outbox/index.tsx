@@ -56,13 +56,7 @@ function Outbox(): ReactElement {
           <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
             Outbox
           </h1>
-          <Link
-            to="/compose"
-            className={buttonVariants({
-              className:
-                "h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid",
-            })}
-          >
+          <Link to="/compose" className={buttonVariants({ className: "whitespace-normal" })}>
             New message
           </Link>
         </div>
