@@ -1,20 +1,10 @@
-import {
-  createContext,
-  useContext,
-  useRef,
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
 import { useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { Navigate, trimPathRight, useRouterState } from "@tanstack/react-router";
+import { Navigate, trimPathRight, useRouter, useRouterState } from "@tanstack/react-router";
 import { useGetSetupStatus, getGetSetupStatusQueryKey } from "@/api/generated/inbok";
-import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import type { ResponseSetupStatus } from "@/api/generated/model";
-import { Button } from "@/components/ui/button";
+import { FailedRead, RoutePending } from "@/components/route-states";
 
 // SetupState is the shared installation status and setup actions.
 type SetupState = {
@@ -35,6 +25,7 @@ export function useSetup(): SetupState {
 // SetupGate restricts all pages to setup until the backend reports completion.
 export function SetupGate({ children }: { children: ReactNode }) {
   const client = useQueryClient();
+  const router = useRouter();
   const isSetup = useRouterState({
     // The URL can change before the previous page has finished unmounting.
     select: (state) =>
@@ -48,10 +39,6 @@ export function SetupGate({ children }: { children: ReactNode }) {
   // A later status check can confirm an attempt whose response was lost.
   const [attemptedHere, setAttemptedHere] = useState(false);
   const completedHere = attemptedHere && status.data?.data.status === "done";
-  const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    if (status.isError) heading.current?.focus();
-  }, [status.isError]);
 
   const attempt = useCallback(() => setAttemptedHere(true), []);
   const complete = useCallback(async (): Promise<void> => {
@@ -66,35 +53,31 @@ export function SetupGate({ children }: { children: ReactNode }) {
   );
 
   // Failed rechecks keep the form mounted so entered values survive retry.
-  if (!status.data)
+  if (!status.data) {
+    if (status.error) {
+      return (
+        <FailedRead
+          // A new failure is a new page, whose heading takes focus again,
+          // also when it comes before the loading view had a frame.
+          key={status.errorUpdateCount}
+          error={status.error}
+          onRetry={() => {
+            void status.refetch();
+            // The page's own checks may have failed behind this one too.
+            void router.invalidate();
+          }}
+        />
+      );
+    }
+    // The app's loading view, where the router's will be (the root's
+    // column), so the page does not jump. After Try again it is a later
+    // load's, shown at once, as the router's is after its Try again.
     return (
-      <main className="mx-auto flex w-full max-w-lg flex-col gap-6 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-        <h1 ref={heading} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-          inbok
-        </h1>
-        {status.isPending && <output>Checking setup status...</output>}
-        {status.isError && (
-          <>
-            <div className="flex flex-col gap-2" role="alert">
-              <p>Could not check setup status. {userMessage(status.error)}</p>
-              {status.error.requestId && (
-                <p className="text-sm text-muted-foreground">
-                  Request reference: <code className="break-all">{status.error.requestId}</code>
-                </p>
-              )}
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              isDisabled={status.isFetching}
-              onPress={() => void status.refetch()}
-            >
-              {status.isFetching ? "Checking setup status..." : "Try again"}
-            </Button>
-          </>
-        )}
-      </main>
+      <div className="flex min-h-svh flex-col">
+        <RoutePending moment={status.errorUpdateCount > 0 ? "later" : "first-load"} />
+      </div>
     );
+  }
 
   const done = status.data.data.status === "done";
   if (!done && !isSetup) return <Navigate to="/setup" replace />;

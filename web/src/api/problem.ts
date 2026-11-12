@@ -134,9 +134,9 @@ function sameDay(a: Date, b: Date): boolean {
 
 // sentence returns text ending in a full stop, adding one when it has no
 // final punctuation, e.g. after a problem title; undefined stays undefined.
-function sentence(text: string): string;
-function sentence(text: string | undefined): string | undefined;
-function sentence(text: string | undefined): string | undefined {
+export function sentence(text: string): string;
+export function sentence(text: string | undefined): string | undefined;
+export function sentence(text: string | undefined): string | undefined {
   if (text === undefined || /[.!?]$/.test(text)) return text;
   return `${text}.`;
 }

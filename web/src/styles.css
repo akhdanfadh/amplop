@@ -229,6 +229,20 @@
   outline-offset: -2px;
 }
 
+/* Hidden for the router's pending delay (src/router.tsx), 300 ms, then
+ * shown: for a loading view the router does not time, e.g. the setup
+ * check's in the prerendered shell, so a quick check shows nothing. */
+@utility pending-delay {
+  opacity: 0;
+  animation: pending-delay-show 0s 300ms forwards;
+}
+
+@keyframes pending-delay-show {
+  to {
+    opacity: 1;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring;
@@ -241,7 +255,7 @@
   }
   /* Headings, landmarks, and messages that only code focuses (tabindex
    * -1), e.g. a page heading after navigation, are not controls: no ring. */
-  [tabindex="-1"]:focus:where(h1, h2, h3, h4, main, section, div, p) {
+  [tabindex="-1"]:focus:where(h1, h2, h3, h4, main, section, div, p, output) {
     outline: none;
   }
 }

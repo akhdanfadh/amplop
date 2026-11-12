@@ -157,12 +157,33 @@ Each file in `src/routes` is one route. `pnpm dev` and `pnpm build`
 regenerate `src/routeTree.gen.ts` from them. That file is committed so
 type checking works on a fresh clone; never edit it by hand.
 
-The application checks setup status once per fresh page load and shares the
-result during navigation. Before setup is complete, every page redirects to
-`/setup`, including direct sign-in, demo, and unknown URLs. The check attempts
-the API even when the browser reports offline. Initial status failures block
-the page with an error and retry action; a failed recheck keeps entered setup
-values and shows the error beside the form.
+Every page gets the same states from the router (`src/router.tsx`):
+`RoutePending`, a spinner with "Loading...", when the page's checks take
+over 300 ms, then for at least 500 ms so it does not flash. The first
+load, the setup check's included, is one loading period: TanStack shows
+its view at once, so CSS hides it for the page's first 300 ms and nothing
+holds it, and a quick first load shows nothing. `RouteError` when a read
+the page needs fails, with Try again, which runs the checks again; and
+`NotFound` for an address with no page, or with search parameters its
+route refuses, which Reload would only repeat. A search parameter that
+only filters a view should fall back instead, e.g. with Zod's `.catch()`,
+so an old link still opens the page; a route that refuses a name in its
+path throws `notFound()` from its `beforeLoad` or `loader` (thrown while
+the page draws, it is a crash). `CrashScreen` offers Reload and the start
+page, the way out when a page fails on every load; a `CatchBoundary` in
+the root shows it when the code around the pages fails. Each state names
+the tab and moves focus to its heading; after Try again the pending view
+takes focus, unless focus is on something still shown.
+
+The application checks setup status once per fresh page load and shares
+the result during navigation. Before setup is complete, every page
+redirects to `/setup`, including direct sign-in, demo, and unknown URLs.
+The check attempts the API even when the browser reports offline. While it
+runs, the page shows the app's first-load view (above); a failed first
+check shows the app's failed-read state, whose Try again shows the loading
+view at once, as the router's does, checks again, and runs the page's own
+checks too. A failed recheck keeps entered setup values and shows the
+error beside the form.
 
 The `/setup` page shows token configuration instructions or the first-admin
 form. See [First administrator setup](../backend/README.md#first-administrator-setup)
@@ -655,7 +676,7 @@ from the registry here:
     words found nowhere else: inside a dialog or drawer, assistive
     technology never reads it. Its `aria-describedby` repeats an icon
     button's name, which is React Aria's doing.
-  - `skeleton` does not pulse.
+  - `skeleton` does not pulse. `spinner` is decoration.
 - `toast` is ours: the registry offers only `sonner` (see DESIGN.md).
   `showUndo` shows a result with Undo and closes itself after 10 s;
   `showError` shows a failure until the member closes it, and not again

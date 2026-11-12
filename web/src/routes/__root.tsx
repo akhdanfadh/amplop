@@ -1,7 +1,14 @@
-import { useEffect, type ReactNode } from "react";
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
+import { useEffect, type ReactElement, type ReactNode } from "react";
+import {
+  CatchBoundary,
+  HeadContent,
+  Outlet,
+  Scripts,
+  createRootRoute,
+} from "@tanstack/react-router";
 import appCss from "../styles.css?url";
 import pressableCss from "../react-aria-pressable.css?url";
+import { CrashScreen } from "@/components/route-states";
 import { SetupGate } from "@/features/setup/gate";
 import { themeScript, watchTheme } from "@/lib/theme";
 
@@ -26,7 +33,7 @@ export const Route = createRootRoute({
     scripts: [{ children: themeScript }],
   }),
   shellComponent: RootDocument,
-  notFoundComponent: NotFound,
+  component: Root,
 });
 
 // The HTML document around every route. The build prerenders it once into
@@ -42,14 +49,23 @@ function RootDocument({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <SetupGate>{children}</SetupGate>
+        {/* The router's own boundaries sit inside SetupGate; this one shows
+            inbok's crash screen, not TanStack's, when the gate itself fails. */}
+        <CatchBoundary getResetKey={() => "shell"} errorComponent={CrashScreen}>
+          <SetupGate>{children}</SetupGate>
+        </CatchBoundary>
         <Scripts />
       </body>
     </html>
   );
 }
 
-// Shown for any URL without a route, e.g. a mistyped path.
-function NotFound() {
-  return <p className="p-8 text-muted-foreground">Page not found.</p>;
+// Root draws every page in a column the height of the window, so a page
+// or the pending view can fill it.
+function Root(): ReactElement {
+  return (
+    <div className="flex min-h-svh flex-col">
+      <Outlet />
+    </div>
+  );
 }

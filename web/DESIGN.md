@@ -403,8 +403,10 @@ is inbok's own and runs Check for new mail; the list box sets
 ### States
 
 - **Loading:** routes load data in `loader` with `ensureQueryData`;
-  `pendingComponent` appears after 300 ms and stays at least 500 ms, as
-  placeholder rows shaped like real ones. Background re-reads show
+  `pendingComponent` appears after 300 ms and stays at least 500 ms (on
+  the first load it is not held, so a quick one shows nothing): a list's
+  own as placeholder rows shaped like real ones, any other page's the
+  router's default, a spinner with "Loading...". Background re-reads show
   nothing. Hovering or focusing a row preloads its conversation, and the
   reading pane starts from the list row's data.
 - **Empty:** words only, the cause and one next step: "Connect your first
