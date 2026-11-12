@@ -34,6 +34,17 @@ func DecodeText(part Part, content []byte) []byte {
 	return bytes.TrimPrefix(bytes.ToValidUTF8(decoded, []byte("\uFFFD")), bomUTF8)
 }
 
+// DecodeFrom returns content, a text part's bytes, converted to valid
+// UTF-8 as [DecodeText] does, from contentCharset when the provider
+// converted the bytes to it, or else from part's declared charset when
+// contentCharset is empty.
+func DecodeFrom(part Part, contentCharset string, content []byte) []byte {
+	if contentCharset != "" {
+		part.Charset = contentCharset
+	}
+	return DecodeText(part, content)
+}
+
 // contentType returns part's media type with its declared charset, as a
 // Content-Type value.
 func contentType(part Part) string {

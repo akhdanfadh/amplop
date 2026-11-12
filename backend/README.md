@@ -1285,10 +1285,13 @@ technology package fills (`google` for Gmail), and returns:
   size, disposition, `Content-ID`, kind, and, for `multipart/related`,
   its `start` parameter;
 - the content of each text part that came with the message, converted to
-  UTF-8 by `DecodeText`. A part whose bytes the provider sends separately
-  (Gmail's `attachmentId`) has none; decode it with `DecodeText` once
-  fetched. Neither has a text part inside an attachment, e.g. a forwarded
-  message, which no view shows.
+  UTF-8 by `DecodeFrom`: from the charset the provider says it already
+  converted the bytes to (`Received.ContentCharset`; Gmail's inline text
+  is UTF-8), or else the part's declared charset, through `DecodeText`. A
+  part whose bytes the provider sends separately (Gmail's `attachmentId`)
+  has none; decode it with `DecodeFrom` once fetched, with the charset the
+  provider reports for those bytes. Neither has a text part inside an
+  attachment, e.g. a forwarded message, which no view shows.
 
 These are inbok's own rules on top of a parsed tree. MIME libraries such
 as emersion's go-message or enmime read raw message bytes and decide no
@@ -1341,9 +1344,23 @@ shown, so a better rule reaches stored mail without fetching it again:
 Reports say Gmail's `attachmentId` changes between `messages.get` calls,
 so a part is named by its message and part ID, and its bytes are fetched
 with the `attachmentId` of a fresh `messages.get`; an attachment's bytes
-may also come as `data` in that answer. The fixtures in
-`internal/google/testdata` follow the shape of a recorded `format=full`
-response.
+may also come as `data` in that answer. Real Gmail, recorded from the test
+account in `internal/google/testdata/recorded`:
+
+- converts a text part's inline `data` to UTF-8, from its declared
+  charset, its `<meta>` charset, or else Latin-1, yet keeps its
+  `Content-Type` and its `size` as sent, so the `google` package marks it
+  with `ContentCharset` `utf-8`;
+- sends a long text part, and every file and inline image however small,
+  by `attachmentId`, and `messages.attachments.get` returns those bytes as
+  sent;
+- decodes RFC 2047 and RFC 2231 file names, rewriting the part's header
+  fields to match;
+- nests a forwarded message's parts under its `message/rfc822` part.
+
+The other fixtures in `internal/google/testdata` are built in that shape.
+[Gmail fixtures](../CONTRIBUTING.md#gmail-fixtures) says how to record
+more.
 
 ## Showing HTML
 

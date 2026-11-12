@@ -1,0 +1,94 @@
+{
+ "id": "19a6a1f0c0d0e005",
+ "threadId": "19a6a1f0c0d0e005",
+ "labelIds": [
+  "UNREAD",
+  "INBOX"
+ ],
+ "snippet": "A Latin-1 text file is attached.",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/mixed",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Received",
+    "value": "from 100000000000 named unknown by gmailapi.google.com with HTTPREST; Thu, 12 Nov 2026 02:04:23 -0600"
+   },
+   {
+    "name": "From",
+    "value": "Asha Kartika <asha@example.co.id>"
+   },
+   {
+    "name": "To",
+    "value": "Inbok Test <alex@example.com>"
+   },
+   {
+    "name": "Subject",
+    "value": "Latin-1 text file"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 9 Nov 2026 09:25:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<latin-1-text-file@example.co.id>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/mixed; boundary=\"mix-6\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=UTF-8"
+     }
+    ],
+    "body": {
+     "size": 32,
+     "data": "QSBMYXRpbi0xIHRleHQgZmlsZSBpcyBhdHRhY2hlZC4="
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "text/plain",
+    "filename": "notes.txt",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=ISO-8859-1; name=\"notes.txt\""
+     },
+     {
+      "name": "Content-Disposition",
+      "value": "attachment; filename=\"notes.txt\""
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ-recorded-1",
+     "size": 26
+    }
+   }
+  ]
+ },
+ "sizeEstimate": 688,
+ "historyId": "4096",
+ "internalDate": "1794191100000"
+}

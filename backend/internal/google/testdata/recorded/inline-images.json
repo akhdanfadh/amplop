@@ -1,0 +1,121 @@
+{
+ "id": "19a6a1f0c0d0e004",
+ "threadId": "19a6a1f0c0d0e004",
+ "labelIds": [
+  "UNREAD",
+  "INBOX"
+ ],
+ "snippet": "Logo and chart",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/related",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Received",
+    "value": "from 100000000000 named unknown by gmailapi.google.com with HTTPREST; Thu, 12 Nov 2026 02:02:06 -0600"
+   },
+   {
+    "name": "From",
+    "value": "Asha Kartika <asha@example.co.id>"
+   },
+   {
+    "name": "To",
+    "value": "Inbok Test <alex@example.com>"
+   },
+   {
+    "name": "Subject",
+    "value": "Inline images"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 9 Nov 2026 09:15:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<inline-images@example.co.id>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/related; boundary=\"rel-4\"; type=\"text/html\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/html",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/html; charset=UTF-8"
+     }
+    ],
+    "body": {
+     "size": 92,
+     "data": "PHA-TG9nbyA8aW1nIHNyYz0iY2lkOmxvZ29AZXhhbXBsZS5jby5pZCI-IGFuZCBjaGFydCA8aW1nIHNyYz0iY2lkOmNoYXJ0QGV4YW1wbGUuY28uaWQiPjwvcD4="
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "image/png",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "image/png"
+     },
+     {
+      "name": "Content-ID",
+      "value": "<logo@example.co.id>"
+     },
+     {
+      "name": "Content-Disposition",
+      "value": "inline"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ-recorded-1",
+     "size": 70
+    }
+   },
+   {
+    "partId": "2",
+    "mimeType": "image/png",
+    "filename": "chart.png",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "image/png; name=\"chart.png\""
+     },
+     {
+      "name": "Content-ID",
+      "value": "<chart@example.co.id>"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ-recorded-2",
+     "size": 300008
+    }
+   }
+  ]
+ },
+ "sizeEstimate": 411454,
+ "historyId": "4096",
+ "internalDate": "1794190500000"
+}

@@ -1,0 +1,162 @@
+{
+ "id": "19a6a1f0c0d0e002",
+ "threadId": "19a6a1f0c0d0e002",
+ "labelIds": [
+  "UNREAD",
+  "INBOX"
+ ],
+ "snippet": "See the forwarded agenda.",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/mixed",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Received",
+    "value": "from 100000000000 named unknown by gmailapi.google.com with HTTPREST; Thu, 12 Nov 2026 00:02:04 -0800"
+   },
+   {
+    "name": "From",
+    "value": "Asha Kartika <asha@example.co.id>"
+   },
+   {
+    "name": "To",
+    "value": "Inbok Test <alex@example.com>"
+   },
+   {
+    "name": "Subject",
+    "value": "Forwarded as attachment"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 9 Nov 2026 09:05:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<forwarded-as-attachment@example.co.id>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/mixed; boundary=\"mix-2\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=UTF-8"
+     }
+    ],
+    "body": {
+     "size": 25,
+     "data": "U2VlIHRoZSBmb3J3YXJkZWQgYWdlbmRhLg=="
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "message/rfc822",
+    "filename": "Original agenda.eml",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "message/rfc822"
+     },
+     {
+      "name": "Content-Disposition",
+      "value": "attachment; filename=\"Original agenda.eml\""
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ-recorded-1",
+     "size": 454
+    },
+    "parts": [
+     {
+      "partId": "1.0",
+      "mimeType": "multipart/alternative",
+      "filename": "",
+      "headers": [
+       {
+        "name": "From",
+        "value": "Blair Chen <blair@example.org>"
+       },
+       {
+        "name": "To",
+        "value": "Asha Kartika <asha@example.co.id>"
+       },
+       {
+        "name": "Subject",
+        "value": "Original agenda"
+       },
+       {
+        "name": "Date",
+        "value": "Fri, 6 Nov 2026 16:20:00 +0700"
+       },
+       {
+        "name": "Message-ID",
+        "value": "<original-agenda@example.org>"
+       },
+       {
+        "name": "MIME-Version",
+        "value": "1.0"
+       },
+       {
+        "name": "Content-Type",
+        "value": "multipart/alternative; boundary=\"inner-alt\""
+       }
+      ],
+      "body": {
+       "size": 0
+      },
+      "parts": [
+       {
+        "partId": "1.0.0",
+        "mimeType": "text/plain",
+        "filename": "",
+        "headers": [
+         {
+          "name": "Content-Type",
+          "value": "text/plain; charset=UTF-8"
+         }
+        ],
+        "body": {
+         "size": 23,
+         "data": "QWdlbmRhOiBidWRnZXQsIGhpcmluZy4="
+        }
+       },
+       {
+        "partId": "1.0.1",
+        "mimeType": "text/html",
+        "filename": "",
+        "headers": [
+         {
+          "name": "Content-Type",
+          "value": "text/html; charset=UTF-8"
+         }
+        ],
+        "body": {
+         "size": 37,
+         "data": "PHA-QWdlbmRhOiA8Yj5idWRnZXQ8L2I-LCBoaXJpbmcuPC9wPg=="
+        }
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "sizeEstimate": 1052,
+ "historyId": "4096",
+ "internalDate": "1794189900000"
+}

@@ -87,6 +87,29 @@ func TestParseTextContent(t *testing.T) {
 	assert.Equal(t, []Text{{PartID: "0", Content: []byte{}}}, texts)
 }
 
+// Text a provider converted is read in the charset it says, not the one
+// the part declares, which the part still records; text as sent is read
+// in its declared charset.
+func TestParseContentCharset(t *testing.T) {
+	latin1 := header("Content-Type", "text/plain; charset=iso-8859-1")
+	root := Received{
+		MediaType: "multipart/alternative", Header: header(),
+		Parts: []Received{
+			{ID: "0", MediaType: "text/plain", Header: latin1, Content: []byte("Caf\xc3\xa9\r\n"), ContentCharset: "utf-8"},
+			{ID: "1", MediaType: "text/plain", Header: latin1, Content: []byte("Caf\xe9\r\n")},
+		},
+	}
+
+	tree, texts, err := Parse(root)
+	require.NoError(t, err)
+
+	assert.Equal(t, []Text{
+		{PartID: "0", Content: []byte("Café\r\n")},
+		{PartID: "1", Content: []byte("Café\r\n")},
+	}, texts)
+	assert.Equal(t, "iso-8859-1", tree.Parts[0].Charset)
+}
+
 // Only a text part's content is returned, never an attachment's.
 func TestParseAttachmentContent(t *testing.T) {
 	root := Received{MediaType: "text/plain", Filename: "notes.txt", Content: []byte("secret")}

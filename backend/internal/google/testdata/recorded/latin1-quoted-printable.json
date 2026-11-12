@@ -1,0 +1,94 @@
+{
+ "id": "19a6a1f0c0d0e001",
+ "threadId": "19a6a1f0c0d0e001",
+ "labelIds": [
+  "UNREAD",
+  "INBOX"
+ ],
+ "snippet": "Café “sérieux” – à bientôt",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/alternative",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Received",
+    "value": "from 100000000000 named unknown by gmailapi.google.com with HTTPREST; Thu, 12 Nov 2026 00:02:04 -0800"
+   },
+   {
+    "name": "From",
+    "value": "Asha Kartika <asha@example.co.id>"
+   },
+   {
+    "name": "To",
+    "value": "Inbok Test <alex@example.com>"
+   },
+   {
+    "name": "Subject",
+    "value": "Latin-1 quoted-printable"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 9 Nov 2026 09:00:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<latin-1-quoted-printable@example.co.id>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/alternative; boundary=\"alt-1\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=ISO-8859-1"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 134,
+     "data": "Q2Fmw6kgY3LDqG1lIMOgIG1pZGkuIFByaXg6IDEyIEVVUi4NCkxpZ25lIGxvbmd1ZSB4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eCBmaW4uDQo="
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "text/html",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/html; charset=\"windows-1252\""
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 35,
+     "data": "PHA-Q2Fmw6kg4oCcc8OpcmlldXjigJ0g4oCTIMOgIGJpZW50w7R0PC9wPg0K"
+    }
+   }
+  ]
+ },
+ "sizeEstimate": 822,
+ "historyId": "4096",
+ "internalDate": "1794189600000"
+}

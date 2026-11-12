@@ -43,6 +43,7 @@ func receivedPart(part *gmail.MessagePart) (messagecontent.Received, error) {
 		}
 		received.Size = part.Body.Size
 		received.Content = content
+		received.ContentCharset = dataCharset(part)
 	}
 
 	for _, child := range part.Parts {
@@ -69,4 +70,23 @@ func bodyContent(body *gmail.MessagePartBody) ([]byte, error) {
 		return nil, fmt.Errorf("decode data: %w", err)
 	}
 	return content, nil
+}
+
+// dataUTF8 is the charset Gmail converts a text part's inline data to.
+const dataUTF8 = "utf-8"
+
+// dataCharset returns the charset of part's inline data when Gmail
+// converted it, as [messagecontent.Received.ContentCharset]: UTF-8 for a
+// text part, else empty.
+//
+// NOTE: Gmail converts a text/* part's data to UTF-8, from its declared
+// charset, its <meta> charset, or else Latin-1, yet keeps the part's
+// Content-Type as sent, and its size the length as sent. Bytes from
+// messages.attachments.get, e.g. a long body's or a file's, come as sent
+// (observed on real Gmail, 2026-11-12; ADR009, "What Gmail sends").
+func dataCharset(part *gmail.MessagePart) string {
+	if part.Body == nil || part.Body.AttachmentId != "" || !strings.HasPrefix(strings.ToLower(part.MimeType), "text/") {
+		return ""
+	}
+	return dataUTF8
 }

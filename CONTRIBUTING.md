@@ -85,6 +85,27 @@ since a version refuses to open another's data, so after
 `docker volume ls` lists it, e.g. `inbok_meilisearch-1.56.1`, and
 `docker volume rm` deletes it.
 
+### Gmail fixtures
+
+Tests read Gmail's answers from fixtures in
+`backend/internal/google/testdata`; those in `recorded` are real answers.
+Record them only from inbok's test Gmail account, never a personal
+mailbox, on a trial stack with that account connected, and fetch only the
+messages made for the purpose:
+
+1. Write the message as raw MIME and put it into the test account with
+   Gmail's `messages.insert`, which the connected account's permission
+   allows. It arrives as received mail without being sent anywhere.
+2. Fetch it with `messages.get` in `format=full`, and any part it sends by
+   `attachmentId` with `messages.attachments.get`.
+3. Replace the message and thread IDs, the account's address, the Google
+   Cloud project number in the `Received` field, and every
+   `attachmentId`, and save the answer under `recorded`.
+4. Add a case to `receivedpart_test.go` saying what the answer shows.
+
+[Message parts](backend/README.md#message-parts) lists what the
+recordings showed about Gmail.
+
 ## Changing the API
 
 The Go code defines the API. A change to an operation, e.g. a renamed
