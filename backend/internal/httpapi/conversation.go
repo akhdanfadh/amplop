@@ -407,7 +407,7 @@ type conversationActionInput struct {
 }
 
 type conversationActionBody struct {
-	Action conversation.Action `json:"action" doc:"What to do: mark read or unread. Each applies to every message of a conversation, drafts too, as the provider's own thread action does."`
+	Action conversation.Action `json:"action" doc:"What to do: mark read or unread, archive out of the inbox or unarchive back into it, move to Trash or out of it, star or unstar. Each applies to every message of a conversation, drafts too, as the provider's own thread action does."`
 	IDs    []uuid.UUID         `json:"ids" nullable:"false" format:"uuid" minItems:"1" maxItems:"100" uniqueItems:"true" doc:"The conversations to act on, by id from a list."`
 }
 

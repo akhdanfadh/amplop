@@ -2839,13 +2839,15 @@ reads in about 3 ms, deep pages included, and every unread count in
 about 11 ms.
 
 `POST /conversations/actions {action, ids}` changes up to 100 of the
-member's conversations: `read` and `unread`, each undoing the other.
+member's conversations: `read` and `unread`, `archive` and `unarchive`,
+`trash` and `untrash`, `star` and `unstar`, each pair undoing the other.
 `conversation.ActionService` calls Gmail inside the request, and inbok
 writes only what Gmail answers (ADR031, "Mail actions as built"):
 
 1. It finds the member's threads; another ID is refused `not-found`.
 2. Per account, at once, it takes an access token, then calls
-   `threads.modify` for each thread, four at a time per request, for at most 7 seconds and never
+   `threads.modify`, `threads.trash`, or `threads.untrash` for each
+   thread, four at a time per request, for at most 7 seconds and never
    into the last 3 of the request's 10, which the writes and answer
    keep. `google.Client.ChangeThread` holds Gmail's rules, which action
    is which label, and returns each message's labels as Gmail answered,

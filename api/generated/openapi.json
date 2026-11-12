@@ -224,10 +224,16 @@
         "additionalProperties": false,
         "properties": {
           "action": {
-            "description": "What to do: mark read or unread. Each applies to every message of a conversation, drafts too, as the provider's own thread action does.",
+            "description": "What to do: mark read or unread, archive out of the inbox or unarchive back into it, move to Trash or out of it, star or unstar. Each applies to every message of a conversation, drafts too, as the provider's own thread action does.",
             "enum": [
               "read",
-              "unread"
+              "unread",
+              "archive",
+              "unarchive",
+              "trash",
+              "untrash",
+              "star",
+              "unstar"
             ],
             "type": "string"
           },
@@ -270,7 +276,13 @@
             "description": "The action that undoes this one, for the changed conversations.",
             "enum": [
               "read",
-              "unread"
+              "unread",
+              "archive",
+              "unarchive",
+              "trash",
+              "untrash",
+              "star",
+              "unstar"
             ],
             "type": "string"
           }

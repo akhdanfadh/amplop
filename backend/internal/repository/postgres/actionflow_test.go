@@ -46,20 +46,22 @@ func TestActionFlow(t *testing.T) {
 		return applied.Conversations[0]
 	}
 
-	// When the member marks the thread read.
+	// When the member archives the thread and marks it read.
+	apply(conversation.ActionArchive)
 	row := apply(conversation.ActionRead)
 
 	// Then the answer, inbok's messages, and Gmail agree: both messages
-	// read and still in the inbox, the other thread untouched.
+	// read and out of the inbox, the other thread untouched.
 	assert.False(t, row.Unread)
-	assert.True(t, row.InInbox)
+	assert.False(t, row.InInbox)
+	assert.True(t, row.InAllMail)
 	messages := stored.messages(t, account.ID)
 	for _, id := range []string{"m1", "m2"} {
 		assert.True(t, messages[id].Seen, id)
-		assert.Equal(t, []string{"INBOX"}, messages[id].MailboxProviderIDs, id)
+		assert.Empty(t, messages[id].MailboxProviderIDs, id)
 		at, err := f.gmailAt(t, account.ID).Users.Messages.Get("me", id).Format("minimal").Do()
 		require.NoError(t, err)
-		assert.Equal(t, []string{"INBOX"}, at.LabelIds, id)
+		assert.Empty(t, at.LabelIds, id)
 	}
 	assert.False(t, messages["m3"].Seen)
 
@@ -68,12 +70,13 @@ func TestActionFlow(t *testing.T) {
 	runPoll(t, mailsync.NewPoll(f.db, f.google, f.access, time.Now), account.ID)
 	assert.Equal(t, messages, stored.messages(t, account.ID))
 
-	// When the member undoes it.
-	row = apply(conversation.ActionRead.Opposite())
+	// When the member undoes the archive.
+	row = apply(conversation.ActionArchive.Opposite())
 
-	// Then the thread is unread again, in both.
-	assert.True(t, row.Unread)
-	assert.False(t, stored.messages(t, account.ID)["m2"].Seen)
+	// Then the thread is back in the inbox, still read.
+	assert.True(t, row.InInbox)
+	assert.False(t, row.Unread)
+	assert.Equal(t, []string{"INBOX"}, stored.messages(t, account.ID)["m2"].MailboxProviderIDs)
 }
 
 // An action's answer written after a poll has brought in a newer change to

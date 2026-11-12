@@ -24,16 +24,28 @@ type Action string
 
 // The actions, each beside its opposite.
 const (
-	ActionRead   Action = "read"
-	ActionUnread Action = "unread"
+	ActionRead      Action = "read"
+	ActionUnread    Action = "unread"
+	ActionArchive   Action = "archive"   // out of the inbox
+	ActionUnarchive Action = "unarchive" // back into the inbox
+	ActionTrash     Action = "trash"
+	ActionUntrash   Action = "untrash"
+	ActionStar      Action = "star"
+	ActionUnstar    Action = "unstar"
 )
 
 // Actions lists every action, each beside its opposite.
-var Actions = []Action{ActionRead, ActionUnread}
+var Actions = []Action{
+	ActionRead, ActionUnread, ActionArchive, ActionUnarchive,
+	ActionTrash, ActionUntrash, ActionStar, ActionUnstar,
+}
 
 // opposites pairs each action with the one that undoes it.
 var opposites = map[Action]Action{
 	ActionRead: ActionUnread, ActionUnread: ActionRead,
+	ActionArchive: ActionUnarchive, ActionUnarchive: ActionArchive,
+	ActionTrash: ActionUntrash, ActionUntrash: ActionTrash,
+	ActionStar: ActionUnstar, ActionUnstar: ActionStar,
 }
 
 // Opposite returns the action that undoes a, or empty for no action.

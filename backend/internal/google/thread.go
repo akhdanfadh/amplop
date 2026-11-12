@@ -22,28 +22,49 @@ type labelChange struct {
 }
 
 // labelChanges are the actions that are a change of labels, by Gmail's
-// rules (ADR007, "Gmail labels as mailboxes"): read is UNREAD removed.
+// rules (ADR007, "Gmail labels as mailboxes"): read is UNREAD removed,
+// archive is INBOX removed, and star is STARRED added.
 var labelChanges = map[conversation.Action]labelChange{
-	conversation.ActionRead:   {remove: []string{labelUnread}},
-	conversation.ActionUnread: {add: []string{labelUnread}},
+	conversation.ActionRead:      {remove: []string{labelUnread}},
+	conversation.ActionUnread:    {add: []string{labelUnread}},
+	conversation.ActionArchive:   {remove: []string{labelInbox}},
+	conversation.ActionUnarchive: {add: []string{labelInbox}},
+	conversation.ActionStar:      {add: []string{labelStarred}},
+	conversation.ActionUnstar:    {remove: []string{labelStarred}},
 }
 
 // ChangeThread applies action to every message of the thread with
-// threadID, with threads.modify, and returns each message's labels as
-// Gmail answers, as inbok keeps them. It returns an error wrapping
-// [conversation.ErrNotFound] when Gmail no longer has the thread.
+// threadID, with threads.modify, or threads.trash and threads.untrash for
+// Trash, and returns each message's labels as Gmail answers, as inbok keeps
+// them. It returns an error wrapping [conversation.ErrNotFound] when Gmail
+// no longer has the thread.
+//
+// DESIGN: star adds STARRED to every message, as threads.modify does,
+// where Gmail's own web app stars only the newest (ADR031, "Mail actions as
+// built").
 func (c *Client) ChangeThread(ctx context.Context, token connectedaccount.AccessToken, threadID string, action conversation.Action) ([]mailsync.MessageUpdate, error) {
 	service, err := c.gmail(ctx, token)
 	if err != nil {
 		return nil, err
 	}
-	change, ok := labelChanges[action]
-	if !ok {
+	threads := service.Users.Threads
+	var call func() (*gmail.Thread, error)
+	switch change, ok := labelChanges[action]; {
+	case ok:
+		request := &gmail.ModifyThreadRequest{AddLabelIds: change.add, RemoveLabelIds: change.remove}
+		call = func() (*gmail.Thread, error) {
+			return threads.Modify(gmailUser, threadID, request).Fields(threadFields).Context(ctx).Do()
+		}
+	case action == conversation.ActionTrash:
+		call = func() (*gmail.Thread, error) {
+			return threads.Trash(gmailUser, threadID).Fields(threadFields).Context(ctx).Do()
+		}
+	case action == conversation.ActionUntrash:
+		call = func() (*gmail.Thread, error) {
+			return threads.Untrash(gmailUser, threadID).Fields(threadFields).Context(ctx).Do()
+		}
+	default:
 		return nil, fmt.Errorf("gmail api: no call for action %q", action)
-	}
-	request := &gmail.ModifyThreadRequest{AddLabelIds: change.add, RemoveLabelIds: change.remove}
-	call := func() (*gmail.Thread, error) {
-		return service.Users.Threads.Modify(gmailUser, threadID, request).Fields(threadFields).Context(ctx).Do()
 	}
 
 	// Each call sets labels rather than toggling them, so a retried one

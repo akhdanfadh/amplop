@@ -16,7 +16,8 @@ import (
 
 // Each action changes every message of the thread, and the answer is
 // where each stands after, as inbok keeps it, at a version past the one
-// before.
+// before: Trash by Gmail's own rules, which take the thread out of the
+// inbox and back.
 func TestChangeThread(t *testing.T) {
 	client, token := startMailbox(t, nil, []googleemulator.Message{
 		{ID: "m1", ThreadID: "t1", Mailbox: alexMailbox, From: "a@example.com", Subject: "Hi", LabelIDs: []string{labelInbox, labelUnread}},
@@ -38,6 +39,12 @@ func TestChangeThread(t *testing.T) {
 	}{
 		{conversation.ActionRead, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox, Seen: true})},
 		{conversation.ActionUnread, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
+		{conversation.ActionStar, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox, Flagged: true})},
+		{conversation.ActionUnstar, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
+		{conversation.ActionArchive, both(mailsync.MessageUpdate{})},
+		{conversation.ActionUnarchive, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
+		{conversation.ActionTrash, both(mailsync.MessageUpdate{MailboxProviderIDs: []string{labelTrash}})},
+		{conversation.ActionUntrash, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
 	} {
 		updates, err := client.ChangeThread(t.Context(), token, "t1", step.action)
 
@@ -62,7 +69,7 @@ func TestChangeThread(t *testing.T) {
 func TestChangeThreadNotFound(t *testing.T) {
 	client, token := startMailbox(t, nil, nil)
 
-	_, err := client.ChangeThread(t.Context(), token, "gone", conversation.ActionRead)
+	_, err := client.ChangeThread(t.Context(), token, "gone", conversation.ActionTrash)
 
 	require.ErrorIs(t, err, conversation.ErrNotFound)
 }
@@ -87,7 +94,7 @@ func TestChangeThreadBusy(t *testing.T) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	})
 
-	_, err := client.ChangeThread(t.Context(), connectedaccount.NewAccessToken("access-1"), "t1", conversation.ActionUnread)
+	_, err := client.ChangeThread(t.Context(), connectedaccount.NewAccessToken("access-1"), "t1", conversation.ActionUntrash)
 
 	require.ErrorIs(t, err, mailsync.ErrProviderBusy)
 	assert.Len(t, pauses.all(), retryAttempts-1)
