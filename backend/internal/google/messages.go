@@ -211,6 +211,23 @@ func (p *paces) take(accountID int64) *rate.Limiter {
 	return current.limiter
 }
 
+// waitPace waits on pace until n units are free. It returns ctx's error
+// once ctx ends, and an error wrapping [mailsync.ErrProviderBusy] when the
+// wait would outlast ctx's deadline: the account's share of Gmail's quota
+// is spent for now, and no request was sent.
+func waitPace(ctx context.Context, pace *rate.Limiter, n int) error {
+	// NOTE: WaitN refuses at once, before the deadline, with an error of its
+	// own, when the wait would pass it.
+	err := pace.WaitN(ctx, n)
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return fmt.Errorf("%w: the account's gmail quota share is spent for now", mailsync.ErrProviderBusy)
+}
+
 // release ends one call's use of accountID's pace.
 func (p *paces) release(accountID int64) {
 	p.mu.Lock()
@@ -228,7 +245,7 @@ func (c *Client) fetchMetadata(ctx context.Context, service *gmail.Service, pace
 		return retry(ctx, c, func() (*gmail.Message, error) {
 			// Inside the retry, so every attempt waits for its units: Gmail
 			// charges each request, a retried one too.
-			if err := pace.WaitN(ctx, metadataUnits); err != nil {
+			if err := waitPace(ctx, pace, metadataUnits); err != nil {
 				return nil, err
 			}
 			call := service.Users.Messages.Get(gmailUser, providerID).Format(format).Fields(fields)
@@ -249,6 +266,11 @@ func (c *Client) fetchMetadata(ctx context.Context, service *gmail.Service, pace
 	}
 	if err != nil {
 		return nil, err
+	}
+	// NOTE: Google's client answers a JSON null, or a 204, with no value
+	// and no error.
+	if message == nil {
+		return nil, errGmailAnswer
 	}
 	if message.Id != providerID {
 		return nil, fmt.Errorf("gmail api: asked for one message, got another")

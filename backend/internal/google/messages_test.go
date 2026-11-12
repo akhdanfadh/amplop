@@ -1,6 +1,7 @@
 package google
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -180,6 +181,44 @@ func TestMessagesFailure(t *testing.T) {
 	require.ErrorIs(t, err, mailsync.ErrProviderBusy)
 	assert.Contains(t, err.Error(), "429")
 	assert.Len(t, p.all(), retryAttempts-1)
+}
+
+// A metadata answer with no value, JSON null, fails the fetch rather than
+// the process.
+func TestMessagesNoAnswer(t *testing.T) {
+	client, _ := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("null"))
+	})
+
+	_, err := client.Messages(t.Context(), stubToken, testAccountID, []string{"m1"})
+
+	require.ErrorIs(t, err, errGmailAnswer)
+}
+
+// A fetch whose wait for the account's pace would pass its deadline is
+// refused at once as busy, sending nothing, while a context that ended
+// returns its own error.
+func TestMessagesPaceDeadline(t *testing.T) {
+	var calls atomic.Int32
+	client, _ := stubGmail(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		stubMessage(0)(w, r)
+	})
+	_, err := client.Messages(t.Context(), stubToken, testAccountID, []string{"m1"})
+	require.NoError(t, err)
+
+	short, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	_, err = client.Messages(short, stubToken, testAccountID, []string{"m2"})
+	require.ErrorIs(t, err, mailsync.ErrProviderBusy)
+	require.NoError(t, short.Err(), "refused before the deadline")
+	assert.Equal(t, int32(1), calls.Load(), "the refused fetch sent nothing")
+
+	ended, stop := context.WithCancel(t.Context())
+	stop()
+	_, err = client.Messages(ended, stubToken, testAccountID, []string{"m3"})
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 // stubMessage answers messages.get with the message the path names, after

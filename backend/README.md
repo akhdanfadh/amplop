@@ -2580,11 +2580,13 @@ Gmail allows 6,000 quota units a minute per user, and a metadata fetch
 costs 20. An account's `Messages` calls spend at most four fifths of
 that, four fetches a second across calls, with at most four of a call in
 flight, leaving room for the same account's sends and polls. The pace is
-the process's own; one sync per account at a time keeps it whole. Each
-`Provider` call retries a 429, a 403 rate limit, a 500, 502, 503, or
-504, or a timeout after 1, 2, 4, and 8 seconds, each plus up to a second
-at random, or after the `Retry-After` Gmail sends; past five attempts,
-or for a `Retry-After` over 32 seconds, it returns
+the process's own; one sync per account at a time keeps it whole. A call
+whose wait for the pace would outlast its context's deadline returns
+`mailsync.ErrProviderBusy` at once, sending nothing. Each `Provider`
+call retries a 429, a 403 rate limit, a 500, 502, 503, or 504, or a
+timeout after 1, 2, 4, and 8 seconds, each plus up to a second at
+random, or after the `Retry-After` Gmail sends; past five attempts, or
+for a `Retry-After` over 32 seconds, it returns
 `mailsync.ErrProviderBusy` for the job to try later. Errors keep only
 Gmail's status, never its text, and an answer that does not decode fails
 without quoting it. The Google client's own logging is off, since at
