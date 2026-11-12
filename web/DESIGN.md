@@ -502,7 +502,11 @@ is inbok's own and runs Check for new mail; the list box sets
 
 - **Reversible actions** (archive, delete to Trash, read, star, and bulk
   versions) happen at once; a toast says what happened, with Undo, which
-  sends the opposite action. Toasts last 10 s.
+  sends the opposite action the API names. Undo appears only once the
+  action's request has settled, as Gmail's own toast does: sent sooner,
+  it could reach Gmail before the action it undoes. Toasts last 10 s.
+  A bulk action Gmail refuses for some conversations rolls back only
+  those, and says how many failed.
 - **Irreversible actions** (disconnect, deactivate, turn off two-factor
   authentication, discard typed text) ask first in an `AlertDialog`: the
   title asks, the body states the consequence and what is kept, the

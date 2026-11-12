@@ -29,6 +29,7 @@ import {
   ResponseAuthorization,
   ResponseChangedMember,
   ResponseConnectedAccounts,
+  ResponseConversationActionResult,
   ResponseConversationDetail,
   ResponseConversationPage,
   ResponseCurrentSession,
@@ -64,6 +65,7 @@ import {
 } from './model';
 import type {
   AccountRenameInputBody,
+  ConversationActionBody,
   CountNewConversationsParams,
   EmailVerificationSecret,
   ListConversationsParams,
@@ -893,6 +895,96 @@ export function useListConversations<TData = Awaited<ReturnType<typeof listConve
 
 
 
+
+export const getApplyConversationActionUrl = () => {
+
+
+
+
+  return `/api/v0/conversations/actions`
+}
+
+/**
+ * Applies one action to the signed-in account's conversations at their provider, then returns them as the provider answered. Nothing changes in inbok that the provider did not accept: each conversation is changed or refused on its own, so one answer can hold both. Opening a conversation does not mark it read; send read.
+ * @summary Apply Conversation Action
+ */
+export const applyConversationAction = async (conversationActionBody: ConversationActionBody, options?: Parameters<typeof transport>[1]): Promise<ResponseConversationActionResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseConversationActionResult>(getApplyConversationActionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(conversationActionBody),
+    schema: ResponseConversationActionResult
+  }
+);}
+
+
+
+
+
+export const getApplyConversationActionMutationKey = () => ['applyConversationAction'] as const;
+
+export const getApplyConversationActionMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyConversationAction>>, TError,ApplyConversationActionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyConversationAction>>, TError,ApplyConversationActionMutationVariables, TContext> => {
+
+const mutationKey = getApplyConversationActionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyConversationAction>>, ApplyConversationActionMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  applyConversationAction(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyConversationActionMutationResult = NonNullable<Awaited<ReturnType<typeof applyConversationAction>>>
+    export type ApplyConversationActionMutationBody = ConversationActionBody
+    export type ApplyConversationActionMutationError = ErrorType<Problem>
+    export type ApplyConversationActionMutationVariables = {data: ConversationActionBody}
+
+    /**
+ * @summary Apply Conversation Action
+ */
+export const useApplyConversationAction = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyConversationAction>>, TError,ApplyConversationActionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof applyConversationAction>>,
+        TError,
+        ApplyConversationActionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getApplyConversationActionMutationOptions(options), queryClient);
+    }
 
 export const getCountNewConversationsUrl = (params: CountNewConversationsParams,) => {
   const normalizedParams = new URLSearchParams();

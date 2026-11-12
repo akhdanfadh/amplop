@@ -26,3 +26,27 @@ func (q *Queries) DeleteUnlistedMailboxes(ctx context.Context, arg DeleteUnliste
 	_, err := q.db.Exec(ctx, deleteUnlistedMailboxes, arg.ConnectedAccountID, arg.ProviderMailboxIds)
 	return err
 }
+
+const listMailboxProviderIDs = `-- name: ListMailboxProviderIDs :many
+SELECT provider_mailbox_id FROM mailboxes WHERE connected_account_id = $1
+`
+
+func (q *Queries) ListMailboxProviderIDs(ctx context.Context, connectedAccountID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, listMailboxProviderIDs, connectedAccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var provider_mailbox_id string
+		if err := rows.Scan(&provider_mailbox_id); err != nil {
+			return nil, err
+		}
+		items = append(items, provider_mailbox_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

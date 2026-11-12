@@ -235,6 +235,46 @@ func (q *Queries) ListConversationMessages(ctx context.Context, id uuid.UUID) ([
 	return items, nil
 }
 
+const listConversationThreads = `-- name: ListConversationThreads :many
+SELECT c.id, c.connected_account_id, c.provider_thread_id
+FROM conversations c
+JOIN connected_accounts ca ON ca.id = c.connected_account_id
+WHERE c.id = ANY ($1::uuid[]) AND ca.user_id = $2
+`
+
+type ListConversationThreadsParams struct {
+	Ids    []uuid.UUID
+	UserID int64
+}
+
+type ListConversationThreadsRow struct {
+	ID                 uuid.UUID
+	ConnectedAccountID int64
+	ProviderThreadID   string
+}
+
+// The member's conversations of those named, with their threads, which an
+// action changes at the provider.
+func (q *Queries) ListConversationThreads(ctx context.Context, arg ListConversationThreadsParams) ([]ListConversationThreadsRow, error) {
+	rows, err := q.db.Query(ctx, listConversationThreads, arg.Ids, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListConversationThreadsRow
+	for rows.Next() {
+		var i ListConversationThreadsRow
+		if err := rows.Scan(&i.ID, &i.ConnectedAccountID, &i.ProviderThreadID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listConversationUnreadCounts = `-- name: ListConversationUnreadCounts :many
 SELECT ca.id,
     (SELECT count(*) FROM conversations c

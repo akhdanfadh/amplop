@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -245,4 +246,99 @@ func TestGetConversationNotFound(t *testing.T) {
 
 	require.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
 	assert.Equal(t, conversationNotFoundType, decodeJSON(t, response.Body.Bytes())["type"])
+}
+
+// ========================
+// Conversation action
+// ========================
+
+type fakeConversationActions struct {
+	applied conversation.Applied
+	err     error
+
+	userID int64
+	action conversation.Action
+	ids    []uuid.UUID
+	calls  int
+}
+
+func (f *fakeConversationActions) Apply(_ context.Context, userID int64, action conversation.Action, ids []uuid.UUID) (conversation.Applied, error) {
+	f.calls++
+	f.userID, f.action, f.ids = userID, action, ids
+	return f.applied, f.err
+}
+
+func newActionsAPI(actions *fakeConversationActions) *API {
+	services := Services{Conversations: &fakeConversations{}, Session: memberSessions(account.RoleMember)}
+	if actions != nil {
+		services.ConversationActions = actions
+	}
+	return New(discard, services)
+}
+
+var goneID = uuid.MustParse("0b1b2c3d-0000-4000-8000-000000000002")
+
+// An action answers with the conversations it changed, those it refused
+// with why, and the action that undoes it.
+func TestApplyAction(t *testing.T) {
+	actions := &fakeConversationActions{applied: conversation.Applied{
+		Conversations: []conversation.Conversation{report},
+		Refused:       []conversation.Refusal{{ID: goneID, Reason: conversation.ReasonNeedsReconnect}},
+	}}
+	api := newActionsAPI(actions)
+
+	response := requestAuthenticated(api, http.MethodPost, "/conversations/actions",
+		`{"action":"unread","ids":["`+reportID.String()+`","`+goneID.String()+`"]}`)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"conversations":[`+reportJSON+`],`+
+		`"refused":[{"id":"`+goneID.String()+`","reason":"needs-reconnect"}],"undo":"read"}}`, response.Body.String())
+	assert.Equal(t, int64(42), actions.userID)
+	assert.Equal(t, conversation.ActionUnread, actions.action)
+	assert.Equal(t, []uuid.UUID{reportID, goneID}, actions.ids)
+}
+
+// A bad action or ID list is refused with the field it is in, before the
+// service runs.
+func TestApplyActionInvalid(t *testing.T) {
+	tooMany := make([]string, conversation.MaxActionIDs+1)
+	for i := range tooMany {
+		tooMany[i] = `"` + uuid.New().String() + `"`
+	}
+	id := `"` + reportID.String() + `"`
+	for _, c := range []struct {
+		name, body, location string
+	}{
+		{"an unknown action", `{"action":"delete","ids":[` + id + `]}`, "body.action"},
+		{"no ids", `{"action":"read","ids":[]}`, "body.ids"},
+		{"too many ids", `{"action":"read","ids":[` + strings.Join(tooMany, ",") + `]}`, "body.ids"},
+		{"a repeated id", `{"action":"read","ids":[` + id + `,` + id + `]}`, "body.ids"},
+		{"null ids", `{"action":"read","ids":null}`, "body.ids"},
+		{"an id that is no UUID", `{"action":"read","ids":[` + id + `,"nope"]}`, "body.ids[1]"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			actions := &fakeConversationActions{}
+			api := newActionsAPI(actions)
+
+			response := requestAuthenticated(api, http.MethodPost, "/conversations/actions", c.body)
+
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+			errs, ok := decodeJSON(t, response.Body.Bytes())["errors"].([]any)
+			require.True(t, ok, response.Body.String())
+			require.NotEmpty(t, errs)
+			assert.Equal(t, c.location, errs[0].(map[string]any)["location"])
+			assert.Zero(t, actions.calls)
+		})
+	}
+}
+
+// Without a Google client, inbok cannot reach Gmail, so an action is
+// refused whole.
+func TestApplyActionNoGmail(t *testing.T) {
+	api := newActionsAPI(nil)
+
+	response := requestAuthenticated(api, http.MethodPost, "/conversations/actions", `{"action":"read","ids":["`+reportID.String()+`"]}`)
+
+	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	assert.Equal(t, gmailNotConfiguredType, decodeJSON(t, response.Body.Bytes())["type"])
 }

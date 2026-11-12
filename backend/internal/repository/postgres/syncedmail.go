@@ -44,6 +44,15 @@ func storedVersion(version uint64) (int64, error) {
 // [mailsync.ErrUnknownMailbox] when a saved or updated message names a
 // mailbox the account does not have.
 func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func(mailsync.SyncState) (mailsync.Change, error)) (mailsync.Written, error) {
+	return db.updateSyncedMail(ctx, accountID, func(_ *sqlc.Queries, current mailsync.SyncState) (mailsync.Change, error) {
+		return update(current)
+	})
+}
+
+// updateSyncedMail is [DB.UpdateSyncedMail] whose update also gets the
+// transaction's queries, to read what the change depends on under the
+// sync state's lock.
+func (db *DB) updateSyncedMail(ctx context.Context, accountID int64, update func(*sqlc.Queries, mailsync.SyncState) (mailsync.Change, error)) (mailsync.Written, error) {
 	var written mailsync.Written
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
@@ -61,7 +70,7 @@ func (db *DB) UpdateSyncedMail(ctx context.Context, accountID int64, update func
 
 		// 2. Let update decide, and refuse a state the columns cannot hold
 		// before writing anything stamped with it.
-		change, err := update(current)
+		change, err := update(queries, current)
 		if err != nil {
 			return err
 		}

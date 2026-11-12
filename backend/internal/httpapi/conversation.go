@@ -30,17 +30,26 @@ type conversationService interface {
 	Get(ctx context.Context, userID int64, id uuid.UUID) (conversation.Conversation, []conversation.Message, error)
 }
 
-type conversationHandler struct {
-	conversations conversationService
+// conversationActionService applies the member's actions to their
+// conversations.
+type conversationActionService interface {
+	Apply(ctx context.Context, userID int64, action conversation.Action, ids []uuid.UUID) (conversation.Applied, error)
 }
 
-func registerConversations(api huma.API, conversations conversationService) {
-	handler := conversationHandler{conversations: conversations}
+type conversationHandler struct {
+	conversations conversationService
+	// actions is nil when no Google client is configured.
+	actions conversationActionService
+}
+
+func registerConversations(api huma.API, conversations conversationService, actions conversationActionService) {
+	handler := conversationHandler{conversations: conversations, actions: actions}
 
 	registerConversationList(api, handler)
 	registerNewConversationCount(api, handler)
 	registerPlaceList(api, handler)
 	registerConversationRead(api, handler)
+	registerConversationAction(api, handler)
 }
 
 // mailAddress is one entry of an address header.
@@ -387,4 +396,102 @@ func (h conversationHandler) handleGetConversation(ctx context.Context, in *conv
 		})
 	}
 	return respondData(detail), nil
+}
+
+// ========================
+// Conversation action
+// ========================
+
+type conversationActionInput struct {
+	Body conversationActionBody
+}
+
+type conversationActionBody struct {
+	Action conversation.Action `json:"action" doc:"What to do: mark read or unread. Each applies to every message of a conversation, drafts too, as the provider's own thread action does."`
+	IDs    []uuid.UUID         `json:"ids" nullable:"false" format:"uuid" minItems:"1" maxItems:"100" uniqueItems:"true" doc:"The conversations to act on, by id from a list."`
+}
+
+// TransformSchema lists action's values from [conversation.Actions].
+func (conversationActionBody) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["action"].Enum = actionValues()
+	return s
+}
+
+// actionValues returns every action as a schema's enum lists it.
+func actionValues() []any {
+	values := make([]any, 0, len(conversation.Actions))
+	for _, action := range conversation.Actions {
+		values = append(values, string(action))
+	}
+	return values
+}
+
+// refusedConversation is a conversation an action left as it was.
+type refusedConversation struct {
+	ID     uuid.UUID           `json:"id" format:"uuid"`
+	Reason conversation.Reason `json:"reason" enum:"not-found,needs-reconnect,failed" doc:"not-found: the signed-in account has no such conversation, or the provider no longer has it. needs-reconnect: its connected account must be reconnected first. failed: the provider failed, refused, or took too long; trying again may work."`
+}
+
+type conversationActionResult struct {
+	Conversations []conversationRow     `json:"conversations" nullable:"false" doc:"The conversations the action changed, as the provider answered, in the order of ids. One that no longer exists is in neither list."`
+	Refused       []refusedConversation `json:"refused" nullable:"false" doc:"The conversations the action left as they were, in the order of ids."`
+	Undo          conversation.Action   `json:"undo" doc:"The action that undoes this one, for the changed conversations."`
+}
+
+// TransformSchema lists undo's values from [conversation.Actions].
+func (conversationActionResult) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	s.Properties["undo"].Enum = actionValues()
+	return s
+}
+
+// conversationActionProblem maps the errors of applying an action.
+func conversationActionProblem(err error) error {
+	if errors.Is(err, errGmailNotConfigured) {
+		return newProblem(http.StatusConflict, gmailNotConfiguredType, "Gmail not configured", "Conversations can't be changed until an administrator sets up a Google client.")
+	}
+	return err
+}
+
+func registerConversationAction(api huma.API, handler conversationHandler) {
+	responses := memberResponses(api, http.StatusConflict, http.StatusUnprocessableEntity)
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "No Google client is configured, so inbok can't reach Gmail."
+	conflict.Content[problemContentType].Example = conversationActionProblem(errGmailNotConfigured)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "applyConversationAction",
+		Method:      http.MethodPost,
+		Path:        conversationsPath + "/actions",
+		Summary:     "Apply Conversation Action",
+		Tags:        []string{tagConversations},
+		Description: "Applies one action to the signed-in account's conversations at their provider, then returns them as the provider answered. " +
+			"Nothing changes in inbok that the provider did not accept: each conversation is changed or refused on its own, so one answer can hold both. " +
+			"Opening a conversation does not mark it read; send read.",
+		Metadata:  map[string]any{accessKey: session.AccessMember},
+		Security:  []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses: responses,
+	}, handler.handleApplyConversationAction)
+}
+
+func (h conversationHandler) handleApplyConversationAction(ctx context.Context, in *conversationActionInput) (*output[conversationActionResult], error) {
+	if h.actions == nil {
+		return nil, conversationActionProblem(errGmailNotConfigured)
+	}
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	applied, err := h.actions.Apply(ctx, user.ID, in.Body.Action, in.Body.IDs)
+	if err != nil {
+		return nil, conversationActionProblem(err)
+	}
+	result := conversationActionResult{
+		Conversations: make([]conversationRow, 0, len(applied.Conversations)),
+		Refused:       make([]refusedConversation, 0, len(applied.Refused)),
+		Undo:          in.Body.Action.Opposite(),
+	}
+	for _, row := range applied.Conversations {
+		result.Conversations = append(result.Conversations, conversationRowOf(row))
+	}
+	for _, refused := range applied.Refused {
+		result.Refused = append(result.Refused, refusedConversation(refused))
+	}
+	return respondData(result), nil
 }

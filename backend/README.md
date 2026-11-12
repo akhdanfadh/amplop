@@ -2690,17 +2690,17 @@ the messages it did not see, a batch per change, without comparing
 clocks. Storage keeps one account's writes in order; checking that a
 step's generation is still the current one is the full sync's job.
 
-Writes can still land out of the order Gmail made them, e.g. a poll page
-read before a change at Gmail and written after a newer write. So each
-message keeps `provider_version`, the provider's change number its state
-was read at, which grows with every change: Gmail's `historyId` of a
-fetched message, or the ID of the history record a poll's update comes
-from. An update read at an older version than the stored one is
-skipped, its mailboxes and conversation too, so a late write never
-undoes a newer one. A save is written whatever its version: a full
-sync's stale save is followed by a poll from before it, which brings the
-newer state back. A message or update without a version, or past a
-`bigint`, writes nothing.
+Writes can still land out of the order Gmail made them: an action's
+answer may be written after a poll has brought in a newer change to the
+same message. So each message keeps `provider_version`, the provider's
+change number its state was read at, which grows with every change:
+Gmail's `historyId` of a fetched message or an action's answer, or the
+ID of the history record a poll's update comes from. An update read at
+an older version than the stored one is skipped, its mailboxes and
+conversation too, so a late write never undoes a newer one. A save is
+written whatever its version: a full sync's stale save is followed by a
+poll from before it, which brings the newer state back. A message or
+update without a version, or past a `bigint`, writes nothing.
 
 `mailsync.Provider` is what synchronization reads from the provider, and
 the `google` client implements it for Gmail. Every method only reads and
@@ -2837,6 +2837,35 @@ member's conversation 404 `conversation-not-found`. On 20,000 synthetic
 conversations over three accounts (PostgreSQL 18, 2026-11-11) a page
 reads in about 3 ms, deep pages included, and every unread count in
 about 11 ms.
+
+`POST /conversations/actions {action, ids}` changes up to 100 of the
+member's conversations: `read` and `unread`, each undoing the other.
+`conversation.ActionService` calls Gmail inside the request, and inbok
+writes only what Gmail answers (ADR031, "Mail actions as built"):
+
+1. It finds the member's threads; another ID is refused `not-found`.
+2. Per account, at once, it takes an access token, then calls
+   `threads.modify` for each thread, four at a time per request, for at most 7 seconds and never
+   into the last 3 of the request's 10, which the writes and answer
+   keep. `google.Client.ChangeThread` holds Gmail's rules, which action
+   is which label, and returns each message's labels as Gmail answered,
+   at Gmail's version.
+3. It writes those labels through `UpdateSyncedMail`
+   (`UpdateMessageLabels`), which derives the conversations again and
+   keeps the sync state; a label made since the last sync is left out
+   until the next poll lists it, and a message a poll has meanwhile
+   brought to a newer version keeps it.
+4. It answers with the changed rows, as read after the writes, each
+   refused conversation with its reason (`not-found`,
+   `needs-reconnect`, or `failed`), and `undo`, the opposite action.
+
+Each conversation is changed or refused on its own, so one answer can
+hold both, and nothing changes in inbok that Gmail did not accept: a
+refusal needs no undoing. The poll that follows finds Gmail's record of
+the action, which inbok already holds. Opening a conversation marks
+nothing read; the web app sends `read`. Without a Google client the
+operation answers 409 `gmail-not-configured`, and the API server takes
+access tokens itself, as the worker does.
 
 ## Search index
 
@@ -3087,7 +3116,8 @@ httpapi --> mailsync <-- repository/postgres
             mailsync --> connectedaccount
                      <-- google
 httpapi --> conversation <-- repository/postgres
-            conversation --> mailsync
+                         <-- google
+            conversation --> mailsync, connectedaccount
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google
@@ -3135,9 +3165,10 @@ httpapi --> messagecontent <-- s3
   access, and its revocations: the OAuth client, the ID token checks, the
   refresh token trade, revocation, and Gmail's `users.getProfile`;
   `outgoingmessage`'s `Provider`: `messages.send` and the check after an
-  unanswered send; and `mailsync`'s `Provider`, the Gmail reads
-  synchronization makes. It uses `golang.org/x/oauth2` and Google's Gmail
-  client, whose types stay inside it; Gmail calls take
+  unanswered send; `mailsync`'s `Provider`, the Gmail reads
+  synchronization makes; and `conversation`'s `ThreadChanger`, the
+  thread calls a member's actions make. It uses `golang.org/x/oauth2`
+  and Google's Gmail client, whose types stay inside it; Gmail calls take
   `connectedaccount`'s `AccessToken`. It also implements
   `messagecontent`'s `Provider`, a message's content in full format and
   one part's bytes, turning a Gmail message's parts into

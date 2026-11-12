@@ -14,3 +14,6 @@ ON CONFLICT (connected_account_id, provider_mailbox_id) DO UPDATE SET
 DELETE FROM mailboxes
 WHERE connected_account_id = @connected_account_id
     AND provider_mailbox_id <> ALL (@provider_mailbox_ids::text[]);
+
+-- name: ListMailboxProviderIDs :many
+SELECT provider_mailbox_id FROM mailboxes WHERE connected_account_id = @connected_account_id;

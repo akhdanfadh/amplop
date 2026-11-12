@@ -188,6 +188,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		access := connectedaccount.NewAccess(db, cfg.Encryption, client, time.Now)
 		fetcher := messagecontent.NewFetcher(messagecontent.NewContents(content, db), db, client, access, time.Now, logger)
 		services.MessageContent = messagecontent.NewReader(content, db, fetcher)
+		services.ConversationActions = conversation.NewActionService(db, access, client, logger)
 	}
 	api := httpapi.New(logger, services)
 	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {

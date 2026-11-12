@@ -205,3 +205,11 @@ SELECT ca.id,
 FROM connected_accounts ca
 WHERE ca.user_id = @user_id
 ORDER BY ca.created_at, ca.id;
+
+-- name: ListConversationThreads :many
+-- The member's conversations of those named, with their threads, which an
+-- action changes at the provider.
+SELECT c.id, c.connected_account_id, c.provider_thread_id
+FROM conversations c
+JOIN connected_accounts ca ON ca.id = c.connected_account_id
+WHERE c.id = ANY (@ids::uuid[]) AND ca.user_id = @user_id;
