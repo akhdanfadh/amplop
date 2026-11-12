@@ -647,9 +647,12 @@ Enter and Space still confirm at once.
 
 The theme is light, dark, or the system's, kept per browser in
 `localStorage` by `src/lib/theme.ts`; `useTheme` from `src/hooks` reads
-and changes it. A script in the root route's head marks the page dark
-before the first paint; the shell's Content-Security-Policy allows it by
-hash.
+and changes it. `applyTheme` sets every duration to zero while it switches
+the colours and makes the browser restyle the page at once, so nothing
+fades from one theme to the other; zero, not `none`, because React Aria
+removes a closing tooltip only when its exit animation finishes. A script
+in the root route's head marks the page dark before the first paint; the
+shell's Content-Security-Policy allows it by hash.
 
 Data tables use [TanStack Table](https://tanstack.com/table), which supplies
 the rows and columns while shadcn's `Table` components render them. It is

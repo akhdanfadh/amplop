@@ -6,7 +6,29 @@ const html = document.documentElement;
 afterEach(() => {
   localStorage.clear();
   html.classList.remove("dark");
+  document.body.replaceChildren();
 });
+
+// frame waits for the next frame.
+function frame(): Promise<number> {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
+// betweenFrames waits for an ordinary task, between two frames, where a
+// click's handler runs.
+function betweenFrames(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 20));
+}
+
+// themed adds an element whose colours come from the theme and fade when
+// they change, as a button's do.
+function themed(): HTMLElement {
+  const element = document.createElement("div");
+  element.className = "bg-background text-foreground transition-colors";
+  element.textContent = "Inbox";
+  document.body.append(element);
+  return element;
+}
 
 // runScript runs the root route's head script as the shell does.
 function runScript() {
@@ -59,5 +81,39 @@ describe("theme", () => {
   it("reads an unknown stored value as system", () => {
     localStorage.setItem(themeKey, "sepia");
     expect(readTheme()).toBe("system");
+  });
+
+  it("switches every colour at once, and fades again afterwards", async () => {
+    const element = themed();
+    await frame();
+    await betweenFrames();
+    applyTheme("dark");
+    await frame();
+    await frame();
+    expect(element.getAnimations()).toHaveLength(0);
+    expect(html.dataset.themeSwitching).toBeUndefined();
+
+    // A colour change after the switch, e.g. a hover, still fades.
+    element.classList.replace("bg-background", "bg-accent");
+    await frame();
+    expect(element.getAnimations().length).toBeGreaterThan(0);
+  });
+
+  it("finishes an overlay's closing animation at once", async () => {
+    // React Aria removes a closing tooltip or menu when this finishes.
+    const closing = document.createElement("div");
+    closing.className = "bg-foreground animate-out fade-out-0 duration-200";
+    document.body.append(closing);
+    await frame();
+    const [exit] = closing.getAnimations();
+    let finished = false;
+    void exit?.finished.then(() => {
+      finished = true;
+    });
+    await betweenFrames();
+    applyTheme("dark");
+    await frame();
+    expect(exit).toBeDefined();
+    expect(finished).toBe(true);
   });
 });

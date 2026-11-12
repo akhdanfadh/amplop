@@ -140,8 +140,8 @@ text).
   and press, 200 ms menus and tooltips, 250 ms dialogs and sheets. Animate
   colour, background, border, opacity, and transform only
   (`transition-colors`, never `transition-all`). Reduced motion turns
-  movement into fades. Nothing loops except a spinner while work is
-  actually running.
+  movement into fades. A theme change switches every colour at once, with
+  no fades. Nothing loops except a spinner while work is actually running.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
   focusable element, defined once in the components.
 - **Links:** primary colour, underlined; the underline thickens on hover.

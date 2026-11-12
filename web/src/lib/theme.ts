@@ -52,10 +52,31 @@ export function storeTheme(theme: Theme): void {
   window.dispatchEvent(new Event(changeEvent));
 }
 
-// applyTheme marks the page dark or light for theme.
+// applyTheme marks the page dark or light for theme, with no fade from
+// one to the other.
 export function applyTheme(theme: Theme): void {
   const dark = theme === "dark" || (theme === "system" && matchMedia(darkQuery).matches);
-  document.documentElement.classList.toggle("dark", dark);
+  const root = document.documentElement;
+  if (root.classList.contains("dark") === dark) return;
+
+  // 1. Set every transition and animation to zero (src/styles.css) before
+  // the colours change: otherwise an element with a colour transition
+  // would fade from one theme to the other, and a closing tooltip would
+  // flash in the other theme's colours.
+  root.dataset.themeSwitching = "";
+
+  // 2. Switch the colours, and have the browser work them out now, while
+  // every duration is zero: they change at once, and an overlay closing
+  // at this moment finishes.
+  // NOTE: reading a computed style makes the browser restyle the page on
+  // the spot, a "style change event", the moment transitions start from
+  // (CSS Transitions, "Starting of transitions").
+  root.classList.toggle("dark", dark);
+  void getComputedStyle(root).color;
+
+  // 3. Let transitions run again. The colours have already changed, so
+  // nothing fades; the next hover does.
+  delete root.dataset.themeSwitching;
 }
 
 // watchTheme keeps the page's theme current: it follows the system while
