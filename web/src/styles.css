@@ -22,6 +22,7 @@
   --color-sheet-foreground: var(--sheet-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -98,6 +99,9 @@
   --sheet-foreground: #0a0a0a;
   --primary: #2557d6;
   --primary-foreground: #ffffff;
+  /* primary at 90% over background, solid, so nothing shows through a
+   * hovered button floating over content. */
+  --primary-hover: #3a67da;
   --secondary: #f2f2f2;
   --muted: #f2f2f2;
   --muted-foreground: #666666;
@@ -136,6 +140,7 @@
   --popover: #262626;
   --primary: #86a8ff;
   --primary-foreground: #1c1c1c;
+  --primary-hover: #7b9ae8;
   --secondary: #161616;
   --muted: #161616;
   --muted-foreground: #a3a3a3;

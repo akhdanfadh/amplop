@@ -41,25 +41,26 @@ Every text pair below meets 4.5:1, every meaningful mark 3:1, checked in
 both themes. A new pair is checked before use (antislop-human's
 `contrast-check.py` or the WCAG formula); never assume a grey pair passes.
 
-| Token                            | Light                 | Dark                  | Use                                               |
-| -------------------------------- | --------------------- | --------------------- | ------------------------------------------------- |
-| `background`                     | `#fafafa`             | `#1c1c1c`             | Page and panes (mild, never pure white or black)  |
-| `foreground`                     | `#0a0a0a`             | `#fafafa`             | Body text                                         |
-| `sidebar`                        | `#f2f2f2`             | `#161616`             | Sidebar; also `muted` and `secondary` surfaces    |
-| `card`, `popover`                | `#ffffff`             | `#262626`             | Raised surfaces, menus                            |
-| `sheet` (new)                    | `#ffffff`             | `#ffffff`             | The message body's sheet, white in both themes    |
-| `muted-foreground`               | `#666666`             | `#a3a3a3`             | Secondary text, meta, snippets                    |
-| `border`                         | `#e3e3e3`             | `#2e2e2e`             | Hairlines; decoration only                        |
-| `input`                          | `#848484`             | `#808080`             | Field outlines (3:1, WCAG 1.4.11)                 |
-| `accent`                         | `#ececec`             | `#2e2e2e`             | Hover surface (shadcn's name; not a brand colour) |
-| `primary` / `primary-foreground` | `#2557d6` / `#ffffff` | `#86a8ff` / `#1c1c1c` | Primary buttons, links, the focus ring            |
-| `selection` (new)                | `#e5eaf6`             | `#272a33`             | The open row, the current nav item                |
-| `destructive`                    | `#a8000a`             | `#ffa3a5`             | Text and icons on its 8% tint (12% in dark)       |
-| `success` (new)                  | `#0f6630`             | `#4ade80`             | Same tint rule                                    |
-| `warning` (new)                  | `#904500`             | `#fbbf24`             | Same tint rule                                    |
-| `info` (new)                     | = `primary`           | = `primary`           | Same tint rule                                    |
-| `highlight` (new)                | `#fff3b0`             | `#5c4a00`             | Search matches; text on it uses `foreground`      |
-| `ring`                           | = `primary`           | = `primary`           | Focus ring                                        |
+| Token                            | Light                 | Dark                  | Use                                                                                               |
+| -------------------------------- | --------------------- | --------------------- | ------------------------------------------------------------------------------------------------- |
+| `background`                     | `#fafafa`             | `#1c1c1c`             | Page and panes (mild, never pure white or black)                                                  |
+| `foreground`                     | `#0a0a0a`             | `#fafafa`             | Body text                                                                                         |
+| `sidebar`                        | `#f2f2f2`             | `#161616`             | Sidebar; also `muted` and `secondary` surfaces                                                    |
+| `card`, `popover`                | `#ffffff`             | `#262626`             | Raised surfaces, menus                                                                            |
+| `sheet` (new)                    | `#ffffff`             | `#ffffff`             | The message body's sheet, white in both themes                                                    |
+| `muted-foreground`               | `#666666`             | `#a3a3a3`             | Secondary text, meta, snippets                                                                    |
+| `border`                         | `#e3e3e3`             | `#2e2e2e`             | Hairlines; decoration only                                                                        |
+| `input`                          | `#848484`             | `#808080`             | Field outlines (3:1, WCAG 1.4.11)                                                                 |
+| `accent`                         | `#ececec`             | `#2e2e2e`             | Hover surface (shadcn's name; not a brand colour)                                                 |
+| `primary` / `primary-foreground` | `#2557d6` / `#ffffff` | `#86a8ff` / `#1c1c1c` | Primary buttons, links, the focus ring                                                            |
+| `primary-hover` (new)            | `#3a67da`             | `#7b9ae8`             | A hovered primary button: primary at 90% over `background`, solid, so content never shows through |
+| `selection` (new)                | `#e5eaf6`             | `#272a33`             | The open row, the current nav item                                                                |
+| `destructive`                    | `#a8000a`             | `#ffa3a5`             | Text and icons on its 8% tint (12% in dark)                                                       |
+| `success` (new)                  | `#0f6630`             | `#4ade80`             | Same tint rule                                                                                    |
+| `warning` (new)                  | `#904500`             | `#fbbf24`             | Same tint rule                                                                                    |
+| `info` (new)                     | = `primary`           | = `primary`           | Same tint rule                                                                                    |
+| `highlight` (new)                | `#fff3b0`             | `#5c4a00`             | Search matches; text on it uses `foreground`                                                      |
+| `ring`                           | = `primary`           | = `primary`           | Focus ring                                                                                        |
 
 **Account colours** (`account-1` ... `account-8`), handed out in the order
 accounts are connected and stored with the account. Each new account takes
@@ -93,6 +94,7 @@ surface changes.
 | `muted-foreground`          | 4.5   | 4.77 (selection)      | 5.38 (accent)        |
 | `primary` as link text      | 4.5   | 5.11 (selection)      | 5.86 (accent)        |
 | `primary-foreground`        | 4.5   | 6.15 (primary)        | 7.35 (primary)       |
+| `primary-foreground` hover  | 4.5   | 5.08 (primary-hover)  | 6.19 (primary-hover) |
 | `destructive` on its tint   | 4.5   | 5.62 (selection)      | 5.57 (accent)        |
 | `destructive` on hover tint | 4.5   | 5.22 (selection)      | 5.10 (accent)        |
 | `success` on its tint       | 4.5   | 5.23 (selection)      | 6.05 (accent)        |
@@ -325,7 +327,11 @@ last two redirect into settings, so settings can move without the server.
   long press on touch; the list header becomes the action bar with only
   built actions. No bulk action built means no picking.
 - **Loading more:** pages of 50 as the member nears the end. New mail while
-  scrolled waits behind a "N new conversations" button. The end says
+  scrolled waits behind a "N new conversations" button floating over the
+  list's top, centred: a small primary button with an up arrow and the
+  popover shadow, which shows them on top and moves focus to the newest.
+  Rows changing above the screen, e.g. a reply moving one to the top,
+  leave the rows on screen where they are. The end says
   "That's everything inbok has copied. Older mail stays in Gmail."
 - **Check for new mail:** a button in the list header (and the phone top
   bar) that syncs the accounts in the filter; in-app pull-to-refresh runs

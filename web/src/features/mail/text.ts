@@ -72,6 +72,12 @@ export const listEnd = "That's everything inbok has copied. Older mail stays in 
 export const listLoading = "Loading conversations...";
 export const listLoadingMore = "Loading older conversations...";
 
+// newConversations returns the button that shows conversations which
+// arrived while the member was scrolled down.
+export function newConversations(count: number): string {
+  return count === 1 ? "1 new conversation" : `${count.toLocaleString("en-US")} new conversations`;
+}
+
 // The empty list's words (DESIGN.md "States").
 export const noAccountsTitle = "Connect your first account";
 export const noAccountsText = "inbok shows the mail of the accounts you connect.";

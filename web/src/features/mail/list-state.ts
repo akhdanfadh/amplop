@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, type RefCallback } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefCallback } from "react";
+import type { Conversation } from "./conversations";
 import { rowHeight } from "./row";
 
 // useToday returns the time now, moving on only when the day changes:
@@ -34,4 +35,50 @@ export function useRowSize(): { size: number; probe: RefCallback<HTMLElement> } 
     return () => observer.disconnect();
   }, []);
   return { size, probe };
+}
+
+// useKeepPlace keeps the first row on screen where it is when rows change
+// above it while the member is scrolled down, e.g. a conversation above
+// moving to the top with a reply, or leaving the list. It returns record,
+// which the list's scroll handler calls with the scrolling box, and
+// forget, for a change that moves the list on purpose, e.g. to the top.
+//
+// DESIGN: rows are placed by the Virtualizer at fixed offsets, so the
+// browser's own scroll anchoring cannot help; the first visible row and
+// its offset are remembered, and the box is scrolled to keep them.
+export function useKeepPlace(
+  rows: readonly Conversation[],
+  rowSize: number,
+): { record: (box: HTMLElement) => void; forget: () => void } {
+  const box = useRef<HTMLElement | null>(null);
+  const rowsRef = useRef(rows);
+  const place = useRef<{ id: string; offset: number } | null>(null);
+
+  const record = useCallback(
+    (element: HTMLElement) => {
+      box.current = element;
+      const top = element.scrollTop;
+      const index = Math.floor(top / rowSize);
+      const row = rowsRef.current[index];
+      place.current = top > 0 && row ? { id: row.id, offset: top - index * rowSize } : null;
+    },
+    [rowSize],
+  );
+
+  const forget = useCallback(() => {
+    place.current = null;
+  }, []);
+
+  useLayoutEffect(() => {
+    rowsRef.current = rows;
+    const element = box.current;
+    const kept = place.current;
+    if (!element || !kept) return;
+    const index = rows.findIndex((row) => row.id === kept.id);
+    if (index < 0) return;
+    const top = index * rowSize + kept.offset;
+    if (Math.abs(element.scrollTop - top) >= 1) element.scrollTop = top;
+  }, [rows, rowSize]);
+
+  return { record, forget };
 }

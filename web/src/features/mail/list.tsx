@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement, type UIEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { linkOptions, useNavigate } from "@tanstack/react-router";
 import { useLiveInfiniteQuery } from "@tanstack/react-db";
 import type { HealthNode } from "@tanstack/db";
 import { Collection, Link } from "react-aria-components";
-import { useListConnectedAccounts } from "@/api/generated/inbok";
+import { ArrowUpIcon } from "lucide-react";
+import { useCountNewConversations, useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccountOutput } from "@/api/generated/model/listedAccount.zod";
 import { ApiError } from "@/api/transport";
 import { ReadError } from "@/components/read-error";
@@ -15,8 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
-import { mailData, placeWhere, restartMail } from "./conversations";
-import { useRowSize, useToday } from "./list-state";
+import { mailData, placeWhere, refreshNewest, restartMail } from "./conversations";
+import { useKeepPlace, useRowSize, useToday } from "./list-state";
 import type { Place } from "./places";
 import { ConversationRow, type RowAccount } from "./row";
 import {
@@ -27,6 +28,7 @@ import {
   listLoading,
   listLoadingMore,
   listName,
+  newConversations,
   noAccountsText,
   olderFailedText,
   tryAgain,
@@ -40,13 +42,18 @@ const unauthorized = 401;
 // Rows per page: the API's default page.
 const pageSize = 50;
 
+// How often the "N new conversations" count is asked again, as often as
+// the list's newest page.
+const newCountEveryMs = 30_000;
+
 // Placeholder rows while the first page loads: about a window's worth.
 const placeholderRows = 10;
 
 // ConversationList is the list of a place's conversations across the
 // member's accounts (DESIGN.md "Message list"): newest first, 50 at a time
-// as the member scrolls. placeName names the place in an empty list's
-// words. onRetry starts the list again after a page failed.
+// as the member scrolls; new mail waits behind "N new conversations"
+// while the member is scrolled down. placeName names the place in an
+// empty list's words. onRetry starts the list again after a page failed.
 export function ConversationList({
   place,
   placeName,
@@ -81,7 +88,53 @@ export function ConversationList({
     { pageSize, queryKey: ["mail-list", conversations.id, place] },
   );
 
+  // The newest date shown while the member is scrolled down; newer rows
+  // wait behind the "N new conversations" button. null shows them all.
+  //
+  // DESIGN: applied here, never in the query: as a date bound in the
+  // query, TanStack DB reads the whole place each time it moves (ADR031,
+  // TanStack DB gate, rule 1).
+  const [anchor, setAnchor] = useState<number | null>(null);
+  const rows = useMemo(
+    () =>
+      anchor === null || !list.data.some((row) => row.dateMs > anchor)
+        ? list.data
+        : list.data.filter((row) => row.dateMs <= anchor),
+    [list.data, anchor],
+  );
+  const hidden = list.data.length - rows.length;
+  const newest = list.data[0]?.dateMs;
+
   const { size: rowSize, probe } = useRowSize();
+  const keepPlace = useKeepPlace(rows, rowSize);
+
+  // Scrolled down, the newest row shown holds the list; back at the top
+  // with nothing waiting, it is live again.
+  const onScroll = (event: UIEvent<HTMLDivElement>) => {
+    const box = event.currentTarget;
+    keepPlace.record(box);
+    if (box.scrollTop > 0 && anchor === null && newest !== undefined) setAnchor(newest);
+    else if (box.scrollTop <= 0 && anchor !== null && hidden === 0) setAnchor(null);
+  };
+
+  const newCount = useCountNewConversations(
+    { place, after: new Date(anchor ?? 0).toISOString() },
+    { query: { enabled: anchor !== null, refetchInterval: newCountEveryMs } },
+  );
+  const waiting = anchor === null ? 0 : Math.max(hidden, newCount.data?.data.count ?? 0);
+  // How many times the member has shown new conversations: each time,
+  // the list is drawn anew, at its top, with its newest row focused, since
+  // the button is gone and focus would fall to the page.
+  const [shown, setShown] = useState(0);
+  // 1. Read the newest page first: the count can be ahead of the list.
+  // 2. Show every row, in a list drawn anew.
+  const showNew = async () => {
+    await refreshNewest(client);
+    keepPlace.forget();
+    setAnchor(null);
+    setShown((n) => n + 1);
+  };
+
   const now = useToday();
 
   const error = firstError(list.health);
@@ -108,7 +161,7 @@ export function ConversationList({
     );
   }
   if (list.isLoading || list.isIdle || list.isCleanedUp || expired) return <Placeholder />;
-  if (list.data.length === 0 && !list.hasNextPage) {
+  if (rows.length === 0 && !list.hasNextPage) {
     return <EmptyList place={place} placeName={placeName} accounts={accountList} />;
   }
 
@@ -131,34 +184,59 @@ export function ConversationList({
       >
         {refreshing ? refreshFailed(clock(conversations.utils.dataUpdatedAt)) : ""}
       </output>
-      <GridList aria-label={listName} rowSize={rowSize} className="min-h-0 flex-1">
-        <Collection items={list.data} dependencies={[now, accountsById, ringed]}>
-          {(conversation) => (
-            <ConversationRow
-              conversation={conversation}
-              account={rowAccount(accountsById.get(conversation.accountId))}
-              ringed={ringed}
-              now={now}
-            />
-          )}
-        </Collection>
-        {/* After a failed page, nothing loads by itself again: the
-            failure below offers Try again. */}
-        {list.hasNextPage && !olderFailed ? (
-          <GridListLoadMore
-            isLoading={list.isFetchingNextPage}
-            onLoadMore={() => {
-              if (!list.isFetchingNextPage) void list.fetchNextPage();
-            }}
-            className="justify-center"
-          >
-            <Spinner />
-            <span className="sr-only">{listLoadingMore}</span>
-          </GridListLoadMore>
-        ) : (
-          !olderFailed && <GridListEnd>{listEnd}</GridListEnd>
+      <output className="sr-only">{waiting > 0 ? newConversations(waiting) : ""}</output>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {waiting > 0 && (
+          <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">
+            <Button
+              size="sm"
+              className="pointer-events-auto animate-in shadow-popover duration-200 ease-standard fade-in-0 slide-in-from-top-2"
+              onPress={() => void showNew()}
+            >
+              <ArrowUpIcon aria-hidden="true" />
+              {newConversations(waiting)}
+            </Button>
+          </div>
         )}
-      </GridList>
+        <GridList
+          key={shown}
+          aria-label={listName}
+          rowSize={rowSize}
+          // Only once the member pressed "N new", never as the page loads:
+          // the button they pressed is gone.
+          // oxlint-disable-next-line jsx-a11y/no-autofocus
+          autoFocus={shown > 0 ? "first" : undefined}
+          onScroll={onScroll}
+          className="min-h-0 flex-1"
+        >
+          <Collection items={rows} dependencies={[now, accountsById, ringed]}>
+            {(conversation) => (
+              <ConversationRow
+                conversation={conversation}
+                account={rowAccount(accountsById.get(conversation.accountId))}
+                ringed={ringed}
+                now={now}
+              />
+            )}
+          </Collection>
+          {/* After a failed page, nothing loads by itself again: the
+              failure below offers Try again. */}
+          {list.hasNextPage && !olderFailed ? (
+            <GridListLoadMore
+              isLoading={list.isFetchingNextPage}
+              onLoadMore={() => {
+                if (!list.isFetchingNextPage) void list.fetchNextPage();
+              }}
+              className="justify-center"
+            >
+              <Spinner />
+              <span className="sr-only">{listLoadingMore}</span>
+            </GridListLoadMore>
+          ) : (
+            !olderFailed && <GridListEnd>{listEnd}</GridListEnd>
+          )}
+        </GridList>
+      </div>
       {olderFailed && (
         <div role="alert" className="flex items-center gap-3 border-t px-4 py-2 text-sm">
           <p className="flex-1">{olderFailedText}</p>

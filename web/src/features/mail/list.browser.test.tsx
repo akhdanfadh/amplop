@@ -113,6 +113,30 @@ describe("ConversationList", () => {
     expect(reads.some((r) => r.includes("before="))).toBe(true);
   });
 
+  it("keeps new mail behind a button while the member is scrolled down", async () => {
+    const api = mailApi(
+      Array.from({ length: 60 }, (_, n) => conversation(n)),
+      one,
+    );
+    const { client } = await app(api);
+    await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
+    await toLastRow();
+    const last = page.getByRole("row", { name: /Subject 10,/ });
+    await expect.element(last).toHaveFocus();
+    api.conversations.push(conversation(100), conversation(101));
+    await refreshNewest(client);
+
+    const button = page.getByRole("button", { name: "2 new conversations" });
+    await expect.element(button).toBeVisible();
+    // The list stays where it was: the new ones wait above, undrawn.
+    await expect.element(last).toBeVisible();
+    expect(page.getByRole("row", { name: /Subject 101,/ }).query()).toBeNull();
+
+    await userEvent.click(button);
+    await expect.element(page.getByRole("row", { name: /Subject 101,/ })).toBeVisible();
+    await expect.element(button).not.toBeInTheDocument();
+  });
+
   it("shows new mail at once at the top of the list", async () => {
     const api = mailApi([conversation(1)], one);
     const { client } = await app(api);
@@ -120,6 +144,7 @@ describe("ConversationList", () => {
     api.conversations.push(conversation(2));
     await refreshNewest(client);
     await expect.element(page.getByRole("row", { name: /Subject 2,/ })).toBeVisible();
+    expect(page.getByRole("button", { name: /new conversation/ }).query()).toBeNull();
   });
 
   it("asks for a first account when there is none", async () => {
@@ -326,5 +351,49 @@ describe("the list's order and refreshes", () => {
     const reads = api.requests.slice(before).filter((r) => r.startsWith("/api/v0/conversations?"));
     expect(reads.filter((r) => !r.includes("before="))).toHaveLength(1);
     expect(reads.filter((r) => paged.has(r))).toEqual([]);
+  });
+
+  it("keeps the first row in place when one above it moves to the top", async () => {
+    const api = mailApi(
+      Array.from({ length: 60 }, (_, n) => conversation(n)),
+      one,
+    );
+    const { client } = await app(api);
+    await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
+    await toLastRow();
+    const box = grid().element();
+    const top = box.getBoundingClientRect().top + 4;
+    const atTop = () =>
+      document
+        .elementFromPoint(box.getBoundingClientRect().left + 40, top)
+        ?.closest("[role=row]")
+        ?.getAttribute("aria-label");
+    const shown = atTop();
+    // A reply to Subject 40, above the screen: it becomes the newest.
+    const replied = api.conversations.find((c) => c.subject === "Subject 40");
+    if (replied) replied.date = new Date(Date.UTC(2026, 10, 13, 9, 30)).toISOString();
+    await refreshNewest(client);
+    await vi.waitFor(
+      () => expect(page.getByRole("button", { name: /new conversation/ }).query()).not.toBeNull(),
+      { timeout: 10_000 },
+    );
+    expect(atTop()).toBe(shown);
+  });
+
+  it("puts focus on the newest row once the new conversations show", async () => {
+    const api = mailApi(
+      Array.from({ length: 60 }, (_, n) => conversation(n)),
+      one,
+    );
+    const { client } = await app(api);
+    await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
+    await toLastRow();
+    api.conversations.push(conversation(100));
+    await refreshNewest(client);
+    const button = page.getByRole("button", { name: "1 new conversation" });
+    await expect.element(button).toBeVisible();
+    button.element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(page.getByRole("row", { name: /Subject 100,/ })).toHaveFocus();
   });
 });
