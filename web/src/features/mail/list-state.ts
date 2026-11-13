@@ -2,6 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefCall
 import type { Conversation } from "./conversations";
 import { rowHeight } from "./row";
 
+// How long the pointer or focus rests on a row before its conversation is
+// read ahead: long enough that sweeping over rows reads none of them.
+const restMs = 100;
+
 // useToday returns the time now, moving on only when the day changes:
 // that is all a row's date depends on ("Yesterday", a weekday), so rows
 // draw again once a day, not every minute.
@@ -35,6 +39,27 @@ export function useRowSize(): { size: number; probe: RefCallback<HTMLElement> } 
     return () => observer.disconnect();
   }, []);
   return { size, probe };
+}
+
+// useRestIntent returns rest, which runs read with a row's ID once the
+// pointer or focus has rested on it for 100 ms, and leave, which cancels a
+// read not yet run.
+export function useRestIntent(read: (id: string) => void): {
+  rest: (id: string) => void;
+  leave: () => void;
+} {
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const readRef = useRef(read);
+  useLayoutEffect(() => {
+    readRef.current = read;
+  });
+  const leave = useCallback(() => clearTimeout(timer.current), []);
+  const rest = useCallback((id: string) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => readRef.current(id), restMs);
+  }, []);
+  useEffect(() => leave, [leave]);
+  return { rest, leave };
 }
 
 // useKeepPlace keeps the first row on screen where it is when rows change

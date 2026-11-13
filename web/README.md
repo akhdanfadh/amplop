@@ -261,8 +261,11 @@ its loader off (`codeSplitGroupings`), since it reads mail's TanStack DB
 collection, which must stay out of the app's first download. A loader
 whose read finds the session ended clears the member's data and opens
 sign-in (`sessionEnded` in `features/auth/guard.ts`).
-On a phone the reading pane is the page, with Back above the
-conversation, which goes back in history as the phone's own back does.
+Rows are React Aria links, which never preload, so resting the pointer
+or focus on a row for 100 ms calls `router.preloadRoute`, which reads the
+conversation ahead; sweeping over rows reads none. On a phone the reading
+pane is the page, with Back above the conversation, which goes back in
+history as the phone's own back does.
 
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page

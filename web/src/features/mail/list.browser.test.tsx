@@ -14,6 +14,7 @@ import { useListConnectedAccounts } from "@/api/generated/inbok";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { Route as appRoot } from "@/routes/__root";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { pointTo } from "@/test/pointer";
 import { placeSearch } from "./address";
 import { refreshNewest } from "./conversations";
 import { PlacePage } from "./place-page";
@@ -34,12 +35,13 @@ afterEach(async () => {
 
 // app renders the Inbox's page on api at address, filtered to the account
 // its ?account= names as the app's route does, with openId open, or else
-// the conversation the address opens, and returns its query client and its
-// router.
+// the conversation the address opens, and returns its query client, its
+// router, and the conversations the router read ahead.
 async function app(api: MailApi, address = "/mail/inbox", openId?: string) {
   vi.stubGlobal("fetch", vi.fn(api.fetch));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   current = client;
+  const readAhead: string[] = [];
   const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({
     component: appRoot.options.component,
   });
@@ -70,8 +72,13 @@ async function app(api: MailApi, address = "/mail/inbox", openId?: string) {
       );
     },
   });
-  // A conversation's address, so opening one stays on the place's page.
-  const opened = createRoute({ getParentRoute: () => place, path: "$conversationId" });
+  const opened = createRoute({
+    getParentRoute: () => place,
+    path: "$conversationId",
+    loader: ({ params }) => {
+      readAhead.push(params.conversationId);
+    },
+  });
   const signIn = createRoute({ getParentRoute: () => root, path: "/sign-in" });
   const router = createRouter({
     routeTree: root.addChildren([place.addChildren([opened]), signIn]),
@@ -81,7 +88,7 @@ async function app(api: MailApi, address = "/mail/inbox", openId?: string) {
   });
   await page.viewport(1440, 900);
   await render(<RouterProvider router={router} />);
-  return { client, router };
+  return { client, router, readAhead };
 }
 
 // grid returns the conversation list.
@@ -204,6 +211,14 @@ describe("ConversationList", () => {
     await expect.element(page.getByText("Couldn't load these conversations.")).toBeVisible();
     await userEvent.click(page.getByRole("button", { name: "Try again" }));
     await expect.element(page.getByRole("row", { name: /Subject 1,/ })).toBeVisible();
+  });
+
+  it("reads a conversation ahead when the pointer rests on its row", async () => {
+    const { readAhead } = await app(mailApi([conversation(1)], one));
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
+    pointTo(row.element());
+    await vi.waitFor(() => expect(readAhead).toContain(conversation(1).id), { timeout: 10_000 });
   });
 
   it("names a starred conversation's row Starred", async () => {

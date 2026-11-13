@@ -27,7 +27,8 @@ export function rowHeight(): number {
 // by a star while starred; led by its newest sender's initials, ringed in
 // account's colour unless the list shows one account (ringed false). href
 // opens it; openStore says whether it is the one in the reading pane; now
-// is the day its date is shown at.
+// is the day its date is shown at; onRest and onLeave run as the pointer
+// comes to rest on it and leaves, to read it ahead.
 export function ConversationRow({
   conversation,
   account,
@@ -35,6 +36,8 @@ export function ConversationRow({
   href,
   openStore,
   now,
+  onRest,
+  onLeave,
 }: {
   conversation: Conversation;
   account: RowAccount | undefined;
@@ -42,6 +45,8 @@ export function ConversationRow({
   href: AppHref;
   openStore: OpenStore;
   now: Date;
+  onRest: () => void;
+  onLeave: () => void;
 }): ReactElement {
   const open = useIsOpen(openStore, conversation.id);
   const names = senders(conversation.participants, account?.email);
@@ -83,6 +88,10 @@ export function ConversationRow({
         account: ringed && account ? accountName(account) : undefined,
       })}
       current={open}
+      onHoverStart={onRest}
+      onHoverEnd={onLeave}
+      // The list reads the conversation ahead when focus rests here.
+      data-conversation={conversation.id}
       className="h-full gap-3 border-b px-4 py-2"
     >
       {/* 36 px, its top on the first line's and its left edge on the list

@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useState, type ReactElement, type UIEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type FocusEvent,
+  type ReactElement,
+  type UIEvent,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { linkOptions, useNavigate } from "@tanstack/react-router";
+import { linkOptions, useNavigate, useRouter } from "@tanstack/react-router";
 import { useLiveInfiniteQuery } from "@tanstack/react-db";
 import type { HealthNode } from "@tanstack/db";
 import { Collection, Link } from "react-aria-components";
@@ -18,7 +25,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
 import { mailData, placeWhere, refreshNewest, restartMail } from "./conversations";
-import { useKeepPlace, useRowSize, useToday } from "./list-state";
+import { useKeepPlace, useRestIntent, useRowSize, useToday } from "./list-state";
 import type { Place } from "./places";
 import { ConversationRow, createOpenStore, type RowAccount } from "./row";
 import {
@@ -71,6 +78,7 @@ export function ConversationList({
 }): ReactElement {
   const client = useQueryClient();
   const navigate = useNavigate();
+  const router = useRouter();
   // Taken once: after sign-out drops the member's mail, this list, still
   // drawn for a moment, must not start a new collection and read again.
   const [{ conversations }] = useState(() => mailData(client));
@@ -144,6 +152,9 @@ export function ConversationList({
   const now = useToday();
   const [openStore] = useState(() => createOpenStore(openId));
   useEffect(() => openStore.set(openId), [openStore, openId]);
+  const readAhead = useRestIntent((id) => {
+    void router.preloadRoute(conversationHref(id));
+  });
 
   const error = firstError(list.health);
   const expired = error instanceof ApiError && error.status === unauthorized;
@@ -189,8 +200,16 @@ export function ConversationList({
     });
   }
 
+  // Focus resting on a row reads its conversation ahead, as hovering does.
+  const onFocus = (event: FocusEvent) => {
+    const row =
+      event.target instanceof Element ? event.target.closest("[data-conversation]") : null;
+    const id = row?.getAttribute("data-conversation");
+    if (id) readAhead.rest(id);
+  };
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col" onFocus={onFocus} onBlur={readAhead.leave}>
       {/* 1 rem square, so the rows follow the browser's text size. */}
       <span
         ref={probe}
@@ -240,6 +259,10 @@ export function ConversationList({
                 href={conversationHref(conversation.id)}
                 openStore={openStore}
                 now={now}
+                // React Aria's links never preload: the router reads the
+                // conversation ahead, as its own Link would (ADR031).
+                onRest={() => readAhead.rest(conversation.id)}
+                onLeave={readAhead.leave}
               />
             )}
           </Collection>
