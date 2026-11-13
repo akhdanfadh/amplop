@@ -409,9 +409,8 @@ export function Enrollment({
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            disabled={locked || status.isFetching}
-            onClick={() => {
+            isDisabled={locked || status.isFetching}
+            onPress={() => {
               if (regenerationUncertain || turnOffUncertain) void checkStatus();
               else void status.refetch();
             }}
@@ -475,9 +474,9 @@ export function Enrollment({
             <Button
               type="button"
               variant="outline"
-              className="min-h-11 w-fit border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-              disabled={locked || cancel.isPending}
-              onClick={() => void copySecret()}
+              className="w-fit"
+              isDisabled={locked || cancel.isPending}
+              onPress={() => void copySecret()}
             >
               Copy setup key
             </Button>
@@ -503,9 +502,8 @@ export function Enrollment({
               ref={checkRef}
               type="button"
               variant="outline"
-              className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-              disabled={locked || status.isFetching}
-              onClick={() => void checkStatus()}
+              isDisabled={locked || status.isFetching}
+              onPress={() => void checkStatus()}
             >
               Check enrollment status
             </Button>
@@ -514,9 +512,8 @@ export function Enrollment({
             ref={cancelRef}
             type="button"
             variant="outline"
-            className="min-h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            disabled={locked || pending || uncertain}
-            onClick={cancelEnrollment}
+            isDisabled={locked || pending || uncertain}
+            onPress={cancelEnrollment}
           >
             {cancel.isPending ? "Canceling enrollment..." : "Cancel enrollment"}
           </Button>
@@ -533,9 +530,9 @@ export function Enrollment({
           <Button
             ref={startRef}
             type="button"
-            className="h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            disabled={locked || pending || status.isFetching}
-            onClick={startEnrollment}
+            className="whitespace-normal"
+            isDisabled={locked || pending || status.isFetching}
+            onPress={startEnrollment}
           >
             {start.isPending
               ? "Starting enrollment..."

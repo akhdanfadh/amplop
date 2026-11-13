@@ -22,12 +22,10 @@ import {
   type EarlierTries,
   type Ended,
 } from "./visitor-text";
+import { lineLink } from "@/components/link-style";
 
 const emptyValues = { email: "", password: "", confirmPassword: "" };
 const emailId = "register-email";
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
-const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 const inputs = [
   {
@@ -125,11 +123,11 @@ export function CompleteForm({
           link === "new-link" ? (
             // Exact, or the router marks /register current on
             // /register/complete and a screen reader says so.
-            <Link key={link} to="/register" activeOptions={{ exact: true }} className={linkClass}>
+            <Link key={link} to="/register" activeOptions={{ exact: true }} className={lineLink}>
               Ask for a new link
             </Link>
           ) : (
-            <Link key={link} to="/sign-in" className={linkClass}>
+            <Link key={link} to="/sign-in" className={lineLink}>
               Sign in
             </Link>
           ),
@@ -174,7 +172,6 @@ export function CompleteForm({
                   autoComplete="username"
                   autoCapitalize="none"
                   spellCheck={false}
-                  className={`h-11 border-muted-foreground dark:aria-invalid:border-destructive ${focusClass}`}
                   disabled={redeem.isPending}
                   aria-invalid={errors.length > 0}
                   aria-describedby={
@@ -193,13 +190,13 @@ export function CompleteForm({
                 {refused && (
                   // Field stretches its children; the paragraph keeps the
                   // link's focus outline to its text. An action, not part of
-                  // the error, so not in its color.
+                  // the error, so a link, not in its colour.
                   <p>
                     <Link
                       to="/register"
                       // Exact, as above.
                       activeOptions={{ exact: true }}
-                      className={`text-foreground ${linkClass}`}
+                      className={lineLink}
                     >
                       Ask for a new link
                     </Link>
@@ -244,8 +241,8 @@ export function CompleteForm({
       <Button
         ref={submitRef}
         type="submit"
-        className={`h-auto min-h-11 whitespace-normal ${focusClass}`}
-        disabled={redeem.isPending}
+        className="whitespace-normal"
+        isDisabled={redeem.isPending}
       >
         {redeem.isPending ? "Creating account..." : "Create account"}
       </Button>

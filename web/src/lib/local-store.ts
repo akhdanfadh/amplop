@@ -1,0 +1,21 @@
+// localStore is this browser's localStorage for layout choices, e.g. the
+// sidebar's collapsed state. A browser can refuse
+// storage (a private window, a full quota, a blocked site); then a read
+// finds nothing and a write is dropped, so the layout starts from its
+// defaults.
+export const localStore = {
+  getItem(key: string): string | null {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Dropped: see above.
+    }
+  },
+};

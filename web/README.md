@@ -65,7 +65,14 @@ browser console logs no Content Security Policy violation:
 - Styles: stylesheets and React `style` props work. Any `<style>`
   element, or a `style` attribute in the shell's HTML, is blocked. A
   library that adds its own `<style>` needs its rules in a stylesheet, as
-  `src/components/ui/input-otp.tsx` does for input-otp.
+  `src/components/ui/input-otp.tsx` does for input-otp. The policy names
+  nothing in the web app's code, so it never changes with a library.
+  React Aria's iOS scroll lock adds a `<style>` while an overlay is open,
+  which the policy blocks, and an iPhone's console logs that violation;
+  the rule's effect, `overscroll-behavior: contain`, comes instead from
+  `overscroll-contain` on each overlay's scrolling area (the sidebar's
+  content, a dialog), so scrolling past its end never moves the page
+  behind.
 - Images, fonts, and requests: only inbok's own origin. No `data:` URLs,
   no CDNs, and no calls to other sites.
 - Framing: no site, inbok included, may show a page of the app in a
@@ -86,10 +93,12 @@ schema is created, and schemas are created as their modules load, so
 The app uses [Vite+](https://viteplus.dev), whose `vp` command runs
 Vite. It is installed with the other dependencies, so the `pnpm` scripts
 need no global install. Vite+ replaces the `vite` package with its own
-copy and includes Vitest; `pnpm-workspace.yaml` pins all three, and they
-must change together. To upgrade, change the `vite-plus` version there,
-run `pnpm install`, then `pnpm exec vp migrate` to move `vite` and
-`vitest` to the versions it includes.
+copy and includes Vitest; `pnpm-workspace.yaml` pins all three, with
+Vitest's Playwright browser provider, `@vitest/browser-playwright`, and
+the four must change together. To upgrade, change the `vite-plus` version
+there, run `pnpm install`, then `pnpm exec vp migrate` to move `vite` and
+`vitest` to the versions it includes, and set
+`@vitest/browser-playwright` to the same version as `vitest`.
 
 ## Source layout
 
@@ -109,8 +118,8 @@ Put shared code in the folder for its responsibility:
   and the test message form and its result wording.
 - `src/features/members`: the member list's columns and cells, the table
   with its confirmation dialog, and its wording.
-- `src/features/registration`: the Settings page's Registration section,
-  the `/register` and `/register/complete` forms, and their wording.
+- `src/features/registration`: the Registration page's section, the
+  `/register` and `/register/complete` forms, and their wording.
 - `src/features/password-reset`: the `/forgot-password` and
   `/reset-password` forms, the reset form's schema, and their wording.
 - `src/features/connected-accounts`: the Connected accounts list with its
@@ -122,16 +131,29 @@ Put shared code in the folder for its responsibility:
 - `src/features/outgoing-messages`: the compose form and its schema, the
   Outbox list, one message's status with Send again and Edit and send,
   their wording, and when their pages read again (`pollWhile`).
-- `src/components`: shared components, such as the password input and the
-  request error under a form. `ui/` holds the shadcn components we own.
+- `src/features/mail`: the mail frame's sidebar, its places and their
+  names, the list beside the reading pane, and the address Back to mail
+  returns to.
+- `src/features/settings`: the settings sidebar.
+- `src/components`: shared components, such as the password input, the
+  request error under a form, the status badge, the link styles, the
+  signed-in frame and its member menu, the offline banner, and the pages
+  for loading, failure, and Page not found. `ui/` holds the shadcn
+  components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
   secret of an emailed link, or keeping a server's field error through a
   blur.
 - `src/hooks`: React hooks shared by features, such as a page reading its
-  link's secret.
+  link's secret, the layout the window's width allows, or a page focusing
+  its heading once a closing drawer lets go (`useFocusOnOpen`).
 - `src/routes`: route registration and page composition.
+- `src/test`: setup for the browser tests, and `appRouter`, the app's
+  routes loaded at an address with a session read stubbed.
+- `src/styles.css`: the tokens and base styles. Beside it,
+  `react-aria-pressable.css` holds a React Aria rule the
+  Content-Security-Policy would otherwise block; the file says why.
 
 Keep feature folders flat until they need more structure. File names can omit
 what the folder already says, e.g. `features/setup/form.tsx` exports
@@ -144,23 +166,110 @@ Each file in `src/routes` is one route. `pnpm dev` and `pnpm build`
 regenerate `src/routeTree.gen.ts` from them. That file is committed so
 type checking works on a fresh clone; never edit it by hand.
 
-The application checks setup status once per fresh page load and shares the
-result during navigation. Before setup is complete, every page redirects to
-`/setup`, including direct sign-in, demo, and unknown URLs. The check attempts
-the API even when the browser reports offline. Initial status failures block
-the page with an error and retry action; a failed recheck keeps entered setup
-values and shows the error beside the form.
+Pages sit under layout routes, whose names start with `_` and add nothing
+to the address. Each guard runs in `beforeLoad`, before anything draws,
+and reads the session through `readSession` (`features/auth/guard.ts`),
+which uses the cached session when a page has read it:
 
-The `/setup` page shows token configuration instructions or the first-admin
-form. See [First administrator setup](../backend/README.md#first-administrator-setup)
-for the operator steps. Completing setup updates the shared status and opens
-`/sign-in`, with instructions to remove the setup token and restart the server.
-Setup does not sign the administrator in. Later visits to `/setup` redirect to
-`/`, where the session check chooses home or sign-in.
-The browser remembers a local setup attempt until reload, so a status check
-that confirms completion after a lost response also shows the instructions.
+| Layout route           | Pages                                       | Guard                                                                                             |
+| ---------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `_app`                 | Everything signed in                        | No session: `/sign-in?redirect=<address>`, which returns there after sign-in                      |
+| `_app/_mail`           | `/mail/<place>`, `/mail/outbox`, `/compose` | None; the mail frame                                                                              |
+| `_app/settings`        | `/settings/<page>`                          | None; the settings frame                                                                          |
+| `_app/settings/_admin` | Members, Registration, System email         | A member gets Page not found; an administrator without two-factor authentication goes to Security |
+| `_auth`                | Signed-out pages                            | None; the wordmark over one column                                                                |
+| `_auth/_signed-out`    | Sign-in, Forgot password, Register          | A signed-in member goes to `/`; a failed check shows the page                                     |
+
+`/` opens `/mail/inbox`, or Security for an administrator without
+two-factor authentication. Pages emailed links open (`/verify-email`,
+`/reset-password`, `/register/complete`) keep their addresses and sit in
+`_auth` without a guard, so they work signed in or out. The server's
+other entry addresses, `/security` (the recovery notice) and
+`/connected-accounts` (where Google's return lands, with `?outcome=`),
+are routes that only redirect into settings, so the server never follows
+the settings' layout; `src/entry-paths.browser.test.tsx` lists every
+entry address and fails when one stops being a page. A page still reads
+the session itself and opens sign-in on a 401, since a session can end
+after the guard ran, e.g. from another tab. The router counts a session
+read in the last 5 s as fresh (`sessionFreshMs`), so a page that opens
+just after a guard read it does not read it again.
+
+Every page gets the same states from the router (`src/router.tsx`):
+`RoutePending`, a spinner with "Loading...", when the page's checks take
+over 300 ms, then for at least 500 ms so it does not flash. The first
+load, the setup check's included, is one loading period: TanStack shows
+its view at once, so CSS hides it for the page's first 300 ms and nothing
+holds it, and a quick first load shows nothing. `RouteError` when a read
+the page needs fails, with Try again, which runs the checks again; and
+`NotFound` for an address with no page, or with search parameters its
+route refuses, which Reload would only repeat. A search parameter that
+only filters a view should fall back instead, e.g. with Zod's `.catch()`,
+so an old link still opens the page; a route that refuses a name in its
+path throws `notFound()` from its `beforeLoad` or `loader` (thrown while
+the page draws, it is a crash). `CrashScreen` offers Reload and the start
+page, the way out when a page fails on every load; a `CatchBoundary` in
+the root shows it when the code around the pages fails. Each state names
+the tab and moves focus to its heading; after Try again the pending view
+takes focus, unless focus is on something still shown.
+
+The root (`src/routes/__root.tsx`) fixes React Aria's locale to `en-US`,
+so its own words, e.g. a toast's Close, and its direction never follow
+the browser's language; sends React Aria's links through the router; and
+holds the one toast region. A React Aria link to a page in the app takes
+TanStack Router's options, written with its `linkOptions`, e.g.
+`href={linkOptions({ to: "/mail/outbox/$id", params: { id } })}`, which
+TypeScript checks against the routes, params included; a bare object
+misses a param left out. Its `routerOptions`, e.g. `replace`, reach the
+router, and a path written as a string is a type error. Only a link that
+leaves the app, a `#fragment`, or a file the server sends (`/api/...`) is
+a string.
+
+The signed-in pages sit in a frame (`components/frame.tsx`) that fills
+the window at every width ([DESIGN.md](DESIGN.md#panes-and-widths)):
+from 1280 px the sidebar sits beside the content, and its open or
+collapsed state is kept in `localStorage`; from 1024 px it is a rail,
+which expands into the drawer over the content; below 1024 px a top bar
+opens the drawer. `useLayout` (`hooks/use-layout.ts`) names the layout
+for the width. The frames' routes keep their components in the app's
+first download (`codeSplitGroupings`), so a page still loading when the
+member moves between pages shows its loading view inside the frame; the
+first load is one loading view over the window, as above. In mail, the
+list grows with the window from 300 px to 440 px beside the reading pane
+(`features/mail/panes.tsx`), with no divider to drag; below 780 px one
+pane shows at a time. A state in the reading pane, e.g. a conversation not
+found, is a section with an `h2` (`StateRegion`), since the list holds the
+page's `main`. The mail sidebar's Outbox shows how many of its messages
+are not sent yet, from the Outbox page's own read: one being sent, or one
+whose page still offers to send it (`unfinished`), so a message sent
+again stops counting. The member menu at the bottom of the sidebar opens
+Settings, the theme choice, and Sign out. Both frames and the signed-out
+layout show `OfflineBanner` at the top of the content while the browser
+reports no connection, read from TanStack Query's `onlineManager`.
+
+The application checks setup status once per fresh page load and shares
+the result during navigation. Before setup is complete, every page
+redirects to `/setup`, including direct sign-in, demo, and unknown URLs.
+The check attempts the API even when the browser reports offline. While it
+runs, the page shows the app's first-load view (above); a failed first
+check shows the app's failed-read state, whose Try again shows the loading
+view at once, as the router's does, checks again, and runs the page's own
+checks too. A failed recheck keeps entered setup values and shows the
+error beside the form.
+
+The `/setup` page shows token configuration instructions or the
+first-admin form. See [First administrator
+setup](../backend/README.md#first-administrator-setup) for the operator
+steps. Completing setup updates the shared status and opens `/sign-in`,
+with instructions to remove the setup token and restart the server. Setup
+does not sign the administrator in. Later visits to `/setup` redirect to
+`/`, whose guard chooses mail or sign-in. The browser remembers a local
+setup attempt until reload, so a status check that confirms completion
+after a lost response also shows the instructions.
 
 The `/sign-in` page submits credentials through the generated mutation hook.
+`/sign-in?redirect=<path>` returns to that path after sign-in, else to `/`;
+anything but a path on this site is dropped (`features/auth/search.ts`), so
+a crafted link can't send a member elsewhere.
 Accounts with TOTP then enter six authenticator digits in two groups of three.
 "Use a backup code" switches the same control to ten characters in two groups
 of five. Pasting ignores spaces and dashes. Switching clears the previous entry.
@@ -171,9 +280,8 @@ A deactivated account with the right password sees "This account is
 deactivated. Ask your administrator." The code step answers a 403 the same
 way as an ended challenge: the form stops and offers to start again.
 An uncertain response offers a session check before another attempt.
-The `/` page reads the current account and redirects to sign-in on HTTP 401.
-Other failures keep a retry action. Administrators without confirmed TOTP open
-`/security` to enroll. Members can reach the same page through the Security link.
+Administrators without confirmed TOTP land on `/settings/security` to
+enroll. Members reach the same page through the settings sidebar.
 
 Security starts enrollment on request and renders the QR code locally, with a
 manual setup key as an alternative. A six-digit authenticator code confirms it,
@@ -206,14 +314,15 @@ page switches to that notice. An HTTP 409 means TOTP is already off, so the
 page offers enrollment again. An uncertain turn-off blocks another attempt until
 status is checked.
 
-Security opens with the account's email address and whether it is verified.
-"Send verification link" emails a link that expires in 24 hours. A lost reply
-or failed send can be repeated without a check: the server limits how many
-links are sent, and every unexpired link works. Sending and TOTP writes wait
-for each other, because confirming TOTP replaces this browser's session. An
-unverified account also sees a notice on home that links to Security. Both
-say a forgotten password can't be reset by email until the address is
-verified, since the reset page's answer cannot say why nothing arrived.
+Security opens with the account's email address and whether it is
+verified. "Send verification link" emails a link that expires in 24 hours.
+A lost reply or failed send can be repeated without a check: the server
+limits how many links are sent, and every unexpired link works. Sending
+and TOTP writes wait for each other, because confirming TOTP replaces this
+browser's session. An unverified account also sees a banner on every other
+settings page that links to Security. Both say a forgotten password can't
+be reset by email until the address is verified, since the reset page's
+answer cannot say why nothing arrived.
 
 The link opens `/verify-email`, which works signed in or out. The secret after
 `#` never reaches the server with the page request. `getRouter` calls
@@ -295,30 +404,31 @@ list instead of requiring a check. A session the API reports gone reads
 reloaded list. Ending sessions and TOTP writes wait for each other, because
 confirming TOTP replaces this browser's session and ends the others.
 
-Administrators with confirmed TOTP see Members and Settings links to
-`/members` and `/settings`. Each page passes its session to `AccountNav`,
-which decides from it; a page wider than a form, such as `/members`, also
-passes `wide`. Anyone else who opens Settings sees that settings are for
-administrators with two-factor authentication; an administrator also gets a
-link to Security. A 401 from a save or test signs out; a 403 reads access
+Administrators with confirmed TOTP see "This inbok" in the settings
+sidebar: Members, Registration, and System email (`/settings/members`,
+`/settings/registration`, `/settings/system-email`). An administrator
+without it sees the group locked with a line pointing to Security. If
+access is lost after a page loaded, the page says the settings are for
+administrators with two-factor authentication, with a link to Security for
+an administrator. A 401 from a save or test signs out; a 403 reads access
 again.
 
-The page configures system email, the server inbok sends its own mail
-through. The form applies Go's rules between fields before sending, and its
-password description says when an empty password keeps the saved one.
-Inputs are read-only, not disabled, while a save runs, so focus stays and the
-values remain readable. A save whose response is lost locks the form and the
-test until "Check saved settings" reads them again and says whether they
-match; a typed password is never read back, so it stays unconfirmed. The
-username and password inputs carry password-manager opt-outs, so the inbok
-sign-in is neither filled in nor saved there.
+System email configures the server inbok sends its own mail through. The
+form applies Go's rules between fields before sending, and its password
+description says when an empty password keeps the saved one. Inputs are
+read-only, not disabled, while a save runs, so focus stays and the values
+remain readable. A save whose response is lost locks the form and the test
+until "Check saved settings" reads them again and says whether they match;
+a typed password is never read back, so it stays unconfirmed. The username
+and password inputs carry password-manager opt-outs, so the inbok sign-in
+is neither filled in nor saved there.
 
-The test section sends to the signed-in address by default and words each
+Its test section sends to the signed-in address by default and words each
 failure by the step that failed. A lost result can be sent again without a
 check. Editing the recipient or a later save hides an earlier result. A save
 and a test never run at the same time.
 
-The Registration section opens and closes public registration with a switch,
+The Registration page opens and closes public registration with a switch,
 which shows the status the server saved, not the click. Each change asks
 first: opening says anyone who can reach this inbok can create a member
 account, and each adds storage and sync work; closing says unused sign-up
@@ -333,49 +443,50 @@ leaves the status unknown.
 Members lists every account, oldest first, in a table: the address, with
 the signed-in one marked "You", its status, active or deactivated with the
 date, then role, joined date, whether the email is verified, and whether
-two-factor authentication is on. Status and the action come right after the
-address, so a phone shows them first; the table scrolls sideways in a region
-the keyboard can focus. Members have a Deactivate or Reactivate button; the
-signed-in administrator and other administrators have none. Both actions ask
-first in a dialog, and the request starts once the dialog has closed, so
-focus can return to the row's button. The changed row updates from the
-server's answer at once, and every outcome rereads the list. A failed reread
-keeps the list with "Could not reload members, so the list may be out of
-date." and Try again. An unknown outcome asks the user to check the list
-before trying again; a 404 or 409 shows the server's explanation. Like
-Settings, anyone else who opens the page sees that it is for administrators
-with two-factor authentication, a 401 signs out, and a 403 reads access
-again.
+two-factor authentication is on. Status and the action come right after
+the address, so a phone shows them first; the table scrolls sideways in a
+region the keyboard can focus. Members have a Deactivate or Reactivate
+button; the signed-in administrator and other administrators have none.
+Both actions ask first in a dialog, and the request starts once the dialog
+has closed, so focus can return to the row's button. The changed row
+updates from the server's answer at once, and every outcome rereads the
+list. A failed reread keeps the list with "Could not reload members, so
+the list may be out of date." and Try again. An unknown outcome asks the
+user to check the list before trying again; a 404 or 409 shows the
+server's explanation. Like the other "This inbok" pages, it says it is for
+administrators with two-factor authentication when access is lost after it
+loaded, a 401 signs out, and a 403 reads access again.
 
-Every signed-in page links `/connected-accounts`, where members connect
-Gmail accounts. The page lists the member's accounts, oldest first, with the
-date each was connected. Connect Gmail asks the API for Google's consent
-page and sends the tab there; Google returns the browser to the API, which
-redirects to this page with `?outcome=`. The page validates it against the
-generated `ConnectOutcome`, ignores any other value, removes it from the
-address, so a reload or Back does not repeat it, and then shows its message.
-An account Google stopped accepting is marked "Needs reconnecting", with the
-date, and so is one whose saved access inbok can't open, e.g. after a
-server key was lost, which the server checks at each read. Only these have
-Reconnect, which runs the same consent flow for that account, where the
-member must choose the same Google account. Disconnect
-asks first and says inbok removes the account with everything it saved for
-it and asks Google to end its access; for an account whose saved access
-inbok can't open, it says inbok can't ask Google, and that the member can
-remove inbok in their Google Account. The dialog leaves out that inbok does
-not ask when another member here connected the same Google account, whose
-access stays. The row goes as soon as the server confirms. When the
-server has no Google client, the page says to ask an administrator
-instead of offering Connect Gmail or Reconnect. A 401 from any
-read or write opens sign-in. A refused start rereads what it shows has
-changed: the providers on a 409, the list on a 404. A lost answer to a start
-just asks for another try, since an unused start expires; a lost answer to a
-disconnect asks the member to check the list, which rereads after every
-outcome. A failed reread keeps the list with "Could not reload connected
-accounts, so the list may be out of date." and Try again. A start goes to
-Google only while the page is still open. The browser's back-forward cache
-can restore the page locked as it left for Google, so a restored page
-unlocks its buttons and rereads the list.
+Settings' Connected accounts (`/settings/connected-accounts`) is where
+members connect Gmail accounts. The page lists the member's accounts,
+oldest first, with the date each was connected. Connect Gmail asks the API
+for Google's consent page and sends the tab there; Google returns the
+browser to the API, which redirects to this page with `?outcome=`. The
+page validates it against the generated `ConnectOutcome`, ignores any
+other value, removes it from the address, so a reload or Back does not
+repeat it, and then shows its message. An account Google stopped accepting
+is marked "Needs reconnecting", with the date, and so is one whose saved
+access inbok can't open, e.g. after a server key was lost, which the
+server checks at each read. Only these have Reconnect, which runs the same
+consent flow for that account, where the member must choose the same
+Google account. Disconnect asks first and says inbok removes the account
+with everything it saved for it and asks Google to end its access; for an
+account whose saved access inbok can't open, it says inbok can't ask
+Google, and that the member can remove inbok in their Google Account. The
+dialog leaves out that inbok does not ask when another member here
+connected the same Google account, whose access stays. The row goes as
+soon as the server confirms. When the server has no Google client, the
+page says to ask an administrator instead of offering Connect Gmail or
+Reconnect. A 401 from any read or write opens sign-in. A refused start
+rereads what it shows has changed: the providers on a 409, the list on
+a 404. A lost answer to a start just asks for another try, since an unused
+start expires; a lost answer to a disconnect asks the member to check the
+list, which rereads after every outcome. A failed reread keeps the list
+with "Could not reload connected accounts, so the list may be out of
+date." and Try again. A start goes to Google only while the page is still
+open. The browser's back-forward cache can restore the page locked as it
+left for Google, so a restored page unlocks its buttons and rereads the
+list.
 
 Each account inbok can use (`status` `usable`) also says where its sync
 stands, under the line about its connection: `sync.ts` picks the first
@@ -403,9 +514,14 @@ waiting or copying, or after a Check now as above, and otherwise every
 minute, so the checked time stays current; an account inbok cannot use
 waits for its member, so it does not count.
 
-Signing out deletes the current session, clears account caches, and opens
-sign-in. A 401 also completes sign-out because that session is already absent
-or expired. Other failures stay visible and can be retried. Signing in also
+Sign out, in the member menu, deletes the current session, then
+`clearAccountCache` clears account caches, closes any toasts, and sends
+Back to mail to the Inbox, and sign-in opens without the page's leave
+warning: text typed in Compose is dropped (a `DEBT.md` entry). Every
+sign-in, sign-out, and ended session calls `clearAccountCache`, so
+whatever else holds a member's data clears there too. A 401 also completes
+sign-out because that session is already absent or expired. Other failures
+show an error toast, and the member can sign out again. Signing in also
 clears account data and mutation variables when the request settles, even if the
 sign-in page has closed, so another account cannot inherit them. The public
 setup status survives authentication cache cleanup. Account actions wait for a fresh session
@@ -414,8 +530,8 @@ immediately despite the browser's offline indicator; editing or leaving the
 form invalidates their result. The original health
 and probe demo remains available at `/probe`.
 
-Every signed-in page also links New message (`/compose`) and Outbox
-(`/outbox`), until the mail layout gives sending its own place. The
+The mail sidebar's Compose opens `/compose` and its Outbox `/mail/outbox`,
+both in the mail frame, until compose moves into a docked window. The
 compose form sends from one of the member's connected accounts, chosen in
 From and shown by its address. From starts with none chosen, so the member
 picks the address recipients see; Edit and send keeps the opened message's
@@ -459,7 +575,7 @@ reconnecting rereads the accounts and links Connected accounts.
 The Outbox lists the member's newest 50 messages from inbok, newest first,
 with each status, and reads the list again every 5 seconds while one is
 waiting or sending; its New message button opens the compose form. Each
-opens its own page at `/outbox/$id`, which reads only an ID that is a
+opens its own page at `/mail/outbox/$id`, which reads only an ID that is a
 UUID, since the client puts it in the API's path as is. The page shows the
 status above the message, read again every 2 seconds until the send ends,
 and announces it, first after the page has rendered. On both pages a
@@ -545,15 +661,37 @@ error. To format on save and see lint errors while typing, install the
 Oxc extension in your editor (VS Code: `oxc.oxc-vscode`; others:
 <https://viteplus.dev/guide/ide-integration>).
 
-Run the unit tests, files named `*.test.ts` next to the code they test:
+Tests sit next to the code they test, in two Vitest projects set up in
+`vite.config.ts`:
+
+- `unit`: files named `*.test.ts`, run in Node, for code without a page.
+- `browser`: files named `*.browser.test.tsx`, run in a real Chromium that
+  [Playwright](https://playwright.dev) drives ([Vitest browser
+  mode](https://vitest.dev/guide/browser/)), for components and anything
+  that needs focus, pointer events, layout, or storage. Render with
+  `render` from `vitest-browser-react`; find elements with `page` and
+  interact with `userEvent` from `vite-plus/test/browser/context`, which
+  send real browser input. `src/test/browser-setup.ts` loads the app's
+  stylesheet first.
+
+The browser project needs Playwright's Chromium, once per machine and
+again after a Playwright upgrade. From `web`:
+
+```sh
+pnpm exec playwright install chromium
+```
+
+Run every test, one project, or one file:
 
 ```sh
 pnpm test
+pnpm exec vp test run --project browser
+pnpm exec vp test run src/lib/theme.browser.test.tsx
 ```
 
 Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
 functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the
-latter.
+latter. `make check` runs both projects, headless.
 
 The project uses TypeScript 7. If your VS Code still checks types with
 TypeScript 6, install the `TypeScriptTeam.native-preview` extension.
@@ -569,22 +707,111 @@ Styling uses [Tailwind CSS](https://tailwindcss.com): utility classes in
 Tailwind's recommended order. For class autocomplete, install the
 Tailwind CSS IntelliSense extension (VS Code: `bradlc.vscode-tailwindcss`).
 
-UI components come from [shadcn/ui](https://ui.shadcn.com). Its CLI copies
+UI components come from [shadcn/ui](https://ui.shadcn.com)'s React Aria
+flavour (`aria-nova` in `components.json`): each is a styled
+[React Aria Components](https://react-aria.adobe.com) part. Its CLI copies
 each component's source into `src/components/ui`, where it becomes our
-code to edit; there is no component library to upgrade. Settings are in
-`components.json`, and the theme (colors, radius, dark mode) is in
-`src/styles.css`. From `web`, add a component with the pinned CLI, then
-format it:
+code to edit; there is no component library to upgrade. The theme (tokens,
+fonts, dark mode) is in `src/styles.css`. From `web`, add a component with
+the pinned CLI, then format it:
 
 ```sh
 pnpm exec shadcn add dialog
 pnpm fix
 ```
 
+After adding one, read it: some aria-nova files lag React Aria. Ours differ
+from the registry here:
+
+- `checkbox`, `switch`, `radio-group`: built on React Aria's
+  `CheckboxField`/`CheckboxButton` (and the Switch and Radio pairs), which
+  replace the deprecated `Checkbox`, `Switch`, and `Radio`. The label is
+  the component's children.
+- `alert-dialog`: one `AlertDialog` holds the overlay and the dialog (no
+  `AlertDialogContent`); `AlertDialogDescription` is React Aria's
+  description slot, so the dialog is described by it; Cancel takes focus.
+- `table`, `native-select`, `input-otp`: plain HTML (the registry's
+  `table` is React Aria's interactive grid, wrong for read-only rows).
+- The shell's components each say how they differ in a `DESIGN:`
+  paragraph on their main part; read it before `shadcn add --overwrite`,
+  which would bring the registry's version back. In short:
+  - `sidebar`: one left sidebar that collapses to a rail; the window's
+    layout (`useLayout`), not CSS breakpoints, picks sidebar, rail, or
+    drawer; in the rail layout the rail expands into the drawer, over the
+    content; its owner stores the open state (no cookie). `Sidebar` is a
+    named `nav`, its menus are lists, `SidebarInset` is a `div`. No
+    variants, `SidebarRail`, `SidebarInput`, `SidebarGroupAction`, or
+    `sm`/`lg` sizes. `useSidebar()` gives the app `rail`, `isDrawer`, and
+    `dismiss()`, which closes the drawer. The drawer also closes when the
+    window's layout moves it, and a layout change that takes away the
+    focused part, e.g. the open drawer or the top bar's button, gives
+    focus to the sidebar's button shown now.
+  - `sheet`: DESIGN.md's dialog look and timing; a side sheet's width
+    comes from `--sheet-width`.
+  - `popover`: holds a dialog, so it can mix links, buttons, and a toggle
+    group, which a menu can't. `toggle-group`: a segmented control (the
+    theme choice); every item needs an `id`; its keys are React Aria's
+    toolbar keys (the group is one Tab stop, and arrows move between
+    items without choosing), though a one-of-several group is announced
+    as radios. React Aria's `RadioGroup` has the radio keys but takes no
+    tooltips, which icon-only items need.
+  - `tooltip`: the trigger is a React Aria button or link as is. It shows
+    after the pointer rests 500 ms, then the next ones at once (React
+    Aria's warm-up), and at once on keyboard focus. A tooltip holds no
+    words found nowhere else: inside a dialog or drawer, assistive
+    technology never reads it. Its `aria-describedby` repeats an icon
+    button's name, which is React Aria's doing.
+  - `skeleton` does not pulse. `spinner` is decoration.
+- `toast` is ours: the registry offers only `sonner` (see DESIGN.md).
+  `showUndo` shows a result with Undo and closes itself after 10 s;
+  `showError` shows a failure until the member closes it, and not again
+  while it shows; `closeToasts` closes all, e.g. on sign-out. It is React
+  Aria's alpha toast (`UNSTABLE_`), so recheck it after an upgrade.
+- No `drawer`: shadcn's `drawer` is a swipeable panel, usually from the
+  bottom, and the React Aria registry's still builds it on Base UI, a
+  second component library. The sidebar's drawer is shadcn's `sheet`, a
+  side panel on React Aria's `ModalOverlay`. React Aria's own `Sheet`
+  (1.22) adds swiping, but is new and built on scroll-driven animations,
+  which not every browser has yet (ADR031 follow-ups).
+- Enter and exit animations use DESIGN.md's easing; with reduced motion,
+  `src/styles.css` keeps their fades and drops their movement.
+- Focus rings use React Aria's `data-focus-visible` and the `focus-ring`
+  utility from `src/styles.css`, never `:focus-visible` on a React Aria
+  part ([shadcn-ui/ui#11258](https://github.com/shadcn-ui/ui/issues/11258)).
+  Text fields ring on any focus (`data-focused`), a click included.
+  `focus-ring-inset` draws it inside the edge, for a toast, whose dark
+  surface the outer ring would not stand out on.
+- A mark made of a fill or a shadow (the open item's bar, the chosen
+  theme, a popover's outline) gets a `forced-colors:` variant that keeps
+  it in Windows' contrast themes, which drop both.
+
+React Aria components take React Aria props: `isDisabled`, not
+`disabled`; `onPress`, not `onClick`; `isSelected` and `onChange` on a
+checkbox or switch. A disabled button leaves the tab order, so the button
+that opened a confirmation gets `isPending` while the write it started
+runs: it keeps focus, so focus has a place when the dialog closes, and
+ignores presses. Its label says what is running, e.g. "Disconnecting...":
+React Aria announces the label, not a busy state ([Button,
+Pending](https://react-aria.adobe.com/Button#pending)). Other buttons the
+write blocks get `isDisabled`. Any other button that runs its own request
+(form submits, Try again) still uses `isDisabled` until
+the forms branch moves them to one pending pattern.
+
 `AlertDialogAction`, the confirming button of a dialog that asks first,
-ignores the later clicks of a double-click: a dialog can open with that
-button under the pointer, and the second click would confirm what the member
-never read. Enter and Space still confirm.
+ignores a mouse or touch press that starts within 500 ms of the dialog
+opening: a dialog can open with that button under the pointer, and the
+second click of a double-click would confirm what the member never read.
+Enter and Space still confirm at once.
+
+The theme is light, dark, or the system's, kept per browser in
+`localStorage` by `src/lib/theme.ts`; `useTheme` from `src/hooks` reads
+and changes it, as the member menu does. `applyTheme` sets every duration
+to zero while it switches the colours and makes the browser restyle the
+page at once, so nothing fades from one theme to the other; zero, not
+`none`, because React Aria removes a closing tooltip only when its exit
+animation finishes. A script in the root route's head marks the page dark
+before the first paint; the shell's Content-Security-Policy allows it by
+hash.
 
 Data tables use [TanStack Table](https://tanstack.com/table), which supplies
 the rows and columns while shadcn's `Table` components render them. It is

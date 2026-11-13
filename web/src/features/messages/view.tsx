@@ -129,8 +129,8 @@ function Content({ content }: { content: MessageContent }): ReactElement {
         <Button
           type="button"
           variant="outline"
-          disabled={content.retrying}
-          onClick={content.onRetry}
+          isDisabled={content.retrying}
+          onPress={content.onRetry}
         >
           Try again
         </Button>
@@ -179,7 +179,7 @@ function Bodies({
               <AlertDescription className="flex-1 basis-60">
                 Remote images are hidden. Loading them tells the sender you opened this message.
               </AlertDescription>
-              <Button type="button" variant="outline" size="sm" onClick={allowRemote}>
+              <Button type="button" variant="outline" size="sm" onPress={allowRemote}>
                 Load remote content
               </Button>
             </>

@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import Linkify from "linkify-react";
+import { textLink } from "@/components/link-style";
 import { linkOptions } from "./links";
 
 // TextBody shows a plain-text body as text, keeping its line breaks and
@@ -9,8 +10,8 @@ export function TextBody({ text }: { text: string }): ReactElement {
   return (
     <Linkify
       as="div"
-      options={linkOptions}
-      className="wrap-break-word whitespace-pre-wrap [&_a]:underline [&_a]:underline-offset-3"
+      options={{ ...linkOptions, className: textLink }}
+      className="wrap-break-word whitespace-pre-wrap"
     >
       {text}
     </Linkify>

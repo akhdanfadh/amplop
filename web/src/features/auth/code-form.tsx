@@ -165,9 +165,9 @@ export function CodeForm({
                   <Button
                     type="button"
                     variant="link"
-                    className="min-h-11 w-fit whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-                    disabled={create.isPending || ended}
-                    onClick={changeKind}
+                    className="w-fit whitespace-normal"
+                    isDisabled={create.isPending || ended}
+                    onPress={changeKind}
                   >
                     {kind === "authenticator" ? "Use a backup code" : "Use authenticator app"}
                   </Button>
@@ -216,9 +216,9 @@ export function CodeForm({
 
       <Button
         ref={submitRef}
-        className="h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
+        className="whitespace-normal"
         type="submit"
-        disabled={create.isPending || checking || ended}
+        isDisabled={create.isPending || checking || ended}
       >
         {create.isPending ? "Verifying..." : "Verify and sign in"}
       </Button>
@@ -230,9 +230,9 @@ export function CodeForm({
             ref={checkRef}
             type="button"
             variant="outline"
-            className="h-auto min-h-11 border-muted-foreground whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-            disabled={checking}
-            onClick={() => void checkSession()}
+            className="whitespace-normal"
+            isDisabled={checking}
+            onPress={() => void checkSession()}
           >
             {checking ? "Checking your session..." : "Check session"}
           </Button>
@@ -243,9 +243,9 @@ export function CodeForm({
         ref={restartRef}
         type="button"
         variant="outline"
-        className="h-auto min-h-11 border-muted-foreground whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
-        disabled={create.isPending || checking}
-        onClick={onRestart}
+        className="whitespace-normal"
+        isDisabled={create.isPending || checking}
+        onPress={onRestart}
       >
         Start sign-in again
       </Button>

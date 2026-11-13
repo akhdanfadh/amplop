@@ -18,12 +18,10 @@ import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { ResetSchema } from "./reset-schema";
 import { completeErrorMessage, endOf, linkInvalid, type EarlierTries, type Ended } from "./text";
+import { lineLink } from "@/components/link-style";
 
 const emptyValues = { email: "", password: "", confirmPassword: "" };
 const emailId = "reset-email";
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
-const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 const inputs = [
   {
@@ -133,11 +131,11 @@ export function ResetForm({
         <p>{ended.message}</p>
         {ended.links.map((link) =>
           link === "new-link" ? (
-            <Link key={link} to="/forgot-password" className={linkClass}>
+            <Link key={link} to="/forgot-password" className={lineLink}>
               Ask for a new link
             </Link>
           ) : (
-            <Link key={link} to="/sign-in" className={linkClass}>
+            <Link key={link} to="/sign-in" className={lineLink}>
               Sign in
             </Link>
           ),
@@ -185,7 +183,6 @@ export function ResetForm({
                   autoComplete="username"
                   autoCapitalize="none"
                   spellCheck={false}
-                  className={`h-11 border-muted-foreground dark:aria-invalid:border-destructive ${focusClass}`}
                   disabled={redeem.isPending}
                   aria-invalid={errors.length > 0}
                   aria-describedby={errors.length > 0 ? `${emailId}-error` : undefined}
@@ -197,9 +194,9 @@ export function ResetForm({
                 {refused && (
                   // Field stretches its children; the paragraph keeps the
                   // link's focus outline to its text. An action, not part of
-                  // the error, so not in its color.
+                  // the error, so a link, not in its colour.
                   <p>
-                    <Link to="/forgot-password" className={`text-foreground ${linkClass}`}>
+                    <Link to="/forgot-password" className={lineLink}>
                       Ask for a new link
                     </Link>
                   </p>
@@ -243,8 +240,8 @@ export function ResetForm({
       <Button
         ref={submitRef}
         type="submit"
-        className={`h-auto min-h-11 whitespace-normal ${focusClass}`}
-        disabled={redeem.isPending}
+        className="whitespace-normal"
+        isDisabled={redeem.isPending}
       >
         {redeem.isPending ? "Changing password..." : "Change password"}
       </Button>

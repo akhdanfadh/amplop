@@ -2,6 +2,7 @@ import { defineConfig, lazyPlugins } from "vite-plus";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { playwright } from "vite-plus/test/browser-playwright";
 
 // Written by the router plugin; it asks to be left unformatted and unlinted.
 const generated = ["src/routeTree.gen.ts"];
@@ -35,6 +36,33 @@ export default defineConfig({
   // Forward API calls to Go and preserve Host for its Origin checks.
   // `pnpm preview` reuses this rule.
   server: { proxy: { "/api": { target: proxyTarget, changeOrigin: false } } },
+
+  // Two test projects: unit tests run in Node; component tests, named
+  // *.browser.test.tsx, run in a real Chromium that Playwright drives, so
+  // focus, pointer events, and layout behave as in a browser. web/README.md
+  // says how to install that browser.
+  test: {
+    projects: [
+      {
+        extends: true,
+        test: { name: "unit", include: ["src/**/*.test.ts"], environment: "node" },
+      },
+      {
+        extends: true,
+        test: {
+          name: "browser",
+          include: ["src/**/*.browser.test.tsx"],
+          setupFiles: ["src/test/browser-setup.ts"],
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright(),
+            instances: [{ browser: "chromium" }],
+          },
+        },
+      },
+    ],
+  },
 
   // Oxfmt defaults, like gofmt: no style options to debate.
   fmt: {

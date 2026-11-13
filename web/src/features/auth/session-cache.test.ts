@@ -1,6 +1,8 @@
 import { QueryClient } from "@tanstack/react-query";
+import { linkOptions } from "@tanstack/react-router";
 import { expect, it } from "vite-plus/test";
 import { getGetSetupStatusQueryKey, getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
+import { mailHref, rememberMailHref } from "@/features/mail/places";
 import { clearAccountCache } from "./session-cache";
 
 it("clears account data and credentials while retaining public setup status", async () => {
@@ -42,4 +44,10 @@ it("cancels an outstanding account read so it cannot repopulate the cache", asyn
   expect(requestSignal?.aborted).toBe(true);
   expect(client.getQueryData(["private-messages"])).toBeUndefined();
   client.clear();
+});
+
+it("sends Back to mail to the Inbox, so the next member never gets the last one's page", () => {
+  rememberMailHref(linkOptions({ to: "/mail/outbox/$id", params: { id: "a" } }));
+  clearAccountCache(new QueryClient());
+  expect(mailHref()).toEqual({ to: "/mail/$place", params: { place: "inbox" } });
 });

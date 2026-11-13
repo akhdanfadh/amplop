@@ -12,7 +12,6 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
@@ -31,8 +30,7 @@ import { changedMessage, changeErrorMessage, type MemberChange } from "./text";
 
 const unauthorized = 401;
 const forbidden = 403;
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const focusClass = "focus-visible:focus-ring";
 
 // MemberTable lists every account and deactivates or reactivates members.
 // yourEmail is the signed-in account's address, whose row has no actions;
@@ -59,10 +57,6 @@ export function MemberTable({
     null,
   );
   const [dialogOpen, setDialogOpen] = useState(false);
-  // Set by the dialog's confirm button. The write starts once the dialog has
-  // closed: started earlier, the dialog would give focus back to a button the
-  // write has disabled or the reread has removed, and focus would be lost.
-  const confirmed = useRef(false);
   const [changed, setChanged] = useState<{ change: MemberChange; email: string } | null>(null);
   const writeOptions = {
     mutation: {
@@ -94,7 +88,6 @@ export function MemberTable({
           : null,
       disabled: pending,
       onChoose: (change, member) => {
-        confirmed.current = false;
         setConfirming({ change, member });
         setDialogOpen(true);
       },
@@ -210,45 +203,30 @@ export function MemberTable({
           ))}
         </TableBody>
       </Table>
-      <AlertDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onOpenChangeComplete={(open) => {
-          if (open || !confirmed.current || !confirming) return;
-          confirmed.current = false;
-          start(confirming.change, confirming.member);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="wrap-anywhere">
-              {confirming?.change === "reactivate" ? "Reactivate" : "Deactivate"}{" "}
-              <span translate="no">{confirming?.member.email}</span>?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirming?.change === "reactivate"
-                ? "They can sign in again as before."
-                : "They are signed out of every browser now and can't sign in until you reactivate them. Their account and sign-in details are kept."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className={`min-h-11 border-muted-foreground ${focusClass}`}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              type="button"
-              variant={confirming?.change === "reactivate" ? "default" : "destructive"}
-              className={`min-h-11 ${focusClass}`}
-              disabled={pending}
-              onClick={() => {
-                confirmed.current = true;
-                setDialogOpen(false);
-              }}
-            >
-              {confirming?.change === "reactivate" ? "Reactivate" : "Deactivate"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
+      <AlertDialog isOpen={dialogOpen} onOpenChange={setDialogOpen}>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="wrap-anywhere">
+            {confirming?.change === "reactivate" ? "Reactivate" : "Deactivate"}{" "}
+            <span translate="no">{confirming?.member.email}</span>?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {confirming?.change === "reactivate"
+              ? "They can sign in again as before."
+              : "They are signed out of every browser now and can't sign in until you reactivate them. Their account and sign-in details are kept."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            type="button"
+            variant={confirming?.change === "reactivate" ? "default" : "destructive"}
+            onPress={() => {
+              if (confirming) start(confirming.change, confirming.member);
+            }}
+          >
+            {confirming?.change === "reactivate" ? "Reactivate" : "Deactivate"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
       </AlertDialog>
     </section>
   );

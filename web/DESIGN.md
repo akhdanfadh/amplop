@@ -6,10 +6,11 @@ their reasons are in ADR031 (docs repo, `decision-record/ADR031-web-design-syste
 this file is what to do.
 
 Status: decided 2026-11-11. `feat/design-system` builds the foundation
-(tokens, the React Aria flavour, the shell, the mail building blocks,
-shared form fields); the mail branches build on it. Until a part is built,
-the code still shows the old look; build new work to this file, not to the
-old code.
+(tokens, the React Aria flavour, the shell, the status badge);
+`feat/design-forms` the shared form fields; the mail branches build on
+both and add the list's building blocks with the list (ADR031, "For branch
+3"). Until a part is built, the code still shows the old look; build new
+work to this file, not to the old code.
 
 ## Principles
 
@@ -49,11 +50,11 @@ both themes. A new pair is checked before use (antislop-human's
 | `sheet` (new)                    | `#ffffff`             | `#ffffff`             | The message body's sheet, white in both themes    |
 | `muted-foreground`               | `#666666`             | `#a3a3a3`             | Secondary text, meta, snippets                    |
 | `border`                         | `#e3e3e3`             | `#2e2e2e`             | Hairlines; decoration only                        |
-| `input`                          | `#8a8a8a`             | `#808080`             | Field outlines (3:1, WCAG 1.4.11)                 |
+| `input`                          | `#848484`             | `#808080`             | Field outlines (3:1, WCAG 1.4.11)                 |
 | `accent`                         | `#ececec`             | `#2e2e2e`             | Hover surface (shadcn's name; not a brand colour) |
 | `primary` / `primary-foreground` | `#2557d6` / `#ffffff` | `#86a8ff` / `#1c1c1c` | Primary buttons, links, the focus ring            |
 | `selection` (new)                | `#e5eaf6`             | `#272a33`             | The open row, the current nav item                |
-| `destructive`                    | `#a8000a`             | `#ffa3a5`             | Text and icons on its 10% tint (20% in dark)      |
+| `destructive`                    | `#a8000a`             | `#ffa3a5`             | Text and icons on its 8% tint (12% in dark)       |
 | `success` (new)                  | `#0f6630`             | `#4ade80`             | Same tint rule                                    |
 | `warning` (new)                  | `#904500`             | `#fbbf24`             | Same tint rule                                    |
 | `info` (new)                     | = `primary`           | = `primary`           | Same tint rule                                    |
@@ -76,6 +77,27 @@ accounts are connected and stored with the account:
 
 No account colour is blue, red, or pure green, so an account never reads as
 a link or a status.
+
+**Measured contrast**, the worst pair per token over every surface it can
+sit on (background, card, sidebar, accent, selection), WCAG 2 formula,
+checked 2026-11-11. A hover tint is one step stronger (12%, 16% in dark);
+only the destructive button uses it. Recheck a row when its token or a
+surface changes.
+
+| Token                       | Needs | Light (worst surface) | Dark (worst surface) |
+| --------------------------- | ----- | --------------------- | -------------------- |
+| `foreground`                | 4.5   | 16.43 (selection)     | 8.26 (highlight)     |
+| `muted-foreground`          | 4.5   | 4.77 (selection)      | 5.38 (accent)        |
+| `primary` as link text      | 4.5   | 5.11 (selection)      | 5.86 (accent)        |
+| `primary-foreground`        | 4.5   | 6.15 (primary)        | 7.35 (primary)       |
+| `destructive` on its tint   | 4.5   | 5.62 (selection)      | 5.57 (accent)        |
+| `destructive` on hover tint | 4.5   | 5.22 (selection)      | 5.10 (accent)        |
+| `success` on its tint       | 4.5   | 5.23 (selection)      | 6.05 (accent)        |
+| `warning` on its tint       | 4.5   | 5.12 (selection)      | 6.24 (accent)        |
+| `info` on its tint          | 4.5   | 4.57 (selection)      | 4.69 (accent)        |
+| `input` (field outlines)    | 3     | 3.10 (selection)      | 3.44 (accent)        |
+| `ring`                      | 3     | 5.11 (selection)      | 5.86 (accent)        |
+| `account-1` ... `account-8` | 3     | 3.06 (2 on selection) | 3.21 (3 on accent)   |
 
 ### Type
 
@@ -107,23 +129,34 @@ text).
   no one-off values such as `mt-[13px]`.
 - **Control height:** 36 px for a fine pointer, 44 px for a coarse one
   (`pointer-coarse:`), set in the components themselves, never per page.
-  Nav rows 32 px (44 px coarse); list rows 76 px.
+  Nav rows 32 px (44 px coarse); list rows 76 px. Buttons in dense bars
+  (the sidebar's header, a toast, a drawer's close) 32 px (44 px coarse),
+  so they sit level with the nav rows beside them.
 - **Radius:** `--radius: 0.5rem`: controls 8, menu items 6, menus about
   10, cards and the message sheet 12, dialogs 14. Pills only for status
   badges and account chips.
 - **Elevation:** no shadow on page, panes, list, or sheet. Menus and
   popovers: `0 4px 12px` at 8% black in light, none in dark (a lighter
   surface and a hairline). Dialogs: `0 16px 40px` at 14% (50% in dark)
-  over a dimmed page.
+  over the page dimmed by `scrim`, black at 30% (60% in dark); the drawer
+  dims it the same way.
 - **Motion:** one easing, `cubic-bezier(0.22, 1, 0.36, 1)`; 150 ms hover
   and press, 200 ms menus and tooltips, 250 ms dialogs and sheets. Animate
   colour, background, border, opacity, and transform only
   (`transition-colors`, never `transition-all`). Reduced motion turns
-  movement into fades. Nothing loops except a spinner while work is
-  actually running.
+  movement into fades. A theme change switches every colour at once, with
+  no fades. A tooltip shows after the pointer rests 500 ms, then the next
+  ones at once; keyboard focus shows it at once. Nothing loops except a
+  spinner while work is actually running.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
-  focusable element, defined once in the components.
-- **Links:** primary colour, underlined; the underline thickens on hover.
+  focusable element, defined once in the components. Every page focuses
+  its heading when it opens, the first load included, so the keyboard
+  starts in the page, not in the sidebar, whose landmark is named. No skip
+  link: a skip button (a `#` link would change the address) is the next
+  step if testing shows a need.
+- **Links:** primary colour, underlined; the underline thickens on hover
+  (`textLink` in `src/components/link-style.ts`; `lineLink` for a link on
+  a line of its own, 44 px tall).
 
 ### Themes
 
@@ -136,17 +169,19 @@ A script in the root route's head applies the class before the first paint
 
 shadcn/ui's **React Aria flavour** for every component, added with
 `make web-add-ui NAME=...` into `src/components/ui`, which is our code to
-edit. Icons are `lucide-react`, 16 px, in the text colour of their role.
+edit, each with its first caller. Icons are `lucide-react`, 16 px, in the
+text colour of their role.
 
 | Need                                         | Component                                                       |
 | -------------------------------------------- | --------------------------------------------------------------- |
-| Sidebar, rail, phone drawer                  | `sidebar`                                                       |
-| List and reading-pane split                  | `resizable`                                                     |
-| Member menu, More menus, theme choice        | `dropdown-menu`                                                 |
+| Sidebar, rail, drawer                        | `sidebar`                                                       |
+| List beside the reading pane                 | none: the list has a fluid width ("Panes and widths")           |
+| Member menu with the theme choice            | `popover` holding a `toggle-group`                              |
+| More menus                                   | `dropdown-menu`                                                 |
 | Right-click row menu                         | `context-menu`                                                  |
 | Names for icon buttons                       | `tooltip`                                                       |
-| Undo and error toasts                        | `toast`                                                         |
-| Phone editors and search                     | `drawer` / `sheet`                                              |
+| Undo and error toasts                        | `toast.tsx` on React Aria's Toast (see below)                   |
+| Phone editors and search                     | `sheet`                                                         |
 | From picker in compose                       | `select` (shows the account mark)                               |
 | Search box and its dropdown, recipient chips | `combobox`                                                      |
 | Placeholder rows, spinners, empty states     | `skeleton`, `spinner`, `empty`                                  |
@@ -154,6 +189,18 @@ edit. Icons are `lucide-react`, 16 px, in the text colour of their role.
 | Status                                       | `badge` with tones neutral, info, success, warning, destructive |
 | Initials avatars                             | `avatar`, plus the account ring                                 |
 | Confirmations                                | `alert-dialog`                                                  |
+
+**Toasts** use React Aria's own
+[Toast](https://react-aria.adobe.com/Toast), wrapped in inbok's
+`src/components/ui/toast.tsx`: it pauses its timer while hovered or
+focused, and F6 reaches it. It is a dark surface in both themes, so it
+stands apart from the page. React Aria labels it alpha (`UNSTABLE_`
+names), which a `DEBT.md` entry covers. shadcn's React Aria flavour
+offers only `sonner`, whose runtime `<style>` the
+Content-Security-Policy blocks and whose timer keeps running when the
+keyboard reaches Undo. For the demo: Undo toasts last 10 s, error toasts
+stay until closed, an error already showing is not shown again, and
+toasts stack newest first.
 
 **The message list** is inbok's own `src/components/ui/grid-list.tsx` on
 React Aria's [GridList](https://react-aria.adobe.com/GridList) inside its
@@ -169,17 +216,20 @@ the same component.
 
 ### Panes and widths
 
-| Window         | Layout                                                                           |
-| -------------- | -------------------------------------------------------------------------------- |
-| 1280 px and up | Sidebar 240 px, list 380 px (drag 300-560), reading pane the rest (at least 480) |
-| 1024-1279      | Sidebar starts as a 56 px rail; expanding slides over the list                   |
-| 780-1023       | Sidebar as a drawer from a menu button; list and reading pane                    |
-| Under 780      | One pane at a time: the list or the conversation                                 |
+| Window         | Layout                                                                        |
+| -------------- | ----------------------------------------------------------------------------- |
+| 1280 px and up | Sidebar 240 px, list 26% of the window (300-440 px), reading pane the rest    |
+| 1024-1279      | Sidebar starts as a 56 px rail (68 px coarse); expanding opens it as a drawer |
+| 780-1023       | Sidebar as a drawer from the sidebar button; list and reading pane            |
+| Under 780      | One pane at a time: the list or the conversation                              |
 
 The sidebar collapses with its button (always at the far left of its
-header, the wordmark after it) or Ctrl/Cmd+B; the list and reading-pane
-divider drags, takes arrow keys, and resets on double-click. Widths and
-the collapsed state are saved per browser.
+header, the wordmark after it) or Ctrl/Cmd+B; its collapsed state is
+saved per browser. The list grows with the window from 300 px to 440 px,
+so the reading pane keeps at least 480 px down to 780 px. No divider to
+drag: it would need a way to resize without dragging, a handle visible at
+rest, and its width in pixels, for a choice the fluid width mostly makes;
+resizing is in ADR031's backlog.
 
 ### URLs
 
@@ -191,11 +241,18 @@ the collapsed state are saved per browser.
 | Open conversation | `/mail/<place>/<conversation id>`                                                                       |
 | Search            | `/mail/search?q=...&account=...`; a result: `/mail/search/<conversation id>?q=...&message=<message id>` |
 | Settings          | `/settings/<page>`                                                                                      |
+| Outbox            | `/mail/outbox`, a message `/mail/outbox/<message id>`                                                   |
+| A new message     | `/compose`, an entry point only (`?edit=<message id>` starts from a sent one)                           |
 
 The URL holds where the member is, never passing state (picked rows,
 unsent text, the compose window). Clicking a conversation adds a history
-entry. Guarded layout routes (`_app`, `_auth`, `_admin`) check the session,
-TOTP, and role in `beforeLoad` before anything draws.
+entry. Guarded layout routes check access in `beforeLoad` before anything
+draws: `_app` the session, `_app/settings/_admin` the role and two-factor
+authentication, `_auth/_signed-out` that a signed-in member skips sign-in.
+The addresses the server puts in emails and redirects (`/sign-in`,
+`/verify-email`, `/reset-password`, `/register/complete`, `/security`,
+`/connected-accounts`) always open their page, or old emails break; the
+last two redirect into settings, so settings can move without the server.
 
 ### Sidebar
 
@@ -209,11 +266,22 @@ TOTP, and role in `beforeLoad` before anything draws.
 - Account status in words beside it: "Syncing" with a spinner (details on
   hover: "Copying the last 90 days: N messages so far."), "Reconnect",
   "Sync failed".
-- Outbox, only while a message is waiting, sending, failed, or unknown.
+- Outbox, always, with how many of its messages are not sent yet
+  (waiting, sending, or failed or unknown and not sent again): the
+  sidebar stays still, and the count is what tells the member a send
+  needs them.
 - The member at the bottom, opening the member menu: Settings, Theme
-  (Light, Dark, System), Sign out.
+  (Light, Dark, System, side by side, as icons named by tooltips; the
+  chosen one has the `selection` background and an `input` outline, as
+  the current nav item has its background and bar), Sign out. Its keys
+  are React Aria's toolbar keys: arrows move, Space or Enter chooses.
 - Unread: name and count in 600 weight and `foreground`; counts only on
-  Inbox, accounts, and labels. Selected: `selection` background.
+  Inbox, accounts, and labels. Selected: `selection` background and a 2 px
+  bar in `foreground` at its left edge, never bold. Icons keep one column,
+  open or as a rail. What follows a name (a count, status words) sits in
+  the row after it and keeps its width; a long name or address is cut
+  short with an ellipsis before it, never overlapped. A count is read
+  with its meaning, e.g. "12 unread".
 
 ### Message list
 
@@ -300,6 +368,7 @@ is inbok's own and runs Check for new mail; the list box sets
 - A page: title, one-sentence lead, then sections divided by hairlines,
   heading and explanation on the left, controls on the right; content caps
   at 720 px; no cards around everything.
+- Below 1024 px the settings sidebar is a drawer, as mail's is.
 - Signed-out pages (sign-in, setup, registration, password reset, email
   verification): the wordmark and one centred column about 400 px wide.
 
@@ -347,8 +416,8 @@ is inbok's own and runs Check for new mail; the list box sets
 - **Toasts** only report actions whose result left the screen; form
   results stay inline. Nothing important lives only in a toast.
 - **Banners** for conditions that last: offline at the top of the content;
-  an account problem above that account's mail; setup an administrator
-  owes at the top of settings.
+  an account problem above that account's mail; setup the member owes at the
+  top of settings, e.g. an unverified email address.
 - Every mail action is defined once in the actions registry (label, icon,
   bulk support, run, undo, result text); toolbars, menus, the picked-rows
   bar, and toasts read from it.
@@ -356,8 +425,10 @@ is inbok's own and runs Check for new mail; the list box sets
 ### States
 
 - **Loading:** routes load data in `loader` with `ensureQueryData`;
-  `pendingComponent` appears after 300 ms and stays at least 500 ms, as
-  placeholder rows shaped like real ones. Background re-reads show
+  `pendingComponent` appears after 300 ms and stays at least 500 ms (on
+  the first load it is not held, so a quick one shows nothing): a list's
+  own as placeholder rows shaped like real ones, any other page's the
+  router's default, a spinner with "Loading...". Background re-reads show
   nothing. Hovering or focusing a row preloads its conversation, and the
   reading pane starts from the list row's data.
 - **Empty:** words only, the cause and one next step: "Connect your first
@@ -371,15 +442,24 @@ is inbok's own and runs Check for new mail; the list box sets
 
 ### Status badges
 
-One `badge`, a soft tint, always an icon and a word:
+One `badge`, a soft tint, always an icon and a word: `StatusBadge`
+(`src/components/status-badge.tsx`) takes the tone, the icon, and the word.
+The tone says what the status asks of the member:
 
-| Tone        | Used for                                                                 |
-| ----------- | ------------------------------------------------------------------------ |
-| Neutral     | Waiting, Waiting to sync, Not verified, Admin, Deactivated, This browser |
-| Info        | Sending, Syncing (spinner)                                               |
-| Success     | Sent, Up to date (Connected accounts page only), Verified, Two-factor on |
-| Warning     | Unknown, Reconnect                                                       |
-| Destructive | Failed, Sync failed                                                      |
+| Tone        | Asks         | Used for                                                                                   |
+| ----------- | ------------ | ------------------------------------------------------------------------------------------ |
+| Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser |
+| Info        | To wait      | Sending, Syncing (spinner)                                                                 |
+| Success     | Nothing more | Sent, Up to date, Active, Verified, Two-factor on                                          |
+| Warning     | A look       | Not confirmed, Needs reconnecting                                                          |
+| Destructive | A fix        | Not sent, Sync failed                                                                      |
+
+Deactivated is an admin's choice, not a fault. Up to date and Active show
+only on the page whose job is that status (Connected accounts, Members);
+elsewhere the usual state shows nothing.
+Admin, Two-factor on, and the Members table's Verified column wait for
+the settings pages' redesign (`feat/design-forms`), and the sync words for
+account status (branch 3).
 
 ## Data for mail
 
@@ -436,8 +516,9 @@ Before a web checkpoint is done:
 - Empty, loading, and failure states seen, not only the happy path.
 - antislop's delivery checklist (the antislop skills) with its results in
   the checkpoint report.
-- Component behaviour tested in Vitest's browser mode (real Chromium);
-  React Aria's test utilities drive its components.
+- Component behaviour tested in Vitest's browser mode (real Chromium),
+  driven by Vitest's `userEvent`, which sends real input
+  (`web/README.md`, "Checks and tests").
 
 ## Not now
 

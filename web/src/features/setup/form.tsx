@@ -149,10 +149,7 @@ export function SetupForm({
                       {...inputProps}
                     />
                   ) : (
-                    <Input
-                      className="h-11 border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid dark:aria-invalid:border-destructive"
-                      {...inputProps}
-                    />
+                    <Input {...inputProps} />
                   )}
                   <FieldDescription id={`${id}-description`}>{description}</FieldDescription>
                   <FieldError id={`${id}-error`} errors={errors} />
@@ -165,9 +162,9 @@ export function SetupForm({
 
       <Button
         ref={submitRef}
-        className="h-auto min-h-11 whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid"
+        className="whitespace-normal"
         type="submit"
-        disabled={create.isPending}
+        isDisabled={create.isPending}
       >
         {create.isPending ? "Creating administrator..." : "Create administrator"}
       </Button>

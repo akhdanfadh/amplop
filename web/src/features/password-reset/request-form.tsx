@@ -14,8 +14,6 @@ import { requestedMessage, requestErrorMessage } from "./text";
 const emptyRequest = { email: "" };
 const requestFields = ["email"] as const;
 const emailId = "reset-request-email";
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
 
 // RequestForm asks for a reset link to an email address, then gives the one
 // answer every address gets.
@@ -81,8 +79,8 @@ export function RequestForm(): ReactElement {
         <Button
           type="button"
           variant="outline"
-          className={`h-auto min-h-11 w-fit border-muted-foreground whitespace-normal ${focusClass}`}
-          onClick={askAgain}
+          className="w-fit whitespace-normal"
+          onPress={askAgain}
         >
           Use a different email address
         </Button>
@@ -120,7 +118,6 @@ export function RequestForm(): ReactElement {
                 autoComplete="username"
                 autoCapitalize="none"
                 spellCheck={false}
-                className={`h-11 border-muted-foreground dark:aria-invalid:border-destructive ${focusClass}`}
                 disabled={request.isPending}
                 aria-invalid={errors.length > 0}
                 aria-describedby={errors.length > 0 ? `${emailId}-error` : undefined}
@@ -137,8 +134,8 @@ export function RequestForm(): ReactElement {
       <Button
         ref={submitRef}
         type="submit"
-        className={`h-auto min-h-11 whitespace-normal ${focusClass}`}
-        disabled={request.isPending}
+        className="whitespace-normal"
+        isDisabled={request.isPending}
       >
         {request.isPending ? "Sending reset link..." : "Send reset link"}
       </Button>

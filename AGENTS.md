@@ -14,6 +14,8 @@ the area you change before editing it:
 
 - `make check` passes. It needs Docker for the Go database and Google
   emulator tests; the emulator's first build also needs the npm registry.
+  The web's browser tests need Playwright's Chromium, installed once with
+  `pnpm -C web exec playwright install chromium`.
 - Generated code comes from `make generate`, committed with the change
   that caused it. Its generators own these paths:
   `backend/internal/repository/postgres/sqlc`, `api/generated`,
@@ -97,6 +99,11 @@ The web app reads these from the contract; keep them stable:
   Code"; what it does in detail goes in `Description`.
 - A 204 response needs transport work first: `web/src/api/transport.ts`
   requires a response schema.
+- The server links only these web addresses, in emails and redirects:
+  `/sign-in`, `/verify-email`, `/reset-password`, `/register/complete`,
+  `/security`, and `/connected-accounts`. The web keeps each a page, or a
+  redirect to one, wherever its pages move; a new one joins the list in
+  `web/src/entry-paths.browser.test.tsx`.
 
 ## Web
 

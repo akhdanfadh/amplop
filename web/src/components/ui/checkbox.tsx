@@ -1,24 +1,40 @@
-import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
+import type * as React from "react";
 import { cn } from "cn";
-import { CheckIcon } from "lucide-react";
+import { CheckboxButton, CheckboxField, type CheckboxFieldProps } from "react-aria-components";
+import { CheckIcon, MinusIcon } from "lucide-react";
 
-function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
+// Checkbox is a box and its label: children are the label, inside the
+// clickable row. Props go to React Aria's CheckboxField, whose hidden input
+// takes id and the aria-* props.
+//
+// DESIGN: aria-nova still ships React Aria's deprecated Checkbox, so this
+// builds on CheckboxField and CheckboxButton, which replace it
+// (react-aria-components 1.22).
+function Checkbox({
+  className,
+  children,
+  ...props
+}: Omit<CheckboxFieldProps, "className" | "children"> & {
+  className?: string;
+  children?: React.ReactNode;
+}) {
   return (
-    <CheckboxPrimitive.Root
-      data-slot="checkbox"
-      className={cn(
-        "peer relative flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input transition-colors outline-none group-has-disabled/field:opacity-50 group-has-[:focus-visible]/field-label:ring-0 group-has-[:focus-visible]/field-label:not-data-checked:border-input after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground group-has-[:focus-visible]/field-label:data-checked:border-primary dark:data-checked:bg-primary",
-        className,
-      )}
-      {...props}
-    >
-      <CheckboxPrimitive.Indicator
-        data-slot="checkbox-indicator"
-        className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
-      >
-        <CheckIcon />
-      </CheckboxPrimitive.Indicator>
-    </CheckboxPrimitive.Root>
+    <CheckboxField data-slot="checkbox" className={cn("flex", className)} {...props}>
+      <CheckboxButton className="group/checkbox relative flex min-h-9 items-center gap-2 text-sm pointer-coarse:min-h-11 data-disabled:cursor-not-allowed data-disabled:opacity-50">
+        {({ isSelected, isIndeterminate }) => (
+          <>
+            <span
+              data-slot="checkbox-box"
+              aria-hidden="true"
+              className="flex size-4 shrink-0 items-center justify-center rounded-sm border border-input bg-card transition-colors group-data-focus-visible/checkbox:focus-ring group-data-indeterminate/checkbox:border-primary group-data-indeterminate/checkbox:bg-primary group-data-indeterminate/checkbox:text-primary-foreground group-data-invalid/checkbox:border-destructive group-data-selected/checkbox:border-primary group-data-selected/checkbox:bg-primary group-data-selected/checkbox:text-primary-foreground [&>svg]:size-3.5"
+            >
+              {isIndeterminate ? <MinusIcon /> : isSelected && <CheckIcon />}
+            </span>
+            {children}
+          </>
+        )}
+      </CheckboxButton>
+    </CheckboxField>
   );
 }
 

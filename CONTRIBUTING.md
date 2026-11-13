@@ -13,6 +13,9 @@ pass; `make check-backend` and `make check-web` run one half.
 It also fails when generated code, e.g. `api/generated/openapi.json`, is
 out of date with its source, and names the command that updates it.
 Commands that need `.env` copy it from `.env.example` when it is missing.
+The web app's component tests run in Playwright's Chromium, installed
+once per machine with `pnpm -C web exec playwright install chromium`
+(`web/README.md`, "Checks and tests").
 
 ## Local services
 

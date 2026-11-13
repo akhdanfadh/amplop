@@ -1,12 +1,11 @@
 import type { ReactElement } from "react";
 import { Link } from "@tanstack/react-router";
 import type { OutgoingMessageSummary } from "@/api/generated/model";
-import { Badge } from "@/components/ui/badge";
 import { formatReceived, subjectText } from "@/features/messages/text";
-import { recipientSummary, statusLabel, statusVariant } from "./text";
+import { MessageStatusBadge, SentAgainBadge } from "./status-badge";
+import { recipientSummary } from "./text";
 
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
+const focusClass = "focus-visible:focus-ring";
 
 // OutgoingMessageList lists messages, the member's newest first, each a
 // link to its own page with its status.
@@ -35,14 +34,14 @@ function MessageRow({ message }: { message: OutgoingMessageSummary }): ReactElem
     <li className="flex flex-col gap-1 py-4">
       <p className="flex flex-wrap items-center gap-2">
         <Link
-          to="/outbox/$id"
+          to="/mail/outbox/$id"
           params={{ id: message.id }}
           className={`inline-flex min-h-11 min-w-0 items-center font-medium wrap-break-word underline underline-offset-4 ${focusClass}`}
         >
           {subjectText(message.subject)}
         </Link>
-        <Badge variant={statusVariant(message.status)}>{statusLabel(message.status)}</Badge>
-        {message.sentAgainAs !== null && <Badge variant="outline">Tried again</Badge>}
+        <MessageStatusBadge status={message.status} />
+        {message.sentAgainAs !== null && <SentAgainBadge />}
       </p>
       <p className="text-sm wrap-break-word">
         Recipients: <span translate="no">{recipientSummary(message)}</span>

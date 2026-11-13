@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MonitorIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,21 +15,18 @@ import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { browserName, endedOthersMessage, endMessage, formatTime, lastActive } from "./text";
 
 const unauthorized = 401;
-const focusClass =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground focus-visible:outline-solid";
-const buttonClass = `h-auto min-h-11 w-fit border-muted-foreground whitespace-normal ${focusClass}`;
+const buttonClass = "w-fit whitespace-normal";
 
 export function SessionList({
   locked,
@@ -132,8 +130,8 @@ export function SessionList({
             type="button"
             variant="outline"
             className={buttonClass}
-            disabled={locked || pending || list.isFetching}
-            onClick={() => void list.refetch()}
+            isDisabled={locked || pending || list.isFetching}
+            onPress={() => void list.refetch()}
           >
             Try again
           </Button>
@@ -154,16 +152,21 @@ export function SessionList({
         </ul>
       )}
       {others > 0 && (
-        <AlertDialog open={confirming && others > 0} onOpenChange={setConfirming}>
-          <AlertDialogTrigger
-            render={<Button type="button" variant="outline" className={buttonClass} />}
-            disabled={locked || pending}
+        <AlertDialogTrigger isOpen={confirming && others > 0} onOpenChange={setConfirming}>
+          <Button
+            type="button"
+            variant="outline"
+            className={buttonClass}
+            // Pending, not disabled: focus comes back here when the dialog
+            // closes, and stays while the write runs.
+            isDisabled={locked || (pending && !endOthers.isPending)}
+            isPending={endOthers.isPending}
           >
             {endOthers.isPending
               ? "Signing out of other browsers..."
               : "Sign out of all other browsers"}
-          </AlertDialogTrigger>
-          <AlertDialogContent>
+          </Button>
+          <AlertDialog>
             <AlertDialogHeader>
               <AlertDialogTitle>Sign out of all other browsers?</AlertDialogTitle>
               <AlertDialogDescription>
@@ -171,20 +174,13 @@ export function SessionList({
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className={`min-h-11 border-muted-foreground ${focusClass}`}>
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                type="button"
-                className={`min-h-11 ${focusClass}`}
-                disabled={locked || pending}
-                onClick={endOtherSessions}
-              >
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction type="button" onPress={endOtherSessions}>
                 Sign out of other browsers
               </AlertDialogAction>
             </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          </AlertDialog>
+        </AlertDialogTrigger>
       )}
     </section>
   );
@@ -211,7 +207,11 @@ function SessionRow({
       <div className="flex min-w-0 flex-col gap-1">
         <p className="flex flex-wrap items-center gap-2 font-medium">
           {name}
-          {session.current && <Badge variant="secondary">This browser</Badge>}
+          {session.current && (
+            <StatusBadge tone="neutral" icon={MonitorIcon}>
+              This browser
+            </StatusBadge>
+          )}
         </p>
         <p id={detailsId} className="text-sm text-muted-foreground">
           Signed in <time dateTime={session.signedInAt}>{formatTime(session.signedInAt)}</time>
@@ -225,8 +225,9 @@ function SessionRow({
           variant="outline"
           className={buttonClass}
           aria-describedby={detailsId}
-          disabled={disabled}
-          onClick={onEnd}
+          isDisabled={disabled && !ending}
+          isPending={ending}
+          onPress={onEnd}
         >
           {ending ? "Signing out..." : "Sign out"}
           <span className="sr-only"> {name}</span>

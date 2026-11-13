@@ -1,34 +1,59 @@
-import { Radio as RadioPrimitive } from "@base-ui/react/radio";
-import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group";
+import type * as React from "react";
 import { cn } from "cn";
+import {
+  RadioButton,
+  RadioField,
+  RadioGroup as RadioGroupPrimitive,
+  type RadioFieldProps,
+  type RadioGroupProps,
+} from "react-aria-components";
 
-function RadioGroup({ className, ...props }: RadioGroupPrimitive.Props) {
+function RadioGroup({
+  className,
+  ...props
+}: Omit<RadioGroupProps, "className"> & { className?: string }) {
   return (
     <RadioGroupPrimitive
       data-slot="radio-group"
-      className={cn("grid w-full gap-2", className)}
+      className={cn("flex w-full flex-col gap-1", className)}
       {...props}
     />
   );
 }
 
-function RadioGroupItem({ className, ...props }: RadioPrimitive.Root.Props) {
+// RadioGroupItem is a dot and its label: children are the label, inside the
+// clickable row; className styles that row. Props go to React Aria's
+// RadioField, whose hidden input takes id and the aria-* props.
+//
+// DESIGN: aria-nova still ships React Aria's deprecated Radio, so this
+// builds on RadioField and RadioButton, which replace it
+// (react-aria-components 1.22).
+function RadioGroupItem({
+  className,
+  children,
+  ...props
+}: Omit<RadioFieldProps, "className" | "children"> & {
+  className?: string;
+  children?: React.ReactNode;
+}) {
   return (
-    <RadioPrimitive.Root
-      data-slot="radio-group-item"
-      className={cn(
-        "group/radio-group-item peer relative flex aspect-square size-4 shrink-0 rounded-full border border-input outline-none group-has-[:focus-visible]/field-label:ring-0 group-has-[:focus-visible]/field-label:not-data-checked:border-input after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground group-has-[:focus-visible]/field-label:data-checked:border-primary dark:data-checked:bg-primary",
-        className,
-      )}
-      {...props}
-    >
-      <RadioPrimitive.Indicator
-        data-slot="radio-group-indicator"
-        className="flex size-4 items-center justify-center"
+    <RadioField data-slot="radio-group-item" className="flex" {...props}>
+      <RadioButton
+        className={cn(
+          "group/radio relative flex min-h-9 items-center gap-2 text-sm pointer-coarse:min-h-11 data-disabled:cursor-not-allowed data-disabled:opacity-50",
+          className,
+        )}
       >
-        <span className="absolute top-1/2 left-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-foreground" />
-      </RadioPrimitive.Indicator>
-    </RadioPrimitive.Root>
+        <span
+          data-slot="radio-group-indicator"
+          aria-hidden="true"
+          className="flex size-4 shrink-0 items-center justify-center rounded-full border border-input bg-card transition-colors group-data-focus-visible/radio:focus-ring group-data-invalid/radio:border-destructive group-data-selected/radio:border-primary group-data-selected/radio:bg-primary"
+        >
+          <span className="hidden size-1.5 rounded-full bg-primary-foreground group-data-selected/radio:block" />
+        </span>
+        {children}
+      </RadioButton>
+    </RadioField>
   );
 }
 

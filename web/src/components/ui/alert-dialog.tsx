@@ -1,65 +1,89 @@
 import * as React from "react";
-import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
 import { cn } from "cn";
+import {
+  Dialog,
+  DialogTrigger,
+  Heading,
+  Modal,
+  ModalOverlay,
+  OverlayTriggerStateContext,
+  Text,
+  type DialogTriggerProps,
+  type ModalOverlayProps,
+  type PressEvent,
+} from "react-aria-components";
 
-import { Button } from "@/components/ui/button";
+import { Button, type ButtonProps } from "@/components/ui/button";
 
-function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />;
+// The longest double-click a pointer press may belong to, in milliseconds:
+// Windows' default double-click time, which macOS's default does not exceed.
+const doubleClickTime = 500;
+
+// When the open dialog appeared, as performance.now(); read by its action.
+const OpenedAtContext = React.createContext<React.RefObject<number> | null>(null);
+
+// AlertDialogTrigger opens the AlertDialog among its children when the
+// Button among them is pressed, and returns focus to that button on close.
+function AlertDialogTrigger(props: DialogTriggerProps) {
+  return <DialogTrigger {...props} />;
 }
 
-function AlertDialogTrigger({ ...props }: AlertDialogPrimitive.Trigger.Props) {
-  return <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />;
-}
-
-function AlertDialogPortal({ ...props }: AlertDialogPrimitive.Portal.Props) {
-  return <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />;
-}
-
-function AlertDialogOverlay({ className, ...props }: AlertDialogPrimitive.Backdrop.Props) {
-  return (
-    <AlertDialogPrimitive.Backdrop
-      data-slot="alert-dialog-overlay"
-      className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-function AlertDialogContent({
+// AlertDialog is a confirmation over a dimmed page. Control it with isOpen
+// and onOpenChange, or place it in an AlertDialogTrigger. Escape cancels; a
+// press outside does not. On close, focus returns to where it was before.
+function AlertDialog({
   className,
-  size = "default",
+  children,
+  isDismissable = false,
   ...props
-}: AlertDialogPrimitive.Popup.Props & {
-  size?: "default" | "sm";
+}: Omit<ModalOverlayProps, "className" | "children"> & {
+  className?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <AlertDialogPortal>
-      <AlertDialogOverlay />
-      <AlertDialogPrimitive.Popup
+    <ModalOverlay
+      data-slot="alert-dialog-overlay"
+      isDismissable={isDismissable}
+      // A tall dialog scrolls here; past the end the page behind stays still,
+      // as React Aria's iOS scroll lock would have it (web/README.md).
+      className="fixed inset-0 isolate z-50 flex overflow-y-auto overscroll-contain bg-scrim p-4 duration-250 ease-standard data-entering:animate-in data-entering:fade-in-0 data-exiting:animate-out data-exiting:fade-out-0"
+      {...props}
+    >
+      <Modal
         data-slot="alert-dialog-content"
-        data-size={size}
         className={cn(
-          "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "m-auto w-full max-w-sm rounded-2xl bg-popover text-popover-foreground shadow-dialog ring-1 ring-border duration-250 ease-standard outline-none data-entering:animate-in data-entering:fade-in-0 data-entering:zoom-in-95 data-exiting:animate-out data-exiting:fade-out-0 data-exiting:zoom-out-95 motion-reduce:data-entering:zoom-in-100 motion-reduce:data-exiting:zoom-out-100",
           className,
         )}
-        {...props}
-      />
-    </AlertDialogPortal>
+      >
+        <Dialog
+          data-slot="alert-dialog"
+          role="alertdialog"
+          className="flex flex-col gap-6 p-6 outline-none"
+        >
+          <OpenedAt>{children}</OpenedAt>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
+}
+
+// OpenedAt records when the dialog last opened for its AlertDialogAction,
+// including a reopen while it was still closing.
+function OpenedAt({ children }: { children: React.ReactNode }) {
+  const isOpen = React.use(OverlayTriggerStateContext)?.isOpen;
+  const openedAt = React.useRef(0);
+  React.useEffect(() => {
+    if (isOpen) openedAt.current = performance.now();
+  }, [isOpen]);
+  return <OpenedAtContext value={openedAt}>{children}</OpenedAtContext>;
 }
 
 function AlertDialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="alert-dialog-header"
-      className={cn(
-        "grid grid-rows-[auto_1fr] place-items-center gap-1.5 text-center has-data-[slot=alert-dialog-media]:grid-rows-[auto_auto_1fr] has-data-[slot=alert-dialog-media]:gap-x-4 sm:group-data-[size=default]/alert-dialog-content:place-items-start sm:group-data-[size=default]/alert-dialog-content:text-left sm:group-data-[size=default]/alert-dialog-content:has-data-[slot=alert-dialog-media]:grid-rows-[auto_1fr]",
-        className,
-      )}
+      className={cn("flex flex-col gap-2", className)}
       {...props}
     />
   );
@@ -69,93 +93,93 @@ function AlertDialogFooter({ className, ...props }: React.ComponentProps<"div">)
   return (
     <div
       data-slot="alert-dialog-footer"
-      className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
-        className,
-      )}
+      className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
       {...props}
     />
   );
 }
 
-function AlertDialogMedia({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="alert-dialog-media"
-      className={cn(
-        "mb-2 inline-flex size-10 items-center justify-center rounded-md bg-muted sm:group-data-[size=default]/alert-dialog-content:row-span-2 *:[svg:not([class*='size-'])]:size-6",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
+// AlertDialogTitle names the dialog; React Aria points the dialog's
+// aria-labelledby at it.
 function AlertDialogTitle({
   className,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Title>) {
+}: Omit<React.ComponentProps<typeof Heading>, "slot">) {
   return (
-    <AlertDialogPrimitive.Title
+    <Heading
+      slot="title"
       data-slot="alert-dialog-title"
-      className={cn(
-        "font-heading text-base font-medium sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2",
-        className,
-      )}
+      className={cn("text-lg font-semibold", className)}
       {...props}
     />
   );
 }
 
+// AlertDialogDescription states the consequence; React Aria points the
+// dialog's aria-describedby at it, so it is read when the dialog opens.
 function AlertDialogDescription({
   className,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Description>) {
+}: Omit<React.ComponentProps<typeof Text>, "slot">) {
   return (
-    <AlertDialogPrimitive.Description
+    <Text
+      slot="description"
+      elementType="p"
       data-slot="alert-dialog-description"
-      className={cn(
-        "text-sm text-balance text-muted-foreground md:text-pretty *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
-        className,
-      )}
+      className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
   );
 }
 
-// AlertDialogAction is the dialog's confirming button. It ignores the later
-// clicks of a double-click, and stops their default action, such as
-// submitting a form: they land on it when the dialog opens over the button
-// that opened it. A keyboard press counts no clicks and is kept.
-function AlertDialogAction({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
+// AlertDialogAction is the confirming button; it closes the dialog after
+// onPress. It ignores a mouse or touch press that starts within a
+// double-click of the dialog opening, and the dialog stays open: the second
+// click of a double-click on the button that opened the dialog can land on
+// it. A keyboard press is kept.
+function AlertDialogAction({ className, onPressStart, onPress, ...props }: ButtonProps) {
+  const openedAt = React.use(OpenedAtContext);
+  const dialog = React.use(OverlayTriggerStateContext);
+  const early = React.useRef(false);
   return (
     <Button
       data-slot="alert-dialog-action"
-      className={cn(className)}
-      onClick={(event) => {
-        if (event.detail > 1) {
-          event.preventDefault();
-          return;
-        }
-        onClick?.(event);
+      className={className}
+      onPressStart={(event) => {
+        early.current = isEarly(event, openedAt);
+        onPressStart?.(event);
+      }}
+      onPress={(event) => {
+        if (early.current) return;
+        onPress?.(event);
+        dialog?.close();
       }}
       {...props}
     />
   );
 }
 
-function AlertDialogCancel({
-  className,
-  variant = "outline",
-  size = "default",
-  ...props
-}: AlertDialogPrimitive.Close.Props &
-  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
+// isEarly reports whether a mouse or touch press started within
+// doubleClickTime of the dialog opening at openedAt.
+function isEarly(event: PressEvent, openedAt: React.RefObject<number> | null): boolean {
+  if (event.pointerType === "keyboard" || event.pointerType === "virtual") return false;
+  if (!openedAt) return false;
+  return performance.now() - openedAt.current < doubleClickTime;
+}
+
+// AlertDialogCancel is the safe choice; it closes the dialog and takes focus
+// when the dialog opens.
+function AlertDialogCancel({ className, variant = "outline", ...props }: ButtonProps) {
   return (
-    <AlertDialogPrimitive.Close
+    <Button
+      slot="close"
+      // The WAI-ARIA alert dialog pattern focuses the least destructive
+      // action when the dialog opens; the dialog itself asks for it.
+      // oxlint-disable-next-line jsx-a11y/no-autofocus
+      autoFocus
       data-slot="alert-dialog-cancel"
-      className={cn(className)}
-      render={<Button variant={variant} size={size} />}
+      className={className}
+      variant={variant}
       {...props}
     />
   );
@@ -165,13 +189,9 @@ export {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
-  AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogMedia,
-  AlertDialogOverlay,
-  AlertDialogPortal,
   AlertDialogTitle,
   AlertDialogTrigger,
 };
