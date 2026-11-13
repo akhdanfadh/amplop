@@ -13,19 +13,14 @@ import {
   UploadIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useListOutgoingMessages } from "@/api/generated/inbok";
 import { NavItem, within } from "@/components/nav-item";
 import { buttonVariants } from "@/components/ui/button";
 import { SidebarGroup, SidebarMenu, useSidebar } from "@/components/ui/sidebar";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { viewPlaces, type ViewPlace } from "./places";
-import { pollWhile } from "@/features/outgoing-messages/poll";
-import { inProgress, unfinished } from "@/features/outgoing-messages/text";
+import { useOutbox } from "@/features/outgoing-messages/outbox";
+import { unfinished } from "@/features/outgoing-messages/text";
 import { composeName, notSentLabel, outboxName, placeName } from "./text";
-
-// How often the Outbox's count is read again while a message is still
-// being sent, as the Outbox page reads its list.
-const outboxPollMs = 5_000;
 
 const placeIcon: Record<ViewPlace, LucideIcon> = {
   inbox: InboxIcon,
@@ -42,14 +37,7 @@ const placeIcon: Record<ViewPlace, LucideIcon> = {
 export function MailNav(): ReactElement {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { dismiss: closeDrawer } = useSidebar();
-  // The Outbox page's own read, so the two share one list.
-  const outbox = useListOutgoingMessages({
-    query: {
-      refetchInterval: pollWhile(outboxPollMs, (data) =>
-        data.data.messages.some((message) => inProgress(message.status)),
-      ),
-    },
-  });
+  const outbox = useOutbox();
   // What still asks for the member, so a message sent again stops counting.
   const notSent = outbox.data?.data.messages.filter(unfinished).length ?? 0;
 

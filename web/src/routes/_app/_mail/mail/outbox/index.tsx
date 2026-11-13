@@ -1,18 +1,15 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useGetCurrentSession, useListOutgoingMessages } from "@/api/generated/inbok";
+import { useGetCurrentSession } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
 import { buttonVariants } from "@/components/ui/button";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { OutgoingMessageList } from "@/features/outgoing-messages/list";
 import { ReadError } from "@/components/read-error";
-import { pollWhile } from "@/features/outgoing-messages/poll";
-import { inProgress } from "@/features/outgoing-messages/text";
+import { useOutbox } from "@/features/outgoing-messages/outbox";
 
 const unauthorized = 401;
-// How often the list is read again while a message in it is still being sent.
-const pollMs = 5_000;
 
 export const Route = createFileRoute("/_app/_mail/mail/outbox/")({
   component: Outbox,
@@ -24,13 +21,7 @@ function Outbox(): ReactElement {
   const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const current = useGetCurrentSession();
-  const list = useListOutgoingMessages({
-    query: {
-      refetchInterval: pollWhile(pollMs, (data) =>
-        data.data.messages.some((message) => inProgress(message.status)),
-      ),
-    },
-  });
+  const list = useOutbox();
   const expired = [current.error, list.error].some((err) => err?.status === unauthorized);
   const messages = list.data?.data.messages;
 
