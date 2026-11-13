@@ -4,6 +4,7 @@ import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { Button } from "./button";
 import { Sheet, SheetTitle } from "./sheet";
+import { pointAway, pointTo } from "@/test/pointer";
 import { closeToasts, showError, showUndo, Toaster } from "./toast";
 
 const undoTimeout = 10_000;
@@ -17,6 +18,14 @@ function toasts(): number {
 async function wait(ms: number): Promise<void> {
   vi.advanceTimersByTime(ms);
   await new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
+// shown waits until the toast saying text is on screen and its timer
+// runs, which React Aria starts in an effect after drawing the toast; a
+// clock moved before that would not count.
+async function shown(text: string): Promise<void> {
+  await expect.element(page.getByText(text)).toBeVisible();
+  await expect.poll(() => vi.getTimerCount()).toBeGreaterThan(0);
 }
 
 // Host has a button that opens a drawer, beside the toast region.
@@ -48,9 +57,16 @@ afterEach(() => {
 
 describe("Toaster", () => {
   it("closes an Undo toast after 10 seconds", async () => {
-    await render(<Toaster />);
+    await render(
+      <>
+        <Button>Elsewhere</Button>
+        <Toaster />
+      </>,
+    );
+    // A pointer left over the region by an earlier test would pause it.
+    await userEvent.hover(page.getByRole("button", { name: "Elsewhere" }));
     showUndo("Conversation archived", () => {});
-    await expect.element(page.getByText("Conversation archived")).toBeVisible();
+    await shown("Conversation archived");
 
     await wait(undoTimeout - 1_000);
     expect(toasts()).toBe(1);
@@ -65,14 +81,16 @@ describe("Toaster", () => {
         <Toaster />
       </>,
     );
+    await userEvent.hover(page.getByRole("button", { name: "Elsewhere" }));
     showUndo("Conversation archived", () => {});
-    await expect.element(page.getByText("Conversation archived")).toBeVisible();
+    await shown("Conversation archived");
     await wait(4_000);
-    await userEvent.hover(page.getByText("Conversation archived"));
+    const toast = page.getByText("Conversation archived").element();
+    pointTo(toast);
     await wait(60_000);
     expect(toasts()).toBe(1);
 
-    await userEvent.hover(page.getByRole("button", { name: "Elsewhere" }));
+    pointAway(toast);
     await wait(5_000);
     expect(toasts()).toBe(1);
     await wait(2_000);
@@ -82,7 +100,8 @@ describe("Toaster", () => {
   it("keeps an Undo toast while the pointer is over it", async () => {
     await render(<Toaster />);
     showUndo("Conversation archived", () => {});
-    await userEvent.hover(page.getByText("Conversation archived"));
+    await shown("Conversation archived");
+    pointTo(page.getByText("Conversation archived").element());
 
     await wait(undoTimeout * 2);
     expect(toasts()).toBe(1);
@@ -97,7 +116,7 @@ describe("Toaster", () => {
     );
     await userEvent.click(page.getByRole("button", { name: "Archive" }));
     showUndo("Conversation archived", () => {});
-    await expect.element(page.getByText("Conversation archived")).toBeVisible();
+    await shown("Conversation archived");
     await userEvent.keyboard("{F6}");
     const region = document.activeElement?.closest("[role=region]");
     expect(region).not.toBeNull();

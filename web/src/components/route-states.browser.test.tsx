@@ -76,10 +76,15 @@ describe("RouteError", () => {
   it("gives focus to the loading view while Try again runs the checks", async () => {
     const busy = new ApiError("http", { method: "GET", status: 503, requestId: "req-2" });
     let calls = 0;
+    // The second check runs until the test lets it finish, however long the
+    // checks below take on a busy machine.
+    let finish: (() => void) | undefined;
     const check = async () => {
       calls += 1;
       if (calls === 1) throw busy;
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
     };
     const root = createRootRoute();
     const home = createRoute({
@@ -103,6 +108,7 @@ describe("RouteError", () => {
     await userEvent.keyboard("{Enter}");
     // The error view is hidden, not gone, while the checks run.
     await expect.element(page.getByRole("status")).toHaveFocus();
+    finish?.();
     await expect.element(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
   });
 
@@ -171,7 +177,8 @@ describe("RouteError", () => {
 });
 
 // slowApp returns a router at address, which draws Elsewhere beside its
-// pages, with a page at /members whose checks take a second.
+// pages, with a page at /members whose checks never finish, so its loading
+// view stays however long the test takes.
 function slowApp(address: string) {
   const root = createRootRoute({
     component: () => (
@@ -185,7 +192,7 @@ function slowApp(address: string) {
   const slow = createRoute({
     getParentRoute: () => root,
     path: "/members",
-    beforeLoad: () => new Promise((resolve) => setTimeout(resolve, 1000)),
+    beforeLoad: () => new Promise(() => {}),
     component: () => <h1>Slow</h1>,
   });
   return createRouter({
