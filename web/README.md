@@ -672,7 +672,10 @@ from the registry here:
     named `nav`, its menus are lists, `SidebarInset` is a `div`. No
     variants, `SidebarRail`, `SidebarInput`, `SidebarGroupAction`, or
     `sm`/`lg` sizes. `useSidebar()` gives the app `rail`, `isDrawer`, and
-    `dismiss()`, which closes the drawer.
+    `dismiss()`, which closes the drawer. The drawer also closes when the
+    window's layout moves it, and a layout change that takes away the
+    focused part, e.g. the open drawer or the top bar's button, gives
+    focus to the sidebar's button shown now.
   - `sheet`: DESIGN.md's dialog look and timing; a side sheet's width
     comes from `--sheet-width`.
   - `popover`: holds a dialog, so it can mix links, buttons, and a toggle

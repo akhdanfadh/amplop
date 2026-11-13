@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { InboxIcon, PlusIcon } from "lucide-react";
+import { useLayout } from "@/hooks/use-layout";
 import { Button } from "./button";
 import { Popover, PopoverTrigger } from "./popover";
 import {
@@ -24,6 +25,7 @@ import {
   SidebarMenuSubItem,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "./sidebar";
 
 // Frame is a sidebar named Mail beside some content: a trigger and a text
@@ -78,6 +80,57 @@ function Frame({ open: initial = true }: { open?: boolean }) {
       </SidebarInset>
     </SidebarProvider>
   );
+}
+
+// TopBar holds a drawer button only where the sidebar is a drawer, as the
+// app's frame does, so the button that opened the drawer can go away.
+function TopBar() {
+  const { isDrawer } = useSidebar();
+  return isDrawer ? <SidebarTrigger /> : null;
+}
+
+// PhoneOnly is a part of the page drawn only on a phone, as one pane of
+// mail's two is.
+function PhoneOnly() {
+  return useLayout() === "phone" ? <Button>Phone only</Button> : null;
+}
+
+// TopBarFrame is a sidebar named Mail whose drawer the top bar opens, beside
+// a button in the page and a part drawn only on a phone.
+function TopBarFrame() {
+  const [open, setOpen] = useState(true);
+  return (
+    <SidebarProvider open={open} onOpenChange={setOpen}>
+      <Sidebar label="Mail">
+        <SidebarHeader className="flex-row items-center justify-between">
+          <a href="#top" className="group-data-[collapsible=icon]:hidden">
+            inbok
+          </a>
+          <SidebarTrigger />
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton tooltip="Inbox" href="#inbox">
+                <InboxIcon aria-hidden="true" />
+                <span>Inbox</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarContent>
+      </Sidebar>
+      <SidebarInset>
+        <TopBar />
+        <Button>Elsewhere</Button>
+        <PhoneOnly />
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
+
+// sidebarButton is the open or collapsed sidebar's own trigger, named name.
+function sidebarButton(name: string) {
+  return page.getByRole("navigation", { name: "Mail" }).getByRole("button", { name });
 }
 
 // The sidebar's state: "expanded" or "collapsed".
@@ -507,5 +560,61 @@ describe("Sidebar", () => {
     const content = document.querySelector("[data-slot=sidebar-content]");
     if (!content) throw new Error("no sidebar content");
     expect(getComputedStyle(content).overscrollBehaviorY).toBe("contain");
+  });
+
+  it("closes the drawer when the window moves it, focus on the sidebar's button shown now", async () => {
+    await page.viewport(900, 800);
+    await render(<TopBarFrame />);
+    await userEvent.click(page.getByRole("button", { name: "Open sidebar" }));
+    await opened();
+    await page.viewport(1440, 900);
+    await expect.element(sheet()).not.toBeInTheDocument();
+    await expect.element(sidebarButton("Collapse sidebar")).toHaveFocus();
+
+    await page.viewport(900, 800);
+    await userEvent.click(page.getByRole("button", { name: "Open sidebar" }));
+    await opened();
+    // The rail shows the drawer beside it, not alone, so it closes too.
+    await page.viewport(1100, 800);
+    await expect.element(sheet()).not.toBeInTheDocument();
+    await expect.element(sidebarButton("Expand sidebar")).toHaveFocus();
+
+    await userEvent.keyboard("{Enter}");
+    await opened();
+    await page.viewport(900, 800);
+    await expect.element(sheet()).not.toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "Open sidebar" })).toHaveFocus();
+  });
+
+  it("gives focus to the sidebar's button when the layout takes the focused part away", async () => {
+    await page.viewport(390, 844);
+    await render(<TopBarFrame />);
+    page.getByRole("button", { name: "Open sidebar" }).element().focus();
+    await page.viewport(1440, 900);
+    await expect.element(sidebarButton("Collapse sidebar")).toHaveFocus();
+
+    // The rail hides the wordmark.
+    page.getByRole("link", { name: "inbok" }).element().focus();
+    await page.viewport(1100, 800);
+    await expect.element(sidebarButton("Expand sidebar")).toHaveFocus();
+  });
+
+  it("gives focus to the sidebar's button when a resize takes away a focused part of the page", async () => {
+    await page.viewport(390, 844);
+    await render(<TopBarFrame />);
+    page.getByRole("button", { name: "Phone only" }).element().focus();
+    // The drawer is in the same place at both widths; the page changes.
+    await page.viewport(900, 800);
+    await expect.element(page.getByRole("button", { name: "Open sidebar" })).toHaveFocus();
+  });
+
+  it("leaves focus in the page where it is when the layout changes", async () => {
+    await page.viewport(1440, 900);
+    await render(<TopBarFrame />);
+    page.getByRole("button", { name: "Elsewhere" }).element().focus();
+    await page.viewport(900, 800);
+    await frame();
+    await frame();
+    await expect.element(page.getByRole("button", { name: "Elsewhere" })).toHaveFocus();
   });
 });

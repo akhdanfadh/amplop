@@ -30,6 +30,7 @@ const shortcutMac = "Cmd+B";
 const shortcutOther = "Ctrl+B";
 
 const triggerSelector = "[data-slot=sidebar-trigger]";
+const drawerSelector = "[data-sidebar=drawer]";
 
 // The sidebar's state as its parts and the app read it.
 type SidebarState = {
@@ -153,16 +154,51 @@ function SidebarProvider({
   const railLayout = layout === "rail";
   const hasDrawer = layout !== "full";
   const containerRef = React.useRef<HTMLElement>(null);
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  // Where the drawer is: beside the rail, alone in the drawer and phone
+  // layouts, or nowhere in the full layout.
+  const drawerPlace = railLayout ? "rail" : hasDrawer ? "alone" : "none";
   // Set while rendering, as React advises for state that follows a value:
-  // the drawer would otherwise reappear when the window comes back to a
-  // layout with one. Between those layouts it stays open: they show the
-  // same drawer.
-  const [drawerShown, setDrawerShown] = React.useState(hasDrawer);
-  if (hasDrawer !== drawerShown) {
-    setDrawerShown(hasDrawer);
+  // the drawer closes when the window moves it elsewhere, or it would
+  // reappear when the window comes back to a layout with one. The drawer
+  // and phone layouts show the same drawer, so it stays open between them.
+  const [shownPlace, setShownPlace] = React.useState(drawerPlace);
+  if (drawerPlace !== shownPlace) {
+    setShownPlace(drawerPlace);
     setDrawerOpen(false);
   }
+
+  // The part of the sidebar, or of the page beside it, that last had focus,
+  // the drawer's included: React passes focus events up through portals.
+  const lastFocused = React.useRef<Element | null>(null);
+
+  // A layout change can take away the focused part, e.g. the drawer, a top
+  // bar's button past 1024 px, the wordmark the rail hides, or a part of
+  // the page that draws differently at the new width. Focus would fall to
+  // the page, which a screen reader does not announce, and Tab would go on
+  // from where the part was: for the drawer, drawn at the page's end, that
+  // is the browser's own controls. It goes to the sidebar's button shown
+  // now instead. Focus still on screen, e.g. in the page, stays.
+  // NOTE: not a layout effect: a closed drawer's modal keeps the rest of
+  // the page inert, where nothing takes focus, until its own effects clean
+  // up (React Aria's useModalOverlay).
+  React.useEffect(() => {
+    const last = lastFocused.current;
+    if (!last || (last.isConnected && last.checkVisibility())) return;
+    const active = document.activeElement;
+    // A hidden part can keep focus for a moment before the browser lets go.
+    const kept =
+      active &&
+      active !== document.body &&
+      active.checkVisibility() &&
+      !active.closest(drawerSelector);
+    if (kept) return;
+    const triggers = wrapperRef.current?.querySelectorAll<HTMLElement>(triggerSelector) ?? [];
+    Array.from(triggers)
+      .find((trigger) => trigger.checkVisibility())
+      ?.focus();
+  }, [layout]);
 
   const open = layout === "full" && fullOpen;
 
@@ -229,6 +265,10 @@ function SidebarProvider({
   return (
     <SidebarContext.Provider value={contextValue}>
       <div
+        ref={wrapperRef}
+        onFocus={(event) => {
+          lastFocused.current = event.target;
+        }}
         data-slot="sidebar-wrapper"
         className={cn(
           "group/sidebar-wrapper flex min-h-svh w-full [--sidebar-width-icon:3.5rem] [--sidebar-width:15rem] pointer-coarse:[--sidebar-width-icon:4.25rem]",
@@ -270,6 +310,7 @@ function Sidebar({
       style={drawerStyle}
       side="left"
       showCloseButton={false}
+      data-sidebar="drawer"
     >
       <SheetTitle className="sr-only">{label}</SheetTitle>
       <SidebarContext.Provider value={drawerContext}>
