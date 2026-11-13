@@ -545,7 +545,9 @@ is inbok's own and runs Check for new mail; the list box sets
   copied."; "No spam"; "Trash is empty".
 - **Failure:** what failed, that nothing was lost, Try again, a reference
   for faults. A failed refresh keeps the list and adds a banner ("Couldn't
-  refresh. inbok isn't answering; showing mail from 10:42."). A real "Page
+  refresh. inbok isn't answering; showing mail from 10:42."). A failed
+  older page keeps the rows shown and stops loading, with "Couldn't load
+  older conversations." and Try again under the list. A real "Page
   not found" and a crash screen with Reload live in the shell.
 
 ### Status badges

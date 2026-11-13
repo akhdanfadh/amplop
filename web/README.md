@@ -905,7 +905,7 @@ from the registry here:
   `Virtualizer`, rows of one height, type-to-find off; `GridListEnd` is
   the line under the last row.
 - `avatar`: as the registry's; the conversation row rings it in the
-  account colour.
+  account colour. `empty`: words only.
 - `toast` is ours: the registry offers only `sonner` (see DESIGN.md).
   `showUndo` shows a result with Undo and closes itself after 10 s;
   `showError` shows a failure until the member closes it, and not again
@@ -1138,14 +1138,15 @@ pages, and re-reads only each open list's newest page: every 30 s while
 the tab shows, when it shows again, and back online. When a page fails,
 TanStack DB asks for the whole place to repair the list;
 `conversations.ts` refuses that (hundreds of requests for a large
-Inbox), so the list keeps its rows and stops loading. The rules that
-keep that cheap are in [DESIGN.md](DESIGN.md#data-for-mail). The
-collections live per query client and end with the member's session
-(`onAccountCacheClear` in `features/auth/session-cache.ts`), as do the
-router's loaded pages. `clearAccountCache` tells the browser's other
-inbok tabs over a `BroadcastChannel`, and a signed-in frame that hears
-it loads again, so a tab never shows one member's mail beside another's.
-The package ships agent guides for its installed version in
+Inbox), so the list keeps its rows, stops loading, and offers Try again,
+which starts it anew. The rules that keep that cheap are in
+[DESIGN.md](DESIGN.md#data-for-mail). The collections live per query
+client and end with the member's session (`onAccountCacheClear` in
+`features/auth/session-cache.ts`), as do the router's loaded pages.
+`clearAccountCache` tells the browser's other inbok tabs over a
+`BroadcastChannel`, and a signed-in frame that hears it loads again, so
+a tab never shows one member's mail beside another's. The package ships
+agent guides for its installed version in
 `node_modules/@tanstack/db/skills`.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:

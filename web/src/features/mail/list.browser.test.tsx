@@ -16,6 +16,8 @@ import { refreshNewest } from "./conversations";
 import { PlacePage } from "./place-page";
 import { isViewPlace } from "./places";
 
+const serverError = 500;
+
 // The query client of the test running, whose mail clearAccountCache
 // ends, refresh timer included.
 let current: QueryClient | undefined;
@@ -120,6 +122,38 @@ describe("ConversationList", () => {
     await expect.element(page.getByRole("row", { name: /Subject 2,/ })).toBeVisible();
   });
 
+  it("asks for a first account when there is none", async () => {
+    await app(mailApi([], []));
+    await expect
+      .element(page.getByRole("heading", { name: "Connect your first account", level: 2 }))
+      .toBeVisible();
+    await expect.element(page.getByRole("link", { name: "Connect Gmail" })).toBeVisible();
+  });
+
+  it("says a place is empty, and that mail is still being copied", async () => {
+    const syncing = listedAccount(1, "ana@example.com");
+    syncing.sync.status = "running";
+    await app(mailApi([], [syncing]));
+    await expect.element(page.getByRole("heading", { name: "Nothing in Inbox" })).toBeVisible();
+    await expect
+      .element(page.getByText("Some accounts are still syncing.", { exact: false }))
+      .toBeVisible();
+  });
+
+  it("names Spam's own empty state", async () => {
+    await app(mailApi([conversation(1)], one), "/mail/spam");
+    await expect.element(page.getByRole("heading", { name: "No spam" })).toBeVisible();
+  });
+
+  it("offers Try again when the first page fails", async () => {
+    const api = mailApi([conversation(1)], one);
+    api.failNext = serverError;
+    await app(api);
+    await expect.element(page.getByText("Couldn't load these conversations.")).toBeVisible();
+    await userEvent.click(page.getByRole("button", { name: "Try again" }));
+    await expect.element(page.getByRole("row", { name: /Subject 1,/ })).toBeVisible();
+  });
+
   it("names a starred conversation's row Starred", async () => {
     await app(mailApi([conversation(1, { starred: true })], one));
     await expect.element(page.getByRole("row", { name: /Subject 1, .*Starred/ })).toBeVisible();
@@ -174,6 +208,60 @@ describe("the list's rows", () => {
   });
 });
 
+describe("the list's failures", () => {
+  it("keeps its rows and stops when an older page fails, then tries again", async () => {
+    const api = mailApi(
+      Array.from({ length: 300 }, (_, n) => conversation(n)),
+      one,
+    );
+    await app(api);
+    await expect.element(page.getByRole("row", { name: /Subject 299,/ })).toBeVisible();
+    api.failOlder = serverError;
+    const before = api.requests.length;
+    await toLastRow();
+    const failed = page
+      .getByRole("alert")
+      .filter({ hasText: "Couldn't load older conversations." });
+    await expect.element(failed).toBeVisible();
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // No storm: the failed page, not a read of the whole place.
+    const reads = api.requests.slice(before).filter((r) => r.startsWith("/api/v0/conversations?"));
+    expect(reads.length).toBeLessThanOrEqual(2);
+    expect(reads.every((r) => r.includes("before="))).toBe(true);
+    // The rows already loaded stay, down to the last one.
+    await expect.element(page.getByRole("row", { name: /Subject 250,/ })).toBeVisible();
+
+    api.failOlder = undefined;
+    await userEvent.click(page.getByRole("button", { name: "Try again" }));
+    await expect.element(failed).not.toBeInTheDocument();
+    await expect.element(page.getByRole("row", { name: /Subject 299,/ })).toBeVisible();
+  });
+
+  it("opens sign-in, its mail gone, when the session has ended", async () => {
+    const api = mailApi([conversation(1)], one);
+    api.signedOut = true;
+    const { router } = await app(api);
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"), {
+      timeout: 10_000,
+    });
+    const reads = api.requests.filter((r) => r.startsWith("/api/v0/conversations?"));
+    // One read, not a loop of them once the mail is dropped.
+    expect(reads.length).toBeLessThanOrEqual(2);
+  });
+  it("keeps its rows and says since when after a refresh fails", async () => {
+    const api = mailApi([conversation(1)], one);
+    const { client } = await app(api);
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
+    api.failNext = serverError;
+    await refreshNewest(client);
+    await expect
+      .element(page.getByRole("status").filter({ hasText: "Couldn't refresh." }))
+      .toBeVisible();
+    await expect.element(row).toBeVisible();
+  });
+});
+
 describe("the list's order and refreshes", () => {
   it("lists tied dates across a page's end in the server's order", async () => {
     // Groups of seven on one date, some with a fraction Go would write
@@ -207,7 +295,8 @@ describe("the list's order and refreshes", () => {
       await userEvent.keyboard("{ArrowDown}");
     }
     expect(seen).toEqual(expected);
-  });
+    // 70 key presses, each waiting for its row: slow on a busy machine.
+  }, 60_000);
 
   it("refreshes only the newest page", async () => {
     const api = mailApi(

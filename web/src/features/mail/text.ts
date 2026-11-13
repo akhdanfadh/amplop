@@ -71,3 +71,27 @@ export const listEnd = "That's everything inbok has copied. Older mail stays in 
 // Read while a list's first page loads, and while it loads older ones.
 export const listLoading = "Loading conversations...";
 export const listLoadingMore = "Loading older conversations...";
+
+// The empty list's words (DESIGN.md "States").
+export const noAccountsTitle = "Connect your first account";
+export const noAccountsText = "inbok shows the mail of the accounts you connect.";
+export const connectGmail = "Connect Gmail";
+
+// emptyTitle returns what an empty list says: name, the place's name.
+export function emptyTitle(place: string, name: string): string {
+  if (place === "spam") return "No spam";
+  if (place === "trash") return "Trash is empty";
+  return `Nothing in ${name}`;
+}
+
+// Why an empty list may fill: some account is still copying its mail.
+export const stillSyncing =
+  "Some accounts are still syncing. Their mail appears here as it is copied.";
+
+// Failures of the list (DESIGN.md "States").
+export const listFailed = "Couldn't load these conversations.";
+export const olderFailedText = "Couldn't load older conversations.";
+export const tryAgain = "Try again";
+export function refreshFailed(since: string): string {
+  return `Couldn't refresh. inbok isn't answering; showing mail from ${since}.`;
+}

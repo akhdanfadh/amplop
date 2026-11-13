@@ -1,6 +1,7 @@
 import type { ConversationRow, ListedAccount } from "@/api/generated/model";
 
 const notFound = 404;
+const unauthorized = 401;
 
 // A connected account as the API lists it, fully synced.
 export function listedAccount(id: number, email: string, color = id): ListedAccount {
@@ -50,11 +51,17 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 
 // MailApi is a fake inbok API for mail pages: it pages conversations as
 // List Conversations does, lists accounts, and answers a signed-in
-// session. requests records every path and search it was asked.
+// session. failNext makes the next conversation list request answer
+// status, and failOlder every request for an older page until it is
+// cleared; signedOut answers everything 401, as after the session ended.
+// requests records every path and search it was asked.
 export type MailApi = {
   conversations: ConversationRow[];
   accounts: ListedAccount[];
   requests: string[];
+  failNext: number | undefined;
+  failOlder: number | undefined;
+  signedOut: boolean;
   fetch: (input: RequestInfo | URL) => Promise<Response>;
 };
 
@@ -64,11 +71,21 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     conversations,
     accounts,
     requests: [],
+    failNext: undefined,
+    failOlder: undefined,
+    signedOut: false,
     fetch: async (input) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.href);
       api.requests.push(url.pathname + url.search);
+      if (api.signedOut) return problem(unauthorized, "/api/v0/problems/unauthorized");
       const { pathname: path, searchParams: search } = url;
       if (path === "/api/v0/conversations") {
+        if (api.failNext !== undefined) {
+          const status = api.failNext;
+          api.failNext = undefined;
+          return problem(status);
+        }
+        if (api.failOlder !== undefined && search.has("before")) return problem(api.failOlder);
         return Response.json({ data: { conversations: list(api.conversations, search) } });
       }
       if (path === "/api/v0/connected-accounts") {

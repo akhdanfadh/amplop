@@ -1,4 +1,4 @@
-import { useRef, type ReactElement, type ReactNode } from "react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import { useFocusOnOpen } from "@/hooks/use-focus-on-open";
 import { ConversationList } from "./list";
 import { MailPanes } from "./panes";
@@ -18,6 +18,8 @@ export function PlacePage({
   reader: ReactNode;
 }): ReactElement {
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // Try again on a list whose first page failed starts it anew.
+  const [attempt, setAttempt] = useState(0);
   // Each page focuses its heading when it opens (DESIGN.md "Focus"), so the
   // keyboard starts in the place, not back in the sidebar; what the reading
   // pane shows takes focus itself.
@@ -33,9 +35,14 @@ export function PlacePage({
               {placeName[place]}
             </h1>
           </header>
-          {/* A new place is a new list: its own scroll position and first
-              load. */}
-          <ConversationList key={place} place={place} />
+          <ConversationList
+            // A new place or attempt is a new list: its own scroll
+            // position and first load.
+            key={`${place} ${attempt}`}
+            place={place}
+            placeName={placeName[place]}
+            onRetry={() => setAttempt((n) => n + 1)}
+          />
         </main>
       }
       reader={reader}
