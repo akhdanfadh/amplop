@@ -541,13 +541,21 @@ accounts instead. Once shown, the form stays, even if a later read finds
 no usable account, so typed input is never dropped; a 401 then, e.g. a
 session ended from another tab, keeps the form too, with an alert to copy
 what was typed and sign in, and the leave warning still asks before going.
-To, Cc, and Bcc each take bare addresses separated by commas, semicolons,
-or spaces, at most 100 per list, with at least one recipient in all. A
-refused address is named in its field's error. `/compose?edit=<id>` starts
-the form with that message's content as a new message, saying the opened
-one stays as it is and asking for another account when the message's own
-can't send; `composeSearch` drops an `edit` that is not a UUID, so the
-form starts empty. Each `edit`, or none, gets a form of its own.
+To, Cc, and Bcc are `RecipientField`s
+(`src/features/outgoing-messages/recipient-field.tsx`): each address is a
+chip, on React Aria's `TagGroup`, and the input after them turns typed
+text into chips on a comma, semicolon, or Enter, on leaving, and on
+pasting a list, keeping the address of "Name <address>"
+(`parseRecipients`). Backspace in the empty input removes the last chip;
+the chips are one Tab stop with Delete to remove one. An address the
+contract refuses stays a chip, marked and named "not an email address",
+and its field's error names it. At most 100 per list, with at least one
+recipient in all; the form's values are the lists themselves.
+`/compose?edit=<id>` starts the form with that message's content as a new
+message, saying the opened one stays as it is and asking for another
+account when the message's own can't send; `composeSearch` drops an
+`edit` that is not a UUID, so the form starts empty. Each `edit`, or none,
+gets a form of its own.
 
 Leaving the form asks first: a link, Back, or Forward opens a dialog
 (`LeaveWarning`, `components/leave-warning.tsx`, on TanStack Router's

@@ -159,6 +159,17 @@ export function sendErrorMessage(err: ApiError): string {
   return userMessage(err);
 }
 
+// What an account option that can't send says after its address.
+export const needsReconnectMark = "(needs reconnecting)";
+
+// What a recipient chip adds after a value that isn't an address.
+export const notAnAddress = "not an email address";
+
+// invalidAddressMessage says value, in a recipient list, isn't an address.
+export function invalidAddressMessage(value: string): string {
+  return `"${value}" isn't an email address. Fix it or remove it.`;
+}
+
 // sendAgainErrorMessage words a Send Message Again that failed.
 export function sendAgainErrorMessage(err: ApiError): string {
   // Only the API's own problems say why; a missing route says nothing.

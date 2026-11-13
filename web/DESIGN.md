@@ -134,7 +134,7 @@ text).
   so they sit level with the nav rows beside them.
 - **Radius:** `--radius: 0.5rem`: controls 8, menu items 6, menus about
   10, cards and the message sheet 12, dialogs 14. Pills only for status
-  badges and account chips.
+  badges, account chips, and recipient chips.
 - **Elevation:** no shadow on page, panes, list, or sheet. Menus and
   popovers share the card's surface and may open over a card, so an edge
   and a shadow set them apart: `0 4px 16px` at 12% black and the `border`
@@ -176,23 +176,24 @@ shadcn/ui's **React Aria flavour** for every component, added with
 edit, each with its first caller. Icons are `lucide-react`, 16 px, in the
 text colour of their role.
 
-| Need                                         | Component                                                       |
-| -------------------------------------------- | --------------------------------------------------------------- |
-| Sidebar, rail, drawer                        | `sidebar`                                                       |
-| List beside the reading pane                 | none: the list has a fluid width ("Panes and widths")           |
-| Member menu with the theme choice            | `popover` holding a `toggle-group`                              |
-| More menus                                   | `dropdown-menu`                                                 |
-| Right-click row menu                         | `context-menu`                                                  |
-| Names for icon buttons                       | `tooltip`                                                       |
-| Undo and error toasts                        | `toast.tsx` on React Aria's Toast (see below)                   |
-| Phone editors and search                     | `sheet`                                                         |
-| From picker in compose                       | `select` (shows the account mark)                               |
-| Search box and its dropdown, recipient chips | `combobox`                                                      |
-| Placeholder rows, spinners, empty states     | `skeleton`, `spinner`, `empty`                                  |
-| Settings rows                                | `item`                                                          |
-| Status                                       | `badge` with tones neutral, info, success, warning, destructive |
-| Initials avatars                             | `avatar`, plus the account ring                                 |
-| Confirmations                                | `alert-dialog`                                                  |
+| Need                                     | Component                                                                        |
+| ---------------------------------------- | -------------------------------------------------------------------------------- |
+| Sidebar, rail, drawer                    | `sidebar`                                                                        |
+| List beside the reading pane             | none: the list has a fluid width ("Panes and widths")                            |
+| Member menu with the theme choice        | `popover` holding a `toggle-group`                                               |
+| More menus                               | `dropdown-menu`                                                                  |
+| Right-click row menu                     | `context-menu`                                                                   |
+| Names for icon buttons                   | `tooltip`                                                                        |
+| Undo and error toasts                    | `toast.tsx` on React Aria's Toast (see below)                                    |
+| Phone editors and search                 | `sheet`                                                                          |
+| From picker in compose                   | `select` (shows the account mark)                                                |
+| Recipient chips                          | React Aria's `TagGroup` in the field; `combobox` once contacts suggest addresses |
+| Search box and its dropdown              | `combobox`                                                                       |
+| Placeholder rows, spinners, empty states | `skeleton`, `spinner`, `empty`                                                   |
+| Settings rows                            | `item`                                                                           |
+| Status                                   | `badge` with tones neutral, info, success, warning, destructive                  |
+| Initials avatars                         | `avatar`, plus the account ring                                                  |
+| Confirmations                            | `alert-dialog`                                                                   |
 
 **Toasts** use React Aria's own
 [Toast](https://react-aria.adobe.com/Toast), wrapped in inbok's
@@ -335,6 +336,14 @@ last two redirect into settings, so settings can move without the server.
   Reply, Reply all, Forward buttons; one editor per conversation; From is
   the receiving account, changeable and always visible; a hidden "Re:"
   subject; the quote folded; Ctrl/Cmd+Enter sends.
+- **Recipients are chips**, one pill per address (`secondary`, 14 px, 28
+  px tall, 36 px for a coarse pointer). A comma, semicolon, Enter,
+  leaving the field, or pasting a list makes chips; "Name <address>"
+  keeps the address. Backspace in the empty input removes the last chip;
+  the chips are one Tab stop, arrows move between them, and Delete
+  removes one; the remove buttons stay out of the Tab order. An address
+  that isn't one stays a chip in `destructive` on its tint, named "not an
+  email address", and the field's error says which.
 - **A new message** opens in a 560 px window docked bottom right that stays
   while the member moves around; minimise, full screen, close. On phones
   both are full-screen editors.

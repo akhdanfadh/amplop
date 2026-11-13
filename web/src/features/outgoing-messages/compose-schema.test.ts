@@ -12,9 +12,9 @@ import {
 
 const valid: ComposeValues = {
   connectedAccountId: 7,
-  to: "ana@example.com",
-  cc: "",
-  bcc: "",
+  to: ["ana@example.com"],
+  cc: [],
+  bcc: [],
   subject: "Lunch",
   body: "Noon?",
 };
@@ -40,6 +40,16 @@ describe("parseRecipients", () => {
     ["ana@example.com;bo@example.com", ["ana@example.com", "bo@example.com"]],
     [" ana@example.com  bo@example.com ,, ", ["ana@example.com", "bo@example.com"]],
     ["ana@example.com,\nbo@example.com", ["ana@example.com", "bo@example.com"]],
+    ["Ana Lopez <ana@example.com>, bo@example.com", ["ana@example.com", "bo@example.com"]],
+    ['"Lopez, Ana" <ana@example.com>', ["ana@example.com"]],
+    [
+      '"Lopez, Ana" <ana@example.com>; "Bo" <bo@example.com>',
+      ["ana@example.com", "bo@example.com"],
+    ],
+    // Quoted text with no <address> is kept, to show as not an address.
+    ['"copy@example.com"', ['"copy@example.com"']],
+    ['"copy@example.com", bo@example.com', ['"copy@example.com"', "bo@example.com"]],
+    ['"Lopez, Ana"', ['"Lopez, Ana"']],
   ])("splits %j", (text, addresses) => {
     expect(parseRecipients(text)).toEqual(addresses);
   });
@@ -48,34 +58,34 @@ describe("parseRecipients", () => {
 describe("ComposeSchema", () => {
   it("accepts a message with one recipient in any list", () => {
     expect(issues(valid)).toEqual({});
-    expect(issues({ ...valid, to: "", bcc: "ana@example.com" })).toEqual({});
+    expect(issues({ ...valid, to: [], bcc: ["ana@example.com"] })).toEqual({});
   });
 
   it("asks for a recipient on To when every list is empty", () => {
-    expect(issues({ ...valid, to: " , " })).toEqual({ to: ["Add at least one recipient."] });
+    expect(issues({ ...valid, to: [] })).toEqual({ to: ["Add at least one recipient."] });
   });
 
   it("names the first address that isn't one", () => {
-    expect(issues({ ...valid, cc: "bo@example.com, bo@, cy" })).toEqual({
-      cc: ['Enter email addresses separated by commas. "bo@" isn\'t one.'],
+    expect(issues({ ...valid, cc: ["bo@example.com", "bo@", "cy"] })).toEqual({
+      cc: ['"bo@" isn\'t an email address. Fix it or remove it.'],
     });
   });
 
   it("refuses an address longer than the contract allows", () => {
     const long = `${"a".repeat(64)}@${"b".repeat(186)}.com`;
-    expect(issues({ ...valid, bcc: long }).bcc).toHaveLength(1);
+    expect(issues({ ...valid, bcc: [long] }).bcc).toHaveLength(1);
   });
 
   it("refuses more than 100 addresses in one list", () => {
-    const many = Array.from({ length: 101 }, (_, i) => `p${i}@example.com`).join(", ");
+    const many = Array.from({ length: 101 }, (_, i) => `p${i}@example.com`);
     expect(issues({ ...valid, to: many })).toEqual({ to: ["Enter at most 100 addresses."] });
   });
 
   it("takes exactly 100 addresses, and an address of 254 characters", () => {
-    const hundred = Array.from({ length: 100 }, (_, i) => `p${i}@example.com`).join(", ");
+    const hundred = Array.from({ length: 100 }, (_, i) => `p${i}@example.com`);
     const longest = `${"a".repeat(64)}@${"b".repeat(185)}.com`;
     expect(longest).toHaveLength(254);
-    expect(issues({ ...valid, to: hundred, cc: longest })).toEqual({});
+    expect(issues({ ...valid, to: hundred, cc: [longest] })).toEqual({});
   });
 
   it.each(["a\nb", "a\u007fb", "a\u0085b"])("refuses the control character in %j", (subject) => {
@@ -105,7 +115,11 @@ describe("ComposeSchema", () => {
 describe("composeRequest", () => {
   it("sends each list as its addresses", () => {
     expect(
-      composeRequest({ ...valid, to: "ana@example.com, bo@example.com", bcc: " cy@example.com " }),
+      composeRequest({
+        ...valid,
+        to: ["ana@example.com", "bo@example.com"],
+        bcc: ["cy@example.com"],
+      }),
     ).toEqual({
       connectedAccountId: 7,
       to: ["ana@example.com", "bo@example.com"],
@@ -137,9 +151,9 @@ describe("composeValues", () => {
   it("starts empty, with no account chosen", () => {
     expect(composeValues([4, 9])).toEqual({
       connectedAccountId: 0,
-      to: "",
-      cc: "",
-      bcc: "",
+      to: [],
+      cc: [],
+      bcc: [],
       subject: "",
       body: "",
     });
@@ -149,9 +163,9 @@ describe("composeValues", () => {
   it("copies a message, from its own account while it can send", () => {
     expect(composeValues([4, 9], message)).toEqual({
       connectedAccountId: 9,
-      to: "ana@example.com, bo@example.com",
-      cc: "",
-      bcc: "cy@example.com",
+      to: ["ana@example.com", "bo@example.com"],
+      cc: [],
+      bcc: ["cy@example.com"],
       subject: "Lunch",
       body: "Noon?",
     });
