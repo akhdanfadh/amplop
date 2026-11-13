@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { Button } from "@/components/ui/button";
 import { sandbox, watch, type FrameState } from "./frame";
+import { MessageLoading } from "./loading";
+import { bodyFailed } from "./text";
 
 // HtmlBody shows the HTML body at url, which the server sends sanitized
 // with its own Content-Security-Policy, in a sandboxed frame as tall as
@@ -38,10 +40,10 @@ export function HtmlBody({ url, title }: { url: string; title: string }): ReactE
 
   return (
     <div className="flex flex-col gap-3">
-      {state === "loading" && <output>Loading message...</output>}
+      {state === "loading" && <MessageLoading />}
       {state === "failed" && (
         <div className="flex flex-col items-start gap-3" role="alert">
-          <p>Could not show this part of the message.</p>
+          <p>{bodyFailed}</p>
           <Button ref={retryButton} type="button" variant="outline" onPress={retry}>
             Try again
           </Button>
@@ -56,7 +58,7 @@ export function HtmlBody({ url, title }: { url: string; title: string }): ReactE
         referrerPolicy="no-referrer"
         // Mail is written for a white page, whatever the app's theme.
         className={
-          state === "failed" ? "hidden" : "block h-0 w-full rounded-md bg-sheet scheme-light"
+          state === "failed" ? "hidden" : "block h-0 w-full rounded-xl bg-sheet scheme-light"
         }
       />
     </div>

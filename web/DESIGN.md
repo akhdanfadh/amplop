@@ -331,7 +331,23 @@ last two redirect into settings, so settings can move without the server.
 - The body sits on the white `sheet`; the frame grows to the body and the
   pane scrolls; wider mail scales to fit down to 60%, then scrolls
   sideways. A notice explains hidden remote images, with "Show images".
-- Attachments as chips: type icon, name, size.
+- Attachments, after the bodies, as chips 8 px apart that wrap. A chip is
+  a link that downloads the file: 36 px (44 px coarse), radius 8, an
+  `input` outline on `card`, `accent` on hover. It holds a 16 px type icon
+  in `muted-foreground` (image, audio, video, document, spreadsheet,
+  archive, other), the name at 14 px, and the size as meta, tabular
+  (`640 bytes`, `36 KB`, `2.4 MB`). A name that does not fit is cut in the
+  middle (`Q3-report-north...-final-v12.xlsx`): its start shortens first,
+  down to a character and its ellipsis, then the up to 10 characters
+  before the extension, which tell similar files apart; the extension
+  always shows. A cut name shows whole, wrapped, in a tooltip on hover
+  and keyboard focus; screen readers read it whole. A file the sender
+  left unnamed reads "Unnamed file".
+- A plain-text body longer than about 100 KB shows its start, then "This
+  message is long, so inbok shows only its start." with a "Download the
+  whole text" link, as secondary text. A message with no text says "This
+  message has no text." Content loads behind "Loading message..." after
+  300 ms; a failed load is a `ReadError` with Try again.
 
 ### Compose and reply
 

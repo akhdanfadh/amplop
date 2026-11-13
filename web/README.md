@@ -655,14 +655,17 @@ its threading.
 
 `MessageView` (`src/features/messages/view.tsx`) shows one message: its
 subject, From, To, Cc, Bcc for a message the member sent, and when it
-arrived, then its bodies one after another. An outgoing message's page
-shows it with its plain-text body; the inbox will show synchronized
-messages, with the message from the API. Its props:
+arrived, then its bodies one after another, then its attachments. An
+outgoing message's page shows it with its plain-text body; the inbox
+will show synchronized messages, with the message from the API. Its
+props:
 
 - `header`: the header fields, which show while the body loads.
 - `content`: `pending` while the server fetches a body it has not
-  stored, `error` with a retry, or `success` with the bodies and whether
-  the server blocked remote images in them.
+  stored, `error` with a retry, or `success` with the bodies, whether
+  the server blocked remote images in them, and the attachments. A
+  plain-text body the server clipped carries `wholeUrl`, which the view
+  offers as "Download the whole text"; a message with no text says so.
 
 Give it a `key` per message, so the next message starts afresh. Remote
 images stay blocked for another message's bodies even without one: the
@@ -694,22 +697,32 @@ than the frame is scaled to fit with CSS `zoom` on the body's root, down
 to 60%, and then scrolls sideways inside the frame; the width is
 measured at full size each time, so mail scaled down returns to full
 size when the frame widens. The root scrolls sideways even where the
-mail's own CSS hides its overflow. It sets the body's `html` and `body` to `height: auto` first, so mail that makes
-them 100% of the frame, plus padding, fits too. A frame whose document
-the page cannot read, or that is not HTML, e.g. an API error, or that is
-not read within 15 seconds, shows "Could not show this part of the
-message." with a retry, which returns focus to the frame or the button.
-The frame stays white in dark mode, since mail is written for a white
-page.
+mail's own CSS hides its overflow. It sets the body's `html` and `body`
+to `height: auto` first, so mail that makes them 100% of the frame, plus
+padding, fits too. A frame whose document the page cannot read, or that
+is not HTML, e.g. an API error, or that is not read within 15 seconds,
+shows "Could not show this part of the message." with a retry, which
+returns focus to the frame or the button. The frame stays white in dark
+mode, since mail is written for a white page.
 
-When the server blocked remote images, a note says so and offers "Load
-remote content", which loads each HTML body again from its second URL,
-for this view only. A plain-text body is text, which React escapes,
-with its line breaks and spaces kept. `linkify-react` turns its web and
-email addresses into links; `links.ts` allows `http`, `https`, and
-`mailto` only, opens an address without a scheme over `https`, and
-leaves a link with a direction override in it as text, since its text
-would read differently from where it goes.
+When the server blocked remote images, a note says so and offers "Show
+images", which loads each HTML body again from its second URL, for this
+view only. A plain-text body is text, which React escapes, with its line
+breaks and spaces kept, in its own direction (`dir="auto"`).
+`linkify-react` turns its web and email addresses into links; `links.ts`
+allows `http`, `https`, and `mailto` only, opens an address without a
+scheme over `https`, and leaves a link with a direction override in it
+as text, since its text would read differently from where it goes.
+
+Attachments (`attachments.tsx`) are chips that download their file
+(DESIGN.md "Reading pane"). React Aria's router leaves a link with
+`download` to the browser, so the part route's address is never taken
+for a page of the app. `splitName` (`text.ts`) splits a name into its
+start, the characters before its extension, and the extension, which
+give way in that order when the chip is too narrow, the extension never.
+The chip gives screen readers the whole name in one piece: the visible
+parts sit in separate boxes, which Chromium reads with a space between
+them.
 
 ## Checks and tests
 

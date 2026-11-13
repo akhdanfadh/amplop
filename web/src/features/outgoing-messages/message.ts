@@ -22,6 +22,7 @@ export function messageContent(message: OutgoingMessage): MessageContent {
     status: "success",
     bodies: [{ partId: "body", type: "text", text: message.body }],
     remote: "none",
+    attachments: [],
   };
 }
 

@@ -74,10 +74,13 @@ const bodies: Record<string, string> = {
 // - never.png: an image whose answer never comes;
 // - late.svg: the banner, held back until release-late is asked for;
 // - error: a JSON problem refused a frame, as every API error is;
+// - flaky?key=...: error the first time for each key, then fluid;
 // - stall: a body that starts and never ends.
 // Anything after a body's name and a "?" is ignored, so tests can give one
 // body two URLs.
 export function messageServer(): Plugin {
+  // The flaky keys asked for once.
+  const flakyKeys = new Set<string>();
   // The late.svg answers held back.
   const late: ServerResponse[] = [];
   return {
@@ -85,7 +88,12 @@ export function messageServer(): Plugin {
     configureServer(server) {
       server.middlewares.use(messagePath, (req, res) => {
         const url = new URL(req.url ?? "", "http://test");
-        const name = url.pathname.replace(/^\//, "");
+        let name = url.pathname.replace(/^\//, "");
+        if (name === "flaky") {
+          const key = url.searchParams.get("key") ?? "";
+          name = flakyKeys.has(key) ? "fluid" : "error";
+          flakyKeys.add(key);
+        }
         if (name === "image.png") {
           const cookie = req.headers.cookie ?? "";
           res.statusCode = cookie.split("; ").includes(sessionCookie) ? 200 : 404;
