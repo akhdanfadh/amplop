@@ -30,13 +30,15 @@ type storedRecipient struct {
 const outgoingMessageKeyConstraint = "outgoing_message_keys_pkey"
 
 // InsertOutgoingMessage locks the member attempt.UserID, refuses a key the
-// member saved a message with, reads the member's account accountID under a
-// key share lock and the member's attempts, calls build with them, and saves
-// the message build returns as waiting, with its job, the attempt, and key,
+// member saved a message with, reads the member's account request.AccountID
+// under a key share lock, the member's attempts, and their synchronized
+// message request.AnsweredID when set, calls build with them, and saves the
+// message build returns as waiting, with its job, the attempt, and request,
 // in one transaction. It returns the saved message,
-// [outgoingmessage.ErrDeactivated], [outgoingmessage.ErrKeyExists], or
-// [outgoingmessage.ErrAccountNotFound] when the member has no such account.
-func (db *DB) InsertOutgoingMessage(ctx context.Context, attempt outgoingmessage.Attempt, accountID int64, key uuid.UUID, build func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error)) (outgoingmessage.Message, error) {
+// [outgoingmessage.ErrDeactivated], [outgoingmessage.ErrKeyExists],
+// [outgoingmessage.ErrAccountNotFound] when the member has no such account,
+// or [outgoingmessage.ErrAnsweredNotFound] when they have no such message.
+func (db *DB) InsertOutgoingMessage(ctx context.Context, attempt outgoingmessage.Attempt, request outgoingmessage.Request, build func(outgoingmessage.CreateState) (outgoingmessage.NewMessage, error)) (outgoingmessage.Message, error) {
 	var saved outgoingmessage.Message
 	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
@@ -49,7 +51,7 @@ func (db *DB) InsertOutgoingMessage(ctx context.Context, attempt outgoingmessage
 
 		// 2. Refuse a used key before the limit, which a repeat must not
 		// count against.
-		exists, err := queries.OutgoingMessageKeyExists(ctx, sqlc.OutgoingMessageKeyExistsParams{UserID: attempt.UserID, IdempotencyKey: key})
+		exists, err := queries.OutgoingMessageKeyExists(ctx, sqlc.OutgoingMessageKeyExistsParams{UserID: attempt.UserID, IdempotencyKey: request.Key})
 		if err != nil {
 			return fmt.Errorf("check idempotency key: %w", err)
 		}
@@ -59,7 +61,7 @@ func (db *DB) InsertOutgoingMessage(ctx context.Context, attempt outgoingmessage
 
 		// 3. Lock the account, so a disconnect waits and then deletes the
 		// message with it.
-		account, err := queries.LockOutgoingMessageSender(ctx, sqlc.LockOutgoingMessageSenderParams{ID: accountID, UserID: attempt.UserID})
+		account, err := queries.LockOutgoingMessageSender(ctx, sqlc.LockOutgoingMessageSenderParams{ID: request.AccountID, UserID: attempt.UserID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return outgoingmessage.ErrAccountNotFound
 		}
@@ -71,19 +73,33 @@ func (db *DB) InsertOutgoingMessage(ctx context.Context, attempt outgoingmessage
 			return fmt.Errorf("list send attempts: %w", err)
 		}
 
-		// 4. Let build decide.
-		sender := senderFromRow(account)
-		next, err := build(outgoingmessage.CreateState{Sender: sender, Attempts: attempts})
+		// 4. Read the answered message after the key's check, so a repeat
+		// finds its reply though a sync deleted the message since, and let
+		// build decide.
+		state := outgoingmessage.CreateState{Sender: senderFromRow(account), Attempts: attempts}
+		if request.AnsweredID != nil {
+			answered, err := readAnswered(ctx, queries, attempt.UserID, *request.AnsweredID)
+			if err != nil {
+				return err
+			}
+			state.Answered = &answered
+		}
+		next, err := build(state)
 		if err != nil {
 			return err
 		}
 
 		// 5. Save the message, its job, the attempt, and the key.
-		saved, err = db.saveOutgoingMessage(ctx, tx, attempt, accountID, next)
+		saved, err = db.saveOutgoingMessage(ctx, tx, attempt, request.AccountID, next)
 		if err != nil {
 			return err
 		}
-		err = queries.InsertOutgoingMessageKey(ctx, sqlc.InsertOutgoingMessageKeyParams{UserID: attempt.UserID, IdempotencyKey: key, MessageID: saved.ID})
+		err = queries.InsertOutgoingMessageKey(ctx, sqlc.InsertOutgoingMessageKeyParams{
+			UserID:            attempt.UserID,
+			IdempotencyKey:    request.Key,
+			MessageID:         saved.ID,
+			AnsweredMessageID: request.AnsweredID,
+		})
 		// A request with the same key that did not wait for the member's
 		// lock committed first; the key still names one message.
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == pgerrcode.UniqueViolation && pgErr.ConstraintName == outgoingMessageKeyConstraint {
@@ -186,6 +202,26 @@ func (db *DB) InsertOutgoingMessageCopy(ctx context.Context, attempt outgoingmes
 	return saved, nil
 }
 
+// readAnswered returns userID's synchronized message messageID, or
+// [outgoingmessage.ErrAnsweredNotFound] when userID has none.
+func readAnswered(ctx context.Context, queries *sqlc.Queries, userID int64, messageID uuid.UUID) (outgoingmessage.Answered, error) {
+	row, err := queries.ReadAnsweredMessage(ctx, sqlc.ReadAnsweredMessageParams{ID: messageID, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return outgoingmessage.Answered{}, outgoingmessage.ErrAnsweredNotFound
+	}
+	if err != nil {
+		return outgoingmessage.Answered{}, fmt.Errorf("read answered message: %w", err)
+	}
+	return outgoingmessage.Answered{
+		ConnectedAccountID: row.ConnectedAccountID,
+		ProviderThreadID:   row.ProviderThreadID,
+		Subject:            row.Subject,
+		InternetMessageID:  row.InternetMessageID,
+		InReplyTo:          row.InReplyTo,
+		References:         row.InternetReferences,
+	}, nil
+}
+
 // lockSendingMember locks userID's row, or returns
 // [outgoingmessage.ErrDeactivated] when the member is deactivated or gone.
 func lockSendingMember(ctx context.Context, queries *sqlc.Queries, userID int64) error {
@@ -227,6 +263,10 @@ func (db *DB) saveOutgoingMessage(ctx context.Context, tx pgx.Tx, attempt outgoi
 		Subject:            next.Subject,
 		Body:               next.Body,
 		InbokMessageID:     next.InbokMessageID,
+		InReplyTo:          nullable(next.InReplyTo),
+		// The column holds an empty list, never NULL.
+		InternetReferences: nonNil(next.References),
+		ProviderThreadID:   nullable(next.ProviderThreadID),
 	})
 	if err != nil {
 		return outgoingmessage.Message{}, fmt.Errorf("insert outgoing message: %w", err)
@@ -254,7 +294,9 @@ func (db *DB) saveOutgoingMessage(ctx context.Context, tx pgx.Tx, attempt outgoi
 		From:               next.From,
 		Content:            next.Content,
 		InbokMessageID:     next.InbokMessageID,
+		Threading:          outgoingmessage.Threading{InReplyTo: next.InReplyTo, References: nonNil(next.References)},
 		Status:             outgoingmessage.Status(row.Status),
+		ProviderThreadID:   next.ProviderThreadID,
 		CreatedAt:          row.CreatedAt,
 	}, nil
 }
@@ -272,17 +314,24 @@ func (db *DB) ReadOutgoingMessage(ctx context.Context, userID int64, messageID u
 	return outgoingMessageFromRow(row)
 }
 
-// ReadOutgoingMessageByKey returns userID's message saved with key, or
-// [outgoingmessage.ErrNotFound] when userID has none.
-func (db *DB) ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (outgoingmessage.Message, error) {
-	row, err := sqlc.New(db.pool).ReadOutgoingMessageByKey(ctx, sqlc.ReadOutgoingMessageByKeyParams{IdempotencyKey: key, UserID: userID})
+// ReadOutgoingMessageByKey returns userID's message saved with key and the
+// request that saved it, or [outgoingmessage.ErrNotFound] when userID has
+// none, including a message a disconnect deleted between the two reads.
+func (db *DB) ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (outgoingmessage.Message, outgoingmessage.Request, error) {
+	queries := sqlc.New(db.pool)
+	keyed, err := queries.ReadOutgoingMessageKey(ctx, sqlc.ReadOutgoingMessageKeyParams{UserID: userID, IdempotencyKey: key})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return outgoingmessage.Message{}, outgoingmessage.ErrNotFound
+		return outgoingmessage.Message{}, outgoingmessage.Request{}, outgoingmessage.ErrNotFound
 	}
 	if err != nil {
-		return outgoingmessage.Message{}, fmt.Errorf("read outgoing message by key: %w", err)
+		return outgoingmessage.Message{}, outgoingmessage.Request{}, fmt.Errorf("read outgoing message key: %w", err)
 	}
-	return outgoingMessageFromRow(row)
+	message, err := db.ReadOutgoingMessage(ctx, userID, keyed.MessageID)
+	if err != nil {
+		return outgoingmessage.Message{}, outgoingmessage.Request{}, err
+	}
+	request := outgoingmessage.Request{AccountID: message.ConnectedAccountID, Key: key, AnsweredID: keyed.AnsweredMessageID}
+	return message, request, nil
 }
 
 // ListOutgoingMessages returns userID's newest messages, at most limit,
@@ -404,6 +453,14 @@ func nullable(value string) *string {
 	return &value
 }
 
+// nonNil returns ids, or an empty list for nil.
+func nonNil(ids []string) []string {
+	if ids == nil {
+		return []string{}
+	}
+	return ids
+}
+
 // outgoingMessageFromRow returns row as a message, or an error when a
 // recipient list is not the JSON the table keeps.
 func outgoingMessageFromRow(row sqlc.OutgoingMessage) (outgoingmessage.Message, error) {
@@ -431,10 +488,14 @@ func outgoingMessageFromRow(row sqlc.OutgoingMessage) (outgoingmessage.Message, 
 			Body:    row.Body,
 		},
 		InbokMessageID: row.InbokMessageID,
+		Threading:      outgoingmessage.Threading{References: nonNil(row.InternetReferences)},
 		Status:         outgoingmessage.Status(row.Status),
 		CreatedAt:      row.CreatedAt,
 		SentAt:         row.SentAt,
 		SentAgainAs:    row.SentAgainAs,
+	}
+	if row.InReplyTo != nil {
+		message.InReplyTo = *row.InReplyTo
 	}
 	if row.Failure != nil {
 		message.Failure = outgoingmessage.Failure(*row.Failure)

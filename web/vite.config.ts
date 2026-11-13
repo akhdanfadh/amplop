@@ -66,9 +66,10 @@ export default defineConfig({
 
   // Oxfmt defaults, like gofmt: no style options to debate.
   fmt: {
-    // Also skip the client from `pnpm generate`. It stays linted, so a type
-    // error in it, e.g. a call that no longer fits transport, still fails.
-    ignorePatterns: [...generated, "src/api/generated/**"],
+    // Also skip the client and cn's tables from `pnpm generate`. They stay
+    // linted, so a type error in them, e.g. a call that no longer fits
+    // transport, still fails.
+    ignorePatterns: [...generated, "src/api/generated/**", "src/lib/generated/**"],
     // Also sorts classes inside cn(...) and cva(...). If the stylesheet
     // moves, update the path: a missing file silently turns sorting off.
     sortTailwindcss: { stylesheet: "src/styles.css", functions: ["cn", "cva"] },
@@ -98,6 +99,12 @@ export default defineConfig({
       // A deprecated API still works but will go, e.g. Zod's isInt; the
       // message names the replacement.
       "typescript/no-deprecated": "error",
+      // The package's cn knows only Tailwind's own scales; src/lib/cn.ts
+      // knows the theme's too, e.g. text-snippet.
+      "no-restricted-imports": [
+        "error",
+        { paths: [{ name: "cn", message: 'Import cn from "@/lib/cn", which knows the theme.' }] },
+      ],
     },
     // Orval's generated code breaks two rules by design: it casts its own types
     // and defines a header helper inside each write function. Only these rules
@@ -109,6 +116,12 @@ export default defineConfig({
           "typescript/no-unsafe-type-assertion": "off",
           "unicorn/consistent-function-scoping": "off",
         },
+      },
+      // cn build's tables cast typed arrays it already typed; only that
+      // rule is off there.
+      {
+        files: ["src/lib/generated/**"],
+        rules: { "typescript/no-unnecessary-type-assertion": "off" },
       },
     ],
     ignorePatterns: generated,

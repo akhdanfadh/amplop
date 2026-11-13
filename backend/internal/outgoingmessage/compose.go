@@ -5,12 +5,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/emersion/go-message/mail"
 
 	"inbok/internal/emailaddress"
+	"inbok/internal/msgid"
 )
 
 // inbokMessageIDHeader carries [Message.InbokMessageID]. Gmail keeps it
@@ -28,18 +30,19 @@ const fallbackMessageIDDomain = "localhost"
 // whole groups of 4, hold 45 bytes.
 const maxEncodedWordText = 45
 
-// errUnsafeHeader means the From address, subject, or Message-ID could add
-// a header or is not one value.
-var errUnsafeHeader = errors.New("the sender, subject, or Message-ID cannot be written as a header")
+// errUnsafeHeader means the From address, subject, or a msg-id could add a
+// header or is not one value.
+var errUnsafeHeader = errors.New("the sender, subject, or a msg-id cannot be written as a header")
 
 // compose returns message as an RFC 5322 message: From [Message.From], To,
 // Cc, and Bcc when not empty, Subject, Date when the member sent it,
-// Message-ID and X-Inbok-Message-Id, both [Message.InbokMessageID], and the
-// body as quoted-printable UTF-8 plain text. The same message always gives
-// the same bytes. It returns an error, and no bytes, for a value that
-// cannot be written as a header: a [*RecipientError], or [errUnsafeHeader]
-// for From, the subject, or the Message-ID. It does not apply [Content]'s
-// limits, which decided what inbok accepted.
+// Message-ID and X-Inbok-Message-Id, both [Message.InbokMessageID],
+// In-Reply-To and References when not empty, and the body as
+// quoted-printable UTF-8 plain text. The same message always gives the same
+// bytes. It returns an error, and no bytes, for a value that cannot be
+// written as a header: a [*RecipientError], or [errUnsafeHeader] for From,
+// the subject, or a msg-id. It does not apply [Content]'s limits, which
+// decided what inbok accepted.
 func compose(message Message) ([]byte, error) {
 	// 1. Check each value that becomes a header, wherever the message came
 	// from: a stray character there starts another header line, e.g. a Bcc
@@ -61,7 +64,9 @@ func compose(message Message) ([]byte, error) {
 	if err != nil {
 		return nil, errUnsafeHeader
 	}
-	if !subjectSafe(message.Subject) || !messageIDSafe(message.InbokMessageID) {
+	if !subjectSafe(message.Subject) || !msgid.Writable(message.InbokMessageID) ||
+		message.InReplyTo != "" && !msgid.Writable(message.InReplyTo) ||
+		slices.ContainsFunc(message.References, func(id string) bool { return !msgid.Writable(id) }) {
 		return nil, errUnsafeHeader
 	}
 
@@ -81,6 +86,14 @@ func compose(message Message) ([]byte, error) {
 	// replaces it.
 	header.Set("Message-Id", message.InbokMessageID)
 	header.Set(inbokMessageIDHeader, message.InbokMessageID)
+	if message.InReplyTo != "" {
+		header.Set("In-Reply-To", message.InReplyTo)
+	}
+	// The writer folds at the spaces between msg-ids; msgid.Writable keeps
+	// each shorter than a line.
+	if len(message.References) > 0 {
+		header.Set("References", strings.Join(message.References, " "))
+	}
 	header.SetContentType("text/plain", map[string]string{"charset": "utf-8"})
 
 	// 3. Write the body, which go-message encodes as quoted-printable.
@@ -139,51 +152,30 @@ func setAddresses(header *mail.Header, key string, addresses []string) {
 
 // newMessageID returns a new Message-ID, with its angle brackets, for a
 // message sent from email: random on the left, email's domain on the right,
-// or [fallbackMessageIDDomain] when that domain is not an ASCII dot-atom.
+// or [fallbackMessageIDDomain] when that domain is not an ASCII dot-atom
+// ([msgid.DotAtom]) or makes the ID too long for [msgid.Writable].
 func newMessageID(email string) (string, error) {
 	// The sender's own domain names no inbok host to the recipients, and the
 	// message already carries it in From.
 	domain := email[strings.LastIndexByte(email, '@')+1:]
-	if domain == email || !dotAtom(domain) {
+	if domain == email || !msgid.DotAtom(domain) {
 		domain = fallbackMessageIDDomain
 	}
+	id, err := generateMessageID(domain)
+	// A valid domain may be up to 253 octets, past what a msg-id holds with
+	// its random left side; compose refuses an ID Writable refuses.
+	if err != nil || msgid.Writable(id) {
+		return id, err
+	}
+	return generateMessageID(fallbackMessageIDDomain)
+}
+
+// generateMessageID returns go-message's new Message-ID on domain, with its
+// angle brackets.
+func generateMessageID(domain string) (string, error) {
 	var header mail.Header
 	if err := header.GenerateMessageIDWithHostname(domain); err != nil {
 		return "", err
 	}
 	return header.Get("Message-Id"), nil
-}
-
-// messageIDSafe reports whether id is a Message-ID as [newMessageID] makes
-// one: a dot-atom, "@", and a dot-atom, in angle brackets (RFC 5322,
-// section 3.6.4), so it is one header value.
-func messageIDSafe(id string) bool {
-	inner, ok := strings.CutPrefix(id, "<")
-	if !ok {
-		return false
-	}
-	inner, ok = strings.CutSuffix(inner, ">")
-	left, right, found := strings.Cut(inner, "@")
-	return ok && found && dotAtom(left) && dotAtom(right)
-}
-
-// dotAtom reports whether s is ASCII dot-atom text: letters, digits, and the
-// other atext characters, in dot-separated parts that are not empty
-// (RFC 5322, section 3.2.3).
-func dotAtom(s string) bool {
-	for part := range strings.SplitSeq(s, ".") {
-		if part == "" || strings.ContainsFunc(part, func(r rune) bool { return !atext(r) }) {
-			return false
-		}
-	}
-	return true
-}
-
-// atext reports whether r is an RFC 5322 atext character.
-func atext(r rune) bool {
-	switch {
-	case 'a' <= r && r <= 'z', 'A' <= r && r <= 'Z', '0' <= r && r <= '9':
-		return true
-	}
-	return strings.ContainsRune("!#$%&'*+-/=?^_`{|}~", r)
 }

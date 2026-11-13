@@ -13,6 +13,7 @@ const keyReusedType: ProblemType = "/api/v0/problems/idempotency-key-reused";
 const needsReconnectType: ProblemType = "/api/v0/problems/sending-account-needs-reconnect";
 const notSendableAgainType: ProblemType = "/api/v0/problems/not-sendable-again";
 const messageNotFoundType: ProblemType = "/api/v0/problems/outgoing-message-not-found";
+const answeredNotFoundType: ProblemType = "/api/v0/problems/message-not-found";
 export const messageGone = "This message isn't in your Outbox. It may have been removed.";
 
 // The badge of a message sent again as a copy.
@@ -159,6 +160,65 @@ export function sendErrorMessage(err: ApiError): string {
   return userMessage(err);
 }
 
+// replyErrorMessage words a Reply to Message that failed.
+export function replyErrorMessage(err: ApiError): string {
+  if (err.status === notFound && err.problem?.type === answeredNotFoundType)
+    return "The message you're replying to was deleted, so this reply can't be sent. Copy what you typed to keep it.";
+  if (keyReused(err))
+    return "An earlier try may have saved this reply before your last edits. Check the Outbox before sending again.";
+  if (uncertainOutcome(err))
+    // The request's Idempotency-Key makes a repeat return what the first saved.
+    return uncertainMessage(
+      err,
+      "We couldn't confirm whether your reply was saved. Sending again is safe: it won't be sent twice.",
+    );
+  return userMessage(err);
+}
+
+// What From says when the chosen account didn't receive the answered
+// message: Gmail threads a reply only within the account that holds it.
+export const otherAccountNote =
+  "This account didn't receive the message, so the reply starts a new conversation in its Gmail.";
+
+// What an account option that can't send says after its address.
+export const needsReconnectMark = "(needs reconnecting)";
+
+// What the reply part of a conversation says when the member's accounts
+// could not be read, before the reason.
+export const accountsUnreadable = "Could not load your connected accounts, so you can't reply yet.";
+
+// What the reply part says for a message whose ID is not one: it is never
+// put in the API's path.
+export const notAnswerable = "This message can't be answered here.";
+
+// What a reply's status says, before the reason, when reading it again
+// failed: the status shown may have moved on.
+export const replyStatusStale =
+  "Could not read this reply's status again, so it may be out of date.";
+
+// What a recipient chip adds after a value that isn't an address.
+export const notAnAddress = "not an email address";
+
+// invalidAddressMessage says value, in a recipient list, isn't an address.
+export function invalidAddressMessage(value: string): string {
+  return `"${value}" isn't an email address. Fix it or remove it.`;
+}
+
+// needsReconnectNote says the account that received the message, email,
+// can't send, so no account is chosen.
+export function needsReconnectNote(email: string): string {
+  return `${email} needs reconnecting before it can send. Choose another account, or reconnect it on the Connected accounts page.`;
+}
+
+// sendTooltip is the Send button's tooltip: its name and the keys that
+// send, as the platform's keyboard writes them (DESIGN.md "Wording").
+export function sendTooltip(): string {
+  return /Mac|iPhone|iPad/.test(navigator.userAgent) ? "Send (Cmd+Enter)" : "Send (Ctrl+Enter)";
+}
+
+// What the reply editor's buttons say: each opens the editor for one mode.
+export const replyLabels = { reply: "Reply", "reply-all": "Reply all" } as const;
+
 // sendAgainErrorMessage words a Send Message Again that failed.
 export function sendAgainErrorMessage(err: ApiError): string {
   // Only the API's own problems say why; a missing route says nothing.
@@ -218,6 +278,18 @@ export function mayHaveSaved(err: ApiError): boolean {
 // running; an earlier try that may have saved the message; or typed input
 // that surely was not sent.
 export type LeaveState = "sending" | "unconfirmed" | "typed";
+
+// What discarding a reply with typed text asks, from its Discard button or
+// by leaving the page.
+const discardReply: LeaveWarningText = {
+  ...leaveTyped,
+  title: "Discard this reply?",
+};
+
+// replyLeaveText returns what leaving the reply editor asks in state.
+export function replyLeaveText(state: LeaveState): LeaveWarningText {
+  return state === "typed" ? discardReply : leaveText(state);
+}
 
 // leaveText returns what leaving the compose form asks in state.
 export function leaveText(state: LeaveState): LeaveWarningText {

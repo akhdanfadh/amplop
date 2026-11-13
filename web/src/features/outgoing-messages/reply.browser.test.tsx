@@ -1,0 +1,539 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  RouterProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from "@tanstack/react-router";
+import { useState } from "react";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { page, userEvent } from "vite-plus/test/browser/context";
+import { render } from "vitest-browser-react";
+import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
+import { useLayout } from "@/hooks/use-layout";
+import { ConversationReply } from "./reply";
+import type { AnsweredMessage } from "./reply-defaults";
+
+const ok = 200;
+const created = 201;
+const notFound = 404;
+
+const studio: ListedAccount = {
+  id: 7,
+  provider: "gmail",
+  email: "studio@example.com",
+  status: "usable",
+  createdAt: "2026-11-01T00:00:00Z",
+  needsReconnectSince: null,
+  sync: {
+    status: "complete",
+    failure: null,
+    failedAt: null,
+    lastSyncedAt: "2026-11-13T08:00:00Z",
+    messagesSoFar: null,
+  },
+};
+const personal: ListedAccount = { ...studio, id: 8, email: "me@example.org" };
+
+// A message Ana sent to Studio and Ben.
+const answered: AnsweredMessage = {
+  id: "019a0000-0000-7000-8000-000000000001",
+  accountId: studio.id,
+  from: [{ name: "Ana", address: "ana@example.com" }],
+  to: [
+    { name: "Studio", address: "studio@example.com" },
+    { name: "", address: "ben@example.com" },
+  ],
+  cc: [],
+  replyTo: [],
+  sent: false,
+};
+
+// saved returns the outgoing message the server saved for a reply, in status.
+function saved(
+  status: OutgoingMessage["status"],
+  failure: OutgoingMessage["failure"] = null,
+): OutgoingMessage {
+  return {
+    id: "019a0000-0000-7000-8000-0000000000aa",
+    status,
+    failure,
+    from: studio.email,
+    connectedAccountId: studio.id,
+    to: ["ana@example.com"],
+    cc: [],
+    bcc: [],
+    subject: "Re: Lunch",
+    body: "Noon works.",
+    createdAt: "2026-11-13T08:00:00Z",
+    sentAt: status === "sent" ? "2026-11-13T08:00:05Z" : null,
+    sentAgainAs: null,
+  };
+}
+
+type Call = { method: string; url: string; headers: Headers; body: unknown };
+
+// problem returns an API problem response with status and type.
+function problem(status: number, type: string, extra: object = {}): Response {
+  return Response.json(
+    { type, status, title: "Problem", detail: "The server's detail.", ...extra },
+    { status, headers: { "Content-Type": "application/problem+json" } },
+  );
+}
+
+// serve stubs the API: the accounts read answers with accounts; Reply to
+// Message, at any answered message, answers with reply, a response; and
+// each read of the saved message with its next status in statuses, the
+// last one repeating, or with a 503 once failReadsFrom reads have passed.
+// It returns the calls the page made.
+function serve({
+  accounts = [studio, personal],
+  reply = () => Response.json({ data: saved("waiting") }, { status: created }),
+  statuses = [saved("waiting")],
+  failReadsFrom = Infinity,
+}: {
+  accounts?: ListedAccount[];
+  reply?: () => Response;
+  statuses?: OutgoingMessage[];
+  failReadsFrom?: number;
+} = {}): Call[] {
+  const calls: Call[] = [];
+  let reads = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url, init = {}) => {
+      const method = init.method ?? "GET";
+      const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, url, headers: new Headers(init.headers), body });
+      if (url === "/api/v0/connected-accounts")
+        return Response.json({ data: { accounts, syncStopped: false } }, { status: ok });
+      if (method === "POST" && /^\/api\/v0\/messages\/[^/]+\/replies$/.test(url)) return reply();
+      if (url.startsWith("/api/v0/outgoing-messages/")) {
+        const status = statuses[Math.min(reads, statuses.length - 1)];
+        reads++;
+        if (reads > failReadsFrom) return problem(503, "/api/v0/problems/service-busy");
+        return Response.json({ data: status }, { status: ok });
+      }
+      return Response.json({}, { status: notFound });
+    }),
+  );
+  return calls;
+}
+
+// newer is a message that arrives in the conversation after answered.
+const newer: AnsweredMessage = {
+  ...answered,
+  id: "019a0000-0000-7000-8000-000000000002",
+  from: [{ name: "Ben", address: "ben@example.com" }],
+};
+
+// Conversation renders the reply part of a conversation whose last message
+// starts as message, with a button that makes newer the last message, as
+// a sync would, and the layout React last drew, so a test can wait for a
+// resize to reach it.
+function Conversation({ message }: { message: AnsweredMessage }) {
+  const [last, setLast] = useState(message);
+  const layout = useLayout();
+  return (
+    <>
+      <h1>Lunch</h1>
+      <p>Layout: {layout}</p>
+      <ConversationReply message={last} onUnauthorized={() => {}} />
+      <button type="button" onClick={() => setLast(newer)}>
+        Newer message arrives
+      </button>
+    </>
+  );
+}
+
+// show renders the reply part of a conversation whose last message is
+// message, inside a router, as the conversation view places it.
+async function show(message: AnsweredMessage = answered) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const root = createRootRoute();
+  const conversation = createRoute({
+    getParentRoute: () => root,
+    path: "/",
+    component: () => (
+      <QueryClientProvider client={client}>
+        <Conversation message={message} />
+      </QueryClientProvider>
+    ),
+  });
+  const router = createRouter({
+    routeTree: root.addChildren([conversation]),
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  });
+  await render(<RouterProvider router={router} />);
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("ConversationReply", () => {
+  it("offers Reply all only when someone else received the message", async () => {
+    await page.viewport(1440, 900);
+    serve();
+    await show({ ...answered, to: [{ name: "", address: "studio@example.com" }] });
+
+    await expect.element(page.getByRole("button", { name: "Reply", exact: true })).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Reply all" })).not.toBeInTheDocument();
+  });
+
+  it("opens from the receiving account, to the sender, with focus in the message", async () => {
+    await page.viewport(1440, 900);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply all" }));
+
+    const editor = page.getByRole("form", { name: "Reply all" });
+    await expect.element(editor).toBeVisible();
+    await expect
+      .element(editor.getByRole("button", { name: /From/ }))
+      .toHaveTextContent("studio@example.com");
+    await expect
+      .element(editor.getByRole("grid", { name: "To" }).getByRole("row"))
+      .toHaveTextContent("ana@example.com");
+    await expect
+      .element(editor.getByRole("grid", { name: "Cc" }).getByRole("row"))
+      .toHaveTextContent("ben@example.com");
+    // Bcc is empty, so it waits behind its button.
+    await expect.element(editor.getByRole("textbox", { name: "Bcc" })).not.toBeInTheDocument();
+    await expect.element(editor.getByRole("textbox", { name: "Message" })).toHaveFocus();
+    await expect
+      .element(page.getByRole("button", { name: "Reply", exact: true }))
+      .not.toBeInTheDocument();
+  });
+
+  it("sends with Ctrl+Enter, with a key, and shows how the send goes", async () => {
+    await page.viewport(1440, 900);
+    const calls = serve({ statuses: [saved("sending"), saved("sent")] });
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.{Control>}{Enter}{/Control}");
+
+    await expect
+      .element(page.getByRole("status"), { timeout: 5_000 })
+      .toMatchTextContent(/^Sent .+\.$/);
+    const post = calls.find((call) => call.method === "POST");
+    expect(post?.url).toBe(`/api/v0/messages/${answered.id}/replies`);
+    expect(post?.headers.get("Idempotency-Key")).toMatch(/^"[0-9a-f-]{36}"$/);
+    expect(post?.body).toEqual({
+      connectedAccountId: studio.id,
+      to: ["ana@example.com"],
+      cc: [],
+      bcc: [],
+      body: "Noon works.",
+    });
+    await expect.element(page.getByRole("form")).not.toBeInTheDocument();
+    await expect.element(page.getByRole("link", { name: "Open in Outbox" })).toBeVisible();
+  });
+
+  it("names the send shortcut in Send's tooltip, which describes the button", async () => {
+    await page.viewport(1440, 900);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    // From the message, Tab reaches Send; keyboard focus shows its tooltip at once.
+    await userEvent.keyboard("{Tab}");
+
+    const send = page.getByRole("button", { name: "Send", exact: true });
+    await expect.element(send).toHaveFocus();
+    await expect.element(page.getByRole("tooltip")).toHaveTextContent("Send (Ctrl+Enter)");
+    await expect.element(send).toHaveAccessibleDescription("Send (Ctrl+Enter)");
+  });
+
+  it("keeps the typed text when the answered message was deleted", async () => {
+    await page.viewport(1440, 900);
+    serve({
+      reply: () =>
+        Response.json(
+          {
+            type: "/api/v0/problems/message-not-found",
+            status: notFound,
+            title: "Message not found",
+            detail: "The message does not exist. It may have been deleted.",
+          },
+          { status: notFound, headers: { "Content-Type": "application/problem+json" } },
+        ),
+    });
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.");
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+
+    await expect.element(page.getByRole("alert")).toMatchTextContent("was deleted");
+    await expect.element(page.getByRole("textbox", { name: "Message" })).toHaveValue("Noon works.");
+  });
+
+  it("asks before discarding typed text, then returns focus to Reply", async () => {
+    await page.viewport(1440, 900);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.");
+    await userEvent.click(page.getByRole("button", { name: "Discard" }));
+    const dialog = page.getByRole("alertdialog", { name: "Discard this reply?" });
+    await expect.element(dialog.getByRole("button", { name: "Keep editing" })).toHaveFocus();
+    // The keyboard, since the dialog ignores a click this soon after it
+    // opens, as a double click's second half.
+    await userEvent.keyboard("{Tab}{Enter}");
+
+    await expect.element(page.getByRole("form")).not.toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "Reply", exact: true })).toHaveFocus();
+  });
+
+  it("discards an untouched editor at once", async () => {
+    await page.viewport(1440, 900);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.click(page.getByRole("button", { name: "Discard" }));
+
+    await expect.element(page.getByRole("form")).not.toBeInTheDocument();
+    await expect.element(page.getByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("says when the reply goes from an account that didn't receive the message", async () => {
+    await page.viewport(1440, 900);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    const editor = page.getByRole("form", { name: "Reply" });
+    await expect.element(editor).not.toMatchTextContent("new conversation");
+    await userEvent.click(editor.getByRole("button", { name: /From/ }));
+    await userEvent.click(page.getByRole("option", { name: "me@example.org" }));
+
+    await expect
+      .element(editor)
+      .toMatchTextContent(
+        "This account didn't receive the message, so the reply starts a new conversation in its Gmail.",
+      );
+  });
+
+  it("adds a Bcc row on demand, with focus in it", async () => {
+    await page.viewport(1440, 900);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.click(page.getByRole("button", { name: "Add Bcc recipients" }));
+
+    await expect.element(page.getByRole("textbox", { name: "Bcc" })).toHaveFocus();
+    await expect
+      .element(page.getByRole("button", { name: "Add Bcc recipients" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("asks for an account when the receiving one needs reconnecting", async () => {
+    await page.viewport(1440, 900);
+    serve({ accounts: [{ ...studio, status: "needs-reconnect" }, personal] });
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+
+    const editor = page.getByRole("form", { name: "Reply" });
+    await expect
+      .element(editor.getByRole("button", { name: /From/ }))
+      .toHaveTextContent("Choose an account");
+    await expect
+      .element(editor)
+      .toMatchTextContent("studio@example.com needs reconnecting before it can send.");
+  });
+
+  it("edits a refused reply into a new reply to the same message", async () => {
+    await page.viewport(1440, 900);
+    const calls = serve({
+      reply: () => Response.json({ data: saved("failed", "refused") }, { status: created }),
+      statuses: [saved("failed", "refused")],
+    });
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.");
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+    await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
+
+    const editor = page.getByRole("form", { name: "Reply" });
+    await expect
+      .element(editor.getByRole("textbox", { name: "Message" }))
+      .toHaveValue("Noon works.");
+    await userEvent.click(editor.getByRole("button", { name: "Send" }));
+    await expect
+      .poll(() =>
+        calls
+          .filter((call) => call.method === "POST")
+          .map((call) => call.headers.get("Idempotency-Key")),
+      )
+      .toHaveLength(2);
+    const keys = calls
+      .filter((call) => call.method === "POST")
+      .map((call) => call.headers.get("Idempotency-Key"));
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  it("keeps the reply when the window crosses the phone width, both ways", async () => {
+    await page.viewport(1024, 800);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.");
+    await page.viewport(390, 800);
+    await expect.element(page.getByRole("textbox", { name: "Message" })).toHaveValue("Noon works.");
+    await page.viewport(1024, 800);
+
+    await expect.element(page.getByRole("textbox", { name: "Message" })).toHaveValue("Noon works.");
+    // It stays where it opened: inline, not in a phone sheet.
+    await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps a phone editor's sheet when the phone turns sideways", async () => {
+    await page.viewport(390, 800);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.");
+    await page.viewport(844, 390);
+    await expect.element(page.getByText("Layout: drawer")).toBeInTheDocument();
+
+    const dialog = page.getByRole("dialog", { name: "Reply" });
+    await expect
+      .element(dialog.getByRole("textbox", { name: "Message" }))
+      .toHaveValue("Noon works.");
+  });
+
+  it("asks before discarding an address that is still being typed", async () => {
+    await page.viewport(390, 800);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.click(page.getByRole("textbox", { name: "To" }));
+    await userEvent.keyboard("cy@example.com{Escape}");
+
+    await expect
+      .element(page.getByRole("alertdialog", { name: "Discard this reply?" }))
+      .toBeVisible();
+  });
+
+  it("sends with Ctrl+Enter from an address still being typed, keeping it", async () => {
+    await page.viewport(1440, 900);
+    const calls = serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.");
+    await userEvent.click(page.getByRole("textbox", { name: "To" }));
+    await userEvent.keyboard("cy@example.com{Control>}{Enter}{/Control}");
+
+    await expect.poll(() => calls.filter((call) => call.method === "POST")).toHaveLength(1);
+    const post = calls.find((call) => call.method === "POST");
+    expect(post?.body).toMatchObject({ to: ["ana@example.com", "cy@example.com"] });
+  });
+
+  it("says when the status can't be read again, with Try again", async () => {
+    await page.viewport(1440, 900);
+    serve({ statuses: [saved("sending")], failReadsFrom: 1 });
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.{Control>}{Enter}{/Control}");
+
+    const status = page.getByRole("region", { name: "Your reply" });
+    await expect
+      .element(status.getByRole("button", { name: "Try again" }), { timeout: 8_000 })
+      .toBeVisible();
+    await expect.element(status).toMatchTextContent("may be out of date");
+  });
+
+  it("answers the message it opened on, though a newer one arrives", async () => {
+    await page.viewport(1440, 900);
+    const calls = serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.click(page.getByRole("button", { name: "Newer message arrives" }));
+    await userEvent.click(page.getByRole("textbox", { name: "Message" }));
+    await userEvent.keyboard("Noon works.{Control>}{Enter}{/Control}");
+
+    await expect.poll(() => calls.filter((call) => call.method === "POST")).toHaveLength(1);
+    expect(calls.find((call) => call.method === "POST")?.url).toBe(
+      `/api/v0/messages/${answered.id}/replies`,
+    );
+  });
+
+  it("moves focus to From when the server refuses the account", async () => {
+    await page.viewport(1440, 900);
+    serve({
+      reply: () =>
+        problem(422, "/api/v0/problems/validation-error", {
+          errors: [{ location: "body.connectedAccountId", message: "Choose another account." }],
+        }),
+    });
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.{Control>}{Enter}{/Control}");
+
+    await expect.element(page.getByRole("button", { name: /From/ })).toHaveFocus();
+    await expect.element(page.getByText("Choose another account.")).toBeVisible();
+  });
+
+  it("offers no reply to a message whose ID isn't one", async () => {
+    await page.viewport(1440, 900);
+    serve();
+    await show({ ...answered, id: "../outgoing-messages" });
+
+    await expect
+      .element(page.getByRole("button", { name: "Reply", exact: true }))
+      .not.toBeInTheDocument();
+    await expect.element(page.getByText("This message can't be answered here.")).toBeVisible();
+  });
+
+  it("closes the phone editor on Escape, asking first once text is typed", async () => {
+    await page.viewport(390, 800);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.{Escape}");
+    const dialog = page.getByRole("alertdialog", { name: "Discard this reply?" });
+    await expect.element(dialog).toBeVisible();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(page.getByRole("dialog", { name: "Reply" })).toBeVisible();
+
+    await userEvent.clear(page.getByRole("textbox", { name: "Message" }));
+    await userEvent.keyboard("{Escape}");
+    await expect.element(page.getByRole("dialog", { name: "Reply" })).not.toBeInTheDocument();
+  });
+
+  it("fills the screen on a phone", async () => {
+    await page.viewport(390, 800);
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+
+    const dialog = page.getByRole("dialog", { name: "Reply" });
+    await expect.element(dialog).toBeVisible();
+    // Measured once it has slid in.
+    await expect
+      .poll(() => {
+        const box = dialog.element().getBoundingClientRect();
+        return [box.top, box.width, box.height];
+      })
+      .toEqual([0, 390, 800]);
+    await expect.element(dialog.getByRole("textbox", { name: "Message" })).toHaveFocus();
+  });
+});

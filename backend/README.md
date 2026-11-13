@@ -357,7 +357,8 @@ again after a crash does only what is left:
    deadlock with it. The check is in this step because DBOS reuses an
    earlier step's result after a restart, however old. The step then marks
    the message `sending`, reading the member's deactivation again under
-   their share lock, and calls `messages.send`. From that call on, a stop,
+   their share lock, and calls `messages.send`, with the `threadId` a reply
+   was saved with. From that call on, a stop,
    e.g. the worker shutting down, cancels neither the request, which keeps
    its 30-second deadline, nor saving its answer: cutting it off would turn
    an answered send, or one that never left, into `unknown`. Gmail's IDs end
@@ -1098,7 +1099,10 @@ refuses a code exchanged by another client or with another redirect URI
 than its authorization request's, returns a sent message's other headers,
 e.g. `X-Inbok-Message-Id`, and matches `metadataHeaders` in any case. The
 install fails if the patch no longer applies, e.g. after a version change;
-`google-emulator/pnpm-workspace.yaml` says how to change it.
+`google-emulator/pnpm-workspace.yaml` says how to change it. Unpatched,
+emulate puts a sent message in the `threadId` it is given, and without one
+threads it by `In-Reply-To` and `References` alone, where Gmail starts a
+new thread (ADR006, "Replies").
 
 Where it still differs from Google, a test that needs Google's behavior
 uses a small `httptest` stub instead:
@@ -2233,14 +2237,16 @@ account stop when `Access.Token` finds it gone.
 
 ### Sending mail
 
-A member sends a new message from one of their connected accounts
-(`outgoingmessage`, US015). `outgoing_messages` keeps each message under a
-random `uuid`: its sending account, whose owner owns it, the account's
-address when it was saved (a reconnect may change the account's), To, Cc,
-and Bcc, subject, plain text body, status, failure reason, the ID inbok
-gave it (`inbok_message_id`, a Message-ID with its angle brackets),
-Gmail's message and thread IDs once sent (`provider_message_id`,
-`provider_thread_id`), and when it was created and sent. The recipient
+A member sends a new message, or a reply, from one of their connected
+accounts (`outgoingmessage`, US015 and US009). `outgoing_messages` keeps
+each message under a random `uuid`: its sending account, whose owner owns
+it, the account's address when it was saved (a reconnect may change the
+account's), To, Cc, and Bcc, subject, plain text body, status, failure
+reason, the ID inbok gave it (`inbok_message_id`, a Message-ID with its
+angle brackets), a reply's threading headers (`in_reply_to`,
+`internet_references`), Gmail's message ID once sent
+(`provider_message_id`) and thread ID once sent or, for a reply, when
+saved (`provider_thread_id`), and when it was created and sent. The recipient
 lists are JSON arrays of `{"name", "address"}`, as synchronized mail keeps
 addresses, with empty names for now. Like synchronized mail, it has no
 owner column of its own: reads join `connected_accounts` and match its
@@ -2310,11 +2316,35 @@ returns the member's newest 50, without bodies, so a `failed` or `unknown`
 message, which synchronized mail may never show, can be found and sent
 again.
 
+`Service.Reply` saves a reply to one of the member's synchronized
+messages, from any of their accounts, through the same steps; the request
+names the answered message instead of a subject. Step 4 of the
+transaction reads that message, scoped to the member's accounts
+(`ErrAnsweredNotFound` otherwise), after the key's check, so a repeat
+returns its reply though a sync deleted the message since. The reply
+takes the message's subject, with `Re: ` before it when it has none and
+the 500-character limit leaves room, so a subject within the limit stays
+whole (a longer one is cut, and a control character becomes a space);
+In-Reply-To and References by RFC 5322
+section 3.6.4 (`msgid.Writable` drops a msg-id outside RFC 5322's current
+syntax, and `msgid.TrimReferences` keeps 50); and its
+`provider_thread_id` when sent from the account that holds it, since a
+thread ID belongs to one mailbox: a reply from another account starts a
+new thread in that account's Gmail. These
+are copied onto the row, which keeps no link to `messages`: a sync may
+delete the answered message, and the reply needs nothing more of it.
+Saving a status without a thread keeps the one saved, and send again
+copies all three. The key's row keeps the answered message's ID
+(`answered_message_id`), so a key reused for another message, or for a
+new message, is `ErrKeyReused`.
+
 The HTTP operations, tag Outgoing Messages, are Send Message
 (`POST /outgoing-messages`, which requires an `Idempotency-Key` header: a
-UUID, quoted as the IETF draft's Structured Field string or bare), List
-Outgoing Messages, Get Outgoing Message, and Send Message Again
-(`POST /outgoing-messages/{id}/send-again`). A refused account, missing
+UUID, quoted as the IETF draft's Structured Field string or bare), Reply
+to Message (`POST /messages/{id}/replies`, the same header and body
+without `subject`; a message the member does not have answers 404
+`message-not-found`), List Outgoing Messages, Get Outgoing Message, and
+Send Message Again (`POST /outgoing-messages/{id}/send-again`). A refused account, missing
 recipients, and a refused address answer 422 on their field, e.g.
 `body.cc[2]`; a reused key answers 422 `idempotency-key-reused`. Over the
 send limit answers 429 `send-throttled` with `Retry-After`. Another
@@ -2325,13 +2355,14 @@ member's message, or a missing one, answers 404
 The send builds the MIME message from the saved row with go-message:
 `From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the
 creation time in UTC as `Date`, the saved ID as both `Message-ID` and
-`X-Inbok-Message-Id`, and quoted-printable UTF-8 `text/plain`. Gmail
+`X-Inbok-Message-Id`, a reply's `In-Reply-To` and `References`, and
+quoted-printable UTF-8 `text/plain`. Gmail
 replaces the `Message-ID` with its own, which synchronized mail keeps as
 `internet_message_id`; providers that keep a client's send the saved one.
 A subject holding `=?` is encoded whole, so a reader shows it as typed
 rather than decoding it. The same row gives the same bytes on every
 worker. Building checks again each value that becomes a header (the
-recipients, `From`, the subject, the ID), so none can add one, whatever
+recipients, `From`, the subject, the msg-ids), so none can add one, whatever
 wrote the row; it does not apply the limits
 again, so lowering one leaves saved messages sendable. ADR006 records these
 choices.
@@ -2656,8 +2687,12 @@ Goose knows only inbok's files: `goose reset` and `make db-reset` leave
 the `dbos` schema in place. To empty that too, run `DROP SCHEMA dbos CASCADE;` in `psql`; the
 next `migrate` creates it again.
 
-Never edit a migration a shared database has already applied; add a new
-one. The probe's tables are an exception until the first release.
+Until the first release, a schema change edits the migration that made
+the table, and every database that applied it is reset with
+`make db-reset`, losing its data; inbok keeps no compatibility with
+unreleased schemas (ADR001, "Conversations"). From the first release on,
+never edit a migration a shared database has already applied; add a new
+one.
 
 ## Queries
 
@@ -2735,7 +2770,8 @@ httpapi --> messagecontent <-- s3
   whose types never leave the package.
 - A leaf package holds one rule that several features share, such as
   `emailaddress` (the address rule), `attemptlimit` (the window count),
-  `randomsecret` (emailed link secrets and their hashes), `clientprefix`
+  `msgid` (which msg-ids inbok writes, and how References is trimmed,
+  for sync and replies), `randomsecret` (emailed link secrets and their hashes), `clientprefix`
   (which addresses count as one client), or `logging` (how loggers are
   built and tagged with the request). It
   imports no feature or technology package and is named for its rule.

@@ -29,9 +29,11 @@ func (q *Queries) DeleteOldSendAttempts(ctx context.Context, arg DeleteOldSendAt
 
 const insertOutgoingMessage = `-- name: InsertOutgoingMessage :one
 INSERT INTO outgoing_messages (connected_account_id, from_address,
-    to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id)
+    to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id,
+    in_reply_to, internet_references, provider_thread_id)
 VALUES ($1, $2,
-    $3, $4, $5, $6, $7, $8)
+    $3, $4, $5, $6, $7, $8,
+    $9, $10, $11)
 RETURNING id, status, created_at
 `
 
@@ -44,6 +46,9 @@ type InsertOutgoingMessageParams struct {
 	Subject            string
 	Body               string
 	InbokMessageID     string
+	InReplyTo          *string
+	InternetReferences []string
+	ProviderThreadID   *string
 }
 
 type InsertOutgoingMessageRow struct {
@@ -62,6 +67,9 @@ func (q *Queries) InsertOutgoingMessage(ctx context.Context, arg InsertOutgoingM
 		arg.Subject,
 		arg.Body,
 		arg.InbokMessageID,
+		arg.InReplyTo,
+		arg.InternetReferences,
+		arg.ProviderThreadID,
 	)
 	var i InsertOutgoingMessageRow
 	err := row.Scan(&i.ID, &i.Status, &i.CreatedAt)
@@ -69,18 +77,24 @@ func (q *Queries) InsertOutgoingMessage(ctx context.Context, arg InsertOutgoingM
 }
 
 const insertOutgoingMessageKey = `-- name: InsertOutgoingMessageKey :exec
-INSERT INTO outgoing_message_keys (user_id, idempotency_key, message_id)
-VALUES ($1, $2, $3)
+INSERT INTO outgoing_message_keys (user_id, idempotency_key, message_id, answered_message_id)
+VALUES ($1, $2, $3, $4)
 `
 
 type InsertOutgoingMessageKeyParams struct {
-	UserID         int64
-	IdempotencyKey uuid.UUID
-	MessageID      uuid.UUID
+	UserID            int64
+	IdempotencyKey    uuid.UUID
+	MessageID         uuid.UUID
+	AnsweredMessageID *uuid.UUID
 }
 
 func (q *Queries) InsertOutgoingMessageKey(ctx context.Context, arg InsertOutgoingMessageKeyParams) error {
-	_, err := q.db.Exec(ctx, insertOutgoingMessageKey, arg.UserID, arg.IdempotencyKey, arg.MessageID)
+	_, err := q.db.Exec(ctx, insertOutgoingMessageKey,
+		arg.UserID,
+		arg.IdempotencyKey,
+		arg.MessageID,
+		arg.AnsweredMessageID,
+	)
 	return err
 }
 
@@ -101,7 +115,7 @@ func (q *Queries) InsertSendAttempt(ctx context.Context, arg InsertSendAttemptPa
 const listOutgoingMessages = `-- name: ListOutgoingMessages :many
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, ''::text AS body,
-    om.inbok_message_id, om.status, om.failure,
+    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status, om.failure,
     om.provider_message_id, om.provider_thread_id, om.created_at, om.sent_at,
     om.sent_again_as
 FROM outgoing_messages om
@@ -126,6 +140,8 @@ type ListOutgoingMessagesRow struct {
 	Subject            string
 	Body               string
 	InbokMessageID     string
+	InReplyTo          *string
+	InternetReferences []string
 	Status             string
 	Failure            *string
 	ProviderMessageID  *string
@@ -156,6 +172,8 @@ func (q *Queries) ListOutgoingMessages(ctx context.Context, arg ListOutgoingMess
 			&i.Subject,
 			&i.Body,
 			&i.InbokMessageID,
+			&i.InReplyTo,
+			&i.InternetReferences,
 			&i.Status,
 			&i.Failure,
 			&i.ProviderMessageID,
@@ -206,8 +224,9 @@ func (q *Queries) ListSendAttemptTimes(ctx context.Context, arg ListSendAttemptT
 
 const lockOutgoingMessage = `-- name: LockOutgoingMessage :one
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, status, failure,
-    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
+    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    internet_references, status, failure, provider_message_id,
+    provider_thread_id, created_at, sent_at, sent_again_as
 FROM outgoing_messages WHERE id = $1 FOR NO KEY UPDATE
 `
 
@@ -225,6 +244,8 @@ func (q *Queries) LockOutgoingMessage(ctx context.Context, id uuid.UUID) (Outgoi
 		&i.Subject,
 		&i.Body,
 		&i.InbokMessageID,
+		&i.InReplyTo,
+		&i.InternetReferences,
 		&i.Status,
 		&i.Failure,
 		&i.ProviderMessageID,
@@ -342,10 +363,50 @@ func (q *Queries) OutgoingMessageKeyExists(ctx context.Context, arg OutgoingMess
 	return exists, err
 }
 
+const readAnsweredMessage = `-- name: ReadAnsweredMessage :one
+SELECT m.connected_account_id, m.provider_thread_id, m.subject,
+    m.internet_message_id, m.in_reply_to, m.internet_references
+FROM messages m
+JOIN connected_accounts ca ON ca.id = m.connected_account_id
+WHERE m.id = $1 AND ca.user_id = $2
+`
+
+type ReadAnsweredMessageParams struct {
+	ID     uuid.UUID
+	UserID int64
+}
+
+type ReadAnsweredMessageRow struct {
+	ConnectedAccountID int64
+	ProviderThreadID   string
+	Subject            string
+	InternetMessageID  string
+	InReplyTo          []string
+	InternetReferences []string
+}
+
+// The synchronized message a reply answers, in one of the member's
+// accounts. Unlocked: a sync that deletes it meanwhile leaves the reply
+// with the threading read, which is all the reply needs of it.
+func (q *Queries) ReadAnsweredMessage(ctx context.Context, arg ReadAnsweredMessageParams) (ReadAnsweredMessageRow, error) {
+	row := q.db.QueryRow(ctx, readAnsweredMessage, arg.ID, arg.UserID)
+	var i ReadAnsweredMessageRow
+	err := row.Scan(
+		&i.ConnectedAccountID,
+		&i.ProviderThreadID,
+		&i.Subject,
+		&i.InternetMessageID,
+		&i.InReplyTo,
+		&i.InternetReferences,
+	)
+	return i, err
+}
+
 const readOutgoingMessage = `-- name: ReadOutgoingMessage :one
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, om.body,
-    om.inbok_message_id, om.status, om.failure, om.provider_message_id,
+    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status,
+    om.failure, om.provider_message_id,
     om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
@@ -371,6 +432,8 @@ func (q *Queries) ReadOutgoingMessage(ctx context.Context, arg ReadOutgoingMessa
 		&i.Subject,
 		&i.Body,
 		&i.InbokMessageID,
+		&i.InReplyTo,
+		&i.InternetReferences,
 		&i.Status,
 		&i.Failure,
 		&i.ProviderMessageID,
@@ -382,49 +445,35 @@ func (q *Queries) ReadOutgoingMessage(ctx context.Context, arg ReadOutgoingMessa
 	return i, err
 }
 
-const readOutgoingMessageByKey = `-- name: ReadOutgoingMessageByKey :one
-SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
-    om.cc_addresses, om.bcc_addresses, om.subject, om.body,
-    om.inbok_message_id, om.status, om.failure, om.provider_message_id,
-    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as
-FROM outgoing_message_keys k
-JOIN outgoing_messages om ON om.id = k.message_id
-WHERE k.user_id = $1 AND k.idempotency_key = $2
+const readOutgoingMessageKey = `-- name: ReadOutgoingMessageKey :one
+SELECT message_id, answered_message_id
+FROM outgoing_message_keys
+WHERE user_id = $1 AND idempotency_key = $2
 `
 
-type ReadOutgoingMessageByKeyParams struct {
+type ReadOutgoingMessageKeyParams struct {
 	UserID         int64
 	IdempotencyKey uuid.UUID
 }
 
-func (q *Queries) ReadOutgoingMessageByKey(ctx context.Context, arg ReadOutgoingMessageByKeyParams) (OutgoingMessage, error) {
-	row := q.db.QueryRow(ctx, readOutgoingMessageByKey, arg.UserID, arg.IdempotencyKey)
-	var i OutgoingMessage
-	err := row.Scan(
-		&i.ID,
-		&i.ConnectedAccountID,
-		&i.FromAddress,
-		&i.ToAddresses,
-		&i.CcAddresses,
-		&i.BccAddresses,
-		&i.Subject,
-		&i.Body,
-		&i.InbokMessageID,
-		&i.Status,
-		&i.Failure,
-		&i.ProviderMessageID,
-		&i.ProviderThreadID,
-		&i.CreatedAt,
-		&i.SentAt,
-		&i.SentAgainAs,
-	)
+type ReadOutgoingMessageKeyRow struct {
+	MessageID         uuid.UUID
+	AnsweredMessageID *uuid.UUID
+}
+
+// The message a member's key saved, and the message its request answered.
+func (q *Queries) ReadOutgoingMessageKey(ctx context.Context, arg ReadOutgoingMessageKeyParams) (ReadOutgoingMessageKeyRow, error) {
+	row := q.db.QueryRow(ctx, readOutgoingMessageKey, arg.UserID, arg.IdempotencyKey)
+	var i ReadOutgoingMessageKeyRow
+	err := row.Scan(&i.MessageID, &i.AnsweredMessageID)
 	return i, err
 }
 
 const readOutgoingMessageToSend = `-- name: ReadOutgoingMessageToSend :one
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, status, failure,
-    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
+    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    internet_references, status, failure, provider_message_id,
+    provider_thread_id, created_at, sent_at, sent_again_as
 FROM outgoing_messages WHERE id = $1
 `
 
@@ -441,6 +490,8 @@ func (q *Queries) ReadOutgoingMessageToSend(ctx context.Context, id uuid.UUID) (
 		&i.Subject,
 		&i.Body,
 		&i.InbokMessageID,
+		&i.InReplyTo,
+		&i.InternetReferences,
 		&i.Status,
 		&i.Failure,
 		&i.ProviderMessageID,
@@ -486,12 +537,14 @@ UPDATE outgoing_messages SET
     status = $1,
     failure = $2,
     provider_message_id = $3,
-    provider_thread_id = $4,
+    -- A transition without a thread keeps the one a reply was saved with.
+    provider_thread_id = coalesce($4, provider_thread_id),
     sent_at = $5
 WHERE id = $6
 RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, status, failure,
-    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
+    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    internet_references, status, failure, provider_message_id,
+    provider_thread_id, created_at, sent_at, sent_again_as
 `
 
 type UpdateOutgoingMessageStatusParams struct {
@@ -523,6 +576,8 @@ func (q *Queries) UpdateOutgoingMessageStatus(ctx context.Context, arg UpdateOut
 		&i.Subject,
 		&i.Body,
 		&i.InbokMessageID,
+		&i.InReplyTo,
+		&i.InternetReferences,
 		&i.Status,
 		&i.Failure,
 		&i.ProviderMessageID,

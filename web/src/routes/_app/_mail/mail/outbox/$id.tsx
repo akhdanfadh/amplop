@@ -12,16 +12,13 @@ import { ReadError } from "@/components/read-error";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { MessageView } from "@/features/messages/view";
 import { messageContent, messageHeader } from "@/features/outgoing-messages/message";
-import { pollWhile } from "@/features/outgoing-messages/poll";
+import { pollWhile, sendPollMs } from "@/features/outgoing-messages/poll";
 import { MessageStatus } from "@/features/outgoing-messages/status";
 import { inProgress, messageGone, readErrorMessage } from "@/features/outgoing-messages/text";
 import { lineLink } from "@/components/link-style";
 
 const unauthorized = 401;
 const notFound = 404;
-// How often the message is read again while it is still being sent: most
-// sends end within seconds.
-const pollMs = 2_000;
 
 // A message's ID, which the client puts in the API's path as is.
 const messageId = z.uuid();
@@ -43,7 +40,7 @@ function OutgoingMessagePage(): ReactElement {
   const read = useGetOutgoingMessage(id, {
     query: {
       enabled: valid,
-      refetchInterval: pollWhile(pollMs, (data) => inProgress(data.data.status)),
+      refetchInterval: pollWhile(sendPollMs, (data) => inProgress(data.data.status)),
     },
   });
   // The sending account's address now, which Send again sends from.

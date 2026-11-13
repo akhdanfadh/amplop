@@ -15,7 +15,7 @@ import {
   useRouterState,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 import { sentence, userMessage } from "@/api/problem";
 import { ApiError } from "@/api/transport";
 import { ReadError } from "@/components/read-error";

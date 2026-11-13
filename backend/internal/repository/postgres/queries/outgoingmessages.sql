@@ -22,8 +22,18 @@ SELECT EXISTS (SELECT 1 FROM outgoing_message_keys
     WHERE user_id = @user_id AND idempotency_key = @idempotency_key);
 
 -- name: InsertOutgoingMessageKey :exec
-INSERT INTO outgoing_message_keys (user_id, idempotency_key, message_id)
-VALUES (@user_id, @idempotency_key, @message_id);
+INSERT INTO outgoing_message_keys (user_id, idempotency_key, message_id, answered_message_id)
+VALUES (@user_id, @idempotency_key, @message_id, @answered_message_id);
+
+-- name: ReadAnsweredMessage :one
+-- The synchronized message a reply answers, in one of the member's
+-- accounts. Unlocked: a sync that deletes it meanwhile leaves the reply
+-- with the threading read, which is all the reply needs of it.
+SELECT m.connected_account_id, m.provider_thread_id, m.subject,
+    m.internet_message_id, m.in_reply_to, m.internet_references
+FROM messages m
+JOIN connected_accounts ca ON ca.id = m.connected_account_id
+WHERE m.id = @id AND ca.user_id = @user_id;
 
 -- name: ListSendAttemptTimes :many
 SELECT created_at FROM send_attempts
@@ -38,36 +48,36 @@ DELETE FROM send_attempts WHERE user_id = @user_id AND created_at <= @since;
 
 -- name: InsertOutgoingMessage :one
 INSERT INTO outgoing_messages (connected_account_id, from_address,
-    to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id)
+    to_addresses, cc_addresses, bcc_addresses, subject, body, inbok_message_id,
+    in_reply_to, internet_references, provider_thread_id)
 VALUES (@connected_account_id, @from_address,
-    @to_addresses, @cc_addresses, @bcc_addresses, @subject, @body, @inbok_message_id)
+    @to_addresses, @cc_addresses, @bcc_addresses, @subject, @body, @inbok_message_id,
+    @in_reply_to, @internet_references, @provider_thread_id)
 RETURNING id, status, created_at;
 
 -- name: ReadOutgoingMessage :one
 -- A message belongs to its account's owner.
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, om.body,
-    om.inbok_message_id, om.status, om.failure, om.provider_message_id,
+    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status,
+    om.failure, om.provider_message_id,
     om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE om.id = @id AND ca.user_id = @user_id;
 
--- name: ReadOutgoingMessageByKey :one
-SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
-    om.cc_addresses, om.bcc_addresses, om.subject, om.body,
-    om.inbok_message_id, om.status, om.failure, om.provider_message_id,
-    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as
-FROM outgoing_message_keys k
-JOIN outgoing_messages om ON om.id = k.message_id
-WHERE k.user_id = @user_id AND k.idempotency_key = @idempotency_key;
+-- name: ReadOutgoingMessageKey :one
+-- The message a member's key saved, and the message its request answered.
+SELECT message_id, answered_message_id
+FROM outgoing_message_keys
+WHERE user_id = @user_id AND idempotency_key = @idempotency_key;
 
 -- name: ListOutgoingMessages :many
 -- The member's newest messages, without their bodies, which a list does not
 -- show and which may be 100,000 characters each.
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, ''::text AS body,
-    om.inbok_message_id, om.status, om.failure,
+    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status, om.failure,
     om.provider_message_id, om.provider_thread_id, om.created_at, om.sent_at,
     om.sent_again_as
 FROM outgoing_messages om
@@ -81,15 +91,17 @@ UPDATE outgoing_messages SET sent_again_as = @sent_again_as WHERE id = @id;
 
 -- name: ReadOutgoingMessageToSend :one
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, status, failure,
-    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
+    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    internet_references, status, failure, provider_message_id,
+    provider_thread_id, created_at, sent_at, sent_again_as
 FROM outgoing_messages WHERE id = @id;
 
 -- name: LockOutgoingMessage :one
 -- No key column changes, so foreign key checks on the row need not wait.
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, status, failure,
-    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as
+    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    internet_references, status, failure, provider_message_id,
+    provider_thread_id, created_at, sent_at, sent_again_as
 FROM outgoing_messages WHERE id = @id FOR NO KEY UPDATE;
 
 -- name: UpdateOutgoingMessageStatus :one
@@ -97,12 +109,14 @@ UPDATE outgoing_messages SET
     status = @status,
     failure = @failure,
     provider_message_id = @provider_message_id,
-    provider_thread_id = @provider_thread_id,
+    -- A transition without a thread keeps the one a reply was saved with.
+    provider_thread_id = coalesce(sqlc.narg('provider_thread_id'), provider_thread_id),
     sent_at = @sent_at
 WHERE id = @id
 RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
-    bcc_addresses, subject, body, inbok_message_id, status, failure,
-    provider_message_id, provider_thread_id, created_at, sent_at, sent_again_as;
+    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    internet_references, status, failure, provider_message_id,
+    provider_thread_id, created_at, sent_at, sent_again_as;
 
 -- name: UpdateConnectedAccountEmail :exec
 -- Gmail's address for the account, which a send found changed.

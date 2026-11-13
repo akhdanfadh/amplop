@@ -60,12 +60,13 @@ type Provider interface {
 	// Mailbox returns the mailbox token reaches.
 	Mailbox(ctx context.Context, token connectedaccount.AccessToken) (Mailbox, error)
 
-	// Send sends raw, an RFC 5322 message, from the mailbox. When the message is
-	// not known to be sent, it returns only [ErrRefused], [ErrSendingLimit],
-	// [ErrNotSent], or [ErrUnanswered], and [ErrNotSent] only when Gmail said so
-	// or no part of the request can have reached it. It ends by its own
+	// Send sends raw, an RFC 5322 message, from the mailbox, into the
+	// mailbox's thread threadID when not empty. When the message is not known
+	// to be sent, it returns only [ErrRefused], [ErrSendingLimit],
+	// [ErrNotSent], or [ErrUnanswered], and [ErrNotSent] only when Gmail said
+	// so or no part of the request can have reached it. It ends by its own
 	// deadline, since [Sending.Send] calls it with a context no stop cancels.
-	Send(ctx context.Context, token connectedaccount.AccessToken, raw []byte) (Sent, error)
+	Send(ctx context.Context, token connectedaccount.AccessToken, raw []byte, threadID string) (Sent, error)
 
 	// FindSent returns the message Gmail added to Sent after historyID
 	// whose X-Inbok-Message-Id is inbokMessageID. It returns
@@ -87,6 +88,8 @@ type Transition struct {
 	// Failure is set only when [Transition.Status] is [StatusFailed].
 	Failure Failure
 	// Sent and SentAt are set only when [Transition.Status] is [StatusSent].
+	// A Sent without a thread keeps the message's [Message.ProviderThreadID],
+	// e.g. the thread a reply was saved for.
 	Sent   Sent
 	SentAt *time.Time
 	// SenderEmail, when not empty, is the sending account's address now,
@@ -257,7 +260,7 @@ func (s *Sending) Send(ctx context.Context, messageID uuid.UUID) (Status, error)
 	// provider's own deadline; a worker killed meanwhile resumes the step,
 	// which finds the message sending and checks it.
 	ctx = context.WithoutCancel(ctx)
-	sent, err := s.provider.Send(ctx, token, raw)
+	sent, err := s.provider.Send(ctx, token, raw, message.ProviderThreadID)
 	switch {
 	case err == nil:
 		return s.end(ctx, messageID, Transition{Status: StatusSent, Sent: sent, SentAt: s.sentAt(sent)})

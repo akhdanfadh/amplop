@@ -144,7 +144,7 @@ generate-sqlc: ## Go methods from SQL queries
 generate-api: ## OpenAPI document from Go
 	go -C backend run ./cmd/inbok export ../$(OPENAPI)
 
-generate-web: ## Web client from the OpenAPI document
+generate-web: ## Web client from the OpenAPI document, and cn's tables from the theme
 	pnpm -C web generate
 
 # Checks. Go tests need Docker running.
@@ -168,6 +168,7 @@ check-backend: ## Format, generated code, vet, lint, dependencies, and tests
 # web-build also regenerates the route tree.
 check-web: ## Generated code, build, format, lint, types, and tests
 	$(FRESH) web/src/api/generated $(MAKE) generate-web
+	$(FRESH) web/src/lib/generated/cn-tables.ts $(MAKE) generate-web
 	$(FRESH) web/src/routeTree.gen.ts $(MAKE) web-build
 	pnpm -C web check
 	pnpm -C web test

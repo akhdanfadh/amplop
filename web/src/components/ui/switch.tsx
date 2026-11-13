@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 import { SwitchButton, SwitchField, type SwitchFieldProps } from "react-aria-components";
 
 // Switch is a track and its label: children are the label, inside the

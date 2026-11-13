@@ -6,9 +6,13 @@
 -- request, not the message, so a message sent again, which no request named,
 -- has none; and it goes with its message.
 CREATE TABLE outgoing_message_keys (
-    user_id         bigint NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    idempotency_key uuid NOT NULL,
-    message_id      uuid NOT NULL UNIQUE REFERENCES outgoing_messages (id) ON DELETE CASCADE,
+    user_id             bigint NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    idempotency_key     uuid NOT NULL,
+    message_id          uuid NOT NULL UNIQUE REFERENCES outgoing_messages (id) ON DELETE CASCADE,
+    -- The synchronized message a reply's request answered, NULL for a new
+    -- message, so a repeat that names another is refused. Not a reference: a
+    -- sync may delete the message, and a repeat must still find the reply.
+    answered_message_id uuid,
     PRIMARY KEY (user_id, idempotency_key)
 );
 

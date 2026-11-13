@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/mailsync"
+	"inbok/internal/msgid"
 )
 
 func TestDecodeText(t *testing.T) {
@@ -208,20 +209,6 @@ func TestParseMsgIDs(t *testing.T) {
 	}
 }
 
-func TestTrimReferences(t *testing.T) {
-	ids := make([]string, maxReferences+5)
-	for i := range ids {
-		ids[i] = "<" + strconv.Itoa(i) + "@x>"
-	}
-
-	trimmed := trimReferences(ids)
-
-	require.Len(t, trimmed, maxReferences)
-	assert.Equal(t, ids[0], trimmed[0], "the thread's first message stays")
-	assert.Equal(t, ids[len(ids)-maxReferences+1:], trimmed[1:], "the nearest parents stay")
-	assert.Equal(t, ids[:3], trimReferences(ids[:3]))
-}
-
 // A References header past the byte limit keeps its first msg-id and its
 // last ones, the nearest parents.
 func TestParseReferencesLong(t *testing.T) {
@@ -234,9 +221,9 @@ func TestParseReferencesLong(t *testing.T) {
 
 	references := parseReferences(value)
 
-	require.Len(t, references, maxReferences)
+	require.Len(t, references, msgid.MaxReferences)
 	assert.Equal(t, ids[0], references[0])
-	assert.Equal(t, ids[len(ids)-maxReferences+1:], references[1:])
+	assert.Equal(t, ids[len(ids)-msgid.MaxReferences+1:], references[1:])
 }
 
 // A cut never splits a character and never keeps the whole value.

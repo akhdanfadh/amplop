@@ -65,7 +65,7 @@ func TestSendAndFind(t *testing.T) {
 	assert.Equal(t, "alex@example.com", mailbox.Email)
 	assert.NotEmpty(t, mailbox.HistoryID)
 
-	sent, err := client.Send(t.Context(), token, rawMessage("<send-1@example.com>"))
+	sent, err := client.Send(t.Context(), token, rawMessage("<send-1@example.com>"), "")
 	require.NoError(t, err)
 	assert.NotEmpty(t, sent.ProviderMessageID)
 	assert.NotEmpty(t, sent.ProviderThreadID)
@@ -80,6 +80,26 @@ func TestSendAndFind(t *testing.T) {
 
 	_, err = client.FindSent(t.Context(), token, mailbox.HistoryID, "<other@example.com>")
 	require.ErrorIs(t, err, outgoingmessage.ErrSentNotFound)
+}
+
+// The emulator sends a message with a thread into that thread, and one
+// without into a thread of its own.
+func TestSendThread(t *testing.T) {
+	e, client := startEmulator(t)
+	code, verifier := consent(t, e, client, "alex@example.com")
+	grant, err := client.Exchange(t.Context(), code, verifier)
+	require.NoError(t, err)
+	token := grant.AccessToken
+	first, err := client.Send(t.Context(), token, rawMessage("<thread-1@example.com>"), "")
+	require.NoError(t, err)
+
+	reply, err := client.Send(t.Context(), token, rawMessage("<thread-2@example.com>"), first.ProviderThreadID)
+	require.NoError(t, err)
+	other, err := client.Send(t.Context(), token, rawMessage("<thread-3@example.com>"), "")
+	require.NoError(t, err)
+
+	assert.Equal(t, first.ProviderThreadID, reply.ProviderThreadID)
+	assert.NotEqual(t, first.ProviderThreadID, other.ProviderThreadID)
 }
 
 // Each of Gmail's answers is sorted by what it says of the message
@@ -108,7 +128,7 @@ func TestSendAnswers(t *testing.T) {
 				gmailError(w, c.status, c.message, c.reason)
 			})
 
-			_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"))
+			_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"), "")
 
 			require.ErrorIs(t, err, c.want)
 			assert.NotContains(t, err.Error(), c.message, "Gmail's text is not kept")
@@ -126,12 +146,27 @@ func TestSendRequest(t *testing.T) {
 		writeJSON(w, map[string]any{"id": "gm-1", "threadId": "th-1", "labelIds": []string{"SENT"}})
 	})
 
-	sent, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"))
+	sent, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"), "")
 
 	require.NoError(t, err)
 	assert.Equal(t, outgoingmessage.Sent{ProviderMessageID: "gm-1", ProviderThreadID: "th-1"}, sent)
 	assert.NotContains(t, body["raw"], "+", "base64url")
 	assert.NotContains(t, body["raw"], "/", "base64url")
+	assert.NotContains(t, body, "threadId", "a new message names no thread")
+}
+
+// A reply names the thread it goes into (messages.send's threadId).
+func TestSendRequestThread(t *testing.T) {
+	var body map[string]string
+	client := stubSendGmail(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		writeJSON(w, map[string]any{"id": "gm-2", "threadId": "th-1", "labelIds": []string{"SENT"}})
+	})
+
+	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"), "th-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, "th-1", body["threadId"])
 }
 
 // A connection dropped after the whole request went may have sent it.
@@ -144,7 +179,7 @@ func TestSendDropped(t *testing.T) {
 		}
 	})
 
-	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"))
+	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"), "")
 
 	require.ErrorIs(t, err, outgoingmessage.ErrUnanswered)
 }
@@ -159,7 +194,7 @@ func TestSendTimeout(t *testing.T) {
 	t.Cleanup(func() { close(release) })
 	client.http = httpClient(reachLoopback, 200*time.Millisecond)
 
-	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"))
+	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"), "")
 
 	require.ErrorIs(t, err, outgoingmessage.ErrUnanswered)
 }
@@ -177,7 +212,7 @@ func TestSendWriteUnfinished(t *testing.T) {
 	client.http = httpClient(reachLoopback, 200*time.Millisecond)
 	large := append(rawMessage("<a@b>"), []byte(strings.Repeat("x", 4<<20))...)
 
-	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), large)
+	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), large, "")
 
 	require.ErrorIs(t, err, outgoingmessage.ErrUnanswered)
 }
@@ -189,7 +224,7 @@ func TestSendNoID(t *testing.T) {
 		writeJSON(w, map[string]any{"threadId": "th-1"})
 	})
 
-	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"))
+	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"), "")
 
 	require.ErrorIs(t, err, outgoingmessage.ErrUnanswered)
 }
@@ -201,7 +236,7 @@ func TestSendUnreadableAnswer(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id": "gm-1", "historyId": "secret page body"}`))
 	})
 
-	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"))
+	_, err := client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"), "")
 
 	require.ErrorIs(t, err, outgoingmessage.ErrUnanswered)
 	assert.NotContains(t, err.Error(), "secret page body")
@@ -239,7 +274,7 @@ func TestSendNoSDKLog(t *testing.T) {
 	os.Stderr = write
 	t.Cleanup(func() { os.Stderr = stderr })
 
-	_, err = client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"))
+	_, err = client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"), "")
 	os.Stderr = stderr
 	require.NoError(t, write.Close())
 	logged, readErr := io.ReadAll(read)
@@ -257,7 +292,7 @@ func TestSendUnreachable(t *testing.T) {
 	server.Close()
 	client := New(Settings{ClientID: testClientID, ClientSecret: testSecret, RedirectURL: testRedirect, BaseURL: base}, time.Now)
 
-	_, err = client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"))
+	_, err = client.Send(t.Context(), connectedaccount.NewAccessToken("access-1"), rawMessage("<a@b>"), "")
 
 	require.ErrorIs(t, err, outgoingmessage.ErrNotSent)
 }

@@ -15,9 +15,13 @@ import (
 	"inbok/internal/session"
 )
 
-const outgoingMessagesPath = "/outgoing-messages"
+const (
+	outgoingMessagesPath = "/outgoing-messages"
+	messagesPath         = "/messages"
+)
 
 const (
+	messageNotFoundType              = problemPrefix + "message-not-found"
 	outgoingMessageNotFoundType      = problemPrefix + "outgoing-message-not-found"
 	sendingAccountNeedsReconnectType = problemPrefix + "sending-account-needs-reconnect"
 	notSendableAgainType             = problemPrefix + "not-sendable-again"
@@ -31,6 +35,7 @@ const sendLimitDescription = "Sending counts toward the signed-in account's limi
 
 type outgoingMessageService interface {
 	Create(ctx context.Context, userID int64, draft outgoingmessage.Draft) (outgoingmessage.Message, error)
+	Reply(ctx context.Context, userID int64, reply outgoingmessage.Reply) (outgoingmessage.Message, error)
 	SendAgain(ctx context.Context, userID int64, messageID uuid.UUID) (outgoingmessage.Message, error)
 	Get(ctx context.Context, userID int64, messageID uuid.UUID) (outgoingmessage.Message, error)
 	List(ctx context.Context, userID int64) ([]outgoingmessage.Message, error)
@@ -44,6 +49,7 @@ func registerOutgoingMessages(api huma.API, service outgoingMessageService) {
 	handler := outgoingMessageHandler{service: service}
 
 	registerOutgoingMessageSend(api, handler)
+	registerReplyToMessage(api, handler)
 	registerOutgoingMessageList(api, handler)
 	registerOutgoingMessageRead(api, handler)
 	registerSendAgain(api, handler)
@@ -174,8 +180,29 @@ func sendResponses(responses map[string]*huma.Response) {
 // ========================
 
 type outgoingMessageSendInput struct {
+	IdempotencyKeyInput
+	Body newOutgoingMessage
+}
+
+// idempotencyKeyInput is the Idempotency-Key header of a request that saves
+// a message.
+type idempotencyKeyInput struct {
 	IdempotencyKey string `header:"Idempotency-Key" required:"true" pattern:"^(\"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\"|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})$" doc:"A new UUID for each message the client means to send, reused for every attempt to send that message, as a quoted string per the IETF Idempotency-Key draft, e.g. \"8e03978e-40d5-43e8-bc93-6894a57f9324\"; a bare UUID is accepted too. A repeat with the same key and request returns the message the first saved; with another request it is refused. Keys are the signed-in account's own, and a key lasts as long as its message."`
-	Body           newOutgoingMessage
+}
+
+// IdempotencyKeyInput names idempotencyKeyInput for embedding, as
+// [OutgoingMessageSummary] does.
+type IdempotencyKeyInput = idempotencyKeyInput
+
+// parseKey returns the UUID in the header, or a 422 problem naming it.
+func (in idempotencyKeyInput) parseKey() (uuid.UUID, error) {
+	key, err := parseIdempotencyKey(in.IdempotencyKey)
+	if err != nil {
+		invalid := requestProblem(http.StatusUnprocessableEntity)
+		invalid.Errors = []inputError{{Location: "header.Idempotency-Key", Message: "Enter a valid value."}}
+		return uuid.UUID{}, invalid
+	}
+	return key, nil
 }
 
 // newOutgoingMessage is a message to send. Its limits are inbok's choices
@@ -206,11 +233,9 @@ func registerOutgoingMessageSend(api huma.API, handler outgoingMessageHandler) {
 }
 
 func (h outgoingMessageHandler) handleSendMessage(ctx context.Context, in *outgoingMessageSendInput) (*output[outgoingMessage], error) {
-	key, err := parseIdempotencyKey(in.IdempotencyKey)
+	key, err := in.parseKey()
 	if err != nil {
-		invalid := requestProblem(http.StatusUnprocessableEntity)
-		invalid.Errors = []inputError{{Location: "header.Idempotency-Key", Message: "Enter a valid value."}}
-		return nil, invalid
+		return nil, err
 	}
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
 	message, err := h.service.Create(ctx, user.ID, outgoingmessage.Draft{
@@ -300,6 +325,92 @@ func outgoingMessageSendProblem(err error) error {
 	invalid := requestProblem(http.StatusUnprocessableEntity)
 	invalid.Errors = []inputError{input}
 	return invalid
+}
+
+// ========================
+// Reply to message
+// ========================
+
+type replyInput struct {
+	ID uuid.UUID `path:"id" format:"uuid" doc:"The synchronized message the reply answers."`
+	IdempotencyKeyInput
+	Body newReply
+}
+
+// newReply is a reply to send: a message to send without a subject, which
+// the reply takes from the answered message.
+type newReply struct {
+	ConnectedAccountID int64    `json:"connectedAccountId" minimum:"1" doc:"The sending account, one of the signed-in account's connected accounts. It need not be the account that holds the answered message."`
+	To                 []string `json:"to" nullable:"false" maxItems:"100" format:"email" maxLength:"254" doc:"To, Cc, and Bcc together need at least one address."`
+	Cc                 []string `json:"cc" nullable:"false" maxItems:"100" format:"email" maxLength:"254"`
+	Bcc                []string `json:"bcc" nullable:"false" maxItems:"100" format:"email" maxLength:"254"`
+	Body               string   `json:"body" maxLength:"100000" doc:"Plain text."`
+}
+
+func registerReplyToMessage(api huma.API, handler outgoingMessageHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "replyToMessage",
+		Method:      http.MethodPost,
+		Path:        messagesPath + "/{id}/replies",
+		Summary:     "Reply to Message",
+		Tags:        []string{tagOutgoingMessages},
+		Description: "Saves a reply to one of the signed-in account's messages, from one of its connected accounts, waiting to be sent, and returns it as an outgoing message. " +
+			"Its subject is the answered message's, cut at 500 characters, with \"Re: \" added when it has none and still fits, and it carries the In-Reply-To and References headers that thread it when the answered message has a valid Message-ID. " +
+			"Sent from the account that holds the answered message, it asks Gmail for that message's thread; from another account, it carries only the headers and starts a new thread in that account's Gmail. " +
+			sendLimitDescription,
+		Metadata:      map[string]any{accessKey: session.AccessMember},
+		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
+		DefaultStatus: http.StatusCreated,
+		Responses:     replyResponses(api),
+	}, handler.handleReplyToMessage)
+}
+
+func (h outgoingMessageHandler) handleReplyToMessage(ctx context.Context, in *replyInput) (*output[outgoingMessage], error) {
+	key, err := in.parseKey()
+	if err != nil {
+		return nil, err
+	}
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	message, err := h.service.Reply(ctx, user.ID, outgoingmessage.Reply{
+		ConnectedAccountID: in.Body.ConnectedAccountID,
+		IdempotencyKey:     key,
+		AnsweredMessageID:  in.ID,
+		To:                 in.Body.To,
+		Cc:                 in.Body.Cc,
+		Bcc:                in.Body.Bcc,
+		Body:               in.Body.Body,
+	})
+	if err != nil {
+		return nil, replyProblem(err)
+	}
+	return respondData(outgoingMessageOf(message)), nil
+}
+
+func replyResponses(api huma.API) map[string]*huma.Response {
+	responses := memberResponses(api, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests)
+	sendResponses(responses)
+
+	notFound := responses[strconv.Itoa(http.StatusNotFound)]
+	notFound.Description = "The signed-in account has no message with this id, e.g. a sync deleted it."
+	notFound.Content[problemContentType].Example = replyProblem(outgoingmessage.ErrAnsweredNotFound)
+
+	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
+	invalid.Description = "The request inputs are invalid, the sending account is not one of the signed-in account's, or the Idempotency-Key was used for another request."
+	invalid.Content[problemContentType].Examples = map[string]*huma.Example{
+		"noRecipients": {Value: replyProblem(outgoingmessage.ErrNoRecipients)},
+		"noAccount":    {Value: replyProblem(outgoingmessage.ErrAccountNotFound)},
+		"keyReused":    {Value: replyProblem(outgoingmessage.ErrKeyReused)},
+		"invalidInput": {Value: requestProblem(http.StatusUnprocessableEntity)},
+	}
+	return responses
+}
+
+// replyProblem maps the errors of replying to a message.
+func replyProblem(err error) error {
+	if errors.Is(err, outgoingmessage.ErrAnsweredNotFound) {
+		return newProblem(http.StatusNotFound, messageNotFoundType, "Message not found", "The message does not exist. It may have been deleted.")
+	}
+	return outgoingMessageSendProblem(err)
 }
 
 // ========================

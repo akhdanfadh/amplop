@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactElement } from "react";
-import { useForm, useSelector, type AnyFieldMeta } from "@tanstack/react-form";
+import { useForm, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -15,17 +15,26 @@ import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { describedBy, shownErrors, type Submission } from "./field-errors";
+import { RecipientField, withTyping } from "./recipient-field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { ComposeSchema, composeFields, composeRequest, type ComposeValues } from "./compose-schema";
-import { keyReused, leaveText, mayHaveSaved, needsReconnect, sendErrorMessage } from "./text";
+import {
+  keyReused,
+  leaveText,
+  mayHaveSaved,
+  needsReconnect,
+  needsReconnectMark,
+  sendErrorMessage,
+} from "./text";
 import { lineLink } from "@/components/link-style";
 
 const unauthorized = 401;
 
-// The recipient lists, each one text field.
+// The recipient lists, each one field of chips.
 const recipientFields = [
   { name: "to", label: "To" },
   { name: "cc", label: "Cc" },
@@ -112,8 +121,13 @@ export function ComposeForm({
       },
     },
   });
-  const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const edited = useSelector(form.store, (state) => !state.isDefaultValue);
+  const submission = useSelector(form.store, (state): Submission =>
+    state.submissionAttempts > 0 ? "tried" : "untried",
+  );
+  const formEdited = useSelector(form.store, (state) => !state.isDefaultValue);
+  // A recipient list holding text not yet a chip counts as an edit.
+  const [typingIn, setTypingIn] = useState<ReadonlySet<string>>(() => new Set());
+  const edited = formEdited || typingIn.size > 0;
   const summary = send.error
     ? formSummary(sendErrorMessage(send.error), formErrors(send.error, composeFields))
     : [];
@@ -138,7 +152,7 @@ export function ComposeForm({
       <FieldGroup>
         <form.Field name="connectedAccountId">
           {(field) => {
-            const errors = shown(field.state.meta, submitted);
+            const errors = shownErrors(field.state.meta, submission);
             const id = fieldId(field.name);
             return (
               <Field data-invalid={errors.length > 0}>
@@ -169,7 +183,7 @@ export function ComposeForm({
                       disabled={account.status !== "usable"}
                     >
                       {account.email}
-                      {account.status !== "usable" && " (needs reconnecting)"}
+                      {account.status !== "usable" && ` ${needsReconnectMark}`}
                     </NativeSelectOption>
                   ))}
                 </NativeSelect>
@@ -185,35 +199,32 @@ export function ComposeForm({
         {recipientFields.map(({ name, label }) => (
           <form.Field key={name} name={name}>
             {(field) => {
-              const errors = shown(field.state.meta, submitted);
+              const errors = shownErrors(field.state.meta, submission);
               const id = fieldId(field.name);
               return (
                 <Field data-invalid={errors.length > 0}>
                   <FieldLabel htmlFor={id}>{label}</FieldLabel>
-                  <Input
-                    id={id}
-                    name={field.name}
-                    // Not type="email" multiple: browsers rewrite its value
-                    // while typing, dropping the space after a comma.
-                    type="text"
-                    inputMode="email"
-                    autoComplete="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    readOnly={send.isPending}
-                    aria-invalid={errors.length > 0}
-                    aria-describedby={describedBy(
-                      id,
-                      errors,
-                      name === "to" ? `${id}-description` : undefined,
-                    )}
-                    value={field.state.value}
-                    onBlur={() => blurKeepingSubmitErrors(field)}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
+                  {/* Outlined as Input is, around the chips and the input. */}
+                  <div className="flex min-h-9 items-center rounded-lg border border-input bg-card px-1.5 py-1 has-[input:focus]:focus-ring has-[input[aria-invalid=true]]:border-destructive dark:bg-input/10 pointer-coarse:min-h-11">
+                    <RecipientField
+                      id={id}
+                      label={label}
+                      value={field.state.value}
+                      onChange={(value) => field.handleChange(value)}
+                      onBlur={() => blurKeepingSubmitErrors(field)}
+                      invalid={errors.length > 0}
+                      describedBy={describedBy(
+                        id,
+                        errors,
+                        name === "to" ? `${id}-description` : undefined,
+                      )}
+                      readOnly={send.isPending}
+                      onTyping={(state) => setTypingIn((lists) => withTyping(lists, name, state))}
+                    />
+                  </div>
                   {name === "to" && (
                     <FieldDescription id={`${id}-description`}>
-                      Email addresses only, e.g. ana@example.com, separated by commas.
+                      Email addresses only, e.g. ana@example.com. A comma or Enter ends each one.
                     </FieldDescription>
                   )}
                   <FieldError id={`${id}-error`} errors={errors} />
@@ -225,7 +236,7 @@ export function ComposeForm({
 
         <form.Field name="subject">
           {(field) => {
-            const errors = shown(field.state.meta, submitted);
+            const errors = shownErrors(field.state.meta, submission);
             const id = fieldId(field.name);
             return (
               <Field data-invalid={errors.length > 0}>
@@ -248,7 +259,7 @@ export function ComposeForm({
 
         <form.Field name="body">
           {(field) => {
-            const errors = shown(field.state.meta, submitted);
+            const errors = shownErrors(field.state.meta, submission);
             const id = fieldId(field.name);
             return (
               <Field data-invalid={errors.length > 0}>
@@ -310,21 +321,4 @@ export function ComposeForm({
 // fieldId returns the id of the input for the form field name.
 function fieldId(name: string): string {
   return `compose-${name}`;
-}
-
-// describedBy returns what describes the input with id: the element with
-// descriptionId, if given, and its error when errors has one.
-function describedBy(
-  id: string,
-  errors: AnyFieldMeta["errors"],
-  descriptionId?: string,
-): string | undefined {
-  const ids = [descriptionId, errors.length > 0 ? `${id}-error` : undefined];
-  return ids.filter(Boolean).join(" ") || undefined;
-}
-
-// A field's errors once the member has left it or tried to send, so an
-// address is not flagged while it is being typed.
-function shown(meta: AnyFieldMeta, submitted: boolean): AnyFieldMeta["errors"] {
-  return meta.isBlurred || submitted ? meta.errors : [];
 }

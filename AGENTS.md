@@ -19,7 +19,8 @@ the area you change before editing it:
 - Generated code comes from `make generate`, committed with the change
   that caused it. Its generators own these paths:
   `backend/internal/repository/postgres/sqlc`, `api/generated`,
-  `web/src/api/generated`, `web/src/routeTree.gen.ts`.
+  `web/src/api/generated`, `web/src/routeTree.gen.ts`,
+  `web/src/lib/generated/cn-tables.ts`.
 
 ## Running things
 

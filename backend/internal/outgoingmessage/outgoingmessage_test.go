@@ -29,8 +29,11 @@ type memoryAccount struct {
 type memoryStorage struct {
 	accounts map[int64]memoryAccount
 	messages []Message
-	// keys are the IDs of the messages saved with each member's keys.
-	keys map[memoryKey]uuid.UUID
+	// keys are the messages saved with each member's keys, and the requests
+	// that saved them.
+	keys map[memoryKey]memoryKeyed
+	// answered are the members' synchronized messages a reply may answer.
+	answered map[uuid.UUID]Answered
 	// attempts are every member's send attempts, by member.
 	attempts map[int64][]time.Time
 	// buildCalls counts calls to build, which run under the account's lock.
@@ -49,29 +52,38 @@ func newMemoryStorage() *memoryStorage {
 			9: {userID: 3, sender: Sender{ConnectedAccountID: 9, Email: "lost@gmail.com", Credential: connectedaccount.Credential{KeyID: lostKeyID}}},
 			8: {userID: 4, sender: Sender{ConnectedAccountID: 8, Email: "other@gmail.com"}},
 		},
-		keys:     map[memoryKey]uuid.UUID{},
+		keys:     map[memoryKey]memoryKeyed{},
+		answered: map[uuid.UUID]Answered{},
 		attempts: map[int64][]time.Time{},
 	}
 }
 
-func (m *memoryStorage) InsertOutgoingMessage(_ context.Context, attempt Attempt, accountID int64, key uuid.UUID, build func(CreateState) (NewMessage, error)) (Message, error) {
+func (m *memoryStorage) InsertOutgoingMessage(_ context.Context, attempt Attempt, request Request, build func(CreateState) (NewMessage, error)) (Message, error) {
 	if m.deactivated {
 		return Message{}, ErrDeactivated
 	}
-	if _, ok := m.keys[memoryKey{attempt.UserID, key}]; ok {
+	if _, ok := m.keys[memoryKey{attempt.UserID, request.Key}]; ok {
 		return Message{}, ErrKeyExists
 	}
-	account, ok := m.accounts[accountID]
+	account, ok := m.accounts[request.AccountID]
 	if !ok || account.userID != attempt.UserID {
 		return Message{}, ErrAccountNotFound
 	}
+	state := CreateState{Sender: account.sender, Attempts: m.attemptsSince(attempt)}
+	if request.AnsweredID != nil {
+		answered, ok := m.answered[*request.AnsweredID]
+		if !ok || m.accounts[answered.ConnectedAccountID].userID != attempt.UserID {
+			return Message{}, ErrAnsweredNotFound
+		}
+		state.Answered = &answered
+	}
 	m.buildCalls++
-	next, err := build(CreateState{Sender: account.sender, Attempts: m.attemptsSince(attempt)})
+	next, err := build(state)
 	if err != nil {
 		return Message{}, err
 	}
-	saved := m.save(attempt, accountID, next)
-	m.keys[memoryKey{attempt.UserID, key}] = saved.ID
+	saved := m.save(attempt, request.AccountID, next)
+	m.keys[memoryKey{attempt.UserID, request.Key}] = memoryKeyed{messageID: saved.ID, request: request}
 	return saved, nil
 }
 
@@ -79,6 +91,12 @@ func (m *memoryStorage) InsertOutgoingMessage(_ context.Context, attempt Attempt
 type memoryKey struct {
 	userID int64
 	key    uuid.UUID
+}
+
+// memoryKeyed is the message a key saved, and the request that saved it.
+type memoryKeyed struct {
+	messageID uuid.UUID
+	request   Request
 }
 
 func (m *memoryStorage) InsertOutgoingMessageCopy(ctx context.Context, attempt Attempt, messageID uuid.UUID, build func(CopyState) (NewMessage, error)) (Message, error) {
@@ -126,6 +144,8 @@ func (m *memoryStorage) save(attempt Attempt, accountID int64, next NewMessage) 
 		From:               next.From,
 		Content:            next.Content,
 		InbokMessageID:     next.InbokMessageID,
+		Threading:          next.Threading,
+		ProviderThreadID:   next.ProviderThreadID,
 		Status:             StatusWaiting,
 		CreatedAt:          attempt.At,
 	}
@@ -143,15 +163,16 @@ func (m *memoryStorage) ReadOutgoingMessage(_ context.Context, userID int64, mes
 	return Message{}, ErrNotFound
 }
 
-func (m *memoryStorage) ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (Message, error) {
+func (m *memoryStorage) ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (Message, Request, error) {
 	if m.beforeKeyRead != nil {
 		m.beforeKeyRead()
 	}
-	id, ok := m.keys[memoryKey{userID, key}]
+	keyed, ok := m.keys[memoryKey{userID, key}]
 	if !ok {
-		return Message{}, ErrNotFound
+		return Message{}, Request{}, ErrNotFound
 	}
-	return m.ReadOutgoingMessage(ctx, userID, id)
+	message, err := m.ReadOutgoingMessage(ctx, userID, keyed.messageID)
+	return message, keyed.request, err
 }
 
 func (m *memoryStorage) ListOutgoingMessages(_ context.Context, userID int64, limit int) ([]Message, error) {
@@ -590,7 +611,7 @@ func (m *memoryStorage) disconnect(accountID int64) {
 		if message.ConnectedAccountID != accountID {
 			return false
 		}
-		maps.DeleteFunc(m.keys, func(_ memoryKey, id uuid.UUID) bool { return id == message.ID })
+		maps.DeleteFunc(m.keys, func(_ memoryKey, keyed memoryKeyed) bool { return keyed.messageID == message.ID })
 		return true
 	})
 }
@@ -632,7 +653,7 @@ func TestCreateKeyFreedTwice(t *testing.T) {
 		reads++
 		storage.disconnect(5)
 		// The member saves the key again from the same account.
-		storage.keys[memoryKey{3, draft.IdempotencyKey}] = uuid.New()
+		storage.keys[memoryKey{3, draft.IdempotencyKey}] = memoryKeyed{messageID: uuid.New()}
 	}
 
 	_, err = service.Create(t.Context(), 3, draft)

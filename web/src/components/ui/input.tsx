@@ -1,5 +1,5 @@
 import * as React from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 import { composeRenderProps, Input as InputPrimitive } from "react-aria-components";
 
 // The focus ring shows on any focus, a click included, since it marks where

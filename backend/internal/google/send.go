@@ -78,8 +78,9 @@ func (c *Client) Mailbox(ctx context.Context, accessToken connectedaccount.Acces
 	}, nil
 }
 
-// Send sends raw from the mailbox accessToken reaches, with messages.send, and
-// returns Gmail's IDs for it. It returns [outgoingmessage.ErrRefused],
+// Send sends raw from the mailbox accessToken reaches, with messages.send,
+// into the mailbox's thread threadID when not empty, and returns Gmail's IDs
+// for it. It returns [outgoingmessage.ErrRefused],
 // [outgoingmessage.ErrSendingLimit], or [outgoingmessage.ErrNotSent] for an
 // answer that says the message was not sent, [outgoingmessage.ErrNotSent] for a
 // failure before any connection to Gmail, and [outgoingmessage.ErrUnanswered]
@@ -92,7 +93,7 @@ func (c *Client) Mailbox(ctx context.Context, accessToken connectedaccount.Acces
 // ([httptrace.ClientTrace] allows callbacks after a request failed). A 5xx counts as
 // unanswered too: Google's guide asks for a retry but does not say the message
 // was not sent.
-func (c *Client) Send(ctx context.Context, accessToken connectedaccount.AccessToken, raw []byte) (outgoingmessage.Sent, error) {
+func (c *Client) Send(ctx context.Context, accessToken connectedaccount.AccessToken, raw []byte, threadID string) (outgoingmessage.Sent, error) {
 	service, err := c.gmail(ctx, accessToken)
 	if err != nil {
 		return outgoingmessage.Sent{}, fmt.Errorf("%w: %w", outgoingmessage.ErrNotSent, err)
@@ -106,7 +107,11 @@ func (c *Client) Send(ctx context.Context, accessToken connectedaccount.AccessTo
 	})
 
 	// 2. Send, and sort the end by what it says of the message.
-	message := &gmail.Message{Raw: base64.URLEncoding.EncodeToString(raw)}
+	// threadID asks for the thread: Gmail's "Manage threads" guide also
+	// requires RFC-compliant References and In-Reply-To headers and a
+	// matching Subject. A reply whose answered message had no writable
+	// Message-ID, or whose subject was cut, may not meet them.
+	message := &gmail.Message{Raw: base64.URLEncoding.EncodeToString(raw), ThreadId: threadID}
 	sent, err := service.Users.Messages.Send(gmailUser, message).Context(traced).Do()
 	if err == nil && sent.Id != "" {
 		return outgoingmessage.Sent{ProviderMessageID: sent.Id, ProviderThreadID: sent.ThreadId}, nil
