@@ -154,7 +154,9 @@ text).
   starts in the page, not in the sidebar, whose landmark is named. No skip
   link: a skip button (a `#` link would change the address) is the next
   step if testing shows a need.
-- **Links:** primary colour, underlined; the underline thickens on hover.
+- **Links:** primary colour, underlined; the underline thickens on hover
+  (`textLink` in `src/components/link-style.ts`; `lineLink` for a link on
+  a line of its own, 44 px tall).
 
 ### Themes
 

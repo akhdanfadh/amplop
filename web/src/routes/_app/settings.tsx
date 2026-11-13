@@ -4,8 +4,7 @@ import { Frame } from "@/components/frame";
 import { useSignedInSession } from "@/features/auth/session";
 import { SettingsNav } from "@/features/settings/nav";
 import { unverifiedNotice, verifyLink } from "@/features/settings/text";
-
-const linkClass = "underline underline-offset-4 hover:decoration-2 focus-visible:focus-ring";
+import { textLink } from "@/components/link-style";
 
 // The settings frame: the settings sidebar beside one settings page.
 export const Route = createFileRoute("/_app/settings")({
@@ -40,7 +39,7 @@ function UnverifiedBanner(): ReactElement | null {
     // say so without telling which accounts exist.
     <p className="bg-info/8 px-4 py-2 text-sm text-info dark:bg-info/12">
       {unverifiedNotice}{" "}
-      <Link to="/settings/security" className={linkClass}>
+      <Link to="/settings/security" className={textLink}>
         {verifyLink}
       </Link>
       .

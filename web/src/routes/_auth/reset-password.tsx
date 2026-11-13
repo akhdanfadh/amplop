@@ -3,9 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { resetPath } from "@/features/password-reset/path";
 import { ResetForm } from "@/features/password-reset/reset-form";
 import { useLinkSecret } from "@/hooks/use-link-secret";
-
-const focusClass = "focus-visible:focus-ring";
-const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
+import { lineLink } from "@/components/link-style";
 
 export const Route = createFileRoute("/_auth/reset-password")({
   component: ResetPassword,
@@ -39,7 +37,7 @@ function ResetPassword(): ReactElement {
       ) : (
         <div className="flex flex-col gap-4">
           <p>Open this page from the link in your password reset email.</p>
-          <Link to="/forgot-password" className={linkClass}>
+          <Link to="/forgot-password" className={lineLink}>
             Ask for a new link
           </Link>
         </div>

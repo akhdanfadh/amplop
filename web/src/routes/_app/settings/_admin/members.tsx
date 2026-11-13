@@ -11,6 +11,7 @@ import type { ApiError } from "@/api/transport";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { MemberTable } from "@/features/members/table";
 import { Button } from "@/components/ui/button";
+import { textLink } from "@/components/link-style";
 
 const unauthorized = 401;
 const forbidden = 403;
@@ -77,10 +78,7 @@ function Members(): ReactElement {
           {account?.role === "admin" && (
             <>
               {" "}
-              <Link
-                to="/settings/security"
-                className="underline underline-offset-4 focus-visible:focus-ring"
-              >
+              <Link to="/settings/security" className={textLink}>
                 Set up two-factor authentication
               </Link>
               .

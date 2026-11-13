@@ -21,10 +21,9 @@ import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { ComposeSchema, composeFields, composeRequest, type ComposeValues } from "./compose-schema";
 import { keyReused, leaveText, mayHaveSaved, needsReconnect, sendErrorMessage } from "./text";
+import { lineLink } from "@/components/link-style";
 
 const unauthorized = 401;
-const focusClass = "focus-visible:focus-ring";
-const linkClass = `inline-flex min-h-11 items-center underline underline-offset-4 ${focusClass}`;
 
 // The recipient lists, each one text field.
 const recipientFields = [
@@ -287,14 +286,14 @@ export function ComposeForm({
         {/* A new tab lets the member check without losing the edits here. */}
         {keyReused(send.error) && (
           <p>
-            <Link to="/mail/outbox" target="_blank" className={linkClass}>
+            <Link to="/mail/outbox" target="_blank" className={lineLink}>
               Open the Outbox in a new tab
             </Link>
           </p>
         )}
         {reconnect && (
           <p>
-            <Link to="/settings/connected-accounts" className={linkClass}>
+            <Link to="/settings/connected-accounts" className={lineLink}>
               Open Connected accounts
             </Link>
           </p>

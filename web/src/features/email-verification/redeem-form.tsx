@@ -9,10 +9,9 @@ import {
 import type { CurrentSession } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { linkInvalid, redeemErrorMessage } from "./text";
+import { lineLink } from "@/components/link-style";
 
 const unauthorized = 401;
-const focusClass = "focus-visible:focus-ring";
-const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 // RedeemForm verifies an email address with secret, the text after # in an
 // emailed link, when the user selects Verify email; an empty secret shows
@@ -136,12 +135,12 @@ export function RedeemForm({ secret }: { secret: string }): ReactElement {
 function HomeLink({ account }: { account: CurrentSession | undefined }): ReactElement {
   if (!account)
     return (
-      <Link to="/sign-in" className={linkClass}>
+      <Link to="/sign-in" className={lineLink}>
         Sign in
       </Link>
     );
   return (
-    <Link to="/" className={linkClass}>
+    <Link to="/" className={lineLink}>
       Go to home
     </Link>
   );
@@ -152,12 +151,12 @@ function HomeLink({ account }: { account: CurrentSession | undefined }): ReactEl
 function AskForLink({ account }: { account: CurrentSession | undefined }): ReactElement {
   if (!account)
     return (
-      <Link to="/sign-in" className={linkClass}>
+      <Link to="/sign-in" className={lineLink}>
         Sign in to ask for a new link
       </Link>
     );
   return (
-    <Link to="/settings/security" className={linkClass}>
+    <Link to="/settings/security" className={lineLink}>
       Ask for a new link in Security
     </Link>
   );

@@ -21,9 +21,7 @@ import { ApiError } from "@/api/transport";
 import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-
-const linkClass =
-  "text-primary underline underline-offset-4 hover:decoration-2 focus-visible:focus-ring";
+import { textLink } from "@/components/link-style";
 
 // StateRegion says where a route state shows: "page" in place of a whole
 // page, or "pane" in a pane of a page that holds its own main and h1, e.g.
@@ -187,7 +185,7 @@ export function CrashScreen(): ReactElement {
       </Button>
       <p>
         If it happens again, {/* A page load, not the router, for a fresh start after a crash. */}
-        <a href="/" className={linkClass}>
+        <a href="/" className={textLink}>
           open inbok&apos;s start page
         </a>
         .
@@ -203,7 +201,7 @@ export function NotFound(): ReactElement {
     <StatePage title="Page not found">
       <p>
         There&apos;s no page at this address. Check it for typing mistakes, or{" "}
-        <Link to="/" className={linkClass}>
+        <Link to="/" className={textLink}>
           open inbok&apos;s start page
         </Link>
         .

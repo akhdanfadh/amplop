@@ -15,14 +15,13 @@ import { messageContent, messageHeader } from "@/features/outgoing-messages/mess
 import { pollWhile } from "@/features/outgoing-messages/poll";
 import { MessageStatus } from "@/features/outgoing-messages/status";
 import { inProgress, messageGone, readErrorMessage } from "@/features/outgoing-messages/text";
+import { lineLink } from "@/components/link-style";
 
 const unauthorized = 401;
 const notFound = 404;
 // How often the message is read again while it is still being sent: most
 // sends end within seconds.
 const pollMs = 2_000;
-const linkClass =
-  "inline-flex min-h-11 w-fit items-center underline underline-offset-4 focus-visible:focus-ring";
 
 // A message's ID, which the client puts in the API's path as is.
 const messageId = z.uuid();
@@ -74,7 +73,7 @@ function OutgoingMessagePage(): ReactElement {
 
   return (
     <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-      <Link to="/mail/outbox" className={linkClass}>
+      <Link to="/mail/outbox" className={lineLink}>
         Back to Outbox
       </Link>
       <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">

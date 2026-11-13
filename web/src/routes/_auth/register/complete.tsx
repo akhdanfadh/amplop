@@ -3,9 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { CompleteForm } from "@/features/registration/complete-form";
 import { completePath } from "@/features/registration/path";
 import { useLinkSecret } from "@/hooks/use-link-secret";
-
-const focusClass = "focus-visible:focus-ring";
-const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
+import { lineLink } from "@/components/link-style";
 
 export const Route = createFileRoute("/_auth/register/complete")({
   component: CompleteRegistration,
@@ -38,7 +36,7 @@ function CompleteRegistration(): ReactElement {
           <p>Open this page from the link in your sign-up email.</p>
           {/* Exact, or the router marks /register current here and a screen
               reader says so. */}
-          <Link to="/register" activeOptions={{ exact: true }} className={linkClass}>
+          <Link to="/register" activeOptions={{ exact: true }} className={lineLink}>
             Ask for a new link
           </Link>
         </div>

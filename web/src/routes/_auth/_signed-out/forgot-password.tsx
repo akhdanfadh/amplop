@@ -1,9 +1,7 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { RequestForm } from "@/features/password-reset/request-form";
-
-const focusClass = "focus-visible:focus-ring";
-const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
+import { lineLink } from "@/components/link-style";
 
 export const Route = createFileRoute("/_auth/_signed-out/forgot-password")({
   component: ForgotPassword,
@@ -23,7 +21,7 @@ function ForgotPassword(): ReactElement {
         Reset your password
       </h1>
       <RequestForm />
-      <Link to="/sign-in" className={linkClass}>
+      <Link to="/sign-in" className={lineLink}>
         Back to sign in
       </Link>
     </main>

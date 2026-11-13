@@ -4,9 +4,7 @@ import { useGetRegistration } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
 import { Button } from "@/components/ui/button";
 import { RequestForm } from "@/features/registration/request-form";
-
-const focusClass = "focus-visible:focus-ring";
-const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
+import { lineLink } from "@/components/link-style";
 
 // Shown is the last answer the page showed about registration, "none"
 // before the first.
@@ -86,7 +84,7 @@ function Register(): ReactElement {
 
       {open && <RequestForm />}
 
-      <Link to="/sign-in" className={linkClass}>
+      <Link to="/sign-in" className={lineLink}>
         Sign in to an existing account
       </Link>
     </main>

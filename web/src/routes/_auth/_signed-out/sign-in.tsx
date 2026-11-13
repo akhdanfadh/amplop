@@ -7,10 +7,9 @@ import { CodeForm } from "@/features/auth/code-form";
 import { useSetup } from "@/features/setup/gate";
 import { signInSearch } from "@/features/auth/search";
 import { clearAccountCache } from "@/features/auth/session-cache";
+import { lineLink } from "@/components/link-style";
 
-const focusClass = "focus-visible:focus-ring";
 const noticeId = "sign-in-notice";
-const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 export const Route = createFileRoute("/_auth/_signed-out/sign-in")({
   validateSearch: signInSearch,
@@ -90,11 +89,11 @@ function SignIn(): ReactElement {
       )}
       {step === "password" && (
         <div className="flex flex-col">
-          <Link to="/forgot-password" className={linkClass}>
+          <Link to="/forgot-password" className={lineLink}>
             Forgot password?
           </Link>
           {canRegister && (
-            <Link to="/register" className={linkClass}>
+            <Link to="/register" className={lineLink}>
               Create an account
             </Link>
           )}

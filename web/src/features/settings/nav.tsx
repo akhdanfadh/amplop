@@ -19,12 +19,10 @@ import {
 } from "@/components/ui/sidebar";
 import { mailHref } from "@/features/mail/places";
 import { backToMail, lockedAfter, lockedBefore, pageName, thisInbok } from "./text";
+import { textLink } from "@/components/link-style";
 
 // A settings page, as the router names it.
 type SettingsPath = Extract<NonNullable<ToOptions["to"]>, `/settings/${string}`>;
-
-const linkClass =
-  "text-primary underline underline-offset-4 hover:decoration-2 focus-visible:focus-ring";
 
 // SettingsNav is the settings sidebar's content (DESIGN.md "Settings and
 // signed-out pages"): Back to mail, the member's own pages, then, for
@@ -70,7 +68,7 @@ export function SettingsNav(): ReactElement {
             {session.totpRequired ? (
               <p className="px-2 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
                 {lockedBefore}{" "}
-                <Link to="/settings/security" className={linkClass} onClick={closeDrawer}>
+                <Link to="/settings/security" className={textLink} onClick={closeDrawer}>
                   {pageName.security}
                 </Link>{" "}
                 {lockedAfter}

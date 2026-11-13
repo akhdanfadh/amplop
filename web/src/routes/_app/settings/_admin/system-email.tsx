@@ -13,6 +13,7 @@ import { clearAccountCache } from "@/features/auth/session-cache";
 import { SettingsForm } from "@/features/system-email/settings-form";
 import { TestMessageForm } from "@/features/system-email/test-message-form";
 import { Button } from "@/components/ui/button";
+import { textLink } from "@/components/link-style";
 
 const unauthorized = 401;
 const forbidden = 403;
@@ -82,10 +83,7 @@ function SystemEmail(): ReactElement {
           {account?.role === "admin" && (
             <>
               {" "}
-              <Link
-                to="/settings/security"
-                className="underline underline-offset-4 focus-visible:focus-ring"
-              >
+              <Link to="/settings/security" className={textLink}>
                 Set up two-factor authentication
               </Link>
               .

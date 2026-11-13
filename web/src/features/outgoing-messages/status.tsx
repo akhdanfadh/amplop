@@ -22,11 +22,10 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { formatReceived } from "@/features/messages/text";
 import { MessageStatusBadge } from "./status-badge";
 import { needsReconnect, nextSteps, sendAgainErrorMessage } from "./text";
+import { lineLink } from "@/components/link-style";
 
 const unauthorized = 401;
-const focusClass = "focus-visible:focus-ring";
 const buttonClass = "w-fit whitespace-normal";
-const linkClass = `inline-flex min-h-11 items-center underline underline-offset-4 ${focusClass}`;
 
 // MessageStatus shows what happened to message and what the member can do
 // next: send it again, edit it into a new message, or open the copy it was
@@ -123,11 +122,7 @@ export function MessageStatus({
 
       {message.sentAgainAs !== null && (
         <p>
-          <Link
-            to="/mail/outbox/$id"
-            params={{ id: message.sentAgainAs }}
-            className={`underline underline-offset-4 ${focusClass}`}
-          >
+          <Link to="/mail/outbox/$id" params={{ id: message.sentAgainAs }} className={lineLink}>
             See how the new try went
           </Link>
         </p>
@@ -161,7 +156,7 @@ export function MessageStatus({
           </Link>
         )}
         {reconnect && (
-          <Link to="/settings/connected-accounts" className={linkClass}>
+          <Link to="/settings/connected-accounts" className={lineLink}>
             Open Connected accounts
           </Link>
         )}

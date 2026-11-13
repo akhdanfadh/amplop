@@ -14,9 +14,9 @@ import { composeValues } from "@/features/outgoing-messages/compose-schema";
 import { ReadError } from "@/components/read-error";
 import { composeSearch } from "@/features/outgoing-messages/search";
 import { readErrorMessage } from "@/features/outgoing-messages/text";
+import { textLink } from "@/components/link-style";
 
 const unauthorized = 401;
-const linkClass = "underline underline-offset-4 focus-visible:focus-ring";
 
 export const Route = createFileRoute("/_app/_mail/compose")({
   validateSearch: composeSearch,
@@ -88,7 +88,7 @@ function Compose(): ReactElement {
       {signedOut && (
         <p role="alert">
           You&apos;re signed out, so this message can&apos;t be sent. Copy what you typed, then{" "}
-          <Link to="/sign-in" className={linkClass}>
+          <Link to="/sign-in" className={textLink}>
             sign in
           </Link>
           .
@@ -116,7 +116,7 @@ function Compose(): ReactElement {
           {accounts.length === 0
             ? "Connect a Gmail account to send messages from it."
             : "Each of your Gmail accounts needs reconnecting before it can send."}{" "}
-          <Link to="/settings/connected-accounts" className={linkClass}>
+          <Link to="/settings/connected-accounts" className={textLink}>
             Open Connected accounts
           </Link>
         </p>

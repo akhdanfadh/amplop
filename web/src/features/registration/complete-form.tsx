@@ -22,11 +22,10 @@ import {
   type EarlierTries,
   type Ended,
 } from "./visitor-text";
+import { lineLink } from "@/components/link-style";
 
 const emptyValues = { email: "", password: "", confirmPassword: "" };
 const emailId = "register-email";
-const focusClass = "focus-visible:focus-ring";
-const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 const inputs = [
   {
@@ -124,11 +123,11 @@ export function CompleteForm({
           link === "new-link" ? (
             // Exact, or the router marks /register current on
             // /register/complete and a screen reader says so.
-            <Link key={link} to="/register" activeOptions={{ exact: true }} className={linkClass}>
+            <Link key={link} to="/register" activeOptions={{ exact: true }} className={lineLink}>
               Ask for a new link
             </Link>
           ) : (
-            <Link key={link} to="/sign-in" className={linkClass}>
+            <Link key={link} to="/sign-in" className={lineLink}>
               Sign in
             </Link>
           ),
@@ -191,13 +190,13 @@ export function CompleteForm({
                 {refused && (
                   // Field stretches its children; the paragraph keeps the
                   // link's focus outline to its text. An action, not part of
-                  // the error, so not in its color.
+                  // the error, so a link, not in its colour.
                   <p>
                     <Link
                       to="/register"
                       // Exact, as above.
                       activeOptions={{ exact: true }}
-                      className={`text-foreground ${linkClass}`}
+                      className={lineLink}
                     >
                       Ask for a new link
                     </Link>

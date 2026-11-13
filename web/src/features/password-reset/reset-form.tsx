@@ -18,11 +18,10 @@ import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { ResetSchema } from "./reset-schema";
 import { completeErrorMessage, endOf, linkInvalid, type EarlierTries, type Ended } from "./text";
+import { lineLink } from "@/components/link-style";
 
 const emptyValues = { email: "", password: "", confirmPassword: "" };
 const emailId = "reset-email";
-const focusClass = "focus-visible:focus-ring";
-const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
 const inputs = [
   {
@@ -132,11 +131,11 @@ export function ResetForm({
         <p>{ended.message}</p>
         {ended.links.map((link) =>
           link === "new-link" ? (
-            <Link key={link} to="/forgot-password" className={linkClass}>
+            <Link key={link} to="/forgot-password" className={lineLink}>
               Ask for a new link
             </Link>
           ) : (
-            <Link key={link} to="/sign-in" className={linkClass}>
+            <Link key={link} to="/sign-in" className={lineLink}>
               Sign in
             </Link>
           ),
@@ -195,9 +194,9 @@ export function ResetForm({
                 {refused && (
                   // Field stretches its children; the paragraph keeps the
                   // link's focus outline to its text. An action, not part of
-                  // the error, so not in its color.
+                  // the error, so a link, not in its colour.
                   <p>
-                    <Link to="/forgot-password" className={`text-foreground ${linkClass}`}>
+                    <Link to="/forgot-password" className={lineLink}>
                       Ask for a new link
                     </Link>
                   </p>
