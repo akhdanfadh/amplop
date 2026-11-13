@@ -568,16 +568,23 @@ Mail lists, the reading pane, and mail actions use TanStack DB collections
 over the generated client functions; everything else uses TanStack Query
 hooks. A message's content is the exception inside the reading pane: it
 never changes, so each open message reads it with its generated Query
-hook, cached for good (`messages/content.ts`). Rules from the spike (branch 3 confirms them against the real API):
+hook, cached for good (`messages/content.ts`). Rules from the spike,
+confirmed against the real API in branch 3's gate (ADR031, "TanStack DB
+gate"):
 
-- Sort by a numeric date, then the ID (`stringSort: "lexical"`); dates are
-  never null; one fixed order.
-- Refresh with inbok's own timer that re-reads only the newest page; the
-  built-in `refetchInterval` re-reads every loaded page.
+- Sort by the date as a number (`dateMs`), then the ID
+  (`stringSort: "lexical"`); dates are never null; one fixed order. The
+  API's date text does not sort by time.
+- Refresh with inbok's own timer that re-reads only each open list's
+  newest page; the built-in `refetchInterval` re-reads every loaded page.
 - Apply the "N new conversations" cut-off when drawing, never in the query.
 - One live query per view, each with an explicit key; no joins in paged
-  lists (look account details up instead); a conversation's places are
-  boolean flags.
+  lists (look account details up instead); a conversation's views are
+  boolean flags, and a label list tests `labelIds`
+  (`inArray(label, labelIds)`), so rows keep it.
+- Each page asks for one row more than it shows, so the next load of that
+  date's ties needs no request; "older than a date" is asked as one
+  millisecond before it.
 - Action handlers store the rows the server returns (`writeUpsert`) instead
   of refetching.
 

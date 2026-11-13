@@ -15,6 +15,7 @@ import appCss from "../styles.css?url";
 import pressableCss from "../react-aria-pressable.css?url";
 import { CrashScreen } from "@/components/route-states";
 import { Toaster } from "@/components/ui/toast";
+import { onAccountCacheClear } from "@/features/auth/session-cache";
 import { SetupGate } from "@/features/setup/gate";
 import { themeScript, watchTheme } from "@/lib/theme";
 
@@ -111,6 +112,9 @@ function RootDocument({ children }: { children: ReactNode }) {
 // toast region.
 function Root(): ReactElement {
   const router = useRouter();
+  // A page the router keeps loaded, e.g. a label's name from its loader,
+  // is one member's data too: it ends with theirs.
+  useEffect(() => onAccountCacheClear(() => router.clearCache()), [router]);
   // React Aria components with an href, e.g. a sidebar item, open it in the
   // app instead of loading the page again.
   const navigate = useCallback(

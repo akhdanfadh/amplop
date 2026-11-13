@@ -9,10 +9,13 @@ import {
 import type { LinkProps } from "react-aria-components";
 
 // The views the sidebar lists, in its order (DESIGN.md "Sidebar"); each
-// is a place in the address, /mail/<place>. Labels join them as places
-// when mail is built.
+// is a place in the address, /mail/<place>.
 export const viewPlaces = ["inbox", "starred", "sent", "all", "spam", "trash"] as const;
 export type ViewPlace = (typeof viewPlaces)[number];
+
+// Place is where a list's conversations are, as the address and the API
+// name it: a view, or a label's ID.
+export type Place = ViewPlace | (string & {});
 
 // isViewPlace reports whether place, from the address, names a view.
 export function isViewPlace(place: string): place is ViewPlace {

@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/cn";
 import { MemberMenu } from "@/components/member-menu";
@@ -13,6 +13,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { onAccountEndedElsewhere } from "@/features/auth/session-cache";
 import { localStore } from "@/lib/local-store";
 
 // The localStorage key that holds whether the sidebar is open, "true" or
@@ -40,6 +41,10 @@ export function Frame({
   // The member's choice for the full layout, kept for the next visit; the
   // sidebar keeps the rail's and the drawer's itself.
   const [open, setOpen] = useState(() => localStore.getItem(openKey) !== "false");
+  // Another tab signed out, or another member signed in there: this tab's
+  // member data may belong to no one now, so the page loads again, and its
+  // guard reads whose session the browser holds.
+  useEffect(() => onAccountEndedElsewhere(() => window.location.reload()), []);
   const store = useCallback((value: boolean) => {
     setOpen(value);
     localStore.setItem(openKey, String(value));

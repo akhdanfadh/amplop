@@ -133,8 +133,8 @@ Put shared code in the folder for its responsibility:
   message's status with Send again and Edit and send, their wording, and
   when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
-  names, the list beside the reading pane, and the address Back to mail
-  returns to.
+  names, the list beside the reading pane, mail's TanStack DB collections
+  (`conversations.ts`), and the address Back to mail returns to.
 - `src/features/settings`: the settings sidebar.
 - `src/components`: shared components, such as the password input, the
   request error under a form, the status badge, the link styles, the
@@ -1115,6 +1115,26 @@ retry waits, and offline pauses are separate. Later refetches on focus or
 reconnection are separate operations too. A timeout ends a write's
 submission, an opted-in write's retries included, and leaves the form's
 values available with the uncertain-outcome message above.
+
+Mail is the exception: its lists read conversations through a [TanStack
+DB](https://tanstack.com/db) collection over the generated client
+(`features/mail/conversations.ts`), pinned to 1.0.0-rc.1.4, with
+`@tanstack/query-db-collection` 1.5.1 under it, so every list shares one
+copy of each conversation. A list is a live query that loads 50 rows at
+a time as it scrolls; `conversations.ts` turns each load into the API's
+pages, and re-reads only each open list's newest page: every 30 s while
+the tab shows, when it shows again, and back online. When a page fails,
+TanStack DB asks for the whole place to repair the list;
+`conversations.ts` refuses that (hundreds of requests for a large
+Inbox), so the list keeps its rows and stops loading. The rules that
+keep that cheap are in [DESIGN.md](DESIGN.md#data-for-mail). The
+collections live per query client and end with the member's session
+(`onAccountCacheClear` in `features/auth/session-cache.ts`), as do the
+router's loaded pages. `clearAccountCache` tells the browser's other
+inbok tabs over a `BroadcastChannel`, and a signed-in frame that hears
+it loads again, so a tab never shows one member's mail beside another's.
+The package ships agent guides for its installed version in
+`node_modules/@tanstack/db/skills`.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.
