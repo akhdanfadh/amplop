@@ -132,7 +132,8 @@ Put shared code in the folder for its responsibility:
   Outbox list, one message's status with Send again and Edit and send,
   their wording, and when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
-  names, and the list beside the reading pane.
+  names, the list beside the reading pane, and the address Back to mail
+  returns to.
 - `src/features/settings`: the settings sidebar.
 - `src/components`: shared components, such as the password input, the
   request error under a form, the signed-in frame and its member menu, the
@@ -513,13 +514,13 @@ minute, so the checked time stays current; an account inbok cannot use
 waits for its member, so it does not count.
 
 Sign out, in the member menu, deletes the current session, then
-`clearAccountCache` clears account caches and closes any toasts, and
-sign-in opens without the page's leave warning: text typed in Compose is
-dropped (a `DEBT.md` entry). Every sign-in, sign-out, and ended session
-calls `clearAccountCache`, so whatever else holds a member's data clears
-there too. A 401 also completes sign-out because that session is already
-absent or expired. Other failures show an error toast, and the member can
-sign out again. Signing in also
+`clearAccountCache` clears account caches, closes any toasts, and sends
+Back to mail to the Inbox, and sign-in opens without the page's leave
+warning: text typed in Compose is dropped (a `DEBT.md` entry). Every
+sign-in, sign-out, and ended session calls `clearAccountCache`, so
+whatever else holds a member's data clears there too. A 401 also completes
+sign-out because that session is already absent or expired. Other failures
+show an error toast, and the member can sign out again. Signing in also
 clears account data and mutation variables when the request settles, even if the
 sign-in page has closed, so another account cannot inherit them. The public
 setup status survives authentication cache cleanup. Account actions wait for a fresh session

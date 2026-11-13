@@ -17,6 +17,7 @@ import {
   SidebarMenu,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { mailHref } from "@/features/mail/places";
 import { backToMail, lockedAfter, lockedBefore, pageName, thisInbok } from "./text";
 
 // A settings page, as the router names it.
@@ -48,7 +49,7 @@ export function SettingsNav(): ReactElement {
       <SidebarGroup>
         <SidebarMenu>
           <NavItem
-            href={linkOptions({ to: "/mail/$place", params: { place: "inbox" } })}
+            href={mailHref()}
             name={backToMail}
             icon={ArrowLeftIcon}
             isActive={false}
