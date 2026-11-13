@@ -258,7 +258,7 @@ func TestCreateSessionRejectedEmail(t *testing.T) {
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	body := decodeJSON(t, response.Body.Bytes())
 	assert.Equal(t, problemPrefix+"validation-error", body["type"])
-	assert.Equal(t, []any{map[string]any{"location": "body.email", "message": "Enter a valid value."}}, body["errors"])
+	assert.Equal(t, []any{map[string]any{"location": "body.email", "message": "Enter an email address, like name@example.com."}}, body["errors"])
 	assert.Empty(t, response.Result().Cookies())
 }
 

@@ -109,7 +109,7 @@ func TestSetupRejectedEmail(t *testing.T) {
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	body := decodeJSON(t, response.Body.Bytes())
 	assert.Equal(t, problemPrefix+"validation-error", body["type"])
-	assert.Equal(t, []any{map[string]any{"location": "body.email", "message": "Enter a valid value."}}, body["errors"])
+	assert.Equal(t, []any{map[string]any{"location": "body.email", "message": "Enter an email address, like name@example.com."}}, body["errors"])
 }
 
 func TestSetupProblems(t *testing.T) {
@@ -210,11 +210,11 @@ func TestSetupValidation(t *testing.T) {
 		name, field, message string
 		value                any
 	}{
-		{"bad email", "email", "Enter a valid value.", "rejected-email-secret"},
-		{"display name", "email", "Enter a valid value.", "Admin <admin@example.com>"},
+		{"bad email", "email", "Enter an email address, like name@example.com.", "rejected-email-secret"},
+		{"display name", "email", "Enter an email address, like name@example.com.", "Admin <admin@example.com>"},
 		{"long email", "email", "Use 3 to 254 characters.", "a" + longest},
-		{"email type", "email", "Enter a valid value.", 7},
-		{"null email", "email", "Enter a valid value.", nil},
+		{"email type", "email", "Enter an email address, like name@example.com.", 7},
+		{"null email", "email", "Enter an email address, like name@example.com.", nil},
 		{"short password", "password", "Use 15 to 128 characters.", strings.Repeat("p", 14)},
 		{"long password", "password", "Use 15 to 128 characters.", strings.Repeat("p", 129)},
 		{"short Unicode password", "password", "Use 15 to 128 characters.", strings.Repeat("\U0001f512", 14)},

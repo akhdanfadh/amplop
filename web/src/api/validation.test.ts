@@ -80,10 +80,13 @@ describe("emailAddress", () => {
     ["two @", "ana@b@example.com"],
     ["a quoted local part", '"ana"@example.com'],
   ])("refuses %s", (_case, value) => {
-    expect(messages(email, value)).toEqual(["Enter a valid value."]);
+    expect(messages(email, value)).toEqual(["Enter an email address, like name@example.com."]);
   });
 
   it("keeps the contract's length limits", () => {
-    expect(messages(email, "a@")).toEqual(["Must be 3 to 254 characters.", "Enter a valid value."]);
+    expect(messages(email, "a@")).toEqual([
+      "Must be 3 to 254 characters.",
+      "Enter an email address, like name@example.com.",
+    ]);
   });
 });

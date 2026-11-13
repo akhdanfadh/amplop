@@ -5486,7 +5486,7 @@
                       "errors": [
                         {
                           "location": "body.cc[2]",
-                          "message": "Enter a valid value."
+                          "message": "Enter an email address, like name@example.com."
                         }
                       ]
                     }
@@ -5845,7 +5845,7 @@
                   "errors": [
                     {
                       "location": "body.email",
-                      "message": "Enter a valid value."
+                      "message": "Enter an email address, like name@example.com."
                     }
                   ]
                 },
@@ -6264,7 +6264,7 @@
                   "errors": [
                     {
                       "location": "body.email",
-                      "message": "Enter a valid value."
+                      "message": "Enter an email address, like name@example.com."
                     }
                   ]
                 },

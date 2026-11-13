@@ -19,6 +19,10 @@ const requiredFieldPrefix = "inbok-internal-required:"
 // Entries contain safe text from schema limits, never submitted values.
 var inputMessages = map[string]string{}
 
+// emailFormat is the contract's format for an email address field (JSON
+// Schema's "idn-email", RFC 6531 addresses).
+const emailFormat = "idn-email"
+
 // configureValidation remembers safe text before Huma caches its messages.
 // Required fields also carry a private marker for the missing field name.
 func configureValidation() {
@@ -103,6 +107,13 @@ func publicInputError(api huma.API, ctx huma.Context, detail *huma.ErrorDetail) 
 		if combined := rangeCorrection(inputSchema(api, ctx.Operation(), detail.Location)); combined != "" {
 			out.Message = combined
 		}
+		return out
+	}
+
+	// Every other failure of an address field, e.g. a malformed address or
+	// a number in its place, reads as invalidEmailProblem's does.
+	if schema := inputSchema(api, ctx.Operation(), detail.Location); schema != nil && schema.Format == emailFormat {
+		out.Message = invalidEmailMessage
 		return out
 	}
 

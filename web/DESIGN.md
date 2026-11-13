@@ -658,7 +658,9 @@ pull-to-refresh, which would reload the app, never starts.
   `src/api/validation.ts`; fields read `maxLength`, `inputMode`, and
   `autocomplete` from the same schema. An email field takes what the
   server takes, an @ with text on both sides (`emailAddress`), never Zod's
-  stricter `email()`. Forms set `noValidate`.
+  stricter `email()`; a refused address reads "Enter an email address,
+  like name@example.com.", from the web and the server alike. Forms set
+  `noValidate`.
 - Label above (the message editor's rows put it on the left); description
   before the control; error under it, with an icon and words. "(optional)"
   marks optional fields; required ones are unmarked.

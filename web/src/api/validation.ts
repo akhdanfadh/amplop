@@ -2,6 +2,11 @@ import * as z from "zod";
 
 // The pattern the contract uses for "not blank", e.g. NewProbeEvent.note.
 const notBlank = String(/\S/);
+// The pattern emailAddress adds to an address field.
+const addressPattern = z.regexes.unicodeEmail;
+// The server's text for an address it refuses (invalidEmailMessage in
+// backend/internal/httpapi/problem.go).
+const invalidEmail = "Enter an email address, like name@example.com.";
 
 // Number formats that allow only whole numbers, e.g. z.int()'s "safeint".
 const wholeFormats = new Set(["safeint", "int32", "uint32"]);
@@ -12,6 +17,7 @@ const wholeFormats = new Set(["safeint", "int32", "uint32"]);
 // 1 to 10.", so one fix is enough.
 export function validationMessage(iss: z.core.$ZodRawIssue): string {
   if (iss.code === "invalid_format" && iss.pattern === notBlank) return "Can't be blank.";
+  if (iss.code === "invalid_format" && iss.pattern === String(addressPattern)) return invalidEmail;
 
   const { schema } = iss;
   if (schema instanceof z.ZodNumber) return numberRule(schema);
@@ -33,7 +39,7 @@ export function validationMessage(iss: z.core.$ZodRawIssue): string {
 // allows (section 4.5.3.1.1). Orval generates no check for "idn-email",
 // so each form's schema adds this one.
 export function emailAddress(schema: z.ZodString): z.ZodString {
-  return schema.regex(z.regexes.unicodeEmail);
+  return schema.regex(addressPattern);
 }
 
 // "Enter a whole number from 1 to 10.", or with one limit or none.

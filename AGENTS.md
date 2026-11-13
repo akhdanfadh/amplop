@@ -78,6 +78,10 @@ The web app reads these from the contract; keep them stable:
 
 - Not-blank text is `pattern:"\\S"`, which the web words as "Can't be
   blank.". Any other not-blank pattern reads "Enter a valid value.".
+- An email address field is `format:"idn-email"`. The server words any
+  failure of it as "Enter an email address, like name@example.com."
+  (`invalidEmailMessage`), and the web's `emailAddress` check says the
+  same; length limits keep their own text.
 - Field limits (`minimum`, `maximum`, `minLength`, `maxLength`) are the
   web's error messages, so changing one is a contract change.
 - A 422's `errors[].location` is `body.<field>`, e.g.

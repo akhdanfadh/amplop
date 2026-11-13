@@ -114,7 +114,7 @@ describe("settingsSchema", () => {
     ["host", { host: " " }, "Can't be blank."],
     ["port", { port: 0 }, "Enter a whole number from 1 to 65535."],
     ["port", { port: Number.NaN }, "Enter a whole number from 1 to 65535."],
-    ["fromAddress", { fromAddress: "inbok" }, "Enter a valid value."],
+    ["fromAddress", { fromAddress: "inbok" }, "Enter an email address, like name@example.com."],
     ["fromName", { fromName: "n".repeat(65) }, "Must be at most 64 characters."],
     ["password", { password: "p".repeat(256) }, "Must be at most 255 characters."],
   ])("applies the contract's limit on %s", (field, change, message) => {
