@@ -2,8 +2,10 @@
 import "./zod-config";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, type Router } from "@tanstack/react-router";
+import { getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
 import { retryOptions } from "@/api/retry";
 import { NotFound, RouteError, RoutePending, pendingAfterMs } from "@/components/route-states";
+import { sessionFreshMs } from "@/features/auth/session";
 import { verifyEmailPath } from "@/features/email-verification/path";
 import { resetPath } from "@/features/password-reset/path";
 import { completePath } from "@/features/registration/path";
@@ -24,6 +26,9 @@ export function getRouter(): Router<typeof routeTree> {
   const queryClient = new QueryClient({
     defaultOptions: retryOptions,
   });
+  // A page that mounts just after its route guard read the session uses
+  // that read instead of sending another.
+  queryClient.setQueryDefaults(getGetCurrentSessionQueryKey(), { staleTime: sessionFreshMs });
 
   const router = createRouter({
     routeTree,

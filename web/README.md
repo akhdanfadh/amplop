@@ -131,8 +131,9 @@ Put shared code in the folder for its responsibility:
 - `src/features/outgoing-messages`: the compose form and its schema, the
   Outbox list, one message's status with Send again and Edit and send,
   their wording, and when their pages read again (`pollWhile`).
-- `src/components`: shared components, such as the password input and the
-  request error under a form. `ui/` holds the shadcn components we own.
+- `src/components`: shared components, such as the password input, the
+  request error under a form, and the offline banner. `ui/` holds the
+  shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
@@ -156,6 +157,24 @@ what the folder already says, e.g. `features/setup/form.tsx` exports
 Each file in `src/routes` is one route. `pnpm dev` and `pnpm build`
 regenerate `src/routeTree.gen.ts` from them. That file is committed so
 type checking works on a fresh clone; never edit it by hand.
+
+Pages sit under layout routes, whose names start with `_` and add nothing
+to the address. A guard runs in `beforeLoad`, before anything draws, and
+reads the session through `readSession` (`features/auth/guard.ts`), which
+uses the cached session when a page has read it:
+
+| Layout route        | Pages                              | Guard                                                         |
+| ------------------- | ---------------------------------- | ------------------------------------------------------------- |
+| `_auth`             | Signed-out pages                   | None; the wordmark over one column                            |
+| `_auth/_signed-out` | Sign-in, Forgot password, Register | A signed-in member goes to `/`; a failed check shows the page |
+
+Pages emailed links open (`/verify-email`, `/reset-password`,
+`/register/complete`) keep their addresses and sit in `_auth` without a
+guard, so they work signed in or out. The signed-out layout shows
+`OfflineBanner` at the top while the browser reports no connection, read
+from TanStack Query's `onlineManager`. The router counts a session read in
+the last 5 s as fresh (`sessionFreshMs`), so a page that opens just after
+a guard read it does not read it again.
 
 Every page gets the same states from the router (`src/router.tsx`):
 `RoutePending`, a spinner with "Loading...", when the page's checks take
@@ -207,6 +226,9 @@ The browser remembers a local setup attempt until reload, so a status check
 that confirms completion after a lost response also shows the instructions.
 
 The `/sign-in` page submits credentials through the generated mutation hook.
+`/sign-in?redirect=<path>` returns to that path after sign-in, else to `/`;
+anything but a path on this site is dropped (`features/auth/search.ts`), so
+a crafted link can't send a member elsewhere.
 Accounts with TOTP then enter six authenticator digits in two groups of three.
 "Use a backup code" switches the same control to ten characters in two groups
 of five. Pasting ignores spaces and dashes. Switching clears the previous entry.

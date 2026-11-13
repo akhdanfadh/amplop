@@ -4,7 +4,7 @@ import { useLinkSecret } from "@/hooks/use-link-secret";
 import { verifyEmailPath } from "@/features/email-verification/path";
 import { RedeemForm } from "@/features/email-verification/redeem-form";
 
-export const Route = createFileRoute("/verify-email")({
+export const Route = createFileRoute("/_auth/verify-email")({
   component: VerifyEmail,
   head: () => ({ meta: [{ title: "Verify your email address - inbok" }] }),
 });

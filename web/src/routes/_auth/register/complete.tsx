@@ -7,7 +7,7 @@ import { useLinkSecret } from "@/hooks/use-link-secret";
 const focusClass = "focus-visible:focus-ring";
 const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
-export const Route = createFileRoute("/register/complete")({
+export const Route = createFileRoute("/_auth/register/complete")({
   component: CompleteRegistration,
   head: () => ({ meta: [{ title: "Create your account - inbok" }] }),
 });

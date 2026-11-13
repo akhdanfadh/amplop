@@ -5,13 +5,15 @@ import { useGetRegistration } from "@/api/generated/inbok";
 import { SignInForm } from "@/features/auth/sign-in-form";
 import { CodeForm } from "@/features/auth/code-form";
 import { useSetup } from "@/features/setup/gate";
+import { signInSearch } from "@/features/auth/search";
 import { clearAccountCache } from "@/features/auth/session-cache";
 
 const focusClass = "focus-visible:focus-ring";
 const noticeId = "sign-in-notice";
 const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-offset-4 ${focusClass}`;
 
-export const Route = createFileRoute("/sign-in")({
+export const Route = createFileRoute("/_auth/_signed-out/sign-in")({
+  validateSearch: signInSearch,
   component: SignIn,
   head: () => ({ meta: [{ title: "Sign in to inbok" }] }),
 });
@@ -19,6 +21,7 @@ export const Route = createFileRoute("/sign-in")({
 function SignIn(): ReactElement {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { redirect } = Route.useSearch();
   const { completedHere } = useSetup();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [step, setStep] = useState<"password" | "code">("password");
@@ -43,7 +46,8 @@ function SignIn(): ReactElement {
 
   function finishSignIn(): void {
     clearAccountCache(queryClient);
-    void navigate({ to: "/", replace: true });
+    // Back to the page that sent the member here, else the start.
+    void navigate({ href: redirect ?? "/", replace: true });
   }
 
   return (

@@ -30,7 +30,7 @@ export function SetupGate({ children }: { children: ReactNode }) {
     // The URL can change before the previous page has finished unmounting.
     select: (state) =>
       trimPathRight(state.location.pathname).toLowerCase() === "/setup" &&
-      state.matches.at(-1)?.routeId === "/setup",
+      state.matches.at(-1)?.routeId === "/_auth/setup",
   });
   const status = useGetSetupStatus({
     // Keep setup reachable even when the browser reports offline.

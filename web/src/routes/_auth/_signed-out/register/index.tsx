@@ -12,7 +12,7 @@ const linkClass = `inline-flex min-h-11 w-fit items-center underline underline-o
 // before the first.
 type Shown = "none" | "error" | "open" | "closed";
 
-export const Route = createFileRoute("/register/")({
+export const Route = createFileRoute("/_auth/_signed-out/register/")({
   component: Register,
   head: () => ({ meta: [{ title: "Create an account - inbok" }] }),
 });

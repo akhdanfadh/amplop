@@ -5,7 +5,7 @@ import { userMessage } from "@/api/problem";
 import { SetupForm } from "@/features/setup/form";
 import { Button } from "@/components/ui/button";
 
-export const Route = createFileRoute("/setup")({
+export const Route = createFileRoute("/_auth/setup")({
   component: Setup,
   head: () => ({ meta: [{ title: "Set up inbok" }] }),
 });
