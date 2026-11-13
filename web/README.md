@@ -144,7 +144,11 @@ Put shared code in the folder for its responsibility:
   page (`AppShell`), the password input, the request error under a form,
   the status badge, the link styles, the signed-in frame and its member
   menu, the offline banner, and the pages for loading, failure, and Page
-  not found. `ui/` holds the shadcn components we own.
+  not found. `ui/` holds the shadcn components we own. `form/` is the form
+  kit, kept together because its parts only work as one: `useAppForm`
+  with the field kinds and the form parts it is built from, and
+  `useRefusals`, whose check plugs into it; "Forms" below says how to use
+  it.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the

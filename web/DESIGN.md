@@ -651,23 +651,26 @@ pull-to-refresh, which would reload the app, never starts.
 
 ### Forms
 
-- Build fields with the shared `createFormHook` components (`useAppForm`:
-  text, email, password, radio, checkbox, submit). They own the label,
-  description, error, `aria-describedby`, and the server-refusal check.
+- Build fields with the shared `createFormHook` components (`useAppForm`
+  in `src/components/form/`: a field kind per control, e.g. email and
+  password, plus the form and its submit button; a new kind joins with its
+  first form). They own the label, description, error, `aria-describedby`,
+  and the lock while the form sends; the form owns focus after a submit.
 - Schemas extend the generated Zod schemas; messages come from
-  `src/api/validation.ts`; fields read `maxLength`, `inputMode`, and
-  `autocomplete` from the same schema. An email field takes what the
+  `src/api/validation.ts`. An email field takes what the
   server takes, an @ with text on both sides (`emailAddress`), never Zod's
   stricter `email()`; a refused address reads "Enter an email address,
-  like name@example.com.", from the web and the server alike. Forms set
-  `noValidate`.
+  like name@example.com.", from the web and the server alike. Fields set
+  no `maxLength`, which would cut a pasted value without a word; the
+  length error says it instead. Forms set `noValidate`.
 - Label above (the message editor's rows put it on the left); description
   before the control; error under it, with an icon and words. "(optional)"
   marks optional fields; required ones are unmarked.
 - Errors appear after the first submit, then update live. Focus moves to
-  the first invalid field. A server refusal stays while the field holds
-  the refused value; a refusal naming two fields clears when either
-  changes.
+  the first invalid field. A server refusal stays while its field holds
+  the refused value, returns if the member types that value again, and
+  keeps that value from being sent. A rule that spans fields is also in
+  the form's schema, which refuses it first.
 - The submit button names what it does while working ("Saving...") and
   ignores repeats. A request failure shows under the button through
   `RequestError` (a reference only for faults); success is a quiet
