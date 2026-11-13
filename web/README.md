@@ -1166,9 +1166,13 @@ client and end with the member's session (`onAccountCacheClear` in
 `features/auth/session-cache.ts`), as do the router's loaded pages.
 `clearAccountCache` tells the browser's other inbok tabs over a
 `BroadcastChannel`, and a signed-in frame that hears it loads again, so
-a tab never shows one member's mail beside another's. The package ships
-agent guides for its installed version in
-`node_modules/@tanstack/db/skills`.
+a tab never shows one member's mail beside another's. Mail actions, e.g.
+the row's star, go through `runAction` (`features/mail/actions.ts`)
+instead of a mutation hook: it changes the rows at once, sends the
+action, and keeps the rows the API answers with; a conversation the API
+refuses, or every one when the request fails, goes back as it was, and
+the caller says why. The package ships agent guides for its installed
+version in `node_modules/@tanstack/db/skills`.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.

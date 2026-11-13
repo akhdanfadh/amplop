@@ -65,6 +65,22 @@ export const yesterday = "Yesterday";
 // The reading pane's word before a message's recipients.
 export const recipientsLabel = "To";
 
+// The star button's name, which says whether it is pressed.
+export const starName = "Star";
+
+// starFailed returns what a failed star or unstar says, by starred, what
+// it asked for.
+export function starFailed(starred: boolean): string {
+  return starred ? "Couldn't star the conversation" : "Couldn't remove the star";
+}
+
+// Why the API refused to change a conversation, with the fix.
+export const refusedText = {
+  "not-found": "It's no longer in Gmail.",
+  "needs-reconnect": "Reconnect its account in Settings, then try again.",
+  failed: "Gmail didn't answer. Try again.",
+} as const;
+
 // Who a row names when its newest messages carry no sender at all.
 export const unknownSender = "Unknown sender";
 

@@ -238,6 +238,14 @@
   outline-offset: -2px;
 }
 
+/* Fades a line's end out, for an icon laid over its last 16 px: clear
+ * under the last 1.5 rem, 8 px to spare beside the icon, then whole by
+ * 2.75 rem. A mask fades the text itself, so it works on any surface the
+ * row has (rest, hover, open) in either theme. */
+@utility fade-end {
+  mask-image: linear-gradient(to left, transparent 1.5rem, black 2.75rem);
+}
+
 /* Hidden for the router's pending delay (src/router.tsx), 300 ms, then
  * shown: for a loading view the router does not time, e.g. the setup
  * check's in the prerendered shell, so a quick check shows nothing. */

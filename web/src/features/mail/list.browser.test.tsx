@@ -289,6 +289,11 @@ describe("ConversationList", () => {
   });
 });
 
+// starOf returns the star button of the row named like name.
+function starOf(name: RegExp) {
+  return page.getByRole("row", { name }).getByRole("button", { name: "Star" });
+}
+
 describe("one account's list", () => {
   const two = [listedAccount(1, "ana@example.com"), listedAccount(2, "ana@work.example", 3)];
 
@@ -338,6 +343,128 @@ describe("the list's rows", () => {
   });
 });
 
+describe("the row's star", () => {
+  it("shows on hover, and stars the conversation at Gmail", async () => {
+    const api = mailApi([conversation(1), conversation(2)], one);
+    await app(api);
+    const row = page.getByRole("row", { name: /^Bo Tan, Subject 1,/ });
+    const star = starOf(/^Bo Tan, Subject 1,/);
+    await expect.element(row).toBeVisible();
+    await expect.element(star).toHaveStyle({ opacity: "0" });
+    await userEvent.hover(row);
+    await expect.element(star).toHaveStyle({ opacity: "1" });
+
+    await userEvent.click(star);
+    await expect.element(star).toHaveAttribute("aria-pressed", "true");
+    expect(api.actions).toEqual([{ action: "star", ids: [conversation(1).id] }]);
+    await expect.element(page.getByRole("row", { name: /Subject 1, .*Starred/ })).toBeVisible();
+  });
+
+  it("lies over an unstarred preview's faded end, so the preview never moves", async () => {
+    const long = `Long preview ${"word ".repeat(60)}`;
+    const api = mailApi(
+      [conversation(1, { preview: long }), conversation(2, { preview: long, starred: true })],
+      one,
+    );
+    await app(api);
+    const row = page.getByRole("row", { name: /^Bo Tan, Subject 1,/ });
+    const starredRow = page.getByRole("row", { name: /^Bo Tan, Subject 2,/ });
+    await expect.element(row).toBeVisible();
+    await expect.element(starredRow).toBeVisible();
+    const preview = row.getByText(/^Long preview/).element();
+    const starred = starredRow.getByText(/^Long preview/).element();
+    const width = preview.getBoundingClientRect().width;
+    expect(getComputedStyle(preview).maskImage).toBe("none");
+    // A starred row's preview gives way to its star.
+    expect(starred.getBoundingClientRect().width).toBeLessThan(width);
+
+    // From the next row, as the pointer comes to it: one left resting on
+    // this row by an earlier test would raise no hover.
+    await userEvent.hover(starredRow);
+    await userEvent.hover(row);
+    await expect.element(starOf(/^Bo Tan, Subject 1,/)).toHaveStyle({ opacity: "1" });
+    expect(preview.getBoundingClientRect().width).toBe(width);
+    expect(getComputedStyle(preview).maskImage).toContain("linear-gradient");
+
+    // Leaving, the star is gone by the time the text returns.
+    await userEvent.unhover(row);
+    await vi.waitFor(() => expect(getComputedStyle(preview).maskImage).toBe("none"), {
+      timeout: 10_000,
+    });
+    expect(getComputedStyle(starOf(/^Bo Tan, Subject 1,/).element()).opacity).toBe("0");
+  });
+
+  it("fades the preview's end under it when the keyboard reaches the row or the star", async () => {
+    const api = mailApi([conversation(1), conversation(2)], one);
+    await app(api);
+    const first = page.getByRole("row", { name: /^Bo Tan, Subject 2,/ });
+    const row = page.getByRole("row", { name: /^Bo Tan, Subject 1,/ });
+    const preview = () => row.getByText("Preview 1").element();
+    await expect.element(row).toBeVisible();
+    expect(getComputedStyle(preview()).maskImage).toBe("none");
+
+    first.element().focus();
+    await userEvent.keyboard("{ArrowDown}");
+    await expect.element(row).toHaveAttribute("data-focus-visible", "true");
+    expect(getComputedStyle(preview()).maskImage).toContain("linear-gradient");
+
+    // On the star, the row itself no longer has focus.
+    await userEvent.keyboard("{ArrowRight}");
+    await expect.element(starOf(/^Bo Tan, Subject 1,/)).toHaveFocus();
+    await expect.element(row).not.toHaveAttribute("data-focus-visible");
+    expect(getComputedStyle(preview()).maskImage).toContain("linear-gradient");
+  });
+
+  it("hides again once the pointer leaves an unstarred row", async () => {
+    const api = mailApi([conversation(1, { starred: true })], one);
+    await app(api);
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    const star = starOf(/Subject 1,/);
+    await expect.element(star).toHaveStyle({ opacity: "1" });
+    await userEvent.hover(row);
+    await userEvent.click(star);
+    await expect.element(star).toHaveAttribute("aria-pressed", "false");
+    await userEvent.unhover(row);
+    await expect.element(star).toHaveStyle({ opacity: "0" });
+  });
+
+  it("is reached from its row with the arrow keys", async () => {
+    const api = mailApi([conversation(1)], one);
+    await app(api);
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
+    row.element().focus();
+    await userEvent.keyboard("{ArrowRight}");
+    const star = starOf(/Subject 1,/);
+    await expect.element(star).toHaveFocus();
+    await expect.element(star).toHaveStyle({ opacity: "1" });
+    await userEvent.keyboard(" ");
+    await expect.element(star).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("goes back and says why when Gmail refuses", async () => {
+    const api = mailApi([conversation(1)], one);
+    api.refuse[conversation(1).id] = "not-found";
+    await app(api);
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
+    await userEvent.hover(row);
+    await userEvent.click(starOf(/Subject 1,/));
+    await expect.element(page.getByText("Couldn't star the conversation")).toBeVisible();
+    await expect.element(page.getByText("It's no longer in Gmail.")).toBeVisible();
+    await expect.element(starOf(/Subject 1,/)).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("goes back when the request fails", async () => {
+    const api = mailApi([conversation(1, { starred: true })], one);
+    api.failAction = serverError;
+    await app(api);
+    await userEvent.click(starOf(/Subject 1,/));
+    await expect.element(page.getByText("Couldn't remove the star")).toBeVisible();
+    await expect.element(starOf(/Subject 1,/)).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
 describe("the list's failures", () => {
   it("keeps its rows and stops when an older page fails, then tries again", async () => {
     const api = mailApi(
@@ -377,6 +504,19 @@ describe("the list's failures", () => {
     const reads = api.requests.filter((r) => r.startsWith("/api/v0/conversations?"));
     // One read, not a loop of them once the mail is dropped.
     expect(reads.length).toBeLessThanOrEqual(2);
+  });
+
+  it("opens sign-in when a star finds the session ended", async () => {
+    const api = mailApi([conversation(1)], one);
+    const { router } = await app(api);
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
+    api.signedOut = true;
+    await userEvent.hover(row);
+    await userEvent.click(starOf(/Subject 1,/));
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"), {
+      timeout: 10_000,
+    });
   });
 
   it("keeps its rows and says since when after a refresh fails", async () => {
@@ -501,5 +641,21 @@ describe("the list's order and refreshes", () => {
     button.element().focus();
     await userEvent.keyboard("{Enter}");
     await expect.element(page.getByRole("row", { name: /Subject 100,/ })).toHaveFocus();
+  });
+
+  it("sends a quick star and unstar one after the other", async () => {
+    const api = mailApi([conversation(1)], one);
+    await app(api);
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
+    await userEvent.hover(row);
+    const star = starOf(/Subject 1,/);
+    await userEvent.click(star);
+    await userEvent.click(star);
+    await vi.waitFor(() => expect(api.actions.map((a) => a.action)).toEqual(["star", "unstar"]), {
+      timeout: 10_000,
+    });
+    await expect.element(star).toHaveAttribute("aria-pressed", "false");
+    expect(api.conversations[0]?.starred).toBe(false);
   });
 });

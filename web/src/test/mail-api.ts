@@ -1,4 +1,9 @@
-import type { ConversationRow, ListedAccount, PlaceCount } from "@/api/generated/model";
+import {
+  ConversationActionBody,
+  type ConversationRow,
+  type ListedAccount,
+  type PlaceCount,
+} from "@/api/generated/model";
 
 const notFound = 404;
 const unauthorized = 401;
@@ -50,21 +55,26 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 }
 
 // MailApi is a fake inbok API for mail pages: it pages conversations as
-// List Conversations does, counts new ones, reads one, lists accounts and
-// places, and answers a signed-in session. failNext makes the next
-// conversation list request answer status, and failOlder every request for
-// an older page until it is cleared; signedOut answers everything 401, as
-// after the session ended. requests records every path and search it was
-// asked.
+// List Conversations does, counts new ones, lists accounts and places, and
+// answers a signed-in session; it stars and unstars conversations. failNext
+// makes the next conversation list request answer status, failOlder every
+// request for an older page until it is cleared, failAction the
+// next action, and refuse refuses an action on a conversation, by ID, with
+// a reason; signedOut answers everything 401, as after the session ended.
+// requests records every path and search it was asked; actions every
+// action body.
 export type MailApi = {
   conversations: ConversationRow[];
   accounts: ListedAccount[];
   places: PlaceCount[];
   requests: string[];
+  actions: { action: string; ids: string[] }[];
   failNext: number | undefined;
   failOlder: number | undefined;
+  failAction: number | undefined;
   signedOut: boolean;
-  fetch: (input: RequestInfo | URL) => Promise<Response>;
+  refuse: Record<string, "not-found" | "needs-reconnect" | "failed">;
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 };
 
 // mailApi returns a MailApi holding conversations and accounts.
@@ -74,10 +84,13 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     accounts,
     places: [],
     requests: [],
+    actions: [],
     failNext: undefined,
     failOlder: undefined,
+    failAction: undefined,
     signedOut: false,
-    fetch: async (input) => {
+    refuse: {},
+    fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.href);
       api.requests.push(url.pathname + url.search);
       if (api.signedOut) return problem(unauthorized, "/api/v0/problems/unauthorized");
@@ -90,6 +103,31 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         }
         if (api.failOlder !== undefined && search.has("before")) return problem(api.failOlder);
         return Response.json({ data: { conversations: list(api.conversations, search) } });
+      }
+      if (path === "/api/v0/conversations/actions") {
+        const { action, ids } = ConversationActionBody.parse(
+          JSON.parse(typeof init?.body === "string" ? init.body : "{}"),
+        );
+        api.actions.push({ action, ids });
+        if (api.failAction !== undefined) {
+          const status = api.failAction;
+          api.failAction = undefined;
+          return problem(status);
+        }
+        const refused = ids.filter((id) => id in api.refuse);
+        const changed = api.conversations.filter(
+          (c) => ids.includes(c.id) && !refused.includes(c.id),
+        );
+        for (const c of changed) {
+          if (action === "star" || action === "unstar") c.starred = action === "star";
+        }
+        return Response.json({
+          data: {
+            conversations: changed,
+            refused: refused.map((id) => ({ id, reason: api.refuse[id] })),
+            undo: action === "star" ? "unstar" : "star",
+          },
+        });
       }
       if (path === "/api/v0/conversations/new-count") {
         const after = Date.parse(search.get("after") ?? "");

@@ -14,6 +14,7 @@ import { Collection, Link } from "react-aria-components";
 import { ArrowUpIcon } from "lucide-react";
 import { useCountNewConversations, useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccountOutput } from "@/api/generated/model/listedAccount.zod";
+import { userMessage } from "@/api/problem";
 import { ApiError } from "@/api/transport";
 import { accountName } from "@/components/account-mark";
 import { ReadError } from "@/components/read-error";
@@ -21,10 +22,12 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { GridList, GridListEnd, GridListLoadMore } from "@/components/ui/grid-list";
 import { Skeleton } from "@/components/ui/skeleton";
+import { showError } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
-import { mailData, placeWhere, refreshNewest, restartMail } from "./conversations";
+import { runAction } from "./actions";
+import { currentMail, mailData, placeWhere, refreshNewest, restartMail } from "./conversations";
 import { useKeepPlace, useRestIntent, useRowSize, useToday } from "./list-state";
 import type { Place } from "./places";
 import { ConversationRow, createOpenStore, type RowAccount } from "./row";
@@ -42,6 +45,8 @@ import {
   tryAgain,
   noAccountsTitle,
   refreshFailed,
+  refusedText,
+  starFailed,
   stillSyncing,
 } from "./text";
 
@@ -200,6 +205,29 @@ export function ConversationList({
     });
   }
 
+  // star stars or unstars a conversation; every list shows it at once, and
+  // a refusal or failure puts it back and says why (DESIGN.md "Feedback").
+  // No toast on success: the star stays in view, nor for an answer that
+  // arrives once the member's mail has ended, e.g. after sign-out.
+  const star = (id: string, starred: boolean) => {
+    const current = () => currentMail(client)?.conversations === conversations;
+    runAction(conversations, starred ? "star" : "unstar", [id]).then(
+      (result) => {
+        const refused = result.refused[0];
+        if (refused && current()) showError(starFailed(starred), refusedText[refused.reason]);
+      },
+      (err: unknown) => {
+        if (!current()) return;
+        if (err instanceof ApiError && err.status === unauthorized) {
+          clearAccountCache(client);
+          void navigate({ to: "/sign-in", replace: true });
+          return;
+        }
+        showError(starFailed(starred), err instanceof ApiError ? userMessage(err) : undefined);
+      },
+    );
+  };
+
   // Focus resting on a row reads its conversation ahead, as hovering does.
   const onFocus = (event: FocusEvent) => {
     const row =
@@ -263,6 +291,7 @@ export function ConversationList({
                 // conversation ahead, as its own Link would (ADR031).
                 onRest={() => readAhead.rest(conversation.id)}
                 onLeave={readAhead.leave}
+                onStar={(starred) => star(conversation.id, starred)}
               />
             )}
           </Collection>

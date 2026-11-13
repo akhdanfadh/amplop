@@ -134,6 +134,9 @@ text).
   no one-off values such as `mt-[13px]`.
 - **Control height:** 36 px for a fine pointer, 44 px for a coarse one
   (`pointer-coarse:`), set in the components themselves, never per page.
+  A control inside a list row, e.g. the star, is 24 px, WCAG 2.2's
+  smallest target (2.5.8), so it fits its 20 px line; on a touch screen
+  it is only a mark, and its action is in the row's menu.
   Nav rows 32 px (44 px coarse); list rows 76 px. Buttons in dense bars
   (the sidebar's header, a toast, a drawer's close) 32 px (44 px coarse),
   so they sit level with the nav rows beside them.
@@ -188,24 +191,24 @@ shadcn/ui's **React Aria flavour** for every component, added with
 edit, each with its first caller. Icons are `lucide-react`, 16 px, in the
 text colour of their role.
 
-| Need                                     | Component                                                                        |
-| ---------------------------------------- | -------------------------------------------------------------------------------- |
-| Sidebar, rail, drawer                    | `sidebar`                                                                        |
-| List beside the reading pane             | none: the list has a fluid width ("Panes and widths")                            |
-| Member menu with the theme choice        | `popover` holding a `toggle-group`                                               |
-| More menus                               | `dropdown-menu`                                                                  |
-| Right-click row menu                     | `context-menu`                                                                   |
-| Icon button names, and Send's shortcut   | `tooltip`                                                                        |
-| Undo and error toasts                    | `toast.tsx` on React Aria's Toast (see below)                                    |
-| Phone editors and search                 | `sheet`                                                                          |
-| From picker in compose and reply         | `select` (shows the account mark)                                                |
-| Recipient chips                          | React Aria's `TagGroup` in the field; `combobox` once contacts suggest addresses |
-| Search box and its dropdown              | `combobox`                                                                       |
-| Placeholder rows, spinners, empty states | `skeleton`, `spinner`, `empty`                                                   |
-| Settings rows                            | `item`                                                                           |
-| Status                                   | `badge` with tones neutral, info, success, warning, destructive                  |
-| Initials avatars                         | `avatar`, plus the account ring                                                  |
-| Confirmations                            | `alert-dialog`                                                                   |
+| Need                                     | Component                                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Sidebar, rail, drawer                    | `sidebar`                                                                                   |
+| List beside the reading pane             | none: the list has a fluid width ("Panes and widths")                                       |
+| Member menu with the theme choice        | `popover` holding a `toggle-group`                                                          |
+| More menus                               | `dropdown-menu`                                                                             |
+| Right-click row menu                     | `context-menu`                                                                              |
+| Icon button names, and Send's shortcut   | `tooltip`, but none on an in-row toggle whose icon and state are its meaning, e.g. the star |
+| Undo and error toasts                    | `toast.tsx` on React Aria's Toast (see below)                                               |
+| Phone editors and search                 | `sheet`                                                                                     |
+| From picker in compose and reply         | `select` (shows the account mark)                                                           |
+| Recipient chips                          | React Aria's `TagGroup` in the field; `combobox` once contacts suggest addresses            |
+| Search box and its dropdown              | `combobox`                                                                                  |
+| Placeholder rows, spinners, empty states | `skeleton`, `spinner`, `empty`                                                              |
+| Settings rows                            | `item`                                                                                      |
+| Status                                   | `badge` with tones neutral, info, success, warning, destructive                             |
+| Initials avatars                         | `avatar`, plus the account ring                                                             |
+| Confirmations                            | `alert-dialog`                                                                              |
 
 **Toasts** use React Aria's own
 [Toast](https://react-aria.adobe.com/Toast), wrapped in inbok's
@@ -310,12 +313,17 @@ last two redirect into settings, so settings can move without the server.
   moves its conversation up in every view it is in, as in Gmail's
   conversation view.
 - **Row, three lines:** who (first names, "me", count) and date / subject /
-  snippet, ended by the star while starred. A 36 px initials avatar ringed
-  in the account colour leads (initials of the newest message's sender),
-  its top on the first line's, 16 px from the list's edge (the heading's
-  inset) and 12 px from the text, closer than the edge so it reads with
-  its text; filtered to one account, the ring is dropped. Unread rows are 600 weight. Markers: an
-  attachment clip, a star filled in the text colour.
+  snippet, ended by the star button. A starred row's snippet gives way to
+  it; an unstarred row's keeps its whole width, and the star lies over its
+  end, which fades out under it, so no text moves as the pointer passes. The
+  star shows while the row is hovered or has keyboard focus (→ reaches it),
+  or while starred; pressing it stars or unstars at once. A 36 px initials
+  avatar ringed in the account colour leads (initials of the newest
+  message's sender), its top on the first line's, 16 px from the list's edge
+  (the heading's inset) and 12 px from the text, closer than the edge so it
+  reads with its text; filtered to one account, the ring is dropped. Unread
+  rows are 600 weight. Markers: an attachment clip, a star filled in the
+  text colour.
 - **Dates:** today the time (the browser's 12 or 24 hour clock),
   "Yesterday", the weekday within 7 days, "2 Nov" this year, "2 Nov 2025"
   in another year, a later day too; the full date and time on hover.
@@ -515,12 +523,13 @@ is inbok's own and runs Check for new mail; the list box sets
 ### Feedback
 
 - **Reversible actions** (archive, delete to Trash, read, star, and bulk
-  versions) happen at once; a toast says what happened, with Undo, which
-  sends the opposite action the API names. Undo appears only once the
-  action's request has settled, as Gmail's own toast does: sent sooner,
-  it could reach Gmail before the action it undoes. Toasts last 10 s.
-  A bulk action Gmail refuses for some conversations rolls back only
-  those, and says how many failed.
+  versions) happen at once; when the result leaves the screen, e.g. an
+  archived row, a toast says what happened, with Undo, which sends the
+  opposite action the API names. Undo appears only once the action's request
+  has settled, as Gmail's own toast does: sent sooner, it could reach Gmail
+  before the action it undoes. Toasts last 10 s. A result that stays in
+  view, e.g. a star, gets no toast. A bulk action Gmail refuses for some
+  conversations rolls back only those, and says how many failed.
 - **Irreversible actions** (disconnect, deactivate, turn off two-factor
   authentication, discard typed text) ask first in an `AlertDialog`: the
   title asks, the body states the consequence and what is kept, the
@@ -602,7 +611,8 @@ gate"):
   date's ties needs no request; "older than a date" is asked as the date
   alone, without an ID.
 - Action handlers store the rows the server returns (`writeUpsert`) instead
-  of refetching.
+  of refetching; an action whose guess changes nothing sends its request
+  itself, since TanStack DB skips a transaction without changes.
 
 ## Wording
 
