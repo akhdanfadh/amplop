@@ -1,25 +1,24 @@
-import type { ConnectedAccount } from "@/api/generated/model";
+import type {
+  ConnectedAccount,
+  ConversationMessageOutput,
+  MailAddressOutput,
+} from "@/api/generated/model";
 
 // MailAddress is one address of a synchronized message, as the conversation
 // API gives it: a display name, often empty, and the address.
-export type MailAddress = { name: string; address: string };
+export type MailAddress = MailAddressOutput;
 
 // AnsweredMessage is what a reply needs of the message it answers: its ID,
 // the account that holds it, its senders and recipients, and whether that
 // account sent it (it is in the account's Sent mail).
 //
-// DESIGN: it has the shape of branch 3's ConversationMessage plus its
-// account and the per-message sent flag, so the conversation view passes
-// one in as it is.
-export type AnsweredMessage = {
-  id: string;
-  accountId: number;
-  from: MailAddress[];
-  to: MailAddress[];
-  cc: MailAddress[];
-  replyTo: MailAddress[];
-  sent: boolean;
-};
+// DESIGN: it is Get Conversation's message plus its conversation's account,
+// so the conversation view passes a message in as it is, with the
+// conversation's accountId.
+export type AnsweredMessage = Pick<
+  ConversationMessageOutput,
+  "id" | "from" | "to" | "cc" | "replyTo" | "sent"
+> & { accountId: number };
 
 // ReplyMode is which button opened the editor.
 export type ReplyMode = "reply" | "reply-all";

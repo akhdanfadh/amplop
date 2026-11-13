@@ -355,6 +355,10 @@
             },
             "type": "array"
           },
+          "sent": {
+            "description": "Whether it is in Sent: its account sent it, from its own address or an alias.",
+            "type": "boolean"
+          },
           "spam": {
             "description": "Whether it is in Spam.",
             "type": "boolean"
@@ -392,6 +396,7 @@
           "starred",
           "spam",
           "trash",
+          "sent",
           "labelIds"
         ],
         "type": "object"

@@ -8,6 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
+import type { ConversationMessage } from "@/api/generated/model";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { Route as appRoot } from "@/routes/__root";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
@@ -55,7 +56,7 @@ describe("Reader", () => {
   it("shows each sender's address beside the name", async () => {
     const row = conversation(1);
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
-    const message = {
+    const message: ConversationMessage = {
       id: "00000000-0000-4000-8000-000000000901",
       date: row.date,
       subject: row.subject,
@@ -67,6 +68,7 @@ describe("Reader", () => {
       labelIds: [],
       spam: false,
       trash: false,
+      sent: false,
       starred: false,
       unread: false,
     };

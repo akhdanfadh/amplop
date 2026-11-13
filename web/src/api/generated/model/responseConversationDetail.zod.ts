@@ -51,6 +51,7 @@ export const ResponseConversationDetail = zod.object({
   "address": zod.string().describe('The address; empty for an entry that is none, e.g. a group\'s name, which is then the name.'),
   "name": zod.string().describe('The display name, perhaps empty.')
 })),
+  "sent": zod.boolean().describe('Whether it is in Sent: its account sent it, from its own address or an alias.'),
   "spam": zod.boolean().describe('Whether it is in Spam.'),
   "starred": zod.boolean(),
   "subject": zod.string(),

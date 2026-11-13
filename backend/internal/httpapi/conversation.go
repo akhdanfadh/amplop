@@ -344,6 +344,7 @@ type conversationMessage struct {
 	Starred  bool          `json:"starred"`
 	Spam     bool          `json:"spam" doc:"Whether it is in Spam."`
 	Trash    bool          `json:"trash" doc:"Whether it is in Trash."`
+	Sent     bool          `json:"sent" doc:"Whether it is in Sent: its account sent it, from its own address or an alias."`
 	LabelIDs []uuid.UUID   `json:"labelIds" nullable:"false" doc:"The account's labels it is in, in a stable order, by name."`
 }
 
@@ -392,6 +393,7 @@ func (h conversationHandler) handleGetConversation(ctx context.Context, in *conv
 			Starred:  m.Flagged,
 			Spam:     m.InSpam(),
 			Trash:    m.InTrash(),
+			Sent:     m.InSent(),
 			LabelIDs: m.LabelIDs(),
 		})
 	}

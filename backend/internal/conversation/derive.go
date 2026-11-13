@@ -187,6 +187,12 @@ func (m Message) InTrash() bool {
 	return m.has(mailsync.RoleTrash)
 }
 
+// InSent reports whether m is in Sent: its account sent it, from its own
+// address or an alias.
+func (m Message) InSent() bool {
+	return m.has(mailsync.RoleSent)
+}
+
 // LabelIDs returns the IDs of the member's own mailboxes m is in, those
 // with no role that the member made, in the order of [Message.Mailboxes].
 func (m Message) LabelIDs() []uuid.UUID {

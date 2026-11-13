@@ -636,11 +636,12 @@ editor is inline on every screen, a phone's too, so an earlier message
 stays a scroll away while the member writes. While the editor is open every
 Reply hides, so the open editor is never replaced or moved, which would
 remount it and lose its text and Idempotency-Key. Each piece takes the
-answered message as an `AnsweredMessage`: branch 3's conversation message
-(senders and recipients as `{name, address}`), its account, and whether
-the account sent it, the per-message `sent` flag the conversation API is
-to add. `replyDefaults` (`reply-defaults.ts`) fills the editor, with
-table tests:
+answered message as an `AnsweredMessage`: a message of Get Conversation
+(senders and recipients as `{name, address}`, and `sent`, whether its
+account sent it: it is in that account's Sent mail) plus the
+conversation's `accountId`. It reads only the member's accounts, so the
+conversation view passes a message in as it is. `replyDefaults`
+(`reply-defaults.ts`) fills the editor, with table tests:
 
 - From is the account that received the message while it can send;
   otherwise none is chosen, and From's description names the account

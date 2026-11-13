@@ -230,6 +230,7 @@ func TestGetConversation(t *testing.T) {
 			ReplyTo: []mailsync.Address{}, To: []mailsync.Address{{Address: "alex@example.com"}}, CC: []mailsync.Address{},
 			Preview: "Numbers attached", Flagged: true,
 			Mailboxes: []conversation.Mailbox{
+				{ID: uuid.New(), Role: mailsync.RoleSent, MadeBy: mailsync.MadeByProvider},
 				{ID: uuid.New(), Role: mailsync.RoleTrash, MadeBy: mailsync.MadeByProvider},
 				{ID: receiptsLabel, MadeBy: mailsync.MadeByMember},
 			},
@@ -243,7 +244,7 @@ func TestGetConversation(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"conversation":`+reportJSON+`,"messages":[{`+
 		`"id":"0b1b2c3d-0000-4000-8000-0000000000bb","date":"2026-11-09T10:30:00Z","subject":"Quarterly report",`+
 		`"from":[{"name":"Asha K","address":"asha@example.com"}],"replyTo":[],"to":[{"name":"","address":"alex@example.com"}],"cc":[],`+
-		`"preview":"Numbers attached","unread":true,"starred":true,"spam":false,"trash":true,`+
+		`"preview":"Numbers attached","unread":true,"starred":true,"spam":false,"trash":true,"sent":true,`+
 		`"labelIds":["0b1b2c3d-0000-4000-8000-0000000000aa"]}]}}`, response.Body.String())
 	assert.Equal(t, reportID, conversations.id)
 	assert.Equal(t, int64(42), conversations.userID)

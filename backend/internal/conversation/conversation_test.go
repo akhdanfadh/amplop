@@ -95,10 +95,13 @@ func TestMessagePlaces(t *testing.T) {
 	labelled := message(1, "asha", inbox, receipts, gmails)
 	trashed := message(2, "blair", trash)
 	junk := message(3, "casey", spam)
+	reply := message(4, "member", sent)
 
 	assert.Equal(t, []uuid.UUID{receipts.ID}, labelled.LabelIDs(), "only the member's own mailboxes with no role")
 	assert.Equal(t, []uuid.UUID{}, trashed.LabelIDs())
 	assert.Equal(t, []bool{false, false}, []bool{labelled.InSpam(), labelled.InTrash()})
 	assert.Equal(t, []bool{false, true}, []bool{trashed.InSpam(), trashed.InTrash()})
 	assert.Equal(t, []bool{true, false}, []bool{junk.InSpam(), junk.InTrash()})
+	assert.False(t, labelled.InSent())
+	assert.True(t, reply.InSent(), "its account sent it")
 }
