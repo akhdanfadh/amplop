@@ -138,7 +138,8 @@ text).
 - **Elevation:** no shadow on page, panes, list, or sheet. Menus and
   popovers: `0 4px 12px` at 8% black in light, none in dark (a lighter
   surface and a hairline). Dialogs: `0 16px 40px` at 14% (50% in dark)
-  over a dimmed page.
+  over the page dimmed by `scrim`, black at 30% (60% in dark); the drawer
+  dims it the same way.
 - **Motion:** one easing, `cubic-bezier(0.22, 1, 0.36, 1)`; 150 ms hover
   and press, 200 ms menus and tooltips, 250 ms dialogs and sheets. Animate
   colour, background, border, opacity, and transform only

@@ -46,7 +46,7 @@ function AlertDialog({
       isDismissable={isDismissable}
       // A tall dialog scrolls here; past the end the page behind stays still,
       // as React Aria's iOS scroll lock would have it (web/README.md).
-      className="fixed inset-0 isolate z-50 flex overflow-y-auto overscroll-contain bg-black/30 p-4 duration-250 ease-standard data-entering:animate-in data-entering:fade-in-0 data-exiting:animate-out data-exiting:fade-out-0 dark:bg-black/60"
+      className="fixed inset-0 isolate z-50 flex overflow-y-auto overscroll-contain bg-scrim p-4 duration-250 ease-standard data-entering:animate-in data-entering:fade-in-0 data-exiting:animate-out data-exiting:fade-out-0"
       {...props}
     >
       <Modal

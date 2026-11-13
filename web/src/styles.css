@@ -33,6 +33,7 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
+  --color-scrim: var(--scrim);
   --color-highlight: var(--highlight);
   --color-border: var(--border);
   --color-input: var(--input);
@@ -122,6 +123,8 @@
 
   --popover-shadow: 0 4px 12px rgb(0 0 0 / 8%);
   --dialog-shadow: 0 16px 40px rgb(0 0 0 / 14%);
+  /* Dims the page behind a dialog or the drawer. */
+  --scrim: rgb(0 0 0 / 30%);
 }
 
 .dark {
@@ -161,6 +164,7 @@
    * hairline that Tailwind lists in the same box-shadow. */
   --popover-shadow: 0 0 #0000;
   --dialog-shadow: 0 16px 40px rgb(0 0 0 / 50%);
+  --scrim: rgb(0 0 0 / 60%);
 }
 
 /* Tokens derived from others, declared for .dark as well as :root. A

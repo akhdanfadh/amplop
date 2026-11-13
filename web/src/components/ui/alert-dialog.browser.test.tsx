@@ -72,6 +72,8 @@ describe("AlertDialog", () => {
     const overlay = document.querySelector("[data-slot=alert-dialog-overlay]");
     if (!overlay) throw new Error("no overlay");
     expect(getComputedStyle(overlay).overscrollBehaviorY).toBe("contain");
+    // The page behind is dimmed by the scrim token, black at 30%.
+    expect(getComputedStyle(overlay).backgroundColor).toBe("rgba(0, 0, 0, 0.3)");
   });
 
   it("runs the action and returns focus to the opening button", async () => {

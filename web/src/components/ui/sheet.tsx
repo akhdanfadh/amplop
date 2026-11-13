@@ -49,7 +49,7 @@ function SheetOverlay({
       data-slot="sheet-overlay"
       isDismissable
       className={cn(
-        "fixed inset-0 z-50 bg-black/30 transition-opacity duration-250 ease-standard data-entering:opacity-0 data-exiting:opacity-0 dark:bg-black/60",
+        "fixed inset-0 z-50 bg-scrim transition-opacity duration-250 ease-standard data-entering:opacity-0 data-exiting:opacity-0",
         className,
       )}
       {...props}
