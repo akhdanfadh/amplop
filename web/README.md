@@ -1334,36 +1334,81 @@ for IDs, which match no other member's accounts, not for text.
 
 ## Forms
 
-Forms use [TanStack Form](https://tanstack.com/form), which holds each
-field's value, with shadcn's `Field` components for labels and messages.
-`src/features/probe/form.tsx` is the example: it sends a write with its
-generated mutation hook, `useCreateProbeEvent()`, and locks its inputs
-and button while the request runs. A failed request's message, e.g. "The
-counter is full.", stays below the form until the next edit or submit.
-Before sending, the form checks each edit against the generated schema,
-`NewProbeEvent`, and sends nothing while a value breaks it. A field shows
-its error once the user leaves it or clicks submit, then updates live.
-A screen reader reads a field's error with the field rather than
-announcing each change, so give each `FieldError` an `id` and name it in
-the field's `aria-describedby`; an error nothing names is never read.
-If Go still rejects a value, e.g. after a rule changed in Go before
-`pnpm generate`, `formErrors` from `src/api/problem.ts` attaches the server's
-safe messages only to fields that the form renders; an item's error,
-e.g. `body.to[3]`, marks a list the form renders as one field. Editing a
-field clears its server error. TanStack Form also drops it when a check on
-leaving the field passes, so every field leaves through
-`blurKeepingSubmitErrors` (`src/lib/blur-keeping-submit-errors.ts`), which
-puts it back. Rejected
-inputs outside those fields stay visible in the request summary below the
-form, which `formSummary` builds and `RequestError`
-(`src/components/request-error.tsx`) shows as an alert, announced as it
-appears: the request's message, then those inputs.
-When every rejected input shows on a field, the summary is empty and no
-request reference shows, since the fields tell the whole refusal. Once a
-request fails, focus moves to the first invalid field, else to the submit
-button, which lost it while disabled: through `useFocusAfterError`
-(`src/hooks/use-focus-after-error.ts`), or by a form's own rules where it
-has other targets, such as the code forms' restart button or the system
-email form's check button. Request failures without input errors do not enter
-form validation state, so valid input can be submitted again without an
-edit.
+Forms use [TanStack Form](https://tanstack.com/form) through the app's
+kit in `src/components/form/`: `useAppForm`, built with
+[`createFormHook`](https://tanstack.com/form/latest/docs/framework/react/guides/form-composition),
+renders each field as a field kind and the form as `form.Form` with a
+`form.SubmitButton`. `src/features/auth/sign-in-form.tsx` is the example:
+
+```tsx
+const mounted = useMounted();
+const refusals = useRefusals<Values>(["email", "password"]);
+const form = useAppForm({
+  defaultValues: { email: "", password: "" },
+  validationLogic: revalidateLogic(),
+  validators: { onDynamic: refusals.check(SignInSchema) },
+  onSubmit: async ({ value, formApi }) => {
+    try {
+      await create.mutateAsync({ data: SignInSchema.parse(value) });
+      if (!mounted()) return;
+      refusals.record(formApi, value);
+    } catch (err) {
+      if (!(err instanceof ApiError)) throw err;
+      refusals.record(formApi, value, err);
+    }
+  },
+});
+
+<form.AppForm>
+  <form.Form label="Sign in">
+    <form.AppField name="email">
+      {(field) => <field.EmailField label="Email address" autoComplete="username" />}
+    </form.AppField>
+    <form.AppField name="password">
+      {(field) => <field.PasswordField label="Password" autoComplete="current-password" />}
+    </form.AppField>
+    <form.SubmitButton working="Signing in...">Sign in</form.SubmitButton>
+  </form.Form>
+</form.AppForm>;
+```
+
+- **Checks.** The schema extends the generated one, e.g. `NewSession`,
+  and adds `emailAddress` to an email field: the contract's `idn-email`
+  gets no generated check, and Zod's `email()` refuses addresses the server
+  takes. `revalidateLogic()` runs the check from the first submit, then on
+  every change, so errors appear after a submit and update as the member
+  types.
+- **Sending.** `onSubmit` awaits the generated mutation hook's
+  `mutateAsync`, so TanStack Form's `isSubmitting` lasts as long as the
+  request: the fields lock, the button shows its `working` words and
+  ignores presses (React Aria's `isPending`), and `Form` ignores Enter.
+  A submit started from a field moves focus to the button, which stays
+  focusable while pending; after a submit, `Form` moves focus to the first
+  invalid field. A success's code after the `await` checks `useMounted()`
+  first, so a late answer cannot navigate from a page the member has left.
+  A submit that throws anything but the request's `ApiError` is a fault,
+  and `Form` shows it on the app's crash screen.
+- **Refusals.** `refusals.record` keeps the server's field errors, from
+  `formErrors` in `src/api/problem.ts`, with the values sent. The check
+  returns each one while its field holds the refused value: it survives a
+  blur, comes back if the member types that value again, and blocks
+  sending it. A rule that spans fields must also be in the schema, which
+  refuses it first; the server's refusal of it clears only when its own
+  field changes. An error on an input the form does not render stays out
+  of the fields.
+- **Request failures** stay in the mutation (`create.error`). `formSummary`
+  builds the summary under the button, which `RequestError`
+  (`src/components/request-error.tsx`) shows as an alert, announced as it
+  appears: the request's message, then rejected inputs no field shows.
+  When every rejected input shows on a field, the summary is empty and no
+  request reference shows, since the fields tell the whole refusal.
+- **A new field kind** goes in `src/components/form/fields.tsx` with its
+  first form: render the control through `FieldFrame`, which reads the
+  field from `useFieldContext` and gives the control its id, name, value,
+  lock, `aria-invalid`, and `aria-describedby`; then add it to
+  `fieldComponents` in `app-form.ts`. Its browser test joins
+  `app-form.browser.test.tsx`.
+
+Forms not yet on the kit (feat/design-forms moves them) still wire shadcn's
+`Field` components themselves, with `blurKeepingSubmitErrors`
+(`src/lib/blur-keeping-submit-errors.ts`) and `useFocusAfterError`.
