@@ -136,8 +136,12 @@ text).
   10, cards and the message sheet 12, dialogs 14. Pills only for status
   badges and account chips.
 - **Elevation:** no shadow on page, panes, list, or sheet. Menus and
-  popovers: `0 4px 12px` at 8% black in light, none in dark (a lighter
-  surface and a hairline). Dialogs: `0 16px 40px` at 14% (50% in dark)
+  popovers share the card's surface and may open over a card, so an edge
+  and a shadow set them apart: `0 4px 16px` at 12% black and the `border`
+  hairline in light; `0 4px 12px` at 40% black and a `foreground` 20%
+  hairline in dark (1.88:1 on a card, 2.11:1 on the page; `border` there
+  is 1.11:1). Not a lighter surface: dark hovers use `accent`, which would
+  be darker than it. Dialogs: `0 16px 40px` at 14% (50% in dark)
   over the page dimmed by `scrim`, black at 30% (60% in dark); the drawer
   dims it the same way.
 - **Motion:** one easing, `cubic-bezier(0.22, 1, 0.36, 1)`; 150 ms hover

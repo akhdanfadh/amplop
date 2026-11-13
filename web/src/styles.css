@@ -121,7 +121,7 @@
   --account-7: #db2777;
   --account-8: #a16207;
 
-  --popover-shadow: 0 4px 12px rgb(0 0 0 / 8%);
+  --popover-shadow: 0 4px 16px rgb(0 0 0 / 12%);
   --dialog-shadow: 0 16px 40px rgb(0 0 0 / 14%);
   /* Dims the page behind a dialog or the drawer. */
   --scrim: rgb(0 0 0 / 30%);
@@ -159,10 +159,10 @@
   --account-7: #f9a8d4;
   --account-8: #facc15;
 
-  /* Menus rely on a lighter surface and a hairline instead of a shadow.
-   * A shadow of nothing, not "none", which would void the ring utility's
-   * hairline that Tailwind lists in the same box-shadow. */
-  --popover-shadow: 0 0 #0000;
+  /* Menus share the card's surface, so their lighter hairline
+   * (ring-foreground/20 in popover.tsx) and this shadow set
+   * them apart from a card they open over. */
+  --popover-shadow: 0 4px 12px rgb(0 0 0 / 40%);
   --dialog-shadow: 0 16px 40px rgb(0 0 0 / 50%);
   --scrim: rgb(0 0 0 / 60%);
 }
