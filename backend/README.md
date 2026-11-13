@@ -1550,7 +1550,8 @@ signed-in member's own connected accounts:
   else, SVG included, as an attachment under
   `Content-Security-Policy: sandbox; default-src 'none'`. It lists
   `image`, `document`, and `empty` under `fetchDestKey`: an image in a
-  body, a download or a part opened in a tab, and the web app's calls.
+  body, a part opened in a tab, and a download link and the web app's
+  calls, which both send `empty`.
 
 `{part}` is the part's place, `0` for the top part and then each index on
 the way down, e.g. `0.1.2`, the `path` of its row; Gmail's `partId` of

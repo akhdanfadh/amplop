@@ -345,8 +345,9 @@ func registerMessagePartRead(api huma.API, handler messageContentHandler) {
 			"A part not stored yet, e.g. an attachment never downloaded, is fetched from the mail provider first.",
 		Metadata: map[string]any{
 			accessKey: session.AccessMember,
-			// An image in a body's frame, a download or a part opened in a
-			// tab, and the web app's own calls.
+			// An image in a body's frame, a part opened in a tab, and a
+			// download link and the web app's own calls, which both send
+			// empty (measured in Chromium 158).
 			fetchDestKey: []string{fetchDestImage, fetchDestDocument, fetchDestEmpty},
 		},
 		Security:  []map[string][]string{{sessionSecuritySchemeName: {}}},
