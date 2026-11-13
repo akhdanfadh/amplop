@@ -16,3 +16,6 @@ export const outboxName = "Outbox";
 
 // Shown in the list pane until conversations are built.
 export const listPending = "The conversation list isn't built yet.";
+
+// Shown in the reading pane while no conversation is open.
+export const nothingOpen = "No conversation open.";

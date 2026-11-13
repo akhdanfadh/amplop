@@ -1,23 +1,41 @@
-import { useRef, type ReactElement } from "react";
+import { useRef, type ReactElement, type ReactNode } from "react";
 import { useFocusOnOpen } from "@/hooks/use-focus-on-open";
+import { MailPanes } from "./panes";
 import type { ViewPlace } from "./places";
 import { listPending, placeName } from "./text";
 
-// PlacePage is a place's mail: its conversation list.
-export function PlacePage({ place }: { place: ViewPlace }): ReactElement {
+// PlacePage is a place's mail: its conversation list beside reader, the
+// reading pane. pane says what was opened: the list, with nothing in the
+// reading pane, or the reader, e.g. a conversation or Page not found.
+export function PlacePage({
+  place,
+  pane,
+  reader,
+}: {
+  place: ViewPlace;
+  pane: "list" | "reader";
+  reader: ReactNode;
+}): ReactElement {
   const headingRef = useRef<HTMLHeadingElement>(null);
   // Each page focuses its heading when it opens (DESIGN.md "Focus"), so the
-  // keyboard starts in the place, not back in the sidebar.
-  useFocusOnOpen(headingRef, place);
+  // keyboard starts in the place, not back in the sidebar; what the reading
+  // pane shows takes focus itself.
+  useFocusOnOpen(headingRef, pane === "list" ? place : null);
 
   return (
-    <main className="flex h-full flex-col" aria-labelledby="place-heading">
-      <header className="border-b px-4 py-3">
-        <h1 ref={headingRef} id="place-heading" tabIndex={-1} className="text-lg font-semibold">
-          {placeName[place]}
-        </h1>
-      </header>
-      <p className="p-4 text-sm text-muted-foreground">{listPending}</p>
-    </main>
+    <MailPanes
+      pane={pane}
+      list={
+        <main className="flex h-full flex-col" aria-labelledby="place-heading">
+          <header className="border-b px-4 py-3">
+            <h1 ref={headingRef} id="place-heading" tabIndex={-1} className="text-lg font-semibold">
+              {placeName[place]}
+            </h1>
+          </header>
+          <p className="p-4 text-sm text-muted-foreground">{listPending}</p>
+        </main>
+      }
+      reader={reader}
+    />
   );
 }

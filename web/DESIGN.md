@@ -171,7 +171,7 @@ text colour of their role.
 | Need                                         | Component                                                       |
 | -------------------------------------------- | --------------------------------------------------------------- |
 | Sidebar, rail, drawer                        | `sidebar`                                                       |
-| List and reading-pane split                  | `resizable`                                                     |
+| List beside the reading pane                 | none: the list has a fluid width ("Panes and widths")           |
 | Member menu with the theme choice            | `popover` holding a `toggle-group`                              |
 | More menus                                   | `dropdown-menu`                                                 |
 | Right-click row menu                         | `context-menu`                                                  |
@@ -212,17 +212,20 @@ the same component.
 
 ### Panes and widths
 
-| Window         | Layout                                                                           |
-| -------------- | -------------------------------------------------------------------------------- |
-| 1280 px and up | Sidebar 240 px, list 380 px (drag 300-560), reading pane the rest (at least 480) |
-| 1024-1279      | Sidebar starts as a 56 px rail (68 px coarse); expanding opens it as a drawer    |
-| 780-1023       | Sidebar as a drawer from the sidebar button; list and reading pane               |
-| Under 780      | One pane at a time: the list or the conversation                                 |
+| Window         | Layout                                                                        |
+| -------------- | ----------------------------------------------------------------------------- |
+| 1280 px and up | Sidebar 240 px, list 26% of the window (300-440 px), reading pane the rest    |
+| 1024-1279      | Sidebar starts as a 56 px rail (68 px coarse); expanding opens it as a drawer |
+| 780-1023       | Sidebar as a drawer from the sidebar button; list and reading pane            |
+| Under 780      | One pane at a time: the list or the conversation                              |
 
 The sidebar collapses with its button (always at the far left of its
-header, the wordmark after it) or Ctrl/Cmd+B; the list and reading-pane
-divider drags, takes arrow keys, and resets on double-click. Widths and
-the collapsed state are saved per browser.
+header, the wordmark after it) or Ctrl/Cmd+B; its collapsed state is
+saved per browser. The list grows with the window from 300 px to 440 px,
+so the reading pane keeps at least 480 px down to 780 px. No divider to
+drag: it would need a way to resize without dragging, a handle visible at
+rest, and its width in pixels, for a choice the fluid width mostly makes;
+resizing is in ADR031's backlog.
 
 ### URLs
 

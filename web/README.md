@@ -132,7 +132,7 @@ Put shared code in the folder for its responsibility:
   Outbox list, one message's status with Send again and Edit and send,
   their wording, and when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
-  names, and a place's page.
+  names, and the list beside the reading pane.
 - `src/components`: shared components, such as the password input, the
   request error under a form, the signed-in frame and its member menu, the
   offline banner, and the pages for loading, failure, and Page not found.
@@ -224,9 +224,13 @@ opens the drawer. `useLayout` (`hooks/use-layout.ts`) names the layout
 for the width. The frame's routes keep their components in the app's
 first download (`codeSplitGroupings`), so a page still loading when the
 member moves between pages shows its loading view inside the frame; the
-first load is one loading view over the window, as above. The member
-menu at the bottom of the sidebar opens Settings, the theme choice, and
-Sign out. The frame shows `OfflineBanner` at the top of the content too.
+first load is one loading view over the window, as above. In mail, the
+list grows with the window from 300 px to 440 px beside the reading pane
+(`features/mail/panes.tsx`), with no divider to drag; below 780 px one
+pane shows at a time. A state in the reading pane, e.g. a conversation not
+found, is a section with an `h2` (`StateRegion`), since the list holds the
+page's `main`. The member menu at the bottom of the sidebar opens
+Settings, the theme choice, and Sign out. The frame shows `OfflineBanner` at the top of the content too.
 
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page

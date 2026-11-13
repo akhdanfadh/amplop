@@ -1,10 +1,11 @@
 import type { ReactElement } from "react";
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { Outlet, createFileRoute, notFound, useMatch } from "@tanstack/react-router";
 import { PlacePage } from "@/features/mail/place-page";
 import { isViewPlace } from "@/features/mail/places";
 import { placeName } from "@/features/mail/text";
 
-// A place's mail, /mail/<place>: its conversation list.
+// A place's mail, /mail/<place>: its conversation list beside the reading
+// pane, which holds the open conversation or nothing.
 export const Route = createFileRoute("/_app/_mail/mail/$place")({
   params: {
     parse: ({ place }) => {
@@ -21,5 +22,8 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
 
 function Place(): ReactElement {
   const { place } = Route.useParams();
-  return <PlacePage place={place} />;
+  // The reading pane's index shows when no conversation is open.
+  const nothingOpen = useMatch({ from: "/_app/_mail/mail/$place/", shouldThrow: false });
+
+  return <PlacePage place={place} pane={nothingOpen ? "list" : "reader"} reader={<Outlet />} />;
 }

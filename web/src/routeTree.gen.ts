@@ -29,6 +29,7 @@ import { Route as AuthRegisterCompleteRouteImport } from './routes/_auth/registe
 import { Route as AppMailMailIndexRouteImport } from './routes/_app/_mail/mail/index'
 import { Route as AppMailMailPlaceRouteImport } from './routes/_app/_mail/mail/$place'
 import { Route as AuthSignedOutRegisterIndexRouteImport } from './routes/_auth/_signed-out/register/index'
+import { Route as AppMailMailPlaceIndexRouteImport } from './routes/_app/_mail/mail/$place/index'
 import { Route as AppMailMailOutboxIndexRouteImport } from './routes/_app/_mail/mail/outbox/index'
 import { Route as AppMailMailOutboxIdRouteImport } from './routes/_app/_mail/mail/outbox/$id'
 
@@ -130,6 +131,11 @@ const AuthSignedOutRegisterIndexRoute =
     path: '/register/',
     getParentRoute: () => AuthSignedOutRoute,
   } as any)
+const AppMailMailPlaceIndexRoute = AppMailMailPlaceIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppMailMailPlaceRoute,
+} as any)
 const AppMailMailOutboxIndexRoute = AppMailMailOutboxIndexRouteImport.update({
   id: '/mail/outbox/',
   path: '/mail/outbox/',
@@ -155,10 +161,11 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof AuthSignedOutForgotPasswordRoute
   '/sign-in': typeof AuthSignedOutSignInRoute
   '/register/complete': typeof AuthRegisterCompleteRoute
-  '/mail/$place': typeof AppMailMailPlaceRoute
+  '/mail/$place': typeof AppMailMailPlaceRouteWithChildren
   '/mail/': typeof AppMailMailIndexRoute
   '/register/': typeof AuthSignedOutRegisterIndexRoute
   '/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
+  '/mail/$place/': typeof AppMailMailPlaceIndexRoute
   '/mail/outbox/': typeof AppMailMailOutboxIndexRoute
 }
 export interface FileRoutesByTo {
@@ -175,10 +182,10 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof AuthSignedOutForgotPasswordRoute
   '/sign-in': typeof AuthSignedOutSignInRoute
   '/register/complete': typeof AuthRegisterCompleteRoute
-  '/mail/$place': typeof AppMailMailPlaceRoute
   '/mail': typeof AppMailMailIndexRoute
   '/register': typeof AuthSignedOutRegisterIndexRoute
   '/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
+  '/mail/$place': typeof AppMailMailPlaceIndexRoute
   '/mail/outbox': typeof AppMailMailOutboxIndexRoute
 }
 export interface FileRoutesById {
@@ -200,10 +207,11 @@ export interface FileRoutesById {
   '/_auth/_signed-out/forgot-password': typeof AuthSignedOutForgotPasswordRoute
   '/_auth/_signed-out/sign-in': typeof AuthSignedOutSignInRoute
   '/_auth/register/complete': typeof AuthRegisterCompleteRoute
-  '/_app/_mail/mail/$place': typeof AppMailMailPlaceRoute
+  '/_app/_mail/mail/$place': typeof AppMailMailPlaceRouteWithChildren
   '/_app/_mail/mail/': typeof AppMailMailIndexRoute
   '/_auth/_signed-out/register/': typeof AuthSignedOutRegisterIndexRoute
   '/_app/_mail/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
+  '/_app/_mail/mail/$place/': typeof AppMailMailPlaceIndexRoute
   '/_app/_mail/mail/outbox/': typeof AppMailMailOutboxIndexRoute
 }
 export interface FileRouteTypes {
@@ -226,6 +234,7 @@ export interface FileRouteTypes {
     | '/mail/'
     | '/register/'
     | '/mail/outbox/$id'
+    | '/mail/$place/'
     | '/mail/outbox/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -242,10 +251,10 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/sign-in'
     | '/register/complete'
-    | '/mail/$place'
     | '/mail'
     | '/register'
     | '/mail/outbox/$id'
+    | '/mail/$place'
     | '/mail/outbox'
   id:
     | '__root__'
@@ -270,6 +279,7 @@ export interface FileRouteTypes {
     | '/_app/_mail/mail/'
     | '/_auth/_signed-out/register/'
     | '/_app/_mail/mail/outbox/$id'
+    | '/_app/_mail/mail/$place/'
     | '/_app/_mail/mail/outbox/'
   fileRoutesById: FileRoutesById
 }
@@ -425,6 +435,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSignedOutRegisterIndexRouteImport
       parentRoute: typeof AuthSignedOutRoute
     }
+    '/_app/_mail/mail/$place/': {
+      id: '/_app/_mail/mail/$place/'
+      path: '/'
+      fullPath: '/mail/$place/'
+      preLoaderRoute: typeof AppMailMailPlaceIndexRouteImport
+      parentRoute: typeof AppMailMailPlaceRoute
+    }
     '/_app/_mail/mail/outbox/': {
       id: '/_app/_mail/mail/outbox/'
       path: '/mail/outbox'
@@ -442,9 +459,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppMailMailPlaceRouteChildren {
+  AppMailMailPlaceIndexRoute: typeof AppMailMailPlaceIndexRoute
+}
+
+const AppMailMailPlaceRouteChildren: AppMailMailPlaceRouteChildren = {
+  AppMailMailPlaceIndexRoute: AppMailMailPlaceIndexRoute,
+}
+
+const AppMailMailPlaceRouteWithChildren =
+  AppMailMailPlaceRoute._addFileChildren(AppMailMailPlaceRouteChildren)
+
 interface AppMailRouteChildren {
   AppMailComposeRoute: typeof AppMailComposeRoute
-  AppMailMailPlaceRoute: typeof AppMailMailPlaceRoute
+  AppMailMailPlaceRoute: typeof AppMailMailPlaceRouteWithChildren
   AppMailMailIndexRoute: typeof AppMailMailIndexRoute
   AppMailMailOutboxIdRoute: typeof AppMailMailOutboxIdRoute
   AppMailMailOutboxIndexRoute: typeof AppMailMailOutboxIndexRoute
@@ -452,7 +480,7 @@ interface AppMailRouteChildren {
 
 const AppMailRouteChildren: AppMailRouteChildren = {
   AppMailComposeRoute: AppMailComposeRoute,
-  AppMailMailPlaceRoute: AppMailMailPlaceRoute,
+  AppMailMailPlaceRoute: AppMailMailPlaceRouteWithChildren,
   AppMailMailIndexRoute: AppMailMailIndexRoute,
   AppMailMailOutboxIdRoute: AppMailMailOutboxIdRoute,
   AppMailMailOutboxIndexRoute: AppMailMailOutboxIndexRoute,

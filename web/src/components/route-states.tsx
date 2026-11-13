@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import {
+  createContext,
+  use,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import {
   Link,
   SearchParamError,
@@ -16,22 +25,46 @@ import { Spinner } from "@/components/ui/spinner";
 const linkClass =
   "text-primary underline underline-offset-4 hover:decoration-2 focus-visible:focus-ring";
 
-// StatePage is the body of a state that replaces a page: title as the tab's
-// title and as a heading that takes focus, then children.
+// StateRegion says where a route state shows: "page" in place of a whole
+// page, or "pane" in a pane of a page that holds its own main and h1, e.g.
+// the mail reading pane beside the list.
+export const StateRegion = createContext<"page" | "pane">("page");
+
+// StatePage is the body of a state that replaces a page, or a pane in one:
+// title as the tab's title and as a heading that takes focus, then
+// children.
 function StatePage({ title, children }: { title: string; children: ReactNode }): ReactElement {
+  const region = use(StateRegion);
+  const headingId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   // A screen reader starts reading at the heading.
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
 
+  const className =
+    "mx-auto flex w-full max-w-lg flex-col gap-4 px-4 py-8 wrap-anywhere sm:px-6 sm:py-12";
+  const heading = {
+    ref: headingRef,
+    id: headingId,
+    tabIndex: -1,
+    className: "text-2xl font-semibold",
+  };
+  // A page has one main landmark and one h1, which a pane's page holds.
+  if (region === "pane") {
+    return (
+      <section className={className} aria-labelledby={headingId}>
+        <title>{`${title} - inbok`}</title>
+        <h2 {...heading}>{title}</h2>
+        {children}
+      </section>
+    );
+  }
   return (
-    <main className="mx-auto flex w-full max-w-lg flex-col gap-4 px-4 py-8 wrap-anywhere sm:px-6 sm:py-12">
+    <main className={className}>
       {/* React puts it in the head, and takes it out when the state ends. */}
       <title>{`${title} - inbok`}</title>
-      <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-semibold">
-        {title}
-      </h1>
+      <h1 {...heading}>{title}</h1>
       {children}
     </main>
   );

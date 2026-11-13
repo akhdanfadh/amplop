@@ -12,7 +12,7 @@ import {
 } from "@tanstack/react-router";
 import { z } from "zod";
 import { ApiError } from "@/api/transport";
-import { NotFound, RouteError, RoutePending } from "./route-states";
+import { NotFound, RouteError, RoutePending, StateRegion } from "./route-states";
 
 // app returns a router with one page at /, whose checks run beforeLoad and
 // whose content is Page, opened at address.
@@ -29,6 +29,20 @@ function app(beforeLoad: () => void, Page: () => React.ReactNode, address = "/")
 
 function Inbox() {
   return <h1>Inbox</h1>;
+}
+
+// Pane is a page that holds the main, with a state in a pane beside it.
+function Pane() {
+  return (
+    <>
+      <main aria-label="Inbox">
+        <h1>Inbox</h1>
+      </main>
+      <StateRegion value="pane">
+        <NotFound />
+      </StateRegion>
+    </>
+  );
 }
 
 // Broken is a page whose own code fails.
@@ -231,6 +245,16 @@ describe("RoutePending", () => {
 });
 
 describe("NotFound", () => {
+  it("is a section with an h2 in a pane of a page that holds the main", async () => {
+    await render(<RouterProvider router={app(() => {}, Pane)} />);
+
+    const heading = page.getByRole("heading", { name: "Page not found", level: 2 });
+    await expect.element(heading).toHaveFocus();
+    await expect.element(page.getByRole("region", { name: "Page not found" })).toBeInTheDocument();
+    expect(document.querySelectorAll("main")).toHaveLength(1);
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+  });
+
   it("names the page and links to the start", async () => {
     await render(<RouterProvider router={app(() => {}, Inbox, "/nope")} />);
 
