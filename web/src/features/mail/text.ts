@@ -83,16 +83,21 @@ export const noAccountsTitle = "Connect your first account";
 export const noAccountsText = "inbok shows the mail of the accounts you connect.";
 export const connectGmail = "Connect Gmail";
 
-// emptyTitle returns what an empty list says: name, the place's name.
-export function emptyTitle(place: string, name: string): string {
-  if (place === "spam") return "No spam";
-  if (place === "trash") return "Trash is empty";
-  return `Nothing in ${name}`;
+// emptyTitle returns what an empty list says: name, the place's name, in
+// account's mail, or in every account's when account is undefined.
+export function emptyTitle(place: string, name: string, account: string | undefined): string {
+  if (account === undefined && place === "spam") return "No spam";
+  if (account === undefined && place === "trash") return "Trash is empty";
+  return account === undefined ? `Nothing in ${name}` : `Nothing in ${account}'s ${name}`;
 }
 
-// Why an empty list may fill: some account is still copying its mail.
-export const stillSyncing =
-  "Some accounts are still syncing. Their mail appears here as it is copied.";
+// stillSyncing returns why an empty list may fill: account, or some
+// account when undefined, is still copying its mail.
+export function stillSyncing(account: string | undefined): string {
+  return account === undefined
+    ? "Some accounts are still syncing. Their mail appears here as it is copied."
+    : `${account} is still syncing. Its mail appears here as it is copied.`;
+}
 
 // Failures of the list (DESIGN.md "States").
 export const listFailed = "Couldn't load these conversations.";

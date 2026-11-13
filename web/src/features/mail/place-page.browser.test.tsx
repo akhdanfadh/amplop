@@ -31,7 +31,13 @@ function app(pane: "list" | "reader") {
   current = client;
   const root = createRootRoute({
     component: () => (
-      <PlacePage place="inbox" pane={pane} reader={pane === "reader" ? <NotFound /> : null} />
+      <PlacePage
+        place="inbox"
+        name="Inbox"
+        account={undefined}
+        pane={pane}
+        reader={pane === "reader" ? <NotFound /> : null}
+      />
     ),
   });
   return createRouter({

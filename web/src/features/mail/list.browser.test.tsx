@@ -9,12 +9,13 @@ import {
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
+import { useListConnectedAccounts } from "@/api/generated/inbok";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { Route as appRoot } from "@/routes/__root";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { placeSearch } from "./address";
 import { refreshNewest } from "./conversations";
 import { PlacePage } from "./place-page";
-import { isViewPlace } from "./places";
 
 const serverError = 500;
 
@@ -30,7 +31,8 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-// app renders the Inbox's page on api at address, and returns its query
+// app renders the Inbox's page on api at address, filtered to the account
+// its ?account= names as the app's route does, and returns its query
 // client and its router.
 async function app(api: MailApi, address = "/mail/inbox") {
   vi.stubGlobal("fetch", vi.fn(api.fetch));
@@ -42,12 +44,21 @@ async function app(api: MailApi, address = "/mail/inbox") {
   const place = createRoute({
     getParentRoute: () => root,
     path: "/mail/$place",
+    validateSearch: placeSearch,
     component: function Place() {
       const { place: name } = place.useParams();
+      const { account: id } = place.useSearch();
+      const account = useListConnectedAccounts().data?.data.accounts.find((a) => a.id === id);
       // The window's height, as the mail frame gives its panes.
       return (
         <div className="flex h-svh flex-col">
-          <PlacePage place={isViewPlace(name) ? name : "inbox"} pane="list" reader={null} />
+          <PlacePage
+            place={name}
+            name={name === "inbox" ? "Inbox" : name}
+            account={account}
+            pane="list"
+            reader={null}
+          />
         </div>
       );
     },
@@ -214,6 +225,36 @@ describe("ConversationList", () => {
   });
 });
 
+describe("one account's list", () => {
+  const two = [listedAccount(1, "ana@example.com"), listedAccount(2, "ana@work.example", 3)];
+
+  it("shows only that account's mail, without rings", async () => {
+    await app(
+      mailApi([conversation(1), conversation(2, { accountId: 2 })], two),
+      "/mail/inbox?account=2",
+    );
+    const row = page.getByRole("row", { name: /Subject 2,/ });
+    await expect.element(row).toBeVisible();
+    expect(page.getByRole("row", { name: /Subject 1,/ }).query()).toBeNull();
+    // The heading names the account, so its rows don't.
+    expect(row.element().getAttribute("aria-label")).not.toContain("ana@work.example");
+    const avatar = row.element().querySelector('[data-slot="avatar"]');
+    expect(avatar?.className).not.toContain("after:border-account");
+  });
+
+  it("names the account when its list is empty or still syncing", async () => {
+    const syncing = listedAccount(2, "ana@work.example", 3);
+    syncing.sync.status = "running";
+    await app(mailApi([conversation(1)], [two[0], syncing]), "/mail/inbox?account=2");
+    await expect
+      .element(page.getByRole("heading", { name: "Nothing in ana@work.example's Inbox" }))
+      .toBeVisible();
+    await expect
+      .element(page.getByText("ana@work.example is still syncing.", { exact: false }))
+      .toBeVisible();
+  });
+});
+
 describe("the list's rows", () => {
   it("follow a text size changed while the list is open", async () => {
     const api = mailApi([conversation(1), conversation(2)], one);
@@ -273,6 +314,7 @@ describe("the list's failures", () => {
     // One read, not a loop of them once the mail is dropped.
     expect(reads.length).toBeLessThanOrEqual(2);
   });
+
   it("keeps its rows and says since when after a refresh fails", async () => {
     const api = mailApi([conversation(1)], one);
     const { client } = await app(api);

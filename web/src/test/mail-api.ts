@@ -1,4 +1,4 @@
-import type { ConversationRow, ListedAccount } from "@/api/generated/model";
+import type { ConversationRow, ListedAccount, PlaceCount } from "@/api/generated/model";
 
 const notFound = 404;
 const unauthorized = 401;
@@ -50,14 +50,15 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 }
 
 // MailApi is a fake inbok API for mail pages: it pages conversations as
-// List Conversations does, counts new ones, lists accounts, and answers a
-// signed-in session. failNext makes the next conversation list request
-// answer status, and failOlder every request for an older page until it is
-// cleared; signedOut answers everything 401, as after the session ended.
-// requests records every path and search it was asked.
+// List Conversations does, counts new ones, lists accounts and places, and
+// answers a signed-in session. failNext makes the next conversation list
+// request answer status, and failOlder every request for an older page
+// until it is cleared; signedOut answers everything 401, as after the
+// session ended. requests records every path and search it was asked.
 export type MailApi = {
   conversations: ConversationRow[];
   accounts: ListedAccount[];
+  places: PlaceCount[];
   requests: string[];
   failNext: number | undefined;
   failOlder: number | undefined;
@@ -70,6 +71,7 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
   const api: MailApi = {
     conversations,
     accounts,
+    places: [],
     requests: [],
     failNext: undefined,
     failOlder: undefined,
@@ -92,6 +94,9 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         const after = Date.parse(search.get("after") ?? "");
         const count = inPlace(api.conversations, search).filter((c) => Date.parse(c.date) > after);
         return Response.json({ data: { count: count.length } });
+      }
+      if (path === "/api/v0/places") {
+        return Response.json({ data: { places: api.places } });
       }
       if (path === "/api/v0/connected-accounts") {
         return Response.json({ data: { accounts: api.accounts, syncStopped: false } });

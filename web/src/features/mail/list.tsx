@@ -8,6 +8,7 @@ import { ArrowUpIcon } from "lucide-react";
 import { useCountNewConversations, useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccountOutput } from "@/api/generated/model/listedAccount.zod";
 import { ApiError } from "@/api/transport";
+import { accountName } from "@/components/account-mark";
 import { ReadError } from "@/components/read-error";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
@@ -49,18 +50,20 @@ const newCountEveryMs = 30_000;
 // Placeholder rows while the first page loads: about a window's worth.
 const placeholderRows = 10;
 
-// ConversationList is the list of a place's conversations across the
-// member's accounts (DESIGN.md "Message list"): newest first, 50 at a time
+// ConversationList is the list of a place's conversations, of account
+// alone when given (DESIGN.md "Message list"): newest first, 50 at a time
 // as the member scrolls; new mail waits behind "N new conversations"
 // while the member is scrolled down. placeName names the place in an
 // empty list's words. onRetry starts the list again after a page failed.
 export function ConversationList({
   place,
   placeName,
+  account,
   onRetry,
 }: {
   place: Place;
   placeName: string;
+  account: number | undefined;
   onRetry: () => void;
 }): ReactElement {
   const client = useQueryClient();
@@ -82,10 +85,10 @@ export function ConversationList({
     (q) =>
       q
         .from({ c: conversations })
-        .where(({ c }) => placeWhere(c, place, undefined))
+        .where(({ c }) => placeWhere(c, place, account))
         .orderBy(({ c }) => c.dateMs, "desc")
         .orderBy(({ c }) => c.id, { direction: "desc", stringSort: "lexical" }),
-    { pageSize, queryKey: ["mail-list", conversations.id, place] },
+    { pageSize, queryKey: ["mail-list", conversations.id, place, account ?? null] },
   );
 
   // The newest date shown while the member is scrolled down; newer rows
@@ -118,7 +121,7 @@ export function ConversationList({
   };
 
   const newCount = useCountNewConversations(
-    { place, after: new Date(anchor ?? 0).toISOString() },
+    { place, account, after: new Date(anchor ?? 0).toISOString() },
     { query: { enabled: anchor !== null, refetchInterval: newCountEveryMs } },
   );
   const waiting = anchor === null ? 0 : Math.max(hidden, newCount.data?.data.count ?? 0);
@@ -162,10 +165,17 @@ export function ConversationList({
   }
   if (list.isLoading || list.isIdle || list.isCleanedUp || expired) return <Placeholder />;
   if (rows.length === 0 && !list.hasNextPage) {
-    return <EmptyList place={place} placeName={placeName} accounts={accountList} />;
+    return (
+      <EmptyList
+        place={place}
+        placeName={placeName}
+        account={account === undefined ? undefined : accountsById.get(account)}
+        accounts={accountList}
+      />
+    );
   }
 
-  const ringed = (accountList?.length ?? 0) > 1;
+  const ringed = account === undefined && (accountList?.length ?? 0) > 1;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -271,14 +281,17 @@ function Placeholder(): ReactElement {
 }
 
 // EmptyList says why a list has nothing, with the next step if there is
-// one: no account yet, an account still syncing, or nothing there.
+// one: no account yet, the account (or one of them) still syncing, or
+// nothing there.
 function EmptyList({
   place,
   placeName,
+  account,
   accounts,
 }: {
   place: Place;
   placeName: string;
+  account: ListedAccountOutput | undefined;
   accounts: ListedAccountOutput[] | undefined;
 }): ReactElement {
   if (accounts?.length === 0) {
@@ -297,10 +310,12 @@ function EmptyList({
       </Empty>
     );
   }
+  const name = account && accountName(account);
+  const stillCopying = account ? syncing(account) : (accounts ?? []).some(syncing);
   return (
     <Empty className="px-4">
-      <EmptyTitle>{emptyTitle(place, placeName)}</EmptyTitle>
-      {(accounts ?? []).some(syncing) && <EmptyDescription>{stillSyncing}</EmptyDescription>}
+      <EmptyTitle>{emptyTitle(place, placeName, name)}</EmptyTitle>
+      {stillCopying && <EmptyDescription>{stillSyncing(name)}</EmptyDescription>}
     </Empty>
   );
 }

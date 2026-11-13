@@ -248,6 +248,14 @@ Settings, the theme choice, and Sign out. Both frames and the signed-out
 layout show `OfflineBanner` at the top of the content while the browser
 reports no connection, read from TanStack Query's `onlineManager`.
 
+A place in mail, `/mail/<place>`, is a view (`inbox`, `starred`, `sent`,
+`all`, `spam`, `trash`) or a label's ID from the API's places, and
+`?account=<id>` shows one account's mail. A label the member doesn't
+have is Page not found; `?account=` only filters, so an account the
+member doesn't have shows every account's mail, and one that is no ID is
+dropped. A loader whose read finds the session ended clears the member's
+data and opens sign-in (`sessionEnded` in `features/auth/guard.ts`).
+
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page
 redirects to `/setup`, including direct sign-in, demo, and unknown URLs.

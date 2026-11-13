@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { appRouter, memberSession } from "@/test/app-router";
+import { listedAccount, mailApi } from "@/test/mail-api";
 import { Route as appRoot } from "@/routes/__root";
 import { MailFrame } from "./frame";
 import { forgetMailHref, mailHref, mailPage } from "./places";
@@ -98,11 +99,14 @@ afterEach(() => {
 
 describe("mailPage", () => {
   it("is the place a loaded page in mail shows, with its search", async () => {
-    const router = await appRouter("/mail/spam?account=a", memberSession);
+    const accounts = mailApi([], [listedAccount(2, "ana@example.com")]);
+    const router = await appRouter("/mail/spam?account=2", memberSession, (url) =>
+      url.includes("/connected-accounts") ? accounts.fetch(url) : undefined,
+    );
     expect(pageOf(router)).toEqual({
       to: "/mail/$place",
       params: { place: "spam" },
-      search: { account: "a" },
+      search: { account: 2 },
     });
   });
 
