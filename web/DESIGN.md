@@ -165,6 +165,9 @@ text).
   keyboard starts in the page, not in the sidebar, whose landmark is
   named. No skip link: a skip button (a `#` link would change the address)
   is the next step if testing shows a need.
+- **Cursor:** the hand only over links, which take the member somewhere
+  else; buttons, list rows, and every other control keep the arrow, as in
+  desktop apps (Tailwind 4's default for buttons).
 - **Links:** primary colour, underlined; the underline thickens on hover
   (`textLink` in `src/components/link-style.ts`; `lineLink` for a link on
   a line of its own, 44 px tall).
@@ -304,14 +307,18 @@ last two redirect into settings, so settings can move without the server.
   Trash ones when it has no other; Gmail drafts are not shown. So a reply
   moves its conversation up in every view it is in, as in Gmail's
   conversation view.
-- **Row, three lines:** who (first names, "me", count) and date / subject
-  and markers / snippet. A 28 px initials avatar ringed in the account
-  colour leads (initials of the newest message's sender); filtered to one
-  account, the ring is dropped. Unread rows are 600 weight. Markers: an
+- **Row, three lines:** who (first names, "me", count) and date / subject /
+  snippet, ended by the star while starred. A 36 px initials avatar ringed
+  in the account colour leads (initials of the newest message's sender),
+  its top on the first line's, 16 px from the list's edge (the heading's
+  inset) and 12 px from the text, closer than the edge so it reads with
+  its text; filtered to one account, the ring is dropped. Unread rows are 600 weight. Markers: an
   attachment clip, a star filled in the text colour.
 - **Dates:** today the time (the browser's 12 or 24 hour clock),
   "Yesterday", the weekday within 7 days, "2 Nov" this year, "2 Nov 2025"
-  before; the full date and time on hover.
+  in another year, a later day too; the full date and time on hover.
+- **Missing data:** no sender reads "Unknown sender" with a person icon in
+  the avatar; no subject "(no subject)"; counts take a comma ("1,284").
 - **States:** open (`selection`), hover (`accent`), keyboard focus (the
   ring) look different.
 - **Picking:** the avatar becomes a checkbox on hover; Space, Shift ranges,

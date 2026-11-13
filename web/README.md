@@ -133,8 +133,9 @@ Put shared code in the folder for its responsibility:
   message's status with Send again and Edit and send, their wording, and
   when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
-  names, the list beside the reading pane, mail's TanStack DB collections
-  (`conversations.ts`), and the address Back to mail returns to.
+  names, the conversation list and its rows, mail's TanStack DB
+  collections (`conversations.ts`), how a row shows its date and people,
+  and the address Back to mail returns to.
 - `src/features/settings`: the settings sidebar.
 - `src/components`: shared components, such as the password input, the
   request error under a form, the status badge, the link styles, the
@@ -821,6 +822,12 @@ pnpm exec vp test run --project browser
 pnpm exec vp test run src/lib/theme.browser.test.tsx
 ```
 
+React Aria's Virtualizer stops virtualizing, and keeps lists at their
+top, when `NODE_ENV` is `test`, as Vitest sets it, unless `VIRT_ON` is
+set; the browser project sets it (`vite.config.ts`), so a list test sees
+the list as the app has it. Scroll a virtualized list with the keyboard,
+e.g. End, which React Aria scrolls itself.
+
 Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
 functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the
 latter. `make check` runs both projects, headless.
@@ -894,6 +901,11 @@ from the registry here:
     technology never reads it. Its `aria-describedby` repeats an icon
     button's name, which is React Aria's doing.
   - `skeleton` does not pulse. `spinner` is decoration.
+- `grid-list` is ours: the message list, React Aria's `GridList` in its
+  `Virtualizer`, rows of one height, type-to-find off; `GridListEnd` is
+  the line under the last row.
+- `avatar`: as the registry's; the conversation row rings it in the
+  account colour.
 - `toast` is ours: the registry offers only `sonner` (see DESIGN.md).
   `showUndo` shows a result with Undo and closes itself after 10 s;
   `showError` shows a failure until the member closes it, and not again

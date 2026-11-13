@@ -1,8 +1,9 @@
 import { useRef, type ReactElement, type ReactNode } from "react";
 import { useFocusOnOpen } from "@/hooks/use-focus-on-open";
+import { ConversationList } from "./list";
 import { MailPanes } from "./panes";
 import type { ViewPlace } from "./places";
-import { listPending, placeName } from "./text";
+import { placeName } from "./text";
 
 // PlacePage is a place's mail: its conversation list beside reader, the
 // reading pane. pane says what was opened: the list, with nothing in the
@@ -32,7 +33,9 @@ export function PlacePage({
               {placeName[place]}
             </h1>
           </header>
-          <p className="p-4 text-sm text-muted-foreground">{listPending}</p>
+          {/* A new place is a new list: its own scroll position and first
+              load. */}
+          <ConversationList key={place} place={place} />
         </main>
       }
       reader={reader}
