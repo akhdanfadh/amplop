@@ -242,8 +242,13 @@ resizing is in ADR031's backlog.
 
 The URL holds where the member is, never passing state (picked rows,
 unsent text, the compose window). Clicking a conversation adds a history
-entry. Guarded layout routes (`_app`, `_auth`, `_admin`) check the session,
-TOTP, and role in `beforeLoad` before anything draws.
+entry. Guarded layout routes check access in `beforeLoad` before anything
+draws: `_app` the session, `_app/settings/_admin` the role and two-factor
+authentication, `_auth/_signed-out` that a signed-in member skips sign-in.
+The addresses the server puts in emails and redirects (`/sign-in`,
+`/verify-email`, `/reset-password`, `/register/complete`, `/security`,
+`/connected-accounts`) always open their page, or old emails break; the
+last two redirect into settings, so settings can move without the server.
 
 ### Sidebar
 
@@ -359,6 +364,7 @@ is inbok's own and runs Check for new mail; the list box sets
 - A page: title, one-sentence lead, then sections divided by hairlines,
   heading and explanation on the left, controls on the right; content caps
   at 720 px; no cards around everything.
+- Below 1024 px the settings sidebar is a drawer, as mail's is.
 - Signed-out pages (sign-in, setup, registration, password reset, email
   verification): the wordmark and one centred column about 400 px wide.
 
@@ -406,8 +412,8 @@ is inbok's own and runs Check for new mail; the list box sets
 - **Toasts** only report actions whose result left the screen; form
   results stay inline. Nothing important lives only in a toast.
 - **Banners** for conditions that last: offline at the top of the content;
-  an account problem above that account's mail; setup an administrator
-  owes at the top of settings.
+  an account problem above that account's mail; setup the member owes at the
+  top of settings, e.g. an unverified email address.
 - Every mail action is defined once in the actions registry (label, icon,
   bulk support, run, undo, result text); toolbars, menus, the picked-rows
   bar, and toasts read from it.

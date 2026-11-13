@@ -4,7 +4,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 // set up two-factor authentication first, Security.
 export const Route = createFileRoute("/_app/")({
   beforeLoad: ({ context }) => {
-    if (context.session.totpRequired) throw redirect({ to: "/security", replace: true });
+    if (context.session.totpRequired) throw redirect({ to: "/settings/security", replace: true });
     throw redirect({ to: "/mail/$place", params: { place: "inbox" }, replace: true });
   },
 });

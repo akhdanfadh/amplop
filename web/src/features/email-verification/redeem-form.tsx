@@ -157,7 +157,7 @@ function AskForLink({ account }: { account: CurrentSession | undefined }): React
       </Link>
     );
   return (
-    <Link to="/security" className={linkClass}>
+    <Link to="/settings/security" className={linkClass}>
       Ask for a new link in Security
     </Link>
   );

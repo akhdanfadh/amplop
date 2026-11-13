@@ -191,7 +191,7 @@ describe("RouteError", () => {
 });
 
 // slowApp returns a router at address, which draws Elsewhere beside its
-// pages, with a page at /members whose checks never finish, so its loading
+// pages, with a page at /settings whose checks never finish, so its loading
 // view stays however long the test takes.
 function slowApp(address: string) {
   const root = createRootRoute({
@@ -205,7 +205,7 @@ function slowApp(address: string) {
   const home = createRoute({ getParentRoute: () => root, path: "/", component: Inbox });
   const slow = createRoute({
     getParentRoute: () => root,
-    path: "/members",
+    path: "/settings",
     beforeLoad: () => new Promise(() => {}),
     component: () => <h1>Slow</h1>,
   });
@@ -219,7 +219,7 @@ function slowApp(address: string) {
 
 describe("RoutePending", () => {
   it("shows the first load's view 300 ms after the page's start, and leaves focus alone", async () => {
-    await render(<RouterProvider router={slowApp("/members")} />);
+    await render(<RouterProvider router={slowApp("/settings")} />);
     const loading = page.getByRole("status");
     await expect.element(loading).toHaveTextContent("Loading...");
     // The test page started long ago, so the view shows at once, as it
@@ -236,7 +236,7 @@ describe("RoutePending", () => {
     await expect.element(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
     page.getByRole("button", { name: "Elsewhere" }).element().focus();
 
-    void router.navigate({ to: "/members" });
+    void router.navigate({ to: "/settings" });
     const loading = page.getByRole("status");
     await expect.element(loading).toBeVisible();
     expect(loading.element().getAnimations()).toHaveLength(0);

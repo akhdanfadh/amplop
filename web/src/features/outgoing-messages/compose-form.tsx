@@ -294,7 +294,7 @@ export function ComposeForm({
         )}
         {reconnect && (
           <p>
-            <Link to="/connected-accounts" className={linkClass}>
+            <Link to="/settings/connected-accounts" className={linkClass}>
               Open Connected accounts
             </Link>
           </p>

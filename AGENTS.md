@@ -99,6 +99,11 @@ The web app reads these from the contract; keep them stable:
   Code"; what it does in detail goes in `Description`.
 - A 204 response needs transport work first: `web/src/api/transport.ts`
   requires a response schema.
+- The server links only these web addresses, in emails and redirects:
+  `/sign-in`, `/verify-email`, `/reset-password`, `/register/complete`,
+  `/security`, and `/connected-accounts`. The web keeps each a page, or a
+  redirect to one, wherever its pages move; a new one joins the list in
+  `web/src/entry-paths.browser.test.tsx`.
 
 ## Web
 

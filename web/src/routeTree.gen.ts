@@ -12,22 +12,28 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as ConnectedAccountsRouteImport } from './routes/connected-accounts'
-import { Route as MembersRouteImport } from './routes/members'
 import { Route as ProbeRouteImport } from './routes/probe'
 import { Route as SecurityRouteImport } from './routes/security'
-import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppMailRouteImport } from './routes/_app/_mail'
+import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AuthSignedOutRouteImport } from './routes/_auth/_signed-out'
 import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
 import { Route as AuthSetupRouteImport } from './routes/_auth/setup'
 import { Route as AuthVerifyEmailRouteImport } from './routes/_auth/verify-email'
 import { Route as AppMailComposeRouteImport } from './routes/_app/_mail/compose'
+import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
+import { Route as AppSettingsAdminRouteImport } from './routes/_app/settings/_admin'
+import { Route as AppSettingsConnectedAccountsRouteImport } from './routes/_app/settings/connected-accounts'
+import { Route as AppSettingsSecurityRouteImport } from './routes/_app/settings/security'
 import { Route as AuthSignedOutForgotPasswordRouteImport } from './routes/_auth/_signed-out/forgot-password'
 import { Route as AuthSignedOutSignInRouteImport } from './routes/_auth/_signed-out/sign-in'
 import { Route as AuthRegisterCompleteRouteImport } from './routes/_auth/register/complete'
 import { Route as AppMailMailIndexRouteImport } from './routes/_app/_mail/mail/index'
 import { Route as AppMailMailPlaceRouteImport } from './routes/_app/_mail/mail/$place'
+import { Route as AppSettingsAdminMembersRouteImport } from './routes/_app/settings/_admin/members'
+import { Route as AppSettingsAdminRegistrationRouteImport } from './routes/_app/settings/_admin/registration'
+import { Route as AppSettingsAdminSystemEmailRouteImport } from './routes/_app/settings/_admin/system-email'
 import { Route as AuthSignedOutRegisterIndexRouteImport } from './routes/_auth/_signed-out/register/index'
 import { Route as AppMailMailPlaceIndexRouteImport } from './routes/_app/_mail/mail/$place/index'
 import { Route as AppMailMailOutboxIndexRouteImport } from './routes/_app/_mail/mail/outbox/index'
@@ -46,11 +52,6 @@ const ConnectedAccountsRoute = ConnectedAccountsRouteImport.update({
   path: '/connected-accounts',
   getParentRoute: () => rootRouteImport,
 } as any)
-const MembersRoute = MembersRouteImport.update({
-  id: '/members',
-  path: '/members',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ProbeRoute = ProbeRouteImport.update({
   id: '/probe',
   path: '/probe',
@@ -61,11 +62,6 @@ const SecurityRoute = SecurityRouteImport.update({
   path: '/security',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -73,6 +69,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 } as any)
 const AppMailRoute = AppMailRouteImport.update({
   id: '/_mail',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AuthSignedOutRoute = AuthSignedOutRouteImport.update({
@@ -98,6 +99,26 @@ const AppMailComposeRoute = AppMailComposeRouteImport.update({
   id: '/compose',
   path: '/compose',
   getParentRoute: () => AppMailRoute,
+} as any)
+const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsAdminRoute = AppSettingsAdminRouteImport.update({
+  id: '/_admin',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsConnectedAccountsRoute =
+  AppSettingsConnectedAccountsRouteImport.update({
+    id: '/connected-accounts',
+    path: '/connected-accounts',
+    getParentRoute: () => AppSettingsRoute,
+  } as any)
+const AppSettingsSecurityRoute = AppSettingsSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => AppSettingsRoute,
 } as any)
 const AuthSignedOutForgotPasswordRoute =
   AuthSignedOutForgotPasswordRouteImport.update({
@@ -125,6 +146,23 @@ const AppMailMailPlaceRoute = AppMailMailPlaceRouteImport.update({
   path: '/mail/$place',
   getParentRoute: () => AppMailRoute,
 } as any)
+const AppSettingsAdminMembersRoute = AppSettingsAdminMembersRouteImport.update({
+  id: '/members',
+  path: '/members',
+  getParentRoute: () => AppSettingsAdminRoute,
+} as any)
+const AppSettingsAdminRegistrationRoute =
+  AppSettingsAdminRegistrationRouteImport.update({
+    id: '/registration',
+    path: '/registration',
+    getParentRoute: () => AppSettingsAdminRoute,
+  } as any)
+const AppSettingsAdminSystemEmailRoute =
+  AppSettingsAdminSystemEmailRouteImport.update({
+    id: '/system-email',
+    path: '/system-email',
+    getParentRoute: () => AppSettingsAdminRoute,
+  } as any)
 const AuthSignedOutRegisterIndexRoute =
   AuthSignedOutRegisterIndexRouteImport.update({
     id: '/register/',
@@ -150,18 +188,23 @@ const AppMailMailOutboxIdRoute = AppMailMailOutboxIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/connected-accounts': typeof ConnectedAccountsRoute
-  '/members': typeof MembersRoute
   '/probe': typeof ProbeRoute
   '/security': typeof SecurityRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof AppSettingsRouteWithChildren
   '/reset-password': typeof AuthResetPasswordRoute
   '/setup': typeof AuthSetupRoute
   '/verify-email': typeof AuthVerifyEmailRoute
   '/compose': typeof AppMailComposeRoute
+  '/settings/connected-accounts': typeof AppSettingsConnectedAccountsRoute
+  '/settings/security': typeof AppSettingsSecurityRoute
   '/forgot-password': typeof AuthSignedOutForgotPasswordRoute
   '/sign-in': typeof AuthSignedOutSignInRoute
   '/register/complete': typeof AuthRegisterCompleteRoute
+  '/settings/': typeof AppSettingsIndexRoute
   '/mail/$place': typeof AppMailMailPlaceRouteWithChildren
+  '/settings/members': typeof AppSettingsAdminMembersRoute
+  '/settings/registration': typeof AppSettingsAdminRegistrationRoute
+  '/settings/system-email': typeof AppSettingsAdminSystemEmailRoute
   '/mail/': typeof AppMailMailIndexRoute
   '/register/': typeof AuthSignedOutRegisterIndexRoute
   '/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
@@ -171,17 +214,21 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/connected-accounts': typeof ConnectedAccountsRoute
-  '/members': typeof MembersRoute
   '/probe': typeof ProbeRoute
   '/security': typeof SecurityRoute
-  '/settings': typeof SettingsRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/setup': typeof AuthSetupRoute
   '/verify-email': typeof AuthVerifyEmailRoute
   '/compose': typeof AppMailComposeRoute
+  '/settings': typeof AppSettingsIndexRoute
+  '/settings/connected-accounts': typeof AppSettingsConnectedAccountsRoute
+  '/settings/security': typeof AppSettingsSecurityRoute
   '/forgot-password': typeof AuthSignedOutForgotPasswordRoute
   '/sign-in': typeof AuthSignedOutSignInRoute
   '/register/complete': typeof AuthRegisterCompleteRoute
+  '/settings/members': typeof AppSettingsAdminMembersRoute
+  '/settings/registration': typeof AppSettingsAdminRegistrationRoute
+  '/settings/system-email': typeof AppSettingsAdminSystemEmailRoute
   '/mail': typeof AppMailMailIndexRoute
   '/register': typeof AuthSignedOutRegisterIndexRoute
   '/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
@@ -193,21 +240,27 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
   '/connected-accounts': typeof ConnectedAccountsRoute
-  '/members': typeof MembersRoute
   '/probe': typeof ProbeRoute
   '/security': typeof SecurityRoute
-  '/settings': typeof SettingsRoute
   '/_app/_mail': typeof AppMailRouteWithChildren
+  '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_auth/_signed-out': typeof AuthSignedOutRouteWithChildren
   '/_auth/reset-password': typeof AuthResetPasswordRoute
   '/_auth/setup': typeof AuthSetupRoute
   '/_auth/verify-email': typeof AuthVerifyEmailRoute
   '/_app/': typeof AppIndexRoute
   '/_app/_mail/compose': typeof AppMailComposeRoute
+  '/_app/settings/_admin': typeof AppSettingsAdminRouteWithChildren
+  '/_app/settings/connected-accounts': typeof AppSettingsConnectedAccountsRoute
+  '/_app/settings/security': typeof AppSettingsSecurityRoute
   '/_auth/_signed-out/forgot-password': typeof AuthSignedOutForgotPasswordRoute
   '/_auth/_signed-out/sign-in': typeof AuthSignedOutSignInRoute
   '/_auth/register/complete': typeof AuthRegisterCompleteRoute
+  '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/_mail/mail/$place': typeof AppMailMailPlaceRouteWithChildren
+  '/_app/settings/_admin/members': typeof AppSettingsAdminMembersRoute
+  '/_app/settings/_admin/registration': typeof AppSettingsAdminRegistrationRoute
+  '/_app/settings/_admin/system-email': typeof AppSettingsAdminSystemEmailRoute
   '/_app/_mail/mail/': typeof AppMailMailIndexRoute
   '/_auth/_signed-out/register/': typeof AuthSignedOutRegisterIndexRoute
   '/_app/_mail/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
@@ -219,7 +272,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/connected-accounts'
-    | '/members'
     | '/probe'
     | '/security'
     | '/settings'
@@ -227,10 +279,16 @@ export interface FileRouteTypes {
     | '/setup'
     | '/verify-email'
     | '/compose'
+    | '/settings/connected-accounts'
+    | '/settings/security'
     | '/forgot-password'
     | '/sign-in'
     | '/register/complete'
+    | '/settings/'
     | '/mail/$place'
+    | '/settings/members'
+    | '/settings/registration'
+    | '/settings/system-email'
     | '/mail/'
     | '/register/'
     | '/mail/outbox/$id'
@@ -240,17 +298,21 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/connected-accounts'
-    | '/members'
     | '/probe'
     | '/security'
-    | '/settings'
     | '/reset-password'
     | '/setup'
     | '/verify-email'
     | '/compose'
+    | '/settings'
+    | '/settings/connected-accounts'
+    | '/settings/security'
     | '/forgot-password'
     | '/sign-in'
     | '/register/complete'
+    | '/settings/members'
+    | '/settings/registration'
+    | '/settings/system-email'
     | '/mail'
     | '/register'
     | '/mail/outbox/$id'
@@ -261,21 +323,27 @@ export interface FileRouteTypes {
     | '/_app'
     | '/_auth'
     | '/connected-accounts'
-    | '/members'
     | '/probe'
     | '/security'
-    | '/settings'
     | '/_app/_mail'
+    | '/_app/settings'
     | '/_auth/_signed-out'
     | '/_auth/reset-password'
     | '/_auth/setup'
     | '/_auth/verify-email'
     | '/_app/'
     | '/_app/_mail/compose'
+    | '/_app/settings/_admin'
+    | '/_app/settings/connected-accounts'
+    | '/_app/settings/security'
     | '/_auth/_signed-out/forgot-password'
     | '/_auth/_signed-out/sign-in'
     | '/_auth/register/complete'
+    | '/_app/settings/'
     | '/_app/_mail/mail/$place'
+    | '/_app/settings/_admin/members'
+    | '/_app/settings/_admin/registration'
+    | '/_app/settings/_admin/system-email'
     | '/_app/_mail/mail/'
     | '/_auth/_signed-out/register/'
     | '/_app/_mail/mail/outbox/$id'
@@ -287,10 +355,8 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
   ConnectedAccountsRoute: typeof ConnectedAccountsRoute
-  MembersRoute: typeof MembersRoute
   ProbeRoute: typeof ProbeRoute
   SecurityRoute: typeof SecurityRoute
-  SettingsRoute: typeof SettingsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -316,13 +382,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConnectedAccountsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/members': {
-      id: '/members'
-      path: '/members'
-      fullPath: '/members'
-      preLoaderRoute: typeof MembersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/probe': {
       id: '/probe'
       path: '/probe'
@@ -337,13 +396,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SecurityRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_app/': {
       id: '/_app/'
       path: '/'
@@ -356,6 +408,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppMailRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_auth/_signed-out': {
@@ -393,6 +452,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMailComposeRouteImport
       parentRoute: typeof AppMailRoute
     }
+    '/_app/settings/': {
+      id: '/_app/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AppSettingsIndexRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/_admin': {
+      id: '/_app/settings/_admin'
+      path: ''
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsAdminRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/connected-accounts': {
+      id: '/_app/settings/connected-accounts'
+      path: '/connected-accounts'
+      fullPath: '/settings/connected-accounts'
+      preLoaderRoute: typeof AppSettingsConnectedAccountsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/security': {
+      id: '/_app/settings/security'
+      path: '/security'
+      fullPath: '/settings/security'
+      preLoaderRoute: typeof AppSettingsSecurityRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_auth/_signed-out/forgot-password': {
       id: '/_auth/_signed-out/forgot-password'
       path: '/forgot-password'
@@ -427,6 +514,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/mail/$place'
       preLoaderRoute: typeof AppMailMailPlaceRouteImport
       parentRoute: typeof AppMailRoute
+    }
+    '/_app/settings/_admin/members': {
+      id: '/_app/settings/_admin/members'
+      path: '/members'
+      fullPath: '/settings/members'
+      preLoaderRoute: typeof AppSettingsAdminMembersRouteImport
+      parentRoute: typeof AppSettingsAdminRoute
+    }
+    '/_app/settings/_admin/registration': {
+      id: '/_app/settings/_admin/registration'
+      path: '/registration'
+      fullPath: '/settings/registration'
+      preLoaderRoute: typeof AppSettingsAdminRegistrationRouteImport
+      parentRoute: typeof AppSettingsAdminRoute
+    }
+    '/_app/settings/_admin/system-email': {
+      id: '/_app/settings/_admin/system-email'
+      path: '/system-email'
+      fullPath: '/settings/system-email'
+      preLoaderRoute: typeof AppSettingsAdminSystemEmailRouteImport
+      parentRoute: typeof AppSettingsAdminRoute
     }
     '/_auth/_signed-out/register/': {
       id: '/_auth/_signed-out/register/'
@@ -489,13 +597,48 @@ const AppMailRouteChildren: AppMailRouteChildren = {
 const AppMailRouteWithChildren =
   AppMailRoute._addFileChildren(AppMailRouteChildren)
 
+interface AppSettingsAdminRouteChildren {
+  AppSettingsAdminMembersRoute: typeof AppSettingsAdminMembersRoute
+  AppSettingsAdminRegistrationRoute: typeof AppSettingsAdminRegistrationRoute
+  AppSettingsAdminSystemEmailRoute: typeof AppSettingsAdminSystemEmailRoute
+}
+
+const AppSettingsAdminRouteChildren: AppSettingsAdminRouteChildren = {
+  AppSettingsAdminMembersRoute: AppSettingsAdminMembersRoute,
+  AppSettingsAdminRegistrationRoute: AppSettingsAdminRegistrationRoute,
+  AppSettingsAdminSystemEmailRoute: AppSettingsAdminSystemEmailRoute,
+}
+
+const AppSettingsAdminRouteWithChildren =
+  AppSettingsAdminRoute._addFileChildren(AppSettingsAdminRouteChildren)
+
+interface AppSettingsRouteChildren {
+  AppSettingsAdminRoute: typeof AppSettingsAdminRouteWithChildren
+  AppSettingsConnectedAccountsRoute: typeof AppSettingsConnectedAccountsRoute
+  AppSettingsSecurityRoute: typeof AppSettingsSecurityRoute
+  AppSettingsIndexRoute: typeof AppSettingsIndexRoute
+}
+
+const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsAdminRoute: AppSettingsAdminRouteWithChildren,
+  AppSettingsConnectedAccountsRoute: AppSettingsConnectedAccountsRoute,
+  AppSettingsSecurityRoute: AppSettingsSecurityRoute,
+  AppSettingsIndexRoute: AppSettingsIndexRoute,
+}
+
+const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
+  AppSettingsRouteChildren,
+)
+
 interface AppRouteChildren {
   AppMailRoute: typeof AppMailRouteWithChildren
+  AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppMailRoute: AppMailRouteWithChildren,
+  AppSettingsRoute: AppSettingsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
 }
 
@@ -539,10 +682,8 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
   ConnectedAccountsRoute: ConnectedAccountsRoute,
-  MembersRoute: MembersRoute,
   ProbeRoute: ProbeRoute,
   SecurityRoute: SecurityRoute,
-  SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

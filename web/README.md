@@ -118,8 +118,8 @@ Put shared code in the folder for its responsibility:
   and the test message form and its result wording.
 - `src/features/members`: the member list's columns and cells, the table
   with its confirmation dialog, and its wording.
-- `src/features/registration`: the Settings page's Registration section,
-  the `/register` and `/register/complete` forms, and their wording.
+- `src/features/registration`: the Registration page's section, the
+  `/register` and `/register/complete` forms, and their wording.
 - `src/features/password-reset`: the `/forgot-password` and
   `/reset-password` forms, the reset form's schema, and their wording.
 - `src/features/connected-accounts`: the Connected accounts list with its
@@ -133,6 +133,7 @@ Put shared code in the folder for its responsibility:
   their wording, and when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
   names, and the list beside the reading pane.
+- `src/features/settings`: the settings sidebar.
 - `src/components`: shared components, such as the password input, the
   request error under a form, the signed-in frame and its member menu, the
   offline banner, and the pages for loading, failure, and Page not found.
@@ -146,7 +147,8 @@ Put shared code in the folder for its responsibility:
   link's secret, the layout the window's width allows, or a page focusing
   its heading once a closing drawer lets go (`useFocusOnOpen`).
 - `src/routes`: route registration and page composition.
-- `src/test`: setup for the browser tests.
+- `src/test`: setup for the browser tests, and `appRouter`, the app's
+  routes loaded at an address with a session read stubbed.
 - `src/styles.css`: the tokens and base styles. Beside it,
   `react-aria-pressable.css` holds a React Aria rule the
   Content-Security-Policy would otherwise block; the file says why.
@@ -163,27 +165,32 @@ regenerate `src/routeTree.gen.ts` from them. That file is committed so
 type checking works on a fresh clone; never edit it by hand.
 
 Pages sit under layout routes, whose names start with `_` and add nothing
-to the address. A guard runs in `beforeLoad`, before anything draws, and
-reads the session through `readSession` (`features/auth/guard.ts`), which
-uses the cached session when a page has read it:
+to the address. Each guard runs in `beforeLoad`, before anything draws,
+and reads the session through `readSession` (`features/auth/guard.ts`),
+which uses the cached session when a page has read it:
 
-| Layout route        | Pages                                       | Guard                                                                        |
-| ------------------- | ------------------------------------------- | ---------------------------------------------------------------------------- |
-| `_app`              | Everything signed in                        | No session: `/sign-in?redirect=<address>`, which returns there after sign-in |
-| `_app/_mail`        | `/mail/<place>`, `/mail/outbox`, `/compose` | None; the mail frame                                                         |
-| `_auth`             | Signed-out pages                            | None; the wordmark over one column                                           |
-| `_auth/_signed-out` | Sign-in, Forgot password, Register          | A signed-in member goes to `/`; a failed check shows the page                |
+| Layout route           | Pages                                       | Guard                                                                                             |
+| ---------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `_app`                 | Everything signed in                        | No session: `/sign-in?redirect=<address>`, which returns there after sign-in                      |
+| `_app/_mail`           | `/mail/<place>`, `/mail/outbox`, `/compose` | None; the mail frame                                                                              |
+| `_app/settings`        | `/settings/<page>`                          | None; the settings frame                                                                          |
+| `_app/settings/_admin` | Members, Registration, System email         | A member gets Page not found; an administrator without two-factor authentication goes to Security |
+| `_auth`                | Signed-out pages                            | None; the wordmark over one column                                                                |
+| `_auth/_signed-out`    | Sign-in, Forgot password, Register          | A signed-in member goes to `/`; a failed check shows the page                                     |
 
 `/` opens `/mail/inbox`, or Security for an administrator without
-two-factor authentication. A page still reads the session itself and
-opens sign-in on a 401, since a session can end after the guard ran, e.g.
-from another tab. Pages emailed links open (`/verify-email`, `/reset-password`,
-`/register/complete`) keep their addresses and sit in `_auth` without a
-guard, so they work signed in or out. The signed-out layout shows
-`OfflineBanner` at the top while the browser reports no connection, read
-from TanStack Query's `onlineManager`. The router counts a session read in
-the last 5 s as fresh (`sessionFreshMs`), so a page that opens just after
-a guard read it does not read it again.
+two-factor authentication. Pages emailed links open (`/verify-email`,
+`/reset-password`, `/register/complete`) keep their addresses and sit in
+`_auth` without a guard, so they work signed in or out. The server's
+other entry addresses, `/security` (the recovery notice) and
+`/connected-accounts` (where Google's return lands, with `?outcome=`),
+are routes that only redirect into settings, so the server never follows
+the settings' layout; `src/entry-paths.browser.test.tsx` lists every
+entry address and fails when one stops being a page. A page still reads
+the session itself and opens sign-in on a 401, since a session can end
+after the guard ran, e.g. from another tab. The router counts a session
+read in the last 5 s as fresh (`sessionFreshMs`), so a page that opens
+just after a guard read it does not read it again.
 
 Every page gets the same states from the router (`src/router.tsx`):
 `RoutePending`, a spinner with "Loading...", when the page's checks take
@@ -221,7 +228,7 @@ from 1280 px the sidebar sits beside the content, and its open or
 collapsed state is kept in `localStorage`; from 1024 px it is a rail,
 which expands into the drawer over the content; below 1024 px a top bar
 opens the drawer. `useLayout` (`hooks/use-layout.ts`) names the layout
-for the width. The frame's routes keep their components in the app's
+for the width. The frames' routes keep their components in the app's
 first download (`codeSplitGroupings`), so a page still loading when the
 member moves between pages shows its loading view inside the frame; the
 first load is one loading view over the window, as above. In mail, the
@@ -233,8 +240,9 @@ page's `main`. The mail sidebar's Outbox shows how many of its messages
 are not sent yet, from the Outbox page's own read: one being sent, or one
 whose page still offers to send it (`unfinished`), so a message sent
 again stops counting. The member menu at the bottom of the sidebar opens
-Settings, the theme choice, and Sign out. The frame shows `OfflineBanner`
-at the top of the content too.
+Settings, the theme choice, and Sign out. Both frames and the signed-out
+layout show `OfflineBanner` at the top of the content while the browser
+reports no connection, read from TanStack Query's `onlineManager`.
 
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page
@@ -246,14 +254,15 @@ view at once, as the router's does, checks again, and runs the page's own
 checks too. A failed recheck keeps entered setup values and shows the
 error beside the form.
 
-The `/setup` page shows token configuration instructions or the first-admin
-form. See [First administrator setup](../backend/README.md#first-administrator-setup)
-for the operator steps. Completing setup updates the shared status and opens
-`/sign-in`, with instructions to remove the setup token and restart the server.
-Setup does not sign the administrator in. Later visits to `/setup` redirect to
-`/`, whose guard chooses mail or sign-in.
-The browser remembers a local setup attempt until reload, so a status check
-that confirms completion after a lost response also shows the instructions.
+The `/setup` page shows token configuration instructions or the
+first-admin form. See [First administrator
+setup](../backend/README.md#first-administrator-setup) for the operator
+steps. Completing setup updates the shared status and opens `/sign-in`,
+with instructions to remove the setup token and restart the server. Setup
+does not sign the administrator in. Later visits to `/setup` redirect to
+`/`, whose guard chooses mail or sign-in. The browser remembers a local
+setup attempt until reload, so a status check that confirms completion
+after a lost response also shows the instructions.
 
 The `/sign-in` page submits credentials through the generated mutation hook.
 `/sign-in?redirect=<path>` returns to that path after sign-in, else to `/`;
@@ -269,8 +278,8 @@ A deactivated account with the right password sees "This account is
 deactivated. Ask your administrator." The code step answers a 403 the same
 way as an ended challenge: the form stops and offers to start again.
 An uncertain response offers a session check before another attempt.
-Administrators without confirmed TOTP land on `/security` to enroll.
-Members can reach the same page through the Security link.
+Administrators without confirmed TOTP land on `/settings/security` to
+enroll. Members reach the same page through the settings sidebar.
 
 Security starts enrollment on request and renders the QR code locally, with a
 manual setup key as an alternative. A six-digit authenticator code confirms it,
@@ -303,13 +312,15 @@ page switches to that notice. An HTTP 409 means TOTP is already off, so the
 page offers enrollment again. An uncertain turn-off blocks another attempt until
 status is checked.
 
-Security opens with the account's email address and whether it is verified.
-"Send verification link" emails a link that expires in 24 hours. A lost reply
-or failed send can be repeated without a check: the server limits how many
-links are sent, and every unexpired link works. Sending and TOTP writes wait
-for each other, because confirming TOTP replaces this browser's session. It
-says a forgotten password can't be reset by email until the address is
-verified, since the reset page's answer cannot say why nothing arrived.
+Security opens with the account's email address and whether it is
+verified. "Send verification link" emails a link that expires in 24 hours.
+A lost reply or failed send can be repeated without a check: the server
+limits how many links are sent, and every unexpired link works. Sending
+and TOTP writes wait for each other, because confirming TOTP replaces this
+browser's session. An unverified account also sees a banner on every other
+settings page that links to Security. Both say a forgotten password can't
+be reset by email until the address is verified, since the reset page's
+answer cannot say why nothing arrived.
 
 The link opens `/verify-email`, which works signed in or out. The secret after
 `#` never reaches the server with the page request. `getRouter` calls
@@ -391,30 +402,31 @@ list instead of requiring a check. A session the API reports gone reads
 reloaded list. Ending sessions and TOTP writes wait for each other, because
 confirming TOTP replaces this browser's session and ends the others.
 
-Administrators with confirmed TOTP see Members and Settings links to
-`/members` and `/settings`. Each page passes its session to `AccountNav`,
-which decides from it; a page wider than a form, such as `/members`, also
-passes `wide`. Anyone else who opens Settings sees that settings are for
-administrators with two-factor authentication; an administrator also gets a
-link to Security. A 401 from a save or test signs out; a 403 reads access
+Administrators with confirmed TOTP see "This inbok" in the settings
+sidebar: Members, Registration, and System email (`/settings/members`,
+`/settings/registration`, `/settings/system-email`). An administrator
+without it sees the group locked with a line pointing to Security. If
+access is lost after a page loaded, the page says the settings are for
+administrators with two-factor authentication, with a link to Security for
+an administrator. A 401 from a save or test signs out; a 403 reads access
 again.
 
-The page configures system email, the server inbok sends its own mail
-through. The form applies Go's rules between fields before sending, and its
-password description says when an empty password keeps the saved one.
-Inputs are read-only, not disabled, while a save runs, so focus stays and the
-values remain readable. A save whose response is lost locks the form and the
-test until "Check saved settings" reads them again and says whether they
-match; a typed password is never read back, so it stays unconfirmed. The
-username and password inputs carry password-manager opt-outs, so the inbok
-sign-in is neither filled in nor saved there.
+System email configures the server inbok sends its own mail through. The
+form applies Go's rules between fields before sending, and its password
+description says when an empty password keeps the saved one. Inputs are
+read-only, not disabled, while a save runs, so focus stays and the values
+remain readable. A save whose response is lost locks the form and the test
+until "Check saved settings" reads them again and says whether they match;
+a typed password is never read back, so it stays unconfirmed. The username
+and password inputs carry password-manager opt-outs, so the inbok sign-in
+is neither filled in nor saved there.
 
-The test section sends to the signed-in address by default and words each
+Its test section sends to the signed-in address by default and words each
 failure by the step that failed. A lost result can be sent again without a
 check. Editing the recipient or a later save hides an earlier result. A save
 and a test never run at the same time.
 
-The Registration section opens and closes public registration with a switch,
+The Registration page opens and closes public registration with a switch,
 which shows the status the server saved, not the click. Each change asks
 first: opening says anyone who can reach this inbok can create a member
 account, and each adds storage and sync work; closing says unused sign-up
@@ -429,49 +441,50 @@ leaves the status unknown.
 Members lists every account, oldest first, in a table: the address, with
 the signed-in one marked "You", its status, active or deactivated with the
 date, then role, joined date, whether the email is verified, and whether
-two-factor authentication is on. Status and the action come right after the
-address, so a phone shows them first; the table scrolls sideways in a region
-the keyboard can focus. Members have a Deactivate or Reactivate button; the
-signed-in administrator and other administrators have none. Both actions ask
-first in a dialog, and the request starts once the dialog has closed, so
-focus can return to the row's button. The changed row updates from the
-server's answer at once, and every outcome rereads the list. A failed reread
-keeps the list with "Could not reload members, so the list may be out of
-date." and Try again. An unknown outcome asks the user to check the list
-before trying again; a 404 or 409 shows the server's explanation. Like
-Settings, anyone else who opens the page sees that it is for administrators
-with two-factor authentication, a 401 signs out, and a 403 reads access
-again.
+two-factor authentication is on. Status and the action come right after
+the address, so a phone shows them first; the table scrolls sideways in a
+region the keyboard can focus. Members have a Deactivate or Reactivate
+button; the signed-in administrator and other administrators have none.
+Both actions ask first in a dialog, and the request starts once the dialog
+has closed, so focus can return to the row's button. The changed row
+updates from the server's answer at once, and every outcome rereads the
+list. A failed reread keeps the list with "Could not reload members, so
+the list may be out of date." and Try again. An unknown outcome asks the
+user to check the list before trying again; a 404 or 409 shows the
+server's explanation. Like the other "This inbok" pages, it says it is for
+administrators with two-factor authentication when access is lost after it
+loaded, a 401 signs out, and a 403 reads access again.
 
-Every signed-in page links `/connected-accounts`, where members connect
-Gmail accounts. The page lists the member's accounts, oldest first, with the
-date each was connected. Connect Gmail asks the API for Google's consent
-page and sends the tab there; Google returns the browser to the API, which
-redirects to this page with `?outcome=`. The page validates it against the
-generated `ConnectOutcome`, ignores any other value, removes it from the
-address, so a reload or Back does not repeat it, and then shows its message.
-An account Google stopped accepting is marked "Needs reconnecting", with the
-date, and so is one whose saved access inbok can't open, e.g. after a
-server key was lost, which the server checks at each read. Only these have
-Reconnect, which runs the same consent flow for that account, where the
-member must choose the same Google account. Disconnect
-asks first and says inbok removes the account with everything it saved for
-it and asks Google to end its access; for an account whose saved access
-inbok can't open, it says inbok can't ask Google, and that the member can
-remove inbok in their Google Account. The dialog leaves out that inbok does
-not ask when another member here connected the same Google account, whose
-access stays. The row goes as soon as the server confirms. When the
-server has no Google client, the page says to ask an administrator
-instead of offering Connect Gmail or Reconnect. A 401 from any
-read or write opens sign-in. A refused start rereads what it shows has
-changed: the providers on a 409, the list on a 404. A lost answer to a start
-just asks for another try, since an unused start expires; a lost answer to a
-disconnect asks the member to check the list, which rereads after every
-outcome. A failed reread keeps the list with "Could not reload connected
-accounts, so the list may be out of date." and Try again. A start goes to
-Google only while the page is still open. The browser's back-forward cache
-can restore the page locked as it left for Google, so a restored page
-unlocks its buttons and rereads the list.
+Settings' Connected accounts (`/settings/connected-accounts`) is where
+members connect Gmail accounts. The page lists the member's accounts,
+oldest first, with the date each was connected. Connect Gmail asks the API
+for Google's consent page and sends the tab there; Google returns the
+browser to the API, which redirects to this page with `?outcome=`. The
+page validates it against the generated `ConnectOutcome`, ignores any
+other value, removes it from the address, so a reload or Back does not
+repeat it, and then shows its message. An account Google stopped accepting
+is marked "Needs reconnecting", with the date, and so is one whose saved
+access inbok can't open, e.g. after a server key was lost, which the
+server checks at each read. Only these have Reconnect, which runs the same
+consent flow for that account, where the member must choose the same
+Google account. Disconnect asks first and says inbok removes the account
+with everything it saved for it and asks Google to end its access; for an
+account whose saved access inbok can't open, it says inbok can't ask
+Google, and that the member can remove inbok in their Google Account. The
+dialog leaves out that inbok does not ask when another member here
+connected the same Google account, whose access stays. The row goes as
+soon as the server confirms. When the server has no Google client, the
+page says to ask an administrator instead of offering Connect Gmail or
+Reconnect. A 401 from any read or write opens sign-in. A refused start
+rereads what it shows has changed: the providers on a 409, the list on
+a 404. A lost answer to a start just asks for another try, since an unused
+start expires; a lost answer to a disconnect asks the member to check the
+list, which rereads after every outcome. A failed reread keeps the list
+with "Could not reload connected accounts, so the list may be out of
+date." and Try again. A start goes to Google only while the page is still
+open. The browser's back-forward cache can restore the page locked as it
+left for Google, so a restored page unlocks its buttons and rereads the
+list.
 
 Each account inbok can use (`status` `usable`) also says where its sync
 stands, under the line about its connection: `sync.ts` picks the first

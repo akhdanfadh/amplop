@@ -167,7 +167,7 @@ export function MessageStatus({
           </Link>
         )}
         {reconnect && (
-          <Link to="/connected-accounts" className={linkClass}>
+          <Link to="/settings/connected-accounts" className={linkClass}>
             Open Connected accounts
           </Link>
         )}

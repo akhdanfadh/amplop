@@ -116,7 +116,7 @@ function Compose(): ReactElement {
           {accounts.length === 0
             ? "Connect a Gmail account to send messages from it."
             : "Each of your Gmail accounts needs reconnecting before it can send."}{" "}
-          <Link to="/connected-accounts" className={linkClass}>
+          <Link to="/settings/connected-accounts" className={linkClass}>
             Open Connected accounts
           </Link>
         </p>
