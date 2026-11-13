@@ -111,6 +111,13 @@ export function inProgress(status: Status): boolean {
   return status === "waiting" || status === "sending";
 }
 
+// unfinished reports whether message has not ended for its member: it is
+// still being sent, or its page still offers a way to send it, as
+// nextSteps works out. A message sent again has ended; its copy goes on.
+export function unfinished(message: MessageState): boolean {
+  return inProgress(message.status) || nextSteps(message).offers.length > 0;
+}
+
 // statusVariant returns the badge variant for status: destructive for a
 // message not sent or not confirmed, which asks something of the member.
 export function statusVariant(status: Status): "destructive" | "secondary" {

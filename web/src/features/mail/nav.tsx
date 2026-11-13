@@ -13,12 +13,19 @@ import {
   UploadIcon,
   type LucideIcon,
 } from "lucide-react";
+import { useListOutgoingMessages } from "@/api/generated/inbok";
 import { NavItem, within } from "@/components/nav-item";
 import { buttonVariants } from "@/components/ui/button";
 import { SidebarGroup, SidebarMenu, useSidebar } from "@/components/ui/sidebar";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { viewPlaces, type ViewPlace } from "./places";
-import { composeName, outboxName, placeName } from "./text";
+import { pollWhile } from "@/features/outgoing-messages/poll";
+import { inProgress, unfinished } from "@/features/outgoing-messages/text";
+import { composeName, notSentLabel, outboxName, placeName } from "./text";
+
+// How often the Outbox's count is read again while a message is still
+// being sent, as the Outbox page reads its list.
+const outboxPollMs = 5_000;
 
 const placeIcon: Record<ViewPlace, LucideIcon> = {
   inbox: InboxIcon,
@@ -30,10 +37,21 @@ const placeIcon: Record<ViewPlace, LucideIcon> = {
 };
 
 // MailNav is the mail sidebar's content (DESIGN.md "Sidebar"): Compose,
-// the views, and the Outbox. The item whose place is open is marked.
+// the views, and the Outbox with how many of its messages are not sent
+// yet. The item whose place is open is marked.
 export function MailNav(): ReactElement {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { dismiss: closeDrawer } = useSidebar();
+  // The Outbox page's own read, so the two share one list.
+  const outbox = useListOutgoingMessages({
+    query: {
+      refetchInterval: pollWhile(outboxPollMs, (data) =>
+        data.data.messages.some((message) => inProgress(message.status)),
+      ),
+    },
+  });
+  // What still asks for the member, so a message sent again stops counting.
+  const notSent = outbox.data?.data.messages.filter(unfinished).length ?? 0;
 
   return (
     <>
@@ -60,6 +78,7 @@ export function MailNav(): ReactElement {
             href={linkOptions({ to: "/mail/outbox" })}
             name={outboxName}
             icon={UploadIcon}
+            count={{ value: notSent, label: notSentLabel }}
             isActive={within(pathname, "/mail/outbox")}
             onPress={closeDrawer}
           />

@@ -229,8 +229,12 @@ list grows with the window from 300 px to 440 px beside the reading pane
 (`features/mail/panes.tsx`), with no divider to drag; below 780 px one
 pane shows at a time. A state in the reading pane, e.g. a conversation not
 found, is a section with an `h2` (`StateRegion`), since the list holds the
-page's `main`. The member menu at the bottom of the sidebar opens
-Settings, the theme choice, and Sign out. The frame shows `OfflineBanner` at the top of the content too.
+page's `main`. The mail sidebar's Outbox shows how many of its messages
+are not sent yet, from the Outbox page's own read: one being sent, or one
+whose page still offers to send it (`unfinished`), so a message sent
+again stops counting. The member menu at the bottom of the sidebar opens
+Settings, the theme choice, and Sign out. The frame shows `OfflineBanner`
+at the top of the content too.
 
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page

@@ -257,7 +257,10 @@ TOTP, and role in `beforeLoad` before anything draws.
 - Account status in words beside it: "Syncing" with a spinner (details on
   hover: "Copying the last 90 days: N messages so far."), "Reconnect",
   "Sync failed".
-- Outbox, always, so the sidebar stays still.
+- Outbox, always, with how many of its messages are not sent yet
+  (waiting, sending, or failed or unknown and not sent again): the
+  sidebar stays still, and the count is what tells the member a send
+  needs them.
 - The member at the bottom, opening the member menu: Settings, Theme
   (Light, Dark, System, side by side, as icons named by tooltips; the
   chosen one has the `selection` background and an `input` outline, as

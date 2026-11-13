@@ -14,6 +14,7 @@ import {
   recipientSummary,
   sendAgainErrorMessage,
   sendErrorMessage,
+  unfinished,
   type MessageState,
   type Offer,
 } from "./text";
@@ -188,6 +189,18 @@ describe("status helpers", () => {
     expect(inProgress("sending")).toBe(true);
     expect(inProgress("unknown")).toBe(false);
     expect(inProgress("sent")).toBe(false);
+  });
+
+  it("counts a message unfinished until it is sent, or sent again", () => {
+    const copy = "0b9f3a52-5f1d-4a8e-9a43-5f0c2b6b1c11";
+    expect(unfinished(waiting)).toBe(true);
+    expect(unfinished({ ...waiting, status: "sending" })).toBe(true);
+    expect(unfinished(failed("gave-up"))).toBe(true);
+    expect(unfinished({ ...waiting, status: "unknown" })).toBe(true);
+    expect(unfinished({ ...waiting, status: "sent", sentAt: "2026-11-13T08:00:05Z" })).toBe(false);
+    // Its copy carries on; the copy's own status counts instead.
+    expect(unfinished({ ...failed("gave-up"), sentAgainAs: copy })).toBe(false);
+    expect(unfinished({ ...waiting, status: "unknown", sentAgainAs: copy })).toBe(false);
   });
 
   it("tells problems apart by status and type together", () => {

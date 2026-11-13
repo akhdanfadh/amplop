@@ -14,6 +14,9 @@ export const placeName: Record<ViewPlace, string> = {
 export const composeName = "Compose";
 export const outboxName = "Outbox";
 
+// What the Outbox's count counts, read after it.
+export const notSentLabel = "not sent";
+
 // Shown in the list pane until conversations are built.
 export const listPending = "The conversation list isn't built yet.";
 
