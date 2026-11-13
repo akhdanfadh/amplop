@@ -11,6 +11,10 @@ const badgeVariants = cva(
         // surface is darker than the page in dark) and apart from outline.
         secondary: "border-border bg-accent text-foreground",
         destructive: "bg-destructive/8 text-destructive dark:bg-destructive/12",
+        // inbok's status tones, on destructive's tint (DESIGN.md "Colour").
+        info: "bg-info/8 text-info dark:bg-info/12",
+        success: "bg-success/8 text-success dark:bg-success/12",
+        warning: "bg-warning/8 text-warning dark:bg-warning/12",
         outline: "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         ghost: "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",

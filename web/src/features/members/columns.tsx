@@ -1,7 +1,8 @@
 import type { ReactElement } from "react";
+import { BanIcon, CircleCheckIcon, UserRoundIcon } from "lucide-react";
 import { createColumnHelper, metaHelper, tableFeatures } from "@tanstack/react-table";
 import type { Member } from "@/api/generated/model";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { canChange, formatDate, roleName, type MemberChange } from "./text";
 
@@ -83,17 +84,28 @@ function EmailCell({ email, you }: { email: string; you: boolean }): ReactElemen
       <span className="wrap-anywhere" translate="no">
         {email}
       </span>
-      {you && <Badge variant="secondary">You</Badge>}
+      {you && (
+        <StatusBadge tone="neutral" icon={UserRoundIcon}>
+          You
+        </StatusBadge>
+      )}
     </span>
   );
 }
 
 // StatusCell shows whether an account is active, or since when it is deactivated.
 function StatusCell({ deactivatedAt }: { deactivatedAt: string | null }): ReactElement {
-  if (deactivatedAt === null) return <Badge variant="outline">Active</Badge>;
+  if (deactivatedAt === null)
+    return (
+      <StatusBadge tone="success" icon={CircleCheckIcon}>
+        Active
+      </StatusBadge>
+    );
   return (
     <span className="flex flex-col items-start gap-1">
-      <Badge variant="destructive">Deactivated</Badge>
+      <StatusBadge tone="neutral" icon={BanIcon}>
+        Deactivated
+      </StatusBadge>
       <DateCell iso={deactivatedAt} className="text-xs text-muted-foreground" />
     </span>
   );

@@ -438,15 +438,21 @@ is inbok's own and runs Check for new mail; the list box sets
 
 ### Status badges
 
-One `badge`, a soft tint, always an icon and a word:
+One `badge`, a soft tint, always an icon and a word: `StatusBadge`
+(`src/components/status-badge.tsx`) takes the tone, the icon, and the word.
+The tone says what the status asks of the member:
 
-| Tone        | Used for                                                                 |
-| ----------- | ------------------------------------------------------------------------ |
-| Neutral     | Waiting, Waiting to sync, Not verified, Admin, Deactivated, This browser |
-| Info        | Sending, Syncing (spinner)                                               |
-| Success     | Sent, Up to date (Connected accounts page only), Verified, Two-factor on |
-| Warning     | Unknown, Reconnect                                                       |
-| Destructive | Failed, Sync failed                                                      |
+| Tone        | Asks         | Used for                                                                                   |
+| ----------- | ------------ | ------------------------------------------------------------------------------------------ |
+| Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser |
+| Info        | To wait      | Sending, Syncing (spinner)                                                                 |
+| Success     | Nothing more | Sent, Up to date, Active, Verified, Two-factor on                                          |
+| Warning     | A look       | Not confirmed, Needs reconnecting                                                          |
+| Destructive | A fix        | Not sent, Sync failed                                                                      |
+
+Deactivated is an admin's choice, not a fault. Up to date and Active show
+only on the page whose job is that status (Connected accounts, Members);
+elsewhere the usual state shows nothing.
 
 ## Data for mail
 

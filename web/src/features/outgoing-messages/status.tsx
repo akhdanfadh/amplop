@@ -18,16 +18,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { formatReceived } from "@/features/messages/text";
-import {
-  needsReconnect,
-  nextSteps,
-  sendAgainErrorMessage,
-  statusLabel,
-  statusVariant,
-} from "./text";
+import { MessageStatusBadge } from "./status-badge";
+import { needsReconnect, nextSteps, sendAgainErrorMessage } from "./text";
 
 const unauthorized = 401;
 const focusClass = "focus-visible:focus-ring";
@@ -110,7 +104,7 @@ export function MessageStatus({
       aria-label="Status"
     >
       <div className="flex flex-wrap items-center gap-3">
-        <Badge variant={statusVariant(message.status)}>{statusLabel(message.status)}</Badge>
+        <MessageStatusBadge status={message.status} />
         {/* Stays mounted, so a status the page reads again is announced. */}
         <output aria-atomic="true" className="basis-full">
           {!announced ? null : message.status === "sent" && message.sentAt !== null && sent ? (

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
+import { TriangleAlertIcon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListAccountProvidersQueryKey,
@@ -25,7 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { syncView, type SyncView } from "./sync";
 import {
@@ -386,7 +387,11 @@ function AccountRow({
       <div className="flex min-w-0 flex-col gap-1">
         <p className="flex flex-wrap items-center gap-2 font-medium">
           <span translate="no">{account.email}</span>
-          {needsReconnect && <Badge variant="destructive">Needs reconnecting</Badge>}
+          {needsReconnect && (
+            <StatusBadge tone="warning" icon={TriangleAlertIcon}>
+              Needs reconnecting
+            </StatusBadge>
+          )}
         </p>
         <p id={detailsId} className="text-sm text-muted-foreground">
           <AccountNote account={account} gmailOffered={gmailOffered} />

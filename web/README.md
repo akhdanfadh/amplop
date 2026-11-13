@@ -136,8 +136,9 @@ Put shared code in the folder for its responsibility:
   returns to.
 - `src/features/settings`: the settings sidebar.
 - `src/components`: shared components, such as the password input, the
-  request error under a form, the signed-in frame and its member menu, the
-  offline banner, and the pages for loading, failure, and Page not found.
+  request error under a form, the status badge, the signed-in frame and its
+  member menu, the offline banner, and the pages for loading, failure, and
+  Page not found.
   `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.

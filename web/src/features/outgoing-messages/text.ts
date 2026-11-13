@@ -15,6 +15,9 @@ const notSendableAgainType: ProblemType = "/api/v0/problems/not-sendable-again";
 const messageNotFoundType: ProblemType = "/api/v0/problems/outgoing-message-not-found";
 export const messageGone = "This message isn't in your Outbox. It may have been removed.";
 
+// The badge of a message sent again as a copy.
+export const sentAgainLabel = "Tried again";
+
 // The short name of each status, e.g. for a badge.
 const statusLabels: Record<Status, string> = {
   waiting: "Waiting",
@@ -116,12 +119,6 @@ export function inProgress(status: Status): boolean {
 // nextSteps works out. A message sent again has ended; its copy goes on.
 export function unfinished(message: MessageState): boolean {
   return inProgress(message.status) || nextSteps(message).offers.length > 0;
-}
-
-// statusVariant returns the badge variant for status: destructive for a
-// message not sent or not confirmed, which asks something of the member.
-export function statusVariant(status: Status): "destructive" | "secondary" {
-  return status === "failed" || status === "unknown" ? "destructive" : "secondary";
 }
 
 // keyReused reports whether err is the API's refusal of an Idempotency-Key

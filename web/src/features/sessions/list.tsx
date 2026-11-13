@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MonitorIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,7 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { browserName, endedOthersMessage, endMessage, formatTime, lastActive } from "./text";
 
@@ -206,7 +207,11 @@ function SessionRow({
       <div className="flex min-w-0 flex-col gap-1">
         <p className="flex flex-wrap items-center gap-2 font-medium">
           {name}
-          {session.current && <Badge variant="secondary">This browser</Badge>}
+          {session.current && (
+            <StatusBadge tone="neutral" icon={MonitorIcon}>
+              This browser
+            </StatusBadge>
+          )}
         </p>
         <p id={detailsId} className="text-sm text-muted-foreground">
           Signed in <time dateTime={session.signedInAt}>{formatTime(session.signedInAt)}</time>

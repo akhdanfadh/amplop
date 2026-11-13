@@ -1,9 +1,9 @@
 import type { ReactElement } from "react";
 import { Link } from "@tanstack/react-router";
 import type { OutgoingMessageSummary } from "@/api/generated/model";
-import { Badge } from "@/components/ui/badge";
 import { formatReceived, subjectText } from "@/features/messages/text";
-import { recipientSummary, statusLabel, statusVariant } from "./text";
+import { MessageStatusBadge, SentAgainBadge } from "./status-badge";
+import { recipientSummary } from "./text";
 
 const focusClass = "focus-visible:focus-ring";
 
@@ -40,8 +40,8 @@ function MessageRow({ message }: { message: OutgoingMessageSummary }): ReactElem
         >
           {subjectText(message.subject)}
         </Link>
-        <Badge variant={statusVariant(message.status)}>{statusLabel(message.status)}</Badge>
-        {message.sentAgainAs !== null && <Badge variant="outline">Tried again</Badge>}
+        <MessageStatusBadge status={message.status} />
+        {message.sentAgainAs !== null && <SentAgainBadge />}
       </p>
       <p className="text-sm wrap-break-word">
         Recipients: <span translate="no">{recipientSummary(message)}</span>

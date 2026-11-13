@@ -1,9 +1,10 @@
 import { useEffect, useRef, type ReactElement } from "react";
+import { CircleCheckIcon, CircleDashedIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetCurrentSessionQueryKey, useRequestEmailVerification } from "@/api/generated/inbok";
 import { clearAccountCache } from "@/features/auth/session-cache";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { alreadyVerified, sendErrorMessage, sentMessage } from "./text";
 
@@ -73,9 +74,13 @@ export function EmailVerificationSection({
       <p className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{email}</span>
         {verified ? (
-          <Badge variant="secondary">Verified</Badge>
+          <StatusBadge tone="success" icon={CircleCheckIcon}>
+            Verified
+          </StatusBadge>
         ) : (
-          <Badge variant="outline">Not verified</Badge>
+          <StatusBadge tone="neutral" icon={CircleDashedIcon}>
+            Not verified
+          </StatusBadge>
         )}
       </p>
       {!verified && (

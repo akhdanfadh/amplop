@@ -9,7 +9,6 @@ import {
   needsReconnect,
   nextSteps,
   statusLabel,
-  statusVariant,
   readErrorMessage,
   recipientSummary,
   sendAgainErrorMessage,
@@ -176,12 +175,9 @@ describe("readErrorMessage", () => {
 });
 
 describe("status helpers", () => {
-  it("names each status and marks the ones that ask something", () => {
+  it("names each status", () => {
     expect(statusLabel("failed")).toBe("Not sent");
     expect(statusLabel("unknown")).toBe("Not confirmed");
-    expect(statusVariant("failed")).toBe("destructive");
-    expect(statusVariant("unknown")).toBe("destructive");
-    expect(statusVariant("sending")).toBe("secondary");
   });
 
   it("follows only a send still in progress", () => {
