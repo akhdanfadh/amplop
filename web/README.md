@@ -133,9 +133,9 @@ Put shared code in the folder for its responsibility:
   message's status with Send again and Edit and send, their wording, and
   when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
-  names, the conversation list and its rows, mail's TanStack DB
-  collections (`conversations.ts`), how a row shows its date and people,
-  and the address Back to mail returns to.
+  names, the conversation list and its rows, the reading pane, mail's
+  TanStack DB collections (`conversations.ts`), how a row shows its date
+  and people, and the address Back to mail returns to.
 - `src/features/settings`: the settings sidebar.
 - `src/components`: shared components, such as the password input, the
   request error under a form, the status badge, the link styles, the
@@ -253,8 +253,16 @@ A place in mail, `/mail/<place>`, is a view (`inbox`, `starred`, `sent`,
 `?account=<id>` shows one account's mail. A label the member doesn't
 have is Page not found; `?account=` only filters, so an account the
 member doesn't have shows every account's mail, and one that is no ID is
-dropped. A loader whose read finds the session ended clears the member's
-data and opens sign-in (`sessionEnded` in `features/auth/guard.ts`).
+dropped. `/mail/<place>/<conversation id>` opens a conversation in the
+reading pane: one the list holds draws from its row at once while its
+messages load, and one it doesn't, e.g. from a link, waits for its read;
+one that no longer exists is Page not found either way. Its route splits
+its loader off (`codeSplitGroupings`), since it reads mail's TanStack DB
+collection, which must stay out of the app's first download. A loader
+whose read finds the session ended clears the member's data and opens
+sign-in (`sessionEnded` in `features/auth/guard.ts`).
+On a phone the reading pane is the page, with Back above the
+conversation, which goes back in history as the phone's own back does.
 
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page
@@ -910,8 +918,10 @@ from the registry here:
     button's name, which is React Aria's doing.
   - `skeleton` does not pulse. `spinner` is decoration.
 - `grid-list` is ours: the message list, React Aria's `GridList` in its
-  `Virtualizer`, rows of one height, type-to-find off; `GridListEnd` is
-  the line under the last row.
+  `Virtualizer`, rows of one height, type-to-find off. `GridListItem`
+  takes `current` for the open row (`aria-current`, which React Aria
+  passes on only through its `render` prop), whose open surface stays
+  under the pointer; `GridListEnd` is the line under the last row.
 - `avatar`: as the registry's; the conversation row rings it in the
   account colour. `empty`: words only.
 - `toast` is ours: the registry offers only `sonner` (see DESIGN.md).

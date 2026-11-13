@@ -56,11 +56,29 @@ describe("mail addresses", () => {
     expect(notFound(router)).toBe(false);
   });
 
-  it("is Page not found for a label that does not exist", async () => {
-    for (const address of ["/mail/22222222-2222-4222-8222-222222222222", "/mail/nope"]) {
+  it("is Page not found for a label or conversation that does not exist", async () => {
+    for (const address of [
+      "/mail/22222222-2222-4222-8222-222222222222",
+      "/mail/nope",
+      "/mail/inbox/22222222-2222-4222-8222-222222222222",
+      "/mail/inbox/nope",
+    ]) {
       // oxlint-disable-next-line eslint/no-await-in-loop -- one page at a time.
       const router = await open(address);
       expect({ address, notFound: notFound(router) }).toEqual({ address, notFound: true });
     }
+  });
+
+  it("opens a conversation it reads by its ID", async () => {
+    const router = await open(`/mail/inbox/${conversation(1).id}`);
+    expect(notFound(router)).toBe(false);
+    expect(router.state.matches.at(-1)?.routeId).toBe("/_app/_mail/mail/$place/$conversationId");
+  });
+
+  it("keeps the conversation when it drops an account filter", async () => {
+    const id = conversation(1).id;
+    const router = await open(`/mail/inbox/${id}?account=9`);
+    expect(router.state.location.pathname).toBe(`/mail/inbox/${id}`);
+    expect(router.state.location.search).toEqual({});
   });
 });

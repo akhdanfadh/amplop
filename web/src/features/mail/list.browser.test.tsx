@@ -5,6 +5,7 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  useRouterState,
 } from "@tanstack/react-router";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
@@ -32,9 +33,10 @@ afterEach(async () => {
 });
 
 // app renders the Inbox's page on api at address, filtered to the account
-// its ?account= names as the app's route does, and returns its query
-// client and its router.
-async function app(api: MailApi, address = "/mail/inbox") {
+// its ?account= names as the app's route does, with openId open, or else
+// the conversation the address opens, and returns its query client and its
+// router.
+async function app(api: MailApi, address = "/mail/inbox", openId?: string) {
   vi.stubGlobal("fetch", vi.fn(api.fetch));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   current = client;
@@ -49,6 +51,10 @@ async function app(api: MailApi, address = "/mail/inbox") {
       const { place: name } = place.useParams();
       const { account: id } = place.useSearch();
       const account = useListConnectedAccounts().data?.data.accounts.find((a) => a.id === id);
+      // /mail/<place>/<conversation id>: the conversation the address opens.
+      const routed = useRouterState({
+        select: (state) => state.location.pathname.split("/")[3],
+      });
       // The window's height, as the mail frame gives its panes.
       return (
         <div className="flex h-svh flex-col">
@@ -56,6 +62,7 @@ async function app(api: MailApi, address = "/mail/inbox") {
             place={name}
             name={name === "inbox" ? "Inbox" : name}
             account={account}
+            openId={openId ?? routed}
             pane="list"
             reader={null}
           />
@@ -63,9 +70,11 @@ async function app(api: MailApi, address = "/mail/inbox") {
       );
     },
   });
+  // A conversation's address, so opening one stays on the place's page.
+  const opened = createRoute({ getParentRoute: () => place, path: "$conversationId" });
   const signIn = createRoute({ getParentRoute: () => root, path: "/sign-in" });
   const router = createRouter({
-    routeTree: root.addChildren([place, signIn]),
+    routeTree: root.addChildren([place.addChildren([opened]), signIn]),
     history: createMemoryHistory({ initialEntries: [address] }),
     context: { queryClient: client },
     Wrap: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
@@ -131,9 +140,16 @@ describe("ConversationList", () => {
     );
     const { client } = await app(api);
     await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
-    await toLastRow();
     const last = page.getByRole("row", { name: /Subject 10,/ });
-    await expect.element(last).toHaveFocus();
+    // End again until it lands: one pressed as the list settles can go
+    // nowhere. The first page's last row is the last until it does.
+    await vi.waitFor(
+      async () => {
+        await toLastRow();
+        await expect.element(last).toHaveFocus();
+      },
+      { timeout: 10_000 },
+    );
     api.conversations.push(conversation(100), conversation(101));
     await refreshNewest(client);
 
@@ -222,6 +238,39 @@ describe("ConversationList", () => {
       .element()
       .querySelector('[data-slot="avatar"]');
     expect(avatar?.className).toContain("after:border-account-3");
+  });
+
+  it("adds an opened conversation to the history, and replaces it with the next", async () => {
+    const { router } = await app(mailApi([conversation(1), conversation(2), conversation(3)], one));
+    const before = router.history.length;
+
+    await userEvent.click(page.getByRole("row", { name: /Subject 1,/ }));
+    await expect
+      .poll(() => router.state.location.pathname)
+      .toBe(`/mail/inbox/${conversation(1).id}`);
+    expect(router.history.length).toBe(before + 1);
+    // With one open, each next takes its place.
+    await userEvent.click(page.getByRole("row", { name: /Subject 2,/ }));
+    await expect
+      .poll(() => router.state.location.pathname)
+      .toBe(`/mail/inbox/${conversation(2).id}`);
+    await userEvent.click(page.getByRole("row", { name: /Subject 3,/ }));
+    await expect
+      .poll(() => router.state.location.pathname)
+      .toBe(`/mail/inbox/${conversation(3).id}`);
+    expect(router.history.length).toBe(before + 1);
+    router.history.back();
+    await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");
+  });
+
+  it("marks the conversation the reading pane shows", async () => {
+    await app(mailApi([conversation(1), conversation(2)], one), "/mail/inbox", conversation(1).id);
+    await expect
+      .element(page.getByRole("row", { name: /Subject 1,/ }))
+      .toHaveAttribute("aria-current", "page");
+    await expect
+      .element(page.getByRole("row", { name: /Subject 2,/ }))
+      .not.toHaveAttribute("aria-current");
   });
 });
 

@@ -56,11 +56,14 @@ export function messageCount(count: number): string {
   return count.toLocaleString("en-US");
 }
 
-// How a row calls the account itself.
+// How a row and a message's header call the account itself.
 export const me = "me";
 
 // A date on the day before today.
 export const yesterday = "Yesterday";
+
+// The reading pane's word before a message's recipients.
+export const recipientsLabel = "To";
 
 // Who a row names when its newest messages carry no sender at all.
 export const unknownSender = "Unknown sender";
@@ -71,6 +74,9 @@ export const listEnd = "That's everything inbok has copied. Older mail stays in 
 // Read while a list's first page loads, and while it loads older ones.
 export const listLoading = "Loading conversations...";
 export const listLoadingMore = "Loading older conversations...";
+
+// The phone's way from a conversation back to its list.
+export const backToList = "Back";
 
 // newConversations returns the button that shows conversations which
 // arrived while the member was scrolled down.
@@ -106,3 +112,7 @@ export const tryAgain = "Try again";
 export function refreshFailed(since: string): string {
   return `Couldn't refresh. inbok isn't answering; showing mail from ${since}.`;
 }
+
+// The reading pane's words while its messages load, and when they fail.
+export const messagesLoading = "Loading messages...";
+export const messagesFailed = "Couldn't load this conversation's messages.";

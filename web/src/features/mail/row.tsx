@@ -1,9 +1,10 @@
-import { Fragment, type ReactElement } from "react";
+import { Fragment, useSyncExternalStore, type ReactElement } from "react";
 import { cn } from "@/lib/cn";
 import { StarIcon, UserIcon } from "lucide-react";
 import { accountName, accountRing, type AccountColor } from "@/components/account-mark";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { GridListItem } from "@/components/ui/grid-list";
+import type { AppHref } from "./places";
 import type { Conversation } from "./conversations";
 import { fullDate, listDate } from "./dates";
 import { initials, senders } from "./people";
@@ -24,19 +25,25 @@ export function rowHeight(): number {
 // ConversationRow is one conversation in a list (DESIGN.md "Message
 // list"): its senders, count, and date; its subject; its preview, ended
 // by a star while starred; led by its newest sender's initials, ringed in
-// account's colour unless the list shows one account (ringed false). now
+// account's colour unless the list shows one account (ringed false). href
+// opens it; openStore says whether it is the one in the reading pane; now
 // is the day its date is shown at.
 export function ConversationRow({
   conversation,
   account,
   ringed,
+  href,
+  openStore,
   now,
 }: {
   conversation: Conversation;
   account: RowAccount | undefined;
   ringed: boolean;
+  href: AppHref;
+  openStore: OpenStore;
   now: Date;
 }): ReactElement {
+  const open = useIsOpen(openStore, conversation.id);
   const names = senders(conversation.participants, account?.email);
   const who = names.join(", ") || unknownSender;
   const date = new Date(conversation.dateMs);
@@ -48,6 +55,22 @@ export function ConversationRow({
   return (
     <GridListItem
       id={conversation.id}
+      href={href}
+      // Opening a conversation while another is open replaces that one in
+      // the history: choosing in the reading pane is not a new page, so
+      // Back, the phone's or the browser's, returns to the list rather than
+      // through each conversation. A getter, read as the row opens: React
+      // Aria draws a row once and keeps it, so a value set then would be
+      // stale (the reason for openStore).
+      // NOTE: React Aria documents only that routerOptions reaches the
+      // RouterProvider's navigate; that it passes this object on uncopied,
+      // so the getter runs at the press, is what react-aria 3.53 does. The
+      // history test in list.browser.test.tsx fails if that changes.
+      routerOptions={{
+        get replace() {
+          return openStore.get() !== undefined;
+        },
+      }}
       // A screen reader names the row by this, not by its whole text.
       textValue={rowName({
         who,
@@ -59,6 +82,7 @@ export function ConversationRow({
         // The ring is a colour alone, so the name says the account.
         account: ringed && account ? accountName(account) : undefined,
       })}
+      current={open}
       className="h-full gap-3 border-b px-4 py-2"
     >
       {/* 36 px, its top on the first line's and its left edge on the list
@@ -135,4 +159,37 @@ export function ConversationRow({
       </div>
     </GridListItem>
   );
+}
+
+// OpenStore holds which conversation the reading pane shows, so a row asks
+// only whether it is the one: opening another redraws two rows, not every
+// row the list has loaded.
+export type OpenStore = {
+  get: () => string | undefined;
+  set: (id: string | undefined) => void;
+  subscribe: (listener: () => void) => () => void;
+};
+
+// createOpenStore returns an OpenStore holding open.
+export function createOpenStore(open: string | undefined): OpenStore {
+  let current = open;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => current,
+    set: (id) => {
+      if (id === current) return;
+      current = id;
+      for (const listener of listeners) listener();
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+// useIsOpen reports whether store holds id, and redraws only when that
+// answer changes.
+export function useIsOpen(store: OpenStore, id: string): boolean {
+  return useSyncExternalStore(store.subscribe, () => store.get() === id);
 }

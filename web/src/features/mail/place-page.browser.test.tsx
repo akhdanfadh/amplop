@@ -35,6 +35,7 @@ function app(pane: "list" | "reader") {
         place="inbox"
         name="Inbox"
         account={undefined}
+        openId={undefined}
         pane={pane}
         reader={pane === "reader" ? <NotFound /> : null}
       />

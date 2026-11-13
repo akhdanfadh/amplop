@@ -321,8 +321,8 @@ last two redirect into settings, so settings can move without the server.
   in another year, a later day too; the full date and time on hover.
 - **Missing data:** no sender reads "Unknown sender" with a person icon in
   the avatar; no subject "(no subject)"; counts take a comma ("1,284").
-- **States:** open (`selection`), hover (`accent`), keyboard focus (the
-  ring) look different.
+- **States:** open (`selection`, and `aria-current` for screen readers),
+  hover (`accent`), keyboard focus (the ring) look different.
 - **Picking:** the avatar becomes a checkbox on hover; Space, Shift ranges,
   long press on touch; the list header becomes the action bar with only
   built actions. No bulk action built means no picking.
@@ -460,7 +460,8 @@ match positions, never from matching text in the browser.
 
 ### Phones
 
-One pane at a time; the list scrolls its own box. The top bar (menu,
+One pane at a time; the list scrolls its own box. A conversation's Back
+goes back in history, as the phone's own back does. The top bar (menu,
 title and unread count, Check for new mail, search) hides while scrolling
 down and returns on a small scroll up or when focus enters it. Compose is
 a labelled floating button. A conversation has Back and its actions on

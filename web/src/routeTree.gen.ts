@@ -36,6 +36,7 @@ import { Route as AppSettingsAdminRegistrationRouteImport } from './routes/_app/
 import { Route as AppSettingsAdminSystemEmailRouteImport } from './routes/_app/settings/_admin/system-email'
 import { Route as AuthSignedOutRegisterIndexRouteImport } from './routes/_auth/_signed-out/register/index'
 import { Route as AppMailMailPlaceIndexRouteImport } from './routes/_app/_mail/mail/$place/index'
+import { Route as AppMailMailPlaceConversationIdRouteImport } from './routes/_app/_mail/mail/$place/$conversationId'
 import { Route as AppMailMailOutboxIndexRouteImport } from './routes/_app/_mail/mail/outbox/index'
 import { Route as AppMailMailOutboxIdRouteImport } from './routes/_app/_mail/mail/outbox/$id'
 
@@ -174,6 +175,12 @@ const AppMailMailPlaceIndexRoute = AppMailMailPlaceIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppMailMailPlaceRoute,
 } as any)
+const AppMailMailPlaceConversationIdRoute =
+  AppMailMailPlaceConversationIdRouteImport.update({
+    id: '/$conversationId',
+    path: '/$conversationId',
+    getParentRoute: () => AppMailMailPlaceRoute,
+  } as any)
 const AppMailMailOutboxIndexRoute = AppMailMailOutboxIndexRouteImport.update({
   id: '/mail/outbox/',
   path: '/mail/outbox/',
@@ -207,6 +214,7 @@ export interface FileRoutesByFullPath {
   '/settings/system-email': typeof AppSettingsAdminSystemEmailRoute
   '/mail/': typeof AppMailMailIndexRoute
   '/register/': typeof AuthSignedOutRegisterIndexRoute
+  '/mail/$place/$conversationId': typeof AppMailMailPlaceConversationIdRoute
   '/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
   '/mail/$place/': typeof AppMailMailPlaceIndexRoute
   '/mail/outbox/': typeof AppMailMailOutboxIndexRoute
@@ -231,6 +239,7 @@ export interface FileRoutesByTo {
   '/settings/system-email': typeof AppSettingsAdminSystemEmailRoute
   '/mail': typeof AppMailMailIndexRoute
   '/register': typeof AuthSignedOutRegisterIndexRoute
+  '/mail/$place/$conversationId': typeof AppMailMailPlaceConversationIdRoute
   '/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
   '/mail/$place': typeof AppMailMailPlaceIndexRoute
   '/mail/outbox': typeof AppMailMailOutboxIndexRoute
@@ -263,6 +272,7 @@ export interface FileRoutesById {
   '/_app/settings/_admin/system-email': typeof AppSettingsAdminSystemEmailRoute
   '/_app/_mail/mail/': typeof AppMailMailIndexRoute
   '/_auth/_signed-out/register/': typeof AuthSignedOutRegisterIndexRoute
+  '/_app/_mail/mail/$place/$conversationId': typeof AppMailMailPlaceConversationIdRoute
   '/_app/_mail/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
   '/_app/_mail/mail/$place/': typeof AppMailMailPlaceIndexRoute
   '/_app/_mail/mail/outbox/': typeof AppMailMailOutboxIndexRoute
@@ -291,6 +301,7 @@ export interface FileRouteTypes {
     | '/settings/system-email'
     | '/mail/'
     | '/register/'
+    | '/mail/$place/$conversationId'
     | '/mail/outbox/$id'
     | '/mail/$place/'
     | '/mail/outbox/'
@@ -315,6 +326,7 @@ export interface FileRouteTypes {
     | '/settings/system-email'
     | '/mail'
     | '/register'
+    | '/mail/$place/$conversationId'
     | '/mail/outbox/$id'
     | '/mail/$place'
     | '/mail/outbox'
@@ -346,6 +358,7 @@ export interface FileRouteTypes {
     | '/_app/settings/_admin/system-email'
     | '/_app/_mail/mail/'
     | '/_auth/_signed-out/register/'
+    | '/_app/_mail/mail/$place/$conversationId'
     | '/_app/_mail/mail/outbox/$id'
     | '/_app/_mail/mail/$place/'
     | '/_app/_mail/mail/outbox/'
@@ -550,6 +563,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMailMailPlaceIndexRouteImport
       parentRoute: typeof AppMailMailPlaceRoute
     }
+    '/_app/_mail/mail/$place/$conversationId': {
+      id: '/_app/_mail/mail/$place/$conversationId'
+      path: '/$conversationId'
+      fullPath: '/mail/$place/$conversationId'
+      preLoaderRoute: typeof AppMailMailPlaceConversationIdRouteImport
+      parentRoute: typeof AppMailMailPlaceRoute
+    }
     '/_app/_mail/mail/outbox/': {
       id: '/_app/_mail/mail/outbox/'
       path: '/mail/outbox'
@@ -568,10 +588,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppMailMailPlaceRouteChildren {
+  AppMailMailPlaceConversationIdRoute: typeof AppMailMailPlaceConversationIdRoute
   AppMailMailPlaceIndexRoute: typeof AppMailMailPlaceIndexRoute
 }
 
 const AppMailMailPlaceRouteChildren: AppMailMailPlaceRouteChildren = {
+  AppMailMailPlaceConversationIdRoute: AppMailMailPlaceConversationIdRoute,
   AppMailMailPlaceIndexRoute: AppMailMailPlaceIndexRoute,
 }
 

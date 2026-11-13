@@ -50,11 +50,12 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 }
 
 // MailApi is a fake inbok API for mail pages: it pages conversations as
-// List Conversations does, counts new ones, lists accounts and places, and
-// answers a signed-in session. failNext makes the next conversation list
-// request answer status, and failOlder every request for an older page
-// until it is cleared; signedOut answers everything 401, as after the
-// session ended. requests records every path and search it was asked.
+// List Conversations does, counts new ones, reads one, lists accounts and
+// places, and answers a signed-in session. failNext makes the next
+// conversation list request answer status, and failOlder every request for
+// an older page until it is cleared; signedOut answers everything 401, as
+// after the session ended. requests records every path and search it was
+// asked.
 export type MailApi = {
   conversations: ConversationRow[];
   accounts: ListedAccount[];
@@ -94,6 +95,12 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         const after = Date.parse(search.get("after") ?? "");
         const count = inPlace(api.conversations, search).filter((c) => Date.parse(c.date) > after);
         return Response.json({ data: { count: count.length } });
+      }
+      if (path.startsWith("/api/v0/conversations/")) {
+        const found = api.conversations.find((c) => path.endsWith(c.id));
+        return found
+          ? Response.json({ data: { conversation: found, messages: [] } })
+          : problem(notFound);
       }
       if (path === "/api/v0/places") {
         return Response.json({ data: { places: api.places } });

@@ -21,6 +21,22 @@ export function senders(participants: readonly Address[], own: string | undefine
   );
 }
 
+// fullNames returns how a message's header names addresses: each by its
+// whole name, or its address without one; own, the account's address, as
+// "me".
+export function fullNames(addresses: readonly Address[], own: string | undefined): string {
+  return addresses.map((entry) => (isOwn(entry, own) ? me : whole(entry))).join(", ");
+}
+
+// bracketed returns the addresses of entries that have one, in angle
+// brackets, e.g. "<ana@example.com>", as a header shows them beside names.
+export function bracketed(entries: readonly Address[]): string {
+  return entries
+    .filter((entry) => entry.address !== "")
+    .map((entry) => `<${entry.address}>`)
+    .join(", ");
+}
+
 // initials returns up to two letters for sender: the first letters of the
 // first and last words of its name that start with a letter, or of its
 // address; empty when it has none, e.g. a name of emoji alone.

@@ -20,7 +20,7 @@ import { cn } from "@/lib/cn";
 import { mailData, placeWhere, refreshNewest, restartMail } from "./conversations";
 import { useKeepPlace, useRowSize, useToday } from "./list-state";
 import type { Place } from "./places";
-import { ConversationRow, type RowAccount } from "./row";
+import { ConversationRow, createOpenStore, type RowAccount } from "./row";
 import {
   connectGmail,
   emptyTitle,
@@ -53,17 +53,20 @@ const placeholderRows = 10;
 // ConversationList is the list of a place's conversations, of account
 // alone when given (DESIGN.md "Message list"): newest first, 50 at a time
 // as the member scrolls; new mail waits behind "N new conversations"
-// while the member is scrolled down. placeName names the place in an
-// empty list's words. onRetry starts the list again after a page failed.
+// while the member is scrolled down. openId is the conversation the
+// reading pane shows; placeName names the place in an empty list's words.
+// onRetry starts the list again after a page failed.
 export function ConversationList({
   place,
   placeName,
   account,
+  openId,
   onRetry,
 }: {
   place: Place;
   placeName: string;
   account: number | undefined;
+  openId: string | undefined;
   onRetry: () => void;
 }): ReactElement {
   const client = useQueryClient();
@@ -139,6 +142,8 @@ export function ConversationList({
   };
 
   const now = useToday();
+  const [openStore] = useState(() => createOpenStore(openId));
+  useEffect(() => openStore.set(openId), [openStore, openId]);
 
   const error = firstError(list.health);
   const expired = error instanceof ApiError && error.status === unauthorized;
@@ -176,6 +181,13 @@ export function ConversationList({
   }
 
   const ringed = account === undefined && (accountList?.length ?? 0) > 1;
+  function conversationHref(id: string) {
+    return linkOptions({
+      to: "/mail/$place/$conversationId",
+      params: { place, conversationId: id },
+      search: { account },
+    });
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -225,6 +237,8 @@ export function ConversationList({
                 conversation={conversation}
                 account={rowAccount(accountsById.get(conversation.accountId))}
                 ringed={ringed}
+                href={conversationHref(conversation.id)}
+                openStore={openStore}
                 now={now}
               />
             )}

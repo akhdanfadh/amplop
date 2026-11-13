@@ -10,19 +10,21 @@ export type PlaceAccount = { id: number; color: number; email: string; name: str
 
 // PlacePage is a place's mail: its conversation list beside reader, the
 // reading pane. name is the place's name, its heading; account, when
-// given, the one account the list shows. pane says what was opened: the
-// list, with nothing in the reading pane, or the reader, e.g. a
-// conversation or Page not found.
+// given, the one account the list shows; openId the conversation reader
+// holds. pane says what was opened: the list, with nothing in the reading
+// pane, or the reader, e.g. a conversation or Page not found.
 export function PlacePage({
   place,
   name,
   account,
+  openId,
   pane,
   reader,
 }: {
   place: Place;
   name: string;
   account: PlaceAccount | undefined;
+  openId: string | undefined;
   pane: "list" | "reader";
   reader: ReactNode;
 }): ReactElement {
@@ -63,6 +65,7 @@ export function PlacePage({
             place={place}
             placeName={name}
             account={account?.id}
+            openId={openId}
             onRetry={() => setAttempt((n) => n + 1)}
           />
         </main>

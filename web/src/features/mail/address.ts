@@ -15,3 +15,7 @@ const labelId = z.uuid();
 export function isPlace(place: string): place is Place {
   return isViewPlace(place) || labelId.safeParse(place).success;
 }
+
+// A conversation's ID, which the client puts in the API's path as is:
+// anything else, e.g. ../ segments, would reach another path of the API.
+export const conversationIdSchema = z.uuid();

@@ -37,7 +37,8 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
     ]).catch((err: unknown) => {
       throw isSessionEnded(err) ? sessionEnded(queryClient, location.href) : err;
     });
-    // The same address, for every account's mail.
+    // The same address, the conversation in it included, for every
+    // account's mail.
     const unfiltered = redirect({ href: location.pathname, replace: true });
     // An account the member no longer has, e.g. in an old link, only
     // filtered: the place shows every account's mail instead.
@@ -65,12 +66,14 @@ function Place(): ReactElement {
   const account = accounts.data?.data.accounts.find((a) => a.id === accountId);
   // The reading pane's index shows when no conversation is open.
   const nothingOpen = useMatch({ from: "/_app/_mail/mail/$place/", shouldThrow: false });
+  const open = useMatch({ from: "/_app/_mail/mail/$place/$conversationId", shouldThrow: false });
 
   return (
     <PlacePage
       place={place}
       name={name}
       account={account}
+      openId={open?.params.conversationId}
       pane={nothingOpen ? "list" : "reader"}
       reader={<Outlet />}
     />

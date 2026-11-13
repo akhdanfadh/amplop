@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { initials, senders } from "./people";
+import { fullNames, initials, senders } from "./people";
 
 const ana = { name: "Ana Lima", address: "ana@example.com" };
 const bo = { name: "Bo", address: "bo@example.com" };
@@ -48,5 +48,13 @@ describe("initials", () => {
     expect(initials({ name: "👩🏽‍💻 Priya", address: "" })).toBe("P");
     expect(initials({ name: "🎉🎉", address: "party@example.com" })).toBe("P");
     expect(initials({ name: "Đặng Thị Ngọc Hân", address: "" })).toBe("ĐH");
+  });
+});
+
+describe("fullNames", () => {
+  it("names each in full, and the account as me", () => {
+    expect(fullNames([ana, bare, me], "sam@example.org")).toBe(
+      "Ana Lima, billing@shop.example, me",
+    );
   });
 });
