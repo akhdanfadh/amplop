@@ -30,9 +30,10 @@ type ExternalHref =
 
 // A destination in the app as TanStack Router's options, checked against
 // its routes. Write it with TanStack's linkOptions, e.g.
-// linkOptions({ to: "/outbox/$id", params: { id } }): a type written once
-// here cannot tell which route a link means, so a bare object is checked
-// for its route's name and its params' names, not for params it lacks.
+// linkOptions({ to: "/mail/outbox/$id", params: { id } }): a type written
+// once here cannot tell which route a link means, so a bare object is
+// checked for its route's name and its params' names, not for params it
+// lacks.
 // NOTE: every option of ToOptions is optional, so TypeScript would take
 // any string for it; requiring to makes a path written as a string, which
 // nothing checks, a type error.

@@ -34,7 +34,7 @@ function MessageRow({ message }: { message: OutgoingMessageSummary }): ReactElem
     <li className="flex flex-col gap-1 py-4">
       <p className="flex flex-wrap items-center gap-2">
         <Link
-          to="/outbox/$id"
+          to="/mail/outbox/$id"
           params={{ id: message.id }}
           className={`inline-flex min-h-11 min-w-0 items-center font-medium wrap-break-word underline underline-offset-4 ${focusClass}`}
         >

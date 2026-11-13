@@ -131,16 +131,20 @@ Put shared code in the folder for its responsibility:
 - `src/features/outgoing-messages`: the compose form and its schema, the
   Outbox list, one message's status with Send again and Edit and send,
   their wording, and when their pages read again (`pollWhile`).
+- `src/features/mail`: the mail frame's sidebar, its places and their
+  names, and a place's page.
 - `src/components`: shared components, such as the password input, the
-  request error under a form, and the offline banner. `ui/` holds the
-  shadcn components we own.
+  request error under a form, the signed-in frame and its member menu, the
+  offline banner, and the pages for loading, failure, and Page not found.
+  `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
   secret of an emailed link, or keeping a server's field error through a
   blur.
 - `src/hooks`: React hooks shared by features, such as a page reading its
-  link's secret.
+  link's secret, the layout the window's width allows, or a page focusing
+  its heading once a closing drawer lets go (`useFocusOnOpen`).
 - `src/routes`: route registration and page composition.
 - `src/test`: setup for the browser tests.
 - `src/styles.css`: the tokens and base styles. Beside it,
@@ -163,12 +167,17 @@ to the address. A guard runs in `beforeLoad`, before anything draws, and
 reads the session through `readSession` (`features/auth/guard.ts`), which
 uses the cached session when a page has read it:
 
-| Layout route        | Pages                              | Guard                                                         |
-| ------------------- | ---------------------------------- | ------------------------------------------------------------- |
-| `_auth`             | Signed-out pages                   | None; the wordmark over one column                            |
-| `_auth/_signed-out` | Sign-in, Forgot password, Register | A signed-in member goes to `/`; a failed check shows the page |
+| Layout route        | Pages                                       | Guard                                                                        |
+| ------------------- | ------------------------------------------- | ---------------------------------------------------------------------------- |
+| `_app`              | Everything signed in                        | No session: `/sign-in?redirect=<address>`, which returns there after sign-in |
+| `_app/_mail`        | `/mail/<place>`, `/mail/outbox`, `/compose` | None; the mail frame                                                         |
+| `_auth`             | Signed-out pages                            | None; the wordmark over one column                                           |
+| `_auth/_signed-out` | Sign-in, Forgot password, Register          | A signed-in member goes to `/`; a failed check shows the page                |
 
-Pages emailed links open (`/verify-email`, `/reset-password`,
+`/` opens `/mail/inbox`, or Security for an administrator without
+two-factor authentication. A page still reads the session itself and
+opens sign-in on a 401, since a session can end after the guard ran, e.g.
+from another tab. Pages emailed links open (`/verify-email`, `/reset-password`,
 `/register/complete`) keep their addresses and sit in `_auth` without a
 guard, so they work signed in or out. The signed-out layout shows
 `OfflineBanner` at the top while the browser reports no connection, read
@@ -199,12 +208,25 @@ so its own words, e.g. a toast's Close, and its direction never follow
 the browser's language; sends React Aria's links through the router; and
 holds the one toast region. A React Aria link to a page in the app takes
 TanStack Router's options, written with its `linkOptions`, e.g.
-`href={linkOptions({ to: "/outbox/$id", params: { id } })}`, which
+`href={linkOptions({ to: "/mail/outbox/$id", params: { id } })}`, which
 TypeScript checks against the routes, params included; a bare object
 misses a param left out. Its `routerOptions`, e.g. `replace`, reach the
 router, and a path written as a string is a type error. Only a link that
 leaves the app, a `#fragment`, or a file the server sends (`/api/...`) is
 a string.
+
+The signed-in pages sit in a frame (`components/frame.tsx`) that fills
+the window at every width ([DESIGN.md](DESIGN.md#panes-and-widths)):
+from 1280 px the sidebar sits beside the content, and its open or
+collapsed state is kept in `localStorage`; from 1024 px it is a rail,
+which expands into the drawer over the content; below 1024 px a top bar
+opens the drawer. `useLayout` (`hooks/use-layout.ts`) names the layout
+for the width. The frame's routes keep their components in the app's
+first download (`codeSplitGroupings`), so a page still loading when the
+member moves between pages shows its loading view inside the frame; the
+first load is one loading view over the window, as above. The member
+menu at the bottom of the sidebar opens Settings, the theme choice, and
+Sign out. The frame shows `OfflineBanner` at the top of the content too.
 
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page
@@ -221,7 +243,7 @@ form. See [First administrator setup](../backend/README.md#first-administrator-s
 for the operator steps. Completing setup updates the shared status and opens
 `/sign-in`, with instructions to remove the setup token and restart the server.
 Setup does not sign the administrator in. Later visits to `/setup` redirect to
-`/`, where the session check chooses home or sign-in.
+`/`, whose guard chooses mail or sign-in.
 The browser remembers a local setup attempt until reload, so a status check
 that confirms completion after a lost response also shows the instructions.
 
@@ -239,9 +261,8 @@ A deactivated account with the right password sees "This account is
 deactivated. Ask your administrator." The code step answers a 403 the same
 way as an ended challenge: the form stops and offers to start again.
 An uncertain response offers a session check before another attempt.
-The `/` page reads the current account and redirects to sign-in on HTTP 401.
-Other failures keep a retry action. Administrators without confirmed TOTP open
-`/security` to enroll. Members can reach the same page through the Security link.
+Administrators without confirmed TOTP land on `/security` to enroll.
+Members can reach the same page through the Security link.
 
 Security starts enrollment on request and renders the QR code locally, with a
 manual setup key as an alternative. A six-digit authenticator code confirms it,
@@ -278,9 +299,8 @@ Security opens with the account's email address and whether it is verified.
 "Send verification link" emails a link that expires in 24 hours. A lost reply
 or failed send can be repeated without a check: the server limits how many
 links are sent, and every unexpired link works. Sending and TOTP writes wait
-for each other, because confirming TOTP replaces this browser's session. An
-unverified account also sees a notice on home that links to Security. Both
-say a forgotten password can't be reset by email until the address is
+for each other, because confirming TOTP replaces this browser's session. It
+says a forgotten password can't be reset by email until the address is
 verified, since the reset page's answer cannot say why nothing arrived.
 
 The link opens `/verify-email`, which works signed in or out. The secret after
@@ -471,9 +491,14 @@ waiting or copying, or after a Check now as above, and otherwise every
 minute, so the checked time stays current; an account inbok cannot use
 waits for its member, so it does not count.
 
-Signing out deletes the current session, clears account caches, and opens
-sign-in. A 401 also completes sign-out because that session is already absent
-or expired. Other failures stay visible and can be retried. Signing in also
+Sign out, in the member menu, deletes the current session, then
+`clearAccountCache` clears account caches and closes any toasts, and
+sign-in opens without the page's leave warning: text typed in Compose is
+dropped (a `DEBT.md` entry). Every sign-in, sign-out, and ended session
+calls `clearAccountCache`, so whatever else holds a member's data clears
+there too. A 401 also completes sign-out because that session is already
+absent or expired. Other failures show an error toast, and the member can
+sign out again. Signing in also
 clears account data and mutation variables when the request settles, even if the
 sign-in page has closed, so another account cannot inherit them. The public
 setup status survives authentication cache cleanup. Account actions wait for a fresh session
@@ -482,8 +507,8 @@ immediately despite the browser's offline indicator; editing or leaving the
 form invalidates their result. The original health
 and probe demo remains available at `/probe`.
 
-Every signed-in page also links New message (`/compose`) and Outbox
-(`/outbox`), until the mail layout gives sending its own place. The
+The mail sidebar's Compose opens `/compose` and its Outbox `/mail/outbox`,
+both in the mail frame, until compose moves into a docked window. The
 compose form sends from one of the member's connected accounts, chosen in
 From and shown by its address. From starts with none chosen, so the member
 picks the address recipients see; Edit and send keeps the opened message's
@@ -527,7 +552,7 @@ reconnecting rereads the accounts and links Connected accounts.
 The Outbox lists the member's newest 50 messages from inbok, newest first,
 with each status, and reads the list again every 5 seconds while one is
 waiting or sending; its New message button opens the compose form. Each
-opens its own page at `/outbox/$id`, which reads only an ID that is a
+opens its own page at `/mail/outbox/$id`, which reads only an ID that is a
 UUID, since the client puts it in the API's path as is. The page shows the
 status above the message, read again every 2 seconds until the send ends,
 and announces it, first after the page has rendered. On both pages a
@@ -746,7 +771,7 @@ ignores presses. Its label says what is running, e.g. "Disconnecting...":
 React Aria announces the label, not a busy state ([Button,
 Pending](https://react-aria.adobe.com/Button#pending)). Other buttons the
 write blocks get `isDisabled`. Any other button that runs its own request
-(form submits, Home's Sign out, Try again) still uses `isDisabled` until
+(form submits, Try again) still uses `isDisabled` until
 the forms branch moves them to one pending pattern.
 
 `AlertDialogAction`, the confirming button of a dialog that asks first,
@@ -757,12 +782,13 @@ Enter and Space still confirm at once.
 
 The theme is light, dark, or the system's, kept per browser in
 `localStorage` by `src/lib/theme.ts`; `useTheme` from `src/hooks` reads
-and changes it. `applyTheme` sets every duration to zero while it switches
-the colours and makes the browser restyle the page at once, so nothing
-fades from one theme to the other; zero, not `none`, because React Aria
-removes a closing tooltip only when its exit animation finishes. A script
-in the root route's head marks the page dark before the first paint; the
-shell's Content-Security-Policy allows it by hash.
+and changes it, as the member menu does. `applyTheme` sets every duration
+to zero while it switches the colours and makes the browser restyle the
+page at once, so nothing fades from one theme to the other; zero, not
+`none`, because React Aria removes a closing tooltip only when its exit
+animation finishes. A script in the root route's head marks the page dark
+before the first paint; the shell's Content-Security-Policy allows it by
+hash.
 
 Data tables use [TanStack Table](https://tanstack.com/table), which supplies
 the rows and columns while shadcn's `Table` components render them. It is

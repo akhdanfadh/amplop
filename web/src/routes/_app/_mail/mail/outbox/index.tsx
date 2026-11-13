@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useGetCurrentSession, useListOutgoingMessages } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
-import { AccountNav } from "@/components/account-nav";
 import { buttonVariants } from "@/components/ui/button";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { OutgoingMessageList } from "@/features/outgoing-messages/list";
@@ -15,7 +14,7 @@ const unauthorized = 401;
 // How often the list is read again while a message in it is still being sent.
 const pollMs = 5_000;
 
-export const Route = createFileRoute("/outbox/")({
+export const Route = createFileRoute("/_app/_mail/mail/outbox/")({
   component: Outbox,
   head: () => ({ meta: [{ title: "Outbox - inbok" }] }),
 });
@@ -49,42 +48,39 @@ function Outbox(): ReactElement {
   const staleError = !expired && list.data ? list.error : null;
 
   return (
-    <>
-      <AccountNav account={current.data?.data} />
-      <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-            Outbox
-          </h1>
-          <Link to="/compose" className={buttonVariants({ className: "whitespace-normal" })}>
-            New message
-          </Link>
-        </div>
-        <p>
-          The newest 50 messages you sent from inbok, with whether each one was sent. Messages sent
-          from Gmail itself aren&apos;t listed.
-        </p>
+    <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
+          Outbox
+        </h1>
+        <Link to="/compose" className={buttonVariants({ className: "whitespace-normal" })}>
+          New message
+        </Link>
+      </div>
+      <p>
+        The newest 50 messages you sent from inbok, with whether each one was sent. Messages sent
+        from Gmail itself aren&apos;t listed.
+      </p>
 
-        {list.isPending && !expired && <output>Loading messages...</output>}
-        {expired && <output>Opening sign-in...</output>}
-        {readError && (
-          <ReadError
-            message={`Could not load your messages. ${userMessage(readError)}`}
-            error={readError}
-            retrying={list.isFetching}
-            onRetry={() => void list.refetch()}
-          />
-        )}
-        {staleError && (
-          <ReadError
-            message={`Could not reload your messages, so the list may be out of date. ${userMessage(staleError)}`}
-            error={staleError}
-            retrying={list.isFetching}
-            onRetry={() => void list.refetch()}
-          />
-        )}
-        {messages && !expired && <OutgoingMessageList messages={messages} />}
-      </main>
-    </>
+      {list.isPending && !expired && <output>Loading messages...</output>}
+      {expired && <output>Opening sign-in...</output>}
+      {readError && (
+        <ReadError
+          message={`Could not load your messages. ${userMessage(readError)}`}
+          error={readError}
+          retrying={list.isFetching}
+          onRetry={() => void list.refetch()}
+        />
+      )}
+      {staleError && (
+        <ReadError
+          message={`Could not reload your messages, so the list may be out of date. ${userMessage(staleError)}`}
+          error={staleError}
+          retrying={list.isFetching}
+          onRetry={() => void list.refetch()}
+        />
+      )}
+      {messages && !expired && <OutgoingMessageList messages={messages} />}
+    </main>
   );
 }

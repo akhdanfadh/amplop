@@ -130,7 +130,7 @@ export function MessageStatus({
       {message.sentAgainAs !== null && (
         <p>
           <Link
-            to="/outbox/$id"
+            to="/mail/outbox/$id"
             params={{ id: message.sentAgainAs }}
             className={`underline underline-offset-4 ${focusClass}`}
           >

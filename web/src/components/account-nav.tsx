@@ -26,7 +26,7 @@ export function AccountNav({
         <Link to="/compose" className={linkClass}>
           New message
         </Link>
-        <Link to="/outbox" className={linkClass}>
+        <Link to="/mail/outbox" className={linkClass}>
           Outbox
         </Link>
         <Link to="/security" className={linkClass}>

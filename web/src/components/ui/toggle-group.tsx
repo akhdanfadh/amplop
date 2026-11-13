@@ -16,7 +16,9 @@ import {
 // 32 px high (44 px coarse); the chosen item has the selection tint and a
 // field-coloured outline, not a fill alone, as the current sidebar item
 // has its tint and a bar; in forced colours it takes the system's
-// highlight; DESIGN.md's focus ring; no separate toggle. Its keys are
+// highlight, which keeps the app's ring colour too, so the focus ring
+// takes the system's text colour there; DESIGN.md's focus ring; no
+// separate toggle. Its keys are
 // React Aria's toolbar keys, though one-of-several is announced as radios:
 // the group is one Tab stop, and the arrows move between items without
 // choosing; Space or Enter chooses. A RadioGroup has the radio keys, but
@@ -48,7 +50,7 @@ function ToggleGroupItem({
   return (
     <ToggleButtonPrimitive
       className={cn(
-        "inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors outline-none hover:text-foreground data-focus-visible:focus-ring pointer-coarse:h-11 pointer-coarse:min-w-11 data-selected:bg-selection data-selected:text-foreground data-selected:ring-1 data-selected:ring-input forced-colors:data-selected:bg-[Highlight] forced-colors:data-selected:text-[HighlightText] forced-colors:data-selected:forced-color-adjust-none [&_svg]:size-4 [&_svg]:shrink-0",
+        "inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors outline-none hover:text-foreground data-focus-visible:focus-ring pointer-coarse:h-11 pointer-coarse:min-w-11 data-selected:bg-selection data-selected:text-foreground data-selected:ring-1 data-selected:ring-input forced-colors:data-selected:bg-[Highlight] forced-colors:data-selected:text-[HighlightText] forced-colors:data-selected:forced-color-adjust-none forced-colors:data-selected:[--ring:CanvasText] [&_svg]:size-4 [&_svg]:shrink-0",
         className,
       )}
       {...props}

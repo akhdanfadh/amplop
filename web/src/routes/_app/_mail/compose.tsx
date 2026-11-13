@@ -8,7 +8,6 @@ import {
 } from "@/api/generated/inbok";
 import type { ConnectedAccount, OutgoingMessage } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
-import { AccountNav } from "@/components/account-nav";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { ComposeForm } from "@/features/outgoing-messages/compose-form";
 import { composeValues } from "@/features/outgoing-messages/compose-schema";
@@ -19,7 +18,7 @@ import { readErrorMessage } from "@/features/outgoing-messages/text";
 const unauthorized = 401;
 const linkClass = "underline underline-offset-4 focus-visible:focus-ring";
 
-export const Route = createFileRoute("/compose")({
+export const Route = createFileRoute("/_app/_mail/compose")({
   validateSearch: composeSearch,
   component: Compose,
   head: () => ({ meta: [{ title: "New message - inbok" }] }),
@@ -71,7 +70,7 @@ function Compose(): ReactElement {
 
   function showSent(message: OutgoingMessage): void {
     // The form's warning would otherwise ask before leaving a sent message.
-    void navigate({ to: "/outbox/$id", params: { id: message.id }, ignoreBlocker: true });
+    void navigate({ to: "/mail/outbox/$id", params: { id: message.id }, ignoreBlocker: true });
   }
 
   const loading = !expired && (list.isPending || (edit !== undefined && original.isPending));
@@ -79,70 +78,67 @@ function Compose(): ReactElement {
   const originalError = !expired && edit !== undefined && !original.data ? original.error : null;
 
   return (
-    <>
-      <AccountNav account={current.data?.data} />
-      <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-        <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-          New message
-        </h1>
+    <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
+      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
+        New message
+      </h1>
 
-        {loading && <output>Loading...</output>}
-        {expired && !formShown && <output>Opening sign-in...</output>}
-        {signedOut && (
-          <p role="alert">
-            You&apos;re signed out, so this message can&apos;t be sent. Copy what you typed, then{" "}
-            <Link to="/sign-in" className={linkClass}>
-              sign in
-            </Link>
-            .
-          </p>
-        )}
-        {accountsError && (
-          <ReadError
-            message={`Could not load your connected accounts. ${userMessage(accountsError)}`}
-            error={accountsError}
-            retrying={list.isFetching}
-            onRetry={() => void list.refetch()}
-          />
-        )}
-        {originalError && (
-          <ReadError
-            message={readErrorMessage(originalError)}
-            error={originalError}
-            retrying={original.isFetching}
-            onRetry={() => void original.refetch()}
-          />
-        )}
+      {loading && <output>Loading...</output>}
+      {expired && !formShown && <output>Opening sign-in...</output>}
+      {signedOut && (
+        <p role="alert">
+          You&apos;re signed out, so this message can&apos;t be sent. Copy what you typed, then{" "}
+          <Link to="/sign-in" className={linkClass}>
+            sign in
+          </Link>
+          .
+        </p>
+      )}
+      {accountsError && (
+        <ReadError
+          message={`Could not load your connected accounts. ${userMessage(accountsError)}`}
+          error={accountsError}
+          retrying={list.isFetching}
+          onRetry={() => void list.refetch()}
+        />
+      )}
+      {originalError && (
+        <ReadError
+          message={readErrorMessage(originalError)}
+          error={originalError}
+          retrying={original.isFetching}
+          onRetry={() => void original.refetch()}
+        />
+      )}
 
-        {ready && !expired && !showForm && (
-          <p>
-            {accounts.length === 0
-              ? "Connect a Gmail account to send messages from it."
-              : "Each of your Gmail accounts needs reconnecting before it can send."}{" "}
-            <Link to="/connected-accounts" className={linkClass}>
-              Open Connected accounts
-            </Link>
-          </p>
-        )}
-        {showForm && (formShown || !expired) && (
-          <>
-            {editing && <EditNote message={editing} usable={usable ?? []} />}
-            <ComposeForm
-              // A new message, or another one to edit, starts afresh, with
-              // its own Idempotency-Key.
-              key={edit ?? "new"}
-              accounts={accounts}
-              initial={composeValues(
-                (usable ?? []).map((account) => account.id),
-                editing,
-              )}
-              onSent={showSent}
-              onUnauthorized={() => setWriteExpired(true)}
-            />
-          </>
-        )}
-      </main>
-    </>
+      {ready && !expired && !showForm && (
+        <p>
+          {accounts.length === 0
+            ? "Connect a Gmail account to send messages from it."
+            : "Each of your Gmail accounts needs reconnecting before it can send."}{" "}
+          <Link to="/connected-accounts" className={linkClass}>
+            Open Connected accounts
+          </Link>
+        </p>
+      )}
+      {showForm && (formShown || !expired) && (
+        <>
+          {editing && <EditNote message={editing} usable={usable ?? []} />}
+          <ComposeForm
+            // A new message, or another one to edit, starts afresh, with
+            // its own Idempotency-Key.
+            key={edit ?? "new"}
+            accounts={accounts}
+            initial={composeValues(
+              (usable ?? []).map((account) => account.id),
+              editing,
+            )}
+            onSent={showSent}
+            onUnauthorized={() => setWriteExpired(true)}
+          />
+        </>
+      )}
+    </main>
   );
 }
 

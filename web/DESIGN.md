@@ -147,7 +147,11 @@ text).
   ones at once; keyboard focus shows it at once. Nothing loops except a
   spinner while work is actually running.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
-  focusable element, defined once in the components.
+  focusable element, defined once in the components. Every page focuses
+  its heading when it opens, the first load included, so the keyboard
+  starts in the page, not in the sidebar, whose landmark is named. No skip
+  link: a skip button (a `#` link would change the address) is the next
+  step if testing shows a need.
 - **Links:** primary colour, underlined; the underline thickens on hover.
 
 ### Themes
@@ -230,6 +234,8 @@ the collapsed state are saved per browser.
 | Open conversation | `/mail/<place>/<conversation id>`                                                                       |
 | Search            | `/mail/search?q=...&account=...`; a result: `/mail/search/<conversation id>?q=...&message=<message id>` |
 | Settings          | `/settings/<page>`                                                                                      |
+| Outbox            | `/mail/outbox`, a message `/mail/outbox/<message id>`                                                   |
+| A new message     | `/compose`, an entry point only (`?edit=<message id>` starts from a sent one)                           |
 
 The URL holds where the member is, never passing state (picked rows,
 unsent text, the compose window). Clicking a conversation adds a history
@@ -248,7 +254,7 @@ TOTP, and role in `beforeLoad` before anything draws.
 - Account status in words beside it: "Syncing" with a spinner (details on
   hover: "Copying the last 90 days: N messages so far."), "Reconnect",
   "Sync failed".
-- Outbox, only while a message is waiting, sending, failed, or unknown.
+- Outbox, always, so the sidebar stays still.
 - The member at the bottom, opening the member menu: Settings, Theme
   (Light, Dark, System, side by side, as icons named by tooltips; the
   chosen one has the `selection` background and an `input` outline, as

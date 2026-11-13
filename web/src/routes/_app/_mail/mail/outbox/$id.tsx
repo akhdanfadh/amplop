@@ -8,7 +8,6 @@ import {
 } from "@/api/generated/inbok";
 import * as z from "zod";
 import { userMessage } from "@/api/problem";
-import { AccountNav } from "@/components/account-nav";
 import { ReadError } from "@/components/read-error";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { MessageView } from "@/features/messages/view";
@@ -28,7 +27,7 @@ const linkClass =
 // A message's ID, which the client puts in the API's path as is.
 const messageId = z.uuid();
 
-export const Route = createFileRoute("/outbox/$id")({
+export const Route = createFileRoute("/_app/_mail/mail/outbox/$id")({
   component: OutgoingMessagePage,
   head: () => ({ meta: [{ title: "Message - inbok" }] }),
 });
@@ -74,53 +73,52 @@ function OutgoingMessagePage(): ReactElement {
   const staleError = !expired && !readError && message ? read.error : null;
 
   return (
-    <>
-      <AccountNav account={current.data?.data} />
-      <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-        <Link to="/outbox" className={linkClass}>
-          Back to Outbox
-        </Link>
-        <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-          Message
-        </h1>
+    <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
+      <Link to="/mail/outbox" className={linkClass}>
+        Back to Outbox
+      </Link>
+      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
+        Message
+      </h1>
 
-        {!valid && <p role="alert">{messageGone}</p>}
-        {valid && read.isPending && !expired && <output>Loading message...</output>}
-        {expired && <output>Opening sign-in...</output>}
-        {readError && (
-          <ReadError
-            message={readErrorMessage(readError)}
-            error={readError}
-            retrying={read.isFetching}
-            onRetry={() => void read.refetch()}
+      {!valid && <p role="alert">{messageGone}</p>}
+      {valid && read.isPending && !expired && <output>Loading message...</output>}
+      {expired && <output>Opening sign-in...</output>}
+      {readError && (
+        <ReadError
+          message={readErrorMessage(readError)}
+          error={readError}
+          retrying={read.isFetching}
+          onRetry={() => void read.refetch()}
+        />
+      )}
+      {staleError && (
+        <ReadError
+          message={`Could not reload this message, so its status may be out of date. ${userMessage(staleError)}`}
+          error={staleError}
+          retrying={read.isFetching}
+          onRetry={() => void read.refetch()}
+        />
+      )}
+      {message && !readError && !expired && (
+        <>
+          <MessageStatus
+            // The next message starts with no earlier Send again's result.
+            key={`status-${message.id}`}
+            message={message}
+            current={account?.email}
+            onSentAgain={(copy) =>
+              void navigate({ to: "/mail/outbox/$id", params: { id: copy.id } })
+            }
+            onUnauthorized={() => setWriteExpired(true)}
           />
-        )}
-        {staleError && (
-          <ReadError
-            message={`Could not reload this message, so its status may be out of date. ${userMessage(staleError)}`}
-            error={staleError}
-            retrying={read.isFetching}
-            onRetry={() => void read.refetch()}
+          <MessageView
+            key={`view-${message.id}`}
+            header={messageHeader(message)}
+            content={messageContent(message)}
           />
-        )}
-        {message && !readError && !expired && (
-          <>
-            <MessageStatus
-              // The next message starts with no earlier Send again's result.
-              key={`status-${message.id}`}
-              message={message}
-              current={account?.email}
-              onSentAgain={(copy) => void navigate({ to: "/outbox/$id", params: { id: copy.id } })}
-              onUnauthorized={() => setWriteExpired(true)}
-            />
-            <MessageView
-              key={`view-${message.id}`}
-              header={messageHeader(message)}
-              content={messageContent(message)}
-            />
-          </>
-        )}
-      </main>
-    </>
+        </>
+      )}
+    </main>
   );
 }
