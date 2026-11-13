@@ -731,7 +731,9 @@ Tests sit next to the code they test, in two Vitest projects set up in
   `render` from `vitest-browser-react`; find elements with `page` and
   interact with `userEvent` from `vite-plus/test/browser/context`, which
   send real browser input. `src/test/browser-setup.ts` loads the app's
-  stylesheet first.
+  stylesheet first. Message bodies for the message view's frame come from
+  `src/test/message-server.ts`, which serves them on the test page's
+  origin with the headers the Go server's body route sends.
 
 The browser project needs Playwright's Chromium, once per machine and
 again after a Playwright upgrade. From `web`:

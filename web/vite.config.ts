@@ -3,6 +3,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "vite-plus/test/browser-playwright";
+import { messageServer } from "./src/test/message-server";
 
 // Written by the router plugin; it asks to be left unformatted and unlinted.
 const generated = ["src/routeTree.gen.ts"];
@@ -49,6 +50,8 @@ export default defineConfig({
       },
       {
         extends: true,
+        // Message bodies with the server's headers, for the message view.
+        plugins: [messageServer()],
         test: {
           name: "browser",
           include: ["src/**/*.browser.test.tsx"],

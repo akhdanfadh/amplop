@@ -26,35 +26,15 @@ const pollMs = 100;
 // second, so this leaves room for a slow network.
 const timeoutMs = 15_000;
 
-// The parts of a frame's document this file reads and sets, so tests can
-// stand in for it.
-type FrameElement = Pick<HTMLElement, "scrollHeight" | "clientHeight"> & {
-  style: Pick<CSSStyleDeclaration, "setProperty">;
-};
-type FrameDocument = Pick<Document, "contentType" | "URL" | "readyState"> & {
-  documentElement: FrameElement;
-  body: FrameElement | null;
-  defaultView: Pick<Window, "innerHeight"> | null;
-};
-// The parts of ResizeObserver watch uses. Its target is any object, so a
-// test's stand-in for an element passes; the browser's takes an Element.
-type Resizer = { observe(target: object): void; disconnect(): void };
-type Frame = {
-  contentDocument: FrameDocument | null;
-  style: Pick<CSSStyleDeclaration, "height">;
-  addEventListener(type: "load", listener: () => void): void;
-  removeEventListener(type: "load", listener: () => void): void;
-};
-
 // watch shows the body in frame once its document has been read, without
 // waiting for its images, and keeps the frame as tall as the body from
 // then on. It reports each state to report and returns a function that
 // stops watching.
-export function watch(frame: Frame, report: (state: FrameState) => void): () => void {
+export function watch(frame: HTMLIFrameElement, report: (state: FrameState) => void): () => void {
   const deadline = Date.now() + timeoutMs;
   // The body's document, once shown.
-  let shown: FrameDocument | undefined;
-  let observer: Resizer | undefined;
+  let shown: Document | undefined;
+  let observer: ResizeObserver | undefined;
 
   function stop(): void {
     clearInterval(timer);
@@ -113,7 +93,7 @@ export function watch(frame: Frame, report: (state: FrameState) => void): () => 
 // autoHeight lets doc's root and body be as tall as their content. A body
 // set to height:100% of the frame, plus its padding, would otherwise
 // always be taller than the frame fitted to it.
-function autoHeight(doc: FrameDocument): void {
+function autoHeight(doc: Document): void {
   for (const element of [doc.documentElement, doc.body]) {
     element?.style.setProperty("height", "auto", "important");
     element?.style.setProperty("min-height", "0", "important");
@@ -122,14 +102,16 @@ function autoHeight(doc: FrameDocument): void {
 
 // fit sets frame's height to the height of doc, the body it shows, so the
 // page scrolls the message rather than the frame.
-function fit(frame: Pick<Frame, "style">, doc: FrameDocument): void {
+function fit(frame: HTMLIFrameElement, doc: Document): void {
+  const root = doc.documentElement;
+
   // 1. Collapse the frame. A document is never shorter than its frame, so
   // measuring at the old height could only grow it, never shrink it.
   frame.style.height = "0";
-  frame.style.height = `${doc.documentElement.scrollHeight}px`;
+  frame.style.height = `${root.scrollHeight}px`;
 
   // 2. Make room for a horizontal scroll bar, which a wide body shows
   // inside the frame and which its own height leaves out.
-  const scrollBar = (doc.defaultView?.innerHeight ?? 0) - doc.documentElement.clientHeight;
-  if (scrollBar > 0) frame.style.height = `${doc.documentElement.scrollHeight + scrollBar}px`;
+  const scrollBar = (doc.defaultView?.innerHeight ?? 0) - root.clientHeight;
+  if (scrollBar > 0) frame.style.height = `${root.scrollHeight + scrollBar}px`;
 }
