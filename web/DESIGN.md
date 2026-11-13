@@ -6,10 +6,11 @@ their reasons are in ADR031 (docs repo, `decision-record/ADR031-web-design-syste
 this file is what to do.
 
 Status: decided 2026-11-11. `feat/design-system` builds the foundation
-(tokens, the React Aria flavour, the shell, the mail building blocks,
-shared form fields); the mail branches build on it. Until a part is built,
-the code still shows the old look; build new work to this file, not to the
-old code.
+(tokens, the React Aria flavour, the shell, the status badge);
+`feat/design-forms` the shared form fields; the mail branches build on
+both and add the list's building blocks with the list (ADR031, "For branch
+3"). Until a part is built, the code still shows the old look; build new
+work to this file, not to the old code.
 
 ## Principles
 
@@ -453,6 +454,9 @@ The tone says what the status asks of the member:
 Deactivated is an admin's choice, not a fault. Up to date and Active show
 only on the page whose job is that status (Connected accounts, Members);
 elsewhere the usual state shows nothing.
+Admin, Two-factor on, and the Members table's Verified column wait for
+the settings pages' redesign (`feat/design-forms`), and the sync words for
+account status (branch 3).
 
 ## Data for mail
 
