@@ -599,8 +599,8 @@ gate"):
   boolean flags, and a label list tests `labelIds`
   (`inArray(label, labelIds)`), so rows keep it.
 - Each page asks for one row more than it shows, so the next load of that
-  date's ties needs no request; "older than a date" is asked as one
-  millisecond before it.
+  date's ties needs no request; "older than a date" is asked as the date
+  alone, without an ID.
 - Action handlers store the rows the server returns (`writeUpsert`) instead
   of refetching.
 

@@ -178,14 +178,9 @@ function checkOrder(options: LoadSubsetOptions): void {
   }
 }
 
-// With a date as before, the highest ID pages from that date's newest
-// conversation: before and beforeId together mean "older than, or of that
-// date with a lower ID".
-//
-// NOTE: the API takes the all-zero ID for a missing beforeId (422), so
-// "older than D" is asked as D minus 1 ms with this ID; exact while
-// providers' dates have at most millisecond precision (ADR031, TanStack DB
-// gate, rule 7).
+// With a date as before, the highest ID takes in every conversation of
+// that date: before and beforeId together mean "older than, or of that
+// date with a lower ID". A date alone means older dates only.
 const highestId = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 
 // How long a page's last date's ties stay ready for the load that asks for
@@ -195,8 +190,9 @@ const tiesKeptMs = 5_000;
 // A date's ties a page found whole, for the load that asks for them next.
 type Ties = { at: number; rows: Conversation[] };
 
-// A position in a list: after the conversation of this date and ID.
-type Cursor = { dateMs: number; id: string };
+// A position in a list: after the conversation of this date and ID, or
+// after every one of its date without an ID.
+type Cursor = { dateMs: number; id?: string };
 
 // loadConversations returns the conversations a TanStack DB load asks for,
 // reading the API's pages of at most 100 until it has them all. ties holds
@@ -230,7 +226,7 @@ async function loadConversations(
   if (scope.dateMs !== undefined) before = { dateMs: scope.dateMs, id: highestId };
   else if (scope.upper) {
     const { dateMs, inclusive } = scope.upper;
-    before = { dateMs: inclusive ? dateMs : dateMs - 1, id: highestId };
+    before = inclusive ? { dateMs, id: highestId } : { dateMs };
   }
   // A cursor already skips the rows before it; without one, an offset
   // counts from the newest.

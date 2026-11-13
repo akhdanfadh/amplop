@@ -159,8 +159,8 @@ func placeResponses(api huma.API) map[string]*huma.Response {
 type conversationListInput struct {
 	Place    string    `query:"place" required:"true" doc:"A view, inbox, starred, sent, all, spam, or trash, or the id of one of the account's labels from List Places. all is every conversation but those only in Spam or Trash; starred is the starred ones of all."`
 	Account  int64     `query:"account" minimum:"1" doc:"A connected account's id, to list only its conversations; every account's when left out."`
-	Before   time.Time `query:"before" doc:"The date of the last conversation of the page before, to list older ones. Send with beforeId; the first page leaves both out."`
-	BeforeID uuid.UUID `query:"beforeId" format:"uuid" doc:"The id of the last conversation of the page before. With before, the page holds conversations dated before it, or of its date with a lower id."`
+	Before   time.Time `query:"before" doc:"The page holds conversations dated before it: the date of the last conversation of the page before, with beforeId, or any date alone. The first page leaves both out."`
+	BeforeID uuid.UUID `query:"beforeId" format:"uuid" doc:"The id of the last conversation of the page before. With before, the page also holds conversations of its date with a lower id; it needs before."`
 	Limit    int       `query:"limit" minimum:"1" maximum:"100" default:"50" doc:"How many conversations to return, at most."`
 }
 
@@ -192,12 +192,11 @@ func (h conversationHandler) handleListConversations(ctx context.Context, in *co
 	}
 	query := conversation.Query{Place: place, Account: in.Account, Limit: in.Limit}
 
-	// A cursor is a date and an id together; either alone names no row.
+	// A date alone is the cursor with the zero id, which no id sorts below,
+	// so the page holds only older dates; an id alone names no row.
 	switch {
-	case !in.Before.IsZero() && in.BeforeID != uuid.Nil():
-		query.Before = &conversation.Cursor{Date: in.Before, ID: in.BeforeID}
 	case !in.Before.IsZero():
-		return nil, cursorProblem("query.beforeId")
+		query.Before = &conversation.Cursor{Date: in.Before, ID: in.BeforeID}
 	case in.BeforeID != uuid.Nil():
 		return nil, cursorProblem("query.before")
 	}
@@ -213,11 +212,11 @@ func (h conversationHandler) handleListConversations(ctx context.Context, in *co
 	return respondData(page), nil
 }
 
-// cursorProblem returns the 422 for a cursor whose other half, at
-// location, is missing.
+// cursorProblem returns the 422 for a beforeId sent without before, at
+// location.
 func cursorProblem(location string) error {
 	invalid := requestProblem(http.StatusUnprocessableEntity)
-	invalid.Errors = []inputError{{Location: location, Message: "Send before and beforeId together."}}
+	invalid.Errors = []inputError{{Location: location, Message: "Send beforeId with before."}}
 	return invalid
 }
 

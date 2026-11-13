@@ -119,7 +119,9 @@ type Conversation struct {
 	LabelIDs []uuid.UUID
 }
 
-// Cursor is the row a page continues from: its date and ID.
+// Cursor is the row a page continues from: its date and ID. The zero ID
+// continues below every row of its date, so the page holds only older
+// dates.
 type Cursor struct {
 	Date time.Time
 	ID   uuid.UUID

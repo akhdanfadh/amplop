@@ -116,13 +116,24 @@ func TestListConversationsPage(t *testing.T) {
 	}, conversations.query)
 }
 
+// A date alone asks for the conversations dated before it: its cursor
+// carries the zero ID.
+func TestListConversationsOlderThanADate(t *testing.T) {
+	conversations := &fakeConversations{rows: []conversation.Conversation{}}
+	api := newConversationsAPI(conversations)
+
+	response := requestAuthenticated(api, http.MethodGet, "/conversations?place=inbox&before=2026-11-09T10:30:00Z", "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, &conversation.Cursor{Date: time.Date(2026, 11, 9, 10, 30, 0, 0, time.UTC)}, conversations.query.Before)
+}
+
 func TestListConversationsInvalid(t *testing.T) {
 	for _, c := range []struct {
 		name, query, location string
 	}{
 		{"no place", "", "query.place"},
 		{"an unknown view", "place=drafts", "query.place"},
-		{"a date alone", "place=inbox&before=2026-11-09T10:30:00Z", "query.beforeId"},
 		{"an id alone", "place=inbox&beforeId=" + reportID.String(), "query.before"},
 		{"too many", "place=inbox&limit=101", "query.limit"},
 		{"no account", "place=inbox&account=0", "query.account"},

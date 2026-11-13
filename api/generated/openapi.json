@@ -3545,23 +3545,23 @@
             }
           },
           {
-            "description": "The date of the last conversation of the page before, to list older ones. Send with beforeId; the first page leaves both out.",
+            "description": "The page holds conversations dated before it: the date of the last conversation of the page before, with beforeId, or any date alone. The first page leaves both out.",
             "explode": false,
             "in": "query",
             "name": "before",
             "schema": {
-              "description": "The date of the last conversation of the page before, to list older ones. Send with beforeId; the first page leaves both out.",
+              "description": "The page holds conversations dated before it: the date of the last conversation of the page before, with beforeId, or any date alone. The first page leaves both out.",
               "format": "date-time",
               "type": "string"
             }
           },
           {
-            "description": "The id of the last conversation of the page before. With before, the page holds conversations dated before it, or of its date with a lower id.",
+            "description": "The id of the last conversation of the page before. With before, the page also holds conversations of its date with a lower id; it needs before.",
             "explode": false,
             "in": "query",
             "name": "beforeId",
             "schema": {
-              "description": "The id of the last conversation of the page before. With before, the page holds conversations dated before it, or of its date with a lower id.",
+              "description": "The id of the last conversation of the page before. With before, the page also holds conversations of its date with a lower id; it needs before.",
               "format": "uuid",
               "type": "string"
             }

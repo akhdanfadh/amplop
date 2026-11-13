@@ -14,8 +14,8 @@ export const listConversationsParamsLimitMax = 100;
 export const ListConversationsParams = zod.object({
   "place": zod.string().describe('A view, inbox, starred, sent, all, spam, or trash, or the id of one of the account\'s labels from List Places. all is every conversation but those only in Spam or Trash; starred is the starred ones of all.'),
   "account": zod.int().min(1).optional().describe('A connected account\'s id, to list only its conversations; every account\'s when left out.'),
-  "before": zod.iso.datetime({"offset":true}).optional().describe('The date of the last conversation of the page before, to list older ones. Send with beforeId; the first page leaves both out.'),
-  "beforeId": zod.uuid().optional().describe('The id of the last conversation of the page before. With before, the page holds conversations dated before it, or of its date with a lower id.'),
+  "before": zod.iso.datetime({"offset":true}).optional().describe('The page holds conversations dated before it: the date of the last conversation of the page before, with beforeId, or any date alone. The first page leaves both out.'),
+  "beforeId": zod.uuid().optional().describe('The id of the last conversation of the page before. With before, the page also holds conversations of its date with a lower id; it needs before.'),
   "limit": zod.int().min(1).max(listConversationsParamsLimitMax).default(listConversationsParamsLimitDefault).describe('How many conversations to return, at most.')
 })
 

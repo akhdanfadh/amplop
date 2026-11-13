@@ -72,6 +72,32 @@ func TestListAcrossAccounts(t *testing.T) {
 	assert.Equal(t, []string{"Subject of b2"}, one)
 }
 
+// A cursor with the zero ID holds only rows older than its date: no ID
+// sorts below it, so none of that date's rows is left in.
+func TestListOlderThanADate(t *testing.T) {
+	// Given three inbox conversations of one date, over two accounts, and an
+	// older and a newer one.
+	c := newConversationReadTest(t)
+	c.saveTo(t, c.account, threadMessage("a1", "t1", 1, "asha", "INBOX"), threadMessage("a3", "t3", 3, "asha", "INBOX"),
+		threadMessage("a4", "t4", 3, "asha", "INBOX"), threadMessage("a5", "t5", 5, "asha", "INBOX"))
+	c.saveTo(t, c.other, threadMessage("b3", "t6", 3, "blair", "INBOX"))
+	whole, err := c.db.ListConversations(t.Context(), c.member, conversation.Query{Place: inbox, Limit: conversation.MaxLimit})
+	require.NoError(t, err)
+	var tied conversation.Cursor
+	for _, row := range whole {
+		if row.Subject == "Subject of a3" {
+			tied.Date = row.LatestDate
+		}
+	}
+	require.False(t, tied.Date.IsZero())
+
+	// When the inbox is listed older than that date.
+	older := c.list(t, conversation.Query{Place: inbox, Before: &tied})
+
+	// Then it holds only the older one.
+	assert.Equal(t, []string{"Subject of a1"}, older)
+}
+
 // Each view's pages, read after the last row of the one before, hold its
 // whole list once, in date then ID order, across accounts and through
 // conversations of one date that a page boundary splits.
