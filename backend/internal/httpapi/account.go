@@ -88,7 +88,7 @@ type setupThrottle interface {
 // newSetup is the request body. Huma checks its fields before calling Setup.
 type newSetup struct {
 	Token    string `json:"token" writeOnly:"true"`
-	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
+	Email    string `json:"email" format:"idn-email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
 	Password string `json:"password" writeOnly:"true" minLength:"15" maxLength:"128"`
 }
 

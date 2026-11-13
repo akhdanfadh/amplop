@@ -193,7 +193,7 @@ const registrationRequested registrationRequestStatus = "requested"
 
 // newRegistrationRequest is the request body.
 type newRegistrationRequest struct {
-	Email string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
+	Email string `json:"email" format:"idn-email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
 }
 
 // registrationRequestInput combines the email with the resolved client
@@ -285,7 +285,7 @@ const (
 // newMember is the completion request body.
 type newMember struct {
 	Secret   string `json:"secret" writeOnly:"true" doc:"The text after # in the emailed link."`
-	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"The email the link was sent to, typed by the person using it. Letters A to Z match in either case."`
+	Email    string `json:"email" format:"idn-email" minLength:"3" maxLength:"254" doc:"The email the link was sent to, typed by the person using it. Letters A to Z match in either case."`
 	Password string `json:"password" writeOnly:"true" minLength:"15" maxLength:"128"`
 }
 

@@ -23,6 +23,19 @@ export function validationMessage(iss: z.core.$ZodRawIssue): string {
   return "Enter a valid value.";
 }
 
+// emailAddress returns schema, a contract string of format "idn-email",
+// that also requires an @ with text without spaces or quotes on both sides,
+// so a form refuses a mistyped address before sending it.
+//
+// DESIGN: the server decides what an address is (Go's net/mail and inbok's
+// own checks), so this rule is never stricter than the server's, except
+// that it allows at most 64 characters before the @, the most RFC 5321
+// allows (section 4.5.3.1.1). Orval generates no check for "idn-email",
+// so each form's schema adds this one.
+export function emailAddress(schema: z.ZodString): z.ZodString {
+  return schema.regex(z.regexes.unicodeEmail);
+}
+
 // "Enter a whole number from 1 to 10.", or with one limit or none.
 function numberRule(schema: z.ZodNumber): string {
   const whole = schema.format !== null && wholeFormats.has(schema.format);

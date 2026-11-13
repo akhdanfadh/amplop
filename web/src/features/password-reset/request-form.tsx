@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactElement } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import { useRequestPasswordResetLink } from "@/api/generated/inbok";
 import { NewPasswordResetRequest } from "@/api/generated/model";
+import { emailAddress } from "@/api/validation";
 import { formErrors, formSummary } from "@/api/problem";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,11 @@ export function RequestForm(): ReactElement {
   const request = useRequestPasswordResetLink({ mutation: { gcTime: 0 } });
   const form = useForm({
     defaultValues: emptyRequest,
-    validators: { onChange: NewPasswordResetRequest },
+    validators: {
+      onChange: NewPasswordResetRequest.extend({
+        email: emailAddress(NewPasswordResetRequest.shape.email),
+      }),
+    },
     onSubmitInvalid: () => formRef.current?.querySelector<HTMLInputElement>("input")?.focus(),
     onSubmit: ({ value, formApi }) => {
       if (request.isPending) return;

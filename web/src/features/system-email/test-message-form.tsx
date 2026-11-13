@@ -7,6 +7,7 @@ import {
   useSendSystemEmailTestMessage,
 } from "@/api/generated/inbok";
 import { SystemEmailTestMessageRecipient, type SystemEmailSettings } from "@/api/generated/model";
+import { emailAddress } from "@/api/validation";
 import { formErrors, formSummary, uncertainOutcome } from "@/api/problem";
 import { ApiError } from "@/api/transport";
 import { RequestError } from "@/components/request-error";
@@ -64,7 +65,11 @@ export function TestMessageForm({
 
   const form = useForm({
     defaultValues: { recipient },
-    validators: { onChange: SystemEmailTestMessageRecipient },
+    validators: {
+      onChange: SystemEmailTestMessageRecipient.extend({
+        recipient: emailAddress(SystemEmailTestMessageRecipient.shape.recipient),
+      }),
+    },
     onSubmitInvalid: () => document.getElementById(id)?.focus(),
     onSubmit: ({ value, formApi }) => {
       if (locked) return;

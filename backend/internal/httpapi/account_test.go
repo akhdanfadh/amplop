@@ -419,7 +419,7 @@ func TestSetupOpenAPI(t *testing.T) {
 	}
 	assert.True(t, schema.Properties["token"].WriteOnly)
 	assert.True(t, schema.Properties["password"].WriteOnly)
-	assert.Equal(t, "email", schema.Properties["email"].Format)
+	assert.Equal(t, "idn-email", schema.Properties["email"].Format)
 	for name, limits := range map[string][2]int{"email": {3, 254}, "password": {15, 128}} {
 		field := schema.Properties[name]
 		require.NotNil(t, field.MinLength, name)

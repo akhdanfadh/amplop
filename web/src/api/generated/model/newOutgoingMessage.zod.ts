@@ -25,12 +25,12 @@ export const newOutgoingMessageToMax = 100;
 
 
 export const NewOutgoingMessage = zod.object({
-  "bcc": zod.array(zod.email().max(newOutgoingMessageBccItemMax)).max(newOutgoingMessageBccMax),
+  "bcc": zod.array(zod.string().max(newOutgoingMessageBccItemMax)).max(newOutgoingMessageBccMax),
   "body": zod.string().max(newOutgoingMessageBodyMax).describe('Plain text.'),
-  "cc": zod.array(zod.email().max(newOutgoingMessageCcItemMax)).max(newOutgoingMessageCcMax),
+  "cc": zod.array(zod.string().max(newOutgoingMessageCcItemMax)).max(newOutgoingMessageCcMax),
   "connectedAccountId": zod.int().min(1).describe('The sending account, one of the signed-in account\'s connected accounts.'),
   "subject": zod.string().max(newOutgoingMessageSubjectMax).describe('May be empty. No line breaks or other control characters.'),
-  "to": zod.array(zod.email().max(newOutgoingMessageToItemMax)).max(newOutgoingMessageToMax).describe('To, Cc, and Bcc together need at least one address.')
+  "to": zod.array(zod.string().max(newOutgoingMessageToItemMax)).max(newOutgoingMessageToMax).describe('To, Cc, and Bcc together need at least one address.')
 })
 
 export type NewOutgoingMessage = zod.input<typeof NewOutgoingMessage>;

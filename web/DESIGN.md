@@ -656,7 +656,9 @@ pull-to-refresh, which would reload the app, never starts.
   description, error, `aria-describedby`, and the server-refusal check.
 - Schemas extend the generated Zod schemas; messages come from
   `src/api/validation.ts`; fields read `maxLength`, `inputMode`, and
-  `autocomplete` from the same schema. Forms set `noValidate`.
+  `autocomplete` from the same schema. An email field takes what the
+  server takes, an @ with text on both sides (`emailAddress`), never Zod's
+  stricter `email()`. Forms set `noValidate`.
 - Label above (the message editor's rows put it on the left); description
   before the control; error under it, with an icon and words. "(optional)"
   marks optional fields; required ones are unmarked.

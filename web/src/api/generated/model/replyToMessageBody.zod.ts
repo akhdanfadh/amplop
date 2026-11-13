@@ -23,11 +23,11 @@ export const replyToMessageBodyToMax = 100;
 
 
 export const ReplyToMessageBody = zod.object({
-  "bcc": zod.array(zod.email().max(replyToMessageBodyBccItemMax)).max(replyToMessageBodyBccMax),
+  "bcc": zod.array(zod.string().max(replyToMessageBodyBccItemMax)).max(replyToMessageBodyBccMax),
   "body": zod.string().max(replyToMessageBodyBodyMax).describe('Plain text.'),
-  "cc": zod.array(zod.email().max(replyToMessageBodyCcItemMax)).max(replyToMessageBodyCcMax),
+  "cc": zod.array(zod.string().max(replyToMessageBodyCcItemMax)).max(replyToMessageBodyCcMax),
   "connectedAccountId": zod.int().min(1).describe('The sending account, one of the signed-in account\'s connected accounts. It need not be the account that holds the answered message.'),
-  "to": zod.array(zod.email().max(replyToMessageBodyToItemMax)).max(replyToMessageBodyToMax).describe('To, Cc, and Bcc together need at least one address.')
+  "to": zod.array(zod.string().max(replyToMessageBodyToItemMax)).max(replyToMessageBodyToMax).describe('To, Cc, and Bcc together need at least one address.')
 })
 
 export type ReplyToMessageBody = zod.input<typeof ReplyToMessageBody>;

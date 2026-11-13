@@ -47,13 +47,16 @@ describe("SetupSchema", () => {
     expect(SetupSchema.parse({ ...valid, email }).email).toBe(email);
   });
 
-  it.each(["hello", "admin@localhost", "admin@example.c", "user!name@example.com"])(
-    "rejects email outside Zod's accepted syntax",
-    (email) => {
-      const result = SetupSchema.safeParse({ ...valid, email });
+  it("rejects text that is not an email address", () => {
+    const result = SetupSchema.safeParse({ ...valid, email: "hello" });
 
-      expect(result.success).toBe(false);
-      expect(result.error?.issues).toMatchObject([{ path: ["email"], format: "email" }]);
+    expect(result.error?.issues).toMatchObject([{ path: ["email"], format: "regex" }]);
+  });
+
+  it.each(["admin@localhost", "admin@example.c", "user!name@example.com", "admin@münchen.de"])(
+    "accepts an address the server accepts: %s",
+    (email) => {
+      expect(SetupSchema.safeParse({ ...valid, email }).success).toBe(true);
     },
   );
 

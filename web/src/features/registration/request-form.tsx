@@ -3,6 +3,7 @@ import { useForm, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetRegistrationQueryKey, useRequestRegistrationLink } from "@/api/generated/inbok";
 import { NewRegistrationRequest } from "@/api/generated/model";
+import { emailAddress } from "@/api/validation";
 import { formErrors, formSummary } from "@/api/problem";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,11 @@ export function RequestForm(): ReactElement {
   });
   const form = useForm({
     defaultValues: emptyRequest,
-    validators: { onChange: NewRegistrationRequest },
+    validators: {
+      onChange: NewRegistrationRequest.extend({
+        email: emailAddress(NewRegistrationRequest.shape.email),
+      }),
+    },
     onSubmitInvalid: () => formRef.current?.querySelector<HTMLInputElement>("input")?.focus(),
     onSubmit: ({ value, formApi }) => {
       if (request.isPending) return;

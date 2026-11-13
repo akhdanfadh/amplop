@@ -11,7 +11,7 @@ export const newRegistrationRequestEmailMax = 254;
 
 
 export const NewRegistrationRequest = zod.object({
-  "email": zod.email().min(newRegistrationRequestEmailMin).max(newRegistrationRequestEmailMax).describe('Letters A to Z are saved in lowercase.')
+  "email": zod.string().min(newRegistrationRequestEmailMin).max(newRegistrationRequestEmailMax).describe('Letters A to Z are saved in lowercase.')
 })
 
 export type NewRegistrationRequest = zod.input<typeof NewRegistrationRequest>;

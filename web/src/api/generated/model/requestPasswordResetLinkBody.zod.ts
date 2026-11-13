@@ -11,7 +11,7 @@ export const requestPasswordResetLinkBodyEmailMax = 254;
 
 
 export const RequestPasswordResetLinkBody = zod.object({
-  "email": zod.email().min(requestPasswordResetLinkBodyEmailMin).max(requestPasswordResetLinkBodyEmailMax).describe('The email the account signs in with. Any valid email gets the same answer.')
+  "email": zod.string().min(requestPasswordResetLinkBodyEmailMin).max(requestPasswordResetLinkBodyEmailMax).describe('The email the account signs in with. Any valid email gets the same answer.')
 })
 
 export type RequestPasswordResetLinkBody = zod.input<typeof RequestPasswordResetLinkBody>;

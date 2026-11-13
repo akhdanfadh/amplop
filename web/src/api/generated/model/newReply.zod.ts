@@ -23,11 +23,11 @@ export const newReplyToMax = 100;
 
 
 export const NewReply = zod.object({
-  "bcc": zod.array(zod.email().max(newReplyBccItemMax)).max(newReplyBccMax),
+  "bcc": zod.array(zod.string().max(newReplyBccItemMax)).max(newReplyBccMax),
   "body": zod.string().max(newReplyBodyMax).describe('Plain text.'),
-  "cc": zod.array(zod.email().max(newReplyCcItemMax)).max(newReplyCcMax),
+  "cc": zod.array(zod.string().max(newReplyCcItemMax)).max(newReplyCcMax),
   "connectedAccountId": zod.int().min(1).describe('The sending account, one of the signed-in account\'s connected accounts. It need not be the account that holds the answered message.'),
-  "to": zod.array(zod.email().max(newReplyToItemMax)).max(newReplyToMax).describe('To, Cc, and Bcc together need at least one address.')
+  "to": zod.array(zod.string().max(newReplyToItemMax)).max(newReplyToMax).describe('To, Cc, and Bcc together need at least one address.')
 })
 
 export type NewReply = zod.input<typeof NewReply>;

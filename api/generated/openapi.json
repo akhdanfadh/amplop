@@ -1051,7 +1051,7 @@
         "properties": {
           "email": {
             "description": "The email the link was sent to, typed by the person using it. Letters A to Z match in either case.",
-            "format": "email",
+            "format": "idn-email",
             "maxLength": 254,
             "minLength": 3,
             "type": "string"
@@ -1080,7 +1080,7 @@
         "properties": {
           "bcc": {
             "items": {
-              "format": "email",
+              "format": "idn-email",
               "maxLength": 254,
               "type": "string"
             },
@@ -1094,7 +1094,7 @@
           },
           "cc": {
             "items": {
-              "format": "email",
+              "format": "idn-email",
               "maxLength": 254,
               "type": "string"
             },
@@ -1115,7 +1115,7 @@
           "to": {
             "description": "To, Cc, and Bcc together need at least one address.",
             "items": {
-              "format": "email",
+              "format": "idn-email",
               "maxLength": 254,
               "type": "string"
             },
@@ -1138,7 +1138,7 @@
         "properties": {
           "email": {
             "description": "The email the link was sent to, typed by the person using it. Letters A to Z match in either case.",
-            "format": "email",
+            "format": "idn-email",
             "maxLength": 254,
             "minLength": 3,
             "type": "string"
@@ -1167,7 +1167,7 @@
         "properties": {
           "email": {
             "description": "The email the account signs in with. Any valid email gets the same answer.",
-            "format": "email",
+            "format": "idn-email",
             "maxLength": 254,
             "minLength": 3,
             "type": "string"
@@ -1218,7 +1218,7 @@
         "properties": {
           "email": {
             "description": "Letters A to Z are saved in lowercase.",
-            "format": "email",
+            "format": "idn-email",
             "maxLength": 254,
             "minLength": 3,
             "type": "string"
@@ -1247,7 +1247,7 @@
         "properties": {
           "bcc": {
             "items": {
-              "format": "email",
+              "format": "idn-email",
               "maxLength": 254,
               "type": "string"
             },
@@ -1261,7 +1261,7 @@
           },
           "cc": {
             "items": {
-              "format": "email",
+              "format": "idn-email",
               "maxLength": 254,
               "type": "string"
             },
@@ -1277,7 +1277,7 @@
           "to": {
             "description": "To, Cc, and Bcc together need at least one address.",
             "items": {
-              "format": "email",
+              "format": "idn-email",
               "maxLength": 254,
               "type": "string"
             },
@@ -1299,7 +1299,7 @@
         "properties": {
           "email": {
             "description": "Letters A to Z match in either case.",
-            "format": "email",
+            "format": "idn-email",
             "maxLength": 254,
             "minLength": 3,
             "type": "string"
@@ -1321,7 +1321,7 @@
         "properties": {
           "email": {
             "description": "Letters A to Z are saved in lowercase.",
-            "format": "email",
+            "format": "idn-email",
             "maxLength": 254,
             "minLength": 3,
             "type": "string"
@@ -1349,7 +1349,7 @@
         "properties": {
           "fromAddress": {
             "description": "Letters A to Z are saved in lowercase.",
-            "format": "email",
+            "format": "idn-email",
             "maxLength": 254,
             "minLength": 3,
             "type": "string"
@@ -2605,7 +2605,7 @@
         "properties": {
           "recipient": {
             "description": "Where to send the test message. Letters A to Z are sent in lowercase.",
-            "format": "email",
+            "format": "idn-email",
             "maxLength": 254,
             "type": "string"
           }

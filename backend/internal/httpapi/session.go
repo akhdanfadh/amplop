@@ -106,7 +106,7 @@ const invalidCredentialsType = problemPrefix + "invalid-credentials"
 
 // newSession is the sign-in request body. Password creation rules do not apply.
 type newSession struct {
-	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"Letters A to Z match in either case."`
+	Email    string `json:"email" format:"idn-email" minLength:"3" maxLength:"254" doc:"Letters A to Z match in either case."`
 	Password string `json:"password" writeOnly:"true" maxLength:"128"`
 }
 

@@ -11,7 +11,7 @@ export const requestRegistrationLinkBodyEmailMax = 254;
 
 
 export const RequestRegistrationLinkBody = zod.object({
-  "email": zod.email().min(requestRegistrationLinkBodyEmailMin).max(requestRegistrationLinkBodyEmailMax).describe('Letters A to Z are saved in lowercase.')
+  "email": zod.string().min(requestRegistrationLinkBodyEmailMin).max(requestRegistrationLinkBodyEmailMax).describe('Letters A to Z are saved in lowercase.')
 })
 
 export type RequestRegistrationLinkBody = zod.input<typeof RequestRegistrationLinkBody>;

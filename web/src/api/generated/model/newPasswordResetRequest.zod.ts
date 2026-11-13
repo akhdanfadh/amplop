@@ -11,7 +11,7 @@ export const newPasswordResetRequestEmailMax = 254;
 
 
 export const NewPasswordResetRequest = zod.object({
-  "email": zod.email().min(newPasswordResetRequestEmailMin).max(newPasswordResetRequestEmailMax).describe('The email the account signs in with. Any valid email gets the same answer.')
+  "email": zod.string().min(newPasswordResetRequestEmailMin).max(newPasswordResetRequestEmailMax).describe('The email the account signs in with. Any valid email gets the same answer.')
 })
 
 export type NewPasswordResetRequest = zod.input<typeof NewPasswordResetRequest>;

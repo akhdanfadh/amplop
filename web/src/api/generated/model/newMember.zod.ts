@@ -14,7 +14,7 @@ export const newMemberPasswordMax = 128;
 
 
 export const NewMember = zod.object({
-  "email": zod.email().min(newMemberEmailMin).max(newMemberEmailMax).describe('The email the link was sent to, typed by the person using it. Letters A to Z match in either case.'),
+  "email": zod.string().min(newMemberEmailMin).max(newMemberEmailMax).describe('The email the link was sent to, typed by the person using it. Letters A to Z match in either case.'),
   "password": zod.string().min(newMemberPasswordMin).max(newMemberPasswordMax),
   "secret": zod.string().describe('The text after # in the emailed link.')
 })

@@ -14,7 +14,7 @@ export const redeemPasswordResetLinkBodyPasswordMax = 128;
 
 
 export const RedeemPasswordResetLinkBody = zod.object({
-  "email": zod.email().min(redeemPasswordResetLinkBodyEmailMin).max(redeemPasswordResetLinkBodyEmailMax).describe('The email the link was sent to, typed by the person using it. Letters A to Z match in either case.'),
+  "email": zod.string().min(redeemPasswordResetLinkBodyEmailMin).max(redeemPasswordResetLinkBodyEmailMax).describe('The email the link was sent to, typed by the person using it. Letters A to Z match in either case.'),
   "password": zod.string().min(redeemPasswordResetLinkBodyPasswordMin).max(redeemPasswordResetLinkBodyPasswordMax),
   "secret": zod.string().describe('The text after # in the emailed link.')
 })

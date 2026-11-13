@@ -1,4 +1,5 @@
 import { NewSystemEmailSettings, type SystemEmailSettings } from "@/api/generated/model";
+import { emailAddress } from "@/api/validation";
 
 // The form holds exactly the request body, so it is sent as is.
 export type SettingsValues = Required<NewSystemEmailSettings>;
@@ -43,6 +44,7 @@ export function keepsPassword(saved: SystemEmailSettings | undefined, values: Se
 export function settingsSchema(saved: SystemEmailSettings | undefined) {
   return (
     NewSystemEmailSettings.required()
+      .extend({ fromAddress: emailAddress(NewSystemEmailSettings.shape.fromAddress) })
       // Go saves a blank username as none, so these rules read it trimmed.
       .refine((value) => value.security !== "none" || !value.username.trim(), {
         path: ["security"],
