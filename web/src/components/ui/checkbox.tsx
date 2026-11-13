@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 import { CheckboxButton, CheckboxField, type CheckboxFieldProps } from "react-aria-components";
 import { CheckIcon, MinusIcon } from "lucide-react";
 

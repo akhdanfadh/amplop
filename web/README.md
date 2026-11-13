@@ -827,8 +827,16 @@ ships agent guides for its installed version in
 
 Imports starting with `@/` point into `src`, e.g.
 `@/components/ui/button` is `src/components/ui/button.tsx`. The `cn` class
-helper comes from the `cn` package; an older component that imports it
-from `@/lib/utils` needs that import changed.
+helper is `@/lib/cn`, the `cn` package's engine with merge tables that
+`pnpm generate` compiles from `src/styles.css`'s `@theme` into
+`src/lib/generated/cn-tables.ts`. The package's own `cn` knows only
+Tailwind's scales: it takes `text-snippet` for a colour and drops it beside
+`text-muted-foreground`, and keeps both of `text-sm` and `text-snippet`,
+leaving the stylesheet's order to pick. A lint rule refuses
+`import { cn } from "cn"`, which `shadcn add` writes, and an import from
+`@/lib/utils` fails the type check: change either to `@/lib/cn`.
+After changing the theme, run `make generate`; `make check` fails while
+the tables are older than the theme.
 
 ## API client
 

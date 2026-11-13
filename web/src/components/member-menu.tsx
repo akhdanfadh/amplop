@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { linkOptions, useNavigate } from "@tanstack/react-router";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 import { Link } from "react-aria-components";
 import {
   ChevronsUpDownIcon,

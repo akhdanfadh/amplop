@@ -1,6 +1,6 @@
 import type { ReactElement, ReactNode } from "react";
 import { FieldError } from "@/components/ui/field";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 
 // RequestError shows why a form's request failed, under its button: errors
 // as an alert, then children, e.g. a button to check the outcome, then the

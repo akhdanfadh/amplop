@@ -1,5 +1,5 @@
 import type * as React from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 
 // Skeleton is a placeholder shaped like the content it stands for.
 //

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 import { LabelContext, Label as LabelPrimitive, type LabelProps } from "react-aria-components";
 
 function Label({ className, htmlFor, slot, ...props }: LabelProps) {

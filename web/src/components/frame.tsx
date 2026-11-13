@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactElement, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 import { MemberMenu } from "@/components/member-menu";
 import { OfflineBanner } from "@/components/offline-banner";
 import {

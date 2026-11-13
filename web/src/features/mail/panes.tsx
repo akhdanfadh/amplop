@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/cn";
 import { StateRegion } from "@/components/route-states";
 import { useLayout } from "@/hooks/use-layout";
 
