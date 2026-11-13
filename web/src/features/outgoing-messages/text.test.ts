@@ -11,6 +11,7 @@ import {
   statusLabel,
   readErrorMessage,
   recipientSummary,
+  replyErrorMessage,
   sendAgainErrorMessage,
   sendErrorMessage,
   unfinished,
@@ -136,6 +137,29 @@ describe("sendErrorMessage", () => {
   it("keeps the server's explanation of a refusal", () => {
     expect(sendErrorMessage(problem(409, "/api/v0/problems/sending-account-needs-reconnect"))).toBe(
       "The server's detail.",
+    );
+  });
+});
+
+describe("replyErrorMessage", () => {
+  it("says the answered message was deleted on its own 404 only", () => {
+    expect(replyErrorMessage(problem(404, "/api/v0/problems/message-not-found"))).toBe(
+      "The message you're replying to was deleted, so this reply can't be sent. Copy what you typed to keep it.",
+    );
+    expect(replyErrorMessage(problem(404, "/api/v0/problems/not-found"))).toBe(
+      "The server's detail.",
+    );
+  });
+
+  it("asks for a look at the Outbox when the key saved another reply", () => {
+    expect(replyErrorMessage(problem(422, "/api/v0/problems/idempotency-key-reused"))).toContain(
+      "this reply before your last edits",
+    );
+  });
+
+  it("says sending again is safe after a lost answer", () => {
+    expect(replyErrorMessage(new ApiError("network", { method: "POST" }))).toBe(
+      "We couldn't confirm whether your reply was saved. Sending again is safe: it won't be sent twice.",
     );
   });
 });

@@ -46,7 +46,7 @@ const angleAddress = /<([^<>]*)>/;
 // refuses in a subject: one header line cannot hold them (RFC 5322).
 const controlCharacter = /\p{Cc}/u;
 const noRecipients = "Add at least one recipient.";
-const chooseAccount = "Choose the account to send from.";
+export const chooseAccount = "Choose the account to send from.";
 const controlInSubject = "Enter a subject without line breaks or other control characters.";
 
 // The contract's rule for one address, the same in every list.
@@ -59,7 +59,7 @@ export function isAddress(value: string): boolean {
 
 // recipientsRule checks a list of at most max addresses. It names the first
 // that is not one, since the field holds many.
-function recipientsRule(max: number) {
+export function recipientsRule(max: number) {
   return (addresses: string[], ctx: z.RefinementCtx) => {
     const invalid = addresses.find((value) => !isAddress(value));
     if (invalid !== undefined)
@@ -91,7 +91,7 @@ export const ComposeSchema = z
 
 // needsRecipient asks for a recipient on To when the lists of values are
 // all empty: the API needs one across them.
-function needsRecipient(
+export function needsRecipient(
   values: { to: string[]; cc: string[]; bcc: string[] },
   ctx: z.RefinementCtx,
 ): void {

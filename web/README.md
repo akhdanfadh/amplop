@@ -129,8 +129,9 @@ Put shared code in the folder for its responsibility:
   bodies, sizing the body's frame, plain-text links, and the header's
   wording.
 - `src/features/outgoing-messages`: the compose form and its schema, the
-  Outbox list, one message's status with Send again and Edit and send,
-  their wording, and when their pages read again (`pollWhile`).
+  reply editor with its defaults and schema, the Outbox list, one
+  message's status with Send again and Edit and send, their wording, and
+  when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
   names, the list beside the reading pane, and the address Back to mail
   returns to.
@@ -599,6 +600,56 @@ twice. A message Gmail refused offers Edit and send instead, which opens
 the compose form filled with its content, as a new message. One function,
 `nextSteps` (`src/features/outgoing-messages/text.ts`), works out both what
 a message's page says and what it offers, so the two cannot disagree.
+
+### Reply
+
+`ConversationReply` (`src/features/outgoing-messages/reply.tsx`) is the
+bottom of a conversation: Reply, and Reply all when someone else received
+the message, open one inline editor answering the conversation's last
+message through Reply to Message (US009). It takes that message as an
+`AnsweredMessage`: branch 3's conversation message (senders and
+recipients as `{name, address}`), its account, and whether the account
+sent it, the per-message `sent` flag the conversation API is to add. It
+reads only the member's accounts, so the conversation view mounts it as it
+is; until branch 3 and 4b merge, its browser tests render it with
+fixtures. `replyDefaults` (`reply-defaults.ts`) fills the editor, with
+table tests:
+
+- From is the account that received the message while it can send;
+  otherwise none is chosen, and From's description names the account
+  that needs reconnecting.
+- Reply goes to Reply-To, else From; Reply all also copies To and Cc. A
+  message the account itself sent is answered to its own To, and Reply
+  all copies its Cc.
+- Reply all leaves out the receiving account's address and repeats,
+  comparing addresses in any case and keeping the first spelling. The
+  member's other accounts and Gmail aliases stay, since they may want the
+  copy.
+
+The editor is DESIGN.md's message editor card: rows for From (a quiet
+React Aria `select`, the account shown by its address until branch 3's
+account mark), To, and the Cc and Bcc that are filled or added from the To
+row's buttons, each a `RecipientField`; then Message, and a bar with Send
+and Discard. There is no subject: the server sets it. A line under From
+says when the chosen account didn't receive the message, since the reply
+then starts a new conversation in that account's Gmail. Focus starts in
+Message; Ctrl+Enter, or Cmd+Enter on a Mac, sends from any text field, as
+Send's tooltip says. It checks, keys, retries, and words its errors as the
+compose form does, plus a deleted answered message (404
+`message-not-found`), which keeps the text to copy. Discard closes an
+untouched editor at once and asks first once something was typed, then
+returns focus to Reply; leaving the page asks as the compose form does. An
+address typed but not yet a chip counts as typed. On a phone the editor is
+a full-screen sheet: Escape runs Discard, and the scrim, a stray tap away,
+does nothing. The editor keeps the layout it opened in, inline or sheet,
+and the message it answers until it closes, so neither a window crossing
+the phone width nor a newer message synced meanwhile changes what is being
+written. After Send the editor gives way to the reply's status, read again
+every 2 seconds until the send ends; a failed reread keeps the status,
+says it may be out of date, and offers Try again. It has Send again and a
+link to its Outbox page. A refused reply's Edit and send opens the editor
+again with its content, as a new reply to the same message, so it keeps
+its threading.
 
 ## Message view
 

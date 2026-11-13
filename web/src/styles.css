@@ -160,7 +160,7 @@
   --account-8: #facc15;
 
   /* Menus share the card's surface, so their lighter hairline
-   * (ring-foreground/20 in popover.tsx) and this shadow set
+   * (ring-foreground/20 in popover.tsx and select.tsx) and this shadow set
    * them apart from a card they open over. */
   --popover-shadow: 0 4px 12px rgb(0 0 0 / 40%);
   --dialog-shadow: 0 16px 40px rgb(0 0 0 / 50%);

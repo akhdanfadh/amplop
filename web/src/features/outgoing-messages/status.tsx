@@ -31,17 +31,20 @@ const buttonClass = "w-fit whitespace-normal";
 // next: send it again, edit it into a new message, or open the copy it was
 // sent again as. current is the sending account's address now, when known.
 // onSentAgain receives the copy a Send again saved; onUnauthorized runs on
-// a 401.
+// a 401. onEdit, when given, runs on Edit and send instead of opening the
+// compose page, e.g. so a reply is edited into a new reply.
 export function MessageStatus({
   message,
   current,
   onSentAgain,
   onUnauthorized,
+  onEdit,
 }: {
   message: OutgoingMessage;
   current: string | undefined;
   onSentAgain: (copy: OutgoingMessage) => void;
   onUnauthorized: () => void;
+  onEdit?: () => void;
 }): ReactElement {
   const client = useQueryClient();
   const sectionRef = useRef<HTMLElement>(null);
@@ -146,7 +149,12 @@ export function MessageStatus({
             {again.isPending ? "Sending again..." : "Send again"}
           </Button>
         )}
-        {steps.offers.includes("edit") && (
+        {steps.offers.includes("edit") && onEdit && (
+          <Button type="button" className={buttonClass} onPress={onEdit}>
+            Edit and send
+          </Button>
+        )}
+        {steps.offers.includes("edit") && !onEdit && (
           <Link
             to="/compose"
             search={{ edit: message.id }}

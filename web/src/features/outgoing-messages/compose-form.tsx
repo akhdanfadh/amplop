@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactElement } from "react";
-import { useForm, useSelector, type AnyFieldMeta } from "@tanstack/react-form";
+import { useForm, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
@@ -15,6 +15,7 @@ import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { describedBy, shownErrors, type Submission } from "./field-errors";
 import { RecipientField, withTyping } from "./recipient-field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
@@ -120,7 +121,9 @@ export function ComposeForm({
       },
     },
   });
-  const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
+  const submission = useSelector(form.store, (state): Submission =>
+    state.submissionAttempts > 0 ? "tried" : "untried",
+  );
   const formEdited = useSelector(form.store, (state) => !state.isDefaultValue);
   // A recipient list holding text not yet a chip counts as an edit.
   const [typingIn, setTypingIn] = useState<ReadonlySet<string>>(() => new Set());
@@ -149,7 +152,7 @@ export function ComposeForm({
       <FieldGroup>
         <form.Field name="connectedAccountId">
           {(field) => {
-            const errors = shown(field.state.meta, submitted);
+            const errors = shownErrors(field.state.meta, submission);
             const id = fieldId(field.name);
             return (
               <Field data-invalid={errors.length > 0}>
@@ -196,7 +199,7 @@ export function ComposeForm({
         {recipientFields.map(({ name, label }) => (
           <form.Field key={name} name={name}>
             {(field) => {
-              const errors = shown(field.state.meta, submitted);
+              const errors = shownErrors(field.state.meta, submission);
               const id = fieldId(field.name);
               return (
                 <Field data-invalid={errors.length > 0}>
@@ -233,7 +236,7 @@ export function ComposeForm({
 
         <form.Field name="subject">
           {(field) => {
-            const errors = shown(field.state.meta, submitted);
+            const errors = shownErrors(field.state.meta, submission);
             const id = fieldId(field.name);
             return (
               <Field data-invalid={errors.length > 0}>
@@ -256,7 +259,7 @@ export function ComposeForm({
 
         <form.Field name="body">
           {(field) => {
-            const errors = shown(field.state.meta, submitted);
+            const errors = shownErrors(field.state.meta, submission);
             const id = fieldId(field.name);
             return (
               <Field data-invalid={errors.length > 0}>
@@ -318,21 +321,4 @@ export function ComposeForm({
 // fieldId returns the id of the input for the form field name.
 function fieldId(name: string): string {
   return `compose-${name}`;
-}
-
-// describedBy returns what describes the input with id: the element with
-// descriptionId, if given, and its error when errors has one.
-function describedBy(
-  id: string,
-  errors: AnyFieldMeta["errors"],
-  descriptionId?: string,
-): string | undefined {
-  const ids = [descriptionId, errors.length > 0 ? `${id}-error` : undefined];
-  return ids.filter(Boolean).join(" ") || undefined;
-}
-
-// A field's errors once the member has left it or tried to send, so an
-// address is not flagged while it is being typed.
-function shown(meta: AnyFieldMeta, submitted: boolean): AnyFieldMeta["errors"] {
-  return meta.isBlurred || submitted ? meta.errors : [];
 }

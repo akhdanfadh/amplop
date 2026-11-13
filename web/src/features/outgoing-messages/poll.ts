@@ -1,3 +1,7 @@
+// How often a message is read again while it is still being sent: most
+// sends end within seconds.
+export const sendPollMs = 2_000;
+
 // What pollWhile reads of a query: TanStack Query passes the whole query to
 // refetchInterval.
 type PolledQuery<T> = { state: { status: "pending" | "error" | "success"; data: T | undefined } };

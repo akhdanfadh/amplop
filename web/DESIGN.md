@@ -153,11 +153,14 @@ text).
   ones at once; keyboard focus shows it at once. Nothing loops except a
   spinner while work is actually running.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
-  focusable element, defined once in the components. Every page focuses
-  its heading when it opens, the first load included, so the keyboard
-  starts in the page, not in the sidebar, whose landmark is named. No skip
-  link: a skip button (a `#` link would change the address) is the next
-  step if testing shows a need.
+  focusable element, defined once in the components. One exception: the
+  message editor's text fields, which have no box, show only the caret,
+  and the editor card's border turns `input` while focus is inside it; its
+  chips, buttons, and From keep the ring for the keyboard. Every page
+  focuses its heading when it opens, the first load included, so the
+  keyboard starts in the page, not in the sidebar, whose landmark is
+  named. No skip link: a skip button (a `#` link would change the address)
+  is the next step if testing shows a need.
 - **Links:** primary colour, underlined; the underline thickens on hover
   (`textLink` in `src/components/link-style.ts`; `lineLink` for a link on
   a line of its own, 44 px tall).
@@ -183,10 +186,10 @@ text colour of their role.
 | Member menu with the theme choice        | `popover` holding a `toggle-group`                                               |
 | More menus                               | `dropdown-menu`                                                                  |
 | Right-click row menu                     | `context-menu`                                                                   |
-| Names for icon buttons                   | `tooltip`                                                                        |
+| Icon button names, and Send's shortcut   | `tooltip`                                                                        |
 | Undo and error toasts                    | `toast.tsx` on React Aria's Toast (see below)                                    |
 | Phone editors and search                 | `sheet`                                                                          |
-| From picker in compose                   | `select` (shows the account mark)                                                |
+| From picker in compose and reply         | `select` (shows the account mark)                                                |
 | Recipient chips                          | React Aria's `TagGroup` in the field; `combobox` once contacts suggest addresses |
 | Search box and its dropdown              | `combobox`                                                                       |
 | Placeholder rows, spinners, empty states | `skeleton`, `spinner`, `empty`                                                   |
@@ -336,6 +339,19 @@ last two redirect into settings, so settings can move without the server.
   Reply, Reply all, Forward buttons; one editor per conversation; From is
   the receiving account, changeable and always visible; a hidden "Re:"
   subject; the quote folded; Ctrl/Cmd+Enter sends.
+- **The editor** is one `card`: a row each for From, To, and the Cc and
+  Bcc that are filled or asked for, a muted label on the left and its
+  value on the right, divided by hairlines; then the message, with no box
+  of its own; then a bar with Send, its tooltip naming the shortcut as
+  the sidebar's does ("Send (Ctrl+Enter)", Cmd on a Mac), and Discard (a
+  trash icon with its tooltip). Empty Cc and Bcc wait behind buttons at
+  the end of the To row. Labels and values share one 32 px
+  line, so a wrapped list keeps its label level with the first line.
+- **From** is a quiet `select`: no outline at rest, `accent` on hover and
+  while its list is open, its chevron and label marking it. A line under
+  it says when the chosen account didn't receive the message (the reply
+  then starts a new conversation in that account's Gmail), or which
+  account needs reconnecting when none could be chosen.
 - **Recipients are chips**, one pill per address (`secondary`, 14 px, 28
   px tall, 36 px for a coarse pointer). A comma, semicolon, Enter,
   leaving the field, or pasting a list makes chips; "Name <address>"
@@ -346,7 +362,9 @@ last two redirect into settings, so settings can move without the server.
   email address", and the field's error says which.
 - **A new message** opens in a 560 px window docked bottom right that stays
   while the member moves around; minimise, full screen, close. On phones
-  both are full-screen editors.
+  both are full-screen editors. An editor keeps the layout it opened in
+  until it closes, so turning a phone or resizing the window never moves
+  what is being written.
 - **After Send**, the message waits in place as a card with its status
   until synced mail replaces it.
 - **Unsent text** lives in the tab's session storage, cleared on send,
@@ -395,9 +413,9 @@ is inbok's own and runs Check for new mail; the list box sets
 - Schemas extend the generated Zod schemas; messages come from
   `src/api/validation.ts`; fields read `maxLength`, `inputMode`, and
   `autocomplete` from the same schema. Forms set `noValidate`.
-- Label above; description before the control; error under it, with an
-  icon and words. "(optional)" marks optional fields; required ones are
-  unmarked.
+- Label above (the message editor's rows put it on the left); description
+  before the control; error under it, with an icon and words. "(optional)"
+  marks optional fields; required ones are unmarked.
 - Errors appear after the first submit, then update live. Focus moves to
   the first invalid field. A server refusal stays while the field holds
   the refused value; a refusal naming two fields clears when either
@@ -541,3 +559,9 @@ reading-pane position settings, sender pictures (BIMI logos after DMARC,
 contact photos), merging one email received by two accounts, swipe
 gestures, drafts beyond the tab, an installable app with offline mail,
 per-member theme storage.
+
+App keyboard shortcuts, once built, go on TanStack Hotkeys (`useHotkey`,
+its `Mod` key, and its display formatter), which then also takes the
+sidebar's Ctrl+B and Send's Ctrl+Enter. Until then those two are plain
+key handlers: the library was in beta in 2026-11, and two shortcuts did
+not need it.
