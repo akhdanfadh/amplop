@@ -36,6 +36,10 @@ async function shown(view: ReturnType<typeof show>): Promise<HTMLElement> {
   return root;
 }
 
+function zoom(root: HTMLElement): number {
+  return Number(getComputedStyle(root).zoom);
+}
+
 describe("watch", () => {
   it("fits the frame to the body, which runs no script", async () => {
     const view = show("script");
@@ -48,11 +52,76 @@ describe("watch", () => {
     expect(Reflect.get(window, "scriptRan")).toBeUndefined();
   });
 
+  it("keeps mail that fits at its full size", async () => {
+    const root = await shown(show("fluid"));
+
+    expect(zoom(root)).toBe(1);
+  });
+
+  it("scales mail wider than the frame to fit it", async () => {
+    const view = show("wide600");
+    const root = await shown(view);
+
+    // 600 px of table plus the body's 8 px margin, in 480 px.
+    expect(zoom(root)).toBeCloseTo(480 / 608, 2);
+    expect(root.scrollWidth).toBeLessThanOrEqual(root.clientWidth);
+    expect(view.frame.offsetHeight).toBe(root.scrollHeight);
+  });
+
+  it("scrolls mail too wide for 60% sideways, inside the frame", async () => {
+    const view = show("wide1200");
+    const root = await shown(view);
+
+    expect(zoom(root)).toBe(0.6);
+    expect(root.scrollWidth).toBeGreaterThan(root.clientWidth);
+    // NOTE: headless Chromium hides scroll bars, so the room fit makes for
+    // one below the body is seen only in a headed browser.
+    expect(view.frame.offsetHeight).toBe(root.scrollHeight);
+  });
+
+  it("scrolls mail too wide for 60% sideways, even when it hides its overflow", async () => {
+    const view = show("hiddenOverflow");
+    const root = await shown(view);
+
+    expect(zoom(root)).toBe(0.6);
+    expect(root.scrollWidth).toBeGreaterThan(root.clientWidth);
+    // A script could scroll a hidden overflow; a member could not.
+    expect(getComputedStyle(root).overflowX).toBe("auto");
+  });
+
+  it("refits mail that fixes its root's width when the frame changes", async () => {
+    const view = show("fixedRoot");
+    const root = await shown(view);
+    expect(zoom(root)).toBeCloseTo(0.8, 2);
+
+    view.frame.style.width = "700px";
+
+    await expect.poll(() => zoom(root)).toBe(1);
+  });
+
   it("shows a body while one of its images never arrives", async () => {
     const root = await shown(show("slowImage"));
 
     // The load event, which waits for every image, has not come.
     expect(root.querySelector("img")?.complete).toBe(false);
+  });
+
+  it("refits mail an image widens after it is shown", async () => {
+    const root = await shown(show("lateBanner"));
+    expect(zoom(root)).toBe(1);
+
+    await fetch(`${messagePath}release-late`);
+
+    await expect.poll(() => zoom(root)).toBe(0.6);
+  });
+
+  it("returns scaled mail to full size when the frame widens", async () => {
+    const view = show("wide600");
+    const root = await shown(view);
+
+    view.frame.style.width = "700px";
+
+    await expect.poll(() => zoom(root)).toBe(1);
   });
 
   it("grows the frame as the body grows", async () => {

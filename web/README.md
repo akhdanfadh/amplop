@@ -685,9 +685,16 @@ The frame is as tall as its body, so the page scrolls the message.
 `watch` (`frame.ts`) shows the body as soon as its document has been
 read, without waiting for its images, whose load event a slow remote
 image would hold back. From then on a `ResizeObserver` on the body's
-root refits the frame whenever the body changes size: images arriving,
-a `details` element opening, or the frame's width rewrapping it. It sets
-the body's `html` and `body` to `height: auto` first, so mail that makes
+root and on the frame refits the frame whenever either changes size:
+images arriving, a `details` element opening, or the frame's width
+rewrapping it, including mail that fixes its root's width. Each image
+that arrives refits it too, since one whose height the mail fixes can
+widen the body and leave the root's box as it was. Mail wider
+than the frame is scaled to fit with CSS `zoom` on the body's root, down
+to 60%, and then scrolls sideways inside the frame; the width is
+measured at full size each time, so mail scaled down returns to full
+size when the frame widens. The root scrolls sideways even where the
+mail's own CSS hides its overflow. It sets the body's `html` and `body` to `height: auto` first, so mail that makes
 them 100% of the frame, plus padding, fits too. A frame whose document
 the page cannot read, or that is not HTML, e.g. an API error, or that is
 not read within 15 seconds, shows "Could not show this part of the
