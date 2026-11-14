@@ -22,8 +22,12 @@ type Document struct {
 	From               string   // name and address, e.g. "Asha K <asha.k@example.co.id>"
 	To                 []string // each name and address
 	CC                 []string // each name and address
-	BodyText           string   // plain text of the body; empty until the body is stored
+	BodyText           string   // the text of the bodies a view shows; empty until the body is stored
 	FromAddress        string   // the sender's address alone
+	// The text of the message's other text parts, e.g. the plain-text
+	// alternative of HTML a view shows: found, but ranked below
+	// [Document.BodyText].
+	AltText string
 	// The mailboxes the message is in, by inbok's IDs, Spam and Trash
 	// included: the index holds every message, and a query decides which
 	// mailboxes it leaves out.

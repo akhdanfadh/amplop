@@ -16,7 +16,7 @@ import (
 
 // Fake is a [search.Index] in memory. It matches text more simply than a
 // real index: a document matches when each word of the query appears,
-// ignoring case, in its subject, sender, recipients, or body text; there
+// ignoring case, in its subject, sender, recipients, or either body text; there
 // are no typos, prefixes, phrases, or exclusions. It returns matches in
 // the order they were first added. The zero value is empty and ready. It
 // is safe for concurrent use.
@@ -171,7 +171,7 @@ func matchesFilters(document search.Document, owner int64, query search.Query) b
 // matchesText reports whether each word of text appears, ignoring case, in
 // document's searchable fields.
 func matchesText(document search.Document, text string) bool {
-	fields := []string{document.Subject, document.From, document.BodyText}
+	fields := []string{document.Subject, document.From, document.BodyText, document.AltText}
 	fields = append(fields, document.To...)
 	fields = append(fields, document.CC...)
 	searchable := strings.ToLower(strings.Join(fields, "\n"))

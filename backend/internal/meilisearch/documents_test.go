@@ -27,6 +27,7 @@ func TestUpsertFields(t *testing.T) {
 		To:                 []string{"Budi <budi@example.com>"},
 		CC:                 []string{"Citra <citra@example.com>"},
 		BodyText:           "Please pay",
+		AltText:            "Pay now",
 		FromAddress:        "asha.k@example.co.id",
 		MailboxIDs:         []uuid.UUID{inbox},
 	}
@@ -45,6 +46,7 @@ func TestUpsertFields(t *testing.T) {
 		"to":                   []any{"Budi <budi@example.com>"},
 		"cc":                   []any{"Citra <citra@example.com>"},
 		"body_text":            "Please pay",
+		"alt_text":             "Pay now",
 		"from_address":         "asha.k@example.co.id",
 		"mailbox_ids":          []any{inbox.String()},
 	}, stored)

@@ -27,6 +27,7 @@ const (
 	fieldTo        = "to"
 	fieldCC        = "cc"
 	fieldBodyText  = "body_text"
+	fieldAltText   = "alt_text"
 	fieldMailboxes = "mailbox_ids"
 )
 

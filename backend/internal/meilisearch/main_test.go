@@ -100,7 +100,7 @@ func assertSettings(t *testing.T, index *Index, owner int64) {
 	settings, err := member(index, owner).GetSettingsWithContext(t.Context())
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"subject", "from", "to", "cc", "body_text"}, settings.SearchableAttributes)
+	assert.Equal(t, []string{"subject", "from", "to", "cc", "body_text", "alt_text"}, settings.SearchableAttributes)
 	assert.ElementsMatch(t, []string{"owner_user_id", "connected_account_id", "mailbox_ids"}, settings.FilterableAttributes)
 	assert.Empty(t, settings.SortableAttributes)
 	assert.Equal(t, &meili.Pagination{MaxTotalHits: search.MaxTotal}, settings.Pagination)

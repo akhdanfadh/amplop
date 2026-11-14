@@ -16,7 +16,7 @@ func indexSettings() meili.Settings {
 	return meili.Settings{
 		// In ADR005's priority: Meilisearch ranks a match in an earlier
 		// field higher.
-		SearchableAttributes: []string{fieldSubject, fieldFrom, fieldTo, fieldCC, fieldBodyText},
+		SearchableAttributes: []string{fieldSubject, fieldFrom, fieldTo, fieldCC, fieldBodyText, fieldAltText},
 		// Only the fields today's searches filter on. A filter added later
 		// adds its field here, and Meilisearch reindexes from the documents
 		// it holds.

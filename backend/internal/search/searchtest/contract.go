@@ -143,9 +143,11 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		cc.CC = []string{"Eka <eka@example.com>"}
 		body := document(asha, ashaWork, "hello")
 		body.BodyText = "the quarterly report"
-		upsert(t, index, subject, from, to, cc, body)
+		alt := document(asha, ashaWork, "hello")
+		alt.AltText = "the annual budget"
+		upsert(t, index, subject, from, to, cc, body, alt)
 
-		cases := map[string]uuid.UUID{"invoice": subject.ID, "citra": from.ID, "dewi": to.ID, "eka": cc.ID, "quarterly": body.ID}
+		cases := map[string]uuid.UUID{"invoice": subject.ID, "citra": from.ID, "dewi": to.ID, "eka": cc.ID, "quarterly": body.ID, "annual": alt.ID}
 		for word, want := range cases {
 			result := find(t, index, asha, query(word))
 			assert.Equal(t, []uuid.UUID{want}, result.IDs, word)

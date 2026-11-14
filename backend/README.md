@@ -2989,13 +2989,24 @@ only the index exists; nothing writes to it or searches it yet.
   its typo tolerance. Applying the same settings again, or from two processes at
   once, changes nothing. The worker calls `Prepare` when it starts,
   before any job runs.
-- `search.BodyText` turns a message's text parts, as content storage
-  keeps them, into a document's `BodyText`: every plain-text part when
-  one has text, else the text of every HTML part that a reader sees, as
-  the HTML Standard's default rendering decides it, read token by token
-  and never parsed into a tree with `html.Parse` (ADR005 says why). It
-  reads at most 1 MiB of a message's text parts of each format and cuts
-  the text at a word to at most 64 KiB.
+- `messagecontent.Texts` reads a message's stored text parts from
+  content storage, apart by whether a view shows them: the bodies
+  `messagecontent.Choose` picks, in that order, and every other text
+  part in the message's order, e.g. the alternatives a view does not
+  pick. It reads at most 64 parts and 1 MiB over both, the shown ones
+  first.
+- `search.BodyText` turns each group into a field's text: plain text as
+  it is, and the text of HTML that a reader sees, as the HTML Standard's
+  default rendering decides it, read token by token and never parsed into
+  a tree with `html.Parse` (ADR005 says why), in order, cut at a word to
+  at most 64 KiB. The shown text becomes `BodyText`, the rest `AltText`,
+  so a stub such as "View in browser" never stands in for HTML a reader
+  sees, and the words of an HTML message that is only images are still
+  found in its plain-text alternative.
+- `search.Indexer` brings a member's messages up to date in the index:
+  `Index` reads them from `IndexStorage`, which `repository/postgres`
+  implements, upserts the ones it finds and deletes the rest, and
+  `RemoveAccount` removes a disconnected account. Nothing calls it yet.
 - `searchtest` holds `Fake`, an `Index` in memory for tests of code
   that uses one, and `RunContract`, the tests both `Fake` and
   `meilisearch` pass, so the fake behaves as Meilisearch does apart from
@@ -3203,6 +3214,8 @@ httpapi --> conversation <-- repository/postgres
                          <-- google
             conversation --> mailsync, connectedaccount
             search <-- meilisearch
+                   <-- repository/postgres
+            search --> mailsync, messagecontent
 httpapi --> messagecontent <-- s3
                            <-- google
                            <-- repository/postgres

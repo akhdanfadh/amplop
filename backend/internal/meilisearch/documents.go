@@ -25,6 +25,7 @@ type document struct {
 	To                 []string `json:"to"`
 	CC                 []string `json:"cc"`
 	BodyText           string   `json:"body_text"`
+	AltText            string   `json:"alt_text"`
 	FromAddress        string   `json:"from_address"`
 	MailboxIDs         []string `json:"mailbox_ids"`
 }
@@ -53,6 +54,7 @@ func (i *Index) Upsert(ctx context.Context, documents []search.Document) error {
 			To:                 d.To,
 			CC:                 d.CC,
 			BodyText:           d.BodyText,
+			AltText:            d.AltText,
 			FromAddress:        d.FromAddress,
 			MailboxIDs:         texts(d.MailboxIDs),
 		})

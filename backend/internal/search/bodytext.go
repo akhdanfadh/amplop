@@ -20,8 +20,8 @@ import (
 // Text dense with separators, e.g. a table pasted as CSV, can still pass
 // the limit within the cap, and Meilisearch then drops its end; counting
 // positions here would mean copying Meilisearch's tokenizer. The cap also
-// keeps a batch of 100 documents under about 6.5 MB, far below
-// Meilisearch's 100 MB request limit. Few messages have this much text;
+// keeps a batch of 100 documents, each with two body fields, under about
+// 13 MB, far below Meilisearch's 100 MB request limit. Few messages have this much text;
 // past it, a newsletter or a long thread is found by its start.
 const maxBodyText = 64 << 10
 
@@ -40,8 +40,8 @@ type TextPart struct {
 	Content string
 }
 
-// maxInput is the most bytes of a message's text parts of one format that
-// [BodyText] reads, over all those parts.
+// maxInput is the most bytes of a message's text parts that [BodyText]
+// reads, over all those parts.
 //
 // DESIGN: reading costs time in proportion to the bytes read, and a message
 // comes from any sender; text that prints nothing, e.g. megabytes of
@@ -52,8 +52,7 @@ type TextPart struct {
 // embedded as data URIs; such a message is still found by its headers.
 const maxInput = 1 << 20
 
-// maxParts is the most text parts of one format that [BodyText] reads from
-// one message. A message a person wrote has a few; past this many, the
+// maxParts is the most text parts that [BodyText] reads from one message. A message a person wrote has a few; past this many, the
 // message is built to cost work, and the first ones hold its text.
 const maxParts = 64
 
@@ -135,32 +134,31 @@ func elements(list ...atom.Atom) map[atom.Atom]bool {
 	return set
 }
 
-// BodyText returns the text a search matches in a message's body, from
-// its text parts: every plain-text part when one has text, else the text
-// of every HTML part that a reader sees, as the HTML Standard renders it.
-// Runs of whitespace become one space, characters that print nothing are
-// dropped, and the result is cut at a word to at most 64 KiB; parts past
-// that are not read.
+// BodyText returns the text a search matches in parts, one group of a
+// message's text parts, in order: plain text as it is, and the text of
+// HTML that a reader sees, as the HTML Standard renders it; a part of no
+// known format is skipped. Runs of whitespace become one space,
+// characters that print nothing are dropped, parts are separated by a
+// space, and the result is cut at a word to at most 64 KiB. It reads at
+// most 64 parts and 1 MiB of them, and only until it has more than
+// 64 KiB, enough to cut at a word.
+//
+// DESIGN: the caller groups the parts, e.g. the ones a view shows and the
+// rest, each group becoming a field of its own (ADR005).
 func BodyText(parts []TextPart) string {
-	text := collect(parts, FormatPlain, func(content string) string { return content })
-	if text != "" {
-		return text
-	}
-	return collect(parts, FormatHTML, htmlText)
-}
-
-// collect returns the text of every part in format, as read returns it,
-// normalized, separated by spaces, and cut to [maxBodyText]. It reads at
-// most [maxParts] parts and [maxInput] bytes of them, and only until it has
-// more than [maxBodyText], enough to cut at a word.
-func collect(parts []TextPart, format TextFormat, read func(content string) string) string {
 	text := normalizer{limit: maxBodyText}
 	count, budget := 0, maxInput
 	for _, part := range parts {
 		if text.full() || count == maxParts || budget == 0 {
 			break
 		}
-		if part.Format != format {
+		var read func(content string) string
+		switch part.Format {
+		case FormatPlain:
+			read = func(content string) string { return content }
+		case FormatHTML:
+			read = htmlText
+		default:
 			continue
 		}
 		count++

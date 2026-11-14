@@ -39,6 +39,22 @@ func TestSearchText(t *testing.T) {
 	}
 }
 
+// A word only in a message's hidden text finds it, but ranks below the same
+// word in text a view shows, whichever was indexed first.
+func TestSearchAltText(t *testing.T) {
+	index := newIndex(t)
+	hidden := message("Sale")
+	hidden.AltText = "running shoes"
+	shown := message("Sale")
+	shown.BodyText = "running shoes"
+	require.NoError(t, index.Upsert(t.Context(), []search.Document{hidden, shown}))
+
+	result, err := index.Search(t.Context(), owner, search.Query{Text: "shoes", Page: 1, PageSize: 10})
+
+	require.NoError(t, err)
+	assert.Equal(t, []uuid.UUID{shown.ID, hidden.ID}, result.IDs)
+}
+
 // A document that reached another member's index stays hidden from that
 // member's searches and out of reach of their account deletes.
 func TestOwnerFilter(t *testing.T) {
