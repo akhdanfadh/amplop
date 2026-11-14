@@ -16,7 +16,7 @@ import {
   type ConversationMessage,
 } from "./conversation";
 import type { ListedAccount } from "@/api/generated/model";
-import type { MailAddress } from "./people";
+import type { MailAddress } from "@/features/outgoing-messages/reply-defaults";
 
 const ok = 200;
 

@@ -19,11 +19,11 @@ import {
   imagesShown,
   noText,
   showImages,
-  subjectText,
   textClipped,
   textFilename,
   type Address,
 } from "./text";
+import { subjectText } from "@/features/mail/text";
 
 // A message's header fields, which the view shows before its body loads.
 export type MessageHeader = {

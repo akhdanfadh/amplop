@@ -6,20 +6,6 @@ import { rowHeight } from "./row";
 // read ahead: long enough that sweeping over rows reads none of them.
 const restMs = 100;
 
-// useToday returns the time now, moving on only when the day changes:
-// that is all a row's date depends on ("Yesterday", a weekday), so rows
-// draw again once a day, not every minute.
-export function useToday(): Date {
-  const [today, setToday] = useState(() => new Date());
-  useEffect(() => {
-    const next = new Date(today);
-    next.setHours(24, 0, 1, 0);
-    const timer = setTimeout(() => setToday(new Date()), next.getTime() - Date.now());
-    return () => clearTimeout(timer);
-  }, [today]);
-  return today;
-}
-
 // useRowSize returns size, a row's height in pixels, which follows the
 // browser's text size even when the member changes it while the list is
 // open, and probe, the ref for an element 1 rem square, whose size changes

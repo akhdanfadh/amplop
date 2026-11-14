@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { fullNames, initials, senders } from "./people";
+import { fullNames, initials, repliesElsewhere, senders } from "./people";
 
 const ana = { name: "Ana Lima", address: "ana@example.com" };
 const bo = { name: "Bo", address: "bo@example.com" };
@@ -56,5 +56,26 @@ describe("fullNames", () => {
     expect(fullNames([ana, bare, me], "sam@example.org")).toBe(
       "Ana Lima, billing@shop.example, me",
     );
+  });
+});
+
+describe("repliesElsewhere", () => {
+  it("calls out a Reply-To at a domain no sender is at", () => {
+    expect(repliesElsewhere([{ name: "", address: "help@other.example" }], [ana])).toBe(true);
+  });
+
+  it("lets one at a sender's own domain pass, in any case", () => {
+    expect(repliesElsewhere([{ name: "", address: "help@EXAMPLE.com" }], [ana])).toBe(false);
+    expect(repliesElsewhere([], [ana])).toBe(false);
+  });
+
+  it("reads the domain after the last @, as a quoted local part may hold one", () => {
+    expect(repliesElsewhere([{ name: "", address: '"a@other.example"@example.com' }], [ana])).toBe(
+      false,
+    );
+  });
+
+  it("ignores an entry that is no address, e.g. a group's name", () => {
+    expect(repliesElsewhere([{ name: "Undisclosed recipients", address: "" }], [ana])).toBe(false);
   });
 });

@@ -1,15 +1,15 @@
 import { Fragment, useSyncExternalStore, type ReactElement } from "react";
 import { cn } from "@/lib/cn";
 import { ToggleButton } from "react-aria-components";
-import { StarIcon, UserIcon } from "lucide-react";
-import { accountName, accountRing, type AccountColor } from "@/components/account-mark";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { StarIcon } from "lucide-react";
+import { accountName, type AccountColor } from "@/components/account-mark";
 import { GridListItem } from "@/components/ui/grid-list";
 import type { AppHref } from "./places";
 import type { Conversation } from "./conversations";
 import { fullDate, listDate } from "./dates";
-import { initials, senders } from "./people";
-import { messageCount, noSubject, rowName, starName, unknownSender } from "./text";
+import { senders } from "./people";
+import { SenderAvatar } from "./sender-avatar";
+import { messageCount, rowName, starName, subjectText, unknownSender } from "./text";
 
 // RowAccount is what a row shows of its conversation's account.
 export type RowAccount = { color: AccountColor; email: string; name: string | null };
@@ -56,9 +56,8 @@ export function ConversationRow({
   const who = names.join(", ") || unknownSender;
   const date = new Date(conversation.dateMs);
   const shownDate = listDate(date, now);
-  const subject = conversation.subject.trim() || noSubject;
+  const subject = subjectText(conversation.subject);
   const count = conversation.messageCount > 1 ? conversation.messageCount : undefined;
-  const letters = initials(conversation.latestFrom[0]);
 
   return (
     <GridListItem
@@ -100,19 +99,10 @@ export function ConversationRow({
       {/* 36 px, its top on the first line's and its left edge on the list
           heading's (16 px); 12 px to the text, less than the edge, so it
           reads with its text. The ring is drawn inside its edge. */}
-      <Avatar
-        className={cn(
-          "size-9",
-          // Unringed, the avatar keeps its hairline edge, which marks the
-          // muted disc on the page.
-          ringed &&
-            account && ["after:border-2 after:mix-blend-normal", accountRing(account.color)],
-        )}
-      >
-        <AvatarFallback className="text-xs font-semibold">
-          {letters || <UserIcon aria-hidden="true" className="size-4" />}
-        </AvatarFallback>
-      </Avatar>
+      <SenderAvatar
+        sender={conversation.latestFrom[0]}
+        ring={ringed && account ? account.color : undefined}
+      />
       <div
         className={cn(
           "flex min-w-0 flex-1 flex-col text-sm leading-5",

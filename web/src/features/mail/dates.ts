@@ -1,6 +1,7 @@
 // How a list row shows its date (DESIGN.md "Message list"): today the
 // time, on the browser's 12 or 24 hour clock; "Yesterday"; the weekday
 // within a week; "2 Nov" this year; "2 Nov 2025" before.
+import { useEffect, useState } from "react";
 import { yesterday } from "./text";
 
 const day = { year: "numeric", month: "numeric", day: "numeric" } as const;
@@ -53,4 +54,18 @@ function daysBetween(date: Date, now: Date): number {
 // midnight returns when d's day began, in the browser's time zone.
 function midnight(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+// useToday returns the time now, moving on only when the day changes:
+// that is all a row's date depends on ("Yesterday", a weekday), so rows
+// draw again once a day, not every minute.
+export function useToday(): Date {
+  const [today, setToday] = useState(() => new Date());
+  useEffect(() => {
+    const next = new Date(today);
+    next.setHours(24, 0, 1, 0);
+    const timer = setTimeout(() => setToday(new Date()), next.getTime() - Date.now());
+    return () => clearTimeout(timer);
+  }, [today]);
+  return today;
 }

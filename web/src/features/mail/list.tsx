@@ -28,7 +28,8 @@ import { clearAccountCache } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
 import { runAction } from "./actions";
 import { currentMail, mailData, placeWhere, refreshNewest, restartMail } from "./conversations";
-import { useKeepPlace, useRestIntent, useRowSize, useToday } from "./list-state";
+import { useToday } from "./dates";
+import { useKeepPlace, useRestIntent, useRowSize } from "./list-state";
 import type { Place } from "./places";
 import { ConversationRow, createOpenStore, type RowAccount } from "./row";
 import {

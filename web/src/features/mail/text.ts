@@ -38,6 +38,11 @@ export const listName = "Conversations";
 // Shown for a conversation whose subject is empty.
 export const noSubject = "(no subject)";
 
+// subjectText shows subject, or says the message has none.
+export function subjectText(subject: string): string {
+  return subject.trim() || noSubject;
+}
+
 // rowName returns what a screen reader calls a list row: whether it is
 // unread, who, how many messages when more than one, its subject and date,
 // whether it is starred, and its account when the list mixes accounts.

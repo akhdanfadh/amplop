@@ -1,7 +1,8 @@
 import type { ReactElement } from "react";
 import { Link } from "@tanstack/react-router";
 import type { OutgoingMessageSummary } from "@/api/generated/model";
-import { formatReceived, subjectText } from "@/features/messages/text";
+import { subjectText } from "@/features/mail/text";
+import { formatReceived } from "@/features/messages/text";
 import { MessageStatusBadge, SentAgainBadge } from "./status-badge";
 import { recipientSummary } from "./text";
 

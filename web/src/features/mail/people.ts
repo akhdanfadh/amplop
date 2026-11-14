@@ -1,11 +1,9 @@
-// Who a list row names (DESIGN.md "Message list"): its senders by first
-// name, "me" for the account itself, and the initials of its newest
-// message's sender.
+// Who mail names (DESIGN.md "Message list", "Reading pane"): a list row's
+// senders by first name, a header's in full, "me" for the account itself,
+// and a sender's initials.
 
+import type { MailAddressOutput as Address } from "@/api/generated/model";
 import { me } from "./text";
-
-// Address is one entry of a From, To, or Cc.
-export type Address = { name: string; address: string };
 
 // senders returns how a row names participants, the senders of its
 // messages in date order: one sender by their whole name, several by first
@@ -50,6 +48,15 @@ export function initials(sender: Address | undefined): string {
   return picked.join("").toUpperCase();
 }
 
+// repliesElsewhere reports whether replyTo sends replies to a domain none
+// of from's addresses is at. A Reply-To at the sender's own domain, e.g.
+// news@ answered at help@, is common and harmless, so only another domain
+// is worth calling out (inbok's choice).
+export function repliesElsewhere(replyTo: readonly Address[], from: readonly Address[]): boolean {
+  const fromDomains = new Set(from.map(domain));
+  return replyTo.some((entry) => entry.address !== "" && !fromDomains.has(domain(entry)));
+}
+
 // Splits text into what a reader sees as single characters, so an accent
 // or an emoji's parts stay with their letter.
 const graphemes = new Intl.Segmenter("en", { granularity: "grapheme" });
@@ -72,6 +79,13 @@ function first(entry: Address): string {
   if (word) return word;
   const at = entry.address.indexOf("@");
   return at > 0 ? entry.address.slice(0, at) : entry.address;
+}
+
+// domain returns the part of entry's address after its last @, in lower
+// case: the domain, as an address's local part may itself hold an @ in
+// quotes (RFC 5321 section 4.1.2).
+function domain(entry: Address): string {
+  return entry.address.slice(entry.address.lastIndexOf("@") + 1).toLowerCase();
 }
 
 // isOwn reports whether entry is the account's own address, own.

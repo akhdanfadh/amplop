@@ -8,10 +8,9 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { ChevronDownIcon, ChevronUpIcon, PaperclipIcon, ReplyIcon, UserIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronUpIcon, PaperclipIcon, ReplyIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { AccountMark, accountRing, type AccountColor } from "@/components/account-mark";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AccountMark, type AccountColor } from "@/components/account-mark";
 import { Button } from "@/components/ui/button";
 import {
   ConversationReply,
@@ -20,10 +19,13 @@ import {
   ReplyProvider,
   useAnsweredId,
 } from "@/features/outgoing-messages/reply";
-import type { AnsweredMessage } from "@/features/outgoing-messages/reply-defaults";
+import type { AnsweredMessage, MailAddress } from "@/features/outgoing-messages/reply-defaults";
+import { listDate, useToday } from "@/features/mail/dates";
+import { fullNames, repliesElsewhere } from "@/features/mail/people";
+import { SenderAvatar } from "@/features/mail/sender-avatar";
+import { subjectText, unknownSender } from "@/features/mail/text";
 import { useMessageContent } from "./content";
 import { foldRows, initiallyOpen, type Folding } from "./folding";
-import { initials, namesOf, repliesElsewhere, type MailAddress } from "./people";
 import {
   conversationActions,
   detailsLabel,
@@ -32,8 +34,7 @@ import {
   foldLabel,
   formatReceived,
   hasAttachments,
-  listDate,
-  messageCount,
+  messageTotal,
   moreMessages,
   noRecipients,
   notSendersDomain,
@@ -42,8 +43,6 @@ import {
   repliesGoTo,
   sentTo,
   showAllAddresses,
-  subjectText,
-  unknownSender,
 } from "./text";
 import { MessageContentView } from "./view";
 
@@ -237,7 +236,7 @@ function Conversation({
           <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
             <AccountMark color={account.color} name={account.name} />
             <span aria-hidden="true">·</span>
-            <span className="shrink-0">{messageCount(messages.length)}</span>
+            <span className="shrink-0">{messageTotal(messages.length)}</span>
           </p>
         </header>
         {/* Present from the start, so a screen reader announces what
@@ -389,41 +388,6 @@ function useFocusFollowsCopy(
   }, [a, b]);
 }
 
-// useToday returns the time now, moving on only when the day changes:
-// that is all a folded row's date depends on ("Yesterday", a weekday).
-//
-// DESIGN: branch 3's features/mail/list-state.ts has the same hook, not on
-// dev yet; whichever branch merges later keeps one.
-function useToday(): Date {
-  const [today, setToday] = useState(() => new Date());
-  useEffect(() => {
-    const next = new Date(today);
-    next.setHours(24, 0, 1, 0);
-    const timer = setTimeout(() => setToday(new Date()), next.getTime() - Date.now());
-    return () => clearTimeout(timer);
-  }, [today]);
-  return today;
-}
-
-// SenderAvatar shows sender's initials in a 36 px circle ringed in the
-// account's colour, or a person icon when it has none.
-function SenderAvatar({
-  sender,
-  color,
-}: {
-  sender: MailAddress | undefined;
-  color: AccountColor;
-}): ReactElement {
-  const letters = initials(sender);
-  return (
-    <Avatar className={cn("size-9 after:border-2 after:mix-blend-normal", accountRing(color))}>
-      <AvatarFallback className="text-xs font-semibold">
-        {letters || <UserIcon aria-hidden="true" className="size-4" />}
-      </AvatarFallback>
-    </Avatar>
-  );
-}
-
 // FoldedMessage is a message folded to its row: avatar, sender, preview,
 // and date, one line from 512 px of pane, two below. Pressing it opens the
 // message.
@@ -449,13 +413,13 @@ function FoldedMessage({
       onClick={onOpen}
       className="flex w-full items-center gap-3 px-2 py-2 text-left text-sm outline-none hover:bg-accent focus-visible:focus-ring-inset"
     >
-      <SenderAvatar sender={message.from[0]} color={account.color} />
+      <SenderAvatar sender={message.from[0]} ring={account.color} />
       <span className="flex min-w-0 flex-1 flex-col @lg:flex-row @lg:items-center @lg:gap-3">
         <span
           dir="auto"
           className={cn("truncate @lg:w-40 @lg:shrink-0", message.unread && "font-semibold")}
         >
-          {namesOf(message.from, account.email) || unknownSender}
+          {fullNames(message.from, account.email) || unknownSender}
         </span>
         <span dir="auto" className="min-w-0 flex-1 truncate text-muted-foreground">
           {message.preview}
@@ -473,7 +437,7 @@ function FoldedMessage({
         title={when.full}
         className="shrink-0 self-start text-xs leading-5 text-muted-foreground tabular-nums @lg:self-center"
       >
-        {listDate(message.date, today)}
+        {listDate(new Date(message.date), today)}
       </time>
     </button>
   );
@@ -504,11 +468,11 @@ function OpenMessage({
   const content = useMessageContent(message.id, onUnauthorized);
   const when = formatReceived(message.date);
   const sender = message.from[0];
-  const senderName = message.from.length > 0 ? namesOf(message.from, "") : unknownSender;
+  const senderName = message.from.length > 0 ? fullNames(message.from, undefined) : unknownSender;
   const wideActions = useRef<HTMLDivElement>(null);
   const narrowActions = useRef<HTMLDivElement>(null);
   useFocusFollowsCopy(wideActions, narrowActions);
-  const recipients = namesOf([...message.to, ...message.cc], account.email);
+  const recipients = fullNames([...message.to, ...message.cc], account.email);
 
   return (
     <article aria-label={`${senderName}, ${when.short}`} className="flex flex-col gap-3 px-2 py-3">
@@ -534,7 +498,7 @@ function OpenMessage({
           // "Control height") without moving it.
           className="relative shrink-0 self-start rounded-full outline-none focus-visible:focus-ring pointer-coarse:before:absolute pointer-coarse:before:-inset-1"
         >
-          <SenderAvatar sender={sender} color={account.color} />
+          <SenderAvatar sender={sender} ring={account.color} />
         </button>
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
           <div className="flex items-start gap-2">
@@ -588,7 +552,7 @@ function OpenMessage({
                 title={when.full}
                 className="shrink-0 tabular-nums @lg:hidden"
               >
-                · {listDate(message.date, today)}
+                · {listDate(new Date(message.date), today)}
               </time>
               <Button
                 variant="ghost"

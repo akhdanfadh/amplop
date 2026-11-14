@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ProblemType } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
-import { checkFailures, checkRefusal, syncingDetail } from "./text";
+import { checkFailures, checkRefusal, subjectText, syncingDetail } from "./text";
 
 // refused returns an error the API sent with status and type.
 function refused(status: number, type: ProblemType): ApiError {
@@ -63,5 +63,12 @@ describe("syncingDetail", () => {
   it("says how many messages a sync has copied", () => {
     expect(syncingDetail(1)).toBe("Copying the last 90 days: 1 message so far.");
     expect(syncingDetail(1200)).toBe("Copying the last 90 days: 1,200 messages so far.");
+  });
+});
+
+describe("subjectText", () => {
+  it("says when a message has no subject", () => {
+    expect(subjectText("Lunch?")).toBe("Lunch?");
+    expect(subjectText("  ")).toBe("(no subject)");
   });
 });
