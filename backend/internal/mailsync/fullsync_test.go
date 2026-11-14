@@ -416,7 +416,7 @@ func TestFullSync(t *testing.T) {
 	// Given an account whose last full sync failed and saved a message the
 	// provider no longer lists, and a provider listing two pages: a message
 	// at the window's edge, an older one, and one gone before its fetch.
-	since := syncNow.Add(-window)
+	since := syncNow.Add(-Window)
 	failedAt := syncNow.Add(-time.Hour)
 	storage := newFakeStorage(SyncState{Status: StatusFailed, Generation: 1, Failure: FailureProvider, FailedAt: &failedAt})
 	storage.messages["deleted-at-provider"] = storedMessage{message: inboxMessage("deleted-at-provider", syncNow), generation: 1}
@@ -660,7 +660,7 @@ func TestFullSyncStoppedLate(t *testing.T) {
 // reaches back to the oldest stored message: each is fetched again, so
 // its state is current, and one the provider no longer has is deleted.
 func TestFullSyncReachesOldest(t *testing.T) {
-	oldest := syncNow.Add(-window - 30*24*time.Hour)
+	oldest := syncNow.Add(-Window - 30*24*time.Hour)
 	storage := newFakeStorage(SyncState{Status: StatusComplete, Generation: 1, Position: "100"})
 	for _, m := range []Message{inboxMessage("old", oldest), inboxMessage("old-gone", oldest.Add(time.Hour))} {
 		storage.messages[m.ProviderID] = storedMessage{message: m, generation: 1}
@@ -692,7 +692,7 @@ func TestFullSyncWindow(t *testing.T) {
 	run, err := s.Start(t.Context(), syncAccount)
 
 	require.NoError(t, err)
-	assert.Equal(t, syncNow.Add(-window), run.Since)
+	assert.Equal(t, syncNow.Add(-Window), run.Since)
 }
 
 // A message naming a mailbox the provider no longer lists, e.g. one

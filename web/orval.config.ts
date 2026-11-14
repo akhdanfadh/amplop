@@ -1,4 +1,34 @@
-import { defineConfig } from "orval";
+import { defineConfig, defineTransformer } from "orval";
+
+// The transport reads JSON only. An operation whose success answers
+// something else, e.g. a message body for a frame or an attachment, is
+// loaded by the browser itself, never called, so it gets no function.
+const jsonOperations = defineTransformer((spec) => {
+  for (const [path, item] of Object.entries(spec.paths ?? {})) {
+    if (item === undefined) {
+      continue;
+    }
+    for (const method of ["get", "put", "post", "delete", "patch"] as const) {
+      const answersOther = Object.entries(item[method]?.responses ?? {}).some(
+        ([status, response]) =>
+          status.startsWith("2") &&
+          typeof response === "object" &&
+          response !== null &&
+          "content" in response &&
+          typeof response.content === "object" &&
+          response.content !== null &&
+          !("application/json" in response.content),
+      );
+      if (answersOther) {
+        delete item[method];
+      }
+    }
+    if (!["get", "put", "post", "delete", "patch"].some((method) => method in item)) {
+      delete spec.paths?.[path];
+    }
+  }
+  return spec;
+});
 
 // `pnpm generate` writes one TypeScript function per API operation, a
 // TanStack Query hook for it, and the types they use with a Zod schema for
@@ -12,6 +42,7 @@ export default defineConfig({
       // they carry. Their schemas stay, e.g. ConnectOutcome, which the
       // landing route reads.
       filters: { mode: "exclude", tags: ["Redirects"], includeUnreferencedSchemas: true },
+      override: { transformer: jsonOperations },
     },
     output: {
       target: "src/api/generated/inbok.ts",

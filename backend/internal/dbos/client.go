@@ -18,8 +18,9 @@ import (
 	"inbok/internal/passwordreset"
 )
 
-// Client saves workflows for a worker to run, from a process that runs
-// none itself, e.g. inbok recover-admin or serve. It implements
+// Client saves workflows for a worker to run in a caller's transaction,
+// e.g. from inbok recover-admin, serve, or a worker's own step, whose
+// workflow context DBOS refuses in a caller's transaction. It implements
 // postgres.Workflows.
 type Client struct {
 	client dbos.Client
@@ -114,6 +115,34 @@ func (c *Client) EnqueueOutgoingMessage(ctx context.Context, tx pgx.Tx, messageI
 	_, err := dbos.Enqueue[outgoingmessage.Status](c.client, googleSendQueue, outgoingMessageWorkflow, input,
 		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
 		dbos.WithEnqueueWorkflowID(outgoingMessageWorkflowID(messageID)),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+	)
+	return err
+}
+
+// EnqueueContentDeletion saves, in tx, the content deletion workflow for
+// the blobs with blobIDs of the account with accountID on the content
+// queue, so it commits or rolls back with tx. Cancelling ctx stops its
+// statements. It returns DBOS's error, after which tx is aborted and must
+// roll back.
+func (c *Client) EnqueueContentDeletion(ctx context.Context, tx pgx.Tx, accountID int64, blobIDs []uuid.UUID) error {
+	input := ContentDeletionInput{AccountID: accountID, BlobIDs: blobIDs}
+	_, err := dbos.Enqueue[int](c.client, contentQueue, contentDeletionWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+	)
+	return err
+}
+
+// EnqueueAccountContentDeletion saves, in tx, the workflow that deletes
+// all content of the disconnected account with accountID on the content
+// queue, so it commits or rolls back with tx. Cancelling ctx stops its
+// statements. It returns DBOS's error, after which tx is aborted and must
+// roll back.
+func (c *Client) EnqueueAccountContentDeletion(ctx context.Context, tx pgx.Tx, accountID int64) error {
+	input := AccountContentDeletionInput{AccountID: accountID}
+	_, err := dbos.Enqueue[struct{}](c.client, contentQueue, accountContentDeletionWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
 		dbos.WithEnqueueApplicationVersion(applicationVersion),
 	)
 	return err

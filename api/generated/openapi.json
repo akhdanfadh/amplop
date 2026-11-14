@@ -498,6 +498,73 @@
         ],
         "type": "object"
       },
+      "MessageAttachment": {
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "description": "The name the sender gave it; empty when none.",
+            "type": "string"
+          },
+          "mediaType": {
+            "description": "As the sender declared it, e.g. application/pdf.",
+            "type": "string"
+          },
+          "partId": {
+            "description": "The part's place in the message.",
+            "type": "string"
+          },
+          "size": {
+            "description": "Its size in bytes, as the provider reports it.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "url": {
+            "description": "Downloads it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "partId",
+          "filename",
+          "mediaType",
+          "size",
+          "url"
+        ],
+        "type": "object"
+      },
+      "MessageContent": {
+        "additionalProperties": false,
+        "properties": {
+          "attachments": {
+            "description": "Parts offered as downloads, in message order: files, and images the HTML does not show.",
+            "items": {
+              "$ref": "#/components/schemas/MessageAttachment"
+            },
+            "type": "array"
+          },
+          "bodies": {
+            "description": "Shown one after another, in message order.",
+            "items": {
+              "$ref": "#/components/schemas/ShownBody"
+            },
+            "type": "array"
+          },
+          "remote": {
+            "description": "none: no HTML body refers to remote images. blocked: one does, and they are left out unless loaded from its remoteUrl.",
+            "enum": [
+              "none",
+              "blocked"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "bodies",
+          "remote",
+          "attachments"
+        ],
+        "type": "object"
+      },
       "NewCodeSession": {
         "additionalProperties": false,
         "properties": {
@@ -1246,9 +1313,12 @@
           "/api/v0/problems/invalid-sign-in-code",
           "/api/v0/problems/invalid-totp-code",
           "/api/v0/problems/invalid-totp-proof",
+          "/api/v0/problems/mail-provider-busy",
           "/api/v0/problems/member-is-administrator",
           "/api/v0/problems/member-not-found",
           "/api/v0/problems/message-not-found",
+          "/api/v0/problems/message-part-not-found",
+          "/api/v0/problems/message-unreadable",
           "/api/v0/problems/method-not-allowed",
           "/api/v0/problems/not-found",
           "/api/v0/problems/not-sendable-again",
@@ -1513,6 +1583,18 @@
         ],
         "type": "object"
       },
+      "ResponseMessageContent": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MessageContent"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "ResponseOutgoingMessage": {
         "additionalProperties": false,
         "properties": {
@@ -1756,6 +1838,53 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "ShownBody": {
+        "additionalProperties": false,
+        "properties": {
+          "clipped": {
+            "description": "Whether text holds only the start of a long text, about its first 100 KB; url has the rest. False for html.",
+            "type": "boolean"
+          },
+          "partId": {
+            "description": "The part's place in the message.",
+            "type": "string"
+          },
+          "remoteUrl": {
+            "description": "html: the body with its remote images loaded. Null for text.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "description": "text: the text, its start only when clipped. Null for html.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "enum": [
+              "html",
+              "text"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "html: the body, sanitized, with remote images left out, for a frame. text: the whole text as a file.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "partId",
+          "type",
+          "url",
+          "remoteUrl",
+          "text",
+          "clipped"
         ],
         "type": "object"
       },
@@ -2022,7 +2151,7 @@
     }
   },
   "info": {
-    "description": "## Shared errors\n\nErrors use application/problem+json. The HTTP status describes the broad\nfailure; type identifies the specific problem. The body includes type,\nstatus, title, and detail. Quote the X-Request-ID response header when\nreporting a failure.\n\nEach operation documents its specific failures with examples. Its default\nresponse covers the shared ones, which Problem types below marks Any, using\nthe same Problem schema. A 405 lists the route's methods in the Allow\nheader.\n\nBody errors apply to operations that accept a body. A default response\ndescribes the body format, not a replacement HTTP status.\n\nWrite requests require Sec-Fetch-Site or Origin. Command-line clients can\nsend an Origin matching the request's target.\n\nA browser request a route does not answer, e.g. an image naming an API\naddress, answers 403 with type fetch-destination-refused; the browser's\nSec-Fetch-Dest header says what it loads the answer as. Requests without\nthat header, e.g. from the command line, pass.\n\nWrites that need no session, such as sign-in, also limit how fast one client\ncan send each of them. Past that limit they answer 429 with type\ntoo-many-requests and Retry-After, before reading the request body.\n\nA request still waiting when its time runs out, e.g. for a busy resource,\nanswers 503 with type service-busy and Retry-After. A write may have taken\neffect before the time ran out.\n\nInput errors can include an errors list with field locations and safe\ncorrection messages. For example, a 422 response from POST /setup:\n\n~~~json\n{\n  \"type\": \"/api/v0/problems/validation-error\",\n  \"status\": 422,\n  \"title\": \"Invalid request\",\n  \"detail\": \"Correct the rejected request inputs.\",\n  \"errors\": [\n    {\"location\": \"body.password\", \"message\": \"Use 15 to 128 characters.\"}\n  ]\n}\n~~~\n\nUse the actual HTTP status for request decisions. Handle unfamiliar problem\ntypes by showing their safe detail. An intermediary, such as a proxy, may\nreturn an error without a Problem Details body.\n\n## Problem types\n\nEvery problem type this API documents. Any marks a shared type, which\nan operation can answer without documenting it; the others list the\ngroups whose operations document them.\n\n| Type | Status | Title | Answered by |\n| --- | --- | --- | --- |\n| `/api/v0/problems/account-deactivated` | 403 | Account deactivated | Sessions |\n| `/api/v0/problems/account-needs-reconnect` | 409 | Account needs reconnecting | Connected Accounts |\n| `/api/v0/problems/connect-throttled` | 429 | Too many connections | Connected Accounts |\n| `/api/v0/problems/connected-account-not-found` | 404 | Account not found | Connected Accounts |\n| `/api/v0/problems/counter-full` | 409 | Counter full | Probe |\n| `/api/v0/problems/cross-origin-request` | 403 | Cross-origin request blocked | Any |\n| `/api/v0/problems/email-already-verified` | 409 | Email already verified | Email Verification |\n| `/api/v0/problems/email-not-sent` | 502 | Email not sent | Email Verification, Registration |\n| `/api/v0/problems/email-verification-link-invalid` | 404 | Link not valid | Email Verification |\n| `/api/v0/problems/email-verification-throttled` | 429 | Too many links | Email Verification |\n| `/api/v0/problems/fetch-destination-refused` | 403 | Request kind refused | Any |\n| `/api/v0/problems/forbidden` | 403 | Access denied | Registration, Members, System Email |\n| `/api/v0/problems/gmail-not-configured` | 409 | Gmail not configured | Connected Accounts |\n| `/api/v0/problems/idempotency-key-reused` | 422 | Idempotency key reused | Outgoing Messages |\n| `/api/v0/problems/internal-error` | 500 | Internal error | Any |\n| `/api/v0/problems/invalid-credentials` | 401 | Sign-in failed | Sessions |\n| `/api/v0/problems/invalid-request` | 400 | Invalid request | Any |\n| `/api/v0/problems/invalid-sign-in-code` | 422 | Invalid sign-in code | Sessions |\n| `/api/v0/problems/invalid-totp-code` | 422 | Invalid authenticator code | Two-Factor Authentication |\n| `/api/v0/problems/invalid-totp-proof` | 422 | Invalid second-factor proof | Two-Factor Authentication |\n| `/api/v0/problems/member-is-administrator` | 409 | Member is an administrator | Members |\n| `/api/v0/problems/member-not-found` | 404 | Member not found | Members |\n| `/api/v0/problems/message-not-found` | 404 | Message not found | Outgoing Messages |\n| `/api/v0/problems/method-not-allowed` | 405 | Method not allowed | Any |\n| `/api/v0/problems/not-found` | 404 | Not found | Any |\n| `/api/v0/problems/not-sendable-again` | 409 | Message not sendable again | Outgoing Messages |\n| `/api/v0/problems/outgoing-message-not-found` | 404 | Message not found | Outgoing Messages |\n| `/api/v0/problems/password-reset-link-invalid` | 404 | Link not valid | Password Reset |\n| `/api/v0/problems/password-reset-throttled` | 429 | Too many password reset requests | Password Reset |\n| `/api/v0/problems/registration-account-exists` | 409 | Account exists | Registration |\n| `/api/v0/problems/registration-closed` | 409 | Registration not open | Registration |\n| `/api/v0/problems/registration-link-invalid` | 404 | Link not valid | Registration |\n| `/api/v0/problems/registration-throttled` | 429 | Too many registration requests | Registration |\n| `/api/v0/problems/request-timeout` | 408 | Request timeout | Any |\n| `/api/v0/problems/request-too-large` | 413 | Request too large | Any |\n| `/api/v0/problems/send-throttled` | 429 | Too many messages | Outgoing Messages |\n| `/api/v0/problems/sending-account-needs-reconnect` | 409 | Account needs reconnecting | Outgoing Messages |\n| `/api/v0/problems/service-busy` | 503 | Service busy | Any |\n| `/api/v0/problems/session-is-current` | 409 | Session is current | Sessions |\n| `/api/v0/problems/session-not-found` | 404 | Session not found | Sessions |\n| `/api/v0/problems/setup-done` | 409 | Setup complete | Setup |\n| `/api/v0/problems/setup-token-invalid` | 403 | Setup token invalid | Setup |\n| `/api/v0/problems/setup-unconfigured` | 409 | Setup unavailable | Setup |\n| `/api/v0/problems/sign-in-challenge-invalid` | 401 | Sign in again | Sessions |\n| `/api/v0/problems/sign-in-throttled` | 429 | Too many attempts | Setup, Sessions |\n| `/api/v0/problems/sync-throttled` | 429 | Sync requested recently | Connected Accounts |\n| `/api/v0/problems/system-email-not-configured` | 409 | System email not configured | Email Verification, System Email |\n| `/api/v0/problems/system-email-not-tested` | 409 | System email not tested | Registration |\n| `/api/v0/problems/too-many-requests` | 429 | Too many requests | Setup, Sessions, Email Verification, Password Reset, Registration, Probe |\n| `/api/v0/problems/totp-already-on` | 409 | Two-factor authentication already on | Two-Factor Authentication |\n| `/api/v0/problems/totp-disable-forbidden` | 403 | Two-factor authentication required | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-on` | 409 | Authenticator not enabled | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-pending` | 409 | Enrollment not started | Two-Factor Authentication |\n| `/api/v0/problems/totp-required` | 403 | TOTP required | Registration, Members, System Email |\n| `/api/v0/problems/totp-throttled` | 429 | Too many code attempts | Sessions, Two-Factor Authentication |\n| `/api/v0/problems/unauthenticated` | 401 | Sign-in required | Sessions, Two-Factor Authentication, Email Verification, Registration, Members, System Email, Connected Accounts, Outgoing Messages |\n| `/api/v0/problems/unsupported-media-type` | 415 | Unsupported media type | Any |\n| `/api/v0/problems/validation-error` | 422 | Invalid request | Any |\n",
+    "description": "## Shared errors\n\nErrors use application/problem+json. The HTTP status describes the broad\nfailure; type identifies the specific problem. The body includes type,\nstatus, title, and detail. Quote the X-Request-ID response header when\nreporting a failure.\n\nEach operation documents its specific failures with examples. Its default\nresponse covers the shared ones, which Problem types below marks Any, using\nthe same Problem schema. A 405 lists the route's methods in the Allow\nheader.\n\nBody errors apply to operations that accept a body. A default response\ndescribes the body format, not a replacement HTTP status.\n\nWrite requests require Sec-Fetch-Site or Origin. Command-line clients can\nsend an Origin matching the request's target.\n\nA browser request a route does not answer, e.g. an image naming an API\naddress, answers 403 with type fetch-destination-refused; the browser's\nSec-Fetch-Dest header says what it loads the answer as. Requests without\nthat header, e.g. from the command line, pass.\n\nWrites that need no session, such as sign-in, also limit how fast one client\ncan send each of them. Past that limit they answer 429 with type\ntoo-many-requests and Retry-After, before reading the request body.\n\nA request still waiting when its time runs out, e.g. for a busy resource,\nanswers 503 with type service-busy and Retry-After. A write may have taken\neffect before the time ran out.\n\nInput errors can include an errors list with field locations and safe\ncorrection messages. For example, a 422 response from POST /setup:\n\n~~~json\n{\n  \"type\": \"/api/v0/problems/validation-error\",\n  \"status\": 422,\n  \"title\": \"Invalid request\",\n  \"detail\": \"Correct the rejected request inputs.\",\n  \"errors\": [\n    {\"location\": \"body.password\", \"message\": \"Use 15 to 128 characters.\"}\n  ]\n}\n~~~\n\nUse the actual HTTP status for request decisions. Handle unfamiliar problem\ntypes by showing their safe detail. An intermediary, such as a proxy, may\nreturn an error without a Problem Details body.\n\n## Problem types\n\nEvery problem type this API documents. Any marks a shared type, which\nan operation can answer without documenting it; the others list the\ngroups whose operations document them.\n\n| Type | Status | Title | Answered by |\n| --- | --- | --- | --- |\n| `/api/v0/problems/account-deactivated` | 403 | Account deactivated | Sessions |\n| `/api/v0/problems/account-needs-reconnect` | 409 | Account needs reconnecting | Connected Accounts, Messages |\n| `/api/v0/problems/connect-throttled` | 429 | Too many connections | Connected Accounts |\n| `/api/v0/problems/connected-account-not-found` | 404 | Account not found | Connected Accounts |\n| `/api/v0/problems/counter-full` | 409 | Counter full | Probe |\n| `/api/v0/problems/cross-origin-request` | 403 | Cross-origin request blocked | Any |\n| `/api/v0/problems/email-already-verified` | 409 | Email already verified | Email Verification |\n| `/api/v0/problems/email-not-sent` | 502 | Email not sent | Email Verification, Registration |\n| `/api/v0/problems/email-verification-link-invalid` | 404 | Link not valid | Email Verification |\n| `/api/v0/problems/email-verification-throttled` | 429 | Too many links | Email Verification |\n| `/api/v0/problems/fetch-destination-refused` | 403 | Request kind refused | Any |\n| `/api/v0/problems/forbidden` | 403 | Access denied | Registration, Members, System Email |\n| `/api/v0/problems/gmail-not-configured` | 409 | Gmail not configured | Connected Accounts |\n| `/api/v0/problems/idempotency-key-reused` | 422 | Idempotency key reused | Outgoing Messages |\n| `/api/v0/problems/internal-error` | 500 | Internal error | Any |\n| `/api/v0/problems/invalid-credentials` | 401 | Sign-in failed | Sessions |\n| `/api/v0/problems/invalid-request` | 400 | Invalid request | Any |\n| `/api/v0/problems/invalid-sign-in-code` | 422 | Invalid sign-in code | Sessions |\n| `/api/v0/problems/invalid-totp-code` | 422 | Invalid authenticator code | Two-Factor Authentication |\n| `/api/v0/problems/invalid-totp-proof` | 422 | Invalid second-factor proof | Two-Factor Authentication |\n| `/api/v0/problems/mail-provider-busy` | 503 | Mail provider busy | Messages |\n| `/api/v0/problems/member-is-administrator` | 409 | Member is an administrator | Members |\n| `/api/v0/problems/member-not-found` | 404 | Member not found | Members |\n| `/api/v0/problems/message-not-found` | 404 | Message not found | Messages, Outgoing Messages |\n| `/api/v0/problems/message-part-not-found` | 404 | Part not found | Messages |\n| `/api/v0/problems/message-unreadable` | 502 | Message can't be shown | Messages |\n| `/api/v0/problems/method-not-allowed` | 405 | Method not allowed | Any |\n| `/api/v0/problems/not-found` | 404 | Not found | Any |\n| `/api/v0/problems/not-sendable-again` | 409 | Message not sendable again | Outgoing Messages |\n| `/api/v0/problems/outgoing-message-not-found` | 404 | Message not found | Outgoing Messages |\n| `/api/v0/problems/password-reset-link-invalid` | 404 | Link not valid | Password Reset |\n| `/api/v0/problems/password-reset-throttled` | 429 | Too many password reset requests | Password Reset |\n| `/api/v0/problems/registration-account-exists` | 409 | Account exists | Registration |\n| `/api/v0/problems/registration-closed` | 409 | Registration not open | Registration |\n| `/api/v0/problems/registration-link-invalid` | 404 | Link not valid | Registration |\n| `/api/v0/problems/registration-throttled` | 429 | Too many registration requests | Registration |\n| `/api/v0/problems/request-timeout` | 408 | Request timeout | Any |\n| `/api/v0/problems/request-too-large` | 413 | Request too large | Any |\n| `/api/v0/problems/send-throttled` | 429 | Too many messages | Outgoing Messages |\n| `/api/v0/problems/sending-account-needs-reconnect` | 409 | Account needs reconnecting | Outgoing Messages |\n| `/api/v0/problems/service-busy` | 503 | Service busy | Any |\n| `/api/v0/problems/session-is-current` | 409 | Session is current | Sessions |\n| `/api/v0/problems/session-not-found` | 404 | Session not found | Sessions |\n| `/api/v0/problems/setup-done` | 409 | Setup complete | Setup |\n| `/api/v0/problems/setup-token-invalid` | 403 | Setup token invalid | Setup |\n| `/api/v0/problems/setup-unconfigured` | 409 | Setup unavailable | Setup |\n| `/api/v0/problems/sign-in-challenge-invalid` | 401 | Sign in again | Sessions |\n| `/api/v0/problems/sign-in-throttled` | 429 | Too many attempts | Setup, Sessions |\n| `/api/v0/problems/sync-throttled` | 429 | Sync requested recently | Connected Accounts |\n| `/api/v0/problems/system-email-not-configured` | 409 | System email not configured | Email Verification, System Email |\n| `/api/v0/problems/system-email-not-tested` | 409 | System email not tested | Registration |\n| `/api/v0/problems/too-many-requests` | 429 | Too many requests | Setup, Sessions, Email Verification, Password Reset, Registration, Probe |\n| `/api/v0/problems/totp-already-on` | 409 | Two-factor authentication already on | Two-Factor Authentication |\n| `/api/v0/problems/totp-disable-forbidden` | 403 | Two-factor authentication required | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-on` | 409 | Authenticator not enabled | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-pending` | 409 | Enrollment not started | Two-Factor Authentication |\n| `/api/v0/problems/totp-required` | 403 | TOTP required | Registration, Members, System Email |\n| `/api/v0/problems/totp-throttled` | 429 | Too many code attempts | Sessions, Two-Factor Authentication |\n| `/api/v0/problems/unauthenticated` | 401 | Sign-in required | Sessions, Two-Factor Authentication, Email Verification, Registration, Members, System Email, Connected Accounts, Messages, Outgoing Messages |\n| `/api/v0/problems/unsupported-media-type` | 415 | Unsupported media type | Any |\n| `/api/v0/problems/validation-error` | 422 | Invalid request | Any |\n",
     "title": "inbok",
     "version": "0.0.0"
   },
@@ -3256,6 +3385,467 @@
         "summary": "Reactivate Member",
         "tags": [
           "Members"
+        ]
+      }
+    },
+    "/messages/{id}/bodies/{part}": {
+      "get": {
+        "description": "Returns an HTML body of one of the signed-in account's messages as a document for a frame on inbok's own pages; its url in the message's content names it. Only a frame loads it.",
+        "operationId": "getMessageBody",
+        "parameters": [
+          {
+            "description": "Message ID from a conversation.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Message ID from a conversation.",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The body's partId from the message's content.",
+            "in": "path",
+            "name": "part",
+            "required": true,
+            "schema": {
+              "description": "The body's partId from the message's content.",
+              "maxLength": 1999,
+              "pattern": "^0(\\.(0|[1-9][0-9]{0,2}))*$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "allowed loads the remote images the body refers to, telling their sender the message was read; blocked leaves them out.",
+            "explode": false,
+            "in": "query",
+            "name": "remote",
+            "schema": {
+              "default": "blocked",
+              "description": "allowed loads the remote images the body refers to, telling their sender the message was read; blocked leaves them out.",
+              "enum": [
+                "blocked",
+                "allowed"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The body as an HTML document, sanitized: no script, form, or frame, and only the images allowed. Its Content-Security-Policy refuses anything else."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/message-part-not-found",
+                  "status": 404,
+                  "title": "Part not found",
+                  "detail": "The message has no such part to show."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The signed-in account has no such message, or its mail provider no longer has it."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/account-needs-reconnect",
+                  "status": 409,
+                  "title": "Account needs reconnecting",
+                  "detail": "The message's account no longer opens. Reconnect it to load the message."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The message's account needs reconnecting before its content can be fetched."
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/message-unreadable",
+                  "status": 502,
+                  "title": "Message can't be shown",
+                  "detail": "This message can't be read from its mail provider."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The mail provider's answer is too large or cannot be read; asking again gives the same."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/mail-provider-busy",
+                  "status": 503,
+                  "title": "Mail provider busy",
+                  "detail": "The message's mail provider is not answering right now. Try again shortly."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The mail provider refuses requests for now.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before trying again.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Message Body",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/messages/{id}/content": {
+      "get": {
+        "description": "Returns what the view of one of the signed-in account's messages shows: its bodies, whether its HTML refers to remote images, and its attachments. Content not stored yet, e.g. of a message older than the 90 days kept in the background, is fetched from the mail provider first, which can take a few seconds.",
+        "operationId": "getMessageContent",
+        "parameters": [
+          {
+            "description": "Message ID from a conversation.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Message ID from a conversation.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseMessageContent"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/message-not-found",
+                  "status": 404,
+                  "title": "Message not found",
+                  "detail": "The message does not exist. It may have been deleted."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The signed-in account has no such message, or its mail provider no longer has it."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/account-needs-reconnect",
+                  "status": 409,
+                  "title": "Account needs reconnecting",
+                  "detail": "The message's account no longer opens. Reconnect it to load the message."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The message's account needs reconnecting before its content can be fetched."
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/message-unreadable",
+                  "status": 502,
+                  "title": "Message can't be shown",
+                  "detail": "This message can't be read from its mail provider."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The mail provider's answer is too large or cannot be read; asking again gives the same."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/mail-provider-busy",
+                  "status": 503,
+                  "title": "Mail provider busy",
+                  "detail": "The message's mail provider is not answering right now. Try again shortly."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The mail provider refuses requests for now.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before trying again.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Message Content",
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/messages/{id}/parts/{part}": {
+      "get": {
+        "description": "Returns one part of one of the signed-in account's messages: an attachment, an image its HTML shows, or a text body whole. A part not stored yet, e.g. an attachment never downloaded, is fetched from the mail provider first.",
+        "operationId": "getMessagePart",
+        "parameters": [
+          {
+            "description": "Message ID from a conversation.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Message ID from a conversation.",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The part's place in the message, from the message's content: 0 is the whole message, 0.1 its second part, and so on.",
+            "in": "path",
+            "name": "part",
+            "required": true,
+            "schema": {
+              "description": "The part's place in the message, from the message's content: 0 is the whole message, 0.1 its second part, and so on.",
+              "maxLength": 1999,
+              "pattern": "^0(\\.(0|[1-9][0-9]{0,2}))*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The part's bytes, as the sender sent them; a text body's in UTF-8. PNG, JPEG, GIF, and WebP images come inline; anything else as a download a browser runs nothing of."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/message-part-not-found",
+                  "status": 404,
+                  "title": "Part not found",
+                  "detail": "The message has no such part to show."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The signed-in account has no such message, or its mail provider no longer has it."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/account-needs-reconnect",
+                  "status": 409,
+                  "title": "Account needs reconnecting",
+                  "detail": "The message's account no longer opens. Reconnect it to load the message."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The message's account needs reconnecting before its content can be fetched."
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/message-unreadable",
+                  "status": 502,
+                  "title": "Message can't be shown",
+                  "detail": "This message can't be read from its mail provider."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The mail provider's answer is too large or cannot be read; asking again gives the same."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/mail-provider-busy",
+                  "status": 503,
+                  "title": "Mail provider busy",
+                  "detail": "The message's mail provider is not answering right now. Try again shortly."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The mail provider refuses requests for now.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before trying again.",
+                "required": true,
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Download Message Part",
+        "tags": [
+          "Messages"
         ]
       }
     },
@@ -6552,6 +7142,10 @@
     {
       "description": "Connect, list, reconnect, and disconnect the signed-in account's Gmail accounts.",
       "name": "Connected Accounts"
+    },
+    {
+      "description": "Read the signed-in account's messages: their bodies, images, and attachments.",
+      "name": "Messages"
     },
     {
       "description": "Send messages from the signed-in account's connected accounts, follow their status, and send a failed one again.",

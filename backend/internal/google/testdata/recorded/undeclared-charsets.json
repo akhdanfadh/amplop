@@ -1,0 +1,113 @@
+{
+ "id": "19a6a1f0c0d0e007",
+ "threadId": "19a6a1f0c0d0e007",
+ "labelIds": [
+  "UNREAD",
+  "INBOX"
+ ],
+ "snippet": "Привет",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/mixed",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Received",
+    "value": "from 100000000000 named unknown by gmailapi.google.com with HTTPREST; Thu, 12 Nov 2026 00:16:41 -0800"
+   },
+   {
+    "name": "From",
+    "value": "Asha Kartika <asha@example.co.id>"
+   },
+   {
+    "name": "To",
+    "value": "Inbok Test <alex@example.com>"
+   },
+   {
+    "name": "Subject",
+    "value": "Undeclared charsets"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 9 Nov 2026 09:30:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<undeclared-charsets@example.co.id>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/mixed; boundary=\"mix-7\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/html",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/html"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     }
+    ],
+    "body": {
+     "size": 43,
+     "data": "PG1ldGEgY2hhcnNldD0id2luZG93cy0xMjUxIj48cD7Qn9GA0LjQstC10YI8L3A-Cg=="
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     }
+    ],
+    "body": {
+     "size": 19,
+     "data": "Q2Fmw6kgc2FucyBjaGFyc2V0Lgo="
+    }
+   },
+   {
+    "partId": "2",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=us-ascii"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     }
+    ],
+    "body": {
+     "size": 16,
+     "data": "bmHDr3ZlIHVzLWFzY2lpLgo="
+    }
+   }
+  ]
+ },
+ "sizeEstimate": 754,
+ "historyId": "4096",
+ "internalDate": "1794191400000"
+}

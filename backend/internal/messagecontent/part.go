@@ -6,6 +6,7 @@ import (
 	"net/textproto"
 	"strings"
 	"unicode"
+	"uuid"
 )
 
 // Kind says what a [Part] is to a reader of the message.
@@ -80,7 +81,12 @@ type Received struct {
 	// the provider sends them in a separate request, e.g. Gmail's
 	// attachmentId. An empty part has empty, not nil, content.
 	Content []byte
-	Parts   []Received
+	// ContentCharset is the charset [Received.Content] is in when the
+	// provider converted it from the part's own, e.g. "utf-8" for Gmail's
+	// inline text; empty when [Received.Content] is as the sender sent it,
+	// in the charset its header fields declare.
+	ContentCharset string
+	Parts          []Received
 }
 
 // Part describes one part of a message: what PostgreSQL keeps of it. Its
@@ -90,7 +96,7 @@ type Part struct {
 	MediaType   string // lower case, e.g. "text/html"
 	Charset     string // as the sender declared it, lower case; "" when none
 	Filename    string
-	Size        int64 // the content's length as received, before [DecodeText]
+	Size        int64 // the content's length as sent, before any conversion to UTF-8
 	Disposition Disposition
 	ContentID   string // without angle brackets; "" when none
 	Kind        Kind
@@ -98,6 +104,10 @@ type Part struct {
 	// Start is, for multipart/related, the Content-ID of the part shown
 	// (RFC 2387, section 3.2), without angle brackets; "" when none.
 	Start string
+	// BlobID is the ID ([Ref.ID]) the part's content is stored under, or
+	// the nil UUID while it is not stored: JMAP's blobId (RFC 8621,
+	// section 4.1.4), not the part's Content-ID.
+	BlobID uuid.UUID
 }
 
 // Text is a text part's content, converted to UTF-8.
@@ -108,8 +118,9 @@ type Text struct {
 
 // Parse returns the part tree of a message whose top part is root, and
 // the content of each text part that root carries, converted to UTF-8 by
-// [DecodeText]. A text part whose content the provider sends separately
-// has no [Text]; decode it with [DecodeText] once fetched. Neither does
+// [DecodeText] from its [Received.ContentCharset], or else its declared
+// charset. A text part whose content the provider sends separately
+// has no [Text]; decode it with [DecodeFrom] once fetched. Neither does
 // a text part inside an attachment, e.g. a forwarded message, which no
 // view shows. Strings from the sender come back as valid UTF-8 without
 // control or bidirectional formatting characters. It returns
@@ -148,7 +159,7 @@ func parse(received Received, texts *[]Text) Part {
 	part.Kind = kindOf(part)
 
 	if texts != nil && part.Kind == KindText && received.Content != nil {
-		*texts = append(*texts, Text{PartID: part.ID, Content: DecodeText(part, received.Content)})
+		*texts = append(*texts, Text{PartID: part.ID, Content: DecodeFrom(part, received.ContentCharset, received.Content)})
 	}
 	// Only a multipart's children can be shown; an attachment's are not.
 	if part.Kind != KindMultipart {

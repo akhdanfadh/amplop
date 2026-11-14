@@ -121,6 +121,13 @@ CREATE TABLE messages (
     -- longer lists. A number rather than a time, so no two clocks are
     -- compared.
     sync_generation      integer NOT NULL CHECK (sync_generation > 0),
+    -- When fetching the message's content in the background last failed for
+    -- good: the provider no longer had it or refused it, or its answer
+    -- passed inbok's cap or could not be read (ADR009, "Fetching content").
+    -- The background fetch skips the message for a day after, so one such
+    -- message neither holds back the others nor is fetched every minute;
+    -- opening it still tries. NULL when no fetch failed.
+    body_failed_at       timestamptz,
     -- As mailboxes_account_id_key.
     CONSTRAINT messages_account_id_key UNIQUE (connected_account_id, id)
 );

@@ -11,8 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
-import { useLayout } from "@/hooks/use-layout";
-import { ConversationReply } from "./reply";
+import { ConversationReply, ReplyEditorSlot, ReplyProvider } from "./reply";
 import type { AnsweredMessage } from "./reply-defaults";
 
 const ok = 200;
@@ -130,16 +129,18 @@ const newer: AnsweredMessage = {
 
 // Conversation renders the reply part of a conversation whose last message
 // starts as message, with a button that makes newer the last message, as
-// a sync would, and the layout React last drew, so a test can wait for a
-// resize to reach it.
+// a sync would. Each message has the place below it where the editor
+// answering it shows, as the conversation view gives it.
 function Conversation({ message }: { message: AnsweredMessage }) {
   const [last, setLast] = useState(message);
-  const layout = useLayout();
   return (
     <>
       <h1>Lunch</h1>
-      <p>Layout: {layout}</p>
-      <ConversationReply message={last} onUnauthorized={() => {}} />
+      <ReplyProvider onUnauthorized={() => {}}>
+        <ReplyEditorSlot messageId={message.id} />
+        <ReplyEditorSlot messageId={newer.id} />
+        <ConversationReply message={last} />
+      </ReplyProvider>
       <button type="button" onClick={() => setLast(newer)}>
         Newer message arrives
       </button>
@@ -290,6 +291,16 @@ describe("ConversationReply", () => {
     await expect.element(page.getByRole("button", { name: "Reply", exact: true })).toHaveFocus();
   });
 
+  it("returns focus to the bottom's Reply all after Discard", async () => {
+    serve();
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply all" }));
+    await userEvent.click(page.getByRole("button", { name: "Discard" }));
+
+    await expect.element(page.getByRole("button", { name: "Reply all" })).toHaveFocus();
+  });
+
   it("discards an untouched editor at once", async () => {
     await page.viewport(1440, 900);
     serve();
@@ -393,34 +404,19 @@ describe("ConversationReply", () => {
     await page.viewport(1024, 800);
 
     await expect.element(page.getByRole("textbox", { name: "Message" })).toHaveValue("Noon works.");
-    // It stays where it opened: inline, not in a phone sheet.
+    // Inline at every width, so nothing moves or remounts.
     await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("keeps a phone editor's sheet when the phone turns sideways", async () => {
-    await page.viewport(390, 800);
-    serve();
-    await show();
-
-    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
-    await userEvent.keyboard("Noon works.");
-    await page.viewport(844, 390);
-    await expect.element(page.getByText("Layout: drawer")).toBeInTheDocument();
-
-    const dialog = page.getByRole("dialog", { name: "Reply" });
-    await expect
-      .element(dialog.getByRole("textbox", { name: "Message" }))
-      .toHaveValue("Noon works.");
-  });
-
-  it("asks before discarding an address that is still being typed", async () => {
-    await page.viewport(390, 800);
+  it("asks before discarding a typed address", async () => {
     serve();
     await show();
 
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
     await userEvent.click(page.getByRole("textbox", { name: "To" }));
-    await userEvent.keyboard("cy@example.com{Escape}");
+    // Leaving the field makes the address a chip.
+    await userEvent.keyboard("cy@example.com{Tab}");
+    await userEvent.click(page.getByRole("button", { name: "Discard" }));
 
     await expect
       .element(page.getByRole("alertdialog", { name: "Discard this reply?" }))
@@ -501,39 +497,17 @@ describe("ConversationReply", () => {
     await expect.element(page.getByText("This message can't be answered here.")).toBeVisible();
   });
 
-  it("closes the phone editor on Escape, asking first once text is typed", async () => {
-    await page.viewport(390, 800);
-    serve();
-    await show();
-
-    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
-    await userEvent.keyboard("Noon works.{Escape}");
-    const dialog = page.getByRole("alertdialog", { name: "Discard this reply?" });
-    await expect.element(dialog).toBeVisible();
-    await userEvent.keyboard("{Enter}");
-    await expect.element(page.getByRole("dialog", { name: "Reply" })).toBeVisible();
-
-    await userEvent.clear(page.getByRole("textbox", { name: "Message" }));
-    await userEvent.keyboard("{Escape}");
-    await expect.element(page.getByRole("dialog", { name: "Reply" })).not.toBeInTheDocument();
-  });
-
-  it("fills the screen on a phone", async () => {
+  it("opens inline on a phone too, where the conversation stays a scroll away", async () => {
     await page.viewport(390, 800);
     serve();
     await show();
 
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
 
-    const dialog = page.getByRole("dialog", { name: "Reply" });
-    await expect.element(dialog).toBeVisible();
-    // Measured once it has slid in.
-    await expect
-      .poll(() => {
-        const box = dialog.element().getBoundingClientRect();
-        return [box.top, box.width, box.height];
-      })
-      .toEqual([0, 390, 800]);
-    await expect.element(dialog.getByRole("textbox", { name: "Message" })).toHaveFocus();
+    // In the page, not a full-screen dialog over it.
+    await expect.element(page.getByRole("form", { name: "Reply" })).toBeVisible();
+    await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
+    await expect.element(page.getByRole("heading", { name: "Lunch" })).toBeInTheDocument();
+    await expect.element(page.getByRole("textbox", { name: "Message" })).toHaveFocus();
   });
 });

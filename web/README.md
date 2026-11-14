@@ -603,16 +603,23 @@ a message's page says and what it offers, so the two cannot disagree.
 
 ### Reply
 
-`ConversationReply` (`src/features/outgoing-messages/reply.tsx`) is the
-bottom of a conversation: Reply, and Reply all when someone else received
-the message, open one inline editor answering the conversation's last
-message through Reply to Message (US009). It takes that message as an
-`AnsweredMessage`: branch 3's conversation message (senders and
-recipients as `{name, address}`), its account, and whether the account
-sent it, the per-message `sent` flag the conversation API is to add. It
-reads only the member's accounts, so the conversation view mounts it as it
-is; until branch 3 and 4b merge, its browser tests render it with
-fixtures. `replyDefaults` (`reply-defaults.ts`) fills the editor, with
+A conversation's one reply editor answers a message through Reply to
+Message (US009). `ReplyProvider` (`src/features/outgoing-messages/reply.tsx`)
+holds it around the conversation: which message it answers, in which
+mode, and the last reply sent. The conversation view places its pieces:
+`MessageReplyActions` in each open message's header (Reply, and Reply all
+when someone else received the message, as icon buttons),
+`ReplyEditorSlot` below each message, which shows the editor when it
+answers that message, and `ConversationReply` after the last message:
+Reply and Reply all for the newest, and the sent reply's status. The
+editor is inline on every screen, a phone's too, so an earlier message
+stays a scroll away while the member writes. While the editor is open every
+Reply hides, so the open editor is never replaced or moved, which would
+remount it and lose its text and Idempotency-Key. Each piece takes the
+answered message as an `AnsweredMessage`: branch 3's conversation message
+(senders and recipients as `{name, address}`), its account, and whether
+the account sent it, the per-message `sent` flag the conversation API is
+to add. `replyDefaults` (`reply-defaults.ts`) fills the editor, with
 table tests:
 
 - From is the account that received the message while it can send;
@@ -639,12 +646,9 @@ compose form does, plus a deleted answered message (404
 `message-not-found`), which keeps the text to copy. Discard closes an
 untouched editor at once and asks first once something was typed, then
 returns focus to Reply; leaving the page asks as the compose form does. An
-address typed but not yet a chip counts as typed. On a phone the editor is
-a full-screen sheet: Escape runs Discard, and the scrim, a stray tap away,
-does nothing. The editor keeps the layout it opened in, inline or sheet,
-and the message it answers until it closes, so neither a window crossing
-the phone width nor a newer message synced meanwhile changes what is being
-written. After Send the editor gives way to the reply's status, read again
+address typed but not yet a chip counts as typed. The editor keeps the
+message it answers until it closes, so a newer message synced meanwhile
+never changes what is being written. After Send the editor gives way to the reply's status, read again
 every 2 seconds until the send ends; a failed reread keeps the status,
 says it may be out of date, and offers Try again. It has Send again and a
 link to its Outbox page. A refused reply's Edit and send opens the editor
@@ -655,14 +659,17 @@ its threading.
 
 `MessageView` (`src/features/messages/view.tsx`) shows one message: its
 subject, From, To, Cc, Bcc for a message the member sent, and when it
-arrived, then its bodies one after another. An outgoing message's page
-shows it with its plain-text body; the inbox will show synchronized
-messages, with the message from the API. Its props:
+arrived, then its bodies one after another, then its attachments. An
+outgoing message's page shows it with its plain-text body; the inbox
+will show synchronized messages, with the message from the API. Its
+props:
 
 - `header`: the header fields, which show while the body loads.
 - `content`: `pending` while the server fetches a body it has not
-  stored, `error` with a retry, or `success` with the bodies and whether
-  the server blocked remote images in them.
+  stored, `error` with a retry, or `success` with the bodies, whether
+  the server blocked remote images in them, and the attachments. A
+  plain-text body the server clipped carries `wholeUrl`, which the view
+  offers as "Download the whole text"; a message with no text says so.
 
 Give it a `key` per message, so the next message starts afresh. Remote
 images stay blocked for another message's bodies even without one: the
@@ -685,24 +692,88 @@ The frame is as tall as its body, so the page scrolls the message.
 `watch` (`frame.ts`) shows the body as soon as its document has been
 read, without waiting for its images, whose load event a slow remote
 image would hold back. From then on a `ResizeObserver` on the body's
-root refits the frame whenever the body changes size: images arriving,
-a `details` element opening, or the frame's width rewrapping it. It sets
-the body's `html` and `body` to `height: auto` first, so mail that makes
-them 100% of the frame, plus padding, fits too. A frame whose document
-the page cannot read, or that is not HTML, e.g. an API error, or that is
-not read within 15 seconds, shows "Could not show this part of the
-message." with a retry, which returns focus to the frame or the button.
-The frame stays white in dark mode, since mail is written for a white
-page.
+root and on the frame refits the frame whenever either changes size:
+images arriving, a `details` element opening, or the frame's width
+rewrapping it, including mail that fixes its root's width. Each image
+that arrives refits it too, since one whose height the mail fixes can
+widen the body and leave the root's box as it was. Mail wider
+than the frame is scaled to fit with CSS `zoom` on the body's root, down
+to 60%, and then scrolls sideways inside the frame; the width is
+measured at full size each time, so mail scaled down returns to full
+size when the frame widens. The root scrolls sideways even where the
+mail's own CSS hides its overflow. It sets the body's `html` and `body`
+to `height: auto` first, so mail that makes them 100% of the frame, plus
+padding, fits too. A frame whose document the page cannot read, or that
+is not HTML, e.g. an API error, or that is not read within 15 seconds,
+shows "Could not show this part of the message." with a retry, which
+returns focus to the frame or the button. The frame stays white in dark
+mode, since mail is written for a white page.
 
-When the server blocked remote images, a note says so and offers "Load
-remote content", which loads each HTML body again from its second URL,
-for this view only. A plain-text body is text, which React escapes,
-with its line breaks and spaces kept. `linkify-react` turns its web and
-email addresses into links; `links.ts` allows `http`, `https`, and
-`mailto` only, opens an address without a scheme over `https`, and
-leaves a link with a direction override in it as text, since its text
-would read differently from where it goes.
+When the server blocked remote images, a note says so and offers "Show
+images", which loads each HTML body again from its second URL, for this
+view only. A plain-text body is text, which React escapes, with its line
+breaks and spaces kept, in its own direction (`dir="auto"`).
+`linkify-react` turns its web and email addresses into links; `links.ts`
+allows `http`, `https`, and `mailto` only, opens an address without a
+scheme over `https`, and leaves a link with a direction override in it
+as text, since its text would read differently from where it goes.
+
+Attachments (`attachments.tsx`) are chips that download their file
+(DESIGN.md "Reading pane"). React Aria's router leaves a link with
+`download` to the browser, so the part route's address is never taken
+for a page of the app. `splitName` (`text.ts`) splits a name into its
+start, the characters before its extension, and the extension, which
+give way in that order when the chip is too narrow, the extension never.
+The chip gives screen readers the whole name in one piece: the visible
+parts sit in separate boxes, which Chromium reads with a space between
+them.
+
+## Conversation view
+
+`ConversationView` (`src/features/messages/conversation.tsx`) shows one
+conversation as DESIGN.md "Reading pane" describes it. Its props:
+
+- `subject` and `account` (ID, name, address, colour) for its title, and
+  `messages`, oldest first: each message's header fields, its preview,
+  whether it is unread, whether the account sent it (`sent`), and
+  whether it is known to have attachments (`attachments`, a paperclip on
+  its folded row).
+- `onUnauthorized`: runs when a read finds the session gone.
+- `actions`: the conversation's actions in the pinned toolbar, and Back
+  where one pane shows at a time.
+- `messageActions(message)`: a message's other actions in its header,
+  after Reply; shown only while the message is open.
+
+The view holds the reply editor's `ReplyProvider` and places its pieces
+("Reply"): Reply in each open message's header, the editor below the
+message it answers, whose row then stays out of "N more messages", and
+the bottom's Reply after the last message. Without a `sent` flag, a
+message from the account's own address counts as sent; branch 3's
+conversation detail is to send the real flag. The toolbar's actions are
+the mail list's. The view scrolls itself,
+so give it a height, and a `key` per conversation, so folding starts
+afresh. Each open message loads its content through `useMessageContent`
+(`content.ts`), so folded messages cost no request; content never goes
+stale, as a message's never changes, so it is not read again in the
+background, and a 401 runs `onUnauthorized`; the content shows in
+`MessageContentView`, the message view's part below its header.
+`toContent` keeps only bodies and files at the API's own addresses.
+
+`foldRows` (`folding.ts`) decides the rows: open, folded, or counted in
+"N more messages", which gathers only messages the member has not opened
+or folded. A message being answered keeps its row, and if sync removes
+it, the view keeps a row under its key, so React keeps the editor and
+its text. Opening, folding, and showing the folded middle move
+focus to the control that took the place of the one pressed, so focus is
+never lost. The subject joins the toolbar when the title passes under
+it, which an `IntersectionObserver` on the view's own scroll box tells.
+The layout follows the pane, not the window, with container queries
+(`@container`, `@lg:`, 512 px at the default text size).
+
+Until branch 3 merges, its message type and the helpers it shares
+(initials, names, list dates, `useToday`) have copies here
+(`people.ts`, `text.ts`, `conversation.tsx`); whichever branch merges
+later keeps one.
 
 ## Checks and tests
 
@@ -731,7 +802,9 @@ Tests sit next to the code they test, in two Vitest projects set up in
   `render` from `vitest-browser-react`; find elements with `page` and
   interact with `userEvent` from `vite-plus/test/browser/context`, which
   send real browser input. `src/test/browser-setup.ts` loads the app's
-  stylesheet first.
+  stylesheet first. Message bodies for the message view's frame come from
+  `src/test/message-server.ts`, which serves them on the test page's
+  origin with the headers the Go server's body route sends.
 
 The browser project needs Playwright's Chromium, once per machine and
 again after a Playwright upgrade. From `web`:
@@ -914,7 +987,10 @@ except operations tagged `Redirects`: another site sends the browser
 there, e.g. Google's return after its consent page, and a call from the
 app would use up what they carry. `orval.config.ts` leaves them out but
 keeps every schema, e.g. `ConnectOutcome`, the outcome Google's return
-lands on the `/connected-accounts` page with.
+lands on the `/connected-accounts` page with. It also leaves out every
+operation whose success answers something other than JSON, e.g. a
+message body for a frame or an attachment: the browser loads those
+itself from the URLs a JSON answer gives, and transport reads only JSON.
 `model` holds each type as a [Zod](https://zod.dev) schema, which checks
 a value while the app runs. `getHealth()` returns the success body, e.g.
 `{ data: { status: "ok" } }`. If a contract change breaks code that uses

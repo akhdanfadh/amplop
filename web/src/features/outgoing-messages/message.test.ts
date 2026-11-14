@@ -37,11 +37,12 @@ describe("messageHeader", () => {
 });
 
 describe("messageContent", () => {
-  it("is the plain-text body, loaded", () => {
+  it("is the plain-text body, loaded, with no attachments", () => {
     expect(messageContent(message)).toEqual({
       status: "success",
       bodies: [{ partId: "body", type: "text", text: "Noon?" }],
       remote: "none",
+      attachments: [],
     });
   });
 });

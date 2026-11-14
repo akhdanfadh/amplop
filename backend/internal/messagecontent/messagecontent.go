@@ -21,7 +21,7 @@ import (
 // Ref names one stored content.
 type Ref struct {
 	Account int64     // the connected account the content came from
-	ID      uuid.UUID // the content ID PostgreSQL keeps
+	ID      uuid.UUID // the blob ID PostgreSQL keeps
 }
 
 // ErrNotStored means the store holds no content under a [Ref]. A row may

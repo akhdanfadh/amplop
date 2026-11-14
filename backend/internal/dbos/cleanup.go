@@ -58,6 +58,7 @@ func (w *Worker) cleanups(s Services) []cleanup {
 		{name: "succeeded workflow runs", rows: newWorkflowRuns(w.ctx, succeeded, succeededKept)},
 		{name: "failed workflow runs", rows: newWorkflowRuns(w.ctx, failed, failedKept)},
 		{name: "connect states", rows: s.ConnectStateCleanup},
+		{name: "unused message content", rows: s.MessageContentCleanup},
 	}
 	return slices.DeleteFunc(all, func(c cleanup) bool { return c.rows == nil })
 }

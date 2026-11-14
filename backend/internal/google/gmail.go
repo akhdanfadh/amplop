@@ -50,14 +50,21 @@ func (c *Client) Profile(ctx context.Context, accessToken connectedaccount.Acces
 }
 
 // gmail returns a Gmail client that sends accessToken with every request,
-// over [Client.authorized]'s HTTP client.
+// over [Client.authorized]'s HTTP client, reading at most
+// [maxResponseBytes] of each answer.
 func (c *Client) gmail(ctx context.Context, accessToken connectedaccount.AccessToken) (*gmail.Service, error) {
+	return c.gmailCapped(ctx, accessToken, maxResponseBytes)
+}
+
+// gmailCapped returns a Gmail client as [Client.gmail] does, reading at
+// most limit bytes of each answer.
+func (c *Client) gmailCapped(ctx context.Context, accessToken connectedaccount.AccessToken, limit int64) (*gmail.Service, error) {
 	// The endpoint is always set, so no environment setting the Google client
 	// reads, e.g. GOOGLE_CLOUD_UNIVERSE_DOMAIN, can send the token elsewhere,
 	// and so is a logger that drops everything: with
 	// GOOGLE_SDK_GO_LOGGING_LEVEL=debug the client's own logger writes each
 	// request's body, a whole message for messages.send, to stderr.
-	service, err := gmail.NewService(ctx, option.WithHTTPClient(c.authorized(accessToken)), option.WithEndpoint(c.gmailURL),
+	service, err := gmail.NewService(ctx, option.WithHTTPClient(c.authorized(accessToken, limit)), option.WithEndpoint(c.gmailURL),
 		option.WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		return nil, fmt.Errorf("gmail client: %w", err)
@@ -67,14 +74,14 @@ func (c *Client) gmail(ctx context.Context, accessToken connectedaccount.AccessT
 
 // authorized returns an HTTP client that sends accessToken with every
 // request, over the client's own transport, so with its deadline, reads at
-// most [maxResponseBytes] of each answer, and reports accessToken refused
-// when Gmail answers 401.
-func (c *Client) authorized(accessToken connectedaccount.AccessToken) *http.Client {
+// most limit bytes of each answer, and reports accessToken refused when
+// Gmail answers 401.
+func (c *Client) authorized(accessToken connectedaccount.AccessToken, limit int64) *http.Client {
 	return &http.Client{
 		Transport: refusalTransport{
 			base: &oauth2.Transport{
 				Source: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: accessToken.Value()}),
-				Base:   cappedTransport{base: c.http.Transport},
+				Base:   cappedTransport{base: c.http.Transport, limit: limit},
 			},
 			refused: accessToken.Refused,
 		},
@@ -161,29 +168,30 @@ func transportCause(cause error) error {
 	return errGmailAnswer
 }
 
-// maxResponseBytes bounds one Gmail answer, inbok's choice: far past a
-// page of IDs or history, or a message's metadata, while a sender's
-// oversized headers stop here rather than in memory.
+// maxResponseBytes bounds one Gmail answer but a message's content, inbok's
+// choice: far past a page of IDs or history, or a message's metadata,
+// while a sender's oversized headers stop here rather than in memory.
 const maxResponseBytes = 4 << 20
 
-// errResponseTooLarge means a Gmail answer passed [maxResponseBytes].
+// errResponseTooLarge means a Gmail answer passed its cap.
 var errResponseTooLarge = errors.New("gmail answer is too large")
 
 // cappedTransport sends requests over base and returns answers whose body
-// reads [errResponseTooLarge] past [maxResponseBytes].
+// reads [errResponseTooLarge] past limit bytes.
 type cappedTransport struct {
-	base http.RoundTripper
+	base  http.RoundTripper
+	limit int64
 }
 
 // RoundTrip sends req over the base transport and returns its answer with
-// a body that reads [errResponseTooLarge] past [maxResponseBytes], or the
-// base transport's error.
+// a body that reads [errResponseTooLarge] past t's limit, or the base
+// transport's error.
 func (t cappedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	res, err := t.base.RoundTrip(req)
 	if err != nil {
 		return nil, err
 	}
-	res.Body = &cappedBody{ReadCloser: res.Body, left: maxResponseBytes}
+	res.Body = &cappedBody{ReadCloser: res.Body, left: t.limit}
 	return res, nil
 }
 

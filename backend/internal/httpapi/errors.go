@@ -29,6 +29,14 @@ func problemResponses(api huma.API, statuses ...int) map[string]*huma.Response {
 			Schema:      &huma.Schema{Type: huma.TypeInteger, Minimum: new(1.0)},
 		}}
 	}
+	// So is a 503, which says when to try again.
+	if busy, ok := responses[strconv.Itoa(http.StatusServiceUnavailable)]; ok {
+		busy.Headers = map[string]*huma.Param{retryAfterHeader: {
+			Description: "Seconds to wait before trying again.",
+			Required:    true,
+			Schema:      &huma.Schema{Type: huma.TypeInteger, Minimum: new(1.0)},
+		}}
+	}
 	for _, response := range responses {
 		response.Content = map[string]*huma.MediaType{
 			problemContentType: {Schema: schema},

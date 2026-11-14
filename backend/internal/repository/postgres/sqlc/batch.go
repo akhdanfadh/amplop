@@ -18,6 +18,82 @@ var (
 	ErrBatchAlreadyClosed = errors.New("batch already closed")
 )
 
+const insertMessagePart = `-- name: InsertMessagePart :batchexec
+INSERT INTO message_parts (connected_account_id, message_id, path, provider_part_id,
+    media_type, charset, filename, size, disposition, mime_content_id, related_start,
+    kind, blob_id)
+VALUES ($1, $2, $3, $4,
+    $5, $6, $7, $8, $9, $10, $11,
+    $12, $13)
+`
+
+type InsertMessagePartBatchResults struct {
+	br     pgx.BatchResults
+	tot    int
+	closed bool
+}
+
+type InsertMessagePartParams struct {
+	ConnectedAccountID int64
+	MessageID          uuid.UUID
+	Path               []int32
+	ProviderPartID     string
+	MediaType          string
+	Charset            string
+	Filename           string
+	Size               int64
+	Disposition        string
+	MimeContentID      string
+	RelatedStart       string
+	Kind               string
+	BlobID             *uuid.UUID
+}
+
+func (q *Queries) InsertMessagePart(ctx context.Context, arg []InsertMessagePartParams) *InsertMessagePartBatchResults {
+	batch := &pgx.Batch{}
+	for _, a := range arg {
+		vals := []interface{}{
+			a.ConnectedAccountID,
+			a.MessageID,
+			a.Path,
+			a.ProviderPartID,
+			a.MediaType,
+			a.Charset,
+			a.Filename,
+			a.Size,
+			a.Disposition,
+			a.MimeContentID,
+			a.RelatedStart,
+			a.Kind,
+			a.BlobID,
+		}
+		batch.Queue(insertMessagePart, vals...)
+	}
+	br := q.db.SendBatch(ctx, batch)
+	return &InsertMessagePartBatchResults{br, len(arg), false}
+}
+
+func (b *InsertMessagePartBatchResults) Exec(f func(int, error)) {
+	defer b.br.Close()
+	for t := 0; t < b.tot; t++ {
+		if b.closed {
+			if f != nil {
+				f(t, ErrBatchAlreadyClosed)
+			}
+			continue
+		}
+		_, err := b.br.Exec()
+		if f != nil {
+			f(t, err)
+		}
+	}
+}
+
+func (b *InsertMessagePartBatchResults) Close() error {
+	b.closed = true
+	return b.br.Close()
+}
+
 const upsertMailbox = `-- name: UpsertMailbox :batchexec
 INSERT INTO mailboxes (connected_account_id, provider_mailbox_id, name, role)
 VALUES ($1, $2, $3, $4)

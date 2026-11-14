@@ -69,6 +69,12 @@ type Services struct {
 	FullSyncs                   fullSyncs
 	Polls                       polls
 	SyncSchedule                dueSyncs
+	// MessageContent is the store the content deletions delete from.
+	MessageContent        contentStore
+	MessageContentCleanup expired
+	// MessageBodies fetches messages' bodies in the background, for the
+	// accounts the minute's body schedule finds them due.
+	MessageBodies bodyFetches
 }
 
 // Worker runs inbok's workflows and schedules.
@@ -128,7 +134,10 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	if err := w.registerSyncSchedule(services.SyncSchedule); err != nil {
 		return nil, errors.Join(fmt.Errorf("schedule sync: %w", err), w.Shutdown())
 	}
-	for _, queue := range []string{emailQueue, googleQueue, googleSendQueue} {
+	if err := w.registerMessageBodiesSchedule(services.MessageBodies); err != nil {
+		return nil, errors.Join(fmt.Errorf("schedule message bodies: %w", err), w.Shutdown())
+	}
+	for _, queue := range []string{emailQueue, googleQueue, googleSendQueue, contentQueue} {
 		if err := w.registerQueue(queue); err != nil {
 			return nil, errors.Join(fmt.Errorf("register queue %s: %w", queue, err), w.Shutdown())
 		}
@@ -137,8 +146,11 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	w.registerPasswordResetLink(services.PasswordResetLinks)
 	w.registerPasswordChangedNotice(services.PasswordChangedNotices)
 	w.registerAccountRemoval(services.AccountRemovals)
+	w.registerContentDeletion(services.MessageContent)
+	w.registerAccountContentDeletion(services.MessageContent)
 	w.registerOutgoingMessage(services.OutgoingMessages)
 	w.registerSync(services.FullSyncs, services.Polls)
+	w.registerMessageBodies(services.MessageBodies)
 
 	// 5. Listen only to the queues whose workflows this worker runs. DBOS
 	// listens to every queue by default and claims a run before finding its
@@ -149,14 +161,18 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 }
 
 // listenedQueues returns the queues a worker calling services takes runs
-// from: each Google queue only when it runs that queue's workflows.
+// from: each Google queue, and the content queue, only when it runs that
+// queue's workflows.
 func listenedQueues(services Services) []string {
 	queues := []string{emailQueue}
-	if services.AccountRemovals != nil || services.FullSyncs != nil || services.Polls != nil {
+	if services.AccountRemovals != nil || services.FullSyncs != nil || services.Polls != nil || services.MessageBodies != nil {
 		queues = append(queues, googleQueue)
 	}
 	if services.OutgoingMessages != nil {
 		queues = append(queues, googleSendQueue)
+	}
+	if services.MessageContent != nil {
+		queues = append(queues, contentQueue)
 	}
 	return queues
 }

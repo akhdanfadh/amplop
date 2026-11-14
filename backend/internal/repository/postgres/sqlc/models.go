@@ -85,12 +85,29 @@ type Message struct {
 	InReplyTo          []string
 	InternetReferences []string
 	SyncGeneration     int32
+	BodyFailedAt       *time.Time
 }
 
 type MessageMailbox struct {
 	ConnectedAccountID int64
 	MessageID          uuid.UUID
 	MailboxID          uuid.UUID
+}
+
+type MessagePart struct {
+	ConnectedAccountID int64
+	MessageID          uuid.UUID
+	Path               []int32
+	ProviderPartID     string
+	MediaType          string
+	Charset            string
+	Filename           string
+	Size               int64
+	Disposition        string
+	MimeContentID      string
+	RelatedStart       string
+	Kind               string
+	BlobID             *uuid.UUID
 }
 
 type OutgoingMessage struct {

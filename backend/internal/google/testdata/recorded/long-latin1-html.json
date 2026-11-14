@@ -1,0 +1,94 @@
+{
+ "id": "19a6a1f0c0d0e006",
+ "threadId": "19a6a1f0c0d0e006",
+ "labelIds": [
+  "UNREAD",
+  "INBOX"
+ ],
+ "snippet": "Résumé de la réunion, décisions et prochaines étapes. Résumé de la réunion, décisions et prochaines étapes. Résumé de la réunion, décisions et prochaines étapes. Résumé de la réunion, décisions et",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/alternative",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Received",
+    "value": "from 100000000000 named unknown by gmailapi.google.com with HTTPREST; Thu, 12 Nov 2026 03:04:22 -0500"
+   },
+   {
+    "name": "From",
+    "value": "Asha Kartika <asha@example.co.id>"
+   },
+   {
+    "name": "To",
+    "value": "Inbok Test <alex@example.com>"
+   },
+   {
+    "name": "Subject",
+    "value": "Long Latin-1 HTML"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 9 Nov 2026 09:20:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<long-latin-1-html@example.co.id>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/alternative; boundary=\"alt-5\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=ISO-8859-1"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "quoted-printable"
+     }
+    ],
+    "body": {
+     "size": 15,
+     "data": "UsOpc3Vtw6kgY291cnQuDQo="
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "text/html",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/html; charset=ISO-8859-1"
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ-recorded-1",
+     "size": 1525028
+    }
+   }
+  ]
+ },
+ "sizeEstimate": 2087501,
+ "historyId": "4096",
+ "internalDate": "1794190800000"
+}

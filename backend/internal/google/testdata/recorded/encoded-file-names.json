@@ -1,0 +1,140 @@
+{
+ "id": "19a6a1f0c0d0e003",
+ "threadId": "19a6a1f0c0d0e003",
+ "labelIds": [
+  "UNREAD",
+  "INBOX"
+ ],
+ "snippet": "Three attachments with non-ASCII names.",
+ "payload": {
+  "partId": "",
+  "mimeType": "multipart/mixed",
+  "filename": "",
+  "headers": [
+   {
+    "name": "Received",
+    "value": "from 100000000000 named unknown by gmailapi.google.com with HTTPREST; Thu, 12 Nov 2026 00:02:05 -0800"
+   },
+   {
+    "name": "From",
+    "value": "Asha Kartika <asha@example.co.id>"
+   },
+   {
+    "name": "To",
+    "value": "Inbok Test <alex@example.com>"
+   },
+   {
+    "name": "Subject",
+    "value": "Encoded file names"
+   },
+   {
+    "name": "Date",
+    "value": "Mon, 9 Nov 2026 09:10:00 +0700"
+   },
+   {
+    "name": "Message-ID",
+    "value": "<encoded-file-names@example.co.id>"
+   },
+   {
+    "name": "MIME-Version",
+    "value": "1.0"
+   },
+   {
+    "name": "Content-Type",
+    "value": "multipart/mixed; boundary=\"mix-3\""
+   }
+  ],
+  "body": {
+   "size": 0
+  },
+  "parts": [
+   {
+    "partId": "0",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "text/plain; charset=UTF-8"
+     }
+    ],
+    "body": {
+     "size": 39,
+     "data": "VGhyZWUgYXR0YWNobWVudHMgd2l0aCBub24tQVNDSUkgbmFtZXMu"
+    }
+   },
+   {
+    "partId": "1",
+    "mimeType": "application/pdf",
+    "filename": "Laporan Q3 – é.pdf",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "application/pdf; name=\"Laporan Q3 – é.pdf\""
+     },
+     {
+      "name": "Content-Disposition",
+      "value": "attachment; filename=\"Laporan Q3 – é.pdf\""
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ-recorded-1",
+     "size": 51
+    }
+   },
+   {
+    "partId": "2",
+    "mimeType": "application/pdf",
+    "filename": "Rapport été.pdf",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "application/pdf"
+     },
+     {
+      "name": "Content-Disposition",
+      "value": "attachment; filename=\"Rapport été.pdf\""
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ-recorded-2",
+     "size": 51
+    }
+   },
+   {
+    "partId": "3",
+    "mimeType": "application/pdf",
+    "filename": "Résumé.pdf",
+    "headers": [
+     {
+      "name": "Content-Type",
+      "value": "application/pdf; name=\"Résumé.pdf\""
+     },
+     {
+      "name": "Content-Disposition",
+      "value": "attachment; filename=\"Résumé.pdf\""
+     },
+     {
+      "name": "Content-Transfer-Encoding",
+      "value": "base64"
+     }
+    ],
+    "body": {
+     "attachmentId": "ANGjdJ-recorded-3",
+     "size": 51
+    }
+   }
+  ]
+ },
+ "sizeEstimate": 1228,
+ "historyId": "4096",
+ "internalDate": "1794190200000"
+}

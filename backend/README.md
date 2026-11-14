@@ -178,8 +178,14 @@ protection: redeeming refuses an expired link whether or not its row is
 still there. While the worker is down, expired rows, which hold a token
 hash and an email address, simply stay longer. The same run also deletes
 old workflow runs, as [Inspecting workflows](#inspecting-workflows)
-describes. Each run logs `deleted expired rows` with a count when it
-deleted any, and records the counts as its output.
+describes, and last sweeps the [message content store](#message-content-store)
+of blobs no message part names that were written over a day ago, up to
+1,000 a step: what a save that failed between storing content and saving
+its rows left behind, and what a [content deletion](#content-deletion)
+that gave up left. Each sweep step lists the store from the start, so
+a large store costs a listing an hour. Each run logs `deleted expired
+rows` with a count when it deleted any, and records the counts as its
+output.
 
 ### Recovery notice
 
@@ -301,7 +307,10 @@ so far, asking Google to end inbok's permission. A
 [disconnect](#disconnecting) deletes the account, moves its sealed refresh
 token to an `account_removals` row, and saves the job, in one transaction,
 so the job's input is only the removal's ID and the token never sits in
-DBOS's tables. Google work in the background runs on `inbok.google`;
+DBOS's tables. The same transaction saves the deletion of the account's
+stored content, a job of its own (see [Content deletion](#content-deletion)),
+so a content store that fails never holds the revocation.
+Google work in the background runs on `inbok.google`;
 members' sends have a queue of their own, so they never wait behind it
 (see [Sending a message](#sending-a-message)).
 
@@ -326,6 +335,36 @@ DBOS would otherwise claim a removal it cannot run for that worker, and
 no other worker could take it. Removals saved while the settings were set
 wait in the queue, with their sealed tokens, until a worker that has them
 runs; one that never does leaves them there.
+
+### Content deletion
+
+The workflow `inbok.content-deletion`, run from the queue `inbok.content`,
+deletes the stored content of messages synchronization deleted. A sync
+write that deletes messages with stored content saves the job in its own
+transaction (`UpdateSyncedMail`), with the account's ID and the blob IDs
+the deleted parts named. Saving it only adds a row to DBOS's queue, which
+no worker sees until the transaction commits; a rollback removes it with
+the rest. So the blobs go only once the rows that named them are gone.
+Its one step, `delete content`, deletes them from the
+[message content store](#message-content-store), which takes a blob
+already gone as deleted; it is retried 5 more times, waiting 1, 2, 4, 8,
+then 15 minutes. A run that gives up logs `content deletion failed` and
+fails; the hourly sweep deletes those blobs a day later.
+
+The workflow `inbok.account-content-deletion`, on the same queue, deletes
+a disconnected account's whole key prefix. A [disconnect](#disconnecting)
+saves it, with the account's ID, in the transaction that saves the
+[account removal](#account-removal); it is a job of its own so that
+neither waits on the other's service, and so a worker without Google
+settings still runs it. Its one step, `delete account content`, is
+retried the same way; a run that gives up logs `account content deletion
+failed`, and the sweep deletes the blobs a day later, since the account's
+part rows went with it.
+
+The worker saves these jobs from its own steps, so it opens a DBOS client
+for its storage, as `serve` does: DBOS refuses a workflow's own context in
+a caller's transaction. Every worker runs the workflow and listens to
+`inbok.content`.
 
 ### Sending a message
 
@@ -454,7 +493,8 @@ accounts whose member is active and which need no reconnect, then:
 
 The run enqueues `inbok.sync` for each, keeping a sync already queued or
 running. An idle account then costs one run a minute in all, the
-schedule's, and 1 unit of its Gmail quota.
+schedule's, and 1 unit of its Gmail quota;
+[message bodies](#message-bodies) have a minute's schedule of their own.
 
 **Sync now.** `POST /api/v0/connected-accounts/{id}/sync`
 (`mailsync.Service.Request`) enqueues `inbok.sync` for one of the member's
@@ -572,6 +612,76 @@ position. The worker registers both workflows and the schedule, and
 listens to `inbok.google`, only with the Google settings, as for the
 [account removal](#account-removal); without them it deletes the schedule
 an earlier start saved.
+
+### Message bodies
+
+The workflow `inbok.message-bodies`, run from the queue `inbok.google`,
+fetches the content of recent mail in the background, so a member opens
+it without waiting and search finds it by its text. Its input is only the
+account's ID: the account's own data lists what to fetch. A message needs
+its body while it has no part rows, Gmail received it in the last 90 days,
+it is in no Spam or Trash mailbox (ADR001 keeps those metadata only), and
+its fetch has not failed for good in the last day (`body_failed_at`).
+
+The workflow `inbok.message-bodies-schedule` runs at the start of every
+minute, in UTC (the schedule `inbok.message-bodies.minutely`), and its
+step `pick due bodies` (`messagecontent.Fetcher.DueAccounts`) makes one
+query for the accounts whose member is active, which need no reconnect,
+whose full sync is `complete`, and which have a message needing its body.
+The rule's policy is Go's: the window (`mailsync.Window`), the day's
+skip, and the mailboxes left out (`mailsync.MetadataOnlyRoles`), which
+the queries take as parameters.
+For each, it enqueues `inbok.message-bodies`, keeping one already queued
+or running (its deduplication ID, `message-bodies-<account ID>`); its
+output is how many it asked for. Bodies so wait for an account's first
+copy, which with the whole pace fills the mail list up to four times as
+fast. A later full sync, after Gmail dropped the account's history, can
+start while a body run is going; the run keeps on, sharing the pace
+(ADR009, "Fetching content", accepts it). The accounts are found from their data
+each minute, not from events: a quiet account, which gets no sync run,
+still has a run that ended at its limit or failed, or a message whose day
+passed, picked up within a minute. A pick that fails fails the run, and
+an enqueue that fails is skipped; they log `message body check failed`
+or `message body fetch not started`, and the next minute tries again.
+The schedule is apart from the sync schedule, whose successful runs tell
+members that syncing works (`syncStopped`, [Connected
+accounts](#connected-accounts)), so body work that stalls, e.g. behind a
+lock, never makes syncing look stopped.
+
+Each step, `fetch bodies` (`Fetcher.FetchDue`), takes an access token and
+the 20 newest messages that need their body, asked again each step, so
+mail arriving during a long fetch goes first. It fetches them one at a
+time with `messages.get` in full format (60 units, on the account's pace
+that sync's fetches share: about 80 messages a minute), reads each part
+tree ([Message parts](#message-parts)), fetches a text part Gmail sends
+by `attachmentId` on its own, and saves the message as the
+[message content store](#message-content-store) describes. A message
+Gmail no longer has (404 or 410), whose answer passes 16 MiB, which
+Gmail refuses (a 4xx other than 401, 403, 408, or 429), whose answer
+does not decode or has no value, or with over 1,000 parts records
+`body_failed_at`, logs `message body fetch failed` with its `message_id`,
+and the step goes on; one synchronization deleted meanwhile is passed
+over. Any other error, e.g. Gmail's rate limits or a 5xx past their
+retries, a network failure, or the store or database down, concerns the
+whole account: it ends the run, logged as `message body fetch failed`
+with the `account_id`, without retries, and the next minute starts
+another. A per-message problem that shows only as such an error, e.g. a
+5xx one message alone causes, would end every run at that message; inbok
+accepts that unlikely case. An account that needs a reconnect, has a
+deactivated member, is gone, or has a token no key opens ends the run
+quietly, as the sync records why.
+
+A run takes at most 50 steps, about 1,000 messages: some 12 minutes when
+each message's text comes in its first answer, longer when text comes
+separately or calls are retried. It so stays short to resume, and holds
+its place in `inbok.google`'s limit, if one is set, for a bounded number
+of messages; the next minute's schedule goes on. A mailbox with 10,000
+messages in 90 days so has its list after about 42 minutes and its bodies
+about 2 hours later.
+
+The worker registers both workflows and the schedule only with the Google
+settings, as for the [account removal](#account-removal); without them it
+deletes the schedule an earlier start saved.
 
 ### Inspecting workflows
 
@@ -918,7 +1028,7 @@ Message content, such as the text of a message, lives in an S3-compatible
 object store; PostgreSQL keeps what describes it. Every stack runs
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) for it, one container
 started with `weed mini`. Both `serve` and the worker read the three
-`INBOK_S3_*` settings. The worker, which writes the content, creates the
+`INBOK_S3_*` settings. The worker, which writes most content, creates the
 bucket `inbok` at startup if it is missing, so a wrong address or key
 stops it there, and a store that does not answer stops it within 10
 seconds. `serve` starts without contacting the store: the store is a
@@ -939,10 +1049,70 @@ volume, and their gRPC ports) let anyone who reaches them read and write,
 so only the S3 port is published, to this machine only, and the deployment
 keeps SeaweedFS on a network of its own with inbok and the worker.
 
+What describes the content is in PostgreSQL's `message_parts`: one row
+per MIME part of each message whose content was fetched, a message having
+rows for all its parts or none. A row keeps the part's place in the tree
+(`path`, the index of each part on the way down from the top part),
+Gmail's `partId`, media type, charset, file name, size, disposition,
+`Content-ID`, a `multipart/related` part's `start`, its kind (see
+[Message parts](#message-parts)), and the blob ID its bytes are stored
+under: at once for a text part, and for an attachment or inline part once
+a member first asks for it. The blob ID is JMAP's `blobId` (RFC 8621,
+section 4.1.4), not the part's `Content-ID`, which is `mime_content_id`.
+Rows reference their message with the account,
+deleted with it.
+
+`messagecontent.Contents.Save` writes a message's content in the order
+ADR009 sets, since the store and PostgreSQL share no transaction:
+
+1. Store each text part's content under a new random blob ID.
+2. Save the rows in one transaction (`SaveMessageParts`), which locks the
+   account's sync state first, as every write to its mail does, so a
+   sync write deleting the message waits for it rather than deadlocking.
+   A message whose parts are saved already keeps them.
+
+So a row never names content that was never stored. A failure between the
+two, or two saves of one message racing before either commits, leaves
+content no row names, which the [hourly cleanup](#scheduled-cleanup)
+sweeps once it is a day old; a save gives up after an hour, so none in
+progress outlasts that margin. The hour is the client's: in the rare case
+that a commit lands later still, e.g. after a database outage, a row may
+name a blob the sweep deleted, which opening the message repairs as
+below. A retry before the rows commit stores the content
+again under new IDs: a job's step output may hold no mail, so the IDs
+cannot be recorded before the fetch that tells how many parts there are.
+Saving a message whose rows are saved stores its content again under the
+IDs they name. A row naming content the store no longer has, e.g. after a
+lost volume, reads as not stored: fetching the message again and saving
+it puts the content back under the same ID. So a lost volume refills
+message by message as members open mail, not all at once in the
+background. Deleting goes the other way: rows first, then content.
+[Content deletion](#content-deletion) deletes the blobs deleted
+messages' rows named, after their transaction commits, and a
+disconnected account's whole key prefix after the disconnect commits.
+
+Content arrives through `messagecontent.Fetcher`, in three ways:
+
+- [Message bodies](#message-bodies) fetches recent mail in the
+  background.
+- `FetchMessage` fetches one message as when a member opens it: whatever
+  its date or mailbox, and even when its background fetch failed. Saved
+  rows stay, so fetching again only puts back text the store lost.
+- `FetchPart` fetches an attachment or inline part on first request, or
+  any part whose content the store lost. A fresh `messages.get` (60
+  units) gives the part's bytes when Gmail sends them in the answer, or
+  else its `attachmentId`, since Gmail does not promise an old one keeps
+  working, and none is ever taken from a request; then
+  `messages.attachments.get` (20 units more, answers up to 64 MiB)
+  returns them. A text part's are converted to UTF-8. `Contents.SavePart`
+  stores them first, then names the blob in the part's row in a
+  transaction that locks the account's sync state. A row that names a
+  blob already keeps it, leaving the other copy to the sweep.
+
 Code reaches the store through `messagecontent.Store`, never the SDK. A
-`Ref` names one content: the connected account it came from and a content
+`Ref` names one content: the connected account it came from and a blob
 ID, which PostgreSQL keeps. The `s3` package alone builds object keys from
-it, `accounts/<account ID>/<content ID>`, so keys hold no addresses,
+it, `accounts/<account ID>/<blob ID>`, so keys hold no addresses,
 subjects, or file names. The rules every caller relies on:
 
 - `Put` takes content it can seek in, e.g. a `bytes.Reader` or an open
@@ -970,6 +1140,19 @@ acts on (e.g. `X-Seaweedfs-Extract`, which unpacks a ZIP upload into
 other keys); and nothing encrypts content. The Compose files accept
 that, trusting the host and a network that only inbok, the worker, and
 SeaweedFS share; anywhere else, use an `https` endpoint.
+
+The store's calls fail once a connection delivers no bytes for five
+minutes (the SDK's read timeout, which it never sets for S3 by itself),
+so a store that takes a request and never answers cannot hold a job or a
+request for good; a slow but moving download still ends. An upload taking
+over five minutes fails too, since the store sends nothing until the body
+is in: fine on a private network, not for a store far away. The timeout counts
+silence on a connection, not on one request: over HTTP/2, which Go uses
+only with an `https` endpoint, other requests on the connection can keep
+one that stalls alive. That can hold a content job, which the sweep
+backs up, or a member's download, whose read has no request deadline so
+a large file reaches a slow client; `DEBT.md` in the decision records
+holds the fix for when an `https` store is used.
 
 Feature tests use `messagecontenttest.Fake`, a store in memory.
 `messagecontenttest.RunContract` holds the tests both it and the `s3`
@@ -1192,10 +1375,13 @@ technology package fills (`google` for Gmail), and returns:
   size, disposition, `Content-ID`, kind, and, for `multipart/related`,
   its `start` parameter;
 - the content of each text part that came with the message, converted to
-  UTF-8 by `DecodeText`. A part whose bytes the provider sends separately
-  (Gmail's `attachmentId`) has none; decode it with `DecodeText` once
-  fetched. Neither has a text part inside an attachment, e.g. a forwarded
-  message, which no view shows.
+  UTF-8 by `DecodeFrom`: from the charset the provider says it already
+  converted the bytes to (`Received.ContentCharset`; Gmail's inline text
+  is UTF-8), or else the part's declared charset, through `DecodeText`. A
+  part whose bytes the provider sends separately (Gmail's `attachmentId`)
+  has none; decode it with `DecodeFrom` once fetched, with the charset
+  `Provider.PartContent` reports. Neither has a text part inside an
+  attachment, e.g. a forwarded message, which no view shows.
 
 These are inbok's own rules on top of a parsed tree. MIME libraries such
 as emersion's go-message or enmime read raw message bytes and decide no
@@ -1248,9 +1434,23 @@ shown, so a better rule reaches stored mail without fetching it again:
 Reports say Gmail's `attachmentId` changes between `messages.get` calls,
 so a part is named by its message and part ID, and its bytes are fetched
 with the `attachmentId` of a fresh `messages.get`; an attachment's bytes
-may also come as `data` in that answer. The fixtures in
-`internal/google/testdata` follow the shape of a recorded `format=full`
-response.
+may also come as `data` in that answer. Real Gmail, recorded from the test
+account in `internal/google/testdata/recorded`:
+
+- converts a text part's inline `data` to UTF-8, from its declared
+  charset, its `<meta>` charset, or else Latin-1, yet keeps its
+  `Content-Type` and its `size` as sent, so the `google` package marks it
+  with `ContentCharset` `utf-8`;
+- sends a long text part, and every file and inline image however small,
+  by `attachmentId`, and `messages.attachments.get` returns those bytes as
+  sent;
+- decodes RFC 2047 and RFC 2231 file names, rewriting the part's header
+  fields to match;
+- nests a forwarded message's parts under its `message/rfc822` part.
+
+The other fixtures in `internal/google/testdata` are built in that shape.
+[Gmail fixtures](../CONTRIBUTING.md#gmail-fixtures) says how to record
+more.
 
 ## Showing HTML
 
@@ -1327,9 +1527,44 @@ the body on inbok's origin, so inline images load with the session
 cookie and the web app can size the frame. The response replaces the
 `X-Frame-Options: DENY` of [Security headers](#security-headers) with
 `SAMEORIGIN`. A `srcdoc` frame would take the web app's policy instead,
-which refuses the message's CSS; ADR009 records the trade-offs. No route
-returns it yet: the message endpoint, which also runs `Sanitize` into
-`io.Discard` to learn `Blocked` and `Shown`, comes with message bodies.
+which refuses the message's CSS; ADR009 records the trade-offs.
+
+Three operations under the Messages tag serve a message's content, each
+through `messagecontent.Reader`, which finds the message only in the
+signed-in member's own connected accounts:
+
+- `GET /messages/{id}/content` returns what the view shows, as
+  `messagecontent.Choose` picks it: the bodies in order, whether an HTML
+  body refers to remote images, and the downloads. An HTML body comes as
+  two body URLs, remote images blocked and allowed; the reader runs
+  `Sanitize` into `io.Discard` to learn `Blocked` and `Shown`, the inline
+  parts the HTML shows, which `Display.Downloads` leaves out. A plain-text
+  body comes inline, clipped at 102 KiB on a character boundary with
+  `clipped` set, and its part URL holds the whole text.
+- `GET /messages/{id}/bodies/{part}` returns `messageBody` for an HTML
+  part the view shows as a body, with `?remote=allowed` for the copy
+  that loads remote images. It lists `iframe` under `fetchDestKey`.
+- `GET /messages/{id}/parts/{part}` returns a part the view shows or
+  offers, as stored: a text body in UTF-8, anything else as received. It
+  serves PNG, JPEG, GIF, and WebP inline with `nosniff`, and anything
+  else, SVG included, as an attachment under
+  `Content-Security-Policy: sandbox; default-src 'none'`. It lists
+  `image`, `document`, and `empty` under `fetchDestKey`: an image in a
+  body, a part opened in a tab, and a download link and the web app's
+  calls, which both send `empty`.
+
+`{part}` is the part's place, `0` for the top part and then each index on
+the way down, e.g. `0.1.2`, the `path` of its row; Gmail's `partId` of
+the top part is empty, which a path segment cannot carry. Content not
+stored, e.g. of a message older than the background fetch's 90 days or
+an attachment never downloaded, is fetched in the request through
+`FetchMessage` or `FetchPart`, with `serve`'s own Google client at its
+own pace. That keeps the request's 10 seconds: a provider that keeps
+refusing answers 503 `mail-provider-busy` with `Retry-After: 30`, or the
+shared `service-busy` once the backoff outlasts the request. The part
+route reads the stored copy without that deadline and moves the write's
+deadline 5 minutes on, so a large attachment reaches a slow client; the
+store's read timeout still ends a read that stalls.
 
 ## Email addresses
 
@@ -2232,7 +2467,9 @@ up a state.
 account. In one transaction it deletes the account, and with it the
 account's connect states and everything synchronized for it, moves the
 refresh token to `account_removals`, and saves the
-[account removal](#account-removal) job. Jobs already running for the
+[account removal](#account-removal) job and the job that deletes the
+account's stored content ([Content deletion](#content-deletion)).
+Jobs already running for the
 account stop when `Access.Token` finds it gone.
 
 ### Sending mail
@@ -2423,7 +2660,9 @@ account's sync state, passes it to a function that returns a
 `mailsync.Change`, and writes the change in one transaction: the
 mailboxes, deleted messages, saved messages with their mailboxes,
 updated messages' mailboxes and flags, the sweep of earlier generations,
-and the new state. An update for a message the account does not have is
+the [content deletion](#content-deletion) of what the deleted messages
+had stored, and the new state.
+An update for a message the account does not have is
 skipped. A change that saves one message twice keeps the last, and one
 that deletes and saves a message only saves it, so the message keeps its
 `id` however often a step repeats. A saved or updated message naming a
@@ -2469,9 +2708,10 @@ takes an access token from [Calling Gmail](#calling-gmail):
   sync; so does a position that is not a history ID, without asking
   Gmail.
 
-What a sender writes is bounded: each Gmail answer at 4 MiB, and each
-header at 16 KiB, cut on a whole character before it is parsed; a
-longer `References` is read only at its first and last 8 KiB. Of what
+What a sender writes is bounded: each Gmail answer at 4 MiB, but a
+message's content at 16 MiB in full format and 64 MiB for an attachment,
+and each header at 16 KiB, cut on a whole character before it is parsed;
+a longer `References` is read only at its first and last 8 KiB. Of what
 parses, each address list keeps 500 entries and `References` 50 msg-ids,
 the first and the last 49. Invalid UTF-8 and NUL, which PostgreSQL's
 `text` and `jsonb` refuse, become U+FFFD in every stored string. A
@@ -2479,15 +2719,21 @@ message whose headers pass 4 MiB is fetched again without them. None of
 these can make a message fail to save, which would stop the account's
 sync.
 
-Gmail allows 6,000 quota units a minute per user, and a metadata fetch
-costs 20. An account's `Messages` calls spend at most four fifths of
-that, four fetches a second across calls, with at most four of a call in
-flight, leaving room for the same account's sends and polls. The pace is
-the process's own; one sync per account at a time keeps it whole. Each
-`Provider` call retries a 429, a 403 rate limit, a 500, 502, 503, or
-504, or a timeout after 1, 2, 4, and 8 seconds, each plus up to a second
-at random, or after the `Retry-After` Gmail sends; past five attempts,
-or for a `Retry-After` over 32 seconds, it returns
+Gmail allows 6,000 quota units a minute per user; a metadata fetch costs
+20, a full one 60, and an attachment 20. An account's `Messages`,
+`Message`, and `PartContent` calls spend at most four fifths of that
+across calls: four metadata fetches a second, with at most four of a
+call in flight, or four full ones every three seconds. That leaves room
+for the same account's sends and polls, and for the messages a member
+opens. The pace is the process's own; one sync and one body fetch per
+account at a time keep the worker's whole, while another process's
+fetches, e.g. for a member who opens a message, use that process's own,
+inside the room left. A call whose wait for the pace would outlast its
+context's deadline returns `mailsync.ErrProviderBusy` at once, sending
+nothing. Each `Provider` call retries a 429, a 403 rate limit, a 500,
+502, 503, or 504, or a timeout after 1, 2, 4, and 8 seconds, each plus
+up to a second at random, or after the `Retry-After` Gmail sends; past
+five attempts, or for a `Retry-After` over 32 seconds, it returns
 `mailsync.ErrProviderBusy` for the job to try later. Errors keep only
 Gmail's status, never its text, and an answer that does not decode fails
 without quoting it. The Google client's own logging is off, since at
@@ -2743,6 +2989,8 @@ httpapi --> mailsync <-- repository/postgres
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google
+                           <-- repository/postgres
+            messagecontent --> connectedaccount, mailsync
 ```
 
 - `probe`, like every feature package, holds the feature's types, its
@@ -2788,8 +3036,10 @@ httpapi --> messagecontent <-- s3
   unanswered send; and `mailsync`'s `Provider`, the Gmail reads
   synchronization makes. It uses `golang.org/x/oauth2` and Google's Gmail
   client, whose types stay inside it; Gmail calls take
-  `connectedaccount`'s `AccessToken`. It also turns a Gmail message's
-  parts into `messagecontent.Received`, the provider-neutral input of
+  `connectedaccount`'s `AccessToken`. It also implements
+  `messagecontent`'s `Provider`, a message's content in full format and
+  one part's bytes, turning a Gmail message's parts into
+  `messagecontent.Received`, the provider-neutral input of
   [Message parts](#message-parts).
 - `googleemulator` starts the [Google emulator](#google-emulator) for
   tests, each with its own seed. Only tests import it.
@@ -2804,8 +3054,8 @@ httpapi --> messagecontent <-- s3
   interfaces it declares, in `dbos.Services`, which `cmd/inbok` fills, e.g.
   with `emailverification.Cleanup`; like other technology packages it may
   import a feature's plain types, e.g. `account.NoticeOutcome`, while
-  features never import DBOS. Its `Client` saves workflows from a process
-  that runs none, e.g. `recover-admin`, inside a storage transaction: it
+  features never import DBOS. Its `Client` saves workflows inside a storage
+  transaction, from `recover-admin`, `serve`, or a worker's own steps: it
   implements `repository/postgres`'s `Workflows`, and the two meet on
   pgx's `pgx.Tx`, which DBOS's API takes, without importing each other
   outside tests. It is the only package besides `repository/postgres`
@@ -2943,7 +3193,7 @@ For a job that runs once per request, follow the recovery notice
    so another feature's job changes no fake of yours.
 5. The command that makes the change gives storage the client with
    `DB.WithWorkflows`, as `recover-admin` does; `serve` already has one,
-   for jobs requests save.
+   for jobs requests save, and so has the worker, for jobs its steps save.
 
 ### Calling Gmail
 

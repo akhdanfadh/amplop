@@ -20,20 +20,26 @@ import (
 	"inbok/internal/mailsync"
 )
 
-// Gmail's per-user quota and what a metadata fetch costs of it (Gmail's
-// usage limits): 6,000 units a minute per user per project, and 20 for a
-// messages.get in metadata format.
+// Gmail's per-user quota and what each fetch costs of it (Gmail's usage
+// limits): 6,000 units a minute per user per project, 20 for a
+// messages.get in metadata format, 60 in full format, and 20 for a
+// messages.attachments.get.
 const (
 	userUnitsPerMinute = 6000
 	metadataUnits      = 20
+	fullUnits          = 60
+	attachmentUnits    = 20
 )
 
 const (
 	// fetchUnitsPerMinute is the share of [userUnitsPerMinute] one account's
 	// fetches spend, inbok's choice: four fifths, leaving room for the same
-	// account's sends (100 units each) and polls meanwhile. That paces
-	// fetches at 4 a second. The pace is this process's: one sync per
-	// account at a time keeps the account's fetches in one process.
+	// account's sends (100 units each), polls, and the messages its member
+	// opens meanwhile. That paces metadata fetches at 4 a second, full ones
+	// at 4 every 3 seconds. The pace is this process's: the worker runs
+	// one sync and one body fetch per account at a time, while the API's
+	// fetches for a member who opens a message share its own process's
+	// pace, inside the room left (ADR009, "Fetching content").
 	fetchUnitsPerMinute = userUnitsPerMinute * 4 / 5
 	// fetchConcurrency bounds one call's fetches in flight, inbok's choice.
 	// Gmail also limits a user's concurrent requests, at a number it does
@@ -198,10 +204,11 @@ func (p *paces) take(accountID int64) *rate.Limiter {
 		}
 	}
 
-	// 3. Take the account's pace, or start a full one.
+	// 3. Take the account's pace, or start a full one. Its bucket holds the
+	// costliest fetch, which could never wait for more than the bucket holds.
 	current, ok := p.byAccount[accountID]
 	if !ok {
-		current = &pace{limiter: rate.NewLimiter(rate.Limit(float64(fetchUnitsPerMinute)/60), metadataUnits)}
+		current = &pace{limiter: rate.NewLimiter(rate.Limit(float64(fetchUnitsPerMinute)/60), fullUnits)}
 		p.byAccount[accountID] = current
 	}
 
@@ -209,6 +216,23 @@ func (p *paces) take(accountID int64) *rate.Limiter {
 	// the pace while this call uses it.
 	current.calls++
 	return current.limiter
+}
+
+// waitPace waits on pace until n units are free. It returns ctx's error
+// once ctx ends, and an error wrapping [mailsync.ErrProviderBusy] when the
+// wait would outlast ctx's deadline: the account's share of Gmail's quota
+// is spent for now, and no request was sent.
+func waitPace(ctx context.Context, pace *rate.Limiter, n int) error {
+	// NOTE: WaitN refuses at once, before the deadline, with an error of its
+	// own, when the wait would pass it.
+	err := pace.WaitN(ctx, n)
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return fmt.Errorf("%w: the account's gmail quota share is spent for now", mailsync.ErrProviderBusy)
 }
 
 // release ends one call's use of accountID's pace.
@@ -228,7 +252,7 @@ func (c *Client) fetchMetadata(ctx context.Context, service *gmail.Service, pace
 		return retry(ctx, c, func() (*gmail.Message, error) {
 			// Inside the retry, so every attempt waits for its units: Gmail
 			// charges each request, a retried one too.
-			if err := pace.WaitN(ctx, metadataUnits); err != nil {
+			if err := waitPace(ctx, pace, metadataUnits); err != nil {
 				return nil, err
 			}
 			call := service.Users.Messages.Get(gmailUser, providerID).Format(format).Fields(fields)
@@ -249,6 +273,11 @@ func (c *Client) fetchMetadata(ctx context.Context, service *gmail.Service, pace
 	}
 	if err != nil {
 		return nil, err
+	}
+	// NOTE: Google's client answers a JSON null, or a 204, with no value
+	// and no error.
+	if message == nil {
+		return nil, errGmailAnswer
 	}
 	if message.Id != providerID {
 		return nil, fmt.Errorf("gmail api: asked for one message, got another")

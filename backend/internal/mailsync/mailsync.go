@@ -225,7 +225,8 @@ type Storage interface {
 	// UpdateSyncedMail locks accountID's sync state, calls update with it, and
 	// writes the [Change] update returns, in one transaction: the mailboxes, then
 	// the deletes, the saves, the updates, the earlier generations' deletes,
-	// and last the state. It returns what it wrote,
+	// the job that deletes the deleted messages' stored content, and last the
+	// state. It returns what it wrote,
 	// [ErrNotFound] when the account has no sync state, and [ErrUnknownMailbox]
 	// when a saved or updated message names a mailbox the account does not have
 	// after the change's mailboxes. On any error it writes nothing; an error

@@ -1,14 +1,25 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import {
+  createContext,
+  use,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { ReplyAllIcon, ReplyIcon } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import * as z from "zod";
 import { useGetOutgoingMessage, useListConnectedAccounts } from "@/api/generated/inbok";
-import type { OutgoingMessage } from "@/api/generated/model";
+import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
+import type { ApiError } from "@/api/transport";
 import { lineLink } from "@/components/link-style";
 import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useLayout } from "@/hooks/use-layout";
+import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { pollWhile, sendPollMs } from "./poll";
 import {
   othersReceived,
@@ -35,53 +46,89 @@ const notFound = 404;
 const messageId = z.uuid();
 
 // An open editor: its mode, what it starts with, the message it answers,
-// whether it is a phone's full-screen sheet, and a number that gives each
-// editor its own form and Idempotency-Key.
+// and a number that gives each editor its own form and Idempotency-Key.
 //
-// DESIGN: the message and the layout are fixed when it opens. A newer
-// last message, synced while the member types, must not turn the reply
-// into an answer to another message; and moving the editor between the
-// page and a sheet when the window crosses the phone width would remount
-// it, losing what was typed and its Idempotency-Key.
+// DESIGN: the message is fixed when it opens: a newer last message, synced
+// while the member types, must not turn the reply into an answer to
+// another message.
 type Editor = {
   mode: ReplyMode;
   initial: ReplyValues;
-  answeredId: string;
-  sheet: boolean;
+  answered: AnsweredMessage;
   serial: number;
 };
 
+// A Reply button: the message it answers, its mode, and whether it is in
+// that message's header or after the last message.
+type Opener = { messageId: string; mode: ReplyMode; place: "header" | "bottom" };
+
 // A saved reply whose status shows, and the message it answers, which its
 // Edit and send answers again.
-type Sent = { id: string; answeredId: string };
+type Sent = { id: string; answered: AnsweredMessage };
 
-// ConversationReply is the bottom of a conversation: Reply and Reply all
-// (when someone else received message), which open one inline editor
-// answering message, the conversation's last; then, once sent, the reply's
-// status until the member replies again. On a phone the editor fills the
-// screen. onUnauthorized runs on a 401.
-//
-// DESIGN: it takes the answered message as props and reads only the
-// member's accounts, so the conversation view mounts it as it is
-// (DESIGN.md, "Compose and reply").
-export function ConversationReply({
-  message,
-  onUnauthorized,
-}: {
-  message: AnsweredMessage;
+// What a conversation's reply pieces share: the member's accounts as
+// read, the one editor and the last sent reply, and what opens or closes
+// them.
+type Reply = {
+  accounts: ListedAccount[] | undefined;
+  // The accounts read's failure, other than a 401, and its retry.
+  readError: ApiError | null;
+  retrying: boolean;
+  retry: () => void;
+  editor: Editor | null;
+  sent: Sent | null;
+  open: (answered: AnsweredMessage, mode: ReplyMode, initial?: ReplyValues) => void;
+  edit: (reply: OutgoingMessage, answered: AnsweredMessage) => void;
+  setSent: (sent: Sent) => void;
+  discard: () => void;
+  // The bottom's Reply, which takes focus back when the button that opened
+  // the editor is gone.
+  bottomReplyId: string;
   onUnauthorized: () => void;
+};
+
+const ReplyContext = createContext<Reply | null>(null);
+
+// useReply returns what the conversation's ReplyProvider shares.
+function useReply(): Reply {
+  const reply = use(ReplyContext);
+  if (!reply) throw new Error("reply pieces need a ReplyProvider around the conversation");
+  return reply;
+}
+
+// useAnsweredId returns the ID of the message the open editor answers, or
+// null, so the conversation keeps that message unfolded.
+export function useAnsweredId(): string | null {
+  return use(ReplyContext)?.editor?.answered.id ?? null;
+}
+
+// ReplyProvider holds a conversation's one reply editor (DESIGN.md,
+// "Reading pane"): which message it answers, in which mode, and the last
+// reply sent, for the pieces the conversation places: MessageReplyActions
+// in each message's header, ReplyEditorSlot under each message, and
+// ConversationReply after the last. onUnauthorized runs on a 401.
+//
+// DESIGN: one editor per conversation. While it is open every Reply
+// button hides, as the bottom's always did, so a second Reply never
+// replaces typed text; the editor never moves once open, which would
+// remount it and lose its text and Idempotency-Key.
+export function ReplyProvider({
+  onUnauthorized,
+  children,
+}: {
+  onUnauthorized: () => void;
+  children: ReactNode;
 }): ReactElement {
-  const layout = useLayout();
   const read = useListConnectedAccounts();
   const accounts = read.data?.data.accounts;
-  const replyRef = useRef<HTMLButtonElement>(null);
   const serial = useRef(0);
-  // The open editor's Discard, for the phone sheet's Escape.
-  const discardRef = useRef<(() => void) | null>(null);
+  const bottomReplyId = useId();
+  // Which Reply button opened the editor, by its message, mode, and place
+  // (a header or the bottom), which takes focus back on Discard.
+  const opener = useRef<Opener | null>(null);
+  const returnFocus = useRef(false);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [sent, setSent] = useState<Sent | null>(null);
-  // Set when the editor closes without sending, so focus returns to Reply.
-  const returnFocus = useRef(false);
   const expired = read.error?.status === unauthorized;
 
   useEffect(() => {
@@ -90,80 +137,214 @@ export function ConversationReply({
   useEffect(() => {
     if (!returnFocus.current || editor) return;
     returnFocus.current = false;
-    replyRef.current?.focus();
-  }, [editor]);
+    // The Reply buttons hid while the editor was open, so the one that
+    // opened it is found again; its message may have folded meanwhile, and
+    // a header draws its buttons twice, one hidden by the pane's width. The
+    // bottom's Reply stays.
+    const pressed = opener.current;
+    const again = pressed
+      ? [...document.querySelectorAll<HTMLElement>("[data-reply-for]")].find(
+          (button) =>
+            button.dataset.replyFor === pressed.messageId &&
+            button.dataset.replyMode === pressed.mode &&
+            button.dataset.replyPlace === pressed.place &&
+            button.offsetParent !== null,
+        )
+      : undefined;
+    (again ?? document.getElementById(bottomReplyId))?.focus();
+  }, [editor, bottomReplyId]);
 
-  // open shows the editor in mode answering answeredId, starting with
-  // initial, or with the defaults for the conversation's last message.
-  function open(mode: ReplyMode, initial?: ReplyValues, answeredId = message.id): void {
-    if (!accounts) return;
-    serial.current++;
-    setEditor({
-      mode,
-      initial: initial ?? replyDefaults(message, mode, accounts),
-      answeredId,
-      sheet: layout === "phone",
-      serial: serial.current,
-    });
-  }
+  // The fields used, not the read itself, a new object each render.
+  const { error: readError, isFetching: retrying, refetch } = read;
+  const value = useMemo<Reply>(() => {
+    // open shows the editor in mode answering answered, starting with
+    // initial, or with the defaults for that message.
+    function open(answered: AnsweredMessage, mode: ReplyMode, initial?: ReplyValues): void {
+      if (!accounts) return;
+      const button = document.activeElement;
+      const place = button instanceof HTMLElement ? button.dataset.replyPlace : undefined;
+      opener.current =
+        place === "header" || place === "bottom" ? { messageId: answered.id, mode, place } : null;
+      serial.current++;
+      setEditor({
+        mode,
+        initial: initial ?? replyDefaults(answered, mode, accounts),
+        answered,
+        serial: serial.current,
+      });
+    }
 
-  // edit opens an editor with the content of reply, a refused one that
-  // answered answeredId: a new reply to that same message, from reply's
-  // account while it can send.
-  function edit(reply: OutgoingMessage, answeredId: string): void {
-    const usable = accounts?.some(
-      (account) => account.id === reply.connectedAccountId && account.status === "usable",
-    );
-    open(
-      "reply",
-      {
+    // edit opens an editor with the content of reply, a refused one that
+    // answered answered: a new reply to that same message, from reply's
+    // account while it can send.
+    function edit(reply: OutgoingMessage, answered: AnsweredMessage): void {
+      const usable = accounts?.some(
+        (account) => account.id === reply.connectedAccountId && account.status === "usable",
+      );
+      open(answered, "reply", {
         connectedAccountId: usable ? reply.connectedAccountId : 0,
         to: reply.to,
         cc: reply.cc,
         bcc: reply.bcc,
         body: reply.body,
+      });
+    }
+
+    return {
+      accounts,
+      readError: expired ? null : readError,
+      retrying,
+      retry: () => void refetch(),
+      editor,
+      sent,
+      open,
+      edit,
+      setSent: (next) => {
+        setSent(next);
+        setEditor(null);
       },
-      answeredId,
-    );
-  }
+      discard: () => {
+        returnFocus.current = true;
+        setEditor(null);
+      },
+      bottomReplyId,
+      onUnauthorized,
+    };
+  }, [
+    accounts,
+    expired,
+    readError,
+    retrying,
+    refetch,
+    editor,
+    sent,
+    bottomReplyId,
+    onUnauthorized,
+  ]);
+  return <ReplyContext value={value}>{children}</ReplyContext>;
+}
+
+// MessageReplyActions is a message's own Reply, and Reply all when someone
+// else received it, as icon buttons in its header; both hide while the
+// conversation's editor is open.
+export function MessageReplyActions({ message }: { message: AnsweredMessage }): ReactNode {
+  const { accounts, editor, open } = useReply();
+  if (!accounts || editor || !messageId.safeParse(message.id).success) return null;
+  return (
+    <>
+      <IconAction
+        label={replyLabels.reply}
+        messageId={message.id}
+        mode="reply"
+        onPress={() => open(message, "reply")}
+      >
+        <ReplyIcon />
+      </IconAction>
+      {othersReceived(message, accounts) && (
+        <IconAction
+          label={replyLabels["reply-all"]}
+          messageId={message.id}
+          mode="reply-all"
+          onPress={() => open(message, "reply-all")}
+        >
+          <ReplyAllIcon />
+        </IconAction>
+      )}
+    </>
+  );
+}
+
+// IconAction is a header's icon button, named by its tooltip, which opens
+// the editor answering messageId in mode.
+function IconAction({
+  label,
+  messageId: id,
+  mode,
+  onPress,
+  children,
+}: {
+  label: string;
+  messageId: string;
+  mode: ReplyMode;
+  onPress: () => void;
+  children: ReactNode;
+}): ReactElement {
+  return (
+    <TooltipTrigger>
+      {/* Its 32 px box overhangs the header's 20 px line, not taller. */}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={label}
+        data-reply-for={id}
+        data-reply-mode={mode}
+        data-reply-place="header"
+        className="-my-1.5"
+        onPress={onPress}
+      >
+        {children}
+      </Button>
+      <Tooltip>{label}</Tooltip>
+    </TooltipTrigger>
+  );
+}
+
+// ReplyEditorSlot shows the conversation's editor right below the message
+// with messageId, when it answers that message: inline on every screen,
+// so an earlier message stays a scroll away while the member writes.
+export function ReplyEditorSlot({ messageId: id }: { messageId: string }): ReactNode {
+  const reply = useReply();
+  const { editor } = reply;
+  if (!editor || editor.answered.id !== id) return null;
+  return (
+    <div className="px-2 pb-3">
+      <EditorForm reply={reply} editor={editor} />
+    </div>
+  );
+}
+
+// EditorForm is the open editor's form.
+function EditorForm({ reply, editor }: { reply: Reply; editor: Editor }): ReactElement | null {
+  if (!reply.accounts) return null;
+  return (
+    <ReplyEditor
+      key={editor.serial}
+      answeredId={editor.answered.id}
+      mode={editor.mode}
+      accounts={reply.accounts}
+      receiving={reply.accounts.find((account) => account.id === editor.answered.accountId)}
+      initial={editor.initial}
+      onSent={(sent) => reply.setSent({ id: sent.id, answered: editor.answered })}
+      onDiscard={reply.discard}
+      onUnauthorized={reply.onUnauthorized}
+    />
+  );
+}
+
+// ConversationReply is the bottom of a conversation: Reply and Reply all
+// (when someone else received message), which open the editor answering
+// message, the conversation's last; once sent, the reply's status, where
+// the reply will land, until the member replies again.
+export function ConversationReply({ message }: { message: AnsweredMessage }): ReactElement {
+  const reply = useReply();
+  const { accounts, editor, sent } = reply;
 
   // Anything else, e.g. ../ segments, would reach another path of the API.
   if (!messageId.safeParse(message.id).success)
     return <p className="text-sm text-muted-foreground">{notAnswerable}</p>;
 
   if (!accounts) {
-    if (read.error && !expired)
+    if (reply.readError)
       return (
         <ReadError
-          message={`${accountsUnreadable} ${userMessage(read.error)}`}
-          error={read.error}
-          retrying={read.isFetching}
-          onRetry={() => void read.refetch()}
+          message={`${accountsUnreadable} ${userMessage(reply.readError)}`}
+          error={reply.readError}
+          retrying={reply.retrying}
+          onRetry={reply.retry}
         />
       );
     return <output className="text-sm text-muted-foreground">Loading...</output>;
   }
-
-  const form = editor && (
-    <ReplyEditor
-      key={editor.serial}
-      answeredId={editor.answeredId}
-      mode={editor.mode}
-      accounts={accounts}
-      receiving={accounts.find((account) => account.id === message.accountId)}
-      initial={editor.initial}
-      onSent={(reply) => {
-        setSent({ id: reply.id, answeredId: editor.answeredId });
-        setEditor(null);
-      }}
-      onDiscard={() => {
-        returnFocus.current = true;
-        setEditor(null);
-      }}
-      onUnauthorized={onUnauthorized}
-      discardRef={discardRef}
-    />
-  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -171,38 +352,31 @@ export function ConversationReply({
         <ReplyStatus
           key={sent.id}
           id={sent.id}
-          onEdit={(reply) => edit(reply, sent.answeredId)}
-          onSentAgain={(copy) => setSent({ id: copy.id, answeredId: sent.answeredId })}
-          onUnauthorized={onUnauthorized}
+          onEdit={(outgoing) => reply.edit(outgoing, sent.answered)}
+          onSentAgain={(copy) => reply.setSent({ id: copy.id, answered: sent.answered })}
+          onUnauthorized={reply.onUnauthorized}
         />
-      )}
-      {form && !editor.sheet && form}
-      {form && editor.sheet && (
-        // Escape runs the editor's Discard, which asks before typed text is
-        // lost; the scrim, a stray tap away, does not close it.
-        <Sheet
-          isOpen
-          onOpenChange={(isOpen) => {
-            if (!isOpen) discardRef.current?.();
-          }}
-          side="bottom"
-          className="overflow-y-auto data-[side=bottom]:top-0 data-[side=bottom]:h-dvh data-[side=bottom]:border-t-0"
-          isDismissable={false}
-          showCloseButton={false}
-        >
-          <SheetHeader className="pb-0">
-            <SheetTitle>{replyLabels[editor.mode]}</SheetTitle>
-          </SheetHeader>
-          <div className="px-4 pb-4">{form}</div>
-        </Sheet>
       )}
       {!editor && (
         <div className="flex flex-wrap gap-3">
-          <Button ref={replyRef} variant="outline" onPress={() => open("reply")}>
+          <Button
+            id={reply.bottomReplyId}
+            variant="outline"
+            data-reply-for={message.id}
+            data-reply-mode="reply"
+            data-reply-place="bottom"
+            onPress={() => reply.open(message, "reply")}
+          >
             {replyLabels.reply}
           </Button>
           {othersReceived(message, accounts) && (
-            <Button variant="outline" onPress={() => open("reply-all")}>
+            <Button
+              variant="outline"
+              data-reply-for={message.id}
+              data-reply-mode="reply-all"
+              data-reply-place="bottom"
+              onPress={() => reply.open(message, "reply-all")}
+            >
               {replyLabels["reply-all"]}
             </Button>
           )}
