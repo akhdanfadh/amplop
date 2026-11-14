@@ -79,7 +79,7 @@ export function MessageView({
     <article className="flex flex-col gap-4" aria-label={subject}>
       <Header header={header} subject={subject} />
       <Separator />
-      <Content content={content} />
+      <MessageContentView content={content} />
     </article>
   );
 }
@@ -144,7 +144,11 @@ function AddressText({ address }: { address: Address }): ReactElement {
   );
 }
 
-function Content({ content }: { content: MessageContent }): ReactElement {
+// MessageContentView shows a message's content as it loads: its bodies,
+// with the notice that loads remote images, then its attachments; while
+// pending, "Loading message..."; on failure, a ReadError with Try again.
+// The conversation view puts it under each open message's own header.
+export function MessageContentView({ content }: { content: MessageContent }): ReactElement {
   if (content.status === "pending") return <MessageLoading />;
   if (content.status === "error")
     return (

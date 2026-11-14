@@ -47,6 +47,102 @@ export const textFilename = "message.txt";
 // A message with no text body, or only blank ones.
 export const noText = "This message has no text.";
 
+// A conversation's words (DESIGN.md "Reading pane").
+// The account's own address, as names show it.
+export const me = "me";
+// A message with no From.
+export const unknownSender = "Unknown sender";
+// How a header's "to" line names a message with no recipients.
+export const noRecipients = "no one";
+export const conversationActions = "Conversation actions";
+export const detailsLabel = "Details";
+export const receivedBy = "Received by";
+export const notSendersDomain = "Not the sender's domain";
+// A folded message known to have attachments.
+export const hasAttachments = "Has attachments";
+// The line under an open message's sender whose Reply-To is at another
+// domain, around the Reply-To addresses.
+export const repliesGoTo = "Replies go to";
+export const notTheSender = ", not the sender.";
+// The labels of an open message's details.
+export const fieldLabels = {
+  from: "From",
+  replyTo: "Reply-To",
+  to: "To",
+  cc: "Cc",
+  date: "Date",
+} as const;
+
+// foldLabel names the button that folds sender's open message.
+export function foldLabel(sender: string): string {
+  return `Fold the message from ${sender}`;
+}
+
+// sentTo is an open message's "to" line, given who received it.
+export function sentTo(recipients: string): string {
+  return `to ${recipients}`;
+}
+
+// messageCount says how many messages a conversation has.
+export function messageCount(count: number): string {
+  return count === 1 ? "1 message" : `${count.toLocaleString("en")} messages`;
+}
+
+// moreMessages names the row that stands for count folded messages.
+export function moreMessages(count: number): string {
+  return `${count.toLocaleString("en")} more messages`;
+}
+
+// showAllAddresses names the link that lists all count addresses of a
+// field.
+export function showAllAddresses(count: number): string {
+  return `Show all ${count.toLocaleString("en")}`;
+}
+
+// listDate shows when a folded message arrived, as the message list
+// does, seen at now in the browser's time zone: today the time;
+// "Yesterday"; the weekday within a week; "2 Nov" this year; "2 Nov 2025"
+// before. A value that is not a time shows as given.
+//
+// DESIGN: follows branch 3's features/mail/dates.ts, not on dev yet.
+export function listDate(iso: string, now: Date): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const days = daysBetween(date, now);
+  if (days === 0) return listTime.format(date);
+  if (days === 1) return yesterday;
+  // A later day, e.g. from a sender whose clock runs ahead, shows its date.
+  if (days > 0 && days <= weekdayDays) return listWeekday.format(date);
+  if (date.getFullYear() === now.getFullYear()) return dayMonth.format(date);
+  return dayMonthYear.format(date);
+}
+
+const yesterday = "Yesterday";
+// Days before today that still show a weekday.
+const weekdayDays = 6;
+const msPerDay = 86_400_000;
+// The browser's own clock style; inbok's words are English.
+const listTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const listWeekday = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+const dayMonth = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+const dayMonthYear = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
+
+// daysBetween returns how many calendar days date's day is before now's,
+// in the browser's time zone; negative for a later day.
+function daysBetween(date: Date, now: Date): number {
+  // Round: a day with a daylight saving change is 23 or 25 hours long.
+  return Math.round((midnight(now) - midnight(date)) / msPerDay);
+}
+
+// midnight returns when d's day began, in the browser's time zone.
+function midnight(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
 export const attachmentsLabel = "Attachments";
 // An attachment the sender gave no name.
 export const unnamedFile = "Unnamed file";

@@ -319,18 +319,45 @@ last two redirect into settings, so settings can move without the server.
 ### Reading pane
 
 - A pinned conversation toolbar (archive, delete, mark unread, star, More
-  with Open in Gmail); the subject appears in it once the title scrolls
-  away.
-- Title (22 px), the account mark, the message count. Older messages fold
-  to one line; the middle of long threads folds into "N more messages".
-- An open message: 40 px ringed avatar; sender name and full address,
-  always; "to ..." with details (From, To, Cc, Date, Received by; a Reply-To
-  that differs from From is called out); Reply, Reply all (when others
-  received it), and More (Reply, Reply all, Forward / Mark unread from
-  here, Star this message, Delete this message / Show original, Download
-  .eml, Open in Gmail), each only once built.
-- The body sits on the white `sheet`; the frame grows to the body and the
-  pane scrolls; wider mail scales to fit down to 60%, then scrolls
+  with Open in Gmail, which opens Gmail's own page for the conversation
+  in a new tab, an address Google does not document; Back first where one pane shows at a time). At most
+  five buttons, then More: a sixth action goes in More, chosen by hand,
+  never moved there by width; the bar wraps only for large text. Once the
+  title scrolls under it, the subject fades in (150 ms) and a hairline
+  shows below it.
+- Title (22 px), the account mark, the message count. The newest message
+  and every unread one start open; the others fold to one row: avatar,
+  sender, preview, a paperclip when inbok knows it has attachments (only
+  once its content was fetched), date (as the message list dates rows),
+  one line from a 512 px pane, two below. The first message and the newest three always
+  show; between them, a run of two or more folded messages the member has
+  not opened or folded becomes one "N more messages" row, which shows them
+  all, folded; a message the member opened or folded keeps its own row, so
+  one folded again never disappears into the run. Pressing a row opens
+  its message, which only then loads its content; a click on an open
+  message's header, or its avatar, folds it. Rows fill the band between
+  their hairlines on hover, square, with an inset focus ring.
+- An open message: 36 px ringed avatar (the list's size, so names line
+  up); the sender's name and full address (every sender's, when there are
+  several) on one line while both fit,
+  the address moving to the next line whole, never cut, since its domain
+  tells real mail from fake; the date, which moves to the "to" line in a
+  pane under 512 px. "to ..." (recipient names, "me" for the account, "to
+  no one" when there are none) and a 20 px chevron that shows the details
+  inline below: From, Reply-To, To, Cc (each lists 10 addresses, then "Show
+  all N"), Date, Received by; labels beside values from 512 px, above them
+  below. A Reply-To at a domain none of the senders is at gets its own
+  line, "Replies go to ..., not the sender.", in muted text, not a warning:
+  a Reply-To at the sender's own domain, as newsletters use, is not called
+  out, nor is one on a message the account sent, which is answered to its
+  To. A message with no From reads "Unknown sender"; a name that is its
+  address shows once; a group without an address ("Undisclosed
+  recipients") shows its name alone. After the date: Reply, Reply all
+  when others received it, and More (Forward / Mark unread from here,
+  Star this message, Delete this message / Show original, Download .eml),
+  each only once built; in a narrow pane they end the "to" line.
+- An HTML body sits on the white `sheet`; a plain-text body keeps the
+  theme's surface. The frame grows to the body and the pane scrolls; wider mail scales to fit down to 60%, then scrolls
   sideways. A notice explains hidden remote images, with "Show images".
 - Attachments, after the bodies, as chips 8 px apart that wrap. A chip is
   a link that downloads the file: 36 px (44 px coarse), radius 8, an
@@ -513,7 +540,9 @@ account status (branch 3).
 
 Mail lists, the reading pane, and mail actions use TanStack DB collections
 over the generated client functions; everything else uses TanStack Query
-hooks. Rules from the spike (branch 3 confirms them against the real API):
+hooks. A message's content is the exception inside the reading pane: it
+never changes, so each open message reads it with its generated Query
+hook, cached for good (`messages/content.ts`). Rules from the spike (branch 3 confirms them against the real API):
 
 - Sort by a numeric date, then the ID (`stringSort: "lexical"`); dates are
   never null; one fixed order.

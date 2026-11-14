@@ -724,6 +724,48 @@ The chip gives screen readers the whole name in one piece: the visible
 parts sit in separate boxes, which Chromium reads with a space between
 them.
 
+## Conversation view
+
+`ConversationView` (`src/features/messages/conversation.tsx`) shows one
+conversation as DESIGN.md "Reading pane" describes it. Its props:
+
+- `subject` and `account` (name, address, colour) for its title, and
+  `messages`, oldest first: each message's header fields, its preview,
+  whether it is unread, whether the account sent it (`sent`), and
+  whether it is known to have attachments (`attachments`, a paperclip on
+  its folded row).
+- `onUnauthorized`: runs when a read finds the session gone.
+- `actions`: the conversation's actions in the pinned toolbar, and Back
+  where one pane shows at a time.
+- `messageActions(message)`: a message's own actions in its header;
+  shown only while the message is open. A pane under 512 px draws them on
+  the "to" line instead, a second copy, and `useFocusFollowsCopy` moves
+  keyboard focus to the copy drawn when the pane crosses that width.
+
+Without a `sent` flag, a message from the account's own address counts
+as sent, so its Reply-To line stays quiet; branch 3's conversation
+detail is to send the real flag. The view scrolls itself, so give it a
+height, and a `key` per conversation, so folding starts afresh. Each open message loads its content through `useMessageContent`
+(`content.ts`), so folded messages cost no request; content never goes
+stale, as a message's never changes, so it is not read again in the
+background, and a 401 runs `onUnauthorized`; the content shows in
+`MessageContentView`, the message view's part below its header.
+`toContent` keeps only bodies and files at the API's own addresses.
+
+`foldRows` (`folding.ts`) decides the rows: open, folded, or counted in
+"N more messages", which gathers only messages the member has not opened
+or folded. Opening, folding, and showing the folded middle move focus to
+the control that took the place of the one pressed, so focus is never
+lost. The subject joins the toolbar when the title passes under
+it, which an `IntersectionObserver` on the view's own scroll box tells.
+The layout follows the pane, not the window, with container queries
+(`@container`, `@lg:`, 512 px at the default text size).
+
+Until branch 3 merges, its message type and the helpers it shares
+(initials, names, list dates, `useToday`) have copies here
+(`people.ts`, `text.ts`, `conversation.tsx`); whichever branch merges
+later keeps one.
+
 ## Checks and tests
 
 From `web`, check formatting, lint rules, and types in one command, or
