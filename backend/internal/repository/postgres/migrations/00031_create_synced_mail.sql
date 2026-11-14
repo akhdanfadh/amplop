@@ -68,8 +68,13 @@ CREATE TABLE mailboxes (
     role                 text CHECK (role IN ('all', 'archive', 'drafts', 'flagged', 'important', 'inbox',
                              'junk', 'memos', 'scheduled', 'sent', 'snoozed', 'trash')),
     made_by              text NOT NULL CHECK (made_by IN ('provider', 'member')),
+    -- The provider's ID of the mailbox this one nests under, NULL at the
+    -- top, as each provider says it: Gmail by name (Work/Projects under
+    -- Work), later IMAP by its server's separator and Outlook by its
+    -- parent folder's ID. name is then the mailbox's own name. Not a
+    -- reference: the parent may be listed after it, or not at all.
+    provider_parent_id   text CHECK (provider_parent_id <> ''),
     -- IMAP and Outlook, not yet supported:
-    -- parent_id         uuid REFERENCES mailboxes (id) ON DELETE CASCADE, -- Outlook's folder tree; Gmail and IMAP nest by name
     -- role_choice       text, -- a role the member picked, for an IMAP server without SPECIAL-USE (RFC 6154)
     -- uid_validity      bigint, -- IMAP: a change makes every cached UID of the folder stale (RFC 9051 section 2.3.1.1); 32-bit
     -- uid_next          bigint, -- IMAP: the server's prediction of the next UID; 32-bit

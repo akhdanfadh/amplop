@@ -91,6 +91,7 @@ type Mailbox struct {
 	Name               string
 	Role               *string
 	MadeBy             string
+	ProviderParentID   *string
 }
 
 type Message struct {

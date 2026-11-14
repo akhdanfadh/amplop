@@ -186,11 +186,15 @@ GROUP BY mb.connected_account_id, mb.role;
 
 -- name: ListMailboxLabelUnreadCounts :many
 -- The member's own labels, those with no role that the member made, by
--- name, with how many of their conversations are unread.
-SELECT mb.connected_account_id, mb.id, mb.name,
+-- name, with how many of their conversations are unread, and the label
+-- each nests under: one of the same account's own labels, else none.
+SELECT mb.connected_account_id, mb.id, mb.name, parent.id AS parent_id,
     (SELECT count(*) FROM conversation_mailboxes cm WHERE cm.mailbox_id = mb.id AND cm.unread)::integer AS unread
 FROM mailboxes mb
 JOIN connected_accounts ca ON ca.id = mb.connected_account_id
+LEFT JOIN mailboxes parent ON parent.connected_account_id = mb.connected_account_id
+    AND parent.provider_mailbox_id = mb.provider_parent_id
+    AND parent.role IS NULL AND parent.made_by = 'member'
 WHERE ca.user_id = @user_id AND mb.role IS NULL AND mb.made_by = 'member'
 ORDER BY mb.name, mb.id;
 

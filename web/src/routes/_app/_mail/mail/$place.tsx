@@ -8,6 +8,7 @@ import {
 import { isSessionEnded, sessionEnded } from "@/features/auth/guard";
 import { isPlace, placeSearch } from "@/features/mail/address";
 import { PlacePage } from "@/features/mail/place-page";
+import { labelPath } from "@/features/mail/place-counts";
 import { isViewPlace } from "@/features/mail/places";
 import { placeName } from "@/features/mail/text";
 
@@ -50,7 +51,9 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
     if (!label?.name) throw notFound();
     // A label belongs to one account: filtered to another, it shows whole.
     if (account !== undefined && label.accountId !== account) throw unfiltered;
-    return { name: label.name };
+    // A nested label is named with its parents, joined by "/", inbok's
+    // separator for every provider's.
+    return { name: labelPath(places?.data.places ?? [], place).join("/") };
   },
   component: Place,
   // head also runs for an address that is no place, which shows Page not

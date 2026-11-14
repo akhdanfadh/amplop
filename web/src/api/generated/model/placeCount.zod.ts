@@ -11,7 +11,8 @@ export const placeCountUnreadMin = 0;
 
 export const PlaceCount = zod.object({
   "accountId": zod.int(),
-  "name": zod.string().nullable().describe('A label\'s name as the provider names it, nesting included, e.g. Work/Projects for a Gmail label nested with slashes; null for a view.'),
+  "name": zod.string().nullable().describe('A label\'s own name under its parent, e.g. Projects for a Gmail label Work/Projects under its label Work. It keeps what the provider names the levels the member has no label for, so it can hold the provider\'s separator: Home/Bills with no label Home, at the top; 2026/Q4 for Work/Projects/2026/Q4 under Projects with no label Work/Projects/2026. Null for a view.'),
+  "parent": zod.uuid().nullable().describe('The place, a label\'s id, that a label nests under, so no client parses a provider\'s names; null for a view and a label at the top.'),
   "place": zod.string().describe('A view\'s name or a label\'s id, as the place of List Conversations takes it.'),
   "unread": zod.int().min(placeCountUnreadMin).describe('How many of its conversations are unread.')
 })

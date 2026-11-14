@@ -182,6 +182,10 @@ func writeMailboxes(ctx context.Context, tx pgx.Tx, accountID int64, mailboxes [
 			role := string(mailbox.Role)
 			p.Role = &role
 		}
+		if mailbox.ProviderParentID != "" {
+			parent := mailbox.ProviderParentID
+			p.ProviderParentID = &parent
+		}
 		params = append(params, p)
 	}
 

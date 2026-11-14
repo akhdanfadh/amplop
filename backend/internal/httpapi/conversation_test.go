@@ -201,9 +201,11 @@ func TestCountAfterNoAnchor(t *testing.T) {
 // ========================
 
 func TestListPlaces(t *testing.T) {
+	billsLabel := uuid.MustParse("0b1b2c3d-0000-4000-8000-0000000000cc")
 	conversations := &fakeConversations{counts: []conversation.PlaceCount{
 		{Account: 3, Place: conversation.Place{View: conversation.ViewInbox}, Unread: 2},
-		{Account: 3, Place: conversation.Place{Mailbox: receiptsLabel}, Name: "Bills/2026", Unread: 1},
+		{Account: 3, Place: conversation.Place{Mailbox: billsLabel}, Name: "Bills"},
+		{Account: 3, Place: conversation.Place{Mailbox: receiptsLabel}, Name: "2026", Parent: billsLabel, Unread: 1},
 	}}
 	api := newConversationsAPI(conversations)
 
@@ -211,8 +213,10 @@ func TestListPlaces(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.JSONEq(t, `{"data":{"places":[`+
-		`{"accountId":3,"place":"inbox","name":null,"unread":2},`+
-		`{"accountId":3,"place":"0b1b2c3d-0000-4000-8000-0000000000aa","name":"Bills/2026","unread":1}]}}`, response.Body.String())
+		`{"accountId":3,"place":"inbox","name":null,"parent":null,"unread":2},`+
+		`{"accountId":3,"place":"0b1b2c3d-0000-4000-8000-0000000000cc","name":"Bills","parent":null,"unread":0},`+
+		`{"accountId":3,"place":"0b1b2c3d-0000-4000-8000-0000000000aa","name":"2026",`+
+		`"parent":"0b1b2c3d-0000-4000-8000-0000000000cc","unread":1}]}}`, response.Body.String())
 	assert.Equal(t, int64(42), conversations.userID)
 }
 

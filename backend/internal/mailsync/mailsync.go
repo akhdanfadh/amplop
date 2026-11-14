@@ -56,10 +56,14 @@ type Mailbox struct {
 	// ProviderID is the provider's ID for it, e.g. Gmail's label ID, which
 	// [Message.MailboxProviderIDs] lists.
 	ProviderID string
-	// Name is the provider's, as received; a nested Gmail label is one name
-	// with slashes, e.g. Work/Projects.
+	// Name is its own name, e.g. Projects for a Gmail label Work/Projects
+	// under Work; a mailbox at the top keeps the provider's whole name.
 	Name string
-	Role Role
+	// ProviderParentID is the provider's ID of the mailbox it nests under,
+	// empty at the top. Each provider says nesting its own way, so the
+	// features that read mail never parse names.
+	ProviderParentID string
+	Role             Role
 	// MadeBy is who made it. The labels a member sees are their own: no
 	// role, made by the member.
 	MadeBy Maker

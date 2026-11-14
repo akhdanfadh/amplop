@@ -281,8 +281,9 @@ last two redirect into settings, so settings can move without the server.
   Spam, Trash.
 - Accounts: All accounts, then each account (its mark, its member-chosen
   name or address, its inbox unread count), filtering every view. An
-  account's labels nest under it (Gmail `/` names as a tree); a label
-  belongs to one account.
+  account's labels nest under it as List Places nests them (each label's
+  `parent`); a label belongs to one account. An open label's heading
+  names it with its parents ("Work/Projects").
 - Account status in words beside it: "Syncing" with a spinner (details on
   hover: "Copying the last 90 days: N messages so far."), "Reconnect",
   "Sync failed".

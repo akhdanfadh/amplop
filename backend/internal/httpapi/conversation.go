@@ -269,14 +269,15 @@ const placesPath = "/places"
 
 // placeCount is one account's place with its unread count.
 type placeCount struct {
-	AccountID int64   `json:"accountId"`
-	Place     string  `json:"place" doc:"A view's name or a label's id, as the place of List Conversations takes it."`
-	Name      *string `json:"name" nullable:"true" doc:"A label's name as the provider names it, nesting included, e.g. Work/Projects for a Gmail label nested with slashes; null for a view."`
-	Unread    int     `json:"unread" minimum:"0" doc:"How many of its conversations are unread."`
+	AccountID int64      `json:"accountId"`
+	Place     string     `json:"place" doc:"A view's name or a label's id, as the place of List Conversations takes it."`
+	Name      *string    `json:"name" nullable:"true" doc:"A label's own name under its parent, e.g. Projects for a Gmail label Work/Projects under its label Work. It keeps what the provider names the levels the member has no label for, so it can hold the provider's separator: Home/Bills with no label Home, at the top; 2026/Q4 for Work/Projects/2026/Q4 under Projects with no label Work/Projects/2026. Null for a view."`
+	Parent    *uuid.UUID `json:"parent" nullable:"true" format:"uuid" doc:"The place, a label's id, that a label nests under, so no client parses a provider's names; null for a view and a label at the top."`
+	Unread    int        `json:"unread" minimum:"0" doc:"How many of its conversations are unread."`
 }
 
 type places struct {
-	Places []placeCount `json:"places" nullable:"false" doc:"Every place of each connected account, in a stable order: the accounts oldest first, each with its views, inbox, starred, sent, all, spam, and trash, then its labels by name. The web app orders them for display. Gmail's own labels, e.g. its inbox categories, are not places."`
+	Places []placeCount `json:"places" nullable:"false" doc:"Every place of each connected account, in a stable order: the accounts oldest first, each with its views, inbox, starred, sent, all, spam, and trash, then its labels by their own names. The web app orders them for display. Gmail's own labels, e.g. its inbox categories, are not places."`
 }
 
 func registerPlaceList(api huma.API, handler conversationHandler) {
@@ -306,6 +307,9 @@ func (h conversationHandler) handleListPlaces(ctx context.Context, _ *struct{}) 
 		if count.Place.View == "" {
 			name := count.Name
 			item.Name = &name
+		}
+		if count.Parent != uuid.Nil() {
+			item.Parent = &count.Parent
 		}
 		listed.Places = append(listed.Places, item)
 	}

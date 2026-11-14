@@ -143,8 +143,12 @@ type Query struct {
 type PlaceCount struct {
 	Account int64
 	Place   Place
-	// Name is a label's, as the provider sends it; empty for a view.
-	Name   string
+	// Name is a label's own name, as [mailsync.Mailbox.Name]; empty for a
+	// view.
+	Name string
+	// Parent is the label a label nests under, one of the same account's
+	// own labels; [uuid.Nil] for a view and a label at the top.
+	Parent uuid.UUID
 	Unread int
 }
 
@@ -166,7 +170,7 @@ type Storage interface {
 	// ListPlaceCounts returns how many conversations of each place of
 	// userID's accounts are unread, in a stable order: the accounts in the
 	// order they were connected, each with every view in [Views] order, then
-	// its own labels by name.
+	// its own labels by name, each with the label it nests under.
 	ListPlaceCounts(ctx context.Context, userID int64) ([]PlaceCount, error)
 
 	// ReadConversation returns userID's conversation id and every message
@@ -203,7 +207,8 @@ func (s *Service) CountAfter(ctx context.Context, userID int64, place Place, acc
 	return s.storage.CountConversationsAfter(ctx, userID, place, account, after)
 }
 
-// Places returns the unread count of every place of userID's accounts.
+// Places returns the unread count of every place of userID's accounts,
+// each label with its parent, in [Storage.ListPlaceCounts] order.
 func (s *Service) Places(ctx context.Context, userID int64) ([]PlaceCount, error) {
 	return s.storage.ListPlaceCounts(ctx, userID)
 }

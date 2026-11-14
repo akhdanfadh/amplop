@@ -59,6 +59,40 @@ func TestMailboxes(t *testing.T) {
 	assert.NotContains(t, byID, "STARRED")
 }
 
+// TestNest checks [nest] gives a label nested by name its parent and its
+// own name: under the longest name of the labels that leads its name, else
+// at the top, whole.
+func TestNest(t *testing.T) {
+	label := func(id, name string) mailsync.Mailbox {
+		return mailsync.Mailbox{ProviderID: id, Name: name, MadeBy: mailsync.MadeByMember}
+	}
+	mailboxes := []mailsync.Mailbox{
+		{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox, MadeBy: mailsync.MadeByProvider},
+		label("work", "Work"),
+		label("projects", "Work/Projects"),
+		label("q4", "Work/Projects/2026/Q4"),
+		label("bills", "Home/Bills"),
+		label("trailing", "Work/"),
+		// Gmail's own labels are no parents: the member never sees them.
+		{ProviderID: "CATEGORY_SOCIAL", Name: "CATEGORY_SOCIAL", MadeBy: mailsync.MadeByProvider},
+		label("social", "CATEGORY_SOCIAL/Friends"),
+	}
+
+	nest(mailboxes)
+
+	assert.Equal(t, []mailsync.Mailbox{
+		{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox, MadeBy: mailsync.MadeByProvider},
+		label("work", "Work"),
+		{ProviderID: "projects", Name: "Projects", ProviderParentID: "work", MadeBy: mailsync.MadeByMember},
+		{ProviderID: "q4", Name: "2026/Q4", ProviderParentID: "projects", MadeBy: mailsync.MadeByMember},
+		label("bills", "Home/Bills"),
+		// Nothing follows the separator, so it is no child of Work.
+		label("trailing", "Work/"),
+		{ProviderID: "CATEGORY_SOCIAL", Name: "CATEGORY_SOCIAL", MadeBy: mailsync.MadeByProvider},
+		label("social", "CATEGORY_SOCIAL/Friends"),
+	}, mailboxes)
+}
+
 // A refusal keeps only its status.
 func TestMailboxesRefused(t *testing.T) {
 	client, _ := stubGmail(t, func(w http.ResponseWriter, _ *http.Request) {

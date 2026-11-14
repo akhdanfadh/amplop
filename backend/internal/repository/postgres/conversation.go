@@ -114,9 +114,13 @@ func (db *DB) ListPlaceCounts(ctx context.Context, userID int64) ([]conversation
 		}
 		byAccount := map[int64][]conversation.PlaceCount{}
 		for _, label := range labels {
-			byAccount[label.ConnectedAccountID] = append(byAccount[label.ConnectedAccountID], conversation.PlaceCount{
+			count := conversation.PlaceCount{
 				Account: label.ConnectedAccountID, Place: conversation.Place{Mailbox: label.ID}, Name: label.Name, Unread: int(label.Unread),
-			})
+			}
+			if label.ParentID != nil {
+				count.Parent = *label.ParentID
+			}
+			byAccount[label.ConnectedAccountID] = append(byAccount[label.ConnectedAccountID], count)
 		}
 		for _, account := range accounts {
 			for _, view := range conversation.Views {

@@ -316,6 +316,35 @@ func TestListPlaceCounts(t *testing.T) {
 	}, counts)
 }
 
+// A label gives its parent as one of the same account's own labels; a
+// parent the account lacks, or one that is no label of the member's, is
+// none.
+func TestListPlaceCountsParent(t *testing.T) {
+	c := newConversationReadTest(t)
+	nested := append(slices.Clone(threadMailboxes),
+		mailsync.Mailbox{ProviderID: "Label_2", Name: "2026", ProviderParentID: "Label_1", MadeBy: mailsync.MadeByMember},
+		mailsync.Mailbox{ProviderID: "Label_3", Name: "Bills", ProviderParentID: "Label_gone", MadeBy: mailsync.MadeByMember},
+		mailsync.Mailbox{ProviderID: "Label_4", Name: "Odd", ProviderParentID: "INBOX", MadeBy: mailsync.MadeByMember},
+	)
+	c.update(t, c.account, mailsync.Change{State: running(1), Mailboxes: nested})
+
+	counts, err := c.db.ListPlaceCounts(t.Context(), c.member)
+
+	require.NoError(t, err)
+	parents := map[string]uuid.UUID{}
+	for _, count := range counts {
+		if count.Account == c.account && count.Place.View == "" {
+			parents[count.Name] = count.Parent
+		}
+	}
+	assert.Equal(t, map[string]uuid.UUID{
+		"2026":     c.mailboxID(t, c.account, "Label_1"),
+		"Bills":    uuid.Nil(),
+		"Odd":      uuid.Nil(),
+		"Receipts": uuid.Nil(),
+	}, parents)
+}
+
 // A conversation in two mailboxes of one role counts once, as the list
 // shows it once; an IMAP server may report one role on two folders.
 func TestListPlaceCountsSameRole(t *testing.T) {

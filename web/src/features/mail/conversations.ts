@@ -12,6 +12,7 @@ import {
 } from "@tanstack/db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
 import { listConversations } from "@/api/generated/inbok";
+import type { PlaceCountOutput } from "@/api/generated/model/placeCount.zod";
 import type { ConversationRowOutput } from "@/api/generated/model/conversationRow.zod";
 import { listConversationsParamsLimitMax } from "@/api/generated/model/listConversationsParams.zod";
 import { onAccountCacheClear } from "@/features/auth/session-cache";
@@ -308,6 +309,10 @@ const conversationsKey = ["mail", "conversations"];
 
 // How often each open list reads its newest page again.
 const newestEveryMs = 30_000;
+
+// PlaceCount is one account's place with its unread count, as List Places
+// gives it: a view, or a label with its own name and its parent label.
+export type PlaceCount = PlaceCountOutput;
 
 // createConversations returns the conversations collection over client:
 // every list's rows, loaded as lists ask for them; and stop, which ends

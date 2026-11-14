@@ -15,7 +15,7 @@ async function open(address: string) {
     [conversation(1)],
     [listedAccount(1, "ana@example.com"), listedAccount(2, "ana@work.example")],
   );
-  api.places = [{ accountId: 1, name: "Receipts", place: label, unread: 0 }];
+  api.places = [{ accountId: 1, name: "Receipts", parent: null, place: label, unread: 0 }];
   return appRouter(address, memberSession, (url) =>
     new URL(url, location.href).pathname === "/api/v0/sessions/current"
       ? undefined

@@ -2626,15 +2626,16 @@ labels, so the features that read mail never see Gmail's own encoding.
 Four tables hold it, each deleted with its account:
 
 - `mailboxes`: an account's Gmail labels, or later its folders, with the
-  provider's ID, its name as received (a nested Gmail label is one name
-  with slashes, e.g. `Work/Projects`), and a `role` for the special ones,
-  NULL for the member's own. The roles are the purposes in IANA's IMAP
-  Mailbox Name Attributes registry, as JMAP names them, e.g. `inbox`,
-  `sent`, `junk`, `trash`, or `snoozed`. ADR007 lists how Gmail's labels
-  map: `UNREAD` and `STARRED` are flags, not mailboxes. `made_by` says
-  who made it: the `provider`, for Gmail's labels of type `system`, e.g.
-  `INBOX` or `CATEGORY_SOCIAL`, or the `member`; the labels a member sees
-  have no role and are the member's.
+  provider's ID, its own name and the provider's ID of the mailbox it
+  nests under (`provider_parent_id`; the Gmail adapter stores a label
+  `Work/Projects` as `Projects` under `Work`), and a `role` for the
+  special ones, NULL for the member's own. The roles are the purposes in
+  IANA's IMAP Mailbox Name Attributes registry, as JMAP names them, e.g.
+  `inbox`, `sent`, `junk`, `trash`, or `snoozed`. ADR007 lists how
+  Gmail's labels map: `UNREAD` and `STARRED` are flags, not mailboxes.
+  `made_by` says who made it: the `provider`, for Gmail's labels of type
+  `system`, e.g. `INBOX` or `CATEGORY_SOCIAL`, or the `member`; the
+  labels a member sees have no role and are the member's.
 - `messages`: one row per provider message, with inbok's own random `id`
   (a UUID, never derived from mail), Gmail's message and thread IDs, the
   provider's own timestamp (`internal_date`, Gmail's `internalDate`), the
