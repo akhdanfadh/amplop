@@ -140,15 +140,15 @@ Put shared code in the folder for its responsibility:
   Undo bar (`undo.tsx`), how a row shows its date and people, and the
   address Back to mail returns to.
 - `src/features/settings`: the settings sidebar.
-- `src/components`: shared components, such as the shell around every
-  page (`AppShell`), the password input, the request error under a form,
-  the status badge, the link styles, the signed-in frame and its member
-  menu, the offline banner, and the pages for loading, failure, and Page
-  not found. `ui/` holds the shadcn components we own. `form/` is the form
-  kit, kept together because its parts only work as one: `useAppForm`
-  with the field kinds and the form parts it is built from, and
-  `useRefusals`, whose check plugs into it; "Forms" below says how to use
-  it.
+- `src/components`: shared components, such as the shell around every page
+  (`AppShell`), the password input, the request error under a form, the
+  status badge, the link styles, the signed-in frame and its member menu,
+  the offline banner, and the pages for loading, failure, and Page not
+  found. `ui/` holds the shadcn components we own. `form/` is the form
+  kit, kept together because its parts only work as one: `useAppForm` with
+  the field kinds and the form parts it is built from, and
+  `useFormRequest`, which sends a form's values and whose check plugs into
+  it; "Forms" below says how to use it.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
@@ -1341,22 +1341,19 @@ renders each field as a field kind and the form as `form.Form` with a
 `form.SubmitButton`. `src/features/auth/sign-in-form.tsx` is the example:
 
 ```tsx
-const mounted = useMounted();
-const refusals = useRefusals<Values>(["email", "password"]);
+const create = useCreateSession({ mutation: { gcTime: 0 } });
+const request = useFormRequest(create, ["email", "password"]);
 const form = useAppForm({
   defaultValues: { email: "", password: "" },
   validationLogic: revalidateLogic(),
-  validators: { onDynamic: refusals.check(SignInSchema) },
+  validators: { onDynamic: request.check(SignInSchema) },
   onSubmit: async ({ value, formApi }) => {
-    try {
-      await create.mutateAsync({ data: SignInSchema.parse(value) });
-      if (!mounted()) return;
-      refusals.record(formApi, value);
-    } catch (err) {
-      if (!(err instanceof ApiError)) throw err;
-      refusals.record(formApi, value, err);
-    }
+    const sent = await request.send(formApi, value, { data: SignInSchema.parse(value) });
+    if (sent.outcome !== "done") return;
+    formApi.reset();
+    onDone();
   },
+  listeners: { onChange: () => create.reset() },
 });
 
 <form.AppForm>
@@ -1368,6 +1365,10 @@ const form = useAppForm({
       {(field) => <field.PasswordField label="Password" autoComplete="current-password" />}
     </form.AppField>
     <form.SubmitButton working="Signing in...">Sign in</form.SubmitButton>
+    <RequestError
+      errors={request.summary((err) => sessionMessage(err, "sign-in"))}
+      requestId={request.reference}
+    />
   </form.Form>
 </form.AppForm>;
 ```
@@ -1378,30 +1379,39 @@ const form = useAppForm({
   takes. `revalidateLogic()` runs the check from the first submit, then on
   every change, so errors appear after a submit and update as the member
   types.
-- **Sending.** `onSubmit` awaits the generated mutation hook's
-  `mutateAsync`, so TanStack Form's `isSubmitting` lasts as long as the
-  request: the fields lock, the button shows its `working` words and
-  ignores presses (React Aria's `isPending`), and `Form` ignores Enter.
+- **Sending.** `request.send` awaits the generated mutation hook's
+  `mutateAsync`, and `onSubmit` awaits `send`, so TanStack Form's
+  `isSubmitting` lasts as long as the request: the fields lock, the
+  button shows its `working` words and ignores presses (React Aria's
+  `isPending`), and `Form` ignores Enter.
   A submit started from a field moves focus to the button, which stays
   focusable while pending; after a submit, `Form` moves focus to the first
-  invalid field. A success's code after the `await` checks `useMounted()`
-  first, so a late answer cannot navigate from a page the member has left.
-  A submit that throws anything but the request's `ApiError` is a fault,
-  and `Form` shows it on the app's crash screen.
-- **Refusals.** `refusals.record` keeps the server's field errors, from
-  `formErrors` in `src/api/problem.ts`, with the values sent. The check
-  returns each one while its field holds the refused value: it survives a
-  blur, comes back if the member types that value again, and blocks
-  sending it. A rule that spans fields must also be in the schema, which
-  refuses it first; the server's refusal of it clears only when its own
-  field changes. An error on an input the form does not render stays out
-  of the fields.
-- **Request failures** stay in the mutation (`create.error`). `formSummary`
-  builds the summary under the button, which `RequestError`
-  (`src/components/request-error.tsx`) shows as an alert, announced as it
-  appears: the request's message, then rejected inputs no field shows.
+  invalid field. `send` returns the outcome: `"done"` with the answer,
+  `"refused"` with the `ApiError`, or `"left"` when the form was gone when
+  the answer came (`useMounted`), so a late answer cannot navigate from a
+  page the member has left. Code after it acts only on `"done"`, or on
+  `"refused"` for a form-specific end, e.g. an expired link. A failure
+  that is not the request's `ApiError` is a fault: `send` throws it, and
+  `Form` shows it on the app's crash screen.
+- **Refusals.** `send` keeps the server's field errors, from `formErrors`
+  in `src/api/problem.ts`, with the values sent; an answer clears them.
+  `request.check` returns each one, with the schema's issues, while its
+  field holds the refused value: it survives a blur, comes back if the
+  member types that value again, and blocks sending it. A rule that spans
+  fields must also be in the schema, which refuses it first; the server's
+  refusal of it clears only when its own field changes. An error on an
+  input the form does not render stays out of the fields.
+- **Request failures** stay in the mutation (`create.error`), and an edit
+  clears one with `create.reset()`. `request.summary` builds the summary
+  under the button from a function that words the failure, which
+  `RequestError` (`src/components/request-error.tsx`) shows as an alert,
+  announced as it appears: the request's message, then rejected inputs no
+  field shows.
   When every rejected input shows on a field, the summary is empty and no
   request reference shows, since the fields tell the whole refusal.
+  `request.reference` is the failure's request reference only for a fault
+  (a 5xx or a lost answer), so a refusal, e.g. a wrong password, shows
+  none.
 - **A new field kind** goes in `src/components/form/fields.tsx` with its
   first form: render the control through `FieldFrame`, which reads the
   field from `useFieldContext` and gives the control its id, name, value,

@@ -2,17 +2,15 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCreateSession, useGetCurrentSession } from "@/api/generated/inbok";
-import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
-import { ApiError } from "@/api/transport";
+import { uncertainOutcome, userMessage } from "@/api/problem";
 import { sessionMessage } from "./session-error";
 import { clearAccountCache } from "./session-cache";
 import { SignInSchema } from "./sign-in-schema";
 import { useAppForm } from "@/components/form/app-form";
-import { useRefusals } from "@/components/form/refusals";
+import { useFormRequest } from "@/components/form/request";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
-import { useMounted } from "@/hooks/use-mounted";
 
 const unauthorized = 401;
 const signInFields = ["email", "password"] as const;
@@ -44,33 +42,23 @@ export function SignInForm({
       onSettled: () => clearAccountCache(queryClient),
     },
   });
-  const mounted = useMounted();
-  const refusals = useRefusals<{ email: string; password: string }>(signInFields);
+  const request = useFormRequest(create, signInFields);
   const form = useAppForm({
     defaultValues: { email, password: "" },
     validationLogic: revalidateLogic(),
-    validators: { onDynamic: refusals.check(SignInSchema) },
+    validators: { onDynamic: request.check(SignInSchema) },
     onSubmit: async ({ value, formApi }) => {
       if (checkRequest.current) return;
-      try {
-        const result = await create.mutateAsync({ data: SignInSchema.parse(value) });
-        // A member who left while the request ran, e.g. for "Forgot
-        // password?", stays where they went.
-        if (!mounted()) return;
-        refusals.record(formApi, value);
-        switch (result.data.step) {
-          case "complete":
-            formApi.reset();
-            onDone();
-            break;
-          case "totp":
-            formApi.reset();
-            onCodeRequired();
-            break;
-        }
-      } catch (err) {
-        if (!(err instanceof ApiError)) throw err;
-        refusals.record(formApi, value, err);
+      const sent = await request.send(formApi, value, { data: SignInSchema.parse(value) });
+      if (sent.outcome !== "done") return;
+      formApi.reset();
+      switch (sent.data.data.step) {
+        case "complete":
+          onDone();
+          break;
+        case "totp":
+          onCodeRequired();
+          break;
       }
     },
     listeners: {
@@ -85,9 +73,7 @@ export function SignInForm({
       },
     },
   });
-  const summary = create.error
-    ? formSummary(sessionMessage(create.error, "sign-in"), formErrors(create.error, signInFields))
-    : [];
+  const summary = request.summary((err) => sessionMessage(err, "sign-in"));
 
   useEffect(
     () => () => {
@@ -103,12 +89,12 @@ export function SignInForm({
 
   async function checkSession(): Promise<void> {
     if (create.isPending || checkRequest.current) return;
-    const request = {};
-    checkRequest.current = request;
+    const attempt = {};
+    checkRequest.current = attempt;
     setChecking(true);
     setCheckMessage(undefined);
     const result = await current.refetch();
-    if (checkRequest.current !== request) return;
+    if (checkRequest.current !== attempt) return;
     checkRequest.current = null;
     setChecking(false);
     if (result.isSuccess) {
@@ -140,7 +126,7 @@ export function SignInForm({
           Sign in
         </form.SubmitButton>
 
-        <RequestError errors={summary} requestId={create.error?.requestId} />
+        <RequestError errors={summary} requestId={request.reference} />
         {create.error && uncertainOutcome(create.error) && (
           <div className="flex flex-col gap-3">
             <Button

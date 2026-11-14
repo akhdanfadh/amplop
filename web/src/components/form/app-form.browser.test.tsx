@@ -1,5 +1,7 @@
 import "@/zod-config";
+import { StrictMode } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
+import { QueryClient, QueryClientProvider, useMutation } from "@tanstack/react-query";
 import * as z from "zod";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
@@ -7,8 +9,9 @@ import { render } from "vitest-browser-react";
 import { CatchBoundary } from "@tanstack/react-router";
 import { ApiError } from "@/api/transport";
 import { emailAddress } from "@/api/validation";
+import { RequestError } from "@/components/request-error";
 import { useAppForm } from "./app-form";
-import { useRefusals } from "./refusals";
+import { useFormRequest } from "./request";
 
 const unprocessable = 422;
 const fields = ["email", "password"] as const;
@@ -50,22 +53,18 @@ function refusingSecret(): Promise<void> {
   return Promise.reject(refusal("Enter a valid value.", "body.secret"));
 }
 
-// TestForm sends its values with send, as a form built on the shared fields
-// does: refusals in its check, the request awaited in onSubmit.
-function TestForm({ send }: { send: Send }) {
-  const refusals = useRefusals<Values>(fields);
+// TestForm sends its values with send through a mutation, as a form built
+// on the shared fields does, and calls onDone once an answer comes.
+function TestForm({ send, onDone }: { send: Send; onDone: () => void }) {
+  const mutation = useMutation<void, ApiError, Values>({ mutationFn: send, gcTime: 0 });
+  const request = useFormRequest(mutation, fields);
   const form = useAppForm({
     defaultValues: { email: "", password: "" },
     validationLogic: revalidateLogic(),
-    validators: { onDynamic: refusals.check(Schema) },
+    validators: { onDynamic: request.check(Schema) },
     onSubmit: async ({ value, formApi }) => {
-      try {
-        await send(value);
-        refusals.record(formApi, value);
-      } catch (err) {
-        if (!(err instanceof ApiError)) throw err;
-        refusals.record(formApi, value, err);
-      }
+      const sent = await request.send(formApi, value, value);
+      if (sent.outcome === "done") onDone();
     },
   });
 
@@ -87,9 +86,32 @@ function TestForm({ send }: { send: Send }) {
           )}
         </form.AppField>
         <form.SubmitButton working="Sending...">Send</form.SubmitButton>
+        <RequestError errors={request.summary(() => "The request failed.")} />
       </form.Form>
     </form.AppForm>
   );
+}
+
+// show renders TestForm sending with send in Strict Mode, as the app runs
+// in development, under a crash screen. It returns onDone and the screen.
+async function show(send: Send) {
+  const onDone = vi.fn<() => void>();
+  const screen = await render(
+    <StrictMode>
+      <CatchBoundary getResetKey={() => 0} errorComponent={() => <p>Crashed</p>}>
+        <QueryClientProvider client={new QueryClient()}>
+          <TestForm send={send} onDone={onDone} />
+        </QueryClientProvider>
+      </CatchBoundary>
+    </StrictMode>,
+  );
+  return { onDone, screen };
+}
+
+// fill types a valid email address and password.
+async function fill() {
+  await userEvent.type(email(), "ana@example.com");
+  await userEvent.type(password(), "secret");
 }
 
 const email = () => page.getByRole("textbox", { name: "Email address" });
@@ -106,7 +128,7 @@ function formElement(): HTMLFormElement {
 
 describe("shared form fields", () => {
   it("label the control and describe it before any error", async () => {
-    await render(<TestForm send={async () => {}} />);
+    await show(async () => {});
 
     await expect.element(email()).toHaveAccessibleDescription("The one you signed up with.");
     await expect.element(page.getByText("Password (optional)")).toBeVisible();
@@ -114,7 +136,7 @@ describe("shared form fields", () => {
   });
 
   it("show errors only after the first submit, then update them as the member types", async () => {
-    await render(<TestForm send={async () => {}} />);
+    await show(async () => {});
 
     await userEvent.type(email(), "ana");
     await expect.element(email()).not.toHaveAttribute("aria-invalid", "true");
@@ -132,7 +154,7 @@ describe("shared form fields", () => {
   });
 
   it("move focus to the first invalid field after a submit", async () => {
-    await render(<TestForm send={async () => {}} />);
+    await show(async () => {});
 
     await userEvent.type(email(), "ana@example.com");
     await userEvent.click(submit());
@@ -143,7 +165,7 @@ describe("shared form fields", () => {
   it("show what the button does while sending, and send once", async () => {
     const request = pending();
     const send = vi.fn<Send>(() => request.promise);
-    await render(<TestForm send={send} />);
+    await show(send);
     await userEvent.type(email(), "ana@example.com");
     await userEvent.type(password(), "secret");
 
@@ -161,7 +183,7 @@ describe("shared form fields", () => {
 
   it("keep focus on the pending button when Enter submits from a field", async () => {
     const request = pending();
-    await render(<TestForm send={() => request.promise} />);
+    await show(() => request.promise);
     await userEvent.type(email(), "ana@example.com");
     await userEvent.type(password(), "secret");
 
@@ -175,7 +197,7 @@ describe("shared form fields", () => {
   });
 
   it("keep a shown password from capitals and spelling fixes", async () => {
-    await render(<TestForm send={async () => {}} />);
+    await show(async () => {});
 
     await userEvent.click(page.getByRole("button", { name: "Show password" }));
 
@@ -185,11 +207,7 @@ describe("shared form fields", () => {
   });
 
   it("show a submit that throws on the crash screen", async () => {
-    await render(
-      <CatchBoundary getResetKey={() => 0} errorComponent={() => <p>Crashed</p>}>
-        <TestForm send={broken} />
-      </CatchBoundary>,
-    );
+    await show(broken);
     await userEvent.type(email(), "ana@example.com");
     await userEvent.type(password(), "secret");
 
@@ -206,7 +224,7 @@ describe("a server refusal", () => {
   // server's refusal of it on the email field.
   async function refused() {
     const send = vi.fn<Send>(() => Promise.reject(refusal(message)));
-    await render(<TestForm send={send} />);
+    await show(send);
     await userEvent.type(email(), "ana@example.com");
     await userEvent.type(password(), "secret");
     await userEvent.click(submit());
@@ -216,10 +234,11 @@ describe("a server refusal", () => {
     return send;
   }
 
-  it("shows on its field and takes focus there", async () => {
+  it("shows on its field and takes focus there, with no summary", async () => {
     await refused();
 
     await expect.element(email()).toHaveFocus();
+    await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
   });
 
   it("stays when the member leaves the field or edits another", async () => {
@@ -249,15 +268,45 @@ describe("a server refusal", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
-  it("marks no field for an input the form does not render", async () => {
-    await render(<TestForm send={refusingSecret} />);
-    await userEvent.type(email(), "ana@example.com");
-    await userEvent.type(password(), "secret");
+  it("of an input the form does not render shows in the summary, on no field", async () => {
+    await show(refusingSecret);
+    await fill();
 
     await userEvent.click(submit());
 
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent("The request failed.Enter a valid value.");
     await expect.element(submit()).toHaveFocus();
     await expect.element(email()).not.toHaveAttribute("aria-invalid", "true");
     await expect.element(password()).not.toHaveAttribute("aria-invalid", "true");
+  });
+});
+
+describe("a form request", () => {
+  it("reports an answer once", async () => {
+    const { onDone } = await show(async () => {});
+    await fill();
+
+    await userEvent.click(submit());
+
+    await vi.waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+  });
+
+  it("ignores an answer that comes after its form is gone", async () => {
+    const request = pending();
+    const send = vi.fn<Send>(() => request.promise);
+    const { onDone, screen } = await show(send);
+    await fill();
+    await userEvent.click(submit());
+    await vi.waitFor(() => expect(send).toHaveBeenCalled());
+
+    // The member follows a link away while the request runs.
+    await screen.unmount();
+    request.resolve();
+    // The awaited code resumes a task after the request settles.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(onDone).not.toHaveBeenCalled();
   });
 });
