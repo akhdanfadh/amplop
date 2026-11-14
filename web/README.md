@@ -249,14 +249,14 @@ and the folds clear at sign-out. A name cut short is offered in full in
 a tooltip, measured by `useOverflow` (`hooks/use-overflow.ts`). The
 sidebar's scrolling content fades at an edge with more beyond it
 (`scroll-fade-y` in `styles.css`, a scroll-driven animation). Where the
-sidebar is a drawer, a place's heading and account sit in the top bar
-instead of above the list: `Frame` gives its top bar a box
-(`useTopBarSlot`), and the place page puts its header there with a React
-portal, so the heading keeps its focus and the list's `main` keeps its
-name. The mail sidebar's Outbox shows how many of its messages are not
-sent yet, from the Outbox page's own read: one being sent, or one whose
-page still offers to send it (`unfinished`), so a message sent again
-stops counting. The member menu at the bottom of the sidebar opens
+sidebar is a drawer, a place's heading, account, and Check for new mail
+sit in the top bar instead of above the list: `Frame` gives its top bar
+a box (`useTopBarSlot`), and the place page puts its header there with a
+React portal, so the heading keeps its focus and the list's `main` keeps
+its name. The mail sidebar's Outbox shows how many of its messages are
+not sent yet, from the Outbox page's own read: one being sent, or one
+whose page still offers to send it (`unfinished`), so a message sent
+again stops counting. The member menu at the bottom of the sidebar opens
 Settings, the theme choice, and Sign out. Both frames and the signed-out
 layout show `OfflineBanner` at the top of the content while the browser
 reports no connection, read from TanStack Query's `onlineManager`.
@@ -1182,25 +1182,26 @@ sidebar's unread counts are a second collection over List Places, read
 whole and again with those pages, so a count changes with the rows it
 counts; it shares List Places' query with the place route's loader, so a
 page reads them once (TanStack DB's `select` takes the list out of the
-answer). The connected accounts, whose sync status the sidebar words, are
-read then too. When a page fails, TanStack DB asks for the whole place to
-repair the list; `conversations.ts` refuses that (hundreds of requests
-for a large Inbox), so the list keeps its rows, stops loading, and
-offers Try again, which replaces the conversations collection with an
-empty one (`restartMail`); the counts stay. The rules that keep that
-cheap are in
-[DESIGN.md](DESIGN.md#data-for-mail). The collections live per query
-client and end with the member's session (`onAccountCacheClear` in
-`features/auth/session-cache.ts`), as do the router's loaded pages.
-`clearAccountCache` tells the browser's other inbok tabs over a
-`BroadcastChannel`, and a signed-in frame that hears it loads again, so
-a tab never shows one member's mail beside another's. Mail actions, e.g.
-the row's star, go through `runAction` (`features/mail/actions.ts`)
-instead of a mutation hook: it changes the rows at once, sends the
-action, and keeps the rows the API answers with; a conversation the API
-refuses, or every one when the request fails, goes back as it was, and
-the caller says why. The package ships agent guides for its installed
-version in `node_modules/@tanstack/db/skills`.
+answer). The connected accounts, whose sync status the sidebar words,
+are read then too. Check for new mail (`features/mail/check-mail.tsx`)
+asks the server to sync each account the list shows, then reads all
+three every 2 s for 30 s. When a page fails, TanStack DB asks for the
+whole place to repair the list; `conversations.ts` refuses that
+(hundreds of requests for a large Inbox), so the list keeps its rows,
+stops loading, and offers Try again, which replaces the conversations
+collection with an empty one (`restartMail`); the counts stay. The rules
+that keep that cheap are in [DESIGN.md](DESIGN.md#data-for-mail). The
+collections live per query client and end with the member's session
+(`onAccountCacheClear` in `features/auth/session-cache.ts`), as do the
+router's loaded pages. `clearAccountCache` tells the browser's other
+inbok tabs over a `BroadcastChannel`, and a signed-in frame that hears
+it loads again, so a tab never shows one member's mail beside another's.
+Mail actions, e.g. the row's star, go through `runAction`
+(`features/mail/actions.ts`) instead of a mutation hook: it changes the
+rows at once, sends the action, and keeps the rows the API answers with;
+a conversation the API refuses, or every one when the request fails,
+goes back as it was, and the caller says why. The package ships agent
+guides for its installed version in `node_modules/@tanstack/db/skills`.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.

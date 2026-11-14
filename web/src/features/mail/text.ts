@@ -1,5 +1,16 @@
+import { uncertainOutcome, userMessage } from "@/api/problem";
 import { formatCount } from "@/lib/count";
+import type { ApiError } from "@/api/transport";
+import {
+  accountNotFoundType,
+  needsReconnectType,
+  throttledType,
+} from "@/features/connected-accounts/text";
 import type { ViewPlace } from "./places";
+
+const notFound = 404;
+const conflict = 409;
+const tooManyRequests = 429;
 
 // Each view's name, as the sidebar and the list's heading show it.
 export const placeName: Record<ViewPlace, string> = {
@@ -138,6 +149,73 @@ export function refreshFailed(since: string): string {
 // The reading pane's words while its messages load, and when they fail.
 export const messagesLoading = "Loading messages...";
 export const messagesFailed = "Couldn't load this conversation's messages.";
+
+// Check for new mail's name, as its button and tooltip say it.
+export const checkMailName = "Check for new mail";
+export const checkFailedTitle = "Couldn't check for new mail";
+// Said when the browser is offline, so no check can start.
+export const offlineCheck = "You're offline, so inbok can't check for new mail.";
+// Said when the member has no account to check.
+export const noAccountToCheck = "Connect an account in Connected accounts to get its mail.";
+// Said when the accounts have not been read, or could not be.
+export const accountsNotRead =
+  "inbok couldn't read your accounts, so it checked nothing. Try again.";
+
+// CheckRefusal is why Check for new mail could not check one account: it
+// is no longer connected, it needs reconnecting, the outcome is unknown,
+// or it failed otherwise, with what to say.
+export type CheckRefusal =
+  | { kind: "gone" | "reconnect" | "uncertain" }
+  | { kind: "failed"; message: string };
+
+// checkRefusal returns why err refused a check, or undefined for a refusal
+// that means a check is running anyway: one started moments ago.
+export function checkRefusal(err: ApiError): CheckRefusal | undefined {
+  const type = err.problem?.type;
+  if (err.status === tooManyRequests && type === throttledType) return undefined;
+  if (err.status === notFound && type === accountNotFoundType) return { kind: "gone" };
+  if (err.status === conflict && type === needsReconnectType) return { kind: "reconnect" };
+  // Unknown, not failed: the check may have started.
+  if (uncertainOutcome(err)) return { kind: "uncertain" };
+  return { kind: "failed", message: userMessage(err) };
+}
+
+// Names in a sentence: "A, B, and C".
+const names = new Intl.ListFormat("en-US", { type: "conjunction" });
+
+// checkFailures says why the accounts in refused, each named with its
+// refusal, could not be checked: one sentence per reason, naming every
+// account it holds, so many refusals stay short.
+export function checkFailures(refused: readonly { name: string; refusal: CheckRefusal }[]): string {
+  const of = (kind: CheckRefusal["kind"]) =>
+    refused.filter(({ refusal }) => refusal.kind === kind).map(({ name }) => name);
+  const sentences: string[] = [];
+  const gone = of("gone");
+  if (gone.length === 1) sentences.push(`${gone[0]} is no longer connected.`);
+  if (gone.length > 1)
+    sentences.push(`${gone.length} accounts are no longer connected: ${names.format(gone)}.`);
+  const reconnect = of("reconnect");
+  if (reconnect.length === 1)
+    sentences.push(`Reconnect ${reconnect[0]} in Connected accounts to get its mail.`);
+  if (reconnect.length > 1)
+    sentences.push(
+      `Reconnect ${reconnect.length} accounts in Connected accounts to get their mail: ${names.format(reconnect)}.`,
+    );
+  const uncertain = of("uncertain");
+  if (uncertain.length === 1)
+    sentences.push(
+      `Couldn't tell whether inbok checked ${uncertain[0]}. Its mail still arrives within a minute.`,
+    );
+  if (uncertain.length > 1)
+    sentences.push(
+      `Couldn't tell whether inbok checked ${uncertain.length} accounts: ${names.format(uncertain)}. Their mail still arrives within a minute.`,
+    );
+  for (const { name, refusal } of refused) {
+    if (refusal.kind === "failed")
+      sentences.push(`inbok couldn't check ${name}. ${refusal.message}`);
+  }
+  return sentences.join(" ");
+}
 
 // The sidebar's accounts: its group, and the item that shows every one.
 export const accountsName = "Accounts";

@@ -41,7 +41,7 @@ export type TopBarSlot = { shown: boolean; box: HTMLElement | null };
 const TopBarSlotContext = createContext<TopBarSlot | null>(null);
 
 // useTopBarSlot returns where a page's own bar goes, e.g. a place's heading
-// and unread count, which the page puts in box with a portal while
+// and Check for new mail, which the page puts in box with a portal while
 // shown; null outside a frame, where the page shows them itself (DESIGN.md
 // "Phones").
 export function useTopBarSlot(): TopBarSlot | null {
@@ -139,12 +139,10 @@ function TopBar({ slotRef }: { slotRef: (box: HTMLElement | null) => void }): Re
       >
         inbok
       </Link>
-      {/* A page's words share one baseline, e.g. a heading and its count;
-          the slot is centred in the bar beside the button. */}
       <div
         ref={slotRef}
         data-slot="top-bar-slot"
-        className="flex min-w-0 flex-1 items-baseline gap-2 empty:hidden"
+        className="flex min-w-0 flex-1 items-center gap-2 empty:hidden"
       />
     </header>
   );

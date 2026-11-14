@@ -4,6 +4,7 @@ import { AccountMark, accountName } from "@/components/account-mark";
 import { useTopBarSlot } from "@/components/frame";
 import { useFocusOnOpen } from "@/hooks/use-focus-on-open";
 import { useLayout } from "@/hooks/use-layout";
+import { CheckMail } from "./check-mail";
 import { ConversationList } from "./list";
 import { MailPanes } from "./panes";
 import type { Place } from "./places";
@@ -85,7 +86,7 @@ export function PlacePage({
 }
 
 // PlaceHeader is a place's heading, name, with the account the list is
-// filtered to. inTopBar puts it in the top bar (DESIGN.md "Phones"), with
+// filtered to and Check for new mail. inTopBar puts it in the top bar (DESIGN.md "Phones"), with
 // ownName, a label's own name, in place of its path; else it heads the
 // list.
 function PlaceHeader({
@@ -103,32 +104,39 @@ function PlaceHeader({
 }): ReactElement {
   const content = (
     <>
-      <h1
-        ref={headingRef}
-        id="place-heading"
-        tabIndex={-1}
-        className="truncate text-lg font-semibold"
-      >
-        {inTopBar && ownName !== name ? (
-          // The top bar has room for the own name, the part that tells a
-          // label from its parents; screen readers still hear the path.
-          <>
-            <span className="sr-only">{name}</span>
-            <span aria-hidden="true">{ownName}</span>
-          </>
-        ) : (
-          name
+      {/* The words share one baseline; the row is centred beside the
+          buttons. */}
+      <div className="flex min-w-0 items-baseline gap-2">
+        <h1
+          ref={headingRef}
+          id="place-heading"
+          tabIndex={-1}
+          className="truncate text-lg font-semibold"
+        >
+          {inTopBar && ownName !== name ? (
+            // The top bar has room for the own name, the part that tells a
+            // label from its parents; screen readers still hear the path.
+            <>
+              <span className="sr-only">{name}</span>
+              <span aria-hidden="true">{ownName}</span>
+            </>
+          ) : (
+            name
+          )}
+        </h1>
+        {account && (
+          <AccountMark
+            color={account.color}
+            name={accountName(account)}
+            className="text-sm text-muted-foreground"
+          />
         )}
-      </h1>
-      {account && (
-        <AccountMark
-          color={account.color}
-          name={accountName(account)}
-          className="text-sm text-muted-foreground"
-        />
-      )}
+      </div>
+      <span className="ml-auto shrink-0">
+        <CheckMail accountId={account?.id} />
+      </span>
     </>
   );
   if (inTopBar) return content;
-  return <header className="flex items-baseline gap-3 border-b px-4 py-3">{content}</header>;
+  return <header className="flex items-center gap-3 border-b py-2 pr-2 pl-4">{content}</header>;
 }

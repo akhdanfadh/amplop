@@ -62,6 +62,8 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // request for an older page until it is cleared, failAction the
 // next action, and refuse refuses an action on a conversation, by ID, with
 // a reason; signedOut answers everything 401, as after the session ended.
+// It starts an account's sync, recording the account in syncs, unless
+// refuseSync names a status and problem type for that account;
 // failAccounts makes every accounts read answer that status; it renames
 // an account as Rename Account does, offers Gmail, and says setup is done.
 // requests records every path and search it was asked; actions every
@@ -77,7 +79,9 @@ export type MailApi = {
   failAction: number | undefined;
   signedOut: boolean;
   refuse: Record<string, "not-found" | "needs-reconnect" | "failed">;
+  syncs: number[];
   failAccounts: number | undefined;
+  refuseSync: Record<number, { status: number; type: string }>;
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 };
 
@@ -94,7 +98,9 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     failAction: undefined,
     signedOut: false,
     refuse: {},
+    syncs: [],
     failAccounts: undefined,
+    refuseSync: {},
     fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.href);
       api.requests.push(url.pathname + url.search);
@@ -144,6 +150,15 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         return found
           ? Response.json({ data: { conversation: found, messages: [] } })
           : problem(notFound);
+      }
+      const sync = /^\/api\/v0\/connected-accounts\/(\d+)\/sync$/.exec(path);
+      if (sync && init?.method === "POST") {
+        const id = Number(sync[1]);
+        const refusal = api.refuseSync[id];
+        if (refusal) return problem(refusal.status, refusal.type);
+        api.syncs.push(id);
+        const account = api.accounts.find((a) => a.id === id);
+        return account ? Response.json({ data: account.sync }) : problem(notFound);
       }
       const renamed = /^\/api\/v0\/connected-accounts\/(\d+)$/.exec(path);
       if (renamed && init?.method === "PATCH") {

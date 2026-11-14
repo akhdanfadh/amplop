@@ -386,9 +386,15 @@ last two redirect into settings, so settings can move without the server.
   Rows changing above the screen, e.g. a reply moving one to the top,
   leave the rows on screen where they are. The end says
   "That's everything inbok has copied. Older mail stays in Gmail."
-- **Check for new mail:** a button in the list header (and the phone top
-  bar) that syncs the accounts in the filter; in-app pull-to-refresh runs
-  it on touch.
+- **Check for new mail:** an icon button at the end of the list's header
+  (the phone's top bar), named by a tooltip, that asks each account in the
+  filter that inbok can use to check for mail now; its icon turns while
+  the requests run, whole turns, and dims instead with reduced motion.
+  Lists, counts, and account status are then read every 2 s for 30 s, so
+  new mail shows within seconds. A check started moments ago counts as
+  started; an account refused, none to check, or the browser offline is
+  said in an error toast, one sentence per reason naming every account it
+  holds ("3 accounts are no longer connected: A, B, and C.").
 
 ### Reading pane
 
@@ -517,17 +523,17 @@ match positions, never from matching text in the browser.
 ### Phones
 
 One pane at a time; the list scrolls its own box. A conversation's Back
-goes back in history, as the phone's own back does. The top bar holds the
-menu, then the place's heading (a label's own name, its path read to
-screen readers) and the account it is filtered to, later search; no
-unread count, as in phone mail apps: the list's bold rows show what is
-unread, and the drawer has the counts. It stays in place, and an open
-conversation leaves it to the wordmark. From 780 px to 1023 px, where the
-sidebar is also a drawer, the same bar holds them. Compose is a labelled
-floating button. A conversation has Back and its actions on top, and
-labelled Reply, Reply all, Forward at the bottom. The list box sets
-`overscroll-behavior-y: contain`, so the browser's own pull-to-refresh,
-which would reload the app, never starts.
+goes back in history, as the phone's own back does. The top bar holds
+the menu, then the place's heading (a label's own name, its path read to
+screen readers), the account it is filtered to, and Check for new mail,
+later search; no unread count, as in phone mail apps: the list's bold
+rows show what is unread, and the drawer has the counts. It stays in
+place, and an open conversation leaves it to the wordmark. From 780 px
+to 1023 px, where the sidebar is also a drawer, the same bar holds them.
+Compose is a labelled floating button. A conversation has Back and its
+actions on top, and labelled Reply, Reply all, Forward at the bottom.
+The list box sets `overscroll-behavior-y: contain`, so the browser's own
+pull-to-refresh, which would reload the app, never starts.
 
 ### Settings and signed-out pages
 
@@ -725,7 +731,11 @@ reading-pane position settings, sender pictures (BIMI logos after DMARC,
 contact photos), merging one email received by two accounts, swipe
 gestures, drafts beyond the tab, an installable app with offline mail,
 per-member theme storage, folds kept across devices (per member, on the
-server).
+server). Pull-to-refresh and a top bar that hides while scrolling down:
+Check for new mail is one tap in the top bar, both gestures need
+hand-written touch handling over the Virtualizer's scrolling box that
+only a real phone can check, and a native app gets both from its platform
+(ADR031, branch 3 checkpoint 5).
 
 App keyboard shortcuts, once built, go on TanStack Hotkeys (`useHotkey`,
 its `Mod` key, and its display formatter), which then also takes the

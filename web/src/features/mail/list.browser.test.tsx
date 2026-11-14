@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, onlineManager } from "@tanstack/react-query";
 import {
   RouterProvider,
   createMemoryHistory,
@@ -16,8 +16,9 @@ import { Route as appRoot } from "@/routes/__root";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 import { pointTo } from "@/test/pointer";
 import { placeSearch } from "./address";
-import { refreshNewest } from "./conversations";
+import { currentMail, refreshNewest } from "./conversations";
 import { PlacePage } from "./place-page";
+import { Toaster } from "@/components/ui/toast";
 
 const serverError = 500;
 
@@ -657,5 +658,119 @@ describe("the list's order and refreshes", () => {
     });
     await expect.element(star).toHaveAttribute("aria-pressed", "false");
     expect(api.conversations[0]?.starred).toBe(false);
+  });
+});
+
+// checkAccounts returns two accounts inbok can use and one Google stopped
+// accepting.
+function checkAccounts() {
+  return [
+    listedAccount(1, "ana@example.com"),
+    listedAccount(2, "ana@work.example"),
+    { ...listedAccount(3, "ana@old.example"), status: "needs-reconnect" as const },
+  ];
+}
+
+describe("Check for new mail", () => {
+  it("says which account it could not check, and checks the others", async () => {
+    const api = mailApi([conversation(1)], checkAccounts());
+    api.refuseSync[2] = { status: 409, type: "/api/v0/problems/account-needs-reconnect" };
+    await app(api);
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    await expect.element(page.getByText("Couldn't check for new mail")).toBeVisible();
+    await expect
+      .element(page.getByText("Reconnect ana@work.example in Connected accounts to get its mail."))
+      .toBeVisible();
+    expect(api.syncs).toEqual([1]);
+  });
+
+  it("says the browser is offline instead of checking", async () => {
+    const api = mailApi([conversation(1)], checkAccounts());
+    await app(api);
+    onlineManager.setOnline(false);
+    try {
+      await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+      await expect
+        .element(page.getByText("You're offline, so inbok can't check for new mail."))
+        .toBeVisible();
+      expect(api.syncs).toEqual([]);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+  });
+
+  it("does nothing more once the member signs out while it checks", async () => {
+    const api = mailApi([conversation(1)], checkAccounts());
+    // A refusal would show a toast naming the previous member's account.
+    api.refuseSync[2] = { status: 409, type: "/api/v0/problems/account-needs-reconnect" };
+    let answer: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    let asked = 0;
+    const fetch = api.fetch;
+    api.fetch = async (input, init) => {
+      if (init?.method === "POST") {
+        asked++;
+        await held;
+      }
+      return fetch(input, init);
+    };
+    const { client } = await app(api);
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+    await expect.poll(() => asked).toBe(2);
+
+    // Sign-out: the page goes and the member's data ends; the next page,
+    // e.g. sign-in, has the app's toasts.
+    await cleanup();
+    clearAccountCache(client);
+    current = undefined;
+    await render(<Toaster />);
+    answer?.();
+    await held;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // No toast names the previous member's account, and no mail came back
+    // for them, nor its refresh timers.
+    expect(page.getByText("Couldn't check for new mail").elements()).toHaveLength(0);
+    expect(currentMail(client)).toBeUndefined();
+  });
+
+  it("takes a check started moments ago as started, and reads the mail again soon", async () => {
+    const api = mailApi([conversation(1)], checkAccounts());
+    api.refuseSync[1] = { status: 429, type: "/api/v0/problems/sync-throttled" };
+    // Only the throttled account, so the re-read comes from it alone.
+    await app(api, "/mail/inbox?account=1");
+    await expect.element(grid().getByRole("row").first()).toBeVisible();
+    // The list's pages, and the accounts, whose status the page shows.
+    const lists = () =>
+      api.requests.filter((request) => request.startsWith("/api/v0/conversations?")).length;
+    const accounts = () =>
+      api.requests.filter((request) => request === "/api/v0/connected-accounts").length;
+    const listsBefore = lists();
+    const accountsBefore = accounts();
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    // The first re-read comes 2 s after the check, well before the lists'
+    // own 30 s timer. The counts come with it where a page shows them, e.g.
+    // in the sidebar; this one shows none.
+    await expect.poll(lists, { timeout: 4000 }).toBeGreaterThan(listsBefore);
+    expect(accounts()).toBeGreaterThan(accountsBefore);
+    expect(api.syncs).toEqual([]);
+    expect(page.getByText("Couldn't check for new mail").elements()).toHaveLength(0);
+  });
+
+  it("says so when no account the list shows can be checked", async () => {
+    const api = mailApi([conversation(1, { accountId: 3 })], checkAccounts());
+    await app(api, "/mail/inbox?account=3");
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    await expect.element(page.getByText("Couldn't check for new mail")).toBeVisible();
+    expect(api.syncs).toEqual([]);
   });
 });

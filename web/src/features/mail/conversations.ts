@@ -316,6 +316,12 @@ const conversationsKey = ["mail", "conversations"];
 // How often each open list reads its newest page again, and the places
 // their unread counts.
 const newestEveryMs = 30_000;
+// How often mail is read again while a Check for new mail runs, and for
+// how long after it starts: a check that finds a few messages ends within
+// seconds, so its mail and counts show (the same as Connected accounts'
+// Check now).
+const checkingEveryMs = 2_000;
+export const checkingForMs = 30_000;
 
 // PlaceCount is one account's place with its unread count, as List Places
 // gives it: a view, or a label with its own name and its parent label.
@@ -390,12 +396,14 @@ function createPlaceCounts(client: QueryClient, id: string) {
 }
 
 // MailData is one member's mail on a client: conversations, which a failed
-// list replaces (restartMail); placeCounts, which the sidebar shows; and
-// stop, which ends their refresh.
+// list replaces (restartMail); placeCounts, which the sidebar shows;
+// stop, which ends their refresh; and checking, which reads them often for
+// checkingForMs, as a Check for new mail starts.
 export type MailData = {
   conversations: Conversations;
   placeCounts: ReturnType<typeof createPlaceCounts>;
   stop: () => void;
+  checking: () => void;
 };
 
 // createMail returns client's mail data, number telling its collections
@@ -416,13 +424,23 @@ function createMail(client: QueryClient, number: number): MailData {
   const stopOnline = onlineManager.subscribe((online) => {
     if (online) refresh();
   });
+  let checkingTimer: ReturnType<typeof setInterval> | undefined;
   return {
     conversations: createConversations(client, `conversations-${number}`),
     placeCounts: createPlaceCounts(client, `place-counts-${number}`),
     stop: () => {
       clearInterval(timer);
+      clearInterval(checkingTimer);
       document.removeEventListener("visibilitychange", onVisible);
       stopOnline();
+    },
+    checking: () => {
+      clearInterval(checkingTimer);
+      const until = Date.now() + checkingForMs;
+      checkingTimer = setInterval(() => {
+        if (Date.now() >= until) clearInterval(checkingTimer);
+        refresh();
+      }, checkingEveryMs);
     },
   };
 }

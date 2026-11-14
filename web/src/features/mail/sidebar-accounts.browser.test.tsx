@@ -276,3 +276,21 @@ describe("folding labels", () => {
     await expect.element(nav().getByRole("link", { name: "Inbox 12,849 unread" })).toBeVisible();
   });
 });
+
+describe("Check for new mail", () => {
+  it("checks every account the list shows that inbok can use", async () => {
+    await open("/mail/inbox");
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    await expect.poll(() => new Set(api.syncs)).toEqual(new Set([1, 2]));
+  });
+
+  it("checks only the account the list is filtered to", async () => {
+    await open("/mail/inbox?account=2");
+
+    await userEvent.click(page.getByRole("button", { name: "Check for new mail" }));
+
+    await expect.poll(() => api.syncs).toEqual([2]);
+  });
+});

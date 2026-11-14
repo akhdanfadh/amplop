@@ -85,6 +85,13 @@ async function open(
   await render(<RouterProvider router={router} />);
 }
 
+// middle returns how far down the window element's middle is, in whole
+// pixels.
+function middle(element: Element): number {
+  const box = element.getBoundingClientRect();
+  return Math.round(box.top + box.height / 2);
+}
+
 afterEach(async () => {
   await cleanup();
   if (current) clearAccountCache(current);
@@ -93,15 +100,29 @@ afterEach(async () => {
 });
 
 describe("the top bar, where the sidebar is a drawer", () => {
-  it("holds the place's heading on a phone, without the sidebar's counts", async () => {
+  it("holds the place's heading and Check for new mail on a phone, not the counts", async () => {
     await open(390);
 
     const bar = page.getByRole("banner");
     await expect.element(bar.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
+    await expect.element(bar.getByRole("button", { name: "Check for new mail" })).toBeVisible();
     // The list's bold rows show what is unread; the drawer has the counts.
     expect(bar.getByText(/unread/).elements()).toHaveLength(0);
     // The wordmark gives way to the place's own bar.
     expect(bar.getByRole("link", { name: "inbok" }).elements()).toHaveLength(0);
+  });
+
+  it("centres the heading between the buttons, at the drawer header's height", async () => {
+    await open(390);
+
+    const bar = page.getByRole("banner");
+    const heading = bar.getByRole("heading", { level: 1, name: "Inbox" });
+    await expect.element(heading).toBeVisible();
+    const menu = bar.getByRole("button", { name: "Open sidebar" }).element();
+    const check = bar.getByRole("button", { name: "Check for new mail" }).element();
+    expect(menu.getBoundingClientRect().top).toBe(12);
+    expect(middle(heading.element())).toBe(middle(menu));
+    expect(middle(check)).toBe(middle(menu));
   });
 
   it("holds them from 780 px to 1023 px too", async () => {
@@ -109,6 +130,7 @@ describe("the top bar, where the sidebar is a drawer", () => {
 
     const bar = page.getByRole("banner");
     await expect.element(bar.getByRole("heading", { level: 1, name: "Inbox" })).toBeVisible();
+    await expect.element(bar.getByRole("button", { name: "Check for new mail" })).toBeVisible();
   });
 
   it("shows a nested label by its own name, its path read to screen readers", async () => {
