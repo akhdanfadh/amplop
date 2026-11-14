@@ -18,4 +18,11 @@ export const localStore = {
       // Dropped: see above.
     }
   },
+  removeItem(key: string): void {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Dropped: see above.
+    }
+  },
 };

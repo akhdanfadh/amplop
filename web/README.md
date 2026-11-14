@@ -242,12 +242,16 @@ pane shows at a time. A state in the reading pane, e.g. a conversation
 not found, is a section with an `h2` (`StateRegion`), since the list
 holds the page's `main`. In the mail sidebar, an account's labels and a
 parent label's children fold behind a chevron (React Aria's
-`Disclosure`); what is unfolded is a TanStack DB localStorage collection
-in `features/mail/folds.ts`, so it is kept in the browser and the same
-in each of its tabs; the sidebar also unfolds the way to the open place,
-and the folds clear at sign-out. A name cut short is offered in full in
-a tooltip, measured by `useOverflow` (`hooks/use-overflow.ts`). The
-sidebar's scrolling content fades at an edge with more beyond it
+`Disclosure`); what is unfolded is a TanStack DB collection in the tab's
+`sessionStorage` (`features/mail/folds.ts`), so each tab keeps its own
+through reloads, and a tab without folds of its own starts from the
+folds as the member last pressed a chevron in any tab, a plain
+`localStorage` key; the sidebar also unfolds the way to the open place,
+which leaves that key as it was, and the folds clear at sign-out in the
+tab that signs out, and in another tab when it next signs in. A name cut
+short is offered in full in a tooltip, measured by `useOverflow`
+(`hooks/use-overflow.ts`). The sidebar's scrolling content fades at an
+edge with more beyond it
 (`scroll-fade-y` in `styles.css`, a scroll-driven animation). Where the
 sidebar is a drawer, a place's heading, account, and Check for new mail
 sit in the top bar instead of above the list: `Frame` gives its top bar

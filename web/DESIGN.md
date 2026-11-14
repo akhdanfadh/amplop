@@ -307,8 +307,9 @@ last two redirect into settings, so settings can move without the server.
   places it on touch), pointing right when folded and down when open. All
   start folded; the way to the open place (its account and parent labels,
   or the filtered account) unfolds as it opens. What the member folds or
-  unfolds is kept per browser, the same in each of its tabs, and cleared
-  at sign-out. The chevron is a 24 px button, named "Labels of <account>"
+  unfolds is kept per tab, through its reloads, so two tabs can show two
+  accounts' labels; a tab without folds of its own starts from the
+  member's last press in any tab; signing out clears both in that tab, and another tab's own folds when it next signs in. The chevron is a 24 px button, named "Labels of <account>"
   or "Labels under <label's path>", whose state screen readers hear. Every row of the Accounts
   section keeps the chevron's column, folding or not, so its counts end
   at one edge. Opening the sidebar, or another place, scrolls the open
