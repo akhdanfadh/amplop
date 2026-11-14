@@ -380,7 +380,7 @@ function EmptyList({
   const stillCopying = account ? syncing(account) : (accounts ?? []).some(syncing);
   return (
     <Empty className="px-4">
-      <EmptyTitle>{emptyTitle(place, placeName, name)}</EmptyTitle>
+      <EmptyTitle>{emptyTitle(place, placeName)}</EmptyTitle>
       {stillCopying && <EmptyDescription>{stillSyncing(name)}</EmptyDescription>}
     </Empty>
   );

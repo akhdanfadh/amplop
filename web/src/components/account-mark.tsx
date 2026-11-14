@@ -51,9 +51,15 @@ export function AccountMark({
   name: string;
   className?: string;
 }): ReactElement {
+  // The name gives the mark its baseline, so beside other text, e.g. a
+  // heading, it sits on the same line; the dot, which has none, is
+  // centred on the name.
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
-      <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", accountDot(color))} />
+    <span className={cn("inline-flex min-w-0 items-baseline gap-1.5", className)}>
+      <span
+        aria-hidden="true"
+        className={cn("size-2 shrink-0 self-center rounded-full", accountDot(color))}
+      />
       <span className="truncate">{name}</span>
     </span>
   );

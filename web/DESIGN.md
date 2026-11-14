@@ -511,13 +511,17 @@ match positions, never from matching text in the browser.
 ### Phones
 
 One pane at a time; the list scrolls its own box. A conversation's Back
-goes back in history, as the phone's own back does. The top bar (menu,
-title and unread count, Check for new mail, search) hides while scrolling
-down and returns on a small scroll up or when focus enters it. Compose is
-a labelled floating button. A conversation has Back and its actions on
-top, and labelled Reply, Reply all, Forward at the bottom. Pull-to-refresh
-is inbok's own and runs Check for new mail; the list box sets
-`overscroll-behavior-y: contain`.
+goes back in history, as the phone's own back does. The top bar holds the
+menu, then the place's heading (a label's own name, its path read to
+screen readers) and the account it is filtered to, later search; no
+unread count, as in phone mail apps: the list's bold rows show what is
+unread, and the drawer has the counts. It stays in place, and an open
+conversation leaves it to the wordmark. From 780 px to 1023 px, where the
+sidebar is also a drawer, the same bar holds them. Compose is a labelled
+floating button. A conversation has Back and its actions on top, and
+labelled Reply, Reply all, Forward at the bottom. The list box sets
+`overscroll-behavior-y: contain`, so the browser's own pull-to-refresh,
+which would reload the app, never starts.
 
 ### Settings and signed-out pages
 
@@ -603,9 +607,11 @@ is inbok's own and runs Check for new mail; the list box sets
   nothing. Hovering or focusing a row preloads its conversation, and the
   reading pane starts from the list row's data.
 - **Empty:** words only, the cause and one next step: "Connect your first
-  account" with Connect Gmail; "Nothing in Inbox"; "Nothing in Studio's
-  Inbox"; "Studio is still syncing. Its mail appears here as it is
-  copied."; "No spam"; "Trash is empty".
+  account" with Connect Gmail; "Nothing in Inbox", also under an account
+  filter, whose header already names the account; "Nothing in Projects",
+  a label by its own name, its parents in the header; "Studio is still
+  syncing. Its mail appears here as it is copied."; "No spam"; "Trash is
+  empty".
 - **Failure:** what failed, that nothing was lost, Try again, a reference
   for faults. A failed refresh keeps the list and adds a banner ("Couldn't
   refresh. inbok isn't answering; showing mail from 10:42."). A failed

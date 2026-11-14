@@ -311,13 +311,11 @@ describe("one account's list", () => {
     expect(avatar?.className).not.toContain("after:border-account");
   });
 
-  it("names the account when its list is empty or still syncing", async () => {
+  it("names the place when its list is empty, and the account still syncing", async () => {
     const syncing = listedAccount(2, "ana@work.example", 3);
     syncing.sync.status = "running";
     await app(mailApi([conversation(1)], [two[0], syncing]), "/mail/inbox?account=2");
-    await expect
-      .element(page.getByRole("heading", { name: "Nothing in ana@work.example's Inbox" }))
-      .toBeVisible();
+    await expect.element(page.getByRole("heading", { name: "Nothing in Inbox" })).toBeVisible();
     await expect
       .element(page.getByText("ana@work.example is still syncing.", { exact: false }))
       .toBeVisible();
@@ -373,6 +371,8 @@ describe("the row's star", () => {
     await expect.element(starredRow).toBeVisible();
     const preview = row.getByText(/^Long preview/).element();
     const starred = starredRow.getByText(/^Long preview/).element();
+    // At rest: the pointer off every row, wherever an earlier test left it.
+    await userEvent.hover(page.getByRole("heading", { level: 1 }));
     const width = preview.getBoundingClientRect().width;
     expect(getComputedStyle(preview).maskImage).toBe("none");
     // A starred row's preview gives way to its star.

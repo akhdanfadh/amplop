@@ -1,6 +1,9 @@
-import { useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { AccountMark, accountName } from "@/components/account-mark";
+import { useTopBarSlot } from "@/components/frame";
 import { useFocusOnOpen } from "@/hooks/use-focus-on-open";
+import { useLayout } from "@/hooks/use-layout";
 import { ConversationList } from "./list";
 import { MailPanes } from "./panes";
 import type { Place } from "./places";
@@ -9,13 +12,15 @@ import type { Place } from "./places";
 export type PlaceAccount = { id: number; color: number; email: string; name: string | null };
 
 // PlacePage is a place's mail: its conversation list beside reader, the
-// reading pane. name is the place's name, its heading; account, when
+// reading pane. name is the place's name, its heading, and ownName its own
+// name, a label's without its parents (name by default); account, when
 // given, the one account the list shows; openId the conversation reader
 // holds. pane says what was opened: the list, with nothing in the reading
 // pane, or the reader, e.g. a conversation or Page not found.
 export function PlacePage({
   place,
   name,
+  ownName = name,
   account,
   openId,
   pane,
@@ -23,6 +28,7 @@ export function PlacePage({
 }: {
   place: Place;
   name: string;
+  ownName?: string;
   account: PlaceAccount | undefined;
   openId: string | undefined;
   pane: "list" | "reader";
@@ -34,36 +40,39 @@ export function PlacePage({
   // Each page focuses its heading when it opens (DESIGN.md "Focus"), so the
   // keyboard starts in the place, not back in the sidebar; what the reading
   // pane shows takes focus itself.
-  useFocusOnOpen(headingRef, pane === "list" ? `${place} ${account?.id ?? ""}` : null);
+  const topBar = useTopBarSlot();
+  const slot = topBar?.box ?? null;
+  const inBar = topBar?.shown ?? false;
+  // In a top bar the header waits for its box, which the frame has after
+  // its first draw, so the heading is drawn once, in its place, and
+  // focused there.
+  const placed = !inBar || slot !== null;
+  useFocusOnOpen(headingRef, pane === "list" && placed ? `${place} ${account?.id ?? ""}` : null);
+  // On a phone the open conversation has its own bar, so the place's
+  // header leaves the top bar to the wordmark.
+  const hidden = useLayout() === "phone" && pane === "reader";
+  const header = (
+    <PlaceHeader
+      name={name}
+      ownName={ownName}
+      account={account}
+      headingRef={headingRef}
+      inTopBar={slot !== null}
+    />
+  );
 
   return (
     <MailPanes
       pane={pane}
       list={
         <main className="flex h-full flex-col" aria-labelledby="place-heading">
-          <header className="flex items-baseline gap-3 border-b px-4 py-3">
-            <h1
-              ref={headingRef}
-              id="place-heading"
-              tabIndex={-1}
-              className="truncate text-lg font-semibold"
-            >
-              {name}
-            </h1>
-            {account && (
-              <AccountMark
-                color={account.color}
-                name={accountName(account)}
-                className="text-sm text-muted-foreground"
-              />
-            )}
-          </header>
+          {slot ? !hidden && createPortal(header, slot) : !inBar && header}
           <ConversationList
             // A new place, account, or attempt is a new list: its own
             // scroll position, "N new" count, and first load.
             key={`${place} ${account?.id ?? ""} ${attempt}`}
             place={place}
-            placeName={name}
+            placeName={ownName}
             account={account?.id}
             openId={openId}
             onRetry={() => setAttempt((n) => n + 1)}
@@ -73,4 +82,53 @@ export function PlacePage({
       reader={reader}
     />
   );
+}
+
+// PlaceHeader is a place's heading, name, with the account the list is
+// filtered to. inTopBar puts it in the top bar (DESIGN.md "Phones"), with
+// ownName, a label's own name, in place of its path; else it heads the
+// list.
+function PlaceHeader({
+  name,
+  ownName,
+  account,
+  headingRef,
+  inTopBar,
+}: {
+  name: string;
+  ownName: string;
+  account: PlaceAccount | undefined;
+  headingRef: RefObject<HTMLHeadingElement | null>;
+  inTopBar: boolean;
+}): ReactElement {
+  const content = (
+    <>
+      <h1
+        ref={headingRef}
+        id="place-heading"
+        tabIndex={-1}
+        className="truncate text-lg font-semibold"
+      >
+        {inTopBar && ownName !== name ? (
+          // The top bar has room for the own name, the part that tells a
+          // label from its parents; screen readers still hear the path.
+          <>
+            <span className="sr-only">{name}</span>
+            <span aria-hidden="true">{ownName}</span>
+          </>
+        ) : (
+          name
+        )}
+      </h1>
+      {account && (
+        <AccountMark
+          color={account.color}
+          name={accountName(account)}
+          className="text-sm text-muted-foreground"
+        />
+      )}
+    </>
+  );
+  if (inTopBar) return content;
+  return <header className="flex items-baseline gap-3 border-b px-4 py-3">{content}</header>;
 }

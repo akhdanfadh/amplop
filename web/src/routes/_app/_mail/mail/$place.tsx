@@ -46,14 +46,15 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
     if (account !== undefined && !accounts?.data.accounts.some((a) => a.id === account)) {
       throw unfiltered;
     }
-    if (isViewPlace(place)) return { name: placeName[place] };
+    if (isViewPlace(place)) return { name: placeName[place], ownName: placeName[place] };
     const label = places?.data.places.find((p) => p.place === place && p.name !== null);
     if (!label?.name) throw notFound();
     // A label belongs to one account: filtered to another, it shows whole.
     if (account !== undefined && label.accountId !== account) throw unfiltered;
     // A nested label is named with its parents, joined by "/", inbok's
-    // separator for every provider's.
-    return { name: labelPath(places?.data.places ?? [], place).join("/") };
+    // separator for every provider's; ownName is its own, e.g. for an
+    // empty list's words.
+    return { name: labelPath(places?.data.places ?? [], place).join("/"), ownName: label.name };
   },
   component: Place,
   // head also runs for an address that is no place, which shows Page not
@@ -64,7 +65,7 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
 function Place(): ReactElement {
   const { place } = Route.useParams();
   const { account: accountId } = Route.useSearch();
-  const { name } = Route.useLoaderData();
+  const { name, ownName } = Route.useLoaderData();
   const accounts = useListConnectedAccounts();
   const account = accounts.data?.data.accounts.find((a) => a.id === accountId);
   // The reading pane's index shows when no conversation is open.
@@ -75,6 +76,7 @@ function Place(): ReactElement {
     <PlacePage
       place={place}
       name={name}
+      ownName={ownName}
       account={account}
       openId={open?.params.conversationId}
       pane={nothingOpen ? "list" : "reader"}

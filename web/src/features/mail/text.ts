@@ -107,12 +107,16 @@ export const noAccountsTitle = "Connect your first account";
 export const noAccountsText = "inbok shows the mail of the accounts you connect.";
 export const connectGmail = "Connect Gmail";
 
-// emptyTitle returns what an empty list says: name, the place's name, in
-// account's mail, or in every account's when account is undefined.
-export function emptyTitle(place: string, name: string, account: string | undefined): string {
-  if (account === undefined && place === "spam") return "No spam";
-  if (account === undefined && place === "trash") return "Trash is empty";
-  return account === undefined ? `Nothing in ${name}` : `Nothing in ${account}'s ${name}`;
+// emptyTitle returns what an empty list says of place, named name, its own
+// name: a label's without its parents.
+//
+// DESIGN: the account and the label's parents stay out; the header above
+// shows both, and a long account name and a deep label made the title run
+// six lines on a phone.
+export function emptyTitle(place: string, name: string): string {
+  if (place === "spam") return "No spam";
+  if (place === "trash") return "Trash is empty";
+  return `Nothing in ${name}`;
 }
 
 // stillSyncing returns why an empty list may fill: account, or some

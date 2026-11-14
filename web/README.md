@@ -238,21 +238,25 @@ member moves between pages shows its loading view inside the frame; the
 first load is one loading view over the window, as above. In mail, the
 list grows with the window from 300 px to 440 px beside the reading pane
 (`features/mail/panes.tsx`), with no divider to drag; below 780 px one
-pane shows at a time. A state in the reading pane, e.g. a conversation not
-found, is a section with an `h2` (`StateRegion`), since the list holds the
-page's `main`. In the mail sidebar, an account's labels and a parent
-label's children fold behind a chevron (React Aria's `Disclosure`); what
-is unfolded is a TanStack DB localStorage collection in
-`features/mail/folds.ts`, so it is kept in the browser and the same in
-each of its tabs; the sidebar also unfolds the way to the open place,
-and the folds clear at sign-out. A name cut
-short is offered in full in a tooltip, measured by `useOverflow`
-(`hooks/use-overflow.ts`). The sidebar's scrolling content fades at an
-edge with more beyond it (`scroll-fade-y` in `styles.css`, a
-scroll-driven animation). The mail sidebar's Outbox shows how many of
-its messages are not sent yet, from the Outbox page's own read: one being
-sent, or one whose page still offers to send it (`unfinished`), so a
-message sent again stops counting. The member menu at the bottom of the sidebar opens
+pane shows at a time. A state in the reading pane, e.g. a conversation
+not found, is a section with an `h2` (`StateRegion`), since the list
+holds the page's `main`. In the mail sidebar, an account's labels and a
+parent label's children fold behind a chevron (React Aria's
+`Disclosure`); what is unfolded is a TanStack DB localStorage collection
+in `features/mail/folds.ts`, so it is kept in the browser and the same
+in each of its tabs; the sidebar also unfolds the way to the open place,
+and the folds clear at sign-out. A name cut short is offered in full in
+a tooltip, measured by `useOverflow` (`hooks/use-overflow.ts`). The
+sidebar's scrolling content fades at an edge with more beyond it
+(`scroll-fade-y` in `styles.css`, a scroll-driven animation). Where the
+sidebar is a drawer, a place's heading and account sit in the top bar
+instead of above the list: `Frame` gives its top bar a box
+(`useTopBarSlot`), and the place page puts its header there with a React
+portal, so the heading keeps its focus and the list's `main` keeps its
+name. The mail sidebar's Outbox shows how many of its messages are not
+sent yet, from the Outbox page's own read: one being sent, or one whose
+page still offers to send it (`unfinished`), so a message sent again
+stops counting. The member menu at the bottom of the sidebar opens
 Settings, the theme choice, and Sign out. Both frames and the signed-out
 layout show `OfflineBanner` at the top of the content while the browser
 reports no connection, read from TanStack Query's `onlineManager`.
