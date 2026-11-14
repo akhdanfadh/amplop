@@ -240,10 +240,19 @@ list grows with the window from 300 px to 440 px beside the reading pane
 (`features/mail/panes.tsx`), with no divider to drag; below 780 px one
 pane shows at a time. A state in the reading pane, e.g. a conversation not
 found, is a section with an `h2` (`StateRegion`), since the list holds the
-page's `main`. The mail sidebar's Outbox shows how many of its messages
-are not sent yet, from the Outbox page's own read: one being sent, or one
-whose page still offers to send it (`unfinished`), so a message sent
-again stops counting. The member menu at the bottom of the sidebar opens
+page's `main`. In the mail sidebar, an account's labels and a parent
+label's children fold behind a chevron (React Aria's `Disclosure`); what
+is unfolded is a TanStack DB localStorage collection in
+`features/mail/folds.ts`, so it is kept in the browser and the same in
+each of its tabs; the sidebar also unfolds the way to the open place,
+and the folds clear at sign-out. A name cut
+short is offered in full in a tooltip, measured by `useOverflow`
+(`hooks/use-overflow.ts`). The sidebar's scrolling content fades at an
+edge with more beyond it (`scroll-fade-y` in `styles.css`, a
+scroll-driven animation). The mail sidebar's Outbox shows how many of
+its messages are not sent yet, from the Outbox page's own read: one being
+sent, or one whose page still offers to send it (`unfinished`), so a
+message sent again stops counting. The member menu at the bottom of the sidebar opens
 Settings, the theme choice, and Sign out. Both frames and the signed-out
 layout show `OfflineBanner` at the top of the content while the browser
 reports no connection, read from TanStack Query's `onlineManager`.
@@ -1167,7 +1176,8 @@ sidebar's unread counts are a second collection over List Places, read
 whole and again with those pages, so a count changes with the rows it
 counts; it shares List Places' query with the place route's loader, so a
 page reads them once (TanStack DB's `select` takes the list out of the
-answer). When a page fails, TanStack DB asks for the whole place to
+answer). The connected accounts, whose sync status the sidebar words, are
+read then too. When a page fails, TanStack DB asks for the whole place to
 repair the list; `conversations.ts` refuses that (hundreds of requests
 for a large Inbox), so the list keeps its rows, stops loading, and
 offers Try again, which replaces the conversations collection with an

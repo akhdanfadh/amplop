@@ -62,7 +62,8 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // request for an older page until it is cleared, failAction the
 // next action, and refuse refuses an action on a conversation, by ID, with
 // a reason; signedOut answers everything 401, as after the session ended.
-// It renames an account as Rename Account does.
+// failAccounts makes every accounts read answer that status; it renames
+// an account as Rename Account does, offers Gmail, and says setup is done.
 // requests records every path and search it was asked; actions every
 // action body.
 export type MailApi = {
@@ -76,6 +77,7 @@ export type MailApi = {
   failAction: number | undefined;
   signedOut: boolean;
   refuse: Record<string, "not-found" | "needs-reconnect" | "failed">;
+  failAccounts: number | undefined;
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 };
 
@@ -92,6 +94,7 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     failAction: undefined,
     signedOut: false,
     refuse: {},
+    failAccounts: undefined,
     fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.href);
       api.requests.push(url.pathname + url.search);
@@ -152,10 +155,18 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         account.name = name.trim() === "" ? null : name.trim();
         return Response.json({ data: { account } });
       }
+      // The root asks whether inbok still needs its first administrator.
+      if (path === "/api/v0/setup") {
+        return Response.json({ data: { status: "done" } });
+      }
+      if (path === "/api/v0/connected-accounts/providers") {
+        return Response.json({ data: { offered: ["gmail"] } });
+      }
       if (path === "/api/v0/places") {
         return Response.json({ data: { places: api.places } });
       }
       if (path === "/api/v0/connected-accounts") {
+        if (api.failAccounts !== undefined) return problem(api.failAccounts);
         return Response.json({ data: { accounts: api.accounts, syncStopped: false } });
       }
       if (path === "/api/v0/sessions/current") {

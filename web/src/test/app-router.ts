@@ -1,4 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
+import { createElement } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { vi } from "vite-plus/test";
 import { routeTree } from "@/routeTree.gen";
@@ -17,19 +18,21 @@ export const memberSession = {
 // appRouter returns the app's router, for a browser test, at address, on a memory history, after
 // it has loaded the page there, its guards' redirects followed. answer
 // answers the requests it knows, e.g. a mail page's reads; every other
-// read answers with session, or a 401 without one; call
+// read answers with session, or a 401 without one. answer also receives
+// the request's init, e.g. its method. Call
 // vi.unstubAllGlobals() afterwards.
 export async function appRouter(
   address: string,
   session?: typeof memberSession,
-  answer?: (url: string) => Promise<Response> | undefined,
+  answer?: (url: string, init?: RequestInit) => Promise<Response> | undefined,
 ) {
   vi.stubGlobal(
     "fetch",
-    vi.fn<(input: RequestInfo | URL) => Promise<Response>>(
-      async (input) =>
+    vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async (input, init) =>
         answer?.(
           typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+          init,
         ) ??
         (session
           ? Response.json({ data: session }, { status: ok })
@@ -44,10 +47,14 @@ export async function appRouter(
             )),
     ),
   );
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [address] }),
-    context: { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
+    context: { queryClient },
+    // As the app's router does (router.tsx), so a rendered page reaches the
+    // query client.
+    Wrap: ({ children }) => createElement(QueryClientProvider, { client: queryClient }, children),
   });
   await router.load();
   return router;

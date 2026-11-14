@@ -12,11 +12,14 @@ type NavCount = { value: number; label: string; unread?: boolean };
 
 // NavItem is one sidebar link: href, its name, its icon, which alone shows
 // on the rail with the name in a tooltip, and count when above zero.
+// isActive marks it as the current one, its page unless current says
+// otherwise (SidebarMenuButton).
 export function NavItem({
   href,
   name,
   icon: Icon,
   isActive,
+  current,
   onPress,
   count,
 }: {
@@ -24,6 +27,7 @@ export function NavItem({
   name: string;
   icon: LucideIcon;
   isActive: boolean;
+  current?: "page" | "true";
   onPress: () => void;
   count?: NavCount;
 }): ReactElement {
@@ -33,6 +37,7 @@ export function NavItem({
       <SidebarMenuButton
         href={href}
         isActive={isActive}
+        current={current}
         // The rail hides the count, so its tooltip says it.
         tooltip={counted ? `${name}, ${formatCount(count.value)} ${count.label}` : name}
         onPress={onPress}

@@ -280,13 +280,46 @@ last two redirect into settings, so settings can move without the server.
 - Views: Inbox, Starred, Sent, All mail (everything but Spam and Trash),
   Spam, Trash.
 - Accounts: All accounts, then each account (its mark, its member-chosen
-  name or address, its inbox unread count), filtering every view. An
-  account's labels nest under it as List Places nests them (each label's
-  `parent`); a label belongs to one account. An open label's heading
-  names it with its parents ("Work/Projects").
-- Account status in words beside it: "Syncing" with a spinner (details on
-  hover: "Copying the last 90 days: N messages so far."), "Reconnect",
-  "Sync failed".
+  name or address, its inbox unread count), filtering every view; the
+  filter stays as the member moves between views. Choosing an account
+  keeps the open view, or the open label when it is that account's, else
+  opens the Inbox. An account's labels nest under it as List Places nests
+  them (each label's `parent`), each level in name order; a label belongs
+  to one account, and opening one keeps the filter only when it is that
+  account's. An open label's heading names it with its parents
+  ("Work/Projects"). Labels show no icon: every one would show the same,
+  and the name gets the room.
+- Folding: an account's labels, and a parent label's children, fold
+  behind a chevron at the row's end, shown at rest on every device (as iOS
+  places it on touch), pointing right when folded and down when open. All
+  start folded; the way to the open place (its account and parent labels,
+  or the filtered account) unfolds as it opens. What the member folds or
+  unfolds is kept per browser, the same in each of its tabs, and cleared
+  at sign-out. The chevron is a 24 px button, named "Labels of <account>"
+  or "Labels under <label's path>", whose state screen readers hear. Every row of the Accounts
+  section keeps the chevron's column, folding or not, so its counts end
+  at one edge. Opening the sidebar, or another place, scrolls the open
+  place's row into view.
+- A name cut short by the ellipsis shows in full on hover or focus: an
+  account's before its status's details, a label's with its parents'. A
+  touch has neither, so there a name cut short stays cut (a known gap,
+  e.g. a label three levels deep in the drawer); the page it opens names
+  it in full, a label's heading and an account's mark in the list's
+  header.
+- Account status beside it, as its status's icon alone in the status's
+  tone (a spinner for Syncing, a triangle for Reconnect, a circle for Sync
+  failed), so a 240 px row keeps room for the name; the words are read to
+  screen readers and lead the details on hover, e.g. "Syncing. Copying the
+  last 90 days: N messages so far.". A touch has no hover, so with a
+  coarse pointer the icon and words take a line under the name, in
+  `text-xs`, and the row keeps its 44 px. Connected accounts shows
+  the full badge. An account up to date shows nothing. If the accounts
+  cannot be read, the group says "Couldn't load your accounts." with Try
+  again; the rail shows one alert icon that tries again, the words in its
+  tooltip. On the rail an account is its mark, with its name, count, and
+  status in the tooltip; labels show only open. The open place's item is
+  the current page; the filtering account's is marked as current too, but
+  not as a page.
 - Outbox, always, with how many of its messages are not sent yet
   (waiting, sending, or failed or unknown and not sent again): the
   sidebar stays still, and the count is what tells the member a send
@@ -304,7 +337,10 @@ last two redirect into settings, so settings can move without the server.
   open or as a rail. What follows a name (a count, status words) sits in
   the row after it and keeps its width; a long name or address is cut
   short with an ellipsis before it, never overlapped. A count is read
-  with its meaning, e.g. "12 unread".
+  with its meaning, e.g. "12 unread". When the sidebar scrolls, its edge
+  fades while there is more that way, so a row cut at the edge reads as
+  more below; each fade is whole within its 24 px, and a row that takes
+  focus scrolls clear of it.
 
 ### Message list
 
@@ -588,15 +624,17 @@ The tone says what the status asks of the member:
 | Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser |
 | Info        | To wait      | Sending, Syncing (spinner)                                                                 |
 | Success     | Nothing more | Sent, Up to date, Active, Verified, Two-factor on                                          |
-| Warning     | A look       | Not confirmed, Needs reconnecting                                                          |
+| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect                                               |
 | Destructive | A fix        | Not sent, Sync failed                                                                      |
 
 Deactivated is an admin's choice, not a fault. Up to date and Active show
 only on the page whose job is that status (Connected accounts, Members);
 elsewhere the usual state shows nothing.
 Admin, Two-factor on, and the Members table's Verified column wait for
-the settings pages' redesign (`feat/design-forms`), and the sync words for
-account status (branch 3).
+the settings pages' redesign (`feat/design-forms`). The sidebar shows an
+account's Syncing, Reconnect, or Sync failed as the icon alone, in its
+tone, the words read to screen readers and shown on hover, and with the
+icon on a line under the name for a touch.
 
 ## Data for mail
 
@@ -674,7 +712,8 @@ a multi-account filter, a single-message view option, list density and
 reading-pane position settings, sender pictures (BIMI logos after DMARC,
 contact photos), merging one email received by two accounts, swipe
 gestures, drafts beyond the tab, an installable app with offline mail,
-per-member theme storage.
+per-member theme storage, folds kept across devices (per member, on the
+server).
 
 App keyboard shortcuts, once built, go on TanStack Hotkeys (`useHotkey`,
 its `Mod` key, and its display formatter), which then also takes the

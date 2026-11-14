@@ -452,12 +452,13 @@ function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof S
 function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   // Scrolling past its end stops there, so in the drawer the page behind
   // never moves: the part of React Aria's iOS scroll lock the
-  // Content-Security-Policy blocks (web/README.md).
+  // Content-Security-Policy blocks (web/README.md). Its edge fades while
+  // more is there to scroll (scroll-fade-y, styles.css).
   return (
     <div
       data-slot="sidebar-content"
       className={cn(
-        "flex min-h-0 flex-1 flex-col gap-0 overflow-auto overscroll-contain group-data-[collapsible=icon]:overflow-hidden",
+        "flex min-h-0 flex-1 scroll-fade-y flex-col gap-0 overflow-auto overscroll-contain group-data-[collapsible=icon]:overflow-hidden",
         className,
       )}
       {...props}
@@ -559,15 +560,22 @@ const activeBar =
 const sidebarMenuButtonClasses = `group/menu-button relative flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm font-medium transition-colors outline-none group-has-data-[slot=sidebar-menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:px-3.5 pointer-coarse:group-data-[collapsible=icon]:size-11! pointer-coarse:group-data-[collapsible=icon]:p-3.5! data-disabled:pointer-events-none data-disabled:opacity-50 pointer-coarse:h-11 data-active:bg-selection data-active:hover:bg-selection ${activeBar} data-active:text-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:not([data-slot])]:truncate`;
 
 // SidebarMenuButton is one item: a link when it has an href, else a
-// button. isActive marks a link's page as the current one. On the rail,
-// tooltip names it.
+// button. isActive marks a link as the current one: its page, or with
+// current "true", the current one of a set that is not a page, e.g. an
+// account filtering the page. On the rail, tooltip names it; open,
+// detail, when given, says more about it on hover or focus, e.g. how far
+// an account's sync has come.
 function SidebarMenuButton({
   isActive = false,
+  current = "page",
   tooltip,
+  detail,
   className,
   ...props
 }: SidebarButtonProps & {
+  current?: "page" | "true";
   tooltip?: string;
+  detail?: string;
   className?: string;
 }) {
   const { rail } = useSidebar();
@@ -579,26 +587,28 @@ function SidebarMenuButton({
       <LinkPrimitive
         data-slot="sidebar-menu-button"
         data-active={isActive || undefined}
-        aria-current={isActive ? "page" : undefined}
+        aria-current={isActive ? current : undefined}
         className={classes}
         {...props}
       />
     );
 
-  if (!tooltip) {
+  const tip = rail ? tooltip : detail;
+  if (!tooltip && !detail) {
     return comp;
   }
 
   return (
-    <TooltipTrigger isDisabled={!rail}>
+    <TooltipTrigger isDisabled={!tip}>
       {comp}
-      <Tooltip placement="right">{tooltip}</Tooltip>
+      <Tooltip placement="right">{tip}</Tooltip>
     </TooltipTrigger>
   );
 }
 
 // SidebarMenuAction is a small button at the end of an item, e.g. More,
-// centred in the row; a coarse pointer gets a larger hit area around it.
+// 24 px (DESIGN.md "Control height"), centred in the row; a coarse
+// pointer gets a larger hit area around it.
 function SidebarMenuAction({
   className,
   ...props
@@ -609,7 +619,7 @@ function SidebarMenuAction({
     <ButtonPrimitive
       data-slot="sidebar-menu-action"
       className={cn(
-        "absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-none group-data-[collapsible=icon]:hidden after:absolute after:-inset-3 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:top-3 pointer-fine:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
+        "absolute top-1 right-1 flex aspect-square w-6 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-none group-data-[collapsible=icon]:hidden after:absolute after:-inset-3 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:top-2.5 pointer-fine:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
         className,
       )}
       {...props}
@@ -672,27 +682,41 @@ function SidebarMenuSubItem({ className, ...props }: React.ComponentProps<"li">)
   );
 }
 
+// SidebarMenuSubButton is one item under another, e.g. a label under its
+// account: a link when it has an href, else a button. isActive marks a
+// link's page as the current one; detail, when given, says more about it
+// on hover or focus, e.g. a name cut short in full.
 function SidebarMenuSubButton({
   isActive = false,
+  detail,
   className,
   ...props
 }: SidebarButtonProps & {
+  detail?: string;
   className?: string;
 }) {
   const classes = cn(
     `relative flex h-8 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sm font-medium text-sidebar-foreground transition-colors outline-none group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:h-11 data-disabled:pointer-events-none data-disabled:opacity-50 data-active:bg-selection data-active:hover:bg-selection ${activeBar} data-active:text-foreground [&>span:not([data-slot])]:truncate [&>svg]:size-4 [&>svg]:shrink-0`,
     className,
   );
-  return props.href === undefined ? (
-    <ButtonPrimitive data-slot="sidebar-menu-sub-button" className={classes} {...props} />
-  ) : (
-    <LinkPrimitive
-      data-slot="sidebar-menu-sub-button"
-      data-active={isActive || undefined}
-      aria-current={isActive ? "page" : undefined}
-      className={classes}
-      {...props}
-    />
+  const comp =
+    props.href === undefined ? (
+      <ButtonPrimitive data-slot="sidebar-menu-sub-button" className={classes} {...props} />
+    ) : (
+      <LinkPrimitive
+        data-slot="sidebar-menu-sub-button"
+        data-active={isActive || undefined}
+        aria-current={isActive ? "page" : undefined}
+        className={classes}
+        {...props}
+      />
+    );
+  if (!detail) return comp;
+  return (
+    <TooltipTrigger>
+      {comp}
+      <Tooltip placement="right">{detail}</Tooltip>
+    </TooltipTrigger>
   );
 }
 

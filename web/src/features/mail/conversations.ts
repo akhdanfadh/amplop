@@ -11,7 +11,12 @@ import {
   type Ref,
 } from "@tanstack/db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
-import { getListPlacesQueryKey, listConversations, listPlaces } from "@/api/generated/inbok";
+import {
+  getListConnectedAccountsQueryKey,
+  getListPlacesQueryKey,
+  listConversations,
+  listPlaces,
+} from "@/api/generated/inbok";
 import type { PlaceCountOutput } from "@/api/generated/model/placeCount.zod";
 import type { ResponsePlacesOutput } from "@/api/generated/model/responsePlaces.zod";
 import type { ConversationRowOutput } from "@/api/generated/model/conversationRow.zod";
@@ -423,12 +428,13 @@ function createMail(client: QueryClient, number: number): MailData {
 }
 
 // refreshMail reads again what the mail pages on client show: each open
-// list's newest page and the places' unread counts; it settles when they
-// have.
+// list's newest page, the places' unread counts, and the accounts, whose
+// sync status the sidebar words; it settles when they have.
 export async function refreshMail(client: QueryClient): Promise<void> {
   await Promise.all([
     refreshNewest(client),
     client.refetchQueries({ queryKey: getListPlacesQueryKey(), type: "active" }),
+    client.invalidateQueries({ queryKey: getListConnectedAccountsQueryKey() }),
   ]);
 }
 

@@ -56,7 +56,7 @@ function Frame({ open: initial = true }: { open?: boolean }) {
             <SidebarGroupLabel>This inbok</SidebarGroupLabel>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Members">
+                <SidebarMenuButton tooltip="Members" detail="2 members, 1 invited.">
                   <InboxIcon aria-hidden="true" />
                   <span>Members</span>
                 </SidebarMenuButton>
@@ -616,5 +616,46 @@ describe("Sidebar", () => {
     await frame();
     await frame();
     await expect.element(page.getByRole("button", { name: "Elsewhere" })).toHaveFocus();
+  });
+
+  it("shows an open item's detail on hover, and its name on the rail", async () => {
+    await page.viewport(1440, 900);
+    await render(<Frame />);
+    // React Aria shows tooltips on hover once the pointer is in use.
+    await userEvent.click(page.getByText("The list"));
+
+    await userEvent.hover(page.getByRole("button", { name: "Members" }));
+    await expect.element(page.getByRole("tooltip")).toHaveTextContent("2 members, 1 invited.");
+
+    await userEvent.click(sidebarButton("Collapse sidebar"));
+    await userEvent.hover(page.getByRole("button", { name: "Members" }));
+    await expect.element(page.getByRole("tooltip")).toHaveTextContent("Members");
+  });
+
+  it("shows a sub item's detail on hover", async () => {
+    await page.viewport(1440, 900);
+    await render(
+      <SidebarProvider open onOpenChange={() => {}}>
+        <Sidebar label="Mail">
+          <SidebarContent>
+            <SidebarMenuSub>
+              <SidebarMenuSubItem>
+                <SidebarMenuSubButton href="#projects" detail="Clients/Northwind/Projects">
+                  <span>Projects</span>
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            </SidebarMenuSub>
+          </SidebarContent>
+        </Sidebar>
+        <SidebarInset>
+          <p>The list</p>
+        </SidebarInset>
+      </SidebarProvider>,
+    );
+    // React Aria shows tooltips on hover once the pointer is in use.
+    await userEvent.click(page.getByText("The list"));
+
+    await userEvent.hover(page.getByRole("link", { name: "Projects" }));
+    await expect.element(page.getByRole("tooltip")).toHaveTextContent("Clients/Northwind/Projects");
   });
 });

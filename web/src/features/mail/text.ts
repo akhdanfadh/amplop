@@ -135,5 +135,38 @@ export function refreshFailed(since: string): string {
 export const messagesLoading = "Loading messages...";
 export const messagesFailed = "Couldn't load this conversation's messages.";
 
-// What a place's count counts, read after it.
+// The sidebar's accounts: its group, and the item that shows every one.
+export const accountsName = "Accounts";
+export const allAccountsName = "All accounts";
+// Said in the sidebar when the accounts could not be read.
+export const accountsUnreadable = "Couldn't load your accounts.";
+// What a place's or an account's count counts, read after it.
 export const unreadLabel = "unread";
+
+// The name of the chevron that folds an account's labels, and of the one
+// that folds the labels under a label, at path. They differ so an account
+// and a label of one name, e.g. Work, never share a button's name.
+export function accountFoldName(account: string): string {
+  return `Labels of ${account}`;
+}
+export function labelFoldName(path: string): string {
+  return `Labels under ${path}`;
+}
+
+// The words an account's status shows beside it in the sidebar.
+export const syncingWords = "Syncing";
+export const reconnectWords = "Reconnect";
+export const syncFailedWords = "Sync failed";
+
+// Details on hover, beside the words above.
+export const syncWaitingDetail = "Getting ready to copy the last 90 days of mail.";
+export const needsReconnectDetail =
+  "Google stopped accepting inbok's access. Reconnect it in Connected accounts.";
+export const tokenUnreadableDetail =
+  "inbok can no longer use the access it saved. Reconnect it in Connected accounts.";
+
+// syncingDetail says how far a running full sync has copied.
+export function syncingDetail(messagesSoFar: number): string {
+  const messages = messagesSoFar === 1 ? "message" : "messages";
+  return `Copying the last 90 days: ${messageCount(messagesSoFar)} ${messages} so far.`;
+}
