@@ -727,8 +727,9 @@ outcome.
 - The ways on are full-width buttons (`OutcomeLinks`): the most useful
   primary, any other outlined. A button that only brings the form back,
   e.g. "Use a different email address" under "Check your email", stays
-  outlined even alone: the way on is the inbox. A link out of the flow,
-  e.g. "Back to sign in", stays under the card.
+  outlined even alone: the way on is the inbox. A failed check's "Try
+  again" is its way on, so primary. A link out of the flow, e.g. "Back to
+  sign in", stays under the card.
 - Showing the form again, e.g. "Use a different email address", keeps
   what was typed and puts focus in the field.
 

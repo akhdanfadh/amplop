@@ -12,12 +12,14 @@ const accountExistsType: ProblemType = "/api/v0/problems/registration-account-ex
 // change: "link-invalid" or "account-exists".
 export type CompleteEnd = "link-invalid" | "account-exists";
 
-// requestedMessage answers every accepted request for a sign-up link. The
-// API answers the same whether email has an account, got a notice, or got
-// nothing because it asked too often, so this says no more.
-export function requestedMessage(email: string): string {
-  return `Check your inbox at ${email}. A sign-up link expires in 24 hours. If nothing arrives in a few minutes, check your spam folder.`;
-}
+// requested answers every accepted request for a sign-up link: a lead under
+// "Check your email" and the address, and what to expect. The API answers
+// the same whether the address has an account, got a notice, or got nothing
+// because it asked too often, so this says no more.
+export const requested = {
+  lead: "Look for a message at this address.",
+  body: "A sign-up link expires in 24 hours. If nothing arrives in a few minutes, check your spam folder.",
+};
 
 // registrationClosed reports whether err refused a request because
 // registration is not open, which includes paused.
@@ -64,21 +66,31 @@ export type EarlierTries = "refused" | "unknown";
 export type EndLink = "new-link" | "sign-in";
 
 // Ended is what the page shows once no retry with its link can work: a
-// message, then links, most useful first.
-export type Ended = { message: string; links: readonly EndLink[] };
+// title, a message, then links, most useful first.
+export type Ended = { title: string; message: string; links: readonly EndLink[] };
 
 // endOf returns the page's end for end, the refusal err carries, after
 // earlier tries.
 export function endOf(err: ApiError, end: CompleteEnd, earlier: EarlierTries): Ended {
-  if (end === "account-exists") return { message: completeErrorMessage(err), links: ["sign-in"] };
+  if (end === "account-exists")
+    return {
+      title: "You already have an account",
+      message: completeErrorMessage(err),
+      links: ["sign-in"],
+    };
   // A created account deletes its link, so an unknown try likely worked.
   // The fields may have been edited since, so this names that try, not the
   // last one.
   if (earlier === "unknown")
     return {
+      title: "Your account was probably created",
       message:
         "This link no longer works, so an earlier try probably created your account. Sign in with the password you sent then. If you're not sure which one that was, reset your password from the sign-in page.",
       links: ["sign-in", "new-link"],
     };
-  return { message: completeErrorMessage(err), links: ["new-link", "sign-in"] };
+  return {
+    title: "This link no longer works",
+    message: completeErrorMessage(err),
+    links: ["new-link", "sign-in"],
+  };
 }

@@ -6,7 +6,7 @@ import {
   completeErrorMessage,
   endOf,
   registrationClosed,
-  requestedMessage,
+  requested,
   requestErrorMessage,
 } from "./visitor-text";
 
@@ -15,12 +15,13 @@ function refusal(method: string, status: number, type: ProblemType, detail: stri
   return new ApiError("http", { method, status, problem: { type, detail } });
 }
 
-describe("requestedMessage", () => {
+describe("requested", () => {
   // ADR028: the same answer whether or not the email has an account.
-  it("names the inbox without saying what was sent", () => {
-    expect(requestedMessage("kate@example.org")).toBe(
-      "Check your inbox at kate@example.org. A sign-up link expires in 24 hours. If nothing arrives in a few minutes, check your spam folder.",
-    );
+  it("points to the inbox without saying what was sent", () => {
+    expect(requested).toEqual({
+      lead: "Look for a message at this address.",
+      body: "A sign-up link expires in 24 hours. If nothing arrives in a few minutes, check your spam folder.",
+    });
   });
 });
 
@@ -144,6 +145,7 @@ describe("endOf", () => {
 
   it("offers a new link for a link that no longer works", () => {
     expect(endOf(spent, "link-invalid", "refused")).toEqual({
+      title: "This link no longer works",
       message: "This link has expired, was already used, or is not valid. Ask for a new one.",
       links: ["new-link", "sign-in"],
     });
@@ -152,6 +154,7 @@ describe("endOf", () => {
   // A created account deletes its link, so the unknown try likely worked.
   it("points to sign-in after a try with an unknown outcome", () => {
     expect(endOf(spent, "link-invalid", "unknown")).toEqual({
+      title: "Your account was probably created",
       message:
         "This link no longer works, so an earlier try probably created your account. Sign in with the password you sent then. If you're not sure which one that was, reset your password from the sign-in page.",
       links: ["sign-in", "new-link"],
@@ -167,6 +170,7 @@ describe("endOf", () => {
     );
 
     expect(endOf(err, "account-exists", "unknown")).toEqual({
+      title: "You already have an account",
       message: "This email already has an account. Sign in instead.",
       links: ["sign-in"],
     });

@@ -397,11 +397,11 @@ account is still not verified.
 `/register` asks for an email address while registration is open, and says
 the inbok isn't accepting new accounts otherwise. A paused registration,
 open but with untested email settings, reads as closed.
-Every accepted request gets the same "Check your inbox" answer, so the page
-never tells whether an email has an account. "Use a different email
-address" brings the form back with the address kept. Sign-in shows "No
-account yet? Create an account" under its card only while visitors can
-register.
+Every accepted request gets the same "Check your email" answer, with the
+address on a line of its own, so the page never tells whether an email has
+an account. "Use a different email address" brings the form back with the
+address kept and focus in the field. Sign-in shows "No account yet? Create
+an account" under its card only while visitors can register.
 
 A sign-up email's link opens `/register/complete`, whose secret is kept the
 same way as `/verify-email`'s. The visitor types the email the link was
@@ -411,15 +411,16 @@ this link was sent to."), so a link someone sends for an address they
 control cannot create that account for a visitor typing their own. The
 email field is marked `autocomplete="username"`, so a password manager
 saves it with the new password. Success creates no session: the page opens
-sign-in with the email filled in and a notice, the address on a line of
-its own, then "Your account is created. Sign in with your new password."
-The email travels in history state, data the browser keeps with the history
-entry, not in the URL. When the server refuses the email, an "Ask for a
-new link" link to `/register` follows the error. A spent or expired link, or
-an email that already has an account, ends the page with where to go next.
-After a try whose result was lost, a spent link means that try probably
-created the account, so the page points to sign-in first and says to sign
-in with the password sent then, since the fields may have changed since.
+sign-in with the email filled in and a notice, the address on a line of its
+own, then "Your account is created. Sign in with your new password." The
+email travels in history state, data the browser keeps with the history
+entry, not in the URL. Under the card, "Link sent to another address? Ask
+for a new link" leads to `/register` for every visitor, not only after a
+refusal. A spent or expired link, or an email that already has an account,
+ends the page with where to go next. After a try whose result was lost, a
+spent link means that try probably created the account, so the page points
+to sign-in first and says to sign in with the password sent then, since the
+fields may have changed since.
 
 Sign-in's "Forgot password?" link opens `/forgot-password`, which asks for
 the email the account signs in with. The API answers before it looks the

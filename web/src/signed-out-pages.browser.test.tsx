@@ -13,6 +13,8 @@ import {
   type RouteComponent,
 } from "@tanstack/react-router";
 import { Route as ForgotPassword } from "@/routes/_auth/_signed-out/forgot-password";
+import { Route as Register } from "@/routes/_auth/_signed-out/register/index";
+import { Route as CompleteRegistration } from "@/routes/_auth/register/complete";
 import { Route as ResetPassword } from "@/routes/_auth/reset-password";
 
 const accepted = 202;
@@ -22,6 +24,8 @@ const unauthorized = 401;
 // The pages under test, by address.
 const pages: Record<string, RouteComponent | undefined> = {
   "/forgot-password": ForgotPassword.options.component,
+  "/register": Register.options.component,
+  "/register/complete": CompleteRegistration.options.component,
   "/reset-password": ResetPassword.options.component,
 };
 
@@ -156,5 +160,53 @@ describe("signed-out pages", () => {
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     const sent = fetch.mock.calls.at(-1)?.[1]?.body;
     expect(typeof sent === "string" ? JSON.parse(sent) : sent).toMatchObject({ secret: "fresh" });
+  });
+
+  it("start afresh on sign-up with a new link pasted after one ended", async () => {
+    const { router, fetch } = await open("/register/complete#old", {
+      "/api/v0/registration/links/redeem": () =>
+        problem(
+          notFound,
+          "/api/v0/problems/registration-link-invalid",
+          "This link has expired, was already used, or is not valid. Ask for a new one.",
+        ),
+    });
+    await userEvent.type(page.getByRole("textbox", { name: "Email address" }), "ana@example.com");
+    await userEvent.type(page.getByLabelText("Password", { exact: true }), "a long new password");
+    await userEvent.type(
+      page.getByLabelText("Confirm password", { exact: true }),
+      "a long new password",
+    );
+    await userEvent.click(page.getByRole("button", { name: "Create account" }));
+    await expect
+      .element(page.getByRole("heading", { name: "This link no longer works" }))
+      .toBeVisible();
+
+    await router.navigate({ to: "/register/complete", hash: "fresh" });
+
+    await expect.element(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("keep a title still when a check finds the form under it", async () => {
+    await open("/register", {
+      "/api/v0/registration": () => Response.json({ data: { open: true } }),
+    });
+
+    await expect.element(page.getByRole("textbox", { name: "Email address" })).toBeVisible();
+
+    const header = page.getByRole("heading", { name: "Create an account" }).element().parentElement;
+    expect(header?.getAnimations()).toEqual([]);
+    expect(header?.className).not.toContain("animate-in");
+  });
+
+  it("say when registration is closed", async () => {
+    await open("/register", {
+      "/api/v0/registration": () => Response.json({ data: { open: false } }),
+    });
+
+    await expect
+      .element(page.getByRole("heading", { name: "Registration is closed" }))
+      .toHaveFocus();
   });
 });
