@@ -21,6 +21,7 @@ import (
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
 	"inbok/internal/s3"
+	"inbok/internal/search"
 	"inbok/internal/smtp"
 	"inbok/internal/systememail"
 )
@@ -137,6 +138,7 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		PasswordChangedNotices:      passwordreset.NewNotices(db, mailer, publicURL),
 		MessageContent:              content,
 		MessageContentCleanup:       messagecontent.NewCleanup(content, db, time.Now),
+		SearchIndex:                 search.NewIndexer(index, db, messagecontent.NewTexts(content, db)),
 	}
 	if googleSettings != nil {
 		// Only when configured, so the interface stays nil: removals saved

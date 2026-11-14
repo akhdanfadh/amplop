@@ -17,9 +17,9 @@ import (
 
 // contentWorkflows saves each content deletion job as rows of
 // test_content_deletions, one per blob ID, in the caller's transaction,
-// or fails with err.
+// or fails with err, and search jobs as [searchWorkflows] does.
 type contentWorkflows struct {
-	Workflows
+	searchWorkflows
 	err error
 }
 
@@ -219,15 +219,15 @@ func TestMessagePartsDeleted(t *testing.T) {
 	assert.Equal(t, trees[2], got)
 }
 
-// Deleting messages without stored content saves no job, so storage
-// without workflows still deletes them.
+// Deleting messages without stored content saves no content deletion job:
+// workflows that save only search jobs still delete them.
 func TestMessagePartsNoContent(t *testing.T) {
 	s := newMessagePartsTest(t)
 	ids := s.save(t, "m1", "m2")
 	unstored := messagecontent.Part{ID: "", MediaType: "application/pdf", Kind: messagecontent.KindAttachment}
 	_, err := s.db.SaveMessageParts(t.Context(), s.account, ids[0], unstored)
 	require.NoError(t, err)
-	s.db = s.db.WithWorkflows(nil)
+	s.db = s.db.WithWorkflows(searchWorkflows{})
 
 	s.update(t, s.account, mailsync.Change{State: running(1), Deleted: []string{"m1", "m2"}})
 

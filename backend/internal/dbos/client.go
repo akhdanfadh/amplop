@@ -134,6 +134,36 @@ func (c *Client) EnqueueContentDeletion(ctx context.Context, tx pgx.Tx, accountI
 	return err
 }
 
+// EnqueueSearchIndexing saves, in tx, the search indexing workflow for
+// member owner's messages with ids on the search queue, in owner's
+// partition, so it commits or rolls back with tx. Cancelling ctx stops its
+// statements. It returns DBOS's error, after which tx is aborted and must
+// roll back.
+func (c *Client) EnqueueSearchIndexing(ctx context.Context, tx pgx.Tx, owner int64, ids []uuid.UUID) error {
+	input := SearchIndexingInput{OwnerUserID: owner, MessageIDs: ids}
+	_, err := dbos.Enqueue[int](c.client, searchQueue, searchIndexingWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+		dbos.WithEnqueueQueuePartitionKey(searchPartition(owner)),
+	)
+	return err
+}
+
+// EnqueueSearchAccountRemoval saves, in tx, the search account removal
+// workflow for member owner's account accountID on the search queue, in
+// owner's partition, so it commits or rolls back with tx. Cancelling ctx
+// stops its statements. It returns DBOS's error, after which tx is aborted
+// and must roll back.
+func (c *Client) EnqueueSearchAccountRemoval(ctx context.Context, tx pgx.Tx, owner, accountID int64) error {
+	input := SearchAccountRemovalInput{OwnerUserID: owner, AccountID: accountID}
+	_, err := dbos.Enqueue[struct{}](c.client, searchQueue, searchAccountRemovalWorkflow, input,
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+		dbos.WithEnqueueQueuePartitionKey(searchPartition(owner)),
+	)
+	return err
+}
+
 // EnqueueAccountContentDeletion saves, in tx, the workflow that deletes
 // all content of the disconnected account with accountID on the content
 // queue, so it commits or rolls back with tx. Cancelling ctx stops its

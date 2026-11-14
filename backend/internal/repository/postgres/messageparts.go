@@ -19,9 +19,10 @@ var errPartIndex = errors.New("message part index is out of storage's range")
 
 // SaveMessageParts saves root, each part with its blob ID, as the part
 // tree of account accountID's message messageID, unless the message has
-// parts already, which it keeps, in one transaction. It reports whether it
-// saved, and returns [messagecontent.ErrMessageNotFound] when the account
-// has no such message.
+// parts already, which it keeps, and saves the job that indexes the
+// message's body either way, in one transaction. It reports whether it
+// saved parts, and returns [messagecontent.ErrMessageNotFound] when the
+// account has no such message.
 func (db *DB) SaveMessageParts(ctx context.Context, accountID int64, messageID uuid.UUID, root messagecontent.Part) (bool, error) {
 	params, err := partParams(accountID, messageID, root)
 	if err != nil {
@@ -51,7 +52,9 @@ func (db *DB) SaveMessageParts(ctx context.Context, accountID int64, messageID u
 			return fmt.Errorf("check message parts: %w", err)
 		}
 		if hasParts {
-			return nil
+			// Content stored again under the IDs the parts name, e.g. after
+			// the store lost it: its text may be back for the index.
+			return db.indexAfter(ctx, tx, accountID, []uuid.UUID{messageID})
 		}
 
 		// 3. Insert the parts.
@@ -63,8 +66,11 @@ func (db *DB) SaveMessageParts(ctx context.Context, accountID int64, messageID u
 			return fmt.Errorf("insert message parts: %w", batchErr)
 		}
 
-		// 4. Search indexing (ADR005, branch 6b) saves its job for the
-		// message here, so the job commits with the text it indexes.
+		// 4. Save the job that indexes the message's body, so it commits
+		// with the text it indexes (ADR005).
+		if err := db.indexAfter(ctx, tx, accountID, []uuid.UUID{messageID}); err != nil {
+			return err
+		}
 		saved = true
 		return nil
 	})
@@ -247,7 +253,9 @@ func (db *DB) UserMessageAccount(ctx context.Context, userID int64, messageID uu
 // SavePartBlob names blobID as the content of the part at path of account
 // accountID's message messageID, unless the part names a blob already,
 // which it keeps, and returns the blob ID the part names, in one
-// transaction that first locks the account's sync state. It returns
+// transaction that first locks the account's sync state. When it names
+// the content of a text part, it saves the job that indexes the message's
+// body with it. It returns
 // [messagecontent.ErrMessageNotFound] when the account is gone, and
 // [messagecontent.ErrPartNotFound] when its message has no part there.
 func (db *DB) SavePartBlob(ctx context.Context, accountID int64, messageID uuid.UUID, path []int, blobID uuid.UUID) (uuid.UUID, error) {
@@ -260,8 +268,9 @@ func (db *DB) SavePartBlob(ctx context.Context, accountID int64, messageID uuid.
 		stored[i] = int32(index)
 	}
 	var named uuid.UUID
-	err := db.withSyncStateLock(ctx, accountID, func(queries *sqlc.Queries) error {
-		blob, err := queries.SetMessagePartBlob(ctx, sqlc.SetMessagePartBlobParams{
+	err := db.withSyncStateLock(ctx, accountID, func(tx pgx.Tx) error {
+		// 1. Name the blob, unless the part names one already.
+		row, err := sqlc.New(tx).SetMessagePartBlob(ctx, sqlc.SetMessagePartBlobParams{
 			BlobID: blobID, ConnectedAccountID: accountID, MessageID: messageID, Path: stored,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -271,8 +280,16 @@ func (db *DB) SavePartBlob(ctx context.Context, accountID int64, messageID uuid.
 			return fmt.Errorf("set message part blob: %w", err)
 		}
 		// The update sets one when none was, so the row names one now.
-		named = *blob
-		return nil
+		named = *row.BlobID
+
+		// 2. Save the job that indexes the text it named, so the job commits
+		// with the row it reads: a text body the provider sent apart from the
+		// message, e.g. Gmail's long HTML, joins the body text the index
+		// holds.
+		if messagecontent.Kind(row.Kind) != messagecontent.KindText || named != blobID {
+			return nil
+		}
+		return db.indexAfter(ctx, tx, accountID, []uuid.UUID{messageID})
 	})
 	return named, err
 }
@@ -280,7 +297,7 @@ func (db *DB) SavePartBlob(ctx context.Context, accountID int64, messageID uuid.
 // withSyncStateLock runs write in a transaction that first locks account
 // accountID's sync state. It returns [messagecontent.ErrMessageNotFound]
 // when the account has no sync state, and write's error.
-func (db *DB) withSyncStateLock(ctx context.Context, accountID int64, write func(*sqlc.Queries) error) error {
+func (db *DB) withSyncStateLock(ctx context.Context, accountID int64, write func(tx pgx.Tx) error) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 
@@ -296,6 +313,6 @@ func (db *DB) withSyncStateLock(ctx context.Context, accountID int64, write func
 		}
 
 		// 2. Write.
-		return write(queries)
+		return write(tx)
 	})
 }

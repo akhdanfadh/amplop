@@ -7,6 +7,8 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
+
 	"inbok/internal/mailsync"
 	"inbok/internal/messagecontent"
 	"inbok/internal/repository/postgres/sqlc"
@@ -61,8 +63,8 @@ func roleTexts(roles []mailsync.Role) []string {
 // [messagecontent.ErrMessageNotFound] when the account has no such
 // message.
 func (db *DB) MarkBodyFailed(ctx context.Context, accountID int64, messageID uuid.UUID, at time.Time) error {
-	return db.withSyncStateLock(ctx, accountID, func(queries *sqlc.Queries) error {
-		marked, err := queries.MarkMessageBodyFailed(ctx, sqlc.MarkMessageBodyFailedParams{
+	return db.withSyncStateLock(ctx, accountID, func(tx pgx.Tx) error {
+		marked, err := sqlc.New(tx).MarkMessageBodyFailed(ctx, sqlc.MarkMessageBodyFailedParams{
 			FailedAt: &at, ConnectedAccountID: accountID, ID: messageID,
 		})
 		if err != nil {

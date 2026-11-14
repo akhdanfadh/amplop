@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
+
 	"inbok/internal/mailsync"
 	"inbok/internal/repository/postgres/sqlc"
 	"inbok/internal/search"
@@ -37,4 +39,24 @@ func (db *DB) IndexSources(ctx context.Context, owner int64, ids []uuid.UUID) ([
 		sources = append(sources, source)
 	}
 	return sources, nil
+}
+
+// indexAfter saves, in tx, the job that brings accountID's messages with
+// ids in the search index up to date with what tx commits. A worker sees
+// it only once tx commits, and a rollback drops it with the change.
+func (db *DB) indexAfter(ctx context.Context, tx pgx.Tx, accountID int64, ids []uuid.UUID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if db.workflows == nil {
+		return errNoWorkflows
+	}
+	owner, err := sqlc.New(tx).ReadAccountOwner(ctx, accountID)
+	if err != nil {
+		return fmt.Errorf("read account owner: %w", err)
+	}
+	if err := db.workflows.EnqueueSearchIndexing(ctx, tx, owner, ids); err != nil {
+		return fmt.Errorf("save search indexing: %w", err)
+	}
+	return nil
 }

@@ -225,10 +225,12 @@ func TestClientRemovalRollback(t *testing.T) {
 	// When the member disconnects it.
 	_, err = accounts.Disconnect(t.Context(), member, account.ID)
 
-	// Then the disconnect fails, the account stays, and no job is saved.
+	// Then the disconnect fails, the account stays, and no job is saved,
+	// the search index's removal included.
 	require.ErrorContains(t, err, "removal rejected")
 	listed, err := accounts.List(t.Context(), member)
 	require.NoError(t, err)
 	assert.Equal(t, []connectedaccount.Account{account}, listed)
 	assert.Empty(t, accountRemovalWorkflows(t, conn))
+	assert.Zero(t, runs(t, conn, searchAccountRemovalWorkflow))
 }

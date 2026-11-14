@@ -163,9 +163,10 @@ one ID and run some work twice. One worker runs many jobs at once.
 ## The search index
 
 `meilisearch` runs [Meilisearch](https://www.meilisearch.com) Community
-Edition, the search index: once search arrives, it holds a copy of
-members' messages for it. Search itself, with the command that rebuilds
-the index, is not part of this release yet. It has no published port and
+Edition, the search index: it holds a copy of members' messages for
+search, which the worker keeps in step with their mail. Search itself,
+with the command that rebuilds the index, is not part of this release
+yet. It has no published port and
 sits on the internal network with PostgreSQL, so the internet and Caddy
 cannot reach it. Apart from its health check, it answers only requests
 with a valid key: `INBOK_MEILISEARCH_KEY`, its master key, or a key made

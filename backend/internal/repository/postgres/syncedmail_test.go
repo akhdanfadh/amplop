@@ -33,9 +33,10 @@ type syncedMailTest struct {
 func newSyncedMailTest(t *testing.T) syncedMailTest {
 	t.Helper()
 	db, conn := setupStorage(t)
+	createSearchJobTables(t, conn)
 	member := insertConnectingMember(t, conn, "member@example.com")
 	return syncedMailTest{
-		db:      db,
+		db:      db.WithWorkflows(searchWorkflows{}),
 		conn:    conn,
 		member:  member,
 		account: insertSyncingAccount(t, conn, member, "sub-alex"),

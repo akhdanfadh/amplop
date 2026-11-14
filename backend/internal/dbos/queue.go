@@ -22,7 +22,29 @@ const (
 	// contentQueue runs the workflows that delete message content from
 	// the content store, which call no provider.
 	contentQueue = "inbok.content"
+
+	// searchQueue runs the workflows that write to the search index, one
+	// at a time for each member and side by side for different members
+	// (ADR005).
+	searchQueue = "inbok.search"
 )
+
+// registerSearchQueue registers [searchQueue], partitioned by member with
+// one run at a time in each partition, and saves those settings over any
+// saved before. It returns DBOS's error saving it.
+//
+// DESIGN: unlike the other queues' limits, one run at a time per member
+// is what keeps the index correct, not a load setting: a search run reads
+// the messages when it runs, so the last run writes the latest state only
+// while no two of a member's runs overlap. Every start therefore restores
+// it, and a runtime change lasts only until the next start.
+func (w *Worker) registerSearchQueue() error {
+	_, err := dbos.RegisterQueue(w.ctx, searchQueue,
+		dbos.WithPartitionConcurrency(1),
+		dbos.WithQueueOnConflict(dbos.QueueConflictAlwaysUpdate),
+	)
+	return err
+}
 
 // registerQueue registers the queue name, keeping its saved settings if it
 // exists. It returns DBOS's error saving it.

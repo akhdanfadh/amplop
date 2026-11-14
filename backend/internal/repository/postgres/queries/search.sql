@@ -1,3 +1,7 @@
+-- name: ReadAccountOwner :one
+-- The member whose connected account it is.
+SELECT user_id FROM connected_accounts WHERE id = @id;
+
 -- name: ListIndexSources :many
 -- Owner's messages among the IDs, with what their search documents need:
 -- the IDs of the mailboxes each is in, and whether its parts are stored.

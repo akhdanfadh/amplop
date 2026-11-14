@@ -2706,7 +2706,8 @@ mailbox the account does not have, e.g. a Gmail label made since the
 labels were listed, writes nothing and returns
 `mailsync.ErrUnknownMailbox`; so does any other error, e.g. a generation
 or count past the `integer` columns. A feature that must act on the same
-writes, e.g. indexing them for search, adds its job to that transaction.
+writes adds its job to that transaction, as the deletion of deleted
+messages' content and the [search index](#search-index)'s job do.
 Each full sync starts a sync generation, and each message records the
 generation that last saved it, so a full sync that finishes can delete
 the messages it did not see, a batch per change, without comparing
@@ -2955,8 +2956,49 @@ access tokens itself, as the worker does.
 Search finds a member's messages through Meilisearch, a derived index: a
 searchable copy of message data that returns only message IDs, while the
 messages themselves load from PostgreSQL with the usual ownership check.
-ADR005 in the project's decision records explains the choices. So far
-only the index exists; nothing writes to it or searches it yet.
+ADR005 in the project's decision records explains the choices. Jobs
+keep the index in step with synchronized mail; nothing searches it yet.
+
+The index holds every message inbok keeps, Spam and Trash included, and
+a query decides which mailboxes it leaves out. Each write to a member's
+mail saves, in its own transaction, a job naming the messages it
+changed, so the job commits with the change and a rollback drops it:
+
+| Write | Job |
+|-|-|
+| `UpdateSyncedMail`: messages saved, updated (labels and flags), or deleted, by a sync or a member's action | `inbok.search-indexing` for those messages |
+| `SaveMessageParts`: a body stored | `inbok.search-indexing` for the message |
+| `SavePartBlob`: a text body the provider sends apart, e.g. Gmail's long HTML | `inbok.search-indexing` for the message |
+| `DeleteConnectedAccount`: an account disconnected | `inbok.search-account-removal` for the account |
+
+A job's input is the member and the message IDs, never mail. When it
+runs, `search.Indexer` reads those messages as PostgreSQL holds them
+then, upserts the ones it finds, and deletes the ones it does not, e.g.
+deleted since. Both jobs run on the queue `inbok.search`, partitioned by
+member with one run at a time in each partition
+(`dbos.WithPartitionConcurrency(1)`), so a member's runs never overlap
+while different members' run side by side. Together these keep the
+index right whatever order runs take: Meilisearch applies writes in the
+order they reach it, but a retried job could send an older state after a
+newer delete; instead the run that comes last reads, and writes, the
+latest state, so an older job retried after a newer delete deletes again
+rather than bringing the message back. That limit is what
+keeps the index correct, not a load setting, so every worker start
+restores it, unlike the other queues' limits.
+
+A run works through its messages 100 at a time (`search.BatchSize`),
+one DBOS step each, and each step retries for about an hour (1, 2, 4,
+8, then 15 minutes three times; a worker restarted meanwhile starts the
+count again) while the member's later runs wait behind it. A run that still fails is logged and dropped: its messages
+stay as they were in the index until they change again or the index is
+rebuilt. A message's document holds its subject, sender, recipients,
+date, account, the inbok IDs of its mailboxes, and, once its body is
+stored, its text in two fields: `body_text`, the text of the bodies a
+view of it shows, and `alt_text`, the text of its other text parts,
+e.g. the plain-text alternative of HTML a view shows. A word in either
+finds the message, and one in `body_text` ranks it higher. Until its
+body is stored, a message is found by its headers. Every message changed is read again, so marking
+one read re-reads its stored body text too.
 
 - `search` declares the `Index` interface: `Prepare`, `Upsert`, `Delete`,
   `DeleteAccount`, and `Search`, with its `Document`, `Query`, and
@@ -3003,10 +3045,9 @@ only the index exists; nothing writes to it or searches it yet.
   so a stub such as "View in browser" never stands in for HTML a reader
   sees, and the words of an HTML message that is only images are still
   found in its plain-text alternative.
-- `search.Indexer` brings a member's messages up to date in the index:
-  `Index` reads them from `IndexStorage`, which `repository/postgres`
-  implements, upserts the ones it finds and deletes the rest, and
-  `RemoveAccount` removes a disconnected account. Nothing calls it yet.
+- `search.Indexer` is what the jobs call: `Index` brings a member's
+  messages up to date from `IndexStorage`, which `repository/postgres`
+  implements, and `RemoveAccount` removes a disconnected account.
 - `searchtest` holds `Fake`, an `Index` in memory for tests of code
   that uses one, and `RunContract`, the tests both `Fake` and
   `meilisearch` pass, so the fake behaves as Meilisearch does apart from

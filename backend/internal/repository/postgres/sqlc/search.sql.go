@@ -75,3 +75,15 @@ func (q *Queries) ListIndexSources(ctx context.Context, arg ListIndexSourcesPara
 	}
 	return items, nil
 }
+
+const readAccountOwner = `-- name: ReadAccountOwner :one
+SELECT user_id FROM connected_accounts WHERE id = $1
+`
+
+// The member whose connected account it is.
+func (q *Queries) ReadAccountOwner(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, readAccountOwner, id)
+	var user_id int64
+	err := row.Scan(&user_id)
+	return user_id, err
+}
