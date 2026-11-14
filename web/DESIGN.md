@@ -652,9 +652,14 @@ pull-to-refresh, which would reload the app, never starts.
   for administrators a "This inbok" heading with Members, Registration,
   System email. An administrator without two-factor authentication sees
   that group locked with one line pointing to Security.
-- A page: title, one-sentence lead, then sections divided by hairlines,
-  heading and explanation on the left, controls on the right; content caps
-  at 720 px; no cards around everything.
+- A page (`SettingsPage`, `SettingsSection`): title, one-sentence lead,
+  then sections divided by hairlines, heading and explanation on the left,
+  controls on the right, stacked below 512 px of page; content caps at
+  720 px; no cards around everything.
+- A task of several steps, e.g. setting up two-factor authentication, gets
+  its own page under its settings page (`/settings/security/two-factor`),
+  with "‹ Security" above the title; the settings page keeps one row with
+  the status and a way in.
 - Connected accounts gives each account a Name field ("Name (optional)",
   one explanation for all of them under the heading): a name only the
   member sees, never sent to recipients, unlike Gmail's sender name; it
@@ -827,11 +832,11 @@ The tone says what the status asks of the member:
 Deactivated is an admin's choice, not a fault. Up to date and Active show
 only on the page whose job is that status (Connected accounts, Members);
 elsewhere the usual state shows nothing.
-Admin, Two-factor on, and the Members table's Verified column wait for
-the settings pages' redesign (`feat/design-forms`). The sidebar shows an
-account's Syncing, Reconnect, or Sync failed as the icon alone, in its
-tone, the words read to screen readers and shown on hover, and with the
-icon on a line under the name for a touch.
+Admin and the Members table's Verified column wait for the settings pages'
+redesign (`feat/design-forms`); Two-factor on shows on Security. The
+sidebar shows an account's Syncing, Reconnect, or Sync failed as the icon
+alone, in its tone, the words read to screen readers and shown on hover,
+and with the icon on a line under the name for a touch.
 
 ## Data for mail
 

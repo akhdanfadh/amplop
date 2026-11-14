@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmForm } from "./confirm-form";
 
 // Prompt replacement before the last recovery codes are exhausted.
-const lowBackupCodes = 2;
+export const lowBackupCodes = 2;
 
 export function BackupSettings({
   left,

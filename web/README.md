@@ -110,7 +110,7 @@ Put shared code in the folder for its responsibility:
   step's rule for when a sign-in has ended, and account cache cleanup.
 - `src/features/probe`: the probe demo form.
 - `src/features/totp`: authenticator enrollment, confirmation, backup-code
-  management, and turning TOTP off.
+  management, turning TOTP off, and Security's two-factor section.
 - `src/features/sessions`: the signed-in browser list and ending sessions.
 - `src/features/email-verification`: the Security page's Email section, the
   `/verify-email` page, and their wording. That page, unlike the other link
@@ -141,7 +141,8 @@ Put shared code in the folder for its responsibility:
   action's words (`words.ts`), running an action (`perform.ts`) and its
   Undo bar (`undo.tsx`), how a row shows its date and people, and the
   address Back to mail returns to.
-- `src/features/settings`: the settings sidebar.
+- `src/features/settings`: the settings sidebar and the settings page
+  layout (`SettingsPage`, `SettingsSection`) every settings page uses.
 - `src/components`: shared components, such as the shell around every page
   (`AppShell`), the password input, the request error under a form, the
   status badge, the link styles, the signed-in frame and its member menu,
@@ -335,15 +336,23 @@ An uncertain response offers a session check before another attempt.
 Administrators without confirmed TOTP land on `/settings/security` to
 enroll. Members reach the same page through the settings sidebar.
 
-Security starts enrollment on request and renders the QR code locally, with a
-manual setup key as an alternative. A six-digit authenticator code confirms it,
-renews this session, and ends other sessions. Backup codes are shown once with
-copy and download actions. Leaving before saving them prompts for confirmation.
-The secret and codes stay in memory; closing or reloading loses them and may
-leave an inactive pending enrollment. Canceling sends a deletion request and
-clears the setup key only after success. A rejected cancellation keeps setup
-available; an uncertain outcome requires checking status before continuing.
-Starting again replaces a pending setup key.
+Security (`/settings/security`) is a settings page with three sections:
+Email address, Two-factor authentication, and Signed-in browsers. The
+two-factor row has two states: on, with the "Two-factor on" badge, the
+backup codes left, and "Manage two-factor authentication"; or off, with
+"Set up two-factor authentication", which also continues an unfinished
+setup. Both open `/settings/security/two-factor`, which has a "‹ Security"
+link back.
+
+The two-factor page starts enrollment on request and renders the QR code
+locally, with a manual setup key as an alternative. A six-digit authenticator
+code confirms it, renews this session, and ends other sessions. Backup codes
+are shown once with copy and download actions. Leaving before saving them
+prompts for confirmation. The secret and codes stay in memory; closing or
+reloading loses them and may leave an inactive pending enrollment. Canceling
+sends a deletion request and clears the setup key only after success. A
+rejected cancellation keeps setup available; an uncertain outcome requires
+checking status before continuing. Starting again replaces a pending setup key.
 An uncertain confirmation requires checking status before another attempt. If
 confirmation succeeded but its response was lost, backup codes cannot be read
 again; the page explains that the authenticator must remain available.
@@ -369,10 +378,9 @@ status is checked.
 Security opens with the account's email address and whether it is
 verified. "Send verification link" emails a link that expires in 24 hours.
 A lost reply or failed send can be repeated without a check: the server
-limits how many links are sent, and every unexpired link works. Sending
-and TOTP writes wait for each other, because confirming TOTP replaces this
-browser's session. An unverified account also sees a banner on every other
-settings page that links to Security. Both say a forgotten password can't
+limits how many links are sent, and every unexpired link works. An
+unverified account also sees a banner on every other settings page that
+links to Security. Both say a forgotten password can't
 be reset by email until the address is verified, since the reset page's
 answer cannot say why nothing arrived.
 
@@ -457,8 +465,8 @@ browsers" asks first. A short line says this does not stop someone who knows
 the password. Ending sessions is safe to repeat, so every outcome reloads the
 list instead of requiring a check. A session the API reports gone reads
 "already signed out"; an uncertain outcome asks the user to check the
-reloaded list. Ending sessions and TOTP writes wait for each other, because
-confirming TOTP replaces this browser's session and ends the others.
+reloaded list. "Sign out of this browser" waits for a send or an ending to
+finish.
 
 Administrators with confirmed TOTP see "This inbok" in the settings
 sidebar: Members, Registration, and System email (`/settings/members`,

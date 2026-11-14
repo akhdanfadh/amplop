@@ -44,3 +44,10 @@ export function endedOthersMessage(ended: number): string {
   if (ended === 0) return "No other browsers were signed in.";
   return `Signed out of ${ended} other ${ended === 1 ? "browser" : "browsers"}.`;
 }
+
+// Security's signed-in browsers section: its heading, what it is for, and
+// what signing out cannot do.
+export const sessionsTitle = "Signed-in browsers";
+export const sessionsAbout = "The browsers signed in to your account.";
+export const signOutLimit =
+  "Signing out a browser doesn't stop someone who knows your password from signing in.";

@@ -19,3 +19,7 @@ export const lockedAfter = "to manage this inbok.";
 export const unverifiedNotice =
   "Your email address isn't verified, so a forgotten password can't be reset by email.";
 export const verifyLink = "Verify it in Security";
+
+// Security's lead: what the page holds.
+export const securityLead =
+  "Your email address, two-factor authentication, and where you're signed in.";
