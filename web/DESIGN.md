@@ -283,12 +283,16 @@ last two redirect into settings, so settings can move without the server.
   name or address, its inbox unread count), filtering every view; the
   filter stays as the member moves between views. Choosing an account
   keeps the open view, or the open label when it is that account's, else
-  opens the Inbox. An account's labels nest under it as List Places nests
-  them (each label's `parent`), each level in name order; a label belongs
-  to one account, and opening one keeps the filter only when it is that
-  account's. An open label's heading names it with its parents
-  ("Work/Projects"). Labels show no icon: every one would show the same,
-  and the name gets the room.
+  opens the Inbox. An account's labels nest under it as List Places
+  nests them (each label's `parent`), each level in name order. A label
+  belongs to one account and opens in it: its account becomes the
+  filter, from every account's mail, another account's, or an old link,
+  so the sidebar marks the account the label is in; All accounts on a
+  label opens every account's Inbox. The Accounts section always marks
+  one scope, All accounts or one account, beside the open place. An open
+  label's heading names it with its parents ("Work/Projects"). Labels
+  show no icon: every one would show the same, and the name gets the
+  room.
 - Folding: an account's labels, and a parent label's children, fold
   behind a chevron at the row's end, shown at rest on every device (as iOS
   places it on touch), pointing right when folded and down when open. All

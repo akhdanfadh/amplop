@@ -102,7 +102,8 @@ describe("the sidebar's accounts", () => {
     await userEvent.click(labelsOf("Personal"));
     await userEvent.click(labelsUnder("Work"));
     const projectsLink = nav().getByRole("link", { name: "Projects 4 unread" });
-    await expect.element(projectsLink).toHaveAttribute("href", `/mail/${projects}`);
+    // A label opens in its account.
+    await expect.element(projectsLink).toHaveAttribute("href", `/mail/${projects}?account=1`);
   });
 
   it("marks the filtering account as current, and the open place as the page", async () => {
@@ -168,6 +169,47 @@ describe("the sidebar's accounts", () => {
     await userEvent.click(nav().getByRole("link", { name: "All accounts" }));
     await expect.poll(() => router.state.location.search).toEqual({});
     expect(router.state.location.pathname).toBe("/mail/starred");
+  });
+
+  it("opens a label in its own account, from every account's mail or another's", async () => {
+    const router = await open("/mail/starred?account=2");
+    await userEvent.click(labelsOf("Personal"));
+
+    await userEvent.click(nav().getByRole("link", { name: "Work" }));
+
+    await expect.poll(() => router.state.location.search).toEqual({ account: 1 });
+    await expect
+      .element(nav().getByRole("link", { name: /^Personal/ }))
+      .toHaveAttribute("aria-current", "true");
+    await expect
+      .element(nav().getByRole("link", { name: /^ana@work\.example/ }))
+      .not.toHaveAttribute("aria-current");
+    await expect
+      .element(nav().getByRole("link", { name: "All accounts" }))
+      .not.toHaveAttribute("aria-current");
+    // Every account's mail has no labels: All accounts opens its Inbox.
+    await userEvent.click(nav().getByRole("link", { name: "All accounts" }));
+    await expect.poll(() => router.state.location.search).toEqual({});
+    expect(router.state.location.pathname).toBe("/mail/inbox");
+  });
+
+  it("opens a label from every account's mail in the label's account", async () => {
+    const router = await open("/mail/inbox");
+    await userEvent.click(labelsOf("Personal"));
+
+    await userEvent.click(nav().getByRole("link", { name: "Work" }));
+
+    await expect.poll(() => router.state.location.search).toEqual({ account: 1 });
+    await expect
+      .element(nav().getByRole("link", { name: "All accounts" }))
+      .not.toHaveAttribute("aria-current");
+  });
+
+  it("opens an old link to a label in the label's account", async () => {
+    const router = await open(`/mail/${projects}`);
+
+    await expect.poll(() => router.state.location.search).toEqual({ account: 1 });
+    await expect.element(page.getByRole("main").getByText("Personal")).toBeVisible();
   });
 
   it("opens a nested label named with its parent, and another account's Inbox from it", async () => {

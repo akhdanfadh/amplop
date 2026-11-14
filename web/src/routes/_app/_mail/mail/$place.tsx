@@ -24,33 +24,37 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
   },
   validateSearch: placeSearch,
   loaderDeps: ({ search }) => ({ account: search.account }),
-  // A label the member doesn't have is Page not found. A read already
-  // cached serves; the page reads again as it mounts. An ended session
-  // opens sign-in.
+  // A label the member doesn't have is Page not found; one they have opens
+  // in its account. A read already cached serves; the page reads again as
+  // it mounts. An ended session opens sign-in.
   loader: async ({ context: { queryClient }, params: { place }, deps: { account }, location }) => {
+    const view = isViewPlace(place);
     const [places, accounts] = await Promise.all([
-      isViewPlace(place)
-        ? undefined
-        : queryClient.query({ ...getListPlacesQueryOptions(), staleTime: "static" }),
-      account === undefined
+      view ? undefined : queryClient.query({ ...getListPlacesQueryOptions(), staleTime: "static" }),
+      // Only a view's filter is checked against the accounts.
+      !view || account === undefined
         ? undefined
         : queryClient.query({ ...getListConnectedAccountsQueryOptions(), staleTime: "static" }),
     ]).catch((err: unknown) => {
       throw isSessionEnded(err) ? sessionEnded(queryClient, location.href) : err;
     });
-    // The same address, the conversation in it included, for every
-    // account's mail.
-    const unfiltered = redirect({ href: location.pathname, replace: true });
-    // An account the member no longer has, e.g. in an old link, only
-    // filtered: the place shows every account's mail instead.
-    if (account !== undefined && !accounts?.data.accounts.some((a) => a.id === account)) {
-      throw unfiltered;
+    if (view) {
+      // An account the member no longer has, e.g. in an old link, only
+      // filtered: the view shows every account's mail instead, at the same
+      // address, the conversation in it included.
+      if (account !== undefined && !accounts?.data.accounts.some((a) => a.id === account)) {
+        throw redirect({ href: location.pathname, replace: true });
+      }
+      return { name: placeName[place], ownName: placeName[place] };
     }
-    if (isViewPlace(place)) return { name: placeName[place], ownName: placeName[place] };
     const label = places?.data.places.find((p) => p.place === place && p.name !== null);
     if (!label?.name) throw notFound();
-    // A label belongs to one account: filtered to another, it shows whole.
-    if (account !== undefined && label.accountId !== account) throw unfiltered;
+    // A label is one account's and opens in it, so the sidebar marks that
+    // account: without its filter, e.g. an old link, or with another's,
+    // the address takes the label's account (DESIGN.md "Sidebar").
+    if (account !== label.accountId) {
+      throw redirect({ href: `${location.pathname}?account=${label.accountId}`, replace: true });
+    }
     // A nested label is named with its parents, joined by "/", inbok's
     // separator for every provider's; ownName is its own, e.g. for an
     // empty list's words.

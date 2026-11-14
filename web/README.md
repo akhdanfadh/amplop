@@ -264,21 +264,23 @@ reports no connection, read from TanStack Query's `onlineManager`.
 A place in mail, `/mail/<place>`, is a view (`inbox`, `starred`, `sent`,
 `all`, `spam`, `trash`) or a label's ID from the API's places, and
 `?account=<id>` shows one account's mail. A label the member doesn't
-have is Page not found; `?account=` only filters, so an account the
-member doesn't have shows every account's mail, and one that is no ID is
-dropped. `/mail/<place>/<conversation id>` opens a conversation in the
-reading pane: one the list holds draws from its row at once while its
-messages load, and one it doesn't, e.g. from a link, waits for its read;
-one that no longer exists is Page not found either way. Its route splits
-its loader off (`codeSplitGroupings`), since it reads mail's TanStack DB
-collection, which must stay out of the app's first download. A loader
-whose read finds the session ended clears the member's data and opens
-sign-in (`sessionEnded` in `features/auth/guard.ts`).
-Rows are React Aria links, which never preload, so resting the pointer
-or focus on a row for 100 ms calls `router.preloadRoute`, which reads the
-conversation ahead; sweeping over rows reads none. On a phone the reading
-pane is the page, with Back above the conversation, which goes back in
-history as the phone's own back does.
+have is Page not found. On a view `?account=` only filters, so an
+account the member doesn't have shows every account's mail, and one that
+is no ID is dropped; a label opens in its own account, so any other
+`?account=`, or none, becomes the label's. `/mail/<place>/<conversation
+id>` opens a conversation in the reading pane: one the list holds draws
+from its row at once while its messages load, and one it doesn't, e.g.
+from a link, waits for its read; one that no longer exists is Page not
+found either way. Its route splits its loader off
+(`codeSplitGroupings`), since it reads mail's TanStack DB collection,
+which must stay out of the app's first download. A loader whose read
+finds the session ended clears the member's data and opens sign-in
+(`sessionEnded` in `features/auth/guard.ts`). Rows are React Aria links,
+which never preload, so resting the pointer or focus on a row for 100 ms
+calls `router.preloadRoute`, which reads the conversation ahead;
+sweeping over rows reads none. On a phone the reading pane is the page,
+with Back above the conversation, which goes back in history as the
+phone's own back does.
 
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page

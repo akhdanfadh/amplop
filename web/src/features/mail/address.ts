@@ -2,9 +2,10 @@ import * as z from "zod";
 import { isViewPlace, type Place } from "./places";
 
 // placeSearch reads a mail address's search: account, the one connected
-// account a list shows, e.g. /mail/inbox?account=3. It only filters, so an
-// account that is no ID, e.g. ?account=abc, is dropped and the list shows
-// every account's, as an old link should (web/README.md "Routes").
+// account a list shows, e.g. /mail/inbox?account=3. An account that is no
+// ID, e.g. ?account=abc, is dropped, as an old link should be: a view then
+// shows every account's mail, and a label its own account's (web/README.md
+// "Routes").
 export const placeSearch = z.object({ account: z.int().positive().optional().catch(undefined) });
 
 // A label's ID, as the API names one.

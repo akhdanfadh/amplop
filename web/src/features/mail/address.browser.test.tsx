@@ -44,10 +44,16 @@ describe("mail addresses", () => {
     expect(notFound(router)).toBe(false);
   });
 
-  it("shows a label whole when filtered to another account", async () => {
-    const router = await open(`/mail/${label}?account=2`);
-    expect(router.state.location.search).toEqual({});
-    expect(notFound(router)).toBe(false);
+  it("opens a label in its own account, filtered to another or to none", async () => {
+    for (const address of [`/mail/${label}?account=2`, `/mail/${label}`]) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one page at a time.
+      const router = await open(address);
+      expect({ address, search: router.state.location.search }).toEqual({
+        address,
+        search: { account: 1 },
+      });
+      expect(notFound(router)).toBe(false);
+    }
   });
 
   it("drops an account that is no ID", async () => {

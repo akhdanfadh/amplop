@@ -194,7 +194,8 @@ const toneText: Record<Tone, string> = {
 // unread count and status, its labels nested under it. place is the open
 // place, if any, and filter its account filter; pathname is the address.
 // Choosing an account keeps the open view, or a label of that account; a
-// label of another becomes the Inbox. failed says the accounts could not
+// label of another becomes the Inbox, as does All accounts on a label,
+// which opens only in its own account. failed says the accounts could not
 // be read, which it says with Try again, onRetry, pending while retrying;
 // the rail says it with one icon, which tries again.
 function AccountsGroup({
@@ -257,7 +258,8 @@ function AccountsGroup({
   // What the place becomes under accountId's filter, or every account's.
   const placeFor = (accountId: number | undefined): string => {
     if (place === undefined) return "inbox";
-    if (isViewPlace(place) || accountId === undefined) return place;
+    if (isViewPlace(place)) return place;
+    if (accountId === undefined) return "inbox";
     const owner = counts.find((count) => count.place === place)?.accountId;
     return owner === accountId ? place : "inbox";
   };
@@ -291,7 +293,6 @@ function AccountsGroup({
               search: { account: account.id },
             })}
             isActive={filter === account.id}
-            filter={filter}
             pathname={pathname}
             onPress={onPress}
           />
@@ -311,7 +312,6 @@ function AccountItem({
   labels,
   href,
   isActive,
-  filter,
   pathname,
   onPress,
 }: {
@@ -320,7 +320,6 @@ function AccountItem({
   labels: LabelNode[];
   href: AppHref;
   isActive: boolean;
-  filter: number | undefined;
   pathname: string;
   onPress: () => void;
 }): ReactElement {
@@ -410,7 +409,6 @@ function AccountItem({
             <LabelList
               labels={labels}
               accountId={account.id}
-              filter={filter}
               pathname={pathname}
               onPress={onPress}
             />
@@ -447,19 +445,17 @@ function FoldButton({
 }
 
 // LabelList lists labels, each with its unread count and its own labels
-// under it, nested is true for a list under a label. A label keeps the
-// account filter when it is its account's.
+// under it, nested is true for a list under a label. A label opens in its
+// account, accountId, its filter (DESIGN.md "Sidebar").
 function LabelList({
   labels,
   accountId,
-  filter,
   pathname,
   onPress,
   nested = false,
 }: {
   labels: LabelNode[];
   accountId: number;
-  filter: number | undefined;
   pathname: string;
   onPress: () => void;
   nested?: boolean;
@@ -475,7 +471,6 @@ function LabelList({
           key={label.place}
           label={label}
           accountId={accountId}
-          filter={filter}
           pathname={pathname}
           onPress={onPress}
         />
@@ -493,13 +488,11 @@ function LabelList({
 function LabelItem({
   label,
   accountId,
-  filter,
   pathname,
   onPress,
 }: {
   label: LabelNode;
   accountId: number;
-  filter: number | undefined;
   pathname: string;
   onPress: () => void;
 }): ReactElement {
@@ -512,7 +505,7 @@ function LabelItem({
       href={linkOptions({
         to: "/mail/$place",
         params: { place: label.place },
-        search: { account: filter === accountId ? accountId : undefined },
+        search: { account: accountId },
       })}
       isActive={within(pathname, `/mail/${label.place}`)}
       detail={nameCut ? label.path : undefined}
@@ -548,7 +541,6 @@ function LabelItem({
             <LabelList
               labels={label.children}
               accountId={accountId}
-              filter={filter}
               pathname={pathname}
               onPress={onPress}
               nested
