@@ -350,6 +350,10 @@ type conversationMessage struct {
 	Trash    bool          `json:"trash" doc:"Whether it is in Trash."`
 	Sent     bool          `json:"sent" doc:"Whether it is in Sent: its account sent it, from its own address or an alias."`
 	LabelIDs []uuid.UUID   `json:"labelIds" nullable:"false" doc:"The account's labels it is in, in a stable order, by name."`
+	// Named answers, not JMAP's inReplyTo, which lists Message-IDs (RFC
+	// 8621 section 4.1.3): this is the message itself.
+	Answers     *uuid.UUID `json:"answers" nullable:"true" format:"uuid" doc:"The message of this conversation it answers, by its In-Reply-To header; null for none, or one this conversation does not hold."`
+	Attachments bool       `json:"attachments" doc:"Whether it has an attachment. inbok knows only once it has fetched the message's content: the last 90 days' in the background, others when opened. False until then."`
 }
 
 type conversationDetail struct {
@@ -384,21 +388,27 @@ func (h conversationHandler) handleGetConversation(ctx context.Context, in *conv
 	}
 	detail := conversationDetail{Conversation: conversationRowOf(read), Messages: make([]conversationMessage, 0, len(messages))}
 	for _, m := range messages {
+		var answers *uuid.UUID
+		if m.Answers != uuid.Nil() {
+			answers = &m.Answers
+		}
 		detail.Messages = append(detail.Messages, conversationMessage{
-			ID:       m.ID,
-			Date:     m.Date,
-			Subject:  m.Subject,
-			From:     mailAddressesOf(m.From),
-			ReplyTo:  mailAddressesOf(m.ReplyTo),
-			To:       mailAddressesOf(m.To),
-			Cc:       mailAddressesOf(m.CC),
-			Preview:  m.Preview,
-			Unread:   !m.Seen,
-			Starred:  m.Flagged,
-			Spam:     m.InSpam(),
-			Trash:    m.InTrash(),
-			Sent:     m.InSent(),
-			LabelIDs: m.LabelIDs(),
+			ID:          m.ID,
+			Date:        m.Date,
+			Subject:     m.Subject,
+			From:        mailAddressesOf(m.From),
+			ReplyTo:     mailAddressesOf(m.ReplyTo),
+			To:          mailAddressesOf(m.To),
+			Cc:          mailAddressesOf(m.CC),
+			Preview:     m.Preview,
+			Unread:      !m.Seen,
+			Starred:     m.Flagged,
+			Spam:        m.InSpam(),
+			Trash:       m.InTrash(),
+			Sent:        m.InSent(),
+			LabelIDs:    m.LabelIDs(),
+			Answers:     answers,
+			Attachments: m.Attachments,
 		})
 	}
 	return respondData(detail), nil

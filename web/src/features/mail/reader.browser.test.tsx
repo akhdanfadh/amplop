@@ -71,6 +71,8 @@ describe("Reader", () => {
       sent: false,
       starred: false,
       unread: false,
+      answers: null,
+      attachments: false,
     };
     const detail = Response.json({ data: { conversation: row, messages: [message] } });
     const fetch = api.fetch;

@@ -51,6 +51,18 @@ type Message struct {
 	Flagged bool
 	// Mailboxes are the mailboxes it is in, perhaps none.
 	Mailboxes []Mailbox
+	// MessageID and InReplyTo are its Message-ID, empty when it has none,
+	// and its In-Reply-To, [mailsync.Message.MessageID] and
+	// [mailsync.Message.InReplyTo].
+	MessageID string
+	InReplyTo []string
+	// Attachments is whether its view offers a download, as
+	// messagecontent.Choose decides; false while its content is not
+	// fetched.
+	Attachments bool
+	// Answers is the message of the same conversation it answers, as
+	// [Service.Get] finds it; the zero UUID for none or one inbok lacks.
+	Answers uuid.UUID
 }
 
 // Summary is a conversation's row and places, derived from its thread's

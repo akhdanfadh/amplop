@@ -11,6 +11,7 @@ import (
 
 	"inbok/internal/conversation"
 	"inbok/internal/mailsync"
+	"inbok/internal/messagecontent"
 	"inbok/internal/repository/postgres/sqlc"
 )
 
@@ -174,6 +175,16 @@ func (db *DB) ReadConversation(ctx context.Context, userID int64, id uuid.UUID) 
 				return err
 			}
 			messages = append(messages, message)
+		}
+
+		// 3. Read their stored parts, to tell which have attachments.
+		parts, err := queries.ListConversationMessageParts(ctx, id)
+		if err != nil {
+			return fmt.Errorf("list conversation message parts: %w", err)
+		}
+		withAttachments := attachmentsByMessage(parts)
+		for i := range messages {
+			messages[i].Attachments = withAttachments[messages[i].ID]
 		}
 		return nil
 	})
@@ -380,5 +391,30 @@ func conversationMessageFromRow(row sqlc.ListConversationMessagesRow) (conversat
 		Seen:      row.Seen,
 		Flagged:   row.Flagged,
 		Mailboxes: mailboxes,
+		MessageID: row.InternetMessageID,
+		InReplyTo: row.InReplyTo,
 	}, nil
+}
+
+// attachmentsByMessage returns which of the messages whose parts rows
+// list, by message then path, have an attachment: one their message view
+// offers as a download, as [messagecontent.Choose] decides, so the folded
+// row's paperclip and the opened message agree.
+func attachmentsByMessage(rows []sqlc.ListConversationMessagePartsRow) map[uuid.UUID]bool {
+	withAttachments := make(map[uuid.UUID]bool)
+	for start := 0; start < len(rows); {
+		end := start
+		message := make([]sqlc.ListMessagePartsRow, 0)
+		for ; end < len(rows) && rows[end].MessageID == rows[start].MessageID; end++ {
+			r := rows[end]
+			message = append(message, sqlc.ListMessagePartsRow{
+				Path: r.Path, ProviderPartID: r.ProviderPartID, MediaType: r.MediaType, Charset: r.Charset,
+				Filename: r.Filename, Size: r.Size, Disposition: r.Disposition, MimeContentID: r.MimeContentID,
+				RelatedStart: r.RelatedStart, Kind: r.Kind, BlobID: r.BlobID,
+			})
+		}
+		withAttachments[rows[start].MessageID] = len(messagecontent.Choose(partTree(message)).Attachments) > 0
+		start = end
+	}
+	return withAttachments
 }

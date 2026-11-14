@@ -317,6 +317,18 @@
       "ConversationMessage": {
         "additionalProperties": false,
         "properties": {
+          "answers": {
+            "description": "The message of this conversation it answers, by its In-Reply-To header; null for none, or one this conversation does not hold.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attachments": {
+            "description": "Whether it has an attachment. inbok knows only once it has fetched the message's content: the last 90 days' in the background, others when opened. False until then.",
+            "type": "boolean"
+          },
           "cc": {
             "items": {
               "$ref": "#/components/schemas/MailAddress"
@@ -397,7 +409,9 @@
           "spam",
           "trash",
           "sent",
-          "labelIds"
+          "labelIds",
+          "answers",
+          "attachments"
         ],
         "type": "object"
       },

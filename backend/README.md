@@ -2828,9 +2828,16 @@ IDs it found, in one read-only snapshot:
   them for display.
 - `GET /conversations/{id}` returns a conversation's row and its
   messages but drafts, oldest first, with their headers, read and starred
-  state, labels, and whether each is in Spam or Trash; no body. The
-  repository returns every message with its mailboxes, and
-  `conversation`'s rules leave out the drafts and mark Spam and Trash.
+  state, labels, whether each is in Spam, Trash, or Sent (`sent`: its
+  account sent it, from its own address or an alias), the message it
+  answers (`answers`), and whether it has attachments (`attachments`); no
+  body. The repository returns every message with its mailboxes, its
+  Message-ID and In-Reply-To, and its stored parts, read in one more
+  query; `conversation`'s rules leave out the drafts, mark Spam, Trash,
+  and Sent, and link each message to the one its In-Reply-To names last
+  (`linkAnswers`). A message has attachments when its view offers a
+  download, as `messagecontent.Choose` decides for the message view, so
+  the two agree; one whose content was never fetched has none yet.
 
 A label of another member answers 404 `place-not-found`, an account
 filter of another member 404 `connected-account-not-found`, and another

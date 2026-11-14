@@ -147,7 +147,7 @@ WHERE c.id = ANY (@ids::uuid[]) AND ca.user_id = @user_id;
 -- each with the IDs, roles, and makers of its mailboxes by name, an empty
 -- role for none.
 SELECT m.id, m.internal_date, m.subject, m.from_addresses, m.reply_to_addresses, m.to_addresses,
-    m.cc_addresses, m.preview, m.seen, m.flagged,
+    m.cc_addresses, m.preview, m.seen, m.flagged, m.internet_message_id, m.in_reply_to,
     coalesce(array_agg(mb.id ORDER BY mb.name, mb.id) FILTER (WHERE mb.id IS NOT NULL), '{}')::uuid[] AS mailbox_ids,
     coalesce(array_agg(coalesce(mb.role, '') ORDER BY mb.name, mb.id) FILTER (WHERE mb.id IS NOT NULL), '{}')::text[] AS mailbox_roles,
     coalesce(array_agg(mb.made_by ORDER BY mb.name, mb.id) FILTER (WHERE mb.id IS NOT NULL), '{}')::text[] AS mailbox_makers
@@ -159,6 +159,19 @@ LEFT JOIN mailboxes mb ON mb.id = mm.mailbox_id
 WHERE c.id = @id
 GROUP BY m.id
 ORDER BY m.internal_date, m.id;
+
+-- name: ListConversationMessageParts :many
+-- The stored parts of the conversation's messages whose content was
+-- fetched, by message, each message's depth first as ListMessageParts.
+SELECT p.message_id, p.path, p.provider_part_id, p.media_type, p.charset, p.filename, p.size,
+    p.disposition, p.mime_content_id, p.related_start, p.kind, p.blob_id
+FROM conversations c
+JOIN messages m ON m.connected_account_id = c.connected_account_id
+    AND m.provider_thread_id = c.provider_thread_id
+JOIN message_parts p ON p.connected_account_id = m.connected_account_id
+    AND p.message_id = m.id
+WHERE c.id = @id
+ORDER BY p.message_id, p.path;
 
 -- name: CountMailboxConversationsAfter :one
 SELECT count(DISTINCT conversation_id)::integer FROM conversation_mailboxes

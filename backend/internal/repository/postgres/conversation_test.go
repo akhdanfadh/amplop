@@ -11,6 +11,7 @@ import (
 
 	"inbok/internal/conversation"
 	"inbok/internal/mailsync"
+	"inbok/internal/messagecontent"
 )
 
 // conversationReadTest is a [syncedMailTest] whose two accounts have
@@ -360,23 +361,38 @@ func TestListPlaceCountsSameRole(t *testing.T) {
 }
 
 func TestReadConversation(t *testing.T) {
-	// Given a conversation of a labelled message, a trashed reply, and a
-	// draft.
+	// Given a conversation of a labelled message with an attachment, a
+	// trashed reply to it with an inline image, and a draft whose content
+	// was never fetched.
 	c := newConversationReadTest(t)
 	first := threadMessage("m1", "t1", 1, "asha", "INBOX", "Label_1")
 	first.To = []mailsync.Address{address("member")}
+	first.MessageID = "<m1@example.com>"
 	reply := threadMessage("m2", "t1", 2, "member", "TRASH")
+	reply.MessageID = "<m2@example.com>"
+	reply.InReplyTo = []string{"<m1@example.com>"}
 	draft := threadMessage("draft", "t1", 3, "member", "DRAFT")
 	c.saveTo(t, c.account, reply, first, draft)
 	id := c.conversations(t, c.account)["t1"].ID
+	stored := c.messages(t, c.account)
+	_, err := c.db.SaveMessageParts(t.Context(), c.account, stored["m1"].ID, storedTree())
+	require.NoError(t, err)
+	_, err = c.db.SaveMessageParts(t.Context(), c.account, stored["m2"].ID, messagecontent.Part{
+		ID: "", MediaType: "multipart/related", Kind: messagecontent.KindMultipart, Parts: []messagecontent.Part{
+			{ID: "0", MediaType: "text/html", Kind: messagecontent.KindText, BlobID: uuid.New()},
+			{ID: "1", MediaType: "image/png", Disposition: messagecontent.DispositionInline, Kind: messagecontent.KindInline},
+		},
+	})
+	require.NoError(t, err)
 
 	row, messages, err := c.db.ReadConversation(t.Context(), c.member, id)
 
 	// Then every message comes, oldest first, each with its mailboxes by
-	// name; the service leaves out the draft.
+	// name, its Message-ID and In-Reply-To, and whether it has an
+	// attachment, which an inline image is not; the service leaves out the
+	// draft.
 	require.NoError(t, err)
 	assert.Equal(t, id, row.ID)
-	stored := c.messages(t, c.account)
 	mailbox := func(providerID string, role mailsync.Role, maker mailsync.Maker) conversation.Mailbox {
 		return conversation.Mailbox{ID: c.mailboxID(t, c.account, providerID), Role: role, MadeBy: maker}
 	}
@@ -389,18 +405,59 @@ func TestReadConversation(t *testing.T) {
 				mailbox("INBOX", mailsync.RoleInbox, mailsync.MadeByProvider),
 				mailbox("Label_1", mailsync.RoleNone, mailsync.MadeByMember),
 			},
+			MessageID: "<m1@example.com>", InReplyTo: []string{}, Attachments: true,
 		},
 		{
 			ID: stored["m2"].ID, Date: reply.InternalDate, Subject: "Subject of m2", Preview: "Preview of m2",
 			From: []mailsync.Address{address("member")}, ReplyTo: none, To: none, CC: none,
 			Mailboxes: []conversation.Mailbox{mailbox("TRASH", mailsync.RoleTrash, mailsync.MadeByProvider)},
+			MessageID: "<m2@example.com>", InReplyTo: []string{"<m1@example.com>"},
 		},
 		{
 			ID: stored["draft"].ID, Date: draft.InternalDate, Subject: "Subject of draft", Preview: "Preview of draft",
 			From: []mailsync.Address{address("member")}, ReplyTo: none, To: none, CC: none,
 			Mailboxes: []conversation.Mailbox{mailbox("DRAFT", mailsync.RoleDrafts, mailsync.MadeByProvider)},
+			InReplyTo: []string{},
 		},
 	}, messages)
+}
+
+// A message has attachments when its view offers a download, as
+// messagecontent.Choose decides: an invite's calendar, an alternative the
+// view leaves out, is none; an image outside multipart/related is one.
+func TestReadConversationAttachments(t *testing.T) {
+	c := newConversationReadTest(t)
+	c.saveTo(t, c.account,
+		threadMessage("invite", "t1", 1, "asha", "INBOX"),
+		threadMessage("photo", "t1", 2, "asha", "INBOX"),
+	)
+	id := c.conversations(t, c.account)["t1"].ID
+	stored := c.messages(t, c.account)
+	text := func(partID, mediaType string) messagecontent.Part {
+		return messagecontent.Part{ID: partID, MediaType: mediaType, Kind: messagecontent.KindText, BlobID: uuid.New()}
+	}
+	_, err := c.db.SaveMessageParts(t.Context(), c.account, stored["invite"].ID, messagecontent.Part{
+		ID: "", MediaType: "multipart/alternative", Kind: messagecontent.KindMultipart, Parts: []messagecontent.Part{
+			text("0", "text/plain"),
+			text("1", "text/html"),
+			{ID: "2", MediaType: "text/calendar", Kind: messagecontent.KindAttachment},
+		},
+	})
+	require.NoError(t, err)
+	_, err = c.db.SaveMessageParts(t.Context(), c.account, stored["photo"].ID, messagecontent.Part{
+		ID: "", MediaType: "multipart/mixed", Kind: messagecontent.KindMultipart, Parts: []messagecontent.Part{
+			text("0", "text/plain"),
+			{ID: "1", MediaType: "image/png", ContentID: "photo", Disposition: messagecontent.DispositionInline, Kind: messagecontent.KindInline},
+		},
+	})
+	require.NoError(t, err)
+
+	_, messages, err := c.db.ReadConversation(t.Context(), c.member, id)
+
+	require.NoError(t, err)
+	require.Len(t, messages, 2)
+	assert.False(t, messages[0].Attachments, "the invite's calendar is an alternative the view leaves out")
+	assert.True(t, messages[1].Attachments, "an image no HTML shows is a download")
 }
 
 func TestReadConversationNotFound(t *testing.T) {

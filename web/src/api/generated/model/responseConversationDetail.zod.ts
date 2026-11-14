@@ -35,6 +35,8 @@ export const ResponseConversationDetail = zod.object({
   "unread": zod.boolean().describe('Whether a shown message is unread.')
 }),
   "messages": zod.array(zod.object({
+  "answers": zod.uuid().nullable().describe('The message of this conversation it answers, by its In-Reply-To header; null for none, or one this conversation does not hold.'),
+  "attachments": zod.boolean().describe('Whether it has an attachment. inbok knows only once it has fetched the message\'s content: the last 90 days\' in the background, others when opened. False until then.'),
   "cc": zod.array(zod.object({
   "address": zod.string().describe('The address; empty for an entry that is none, e.g. a group\'s name, which is then the name.'),
   "name": zod.string().describe('The display name, perhaps empty.')

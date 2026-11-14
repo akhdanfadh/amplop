@@ -166,9 +166,71 @@ func (q *Queries) ListAllMailConversationIDs(ctx context.Context, arg ListAllMai
 	return items, nil
 }
 
+const listConversationMessageParts = `-- name: ListConversationMessageParts :many
+SELECT p.message_id, p.path, p.provider_part_id, p.media_type, p.charset, p.filename, p.size,
+    p.disposition, p.mime_content_id, p.related_start, p.kind, p.blob_id
+FROM conversations c
+JOIN messages m ON m.connected_account_id = c.connected_account_id
+    AND m.provider_thread_id = c.provider_thread_id
+JOIN message_parts p ON p.connected_account_id = m.connected_account_id
+    AND p.message_id = m.id
+WHERE c.id = $1
+ORDER BY p.message_id, p.path
+`
+
+type ListConversationMessagePartsRow struct {
+	MessageID      uuid.UUID
+	Path           []int32
+	ProviderPartID string
+	MediaType      string
+	Charset        string
+	Filename       string
+	Size           int64
+	Disposition    string
+	MimeContentID  string
+	RelatedStart   string
+	Kind           string
+	BlobID         *uuid.UUID
+}
+
+// The stored parts of the conversation's messages whose content was
+// fetched, by message, each message's depth first as ListMessageParts.
+func (q *Queries) ListConversationMessageParts(ctx context.Context, id uuid.UUID) ([]ListConversationMessagePartsRow, error) {
+	rows, err := q.db.Query(ctx, listConversationMessageParts, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListConversationMessagePartsRow
+	for rows.Next() {
+		var i ListConversationMessagePartsRow
+		if err := rows.Scan(
+			&i.MessageID,
+			&i.Path,
+			&i.ProviderPartID,
+			&i.MediaType,
+			&i.Charset,
+			&i.Filename,
+			&i.Size,
+			&i.Disposition,
+			&i.MimeContentID,
+			&i.RelatedStart,
+			&i.Kind,
+			&i.BlobID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listConversationMessages = `-- name: ListConversationMessages :many
 SELECT m.id, m.internal_date, m.subject, m.from_addresses, m.reply_to_addresses, m.to_addresses,
-    m.cc_addresses, m.preview, m.seen, m.flagged,
+    m.cc_addresses, m.preview, m.seen, m.flagged, m.internet_message_id, m.in_reply_to,
     coalesce(array_agg(mb.id ORDER BY mb.name, mb.id) FILTER (WHERE mb.id IS NOT NULL), '{}')::uuid[] AS mailbox_ids,
     coalesce(array_agg(coalesce(mb.role, '') ORDER BY mb.name, mb.id) FILTER (WHERE mb.id IS NOT NULL), '{}')::text[] AS mailbox_roles,
     coalesce(array_agg(mb.made_by ORDER BY mb.name, mb.id) FILTER (WHERE mb.id IS NOT NULL), '{}')::text[] AS mailbox_makers
@@ -183,19 +245,21 @@ ORDER BY m.internal_date, m.id
 `
 
 type ListConversationMessagesRow struct {
-	ID               uuid.UUID
-	InternalDate     time.Time
-	Subject          string
-	FromAddresses    []byte
-	ReplyToAddresses []byte
-	ToAddresses      []byte
-	CcAddresses      []byte
-	Preview          string
-	Seen             bool
-	Flagged          bool
-	MailboxIds       []uuid.UUID
-	MailboxRoles     []string
-	MailboxMakers    []string
+	ID                uuid.UUID
+	InternalDate      time.Time
+	Subject           string
+	FromAddresses     []byte
+	ReplyToAddresses  []byte
+	ToAddresses       []byte
+	CcAddresses       []byte
+	Preview           string
+	Seen              bool
+	Flagged           bool
+	InternetMessageID string
+	InReplyTo         []string
+	MailboxIds        []uuid.UUID
+	MailboxRoles      []string
+	MailboxMakers     []string
 }
 
 // Every message of the conversation's thread, drafts too, oldest first,
@@ -221,6 +285,8 @@ func (q *Queries) ListConversationMessages(ctx context.Context, id uuid.UUID) ([
 			&i.Preview,
 			&i.Seen,
 			&i.Flagged,
+			&i.InternetMessageID,
+			&i.InReplyTo,
 			&i.MailboxIds,
 			&i.MailboxRoles,
 			&i.MailboxMakers,

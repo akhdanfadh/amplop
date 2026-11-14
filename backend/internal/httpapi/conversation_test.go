@@ -238,6 +238,8 @@ func TestGetConversation(t *testing.T) {
 				{ID: uuid.New(), Role: mailsync.RoleTrash, MadeBy: mailsync.MadeByProvider},
 				{ID: receiptsLabel, MadeBy: mailsync.MadeByMember},
 			},
+			Answers:     uuid.MustParse("0b1b2c3d-0000-4000-8000-0000000000dd"),
+			Attachments: true,
 		}},
 	}
 	api := newConversationsAPI(conversations)
@@ -249,7 +251,8 @@ func TestGetConversation(t *testing.T) {
 		`"id":"0b1b2c3d-0000-4000-8000-0000000000bb","date":"2026-11-09T10:30:00Z","subject":"Quarterly report",`+
 		`"from":[{"name":"Asha K","address":"asha@example.com"}],"replyTo":[],"to":[{"name":"","address":"alex@example.com"}],"cc":[],`+
 		`"preview":"Numbers attached","unread":true,"starred":true,"spam":false,"trash":true,"sent":true,`+
-		`"labelIds":["0b1b2c3d-0000-4000-8000-0000000000aa"]}]}}`, response.Body.String())
+		`"labelIds":["0b1b2c3d-0000-4000-8000-0000000000aa"],`+
+		`"answers":"0b1b2c3d-0000-4000-8000-0000000000dd","attachments":true}]}}`, response.Body.String())
 	assert.Equal(t, reportID, conversations.id)
 	assert.Equal(t, int64(42), conversations.userID)
 }

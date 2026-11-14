@@ -214,12 +214,39 @@ func (s *Service) Places(ctx context.Context, userID int64) ([]PlaceCount, error
 }
 
 // Get returns userID's conversation id with its messages but drafts,
-// oldest first, or [ErrNotFound].
+// oldest first, each linked to the message it answers ([Message.Answers]),
+// or [ErrNotFound].
 func (s *Service) Get(ctx context.Context, userID int64, id uuid.UUID) (Conversation, []Message, error) {
 	read, messages, err := s.storage.ReadConversation(ctx, userID, id)
 	if err != nil {
 		return Conversation{}, nil, err
 	}
 	// A draft shows nowhere (ADR001, "Conversations").
-	return read, slices.DeleteFunc(messages, Message.draft), nil
+	messages = slices.DeleteFunc(messages, Message.draft)
+	linkAnswers(messages)
+	return read, messages, nil
+}
+
+// linkAnswers sets each of messages' [Message.Answers]: the message among
+// messages whose Message-ID is the last of its In-Reply-To. In-Reply-To
+// lists the parents a message answers (RFC 5322 section 3.6.4); taking
+// the last as the one answered is inbok's choice, as a reply names one
+// parent and a mailer adding more puts the newest last. Of two copies
+// with one Message-ID, e.g. a message the account sent itself, it
+// answers the first in messages' order.
+func linkAnswers(messages []Message) {
+	byMessageID := make(map[string]uuid.UUID, len(messages))
+	for _, m := range messages {
+		if _, seen := byMessageID[m.MessageID]; m.MessageID != "" && !seen {
+			byMessageID[m.MessageID] = m.ID
+		}
+	}
+	for i, m := range messages {
+		if len(m.InReplyTo) == 0 {
+			continue
+		}
+		if answered, ok := byMessageID[m.InReplyTo[len(m.InReplyTo)-1]]; ok && answered != m.ID {
+			messages[i].Answers = answered
+		}
+	}
 }

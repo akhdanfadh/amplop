@@ -90,6 +90,53 @@ func TestGetLeavesOutDrafts(t *testing.T) {
 	assert.Equal(t, []Message{received}, messages)
 }
 
+// A draft shows nowhere, so nothing links to it: drafts go first.
+func TestGetLinksNoAnswerToADraft(t *testing.T) {
+	draft := message(1, "member", drafts)
+	draft.MessageID = "<draft@x>"
+	reply := message(2, "asha", inbox)
+	reply.InReplyTo = []string{"<draft@x>"}
+	storage := &fakeStorage{rows: []Conversation{{ID: uuid.New()}}, messages: []Message{draft, reply}}
+
+	_, messages, err := NewService(storage).Get(t.Context(), 1, storage.rows[0].ID)
+
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	assert.Equal(t, uuid.Nil(), messages[0].Answers)
+}
+
+func TestGetLinksAnswers(t *testing.T) {
+	// Given a message, a reply to it, a reply to a message inbok lacks, a
+	// reply naming its parents with the one answered last, two copies of
+	// one Message-ID, a reply to those, and a message naming itself.
+	ids := make([]uuid.UUID, 7)
+	for i := range ids {
+		ids[i] = uuid.New()
+	}
+	messages := []Message{
+		{ID: ids[0], MessageID: "<a@x>"},
+		{ID: ids[1], MessageID: "<b@x>", InReplyTo: []string{"<a@x>"}},
+		{ID: ids[2], MessageID: "<c@x>", InReplyTo: []string{"<gone@x>"}},
+		{ID: ids[3], MessageID: "<d@x>", InReplyTo: []string{"<a@x>", "<b@x>"}},
+		{ID: ids[4], MessageID: "<d@x>"},
+		{ID: ids[5], InReplyTo: []string{"<d@x>"}},
+		{ID: ids[6], MessageID: "<self@x>", InReplyTo: []string{"<self@x>"}},
+	}
+	storage := &fakeStorage{rows: []Conversation{{ID: uuid.New()}}, messages: messages}
+
+	_, got, err := NewService(storage).Get(t.Context(), 1, storage.rows[0].ID)
+
+	// Then each answers the message with the last ID it names, the first
+	// copy of two, and none for one inbok lacks or itself.
+	require.NoError(t, err)
+	answers := make([]uuid.UUID, len(got))
+	for i, m := range got {
+		answers[i] = m.Answers
+	}
+	none := uuid.Nil()
+	assert.Equal(t, []uuid.UUID{none, ids[0], none, ids[1], none, ids[3], none}, answers)
+}
+
 func TestMessagePlaces(t *testing.T) {
 	gmails := Mailbox{ID: uuid.New(), MadeBy: mailsync.MadeByProvider}
 	labelled := message(1, "asha", inbox, receipts, gmails)
