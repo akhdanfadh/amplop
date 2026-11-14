@@ -1,9 +1,8 @@
+import { fullDate, headerDate } from "@/features/mail/dates";
+
 // An address in a message's header: the display name the sender gave, if
 // any, and the email address.
 export type Address = { name?: string; email: string };
-
-const shownTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-const fullTime = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "long" });
 
 // addressName returns the display name to show for address, or undefined
 // when it has none or the name only repeats the email.
@@ -13,13 +12,14 @@ export function addressName(address: Address): string | undefined {
   return name;
 }
 
-// formatReceived shows a timestamp in the reader's locale and time zone,
-// short for the header and full for its tooltip. A value that is not a
-// time shows as given, rather than failing the whole view.
+// formatReceived shows a timestamp in the browser's time zone, short for
+// the header and in full for its tooltip, in the words and clock the list
+// uses (headerDate, fullDate), so a header and its tooltip agree. A value
+// that is not a time shows as given, rather than failing the whole view.
 export function formatReceived(iso: string): { short: string; full: string } {
   const time = new Date(iso);
   if (Number.isNaN(time.getTime())) return { short: iso, full: iso };
-  return { short: shownTime.format(time), full: fullTime.format(time) };
+  return { short: headerDate(time), full: fullDate(time) };
 }
 
 export const loadingMessage = "Loading message...";
@@ -69,6 +69,13 @@ export const fieldLabels = {
 export function foldLabel(sender: string): string {
   return `Fold the message from ${sender}`;
 }
+
+// answersLead and answersOn frame the line naming the message an open
+// message answers, by its sender and date: "In reply to Ana Lima on 2 Nov
+// 2026, 9:00 am". "on" keeps the date from reading as one more sender
+// after a list of them.
+export const answersLead = "In reply to";
+export const answersOn = "on";
 
 // sentTo is an open message's "to" line, given who received it.
 export function sentTo(recipients: string): string {

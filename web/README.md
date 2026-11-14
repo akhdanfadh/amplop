@@ -125,9 +125,9 @@ Put shared code in the folder for its responsibility:
 - `src/features/connected-accounts`: the Connected accounts list with its
   connect, reconnect, sync, and disconnect actions, and the page's wording,
   including each way a connection can end and where each sync stands.
-- `src/features/messages`: the message view, its HTML and plain-text
-  bodies, sizing the body's frame, plain-text links, and the header's
-  wording.
+- `src/features/messages`: the conversation view (`ConversationView`),
+  the message view, its HTML and plain-text bodies, sizing the body's
+  frame, plain-text links, and the header's wording.
 - `src/features/outgoing-messages`: the compose form and its schema, the
   reply editor with its defaults and schema, the Outbox list, one
   message's status with Send again and Edit and send, their wording, and
@@ -279,8 +279,8 @@ finds the session ended clears the member's data and opens sign-in
 which never preload, so resting the pointer or focus on a row for 100 ms
 calls `router.preloadRoute`, which reads the conversation ahead;
 sweeping over rows reads none. On a phone the reading pane is the page,
-with Back above the conversation, which goes back in history as the
-phone's own back does.
+with Back at the start of the conversation's toolbar, which goes back in
+history as the phone's own back does.
 
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page
@@ -675,9 +675,9 @@ conversation view passes a message in as it is. `replyDefaults`
   copy.
 
 The editor is DESIGN.md's message editor card: rows for From (a quiet
-React Aria `select`, the account shown by its address until branch 3's
-account mark), To, and the Cc and Bcc that are filled or added from the To
-row's buttons, each a `RecipientField`; then Message, and a bar with Send
+React Aria `select`, each account by its mark, its address, and the name
+the member chose), To, and the Cc and Bcc that are filled or added from
+the To row's buttons, each a `RecipientField`; then Message, and a bar with Send
 and Discard. There is no subject: the server sets it. A line under From
 says when the chosen account didn't receive the message, since the reply
 then starts a new conversation in that account's Gmail. Focus starts in
@@ -775,26 +775,36 @@ them.
 conversation as DESIGN.md "Reading pane" describes it. Its props:
 
 - `subject` and `account` (ID, name, address, colour) for its title, and
-  `messages`, oldest first: each message's header fields, its preview,
-  whether it is unread, whether the account sent it (`sent`), and
-  whether it is known to have attachments (`attachments`, a paperclip on
-  its folded row).
+  `messages`, oldest first, as Get Conversation sends them: each
+  message's header fields, its preview, whether it is unread, whether the
+  account sent it (`sent`, in its Sent mail, from any of its addresses),
+  the message it answers (`answers`), and whether it is known to have
+  attachments (`attachments`, a paperclip on its folded row).
+  `messages` is undefined until they are read, and `placeholder` shows in
+  their place, under the title; the messages' `Thread` mounts once they
+  come, so which messages start open is decided from them.
 - `onUnauthorized`: runs when a read finds the session gone.
-- `actions`: the conversation's actions in the pinned toolbar, and Back
-  where one pane shows at a time.
+- `back`: the way back to the list at the toolbar's start, where one pane
+  shows at a time; `actions`: the conversation's actions at its end.
 - `messageActions(message)`: a message's other actions in its header,
   after Reply; shown only while the message is open.
 
 The view holds the reply editor's `ReplyProvider` and places its pieces
 ("Reply"): Reply in each open message's header, the editor below the
 message it answers, whose row then stays out of "N more messages", and
-the bottom's Reply after the last message. Without a `sent` flag, a
-message from the account's own address counts as sent; branch 3's
-conversation detail is to send the real flag. The toolbar's actions are
-the mail list's. The view scrolls itself,
-so give it a height, and a `key` per conversation, so folding starts
-afresh. Each open message loads its content through `useMessageContent`
-(`content.ts`), so folded messages cost no request; content never goes
+the bottom's Reply after the last message. An open message that answers
+one other than the row just above says so, "In reply to Ana Lima on 2 Nov
+2026, 9:00 am" (the name in a `<bdi>`), a link that opens that
+message (out of "N more messages" if it was there), scrolls it to the
+pane's top, focuses the message itself (its `<article>`, `tabIndex`
+-1), and flashes it (`flash-selection` in `styles.css`). The toolbar's
+actions arrive with the mail actions (checkpoint 7). The view takes focus
+when it opens and scrolls itself, so give it a height, and a `key` per
+conversation, so folding starts afresh; its scroll padding follows the
+pinned toolbar's height (a `ResizeObserver`), so nothing focused or
+scrolled to sits under it. Each open message loads its content through
+`useMessageContent` (`content.ts`), so folded messages cost no request;
+content never goes
 stale, as a message's never changes, so it is not read again in the
 background, and a 401 runs `onUnauthorized`; the content shows in
 `MessageContentView`, the message view's part below its header.
@@ -811,10 +821,18 @@ it, which an `IntersectionObserver` on the view's own scroll box tells.
 The layout follows the pane, not the window, with container queries
 (`@container`, `@lg:`, 512 px at the default text size).
 
-Until branch 3 merges, its message type and the helpers it shares
-(initials, names, list dates, `useToday`) have copies here
-(`people.ts`, `text.ts`, `conversation.tsx`); whichever branch merges
-later keeps one.
+It shares the mail list's pieces: names, initials, and the Reply-To check
+(`mail/people.ts`), the sender's avatar (`mail/sender-avatar.tsx`), dates
+and `useToday` (`mail/dates.ts`), and words such as `subjectText` and
+"Unknown sender" (`mail/text.ts`). The mail's `Reader`
+(`mail/reader.tsx`) puts it in the reading pane: it reads Get
+Conversation and takes the subject and account from the list's row, not
+as the query's placeholder, which the query drops once a read fails, so
+the frame stays while the messages load or a read fails, with Try again
+under the title. It names the tab, shows Page not found only while
+nothing is shown (a 404 on a later read leaves a reply being typed in
+place), says when the accounts could not be read, and opens sign-in for
+an ended session.
 
 ## Checks and tests
 

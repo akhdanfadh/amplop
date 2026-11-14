@@ -157,8 +157,13 @@ text).
   colour, background, border, opacity, and transform only
   (`transition-colors`, never `transition-all`). Reduced motion turns
   movement into fades. A theme change switches every colour at once, with
-  no fades. A tooltip shows after the pointer rests 500 ms, then the next
-  ones at once; keyboard focus shows it at once; it closes as soon as the
+  no fades. A message a link sends the reader to (the reading pane's "In
+  reply to") flashes the `selection` tint: held 600 ms, then faded out
+  over 1 s, slow at both ends (ease-in-out), 1.6 s in all, so the eye finds where it
+  landed; the interface's easing would spend most of the fade in its
+  first 300 ms. A colour change only, so reduced motion keeps it. A
+  tooltip shows after the pointer rests 500 ms, then the next ones at
+  once; keyboard focus shows it at once; it closes as soon as the
   pointer or focus leaves. Nothing loops except a spinner while work is
   actually running.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
@@ -175,7 +180,11 @@ text).
   desktop apps (Tailwind 4's default for buttons).
 - **Links:** primary colour, underlined; the underline thickens on hover
   (`textLink` in `src/components/link-style.ts`; `lineLink` for a link on
-  a line of its own, 44 px tall).
+  a line of its own, 44 px tall). An action inside a line of muted text
+  that stays on the page, e.g. the reading pane's "In reply to", is a
+  muted link: a button drawn as a link (`Button variant="link"`) in
+  `muted-foreground`, underlined, with the arrow cursor of a button, 44 px
+  tall on touch.
 
 ### Themes
 
@@ -405,23 +414,32 @@ last two redirect into settings, so settings can move without the server.
   never moved there by width; the bar wraps only for large text. Once the
   title scrolls under it, the subject fades in (150 ms) and a hairline
   shows below it.
-- Title (22 px), the account mark, the message count. The newest message
+- Title (22 px), the account mark, the message count. The title and
+  account draw from the list's row at once; "Loading messages..." stands
+  under them until the messages come, and the view takes focus, so a
+  screen reader starts at the subject. The newest message
   and every unread one start open; the others fold to one row: avatar,
   sender, preview, a paperclip when inbok knows it has attachments (only
-  once its content was fetched), date (as the message list dates rows),
-  one line from a 512 px pane, two below. The first message and the newest three always
-  show; between them, a run of two or more folded messages the member has
+  once its content was fetched: the last 90 days' in the background,
+  older ones when opened, so an older unopened message shows none), date
+  (as the message list dates rows), one line from a 512 px pane, two
+  below. The first message and the newest three always show; between
+  them, a run of two or more folded messages the member has
   not opened or folded becomes one "N more messages" row, which shows them
   all, folded; a message the member opened or folded keeps its own row, so
   one folded again never disappears into the run. Pressing a row opens
   its message, which only then loads its content; a click on an open
   message's header, or its avatar, folds it. Rows fill the band between
   their hairlines on hover, square, with an inset focus ring.
-- An open message: 36 px ringed avatar (the list's size, so names line
-  up); the sender's name and full address (every sender's, when there are
+- An open message: 36 px avatar (the list's size, so names line up),
+  unringed: a conversation is one account's, which the account mark under
+  the title names, so a ring, as in a list filtered to one account, would
+  say nothing (the list rings rows only where accounts mix); the sender's name and full address (every sender's, when there are
   several) on one line while both fit,
   the address moving to the next line whole, never cut, since its domain
-  tells real mail from fake; the date, which moves to the "to" line in a
+  tells real mail from fake; the date ("14 Nov 2026, 6:18 pm": inbok's
+  words, the browser's clock, the day and time in full on hover), which
+  moves to the "to" line in a
   pane under 512 px. "to ..." (recipient names, "me" for the account, "to
   no one" when there are none) and a 20 px chevron that shows the details
   inline below: From, Reply-To, To, Cc (each lists 10 addresses, then "Show
@@ -432,10 +450,26 @@ last two redirect into settings, so settings can move without the server.
   out, nor is one on a message the account sent, which is answered to its
   To. A message with no From reads "Unknown sender"; a name that is its
   address shows once; a group without an address ("Undisclosed
-  recipients") shows its name alone. After the date: Reply, Reply all
+  recipients") shows its name alone. A message answering one other than
+  the row just above says which, under the sender: "In reply to Ana Lima
+  on 2 Nov 2026, 9:00 am", a muted link ("Links") naming the answered
+  message by its sender and its own header's date, so two messages from
+  one sender on one day stay apart; "on" keeps the date from reading as
+  one more sender. It opens that message,
+  out of "N more messages" if it was there, scrolls it to the pane's top
+  under the toolbar, focuses the message, and flashes it ("Motion"), so
+  the press shows even when the message was open and in sight (Gmail
+  shows a thread flat by date, so a late reply to an early message
+  otherwise reads as answering the one above it). The pane's scroll
+  padding follows the pinned toolbar's height, so nothing focused or
+  scrolled to sits under it. After the date: Reply, Reply all
   when others received it, and More (Forward / Mark unread from here,
   Star this message, Delete this message / Show original, Download .eml),
-  each only once built; in a narrow pane they end the "to" line.
+  each only once built. They end the sender's line at every width, in
+  `foreground`, so they never move from one message to the next; a 32 px
+  box overhanging the 20 px line, whose target ::before grows to 44 px on
+  touch without growing the line, 12 px apart there so the targets do not
+  meet.
 - Reply on a message opens the conversation's one editor right below that
   message; Reply and Reply all after the last message answer the newest,
   so the editor opens at the bottom. While it is open every Reply hides,

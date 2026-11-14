@@ -14,6 +14,16 @@ const dayMonthYear = new Intl.DateTimeFormat("en-GB", {
   month: "short",
   year: "numeric",
 });
+// A message header's date, e.g. "14 Nov 2026, 6:18 pm": the day in
+// inbok's words, the time on the browser's clock.
+const medium = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hourCycle: time.resolvedOptions().hourCycle,
+});
 // The day in inbok's words, the time on the browser's clock, as rows show it.
 const full = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "full",
@@ -35,6 +45,12 @@ export function listDate(date: Date, now: Date): string {
   if (days > 0 && days <= weekdayDays) return weekday.format(date);
   if (date.getFullYear() === now.getFullYear()) return dayMonth.format(date);
   return dayMonthYear.format(date);
+}
+
+// headerDate returns date's day and time as a message's header shows them,
+// e.g. "14 Nov 2026, 6:18 pm".
+export function headerDate(date: Date): string {
+  return medium.format(date);
 }
 
 // fullDate returns date's day and time in full, e.g. for hovering a row's

@@ -271,7 +271,10 @@ function IconAction({
 }): ReactElement {
   return (
     <TooltipTrigger>
-      {/* Its 32 px box overhangs the header's 20 px line, not taller. */}
+      {/* Its 32 px box overhangs the header's 20 px line, not taller; on
+          touch too, where ::before grows its target to 44 px instead of
+          the box, so the line keeps its height. Its own colour, the same
+          on every line it sits on. */}
       <Button
         variant="ghost"
         size="icon-sm"
@@ -279,7 +282,7 @@ function IconAction({
         data-reply-for={id}
         data-reply-mode={mode}
         data-reply-place="header"
-        className="-my-1.5"
+        className="relative -my-1.5 text-foreground pointer-coarse:size-8 pointer-coarse:before:absolute pointer-coarse:before:-inset-1.5"
         onPress={onPress}
       >
         {children}

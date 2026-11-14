@@ -80,9 +80,6 @@ export const me = "me";
 // A date on the day before today.
 export const yesterday = "Yesterday";
 
-// The reading pane's word before a message's recipients.
-export const recipientsLabel = "To";
-
 // The star button's name, which says whether it is pressed.
 export const starName = "Star";
 

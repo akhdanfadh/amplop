@@ -43,10 +43,12 @@ const me: MailAddress = { name: "Me", address: "me@example.com" };
 const ana: MailAddress = { name: "Ana Lima", address: "ana@example.com" };
 
 // message returns message number n of a thread, from ana to the account,
-// read, a day after the one before; extra sets its other fields.
+// read, a day after the one before, answering none; extra sets its other
+// fields.
 function message(n: number, extra: Partial<ConversationMessage> = {}): ConversationMessage {
   return {
-    id: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    id: messageId(n),
+    subject: "Spring plan",
     from: [ana],
     to: [me],
     cc: [],
@@ -54,8 +56,20 @@ function message(n: number, extra: Partial<ConversationMessage> = {}): Conversat
     date: new Date(Date.UTC(2026, 9, n, 9)).toISOString(),
     preview: `Preview ${n}`,
     unread: false,
+    starred: false,
+    spam: false,
+    trash: false,
+    sent: false,
+    labelIds: [],
+    answers: null,
+    attachments: false,
     ...extra,
   };
+}
+
+// messageId returns the ID of message number n.
+function messageId(n: number): string {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 }
 
 // thread returns count messages, the first oldest.
@@ -167,20 +181,19 @@ async function show(
   return render(<RouterProvider router={router} />);
 }
 
-// crossTo sets the pane's width, as a window resizing would, without moving
-// focus, and waits for focus to reach the Reply now drawn.
-async function crossTo(width: string): Promise<void> {
-  const before = document.activeElement;
-  const pane = document.querySelector<HTMLElement>("[data-pane]");
-  if (pane) pane.style.width = width;
-  await expect
-    .poll(() => {
-      const active = document.activeElement;
-      return active !== before && active instanceof HTMLElement && active.offsetParent !== null
-        ? active.getAttribute("aria-label")
-        : null;
-    })
-    .toBe("Reply");
+// middle returns how far down the window element's middle is.
+function middle(element: Element): number {
+  const box = element.getBoundingClientRect();
+  return box.top + box.height / 2;
+}
+
+// firstAnaRow returns the row of the first open message from Ana.
+function firstAnaRow(): Element | null {
+  return page
+    .getByRole("article", { name: /^Ana Lima, / })
+    .first()
+    .element()
+    .closest("li");
 }
 
 describe("ConversationView", () => {
@@ -286,6 +299,7 @@ describe("ConversationView", () => {
   it("puts what other features build in its slots", async () => {
     const messages = thread(2);
     await show(messages, 700, {
+      back: <button type="button">Back</button>,
       actions: <button type="button">Archive</button>,
       messageActions: (m) => <button type="button">{`Reply to ${m.preview}`}</button>,
     });
@@ -293,6 +307,8 @@ describe("ConversationView", () => {
     await expect
       .element(page.getByRole("toolbar", { name: "Conversation actions" }).getByRole("button"))
       .toHaveTextContent("Archive");
+    // Back leads the toolbar, before the actions.
+    await expect.element(page.getByRole("button", { name: "Back" })).toBeVisible();
     await expect.element(page.getByRole("button", { name: "Reply to Preview 2" })).toBeVisible();
     // After the message's own Reply.
     await expect
@@ -447,16 +463,155 @@ describe("ConversationView", () => {
     await expect.element(page.getByRole("textbox", { name: "Message" })).toHaveValue("Noon works.");
   });
 
-  it("says nothing of Reply-To on a message the account sent", async () => {
+  it("says nothing of Reply-To on a message the account sent, from an alias too", async () => {
     // A sent message is answered to its To, not its Reply-To.
     await show([
       message(1, {
-        from: [{ name: "Me", address: "me@example.com" }],
+        from: [{ name: "Me", address: "me@alias.example" }],
         replyTo: [{ name: "", address: "support@trusted.example" }],
+        sent: true,
       }),
     ]);
 
     await expect.element(page.getByText(/Replies go to/)).not.toBeInTheDocument();
+  });
+
+  it("calls out Reply-To on a message from the account's address that it did not send", async () => {
+    // Anyone can write the account's address in From.
+    await show([
+      message(1, {
+        from: [{ name: "Me", address: "me@example.com" }],
+        replyTo: [{ name: "", address: "support@evil.example" }],
+      }),
+    ]);
+
+    await expect.element(page.getByText(/Replies go to/)).toBeVisible();
+  });
+
+  it("names an earlier message a message answers, and shows it", async () => {
+    // The newest answers the second, which "2 more messages" holds; the
+    // unread messages after them start open, so the pane can scroll the
+    // second to its top.
+    const messages = thread(12);
+    for (const later of messages.slice(3)) later.unread = true;
+    messages[11] = { ...messages[11], answers: messageId(2) };
+    await show(messages);
+
+    await userEvent.click(page.getByRole("button", { name: /^In reply to Ana Lima on / }));
+
+    // Open, at the pane's top under the toolbar, with focus on the message
+    // itself, so a second Enter does not fold it.
+    const shown = page.getByRole("article", { name: /^Ana Lima, / }).first();
+    await expect
+      .element(page.getByText("Body of 00000000-0000-4000-8000-000000000002"))
+      .toBeVisible();
+    await expect.element(shown).toHaveFocus();
+    const pane = document.querySelector("[data-pane]")?.getBoundingClientRect().top ?? 0;
+    const row = shown.element().closest("li")?.getBoundingClientRect().top ?? 0;
+    expect(Math.round(row - pane)).toBe(48);
+    await userEvent.keyboard("{Enter}");
+    await expect
+      .element(page.getByText("Body of 00000000-0000-4000-8000-000000000002"))
+      .toBeVisible();
+    // The third, alone now, takes its own row.
+    await expect
+      .element(page.getByRole("button", { name: /more messages/ }))
+      .not.toBeInTheDocument();
+  });
+
+  it("wraps the line naming the message answered within a narrow pane", async () => {
+    const billing: MailAddress = {
+      name: "",
+      address: "first.last+billing-notifications@example.com",
+    };
+    await show(
+      [message(1, { from: [billing] }), message(2), message(3, { answers: messageId(1) })],
+      360,
+    );
+
+    const line = page.getByRole("button", { name: /^In reply to first\.last/ });
+    await expect.element(line).toBeVisible();
+    const pane = document.querySelector("[data-pane]")?.getBoundingClientRect();
+    expect(line.element().getBoundingClientRect().right).toBeLessThanOrEqual(pane?.right ?? 0);
+  });
+
+  it("opens a message the line names even when its row was already in sight", async () => {
+    await show([message(1), message(2), message(3, { answers: messageId(1) })]);
+
+    await userEvent.click(page.getByRole("button", { name: /^In reply to Ana Lima on / }));
+
+    await expect
+      .element(page.getByText("Body of 00000000-0000-4000-8000-000000000001"))
+      .toBeVisible();
+    // It flashes, so the press shows even with the message in sight.
+    const row = page
+      .getByRole("button", { name: "Fold the message from Ana Lima" })
+      .first()
+      .element()
+      .closest("li");
+    expect(row && getComputedStyle(row).animationName).toBe("flash-selection");
+  });
+
+  it("keeps the toolbar's faded subject from taking the pointer or a selection", async () => {
+    await show(thread(2));
+
+    const copy = document.querySelector("[data-raised], .sticky")?.querySelector("p[aria-hidden]");
+    expect(copy && getComputedStyle(copy).pointerEvents).toBe("none");
+    expect(copy && getComputedStyle(copy).userSelect).toBe("none");
+  });
+
+  it("names the message answered when the one just before is folded away", async () => {
+    // The fourth answers the third, which "2 more messages" holds.
+    const messages = thread(6);
+    messages[3] = message(4, { unread: true, answers: messageId(3) });
+    await show(messages);
+
+    await expect.element(page.getByRole("button", { name: "2 more messages" })).toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: /^In reply to Ana Lima on / }))
+      .toBeVisible();
+  });
+
+  it("keeps a right-to-left name apart from the date after it", async () => {
+    const noor: MailAddress = { name: "نور الهدى", address: "noor@example.com" };
+    await show([message(1, { from: [noor] }), message(2), message(3, { answers: messageId(1) })]);
+
+    const line = page.getByRole("button", { name: /^In reply to / });
+    await expect.element(line).toBeVisible();
+    expect(line.element().querySelector("bdi")?.textContent).toBe("نور الهدى");
+  });
+
+  it("flashes the message again on a second press", async () => {
+    await show([message(1), message(2), message(3, { answers: messageId(1) })]);
+    const line = page.getByRole("button", { name: /^In reply to Ana Lima on / });
+
+    await userEvent.click(line);
+    await expect.poll(() => firstAnaRow()?.getAnimations().length).toBe(1);
+    await new Promise((done) => setTimeout(done, 600));
+    await userEvent.click(line);
+
+    await expect
+      .poll(() => Number(firstAnaRow()?.getAnimations()[0]?.currentTime ?? 9999))
+      .toBeLessThan(400);
+  });
+
+  it("says nothing of the message answered when it is the one just before", async () => {
+    await show([message(1), message(2, { answers: messageId(1) })]);
+
+    await expect.element(page.getByRole("heading", { name: "Spring plan" })).toBeVisible();
+    expect(page.getByText(/In reply to/).elements()).toHaveLength(0);
+  });
+
+  it("shows the title and the placeholder until the messages come, and takes focus", async () => {
+    await show(thread(2), 700, {
+      messages: undefined,
+      placeholder: <p>Loading messages...</p>,
+    });
+
+    await expect.element(page.getByRole("heading", { name: "Spring plan" })).toHaveFocus();
+    await expect.element(page.getByText("Loading messages...")).toBeVisible();
+    // No count before the messages come.
+    expect(page.getByText(/^\d+ messages?$/).elements()).toHaveLength(0);
   });
 
   it("shows every sender, so none can hide from the Reply-To check", async () => {
@@ -496,41 +651,24 @@ describe("ConversationView", () => {
     await expect.poll(() => document.activeElement?.textContent).toContain("member10@example.com");
   });
 
-  it("keeps focus on a message's Reply as the pane crosses 512 px, both ways", async () => {
+  it("keeps a message's Reply at the end of the sender's line, wide or narrow", async () => {
     await show([message(1)]);
-    const replies = page.getByRole("button", { name: "Reply", exact: true });
+    const reply = page.getByRole("button", { name: "Reply", exact: true }).first();
     // The header's Reply shows once the member's accounts are read.
-    await expect.element(replies.first()).toBeVisible();
-    // The header's, drawn beside the date in a wide pane.
-    const wide = replies
-      .elements()
-      .find((button) => button instanceof HTMLElement && button.offsetParent !== null);
-    if (wide instanceof HTMLElement) wide.focus();
+    await expect.element(reply).toBeVisible();
+    const sender = page.getByText("Ana Lima", { exact: true }).first();
+    const button = reply.element();
+    if (button instanceof HTMLElement) button.focus();
 
-    // As a window narrowing and widening would, twice, without moving
+    // One Reply, on the sender's line, wide and then narrow, where it keeps
     // focus.
-    await crossTo("390px");
-    await crossTo("700px");
-    await crossTo("390px");
-    await crossTo("700px");
-  });
-
-  it("leaves focus alone across 512 px once the member clicks away", async () => {
-    await show([message(1)]);
-    const replies = page.getByRole("button", { name: "Reply", exact: true });
-    await expect.element(replies.first()).toBeVisible();
-    const wide = replies
-      .elements()
-      .find((button) => button instanceof HTMLElement && button.offsetParent !== null);
-    if (wide instanceof HTMLElement) wide.focus();
-
-    // Blank space, not focusable: focus goes to the page, by the member's
-    // doing.
-    await userEvent.click(page.getByText("1 message", { exact: true }));
+    expect(Math.abs(middle(button) - middle(sender.element()))).toBeLessThanOrEqual(2);
     const pane = document.querySelector<HTMLElement>("[data-pane]");
     if (pane) pane.style.width = "390px";
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-    expect(document.activeElement?.getAttribute("aria-label")).not.toBe("Reply");
+    expect(page.getByRole("button", { name: "Reply", exact: true }).elements()).toHaveLength(2);
+    expect(Math.abs(middle(button) - middle(sender.element()))).toBeLessThanOrEqual(2);
+    expect(document.activeElement).toBe(button);
   });
 });

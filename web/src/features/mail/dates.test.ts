@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { fullDate, listDate } from "./dates";
+import { fullDate, headerDate, listDate } from "./dates";
 
 // A Thursday afternoon, in the browser's time zone.
 const now = new Date(2026, 10, 12, 15, 30);
@@ -43,5 +43,18 @@ describe("fullDate", () => {
     const hourCycle = time.resolvedOptions().hourCycle;
     expect(fullDate(date)).toContain(hourCycle === "h23" || hourCycle === "h24" ? "15:09" : "3:09");
     expect(fullDate(date)).toContain("12 November 2026");
+  });
+});
+
+describe("headerDate", () => {
+  it("shows the day in inbok's words and the time on the browser's clock", () => {
+    const date = new Date(2026, 10, 12, 15, 9);
+    const hourCycle = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions()
+      .hourCycle;
+
+    expect(headerDate(date)).toContain("12 Nov 2026");
+    expect(headerDate(date)).toContain(
+      hourCycle === "h23" || hourCycle === "h24" ? "15:09" : "3:09",
+    );
   });
 });

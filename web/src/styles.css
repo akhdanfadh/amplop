@@ -305,6 +305,28 @@
   }
 }
 
+/* A message the reader was sent to, e.g. by "In reply to": the selection
+ * tint, held 600 ms so the eye finds it, then faded out over a second,
+ * slow at both ends (ease-in-out; DESIGN.md "Motion"): the interface's
+ * easing would spend most of the fade in its first 300 ms. Only colour changes, so reduced motion
+ * keeps it. */
+@utility flash-selection {
+  animation: flash-selection 1.6s;
+}
+
+@keyframes flash-selection {
+  0% {
+    background-color: var(--color-selection);
+  }
+  37.5% {
+    background-color: var(--color-selection);
+    animation-timing-function: ease-in-out;
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
 /* Hidden for the router's pending delay (src/router.tsx), 300 ms, then
  * shown: for a loading view the router does not time, e.g. the setup
  * check's in the prerendered shell, so a quick check shows nothing. */
