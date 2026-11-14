@@ -2,7 +2,7 @@ import { createOptimisticAction } from "@tanstack/db";
 import { applyConversationAction } from "@/api/generated/inbok";
 import type { ConversationActionBodyOutput } from "@/api/generated/model/conversationActionBody.zod";
 import type { ConversationActionResultOutput } from "@/api/generated/model/conversationActionResult.zod";
-import { toConversation, type Conversation, type MailData } from "./conversations";
+import { toConversation, type Conversation, type Conversations } from "./conversations";
 
 // Action is what the API can do to conversations, e.g. "star".
 export type Action = ConversationActionBodyOutput["action"];
@@ -36,9 +36,6 @@ export function guessChanges(conversation: Conversation, action: Action): boolea
     (guess.labelIds !== undefined && guess.labelIds.length !== conversation.labelIds.length)
   );
 }
-
-// The collection of one member's conversations.
-type Conversations = MailData["conversations"];
 
 // What one run of an action takes: the action, the conversations, what it
 // waits for before sending, and where its answer goes.

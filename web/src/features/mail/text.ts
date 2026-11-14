@@ -1,3 +1,4 @@
+import { formatCount } from "@/lib/count";
 import type { ViewPlace } from "./places";
 
 // Each view's name, as the sidebar and the list's heading show it.
@@ -51,9 +52,10 @@ export function rowName(row: {
     .join(", ");
 }
 
-// messageCount returns count as a row shows it, e.g. "1,284".
+// messageCount returns a number of messages as a row shows it, e.g.
+// "1,284".
 export function messageCount(count: number): string {
-  return count.toLocaleString("en-US");
+  return formatCount(count);
 }
 
 // How a row and a message's header call the account itself.
@@ -97,7 +99,7 @@ export const backToList = "Back";
 // newConversations returns the button that shows conversations which
 // arrived while the member was scrolled down.
 export function newConversations(count: number): string {
-  return count === 1 ? "1 new conversation" : `${count.toLocaleString("en-US")} new conversations`;
+  return count === 1 ? "1 new conversation" : `${formatCount(count)} new conversations`;
 }
 
 // The empty list's words (DESIGN.md "States").
@@ -132,3 +134,6 @@ export function refreshFailed(since: string): string {
 // The reading pane's words while its messages load, and when they fail.
 export const messagesLoading = "Loading messages...";
 export const messagesFailed = "Couldn't load this conversation's messages.";
+
+// What a place's count counts, read after it.
+export const unreadLabel = "unread";

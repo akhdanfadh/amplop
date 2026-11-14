@@ -2,6 +2,7 @@ import type { ConnectOutcome, ProblemType } from "@/api/generated/model";
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import type { LeaveWarningText } from "@/components/leave-warning";
+import { formatCount } from "@/lib/count";
 import type { FailedStatus, SyncFailure } from "./sync";
 
 const notFound = 404;
@@ -13,9 +14,6 @@ const throttledType: ProblemType = "/api/v0/problems/sync-throttled";
 const shownDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 const sameDay = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 const otherDay = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-// Digits with a comma for thousands whatever the reader's locale (DESIGN.md,
-// "Wording").
-const count = new Intl.NumberFormat("en-US");
 
 // OutcomeNotice is what the page says about how a connection ended, as a
 // polite notice or an interrupting alert.
@@ -118,7 +116,7 @@ export function formatMoment(iso: string, now: Date = new Date()): string {
 // runningText says how far a running full sync has copied.
 export function runningText(messagesSoFar: number): string {
   const messages = messagesSoFar === 1 ? "message" : "messages";
-  return `Copying your last 90 days of mail into inbok: ${count.format(messagesSoFar)} ${messages} so far. New mail shows up in the meantime.`;
+  return `Copying your last 90 days of mail into inbok: ${formatCount(messagesSoFar)} ${messages} so far. New mail shows up in the meantime.`;
 }
 
 // failureWords returns the words around the time of failure on an account

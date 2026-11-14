@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { linkOptions, useLocation } from "@tanstack/react-router";
+import { linkOptions, useLocation, useMatch } from "@tanstack/react-router";
 import { cn } from "@/lib/cn";
 import { Link } from "react-aria-components";
 import {
@@ -18,9 +18,10 @@ import { buttonVariants } from "@/components/ui/button";
 import { SidebarGroup, SidebarMenu, useSidebar } from "@/components/ui/sidebar";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { viewPlaces, type ViewPlace } from "./places";
+import { unreadIn, usePlaceCounts } from "./place-counts";
 import { useOutbox } from "@/features/outgoing-messages/outbox";
 import { unfinished } from "@/features/outgoing-messages/text";
-import { composeName, notSentLabel, outboxName, placeName } from "./text";
+import { composeName, notSentLabel, outboxName, placeName, unreadLabel } from "./text";
 
 const placeIcon: Record<ViewPlace, LucideIcon> = {
   inbox: InboxIcon,
@@ -32,14 +33,19 @@ const placeIcon: Record<ViewPlace, LucideIcon> = {
 };
 
 // MailNav is the mail sidebar's content (DESIGN.md "Sidebar"): Compose,
-// the views, and the Outbox with how many of its messages are not sent
-// yet. The item whose place is open is marked.
+// the views, the Inbox with its unread count, and the Outbox with how many
+// of its messages are not sent yet. The item whose place is open is
+// marked.
 export function MailNav(): ReactElement {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { dismiss: closeDrawer } = useSidebar();
   const outbox = useOutbox();
   // What still asks for the member, so a message sent again stops counting.
   const notSent = outbox.data?.data.messages.filter(unfinished).length ?? 0;
+  const open = useMatch({ from: "/_app/_mail/mail/$place", shouldThrow: false });
+  // The Inbox counts the accounts the open list shows.
+  const filter = open?.search.account;
+  const counts = usePlaceCounts();
 
   return (
     <>
@@ -56,6 +62,11 @@ export function MailNav(): ReactElement {
               icon={placeIcon[place]}
               isActive={within(pathname, `/mail/${place}`)}
               onPress={closeDrawer}
+              count={
+                place === "inbox"
+                  ? { value: unreadIn(counts, "inbox", filter), label: unreadLabel, unread: true }
+                  : undefined
+              }
             />
           ))}
         </SidebarMenu>

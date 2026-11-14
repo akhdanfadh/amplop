@@ -297,8 +297,10 @@ last two redirect into settings, so settings can move without the server.
   the current nav item has its background and bar), Sign out. Its keys
   are React Aria's toolbar keys: arrows move, Space or Enter chooses.
 - Unread: name and count in 600 weight and `foreground`; counts only on
-  Inbox, accounts, and labels. Selected: `selection` background and a 2 px
-  bar in `foreground` at its left edge, never bold. Icons keep one column,
+  Inbox, accounts, and labels, with a comma ("12,847"). The Outbox's
+  count of messages not sent is in 600 weight, its name not: it is not
+  unread mail. Selected: `selection` background and a 2 px bar in
+  `foreground` at its left edge, never bold. Icons keep one column,
   open or as a rail. What follows a name (a count, status words) sits in
   the row after it and keeps its width; a long name or address is cut
   short with an ellipsis before it, never overlapped. A count is read

@@ -1162,11 +1162,17 @@ DB](https://tanstack.com/db) collection over the generated client
 copy of each conversation. A list is a live query that loads 50 rows at
 a time as it scrolls; `conversations.ts` turns each load into the API's
 pages, and re-reads only each open list's newest page: every 30 s while
-the tab shows, when it shows again, and back online. When a page fails,
-TanStack DB asks for the whole place to repair the list;
-`conversations.ts` refuses that (hundreds of requests for a large
-Inbox), so the list keeps its rows, stops loading, and offers Try again,
-which starts it anew. The rules that keep that cheap are in
+the tab shows, when it shows again, and back online (`refreshMail`). The
+sidebar's unread counts are a second collection over List Places, read
+whole and again with those pages, so a count changes with the rows it
+counts; it shares List Places' query with the place route's loader, so a
+page reads them once (TanStack DB's `select` takes the list out of the
+answer). When a page fails, TanStack DB asks for the whole place to
+repair the list; `conversations.ts` refuses that (hundreds of requests
+for a large Inbox), so the list keeps its rows, stops loading, and
+offers Try again, which replaces the conversations collection with an
+empty one (`restartMail`); the counts stay. The rules that keep that
+cheap are in
 [DESIGN.md](DESIGN.md#data-for-mail). The collections live per query
 client and end with the member's session (`onAccountCacheClear` in
 `features/auth/session-cache.ts`), as do the router's loaded pages.

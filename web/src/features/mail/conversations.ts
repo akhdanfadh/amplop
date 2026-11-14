@@ -11,8 +11,9 @@ import {
   type Ref,
 } from "@tanstack/db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
-import { listConversations } from "@/api/generated/inbok";
+import { getListPlacesQueryKey, listConversations, listPlaces } from "@/api/generated/inbok";
 import type { PlaceCountOutput } from "@/api/generated/model/placeCount.zod";
+import type { ResponsePlacesOutput } from "@/api/generated/model/responsePlaces.zod";
 import type { ConversationRowOutput } from "@/api/generated/model/conversationRow.zod";
 import { listConversationsParamsLimitMax } from "@/api/generated/model/listConversationsParams.zod";
 import { onAccountCacheClear } from "@/features/auth/session-cache";
@@ -307,25 +308,31 @@ export class WholePlaceRefused extends Error {
 // The query key under which the conversations collection keeps its loads.
 const conversationsKey = ["mail", "conversations"];
 
-// How often each open list reads its newest page again.
+// How often each open list reads its newest page again, and the places
+// their unread counts.
 const newestEveryMs = 30_000;
 
 // PlaceCount is one account's place with its unread count, as List Places
 // gives it: a view, or a label with its own name and its parent label.
 export type PlaceCount = PlaceCountOutput;
 
-// createConversations returns the conversations collection over client:
-// every list's rows, loaded as lists ask for them; and stop, which ends
-// its refresh. number tells it from the collections before it.
+// placeKey returns the key of an account's place in the places collection.
+export function placeKey(accountId: number, place: string): string {
+  return `${accountId} ${place}`;
+}
+
+// createConversations returns a conversations collection over client:
+// every list's rows, loaded as lists ask for them. id tells it from the
+// collections before it.
 //
 // DESIGN: no refetchInterval: it reads every loaded page again, 200
-// requests at row 5,000; inbok's own timer reads only each open list's
-// newest page (ADR031, TanStack DB gate, rule 2).
-function createConversations(client: QueryClient, number: number) {
+// requests at row 5,000; inbok's own timer (createMail) reads only each
+// open list's newest page (ADR031, TanStack DB gate, rule 2).
+function createConversations(client: QueryClient, id: string) {
   const ties = new Map<string, Ties>();
   const conversations = createCollection(
     queryCollectionOptions<Conversation>({
-      id: `conversations-${number}`,
+      id,
       queryKey: conversationsKey,
       queryClient: client,
       syncMode: "on-demand",
@@ -345,8 +352,54 @@ function createConversations(client: QueryClient, number: number) {
     }),
   );
   conversations.createIndex((conversation) => conversation.dateMs);
+  return conversations;
+}
 
-  const refresh = () => void refreshNewest(client);
+// Conversations is the collection of one member's conversations.
+export type Conversations = ReturnType<typeof createConversations>;
+
+// createPlaceCounts returns the place counts collection over client: each
+// account's places with their unread counts, read whole. id tells it from
+// the collections before it.
+//
+// DESIGN: it shares List Places' query with the place route's loader, and
+// reads it again only when refreshMail does, so a page reads the places
+// once.
+function createPlaceCounts(client: QueryClient, id: string) {
+  return createCollection(
+    queryCollectionOptions({
+      id,
+      queryKey: getListPlacesQueryKey(),
+      queryClient: client,
+      queryFn: ({ signal }) => listPlaces({ signal }),
+      select: (response: ResponsePlacesOutput) => response.data.places,
+      getKey: (place: PlaceCount) => placeKey(place.accountId, place.place),
+      refetchInterval: false,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      // A read the loader just made serves; refreshMail reads it again.
+      refetchOnMount: false,
+      staleTime: 0,
+    }),
+  );
+}
+
+// MailData is one member's mail on a client: conversations, which a failed
+// list replaces (restartMail); placeCounts, which the sidebar shows; and
+// stop, which ends their refresh.
+export type MailData = {
+  conversations: Conversations;
+  placeCounts: ReturnType<typeof createPlaceCounts>;
+  stop: () => void;
+};
+
+// createMail returns client's mail data, number telling its collections
+// from those before them. Every newestEveryMs, when the tab shows
+// again, and back online, it reads each open list's newest page and the
+// places again (refreshMail), so a count and the rows it counts change
+// together.
+function createMail(client: QueryClient, number: number): MailData {
+  const refresh = () => void refreshMail(client);
   // A hidden tab skips its refreshes; showing it again refreshes at once.
   const timer = setInterval(() => {
     if (document.visibilityState === "visible") refresh();
@@ -358,15 +411,26 @@ function createConversations(client: QueryClient, number: number) {
   const stopOnline = onlineManager.subscribe((online) => {
     if (online) refresh();
   });
-  const stop = () => {
-    clearInterval(timer);
-    document.removeEventListener("visibilitychange", onVisible);
-    stopOnline();
+  return {
+    conversations: createConversations(client, `conversations-${number}`),
+    placeCounts: createPlaceCounts(client, `place-counts-${number}`),
+    stop: () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      stopOnline();
+    },
   };
-  return { conversations, stop };
 }
 
-export type MailData = ReturnType<typeof createConversations>;
+// refreshMail reads again what the mail pages on client show: each open
+// list's newest page and the places' unread counts; it settles when they
+// have.
+export async function refreshMail(client: QueryClient): Promise<void> {
+  await Promise.all([
+    refreshNewest(client),
+    client.refetchQueries({ queryKey: getListPlacesQueryKey(), type: "active" }),
+  ]);
+}
 
 // refreshNewest reads the newest page of each list open on client again,
 // and settles when they have; older pages stay as they are.
@@ -397,18 +461,26 @@ export function mailData(client: QueryClient): MailData {
   let data = mailByClient.get(client);
   if (!data) {
     created++;
-    data = createConversations(client, created);
+    data = createMail(client, created);
     mailByClient.set(client, data);
   }
   return data;
 }
 
-// restartMail drops client's mail collections and their loads, so the
-// next mailData starts anew, e.g. after a list's first page failed, which
-// leaves its collection failed too.
+let restarted = 0;
+
+// restartMail replaces client's conversations collection with an empty
+// one and drops its loads, e.g. after a list's first page failed, which
+// leaves the collection failed too. The lists on the old one end; the
+// places stay.
 export function restartMail(client: QueryClient): void {
-  dropMail(client);
+  const data = mailByClient.get(client);
   client.removeQueries({ queryKey: conversationsKey });
+  if (!data) return;
+  const failed = data.conversations;
+  restarted++;
+  data.conversations = createConversations(client, `conversations-restart-${restarted}`);
+  void failed.cleanup({ dependents: true });
 }
 
 // dropMail ends client's mail collections, if any: their refresh, and the
@@ -419,6 +491,7 @@ function dropMail(client: QueryClient): void {
   mailByClient.delete(client);
   data.stop();
   void data.conversations.cleanup({ dependents: true });
+  void data.placeCounts.cleanup({ dependents: true });
 }
 
 // One member's mail ends with their session (session-cache.ts): the next
