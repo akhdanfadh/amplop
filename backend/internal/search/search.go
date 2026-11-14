@@ -96,6 +96,22 @@ type Index interface {
 	// another member's, even for another member's account ID. It returns
 	// [ErrNoOwner] or [ErrBadPage], from [ValidateQuery], before searching.
 	Search(ctx context.Context, owner int64, query Query) (Result, error)
+
+	// Owners returns, in no set order, every owner the index keeps
+	// documents for: each owner written to since [Index.DeleteOwner] last
+	// removed them, even one whose documents were all deleted since.
+	Owners(ctx context.Context) ([]int64, error)
+
+	// DocumentIDs returns the message IDs of all of owner's documents, in
+	// no set order, and none for an owner the index keeps nothing for. It
+	// returns [ErrNoOwner], from [ValidateOwner], before reading.
+	DocumentIDs(ctx context.Context, owner int64) ([]uuid.UUID, error)
+
+	// DeleteOwner removes owner and all of their documents, so
+	// [Index.Owners] no longer returns them; an owner the index keeps
+	// nothing for is not an error. It returns [ErrNoOwner], from
+	// [ValidateOwner], before deleting.
+	DeleteOwner(ctx context.Context, owner int64) error
 }
 
 // ValidateOwner holds an owner to the rule every [Index] checks before it

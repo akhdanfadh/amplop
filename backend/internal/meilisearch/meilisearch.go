@@ -15,6 +15,10 @@ const (
 
 	// listLimit is how many indexes [Index.Prepare] asks for at a time.
 	listLimit = 100
+
+	// documentPage is how many document IDs [Index.DocumentIDs] asks for at
+	// a time: IDs alone, so a page stays small.
+	documentPage = 1000
 )
 
 // The index's fields, named as in ADR005.
@@ -44,10 +48,11 @@ const (
 // account deletes also filter on the owner inside each index, as a second
 // guard, should a document ever reach the wrong one.
 type Index struct {
-	client    meili.ServiceManager
-	prefix    string
-	listLimit int64
-	settings  meili.Settings
+	client       meili.ServiceManager
+	prefix       string
+	listLimit    int64
+	documentPage int64
+	settings     meili.Settings
 }
 
 // New returns the index on the Meilisearch server at url, e.g.
@@ -64,7 +69,7 @@ func New(url, key string) *Index {
 	// back on with a release that has both. Until then, every method is
 	// safe to repeat, so a caller that wants a retry calls it again.
 	client := meili.New(url, meili.WithAPIKey(key), meili.DisableRetries())
-	return &Index{client: client, prefix: indexPrefix, listLimit: listLimit, settings: indexSettings()}
+	return &Index{client: client, prefix: indexPrefix, listLimit: listLimit, documentPage: documentPage, settings: indexSettings()}
 }
 
 // uid returns the name of owner's index.

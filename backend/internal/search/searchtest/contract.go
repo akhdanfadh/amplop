@@ -36,7 +36,8 @@ var firstPage = search.Query{Page: 1, PageSize: 20}
 
 // RunContract tests the behaviour every [search.Index] shares: owners, account
 // and mailbox filters, which fields a search matches, replacing, deleting within
-// one owner's documents, paging, cancellation, and refused calls. open returns
+// one owner's documents, listing and deleting owners and their document IDs,
+// paging, cancellation, and refused calls. open returns
 // a new, prepared index for one test. Text matching beyond whole words, e.g.
 // typos, is the real index's own and tested there.
 func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
@@ -117,12 +118,17 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		added := document(asha, ashaWork, "invoice")
 
 		_, searchErr := index.Search(ctx, asha, query("invoice"))
+		_, ownersErr := index.Owners(ctx)
+		_, idsErr := index.DocumentIDs(ctx, asha)
 		errs := map[string]error{
 			"prepare":        index.Prepare(ctx),
 			"upsert":         index.Upsert(ctx, []search.Document{added}),
 			"delete":         index.Delete(ctx, asha, []uuid.UUID{added.ID}),
 			"delete account": index.DeleteAccount(ctx, asha, ashaWork),
 			"search":         searchErr,
+			"owners":         ownersErr,
+			"document IDs":   idsErr,
+			"delete owner":   index.DeleteOwner(ctx, asha),
 		}
 		result := find(t, index, asha, query("invoice"))
 
@@ -331,6 +337,8 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		_, noSize := index.Search(t.Context(), asha, search.Query{Text: "invoice", Page: 1})
 		noDeleteOwner := index.Delete(t.Context(), 0, ids)
 		noAccountOwner := index.DeleteAccount(t.Context(), 0, ashaWork)
+		_, noListOwner := index.DocumentIDs(t.Context(), 0)
+		noRemovedOwner := index.DeleteOwner(t.Context(), 0)
 		unowned := document(0, ashaWork, "invoice")
 		noUpsertOwner := index.Upsert(t.Context(), []search.Document{document(asha, ashaWork, "invoice"), unowned})
 		stored := find(t, index, asha, query("invoice"))
@@ -340,6 +348,8 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		require.ErrorIs(t, noSize, search.ErrBadPage)
 		require.ErrorIs(t, noDeleteOwner, search.ErrNoOwner)
 		require.ErrorIs(t, noAccountOwner, search.ErrNoOwner)
+		require.ErrorIs(t, noListOwner, search.ErrNoOwner)
+		require.ErrorIs(t, noRemovedOwner, search.ErrNoOwner)
 		// A batch with one unowned document writes none of it.
 		require.ErrorIs(t, noUpsertOwner, search.ErrNoOwner)
 		assert.Empty(t, stored.IDs)
@@ -350,6 +360,59 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 
 		require.NoError(t, index.Upsert(t.Context(), nil))
 		require.NoError(t, index.Delete(t.Context(), asha, nil))
+	})
+
+	t.Run("owners", func(t *testing.T) {
+		index := open(t)
+		mine := document(asha, ashaWork, "invoice")
+		theirs := document(budi, budiAccount, "invoice")
+		upsert(t, index, mine, theirs)
+
+		// An owner whose documents were all deleted is still kept.
+		require.NoError(t, index.Delete(t.Context(), asha, []uuid.UUID{mine.ID}))
+		kept, err := index.Owners(t.Context())
+		require.NoError(t, err)
+		require.NoError(t, index.DeleteOwner(t.Context(), asha))
+		require.NoError(t, index.DeleteOwner(t.Context(), asha))
+		left, err := index.Owners(t.Context())
+		require.NoError(t, err)
+
+		assert.ElementsMatch(t, []int64{asha, budi}, kept)
+		assert.Equal(t, []int64{budi}, left)
+	})
+
+	t.Run("delete owner", func(t *testing.T) {
+		index := open(t)
+		mine := document(asha, ashaWork, "invoice")
+		theirs := document(budi, budiAccount, "invoice")
+		upsert(t, index, mine, theirs)
+
+		require.NoError(t, index.DeleteOwner(t.Context(), asha))
+		gone := find(t, index, asha, query("invoice"))
+		kept := find(t, index, budi, query("invoice"))
+		// Written again after the delete, the owner is back.
+		upsert(t, index, mine)
+		back := find(t, index, asha, query("invoice"))
+
+		assert.Empty(t, gone.IDs)
+		assert.Equal(t, []uuid.UUID{theirs.ID}, kept.IDs)
+		assert.Equal(t, []uuid.UUID{mine.ID}, back.IDs)
+	})
+
+	t.Run("document IDs", func(t *testing.T) {
+		index := open(t)
+		first := document(asha, ashaWork, "invoice")
+		second := document(asha, ashaHome, "receipt")
+		upsert(t, index, first, second, document(budi, budiAccount, "invoice"))
+
+		ids, err := index.DocumentIDs(t.Context(), asha)
+		require.NoError(t, err)
+		// A member nothing was ever written for.
+		none, err := index.DocumentIDs(t.Context(), 3)
+		require.NoError(t, err)
+
+		assert.ElementsMatch(t, []uuid.UUID{first.ID, second.ID}, ids)
+		assert.Empty(t, none)
 	})
 
 	t.Run("prepare twice", func(t *testing.T) {

@@ -5,6 +5,7 @@ package searchtest
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -27,6 +28,9 @@ type Fake struct {
 
 	mu        sync.Mutex
 	documents []search.Document
+	// owners are those the fake keeps documents for, as a real index keeps
+	// a member's until [Fake.DeleteOwner], even with all of them deleted.
+	owners map[int64]bool
 }
 
 // Document returns owner's document with id, and whether the fake has one.
@@ -57,6 +61,10 @@ func (f *Fake) Upsert(ctx context.Context, documents []search.Document) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, document := range documents {
+		if f.owners == nil {
+			f.owners = map[int64]bool{}
+		}
+		f.owners[document.OwnerUserID] = true
 		document = clone(document)
 		if i := f.find(document.OwnerUserID, document.ID); i >= 0 {
 			f.documents[i] = document
@@ -126,6 +134,53 @@ func (f *Fake) Search(ctx context.Context, owner int64, query search.Query) (sea
 	}
 	end := start + min(query.PageSize, len(matches)-start)
 	return search.Result{IDs: slices.Clone(matches[start:end]), Total: len(matches)}, nil
+}
+
+// Owners returns every owner written to since [Fake.DeleteOwner] last removed
+// them.
+func (f *Fake) Owners(ctx context.Context) ([]int64, error) {
+	if err := f.refuse(ctx); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Collect(maps.Keys(f.owners)), nil
+}
+
+// DocumentIDs returns the IDs of owner's documents.
+func (f *Fake) DocumentIDs(ctx context.Context, owner int64) ([]uuid.UUID, error) {
+	if err := search.ValidateOwner(owner); err != nil {
+		return nil, err
+	}
+	if err := f.refuse(ctx); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var ids []uuid.UUID
+	for _, document := range f.documents {
+		if document.OwnerUserID == owner {
+			ids = append(ids, document.ID)
+		}
+	}
+	return ids, nil
+}
+
+// DeleteOwner removes owner and their documents.
+func (f *Fake) DeleteOwner(ctx context.Context, owner int64) error {
+	if err := search.ValidateOwner(owner); err != nil {
+		return err
+	}
+	if err := f.refuse(ctx); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.owners, owner)
+	f.documents = slices.DeleteFunc(f.documents, func(d search.Document) bool {
+		return d.OwnerUserID == owner
+	})
+	return nil
 }
 
 // refuse returns [Fake.Fail] when it is set, or ctx's error when ctx is
