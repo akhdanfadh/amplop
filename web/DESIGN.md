@@ -185,6 +185,11 @@ which brings 400 and 600 close. Unread rows also take 650 there.
   sending form's button shows a spinner before its working words ("Signing
   in..."). With reduced motion a spinner fades in and out instead of
   turning, so it still says that work runs where no words sit beside it.
+- **Step change:** when a signed-out page moves to its next step, e.g.
+  from the password to the code, the card's content fades in and rises
+  4 px over 200 ms; the page's first step is there at once, a step that
+  keeps its title keeps its header still, and reduced motion keeps only the
+  fade.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
   focusable element, defined once in the components. One exception: the
   message editor's text fields, which have no box, show only the caret,
@@ -199,11 +204,12 @@ which brings 400 and 600 close. Unread rows also take 650 there.
   desktop apps (Tailwind 4's default for buttons).
 - **Links:** primary colour, underlined; the underline thickens on hover
   (`textLink` in `src/components/link-style.ts`; `lineLink` for a link on
-  a line of its own, 44 px tall). An action inside a line of muted text
-  that stays on the page, e.g. the reading pane's "In reply to", is a
-  muted link: a button drawn as a link (`Button variant="link"`) in
-  `muted-foreground`, underlined, with the arrow cursor of a button, 44 px
-  tall on touch.
+  a line of its own, 44 px tall; `smallLink` for one in small text beside
+  a label, 24 px tall, the least WCAG 2.2 allows outside a sentence). An
+  action inside a line of muted text that stays on the page, e.g. the
+  reading pane's "In reply to", is a muted link: a button drawn as a link
+  (`Button variant="link"`) in `muted-foreground`, underlined, with the
+  arrow cursor of a button, 44 px tall on touch.
 
 ### Themes
 
@@ -653,7 +659,11 @@ pull-to-refresh, which would reload the app, never starts.
   address. Saving keeps focus in the field and says "Saved".
 - Below 1024 px the settings sidebar is a drawer, as mail's is.
 - Signed-out pages (sign-in, setup, registration, password reset, email
-  verification): the wordmark and one centred column about 400 px wide.
+  verification): the `muted` surface with one column about 400 px wide,
+  centred both ways. The wordmark sits above a `card` holding a centred
+  page title, a one-line lead, then the form or message; a link out of the
+  flow, e.g. "No account yet? Create an account", sits under the card
+  (`SignedOutPage`). "Forgot password?" sits beside the Password label.
 
 ## Patterns
 
@@ -673,7 +683,10 @@ pull-to-refresh, which would reload the app, never starts.
   length error says it instead. Forms set `noValidate`.
 - Label above (the message editor's rows put it on the left); description
   before the control; error under it, with an icon and words. "(optional)"
-  marks optional fields; required ones are unmarked.
+  marks optional fields; required ones are unmarked. A link or button about
+  the field sits at the end of the label's line in small text, e.g. "Forgot
+  password?", and comes after the control in Tab order, so Tab from one
+  field reaches the next, not the action.
 - Errors appear after the first submit, then update live. Focus moves to
   the first invalid field. A server refusal stays while its field holds
   the refused value, returns if the member types that value again, and

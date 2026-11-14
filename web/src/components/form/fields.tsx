@@ -1,15 +1,22 @@
 import { useId, type ChangeEvent, type ReactElement, type ReactNode } from "react";
 import { useSelector } from "@tanstack/react-form";
+import { cn } from "@/lib/cn";
 import { CircleAlertIcon } from "lucide-react";
 import { PasswordInput } from "@/components/password-input";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useFieldContext, useFormContext } from "./form-context";
 
-// The words every shared field takes: its label, a description shown before
-// the control, and whether the field may be left empty, which the label then
-// says.
-type FieldText = { label: string; description?: string; optional?: boolean };
+// What every shared field takes: its label, a description shown before the
+// control, and whether the field may be left empty, which the label then
+// says. labelAction sits at the end of the label's line, e.g. a "Forgot
+// password?" link, and after the control in Tab order.
+type FieldProps = {
+  label: string;
+  description?: string;
+  optional?: boolean;
+  labelAction?: ReactNode;
+};
 
 // The props of the current field's control: they tie it to its label,
 // description, and error, carry its value, and lock it while the form sends.
@@ -31,7 +38,7 @@ type ControlProps = {
 export function EmailField({
   autoComplete,
   ...text
-}: FieldText & { autoComplete: "username" | "email" | "off" }): ReactElement {
+}: FieldProps & { autoComplete: "username" | "email" | "off" }): ReactElement {
   return (
     <FieldFrame {...text}>
       {(control) => (
@@ -58,7 +65,7 @@ export function PasswordField({
   autoComplete,
   toggle,
   ...text
-}: FieldText & {
+}: FieldProps & {
   autoComplete: "current-password" | "new-password" | "off";
   toggle?: string;
 }): ReactElement {
@@ -88,8 +95,9 @@ function FieldFrame({
   label,
   description,
   optional,
+  labelAction,
   children,
-}: FieldText & { children: (control: ControlProps) => ReactNode }): ReactElement {
+}: FieldProps & { children: (control: ControlProps) => ReactNode }): ReactElement {
   const field = useFieldContext<string>();
   const form = useFormContext();
   const sending = useSelector(form.store, (state) => state.isSubmitting);
@@ -99,13 +107,33 @@ function FieldFrame({
   const errors = messages(field.state.meta.errors);
   const invalid = errors.length > 0;
   const describedBy = [description && descriptionId, invalid && errorId].filter(Boolean).join(" ");
+  const fieldLabel = (
+    <FieldLabel htmlFor={id}>
+      {label}
+      {optional && <span className="font-normal text-muted-foreground">{" (optional)"}</span>}
+    </FieldLabel>
+  );
 
   return (
-    <Field data-invalid={invalid} data-disabled={sending}>
-      <FieldLabel htmlFor={id}>
-        {label}
-        {optional && <span className="font-normal text-muted-foreground">{" (optional)"}</span>}
-      </FieldLabel>
+    <Field
+      data-invalid={invalid}
+      data-disabled={sending}
+      // With an action, a two-column grid puts it at the end of the label's
+      // line while it comes after the control in the page, so Tab goes
+      // field, then action: typing an email, Tab, then a password reaches
+      // the password, not "Forgot password?" (WCAG 2.4.3 Focus Order).
+      className={cn(
+        labelAction &&
+          "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 [&>:not([data-label-row])]:col-span-2",
+      )}
+    >
+      {labelAction ? (
+        <div data-label-row className="col-start-1 row-start-1">
+          {fieldLabel}
+        </div>
+      ) : (
+        fieldLabel
+      )}
       {description && <FieldDescription id={descriptionId}>{description}</FieldDescription>}
       {children({
         id,
@@ -117,6 +145,11 @@ function FieldFrame({
         onBlur: field.handleBlur,
         onChange: (event) => field.handleChange(event.target.value),
       })}
+      {labelAction && (
+        <div data-label-row className="col-start-2 row-start-1 justify-self-end">
+          {labelAction}
+        </div>
+      )}
       {invalid && (
         <div className="flex gap-1.5 text-destructive">
           <CircleAlertIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />

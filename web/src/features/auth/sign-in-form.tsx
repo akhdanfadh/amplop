@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useCreateSession, useGetCurrentSession } from "@/api/generated/inbok";
 import { uncertainOutcome, userMessage } from "@/api/problem";
 import { sessionMessage } from "./session-error";
@@ -8,6 +9,7 @@ import { clearAccountCache } from "./session-cache";
 import { SignInSchema } from "./sign-in-schema";
 import { useAppForm } from "@/components/form/app-form";
 import { useFormRequest } from "@/components/form/request";
+import { smallLink } from "@/components/link-style";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
@@ -118,7 +120,17 @@ export function SignInForm({
             {(field) => <field.EmailField label="Email address" autoComplete="username" />}
           </form.AppField>
           <form.AppField name="password">
-            {(field) => <field.PasswordField label="Password" autoComplete="current-password" />}
+            {(field) => (
+              <field.PasswordField
+                label="Password"
+                autoComplete="current-password"
+                labelAction={
+                  <Link to="/forgot-password" className={smallLink}>
+                    Forgot password?
+                  </Link>
+                }
+              />
+            )}
           </form.AppField>
         </FieldGroup>
 
@@ -128,7 +140,7 @@ export function SignInForm({
 
         <RequestError errors={summary} requestId={request.reference} />
         {create.error && uncertainOutcome(create.error) && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col">
             <Button
               ref={checkRef}
               type="button"
@@ -138,7 +150,9 @@ export function SignInForm({
             >
               {checking ? "Checking your session..." : "Check session"}
             </Button>
-            <output>{checkMessage}</output>
+            {/* Always present, so a screen reader announces the message that
+                fills it; empty, it takes no space. */}
+            <output className="not-empty:mt-3">{checkMessage}</output>
           </div>
         )}
       </form.Form>

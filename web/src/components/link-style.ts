@@ -8,3 +8,11 @@ export const textLink =
 // lineLink is a link on a line of its own, e.g. "Back to sign in", 44 px
 // tall so a finger reaches it (DESIGN.md "Control height").
 export const lineLink = `inline-flex min-h-11 w-fit items-center ${textLink}`;
+
+// smallTarget is the size of a control in small text beside a label, link
+// or button: 24 px tall, the least WCAG 2.2 allows for a target that is not
+// in a sentence (2.5.8, Target Size (Minimum)).
+export const smallTarget = "min-h-6 w-fit text-sm pointer-coarse:min-h-6";
+
+// smallLink is a link in small text beside a label, e.g. "Forgot password?".
+export const smallLink = `inline-flex items-center ${smallTarget} ${textLink}`;

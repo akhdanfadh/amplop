@@ -144,9 +144,10 @@ Put shared code in the folder for its responsibility:
   (`AppShell`), the password input, the request error under a form, the
   status badge, the link styles, the signed-in frame and its member menu,
   the offline banner, and the pages for loading, failure, and Page not
-  found. `ui/` holds the shadcn components we own. `form/` is the form
-  kit, kept together because its parts only work as one: `useAppForm` with
-  the field kinds and the form parts it is built from, and
+  found, and `SignedOutPage`, the card every signed-out page puts its
+  content in. `ui/` holds the shadcn components we own. `form/` is the
+  form kit, kept together because its parts only work as one: `useAppForm`
+  with the field kinds and the form parts it is built from, and
   `useFormRequest`, which sends a form's values and whose check plugs into
   it; "Forms" below says how to use it.
 - `src/api`: generated client and schemas, transport, shared validation and
@@ -396,8 +397,9 @@ the inbok isn't accepting new accounts otherwise. A paused registration,
 open but with untested email settings, reads as closed.
 Every accepted request gets the same "Check your inbox" answer, so the page
 never tells whether an email has an account. "Use a different email
-address" brings the form back with the address kept. Sign-in shows a
-"Create an account" link only while visitors can register.
+address" brings the form back with the address kept. Sign-in shows "No
+account yet? Create an account" under its card only while visitors can
+register.
 
 A sign-up email's link opens `/register/complete`, whose secret is kept the
 same way as `/verify-email`'s. The visitor types the email the link was
@@ -407,8 +409,9 @@ this link was sent to."), so a link someone sends for an address they
 control cannot create that account for a visitor typing their own. The
 email field is marked `autocomplete="username"`, so a password manager
 saves it with the new password. Success creates no session: the page opens
-sign-in with the email filled in and a notice naming the new account. The
-email travels in history state, data the browser keeps with the history
+sign-in with the email filled in and a notice, the address on a line of
+its own, then "Your account is created. Sign in with your new password."
+The email travels in history state, data the browser keeps with the history
 entry, not in the URL. When the server refuses the email, an "Ask for a
 new link" link to `/register` follows the error. A spent or expired link, or
 an email that already has an account, ends the page with where to go next.
@@ -431,8 +434,8 @@ the email the link was sent to, marked `autocomplete="username"`, and a new
 password of 15 to 128 characters, entered twice; another email is refused
 on the email field, followed by "Ask for a new link" to `/forgot-password`.
 Success creates no session: the page opens sign-in in its place with the
-email filled in and "The password for <email> is changed. Sign in with your
-new password." A reset signs the account out everywhere, so success, or a
+email filled in and a notice, the address on a line of its own, then "Your
+password is changed. Sign in with your new password." A reset signs the account out everywhere, so success, or a
 result that may have been one, clears this browser's account caches, even
 if the page has closed. A spent or expired link ends the page with "Ask for
 a new link" and "Sign in"; after a lost result, sign-in comes first, as on
@@ -1412,6 +1415,10 @@ const form = useAppForm({
   `request.reference` is the failure's request reference only for a fault
   (a 5xx or a lost answer), so a refusal, e.g. a wrong password, shows
   none.
+- **Field kinds** are `EmailField` and `PasswordField`. Each takes a
+  `label`, an optional `description` shown before the control, `optional`,
+  and `labelAction`, a link or button beside the label, e.g. "Forgot
+  password?".
 - **A new field kind** goes in `src/components/form/fields.tsx` with its
   first form: render the control through `FieldFrame`, which reads the
   field from `useFieldContext` and gives the control its id, name, value,

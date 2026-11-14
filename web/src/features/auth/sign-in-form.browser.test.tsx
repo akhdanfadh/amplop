@@ -4,7 +4,13 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { userEvent, page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { CatchBoundary } from "@tanstack/react-router";
+import {
+  CatchBoundary,
+  RouterProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+} from "@tanstack/react-router";
 import { SignInForm } from "./sign-in-form";
 
 const unauthorized = 401;
@@ -27,10 +33,11 @@ function refused(): Response {
   });
 }
 
-// signIn renders the form in Strict Mode, as the app runs in development,
-// with fetch held until answer.send is called; it fills the form and
-// submits. It returns the callbacks, the answer, and the rendered screen.
-async function signIn() {
+// show renders the form in Strict Mode, as the app runs in development, on
+// a page of its own (its "Forgot password?" is a router link), with fetch
+// held until answer.send is called. It returns the callbacks, the answer,
+// and the rendered screen.
+async function show() {
   const answer: { send?: (response: Response) => void } = {};
   vi.stubGlobal(
     "fetch",
@@ -39,20 +46,41 @@ async function signIn() {
   const client = new QueryClient();
   const onDone = vi.fn<() => void>();
   const onCodeRequired = vi.fn<() => void>();
+  const router = createRouter({
+    routeTree: createRootRoute({
+      component: () => <SignInForm onDone={onDone} onCodeRequired={onCodeRequired} />,
+    }),
+    history: createMemoryHistory(),
+  });
+  await router.load();
   const screen = await render(
     <StrictMode>
       <CatchBoundary getResetKey={() => 0} errorComponent={() => <p>Crashed</p>}>
         <QueryClientProvider client={client}>
-          <SignInForm onDone={onDone} onCodeRequired={onCodeRequired} />
+          <RouterProvider router={router} />
         </QueryClientProvider>
       </CatchBoundary>
     </StrictMode>,
   );
-  await userEvent.type(page.getByRole("textbox", { name: "Email address" }), "ana@example.com");
-  await userEvent.type(page.getByLabelText("Password", { exact: true }), "a long password");
-  await userEvent.click(page.getByRole("button", { name: "Sign in" }));
-  await vi.waitFor(() => expect(answer.send).toBeDefined());
   return { answer, client, onDone, onCodeRequired, screen };
+}
+
+const email = () => page.getByRole("textbox", { name: "Email address" });
+const password = () => page.getByLabelText("Password", { exact: true });
+
+// top returns where element's box starts, in CSS pixels from the viewport.
+function top(element: Element): number {
+  return element.getBoundingClientRect().top;
+}
+
+// signIn shows the form, fills it, and submits, as show returns.
+async function signIn() {
+  const shown = await show();
+  await userEvent.type(email(), "ana@example.com");
+  await userEvent.type(password(), "a long password");
+  await userEvent.click(page.getByRole("button", { name: "Sign in" }));
+  await vi.waitFor(() => expect(shown.answer.send).toBeDefined());
+  return shown;
 }
 
 afterEach(() => {
@@ -60,6 +88,22 @@ afterEach(() => {
 });
 
 describe("SignInForm", () => {
+  it('puts "Forgot password?" on the label\'s line, after the password in Tab order', async () => {
+    await show();
+    const forgot = page.getByRole("link", { name: "Forgot password?" });
+
+    await userEvent.click(email());
+    await userEvent.tab();
+    await expect.element(password()).toHaveFocus();
+    await userEvent.tab();
+    await expect.element(page.getByRole("button", { name: "Show password" })).toHaveFocus();
+    await userEvent.tab();
+
+    await expect.element(forgot).toHaveFocus();
+    const label = page.getByText("Password", { exact: true }).element();
+    expect(Math.abs(top(forgot.element()) - top(label))).toBeLessThan(8);
+  });
+
   it.each([
     ["complete", "onDone"],
     ["totp", "onCodeRequired"],
