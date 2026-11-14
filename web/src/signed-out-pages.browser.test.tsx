@@ -16,6 +16,7 @@ import { Route as ForgotPassword } from "@/routes/_auth/_signed-out/forgot-passw
 import { Route as Register } from "@/routes/_auth/_signed-out/register/index";
 import { Route as CompleteRegistration } from "@/routes/_auth/register/complete";
 import { Route as ResetPassword } from "@/routes/_auth/reset-password";
+import { Route as VerifyEmail } from "@/routes/_auth/verify-email";
 
 const accepted = 202;
 const notFound = 404;
@@ -27,6 +28,7 @@ const pages: Record<string, RouteComponent | undefined> = {
   "/register": Register.options.component,
   "/register/complete": CompleteRegistration.options.component,
   "/reset-password": ResetPassword.options.component,
+  "/verify-email": VerifyEmail.options.component,
 };
 
 // Answer is the fake server's response to one request.
@@ -186,6 +188,17 @@ describe("signed-out pages", () => {
 
     await expect.element(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("say how to get a link when opened without one", async () => {
+    await open("/verify-email");
+
+    await expect
+      .element(page.getByRole("heading", { name: "Open the link from your email" }))
+      .toBeVisible();
+    await expect
+      .element(page.getByRole("link", { name: "Sign in to ask for a new link" }))
+      .toBeVisible();
   });
 
   it("keep a title still when a check finds the form under it", async () => {

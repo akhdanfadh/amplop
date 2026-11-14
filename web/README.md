@@ -113,7 +113,9 @@ Put shared code in the folder for its responsibility:
   management, and turning TOTP off.
 - `src/features/sessions`: the signed-in browser list and ending sessions.
 - `src/features/email-verification`: the Security page's Email section, the
-  `/verify-email` form, and their wording.
+  `/verify-email` page, and their wording. That page, unlike the other link
+  pages, lives here whole: its outcome screens read the session and the
+  redeem's result.
 - `src/features/system-email`: the system email settings form, its schema,
   and the test message form and its result wording.
 - `src/features/members`: the member list's columns and cells, the table
