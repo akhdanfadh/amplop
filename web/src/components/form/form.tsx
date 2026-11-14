@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "
 import { useSelector } from "@tanstack/react-form";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { useFormContext } from "./form-context";
 
 // Form is the current form's <form> element, named label for screen
@@ -95,7 +96,15 @@ export function SubmitButton({
     // Pending, unlike disabled, keeps focus on the button and tells a screen
     // reader that it is working, while presses do nothing.
     <Button type="submit" className="whitespace-normal" isPending={sending} isDisabled={isDisabled}>
-      {sending ? working : children}
+      {sending ? (
+        <>
+          {/* Turns while the request runs; the words say what runs. */}
+          <Spinner />
+          {working}
+        </>
+      ) : (
+        children
+      )}
     </Button>
   );
 }

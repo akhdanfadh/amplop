@@ -177,6 +177,14 @@ which brings 400 and 600 close. Unread rows also take 650 there.
   once; keyboard focus shows it at once; it closes as soon as the
   pointer or focus leaves. Nothing loops except a spinner while work is
   actually running.
+- **Press:** a pressed button scales to 97% over 150 ms, so a tap shows it
+  landed before any answer; a text link does not, and reduced motion keeps
+  buttons still. A keyboard press scales it too: a press is a press, and no
+  button here is pressed often enough for 150 ms to slow anyone. A button
+  stands back up while the menu, dialog, or sheet it opened is open. A
+  sending form's button shows a spinner before its working words ("Signing
+  in..."). With reduced motion a spinner fades in and out instead of
+  turning, so it still says that work runs where no words sit beside it.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
   focusable element, defined once in the components. One exception: the
   message editor's text fields, which have no box, show only the caret,
