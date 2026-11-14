@@ -440,6 +440,42 @@ describe("Sidebar", () => {
     expect(getComputedStyle(inbox).backgroundColor).toBe(tint);
   });
 
+  it("marks the current one of a set that is not a page with the bar alone", async () => {
+    await page.viewport(1440, 900);
+    await render(
+      <SidebarProvider open onOpenChange={() => {}}>
+        <Sidebar label="Mail">
+          <SidebarContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton href="#inbox" isActive>
+                  <span>Inbox</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton href="#work" isActive current="true">
+                  <span>Work</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarContent>
+        </Sidebar>
+      </SidebarProvider>,
+    );
+    const work = page.getByRole("link", { name: "Work" });
+    await expect.element(work).toHaveAttribute("aria-current", "true");
+
+    // The bar is drawn, in the text colour: the scope's one mark.
+    const bar = getComputedStyle(work.element(), "::before");
+    expect(bar.width).toBe("2px");
+    expect(bar.content).not.toBe("none");
+    expect(bar.backgroundColor).toBe(getComputedStyle(work.element()).color);
+    expect(getComputedStyle(work.element()).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    // The page keeps its tint, so it stands out from its scope.
+    const inbox = page.getByRole("link", { name: "Inbox" }).element();
+    expect(getComputedStyle(inbox).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+  });
+
   it("keeps a nested open item's tint while hovered", async () => {
     await page.viewport(1440, 900);
     await render(

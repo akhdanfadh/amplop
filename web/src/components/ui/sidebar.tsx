@@ -554,10 +554,13 @@ const activeBar =
 // Rows are 32 px for a fine pointer, 44 px for a coarse one (DESIGN.md
 // "Control height"), on the rail too, where only their icons show. The
 // icon keeps its place open or as a rail: 8 px in (14 px coarse), the
-// rail's centre. The open item keeps its tint while hovered. The name
+// rail's centre. The open item keeps its tint while hovered; the current
+// one of a set that is not a page, e.g. the account filtering it, has the
+// bar alone, so the page stands out from its scope (DESIGN.md "Sidebar").
+// The name
 // gives way, cut short with an ellipsis, to what follows it in the row (a
 // SidebarMenuBadge) and to a SidebarMenuAction pinned at the end.
-const sidebarMenuButtonClasses = `group/menu-button relative flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm font-medium transition-colors outline-none group-has-data-[slot=sidebar-menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:px-3.5 pointer-coarse:group-data-[collapsible=icon]:size-11! pointer-coarse:group-data-[collapsible=icon]:p-3.5! data-disabled:pointer-events-none data-disabled:opacity-50 pointer-coarse:h-11 data-active:bg-selection data-active:hover:bg-selection ${activeBar} data-active:text-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:not([data-slot])]:truncate`;
+const sidebarMenuButtonClasses = `group/menu-button relative flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm font-medium transition-colors outline-none group-has-data-[slot=sidebar-menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:px-3.5 pointer-coarse:group-data-[collapsible=icon]:size-11! pointer-coarse:group-data-[collapsible=icon]:p-3.5! data-disabled:pointer-events-none data-disabled:opacity-50 pointer-coarse:h-11 data-active:bg-selection data-active:hover:bg-selection data-active:aria-[current=true]:bg-transparent data-active:aria-[current=true]:hover:bg-sidebar-accent ${activeBar} data-active:text-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:not([data-slot])]:truncate`;
 
 // SidebarMenuButton is one item: a link when it has an href, else a
 // button. isActive marks a link as the current one: its page, or with

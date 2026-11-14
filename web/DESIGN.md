@@ -337,7 +337,9 @@ last two redirect into settings, so settings can move without the server.
   Inbox, accounts, and labels, with a comma ("12,847"). The Outbox's
   count of messages not sent is in 600 weight, its name not: it is not
   unread mail. Selected: `selection` background and a 2 px bar in
-  `foreground` at its left edge, never bold. Icons keep one column,
+  `foreground` at its left edge, never bold; the scope beside it (All
+  accounts, or the filtering account) has the bar alone, so the open
+  place stands out from the account it is in. Icons keep one column,
   open or as a rail. What follows a name (a count, status words) sits in
   the row after it and keeps its width; a long name or address is cut
   short with an ellipsis before it, never overlapped. A count is read
