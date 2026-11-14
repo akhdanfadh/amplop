@@ -126,7 +126,9 @@ function TopBar({ slotRef }: { slotRef: (box: HTMLElement | null) => void }): Re
   if (!isDrawer) return null;
 
   return (
-    <header className="group/top-bar flex shrink-0 items-center gap-2 border-b px-2 py-2">
+    // The sidebar header's padding, so the drawer's button opens over the
+    // top bar's in the same place.
+    <header className="group/top-bar flex shrink-0 items-center gap-2 border-b p-3">
       <SidebarTrigger />
       <Link
         to="/"
