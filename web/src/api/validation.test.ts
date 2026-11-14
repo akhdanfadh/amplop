@@ -83,10 +83,13 @@ describe("emailAddress", () => {
     expect(messages(email, value)).toEqual(["Enter an email address, like name@example.com."]);
   });
 
-  it("keeps the contract's length limits", () => {
-    expect(messages(email, "a@")).toEqual([
-      "Must be 3 to 254 characters.",
-      "Enter an email address, like name@example.com.",
-    ]);
+  it("gives an empty field one message", () => {
+    expect(messages(email, "")).toEqual(["Enter an email address, like name@example.com."]);
+  });
+
+  it("keeps the contract's length limits for an address that is otherwise one", () => {
+    const long = `${"a".repeat(64)}@${"b".repeat(190)}.com`;
+
+    expect(messages(email, long)).toEqual(["Must be 3 to 254 characters."]);
   });
 });
