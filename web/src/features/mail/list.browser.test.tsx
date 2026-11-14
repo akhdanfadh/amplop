@@ -108,6 +108,17 @@ async function toLastRow(): Promise<void> {
   await userEvent.keyboard("{End}");
 }
 
+// anchored waits until api receives the list's first request for how many
+// conversations are newer, which the list sends once it has an anchor.
+//
+// DESIGN: focus can reach the last row before the list's scroll handler
+// sets the anchor; mail refreshed in between would count as already shown.
+async function anchored(api: MailApi): Promise<void> {
+  await vi.waitFor(() =>
+    expect(api.requests.some((r) => r.startsWith("/api/v0/conversations/new-count"))).toBe(true),
+  );
+}
+
 const one = [listedAccount(1, "ana@example.com")];
 
 describe("ConversationList", () => {
@@ -158,6 +169,7 @@ describe("ConversationList", () => {
       },
       { timeout: 10_000 },
     );
+    await anchored(api);
     api.conversations.push(conversation(100), conversation(101));
     await refreshNewest(client);
 
@@ -608,6 +620,7 @@ describe("the list's order and refreshes", () => {
     const { client } = await app(api);
     await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
     await toLastRow();
+    await anchored(api);
     const box = grid().element();
     const top = box.getBoundingClientRect().top + 4;
     const atTop = () =>
@@ -635,6 +648,7 @@ describe("the list's order and refreshes", () => {
     const { client } = await app(api);
     await expect.element(page.getByRole("row", { name: /Subject 59,/ })).toBeVisible();
     await toLastRow();
+    await anchored(api);
     api.conversations.push(conversation(100));
     await refreshNewest(client);
     const button = page.getByRole("button", { name: "1 new conversation" });
