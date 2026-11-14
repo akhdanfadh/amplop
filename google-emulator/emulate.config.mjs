@@ -55,7 +55,13 @@ export default {
         redirect_uris: [redirectURI],
       },
     ],
-    labels: [{ id: "Label_receipts", user_email: alex, name: "Receipts" }],
+    // Blair's Work/Projects nests under Work, so the sidebar has a parent
+    // label to fold, and a second account with labels.
+    labels: [
+      { id: "Label_receipts", user_email: alex, name: "Receipts" },
+      { id: "Label_work", user_email: blair, name: "Work" },
+      { id: "Label_projects", user_email: blair, name: "Work/Projects" },
+    ],
     messages: [
       message(alex, "alex-1", {
         thread_id: "alex-t1",
@@ -98,6 +104,20 @@ export default {
         body_text: "Five plants that like the shade.",
         label_ids: ["INBOX", "CATEGORY_PROMOTIONS"],
         date: "2026-10-30T12:00:00.000Z",
+      }),
+      message(blair, "blair-3", {
+        from: "Dana Park <dana@studio.example>",
+        subject: "Quarterly planning notes",
+        body_text: "Notes from today's planning session are attached to the shared folder.",
+        label_ids: ["Label_work"],
+        date: "2026-11-01T07:20:00.000Z",
+      }),
+      message(blair, "blair-4", {
+        from: "Dana Park <dana@studio.example>",
+        subject: "Website redesign: first drafts",
+        body_text: "The first drafts are ready for review. Feedback by Thursday, please.",
+        label_ids: ["INBOX", "UNREAD", "Label_projects"],
+        date: "2026-11-02T10:05:00.000Z",
       }),
       message(casey, "casey-1", {
         from: "Alex Rivera <alex@example.com>",
