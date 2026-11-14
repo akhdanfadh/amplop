@@ -22,24 +22,28 @@ const restMs = 500;
 // TooltipTrigger pairs a React Aria button or link with its Tooltip. The
 // first tooltip shows after the pointer rests on its trigger for delay ms,
 // restMs by default; while one is showing, and for 500 ms after it closes,
-// the next shows at once. Keyboard focus shows it at once.
+// the next shows at once. Keyboard focus shows it at once. It closes as
+// soon as the pointer or focus leaves, closeDelay 0 by default.
 //
 // DESIGN: inbok's copy differs from shadcn's: the trigger is a React Aria
 // button or link as is, without Focusable, since those take the trigger's
 // props themselves; React Aria's warm-up instead of shadcn's no delay, so
 // a pointer crossing the rail does not flash every icon's name; it opens
 // in 200 ms on DESIGN.md's easing; the arrow is placed by one transform;
-// no styling for a kbd inside, since a shortcut is written in words
+// React Aria's 500 ms close delay dropped, which left a tooltip up after its
+// button's hover had faded (its warm-up keeps its own 500 ms); no styling
+// for a kbd inside, since a shortcut is written in words
 // (DESIGN.md "Wording"). A tooltip holds no words found nowhere else:
 // inside a dialog or drawer it is outside the modal, so assistive
 // technology never reads it.
 function TooltipTrigger({
   delay = restMs,
+  closeDelay = 0,
   children,
   ...props
 }: React.ComponentProps<typeof TooltipTriggerPrimitive>) {
   return (
-    <TooltipTriggerPrimitive delay={delay} {...props}>
+    <TooltipTriggerPrimitive delay={delay} closeDelay={closeDelay} {...props}>
       {children}
     </TooltipTriggerPrimitive>
   );

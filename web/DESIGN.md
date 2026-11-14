@@ -150,8 +150,9 @@ text).
   (`transition-colors`, never `transition-all`). Reduced motion turns
   movement into fades. A theme change switches every colour at once, with
   no fades. A tooltip shows after the pointer rests 500 ms, then the next
-  ones at once; keyboard focus shows it at once. Nothing loops except a
-  spinner while work is actually running.
+  ones at once; keyboard focus shows it at once; it closes as soon as the
+  pointer or focus leaves. Nothing loops except a spinner while work is
+  actually running.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
   focusable element, defined once in the components. One exception: the
   message editor's text fields, which have no box, show only the caret,
