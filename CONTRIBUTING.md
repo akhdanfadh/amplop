@@ -77,9 +77,11 @@ Meilisearch holds the search index on `127.0.0.1:7700`
 (`INBOK_MEILISEARCH_PORT`). Its web dashboard at `http://localhost:7700`
 asks for `INBOK_MEILISEARCH_KEY` and shows what the index holds, one
 Meilisearch index per member, e.g. `messages_1`. The
-index is rebuilt from PostgreSQL rather than kept, so losing its volume
-costs nothing but the rebuild; the command that rebuilds it comes with
-search itself. Each Meilisearch version gets a new volume,
+index is rebuilt from PostgreSQL and stored message text rather than
+kept, so losing its volume costs nothing but the rebuild: with the
+worker running, `go -C backend run ./cmd/inbok search rebuild` rebuilds
+it, and the worker does so itself every night ([Rebuilding the
+index](backend/README.md#rebuilding-the-index)). Each Meilisearch version gets a new volume,
 since a version refuses to open another's data, so after
 `compose.yaml` moves to a new version the old volume stays behind;
 `docker volume ls` lists it, e.g. `inbok_meilisearch-1.56.1`, and

@@ -52,4 +52,6 @@ func TestListenedQueues(t *testing.T) {
 	assert.Equal(t, []string{emailQueue, contentQueue}, listenedQueues(Services{MessageContent: &fakeContent{}}))
 	assert.Equal(t, []string{emailQueue, googleQueue}, listenedQueues(Services{MessageBodies: &fakeBodies{}}))
 	assert.Equal(t, []string{emailQueue, searchQueue}, listenedQueues(Services{SearchIndex: &fakeSearch{}}))
+	assert.Equal(t, []string{emailQueue, searchQueue, searchRebuildQueue},
+		listenedQueues(Services{SearchIndex: &fakeSearch{}, SearchRebuild: &fakeRebuild{}}))
 }

@@ -3,6 +3,7 @@ package dbos
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 	"uuid"
@@ -24,6 +25,8 @@ import (
 // postgres.Workflows.
 type Client struct {
 	client dbos.Client
+	// url is the database's, for the transactions the client opens itself.
+	url string
 }
 
 // NewClient opens a DBOS client on the database at url, without migrating
@@ -47,7 +50,7 @@ func NewClient(ctx context.Context, url string, logger *slog.Logger) (*Client, e
 	if err != nil {
 		return nil, err
 	}
-	return &Client{client: client}, nil
+	return &Client{client: client, url: url}, nil
 }
 
 // EnqueueRecoveryNotice saves, in tx, the recovery notice workflow for the
@@ -252,6 +255,76 @@ func (c *Client) SyncScheduleSucceeded(ctx context.Context, since time.Time) (bo
 	return len(runs) > 0, nil
 }
 
+// RebuildSearch asks the worker to rebuild every member's search index, on
+// the queue searchRebuildQueue, and waits until the rebuild ends, for at
+// most timeout and until ctx ends. It returns what the rebuild did, or its
+// error, which names the members whose rebuild failed. When it stops
+// waiting first, the rebuild goes on in the worker, and it returns an
+// error saying so; when it stops while still queueing it, the rebuild runs
+// only if the queueing had been saved.
+func (c *Client) RebuildSearch(ctx context.Context, timeout time.Duration) (SearchRebuildOutput, error) {
+	// Every step runs with a copy of DBOS's context that timeout and ctx's
+	// end cancel, as in SyncScheduleSucceeded.
+	scoped, ok := c.client.(dbos.Context)
+	if !ok {
+		return SearchRebuildOutput{}, errNotScoped
+	}
+	scoped, cancel := dbos.WithTimeout(scoped, timeout)
+	defer cancel()
+	stop := context.AfterFunc(ctx, cancel)
+	defer stop()
+
+	// 1. Queue the rebuild in a transaction of the client's own, which
+	// scoped's end stops even while a lock elsewhere holds the insert, as
+	// callerTx explains; DBOS's own transaction would wait for the lock
+	// however long it is held.
+	handle, err := c.enqueueRebuild(scoped)
+	if err != nil && scoped.Err() != nil {
+		return SearchRebuildOutput{}, fmt.Errorf("stopped queueing the search rebuild, which runs only if it was saved: %w", err)
+	}
+	if err != nil {
+		return SearchRebuildOutput{}, err
+	}
+
+	// 2. Wait for it.
+	output, err := handle.GetResult()
+	if err != nil && scoped.Err() != nil {
+		return SearchRebuildOutput{}, fmt.Errorf("stopped waiting for search rebuild %s, which goes on in the worker: %w", handle.GetWorkflowID(), err)
+	}
+	return output, err
+}
+
+// enqueueRebuild saves a rebuild of every member on searchRebuildQueue, in
+// a transaction on a connection of its own, all with ctx, and returns its
+// handle, which waits with ctx. It returns the connection's, the
+// transaction's, or DBOS's error, after which nothing is saved unless the
+// commit itself was cut short.
+func (c *Client) enqueueRebuild(ctx dbos.Context) (dbos.WorkflowHandle[SearchRebuildOutput], error) {
+	conn, err := pgx.Connect(ctx, c.url)
+	if err != nil {
+		return nil, fmt.Errorf("connect to queue the search rebuild: %w", err)
+	}
+	defer func() {
+		// Not ctx, which may have ended: closing only says goodbye.
+		closeCtx, cancel := context.WithTimeout(context.Background(), stageTimeout)
+		defer cancel()
+		_ = conn.Close(closeCtx)
+	}()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	handle, err := dbos.Enqueue[SearchRebuildOutput](ctx, searchRebuildQueue, searchRebuildWorkflow, struct{}{},
+		dbos.WithEnqueueTransaction(callerTx{Tx: tx, ctx: ctx}),
+		dbos.WithEnqueueApplicationVersion(applicationVersion),
+	)
+	if err != nil {
+		// The connection closes next, which rolls back whatever is left.
+		return nil, err
+	}
+	return handle, tx.Commit(ctx)
+}
+
 // errNotScoped means the DBOS client cannot take a deadline, which an SDK
 // upgrade may cause.
 var errNotScoped = errors.New("DBOS client cannot take a deadline")
@@ -266,13 +339,14 @@ const scheduleReadTimeout = 5 * time.Second
 //
 // NOTE: DBOS runs an enqueue's statements in the caller's transaction with
 // a context that cannot be cancelled, so a lock held elsewhere, e.g. by a
-// migration, would hold an interrupted recover-admin, and its database
-// close, until released. With the caller's transaction DBOS neither retries
+// migration, would hold an interrupted recover-admin or search rebuild, and
+// its database close, until released. With the caller's transaction DBOS neither retries
 // nor commits, so a cancelled statement just fails the enqueue and the
 // transaction rolls back. DBOS documents neither the uncancellable context
 // nor a way around it: this relies on its adapter running every statement
 // through Exec, Query, or QueryRow (v1.8.0), which
-// TestClientRecoveryCancelled checks on each upgrade.
+// TestClientRecoveryCancelled and TestClientRebuildCancelled check on each
+// upgrade.
 type callerTx struct {
 	pgx.Tx
 	ctx context.Context

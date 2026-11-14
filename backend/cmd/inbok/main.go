@@ -57,7 +57,7 @@ const (
 	shutdownTimeout = 5 * time.Second
 )
 
-var errUsage = errors.New("usage: inbok serve | inbok worker | inbok migrate | inbok health | inbok export <path> | inbok recover-admin <email>")
+var errUsage = errors.New("usage: inbok serve | inbok worker | inbok migrate | inbok health | inbok export <path> | inbok recover-admin <email> | inbok search rebuild")
 
 func main() {
 	// One root logger for every service, so their lines carry request_id.
@@ -96,6 +96,8 @@ func run(ctx context.Context, args []string, logger *slog.Logger) error {
 		return recoverAdmin(ctx, args[1])
 	case args[0] == "export" && len(args) == 2:
 		return export(args[1], logger)
+	case args[0] == "search" && len(args) == 2 && args[1] == "rebuild":
+		return searchRebuild(ctx, os.Stdout)
 	}
 	return errUsage
 }

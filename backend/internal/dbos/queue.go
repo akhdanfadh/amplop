@@ -27,6 +27,11 @@ const (
 	// at a time for each member and side by side for different members
 	// (ADR005).
 	searchQueue = "inbok.search"
+
+	// searchRebuildQueue runs the rebuilds of every member's search index
+	// that inbok search rebuild asks for. Each waits for the members'
+	// rebuilds on searchQueue, so it cannot run in a member's partition.
+	searchRebuildQueue = "inbok.search-rebuild"
 )
 
 // registerSearchQueue registers [searchQueue], partitioned by member with

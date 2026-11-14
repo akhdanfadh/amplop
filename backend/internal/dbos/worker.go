@@ -77,6 +77,10 @@ type Services struct {
 	MessageBodies bodyFetches
 	// SearchIndex keeps members' search indexes in step with their mail.
 	SearchIndex searchIndex
+	// SearchRebuild rebuilds members' search indexes, when asked and
+	// nightly. Each member's rebuild runs on the search queue, which a
+	// worker takes runs from only with [Services.SearchIndex] set too.
+	SearchRebuild searchRebuild
 }
 
 // Worker runs inbok's workflows and schedules.
@@ -139,7 +143,10 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	if err := w.registerMessageBodiesSchedule(services.MessageBodies); err != nil {
 		return nil, errors.Join(fmt.Errorf("schedule message bodies: %w", err), w.Shutdown())
 	}
-	for _, queue := range []string{emailQueue, googleQueue, googleSendQueue, contentQueue} {
+	if err := w.registerSearchRebuild(services.SearchRebuild); err != nil {
+		return nil, errors.Join(fmt.Errorf("schedule search rebuild: %w", err), w.Shutdown())
+	}
+	for _, queue := range []string{emailQueue, googleQueue, googleSendQueue, contentQueue, searchRebuildQueue} {
 		if err := w.registerQueue(queue); err != nil {
 			return nil, errors.Join(fmt.Errorf("register queue %s: %w", queue, err), w.Shutdown())
 		}
@@ -167,7 +174,7 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 }
 
 // listenedQueues returns the queues a worker calling services takes runs
-// from: each Google queue, the content queue, and the search queue, only
+// from: each Google queue, the content queue, and the search queues, only
 // when it runs that queue's workflows.
 func listenedQueues(services Services) []string {
 	queues := []string{emailQueue}
@@ -182,6 +189,9 @@ func listenedQueues(services Services) []string {
 	}
 	if services.SearchIndex != nil {
 		queues = append(queues, searchQueue)
+	}
+	if services.SearchRebuild != nil {
+		queues = append(queues, searchRebuildQueue)
 	}
 	return queues
 }

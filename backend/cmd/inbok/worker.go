@@ -138,8 +138,10 @@ func worker(ctx context.Context, logger *slog.Logger) (err error) {
 		PasswordChangedNotices:      passwordreset.NewNotices(db, mailer, publicURL),
 		MessageContent:              content,
 		MessageContentCleanup:       messagecontent.NewCleanup(content, db, time.Now),
-		SearchIndex:                 search.NewIndexer(index, db, messagecontent.NewTexts(content, db)),
 	}
+	indexer := search.NewIndexer(index, db, messagecontent.NewTexts(content, db))
+	services.SearchIndex = indexer
+	services.SearchRebuild = search.NewRebuild(index, db, indexer)
 	if googleSettings != nil {
 		// Only when configured, so the interface stays nil: removals saved
 		// while a client was configured then wait for one. Revoking and

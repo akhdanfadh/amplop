@@ -67,8 +67,9 @@ services:
 
     # NOTE: The volume is named after the image's version. A Meilisearch
     # version refuses to open data another version wrote, so an upgrade
-    # starts on a new, empty volume and the index is rebuilt. Change the
-    # name here and below whenever the image changes.
+    # starts on a new, empty volume and the index is rebuilt; upgrade.sh
+    # deletes the other versions' volumes. Change the name here and below
+    # whenever the image changes.
     volumes:
       - meilisearch-1.56.1:/meili_data
 

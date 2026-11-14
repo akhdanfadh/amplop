@@ -36,7 +36,7 @@ func TestExport(t *testing.T) {
 }
 
 func TestRunUsage(t *testing.T) {
-	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"migrate", "extra"}, {"health", "extra"}, {"worker", "extra"}, {"export"}, {"export", "a", "b"}}
+	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"migrate", "extra"}, {"health", "extra"}, {"worker", "extra"}, {"export"}, {"export", "a", "b"}, {"search"}, {"search", "other"}, {"search", "rebuild", "extra"}}
 	for _, args := range cases {
 		err := run(context.Background(), args, discard)
 		require.ErrorIs(t, err, errUsage, "run(%q)", args)
@@ -49,6 +49,15 @@ func TestMigrateNoURL(t *testing.T) {
 	t.Setenv("INBOK_DATABASE_URL", "")
 
 	err := run(context.Background(), []string{"migrate"}, discard)
+
+	require.ErrorContains(t, err, "INBOK_DATABASE_URL")
+}
+
+// search rebuild names the missing setting instead of guessing a database.
+func TestSearchRebuildNoURL(t *testing.T) {
+	t.Setenv("INBOK_DATABASE_URL", "")
+
+	err := run(context.Background(), []string{"search", "rebuild"}, discard)
 
 	require.ErrorContains(t, err, "INBOK_DATABASE_URL")
 }

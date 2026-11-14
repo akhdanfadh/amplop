@@ -164,9 +164,8 @@ one ID and run some work twice. One worker runs many jobs at once.
 
 `meilisearch` runs [Meilisearch](https://www.meilisearch.com) Community
 Edition, the search index: it holds a copy of members' messages for
-search, which the worker keeps in step with their mail. Search itself,
-with the command that rebuilds the index, is not part of this release
-yet. It has no published port and
+search, which the worker keeps in step with their mail. Search itself is
+not part of this release yet. It has no published port and
 sits on the internal network with PostgreSQL, so the internet and Caddy
 cannot reach it. Apart from its health check, it answers only requests
 with a valid key: `INBOK_MEILISEARCH_KEY`, its master key, or a key made
@@ -177,10 +176,35 @@ with an error, which `docker compose logs worker` shows, if Meilisearch
 does not accept them within a minute. The server does not need
 Meilisearch to start.
 
-Everything in it comes from the database, so its volume needs no
-[backup](#backups). The index is rebuilt instead, which an operator runs:
-after an upgrade that brings a new Meilisearch, after going back to an
-earlier one, and after a restore.
+Everything in it comes from the database and the stored text of
+messages, so its volume needs no [backup](#backups). The index is
+rebuilt from them instead: each member's messages are written again,
+and documents of messages the database no longer has are removed. The
+rebuild changes nothing in members' Gmail and fetches nothing from it,
+and search keeps working while it runs, though it may miss mail until
+it ends. A rebuild runs:
+
+- after every upgrade, from `upgrade.sh`, so the index holds what the new
+  release writes, including after an upgrade that brings a new, empty
+  Meilisearch, or a return to an earlier commit;
+- every night at 03:00 UTC, from the worker, which tries to repair what
+  the worker could not keep in step, e.g. while Meilisearch was down for
+  more than about an hour; a night the worker was not running is not
+  made up, and a rebuild that fails leaves the repair to a later one;
+- when you run it: after a [restore](#backups), as its steps show, or
+  whenever search seems to miss mail.
+
+```sh
+docker compose exec worker inbok search rebuild
+```
+
+The command asks the worker to rebuild every member's index, waits until
+it has, and prints what it did. It exits with an error naming the
+members whose rebuild failed, and `docker compose logs worker` shows
+why; or after waiting two hours, while the rebuild goes on in the
+worker. Running it again is safe, and queues another rebuild. A
+member's new mail reaches search
+once their own rebuild ends.
 
 ## Upgrades
 
@@ -195,7 +219,9 @@ git pull
 while the old server keeps serving, and only then switches the image and
 restarts the server and the worker. The site is unavailable for about two
 seconds while the server restarts; the new worker resumes the work the
-old one left unfinished. The script exits with an error if anything fails:
+old one left unfinished. Last, it [rebuilds the search
+index](#the-search-index) with the new release. The script exits with an
+error if anything fails:
 
 - If the build or a migration fails, the old server keeps running on the
   old image. Fix the cause, or check out the previous commit, and run
@@ -207,24 +233,36 @@ old one left unfinished. The script exits with an error if anything fails:
   the server. `docker compose logs <service>` shows why one failed.
 - If the new server or worker does not become healthy, the script starts
   the previous image again, on the migrated database. `docker compose logs
-  inbok` or `worker` shows why the new one failed.
+  inbok` or `worker` shows why the new one failed. Messages the new worker
+  indexed before it was replaced keep its way of indexing them until the
+  nightly rebuild, or until you run the rebuild.
+- If the rebuild fails, the new release keeps running: the previous image
+  would not undo it. Fix the cause, then run the rebuild again.
+
+It takes the same arguments as `docker compose`, e.g. `./upgrade.sh
+--env-file .env.trial`, but refuses Compose's `--dry-run`: deleting old
+search volumes and switching the image happen outside Compose, so a dry
+run would still do them.
 
 Avoid two commands that look like shortcuts:
 
 - `docker compose up -d --build` removes the old server before migrating,
-  so a failing migration takes the site down until it is fixed.
+  so a failing migration takes the site down until it is fixed, and it
+  does not rebuild the search index.
 - `docker compose restart` restarts every service at once, so migrate can
   start before PostgreSQL and fail. Use `docker compose up -d` to restart.
 
 A Meilisearch version cannot open the data another version wrote, so
 each version keeps its index in its own volume, named after it, e.g.
 `inbok-deploy_meilisearch-1.56.1`. When an upgrade brings a new
-Meilisearch, it starts on a new, empty volume, where the
-[index is rebuilt](#the-search-index). Going back to an earlier commit
-also goes back to its Meilisearch and its old volume, whose index missed
-every change since, so it is rebuilt then too. Once the upgrade works,
-delete the old volume, which still holds a copy of members' mail:
-`docker volume ls` lists it, and `docker volume rm` deletes it.
+Meilisearch, it starts on a new, empty volume, where `upgrade.sh`
+[rebuilds the index](#the-search-index). Once the new Meilisearch is
+healthy, `upgrade.sh` deletes the volumes of other versions: each holds
+a copy of members' mail from an earlier state of the database, which,
+after a restore gave its user IDs to new members, would let one member's
+search count another's old mail until the rebuild ended. Going back to an
+earlier commit therefore starts its Meilisearch on an empty volume too,
+which `upgrade.sh` rebuilds as it does after an upgrade.
 
 After a migration, the old server and worker can run on the new schema:
 during an upgrade, and after the rollback above. Every migration must
@@ -252,25 +290,33 @@ reveals none of them, and a restore needs every key its rows use. Store
 them elsewhere, e.g. in a password manager, and update that copy when you
 rotate keys.
 
-To restore, stop the services that use the database, load the dump, and
-start them again. `--single-transaction` makes the restore all or
-nothing: on any error it stops and leaves the database as it was. The dump
-holds background work as it stood when it was taken: work unfinished then
-runs again after the restore, including steps that had finished since.
+To restore, stop the services that use the database, load the dump,
+start the worker alone to [rebuild the search index](#the-search-index)
+from the restored database, and only then start the rest.
+`--single-transaction` makes the restore all or nothing: on any error it
+stops and leaves the database as it was. The dump holds background work
+as it stood when it was taken: work unfinished then runs again after the
+restore, including steps that had finished since.
 
 ```sh
 docker compose stop inbok worker caddy
 docker compose exec -T postgres pg_restore -U inbok -d inbok --clean --if-exists --no-owner --single-transaction < ~/inbok-backups/inbok-2026-11-01.dump
+docker compose up -d --wait worker
+docker compose exec -T worker inbok search rebuild
 docker compose up -d
 ```
 
+The index still holds what changed after the dump was made, including
+the index of anyone who registered since. The restored database gives
+their user ID to the next person who registers, so the site stays closed
+until the rebuild has removed it. If the rebuild fails, fix the cause and
+run it again before `docker compose up -d`.
+
 On a new server, run `docker compose up -d --wait postgres` first, which
-creates the empty database, then the restore and `docker compose up -d`.
+creates the empty database, then the steps above from the restore on.
 Use the same `INBOK_ENCRYPTION_KEYS` as when the dump was made. The
 `caddy-data` volume needs no backup: Caddy requests new certificates if
-it is empty. Nor does Meilisearch's: after a restore, rebuild the
-[search index](#the-search-index) from the restored database, since the
-index still holds what changed after the dump was made.
+it is empty. Nor does Meilisearch's: the rebuild above refills it.
 
 The `seaweedfs` volume needs no backup either: it holds
 [message content](#message-content), a cache of what Gmail has. After a
@@ -280,8 +326,9 @@ refers to any more. Mail Gmail has deleted since cannot be fetched again.
 
 `docker compose down -v` deletes the volumes, including the only copy of
 the database. Plain `docker compose down` keeps them. Neither deletes the
-Meilisearch volumes of earlier versions, which `compose.yaml` no longer
-names; `docker volume rm` does.
+Meilisearch volume of an earlier version that `compose.yaml` no longer
+names, e.g. one an interrupted upgrade left; the next `upgrade.sh`
+deletes it, or `docker volume rm` does.
 
 ## Message content
 

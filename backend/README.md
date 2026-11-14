@@ -1,7 +1,7 @@
 # inbok backend
 
 The Go server: the `inbok` command (`serve`, `worker`, `migrate`,
-`health`, `export`, `recover-admin`), its HTTP API, the built web app it
+`health`, `export`, `recover-admin`, `search rebuild`), its HTTP API, the built web app it
 serves, its background work, and its database code. Running `make` in the repository root lists a
 shortcut for most commands here.
 
@@ -2982,8 +2982,8 @@ index right whatever order runs take: Meilisearch applies writes in the
 order they reach it, but a retried job could send an older state after a
 newer delete; instead the run that comes last reads, and writes, the
 latest state, so an older job retried after a newer delete deletes again
-rather than bringing the message back. That limit is what
-keeps the index correct, not a load setting, so every worker start
+rather than bringing the message back, and a rebuild, below, runs in the
+member's partition too. That limit is what keeps the index correct, not a load setting, so every worker start
 restores it, unlike the other queues' limits.
 
 A run works through its messages 100 at a time (`search.BatchSize`),
@@ -2991,7 +2991,7 @@ one DBOS step each, and each step retries for about an hour (1, 2, 4,
 8, then 15 minutes three times; a worker restarted meanwhile starts the
 count again) while the member's later runs wait behind it. A run that still fails is logged and dropped: its messages
 stay as they were in the index until they change again or the index is
-rebuilt. A message's document holds its subject, sender, recipients,
+[rebuilt](#rebuilding-the-index), e.g. by the next nightly rebuild. A message's document holds its subject, sender, recipients,
 date, account, the inbok IDs of its mailboxes, and, once its body is
 stored, its text in two fields: `body_text`, the text of the bodies a
 view of it shows, and `alt_text`, the text of its other text parts,
@@ -3001,7 +3001,8 @@ body is stored, a message is found by its headers. Every message changed is read
 one read re-reads its stored body text too.
 
 - `search` declares the `Index` interface: `Prepare`, `Upsert`, `Delete`,
-  `DeleteAccount`, and `Search`, with its `Document`, `Query`, and
+  `DeleteAccount`, `Search`, and, for a rebuild, `Owners`,
+  `DocumentIDs`, and `DeleteOwner`, with its `Document`, `Query`, and
   `Result` types. Each method may be called again with the same input,
   e.g. by a job that retries, and returns once Meilisearch has applied
   the change, so the next search sees it.
@@ -3048,6 +3049,9 @@ one read re-reads its stored body text too.
 - `search.Indexer` is what the jobs call: `Index` brings a member's
   messages up to date from `IndexStorage`, which `repository/postgres`
   implements, and `RemoveAccount` removes a disconnected account.
+- `search.Rebuild` is what a rebuild calls, below: `Owners` lists whom it
+  covers from `RebuildStorage`, which `repository/postgres` implements,
+  and the index, and `Owner` rebuilds one member through `Indexer`.
 - `searchtest` holds `Fake`, an `Index` in memory for tests of code
   that uses one, and `RunContract`, the tests both `Fake` and
   `meilisearch` pass, so the fake behaves as Meilisearch does apart from
@@ -3057,6 +3061,57 @@ one read re-reads its stored body text too.
   test pass while mail leaked between members. `meilisearch`'s tests run
   against the image the Compose files use, through Testcontainers, like
   the PostgreSQL tests.
+
+### Rebuilding the index
+
+Jobs change only the messages that change, so a copy that was lost or
+went wrong stays so without a rebuild: a new, empty Meilisearch after
+an upgrade, documents an earlier release wrote, e.g. before a field or
+the body-text cap changed, a database restored from a backup, or the
+runs of a job that gave up. A rebuild
+makes each member's index what PostgreSQL and stored text hold, in
+place:
+
+1. `Rebuild.Owners` lists every member in PostgreSQL, with mail or not,
+   and every owner Meilisearch keeps an index for.
+2. For each, in the member's partition of `inbok.search`, so live jobs
+   wait while it runs, `Rebuild.Owner` deletes the whole index of a
+   member PostgreSQL no longer has. Otherwise it lists the IDs the
+   index holds, writes each of the member's messages 100 at a time with
+   `Indexer.Index`, then passes the listed IDs it did not write to
+   `Indexer.Index` too, which deletes them, or writes one that came back.
+
+It never empties an index first, so searches keep finding what the index
+held while it runs. A member's rebuild is one DBOS step, not one per
+batch: DBOS skips a recorded step when a run resumes, though the index
+it wrote to may have been replaced since, e.g. by a new, empty
+Meilisearch. An interrupted step is not recorded, so a resumed run
+repeats the member whole; an index replaced after a member's step
+finished needs a new rebuild, which `upgrade.sh` and the restore steps
+run. A rebuild of every member, `inbok.search-rebuild`, enqueues
+the members' runs, `inbok.search-member-rebuild`, and waits for them;
+it runs outside every member's partition, since it waits on them. It
+runs nightly at 03:00 UTC, when the worker is running then (DBOS does
+not make up a missed night), as `inbok.search-rebuild-schedule`
+from the schedule `inbok.search-rebuild.nightly`, and when the command
+asks for it, from the queue `inbok.search-rebuild`:
+
+```sh
+set -a; . ./.env; set +a
+go -C backend run ./cmd/inbok search rebuild
+```
+
+The command needs only `INBOK_DATABASE_URL` and a running worker, which
+does the work; it waits up to two hours and prints what the rebuild did.
+`deploy/upgrade.sh` runs it after every upgrade, and the deploy README's
+restore steps run it before the site opens again. A database that held
+mail before search was indexed needs one run.
+
+Remove a field from documents in two releases, as with a column: first
+stop searching, filtering, and sorting on it, then stop writing it. An
+upgrade that fails and goes back to the previous image then never runs
+code that needs a field the new worker's documents lack; until the
+nightly rebuild, those documents are only found less well.
 
 To see what the index holds during development, open Meilisearch's
 dashboard at `http://localhost:7700`, give it `INBOK_MEILISEARCH_KEY`,
