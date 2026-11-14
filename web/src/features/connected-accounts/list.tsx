@@ -26,8 +26,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { AccountMark, accountName } from "@/components/account-mark";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { AccountNameForm } from "./name-form";
 import { syncView, type SyncView } from "./sync";
 import {
   checkedAtText,
@@ -36,6 +38,7 @@ import {
   disconnectedMessage,
   disconnectErrorMessage,
   failureWords,
+  nameDescription,
   formatDate,
   formatMoment,
   runningText,
@@ -54,6 +57,8 @@ const notFound = 404;
 const conflict = 409;
 const buttonClass = "w-fit whitespace-normal";
 const connectId = "connect-gmail";
+// The paragraph that explains every account's Name field.
+const nameDescriptionId = "account-name-description";
 
 // AccountList lists the member's connected accounts with where each one's
 // sync stands, connects Gmail, reconnects an account that needs it, starts
@@ -262,6 +267,11 @@ export function AccountList({
       <h2 id="accounts-heading" ref={headingRef} tabIndex={-1} className="text-xl font-semibold">
         Gmail accounts
       </h2>
+      {accounts.length > 0 && (
+        <p id={nameDescriptionId} className="text-sm text-muted-foreground">
+          {nameDescription}
+        </p>
+      )}
       {/* Stay mounted so screen readers announce changed text. */}
       <output className={notice ? undefined : "sr-only"}>{notice}</output>
       {failure && <p role="alert">{failure}</p>}
@@ -303,6 +313,7 @@ export function AccountList({
                 setConfirming(account);
                 setDialogOpen(true);
               }}
+              onUnauthorized={onUnauthorized}
             />
           ))}
         </ul>
@@ -363,6 +374,7 @@ function AccountRow({
   onSync,
   onReconnect,
   onDisconnect,
+  onUnauthorized,
 }: {
   account: ListedAccount;
   gmailOffered: boolean;
@@ -374,6 +386,7 @@ function AccountRow({
   onSync: () => void;
   onReconnect: () => void;
   onDisconnect: () => void;
+  onUnauthorized: () => void;
 }): ReactElement {
   const detailsId = `account-${account.id}`;
   const needsReconnect = account.status !== "usable";
@@ -386,7 +399,12 @@ function AccountRow({
     <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-4">
       <div className="flex min-w-0 flex-col gap-1">
         <p className="flex flex-wrap items-center gap-2 font-medium">
-          <span translate="no">{account.email}</span>
+          <AccountMark color={account.color} name={accountName(account)} />
+          {account.name !== null && (
+            <span translate="no" className="font-normal text-muted-foreground">
+              {account.email}
+            </span>
+          )}
           {needsReconnect && (
             <StatusBadge tone="warning" icon={TriangleAlertIcon}>
               Needs reconnecting
@@ -445,6 +463,13 @@ function AccountRow({
           {disconnecting ? "Disconnecting..." : "Disconnect"}
           <span className="sr-only"> {account.email}</span>
         </Button>
+      </div>
+      <div className="basis-full">
+        <AccountNameForm
+          account={account}
+          describedBy={nameDescriptionId}
+          onUnauthorized={onUnauthorized}
+        />
       </div>
     </li>
   );

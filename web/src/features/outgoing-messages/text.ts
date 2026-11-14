@@ -183,6 +183,13 @@ export const otherAccountNote =
 // What an account option that can't send says after its address.
 export const needsReconnectMark = "(needs reconnecting)";
 
+// fromOption returns how a From list names account as words alone: its
+// address, which recipients see, then the name the member chose for it,
+// which only the member sees.
+export function fromOption(account: { email: string; name: string | null }): string {
+  return account.name === null ? account.email : `${account.email} (${account.name})`;
+}
+
 // What the reply part of a conversation says when the member's accounts
 // could not be read, before the reason.
 export const accountsUnreadable = "Could not load your connected accounts, so you can't reply yet.";

@@ -1,3 +1,5 @@
+import { accountDot } from "@/components/account-mark";
+import { cn } from "@/lib/cn";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import { Trash2Icon } from "lucide-react";
@@ -45,6 +47,7 @@ import {
   keyReused,
   mayHaveSaved,
   needsReconnect,
+  fromOption,
   needsReconnectMark,
   needsReconnectNote,
   otherAccountNote,
@@ -274,8 +277,22 @@ export function ReplyEditor({
                   </SelectTrigger>
                   <SelectContent className="min-w-64">
                     {accounts.map((account) => (
-                      <SelectItem key={account.id} id={account.id} textValue={account.email}>
+                      <SelectItem key={account.id} id={account.id} textValue={fromOption(account)}>
+                        {/* The account's mark, as everywhere it is named
+                            (DESIGN.md "Colour"), then its address, which
+                            recipients see, and its name, which only the
+                            member does. */}
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "size-2 shrink-0 self-center rounded-full",
+                            accountDot(account.color),
+                          )}
+                        />
                         <span translate="no">{account.email}</span>
+                        {account.name !== null && (
+                          <span className="text-muted-foreground">{account.name}</span>
+                        )}
                         {account.status !== "usable" && ` ${needsReconnectMark}`}
                       </SelectItem>
                     ))}

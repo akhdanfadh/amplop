@@ -1,3 +1,4 @@
+import { RenameConnectedAccountBody } from "@/api/generated/model/renameConnectedAccountBody.zod";
 import {
   ConversationActionBody,
   type ConversationRow,
@@ -61,6 +62,7 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // request for an older page until it is cleared, failAction the
 // next action, and refuse refuses an action on a conversation, by ID, with
 // a reason; signedOut answers everything 401, as after the session ended.
+// It renames an account as Rename Account does.
 // requests records every path and search it was asked; actions every
 // action body.
 export type MailApi = {
@@ -139,6 +141,16 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         return found
           ? Response.json({ data: { conversation: found, messages: [] } })
           : problem(notFound);
+      }
+      const renamed = /^\/api\/v0\/connected-accounts\/(\d+)$/.exec(path);
+      if (renamed && init?.method === "PATCH") {
+        const account = api.accounts.find((a) => a.id === Number(renamed[1]));
+        if (!account) return problem(notFound);
+        const { name } = RenameConnectedAccountBody.parse(
+          JSON.parse(typeof init.body === "string" ? init.body : "{}"),
+        );
+        account.name = name.trim() === "" ? null : name.trim();
+        return Response.json({ data: { account } });
       }
       if (path === "/api/v0/places") {
         return Response.json({ data: { places: api.places } });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { OutgoingMessageSummary, ProblemType } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
 import {
+  fromOption,
   inProgress,
   keyReused,
   leaveText,
@@ -285,5 +286,12 @@ describe("readErrorMessage for other failures", () => {
   it("keeps the general explanation", () => {
     const err = new ApiError("http", { method: "GET", status: 503 });
     expect(readErrorMessage(err)).toMatch(/^Could not load this message\. /);
+  });
+});
+
+describe("fromOption", () => {
+  it("names an account by its address, then the name only the member sees", () => {
+    expect(fromOption({ email: "ana@work.example", name: null })).toBe("ana@work.example");
+    expect(fromOption({ email: "ana@work.example", name: "Work" })).toBe("ana@work.example (Work)");
   });
 });

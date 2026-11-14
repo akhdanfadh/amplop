@@ -1,6 +1,7 @@
 import type { ConnectOutcome, ProblemType } from "@/api/generated/model";
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
+import type { LeaveWarningText } from "@/components/leave-warning";
 import type { FailedStatus, SyncFailure } from "./sync";
 
 const notFound = 404;
@@ -162,3 +163,19 @@ export function syncErrorMessage(err: ApiError, email: string): string {
 export function syncStartedMessage(email: string): string {
   return `Checking ${email} for new mail.`;
 }
+
+// The account name field (DESIGN.md "Sidebar").
+export const nameLabel = "Name (optional)";
+// Private, unlike the sender name Gmail's "Send mail as" gives recipients.
+export const nameDescription =
+  "A name only you see, shown in mail instead of the address, e.g. Work. Leave it empty to show the address.";
+export const savedText = "Saved";
+export const saveNameText = "Save name";
+export const savingNameText = "Saving...";
+export const nameLeaveWarning: LeaveWarningText = {
+  title: "Leave without saving the name?",
+  description: "The name you typed isn't saved.",
+  stay: "Keep editing",
+  leave: "Leave",
+  leaveVariant: "destructive",
+};

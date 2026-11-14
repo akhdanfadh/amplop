@@ -431,7 +431,10 @@ last two redirect into settings, so settings can move without the server.
   the end of the To row. Labels and values share one 32 px
   line, so a wrapped list keeps its label level with the first line.
 - **From** is a quiet `select`: no outline at rest, `accent` on hover and
-  while its list is open, its chevron and label marking it. A line under
+  while its list is open, its chevron and label marking it. Each account
+  shows its mark, its address, which recipients see, and the name the
+  member chose for it, which only the member does; the compose form's
+  native list holds words only, so it reads "address (name)". A line under
   it says when the chosen account didn't receive the message (the reply
   then starts a new conversation in that account's Gmail), or which
   account needs reconnecting when none could be chosen.
@@ -488,6 +491,11 @@ is inbok's own and runs Check for new mail; the list box sets
 - A page: title, one-sentence lead, then sections divided by hairlines,
   heading and explanation on the left, controls on the right; content caps
   at 720 px; no cards around everything.
+- Connected accounts gives each account a Name field ("Name (optional)",
+  one explanation for all of them under the heading): a name only the
+  member sees, never sent to recipients, unlike Gmail's sender name; it
+  shows in mail instead of the address, and an empty one goes back to the
+  address. Saving keeps focus in the field and says "Saved".
 - Below 1024 px the settings sidebar is a drawer, as mail's is.
 - Signed-out pages (sign-in, setup, registration, password reset, email
   verification): the wordmark and one centred column about 400 px wide.

@@ -480,7 +480,12 @@ loaded, a 401 signs out, and a 403 reads access again.
 
 Settings' Connected accounts (`/settings/connected-accounts`) is where
 members connect Gmail accounts. The page lists the member's accounts,
-oldest first, with the date each was connected. Connect Gmail asks the API
+oldest first, with the date each was connected, each by its mark and the
+name the member chose for it, else its address. Each has a Name field
+(`features/connected-accounts/name-form.tsx`) that saves through Rename
+Account and puts the server's answer in the accounts list, so the
+sidebar and every From list follow; an empty name goes back to the
+address. Connect Gmail asks the API
 for Google's consent page and sends the tab there; Google returns the
 browser to the API, which redirects to this page with `?outcome=`. The
 page validates it against the generated `ConnectOutcome`, ignores any
