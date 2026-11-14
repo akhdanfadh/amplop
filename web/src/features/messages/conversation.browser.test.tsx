@@ -6,6 +6,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
@@ -14,11 +15,28 @@ import {
   type ConversationAccount,
   type ConversationMessage,
 } from "./conversation";
+import type { ListedAccount } from "@/api/generated/model";
 import type { MailAddress } from "./people";
 
 const ok = 200;
 
-const account: ConversationAccount = { name: "Work", email: "me@example.com", color: 3 };
+const account: ConversationAccount = { id: 7, name: "Work", email: "me@example.com", color: 3 };
+// The account as the accounts read lists it, for the reply editor.
+const listed: ListedAccount = {
+  id: account.id,
+  provider: "gmail",
+  email: account.email,
+  status: "usable",
+  createdAt: "2026-11-01T00:00:00Z",
+  needsReconnectSince: null,
+  sync: {
+    status: "complete",
+    failure: null,
+    failedAt: null,
+    lastSyncedAt: "2026-11-13T08:00:00Z",
+    messagesSoFar: null,
+  },
+};
 const me: MailAddress = { name: "Me", address: "me@example.com" };
 const ana: MailAddress = { name: "Ana Lima", address: "ana@example.com" };
 
@@ -54,6 +72,8 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn<(input: string) => Promise<Response>>(async (input) => {
+      if (input === "/api/v0/connected-accounts")
+        return Response.json({ data: { accounts: [listed], syncStopped: false } }, { status: ok });
       const id = /\/messages\/([^/]+)\/content/.exec(input)?.[1] ?? "";
       read.push(id);
       if (expired)
@@ -90,9 +110,9 @@ afterEach(async () => {
 });
 
 // Harness holds the view in a box width pixels wide and 600 high, the
-// pane.
+// pane, with a button that removes the first message, as a sync would.
 function Harness({
-  messages,
+  messages: initial,
   width,
   slots,
 }: {
@@ -100,16 +120,22 @@ function Harness({
   width: number;
   slots: Partial<Parameters<typeof ConversationView>[0]>;
 }) {
+  const [messages, setMessages] = useState(initial);
   return (
-    <div data-pane style={{ width, height: 600 }}>
-      <ConversationView
-        subject="Spring plan"
-        account={account}
-        messages={messages}
-        onUnauthorized={() => {}}
-        {...slots}
-      />
-    </div>
+    <>
+      <div data-pane style={{ width, height: 600 }}>
+        <ConversationView
+          subject="Spring plan"
+          account={account}
+          messages={messages}
+          onUnauthorized={() => {}}
+          {...slots}
+        />
+      </div>
+      <button type="button" onClick={() => setMessages((was) => was.slice(1))}>
+        Sync removes the first message
+      </button>
+    </>
   );
 }
 
@@ -139,15 +165,8 @@ async function show(
   return render(<RouterProvider router={router} />);
 }
 
-// A message's own action, as another feature puts in its header.
-const starAction = () => (
-  <button type="button" aria-label="Star">
-    *
-  </button>
-);
-
 // crossTo sets the pane's width, as a window resizing would, without moving
-// focus, and waits for focus to reach the action now drawn.
+// focus, and waits for focus to reach the Reply now drawn.
 async function crossTo(width: string): Promise<void> {
   const before = document.activeElement;
   const pane = document.querySelector<HTMLElement>("[data-pane]");
@@ -159,7 +178,7 @@ async function crossTo(width: string): Promise<void> {
         ? active.getAttribute("aria-label")
         : null;
     })
-    .toBe("Star");
+    .toBe("Reply");
 }
 
 describe("ConversationView", () => {
@@ -273,6 +292,10 @@ describe("ConversationView", () => {
       .element(page.getByRole("toolbar", { name: "Conversation actions" }).getByRole("button"))
       .toHaveTextContent("Archive");
     await expect.element(page.getByRole("button", { name: "Reply to Preview 2" })).toBeVisible();
+    // After the message's own Reply.
+    await expect
+      .element(page.getByRole("button", { name: "Reply", exact: true }).first())
+      .toBeVisible();
     // A folded message shows no actions; its row opens it.
     await expect
       .element(page.getByRole("button", { name: "Reply to Preview 1" }))
@@ -309,6 +332,28 @@ describe("ConversationView", () => {
     );
   });
 
+  it("ends with the reply editor, answering the newest message", async () => {
+    const messages = [
+      message(1),
+      message(2, { from: [{ name: "Ben", address: "ben@example.com" }], to: [me, ana] }),
+    ];
+    await show(messages);
+
+    // Ben's message also reached Ana, whom Reply leaves out.
+    // The bottom's, after the last message.
+    await userEvent.click(page.getByRole("button", { name: "Reply all", exact: true }).last());
+
+    const editor = page.getByRole("form");
+    await expect.element(editor).toBeVisible();
+    await expect.element(editor.getByText("ben@example.com")).toBeVisible();
+    await expect.element(editor.getByText("ana@example.com")).toBeVisible();
+    // Below the newest message, the last thing in the view.
+    const newest = page.getByRole("article", { name: /Ben/ }).element();
+    expect(editor.element().getBoundingClientRect().top).toBeGreaterThan(
+      newest.getBoundingClientRect().bottom - 1,
+    );
+  });
+
   it("draws its avatars and details button at their sizes", async () => {
     await show([message(1)]);
 
@@ -318,6 +363,35 @@ describe("ConversationView", () => {
     expect([avatar?.width, avatar?.height]).toEqual([36, 36]);
     const details = page.getByRole("button", { name: "Details" }).element().getBoundingClientRect();
     expect([details.width, details.height]).toEqual([20, 20]);
+  });
+
+  it("opens the editor below an older message from its own Reply", async () => {
+    const messages = [
+      message(1, { unread: true, from: [{ name: "Ben", address: "ben@example.com" }] }),
+      message(2),
+    ];
+    await show(messages);
+    const ben = page.getByRole("article", { name: /Ben/ });
+
+    await userEvent.click(ben.getByRole("button", { name: "Reply", exact: true }).first());
+
+    const editor = page.getByRole("form", { name: "Reply" });
+    await expect.element(editor.getByText("ben@example.com")).toBeVisible();
+    // Below Ben's message, above the newest.
+    const newest = page.getByRole("article", { name: /Ana Lima/ }).element();
+    expect(editor.element().getBoundingClientRect().bottom).toBeLessThan(
+      newest.getBoundingClientRect().top + 1,
+    );
+    // One editor: every Reply hides until it closes.
+    await expect
+      .element(page.getByRole("button", { name: "Reply", exact: true }))
+      .not.toBeInTheDocument();
+
+    await userEvent.click(editor.getByRole("button", { name: "Discard" }));
+
+    await expect
+      .element(ben.getByRole("button", { name: "Reply", exact: true }).first())
+      .toHaveFocus();
   });
 
   it("marks a folded message known to have attachments", async () => {
@@ -343,6 +417,32 @@ describe("ConversationView", () => {
     await expect.element(page.getByRole("button", { name: /Preview 6/ })).toHaveFocus();
     await expect.element(page.getByRole("button", { name: "4 more messages" })).toBeVisible();
     await expect.element(page.getByRole("button", { name: "3 more messages" })).toBeVisible();
+  });
+
+  it("keeps the editor and its text when sync removes the message answered", async () => {
+    const messages = [
+      message(1, { unread: true, from: [{ name: "Ben", address: "ben@example.com" }] }),
+      message(2),
+    ];
+    await show(messages);
+    await userEvent.click(
+      page
+        .getByRole("article", { name: /Ben/ })
+        .getByRole("button", { name: "Reply", exact: true })
+        .first(),
+    );
+    await userEvent.type(page.getByRole("textbox", { name: "Message" }), "Noon works.");
+
+    await userEvent.click(page.getByRole("button", { name: "Sync removes the first message" }));
+
+    await expect
+      .element(page.getByText("The message you're answering was deleted.", { exact: true }).first())
+      .toBeVisible();
+    // Announced, as it comes while the member types.
+    await expect
+      .element(page.getByRole("status"))
+      .toHaveTextContent("The message you're answering was deleted.");
+    await expect.element(page.getByRole("textbox", { name: "Message" })).toHaveValue("Noon works.");
   });
 
   it("says nothing of Reply-To on a message the account sent", async () => {
@@ -394,9 +494,10 @@ describe("ConversationView", () => {
     await expect.poll(() => document.activeElement?.textContent).toContain("member10@example.com");
   });
 
-  it("keeps focus on a message's action as the pane crosses 512 px, both ways", async () => {
-    await show([message(1)], 700, { messageActions: starAction });
-    const replies = page.getByRole("button", { name: "Star" });
+  it("keeps focus on a message's Reply as the pane crosses 512 px, both ways", async () => {
+    await show([message(1)]);
+    const replies = page.getByRole("button", { name: "Reply", exact: true });
+    // The header's Reply shows once the member's accounts are read.
     await expect.element(replies.first()).toBeVisible();
     // The header's, drawn beside the date in a wide pane.
     const wide = replies
@@ -413,8 +514,8 @@ describe("ConversationView", () => {
   });
 
   it("leaves focus alone across 512 px once the member clicks away", async () => {
-    await show([message(1)], 700, { messageActions: starAction });
-    const replies = page.getByRole("button", { name: "Star" });
+    await show([message(1)]);
+    const replies = page.getByRole("button", { name: "Reply", exact: true });
     await expect.element(replies.first()).toBeVisible();
     const wide = replies
       .elements()
@@ -428,6 +529,6 @@ describe("ConversationView", () => {
     if (pane) pane.style.width = "390px";
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-    expect(document.activeElement?.getAttribute("aria-label")).not.toBe("Star");
+    expect(document.activeElement?.getAttribute("aria-label")).not.toBe("Reply");
   });
 });

@@ -58,6 +58,8 @@ export const conversationActions = "Conversation actions";
 export const detailsLabel = "Details";
 export const receivedBy = "Received by";
 export const notSendersDomain = "Not the sender's domain";
+// Where a message being answered was, after sync removed it.
+export const answeredDeleted = "The message you're answering was deleted.";
 // A folded message known to have attachments.
 export const hasAttachments = "Has attachments";
 // The line under an open message's sender whose Reply-To is at another

@@ -1,12 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactElement,
-  type RefObject,
-} from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import { Trash2Icon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -77,9 +69,7 @@ const recipientFields = [
 // initial is what it starts with; receiving is the account that holds the
 // answered message, named when it can't send. onSent receives the saved
 // reply, whose send goes on in the background; onDiscard runs when the
-// member discards it; onUnauthorized runs on a 401. discardRef, if given,
-// receives the editor's Discard, which asks first once text is typed, e.g.
-// for a sheet's Escape.
+// member discards it; onUnauthorized runs on a 401.
 export function ReplyEditor({
   answeredId,
   mode,
@@ -89,7 +79,6 @@ export function ReplyEditor({
   onSent,
   onDiscard,
   onUnauthorized,
-  discardRef,
 }: {
   answeredId: string;
   mode: ReplyMode;
@@ -99,7 +88,6 @@ export function ReplyEditor({
   onSent: (reply: OutgoingMessage) => void;
   onDiscard: () => void;
   onUnauthorized: () => void;
-  discardRef?: RefObject<(() => void) | null>;
 }): ReactElement {
   const client = useQueryClient();
   const idPrefix = useId();
@@ -218,10 +206,6 @@ export function ReplyEditor({
     if (edited) setDiscarding(true);
     else onDiscard();
   }
-  useEffect(() => {
-    // Each render's discard sees that render's edits.
-    if (discardRef) discardRef.current = discard;
-  });
 
   // showList shows the Cc or Bcc row and moves focus into it.
   function showList(list: "cc" | "bcc"): void {

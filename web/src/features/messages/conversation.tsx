@@ -13,12 +13,21 @@ import { cn } from "@/lib/cn";
 import { AccountMark, accountRing, type AccountColor } from "@/components/account-mark";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  ConversationReply,
+  MessageReplyActions,
+  ReplyEditorSlot,
+  ReplyProvider,
+  useAnsweredId,
+} from "@/features/outgoing-messages/reply";
+import type { AnsweredMessage } from "@/features/outgoing-messages/reply-defaults";
 import { useMessageContent } from "./content";
 import { foldRows, initiallyOpen, type Folding } from "./folding";
 import { initials, namesOf, repliesElsewhere, type MailAddress } from "./people";
 import {
   conversationActions,
   detailsLabel,
+  answeredDeleted,
   fieldLabels,
   foldLabel,
   formatReceived,
@@ -42,8 +51,8 @@ import { MessageContentView } from "./view";
 // it: its header fields, a plain-text preview for its folded row, and
 // whether it is unread. date is when the provider received it, as an ISO
 // 8601 timestamp. sent says whether the account sent it (it is in the
-// account's Sent mail); without it, a message from the account's own
-// address counts as sent.
+// account's Sent mail), which the reply editor needs; without it, a
+// message from the account's own address counts as sent.
 //
 // DESIGN: the fields of branch 3's API type of the same name, which is
 // not on dev yet; whichever branch merges later passes that type in, with
@@ -65,8 +74,9 @@ export type ConversationMessage = {
 };
 
 // ConversationAccount is the connected account a conversation belongs to:
-// its name as the app shows it, its address, and its colour.
+// its ID, its name as the app shows it, its address, and its colour.
 export type ConversationAccount = {
+  id: number;
   name: string;
   email: string;
   color: AccountColor;
@@ -80,30 +90,48 @@ const shownAddresses = 10;
 // scrolled away; the title, account, and message count; then its messages,
 // oldest first. The newest and unread messages start open, each loading
 // its content; the others fold to one line, and the middle of a long
-// thread folds into "N more messages". The view scrolls itself, so give
-// it a height, and a key per conversation, so the next starts afresh.
-// onUnauthorized runs when a read finds the session gone.
+// thread folds into "N more messages". Each open message offers Reply,
+// which opens the conversation's one reply editor right below it; after
+// the last message, Reply answers the newest, and a sent reply shows its
+// status. The view scrolls itself, so give it a height, and a key per
+// conversation, so the next starts afresh. onUnauthorized runs when a read
+// finds the session gone.
 //
 // The slots hold what other features build: actions, the conversation's
 // actions in the toolbar (and Back, where one pane shows at a time); and
-// messageActions, a message's own actions in its header.
-export function ConversationView({
-  subject,
-  account,
-  messages,
-  onUnauthorized,
-  actions,
-  messageActions,
-}: {
+// messageActions, a message's other actions in its header, after Reply.
+export function ConversationView(props: ConversationProps): ReactElement {
+  return (
+    <ReplyProvider onUnauthorized={props.onUnauthorized}>
+      <Conversation {...props} />
+    </ReplyProvider>
+  );
+}
+
+type ConversationProps = {
   subject: string;
   account: ConversationAccount;
   messages: readonly ConversationMessage[];
   onUnauthorized: () => void;
   actions?: ReactNode;
   messageActions?: (message: ConversationMessage) => ReactNode;
-}): ReactElement {
+};
+
+// Conversation is the view inside its reply editor's provider.
+function Conversation({
+  subject,
+  account,
+  messages,
+  onUnauthorized,
+  actions,
+  messageActions,
+}: ConversationProps): ReactElement {
   const id = useId();
+  // The message the open editor answers keeps its row out of "N more
+  // messages", so the editor below it stays in sight, folded or not.
+  const answeredId = useAnsweredId();
   const title = subjectText(subject);
+  const newest = messages.at(-1);
   const scroller = useRef<HTMLDivElement>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -136,8 +164,14 @@ export function ConversationView({
     focusNext.current = null;
   });
 
-  // Open or touched: each keeps its own row.
+  // Open, touched, or answered: each keeps its own row.
   const shown = new Set([...open, ...touched]);
+  if (answeredId) shown.add(answeredId);
+  // A message being answered that sync has since removed, e.g. deleted
+  // elsewhere: its row stays, under the same key, so the editor below it
+  // and its text stay until the member sends or discards.
+  const answeredGone =
+    answeredId !== null && !messages.some((message) => message.id === answeredId);
 
   const rowId = (messageId: string) => `${id}-row-${messageId}`;
   const foldId = (messageId: string) => `${id}-fold-${messageId}`;
@@ -206,53 +240,90 @@ export function ConversationView({
             <span className="shrink-0">{messageCount(messages.length)}</span>
           </p>
         </header>
+        {/* Present from the start, so a screen reader announces what
+            enters it: the answered message going while the member types. */}
+        <output className="sr-only">{answeredGone ? answeredDeleted : ""}</output>
         <ol className="-mx-2 flex flex-col border-t">
-          {foldRows(messages, shown, folding).map((row) =>
-            row.kind === "more" ? (
-              <li key={`more-${row.messages[0].id}`} className="border-b">
-                <button
-                  type="button"
-                  onClick={() => showFolded(row.messages[0])}
-                  className="flex w-full items-center gap-3 px-2 py-2 text-sm text-muted-foreground outline-none hover:bg-accent focus-visible:focus-ring-inset"
-                >
-                  {/* The circle repeats the count the words say. */}
-                  <span
-                    aria-hidden="true"
-                    className="flex size-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold text-foreground tabular-nums"
+          {[
+            ...foldRows(messages, shown, folding).map((row) =>
+              row.kind === "more" ? (
+                <li key={`more-${row.messages[0].id}`} className="border-b">
+                  <button
+                    type="button"
+                    onClick={() => showFolded(row.messages[0])}
+                    className="flex w-full items-center gap-3 px-2 py-2 text-sm text-muted-foreground outline-none hover:bg-accent focus-visible:focus-ring-inset"
                   >
-                    {row.messages.length.toLocaleString("en")}
-                  </span>
-                  {moreMessages(row.messages.length)}
-                </button>
-              </li>
-            ) : (
-              <li key={row.message.id} className="border-b">
-                {open.has(row.message.id) ? (
-                  <OpenMessage
-                    message={row.message}
-                    account={account}
-                    foldId={foldId(row.message.id)}
-                    onFold={() => foldMessage(row.message.id)}
-                    actions={messageActions?.(row.message)}
-                    today={today}
-                    onUnauthorized={onUnauthorized}
-                  />
-                ) : (
-                  <FoldedMessage
-                    message={row.message}
-                    account={account}
-                    id={rowId(row.message.id)}
-                    onOpen={() => openMessage(row.message.id)}
-                    today={today}
-                  />
-                )}
+                    {/* The circle repeats the count the words say. */}
+                    <span
+                      aria-hidden="true"
+                      className="flex size-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold text-foreground tabular-nums"
+                    >
+                      {row.messages.length.toLocaleString("en")}
+                    </span>
+                    {moreMessages(row.messages.length)}
+                  </button>
+                </li>
+              ) : (
+                <li key={row.message.id} className="border-b">
+                  {open.has(row.message.id) ? (
+                    <OpenMessage
+                      message={row.message}
+                      account={account}
+                      foldId={foldId(row.message.id)}
+                      onFold={() => foldMessage(row.message.id)}
+                      actions={
+                        <>
+                          <MessageReplyActions message={answered(row.message, account)} />
+                          {messageActions?.(row.message)}
+                        </>
+                      }
+                      today={today}
+                      onUnauthorized={onUnauthorized}
+                    />
+                  ) : (
+                    <FoldedMessage
+                      message={row.message}
+                      account={account}
+                      id={rowId(row.message.id)}
+                      onOpen={() => openMessage(row.message.id)}
+                      today={today}
+                    />
+                  )}
+                  <ReplyEditorSlot messageId={row.message.id} />
+                </li>
+              ),
+            ),
+            // In the same list as the rows, under the answered message's
+            // key, so React keeps the editor in it rather than remounting it.
+            answeredGone && (
+              <li key={answeredId} className="border-b">
+                <p className="px-2 py-3 text-sm text-muted-foreground">{answeredDeleted}</p>
+                <ReplyEditorSlot messageId={answeredId} />
               </li>
             ),
-          )}
+          ]}
         </ol>
+        {newest && (
+          <div className="mt-4">
+            <ConversationReply message={answered(newest, account)} />
+          </div>
+        )}
       </article>
     </div>
   );
+}
+
+// answered returns message as the reply editor takes it, from account.
+function answered(message: ConversationMessage, account: ConversationAccount): AnsweredMessage {
+  return {
+    id: message.id,
+    accountId: account.id,
+    from: message.from,
+    to: message.to,
+    cc: message.cc,
+    replyTo: message.replyTo,
+    sent: countsAsSent(message, account),
+  };
 }
 
 // countsAsSent reports whether account sent message: as the conversation

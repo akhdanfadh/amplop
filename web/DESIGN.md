@@ -356,6 +356,14 @@ last two redirect into settings, so settings can move without the server.
   when others received it, and More (Forward / Mark unread from here,
   Star this message, Delete this message / Show original, Download .eml),
   each only once built; in a narrow pane they end the "to" line.
+- Reply on a message opens the conversation's one editor right below that
+  message; Reply and Reply all after the last message answer the newest,
+  so the editor opens at the bottom. While it is open every Reply hides,
+  so a second never replaces typed text; Discard returns focus to the
+  Reply that opened it. If sync removes the message being answered, its
+  place keeps "The message you're answering was deleted." and the editor
+  below it, until the member sends or discards. A sent reply's status
+  shows at the bottom, where the reply lands, as the newest message.
 - An HTML body sits on the white `sheet`; a plain-text body keeps the
   theme's surface. The frame grows to the body and the pane scrolls; wider mail scales to fit down to 60%, then scrolls
   sideways. A notice explains hidden remote images, with "Show images".
@@ -379,8 +387,9 @@ last two redirect into settings, so settings can move without the server.
 
 ### Compose and reply
 
-- **Reply** opens inline at the bottom of the conversation: labelled
-  Reply, Reply all, Forward buttons; one editor per conversation; From is
+- **Reply** opens inline below the message answered (the newest, from the
+  labelled Reply, Reply all, Forward buttons after it; an older one, from
+  its header's Reply); one editor per conversation; From is
   the receiving account, changeable and always visible; a hidden "Re:"
   subject; the quote folded; Ctrl/Cmd+Enter sends.
 - **The editor** is one `card`: a row each for From, To, and the Cc and
@@ -406,13 +415,18 @@ last two redirect into settings, so settings can move without the server.
   email address", and the field's error says which.
 - **A new message** opens in a 560 px window docked bottom right that stays
   while the member moves around; minimise, full screen, close. On phones
-  both are full-screen editors. An editor keeps the layout it opened in
-  until it closes, so turning a phone or resizing the window never moves
-  what is being written.
+  a new message is a full-screen editor, which keeps its layout until it
+  closes, so turning a phone or resizing the window never moves what is
+  being written. A reply stays inline on phones too: without saved
+  drafts, a full-screen reply would make checking an earlier message
+  cost the text; inline, it is a scroll away, and leaving the page with
+  typed text asks first.
 - **After Send**, the message waits in place as a card with its status
   until synced mail replaces it.
 - **Unsent text** lives in the tab's session storage, cleared on send,
   discard, and sign-out; its conversation row shows "Draft" in `primary`.
+  Not built yet: until then a reply's text lives only in its open editor,
+  and leaving the page with typed text asks first.
 
 ### Search
 

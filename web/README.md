@@ -603,16 +603,23 @@ a message's page says and what it offers, so the two cannot disagree.
 
 ### Reply
 
-`ConversationReply` (`src/features/outgoing-messages/reply.tsx`) is the
-bottom of a conversation: Reply, and Reply all when someone else received
-the message, open one inline editor answering the conversation's last
-message through Reply to Message (US009). It takes that message as an
-`AnsweredMessage`: branch 3's conversation message (senders and
-recipients as `{name, address}`), its account, and whether the account
-sent it, the per-message `sent` flag the conversation API is to add. It
-reads only the member's accounts, so the conversation view mounts it as it
-is; until branch 3 and 4b merge, its browser tests render it with
-fixtures. `replyDefaults` (`reply-defaults.ts`) fills the editor, with
+A conversation's one reply editor answers a message through Reply to
+Message (US009). `ReplyProvider` (`src/features/outgoing-messages/reply.tsx`)
+holds it around the conversation: which message it answers, in which
+mode, and the last reply sent. The conversation view places its pieces:
+`MessageReplyActions` in each open message's header (Reply, and Reply all
+when someone else received the message, as icon buttons),
+`ReplyEditorSlot` below each message, which shows the editor when it
+answers that message, and `ConversationReply` after the last message:
+Reply and Reply all for the newest, and the sent reply's status. The
+editor is inline on every screen, a phone's too, so an earlier message
+stays a scroll away while the member writes. While the editor is open every
+Reply hides, so the open editor is never replaced or moved, which would
+remount it and lose its text and Idempotency-Key. Each piece takes the
+answered message as an `AnsweredMessage`: branch 3's conversation message
+(senders and recipients as `{name, address}`), its account, and whether
+the account sent it, the per-message `sent` flag the conversation API is
+to add. `replyDefaults` (`reply-defaults.ts`) fills the editor, with
 table tests:
 
 - From is the account that received the message while it can send;
@@ -639,12 +646,9 @@ compose form does, plus a deleted answered message (404
 `message-not-found`), which keeps the text to copy. Discard closes an
 untouched editor at once and asks first once something was typed, then
 returns focus to Reply; leaving the page asks as the compose form does. An
-address typed but not yet a chip counts as typed. On a phone the editor is
-a full-screen sheet: Escape runs Discard, and the scrim, a stray tap away,
-does nothing. The editor keeps the layout it opened in, inline or sheet,
-and the message it answers until it closes, so neither a window crossing
-the phone width nor a newer message synced meanwhile changes what is being
-written. After Send the editor gives way to the reply's status, read again
+address typed but not yet a chip counts as typed. The editor keeps the
+message it answers until it closes, so a newer message synced meanwhile
+never changes what is being written. After Send the editor gives way to the reply's status, read again
 every 2 seconds until the send ends; a failed reread keeps the status,
 says it may be out of date, and offers Try again. It has Send again and a
 link to its Outbox page. A refused reply's Edit and send opens the editor
@@ -729,7 +733,7 @@ them.
 `ConversationView` (`src/features/messages/conversation.tsx`) shows one
 conversation as DESIGN.md "Reading pane" describes it. Its props:
 
-- `subject` and `account` (name, address, colour) for its title, and
+- `subject` and `account` (ID, name, address, colour) for its title, and
   `messages`, oldest first: each message's header fields, its preview,
   whether it is unread, whether the account sent it (`sent`), and
   whether it is known to have attachments (`attachments`, a paperclip on
@@ -737,15 +741,18 @@ conversation as DESIGN.md "Reading pane" describes it. Its props:
 - `onUnauthorized`: runs when a read finds the session gone.
 - `actions`: the conversation's actions in the pinned toolbar, and Back
   where one pane shows at a time.
-- `messageActions(message)`: a message's own actions in its header;
-  shown only while the message is open. A pane under 512 px draws them on
-  the "to" line instead, a second copy, and `useFocusFollowsCopy` moves
-  keyboard focus to the copy drawn when the pane crosses that width.
+- `messageActions(message)`: a message's other actions in its header,
+  after Reply; shown only while the message is open.
 
-Without a `sent` flag, a message from the account's own address counts
-as sent, so its Reply-To line stays quiet; branch 3's conversation
-detail is to send the real flag. The view scrolls itself, so give it a
-height, and a `key` per conversation, so folding starts afresh. Each open message loads its content through `useMessageContent`
+The view holds the reply editor's `ReplyProvider` and places its pieces
+("Reply"): Reply in each open message's header, the editor below the
+message it answers, whose row then stays out of "N more messages", and
+the bottom's Reply after the last message. Without a `sent` flag, a
+message from the account's own address counts as sent; branch 3's
+conversation detail is to send the real flag. The toolbar's actions are
+the mail list's. The view scrolls itself,
+so give it a height, and a `key` per conversation, so folding starts
+afresh. Each open message loads its content through `useMessageContent`
 (`content.ts`), so folded messages cost no request; content never goes
 stale, as a message's never changes, so it is not read again in the
 background, and a 401 runs `onUnauthorized`; the content shows in
@@ -754,9 +761,11 @@ background, and a 401 runs `onUnauthorized`; the content shows in
 
 `foldRows` (`folding.ts`) decides the rows: open, folded, or counted in
 "N more messages", which gathers only messages the member has not opened
-or folded. Opening, folding, and showing the folded middle move focus to
-the control that took the place of the one pressed, so focus is never
-lost. The subject joins the toolbar when the title passes under
+or folded. A message being answered keeps its row, and if sync removes
+it, the view keeps a row under its key, so React keeps the editor and
+its text. Opening, folding, and showing the folded middle move
+focus to the control that took the place of the one pressed, so focus is
+never lost. The subject joins the toolbar when the title passes under
 it, which an `IntersectionObserver` on the view's own scroll box tells.
 The layout follows the pane, not the window, with container queries
 (`@container`, `@lg:`, 512 px at the default text size).
