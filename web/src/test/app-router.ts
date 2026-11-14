@@ -2,7 +2,18 @@ import { createElement } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { vi } from "vite-plus/test";
+import { AppShell } from "@/components/app-shell";
 import { routeTree } from "@/routeTree.gen";
+
+// NOTE: a test mounts the app in a <div> inside <body>, not on the
+// document as the app's client entry does. The root route's shell would
+// render <html> and <body> there, React would take the real <body> as its
+// own, and its event dispatch would then loop forever on an event heard
+// by a portal's container, e.g. any key press once a toast has shown
+// (react/react#35480, #37065). The tests take the shell's behaviour
+// without its document. Object.assign, since the generated root's options
+// are typed as any route's, which lack shellComponent.
+Object.assign(routeTree.options, { shellComponent: AppShell });
 
 const ok = 200;
 const unauthorized = 401;
