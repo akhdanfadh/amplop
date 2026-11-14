@@ -197,8 +197,11 @@ which brings 400 and 600 close. Unread rows also take 650 there.
   chips, buttons, and From keep the ring for the keyboard. Every page
   focuses its heading when it opens, the first load included, so the
   keyboard starts in the page, not in the sidebar, whose landmark is
-  named. No skip link: a skip button (a `#` link would change the address)
-  is the next step if testing shows a need.
+  named. A step that continues what the member is typing focuses its one
+  field instead, its instruction as the field's description: the sign-in
+  code, so a code typed at once lands. No skip link: a skip button (a `#`
+  link would change the address) is the next step if testing shows a
+  need.
 - **Cursor:** the hand only over links, which take the member somewhere
   else; buttons, list rows, and every other control keep the arrow, as in
   desktop apps (Tailwind 4's default for buttons).
@@ -685,8 +688,10 @@ pull-to-refresh, which would reload the app, never starts.
   before the control; error under it, with an icon and words. "(optional)"
   marks optional fields; required ones are unmarked. A link or button about
   the field sits at the end of the label's line in small text, e.g. "Forgot
-  password?", and comes after the control in Tab order, so Tab from one
-  field reaches the next, not the action.
+  password?" or "Use a backup code", and comes after the control in Tab
+  order, so Tab from one field reaches the next, not the action.
+- A one-time code is one box per character in two halves; it takes a
+  paste and the browser's one-time-code fill.
 - Errors appear after the first submit, then update live. Focus moves to
   the first invalid field. A server refusal stays while its field holds
   the refused value, returns if the member types that value again, and
@@ -703,6 +708,16 @@ pull-to-refresh, which would reload the app, never starts.
   `LeaveWarning`; closing the tab gets the browser's question.
 - One independent choice (theme, a switch) applies at once; related fields
   save together with Save.
+
+### Outcome screens
+
+When a signed-out page's form gives way to a result, e.g. "This sign-in
+has ended" on the code step, the result becomes the page
+(`SignedOutPage`), in the same card as the form pages and, like them,
+without an icon: the title says the outcome.
+
+- The title says what happened and takes focus, so a screen reader reads
+  the outcome first. A short lead or paragraph says why and what next.
 
 ### Feedback
 

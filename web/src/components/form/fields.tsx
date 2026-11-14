@@ -1,10 +1,16 @@
-import { useId, type ChangeEvent, type ReactElement, type ReactNode } from "react";
+import { Fragment, useId, type ReactElement, type ReactNode } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { cn } from "@/lib/cn";
 import { CircleAlertIcon } from "lucide-react";
 import { PasswordInput } from "@/components/password-input";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSeparator,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import { useFieldContext, useFormContext } from "./form-context";
 
 // What every shared field takes: its label, a description shown before the
@@ -28,7 +34,6 @@ type ControlProps = {
   "aria-invalid": boolean;
   "aria-describedby": string | undefined;
   onBlur: () => void;
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
 };
 
 // EmailField is the current field as an email address input. autoComplete
@@ -41,9 +46,10 @@ export function EmailField({
 }: FieldProps & { autoComplete: "username" | "email" | "off" }): ReactElement {
   return (
     <FieldFrame {...text}>
-      {(control) => (
+      {(control, change) => (
         <Input
           {...control}
+          onChange={(event) => change(event.target.value)}
           // The browser also strips spaces around the value of type "email"
           // (HTML's value sanitization), as the server does.
           type="email"
@@ -71,9 +77,10 @@ export function PasswordField({
 }): ReactElement {
   return (
     <FieldFrame {...text}>
-      {(control) => (
+      {(control, change) => (
         <PasswordInput
           {...control}
+          onChange={(event) => change(event.target.value)}
           label={toggle ?? text.label.toLowerCase()}
           type="password"
           autoComplete={autoComplete}
@@ -88,16 +95,77 @@ export function PasswordField({
   );
 }
 
-// FieldFrame renders the current text field's label, description, the
-// control children returns from its props, and the field's errors under it.
-// Every field kind in this file renders through it.
+// CodeField is the current field as a one-time code of length characters
+// in two halves, one box per character, e.g. an authenticator's six digits.
+// pattern is the characters it takes, e.g. input-otp's REGEXP_ONLY_DIGITS,
+// inputMode picks a phone's keyboard, e.g. "numeric" for the number pad,
+// and paste turns pasted text into the code, e.g. dropping its spaces.
+export function CodeField({
+  length,
+  pattern,
+  inputMode,
+  paste,
+  ...text
+}: FieldProps & {
+  length: number;
+  pattern: string;
+  inputMode: "numeric" | "text";
+  paste?: (text: string) => string;
+}): ReactElement {
+  const half = Math.ceil(length / 2);
+
+  return (
+    <FieldFrame {...text}>
+      {(control, change) => (
+        <InputOTP
+          {...control}
+          onChange={change}
+          maxLength={length}
+          pattern={pattern}
+          inputMode={inputMode}
+          pasteTransformer={paste}
+          // Lets the browser fill a code an SMS or a password manager holds
+          // (HTML's autocomplete "one-time-code").
+          autoComplete="one-time-code"
+          autoCapitalize="none"
+          spellCheck={false}
+          containerClassName="max-w-full flex-wrap gap-2"
+        >
+          {[0, half].map((start) => (
+            <Fragment key={start}>
+              <InputOTPGroup className="min-w-0 flex-1 basis-24">
+                {Array.from({ length: Math.min(half, length - start) }, (_, offset) => (
+                  <InputOTPSlot
+                    key={start + offset}
+                    index={start + offset}
+                    // The input, not a box, says the field is invalid; a box
+                    // only takes its colour.
+                    className="group-data-[invalid=true]/field:border-destructive"
+                  />
+                ))}
+              </InputOTPGroup>
+              {start === 0 && <InputOTPSeparator />}
+            </Fragment>
+          ))}
+        </InputOTP>
+      )}
+    </FieldFrame>
+  );
+}
+
+// FieldFrame renders the current field's label, description, the control
+// children returns from its props and a function that sets the field's
+// value, and the field's errors under it. Every field kind in this file
+// renders through it.
 function FieldFrame({
   label,
   description,
   optional,
   labelAction,
   children,
-}: FieldProps & { children: (control: ControlProps) => ReactNode }): ReactElement {
+}: FieldProps & {
+  children: (control: ControlProps, change: (value: string) => void) => ReactNode;
+}): ReactElement {
   const field = useFieldContext<string>();
   const form = useFormContext();
   const sending = useSelector(form.store, (state) => state.isSubmitting);
@@ -135,16 +203,18 @@ function FieldFrame({
         fieldLabel
       )}
       {description && <FieldDescription id={descriptionId}>{description}</FieldDescription>}
-      {children({
-        id,
-        name: field.name,
-        value: field.state.value,
-        disabled: sending,
-        "aria-invalid": invalid,
-        "aria-describedby": describedBy || undefined,
-        onBlur: field.handleBlur,
-        onChange: (event) => field.handleChange(event.target.value),
-      })}
+      {children(
+        {
+          id,
+          name: field.name,
+          value: field.state.value,
+          disabled: sending,
+          "aria-invalid": invalid,
+          "aria-describedby": describedBy || undefined,
+          onBlur: field.handleBlur,
+        },
+        field.handleChange,
+      )}
       {labelAction && (
         <div data-label-row className="col-start-2 row-start-1 justify-self-end">
           {labelAction}

@@ -310,3 +310,89 @@ describe("a form request", () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 });
+
+const CodeSchema = z.object({ code: z.string().length(6, { error: "Enter all 6 digits." }) });
+
+// CodeTestForm is a form with one code field, six digits, with an action
+// beside its label.
+function CodeTestForm() {
+  const form = useAppForm({
+    defaultValues: { code: "" },
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: CodeSchema },
+  });
+
+  return (
+    <form.AppForm>
+      <form.Form label="Code test">
+        <form.AppField name="code">
+          {(field) => (
+            <field.CodeField
+              label="Authenticator code"
+              description="The six digits your app shows."
+              length={6}
+              pattern="^\d+$"
+              inputMode="numeric"
+              paste={(text) => text.replace(/\s/g, "")}
+              labelAction={<button type="button">Use a backup code</button>}
+            />
+          )}
+        </form.AppField>
+        <form.SubmitButton working="Checking...">Check</form.SubmitButton>
+      </form.Form>
+    </form.AppForm>
+  );
+}
+
+const code = () => page.getByRole("textbox", { name: "Authenticator code" });
+
+// top returns where element's box starts, in CSS pixels from the viewport.
+function top(element: Element): number {
+  return element.getBoundingClientRect().top;
+}
+
+describe("a code field", () => {
+  it("is named by its label, with its action beside it and its description read", async () => {
+    await render(<CodeTestForm />);
+
+    await expect.element(code()).toHaveAccessibleDescription("The six digits your app shows.");
+    await expect.element(code()).toHaveAttribute("inputmode", "numeric");
+    await expect.element(page.getByRole("button", { name: "Use a backup code" })).toBeVisible();
+  });
+
+  it("shows its check's error after a submit", async () => {
+    await render(<CodeTestForm />);
+
+    await userEvent.click(page.getByRole("button", { name: "Check" }));
+
+    await expect.element(code()).toHaveAttribute("aria-invalid", "true");
+    await expect
+      .element(code())
+      .toHaveAccessibleDescription("The six digits your app shows. Enter all 6 digits.");
+  });
+
+  it("takes a pasted code through paste, e.g. without its spaces", async () => {
+    await render(<CodeTestForm />);
+    const input = code().element();
+    if (!(input instanceof HTMLInputElement)) throw new Error("No code input rendered.");
+    input.focus();
+
+    const data = new DataTransfer();
+    data.setData("text/plain", "123 456");
+    input.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true }));
+
+    await expect.element(code()).toHaveValue("123456");
+  });
+
+  it("puts its action on the label's line but after the field in Tab order", async () => {
+    await render(<CodeTestForm />);
+    const action = page.getByRole("button", { name: "Use a backup code" });
+
+    await userEvent.click(code());
+    await userEvent.tab();
+
+    await expect.element(action).toHaveFocus();
+    const label = page.getByText("Authenticator code", { exact: true }).element();
+    expect(Math.abs(top(action.element()) - top(label))).toBeLessThan(8);
+  });
+});

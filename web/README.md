@@ -326,7 +326,8 @@ A rejected code can be retried; an expired or exhausted challenge requires
 starting sign-in again. Reloading also returns to the password step.
 A deactivated account with the right password sees "This account is
 deactivated. Ask your administrator." The code step answers a 403 the same
-way as an ended challenge: the form stops and offers to start again.
+way as an ended challenge: the form gives way to an end screen, "This
+sign-in has ended", with the server's reason and "Start sign-in again".
 An uncertain response offers a session check before another attempt.
 Administrators without confirmed TOTP land on `/settings/security` to
 enroll. Members reach the same page through the settings sidebar.
@@ -1415,14 +1416,15 @@ const form = useAppForm({
   `request.reference` is the failure's request reference only for a fault
   (a 5xx or a lost answer), so a refusal, e.g. a wrong password, shows
   none.
-- **Field kinds** are `EmailField` and `PasswordField`. Each takes a
-  `label`, an optional `description` shown before the control, `optional`,
-  and `labelAction`, a link or button beside the label, e.g. "Forgot
-  password?".
+- **Field kinds** are `EmailField`, `PasswordField`, and `CodeField`, a
+  one-time code in boxes. Each takes a `label`, an optional `description`
+  shown before the control, `optional`, and `labelAction`, a link or
+  button beside the label, e.g. "Forgot password?".
 - **A new field kind** goes in `src/components/form/fields.tsx` with its
   first form: render the control through `FieldFrame`, which reads the
   field from `useFieldContext` and gives the control its id, name, value,
-  lock, `aria-invalid`, and `aria-describedby`; then add it to
+  lock, `aria-invalid`, and `aria-describedby`, and a function that sets
+  the value; then add it to
   `fieldComponents` in `app-form.ts`. Its browser test joins
   `app-form.browser.test.tsx`.
 

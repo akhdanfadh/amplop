@@ -2,7 +2,6 @@ import * as React from "react";
 import { cn } from "@/lib/cn";
 import { OTPInput, OTPInputContext } from "input-otp";
 import { MinusIcon } from "lucide-react";
-import inputOTPStyles from "./input-otp.css?url";
 
 function InputOTP({
   className,
@@ -11,37 +10,33 @@ function InputOTP({
 }: React.ComponentProps<typeof OTPInput> & {
   containerClassName?: string;
 }) {
+  // WORKAROUND, relying on input-otp internals. On mount, OTPInput adds its
+  // rules in an inline <style> unless an element with the id
+  // input-otp-style exists. The server's Content-Security-Policy blocks that
+  // <style>: the browser logs a violation and the rules are lost. The root
+  // route links input-otp.css with that id, so OTPInput skips its own. It
+  // sits in the shell, not here: a stylesheet first rendered here makes
+  // React 19 hold the page until it loads, which showed the router's
+  // "Loading..." between sign-in and its code step.
+  //
+  // The id is not documented. If an upgrade renames it, the violation comes
+  // back on every page with a code input, and the copied rules in
+  // input-otp.css can drift: after upgrading input-otp, compare both with
+  // the library's dist/index.mjs.
+  //
+  // The documented way is the nonce prop, but a nonce must be new for every
+  // response, so the server would rewrite the page each time.
   return (
-    <>
-      {/*
-       * WORKAROUND, relying on input-otp internals. On mount, OTPInput adds
-       * its rules in an inline <style> unless an element with the id
-       * input-otp-style exists. The server's Content-Security-Policy blocks
-       * that <style>: the browser logs a violation and the rules are lost.
-       * This stylesheet takes the id and holds the same rules, so OTPInput
-       * skips its own. React moves it into <head> once, however many inputs
-       * a page has.
-       *
-       * The id is not documented. If an upgrade renames it, the violation
-       * comes back on every page with a code input, and the copied rules in
-       * input-otp.css can drift: after upgrading input-otp, compare both
-       * with the library's dist/index.mjs.
-       *
-       * The documented way is the nonce prop, but a nonce must be new for
-       * every response, so the server would rewrite the page each time.
-       */}
-      <link rel="stylesheet" href={inputOTPStyles} precedence="default" id="input-otp-style" />
-      <OTPInput
-        data-slot="input-otp"
-        containerClassName={cn(
-          "cn-input-otp flex items-center has-disabled:opacity-50",
-          containerClassName,
-        )}
-        spellCheck={false}
-        className={cn("disabled:cursor-not-allowed", className)}
-        {...props}
-      />
-    </>
+    <OTPInput
+      data-slot="input-otp"
+      containerClassName={cn(
+        "cn-input-otp flex items-center has-disabled:opacity-50",
+        containerClassName,
+      )}
+      spellCheck={false}
+      className={cn("disabled:cursor-not-allowed", className)}
+      {...props}
+    />
   );
 }
 
