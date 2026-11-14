@@ -898,7 +898,7 @@ makes a later event loop forever
 ([react#35480](https://github.com/react/react/issues/35480)), and a
 hanging test never fails by itself, since its timer runs on the frozen
 page. `src/test/app-router.browser.test.tsx` checks that React leaves the
-page's `<body>` alone.
+page's `<body>` alone; `make` stops the web tests after five minutes.
 
 Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
 functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the
