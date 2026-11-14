@@ -76,6 +76,60 @@ func (q *Queries) ListIndexSources(ctx context.Context, arg ListIndexSourcesPara
 	return items, nil
 }
 
+const listUserIDs = `-- name: ListUserIDs :many
+SELECT id FROM users ORDER BY id
+`
+
+// Every member, with mail or not.
+func (q *Queries) ListUserIDs(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listUserIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserMessageIDs = `-- name: ListUserMessageIDs :many
+SELECT m.id
+FROM messages m
+JOIN connected_accounts a ON a.id = m.connected_account_id
+WHERE a.user_id = $1
+ORDER BY m.id
+`
+
+// Every message of the member's connected accounts.
+func (q *Queries) ListUserMessageIDs(ctx context.Context, owner int64) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listUserMessageIDs, owner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readAccountOwner = `-- name: ReadAccountOwner :one
 SELECT user_id FROM connected_accounts WHERE id = $1
 `
@@ -86,4 +140,15 @@ func (q *Queries) ReadAccountOwner(ctx context.Context, id int64) (int64, error)
 	var user_id int64
 	err := row.Scan(&user_id)
 	return user_id, err
+}
+
+const userExists = `-- name: UserExists :one
+SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)::boolean
+`
+
+func (q *Queries) UserExists(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRow(ctx, userExists, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }

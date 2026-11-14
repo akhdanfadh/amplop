@@ -3,6 +3,7 @@ package search_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"sync"
 	"testing"
@@ -31,12 +32,13 @@ type indexMemory struct {
 	mu      sync.Mutex
 	sources map[int64][]search.Source
 	bodies  map[uuid.UUID]messagecontent.MessageTexts
-	fail    error // returned by every read when set
+	users   map[int64]bool // members with no message saved yet
+	fail    error          // returned by every read when set
 	read    []uuid.UUID
 }
 
 func newIndexMemory() *indexMemory {
-	return &indexMemory{sources: map[int64][]search.Source{}, bodies: map[uuid.UUID]messagecontent.MessageTexts{}}
+	return &indexMemory{sources: map[int64][]search.Source{}, bodies: map[uuid.UUID]messagecontent.MessageTexts{}, users: map[int64]bool{}}
 }
 
 func (m *indexMemory) IndexSources(_ context.Context, owner int64, ids []uuid.UUID) ([]search.Source, error) {
@@ -62,6 +64,42 @@ func (m *indexMemory) Read(_ context.Context, _ int64, messageID uuid.UUID, _ me
 	}
 	m.read = append(m.read, messageID)
 	return m.bodies[messageID], nil
+}
+
+func (m *indexMemory) UserIDs(context.Context) ([]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.fail != nil {
+		return nil, m.fail
+	}
+	ids := slices.Collect(maps.Keys(m.users))
+	for owner := range m.sources {
+		ids = append(ids, owner)
+	}
+	return ids, nil
+}
+
+func (m *indexMemory) UserExists(_ context.Context, owner int64) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.fail != nil {
+		return false, m.fail
+	}
+	_, ok := m.sources[owner]
+	return ok || m.users[owner], nil
+}
+
+func (m *indexMemory) MessageIDs(_ context.Context, owner int64) ([]uuid.UUID, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.fail != nil {
+		return nil, m.fail
+	}
+	var ids []uuid.UUID
+	for _, source := range m.sources[owner] {
+		ids = append(ids, source.ID)
+	}
+	return ids, nil
 }
 
 // save keeps source as owner's message.

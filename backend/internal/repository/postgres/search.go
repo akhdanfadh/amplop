@@ -41,6 +41,34 @@ func (db *DB) IndexSources(ctx context.Context, owner int64, ids []uuid.UUID) ([
 	return sources, nil
 }
 
+// UserIDs returns the ID of every member, with mail or not.
+func (db *DB) UserIDs(ctx context.Context) ([]int64, error) {
+	ids, err := sqlc.New(db.pool).ListUserIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list user IDs: %w", err)
+	}
+	return ids, nil
+}
+
+// UserExists reports whether member owner exists.
+func (db *DB) UserExists(ctx context.Context, owner int64) (bool, error) {
+	exists, err := sqlc.New(db.pool).UserExists(ctx, owner)
+	if err != nil {
+		return false, fmt.Errorf("check user: %w", err)
+	}
+	return exists, nil
+}
+
+// MessageIDs returns the IDs of all of member owner's messages, in every
+// connected account.
+func (db *DB) MessageIDs(ctx context.Context, owner int64) ([]uuid.UUID, error) {
+	ids, err := sqlc.New(db.pool).ListUserMessageIDs(ctx, owner)
+	if err != nil {
+		return nil, fmt.Errorf("list user message IDs: %w", err)
+	}
+	return ids, nil
+}
+
 // indexAfter saves, in tx, the job that brings accountID's messages with
 // ids in the search index up to date with what tx commits. A worker sees
 // it only once tx commits, and a rollback drops it with the change.

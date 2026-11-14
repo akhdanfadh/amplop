@@ -17,3 +17,18 @@ FROM messages m
 JOIN connected_accounts a ON a.id = m.connected_account_id
 WHERE a.user_id = @owner
     AND m.id = ANY (@ids::uuid[]);
+
+-- name: ListUserIDs :many
+-- Every member, with mail or not.
+SELECT id FROM users ORDER BY id;
+
+-- name: UserExists :one
+SELECT EXISTS (SELECT 1 FROM users WHERE id = @id)::boolean;
+
+-- name: ListUserMessageIDs :many
+-- Every message of the member's connected accounts.
+SELECT m.id
+FROM messages m
+JOIN connected_accounts a ON a.id = m.connected_account_id
+WHERE a.user_id = @owner
+ORDER BY m.id;

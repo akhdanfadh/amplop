@@ -255,3 +255,38 @@ func TestIndexSources(t *testing.T) {
 	withParts.HasParts = true
 	assert.ElementsMatch(t, []search.Source{want, withParts}, sources)
 }
+
+// A rebuild reads every member, mail or not, and each member's messages
+// in every account, never another member's.
+func TestRebuildReads(t *testing.T) {
+	s := newMessagePartsTest(t)
+	ids := s.save(t, "m1", "m2")
+	second := insertSyncingAccount(t, s.conn, s.member, "sub-second")
+	s.update(t, second, mailsync.Change{State: running(1), Mailboxes: gmailMailboxes, Saved: []mailsync.Message{syncedMessage("m3")}})
+	ids = append(ids, s.messages(t, second)["m3"].ID)
+	stranger := insertConnectingMember(t, s.conn, "stranger@example.com")
+	theirAccount := insertSyncingAccount(t, s.conn, stranger, "sub-stranger")
+	s.update(t, theirAccount, mailsync.Change{State: running(1), Mailboxes: gmailMailboxes, Saved: []mailsync.Message{syncedMessage("theirs")}})
+	theirs := s.messages(t, theirAccount)["theirs"].ID
+	lonely := insertConnectingMember(t, s.conn, "lonely@example.com")
+
+	users, err := s.db.UserIDs(t.Context())
+	require.NoError(t, err)
+	exists, err := s.db.UserExists(t.Context(), lonely)
+	require.NoError(t, err)
+	missing, err := s.db.UserExists(t.Context(), lonely+1)
+	require.NoError(t, err)
+	mine, err := s.db.MessageIDs(t.Context(), s.member)
+	require.NoError(t, err)
+	theirIDs, err := s.db.MessageIDs(t.Context(), stranger)
+	require.NoError(t, err)
+	none, err := s.db.MessageIDs(t.Context(), lonely)
+	require.NoError(t, err)
+
+	assert.Subset(t, users, []int64{s.member, stranger, lonely})
+	assert.True(t, exists)
+	assert.False(t, missing)
+	assert.ElementsMatch(t, ids, mine)
+	assert.Equal(t, []uuid.UUID{theirs}, theirIDs)
+	assert.Empty(t, none)
+}
