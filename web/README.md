@@ -145,11 +145,12 @@ Put shared code in the folder for its responsibility:
   status badge, the link styles, the signed-in frame and its member menu,
   the offline banner, and the pages for loading, failure, and Page not
   found, and `SignedOutPage`, the card every signed-out page puts its
-  content in. `ui/` holds the shadcn components we own. `form/` is the
-  form kit, kept together because its parts only work as one: `useAppForm`
-  with the field kinds and the form parts it is built from, and
-  `useFormRequest`, which sends a form's values and whose check plugs into
-  it; "Forms" below says how to use it.
+  content in, with `OutcomeLinks` for the buttons of its outcome screens.
+  `ui/` holds the shadcn components we own. `form/` is the form kit, kept
+  together because its parts only work as one: `useAppForm` with the field
+  kinds and the form parts it is built from, and `useFormRequest`, which
+  sends a form's values and whose check plugs into it; "Forms" below says
+  how to use it.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
@@ -433,11 +434,12 @@ The reset email's link opens `/reset-password`, whose secret is kept the
 same way as `/verify-email`'s. Like `/register/complete`, the visitor types
 the email the link was sent to, marked `autocomplete="username"`, and a new
 password of 15 to 128 characters, entered twice; another email is refused
-on the email field, followed by "Ask for a new link" to `/forgot-password`.
-Success creates no session: the page opens sign-in in its place with the
-email filled in and a notice, the address on a line of its own, then "Your
-password is changed. Sign in with your new password." A reset signs the account out everywhere, so success, or a
-result that may have been one, clears this browser's account caches, even
+on the email field, and "Link sent to another address? Ask for a new link"
+under the card leads to `/forgot-password`. Success creates no session: the
+page opens sign-in in its place with the email filled in and a notice, the
+address on a line of its own, then "Your password is changed. Sign in with
+your new password." A reset signs the account out everywhere, so success,
+or a result that may have been one, clears this browser's account caches, even
 if the page has closed. A spent or expired link ends the page with "Ask for
 a new link" and "Sign in"; after a lost result, sign-in comes first, as on
 `/register/complete`.
@@ -893,6 +895,13 @@ Tests sit next to the code they test, in two Vitest projects set up in
   stylesheet first. Message bodies for the message view's frame come from
   `src/test/message-server.ts`, which serves them on the test page's
   origin with the headers the Go server's body route sends.
+
+A page's own flows, e.g. submitting its form, are tested in a router of
+the page's own (`src/signed-out-pages.browser.test.tsx`).
+`src/test/app-router.ts` loads the whole app, for what needs every route,
+e.g. guards and addresses; submitting a form, typing, or showing a toast
+through it freezes the test browser, and the run hangs instead of failing
+(`DEBT.md`, "Find why a whole-app browser test freezes on some presses").
 
 The browser project needs Playwright's Chromium, once per machine and
 again after a Playwright upgrade. From `web`:

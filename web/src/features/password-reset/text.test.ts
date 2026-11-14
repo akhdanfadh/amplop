@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ProblemType } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
-import {
-  completeErrorMessage,
-  endOf,
-  linkInvalid,
-  requestedMessage,
-  requestErrorMessage,
-} from "./text";
+import { completeErrorMessage, endOf, linkInvalid, requested, requestErrorMessage } from "./text";
 
 const linkInvalidType: ProblemType = "/api/v0/problems/password-reset-link-invalid";
 const linkInvalidDetail =
@@ -18,12 +12,13 @@ function refusal(status: number, type: ProblemType, detail?: string): ApiError {
   return new ApiError("http", { method: "POST", status, problem: { type, detail } });
 }
 
-describe("requestedMessage", () => {
+describe("requested", () => {
   // ADR030: the same answer whether or not the email has an account.
-  it("names the inbox without saying whether a link was sent", () => {
-    expect(requestedMessage("kate@example.org")).toBe(
-      "If kate@example.org is the verified address of an active account, a reset link is on its way. It can take a few minutes to arrive and expires in 1 hour. If nothing arrives, check your spam folder.",
-    );
+  it("says what happens without saying whether a link was sent", () => {
+    expect(requested).toEqual({
+      lead: "If this is the verified address of an active account, a reset link is on its way.",
+      body: "It can take a few minutes to arrive and expires in 1 hour. If nothing arrives, check your spam folder.",
+    });
   });
 });
 
@@ -96,6 +91,7 @@ describe("endOf", () => {
 
   it("offers a new link for a link that no longer works", () => {
     expect(endOf(spent, "refused")).toEqual({
+      title: "This link no longer works",
       message: linkInvalidDetail,
       links: ["new-link", "sign-in"],
     });
@@ -110,6 +106,7 @@ describe("endOf", () => {
   // A reset deletes its link, so the unknown try likely worked.
   it("points to sign-in after a try with an unknown outcome", () => {
     expect(endOf(spent, "unknown")).toEqual({
+      title: "Your password was probably changed",
       message:
         "This link no longer works, so an earlier try probably changed your password. Sign in with the password you sent then. If you're not sure which one that was, ask for a new link.",
       links: ["sign-in", "new-link"],

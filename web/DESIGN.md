@@ -711,13 +711,26 @@ pull-to-refresh, which would reload the app, never starts.
 
 ### Outcome screens
 
-When a signed-out page's form gives way to a result, e.g. "This sign-in
-has ended" on the code step, the result becomes the page
-(`SignedOutPage`), in the same card as the form pages and, like them,
-without an icon: the title says the outcome.
+When a signed-out page's form gives way to a result, e.g. "Check your
+email", "This link no longer works", or "This sign-in has ended" on the
+code step, the result becomes the page (`SignedOutPage`), in the same card
+as the form pages and, like them, without an icon: the title says the
+outcome.
 
 - The title says what happened and takes focus, so a screen reader reads
   the outcome first. A short lead or paragraph says why and what next.
+- An email address the outcome is about, e.g. where a link went, sits on
+  a line of its own under the title, in the text colour (`AddressLine`):
+  set inside a sentence, a long address wraps at its own hyphens and reads
+  like hyphenated words. The sign-in notice after an account or password
+  change shows it the same way.
+- The ways on are full-width buttons (`OutcomeLinks`): the most useful
+  primary, any other outlined. A button that only brings the form back,
+  e.g. "Use a different email address" under "Check your email", stays
+  outlined even alone: the way on is the inbox. A link out of the flow,
+  e.g. "Back to sign in", stays under the card.
+- Showing the form again, e.g. "Use a different email address", keeps
+  what was typed and puts focus in the field.
 
 ### Feedback
 
