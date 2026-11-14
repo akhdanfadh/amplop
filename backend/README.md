@@ -1264,7 +1264,7 @@ permission asked. `google-emulator/emulate.config.mjs` holds the seed:
 | Account | Mailbox |
 |---|---|
 | `alex@example.com` | three messages in two threads, a `Receipts` label |
-| `blair@example.com` | two messages |
+| `blair@example.com` | four messages, a `Work` label and `Work/Projects` under it |
 | `casey@example.com` | one message |
 | `unverified@example.com` | empty; its ID token says the address is not verified |
 | `testuser@gmail.com` | emulate's own: a few messages and a draft |
