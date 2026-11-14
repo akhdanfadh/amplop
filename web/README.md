@@ -137,11 +137,11 @@ Put shared code in the folder for its responsibility:
   TanStack DB collections (`conversations.ts`), how a row shows its date
   and people, and the address Back to mail returns to.
 - `src/features/settings`: the settings sidebar.
-- `src/components`: shared components, such as the password input, the
-  request error under a form, the status badge, the link styles, the
-  signed-in frame and its member menu, the offline banner, and the pages
-  for loading, failure, and Page not found. `ui/` holds the shadcn
-  components we own.
+- `src/components`: shared components, such as the shell around every
+  page (`AppShell`), the password input, the request error under a form,
+  the status badge, the link styles, the signed-in frame and its member
+  menu, the offline banner, and the pages for loading, failure, and Page
+  not found. `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
@@ -889,6 +889,16 @@ top, when `NODE_ENV` is `test`, as Vitest sets it, unless `VIRT_ON` is
 set; the browser project sets it (`vite.config.ts`), so a list test sees
 the list as the app has it. Scroll a virtualized list with the keyboard,
 e.g. End, which React Aria scrolls itself.
+
+A test of the whole app loads the real routes with `appRouter`
+(`src/test/app-router.ts`) and mounts them in a `<div>`, not on the
+document as the app does. So it renders the root route's `AppShell`
+without the `<html>` and `<body>` around it: React's own `<body>` there
+makes a later event loop forever
+([react#35480](https://github.com/react/react/issues/35480)), and a
+hanging test never fails by itself, since its timer runs on the frozen
+page. `src/test/app-router.browser.test.tsx` checks that React leaves the
+page's `<body>` alone.
 
 Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
 functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the

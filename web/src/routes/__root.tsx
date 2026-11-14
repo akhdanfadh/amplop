@@ -1,7 +1,6 @@
 import { useCallback, useEffect, type ReactElement, type ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import {
-  CatchBoundary,
   HeadContent,
   Outlet,
   Scripts,
@@ -13,11 +12,10 @@ import {
 import { I18nProvider, RouterProvider, type LinkProps } from "react-aria-components";
 import appCss from "../styles.css?url";
 import pressableCss from "../react-aria-pressable.css?url";
-import { CrashScreen } from "@/components/route-states";
+import { AppShell } from "@/components/app-shell";
 import { Toaster } from "@/components/ui/toast";
 import { onAccountCacheClear } from "@/features/auth/session-cache";
-import { SetupGate } from "@/features/setup/gate";
-import { themeScript, watchTheme } from "@/lib/theme";
+import { themeScript } from "@/lib/theme";
 
 // A link to something that is not a page of the app, written as the
 // browser reads it: another site, an email address, a place on this page,
@@ -86,9 +84,6 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 // The HTML document around every route. The build prerenders it once into
 // the static shell; the browser fills in the matched route.
 function RootDocument({ children }: { children: ReactNode }) {
-  // Follow the system theme and other tabs' choices for as long as the app runs.
-  useEffect(() => watchTheme(), []);
-
   return (
     // The head script sets the class before React starts.
     <html lang="en" suppressHydrationWarning>
@@ -96,11 +91,7 @@ function RootDocument({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {/* The router's own boundaries sit inside SetupGate; this one shows
-            inbok's crash screen, not TanStack's, when the gate itself fails. */}
-        <CatchBoundary getResetKey={() => "shell"} errorComponent={CrashScreen}>
-          <SetupGate>{children}</SetupGate>
-        </CatchBoundary>
+        <AppShell>{children}</AppShell>
         <Scripts />
       </body>
     </html>
