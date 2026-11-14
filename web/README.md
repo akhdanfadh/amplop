@@ -1229,6 +1229,58 @@ Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.
 The `pnpm build` output sends it once.
 
+## Kept in the browser
+
+Any script on inbok's origin can read `localStorage` and
+`sessionStorage`, and another site cannot
+([MDN](https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy#cross-origin_data_storage_access)).
+What guards them is what guards the whole page: the Content-Security-Policy
+above and the message body's frame, which runs no script. A script that
+got in could already call the API with the member's session, so a value
+is kept in the browser by what it would reveal at rest, not to hide it
+from scripts. First, what may be kept
+([OWASP](https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#local-storage)):
+
+- Never a secret: a session, password, code, or key. The server keeps the
+  session in an `HttpOnly` cookie, which no script reads.
+- A choice, or an ID that means nothing without the API, in
+  `localStorage` for the browser or `sessionStorage` for one tab.
+- Text the member wrote or received only in `sessionStorage`, and gone
+  from every tab when the session ends. A tab's storage outlives the
+  reload that `onAccountEndedElsewhere` makes, and a tab the browser
+  restores later heard nothing, so such a store, e.g. drafts, clears
+  itself in each tab that hears the session end, and shows nothing
+  until it knows the signed-in member wrote it.
+
+Then the way to keep it, by the value's shape. Keys start with `inbok-`.
+
+- Read before the first paint: a plain key that the root route's head
+  script reads, in its own module, as `lib/theme.ts` does.
+- One value, replaced whole: a plain key through `localStore`
+  (`lib/local-store.ts`); a tab reads it when it loads, and the last write
+  holds.
+- Rows changed one at a time: a TanStack DB collection from
+  `localStorageCollectionOptions`, read through a live query. In
+  `sessionStorage` the rows are the tab's own, as `features/mail/folds.ts`
+  keeps them. In `localStorage`, give it `window.localStorage` itself: each
+  tab then takes the others' writes into its rows, so its next write
+  keeps them, where a whole set written by hand from an old copy would
+  drop them. Two tabs writing at the same moment can still lose one
+  change; the collection takes no lock
+  ([TanStack DB](https://tanstack.com/db/latest/docs/collections/local-storage-collection#synchronization)).
+
+A value that belongs to the member registers its clearing with
+`onAccountCacheClear`, which runs in the tab that signs in or out. Other
+tabs keep their `sessionStorage` until they sign in or close: harmless
+for IDs, which match no other member's accounts, not for text.
+
+| Key                        | Holds                                                                                               | Way                         | At sign-out         |
+| -------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------- | ------------------- |
+| `inbok-theme`              | `light` or `dark`; none is the system's                                                             | head script, `lib/theme.ts` | kept                |
+| `inbok-sidebar-open`       | `true` or `false`: the full layout's sidebar open                                                   | `localStore`                | kept                |
+| `inbok-sidebar-folds`      | in `sessionStorage`: this tab's unfolded account IDs and label IDs                                  | collection                  | cleared in this tab |
+| `inbok-sidebar-last-folds` | the same, as the member last pressed them in any tab; a tab without folds of its own starts from it | `localStore`                | cleared             |
+
 ## Forms
 
 Forms use [TanStack Form](https://tanstack.com/form), which holds each

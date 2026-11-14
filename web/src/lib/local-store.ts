@@ -1,5 +1,6 @@
-// localStore is this browser's localStorage for layout choices, e.g. the
-// sidebar's collapsed state. A browser can refuse
+// localStore is this browser's localStorage for one value replaced whole,
+// e.g. the sidebar's collapsed state; web/README.md, "Kept in the
+// browser", says what may be kept and which way. A browser can refuse
 // storage (a private window, a full quota, a blocked site); then a read
 // finds nothing and a write is dropped, so the layout starts from its
 // defaults.
