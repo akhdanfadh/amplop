@@ -9,18 +9,18 @@ import (
 	"inbok/internal/search"
 )
 
-// indexSettings returns the settings every member's index gets. Settings
-// it leaves out keep Meilisearch's defaults, e.g. typo tolerance and
-// ranking.
+// indexSettings returns the settings every member's index gets. An update
+// leaves the settings it omits as the index has them, which on a new index
+// are Meilisearch's defaults, e.g. typo tolerance and ranking.
 func indexSettings() meili.Settings {
 	return meili.Settings{
 		// In ADR005's priority: Meilisearch ranks a match in an earlier
 		// field higher.
 		SearchableAttributes: []string{fieldSubject, fieldFrom, fieldTo, fieldCC, fieldBodyText},
-		// Includes the fields later filters need, since changing this list
-		// rebuilds every member's index.
-		FilterableAttributes: []string{fieldOwner, fieldAccount, fieldDate, fieldLabels, fieldFromAddress, fieldHasAttachments},
-		SortableAttributes:   []string{fieldDate},
+		// Only the fields today's searches filter on. A filter added later
+		// adds its field here, and Meilisearch reindexes from the documents
+		// it holds.
+		FilterableAttributes: []string{fieldOwner, fieldAccount, fieldMailboxes},
 		Pagination:           &meili.Pagination{MaxTotalHits: search.MaxTotal},
 	}
 }

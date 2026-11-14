@@ -142,7 +142,7 @@ func (f *Fake) refuse(ctx context.Context) error {
 func clone(document search.Document) search.Document {
 	document.To = slices.Clone(document.To)
 	document.CC = slices.Clone(document.CC)
-	document.LabelIDs = slices.Clone(document.LabelIDs)
+	document.MailboxIDs = slices.Clone(document.MailboxIDs)
 	return document
 }
 
@@ -155,8 +155,7 @@ func (f *Fake) find(owner int64, id uuid.UUID) int {
 }
 
 // matchesFilters reports whether document is owner's, in one of query's
-// accounts when it names any, and has none of its excluded labels,
-// ignoring case as Meilisearch does.
+// accounts when it names any, and in none of its excluded mailboxes.
 func matchesFilters(document search.Document, owner int64, query search.Query) bool {
 	if document.OwnerUserID != owner {
 		return false
@@ -164,10 +163,8 @@ func matchesFilters(document search.Document, owner int64, query search.Query) b
 	if len(query.Accounts) > 0 && !slices.Contains(query.Accounts, document.ConnectedAccountID) {
 		return false
 	}
-	return !slices.ContainsFunc(document.LabelIDs, func(label string) bool {
-		return slices.ContainsFunc(query.ExcludeLabels, func(excluded string) bool {
-			return strings.EqualFold(label, excluded)
-		})
+	return !slices.ContainsFunc(document.MailboxIDs, func(id uuid.UUID) bool {
+		return slices.Contains(query.ExcludeMailboxes, id)
 	})
 }
 

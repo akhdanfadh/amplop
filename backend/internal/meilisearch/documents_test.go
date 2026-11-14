@@ -16,6 +16,7 @@ import (
 // strings, and the date as Unix seconds.
 func TestUpsertFields(t *testing.T) {
 	index := newIndex(t)
+	inbox := uuid.New()
 	d := search.Document{
 		ID:                 uuid.New(),
 		OwnerUserID:        owner,
@@ -26,9 +27,8 @@ func TestUpsertFields(t *testing.T) {
 		To:                 []string{"Budi <budi@example.com>"},
 		CC:                 []string{"Citra <citra@example.com>"},
 		BodyText:           "Please pay",
-		LabelIDs:           []string{"INBOX"},
 		FromAddress:        "asha.k@example.co.id",
-		HasAttachments:     true,
+		MailboxIDs:         []uuid.UUID{inbox},
 	}
 
 	require.NoError(t, index.Upsert(t.Context(), []search.Document{d}))
@@ -45,9 +45,8 @@ func TestUpsertFields(t *testing.T) {
 		"to":                   []any{"Budi <budi@example.com>"},
 		"cc":                   []any{"Citra <citra@example.com>"},
 		"body_text":            "Please pay",
-		"label_ids":            []any{"INBOX"},
 		"from_address":         "asha.k@example.co.id",
-		"has_attachments":      true,
+		"mailbox_ids":          []any{inbox.String()},
 	}, stored)
 }
 

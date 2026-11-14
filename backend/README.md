@@ -2968,8 +2968,8 @@ only the index exists; nothing writes to it or searches it yet.
   member's documents, whatever IDs it is given: no search returns
   another member's message, even for another member's account ID. The
   caller passes the signed-in member, since no index can tell a wrong
-  member from the right one. A query is structured: accounts, labels to
-  leave out, and a page; callers never write Meilisearch's filters.
+  member from the right one. A query is structured: accounts, mailboxes
+  to leave out, and a page; callers never write Meilisearch's filters.
 - `meilisearch` implements `Index` with the official Go client,
   `meilisearch-go`, with one Meilisearch index per member, named after
   the member's user ID, e.g. `messages_42`. Every upsert applies the
@@ -2982,10 +2982,11 @@ only the index exists; nothing writes to it or searches it yet.
   context's error, so a request's deadline still becomes a 503.
 - `Prepare` applies the settings to every member's index, and every
   upsert to its member's: which fields a search matches, in order of
-  weight, and which it filters and sorts on, including the ones later
-  filters need, since changing that list reindexes every message.
-  Settings left out keep Meilisearch's defaults, e.g. its typo
-  tolerance. Applying the same settings again, or from two processes at
+  weight, and which it filters on, only those today's searches use: a
+  filter added later adds its field, and Meilisearch reindexes from the
+  documents it holds. An update leaves the settings it omits as the
+  index has them, which on a new index are Meilisearch's defaults, e.g.
+  its typo tolerance. Applying the same settings again, or from two processes at
   once, changes nothing. The worker calls `Prepare` when it starts,
   before any job runs.
 - `search.BodyText` turns a message's text parts, as content storage

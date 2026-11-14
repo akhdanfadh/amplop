@@ -19,18 +19,15 @@ const (
 
 // The index's fields, named as in ADR005.
 const (
-	fieldID             = "id"
-	fieldOwner          = "owner_user_id"
-	fieldAccount        = "connected_account_id"
-	fieldDate           = "internal_date"
-	fieldSubject        = "subject"
-	fieldFrom           = "from"
-	fieldTo             = "to"
-	fieldCC             = "cc"
-	fieldBodyText       = "body_text"
-	fieldLabels         = "label_ids"
-	fieldFromAddress    = "from_address"
-	fieldHasAttachments = "has_attachments"
+	fieldID        = "id"
+	fieldOwner     = "owner_user_id"
+	fieldAccount   = "connected_account_id"
+	fieldSubject   = "subject"
+	fieldFrom      = "from"
+	fieldTo        = "to"
+	fieldCC        = "cc"
+	fieldBodyText  = "body_text"
+	fieldMailboxes = "mailbox_ids"
 )
 
 // Index is the message index on one Meilisearch server: one Meilisearch

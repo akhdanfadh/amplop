@@ -72,7 +72,8 @@ func pageWithin(query search.Query) (page, size int64) {
 }
 
 // filter returns a search's filter, a list whose every expression must
-// hold: always the owner first, then the accounts and labels query names.
+// hold: always the owner first, then the accounts and mailboxes query
+// names.
 func filter(owner int64, query search.Query) []string {
 	// The owner too, although the index is already the member's own: a
 	// second guard, should a document ever reach the wrong index.
@@ -84,13 +85,13 @@ func filter(owner int64, query search.Query) []string {
 		}
 		expressions = append(expressions, fieldAccount+" IN ["+strings.Join(ids, ", ")+"]")
 	}
-	if len(query.ExcludeLabels) > 0 {
-		labels := make([]string, len(query.ExcludeLabels))
-		for n, label := range query.ExcludeLabels {
-			labels[n] = quote(label)
+	if len(query.ExcludeMailboxes) > 0 {
+		ids := make([]string, len(query.ExcludeMailboxes))
+		for n, id := range query.ExcludeMailboxes {
+			ids[n] = quote(id.String())
 		}
 		// On a list field, IN holds when any of its values is listed.
-		expressions = append(expressions, fieldLabels+" NOT IN ["+strings.Join(labels, ", ")+"]")
+		expressions = append(expressions, fieldMailboxes+" NOT IN ["+strings.Join(ids, ", ")+"]")
 	}
 	return expressions
 }

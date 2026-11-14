@@ -23,19 +23,23 @@ type Document struct {
 	To                 []string // each name and address
 	CC                 []string // each name and address
 	BodyText           string   // plain text of the body; empty until the body is stored
-	LabelIDs           []string // the provider's label IDs, e.g. Gmail's SPAM
 	FromAddress        string   // the sender's address alone
-	HasAttachments     bool
+	// The mailboxes the message is in, by inbok's IDs, Spam and Trash
+	// included: the index holds every message, and a query decides which
+	// mailboxes it leaves out.
+	MailboxIDs []uuid.UUID
 }
 
 // Query is what a member searches for. The owner is not part of it: every
 // [Index.Search] takes the owner as its own argument.
 type Query struct {
-	Text          string   // the member's words; empty matches every message
-	Accounts      []int64  // connected accounts to search; empty: all of the owner's
-	ExcludeLabels []string // label IDs to leave out, e.g. Spam and Trash
-	Page          int      // from 1
-	PageSize      int      // at least 1
+	Text     string  // the member's words; empty matches every message
+	Accounts []int64 // connected accounts to search; empty: all of the owner's
+	// Mailboxes whose messages to leave out, e.g. the owner's Spam and
+	// Trash: a message in any of them is left out.
+	ExcludeMailboxes []uuid.UUID
+	Page             int // from 1
+	PageSize         int // at least 1
 }
 
 // Result is one page of a search.

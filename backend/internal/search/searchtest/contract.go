@@ -23,11 +23,19 @@ const (
 	budiAccount int64 = 21
 )
 
+// Mailboxes of Asha's work account, by inbok's IDs.
+var (
+	inboxBox   = uuid.MustParse("019a0000-0000-7000-8000-0000000000a1")
+	spamBox    = uuid.MustParse("019a0000-0000-7000-8000-0000000000a2")
+	trashBox   = uuid.MustParse("019a0000-0000-7000-8000-0000000000a3")
+	clientsBox = uuid.MustParse("019a0000-0000-7000-8000-0000000000a4")
+)
+
 // firstPage is a page large enough for every search in the contract.
 var firstPage = search.Query{Page: 1, PageSize: 20}
 
 // RunContract tests the behaviour every [search.Index] shares: owners, account
-// and label filters, which fields a search matches, replacing, deleting within
+// and mailbox filters, which fields a search matches, replacing, deleting within
 // one owner's documents, paging, cancellation, and refused calls. open returns
 // a new, prepared index for one test. Text matching beyond whole words, e.g.
 // typos, is the real index's own and tested there.
@@ -82,38 +90,24 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		assert.Equal(t, []uuid.UUID{home.ID}, result.IDs)
 	})
 
-	t.Run("exclude labels", func(t *testing.T) {
+	t.Run("exclude mailboxes", func(t *testing.T) {
 		index := open(t)
 		inbox := document(asha, ashaWork, "invoice")
-		inbox.LabelIDs = []string{"INBOX"}
+		inbox.MailboxIDs = []uuid.UUID{inboxBox, clientsBox}
+		// In the inbox and Spam at once: one excluded mailbox leaves it out.
 		spam := document(asha, ashaWork, "invoice")
-		spam.LabelIDs = []string{"INBOX", "SPAM"}
+		spam.MailboxIDs = []uuid.UUID{inboxBox, spamBox}
 		trash := document(asha, ashaWork, "invoice")
-		trash.LabelIDs = []string{"TRASH"}
-		// A label ID with the characters a filter must escape.
-		odd := document(asha, ashaWork, "invoice")
-		odd.LabelIDs = []string{`a"b\c`}
+		trash.MailboxIDs = []uuid.UUID{trashBox}
+		// In no mailbox, e.g. archived in Gmail.
 		none := document(asha, ashaWork, "invoice")
-		upsert(t, index, inbox, spam, trash, odd, none)
+		upsert(t, index, inbox, spam, trash, none)
 
 		q := query("invoice")
-		q.ExcludeLabels = []string{"SPAM", "TRASH", `a"b\c`}
+		q.ExcludeMailboxes = []uuid.UUID{spamBox, trashBox}
 		result := find(t, index, asha, q)
 
 		assert.ElementsMatch(t, []uuid.UUID{inbox.ID, none.ID}, result.IDs)
-	})
-
-	t.Run("labels ignore case", func(t *testing.T) {
-		index := open(t)
-		spam := document(asha, ashaWork, "invoice")
-		spam.LabelIDs = []string{"SPAM"}
-		upsert(t, index, spam)
-
-		q := query("invoice")
-		q.ExcludeLabels = []string{"spam"}
-		result := find(t, index, asha, q)
-
-		assert.Empty(t, result.IDs)
 	})
 
 	t.Run("cancelled", func(t *testing.T) {
@@ -172,17 +166,17 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 	t.Run("upsert replaces", func(t *testing.T) {
 		index := open(t)
 		before := document(asha, ashaWork, "invoice")
-		before.LabelIDs = []string{"SPAM"}
+		before.MailboxIDs = []uuid.UUID{spamBox}
 		upsert(t, index, before)
 
 		after := before
 		after.Subject = "receipt"
-		after.LabelIDs = []string{"INBOX"}
+		after.MailboxIDs = []uuid.UUID{inboxBox}
 		upsert(t, index, after)
 		upsert(t, index, after)
 		old := find(t, index, asha, query("invoice"))
 		q := query("receipt")
-		q.ExcludeLabels = []string{"SPAM"}
+		q.ExcludeMailboxes = []uuid.UUID{spamBox}
 		current := find(t, index, asha, q)
 
 		assert.Equal(t, 0, old.Total)
@@ -192,13 +186,13 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 	t.Run("upsert copies", func(t *testing.T) {
 		index := open(t)
 		spam := document(asha, ashaWork, "invoice")
-		spam.LabelIDs = []string{"SPAM"}
+		spam.MailboxIDs = []uuid.UUID{spamBox}
 		upsert(t, index, spam)
 
 		// The caller reuses its slice after the upsert.
-		spam.LabelIDs[0] = "INBOX"
+		spam.MailboxIDs[0] = inboxBox
 		q := query("invoice")
-		q.ExcludeLabels = []string{"SPAM"}
+		q.ExcludeMailboxes = []uuid.UUID{spamBox}
 		result := find(t, index, asha, q)
 
 		assert.Empty(t, result.IDs)

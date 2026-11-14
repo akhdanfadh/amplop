@@ -25,9 +25,8 @@ type document struct {
 	To                 []string `json:"to"`
 	CC                 []string `json:"cc"`
 	BodyText           string   `json:"body_text"`
-	LabelIDs           []string `json:"label_ids"`
 	FromAddress        string   `json:"from_address"`
-	HasAttachments     bool     `json:"has_attachments"`
+	MailboxIDs         []string `json:"mailbox_ids"`
 }
 
 // Upsert adds documents to their owners' indexes, replacing whole any with
@@ -54,9 +53,8 @@ func (i *Index) Upsert(ctx context.Context, documents []search.Document) error {
 			To:                 d.To,
 			CC:                 d.CC,
 			BodyText:           d.BodyText,
-			LabelIDs:           d.LabelIDs,
 			FromAddress:        d.FromAddress,
-			HasAttachments:     d.HasAttachments,
+			MailboxIDs:         texts(d.MailboxIDs),
 		})
 	}
 	for _, owner := range owners {
@@ -67,13 +65,23 @@ func (i *Index) Upsert(ctx context.Context, documents []search.Document) error {
 	return nil
 }
 
+// texts returns ids as Meilisearch stores them: canonical text, which a
+// filter matches exactly. It returns an empty list for none, not null.
+func texts(ids []uuid.UUID) []string {
+	out := make([]string, len(ids))
+	for n, id := range ids {
+		out[n] = id.String()
+	}
+	return out
+}
+
 // upsert adds rows to the index uid, then applies its settings, waiting
 // until Meilisearch has applied both.
 func (i *Index) upsert(ctx context.Context, uid string, rows []document) error {
 	// 1. Add the documents. Meilisearch would guess the primary key only
 	// from a document with exactly one field ending in "id", and these have
 	// three. AddDocuments replaces a document; UpdateDocuments would merge
-	// into it and keep a label the message lost.
+	// into it and keep a mailbox the message left.
 	key := fieldID
 	task, err := i.client.Index(uid).AddDocumentsWithContext(ctx, rows, &meili.DocumentOptions{PrimaryKey: &key})
 	if err := i.wait(ctx, "upsert search documents", task, err); err != nil {
