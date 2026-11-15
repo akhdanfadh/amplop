@@ -163,7 +163,7 @@ func (s *CodeSignIn) Complete(ctx context.Context, secret, code string, device D
 		}
 
 		// 7. Issue the session.
-		issued = newSession(userID, device, s.now)
+		issued = newSession(userID, device, maxLifetime, s.now)
 		outcome = nil
 		return CodeSignInChange{
 			Action: CodeActionComplete, Factor: factor, Session: issued.State, Expiry: expiryAt(s.now()),

@@ -26,10 +26,11 @@ type SignedIn struct {
 	ExpiresAt time.Time
 }
 
-// SignInState is the current password hash, factor, and status, read with
-// the user locked.
+// SignInState is the current password hash, role, factor, and status, read
+// with the user locked.
 type SignInState struct {
 	PasswordHash string
+	Role         account.Role
 	Factor       *totp.Factor
 	Deactivated  bool
 }
@@ -95,7 +96,7 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, devic
 
 	// 5. Under the user's lock, check the proof again and issue a session
 	// or a code challenge.
-	var result SignedIn
+	var result issuedSignIn
 	err = s.storage.StartSignIn(ctx, credentials.User.ID, func(state SignInState) (SignInChange, error) {
 		// A recovery invalidates password proof even when the plaintext is unchanged.
 		if state.PasswordHash != credentials.PasswordHash {
@@ -108,16 +109,14 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, devic
 		}
 
 		// The current factor determines whether a second sign-in step is required.
-		if state.Factor != nil && state.Factor.ConfirmedAt != nil {
+		if factorConfirmed(state.Factor) {
 			secret, challenge := newChallenge(credentials.User.ID, s.now)
-			result = SignedIn{Step: SignInStepTOTP, Secret: secret, ExpiresAt: challenge.ExpiresAt}
+			result = issuedSignIn{SignedIn: SignedIn{Step: SignInStepTOTP, Secret: secret, ExpiresAt: challenge.ExpiresAt}}
 			return SignInChange{Step: result.Step, Challenge: challenge, Cutoff: s.now().UTC()}, nil
 		}
 
-		issued := newSession(credentials.User.ID, device, s.now)
-		result = SignedIn{Step: SignInStepComplete, Secret: issued.Secret, ExpiresAt: issued.State.ExpiresAt}
-		now := s.now()
-		return SignInChange{Step: result.Step, Session: issued.State, Expiry: expiryAt(now), Cutoff: now.UTC()}, nil
+		result = s.signedIn(credentials.User.ID, state, device)
+		return s.sessionChange(result), nil
 	})
 	if errors.Is(err, ErrNotFound) {
 		return SignedIn{}, account.ErrInvalidCredentials
@@ -125,7 +124,7 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, devic
 	if err != nil {
 		return SignedIn{}, err
 	}
-	return result, nil
+	return result.SignedIn, nil
 }
 
 // VerifyPassword confirms password is user's current password, counting the
@@ -151,4 +150,38 @@ func (s *Service) VerifyPassword(ctx context.Context, user account.User, passwor
 
 	// 3. Remove the attempt: only failures count.
 	return s.throttle.Succeed(ctx, id)
+}
+
+// issuedSignIn is a complete sign-in's cookie and the session to save.
+type issuedSignIn struct {
+	SignedIn
+	state State
+}
+
+// signedIn issues a complete sign-in's session for userID with state's
+// role and factor. An administrator without a confirmed factor gets a
+// session that lives only [enrollmentSessionLifetime]; finishing
+// enrollment replaces it with a full session.
+func (s *Service) signedIn(userID int64, state SignInState, device Device) issuedSignIn {
+	lifetime := maxLifetime
+	if state.Role == account.RoleAdmin && !factorConfirmed(state.Factor) {
+		lifetime = enrollmentSessionLifetime
+	}
+	issued := newSession(userID, device, lifetime, s.now)
+	return issuedSignIn{
+		SignedIn: SignedIn{Step: SignInStepComplete, Secret: issued.Secret, ExpiresAt: issued.State.ExpiresAt},
+		state:    issued.State,
+	}
+}
+
+// sessionChange returns the change that saves issued's session and prunes
+// the user's expired sessions.
+func (s *Service) sessionChange(issued issuedSignIn) SignInChange {
+	now := s.now()
+	return SignInChange{Step: SignInStepComplete, Session: issued.state, Expiry: expiryAt(now), Cutoff: now.UTC()}
+}
+
+// factorConfirmed reports whether factor exists and is confirmed.
+func factorConfirmed(factor *totp.Factor) bool {
+	return factor != nil && factor.ConfirmedAt != nil
 }

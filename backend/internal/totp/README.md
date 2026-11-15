@@ -306,7 +306,10 @@ and never removes another user's challenges.
 owner and reads the current factor before choosing a session or challenge.
 It also prunes that user's expired challenges. This shares enrollment's lock
 order: a password-only session created first is revoked by finishing enrollment;
-a sign-in waiting behind finishing sees the confirmed factor instead.
+a sign-in waiting behind finishing sees the confirmed factor instead. The
+lock also reads the role: an administrator without a confirmed factor gets
+a session that lives 15 minutes, like an enrollment; finishing enrollment
+replaces it with a full session.
 
 `session.CodeSignIn.Complete` locates the challenge owner, reserves a shared
 code attempt, and calls `CompleteSignIn`. Its locked callback checks expiry,

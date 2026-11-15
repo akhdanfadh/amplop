@@ -22,7 +22,7 @@ func (c *fakeClock) Advance(d time.Duration) { c.now = c.now.Add(d) }
 func TestNewSession(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, time.October, 27, 12, 0, 0, 0, time.UTC)}
 
-	issued := newSession(7, Device{}, clock.Now)
+	issued := newSession(7, Device{}, maxLifetime, clock.Now)
 
 	assert.Regexp(t, `^[A-Za-z0-9_-]{43}$`, issued.Secret)
 	secret, err := base64.RawURLEncoding.Strict().DecodeString(issued.Secret)
@@ -38,7 +38,7 @@ func TestNewSession(t *testing.T) {
 func TestNewSessionDevice(t *testing.T) {
 	device := Device{UserAgent: "agent\xff", Addr: netip.MustParseAddr("::ffff:192.0.2.1")}
 
-	issued := newSession(7, device, time.Now)
+	issued := newSession(7, device, maxLifetime, time.Now)
 
 	assert.Equal(t, Device{UserAgent: "agent", Addr: netip.MustParseAddr("192.0.2.1")}, issued.State.Device)
 }
@@ -46,8 +46,8 @@ func TestNewSessionDevice(t *testing.T) {
 func TestNewSessionSecrets(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, time.October, 27, 12, 0, 0, 0, time.UTC)}
 
-	first := newSession(7, Device{}, clock.Now)
-	second := newSession(7, Device{}, clock.Now)
+	first := newSession(7, Device{}, maxLifetime, clock.Now)
+	second := newSession(7, Device{}, maxLifetime, clock.Now)
 	hash, err := randomsecret.Hash(first.Secret)
 	require.NoError(t, err)
 
@@ -69,7 +69,7 @@ func TestCheckSessionIdle(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			clock := &fakeClock{now: time.Date(2026, time.October, 27, 12, 0, 0, 0, time.UTC)}
-			issued := newSession(7, Device{}, clock.Now)
+			issued := newSession(7, Device{}, maxLifetime, clock.Now)
 			clock.Advance(c.age)
 
 			state, err := checkSession(issued.State, clock.Now)
@@ -99,7 +99,7 @@ func TestCheckSessionMax(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			clock := &fakeClock{now: time.Date(2026, time.October, 27, 12, 0, 0, 0, time.UTC)}
-			issued := newSession(7, Device{}, clock.Now)
+			issued := newSession(7, Device{}, maxLifetime, clock.Now)
 			// Recent activity must not extend the fixed lifetime.
 			issued.State.LastUsedAt = clock.now.Add(29 * 24 * time.Hour)
 			clock.Advance(c.age)
@@ -132,7 +132,7 @@ func TestCheckSessionTouch(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			clock := &fakeClock{now: time.Date(2026, time.October, 27, 12, 0, 0, 0, time.UTC)}
-			issued := newSession(7, Device{}, clock.Now)
+			issued := newSession(7, Device{}, maxLifetime, clock.Now)
 			clock.Advance(c.age)
 
 			state, err := checkSession(issued.State, clock.Now)
@@ -147,7 +147,7 @@ func TestCheckSessionTouch(t *testing.T) {
 
 func TestCheckSessionActivity(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, time.October, 27, 12, 0, 0, 0, time.UTC)}
-	issued := newSession(7, Device{}, clock.Now)
+	issued := newSession(7, Device{}, maxLifetime, clock.Now)
 	state := issued.State
 
 	// Activity every six days keeps the idle deadline from being reached.

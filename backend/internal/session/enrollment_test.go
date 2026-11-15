@@ -46,7 +46,7 @@ func (f *enrollmentStorage) FinishTOTP(_ context.Context, userID int64, hash [sh
 // started, with codes waiting for the returned token.
 func enrollmentFixture() (*Enrollment, *enrollmentStorage, Authenticated, string, *fakeClock) {
 	clock := &fakeClock{now: time.Unix(1_000_000, 0).UTC()}
-	issued := newSession(42, Device{}, clock.Now)
+	issued := newSession(42, Device{}, enrollmentSessionLifetime, clock.Now)
 	token, tokenHash := randomsecret.New()
 	store := &enrollmentStorage{state: EnrollmentState{
 		Session: issued.State,

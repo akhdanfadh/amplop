@@ -69,7 +69,7 @@ func (e *Enrollment) Finish(ctx context.Context, current Authenticated, token st
 		return Finished{}, ErrUnauthenticated
 	}
 
-	issued := newSession(userID, device, e.now)
+	issued := newSession(userID, device, maxLifetime, e.now)
 	var active int
 	err := e.storage.FinishTOTP(ctx, userID, current.Session.hash, func(state EnrollmentState) (EnrollmentChange, error) {
 		// 2. Check the session again under the lock: Current's earlier check

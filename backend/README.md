@@ -1691,8 +1691,10 @@ Authentication responses use Cache-Control: no-store.
 `GET /api/v0/sessions/current` returns the current email, role,
 `totpRequired`, and `emailVerified`. An administrator with confirmed TOTP receives admin access
 and `totpRequired: false`. An administrator without confirmed TOTP receives
-member access and `totpRequired: true`. Members always receive member access
-and `totpRequired: false`, whether or not they enable TOTP.
+member access and `totpRequired: true`, and its session lives 15 minutes.
+Finishing enrollment replaces it with a full session. Members always
+receive member access and `totpRequired: false`, whether or not they enable
+TOTP.
 
 Identity reads the current account and factor through the session row in one
 query. A session revoked by finishing two-factor enrollment cannot gain admin
@@ -1750,7 +1752,9 @@ rather than disabling Secure or changing the cookie name.
 Session rules are constants, not environment settings:
 
 - Idle expiry is 7 days since the stored last-use time; maximum lifetime is
-  30 days from sign-in and is never extended.
+  30 days from sign-in and is never extended. An administrator's session
+  without confirmed TOTP lives 15 minutes from sign-in instead
+  (`enrollmentSessionLifetime`).
 - Each authenticated request loads the session and current user from
   PostgreSQL. It updates last-use time only when at least an hour has passed
   since the stored value. This reduces writes, not reads.

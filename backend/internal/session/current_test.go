@@ -62,7 +62,7 @@ func (f *currentStorage) ReadSessionIdentity(ctx context.Context, hash [sha256.S
 
 func TestCurrent(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, time.October, 28, 12, 0, 0, 0, time.UTC)}
-	issued := newSession(42, Device{}, clock.Now)
+	issued := newSession(42, Device{}, maxLifetime, clock.Now)
 	store := &currentStorage{row: &issued.State}
 	user := account.User{ID: 42, Email: "admin@example.com", Role: account.RoleAdmin}
 	reads := 0
@@ -109,7 +109,7 @@ func TestCurrentExpired(t *testing.T) {
 	for _, lifetime := range []string{"idle", "maximum"} {
 		t.Run(lifetime, func(t *testing.T) {
 			clock := &fakeClock{now: time.Date(2026, time.October, 28, 12, 0, 0, 0, time.UTC)}
-			issued := newSession(42, Device{}, clock.Now)
+			issued := newSession(42, Device{}, maxLifetime, clock.Now)
 			if lifetime == "idle" {
 				clock.Advance(7 * 24 * time.Hour)
 			} else {
@@ -134,7 +134,7 @@ func TestCurrentExpired(t *testing.T) {
 }
 
 func TestCurrentMissing(t *testing.T) {
-	issued := newSession(42, Device{}, time.Now)
+	issued := newSession(42, Device{}, maxLifetime, time.Now)
 	for _, secret := range []string{"", "invalid-secret", strings.Repeat("A", 43)} {
 		store := &currentStorage{row: &issued.State}
 		store.identity = func(context.Context, int64) (IdentityState, error) {
@@ -156,7 +156,7 @@ func TestCurrentStorageErrors(t *testing.T) {
 	for _, stage := range []string{"read", "keep commit", "touch commit", "delete commit"} {
 		t.Run(stage, func(t *testing.T) {
 			clock := &fakeClock{now: time.Date(2026, time.October, 28, 12, 0, 0, 0, time.UTC)}
-			issued := newSession(42, Device{}, clock.Now)
+			issued := newSession(42, Device{}, maxLifetime, clock.Now)
 			store := &currentStorage{row: &issued.State, commitErr: lost}
 			switch stage {
 			case "read":
@@ -194,7 +194,7 @@ func TestCurrentIdentityErrors(t *testing.T) {
 		{"unknown role", account.User{ID: 42, Role: "unknown"}, nil, errInvalidRole},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			issued := newSession(42, Device{}, time.Now)
+			issued := newSession(42, Device{}, maxLifetime, time.Now)
 			store := &currentStorage{row: &issued.State}
 			store.identity = func(context.Context, int64) (IdentityState, error) {
 				return IdentityState{User: c.user}, c.err
@@ -223,7 +223,7 @@ func TestCurrentAccess(t *testing.T) {
 		{"member on", account.RoleMember, true, false, AccessMember, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			issued := newSession(42, Device{}, time.Now)
+			issued := newSession(42, Device{}, maxLifetime, time.Now)
 			store := &currentStorage{row: &issued.State, identity: func(context.Context, int64) (IdentityState, error) {
 				return IdentityState{User: account.User{ID: 42, Role: c.role}, TOTPConfirmed: c.confirmed, EmailVerified: c.verified}, nil
 			}}

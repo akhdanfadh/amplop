@@ -30,13 +30,14 @@ type signInStorage struct {
 	expiries     []Expiry
 	challenges   []Challenge
 	factor       *totp.Factor
+	role         account.Role
 	passwordHash string
 	deactivated  bool
 	err          error
 }
 
 func (f *signInStorage) StartSignIn(_ context.Context, _ int64, update func(SignInState) (SignInChange, error)) error {
-	next, err := update(SignInState{PasswordHash: f.passwordHash, Factor: f.factor, Deactivated: f.deactivated})
+	next, err := update(SignInState{PasswordHash: f.passwordHash, Role: f.role, Factor: f.factor, Deactivated: f.deactivated})
 	if err != nil {
 		return err
 	}
@@ -197,16 +198,22 @@ func TestStartSignInErrors(t *testing.T) {
 func TestPasswordRequiresTOTP(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, time.October, 29, 12, 0, 0, 0, time.UTC)}
 	for _, c := range []struct {
-		name   string
-		factor *totp.Factor
-		step   SignInStep
+		name     string
+		role     account.Role
+		factor   *totp.Factor
+		step     SignInStep
+		lifetime time.Duration
 	}{
-		{"missing", nil, SignInStepComplete},
-		{"pending", &totp.Factor{}, SignInStepComplete},
-		{"confirmed", &totp.Factor{ConfirmedAt: &clock.now}, SignInStepTOTP},
+		{"member missing", account.RoleMember, nil, SignInStepComplete, maxLifetime},
+		{"member pending", account.RoleMember, &totp.Factor{}, SignInStepComplete, maxLifetime},
+		{"member confirmed", account.RoleMember, &totp.Factor{ConfirmedAt: &clock.now}, SignInStepTOTP, 0},
+		// An administrator without two-factor gets a short enrollment session.
+		{"admin missing", account.RoleAdmin, nil, SignInStepComplete, enrollmentSessionLifetime},
+		{"admin pending", account.RoleAdmin, &totp.Factor{}, SignInStepComplete, enrollmentSessionLifetime},
+		{"admin confirmed", account.RoleAdmin, &totp.Factor{ConfirmedAt: &clock.now}, SignInStepTOTP, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			store := &signInStorage{factor: c.factor}
+			store := &signInStorage{factor: c.factor, role: c.role}
 			accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
 				return account.Credentials{User: account.User{ID: 42}}, nil
 			}}
@@ -220,6 +227,8 @@ func TestPasswordRequiresTOTP(t *testing.T) {
 			if c.step == SignInStepComplete {
 				assert.Empty(t, store.challenges)
 				require.Len(t, store.states, 1)
+				assert.Equal(t, clock.Now().Add(c.lifetime), store.states[0].ExpiresAt)
+				assert.Equal(t, store.states[0].ExpiresAt, result.ExpiresAt)
 				return
 			}
 			assert.Empty(t, store.states)
