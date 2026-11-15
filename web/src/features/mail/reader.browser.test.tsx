@@ -9,12 +9,12 @@ import {
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
-import type { ConversationMessage, ConversationRow } from "@/api/generated/model";
+import type { ConversationMessage, ConversationRow, PlaceCount } from "@/api/generated/model";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { Route as appRoot } from "@/routes/__root";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 import { runAction } from "./actions";
-import { mailData, refreshNewest } from "./conversations";
+import { mailData, placeKey, refreshNewest } from "./conversations";
 import { Reader } from "./reader";
 import { placeWhere } from "./rules";
 
@@ -25,6 +25,8 @@ afterEach(async () => {
   if (current) clearAccountCache(current);
   current = undefined;
   vi.unstubAllGlobals();
+  // The tab's own visibility again, if a test hid it.
+  Reflect.deleteProperty(document, "visibilityState");
 });
 
 // app renders the reading pane for id on api, opened from an open Inbox
@@ -281,6 +283,81 @@ describe("Reader", () => {
 });
 
 describe("Reader, opening", () => {
+  const inbox: PlaceCount = { accountId: 1, name: null, parent: null, place: "inbox", unread: 1 };
+
+  it("marks an unread conversation read once its messages are read, with its count", async () => {
+    const row = conversation(1, { unread: true });
+    const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
+    api.places = [inbox];
+    api.placesAfter = [{ ...inbox, unread: 0 }];
+    const reads = withMessage(api, row);
+    await app(api, row.id, "from-list");
+
+    await expect.poll(() => api.actions).toEqual([{ action: "read", ids: [row.id] }]);
+    const mail = mailData(current!);
+    expect(mail.conversations.get(row.id)?.unread).toBe(false);
+    await expect.poll(() => mail.placeCounts.get(placeKey(1, "inbox"))?.unread).toBe(0);
+    // Read again once the action settled, for the messages' own flags.
+    await expect.poll(reads).toBe(2);
+  });
+
+  it("leaves a read conversation as it is", async () => {
+    const row = conversation(1);
+    const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
+    withMessage(api, row);
+    await app(api, row.id, "from-list");
+
+    await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
+    await new Promise((done) => setTimeout(done, 100));
+    expect(api.actions).toEqual([]);
+  });
+
+  it("waits for the tab to show", async () => {
+    let visibility: DocumentVisibilityState = "hidden";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+    const row = conversation(1, { unread: true });
+    const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
+    withMessage(api, row);
+    await app(api, row.id, "from-list");
+    await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
+    await new Promise((done) => setTimeout(done, 100));
+    expect(api.actions).toEqual([]);
+
+    visibility = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await expect.poll(() => api.actions).toEqual([{ action: "read", ids: [row.id] }]);
+  });
+
+  it("leaves an account that needs reconnecting as it is", async () => {
+    const row = conversation(1, { unread: true });
+    const account = { ...listedAccount(1, "ana@example.com"), status: "needs-reconnect" as const };
+    const api = mailApi([row], [account]);
+    withMessage(api, row);
+    await app(api, row.id, "from-list");
+
+    await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
+    await new Promise((done) => setTimeout(done, 100));
+    expect(api.actions).toEqual([]);
+  });
+
+  it("puts a refused read back", async () => {
+    const row = conversation(1, { unread: true });
+    const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
+    api.places = [inbox];
+    api.refuse[row.id] = "failed";
+    withMessage(api, row);
+    await app(api, row.id, "from-list");
+
+    await expect.poll(() => api.actions).toEqual([{ action: "read", ids: [row.id] }]);
+    const mail = mailData(current!);
+    await expect.poll(() => mail.conversations.get(row.id)?.unread).toBe(true);
+    expect(mail.placeCounts.get(placeKey(1, "inbox"))?.unread).toBe(1);
+  });
+
   it("keeps its row while open, after its list no longer holds it", async () => {
     // Not the page's oldest, whose date's other conversations the list
     // also loads apart, which would hold it too.

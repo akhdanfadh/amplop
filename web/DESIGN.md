@@ -415,6 +415,12 @@ last two redirect into settings, so settings can move without the server.
   never moved there by width; the bar wraps only for large text. Once the
   title scrolls under it, the subject fades in (150 ms) and a hairline
   shows below it.
+- Opening an unread conversation marks it read, once: when its messages
+  have come (they decide which start open) and the tab shows, and not for
+  an account that needs reconnecting. Its row un-bolds and the counts
+  drop at once. A read the server refuses or that fails puts both back
+  silently and is not tried again; arrow keys in the list only move
+  focus, never open.
 - Title (22 px), the account mark, the message count. The title and
   account draw from the list's row at once; "Loading messages..." stands
   under them until the messages come, and the view takes focus, so a

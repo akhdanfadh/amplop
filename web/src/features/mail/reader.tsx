@@ -1,9 +1,10 @@
-import { useCallback, useEffect, type ReactElement } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { ArrowLeftIcon } from "lucide-react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { getGetConversationQueryOptions, useListConnectedAccounts } from "@/api/generated/inbok";
+import { ApiError } from "@/api/transport";
 import { accountName } from "@/components/account-mark";
 import { ReadError } from "@/components/read-error";
 import { NotFound } from "@/components/route-states";
@@ -12,6 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { ConversationView } from "@/features/messages/conversation";
 import { useLayout } from "@/hooks/use-layout";
+import { isCurrent, runAction, type ActionMail } from "./actions";
 import { currentMail } from "./conversations";
 import type { AppHref } from "./places";
 import {
@@ -28,7 +30,7 @@ const notFoundStatus = 404;
 // Reader is the reading pane's conversation, shown by the conversation
 // view (features/messages). It draws the subject and account from the
 // conversation's row at once, keeps them when a read fails, and names the
-// tab after the subject.
+// tab after the subject. Opening an unread conversation marks it read.
 //
 // back is its list, which a phone, showing one pane at a time, returns to
 // with Back in the view's toolbar. A conversation that does not exist,
@@ -82,6 +84,17 @@ export function Reader({
   });
   const conversation = row ?? detail?.conversation;
   const account = accounts.data?.data.accounts.find((a) => a.id === conversation?.accountId);
+  const actionMail = mail && {
+    client,
+    conversations: mail.conversations,
+    placeCounts: mail.placeCounts,
+  };
+  useReadOnOpen(
+    actionMail,
+    conversation,
+    detail?.messages !== undefined && account?.status === "usable",
+    signOut,
+  );
   // Back returns to the list the member came from, as the phone's own back
   // does, so it adds no history; a conversation opened from a link goes to
   // its list in its place.
@@ -142,6 +155,44 @@ export function Reader({
         }
       />
     </>
+  );
+}
+
+// useReadOnOpen marks conversation read in mail as it opens, once: when
+// ready and the tab shows, only while it is unread then. ready says its
+// messages are read, which decided the ones that start open, and its
+// account is usable. A refused or failed read puts the row back unsaid
+// and is not tried again; one that finds the session ended runs
+// onUnauthorized.
+function useReadOnOpen(
+  mail: ActionMail | undefined,
+  conversation: { id: string; unread: boolean } | undefined,
+  ready: boolean,
+  onUnauthorized: () => void,
+): void {
+  const visible = useTabVisible();
+  // The conversation this opening already decided for.
+  const decided = useRef<string | null>(null);
+  useEffect(() => {
+    if (!mail || !conversation || !ready || !visible) return;
+    if (decided.current === conversation.id) return;
+    decided.current = conversation.id;
+    if (!conversation.unread) return;
+    runAction(mail, { action: "read", ids: [conversation.id] }).catch((err: unknown) => {
+      if (err instanceof ApiError && err.status === unauthorized && isCurrent(mail))
+        onUnauthorized();
+    });
+  }, [mail, conversation, ready, visible, onUnauthorized]);
+}
+
+// useTabVisible reports whether the page's tab shows.
+function useTabVisible(): boolean {
+  return useSyncExternalStore(
+    (changed) => {
+      document.addEventListener("visibilitychange", changed);
+      return () => document.removeEventListener("visibilitychange", changed);
+    },
+    () => document.visibilityState === "visible",
   );
 }
 
