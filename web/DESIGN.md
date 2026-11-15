@@ -714,7 +714,15 @@ gate"):
   alone, without an ID.
 - Action handlers store the rows the server returns (`writeUpsert`) instead
   of refetching; an action whose guess changes nothing sends its request
-  itself, since TanStack DB skips a transaction without changes.
+  itself, since TanStack DB skips a transaction without changes. A list
+  read in flight never lands over those rows: TanStack DB keeps a direct
+  write over a read that started before it.
+- Which places a conversation is in comes from one table of flags
+  (`rules.ts`), which both filters the lists (`placeWhere`) and guesses
+  an action's unread counts (`countChanges`), so a count and its list
+  agree. The counts change at once, in the action's transaction; the
+  answer's counts go into List Places' query cache, after cancelling a
+  read of them in flight, which that cache would let land over them.
 
 ## Wording
 

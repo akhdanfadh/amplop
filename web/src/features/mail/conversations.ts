@@ -356,13 +356,17 @@ function createPlaceCounts(client: QueryClient, id: string) {
   );
 }
 
+// PlaceCounts is the collection of one member's places with their unread
+// counts.
+export type PlaceCounts = ReturnType<typeof createPlaceCounts>;
+
 // MailData is one member's mail on a client: conversations, which a failed
 // list replaces (restartMail); placeCounts, which the sidebar shows;
 // stop, which ends their refresh; and checking, which reads them often for
 // checkingForMs, as a Check for new mail starts.
 export type MailData = {
   conversations: Conversations;
-  placeCounts: ReturnType<typeof createPlaceCounts>;
+  placeCounts: PlaceCounts;
   stop: () => void;
   checking: () => void;
 };

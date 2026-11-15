@@ -57,7 +57,10 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 
 // MailApi is a fake inbok API for mail pages: it pages conversations as
 // List Conversations does, counts new ones, lists accounts and places, and
-// answers a signed-in session; it stars and unstars conversations. failNext
+// answers a signed-in session; it applies actions as the server's rows
+// show them, and answers each with placesAfter as the places, when set,
+// and as List Places then.
+// failNext
 // makes the next conversation list request answer status, failOlder every
 // request for an older page until it is cleared, failAction the
 // next action, and refuse refuses an action on a conversation, by ID, with
@@ -72,6 +75,7 @@ export type MailApi = {
   conversations: ConversationRow[];
   accounts: ListedAccount[];
   places: PlaceCount[];
+  placesAfter: PlaceCount[] | undefined;
   requests: string[];
   actions: { action: string; ids: string[] }[];
   failNext: number | undefined;
@@ -91,6 +95,7 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     conversations,
     accounts,
     places: [],
+    placesAfter: undefined,
     requests: [],
     actions: [],
     failNext: undefined,
@@ -129,14 +134,14 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         const changed = api.conversations.filter(
           (c) => ids.includes(c.id) && !refused.includes(c.id),
         );
-        for (const c of changed) {
-          if (action === "star" || action === "unstar") c.starred = action === "star";
-        }
+        for (const c of changed) Object.assign(c, actionRows[action]);
+        if (api.placesAfter) api.places = api.placesAfter;
         return Response.json({
           data: {
             conversations: changed,
             refused: refused.map((id) => ({ id, reason: api.refuse[id] })),
             undo: action === "star" ? "unstar" : "star",
+            places: api.placesAfter,
           },
         });
       }
@@ -199,6 +204,20 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
   };
   return api;
 }
+
+// The flags each action leaves on a row, as the server's rows show them.
+const actionRows: Record<ConversationActionBody["action"], Partial<ConversationRow>> = {
+  read: { unread: false },
+  unread: { unread: true },
+  archive: { inbox: false },
+  unarchive: { inbox: true },
+  star: { starred: true },
+  unstar: { starred: false },
+  trash: { trash: true, inbox: false, allMail: false, sent: false, spam: false, labelIds: [] },
+  untrash: { trash: false, inbox: true, allMail: true },
+  spam: { spam: true, inbox: false, allMail: false, sent: false, labelIds: [] },
+  unspam: { spam: false, inbox: true, allMail: true },
+};
 
 // problem returns an error response with status, and type.
 function problem(status: number, type = "about:blank"): Response {

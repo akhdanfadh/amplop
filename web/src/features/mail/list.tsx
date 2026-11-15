@@ -88,7 +88,7 @@ export function ConversationList({
   const router = useRouter();
   // Taken once: after sign-out drops the member's mail, this list, still
   // drawn for a moment, must not start a new collection and read again.
-  const [{ conversations }] = useState(() => mailData(client));
+  const [{ conversations, placeCounts }] = useState(() => mailData(client));
   const accounts = useListConnectedAccounts();
   const accountList = accounts.data?.data.accounts;
   const accountsById = useMemo(
@@ -213,7 +213,10 @@ export function ConversationList({
   // arrives once the member's mail has ended, e.g. after sign-out.
   const star = (id: string, starred: boolean) => {
     const current = () => currentMail(client)?.conversations === conversations;
-    runAction(conversations, { action: starred ? "star" : "unstar", ids: [id] }).then(
+    runAction(
+      { client, conversations, placeCounts },
+      { action: starred ? "star" : "unstar", ids: [id] },
+    ).then(
       (result) => {
         const refused = result.refused[0];
         if (refused && current()) showError(starFailed(starred), refusedText[refused.reason]);

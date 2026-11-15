@@ -1,7 +1,7 @@
 import { and, eq, inArray, type Ref } from "@tanstack/db";
 import type { ConversationActionBodyOutput } from "@/api/generated/model/conversationActionBody.zod";
 import type { Conversation } from "./conversations";
-import { isViewPlace, type Place, type ViewPlace } from "./places";
+import { isViewPlace, viewPlaces, type Place, type ViewPlace } from "./places";
 
 // Action is what the API can do to conversations, e.g. "star".
 export type Action = ConversationActionBodyOutput["action"];
@@ -11,7 +11,8 @@ export type Request = { action: Action; ids: string[] };
 
 // The flags a conversation has, all of them, in each view: Starred is the
 // starred conversations of All mail, as List Places counts it. Each list
-// filters by it (placeWhere).
+// filters by it (placeWhere), and each count guess reads it (placesOf),
+// so a count and its list agree.
 export const viewFlags = {
   inbox: ["inbox"],
   starred: ["starred", "allMail"],
@@ -40,6 +41,13 @@ export function placeWhere(c: Ref<Conversation>, place: Place, account: number |
   if (account !== undefined) tests.push(eq(c.accountId, account));
   const [first, second, ...rest] = tests;
   return second === undefined ? first : and(first, second, ...rest);
+}
+
+// placesOf returns the places conversation is in, as the lists filter:
+// its views, then its labels.
+export function placesOf(conversation: Conversation): Place[] {
+  const views = viewPlaces.filter((view) => viewFlags[view].every((flag) => conversation[flag]));
+  return [...views, ...conversation.labelIds];
 }
 
 // The fields each action sets on a conversation, before the API answers.
@@ -83,4 +91,25 @@ export function guessedFields(before: Conversation, after: Conversation): Partia
 // guessChanges reports whether request's guess would change conversation.
 export function guessChanges(conversation: Conversation, request: Request): boolean {
   return Object.keys(guessedFields(conversation, guess(conversation, request))).length > 0;
+}
+
+// UnreadChange is how much one account's place's unread count changes.
+export type UnreadChange = { accountId: number; place: Place; by: number };
+
+// countChanges returns the unread counts that change as a conversation
+// goes from before to after: one more in each place it is unread in after
+// and not before, one fewer in each the other way round.
+//
+// DESIGN: a guess, as the list shows it, bold in every place it is in.
+// The server counts a conversation in a place when one of its messages
+// there is unread, which a row cannot tell; the action's answer brings
+// the counts as the server has them.
+export function countChanges(before: Conversation, after: Conversation): UnreadChange[] {
+  const was = new Set(before.unread ? placesOf(before) : []);
+  const is = new Set(after.unread ? placesOf(after) : []);
+  const { accountId } = after;
+  return [
+    ...[...is].filter((place) => !was.has(place)).map((place) => ({ accountId, place, by: 1 })),
+    ...[...was].filter((place) => !is.has(place)).map((place) => ({ accountId, place, by: -1 })),
+  ];
 }
