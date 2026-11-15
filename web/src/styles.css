@@ -27,6 +27,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-read-foreground: var(--read-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-selection: var(--selection);
@@ -105,6 +106,8 @@
   --secondary: #f2f2f2;
   --muted: #f2f2f2;
   --muted-foreground: #666666;
+  /* A read row's sender and subject: a step quieter than an unread one's. */
+  --read-foreground: #3d3d3d;
   --accent: #ececec;
   --selection: #e5eaf6;
   --destructive: #a8000a;
@@ -144,6 +147,7 @@
   --secondary: #161616;
   --muted: #161616;
   --muted-foreground: #a3a3a3;
+  --read-foreground: #bdbdbd;
   --accent: #2e2e2e;
   --selection: #272a33;
   --destructive: #ffa3a5;
@@ -343,6 +347,14 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  /* macOS browsers thicken every stroke by the same amount, most visibly
+   * light on dark, which brings 400 and 600 close; grayscale smoothing
+   * drops it, so weight reads in dark as it does in light. Other systems
+   * ignore these. */
+  .dark body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   /* Headings, landmarks, and messages that only code focuses (tabindex
    * -1), e.g. a page heading after navigation, are not controls: no ring. */

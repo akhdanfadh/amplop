@@ -114,7 +114,13 @@ export function ConversationRow({
       onHoverEnd={onLeave}
       // The list reads the conversation ahead when focus rests here.
       data-conversation={conversation.id}
-      className="h-full gap-3 border-b px-4 py-2"
+      className={cn(
+        "h-full gap-3 border-b px-4 py-2",
+        // An unread row's mark: a 3 px bar in primary at its leading edge,
+        // the text's colour in forced colours, which drop the others.
+        conversation.unread &&
+          "before:absolute before:inset-y-0 before:start-0 before:w-0.75 before:bg-primary forced-colors:before:bg-[CanvasText]",
+      )}
     >
       {/* 36 px, its top on the first line's and its left edge on the list
           heading's (16 px); 12 px to the text, less than the edge, so it
@@ -126,7 +132,10 @@ export function ConversationRow({
       <div
         className={cn(
           "flex min-w-0 flex-1 flex-col text-sm leading-5",
-          conversation.unread && "font-semibold",
+          // Unread is weight, heavier in dark, where light text on dark
+          // looks bolder at any weight; a read row's text is a step
+          // quieter, so the two differ in brightness too.
+          conversation.unread ? "font-semibold dark:font-[650]" : "text-read-foreground",
         )}
       >
         {/* One 20 px line, whatever the smaller texts' own line height.

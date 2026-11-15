@@ -8,7 +8,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { page, userEvent } from "vite-plus/test/browser/context";
+import { cdp, page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import { useListConnectedAccounts } from "@/api/generated/inbok";
 import { clearAccountCache } from "@/features/auth/session-cache";
@@ -421,6 +421,70 @@ describe("the row's star", () => {
   });
 });
 
+// readAndUnread returns an API listing an unread conversation, 1, above a
+// read one, 2.
+function readAndUnread() {
+  return mailApi([conversation(1, { unread: true }), conversation(2)], one);
+}
+
+// subjectStyle returns the computed style of conversation n's subject text.
+function subjectStyle(n: number) {
+  return getComputedStyle(page.getByText(`Subject ${n}`, { exact: true }).element());
+}
+
+// bar returns the computed style of row's edge mark.
+function bar(row: Element) {
+  return getComputedStyle(row, "::before");
+}
+
+describe("an unread row", () => {
+  it("stands out by weight, a bar at its edge, and a read row's quieter text", async () => {
+    await app(readAndUnread());
+    const unread = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(unread).toBeVisible();
+    const read = page.getByRole("row", { name: /Subject 2,/ }).element();
+
+    expect(subjectStyle(1).fontWeight).toBe("600");
+    expect(subjectStyle(2).fontWeight).toBe("400");
+    expect(subjectStyle(2).color).not.toBe(subjectStyle(1).color);
+    expect(bar(unread.element()).width).toBe("3px");
+    expect(bar(unread.element()).backgroundColor).not.toBe(
+      getComputedStyle(unread.element()).backgroundColor,
+    );
+    expect(bar(read).content).toBe("none");
+  });
+
+  it("is heavier in dark, whose text is drawn without macOS's thickening", async () => {
+    document.documentElement.classList.add("dark");
+    try {
+      await app(readAndUnread());
+      const unread = page.getByRole("row", { name: /Subject 1,/ });
+      await expect.element(unread).toBeVisible();
+      expect(subjectStyle(1).fontWeight).toBe("650");
+      expect(getComputedStyle(document.body).getPropertyValue("-webkit-font-smoothing")).toBe(
+        "antialiased",
+      );
+    } finally {
+      document.documentElement.classList.remove("dark");
+    }
+  });
+
+  it("draws its bar in the text's colour in forced colours", async () => {
+    await app(readAndUnread());
+    const unread = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(unread).toBeVisible();
+    const session = cdp();
+    await session.send("Emulation.setEmulatedMedia", {
+      features: [{ name: "forced-colors", value: "active" }],
+    });
+    try {
+      await expect.poll(() => bar(unread.element()).backgroundColor).toBe(subjectStyle(1).color);
+    } finally {
+      await session.send("Emulation.setEmulatedMedia", { features: [] });
+    }
+  });
+});
+
 describe("the Inbox chip", () => {
   it("marks a conversation still in the Inbox outside the Inbox, e.g. in All mail", async () => {
     await app(mailApi([conversation(1), conversation(2, { inbox: false })], one), "/mail/all");
@@ -439,6 +503,9 @@ describe("the Inbox chip", () => {
     const chip = row.getByText("Inbox", { exact: true });
     await expect.element(chip).toBeVisible();
 
+    // From off the row: a pointer an earlier test left where this row now
+    // is enters it without moving, which reports no hover.
+    await userEvent.unhover(row);
     await userEvent.hover(row);
     await expect.element(row).toHaveAttribute("data-hovered", "true");
     expect(getComputedStyle(chip.element()).backgroundColor).not.toBe(

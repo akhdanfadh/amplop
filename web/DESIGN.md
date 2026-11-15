@@ -19,7 +19,8 @@ work to this file, not to the old code.
   member can act on. Account colours are the only other colour on screen,
   and they mean "which account".
 - **Colour never alone.** An account is a colour and its name. A status is
-  a colour, an icon, and a word. Unread is weight, not a dot.
+  a colour, an icon, and a word. Unread is weight and a bar at the row's
+  edge, with read rows a step quieter; never a colour alone.
 - **Only what exists.** A button, menu item, or link appears only when its
   action is built. No placeholders that do nothing.
 - **Words, not decoration.** Empty and error states explain the cause and
@@ -49,6 +50,7 @@ both themes. A new pair is checked before use (antislop-human's
 | `card`, `popover`                | `#ffffff`             | `#262626`             | Raised surfaces, menus                                                                            |
 | `sheet` (new)                    | `#ffffff`             | `#ffffff`             | The message body's sheet, white in both themes                                                    |
 | `muted-foreground`               | `#666666`             | `#a3a3a3`             | Secondary text, meta, snippets                                                                    |
+| `read-foreground` (new)          | `#3d3d3d`             | `#bdbdbd`             | A read row's sender and subject, a step quieter than an unread row's `foreground`                 |
 | `border`                         | `#e3e3e3`             | `#2e2e2e`             | Hairlines; decoration only                                                                        |
 | `input`                          | `#848484`             | `#808080`             | Field outlines (3:1, WCAG 1.4.11)                                                                 |
 | `accent`                         | `#ececec`             | `#2e2e2e`             | Hover surface (shadcn's name; not a brand colour)                                                 |
@@ -92,6 +94,7 @@ surface changes.
 | --------------------------- | ----- | --------------------- | -------------------- |
 | `foreground`                | 4.5   | 16.43 (selection)     | 8.26 (highlight)     |
 | `muted-foreground`          | 4.5   | 4.77 (selection)      | 5.38 (accent)        |
+| `read-foreground`           | 4.5   | 9.02 (selection)      | 4.59 (highlight)     |
 | `primary` as link text      | 4.5   | 5.11 (selection)      | 5.86 (accent)        |
 | `primary-foreground`        | 4.5   | 6.15 (primary)        | 7.35 (primary)       |
 | `primary-foreground` hover  | 4.5   | 5.08 (primary-hover)  | 6.19 (primary-hover) |
@@ -115,7 +118,7 @@ bundled with the app (ADR026 allows no font service). It tells `I`, `l`,
 | Meta: dates, counts, field help           | 12 / 16            | 400                          |
 | Snippets, secondary text                  | 13 / 20            | 400                          |
 | Interface body: rows, nav, forms, buttons | 14 / 20            | 400; 500 for buttons and nav |
-| Unread sender, subject, date              | 14 / 20            | 600                          |
+| Unread sender, subject, date              | 14 / 20            | 600; 650 in dark             |
 | Plain-text message body                   | 15 / 24            | 400                          |
 | Pane and dialog titles                    | 18 / 24            | 600                          |
 | Message subject in the reading pane       | 22 / 28            | 600                          |
@@ -125,6 +128,10 @@ Sentence case everywhere; no uppercase or letter-spaced labels; no negative
 letter spacing below 16 px; `tabular-nums` on every number that lines up;
 lines under about 75 characters (the message sheet caps near 640 px of
 text).
+
+In dark, text is drawn with grayscale smoothing: macOS browsers otherwise
+thicken every stroke by the same amount, most visibly light on dark,
+which brings 400 and 600 close. Unread rows also take 650 there.
 
 ### Space, size, shape, motion
 
@@ -383,8 +390,13 @@ last two redirect into settings, so settings can move without the server.
   avatar ringed in the account colour leads (initials of the newest
   message's sender), its top on the first line's, 16 px from the list's edge
   (the heading's inset) and 12 px from the text, closer than the edge so it
-  reads with its text; filtered to one account, the ring is dropped. Unread
-  rows are 600 weight. Markers: an attachment clip, a star filled in the
+  reads with its text; filtered to one account, the ring is dropped.
+  Unread rows are 600 weight (650 in dark) with a 3 px `primary` bar at
+  their leading edge, the text colour in forced colours; read rows' sender
+  and subject are `read-foreground`, a step quieter, so weight,
+  brightness, and the bar all tell them apart. The bar is not the
+  sidebar's 2 px `foreground` bar for the current item: a list row's
+  current state is its `selection` fill. Markers: an attachment clip, a star filled in the
   text colour, the Inbox chip; a screen reader hears "In Inbox" and
   "Starred" in the row's name.
 - **Dates:** today the time (the browser's 12 or 24 hour clock),
