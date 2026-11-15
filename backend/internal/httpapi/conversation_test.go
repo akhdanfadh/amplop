@@ -319,12 +319,13 @@ func newActionsCountsAPI(actions *fakeConversationActions, conversations *fakeCo
 var goneID = uuid.MustParse("0b1b2c3d-0000-4000-8000-000000000002")
 
 // An action answers with the conversations it changed, those it refused
-// with why, the action that undoes it, and the member's unread counts
-// after it.
+// with why, the changes that undo it, and the member's unread counts after
+// it.
 func TestApplyAction(t *testing.T) {
 	actions := &fakeConversationActions{applied: conversation.Applied{
 		Conversations: []conversation.Conversation{report},
 		Refused:       []conversation.Refusal{{ID: goneID, Reason: conversation.ReasonNeedsReconnect}},
+		Undo:          []conversation.Change{{IDs: []uuid.UUID{reportID}, Unread: conversation.MarkCleared}},
 	}}
 	conversations := &fakeConversations{counts: []conversation.PlaceCount{
 		{Account: 3, Place: conversation.Place{View: conversation.ViewInbox}, Unread: 2},
@@ -336,7 +337,7 @@ func TestApplyAction(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.JSONEq(t, `{"data":{"conversations":[`+reportJSON+`],`+
-		`"refused":[{"id":"`+goneID.String()+`","reason":"needs-reconnect"}],"undo":"read",`+
+		`"refused":[{"id":"`+goneID.String()+`","reason":"needs-reconnect"}],"undo":[{"ids":["`+reportID.String()+`"],"unread":false}],`+
 		`"places":[{"accountId":3,"place":"inbox","name":null,"parent":null,"unread":2}]}}`, response.Body.String())
 	assert.Equal(t, int64(42), actions.userID)
 	assert.Equal(t, conversation.ActionUnread, actions.action)
@@ -356,7 +357,7 @@ func TestApplyActionNoPlaces(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.JSONEq(t, `{"data":{"conversations":[],"refused":[{"id":"`+goneID.String()+`","reason":"not-found"}],`+
-		`"undo":"unread","places":[]}}`, response.Body.String())
+		`"undo":[],"places":[]}}`, response.Body.String())
 }
 
 // The action is done at the provider, so counts that fail after it leave
@@ -370,7 +371,7 @@ func TestApplyActionCountsFail(t *testing.T) {
 	response := requestAuthenticated(api, http.MethodPost, "/conversations/actions", `{"action":"spam","ids":["`+reportID.String()+`"]}`)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	assert.JSONEq(t, `{"data":{"conversations":[`+reportJSON+`],"refused":[],"undo":"unspam"}}`, response.Body.String())
+	assert.JSONEq(t, `{"data":{"conversations":[`+reportJSON+`],"refused":[],"undo":[]}}`, response.Body.String())
 }
 
 // A bad action or ID list is refused with the field it is in, before the

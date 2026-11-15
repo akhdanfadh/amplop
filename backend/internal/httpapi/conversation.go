@@ -462,16 +462,10 @@ type refusedConversation struct {
 type conversationActionResult struct {
 	Conversations []conversationRow     `json:"conversations" nullable:"false" doc:"The conversations the action changed, as the provider answered, in the order of ids. One that no longer exists is in neither list."`
 	Refused       []refusedConversation `json:"refused" nullable:"false" doc:"The conversations the action left as they were, in the order of ids."`
-	Undo          conversation.Action   `json:"undo" doc:"The action that undoes this one, for the changed conversations."`
+	Undo          []conversationChange  `json:"undo" nullable:"false" doc:"The changes that put each changed conversation back as it was before, as its row showed it. Conversations needing the same change share one. A conversation it changed nothing of is in none."`
 	// A pointer, so a successful count of no places is [] and only a failed
 	// one is left out.
 	Places *[]placeCount `json:"places,omitempty" nullable:"false" doc:"Every place with its unread count after the action, as List Places answers; left out when counting failed."`
-}
-
-// TransformSchema lists undo's values from [conversation.Actions].
-func (conversationActionResult) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
-	s.Properties["undo"].Enum = actionValues()
-	return s
 }
 
 // conversationActionProblem maps the errors of applying an action.
@@ -515,7 +509,10 @@ func (h conversationHandler) handleApplyConversationAction(ctx context.Context, 
 	result := conversationActionResult{
 		Conversations: make([]conversationRow, 0, len(applied.Conversations)),
 		Refused:       make([]refusedConversation, 0, len(applied.Refused)),
-		Undo:          in.Body.Action.Opposite(),
+		Undo:          make([]conversationChange, 0, len(applied.Undo)),
+	}
+	for _, change := range applied.Undo {
+		result.Undo = append(result.Undo, conversationChangeOf(change))
 	}
 	for _, row := range applied.Conversations {
 		result.Conversations = append(result.Conversations, conversationRowOf(row))
@@ -533,4 +530,39 @@ func (h conversationHandler) handleApplyConversationAction(ctx context.Context, 
 	listed := placeCountsOf(counts)
 	result.Places = &listed
 	return respondData(result), nil
+}
+
+// conversationChange is a change of conversations as it is: an action's
+// undo.
+type conversationChange struct {
+	IDs     []uuid.UUID `json:"ids" nullable:"false" format:"uuid" minItems:"1" maxItems:"100" uniqueItems:"true" doc:"The conversations to change, by id from a list."`
+	Add     []string    `json:"add,omitempty" nullable:"false" uniqueItems:"true" doc:"The places to add each conversation's messages to: inbox, spam, trash, or one of the member's labels in its account, by id."`
+	Remove  []string    `json:"remove,omitempty" nullable:"false" uniqueItems:"true" doc:"The places to take each conversation's messages out of, named as in add."`
+	Starred *bool       `json:"starred,omitempty" doc:"true stars each conversation's newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is."`
+	Unread  *bool       `json:"unread,omitempty" doc:"true marks each conversation's newest message unread, as unread does; false marks every message read. Left out, it stays as it is."`
+}
+
+// conversationChangeOf returns change as the API sends it.
+func conversationChangeOf(change conversation.Change) conversationChange {
+	names := func(places []conversation.Place) []string {
+		texts := make([]string, 0, len(places))
+		for _, place := range places {
+			texts = append(texts, place.String())
+		}
+		return texts
+	}
+	mark := func(m conversation.Mark) *bool {
+		if m == conversation.MarkKept {
+			return nil
+		}
+		set := m == conversation.MarkSet
+		return &set
+	}
+	return conversationChange{
+		IDs:     change.IDs,
+		Add:     names(change.Add),
+		Remove:  names(change.Remove),
+		Starred: mark(change.Starred),
+		Unread:  mark(change.Unread),
+	}
 }

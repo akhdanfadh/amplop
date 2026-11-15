@@ -282,26 +282,61 @@
             "type": "array"
           },
           "undo": {
-            "description": "The action that undoes this one, for the changed conversations.",
-            "enum": [
-              "read",
-              "unread",
-              "archive",
-              "unarchive",
-              "trash",
-              "untrash",
-              "star",
-              "unstar",
-              "spam",
-              "unspam"
-            ],
-            "type": "string"
+            "description": "The changes that put each changed conversation back as it was before, as its row showed it. Conversations needing the same change share one. A conversation it changed nothing of is in none.",
+            "items": {
+              "$ref": "#/components/schemas/ConversationChange"
+            },
+            "type": "array"
           }
         },
         "required": [
           "conversations",
           "refused",
           "undo"
+        ],
+        "type": "object"
+      },
+      "ConversationChange": {
+        "additionalProperties": false,
+        "properties": {
+          "add": {
+            "description": "The places to add each conversation's messages to: inbox, spam, trash, or one of the member's labels in its account, by id.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "ids": {
+            "description": "The conversations to change, by id from a list.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "remove": {
+            "description": "The places to take each conversation's messages out of, named as in add.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "starred": {
+            "description": "true stars each conversation's newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is.",
+            "type": "boolean"
+          },
+          "unread": {
+            "description": "true marks each conversation's newest message unread, as unread does; false marks every message read. Left out, it stays as it is.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ids"
         ],
         "type": "object"
       },

@@ -2851,9 +2851,9 @@ reads in about 3 ms, deep pages included, and every unread count in
 about 11 ms.
 
 `POST /conversations/actions {action, ids}` changes up to 100 of the
-member's conversations: `read` and `unread`, `archive` and `unarchive`,
-`trash` and `untrash`, `star` and `unstar`, `spam` and `unspam`, each
-pair undoing the other. `star` and `unread` change a conversation's
+member's conversations, by Gmail's own rules: `read` and `unread`,
+`archive` and `unarchive`, `trash` and `untrash`, `star` and `unstar`,
+`spam` and `unspam`. `star` and `unread` change a conversation's
 newest message (`Action.OnNewest`): the newest message its row is made
 from that is not in Sent, else the newest, which `Derive` records as
 `newest_message_id`; the rest change every message. `untrash` puts a
@@ -2862,7 +2862,8 @@ Trash took it out. `conversation.ActionService` calls Gmail inside the
 request, and inbok writes only what Gmail answers (ADR031, "Mail actions
 as built"):
 
-1. It finds the member's threads; another ID is refused `not-found`.
+1. It finds the member's threads, another ID refused `not-found`, and
+   reads their rows as they stand before.
 2. Per account, at once, it takes an access token and reads the
    account's version (`Version`, Gmail's history ID from
    `users.getProfile`), then calls `threads.modify` or `threads.trash`
@@ -2881,9 +2882,21 @@ as built"):
    brought to a newer version keeps it.
 4. It answers with the changed rows, as read after the writes, each
    refused conversation with its reason (`not-found`,
-   `needs-reconnect`, or `failed`), `undo`, the opposite action, and
-   `places`, every unread count as `GET /places` answers, left out and
-   logged when counting fails.
+   `needs-reconnect`, or `failed`), `undo`, and `places`, every unread
+   count as `GET /places` answers, left out and logged when counting
+   fails. `undo` is the changes that put each changed row back as it
+   was: the difference between its row before and after
+   (`conversation.undoOf`), within what the action reaches
+   (`Action.Reach`): an action that moves a conversation, its places
+   (the inbox, Spam, Trash, its labels); one that marks it, that star
+   or unread mark. So a mark changed meanwhile, e.g. a new reply's
+   unread, or one the row reads differently once its messages moved, is
+   not taken back. Conversations needing the same change go together.
+   By the row, not each message: undoing Trash also puts the member's
+   own replies in the inbox, as one `threads.modify` labels every
+   message, and a thread only partly in Trash or Spam that the action
+   put there whole comes back out of it whole, the message deleted on
+   its own included (DEBT.md, "Undo per message").
 
 Each conversation is changed or refused on its own, so one answer can
 hold both, and nothing changes in inbok that Gmail did not accept: a

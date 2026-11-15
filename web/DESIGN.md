@@ -629,7 +629,7 @@ pull-to-refresh, which would reload the app, never starts.
 - **Reversible actions** (archive, delete to Trash, read, star, and bulk
   versions) happen at once; when the result leaves the screen, e.g. an
   archived row, a toast says what happened, with Undo, which sends the
-  opposite action the API names. Undo appears only once the action's request
+  undo the API answers with. Undo appears only once the action's request
   has settled, as Gmail's own toast does: sent sooner, it could reach Gmail
   before the action it undoes. Toasts last 10 s. A result that stays in
   view, e.g. a star, gets no toast. A bulk action Gmail refuses for some

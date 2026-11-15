@@ -19,7 +19,8 @@ import (
 // ========================
 
 // Action is a change a member makes to conversations, by its name in the
-// API. Each has an opposite, which undoes it.
+// API, as their provider's own rules apply it, e.g. what Trash does to a
+// thread's other labels. A [Change] undoes it.
 type Action string
 
 // The actions, each beside its opposite.
@@ -41,20 +42,6 @@ var Actions = []Action{
 	ActionRead, ActionUnread, ActionArchive, ActionUnarchive,
 	ActionTrash, ActionUntrash, ActionStar, ActionUnstar,
 	ActionSpam, ActionUnspam,
-}
-
-// opposites pairs each action with the one that undoes it.
-var opposites = map[Action]Action{
-	ActionRead: ActionUnread, ActionUnread: ActionRead,
-	ActionArchive: ActionUnarchive, ActionUnarchive: ActionArchive,
-	ActionTrash: ActionUntrash, ActionUntrash: ActionTrash,
-	ActionStar: ActionUnstar, ActionUnstar: ActionStar,
-	ActionSpam: ActionUnspam, ActionUnspam: ActionSpam,
-}
-
-// Opposite returns the action that undoes a, or empty for no action.
-func (a Action) Opposite() Action {
-	return opposites[a]
 }
 
 // OnNewest reports whether a changes only a conversation's newest message,
@@ -114,6 +101,10 @@ type Applied struct {
 	Conversations []Conversation
 	// Refused are the ones it left as they were, in the order asked.
 	Refused []Refusal
+	// Undo are the changes that put each changed conversation back as it
+	// was, conversations needing the same change together, in the order
+	// asked (undoOf); one it left as it was is in none.
+	Undo []Change
 }
 
 // ========================
@@ -210,18 +201,25 @@ func NewActionService(storage ActionStorage, access accountAccess, provider Thre
 
 // Apply applies action to userID's conversations of ids at their
 // providers, and writes each thread's messages as the provider answers,
-// one write per account, the accounts at once. It returns
-// [ErrInvalidAction] and [ErrInvalidIDs] for bad input, and any other error
-// as a failure of the whole action; a conversation's own failure is a
-// [Refusal].
+// one write per account, the accounts at once. It returns what changed and
+// the changes that undo it, within what the action reaches
+// ([Action.Reach]); [ErrInvalidAction] and [ErrInvalidIDs] for bad input;
+// and any other error as a failure of the whole action; a conversation's
+// own failure is a [Refusal].
 //
 // DESIGN: inbok writes only what the provider answered, so it never shows
 // a change the provider does not have, and copies none of the provider's
 // rules, e.g. what Trash does to a thread's other labels (ADR031, "Mail
 // actions as built").
+//
+// DESIGN: the undo is the difference between each conversation's row
+// before and after, within its reach, so it puts back only what this
+// changed: a label added meanwhile elsewhere stays, and a star or unread
+// mark that changed during a move, e.g. a new reply's, is not taken back
+// (ADR031, "Mail actions as built", checkpoint 7c).
 func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, ids []uuid.UUID) (Applied, error) {
 	// 1. Refuse bad input before any read or provider call.
-	if action.Opposite() == "" {
+	if !slices.Contains(Actions, action) {
 		return Applied{}, ErrInvalidAction
 	}
 	ids = uniqueIDs(ids)
@@ -239,12 +237,21 @@ func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, 
 		reasons[id] = ReasonNotFound
 	}
 	byAccount := make(map[int64][]Thread)
+	found := make([]uuid.UUID, 0, len(threads))
 	for _, thread := range threads {
 		delete(reasons, thread.ID)
 		byAccount[thread.AccountID] = append(byAccount[thread.AccountID], thread)
+		found = append(found, thread.ID)
 	}
 
-	// 3. Act at each account's provider, all at once, within the budget.
+	// 3. Read the rows as they stand before any change, which the undo
+	// returns to.
+	before, err := a.storage.ReadConversations(ctx, userID, found)
+	if err != nil {
+		return Applied{}, err
+	}
+
+	// 4. Act at each account's provider, all at once, within the budget.
 	outcomes := make([]accountOutcome, 0, len(byAccount))
 	for accountID, accountThreads := range byAccount {
 		outcomes = append(outcomes, accountOutcome{accountID: accountID, threads: accountThreads})
@@ -261,7 +268,7 @@ func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, 
 		return Applied{}, err
 	}
 
-	// 4. Read the changed rows as they stand after every account's write.
+	// 5. Read the changed rows as they stand after every account's write.
 	isChanged := make(map[uuid.UUID]bool)
 	for _, outcome := range outcomes {
 		for _, id := range outcome.changed {
@@ -276,7 +283,8 @@ func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, 
 	if err != nil {
 		return Applied{}, err
 	}
-	applied := Applied{Conversations: rows, Refused: []Refusal{}}
+	reach := func(uuid.UUID) Reach { return action.Reach() }
+	applied := Applied{Conversations: rows, Refused: []Refusal{}, Undo: undoOf(before, rows, reach)}
 	for _, id := range ids {
 		if reason, ok := reasons[id]; ok {
 			applied.Refused = append(applied.Refused, Refusal{ID: id, Reason: reason})

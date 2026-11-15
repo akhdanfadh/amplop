@@ -9,6 +9,8 @@ import * as zod from 'zod';
 
 export const conversationActionResultPlacesItemUnreadMin = 0;
 
+export const conversationActionResultUndoItemIdsMax = 100;
+
 
 export const ConversationActionResult = zod.object({
   "conversations": zod.array(zod.object({
@@ -46,7 +48,13 @@ export const ConversationActionResult = zod.object({
   "id": zod.uuid(),
   "reason": zod.enum(['not-found', 'needs-reconnect', 'failed']).describe('not-found: the signed-in account has no such conversation, or the provider no longer has it. needs-reconnect: its connected account must be reconnected first. failed: the provider failed, refused, or took too long; trying again may work.')
 })).describe('The conversations the action left as they were, in the order of ids.'),
-  "undo": zod.enum(['read', 'unread', 'archive', 'unarchive', 'trash', 'untrash', 'star', 'unstar', 'spam', 'unspam']).describe('The action that undoes this one, for the changed conversations.')
+  "undo": zod.array(zod.object({
+  "add": zod.array(zod.string()).optional().describe('The places to add each conversation\'s messages to: inbox, spam, trash, or one of the member\'s labels in its account, by id.'),
+  "ids": zod.array(zod.uuid()).min(1).max(conversationActionResultUndoItemIdsMax).describe('The conversations to change, by id from a list.'),
+  "remove": zod.array(zod.string()).optional().describe('The places to take each conversation\'s messages out of, named as in add.'),
+  "starred": zod.boolean().optional().describe('true stars each conversation\'s newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is.'),
+  "unread": zod.boolean().optional().describe('true marks each conversation\'s newest message unread, as unread does; false marks every message read. Left out, it stays as it is.')
+})).describe('The changes that put each changed conversation back as it was before, as its row showed it. Conversations needing the same change share one. A conversation it changed nothing of is in none.')
 })
 
 export type ConversationActionResult = zod.input<typeof ConversationActionResult>;

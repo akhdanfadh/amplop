@@ -37,17 +37,20 @@ func TestActionFlow(t *testing.T) {
 	stored := syncedMailTest{db: f.db, conn: f.conn, account: account.ID}
 	thread := stored.conversations(t, account.ID)["t1"].ID
 	actions := conversation.NewActionService(f.db, f.access, f.google, slog.New(slog.DiscardHandler))
+	var undo []conversation.Change
 	apply := func(action conversation.Action) conversation.Conversation {
 		t.Helper()
 		applied, err := actions.Apply(t.Context(), f.member, action, []uuid.UUID{thread})
 		require.NoError(t, err, string(action))
 		require.Empty(t, applied.Refused, string(action))
 		require.Len(t, applied.Conversations, 1, string(action))
+		undo = applied.Undo
 		return applied.Conversations[0]
 	}
 
 	// When the member archives the thread and marks it read.
 	apply(conversation.ActionArchive)
+	archived := undo
 	row := apply(conversation.ActionRead)
 
 	// Then the answer, inbok's messages, and Gmail agree: both messages
@@ -79,8 +82,10 @@ func TestActionFlow(t *testing.T) {
 		assert.Equal(t, message, after, id)
 	}
 
-	// When the member undoes the archive.
-	row = apply(conversation.ActionArchive.Opposite())
+	// When the member moves it back to the inbox, which the archive's undo
+	// names.
+	require.Equal(t, []conversation.Change{{IDs: []uuid.UUID{thread}, Add: []conversation.Place{{View: conversation.ViewInbox}}}}, archived)
+	row = apply(conversation.ActionUnarchive)
 
 	// Then the thread is back in the inbox, still read.
 	assert.True(t, row.InInbox)
@@ -111,7 +116,7 @@ func TestActionFlow(t *testing.T) {
 	assert.True(t, row.InSpam)
 	assert.False(t, row.InInbox)
 	assert.False(t, row.InAllMail)
-	row = apply(conversation.ActionSpam.Opposite())
+	row = apply(conversation.ActionUnspam)
 	assert.False(t, row.InSpam)
 	assert.True(t, row.InInbox)
 
@@ -123,7 +128,7 @@ func TestActionFlow(t *testing.T) {
 	assert.True(t, row.InTrash)
 	assert.False(t, row.InInbox)
 	assert.False(t, row.InAllMail)
-	row = apply(conversation.ActionTrash.Opposite())
+	row = apply(conversation.ActionUntrash)
 	assert.False(t, row.InTrash)
 	assert.True(t, row.InInbox)
 }

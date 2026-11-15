@@ -1,6 +1,7 @@
 import { RenameConnectedAccountBody } from "@/api/generated/model/renameConnectedAccountBody.zod";
 import {
   ConversationActionBody,
+  type ConversationChange,
   type ConversationRow,
   type ListedAccount,
   type PlaceCount,
@@ -58,8 +59,8 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // MailApi is a fake inbok API for mail pages: it pages conversations as
 // List Conversations does, counts new ones, lists accounts and places, and
 // answers a signed-in session; it applies actions as the server's rows
-// show them, and answers each with placesAfter as the places, when set,
-// and as List Places then.
+// show them, answers each with the changes that undo it, and with
+// placesAfter as the places, when set, and as List Places then.
 // failNext
 // makes the next conversation list request answer status, failOlder every
 // request for an older page until it is cleared, failAction the
@@ -134,13 +135,19 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         const changed = api.conversations.filter(
           (c) => ids.includes(c.id) && !refused.includes(c.id),
         );
-        for (const c of changed) Object.assign(c, actionRows[action]);
+        const undo: ConversationChange[] = [];
+        for (const row of changed) {
+          const before = { ...row, labelIds: [...row.labelIds] };
+          Object.assign(row, actionRows[action]);
+          const change = undoOf(before, row);
+          if (change) undo.push(change);
+        }
         if (api.placesAfter) api.places = api.placesAfter;
         return Response.json({
           data: {
             conversations: changed,
             refused: refused.map((id) => ({ id, reason: api.refuse[id] })),
-            undo: action === "star" ? "unstar" : "star",
+            undo,
             places: api.placesAfter,
           },
         });
@@ -218,6 +225,26 @@ const actionRows: Record<ConversationActionBody["action"], Partial<ConversationR
   spam: { spam: true, inbox: false, allMail: false, sent: false, labelIds: [] },
   unspam: { spam: false, inbox: true, allMail: true },
 };
+
+// placesOf returns the places of row a change reaches.
+function placesOf(row: ConversationRow): string[] {
+  return [...(["inbox", "spam", "trash"] as const).filter((view) => row[view]), ...row.labelIds];
+}
+
+// undoOf returns the change that takes after back to before, if they
+// differ, as the server computes it.
+function undoOf(before: ConversationRow, after: ConversationRow): ConversationChange | undefined {
+  const was = placesOf(before);
+  const is = placesOf(after);
+  const change: ConversationChange = { ids: [after.id] };
+  const add = was.filter((place) => !is.includes(place));
+  const remove = is.filter((place) => !was.includes(place));
+  if (add.length > 0) change.add = add;
+  if (remove.length > 0) change.remove = remove;
+  if (before.starred !== after.starred) change.starred = before.starred;
+  if (before.unread !== after.unread) change.unread = before.unread;
+  return Object.keys(change).length > 1 ? change : undefined;
+}
 
 // problem returns an error response with status, and type.
 function problem(status: number, type = "about:blank"): Response {

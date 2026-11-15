@@ -19,16 +19,6 @@ import (
 	"inbok/internal/mailsync"
 )
 
-// Every action has an opposite, whose opposite is the action again.
-func TestActionOpposite(t *testing.T) {
-	require.Len(t, opposites, len(Actions))
-	for _, action := range Actions {
-		assert.NotEqual(t, action, action.Opposite())
-		assert.Equal(t, action, action.Opposite().Opposite())
-	}
-	assert.Empty(t, Action("delete").Opposite())
-}
-
 // Star and Mark unread change only the newest message; every other action,
 // their opposites too, changes every message.
 func TestActionOnNewest(t *testing.T) {

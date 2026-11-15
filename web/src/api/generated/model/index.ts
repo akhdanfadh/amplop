@@ -17,6 +17,7 @@ export * from './connectedAccount.zod';
 export * from './connectedAccounts.zod';
 export * from './conversationActionBody.zod';
 export * from './conversationActionResult.zod';
+export * from './conversationChange.zod';
 export * from './conversationDetail.zod';
 export * from './conversationMessage.zod';
 export * from './conversationPage.zod';
