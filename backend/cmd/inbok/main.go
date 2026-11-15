@@ -171,7 +171,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		ConnectedAccounts:       connectedAccounts,
 		OutgoingMessages:        outgoingmessage.NewService(db, connectedAccounts, time.Now),
 		Syncs:                   mailsync.NewService(db, jobs, time.Now),
-		Conversations:           conversation.NewService(db),
+		Conversations:           conversation.NewService(db, google.WebApp{}),
 	}
 	// Without the bucket check of the worker's s3.Open: a store that is
 	// down then stops no one signing in, only reading message content.

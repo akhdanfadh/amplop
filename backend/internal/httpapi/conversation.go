@@ -27,7 +27,7 @@ type conversationService interface {
 	List(ctx context.Context, userID int64, query conversation.Query) ([]conversation.Conversation, error)
 	CountAfter(ctx context.Context, userID int64, place conversation.Place, account int64, after time.Time) (int, error)
 	Places(ctx context.Context, userID int64) ([]conversation.PlaceCount, error)
-	Get(ctx context.Context, userID int64, id uuid.UUID) (conversation.Conversation, []conversation.Message, error)
+	Get(ctx context.Context, userID int64, id uuid.UUID) (conversation.Detail, error)
 }
 
 // conversationActionService applies the member's actions to their
@@ -359,6 +359,7 @@ type conversationMessage struct {
 type conversationDetail struct {
 	Conversation conversationRow       `json:"conversation"`
 	Messages     []conversationMessage `json:"messages" nullable:"false" doc:"Oldest first, drafts left out."`
+	ProviderURL  *string               `json:"providerUrl" nullable:"true" format:"uri" doc:"Where the provider's own web app shows the conversation, signed in as its connected account, e.g. in Gmail; null for a provider without one. Gmail documents no such address, so it may stop working."`
 }
 
 func registerConversationRead(api huma.API, handler conversationHandler) {
@@ -382,12 +383,15 @@ func registerConversationRead(api huma.API, handler conversationHandler) {
 
 func (h conversationHandler) handleGetConversation(ctx context.Context, in *conversationInput) (*output[conversationDetail], error) {
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
-	read, messages, err := h.conversations.Get(ctx, user.ID, in.ID)
+	read, err := h.conversations.Get(ctx, user.ID, in.ID)
 	if err != nil {
 		return nil, conversationReadProblem(err)
 	}
-	detail := conversationDetail{Conversation: conversationRowOf(read), Messages: make([]conversationMessage, 0, len(messages))}
-	for _, m := range messages {
+	detail := conversationDetail{Conversation: conversationRowOf(read.Conversation), Messages: make([]conversationMessage, 0, len(read.Messages))}
+	if read.ProviderURL != "" {
+		detail.ProviderURL = &read.ProviderURL
+	}
+	for _, m := range read.Messages {
 		var answers *uuid.UUID
 		if m.Answers != uuid.Nil() {
 			answers = &m.Answers

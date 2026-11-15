@@ -143,6 +143,14 @@ LEFT JOIN LATERAL (
 ) AS places ON true
 WHERE c.id = ANY (@ids::uuid[]) AND ca.user_id = @user_id;
 
+-- name: ReadConversationSource :one
+-- Where the member's conversation comes from: its account's provider and
+-- address, and its thread there.
+SELECT ca.provider, ca.email, c.provider_thread_id
+FROM conversations c
+JOIN connected_accounts ca ON ca.id = c.connected_account_id
+WHERE c.id = @id AND ca.user_id = @user_id;
+
 -- name: ListConversationMessages :many
 -- Every message of the conversation's thread, drafts too, oldest first,
 -- each with the IDs, roles, and makers of its mailboxes by name, an empty

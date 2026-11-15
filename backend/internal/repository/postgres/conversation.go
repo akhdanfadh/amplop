@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"inbok/internal/connectedaccount"
 	"inbok/internal/conversation"
 	"inbok/internal/mailsync"
 	"inbok/internal/messagecontent"
@@ -144,12 +145,11 @@ func (db *DB) ListPlaceCounts(ctx context.Context, userID int64) ([]conversation
 	return counts, nil
 }
 
-// ReadConversation returns userID's conversation id and every message of
-// its thread, drafts too, oldest first, each with its mailboxes by name, or
-// [conversation.ErrNotFound].
-func (db *DB) ReadConversation(ctx context.Context, userID int64, id uuid.UUID) (conversation.Conversation, []conversation.Message, error) {
-	var read conversation.Conversation
-	var messages []conversation.Message
+// ReadConversation returns userID's conversation id with its source and
+// every message of its thread, drafts too, oldest first, each with its
+// mailboxes by name, or [conversation.ErrNotFound].
+func (db *DB) ReadConversation(ctx context.Context, userID int64, id uuid.UUID) (conversation.Detail, error) {
+	var read conversation.Detail
 	err := pgx.BeginTxFunc(ctx, db.pool, readOnly, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 
@@ -161,14 +161,23 @@ func (db *DB) ReadConversation(ctx context.Context, userID int64, id uuid.UUID) 
 		if len(rows) == 0 {
 			return conversation.ErrNotFound
 		}
-		read = rows[0]
+		read.Conversation = rows[0]
 
-		// 2. Read its messages.
+		// 2. Read where it comes from, and its messages.
+		source, err := queries.ReadConversationSource(ctx, sqlc.ReadConversationSourceParams{ID: id, UserID: userID})
+		if err != nil {
+			return fmt.Errorf("read conversation source: %w", err)
+		}
+		read.Source = conversation.Source{
+			Provider: connectedaccount.Provider(source.Provider),
+			Address:  source.Email,
+			ThreadID: source.ProviderThreadID,
+		}
 		found, err := queries.ListConversationMessages(ctx, id)
 		if err != nil {
 			return fmt.Errorf("list conversation messages: %w", err)
 		}
-		messages = make([]conversation.Message, 0, len(found))
+		messages := make([]conversation.Message, 0, len(found))
 		for _, row := range found {
 			message, err := conversationMessageFromRow(row)
 			if err != nil {
@@ -176,6 +185,7 @@ func (db *DB) ReadConversation(ctx context.Context, userID int64, id uuid.UUID) 
 			}
 			messages = append(messages, message)
 		}
+		read.Messages = messages
 
 		// 3. Read their stored parts, to tell which have attachments.
 		parts, err := queries.ListConversationMessageParts(ctx, id)
@@ -189,9 +199,9 @@ func (db *DB) ReadConversation(ctx context.Context, userID int64, id uuid.UUID) 
 		return nil
 	})
 	if err != nil {
-		return conversation.Conversation{}, nil, err
+		return conversation.Detail{}, err
 	}
-	return read, messages, nil
+	return read, nil
 }
 
 // scope is what a place lists for a member: the mailboxes whose index

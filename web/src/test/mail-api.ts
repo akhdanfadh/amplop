@@ -148,7 +148,7 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
       if (path.startsWith("/api/v0/conversations/")) {
         const found = api.conversations.find((c) => path.endsWith(c.id));
         return found
-          ? Response.json({ data: { conversation: found, messages: [] } })
+          ? Response.json({ data: { conversation: found, messages: [], providerUrl: null } })
           : problem(notFound);
       }
       const sync = /^\/api\/v0\/connected-accounts\/(\d+)\/sync$/.exec(path);

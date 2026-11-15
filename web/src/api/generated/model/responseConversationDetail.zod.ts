@@ -63,7 +63,8 @@ export const ResponseConversationDetail = zod.object({
 })),
   "trash": zod.boolean().describe('Whether it is in Trash.'),
   "unread": zod.boolean()
-})).describe('Oldest first, drafts left out.')
+})).describe('Oldest first, drafts left out.'),
+  "providerUrl": zod.url().nullable().describe('Where the provider\'s own web app shows the conversation, signed in as its connected account, e.g. in Gmail; null for a provider without one. Gmail documents no such address, so it may stop working.')
 })
 })
 

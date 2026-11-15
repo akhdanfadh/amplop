@@ -799,6 +799,33 @@ func (q *Queries) ReadConversationRows(ctx context.Context, arg ReadConversation
 	return items, nil
 }
 
+const readConversationSource = `-- name: ReadConversationSource :one
+SELECT ca.provider, ca.email, c.provider_thread_id
+FROM conversations c
+JOIN connected_accounts ca ON ca.id = c.connected_account_id
+WHERE c.id = $1 AND ca.user_id = $2
+`
+
+type ReadConversationSourceParams struct {
+	ID     uuid.UUID
+	UserID int64
+}
+
+type ReadConversationSourceRow struct {
+	Provider         string
+	Email            string
+	ProviderThreadID string
+}
+
+// Where the member's conversation comes from: its account's provider and
+// address, and its thread there.
+func (q *Queries) ReadConversationSource(ctx context.Context, arg ReadConversationSourceParams) (ReadConversationSourceRow, error) {
+	row := q.db.QueryRow(ctx, readConversationSource, arg.ID, arg.UserID)
+	var i ReadConversationSourceRow
+	err := row.Scan(&i.Provider, &i.Email, &i.ProviderThreadID)
+	return i, err
+}
+
 const readMemberLabelAccount = `-- name: ReadMemberLabelAccount :one
 SELECT mb.connected_account_id
 FROM mailboxes mb

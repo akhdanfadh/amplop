@@ -17,11 +17,12 @@ import (
 )
 
 type fakeConversations struct {
-	rows     []conversation.Conversation
-	messages []conversation.Message
-	counts   []conversation.PlaceCount
-	count    int
-	err      error
+	rows        []conversation.Conversation
+	messages    []conversation.Message
+	providerURL string
+	counts      []conversation.PlaceCount
+	count       int
+	err         error
 
 	userID  int64
 	query   conversation.Query
@@ -50,13 +51,13 @@ func (f *fakeConversations) Places(_ context.Context, userID int64) ([]conversat
 	return f.counts, f.err
 }
 
-func (f *fakeConversations) Get(_ context.Context, userID int64, id uuid.UUID) (conversation.Conversation, []conversation.Message, error) {
+func (f *fakeConversations) Get(_ context.Context, userID int64, id uuid.UUID) (conversation.Detail, error) {
 	f.calls++
 	f.userID, f.id = userID, id
 	if f.err != nil {
-		return conversation.Conversation{}, nil, f.err
+		return conversation.Detail{}, f.err
 	}
-	return f.rows[0], f.messages, nil
+	return conversation.Detail{Conversation: f.rows[0], Messages: f.messages, ProviderURL: f.providerURL}, nil
 }
 
 func newConversationsAPI(conversations *fakeConversations) *API {
@@ -241,6 +242,7 @@ func TestGetConversation(t *testing.T) {
 			Answers:     uuid.MustParse("0b1b2c3d-0000-4000-8000-0000000000dd"),
 			Attachments: true,
 		}},
+		providerURL: "https://mail.google.com/mail/?authuser=alex%40example.com#all/t1",
 	}
 	api := newConversationsAPI(conversations)
 
@@ -252,9 +254,20 @@ func TestGetConversation(t *testing.T) {
 		`"from":[{"name":"Asha K","address":"asha@example.com"}],"replyTo":[],"to":[{"name":"","address":"alex@example.com"}],"cc":[],`+
 		`"preview":"Numbers attached","unread":true,"starred":true,"spam":false,"trash":true,"sent":true,`+
 		`"labelIds":["0b1b2c3d-0000-4000-8000-0000000000aa"],`+
-		`"answers":"0b1b2c3d-0000-4000-8000-0000000000dd","attachments":true}]}}`, response.Body.String())
+		`"answers":"0b1b2c3d-0000-4000-8000-0000000000dd","attachments":true}],`+
+		`"providerUrl":"https://mail.google.com/mail/?authuser=alex%40example.com#all/t1"}}`, response.Body.String())
 	assert.Equal(t, reportID, conversations.id)
 	assert.Equal(t, int64(42), conversations.userID)
+}
+
+// A conversation whose provider has no web app has no address there.
+func TestGetConversationNoProviderURL(t *testing.T) {
+	api := newConversationsAPI(&fakeConversations{rows: []conversation.Conversation{report}, messages: []conversation.Message{}})
+
+	response := requestAuthenticated(api, http.MethodGet, "/conversations/"+reportID.String(), "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Nil(t, decodeJSON(t, response.Body.Bytes())["data"].(map[string]any)["providerUrl"])
 }
 
 func TestGetConversationNotFound(t *testing.T) {

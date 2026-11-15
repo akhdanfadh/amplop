@@ -2837,7 +2837,11 @@ IDs it found, in one read-only snapshot:
   and Sent, and link each message to the one its In-Reply-To names last
   (`linkAnswers`). A message has attachments when its view offers a
   download, as `messagecontent.Choose` decides for the message view, so
-  the two agree; one whose content was never fetched has none yet.
+  the two agree; one whose content was never fetched has none yet. Its
+  `providerUrl` is where the provider's own web app shows it, or null:
+  the service asks a `conversation.Linker`, and `google.WebApp` builds
+  Gmail's undocumented address from the account's address and the
+  thread, in Spam or Trash when the conversation is only there.
 
 A label of another member answers 404 `place-not-found`, an account
 filter of another member 404 `connected-account-not-found`, and another

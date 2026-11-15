@@ -97,7 +97,9 @@ describe("Reader", () => {
       answers: null,
       attachments: false,
     };
-    const detail = Response.json({ data: { conversation: row, messages: [message] } });
+    const detail = Response.json({
+      data: { conversation: row, messages: [message], providerUrl: null },
+    });
     const fetch = api.fetch;
     api.fetch = async (input) => {
       const url = input instanceof Request ? input.url : input.toString();
@@ -179,7 +181,7 @@ describe("Reader", () => {
     };
     answer(api, row.id, (read) =>
       read === 1
-        ? Response.json({ data: { conversation: row, messages: [message] } })
+        ? Response.json({ data: { conversation: row, messages: [message], providerUrl: null } })
         : problem(404, "conversation-not-found"),
     );
     await app(api, row.id);

@@ -7,6 +7,7 @@ import (
 	"time"
 	"uuid"
 
+	"inbok/internal/connectedaccount"
 	"inbok/internal/mailsync"
 )
 
@@ -119,6 +120,32 @@ type Conversation struct {
 	LabelIDs []uuid.UUID
 }
 
+// Source is where a conversation comes from: its account's provider and
+// address, and its thread there.
+type Source struct {
+	Provider connectedaccount.Provider
+	Address  string
+	ThreadID string
+}
+
+// Detail is one conversation as [Service.Get] returns it.
+type Detail struct {
+	Conversation Conversation
+	Source       Source
+	// Messages are its thread's messages, oldest first.
+	Messages []Message
+	// ProviderURL is where its provider's own web app shows it, empty when
+	// the provider has none.
+	ProviderURL string
+}
+
+// Linker finds conversations in their providers' own web apps.
+type Linker interface {
+	// ConversationURL returns where the web app of source's provider shows
+	// c, or empty for a provider it knows no web app of.
+	ConversationURL(source Source, c Conversation) string
+}
+
 // Cursor is the row a page continues from: its date and ID. The zero ID
 // continues below every row of its date, so the page holds only older
 // dates.
@@ -173,22 +200,25 @@ type Storage interface {
 	// its own labels by name, each with the label it nests under.
 	ListPlaceCounts(ctx context.Context, userID int64) ([]PlaceCount, error)
 
-	// ReadConversation returns userID's conversation id and every message
-	// of its thread, drafts too, oldest first, each with its mailboxes by
-	// name, or [ErrNotFound]. It checks the conversation is userID's
-	// first, then reads its messages from the same snapshot, so they are
-	// the thread's as that check saw it.
-	ReadConversation(ctx context.Context, userID int64, id uuid.UUID) (Conversation, []Message, error)
+	// ReadConversation returns userID's conversation id with its source
+	// and every message of its thread, drafts too, oldest first, each with
+	// its mailboxes by name, or [ErrNotFound]; [Detail.ProviderURL] is
+	// left empty. It checks the conversation is userID's first, then reads
+	// its messages from the same snapshot, so they are the thread's as that
+	// check saw it.
+	ReadConversation(ctx context.Context, userID int64, id uuid.UUID) (Detail, error)
 }
 
 // Service answers a member's reads of their conversations.
 type Service struct {
 	storage Storage
+	linker  Linker
 }
 
-// NewService supplies storage.
-func NewService(storage Storage) *Service {
-	return &Service{storage: storage}
+// NewService returns a [Service] that reads with storage and finds
+// conversations in their providers' web apps with linker.
+func NewService(storage Storage, linker Linker) *Service {
+	return &Service{storage: storage, linker: linker}
 }
 
 // List returns one page of userID's conversations as query asks, with
@@ -215,16 +245,17 @@ func (s *Service) Places(ctx context.Context, userID int64) ([]PlaceCount, error
 
 // Get returns userID's conversation id with its messages but drafts,
 // oldest first, each linked to the message it answers ([Message.Answers]),
-// or [ErrNotFound].
-func (s *Service) Get(ctx context.Context, userID int64, id uuid.UUID) (Conversation, []Message, error) {
-	read, messages, err := s.storage.ReadConversation(ctx, userID, id)
+// and where its provider's web app shows it, or [ErrNotFound].
+func (s *Service) Get(ctx context.Context, userID int64, id uuid.UUID) (Detail, error) {
+	detail, err := s.storage.ReadConversation(ctx, userID, id)
 	if err != nil {
-		return Conversation{}, nil, err
+		return Detail{}, err
 	}
 	// A draft shows nowhere (ADR001, "Conversations").
-	messages = slices.DeleteFunc(messages, Message.draft)
-	linkAnswers(messages)
-	return read, messages, nil
+	detail.Messages = slices.DeleteFunc(detail.Messages, Message.draft)
+	linkAnswers(detail.Messages)
+	detail.ProviderURL = s.linker.ConversationURL(detail.Source, detail.Conversation)
+	return detail, nil
 }
 
 // linkAnswers sets each of messages' [Message.Answers]: the message among

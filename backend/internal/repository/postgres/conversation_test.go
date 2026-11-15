@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"inbok/internal/connectedaccount"
 	"inbok/internal/conversation"
 	"inbok/internal/mailsync"
 	"inbok/internal/messagecontent"
@@ -385,14 +386,17 @@ func TestReadConversation(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	row, messages, err := c.db.ReadConversation(t.Context(), c.member, id)
+	read, err := c.db.ReadConversation(t.Context(), c.member, id)
 
-	// Then every message comes, oldest first, each with its mailboxes by
+	// Then it comes with its account's provider and address and its
+	// thread, and every message, oldest first, each with its mailboxes by
 	// name, its Message-ID and In-Reply-To, and whether it has an
 	// attachment, which an inline image is not; the service leaves out the
 	// draft.
 	require.NoError(t, err)
-	assert.Equal(t, id, row.ID)
+	assert.Equal(t, id, read.Conversation.ID)
+	assert.Equal(t, conversation.Source{Provider: connectedaccount.ProviderGmail, Address: "sub-alex@example.com", ThreadID: "t1"}, read.Source)
+	assert.Empty(t, read.ProviderURL, "the service links it")
 	mailbox := func(providerID string, role mailsync.Role, maker mailsync.Maker) conversation.Mailbox {
 		return conversation.Mailbox{ID: c.mailboxID(t, c.account, providerID), Role: role, MadeBy: maker}
 	}
@@ -419,7 +423,7 @@ func TestReadConversation(t *testing.T) {
 			Mailboxes: []conversation.Mailbox{mailbox("DRAFT", mailsync.RoleDrafts, mailsync.MadeByProvider)},
 			InReplyTo: []string{},
 		},
-	}, messages)
+	}, read.Messages)
 }
 
 // A message has attachments when its view offers a download, as
@@ -452,12 +456,12 @@ func TestReadConversationAttachments(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, messages, err := c.db.ReadConversation(t.Context(), c.member, id)
+	read, err := c.db.ReadConversation(t.Context(), c.member, id)
 
 	require.NoError(t, err)
-	require.Len(t, messages, 2)
-	assert.False(t, messages[0].Attachments, "the invite's calendar is an alternative the view leaves out")
-	assert.True(t, messages[1].Attachments, "an image no HTML shows is a download")
+	require.Len(t, read.Messages, 2)
+	assert.False(t, read.Messages[0].Attachments, "the invite's calendar is an alternative the view leaves out")
+	assert.True(t, read.Messages[1].Attachments, "an image no HTML shows is a download")
 }
 
 func TestReadConversationNotFound(t *testing.T) {
@@ -466,7 +470,7 @@ func TestReadConversationNotFound(t *testing.T) {
 	strangers := c.conversations(t, c.strangerAccount)["t1"].ID
 
 	for _, id := range []uuid.UUID{strangers, uuid.New()} {
-		_, _, err := c.db.ReadConversation(t.Context(), c.member, id)
+		_, err := c.db.ReadConversation(t.Context(), c.member, id)
 
 		require.ErrorIs(t, err, conversation.ErrNotFound)
 	}

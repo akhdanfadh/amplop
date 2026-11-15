@@ -45,6 +45,7 @@ type fakeStorage struct {
 	Storage
 	asked    *Query
 	rows     []Conversation
+	source   Source
 	messages []Message
 }
 
@@ -53,13 +54,25 @@ func (f *fakeStorage) ListConversations(_ context.Context, _ int64, query Query)
 	return f.rows, nil
 }
 
-func (f *fakeStorage) ReadConversation(context.Context, int64, uuid.UUID) (Conversation, []Message, error) {
-	return f.rows[0], f.messages, nil
+func (f *fakeStorage) ReadConversation(context.Context, int64, uuid.UUID) (Detail, error) {
+	return Detail{Conversation: f.rows[0], Source: f.source, Messages: f.messages}, nil
+}
+
+// fakeLinker links each conversation by its source's provider and thread.
+type fakeLinker struct{}
+
+func (fakeLinker) ConversationURL(source Source, c Conversation) string {
+	return "https://" + string(source.Provider) + ".example/" + source.ThreadID + "/" + c.ID.String()
+}
+
+// newTestService returns a [Service] reading storage, with [fakeLinker].
+func newTestService(storage Storage) *Service {
+	return NewService(storage, fakeLinker{})
 }
 
 func TestListLimit(t *testing.T) {
 	storage := &fakeStorage{rows: []Conversation{{ID: uuid.New()}}}
-	service := NewService(storage)
+	service := newTestService(storage)
 	query := Query{Place: Place{View: ViewInbox}, Limit: MaxLimit, Before: &Cursor{Date: time.Now(), ID: uuid.New()}}
 
 	rows, err := service.List(t.Context(), 1, query)
@@ -73,7 +86,7 @@ func TestListLimitOutOfRange(t *testing.T) {
 	for _, limit := range []int{0, -1, MaxLimit + 1} {
 		storage := &fakeStorage{}
 
-		_, err := NewService(storage).List(t.Context(), 1, Query{Place: Place{View: ViewInbox}, Limit: limit})
+		_, err := newTestService(storage).List(t.Context(), 1, Query{Place: Place{View: ViewInbox}, Limit: limit})
 
 		require.ErrorIs(t, err, ErrInvalidLimit)
 		assert.Nil(t, storage.asked, "nothing is read")
@@ -84,10 +97,25 @@ func TestGetLeavesOutDrafts(t *testing.T) {
 	received, reply := message(1, "asha", inbox), message(2, "member", drafts)
 	storage := &fakeStorage{rows: []Conversation{{ID: uuid.New()}}, messages: []Message{received, reply}}
 
-	_, messages, err := NewService(storage).Get(t.Context(), 1, storage.rows[0].ID)
+	detail, err := newTestService(storage).Get(t.Context(), 1, storage.rows[0].ID)
 
 	require.NoError(t, err)
-	assert.Equal(t, []Message{received}, messages)
+	assert.Equal(t, []Message{received}, detail.Messages)
+}
+
+// Get asks the linker where the conversation's provider shows it.
+func TestGetProviderURL(t *testing.T) {
+	id := uuid.MustParse("00000000-0000-4000-8000-0000000000aa")
+	storage := &fakeStorage{
+		rows:   []Conversation{{ID: id}},
+		source: Source{Provider: "gmail", Address: "asha@example.com", ThreadID: "t1"},
+	}
+
+	detail, err := newTestService(storage).Get(t.Context(), 1, id)
+
+	require.NoError(t, err)
+	assert.Equal(t, storage.source, detail.Source)
+	assert.Equal(t, "https://gmail.example/t1/"+id.String(), detail.ProviderURL)
 }
 
 // A draft shows nowhere, so nothing links to it: drafts go first.
@@ -98,11 +126,11 @@ func TestGetLinksNoAnswerToADraft(t *testing.T) {
 	reply.InReplyTo = []string{"<draft@x>"}
 	storage := &fakeStorage{rows: []Conversation{{ID: uuid.New()}}, messages: []Message{draft, reply}}
 
-	_, messages, err := NewService(storage).Get(t.Context(), 1, storage.rows[0].ID)
+	detail, err := newTestService(storage).Get(t.Context(), 1, storage.rows[0].ID)
 
 	require.NoError(t, err)
-	require.Len(t, messages, 1)
-	assert.Equal(t, uuid.Nil(), messages[0].Answers)
+	require.Len(t, detail.Messages, 1)
+	assert.Equal(t, uuid.Nil(), detail.Messages[0].Answers)
 }
 
 func TestGetLinksAnswers(t *testing.T) {
@@ -124,13 +152,13 @@ func TestGetLinksAnswers(t *testing.T) {
 	}
 	storage := &fakeStorage{rows: []Conversation{{ID: uuid.New()}}, messages: messages}
 
-	_, got, err := NewService(storage).Get(t.Context(), 1, storage.rows[0].ID)
+	detail, err := newTestService(storage).Get(t.Context(), 1, storage.rows[0].ID)
 
 	// Then each answers the message with the last ID it names, the first
 	// copy of two, and none for one inbok lacks or itself.
 	require.NoError(t, err)
-	answers := make([]uuid.UUID, len(got))
-	for i, m := range got {
+	answers := make([]uuid.UUID, len(detail.Messages))
+	for i, m := range detail.Messages {
 		answers[i] = m.Answers
 	}
 	none := uuid.Nil()

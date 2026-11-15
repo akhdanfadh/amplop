@@ -310,11 +310,20 @@
               "$ref": "#/components/schemas/ConversationMessage"
             },
             "type": "array"
+          },
+          "providerUrl": {
+            "description": "Where the provider's own web app shows the conversation, signed in as its connected account, e.g. in Gmail; null for a provider without one. Gmail documents no such address, so it may stop working.",
+            "format": "uri",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
           "conversation",
-          "messages"
+          "messages",
+          "providerUrl"
         ],
         "type": "object"
       },
