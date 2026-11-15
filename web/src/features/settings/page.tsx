@@ -61,7 +61,7 @@ export function SettingsPage({
         </h1>
         {aside}
       </div>
-      <p className="mt-1 text-muted-foreground">{lead}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{lead}</p>
       {/* Always present, so a screen reader announces the notice that fills
           it; empty, it takes no space. */}
       <output className="block">
@@ -115,7 +115,7 @@ export function SettingsSection({
         </div>
         <p className="text-sm text-muted-foreground">{about}</p>
       </div>
-      <div className="flex min-w-0 flex-col items-start gap-4">{children}</div>
+      <div className="flex min-w-0 flex-col items-start gap-4 text-sm">{children}</div>
     </section>
   );
 }

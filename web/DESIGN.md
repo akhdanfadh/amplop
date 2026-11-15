@@ -115,16 +115,17 @@ IBM Plex Sans Variable (`@fontsource-variable/ibm-plex-sans`), one family,
 bundled with the app (ADR026 allows no font service). It tells `I`, `l`,
 `1`, `O`, and `0` apart, which sender addresses and codes need.
 
-| Use                                       | Size / line height | Weight                       |
-| ----------------------------------------- | ------------------ | ---------------------------- |
-| Meta: dates, counts, field help           | 12 / 16            | 400                          |
-| Snippets, secondary text                  | 13 / 20            | 400                          |
-| Interface body: rows, nav, forms, buttons | 14 / 20            | 400; 500 for buttons and nav |
-| Unread sender, subject, date              | 14 / 20            | 600; 650 in dark             |
-| Plain-text message body                   | 15 / 24            | 400                          |
-| Pane and dialog titles                    | 18 / 24            | 600                          |
-| Message subject in the reading pane       | 22 / 28            | 600                          |
-| Page titles                               | 24 / 32            | 600                          |
+| Use                                                                    | Size / line height | Weight                       |
+| ---------------------------------------------------------------------- | ------------------ | ---------------------------- |
+| Meta: dates, counts, field help                                        | 12 / 16            | 400                          |
+| Snippets, secondary text                                               | 13 / 20            | 400                          |
+| Interface body: rows, nav, forms, buttons, settings leads and sections | 14 / 20            | 400; 500 for buttons and nav |
+| Unread sender, subject, date                                           | 14 / 20            | 600; 650 in dark             |
+| Plain-text message body                                                | 15 / 24            | 400                          |
+| Settings section headings                                              | 16 / 24            | 600                          |
+| Pane and dialog titles                                                 | 18 / 24            | 600                          |
+| Message subject in the reading pane                                    | 22 / 28            | 600                          |
+| Page titles                                                            | 24 / 32            | 600                          |
 
 Sentence case everywhere; no uppercase or letter-spaced labels; no negative
 letter spacing below 16 px; `tabular-nums` on every number that lines up;
