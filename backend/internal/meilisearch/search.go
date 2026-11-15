@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 	"uuid"
 
 	meili "github.com/meilisearch/meilisearch-go"
@@ -12,14 +14,37 @@ import (
 	"inbok/internal/search"
 )
 
+// excerptWords is how many words of body text a hit's excerpt holds,
+// inbok's choice: about two lines of a wide list.
+const excerptWords = 20
+
+// The marks Meilisearch puts around each match, which Go takes out again:
+// STX and ETX, two control characters body text never holds, as
+// [search.BodyText] drops them. A subject that holds one anyway loses its
+// matches, as a caller compares the unmarked subject with storage's.
+const (
+	markStart = "\x02"
+	markEnd   = "\x03"
+)
+
 // hit is what a search returns of each document.
 type hit struct {
-	ID string `json:"id"`
+	ID        string    `json:"id"`
+	Formatted formatted `json:"_formatted"`
 }
 
-// Search returns one page of owner's messages that match query, most
-// relevant first, and no matches for a member with no index yet. It
-// returns [search.ErrNoOwner] or [search.ErrBadPage] before searching.
+// formatted is a hit's subject, and its body texts each cut to around its
+// best match, with every match marked.
+type formatted struct {
+	Subject  string `json:"subject"`
+	BodyText string `json:"body_text"`
+	AltText  string `json:"alt_text"`
+}
+
+// Search returns one page of owner's messages that match every word of
+// query, most relevant first and one per conversation, and no matches for
+// a member with no index yet. It returns [search.ErrNoOwner] or
+// [search.ErrBadPage] before searching.
 func (i *Index) Search(ctx context.Context, owner int64, query search.Query) (search.Result, error) {
 	if err := search.ValidateQuery(owner, query); err != nil {
 		return search.Result{}, err
@@ -29,14 +54,30 @@ func (i *Index) Search(ctx context.Context, owner int64, query search.Query) (se
 		Filter: filter(owner, query),
 		// page and hitsPerPage, unlike offset and limit, count every match
 		// instead of estimating.
-		Page:                 page,
-		HitsPerPage:          &size,
+		Page:        page,
+		HitsPerPage: &size,
+		// NOTE: with distinct, both count conversations, not messages, which
+		// Meilisearch's docs do not say: v1.56.1's source does it, and the
+		// contract's "one per conversation" test checks it.
+		Distinct: fieldConversation,
+		// Each word narrows a search, as in Gmail: by default Meilisearch
+		// drops the last words until something matches.
+		MatchingStrategy:     meili.All,
 		AttributesToRetrieve: []string{fieldID},
+		// Marks rather than showMatchesPosition, which lists every match in
+		// both body texts, up to 64 KiB each: a crafted mailbox made one
+		// page of 100 decode to about 500 MB.
+		AttributesToCrop:      []string{fieldBodyText, fieldAltText},
+		CropLength:            excerptWords,
+		CropMarker:            search.ExcerptCut,
+		AttributesToHighlight: []string{fieldSubject, fieldBodyText, fieldAltText},
+		HighlightPreTag:       markStart,
+		HighlightPostTag:      markEnd,
 	})
 	if err != nil {
 		err = describe(ctx, "search", err)
 		if errors.Is(err, errIndexMissing) {
-			return search.Result{IDs: []uuid.UUID{}}, nil
+			return search.Result{Hits: []search.Hit{}}, nil
 		}
 		return search.Result{}, err
 	}
@@ -45,16 +86,106 @@ func (i *Index) Search(ctx context.Context, owner int64, query search.Query) (se
 	if err := response.Hits.DecodeInto(&hits); err != nil {
 		return search.Result{}, fmt.Errorf("read search hits: %w", err)
 	}
-	ids := make([]uuid.UUID, len(hits))
+	found := make([]search.Hit, len(hits))
 	for n, h := range hits {
-		if ids[n], err = uuid.Parse(h.ID); err != nil {
+		id, err := uuid.Parse(h.ID)
+		if err != nil {
 			return search.Result{}, fmt.Errorf("read search hit %d: %w", n, err)
+		}
+		subject, matches := unmark(h.Formatted.Subject)
+		found[n] = search.Hit{ID: id, Subject: subject, SubjectMatches: complete(subject, matches)}
+		// The text a view shows first; the rest when only it matched.
+		for _, text := range []string{h.Formatted.BodyText, h.Formatted.AltText} {
+			if excerpt, matches := unmark(text); len(matches) > 0 {
+				found[n].Excerpt, found[n].ExcerptMatches = excerpt, complete(excerpt, matches)
+				break
+			}
 		}
 	}
 	// NOTE: totalHits counts past pagination.maxTotalHits, which only caps
 	// the hits a search can page through.
 	total := min(response.TotalHits, search.MaxTotal)
-	return search.Result{IDs: ids, Total: int(total)}, nil
+	return search.Result{Hits: found, Total: int(total)}, nil
+}
+
+// maxTypos is the most typos Meilisearch allows in a word, in its typo
+// tolerance docs.
+const maxTypos = 2
+
+// complete returns matches in text, each reaching the end of its word when
+// at most [maxTypos] letters or digits of the word are left past it.
+//
+// DESIGN: Meilisearch matches a query's last word as a prefix too, and
+// marks as many characters of it as the query word has, so a typo there
+// marks part of a word, e.g. "anggran" marks "Anggara" of "Anggaran", and
+// so does a prefix, e.g. "inv" marks "Inv" of "Invoice", which it means to
+// (meilisearch/meilisearch#1441). It marks the other words whole.
+// Engines mark a prefix as typed and any other match as the whole word. A
+// typo leaves at most
+// maxTypos characters of its word unmarked, so completing only that much
+// marks every typo whole and leaves a prefix as typed, but for one within
+// maxTypos of its word's end. It never reads the query, and in a script
+// written without spaces, where a run of letters can be a whole
+// sentence, it adds at most maxTypos characters.
+func complete(text string, matches []search.Span) []search.Span {
+	out := make([]search.Span, len(matches))
+	for n, m := range matches {
+		out[n] = m
+		end := m.Start + m.Length
+		if end < 0 || end > len(text) {
+			continue
+		}
+		at := end
+		for range maxTypos {
+			r, size := utf8.DecodeRuneInString(text[at:])
+			if size == 0 || !inWord(r) {
+				break
+			}
+			at += size
+		}
+		if r, _ := utf8.DecodeRuneInString(text[at:]); at == len(text) || !inWord(r) {
+			out[n].Length = at - m.Start
+		}
+	}
+	return out
+}
+
+// inWord reports whether r can be part of a word: a letter, a digit, or a
+// mark, e.g. a combining accent.
+func inWord(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)
+}
+
+// unmark returns text without [markStart] and [markEnd], and where the
+// text they marked lies in what is left. A start with no end marks to the
+// end of the text.
+func unmark(text string) (string, []search.Span) {
+	var out strings.Builder
+	var matches []search.Span
+	open := -1
+	for len(text) > 0 {
+		switch {
+		case strings.HasPrefix(text, markStart):
+			text = text[len(markStart):]
+			if open < 0 {
+				open = out.Len()
+			}
+			continue
+		case strings.HasPrefix(text, markEnd):
+			text = text[len(markEnd):]
+			if open >= 0 && out.Len() > open {
+				matches = append(matches, search.Span{Start: open, Length: out.Len() - open})
+			}
+			open = -1
+			continue
+		}
+		out.WriteByte(text[0])
+		text = text[1:]
+	}
+	if open >= 0 && out.Len() > open {
+		matches = append(matches, search.Span{Start: open, Length: out.Len() - open})
+	}
+	return out.String(), matches
 }
 
 // pageWithin returns query's page and page size as Meilisearch takes them,

@@ -5,8 +5,8 @@ SELECT user_id FROM connected_accounts WHERE id = @id;
 -- name: ListIndexSources :many
 -- Owner's messages among the IDs, with what their search documents need:
 -- the IDs of the mailboxes each is in, and whether its parts are stored.
-SELECT m.id, m.connected_account_id, m.internal_date, m.subject,
-    m.from_addresses, m.to_addresses, m.cc_addresses,
+SELECT m.id, m.connected_account_id, m.provider_thread_id, m.internal_date,
+    m.subject, m.from_addresses, m.to_addresses, m.cc_addresses,
     coalesce((
         SELECT array_agg(mm.mailbox_id ORDER BY mm.mailbox_id)
         FROM message_mailboxes mm

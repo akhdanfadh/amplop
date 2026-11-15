@@ -13,8 +13,8 @@ import (
 )
 
 const listIndexSources = `-- name: ListIndexSources :many
-SELECT m.id, m.connected_account_id, m.internal_date, m.subject,
-    m.from_addresses, m.to_addresses, m.cc_addresses,
+SELECT m.id, m.connected_account_id, m.provider_thread_id, m.internal_date,
+    m.subject, m.from_addresses, m.to_addresses, m.cc_addresses,
     coalesce((
         SELECT array_agg(mm.mailbox_id ORDER BY mm.mailbox_id)
         FROM message_mailboxes mm
@@ -35,6 +35,7 @@ type ListIndexSourcesParams struct {
 type ListIndexSourcesRow struct {
 	ID                 uuid.UUID
 	ConnectedAccountID int64
+	ProviderThreadID   string
 	InternalDate       time.Time
 	Subject            string
 	FromAddresses      []byte
@@ -58,6 +59,7 @@ func (q *Queries) ListIndexSources(ctx context.Context, arg ListIndexSourcesPara
 		if err := rows.Scan(
 			&i.ID,
 			&i.ConnectedAccountID,
+			&i.ProviderThreadID,
 			&i.InternalDate,
 			&i.Subject,
 			&i.FromAddresses,

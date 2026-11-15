@@ -28,6 +28,7 @@ type document struct {
 	AltText            string   `json:"alt_text"`
 	FromAddress        string   `json:"from_address"`
 	MailboxIDs         []string `json:"mailbox_ids"`
+	Conversation       string   `json:"conversation"`
 }
 
 // Upsert adds documents to their owners' indexes, replacing whole any with
@@ -57,6 +58,7 @@ func (i *Index) Upsert(ctx context.Context, documents []search.Document) error {
 			AltText:            d.AltText,
 			FromAddress:        d.FromAddress,
 			MailboxIDs:         texts(d.MailboxIDs),
+			Conversation:       conversation(d.ConnectedAccountID, d.ThreadID),
 		})
 	}
 	for _, owner := range owners {
@@ -65,6 +67,13 @@ func (i *Index) Upsert(ctx context.Context, documents []search.Document) error {
 		}
 	}
 	return nil
+}
+
+// conversation returns the conversation key of a message in account's
+// thread: the account's ID, a slash, and the thread ID. No two
+// conversations share one, as an account's ID holds no slash.
+func conversation(account int64, thread string) string {
+	return decimal(account) + "/" + thread
 }
 
 // texts returns ids as Meilisearch stores them: canonical text, which a

@@ -116,11 +116,14 @@ func (m *indexMemory) remove(owner int64, id uuid.UUID) {
 	m.sources[owner] = slices.DeleteFunc(m.sources[owner], func(s search.Source) bool { return s.ID == id })
 }
 
-// message returns a message of account in the inbox, with a new ID.
+// message returns a message of account in the inbox, with a new ID and a
+// thread of its own.
 func message(account int64, subject string) search.Source {
+	id := uuid.New()
 	return search.Source{
-		ID:           uuid.New(),
+		ID:           id,
 		AccountID:    account,
+		ThreadID:     "thread-" + id.String(),
 		InternalDate: time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC),
 		Subject:      subject,
 		From:         []mailsync.Address{{Name: "Citra", Address: "citra@example.com"}},
@@ -166,6 +169,7 @@ func TestIndex(t *testing.T) {
 		ID:                 m.ID,
 		OwnerUserID:        asha,
 		ConnectedAccountID: ashaWork,
+		ThreadID:           m.ThreadID,
 		InternalDate:       m.InternalDate,
 		Subject:            "Invoice",
 		From:               "Citra <citra@example.com>",

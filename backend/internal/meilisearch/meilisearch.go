@@ -33,6 +33,10 @@ const (
 	fieldBodyText  = "body_text"
 	fieldAltText   = "alt_text"
 	fieldMailboxes = "mailbox_ids"
+	// The message's conversation: its account and the provider's thread
+	// ID, which a search returns one message of.
+	fieldConversation = "conversation"
+	fieldDate         = "internal_date"
 )
 
 // Index is the message index on one Meilisearch server: one Meilisearch

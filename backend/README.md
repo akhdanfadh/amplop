@@ -3006,13 +3006,17 @@ stored, its text in two fields: `body_text`, the text of the bodies a
 view of it shows, and `alt_text`, the text of its other text parts,
 e.g. the plain-text alternative of HTML a view shows. A word in either
 finds the message, and one in `body_text` ranks it higher. Until its
-body is stored, a message is found by its headers. Every message changed is read again, so marking
-one read re-reads its stored body text too.
+body is stored, a message is found by its headers. The document's
+`conversation` field, the account's ID and the provider's thread ID,
+names the conversation a search keeps one message of. Every message
+changed is read again, so marking one read re-reads its stored body text
+too.
 
 - `search` declares the `Index` interface: `Prepare`, `Upsert`, `Delete`,
   `DeleteAccount`, `Search`, and, for a rebuild, `Owners`,
   `DocumentIDs`, and `DeleteOwner`, with its `Document`, `Query`, and
-  `Result` types. Each method may be called again with the same input,
+  `Result` types; a result's `Hit`s carry where the query matched, in
+  bytes. Each method may be called again with the same input,
   e.g. by a job that retries, and returns once Meilisearch has applied
   the change, so the next search sees it.
 - `Search`, `Delete`, and `DeleteAccount` take the owner as an argument
@@ -3036,7 +3040,9 @@ one read re-reads its stored body text too.
   upsert to its member's: which fields a search matches, in order of
   weight, and which it filters on, only those today's searches use: a
   filter added later adds its field, and Meilisearch reindexes from the
-  documents it holds. An update leaves the settings it omits as the
+  documents it holds. The ranking rules are Meilisearch's defaults and
+  then the date, newest first, so equal matches keep one order however
+  the index was written. An update leaves the settings it omits as the
   index has them, which on a new index are Meilisearch's defaults, e.g.
   its typo tolerance. Applying the same settings again, or from two processes at
   once, changes nothing. The worker calls `Prepare` when it starts,

@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	meili "github.com/meilisearch/meilisearch-go"
+
+	"inbok/internal/search"
 )
 
 const (
@@ -58,8 +61,9 @@ func ignoreMissing(err error) error {
 // describe returns err, from the client during op, without the text of
 // Meilisearch's reply or the request, which can quote a document or a
 // query. It wraps ctx's error instead when ctx is done, since the client's
-// errors do not wrap it, and [errIndexMissing] when the index did not
-// exist.
+// errors do not wrap it, [errIndexMissing] when the index did not exist,
+// and [search.ErrUnavailable] when Meilisearch did not answer or answered
+// that it failed.
 func describe(ctx context.Context, op string, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return fmt.Errorf("%s: %w", op, ctxErr)
@@ -70,11 +74,13 @@ func describe(ctx context.Context, op string, err error) error {
 		return fmt.Errorf("%s: %w", op, err)
 	case clientErr.MeilisearchApiError.Code == codeIndexMissing:
 		return fmt.Errorf("%s: %w", op, errIndexMissing)
+	case clientErr.StatusCode >= http.StatusInternalServerError:
+		return fmt.Errorf("%s: Meilisearch answered HTTP %d %s: %w", op, clientErr.StatusCode, clientErr.MeilisearchApiError.Code, search.ErrUnavailable)
 	case clientErr.StatusCode != 0:
 		return fmt.Errorf("%s: Meilisearch answered HTTP %d %s", op, clientErr.StatusCode, clientErr.MeilisearchApiError.Code)
 	case clientErr.OriginError != nil:
 		// No answer, e.g. a refused connection.
-		return fmt.Errorf("%s: %w", op, clientErr.OriginError)
+		return fmt.Errorf("%s: %w: %w", op, search.ErrUnavailable, clientErr.OriginError)
 	}
 	return fmt.Errorf("%s: Meilisearch client error %d", op, clientErr.ErrCode)
 }

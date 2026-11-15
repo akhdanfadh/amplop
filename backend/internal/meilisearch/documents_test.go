@@ -13,7 +13,8 @@ import (
 )
 
 // Documents are stored under ADR005's field names, IDs as decimal
-// strings, and the date as Unix seconds.
+// strings, the date as Unix seconds, and the conversation as the account
+// and the thread.
 func TestUpsertFields(t *testing.T) {
 	index := newIndex(t)
 	inbox := uuid.New()
@@ -21,6 +22,7 @@ func TestUpsertFields(t *testing.T) {
 		ID:                 uuid.New(),
 		OwnerUserID:        owner,
 		ConnectedAccountID: account,
+		ThreadID:           "19a0c3f2e1d4b5a6",
 		InternalDate:       time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC),
 		Subject:            "Invoice",
 		From:               "Asha K <asha.k@example.co.id>",
@@ -40,6 +42,7 @@ func TestUpsertFields(t *testing.T) {
 		"id":                   d.ID.String(),
 		"owner_user_id":        "1",
 		"connected_account_id": "11",
+		"conversation":         "11/19a0c3f2e1d4b5a6",
 		"internal_date":        float64(1794042000),
 		"subject":              "Invoice",
 		"from":                 "Asha K <asha.k@example.co.id>",
@@ -103,6 +106,6 @@ func TestUpsertAfterDelete(t *testing.T) {
 
 	// Then the index has its settings and the message.
 	require.NoError(t, err)
-	assert.Equal(t, []uuid.UUID{after.ID}, result.IDs)
+	assert.Equal(t, []uuid.UUID{after.ID}, ids(result))
 	assertSettings(t, index, owner)
 }

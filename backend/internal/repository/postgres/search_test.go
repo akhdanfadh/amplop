@@ -243,6 +243,7 @@ func TestIndexSources(t *testing.T) {
 	want := search.Source{
 		ID:           ids[0],
 		AccountID:    s.account,
+		ThreadID:     "thread-m1",
 		InternalDate: time.Date(2026, 11, 2, 9, 30, 0, 0, time.UTC),
 		Subject:      m.Subject,
 		From:         m.From,
@@ -252,6 +253,7 @@ func TestIndexSources(t *testing.T) {
 	}
 	withParts := want
 	withParts.ID = ids[1]
+	withParts.ThreadID = "thread-m2"
 	withParts.HasParts = true
 	assert.ElementsMatch(t, []search.Source{want, withParts}, sources)
 }

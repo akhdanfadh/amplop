@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"uuid"
 
@@ -17,10 +18,12 @@ import (
 
 // Fake is a [search.Index] in memory. It matches text more simply than a
 // real index: a document matches when each word of the query appears,
-// ignoring case, in its subject, sender, recipients, or either body text; there
-// are no typos, prefixes, phrases, or exclusions. It returns matches in
-// the order they were first added. The zero value is empty and ready. It
-// is safe for concurrent use.
+// ignoring case, in its subject, sender, recipients, or either body text;
+// there are no typos, prefixes, phrases, or exclusions. It returns matches
+// in the order they were first added, each conversation's newest, and
+// marks every place a word appears: in the subject,
+// and in the whole of the first body text it appears in, uncut. The zero
+// value is empty and ready. It is safe for concurrent use.
 type Fake struct {
 	// Fail, when set, is the error every method returns without doing
 	// anything.
@@ -118,10 +121,23 @@ func (f *Fake) Search(ctx context.Context, owner int64, query search.Query) (sea
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	var matches []uuid.UUID
+	// Each conversation's newest match, in the order its conversation first
+	// matched: Meilisearch's date tie-break picks the newest of equal ones.
+	var matches []search.Hit
+	newest := map[conversation]int{} // each conversation's place in matches
+	dates := map[conversation]time.Time{}
 	for _, document := range f.documents {
-		if matchesFilters(document, owner, query) && matchesText(document, query.Text) {
-			matches = append(matches, document.ID)
+		if !matchesFilters(document, owner, query) || !matchesText(document, query.Text) {
+			continue
+		}
+		key := conversation{document.ConnectedAccountID, document.ThreadID}
+		at, seen := newest[key]
+		switch {
+		case !seen:
+			newest[key], dates[key] = len(matches), document.InternalDate
+			matches = append(matches, hit(document, query.Text))
+		case document.InternalDate.After(dates[key]):
+			matches[at], dates[key] = hit(document, query.Text), document.InternalDate
 		}
 	}
 	matches = matches[:min(len(matches), search.MaxTotal)]
@@ -133,7 +149,7 @@ func (f *Fake) Search(ctx context.Context, owner int64, query search.Query) (sea
 		start = (query.Page - 1) * query.PageSize
 	}
 	end := start + min(query.PageSize, len(matches)-start)
-	return search.Result{IDs: slices.Clone(matches[start:end]), Total: len(matches)}, nil
+	return search.Result{Hits: slices.Clone(matches[start:end]), Total: len(matches)}, nil
 }
 
 // Owners returns every owner written to since [Fake.DeleteOwner] last removed
@@ -236,4 +252,39 @@ func matchesText(document search.Document, text string) bool {
 		}
 	}
 	return true
+}
+
+// conversation names a document's conversation: its account and thread.
+type conversation struct {
+	account int64
+	thread  string
+}
+
+// hit returns document as a search for text finds it.
+func hit(document search.Document, text string) search.Hit {
+	words := strings.Fields(text)
+	found := search.Hit{ID: document.ID, Subject: document.Subject, SubjectMatches: spans(document.Subject, words)}
+	for _, body := range []string{document.BodyText, document.AltText} {
+		if matches := spans(body, words); len(matches) > 0 {
+			found.Excerpt, found.ExcerptMatches = body, matches
+			break
+		}
+	}
+	return found
+}
+
+// spans returns, in order, every place in text where one of words
+// appears, ignoring case.
+func spans(text string, words []string) []search.Span {
+	var out []search.Span
+	for start := range len(text) {
+		for _, word := range words {
+			end := start + len(word)
+			if end <= len(text) && strings.EqualFold(text[start:end], word) {
+				out = append(out, search.Span{Start: start, Length: len(word)})
+				break
+			}
+		}
+	}
+	return out
 }

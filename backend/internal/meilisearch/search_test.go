@@ -1,6 +1,12 @@
 package meilisearch
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"uuid"
 
@@ -35,7 +41,7 @@ func TestSearchText(t *testing.T) {
 	for text, want := range cases {
 		result, err := index.Search(t.Context(), owner, search.Query{Text: text, Page: 1, PageSize: 10})
 		require.NoError(t, err, text)
-		assert.Equal(t, []uuid.UUID{want}, result.IDs, text)
+		assert.Equal(t, []uuid.UUID{want}, ids(result), text)
 	}
 }
 
@@ -52,7 +58,7 @@ func TestSearchAltText(t *testing.T) {
 	result, err := index.Search(t.Context(), owner, search.Query{Text: "shoes", Page: 1, PageSize: 10})
 
 	require.NoError(t, err)
-	assert.Equal(t, []uuid.UUID{shown.ID, hidden.ID}, result.IDs)
+	assert.Equal(t, []uuid.UUID{shown.ID, hidden.ID}, ids(result))
 }
 
 // A document that reached another member's index stays hidden from that
@@ -74,8 +80,8 @@ func TestOwnerFilter(t *testing.T) {
 
 	// Then the search finds only the owner's message, and the stray one is
 	// still there.
-	assert.Len(t, found.IDs, 1)
-	assert.NotContains(t, found.IDs, uuid.MustParse(stray["id"].(string)))
+	assert.Len(t, ids(found), 1)
+	assert.NotContains(t, ids(found), uuid.MustParse(stray["id"].(string)))
 	require.NoError(t, keptErr)
 }
 
@@ -91,4 +97,168 @@ func TestQuote(t *testing.T) {
 	for value, want := range cases {
 		assert.Equal(t, want, quote(value), value)
 	}
+}
+
+// An excerpt is the body text around the best match, cut by Meilisearch,
+// with every match marked, typos too, counted in bytes; the hidden text
+// gives it only when the shown text has no match.
+func TestSearchExcerpt(t *testing.T) {
+	index := newIndex(t)
+	long := message("Booking 7781")
+	long.BodyText = "Dear Asha, thank you for booking with us. Your trip starts on Monday. " +
+		"At the counter, please bring your passport and the printed ticket. Café hours are posted " +
+		"in the lobby, and the shuttle leaves every hour from the north gate of the terminal."
+	hidden := message("Sale")
+	hidden.BodyText = "Our shoes are on sale."
+	hidden.AltText = "Our pasport offers are here."
+	require.NoError(t, index.Upsert(t.Context(), []search.Document{long, hidden}))
+
+	result, err := index.Search(t.Context(), owner, search.Query{Text: "passport", Page: 1, PageSize: 10})
+	require.NoError(t, err)
+	require.Len(t, result.Hits, 2)
+	byID := map[uuid.UUID]search.Hit{result.Hits[0].ID: result.Hits[0], result.Hits[1].ID: result.Hits[1]}
+	inLong, inHidden := byID[long.ID], byID[hidden.ID]
+
+	assert.True(t, strings.HasPrefix(inLong.Excerpt, "…"), inLong.Excerpt)
+	assert.Contains(t, inLong.Excerpt, "bring your passport and")
+	assert.NotContains(t, inLong.Excerpt, "Dear Asha")
+	require.Len(t, inLong.ExcerptMatches, 1)
+	assert.Equal(t, "passport", marked(inLong.Excerpt, inLong.ExcerptMatches[0]))
+	require.Len(t, inHidden.ExcerptMatches, 1)
+	assert.Equal(t, "pasport", marked(inHidden.Excerpt, inHidden.ExcerptMatches[0]))
+	assert.Empty(t, inLong.SubjectMatches)
+}
+
+// marked returns the text span marks in text.
+func marked(text string, span search.Span) string {
+	return text[span.Start : span.Start+span.Length]
+}
+
+// A search Meilisearch does not answer, or answers that it failed, is
+// [search.ErrUnavailable]; one it refuses is not.
+func TestSearchUnavailable(t *testing.T) {
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(failing.Close)
+	refused := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	refused.Close()
+	q := search.Query{Text: "invoice", Page: 1, PageSize: 10}
+
+	_, failed := New(failing.URL, masterKey).Search(t.Context(), owner, q)
+	_, unanswered := New(refused.URL, masterKey).Search(t.Context(), owner, q)
+	_, forbidden := New(address, "not-the-key").Search(t.Context(), owner, q)
+
+	require.ErrorIs(t, failed, search.ErrUnavailable)
+	require.ErrorIs(t, unanswered, search.ErrUnavailable)
+	require.Error(t, forbidden)
+	assert.NotErrorIs(t, forbidden, search.ErrUnavailable)
+}
+
+// The marks come out of an excerpt, each marking what it held.
+func TestUnmark(t *testing.T) {
+	cases := map[string]struct {
+		text    string
+		want    string
+		matches []search.Span
+	}{
+		"none":          {"plain text", "plain text", nil},
+		"two":           {"a \x02bc\x03 d \x02e\x03", "a bc d e", []search.Span{{Start: 2, Length: 2}, {Start: 7, Length: 1}}},
+		"bytes":         {"é \x02ü\x03", "é ü", []search.Span{{Start: 3, Length: 2}}},
+		"unclosed":      {"a \x02bc", "a bc", []search.Span{{Start: 2, Length: 2}}},
+		"stray end":     {"a\x03 b", "a b", nil},
+		"empty":         {"a \x02\x03b", "a b", nil},
+		"start in mark": {"\x02a\x02b\x03", "ab", []search.Span{{Start: 0, Length: 2}}},
+	}
+	for name, c := range cases {
+		text, matches := unmark(c.text)
+		assert.Equal(t, c.want, text, name)
+		assert.Equal(t, c.matches, matches, name)
+	}
+}
+
+// A mark reaches the end of its word when at most two letters of it are
+// left, as a typo leaves, and stays as typed otherwise, as a prefix is.
+func TestComplete(t *testing.T) {
+	cases := map[string]struct {
+		text   string
+		marked string // the text the match starts with
+		want   string
+	}{
+		"typo":                {"Anggaran rapat", "Anggara", "Anggaran"},
+		"typo, two left":      {"Invoice due", "Invoi", "Invoice"},
+		"prefix":              {"Invoice due", "Inv", "Inv"},
+		"whole word":          {"Invoice due", "Invoice", "Invoice"},
+		"end of text":         {"due Invoic", "Invoic", "Invoic"},
+		"accent":              {"Caf\u00e9 open", "Caf", "Caf\u00e9"},
+		"combining accent":    {"Cafe\u0301 open", "Caf", "Cafe\u0301"},
+		"digits":              {"order 44718 now", "447", "44718"},
+		"punctuation":         {"Invoic. Next", "Invoic", "Invoic"},
+		"no spaces":           {"東京都庁舎です", "東", "東"},
+		"no spaces, two left": {"東京都", "東", "東京都"},
+	}
+	for name, c := range cases {
+		start := strings.Index(c.text, c.marked)
+		got := complete(c.text, []search.Span{{Start: start, Length: len(c.marked)}})
+		assert.Equal(t, []search.Span{{Start: start, Length: len(c.want)}}, got, name)
+	}
+}
+
+// A typo is marked as the whole word it matched, in the subject and in
+// the excerpt, whether it is the query's last word or not; a prefix, the
+// last word typed so far, is marked as typed.
+func TestSearchTypoMarks(t *testing.T) {
+	index := newIndex(t)
+	m := message("Anggaran rapat")
+	m.BodyText = "Berikut draf anggaran untuk rapat Desember."
+	require.NoError(t, index.Upsert(t.Context(), []search.Document{m}))
+	cases := map[string]struct{ subject, excerpt []string }{
+		"anggran":       {[]string{"Anggaran"}, []string{"anggaran"}},
+		"anggran rapat": {[]string{"Anggaran", "rapat"}, []string{"anggaran", "rapat"}},
+		"rapat anggran": {[]string{"Anggaran", "rapat"}, []string{"anggaran", "rapat"}},
+		"angg":          {[]string{"Angg"}, []string{"angg"}},
+	}
+
+	for text, want := range cases {
+		result, err := index.Search(t.Context(), owner, search.Query{Text: text, Page: 1, PageSize: 10})
+		require.NoError(t, err, text)
+
+		require.Len(t, result.Hits, 1, text)
+		hit := result.Hits[0]
+		assert.Equal(t, m.Subject, hit.Subject, text)
+		assert.Equal(t, want.subject, allMarked(hit.Subject, hit.SubjectMatches), text)
+		assert.Equal(t, want.excerpt, allMarked(hit.Excerpt, hit.ExcerptMatches), text)
+	}
+}
+
+// allMarked returns the text each span marks in text, in order.
+func allMarked(text string, spans []search.Span) []string {
+	out := []string{}
+	for _, s := range spans {
+		out = append(out, marked(text, s))
+	}
+	return out
+}
+
+// A search asks for marks, never for every match's position, which lists
+// each match in both body texts and made a crafted page decode to about
+// 500 MB.
+func TestSearchAsksNoPositions(t *testing.T) {
+	index := newIndex(t)
+	require.NoError(t, index.Upsert(t.Context(), []search.Document{message("Invoice")}))
+	var body map[string]any
+	index.client = proxied(t, func(r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/search") {
+			raw, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(raw))
+			_ = json.Unmarshal(raw, &body)
+		}
+	})
+
+	_, err := index.Search(t.Context(), owner, search.Query{Text: "invoice", Page: 1, PageSize: 10})
+	require.NoError(t, err)
+
+	require.NotNil(t, body)
+	assert.NotContains(t, body, "showMatchesPosition")
+	assert.Equal(t, []any{"id"}, body["attributesToRetrieve"])
 }

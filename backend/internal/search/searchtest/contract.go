@@ -35,7 +35,8 @@ var (
 var firstPage = search.Query{Page: 1, PageSize: 20}
 
 // RunContract tests the behaviour every [search.Index] shares: owners, account
-// and mailbox filters, which fields a search matches, replacing, deleting within
+// and mailbox filters, which fields a search matches, every word of a query,
+// one message per conversation, where it matched, replacing, deleting within
 // one owner's documents, listing and deleting owners and their document IDs,
 // paging, cancellation, and refused calls. open returns
 // a new, prepared index for one test. Text matching beyond whole words, e.g.
@@ -55,10 +56,10 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		foreign.Accounts = []int64{ashaWork, budiAccount}
 		mixed := find(t, index, asha, foreign)
 
-		assert.Equal(t, search.Result{IDs: []uuid.UUID{mine.ID}, Total: 1}, plain)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{mine.ID}, Total: 1}, plain)
 		assert.Empty(t, named.IDs)
 		assert.Equal(t, 0, named.Total)
-		assert.Equal(t, search.Result{IDs: []uuid.UUID{mine.ID}, Total: 1}, mixed)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{mine.ID}, Total: 1}, mixed)
 	})
 
 	t.Run("large IDs", func(t *testing.T) {
@@ -74,8 +75,8 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		require.NoError(t, index.DeleteAccount(t.Context(), second, second))
 		kept := find(t, index, first, query("invoice"))
 
-		assert.Equal(t, search.Result{IDs: []uuid.UUID{mine.ID}, Total: 1}, found)
-		assert.Equal(t, search.Result{IDs: []uuid.UUID{mine.ID}, Total: 1}, kept)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{mine.ID}, Total: 1}, found)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{mine.ID}, Total: 1}, kept)
 	})
 
 	t.Run("accounts", func(t *testing.T) {
@@ -160,6 +161,80 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		}
 	})
 
+	t.Run("every word", func(t *testing.T) {
+		index := open(t)
+		both := document(asha, ashaWork, "invoice from budi")
+		one := document(asha, ashaWork, "invoice from citra")
+		upsert(t, index, both, one)
+
+		result := find(t, index, asha, query("invoice budi"))
+
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{both.ID}, Total: 1}, result)
+	})
+
+	t.Run("one per conversation", func(t *testing.T) {
+		index := open(t)
+		// The newer of two equal matches is the conversation's best, though
+		// written second.
+		older := document(asha, ashaWork, "invoice")
+		newer := document(asha, ashaWork, "invoice")
+		newer.ThreadID = older.ThreadID
+		newer.InternalDate = older.InternalDate.Add(time.Hour)
+		// The same thread ID in another account is another conversation.
+		home := document(asha, ashaHome, "invoice")
+		home.ThreadID = older.ThreadID
+		upsert(t, index, older, newer, home)
+
+		result := find(t, index, asha, query("invoice"))
+
+		assert.ElementsMatch(t, []uuid.UUID{newer.ID, home.ID}, result.IDs)
+		assert.Equal(t, 2, result.Total)
+	})
+
+	t.Run("conversation without its excluded messages", func(t *testing.T) {
+		index := open(t)
+		trashed := document(asha, ashaWork, "invoice")
+		trashed.MailboxIDs = []uuid.UUID{trashBox}
+		kept := document(asha, ashaWork, "invoice")
+		kept.ThreadID = trashed.ThreadID
+		kept.InternalDate = trashed.InternalDate.Add(-time.Hour)
+		upsert(t, index, trashed, kept)
+
+		q := query("invoice")
+		q.ExcludeMailboxes = []uuid.UUID{trashBox}
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{kept.ID}, Total: 1}, result)
+	})
+
+	t.Run("matches", func(t *testing.T) {
+		index := open(t)
+		// Bytes, not characters, before the match: é and the dash take more
+		// than one each.
+		both := document(asha, ashaWork, "Café — invoice")
+		both.BodyText = "Please pay the invoice today."
+		subject := document(asha, ashaWork, "Paid invoice")
+		subject.BodyText = "Thank you."
+		upsert(t, index, both, subject)
+
+		result := hits(t, index, asha, query("invoice"))
+		byID := map[uuid.UUID]search.Hit{}
+		for _, hit := range result.Hits {
+			byID[hit.ID] = hit
+		}
+		inBoth, inSubject := byID[both.ID], byID[subject.ID]
+
+		assert.Equal(t, both.Subject, inBoth.Subject)
+		assert.Equal(t, []search.Span{{Start: len("Café — "), Length: len("invoice")}}, inBoth.SubjectMatches)
+		require.Len(t, inBoth.ExcerptMatches, 1)
+		match := inBoth.ExcerptMatches[0]
+		assert.Equal(t, "invoice", inBoth.Excerpt[match.Start:match.Start+match.Length])
+		assert.Contains(t, inBoth.Excerpt, "pay the invoice today")
+		assert.Equal(t, []search.Span{{Start: len("Paid "), Length: len("invoice")}}, inSubject.SubjectMatches)
+		assert.Empty(t, inSubject.Excerpt)
+		assert.Empty(t, inSubject.ExcerptMatches)
+	})
+
 	t.Run("empty text", func(t *testing.T) {
 		index := open(t)
 		first := document(asha, ashaWork, "invoice")
@@ -188,7 +263,7 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		current := find(t, index, asha, q)
 
 		assert.Equal(t, 0, old.Total)
-		assert.Equal(t, search.Result{IDs: []uuid.UUID{after.ID}, Total: 1}, current)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{after.ID}, Total: 1}, current)
 	})
 
 	t.Run("upsert copies", func(t *testing.T) {
@@ -427,13 +502,15 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 	})
 }
 
-// document returns a message of owner's in account with subject and a new
-// ID, received at a fixed time.
+// document returns a message of owner's in account with subject, a new ID,
+// and a thread of its own, received at a fixed time.
 func document(owner, account int64, subject string) search.Document {
+	id := uuid.New()
 	return search.Document{
-		ID:                 uuid.New(),
+		ID:                 id,
 		OwnerUserID:        owner,
 		ConnectedAccountID: account,
+		ThreadID:           "thread-" + id.String(),
 		InternalDate:       time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC),
 		Subject:            subject,
 		From:               "Fajar <fajar@example.com>",
@@ -454,8 +531,26 @@ func upsert(t *testing.T, index search.Index, documents ...search.Document) {
 	require.NoError(t, index.Upsert(t.Context(), documents))
 }
 
-// find searches index as owner, failing the test on an error.
-func find(t *testing.T, index search.Index, owner int64, q search.Query) search.Result {
+// foundIDs is the IDs and total of a search's result.
+type foundIDs struct {
+	IDs   []uuid.UUID
+	Total int
+}
+
+// find searches index as owner, failing the test on an error, and returns
+// the IDs it found.
+func find(t *testing.T, index search.Index, owner int64, q search.Query) foundIDs {
+	t.Helper()
+	result := hits(t, index, owner, q)
+	out := foundIDs{IDs: []uuid.UUID{}, Total: result.Total}
+	for _, hit := range result.Hits {
+		out.IDs = append(out.IDs, hit.ID)
+	}
+	return out
+}
+
+// hits searches index as owner, failing the test on an error.
+func hits(t *testing.T, index search.Index, owner int64, q search.Query) search.Result {
 	t.Helper()
 	result, err := index.Search(t.Context(), owner, q)
 	require.NoError(t, err)

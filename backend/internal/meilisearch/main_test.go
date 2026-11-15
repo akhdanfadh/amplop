@@ -101,20 +101,32 @@ func assertSettings(t *testing.T, index *Index, owner int64) {
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"subject", "from", "to", "cc", "body_text", "alt_text"}, settings.SearchableAttributes)
-	assert.ElementsMatch(t, []string{"owner_user_id", "connected_account_id", "mailbox_ids"}, settings.FilterableAttributes)
+	assert.ElementsMatch(t, []string{"owner_user_id", "connected_account_id", "mailbox_ids", "conversation"}, settings.FilterableAttributes)
 	assert.Empty(t, settings.SortableAttributes)
 	assert.Equal(t, &meili.Pagination{MaxTotalHits: search.MaxTotal}, settings.Pagination)
+	assert.Equal(t, []string{"words", "typo", "proximity", "attributeRank", "sort", "wordPosition", "exactness", "internal_date:desc"}, settings.RankingRules)
 	assert.True(t, settings.TypoTolerance.Enabled)
 }
 
-// message returns a document of owner's in account with subject and a new
-// ID.
+// message returns a document of owner's in account with subject, a new
+// ID, and a thread of its own.
 func message(subject string) search.Document {
+	id := uuid.New()
 	return search.Document{
-		ID:                 uuid.New(),
+		ID:                 id,
+		ThreadID:           "thread-" + id.String(),
 		OwnerUserID:        owner,
 		ConnectedAccountID: account,
 		InternalDate:       time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC),
 		Subject:            subject,
 	}
+}
+
+// ids returns the IDs of result's hits, in order.
+func ids(result search.Result) []uuid.UUID {
+	out := []uuid.UUID{}
+	for _, hit := range result.Hits {
+		out = append(out, hit.ID)
+	}
+	return out
 }

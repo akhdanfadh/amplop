@@ -22,6 +22,7 @@ const BatchSize = 100
 type Source struct {
 	ID           uuid.UUID
 	AccountID    int64
+	ThreadID     string // the provider's thread ID
 	InternalDate time.Time
 	Subject      string
 	From         []mailsync.Address
@@ -116,6 +117,7 @@ func (x *Indexer) document(ctx context.Context, owner int64, source Source) (Doc
 		ID:                 source.ID,
 		OwnerUserID:        owner,
 		ConnectedAccountID: source.AccountID,
+		ThreadID:           source.ThreadID,
 		InternalDate:       source.InternalDate,
 		Subject:            source.Subject,
 		From:               strings.Join(names(source.From), ", "),

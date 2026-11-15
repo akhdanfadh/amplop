@@ -17,6 +17,7 @@ type Document struct {
 	ID                 uuid.UUID // the message
 	OwnerUserID        int64     // the member whose mail it is
 	ConnectedAccountID int64     // the account it synchronized from
+	ThreadID           string    // the provider's thread; with the account, the message's conversation
 	InternalDate       time.Time // when the provider received it
 	Subject            string
 	From               string   // name and address, e.g. "Asha K <asha.k@example.co.id>"
@@ -48,8 +49,36 @@ type Query struct {
 
 // Result is one page of a search.
 type Result struct {
-	IDs   []uuid.UUID // the page's messages, most relevant first
-	Total int         // matches over every page, at most [MaxTotal]
+	Hits  []Hit // the page's messages, most relevant first
+	Total int   // matching conversations over every page, at most [MaxTotal]
+}
+
+// Hit is a message a search found: its conversation's best match, and
+// where in its text the query matched. A match covers the word matched,
+// or the typed start of a longer word, as a search-as-you-type prefix. An
+// index may return matches that overlap or leave their text, which a
+// caller drops or merges before it marks the text.
+type Hit struct {
+	ID uuid.UUID
+	// Subject is the message's subject as the index holds it, which
+	// SubjectMatches count in.
+	Subject        string
+	SubjectMatches []Span
+	// Excerpt is the part of the message's body text around its best
+	// match, perhaps cut short at either end, which ExcerptMatches count
+	// in; empty when the query matched no body text.
+	Excerpt        string
+	ExcerptMatches []Span
+}
+
+// ExcerptCut marks where a [Hit.Excerpt] was cut short.
+const ExcerptCut = "\u2026" // the ellipsis
+
+// Span is where a query matched a text: Length bytes from byte Start, of
+// the text in UTF-8.
+type Span struct {
+	Start  int
+	Length int
 }
 
 // MaxTotal is the most matches a search counts or pages through. Meilisearch's
@@ -61,6 +90,10 @@ var (
 	ErrNoOwner = errors.New("search: no owner")
 	ErrBadPage = errors.New("search: page and page size must be at least 1")
 )
+
+// ErrUnavailable is an index that did not answer, or answered that it
+// failed, e.g. while it restarts: asking again later may succeed.
+var ErrUnavailable = errors.New("search: index unavailable")
 
 // Index is the derived search index. It keeps each member's documents
 // apart: every method that names an owner reads or changes only that
@@ -92,9 +125,11 @@ type Index interface {
 	// returns [ErrNoOwner], from [ValidateOwner], before deleting.
 	DeleteAccount(ctx context.Context, owner, accountID int64) error
 
-	// Search returns one page of owner's messages that match query, and never
-	// another member's, even for another member's account ID. It returns
-	// [ErrNoOwner] or [ErrBadPage], from [ValidateQuery], before searching.
+	// Search returns one page of owner's messages that match every word of
+	// query, and never another member's, even for another member's account
+	// ID: at most one message per conversation, its best match. It returns
+	// [ErrNoOwner] or [ErrBadPage], from [ValidateQuery], before searching,
+	// and an error wrapping [ErrUnavailable] when the index does not answer.
 	Search(ctx context.Context, owner int64, query Query) (Result, error)
 
 	// Owners returns, in no set order, every owner the index keeps

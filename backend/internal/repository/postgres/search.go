@@ -25,6 +25,7 @@ func (db *DB) IndexSources(ctx context.Context, owner int64, ids []uuid.UUID) ([
 		source := search.Source{
 			ID:           row.ID,
 			AccountID:    row.ConnectedAccountID,
+			ThreadID:     row.ProviderThreadID,
 			InternalDate: row.InternalDate.UTC(),
 			Subject:      row.Subject,
 			MailboxIDs:   row.MailboxIds,
