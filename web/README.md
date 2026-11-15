@@ -1207,7 +1207,8 @@ values available with the uncertain-outcome message above.
 
 Mail is the exception: its lists read conversations through a [TanStack
 DB](https://tanstack.com/db) collection over the generated client
-(`features/mail/conversations.ts`), pinned to 1.0.0-rc.1.4, with
+(`features/mail/conversations.ts`), pinned to 1.0.0-rc.1.4 and patched
+(`patches/`, see the NOTE in `pnpm-workspace.yaml`), with
 `@tanstack/query-db-collection` 1.5.1 under it, so every list shares one
 copy of each conversation. A list is a live query that loads 50 rows at
 a time as it scrolls; `conversations.ts` turns each load into the API's

@@ -1,0 +1,39 @@
+diff --git a/dist/cjs/query/live/ordered-source-loader.cjs b/dist/cjs/query/live/ordered-source-loader.cjs
+index d6554e41a187de4e1bab84482a85d203b2640e98..4e15b8e3dac5ebe4dcac336eb48dd189253fdb91 100644
+--- a/dist/cjs/query/live/ordered-source-loader.cjs
++++ b/dist/cjs/query/live/ordered-source-loader.cjs
+@@ -395,7 +395,7 @@ class OrderedSourceLoader {
+     this.dl = void 0;
+     if (this.gO === `none` && !this.gL()) {
+       this.gS(
+-        this.aL && this.work.kind === `idle` ? `bounded` : `full`
++        this.work.kind === `idle` ? `bounded` : `full`
+       );
+     }
+     this.ah = void 0;
+diff --git a/dist/esm/query/live/ordered-source-loader.js b/dist/esm/query/live/ordered-source-loader.js
+index b4052aa95734005096fe85550110bb1fce46f7bf..6a5037158c489808b04a402cbd1cd45ff885cb85 100644
+--- a/dist/esm/query/live/ordered-source-loader.js
++++ b/dist/esm/query/live/ordered-source-loader.js
+@@ -393,7 +393,7 @@ class OrderedSourceLoader {
+     this.dl = void 0;
+     if (this.gO === `none` && !this.gL()) {
+       this.gS(
+-        this.aL && this.work.kind === `idle` ? `bounded` : `full`
++        this.work.kind === `idle` ? `bounded` : `full`
+       );
+     }
+     this.ah = void 0;
+diff --git a/src/query/live/ordered-source-loader.ts b/src/query/live/ordered-source-loader.ts
+index 405f06f05397d8c91fd71e75cf88e5e136a00241..0a1579a049bed2e0862b0ef77f1efc9f3e9067f4 100644
+--- a/src/query/live/ordered-source-loader.ts
++++ b/src/query/live/ordered-source-loader.ts
+@@ -684,7 +684,7 @@ export class OrderedSourceLoader {
+     // for its boundary. Full-source reads can be very expensive.
+     if (this.debt === `none` && !this.coversSource()) {
+       this.oweDebt(
+-        this.hasSettledSourceRequest && this.work.kind === `idle`
++        this.work.kind === `idle`
+           ? `bounded`
+           : `full`,
+       )

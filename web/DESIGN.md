@@ -718,6 +718,11 @@ gate"):
 - Each page asks for one row more than it shows, so the next load of that
   date's ties needs no request; "older than a date" is asked as the date
   alone, without an ID.
+- A list never reads its whole place: the data layer refuses it, and
+  TanStack DB is patched so a row leaving a list before its first page
+  answers costs a page read again (ADR031, TanStack DB gate, rule 9). A
+  list that cannot read its rows in order says so, with Try again, never
+  that its place is empty.
 - Action handlers store the rows the server returns (`writeUpsert`) instead
   of refetching; an action whose guess changes nothing sends its request
   itself, since TanStack DB skips a transaction without changes. A list

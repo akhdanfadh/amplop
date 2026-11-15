@@ -27,7 +27,13 @@ import { Spinner } from "@/components/ui/spinner";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
 import { runAction } from "./actions";
-import { currentMail, mailData, refreshNewest, restartMail } from "./conversations";
+import {
+  WholePlaceRefused,
+  currentMail,
+  mailData,
+  refreshNewest,
+  restartMail,
+} from "./conversations";
 import { useToday } from "./dates";
 import { useKeepPlace, useRestIntent, useRowSize } from "./list-state";
 import type { Place } from "./places";
@@ -179,10 +185,20 @@ export function ConversationList({
     restartMail(client);
     onRetry();
   };
-  if (list.isLoadingError && list.data.length === 0 && error instanceof ApiError && !expired) {
+  // A list that could not read its rows in order, e.g. as TanStack DB asked
+  // for the whole place, which inbok refuses, says so, never that the place
+  // is empty (ADR031, TanStack DB gate, rule 9).
+  const unordered = error instanceof WholePlaceRefused;
+  const firstPageFailed = list.isLoadingError && error instanceof ApiError;
+  if ((firstPageFailed || unordered) && list.data.length === 0 && !expired) {
     return (
       <div className="p-4">
-        <ReadError message={listFailed} error={error} retrying={false} onRetry={retry} />
+        <ReadError
+          message={listFailed}
+          error={error instanceof ApiError ? error : undefined}
+          retrying={false}
+          onRetry={retry}
+        />
       </div>
     );
   }
