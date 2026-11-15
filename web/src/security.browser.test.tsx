@@ -18,8 +18,14 @@ const fault = 500;
 // The reads Security makes, each answering with data until its flag says
 // to fail.
 const failing = { session: false, totp: false };
+// Answers a request for a verification link once resolved.
+let sendLink: (() => void) | undefined;
 
-function answer(path: string): Response {
+function answer(path: string): Response | Promise<Response> {
+  if (path.endsWith("/account/email-verification"))
+    return new Promise((resolve) => {
+      sendLink = () => resolve(Response.json({ data: { address: "ana@example.com" } }));
+    });
   if (path.endsWith("/sessions/current"))
     return failing.session
       ? problem()
@@ -99,6 +105,7 @@ async function openSecurity(): Promise<QueryClient> {
 }
 
 afterEach(() => {
+  sendLink = undefined;
   failing.session = false;
   failing.totp = false;
   vi.unstubAllGlobals();
@@ -142,5 +149,28 @@ describe("Security", () => {
     await expect
       .element(page.getByText(/Could not check two-factor authentication\./))
       .not.toBeInTheDocument();
+  });
+
+  it("keeps focus on Send verification link while it sends", async () => {
+    await openSecurity();
+    const send = page.getByRole("button", { name: "Send verification link" });
+    await userEvent.click(send);
+
+    const sending = page.getByRole("button", { name: "Sending verification link..." });
+    await expect.element(sending).toHaveFocus();
+    // Pressing again while it sends sends nothing more.
+    await userEvent.keyboard("{Enter}");
+    const sends = vi
+      .mocked(fetch)
+      .mock.calls.filter(([input]) =>
+        (input instanceof Request ? input.url : String(input)).endsWith("/email-verification"),
+      );
+    expect(sends).toHaveLength(1);
+
+    sendLink?.();
+    await expect
+      .element(page.getByText("Check your inbox at ana@example.com. The link expires in 24 hours."))
+      .toBeVisible();
+    await expect.element(send).toHaveFocus();
   });
 });

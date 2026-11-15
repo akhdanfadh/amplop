@@ -428,7 +428,8 @@ limits how many links are sent, and every unexpired link works. An
 unverified account also sees a banner on every other settings page that
 links to Security. Both say a forgotten password can't
 be reset by email until the address is verified, since the reset page's
-answer cannot say why nothing arrived.
+answer cannot say why nothing arrived. "Send verification link" is pending,
+not disabled, while it sends, so focus stays on it.
 
 The link opens `/verify-email`, which works signed in or out. The secret after
 `#` never reaches the server with the page request. `getRouter` calls

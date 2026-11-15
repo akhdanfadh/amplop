@@ -29,7 +29,8 @@ export function EmailVerificationSection({
   const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  // Set when a send starts; focus returns to the button once it ends.
+  // Set when a send starts; once it ends, focus that fell to the page goes
+  // back to the button, or to the heading if the answer removed it.
   const refocus = useRef(false);
   const send = useRequestEmailVerification({
     mutation: {
@@ -57,8 +58,9 @@ export function EmailVerificationSection({
     void navigate({ to: "/sign-in", replace: true, ignoreBlocker: true });
   }, [expired, client, navigate]);
 
-  // The button is disabled while sending or locked; give focus back once it
-  // is usable, or to the heading once a verified address removed it.
+  // The button keeps focus while it sends. Focus falls to the page when a
+  // lock disables it meanwhile, or a verified address removes it: give it
+  // back to the button once usable, or to the heading.
   useEffect(() => {
     if (!refocus.current || send.isPending || locked) return;
     refocus.current = false;
@@ -92,7 +94,10 @@ export function EmailVerificationSection({
             type="button"
             variant="outline"
             className="whitespace-normal"
-            isDisabled={locked || send.isPending}
+            // Pending, not disabled: focus stays on the button while it
+            // sends, and presses do nothing.
+            isDisabled={locked}
+            isPending={send.isPending}
             onPress={() => {
               if (locked || send.isPending) return;
               refocus.current = true;
