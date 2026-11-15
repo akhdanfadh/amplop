@@ -2,6 +2,7 @@ package meilisearch
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -81,31 +82,20 @@ func TestUpsertCreates(t *testing.T) {
 	assertSettings(t, index, owner)
 }
 
-// An index deleted just before an upsert's documents reach it, e.g. by a
-// rebuild, comes back with its settings, so its searches still work.
-func TestUpsertAfterDelete(t *testing.T) {
-	// Given a member's index that a proxy deletes as the next documents
-	// arrive.
+// An upsert applies the settings before it adds the documents, so a
+// member's first documents never sit in an index without them, where
+// every search, which filters on the owner, would be refused.
+func TestUpsertSettingsFirst(t *testing.T) {
 	index := newIndex(t)
-	require.NoError(t, index.Upsert(t.Context(), []search.Document{message("Before")}))
-	direct := index.client
-	documents := "/indexes/" + index.uid(owner) + "/documents"
+	member := "/indexes/" + index.uid(owner)
+	var asked []string
 	index.client = proxied(t, func(r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != documents {
-			return
+		if strings.HasPrefix(r.URL.Path, member+"/") && r.Method != http.MethodGet {
+			asked = append(asked, r.Method+" "+strings.TrimPrefix(r.URL.Path, member))
 		}
-		task, err := direct.DeleteIndexWithContext(r.Context(), index.uid(owner))
-		assert.NoError(t, index.wait(r.Context(), "delete", task, err))
 	})
 
-	// When the next message is upserted.
-	after := message("After")
-	require.NoError(t, index.Upsert(t.Context(), []search.Document{after}))
-	index.client = direct
-	result, err := index.Search(t.Context(), owner, search.Query{Text: "after", Page: 1, PageSize: 10})
+	require.NoError(t, index.Upsert(t.Context(), []search.Document{message("Invoice")}))
 
-	// Then the index has its settings and the message.
-	require.NoError(t, err)
-	assert.Equal(t, []uuid.UUID{after.ID}, ids(result))
-	assertSettings(t, index, owner)
+	assert.Equal(t, []string{"PATCH /settings", "POST /documents"}, asked)
 }

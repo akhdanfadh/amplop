@@ -86,26 +86,27 @@ func texts(ids []uuid.UUID) []string {
 	return out
 }
 
-// upsert adds rows to the index uid, then applies its settings, waiting
+// upsert applies the index uid's settings, then adds rows to it, waiting
 // until Meilisearch has applied both.
 func (i *Index) upsert(ctx context.Context, uid string, rows []document) error {
-	// 1. Add the documents. Meilisearch would guess the primary key only
+	// 1. Apply the settings before the documents, every time. A missing
+	// index, e.g. at a member's first write, is created with them, so no
+	// search ever meets its documents in an index without them, which
+	// refuses the filters every search uses. No delete of the whole index
+	// falls between the steps: a rebuild's, the only one, runs in the
+	// member's partition of the search queue, as their writes do.
+	task, err := i.apply(ctx, uid)
+	if err := i.wait(ctx, "apply search settings", task, err); err != nil {
+		return err
+	}
+
+	// 2. Add the documents. Meilisearch would guess the primary key only
 	// from a document with exactly one field ending in "id", and these have
 	// three. AddDocuments replaces a document; UpdateDocuments would merge
 	// into it and keep a mailbox the message left.
 	key := fieldID
-	task, err := i.client.Index(uid).AddDocumentsWithContext(ctx, rows, &meili.DocumentOptions{PrimaryKey: &key})
-	if err := i.wait(ctx, "upsert search documents", task, err); err != nil {
-		return err
-	}
-
-	// 2. Apply the settings after the documents, every time. When the index
-	// was missing, e.g. a member's first write, or deleted by a rebuild at
-	// any moment before step 1, Meilisearch created it bare, and searches
-	// would fail on filters it does not allow. A repeated call repairs an
-	// index this step did not reach.
-	task, err = i.apply(ctx, uid)
-	return i.wait(ctx, "apply search settings", task, err)
+	task, err = i.client.Index(uid).AddDocumentsWithContext(ctx, rows, &meili.DocumentOptions{PrimaryKey: &key})
+	return i.wait(ctx, "upsert search documents", task, err)
 }
 
 // Delete removes owner's documents with these message IDs and waits until

@@ -48,7 +48,7 @@ const (
 // exist. It cannot catch a caller that names another member as owner:
 // that member's index answers, so the caller passes the signed-in member.
 // The cost is settings applied to every member's index: at startup, and
-// after every upsert, which may have created the index bare. Searches and
+// before every upsert, which may create the index. Searches and
 // account deletes also filter on the owner inside each index, as a second
 // guard, should a document ever reach the wrong one.
 type Index struct {

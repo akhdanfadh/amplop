@@ -3033,12 +3033,13 @@ too.
 - `meilisearch` implements `Index` with the official Go client,
   `meilisearch-go`, with one Meilisearch index per member, named after
   the member's user ID, e.g. `messages_42`. Every upsert applies the
-  settings after its documents, so a member's index has them however it
-  came to exist; until a member's first upsert, their searches find
-  nothing and their deletes do nothing. Searches and account deletes
-  also filter on the owner inside the member's index. Its errors carry
-  Meilisearch's error code, never the text of its reply, which can quote
-  a message. An error from a call cut short by its context wraps the
+  settings before its documents, so a member's index has them however it
+  came to exist, and their first documents never sit in an index without
+  them, which would refuse every search's owner filter; until a member's
+  first upsert, their searches find nothing and their deletes do nothing.
+  Searches and account deletes also filter on the owner inside the
+  member's index. Its errors carry Meilisearch's error code, never the
+  text of its reply, which can quote a message. An error from a call cut short by its context wraps the
   context's error, so a request's deadline still becomes a 503.
 - `Prepare` applies the settings to every member's index, and every
   upsert to its member's: which fields a search matches, in order of

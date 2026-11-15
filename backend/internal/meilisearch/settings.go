@@ -51,7 +51,7 @@ const (
 
 // Prepare applies the settings to every member's index and waits until
 // Meilisearch has applied them. An index a member gets later receives them
-// from [Index.Upsert].
+// from [Index.Upsert], before its first documents.
 //
 // DESIGN: it sends every setting each time rather than reading them first
 // to compare. Meilisearch runs an update that changes nothing in a few
