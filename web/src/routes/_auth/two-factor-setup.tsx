@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useDeleteCurrentSession } from "@/api/generated/inbok";
@@ -8,7 +8,7 @@ import { smallTarget } from "@/components/link-style";
 import { SignedOutPage } from "@/components/signed-out-page";
 import { Button } from "@/components/ui/button";
 import { readSession } from "@/features/auth/guard";
-import { clearAccountCache } from "@/features/auth/session-cache";
+import { clearAccountCache, resetSession } from "@/features/auth/session-cache";
 import { sessionMessage } from "@/features/auth/session-error";
 import { SetupDoneNotice } from "@/features/setup/done-notice";
 import { useSetupFlow } from "@/features/totp/setup";
@@ -32,16 +32,26 @@ export const Route = createFileRoute("/_auth/two-factor-setup")({
 });
 
 // TwoFactorSetup is the setup's steps in a card, with a way to sign out
-// instead. Finishing opens Security, which says two-factor is on.
+// instead. Finishing, here or elsewhere, opens Security, which says
+// two-factor is on.
 function TwoFactorSetup(): ReactElement {
   const { session } = Route.useRouteContext();
   const client = useQueryClient();
   const navigate = useNavigate();
   const [canceled, setCanceled] = useState(false);
-  // Where the card is going: nowhere yet, signing out, or gone. Sign out,
-  // once pressed, wins over a finish seen meanwhile, and the card leaves
-  // once, so a later answer cannot send it elsewhere.
-  const exit = useRef<"staying" | "signing-out" | "left">("staying");
+  // Where the card is going: nowhere yet, into the app once the account is
+  // read afresh, signing out, or gone. Sign out, once pressed, wins over a
+  // finish seen meanwhile, and the card leaves once, so a later answer
+  // cannot send it elsewhere.
+  const exit = useRef<"staying" | "entering" | "signing-out" | "left">("staying");
+  // Whether the card is still on the page, for answers that come later.
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const toSignIn = useCallback(() => {
     if (exit.current === "left") return;
@@ -51,7 +61,7 @@ function TwoFactorSetup(): ReactElement {
   }, [client, navigate]);
 
   const toSecurity = useCallback(() => {
-    if (exit.current !== "staying") return;
+    if (exit.current !== "staying" && exit.current !== "entering") return;
     exit.current = "left";
     void navigate({
       to: "/settings/security",
@@ -91,6 +101,19 @@ function TwoFactorSetup(): ReactElement {
     onFinished: toSecurity,
     onCanceled: () => setCanceled(true),
   });
+
+  // Turned on elsewhere, e.g. in another tab, or by a finish whose answer
+  // was lost. The cached session still says it may only set it up, which
+  // would send the app's guard straight back here, so what describes the
+  // session is read afresh first. A card gone meanwhile goes nowhere.
+  useEffect(() => {
+    if (stage !== "done" || exit.current !== "staying") return;
+    // Set before the reads, which change the stage and run this again.
+    exit.current = "entering";
+    void resetSession(client).then(() => {
+      if (mounted.current) toSecurity();
+    });
+  }, [stage, client, toSecurity]);
 
   return (
     <SignedOutPage

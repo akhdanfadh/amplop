@@ -17,6 +17,7 @@ import { readSession } from "@/features/auth/guard";
 import { SetupGate } from "@/features/setup/gate";
 import { Route as Security } from "@/routes/_app/settings/security/index";
 import { Route as TwoFactor } from "@/routes/_app/settings/security/two-factor";
+import { getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
 import { Route as App } from "@/routes/_app";
 import { Route as Auth } from "@/routes/_auth";
 import { Route as TwoFactorCard } from "@/routes/_auth/two-factor-setup";
@@ -60,6 +61,11 @@ type Server = {
   lose?: Partial<Record<string, true>>;
   // When set, a sessions read waits for it before answering.
   holdSessions?: Promise<void>;
+  // When set, every two-factor status read after the first, and sign-out,
+  // wait for them before answering; statusReads counts the reads.
+  holdStatus?: Promise<void>;
+  holdSignOut?: Promise<void>;
+  statusReads?: number;
 };
 
 // problem is an answer refused with status and the problem type.
@@ -119,11 +125,17 @@ async function answer(
       });
     return Response.json({ data: { sessions } });
   }
-  if (method === "GET" && path === "/api/v0/totp") return Response.json({ data: server.totp });
+  if (method === "GET" && path === "/api/v0/totp") {
+    server.statusReads = (server.statusReads ?? 0) + 1;
+    if (server.statusReads > 1) await server.holdStatus;
+    return Response.json({ data: server.totp });
+  }
   if (method === "GET" && path === "/api/v0/setup")
     return Response.json({ data: { status: "done" } });
-  if (method === "DELETE" && path === "/api/v0/sessions/current")
+  if (method === "DELETE" && path === "/api/v0/sessions/current") {
+    await server.holdSignOut;
     return new Response(null, { status: noContent });
+  }
   if (method === "POST" && path === "/api/v0/totp") {
     if (
       !(
@@ -204,11 +216,16 @@ function stubFetch(server: Server): void {
 // openCard renders the setup card, for an administrator whose session may
 // only set up two-factor authentication, in a router of its own with
 // Security and sign-in and the real guards, answered by server, and
-// returns the router.
-async function openCard(server: Server) {
+// returns the router. stale puts a session read earlier in the cache, one
+// that still says two-factor must be set up.
+async function openCard(server: Server, stale: "stale-session" | "no-cache" = "no-cache") {
   server.role ??= "admin";
   stubFetch(server);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  if (stale === "stale-session")
+    queryClient.setQueryData(getGetCurrentSessionQueryKey(), {
+      data: { email: "ana@example.com", emailVerified: true, role: "admin", totpRequired: true },
+    });
   // The setup notice reads the setup gate, which sits at the root.
   const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({
     component: () => (
@@ -320,6 +337,15 @@ async function open(
     </QueryClientProvider>,
   );
   return router;
+}
+
+// held returns a promise that waits until its release is called.
+function held(): { promise: Promise<void>; release: () => void } {
+  let resolve: (() => void) | undefined;
+  const promise = new Promise<void>((settle) => {
+    resolve = settle;
+  });
+  return { promise, release: () => resolve?.() };
 }
 
 // off is a server where two-factor authentication is off.
@@ -963,5 +989,38 @@ describe("two-factor setup card", () => {
 
     await expect.element(page.getByText("Sign in")).toBeVisible();
     expect(router.state.location.pathname).toBe("/sign-in");
+  });
+
+  it("opens Security when two-factor was turned on in another tab", async () => {
+    // Another tab finished: the cookie is now a full session's, but this
+    // tab's cached session still says it may only set it up.
+    const server = on();
+    const router = await openCard(server, "stale-session");
+
+    await expect.element(page.getByText(onNotice)).toBeVisible();
+    expect(router.state.location.pathname).toBe("/settings/security");
+  });
+
+  it("lets Sign out win over two-factor turned on in another tab", async () => {
+    // The card sees it on and starts reading the account afresh, slowly;
+    // Sign out pressed meanwhile must still end at sign-in, not Security.
+    const server = on();
+    const status = held();
+    const signOut = held();
+    server.holdStatus = status.promise;
+    server.holdSignOut = signOut.promise;
+    const router = await openCard(server, "stale-session");
+    await expect.poll(() => server.statusReads).toBe(2);
+    const visited: string[] = [];
+    router.subscribe("onResolved", ({ toLocation }) => visited.push(toLocation.pathname));
+
+    await userEvent.click(page.getByRole("button", { name: "Sign out" }));
+    await expect.poll(() => server.sent).toContain("DELETE /api/v0/sessions/current");
+    status.release();
+    signOut.release();
+
+    await expect.element(page.getByText("Sign in")).toBeVisible();
+    expect(router.state.location.pathname).toBe("/sign-in");
+    expect(visited).not.toContain("/settings/security");
   });
 });
