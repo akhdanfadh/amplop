@@ -58,7 +58,7 @@ func registerSetupStatus(api huma.API, handler accountHandler) {
 		Path:        setupPath,
 		Summary:     "Get Setup Status",
 		Tags:        []string{tagSetup},
-		Description: "Whether the first administrator can be created: done once an administrator exists; otherwise unconfigured without a setup token, or open with one.",
+		Description: "Whether the first administrator can be created: done once an administrator exists, and done stays done; otherwise unconfigured without a setup token, or open with one.",
 		Responses:   setupStatusResponses(api),
 	}, handler.handleGetSetupStatus)
 }

@@ -3775,7 +3775,7 @@ export const getGetSetupStatusUrl = () => {
 }
 
 /**
- * Whether the first administrator can be created: done once an administrator exists; otherwise unconfigured without a setup token, or open with one.
+ * Whether the first administrator can be created: done once an administrator exists, and done stays done; otherwise unconfigured without a setup token, or open with one.
  * @summary Get Setup Status
  */
 export const getSetupStatus = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseSetupStatus> => {

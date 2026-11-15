@@ -36,9 +36,16 @@ export function SetupGate({ children }: { children: ReactNode }) {
     // Keep setup reachable even when the browser reports offline.
     query: { staleTime: Infinity, networkMode: "always" },
   });
+  // Setup, once done, stays done: an administrator exists from then on
+  // (getSetupStatus). Remembered here, so a cache reset, e.g. of every
+  // query, can never bring back the loading view and unmount every page.
+  // Set while rendering, React's way to keep what an earlier render saw.
+  const [doneSeen, setDoneSeen] = useState(false);
+  if (status.data?.data.status === "done" && !doneSeen) setDoneSeen(true);
+  const done = doneSeen || status.data?.data.status === "done";
   // A later status check can confirm an attempt whose response was lost.
   const [attemptedHere, setAttemptedHere] = useState(false);
-  const completedHere = attemptedHere && status.data?.data.status === "done";
+  const completedHere = attemptedHere && done;
 
   const attempt = useCallback(() => setAttemptedHere(true), []);
   const complete = useCallback(async (): Promise<void> => {
@@ -53,7 +60,7 @@ export function SetupGate({ children }: { children: ReactNode }) {
   );
 
   // Failed rechecks keep the form mounted so entered values survive retry.
-  if (!status.data) {
+  if (!status.data && !done) {
     if (status.error) {
       return (
         <FailedRead
@@ -79,7 +86,6 @@ export function SetupGate({ children }: { children: ReactNode }) {
     );
   }
 
-  const done = status.data.data.status === "done";
   if (!done && !isSetup) return <Navigate to="/setup" replace />;
   if (done && isSetup) return <Navigate to="/" replace />;
 

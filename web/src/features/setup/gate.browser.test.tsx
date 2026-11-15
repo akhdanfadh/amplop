@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
@@ -21,9 +22,12 @@ function setDone(): Response {
 }
 
 // app returns the gate around a home page, as the root route has it;
-// homeCheck is the home page's own beforeLoad.
-function app(homeCheck: () => void = () => {}) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+// homeCheck is the home page's own beforeLoad, client the query cache.
+function app(
+  homeCheck: () => void = () => {},
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  home = () => <h1>Home</h1>,
+) {
   const root = createRootRoute({
     component: () => (
       <QueryClientProvider client={client}>
@@ -33,14 +37,14 @@ function app(homeCheck: () => void = () => {}) {
       </QueryClientProvider>
     ),
   });
-  const home = createRoute({
+  const homeRoute = createRoute({
     getParentRoute: () => root,
     path: "/",
     beforeLoad: homeCheck,
-    component: () => <h1>Home</h1>,
+    component: home,
   });
   return createRouter({
-    routeTree: root.addChildren([home]),
+    routeTree: root.addChildren([homeRoute]),
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
 }
@@ -50,6 +54,29 @@ afterEach(() => {
 });
 
 describe("SetupGate", () => {
+  it("keeps the page mounted once setup is done, even when every query is reset", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<() => Promise<Response>>(async () => setDone()),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let mounts = 0;
+    function Home() {
+      useEffect(() => {
+        mounts += 1;
+      }, []);
+      return <h1>Home</h1>;
+    }
+    await render(<RouterProvider router={app(() => {}, client, Home)} />);
+    await expect.element(page.getByRole("heading", { name: "Home" })).toBeVisible();
+
+    await client.resetQueries();
+
+    await expect.element(page.getByRole("heading", { name: "Home" })).toBeVisible();
+    expect(page.getByRole("status").query()).toBeNull();
+    expect(mounts).toBe(1);
+  });
+
   it("keeps the first load's loading view hidden for 300 ms, and leaves focus alone", async () => {
     vi.stubGlobal(
       "fetch",
