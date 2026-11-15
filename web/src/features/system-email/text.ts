@@ -1,5 +1,6 @@
 import type { SystemEmailSettings } from "@/api/generated/model";
 import type { LeaveWarningText } from "@/components/leave-warning";
+import type { SystemEmailState } from "./state";
 
 type Security = SystemEmailSettings["security"];
 
@@ -22,7 +23,7 @@ export const badgeText = {
   // when a test fails.
   untested: "Not confirmed",
   none: "Not set up",
-};
+} satisfies Record<SystemEmailState, string>;
 
 // The summary's names for the saved settings, and its words for what is
 // not set.

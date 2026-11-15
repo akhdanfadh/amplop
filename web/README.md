@@ -117,7 +117,8 @@ Put shared code in the folder for its responsibility:
   pages, lives here whole: its outcome screens read the session and the
   redeem's result.
 - `src/features/system-email`: the system email settings form, its schema,
-  and the test message form and its result wording.
+  the test message form and its result wording, and whether the saved
+  settings passed a test (`systemEmailState`), which the badge shows.
 - `src/features/members`: the member list's columns and cells, the table
   with its confirmation dialog, and its wording.
 - `src/features/registration`: the Registration page's section and badge,
@@ -146,14 +147,14 @@ Put shared code in the folder for its responsibility:
 - `src/components`: shared components, such as the shell around every page
   (`AppShell`), the password input, the request error under a form, the
   status badge, the link styles, the signed-in frame and its member menu,
-  the offline banner, and the pages for loading, failure, and Page not
-  found, and `SignedOutPage`, the card every signed-out page puts its
-  content in, with `OutcomeLinks` for the buttons of its outcome screens.
-  `ui/` holds the shadcn components we own. `form/` is the form kit, kept
-  together because its parts only work as one: `useAppForm` with the field
-  kinds and the form parts it is built from, and `useFormRequest`, which
-  sends a form's values and whose check plugs into it; "Forms" below says
-  how to use it.
+  the banner and the offline banner, and the pages for loading, failure,
+  and Page not found, and `SignedOutPage`, the card every signed-out page
+  puts its content in, with `OutcomeLinks` for the buttons of its outcome
+  screens. `ui/` holds the shadcn components we own. `form/` is the form
+  kit, kept together because its parts only work as one: `useAppForm` with
+  the field kinds and the form parts it is built from, and
+  `useFormRequest`, which sends a form's values and whose check plugs into
+  it; "Forms" below says how to use it.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the

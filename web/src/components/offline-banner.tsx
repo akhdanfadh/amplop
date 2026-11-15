@@ -1,6 +1,7 @@
 import { useSyncExternalStore, type ReactElement } from "react";
 import { onlineManager } from "@tanstack/react-query";
 import { WifiOffIcon } from "lucide-react";
+import { Banner } from "@/components/banner";
 
 // OfflineBanner says, while the browser reports no connection, that inbok
 // can't reach its server, and nothing otherwise. It reads the connection
@@ -16,11 +17,10 @@ export function OfflineBanner(): ReactElement {
     // Stays mounted, so a screen reader announces the text as it appears.
     <output className="contents">
       {!online && (
-        <p className="flex items-center gap-2 bg-warning/8 px-4 py-2 text-sm text-warning dark:bg-warning/12">
-          <WifiOffIcon aria-hidden="true" className="size-4 shrink-0" />
+        <Banner tone="warning" icon={WifiOffIcon}>
           You&apos;re offline. inbok shows what it already loaded and catches up when the connection
           returns.
-        </p>
+        </Banner>
       )}
     </output>
   );
