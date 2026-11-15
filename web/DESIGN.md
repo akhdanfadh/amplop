@@ -752,9 +752,14 @@ pull-to-refresh, which would reload the app, never starts.
   presses; while one sends, the other waits. A request failure shows under the button through
   `RequestError` (a reference only for faults); success is a quiet
   "Saved".
-- A 429 wait stays visible while the member retypes: "Try again at 14:32
-  (in 4 minutes).", then "You can try again now." Times are English with
-  the browser's 12 or 24 hour clock.
+- A 429 says when to try again, as a clock time rounded up to the minute
+  ("Too many attempts. Try again after 2:32 PM."), with the weekday when it
+  is another day, and "later" past six days; it stays while the member
+  retypes. A time stays true while it is on screen, which "in 4 minutes"
+  would not. Accepted: a wait under a minute reads as the next minute
+  (only scripts reach the per-browser limit), and the text never turns
+  into "You can try again now" (people meet only limits of 15 minutes or
+  more). Times are English with the browser's 12 or 24 hour clock.
 - Any form with unsaved typing warns before in-app navigation with
   `LeaveWarning`; closing the tab gets the browser's question. Typing back
   what the form opened with counts as no change. Cancel on a form opened
