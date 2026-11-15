@@ -61,17 +61,59 @@ const runningSearchRetry = time.Second
 // [requestTimeout], so a slow search still answers that the server is busy.
 const searchRunTimeout = requestTimeout + 5*time.Second
 
+// hasAttachment is the has parameter's one value.
+const hasAttachment = "attachment"
+
 type messageSearchInput struct {
 	// 200 characters is inbok's choice: only a query's first 10 words
 	// count, and no 10 words of mail need more.
-	Q       string `query:"q" required:"true" pattern:"\\S" maxLength:"200" doc:"The words to find, as the member typed them. A word a typo or two away matches, but a number only exactly; the last word also matches as the start of a longer word; \"quoted words\" match as a phrase; -word leaves out what has it. Every word must match; only the first 10 count."`
+	Q       string `query:"q" pattern:"\\S" maxLength:"200" doc:"The words to find, as the member typed them. A word a typo or two away matches, but a number only exactly; the last word also matches as the start of a longer word; \"quoted words\" match as a phrase; -word leaves out what has it. Every word must match; only the first 10 count. Left out, every message the other parameters keep matches, newest first."`
 	Account int64  `query:"account" minimum:"1" doc:"A connected account's id, to search only its mail; every account's when left out."`
+	// 10 senders is inbok's choice: a person's or a company's few
+	// addresses. 254 characters is inbok's choice too, after the 254
+	// octets RFC 5321 leaves a mailbox in an SMTP path.
+	From []string `query:"from,explode" nullable:"false" maxItems:"10" format:"idn-email" maxLength:"254" doc:"Senders, by email address, as a message's from lists them: a message from any of them matches, ignoring case. Repeat it for each, up to 10."`
+	// Instants with their offset, not dates: a day starts at another
+	// moment in each time zone, which the client knows.
+	Since  time.Time `query:"since" doc:"Only messages the provider received at or after this instant, e.g. the member's local midnight, as 2026-11-01T00:00:00+07:00."`
+	Before time.Time `query:"before" doc:"Only messages the provider received before this instant, which must be later than since."`
+	Has    string    `query:"has" enum:"attachment" doc:"attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content inbok has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened."`
 	// A page past 1000 holds nothing: a search counts at most
 	// [search.MaxTotal] matches, which TestSearchMessagesBounds ties to it.
 	Page int `query:"page" minimum:"1" maximum:"1000" default:"1" doc:"Which page of results, from 1."`
 	// 50 is inbok's choice: the web's results page, and an index's time
 	// per search grows with each result's body text it cuts.
 	Limit int `query:"limit" minimum:"1" maximum:"50" default:"50" doc:"How many results a page holds, at most."`
+}
+
+// Resolve refuses what Huma lets through: a list of senders whose first
+// is empty, and an instant given that equals Go's zero time, which every
+// layer below reads as no bound. Huma calls it after parsing the request,
+// before the handler.
+//
+// DESIGN: Huma decides whether a parameter is there from its first value
+// alone, so a list that starts with an empty sender skips the whole
+// parameter, its checks included, and would search every sender. Any
+// other list Huma checks itself, a value that is no address anywhere
+// included, so only that one case is refused here; the rest of such a
+// list is checked once the first value is fixed.
+func (in *messageSearchInput) Resolve(ctx huma.Context) []error {
+	u := ctx.URL()
+	query := u.Query()
+	var errs []error
+	if senders := query["from"]; len(senders) > 0 && senders[0] == "" {
+		errs = append(errs, &huma.ErrorDetail{Location: "query.from[0]", Message: "expected an email address"})
+	}
+	bounds := []struct {
+		name string
+		at   time.Time
+	}{{"since", in.Since}, {"before", in.Before}}
+	for _, bound := range bounds {
+		if query.Get(bound.name) != "" && bound.at.IsZero() {
+			errs = append(errs, &huma.ErrorDetail{Location: "query." + bound.name, Message: "expected an instant other than Go's zero time"})
+		}
+	}
+	return errs
 }
 
 // textMatch is where a search matched a text.
@@ -116,7 +158,9 @@ func registerMessageSearch(api huma.API, handler searchHandler) {
 		Summary:     "Search Messages",
 		Tags:        []string{tagMessages},
 		Description: "Finds the signed-in account's messages whose subject, sender, recipients, or body text match q, most relevant first, " +
-			"across its connected accounts or one of them. Each conversation appears once, through its best-matching message. " +
+			"across its connected accounts or one of them, and that pass every filter given: from, since, before, and has. " +
+			"Without q, every message the filters keep matches, newest first. " +
+			"Each conversation appears once, through its best-matching message, or without q its newest, which passes every filter itself. " +
 			"Messages in Spam or Trash, and drafts, are left out. A message whose body is not stored yet is found by its headers. " +
 			"The search index catches up with new mail within moments, so a message synchronized a moment ago may not be found yet. " +
 			"The signed-in account may have two searches running at once.",
@@ -135,17 +179,32 @@ type searchOutcome struct {
 func (h searchHandler) handleSearchMessages(ctx context.Context, in *messageSearchInput) (*output[messageSearchPage], error) {
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
 
-	// 1. Take one of the member's places, or refuse before asking the
+	// 1. Refuse a range nothing is in before taking a place, so the answer
+	// says what to correct rather than to wait.
+	if !in.Since.IsZero() && !in.Before.IsZero() && !in.Since.Before(in.Before) {
+		return nil, badRangeProblem()
+	}
+
+	// 2. Take one of the member's places, or refuse before asking the
 	// index anything.
 	if !h.running.take(user.ID) {
 		return nil, huma.ErrorWithHeaders(searchesRunningProblem(), http.Header{retryAfterHeader: {retryAfterSeconds(runningSearchRetry)}})
 	}
 
-	// 2. Search apart from the request, giving the place back only when the
+	// 3. Search apart from the request, giving the place back only when the
 	// search ends: a client that gives up would otherwise free its place
 	// while the index still works on its search, and could send the next.
 	done := make(chan searchOutcome, 1)
-	request := search.Request{Text: in.Q, Account: in.Account, Page: in.Page, Limit: in.Limit}
+	request := search.Request{
+		Text:           in.Q,
+		Account:        in.Account,
+		From:           in.From,
+		Since:          in.Since,
+		Before:         in.Before,
+		WithAttachment: in.Has == hasAttachment,
+		Page:           in.Page,
+		Limit:          in.Limit,
+	}
 	go func() {
 		runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), searchRunTimeout)
 		defer cancel()
@@ -223,11 +282,21 @@ func searchProblem(err error) error {
 	switch {
 	case errors.Is(err, search.ErrAccountNotFound):
 		return connectedAccountProblem(connectedaccount.ErrNotFound)
+	case errors.Is(err, search.ErrBadRange):
+		return badRangeProblem()
 	case errors.Is(err, search.ErrUnavailable):
 		return huma.ErrorWithHeaders(searchUnavailableProblem(), http.Header{retryAfterHeader: {retryAfterSeconds(searchUnavailableRetry)}})
 	default:
 		return err
 	}
+}
+
+// badRangeProblem returns the 422 for a since not before before, on
+// before, the bound a member changes; its text names no parameter.
+func badRangeProblem() *problem {
+	invalid := requestProblem(http.StatusUnprocessableEntity)
+	invalid.Errors = []inputError{{Location: "query.before", Message: "Choose an end after the start."}}
+	return invalid
 }
 
 // errSearchPanicked is a search that panicked, logged where it did.

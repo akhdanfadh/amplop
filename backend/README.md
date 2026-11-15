@@ -3141,6 +3141,34 @@ a JavaScript string counts. A Meilisearch that does not answer, or
 answers that it failed, is a 503 `search-unavailable` with
 `Retry-After: 15`.
 
+Filters narrow a search, each a structured parameter the web builds,
+never syntax parsed out of `q`: `from`, repeated for up to 10 email
+addresses (`idn-email`, as every address field is), keeps a message whose
+From holds any of them, compared as Meilisearch's filters compare text,
+ignoring case (so `BUDI@x.com` finds `budi@x.com`);
+`since` and `before` keep what the provider received at or after one
+instant and before another, each rounded up to the index's millisecond,
+which is exact, and a `since` not before `before` is a 422 on
+`query.before`, checked before the search takes a running place;
+`has=attachment` keeps a message with `has_attachment`. A `from` that is
+no address anywhere in the list, and an instant given that equals Go's
+zero time,
+are 422s too: Huma decides whether a parameter is there from its first
+value alone, so the input's `Resolve` refuses a list whose first sender
+is empty, which Huma would skip with all its checks.
+Meilisearch applies filters before it keeps one message per
+conversation, so each filter holds for the message a row shows: a
+conversation whose words are in one message and whose file is in another
+is not found, as in Gmail. Without `q`, every message the filters keep
+matches, newest first by the date ranking rule, each conversation
+through its newest such message, and the adapter asks for IDs alone,
+since there is nothing to mark. `has=attachment` only finds messages
+whose content inbok has fetched: not those of an account connected
+moments ago, while the body fetch catches up; unopened ones in Spam or
+Trash, which it skips; one whose fetch failed for good; nor one that
+reaches inbok older than 90 days, e.g. imported, or ages past 90 days
+before its turn, which the body fetch never takes unless it is opened.
+
 Cutting excerpts is most of a search's cost in Meilisearch, and it grows
 with each result's body text: on 100 crafted 64 KiB messages, a page of
 100 took 0.76 s against 4 ms for IDs alone. So a page holds at most 50

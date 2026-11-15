@@ -5090,17 +5090,16 @@
     },
     "/messages/search": {
       "get": {
-        "description": "Finds the signed-in account's messages whose subject, sender, recipients, or body text match q, most relevant first, across its connected accounts or one of them. Each conversation appears once, through its best-matching message. Messages in Spam or Trash, and drafts, are left out. A message whose body is not stored yet is found by its headers. The search index catches up with new mail within moments, so a message synchronized a moment ago may not be found yet. The signed-in account may have two searches running at once.",
+        "description": "Finds the signed-in account's messages whose subject, sender, recipients, or body text match q, most relevant first, across its connected accounts or one of them, and that pass every filter given: from, since, before, and has. Without q, every message the filters keep matches, newest first. Each conversation appears once, through its best-matching message, or without q its newest, which passes every filter itself. Messages in Spam or Trash, and drafts, are left out. A message whose body is not stored yet is found by its headers. The search index catches up with new mail within moments, so a message synchronized a moment ago may not be found yet. The signed-in account may have two searches running at once.",
         "operationId": "searchMessages",
         "parameters": [
           {
-            "description": "The words to find, as the member typed them. A word a typo or two away matches, but a number only exactly; the last word also matches as the start of a longer word; \"quoted words\" match as a phrase; -word leaves out what has it. Every word must match; only the first 10 count.",
+            "description": "The words to find, as the member typed them. A word a typo or two away matches, but a number only exactly; the last word also matches as the start of a longer word; \"quoted words\" match as a phrase; -word leaves out what has it. Every word must match; only the first 10 count. Left out, every message the other parameters keep matches, newest first.",
             "explode": false,
             "in": "query",
             "name": "q",
-            "required": true,
             "schema": {
-              "description": "The words to find, as the member typed them. A word a typo or two away matches, but a number only exactly; the last word also matches as the start of a longer word; \"quoted words\" match as a phrase; -word leaves out what has it. Every word must match; only the first 10 count.",
+              "description": "The words to find, as the member typed them. A word a typo or two away matches, but a number only exactly; the last word also matches as the start of a longer word; \"quoted words\" match as a phrase; -word leaves out what has it. Every word must match; only the first 10 count. Left out, every message the other parameters keep matches, newest first.",
               "maxLength": 200,
               "pattern": "\\S",
               "type": "string"
@@ -5116,6 +5115,57 @@
               "format": "int64",
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "Senders, by email address, as a message's from lists them: a message from any of them matches, ignoring case. Repeat it for each, up to 10.",
+            "explode": true,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "Senders, by email address, as a message's from lists them: a message from any of them matches, ignoring case. Repeat it for each, up to 10.",
+              "items": {
+                "format": "idn-email",
+                "maxLength": 254,
+                "type": "string"
+              },
+              "maxItems": 10,
+              "type": "array"
+            }
+          },
+          {
+            "description": "Only messages the provider received at or after this instant, e.g. the member's local midnight, as 2026-11-01T00:00:00+07:00.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Only messages the provider received at or after this instant, e.g. the member's local midnight, as 2026-11-01T00:00:00+07:00.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only messages the provider received before this instant, which must be later than since.",
+            "explode": false,
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "description": "Only messages the provider received before this instant, which must be later than since.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content inbok has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened.",
+            "explode": false,
+            "in": "query",
+            "name": "has",
+            "schema": {
+              "description": "attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content inbok has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened.",
+              "enum": [
+                "attachment"
+              ],
+              "type": "string"
             }
           },
           {

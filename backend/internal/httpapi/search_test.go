@@ -126,11 +126,78 @@ func TestSearchMessagesDefaults(t *testing.T) {
 	assert.Contains(t, response.Body.String(), `"from":[],"subject":"Hello","subjectMatches":[],"preview":"Hi","previewMatches":[]`)
 }
 
-// Text that is missing, blank, or too long, and paging out of range, are
-// refused before searching.
+// Each filter reaches the search: senders repeated, instants with their
+// offsets, and has; with no words, the search has none.
+func TestSearchMessagesFilters(t *testing.T) {
+	searches := &fakeSearches{}
+	api := searchAPI(searches)
+	query := "from=budi%40example.co.id&from=Asha.K%40example.com" +
+		"&since=2026-11-01T00%3A00%3A00%2B07%3A00&before=2026-12-01T00%3A00%3A00.5%2B07%3A00&has=attachment"
+
+	response := requestAuthenticated(api, http.MethodGet, "/messages/search?"+query, "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	jakarta := time.FixedZone("", 7*60*60)
+	want := search.Request{
+		From:           []string{"budi@example.co.id", "Asha.K@example.com"},
+		Since:          time.Date(2026, 11, 1, 0, 0, 0, 0, jakarta),
+		Before:         time.Date(2026, 12, 1, 0, 0, 0, 500_000_000, jakarta),
+		WithAttachment: true,
+		Page:           1,
+		Limit:          50,
+	}
+	got := searches.request
+	// The same instants, whatever location the parser gave them.
+	assert.True(t, want.Since.Equal(got.Since), "since %v", got.Since)
+	assert.True(t, want.Before.Equal(got.Before), "before %v", got.Before)
+	got.Since, got.Before = want.Since, want.Before
+	assert.Equal(t, want, got)
+}
+
+// A search with nothing but paging finds every message, newest first: the
+// search gets no words and no filters.
+func TestSearchMessagesNothing(t *testing.T) {
+	for _, query := range []string{"", "q=", "since=&before=&has="} {
+		searches := &fakeSearches{}
+		api := searchAPI(searches)
+
+		response := requestAuthenticated(api, http.MethodGet, "/messages/search?"+query, "")
+
+		require.Equal(t, http.StatusOK, response.Code, query)
+		assert.Equal(t, search.Request{Page: 1, Limit: 50}, searches.request, query)
+	}
+}
+
+// A range that holds nothing is refused on before, the parameter the
+// member would change, in words that name no parameter, before searching
+// or taking a place: with two searches running, it is still a 422.
+func TestSearchMessagesBadRange(t *testing.T) {
+	for name, query := range map[string]string{
+		"swapped": "since=2026-11-02T00%3A00%3A00Z&before=2026-11-01T00%3A00%3A00Z",
+		"equal":   "since=2026-11-01T07%3A00%3A00%2B07%3A00&before=2026-11-01T00%3A00%3A00Z",
+	} {
+		searches := &fakeSearches{block: make(chan struct{}), started: make(chan struct{}, 2)}
+		api := searchAPI(searches)
+		var wg sync.WaitGroup
+		for range 2 {
+			wg.Go(func() { requestAuthenticated(api, http.MethodGet, "/messages/search?q=a", "") })
+			<-searches.started
+		}
+
+		response := requestAuthenticated(api, http.MethodGet, "/messages/search?"+query, "")
+		close(searches.block)
+		wg.Wait()
+
+		assert.Equal(t, http.StatusUnprocessableEntity, response.Code, name)
+		assert.Contains(t, response.Body.String(), `"errors":[{"location":"query.before","message":"Choose an end after the start."}]`, name)
+		assert.NotContains(t, response.Body.String(), "2026", name)
+	}
+}
+
+// Text that is blank or too long, filters out of their limits, and paging
+// out of range, are refused before searching.
 func TestSearchMessagesInvalid(t *testing.T) {
 	cases := map[string]string{
-		"missing":    "",
 		"blank":      "q=%20%20",
 		"too long":   "q=" + strings.Repeat("a", 201),
 		"page 0":     "q=a&page=0",
@@ -139,6 +206,23 @@ func TestSearchMessagesInvalid(t *testing.T) {
 		"limit 51":   "q=a&limit=51",
 		"account 0":  "q=a&account=0",
 		"not a page": "q=a&page=two",
+		"blank from": "from=%20",
+		// Huma skips a parameter whose first value is empty, checks and all.
+		"empty from":       "from=",
+		"empty first from": "from=&from=a%40example.com",
+		"blank last from":  "from=a%40example.com&from=%20",
+		"empty first, 11":  "from=&" + strings.Repeat("from=a%40example.com&", 11),
+		"zero before":      "before=0001-01-01T00%3A00%3A00Z",
+		"zero since":       "since=0001-01-01T00%3A00%3A00Z",
+		"long from":        "from=" + longAddress + "a",
+		"not an address":   "from=amazon",
+		// Huma's check wants the address net/mail reads, which drops the
+		// quotes (ADR005 accepts it).
+		"quoted local part": "from=%22a%2Cb%22%40example.com",
+		"11 senders":        strings.Repeat("from=a%40example.com&", 11),
+		"other has":         "has=star",
+		"a date":            "since=2026-11-01",
+		"no offset":         "since=2026-11-01T00%3A00%3A00",
 	}
 	for name, query := range cases {
 		searches := &fakeSearches{}
@@ -151,15 +235,46 @@ func TestSearchMessagesInvalid(t *testing.T) {
 	}
 }
 
-// Text of exactly 200 characters, not bytes, is searched.
+// A blank sender is refused where it stands as no address: an empty
+// first one, whose parameter Huma would otherwise skip, and a blank one
+// later, which Huma checks itself.
+func TestSearchMessagesBlankSender(t *testing.T) {
+	cases := map[string]string{
+		"from=&from=a%40example.com&from=%20": "query.from[0]",
+		"from=a%40example.com&from=%20":       "query.from[1]",
+		"from=%20&from=a%40example.com":       "query.from[0]",
+	}
+	for query, location := range cases {
+		searches := &fakeSearches{}
+		api := searchAPI(searches)
+
+		response := requestAuthenticated(api, http.MethodGet, "/messages/search?"+query, "")
+
+		assert.Equal(t, http.StatusUnprocessableEntity, response.Code, query)
+		assert.Contains(t, response.Body.String(), `"errors":[{"location":"`+location+`","message":"Enter an email address, like name@example.com."}]`, query)
+		assert.False(t, searches.called, query)
+	}
+}
+
+// longAddress is an email address of 254 characters, the most a sender
+// may have.
+var longAddress = "a@" + strings.Repeat("b", 248) + ".com"
+
+// Text of exactly 200 characters, not bytes, is searched, and so are 10
+// senders of 254 characters each.
 func TestSearchMessagesLongest(t *testing.T) {
-	searches := &fakeSearches{}
-	api := searchAPI(searches)
+	for name, query := range map[string]string{
+		"text":    "q=" + strings.Repeat("é", 200),
+		"senders": strings.Repeat("from="+longAddress+"&", 10),
+	} {
+		searches := &fakeSearches{}
+		api := searchAPI(searches)
 
-	response := requestAuthenticated(api, http.MethodGet, "/messages/search?q="+strings.Repeat("é", 200), "")
+		response := requestAuthenticated(api, http.MethodGet, "/messages/search?"+query, "")
 
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	assert.True(t, searches.called)
+		require.Equal(t, http.StatusOK, response.Code, name)
+		assert.True(t, searches.called, name)
+	}
 }
 
 // A search's failures answer their problems: an account the member does
@@ -174,6 +289,7 @@ func TestSearchMessagesProblems(t *testing.T) {
 	}{
 		"account": {search.ErrAccountNotFound, http.StatusNotFound, connectedAccountNotFoundType, ""},
 		"index":   {fmt.Errorf("search: %w", search.ErrUnavailable), http.StatusServiceUnavailable, searchUnavailableType, "15"},
+		"range":   {search.ErrBadRange, http.StatusUnprocessableEntity, "validation-error", ""},
 		"other":   {errors.New("database down"), http.StatusInternalServerError, "", ""},
 	}
 	for name, c := range cases {

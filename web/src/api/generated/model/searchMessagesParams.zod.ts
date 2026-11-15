@@ -11,6 +11,10 @@ export const searchMessagesParamsQMax = 200;
 
 export const searchMessagesParamsQRegExp = new RegExp('\\S');
 
+export const searchMessagesParamsFromItemMax = 254;
+
+export const searchMessagesParamsFromMax = 10;
+
 export const searchMessagesParamsPageDefault = 1;
 export const searchMessagesParamsPageMax = 1000;
 
@@ -19,8 +23,12 @@ export const searchMessagesParamsLimitMax = 50;
 
 
 export const SearchMessagesParams = zod.object({
-  "q": zod.string().max(searchMessagesParamsQMax).regex(searchMessagesParamsQRegExp).describe('The words to find, as the member typed them. A word a typo or two away matches, but a number only exactly; the last word also matches as the start of a longer word; "quoted words" match as a phrase; -word leaves out what has it. Every word must match; only the first 10 count.'),
+  "q": zod.string().max(searchMessagesParamsQMax).regex(searchMessagesParamsQRegExp).optional().describe('The words to find, as the member typed them. A word a typo or two away matches, but a number only exactly; the last word also matches as the start of a longer word; "quoted words" match as a phrase; -word leaves out what has it. Every word must match; only the first 10 count. Left out, every message the other parameters keep matches, newest first.'),
   "account": zod.int().min(1).optional().describe('A connected account\'s id, to search only its mail; every account\'s when left out.'),
+  "from": zod.array(zod.string().max(searchMessagesParamsFromItemMax)).max(searchMessagesParamsFromMax).optional().describe('Senders, by email address, as a message\'s from lists them: a message from any of them matches, ignoring case. Repeat it for each, up to 10.'),
+  "since": zod.iso.datetime({"offset":true}).optional().describe('Only messages the provider received at or after this instant, e.g. the member\'s local midnight, as 2026-11-01T00:00:00+07:00.'),
+  "before": zod.iso.datetime({"offset":true}).optional().describe('Only messages the provider received before this instant, which must be later than since.'),
+  "has": zod.enum(['attachment']).optional().describe('attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content inbok has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened.'),
   "page": zod.int().min(1).max(searchMessagesParamsPageMax).default(searchMessagesParamsPageDefault).describe('Which page of results, from 1.'),
   "limit": zod.int().min(1).max(searchMessagesParamsLimitMax).default(searchMessagesParamsLimitDefault).describe('How many results a page holds, at most.')
 })
