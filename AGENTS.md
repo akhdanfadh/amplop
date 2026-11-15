@@ -74,6 +74,17 @@ the area you change before editing it:
 
 ## API contract
 
+Rules live in the server, for every client (this web app, a phone app, an
+agent). The server enforces every rule, and a refusal names its reason with
+a stable problem type. A client decides what to offer only from the API,
+the contract's limits and enums or a response such as `allowedActions`,
+never from its own copy of a rule; its words may still explain one. An
+item lists `allowedActions` only where the server refuses some actions on
+some items, e.g. members (an administrator can't be deactivated) and
+registration (`open` needs tested system email); which allowed action fits
+the screen is the client's choice, e.g. mail's toolbar from a
+conversation's flags.
+
 The web app reads these from the contract; keep them stable:
 
 - Not-blank text is `pattern:"\\S"`, which the web words as "Can't be

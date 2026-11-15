@@ -165,6 +165,25 @@ func TestMembersRefused(t *testing.T) {
 	assert.Empty(t, storage.actors)
 }
 
+// The actions offered are the ones [Members.Deactivate] and
+// [Members.Reactivate] accept, a change to nothing included.
+func TestMemberAllowedActions(t *testing.T) {
+	deactivated := membersNow
+	for _, c := range []struct {
+		name   string
+		member Member
+		want   []MemberAction
+	}{
+		{"active member", Member{User: User{Role: RoleMember}}, []MemberAction{MemberDeactivate, MemberReactivate}},
+		{"deactivated member", Member{User: User{Role: RoleMember}, DeactivatedAt: &deactivated}, []MemberAction{MemberDeactivate, MemberReactivate}},
+		{"administrator", Member{User: User{Role: RoleAdmin}}, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, c.member.AllowedActions())
+		})
+	}
+}
+
 // The list is what storage reads.
 func TestMembersList(t *testing.T) {
 	storage, members := newMembers()

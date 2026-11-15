@@ -63,7 +63,8 @@ func deactivatedMember() account.Member {
 }
 
 const deactivatedMemberJSON = `{"id":7,"email":"member@example.com","role":"member","joinedAt":"2026-03-01T09:00:00Z",` +
-	`"emailVerified":true,"totpEnabled":true,"deactivatedAt":"2026-11-02T09:30:00.123456Z"}`
+	`"emailVerified":true,"totpEnabled":true,"deactivatedAt":"2026-11-02T09:30:00.123456Z",` +
+	`"allowedActions":["deactivate","reactivate"]}`
 
 func TestListMembers(t *testing.T) {
 	service := &fakeMembers{members: []account.Member{
@@ -77,7 +78,7 @@ func TestListMembers(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.JSONEq(t, `{"data":{"members":[`+
 		`{"id":42,"email":"admin@example.com","role":"admin","joinedAt":"2026-03-01T08:00:00Z",`+
-		`"emailVerified":false,"totpEnabled":false,"deactivatedAt":null},`+
+		`"emailVerified":false,"totpEnabled":false,"deactivatedAt":null,"allowedActions":[]},`+
 		deactivatedMemberJSON+`]}}`, response.Body.String())
 	assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 }
@@ -241,5 +242,7 @@ func TestMembersOpenAPI(t *testing.T) {
 	assert.Equal(t, problemPrefix+"member-is-administrator", responses["409"].Content[problemContentType].Example.(*problem).Type)
 	member := doc.Components.Schemas.Map()["Member"]
 	require.NotNil(t, member)
-	assert.ElementsMatch(t, []string{"id", "email", "role", "joinedAt", "emailVerified", "totpEnabled", "deactivatedAt"}, member.Required)
+	assert.ElementsMatch(t, []string{"id", "email", "role", "joinedAt", "emailVerified", "totpEnabled", "deactivatedAt", "allowedActions"}, member.Required)
+	// A client draws one control per value, so the contract names them all.
+	assert.Equal(t, []any{"deactivate", "reactivate"}, member.Properties["allowedActions"].Items.Enum)
 }

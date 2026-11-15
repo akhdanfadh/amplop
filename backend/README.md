@@ -2088,9 +2088,11 @@ user.
 
 `GET /api/v0/members` returns every account, oldest first, in
 `data.members`. Each has its `id` (the user ID), `email`, `role`,
-`joinedAt`, `emailVerified`, `totpEnabled`, and `deactivatedAt`, null while
-active. It holds nothing about mail, sessions, or activity. There is no
-paging.
+`joinedAt`, `emailVerified`, `totpEnabled`, `deactivatedAt`, null while
+active, and `allowedActions`: `deactivate` and `reactivate` for a member
+(either may change nothing), none for an administrator. Deactivate and
+Reactivate refuse through the same rule (`account.Member.AllowedActions`).
+It holds nothing about mail, sessions, or activity. There is no paging.
 
 `POST /api/v0/members/{id}/deactivate` and `.../reactivate` return HTTP 200
 with the member as saved in `data.member`. An unknown ID answers 404
@@ -2147,7 +2149,9 @@ each choice below and the alternatives it was chosen over.
 
 `GET` and `PUT /api/v0/registration/settings` need administrator access.
 `PUT` takes `{"open": true}` or `{"open": false}`. Registration starts
-closed.
+closed. Both answer `{status, systemEmailTested, allowedActions}`:
+`allowedActions` is `close`, plus `open` once the system email settings in
+use passed a test, the same rule `PUT` refuses through.
 
 - Opening needs system email settings that passed a test message;
   otherwise it answers 409 `system-email-not-tested`. Closing always
@@ -2156,8 +2160,8 @@ closed.
   the administrator as `actor_user_id` and no target, even a save that
   changes nothing.
 - Saving new system email settings, or a failed test, clears their tested
-  time. Registration then reports `paused`: still open, but no visitor can register until a
-  test passes. Nothing closes it behind the administrator's back.
+  time. Registration then reports `paused`: still open, but no visitor can
+  register until a test passes. Nothing closes it behind the administrator's back.
 - Closing deletes every registration attempt and link, so no visitor's
   email or IP address is kept while it stays closed. The cost: a link sent
   before the close stops working even after registration reopens, and the
