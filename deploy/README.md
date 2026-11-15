@@ -256,6 +256,13 @@ It takes the same arguments as `docker compose`, e.g. `./upgrade.sh
 search volumes and switching the image happen outside Compose, so a dry
 run would still do them.
 
+`make check-deploy`, part of `make check`, runs the script against a fake
+`docker` (`upgrade.bats`, `testdata/fake-docker`) that records each call,
+answers only the questions the script should ask, and fails the ones a
+test names, so a change that breaks the order, a rollback, or a safety
+check fails there; what Docker does with each call is a trial stack's to
+check.
+
 Avoid two commands that look like shortcuts:
 
 - `docker compose up -d --build` removes the old server before migrating,

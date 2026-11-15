@@ -18,7 +18,8 @@
 # migrate and the new server, and after a rollback, the old server runs on
 # the new schema, and beside the new worker's search index settings, so
 # each migration and each settings change must keep the previous release
-# working.
+# working. upgrade.bats checks the order and the rollbacks: change it with
+# the steps.
 set -eu
 
 # Compose reads compose.yaml, compose.override.yaml, and .env from here,

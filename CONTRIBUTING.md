@@ -9,7 +9,10 @@ The `Makefile` runs every command in these files from the repository
 root. Run `make` to list them, e.g. `make services-start`,
 `make db-migrate`, then `make dev` for the Go server, its background
 worker, and the web app together. `make check` runs what a commit must
-pass; `make check-backend` and `make check-web` run one half.
+pass; `make check-backend` and `make check-web` run one half, and
+`make check-deploy` tests `deploy/upgrade.sh`'s order and rollbacks with
+[bats](https://github.com/bats-core/bats-core), which `npx` fetches on
+a machine's first run.
 It also fails when generated code, e.g. `api/generated/openapi.json`, is
 out of date with its source, and names the command that updates it.
 Commands that need `.env` copy it from `.env.example` when it is missing.

@@ -33,7 +33,7 @@ TESTIFYLINT := go -C backend tool -modfile=tools.mod testifylint
 	services-start services-stop services-wipe db-migrate db-status db-rollback \
 	db-reset db-migration \
 	generate generate-sqlc generate-api generate-web \
-	check check-backend check-web test test-backend test-web \
+	check check-backend check-web check-deploy test test-backend test-web \
 	fix fix-backend fix-web
 
 # Lists every target whose line ends in `## description`.
@@ -159,7 +159,7 @@ FRESH := scripts/check-fresh.sh
 # not stop.
 WEB_TESTS := timeout -k 10s 5m pnpm -C web test
 
-check: check-backend check-web ## Everything a commit must pass
+check: check-backend check-web check-deploy ## Everything a commit must pass
 
 # Fresh SQLC code first: stale code makes vet fail with confusing errors.
 check-backend: ## Format, generated code, vet, lint, dependencies, and tests
@@ -178,6 +178,13 @@ check-web: ## Generated code, build, format, lint, types, and tests
 	$(FRESH) web/src/routeTree.gen.ts $(MAKE) web-build
 	pnpm -C web check
 	$(WEB_TESTS)
+
+# A fake docker stands in for Docker, so it runs without Docker; npx
+# fetches bats on a machine's first run, and may ask the registry again
+# even once it is cached. The version is pinned here, the one place that
+# runs it; npm never lets a published version be published again.
+check-deploy: ## The upgrade script's order and rollbacks
+	npx --yes bats@1.13.0 deploy/upgrade.bats
 
 test: test-backend test-web ## Run all tests
 
