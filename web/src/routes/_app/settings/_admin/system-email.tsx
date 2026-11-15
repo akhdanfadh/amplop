@@ -62,9 +62,12 @@ function SystemEmail(): ReactElement {
   // When a save last may have replaced the settings, which hides an older
   // test result.
   const [savedAt, setSavedAt] = useState(0);
+  // Counts "Save and send test" presses that saved.
+  const [testRequests, setTestRequests] = useState(0);
   const editRef = useRef<HTMLButtonElement>(null);
-  // Set when the form closes; Edit settings then takes focus, since the
-  // button that had it is gone.
+  // Set when the form closes without a test to send; Edit settings then
+  // takes focus, since the button that had it is gone. With a test, the
+  // test form takes it.
   const refocus = useRef(false);
 
   useEffect(() => {
@@ -77,9 +80,10 @@ function SystemEmail(): ReactElement {
     editRef.current?.focus();
   });
 
-  // close closes the form and gives Edit settings focus.
-  function close(): void {
-    refocus.current = true;
+  // close closes the form; next says what takes focus: Edit settings, or
+  // the test the save asked for.
+  function close(next: "edit" | "test"): void {
+    refocus.current = next === "edit";
     setEditing(false);
   }
 
@@ -107,15 +111,16 @@ function SystemEmail(): ReactElement {
             saved={settings}
             focusFirst={settings !== undefined}
             onWrite={() => setSavedAt(Date.now())}
-            onSaved={() => {
-              setNotice(savedNotice);
-              close();
+            onSaved={(action) => {
+              setNotice(action === "test" ? savedNotice.testing : savedNotice.untested);
+              close(action === "test" ? "test" : "edit");
+              if (action === "test") setTestRequests((count) => count + 1);
             }}
             onCancel={
               settings &&
               (() => {
                 setNotice(undefined);
-                close();
+                close("edit");
               })
             }
           />
@@ -149,6 +154,7 @@ function SystemEmail(): ReactElement {
           recipient={session.email}
           editing={editing || !settings}
           savedAt={savedAt}
+          sendRequests={testRequests}
         />
       </SettingsSection>
     </SettingsPage>

@@ -13,8 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useFormContext } from "./form-context";
 
-// The action of the submit button that started the current submit;
-// undefined for a form's only button.
+// The action of the submit button that started the current submit, e.g.
+// "test" for "Save and send test"; undefined for a form's only button.
 const SubmitAction = createContext<string | undefined>(undefined);
 
 // Form is the current form's <form> element, named label for screen

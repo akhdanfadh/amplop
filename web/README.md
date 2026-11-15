@@ -1487,8 +1487,8 @@ const form = useAppForm({
   form keeps it as typed and the schema turns it into the number the API
   takes. `TextField` and `PasswordField` take `passwordManagers="ignore"`
   for another service's credentials, e.g. a mail server's.
-- **Several submit buttons**, e.g. a main one and an outlined second
-  one, each name an `action`; `onSubmit` gets the pressed one's as
+- **Several submit buttons**, e.g. "Save and send test" and "Save only",
+  each name an `action`; `onSubmit` gets the pressed one's as
   `meta.action`, with `onSubmitMeta` as the default, and Enter in a field
   presses the first. Only the pressed button shows its `working` words;
   the others wait.

@@ -106,14 +106,19 @@ export function portHint(
 // The form's buttons and what they say while they work.
 export const formText = {
   edit: "Edit settings",
-  save: "Save settings",
+  saveAndTest: "Save and send test",
+  saveOnly: "Save only",
   saving: "Saving settings...",
   cancel: "Cancel",
   untestedNote: "Saving marks the settings as untested until a test message passes again.",
 };
 
-// What the section says once a save closed the form.
-export const savedNotice = "Settings saved. Send a test message to check them.";
+// What the section says once a save closed the form: with a test on its
+// way, or with the test still to send.
+export const savedNotice = {
+  testing: "Settings saved.",
+  untested: "Settings saved. Send a test message to check them.",
+};
 
 // What a save whose answer was lost says, after the cause. Saving replaces
 // every setting, so saving the same values again is safe (ADR022).

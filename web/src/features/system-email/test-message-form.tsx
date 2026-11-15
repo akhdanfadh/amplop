@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { useEffect, useRef, type ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { CircleAlertIcon } from "lucide-react";
@@ -27,19 +27,24 @@ const testedFormat = new Intl.DateTimeFormat(undefined, {
 // says the settings form is open: the test waits, since it would test the
 // saved settings, not the ones shown. savedAt is when a save last may have
 // replaced the settings, in milliseconds, which hides an older result.
+// sendRequests counts the times "Save and send test" asked for a test:
+// each new count sends one, as pressing Send test message would.
 export function TestMessageForm({
   settings,
   recipient,
   editing,
   savedAt,
+  sendRequests,
 }: {
   settings: SystemEmailSettings | undefined;
   recipient: string;
   editing: boolean;
   savedAt: number;
+  sendRequests: number;
 }): ReactElement {
   const client = useQueryClient();
   const sessionEnd = useSessionEnd();
+  const ref = useRef<HTMLDivElement>(null);
   const send = useSendSystemEmailTestMessage({
     mutation: {
       onError: (err) => void sessionEnd(err),
@@ -66,8 +71,21 @@ export function TestMessageForm({
       : undefined;
   const failed = result?.status === "failed";
 
+  // "Save and send test" asks once the settings form has closed. It submits
+  // as pressing the button does, through the kit's form, which moves focus
+  // to an invalid recipient afterwards; until then the button has it and
+  // says it is sending.
+  useEffect(() => {
+    if (sendRequests === 0) return;
+    const button = ref.current?.querySelector<HTMLButtonElement>('[type="submit"]');
+    button?.focus();
+    button?.form?.requestSubmit(button);
+    // Only for a new request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendRequests]);
+
   return (
-    <div className="w-full">
+    <div ref={ref} className="w-full">
       <form.AppForm>
         <form.Form label="Send a test message">
           <div className="flex flex-col gap-1">

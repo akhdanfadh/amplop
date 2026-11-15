@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { revalidateLogic, useSelector } from "@tanstack/react-form";
-import { useQueryClient } from "@tanstack/react-query";
-import { getGetSystemEmailQueryKey, useSaveSystemEmail } from "@/api/generated/inbok";
+import { useIsMutating, useQueryClient } from "@tanstack/react-query";
+import {
+  getGetSystemEmailQueryKey,
+  getSendSystemEmailTestMessageMutationKey,
+  useSaveSystemEmail,
+} from "@/api/generated/inbok";
 import type { SystemEmailSettings } from "@/api/generated/model";
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
@@ -35,12 +39,18 @@ const settingsFields = [
   "fromName",
 ] as const;
 
+// What a submit does after saving: send a test message, or nothing more.
+// The pressed button says which (its action); Save only's is the default.
+export type SaveAction = "test" | "save";
+type SubmitMeta = { action: SaveAction };
+const saveOnly: SubmitMeta = { action: "save" };
+
 // SettingsForm edits the system email settings. saved is the last read,
 // absent before the first save; focusFirst gives its first field focus when
 // it opens, as Edit settings opens it. onSaved runs after a save the server
-// confirmed; onWrite after every save that may have replaced the settings,
-// confirmed or not; onCancel, absent before the first save, closes it
-// without saving.
+// confirmed, with the pressed button's action: "test" asks for a test too; onWrite after
+// every save that may have replaced the settings, confirmed or not;
+// onCancel, absent before the first save, closes it without saving.
 export function SettingsForm({
   saved,
   focusFirst,
@@ -50,7 +60,7 @@ export function SettingsForm({
 }: {
   saved: SystemEmailSettings | undefined;
   focusFirst: boolean;
-  onSaved: () => void;
+  onSaved: (action: SaveAction) => void;
   onWrite: () => void;
   onCancel?: () => void;
 }): ReactElement {
@@ -83,14 +93,19 @@ export function SettingsForm({
     },
   });
   const request = useFormRequest(save, settingsFields);
+  // A test reads the saved settings, so a save waits for one to finish:
+  // its result would otherwise describe settings no longer saved, and
+  // "Save and send test" could not start another while it sends.
+  const testing = useIsMutating({ mutationKey: getSendSystemEmailTestMessageMutationKey() }) > 0;
   const schema = useMemo(() => settingsSchema(saved), [saved]);
   const form = useAppForm({
     defaultValues: start,
     validationLogic: revalidateLogic(),
     validators: { onDynamic: request.check(schema) },
-    onSubmit: async ({ value, formApi }) => {
+    onSubmitMeta: saveOnly,
+    onSubmit: async ({ value, formApi, meta }) => {
       const sent = await request.send(formApi, value, { data: schema.parse(value) });
-      if (sent.outcome === "done") onSaved();
+      if (sent.outcome === "done") onSaved(meta.action);
     },
     listeners: { onChange: () => save.reset() },
   });
@@ -188,7 +203,17 @@ export function SettingsForm({
             <p className="text-sm text-muted-foreground">{formText.untestedNote}</p>
           )}
           <div className="flex flex-wrap gap-3">
-            <form.SubmitButton working={formText.saving}>{formText.save}</form.SubmitButton>
+            <form.SubmitButton action="test" working={formText.saving} isDisabled={testing}>
+              {formText.saveAndTest}
+            </form.SubmitButton>
+            <form.SubmitButton
+              action="save"
+              variant="outline"
+              working={formText.saving}
+              isDisabled={testing}
+            >
+              {formText.saveOnly}
+            </form.SubmitButton>
             {onCancel && <CancelButton onCancel={onCancel} />}
           </div>
           <RequestError errors={request.summary(saveMessage)} requestId={request.reference} />

@@ -31,14 +31,16 @@ const saved: SystemEmailSettings = {
 // Server is what the test API holds and how it answers: settings is what
 // is saved; ended answers every request with a 401, and readsEnded every
 // request but the session read; readsFail answers the settings read with a
-// server fault; testFails fails a test; lose drops the answer to one
-// request, e.g. "PUT /api/v0/system-email", after the server acted on it;
-// sent lists every request, e.g. "GET /api/v0/system-email".
+// server fault; holdTest holds the test message's answer until it settles;
+// testFails fails a test; lose drops the answer
+// to one request, e.g. "PUT /api/v0/system-email", after the server acted
+// on it; sent lists every request, e.g. "GET /api/v0/system-email".
 type Server = {
   settings?: SystemEmailSettings;
   ended?: boolean;
   readsEnded?: boolean;
   readsFail?: boolean;
+  holdTest?: Promise<void>;
   testFails?: boolean;
   lose?: string;
   sent: string[];
@@ -112,6 +114,7 @@ async function open(server: Server) {
         server.sent.push(`${method} ${path}`);
         const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
         if (body !== undefined) server.bodies.push(body);
+        if (path === "/api/v0/system-email/test-message") await server.holdTest;
         const answered = answer(server, method, path, body);
         if (server.lose !== `${method} ${path}`) return answered;
         server.lose = undefined;
@@ -165,6 +168,15 @@ async function open(server: Server) {
   return router;
 }
 
+// held returns a promise that settles when release is called.
+function held(): { promise: Promise<void>; release: () => void } {
+  const settle: { done?: () => void } = {};
+  const promise = new Promise<void>((done) => {
+    settle.done = done;
+  });
+  return { promise, release: () => settle.done?.() };
+}
+
 // The query client of the page open now, whose reads end with the test.
 let opened: QueryClient | undefined;
 
@@ -201,13 +213,13 @@ describe("System email", () => {
     expect(summary().elements()).toHaveLength(0);
   });
 
-  it("saves, closes the form, and gives focus back to Edit settings", async () => {
+  it("saves only, closes the form, and gives focus back to Edit settings", async () => {
     const server: Server = { settings: saved, sent: [], bodies: [] };
     await open(server);
     await userEvent.click(button("Edit settings"));
 
     await userEvent.fill(field("From name"), "inbok team");
-    await userEvent.click(button("Save settings"));
+    await userEvent.click(button("Save only"));
 
     await expect.element(button("Edit settings")).toHaveFocus();
     await expect.element(page.getByText("inbok team <inbok@example.com>")).toBeVisible();
@@ -219,6 +231,29 @@ describe("System email", () => {
     expect(server.bodies).toEqual([
       expect.objectContaining({ port: 465, password: "", fromName: "inbok team" }),
     ]);
+    expect(server.sent).not.toContain("POST /api/v0/system-email/test-message");
+  });
+
+  it("saves and sends a test, from the button or Enter in a field", async () => {
+    const server: Server = { settings: saved, sent: [], bodies: [] };
+    await open(server);
+    await userEvent.click(button("Edit settings"));
+
+    await userEvent.type(field("From name"), " team{Enter}");
+
+    await expect
+      .element(
+        page.getByText(
+          "The mail server accepted the test message. Check the inbox of ana@example.com.",
+        ),
+      )
+      .toBeVisible();
+    await expect.element(page.getByText("Tested", { exact: true })).toBeVisible();
+    expect(server.sent.filter((request) => !request.startsWith("GET"))).toEqual([
+      "PUT /api/v0/system-email",
+      "POST /api/v0/system-email/test-message",
+    ]);
+    await expect.element(button("Send test message")).toHaveFocus();
   });
 
   it("moves focus to a refused Security choice, which names its error", async () => {
@@ -226,7 +261,7 @@ describe("System email", () => {
     await userEvent.click(button("Edit settings"));
 
     await userEvent.click(page.getByText("None", { exact: true }));
-    await userEvent.click(button("Save settings"));
+    await userEvent.click(button("Save only"));
 
     const none = page.getByRole("radio", { name: "None" });
     await expect.element(none).toHaveFocus();
@@ -235,6 +270,19 @@ describe("System email", () => {
       .toHaveAccessibleDescription(
         "Not encrypted, so it can't sign in. For a local test server only. Choose TLS or STARTTLS to sign in with a username.",
       );
+  });
+
+  it("moves focus to an invalid recipient when Save and send test cannot send", async () => {
+    const server: Server = { settings: saved, sent: [], bodies: [] };
+    await open(server);
+    await userEvent.click(button("Edit settings"));
+    await userEvent.fill(field("Recipient"), "ana");
+
+    await userEvent.click(button("Save and send test"));
+
+    await expect.element(field("Recipient")).toHaveFocus();
+    await expect.element(field("Recipient")).toHaveAttribute("aria-invalid", "true");
+    expect(server.sent).not.toContain("POST /api/v0/system-email/test-message");
   });
 
   it("keeps the form open after a lost answer, and Cancel shows what was saved", async () => {
@@ -250,15 +298,16 @@ describe("System email", () => {
     await userEvent.fill(field("From name"), "inbok team");
     const reads = () => server.sent.filter((request) => request === "GET /api/v0/system-email");
     const readsBefore = reads().length;
-    await userEvent.click(button("Save settings"));
+    await userEvent.click(button("Save and send test"));
 
     await expect
       .element(page.getByText(/We couldn't confirm the settings were saved\. Save again/))
       .toBeVisible();
     await expect.element(field("From name")).toBeEnabled();
-    await expect.element(button("Save settings")).toBeEnabled();
-    // The page reads what is saved now.
+    await expect.element(button("Save and send test")).toBeEnabled();
+    // The page reads what is saved now, and sends no test.
     await vi.waitFor(() => expect(reads()).toHaveLength(readsBefore + 1));
+    expect(server.sent).not.toContain("POST /api/v0/system-email/test-message");
 
     await userEvent.click(button("Cancel"));
 
@@ -321,7 +370,7 @@ describe("System email", () => {
     await userEvent.fill(field("From name"), "inbok team");
 
     server.ended = true;
-    await userEvent.click(button("Save settings"));
+    await userEvent.click(button("Save only"));
 
     await expect.element(page.getByText("Sign in", { exact: true })).toBeVisible();
     expect(router.state.location.pathname).toBe("/sign-in");
@@ -382,5 +431,28 @@ describe("System email", () => {
     await expect
       .element(page.getByText(/Could not check the system email settings\./))
       .not.toBeInTheDocument();
+  });
+
+  it("keeps a save waiting while a test message sends", async () => {
+    const test = held();
+    const server: Server = { settings: saved, holdTest: test.promise, sent: [], bodies: [] };
+    await open(server);
+    await userEvent.click(button("Send test message"));
+    await expect.element(button("Sending test message...")).toBeVisible();
+
+    await userEvent.click(button("Edit settings"));
+    await userEvent.fill(field("From name"), "inbok team");
+    await expect.element(button("Save and send test")).toBeDisabled();
+    await expect.element(button("Save only")).toBeDisabled();
+
+    test.release();
+    await expect.element(button("Save and send test")).toBeEnabled();
+    await userEvent.click(button("Save and send test"));
+    await expect.element(page.getByText("inbok team <inbok@example.com>")).toBeVisible();
+    await vi.waitFor(() =>
+      expect(
+        server.sent.filter((request) => request === "POST /api/v0/system-email/test-message"),
+      ).toHaveLength(2),
+    );
   });
 });

@@ -726,9 +726,9 @@ pull-to-refresh, which would reload the app, never starts.
   keeps that value from being sent. A rule that spans fields is also in
   the form's schema, which refuses it first.
 - The submit button names what it does while working ("Saving...") and
-  ignores repeats. A second submit is outlined and comes after the main
-  one, which Enter in a field presses; while one sends, the other waits.
-  A request failure shows under the button through
+  ignores repeats. A second submit, e.g. "Save only" beside "Save and send
+  test", is outlined and comes after the main one, which Enter in a field
+  presses; while one sends, the other waits. A request failure shows under the button through
   `RequestError` (a reference only for faults); success is a quiet
   "Saved".
 - A 429 wait stays visible while the member retypes: "Try again at 14:32
