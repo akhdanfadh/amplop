@@ -218,9 +218,15 @@ or Members, reads it in its route's loader, made by `signedInLoader`
 (`src/features/auth/session-end.ts`) over `loadSignedIn`, so the router's
 loading and failure views below cover it. The loader reads with
 `staleTime: Infinity`, a cached read until something marks it out of date,
-e.g. a System email save marks Registration's, and runs with
-`staleReloadMode: "blocking"`, so a visit back waits for that reread
-instead of showing the page as it was. The page's own query counts what
+which only the member's own change in this tab does, e.g. a System email
+save marks Registration's, and runs with `staleReloadMode: "blocking"`, so
+a visit back waits for that reread: Registration never asks for a test
+message just after one passed. Mail's loaders serve whatever is cached
+(`staleTime: "static"`) and read again as the page mounts, since mail's
+data changes all the time and corrects itself in place. One approach for
+both, every loader serving the cache and a write rereading at once what it
+changed (`refetchType: "all"`), is planned as the first checkpoint of
+`feat/connected-accounts` (ADR031). The page's own query counts what
 the loader read in the last 5 s as fresh (`loadedFreshMs`), so it does not
 read it again as it opens, and rereads older data then. A 401 there
 clears the account cache and opens sign-in, which returns to the page
@@ -416,8 +422,11 @@ only what the server shows after the password stays in memory:
    `otpauth://` address, since a phone cannot scan its own screen.
 3. The ten backup codes, with copy and download, then "I've saved these
    codes", which turns two-factor on, signs out the other browsers, and
-   renews this browser's session; every query is reset with it, so nothing
-   read under the old cookie stays, even when the member left meanwhile.
+   renews this browser's session. What describes the session, the session
+   itself, its two-factor status, and the browsers signed in, is reset with
+   it (`resetSession`), so none of it stays from the old cookie, even when
+   the member left meanwhile; the member's other data, mail's included,
+   stays.
    While that request runs, every other request waits for it
    (`transport`), so none carries the cookie it replaces.
 
@@ -1546,6 +1555,9 @@ const form = useAppForm({
   `fieldComponents` in `app-form.ts`. Its browser test joins
   `app-form.browser.test.tsx`.
 
-Forms not yet on the kit (feat/design-forms moves them) still wire shadcn's
-`Field` components themselves, with `blurKeepingSubmitErrors`
-(`src/lib/blur-keeping-submit-errors.ts`) and `useFocusAfterError`.
+Forms not yet on the kit still wire shadcn's `Field` components
+themselves, with `blurKeepingSubmitErrors`
+(`src/lib/blur-keeping-submit-errors.ts`) and `useFocusAfterError`: the
+connected account's name, which `feat/connected-accounts` moves onto the
+kit; compose and the reply editor, which `feat/docked-compose` rewrites on
+it together with the docked window; and the probe demo (ADR031).
