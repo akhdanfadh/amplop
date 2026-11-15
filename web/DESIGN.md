@@ -705,6 +705,13 @@ pull-to-refresh, which would reload the app, never starts.
   order, so Tab from one field reaches the next, not the action.
 - A one-time code is one box per character in two halves; it takes a
   paste and the browser's one-time-code fill.
+- A number that names something, e.g. a port, is a text box with a number
+  keyboard (`inputMode="numeric"`), short; `type="number"` is for amounts,
+  since its arrow keys and wheel change the value.
+- Another service's username and password, e.g. a mail server's, keep
+  password managers out (`passwordManagers="ignore"`), so they neither
+  fill in the member's inbok sign-in nor save these as one. Browsers' own
+  managers have no such switch and may still offer to save them.
 - Errors appear after the first submit, then update live. Focus moves to
   the first invalid field. A server refusal stays while its field holds
   the refused value, returns if the member types that value again, and

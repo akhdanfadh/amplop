@@ -1464,10 +1464,17 @@ const form = useAppForm({
   `request.reference` is the failure's request reference only for a fault
   (a 5xx or a lost answer), so a refusal, e.g. a wrong password, shows
   none.
-- **Field kinds** are `EmailField`, `PasswordField`, and `CodeField`, a
-  one-time code in boxes. Each takes a `label`, an optional `description`
-  shown before the control, `optional`, and `labelAction`, a link or
-  button beside the label, e.g. "Forgot password?".
+- **Field kinds** are `TextField`, `EmailField`, `PasswordField`,
+  `ChoiceField`, radios with a line about each, and `CodeField`, a
+  one-time code in boxes. Each takes a `label` and an optional
+  `description` shown before the control; all but `ChoiceField` also take
+  `optional` and `labelAction`, a link or button beside the label, e.g.
+  "Forgot password?". `TextField` takes `text="literal"` for a value typed
+  exactly, e.g. a host name, and `inputMode="numeric"` with
+  `width="short"` for a number that names something, e.g. a port; the
+  form keeps it as typed and the schema turns it into the number the API
+  takes. `TextField` and `PasswordField` take `passwordManagers="ignore"`
+  for another service's credentials, e.g. a mail server's.
 - **A new field kind** goes in `src/components/form/fields.tsx` with its
   first form: render the control through `FieldFrame`, which reads the
   field from `useFieldContext` and gives the control its id, name, value,

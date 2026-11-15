@@ -396,3 +396,154 @@ describe("a code field", () => {
     expect(Math.abs(top(action.element()) - top(label))).toBeLessThan(8);
   });
 });
+
+const ServerSchema = z
+  .object({
+    host: z.string().regex(/\S/),
+    port: z.string(),
+    mode: z.enum(["tls", "none"]),
+    username: z.string(),
+    password: z.string(),
+  })
+  .refine((value) => value.mode !== "none" || !value.username, {
+    path: ["mode"],
+    error: "Choose TLS to sign in.",
+  });
+type ServerValues = z.infer<typeof ServerSchema>;
+const serverStart: ServerValues = {
+  host: "",
+  port: "465",
+  mode: "tls",
+  username: "",
+  password: "",
+};
+
+const modes = [
+  { value: "tls", label: "TLS", description: "Encrypted." },
+  { value: "none", label: "None", description: "Not encrypted." },
+] as const;
+
+// ServerTestForm holds another service's settings in the text, choice, and
+// password kinds; send gets the values.
+function ServerTestForm({ send }: { send: (value: ServerValues) => Promise<void> }) {
+  const form = useAppForm({
+    defaultValues: serverStart,
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: ServerSchema },
+    onSubmit: ({ value }) => send(value),
+  });
+
+  return (
+    <form.AppForm>
+      <form.Form label="Server test">
+        <form.AppField name="host">
+          {(field) => (
+            <field.TextField
+              label="Server"
+              description="The host name."
+              autoComplete="off"
+              text="literal"
+            />
+          )}
+        </form.AppField>
+        <form.AppField name="mode">
+          {(field) => <field.ChoiceField label="Security" options={modes} />}
+        </form.AppField>
+        <form.AppField name="port">
+          {(field) => (
+            <field.TextField label="Port" autoComplete="off" inputMode="numeric" width="short" />
+          )}
+        </form.AppField>
+        <form.AppField name="username">
+          {(field) => (
+            <field.TextField
+              label="Username"
+              autoComplete="off"
+              text="literal"
+              passwordManagers="ignore"
+            />
+          )}
+        </form.AppField>
+        <form.AppField name="password">
+          {(field) => (
+            <field.PasswordField label="Password" autoComplete="off" passwordManagers="ignore" />
+          )}
+        </form.AppField>
+        <form.SubmitButton working="Saving...">Save</form.SubmitButton>
+      </form.Form>
+    </form.AppForm>
+  );
+}
+
+const host = () => page.getByRole("textbox", { name: "Server" });
+const save = () => page.getByRole("button", { name: "Save" });
+
+describe("the text, choice, and password kinds", () => {
+  it("type a literal value without capitals or spelling fixes, and a port on a number pad", async () => {
+    await render(<ServerTestForm send={async () => {}} />);
+
+    await expect.element(host()).toHaveAttribute("autocapitalize", "none");
+    await expect.element(host()).toHaveAttribute("spellcheck", "false");
+    await expect.element(host()).toHaveAccessibleDescription("The host name.");
+    const port = page.getByRole("textbox", { name: "Port" });
+    await expect.element(port).toHaveAttribute("inputmode", "numeric");
+    await expect.element(port).toHaveAttribute("type", "text");
+  });
+
+  it("keep password managers out of another service's credentials", async () => {
+    await render(<ServerTestForm send={async () => {}} />);
+
+    const username = page.getByRole("textbox", { name: "Username" });
+    const serverPassword = page.getByLabelText("Password", { exact: true });
+    await expect.element(username).toHaveAttribute("data-1p-ignore");
+    await expect.element(username).toHaveAttribute("data-lpignore", "true");
+    await expect.element(username).toHaveAttribute("data-bwignore");
+    await expect.element(username).toHaveAttribute("data-form-type", "other");
+    await expect.element(serverPassword).toHaveAttribute("data-1p-ignore");
+    await expect.element(serverPassword).toHaveAttribute("data-lpignore", "true");
+    await expect.element(serverPassword).toHaveAttribute("data-bwignore");
+    await expect.element(serverPassword).toHaveAttribute("data-form-type", "other");
+    // Browsers ignore "off" on a password; "new-password" keeps them from
+    // filling a saved one.
+    await expect
+      .element(page.getByLabelText("Password", { exact: true }))
+      .toHaveAttribute("autocomplete", "new-password");
+  });
+
+  it("choose an option by keyboard, under the label as its group's name", async () => {
+    const send = vi.fn<(value: ServerValues) => Promise<void>>(async () => {});
+    await render(<ServerTestForm send={send} />);
+    await userEvent.type(host(), "smtp.example.com");
+
+    await expect.element(page.getByRole("radiogroup", { name: "Security" })).toBeVisible();
+    await expect
+      .element(page.getByRole("radio", { name: "TLS" }))
+      .toHaveAccessibleDescription("Encrypted.");
+    // The radio itself sits under its drawn dot; its label takes the click.
+    await userEvent.click(page.getByText("TLS", { exact: true }));
+    await userEvent.keyboard("{ArrowDown}");
+    await expect.element(page.getByRole("radio", { name: "None" })).toBeChecked();
+    // The line about an option is part of its row: pressing it chooses it.
+    await userEvent.click(page.getByText("Encrypted.", { exact: true }));
+    await expect.element(page.getByRole("radio", { name: "TLS" })).toBeChecked();
+    await userEvent.keyboard("{ArrowDown}");
+    await userEvent.click(save());
+
+    await vi.waitFor(() =>
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({ mode: "none" })),
+    );
+  });
+
+  it("move focus to a refused choice's checked radio, which names the error", async () => {
+    await render(<ServerTestForm send={async () => {}} />);
+    await userEvent.type(host(), "smtp.example.com");
+    await userEvent.type(page.getByRole("textbox", { name: "Username" }), "inbok");
+
+    await userEvent.click(page.getByText("None", { exact: true }));
+    await userEvent.click(save());
+
+    const none = page.getByRole("radio", { name: "None" });
+    await expect.element(none).toHaveFocus();
+    await expect.element(none).toHaveAccessibleDescription("Not encrypted. Choose TLS to sign in.");
+  });
+});

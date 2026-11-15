@@ -73,7 +73,17 @@ function focusSubmitButton(form: HTMLFormElement): void {
 // focusFirstInvalid moves focus to form's first invalid field, which reads
 // its error with it. Without one, focus stays where the submit left it.
 function focusFirstInvalid(form: HTMLFormElement): void {
-  form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  const invalid = form.querySelector<HTMLElement>('[aria-invalid="true"]');
+  if (invalid?.getAttribute("role") !== "radiogroup") {
+    invalid?.focus();
+    return;
+  }
+  // A radio group is invalid as a whole, but takes no focus itself: its
+  // checked radio does, as Tab would reach it, else its first.
+  const radio =
+    invalid.querySelector<HTMLElement>('input[type="radio"]:checked') ??
+    invalid.querySelector<HTMLElement>('input[type="radio"]');
+  radio?.focus();
 }
 
 // SubmitButton submits the current form: children name what it does, e.g.
