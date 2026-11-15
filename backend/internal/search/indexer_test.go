@@ -146,11 +146,13 @@ func newIndexStack() indexStack {
 }
 
 // A message is indexed as storage holds it: its headers as a reader sees
-// them, its mailboxes, the text of the bodies a view shows, and apart
-// from it the text of its other text parts.
+// them, every sender's address, its mailboxes, the text of the bodies a
+// view shows, apart from it the text of its other text parts, and whether
+// it has an attachment.
 func TestIndex(t *testing.T) {
 	s := newIndexStack()
 	m := message(ashaWork, "Invoice")
+	m.From = append(m.From, mailsync.Address{Address: "Eka@Example.com"})
 	m.HasParts = true
 	s.memory.save(asha, m)
 	s.memory.bodies[m.ID] = messagecontent.MessageTexts{
@@ -158,7 +160,8 @@ func TestIndex(t *testing.T) {
 			{MediaType: "text/html", Content: []byte("<p>Please <b>pay</b></p>")},
 			{MediaType: "text/plain", Content: []byte("Thanks")},
 		},
-		Hidden: []messagecontent.StoredText{{MediaType: "text/plain", Content: []byte("Please pay")}},
+		Hidden:        []messagecontent.StoredText{{MediaType: "text/plain", Content: []byte("Please pay")}},
+		HasAttachment: true,
 	}
 
 	require.NoError(t, s.indexer.Index(t.Context(), asha, []uuid.UUID{m.ID}))
@@ -172,14 +175,30 @@ func TestIndex(t *testing.T) {
 		ThreadID:           m.ThreadID,
 		InternalDate:       m.InternalDate,
 		Subject:            "Invoice",
-		From:               "Citra <citra@example.com>",
+		From:               "Citra <citra@example.com>, Eka@Example.com",
 		To:                 []string{"asha@example.com", "Dewi <dewi@example.com>"},
 		CC:                 []string{},
 		BodyText:           "Please pay Thanks",
 		AltText:            "Please pay",
-		FromAddress:        "citra@example.com",
+		FromAddresses:      []string{"citra@example.com", "Eka@Example.com"},
+		HasAttachment:      true,
 		MailboxIDs:         m.MailboxIDs,
 	}, got)
+}
+
+// An entry of From with no address, e.g. a group's name, gives no sender
+// address to filter on.
+func TestIndexFromWithoutAddress(t *testing.T) {
+	s := newIndexStack()
+	m := message(ashaWork, "Invoice")
+	m.From = []mailsync.Address{{Name: "Undisclosed"}, {Address: "citra@example.com"}}
+	s.memory.save(asha, m)
+
+	require.NoError(t, s.indexer.Index(t.Context(), asha, []uuid.UUID{m.ID}))
+	got, ok := s.index.Document(asha, m.ID)
+
+	require.True(t, ok)
+	assert.Equal(t, []string{"citra@example.com"}, got.FromAddresses)
 }
 
 // A message whose body is not stored yet is found by its headers, and its
@@ -194,6 +213,7 @@ func TestIndexHeadersOnly(t *testing.T) {
 
 	require.True(t, ok)
 	assert.Empty(t, got.BodyText)
+	assert.False(t, got.HasAttachment)
 	assert.Empty(t, s.memory.read)
 }
 

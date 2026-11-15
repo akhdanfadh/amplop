@@ -214,6 +214,7 @@ func clone(document search.Document) search.Document {
 	document.To = slices.Clone(document.To)
 	document.CC = slices.Clone(document.CC)
 	document.MailboxIDs = slices.Clone(document.MailboxIDs)
+	document.FromAddresses = slices.Clone(document.FromAddresses)
 	return document
 }
 

@@ -21,7 +21,7 @@ type StoredText struct {
 }
 
 // MessageTexts is the stored text of a message's text parts, by whether a
-// view shows them.
+// view shows them, and whether a view offers a download.
 type MessageTexts struct {
 	// Shown is the text of the bodies a view shows, as [Choose] picks
 	// them, in that order.
@@ -30,6 +30,12 @@ type MessageTexts struct {
 	// depth first: the alternatives a view does not pick, and a text part
 	// a multipart/related shows only as a download.
 	Hidden []StoredText
+	// HasAttachment is whether a view offers any of the message's parts as
+	// a download, as [Choose] picks them, e.g. a PDF or a photo, but not a
+	// logo its HTML shows. An inline part that the HTML never refers to,
+	// which [Display.Downloads] also offers, does not count: telling it
+	// apart takes the sanitized HTML.
+	HasAttachment bool
 }
 
 // TextStorage finds the parts saved for messages.
@@ -54,9 +60,10 @@ func NewTexts(store Store, storage TextStorage) *Texts {
 // Read returns the stored text of every text part of account accountID's
 // message messageID, shown and hidden apart, within limits shared by both:
 // the shown parts are read first, so the hidden ones get what they leave,
-// and the last part read may be cut short. It returns none when the
-// message has no parts stored, and leaves out a part whose content the
-// store lacks.
+// and the last part read may be cut short. It also returns whether a view
+// offers a download, from the whole part tree, whatever the limits leave.
+// It returns none when the message has no parts stored, and leaves out a
+// part whose content the store lacks.
 //
 // DESIGN: a part's [Part.BlobID] tells shown from hidden: every text part
 // with stored content has its own, and one without has no text to read.
@@ -65,7 +72,8 @@ func (t *Texts) Read(ctx context.Context, accountID int64, messageID uuid.UUID, 
 	if err != nil || !ok {
 		return MessageTexts{}, err
 	}
-	shown := Choose(root).Bodies
+	display := Choose(root)
+	shown := display.Bodies
 	inView := make(map[uuid.UUID]bool, len(shown))
 	for _, part := range shown {
 		inView[part.BlobID] = true
@@ -78,7 +86,7 @@ func (t *Texts) Read(ctx context.Context, accountID int64, messageID uuid.UUID, 
 	}
 
 	r := reader{texts: t, account: accountID, limits: limits}
-	var texts MessageTexts
+	texts := MessageTexts{HasAttachment: len(display.Attachments) > 0}
 	if texts.Shown, err = r.read(ctx, shown); err != nil {
 		return MessageTexts{}, err
 	}

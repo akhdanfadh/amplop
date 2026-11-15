@@ -124,9 +124,7 @@ func (x *Indexer) document(ctx context.Context, owner int64, source Source) (Doc
 		To:                 names(source.To),
 		CC:                 names(source.CC),
 		MailboxIDs:         source.MailboxIDs,
-	}
-	if len(source.From) > 0 {
-		document.FromAddress = source.From[0].Address
+		FromAddresses:      addresses(source.From),
 	}
 	if !source.HasParts {
 		// Found by its headers until its body is stored (ADR005).
@@ -140,6 +138,7 @@ func (x *Indexer) document(ctx context.Context, owner int64, source Source) (Doc
 	}
 	document.BodyText = BodyText(textParts(texts.Shown))
 	document.AltText = BodyText(textParts(texts.Hidden))
+	document.HasAttachment = texts.HasAttachment
 	return document, nil
 }
 
@@ -160,6 +159,18 @@ func names(addresses []mailsync.Address) []string {
 		out[n] = a.Address
 		if a.Name != "" {
 			out[n] = a.Name + " <" + a.Address + ">"
+		}
+	}
+	return out
+}
+
+// addresses returns the addresses of entries, in order, leaving out an
+// entry with none, e.g. a group's name.
+func addresses(entries []mailsync.Address) []string {
+	out := make([]string, 0, len(entries))
+	for _, a := range entries {
+		if a.Address != "" {
+			out = append(out, a.Address)
 		}
 	}
 	return out

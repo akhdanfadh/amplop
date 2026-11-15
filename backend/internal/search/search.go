@@ -24,7 +24,13 @@ type Document struct {
 	To                 []string // each name and address
 	CC                 []string // each name and address
 	BodyText           string   // the text of the bodies a view shows; empty until the body is stored
-	FromAddress        string   // the sender's address alone
+	// FromAddresses are the addresses alone of the message's From, in its
+	// order, as storage holds them, without empty ones.
+	FromAddresses []string
+	// HasAttachment is whether a view offers any of the message's parts as
+	// a download, as [messagecontent.MessageTexts.HasAttachment] says;
+	// false until the body is stored.
+	HasAttachment bool
 	// The text of the message's other text parts, e.g. the plain-text
 	// alternative of HTML a view shows: found, but ranked below
 	// [Document.BodyText].

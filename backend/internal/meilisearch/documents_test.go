@@ -14,8 +14,8 @@ import (
 )
 
 // Documents are stored under ADR005's field names, IDs as decimal
-// strings, the date as Unix seconds, and the conversation as the account
-// and the thread.
+// strings, the date as Unix milliseconds, and the conversation as the
+// account and the thread.
 func TestUpsertFields(t *testing.T) {
 	index := newIndex(t)
 	inbox := uuid.New()
@@ -24,14 +24,15 @@ func TestUpsertFields(t *testing.T) {
 		OwnerUserID:        owner,
 		ConnectedAccountID: account,
 		ThreadID:           "19a0c3f2e1d4b5a6",
-		InternalDate:       time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC),
+		InternalDate:       time.Date(2026, 11, 7, 9, 0, 0, 250_000_000, time.UTC),
 		Subject:            "Invoice",
 		From:               "Asha K <asha.k@example.co.id>",
 		To:                 []string{"Budi <budi@example.com>"},
 		CC:                 []string{"Citra <citra@example.com>"},
 		BodyText:           "Please pay",
 		AltText:            "Pay now",
-		FromAddress:        "asha.k@example.co.id",
+		FromAddresses:      []string{"asha.k@example.co.id", "Office@Example.co.id"},
+		HasAttachment:      true,
 		MailboxIDs:         []uuid.UUID{inbox},
 	}
 
@@ -44,14 +45,15 @@ func TestUpsertFields(t *testing.T) {
 		"owner_user_id":        "1",
 		"connected_account_id": "11",
 		"conversation":         "11/19a0c3f2e1d4b5a6",
-		"internal_date":        float64(1794042000),
+		"internal_date":        float64(1794042000250),
 		"subject":              "Invoice",
 		"from":                 "Asha K <asha.k@example.co.id>",
 		"to":                   []any{"Budi <budi@example.com>"},
 		"cc":                   []any{"Citra <citra@example.com>"},
 		"body_text":            "Please pay",
 		"alt_text":             "Pay now",
-		"from_address":         "asha.k@example.co.id",
+		"from_addresses":       []any{"asha.k@example.co.id", "Office@Example.co.id"},
+		"has_attachment":       true,
 		"mailbox_ids":          []any{inbox.String()},
 	}, stored)
 }

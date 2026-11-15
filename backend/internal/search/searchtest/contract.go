@@ -514,7 +514,7 @@ func document(owner, account int64, subject string) search.Document {
 		InternalDate:       time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC),
 		Subject:            subject,
 		From:               "Fajar <fajar@example.com>",
-		FromAddress:        "fajar@example.com",
+		FromAddresses:      []string{"fajar@example.com"},
 	}
 }
 

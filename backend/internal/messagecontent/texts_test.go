@@ -90,7 +90,8 @@ func TestTextsRead(t *testing.T) {
 		},
 		"a stray text part of related is hidden": {
 			multipart("multipart/related", part("0", "text/html", "<p>main</p>"), part("1", "text/plain", "stray"), image),
-			messagecontent.MessageTexts{Shown: []messagecontent.StoredText{html("<p>main</p>")}, Hidden: []messagecontent.StoredText{plain("stray")}},
+			// Offered as a download, so the message has an attachment.
+			messagecontent.MessageTexts{Shown: []messagecontent.StoredText{html("<p>main</p>")}, Hidden: []messagecontent.StoredText{plain("stray")}, HasAttachment: true},
 		},
 		"a lone plain part": {
 			part("", "text/plain", "hello"),
@@ -160,4 +161,63 @@ func TestTextsNone(t *testing.T) {
 
 	assert.Equal(t, messagecontent.MessageTexts{}, never)
 	assert.Equal(t, messagecontent.MessageTexts{}, readOf(t, lost, id, roomy))
+}
+
+// file returns a part of mediaType sent as a file named name, whose bytes
+// the provider sends apart, as Gmail does by attachmentId.
+func file(id, mediaType, name string, header textproto.MIMEHeader) messagecontent.Received {
+	if header == nil {
+		header = textproto.MIMEHeader{}
+	}
+	return messagecontent.Received{ID: id, MediaType: mediaType, Filename: name, Header: header, Size: 100}
+}
+
+// A message has an attachment when a view offers one of its parts as a
+// download, read from the whole tree: a photo sent beside the text counts,
+// a logo its HTML shows does not, nor a file in an alternative a view does
+// not pick, and the text limits change nothing.
+func TestTextsAttachment(t *testing.T) {
+	pdf := file("1", "application/pdf", "invoice.pdf", textproto.MIMEHeader{"Content-Disposition": {`attachment; filename="invoice.pdf"`}})
+	cases := map[string]struct {
+		message messagecontent.Received
+		want    bool
+	}{
+		"text only": {alternative("Hello"), false},
+		"a PDF beside the text": {
+			multipart("multipart/mixed", part("0", "text/plain", "See attached"), pdf),
+			true,
+		},
+		"nothing but a file": {file("", "application/pdf", "scan.pdf", nil), true},
+		// As a phone sends a photo: an image with a Content-ID, marked
+		// inline, beside the text rather than inside multipart/related.
+		"a photo beside the text": {
+			multipart("multipart/mixed",
+				part("0", "text/plain", "Look"),
+				file("1", "image/jpeg", "IMG_0001.jpeg", textproto.MIMEHeader{"Content-Id": {"<photo1>"}, "Content-Disposition": {`inline; filename="IMG_0001.jpeg"`}})),
+			true,
+		},
+		"a logo the HTML shows": {
+			multipart("multipart/related",
+				part("0", "text/html", `<p>Hi</p><img src="cid:logo">`),
+				file("1", "image/png", "logo.png", textproto.MIMEHeader{"Content-Id": {"<logo>"}})),
+			false,
+		},
+		"a file in an alternative not shown": {
+			multipart("multipart/alternative",
+				multipart("multipart/mixed", part("0.0", "text/plain", "Plain"), file("0.1", "application/pdf", "old.pdf", nil)),
+				part("1", "text/html", "<p>Rich</p>")),
+			false,
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			texts, _, id := textsOf(t, c.message)
+
+			roomyRead := readOf(t, texts, id, roomy)
+			none := readOf(t, texts, id, messagecontent.TextLimits{})
+
+			assert.Equal(t, c.want, roomyRead.HasAttachment)
+			assert.Equal(t, c.want, none.HasAttachment, "with no text read")
+		})
+	}
 }

@@ -16,19 +16,24 @@ import (
 // IDs above 2^53, e.g. 2^53 and 2^53 + 1, so a filter on one would match
 // the other. A string matches exactly.
 type document struct {
-	ID                 string   `json:"id"`
-	OwnerUserID        string   `json:"owner_user_id"`
-	ConnectedAccountID string   `json:"connected_account_id"`
-	InternalDate       int64    `json:"internal_date"` // Unix seconds, which filters and sorts as a number
-	Subject            string   `json:"subject"`
-	From               string   `json:"from"`
-	To                 []string `json:"to"`
-	CC                 []string `json:"cc"`
-	BodyText           string   `json:"body_text"`
-	AltText            string   `json:"alt_text"`
-	FromAddress        string   `json:"from_address"`
-	MailboxIDs         []string `json:"mailbox_ids"`
-	Conversation       string   `json:"conversation"`
+	ID                 string `json:"id"`
+	OwnerUserID        string `json:"owner_user_id"`
+	ConnectedAccountID string `json:"connected_account_id"`
+	// Unix milliseconds, which filters and ranks as a number: Gmail's own
+	// precision, so a range or the newest of a conversation is exact.
+	// They stay exact, as a 64-bit float holds every integer up to 2^53,
+	// some 285,000 years of them.
+	InternalDate  int64    `json:"internal_date"`
+	Subject       string   `json:"subject"`
+	From          string   `json:"from"`
+	To            []string `json:"to"`
+	CC            []string `json:"cc"`
+	BodyText      string   `json:"body_text"`
+	AltText       string   `json:"alt_text"`
+	FromAddresses []string `json:"from_addresses"`
+	HasAttachment bool     `json:"has_attachment"`
+	MailboxIDs    []string `json:"mailbox_ids"`
+	Conversation  string   `json:"conversation"`
 }
 
 // Upsert adds documents to their owners' indexes, replacing whole any with
@@ -49,14 +54,15 @@ func (i *Index) Upsert(ctx context.Context, documents []search.Document) error {
 			ID:                 d.ID.String(),
 			OwnerUserID:        decimal(d.OwnerUserID),
 			ConnectedAccountID: decimal(d.ConnectedAccountID),
-			InternalDate:       d.InternalDate.Unix(),
+			InternalDate:       d.InternalDate.UnixMilli(),
 			Subject:            d.Subject,
 			From:               d.From,
 			To:                 d.To,
 			CC:                 d.CC,
 			BodyText:           d.BodyText,
 			AltText:            d.AltText,
-			FromAddress:        d.FromAddress,
+			FromAddresses:      nonNil(d.FromAddresses),
+			HasAttachment:      d.HasAttachment,
 			MailboxIDs:         texts(d.MailboxIDs),
 			Conversation:       conversation(d.ConnectedAccountID, d.ThreadID),
 		})
@@ -74,6 +80,15 @@ func (i *Index) Upsert(ctx context.Context, documents []search.Document) error {
 // conversations share one, as an account's ID holds no slash.
 func conversation(account int64, thread string) string {
 	return decimal(account) + "/" + thread
+}
+
+// nonNil returns values, or an empty list for none, so a document holds
+// a list, not null.
+func nonNil(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
 }
 
 // texts returns ids as Meilisearch stores them: canonical text, which a

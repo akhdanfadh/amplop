@@ -3012,9 +3012,14 @@ e.g. the plain-text alternative of HTML a view shows. A word in either
 finds the message, and one in `body_text` ranks it higher. Until its
 body is stored, a message is found by its headers. The document's
 `conversation` field, the account's ID and the provider's thread ID,
-names the conversation a search keeps one message of. Every message
-changed is read again, so marking one read re-reads its stored body text
-too.
+names the conversation a search keeps one message of. Three fields serve
+filters: `from_addresses`, every address of its From as PostgreSQL holds
+it, without empty ones, e.g. a group's name; `internal_date`, when the
+provider received it, in Unix milliseconds, Gmail's own precision; and,
+once its body is stored, `has_attachment`, whether a view offers any of
+its parts as a download, as `messagecontent.Choose` picks them from the
+stored part tree. Every message changed is read again, so marking one
+read re-reads its stored body text too.
 
 - `search` declares the `Index` interface: `Prepare`, `Upsert`, `Delete`,
   `DeleteAccount`, `Search`, and, for a rebuild, `Owners`,
@@ -3058,7 +3063,12 @@ too.
   `messagecontent.Choose` picks, in that order, and every other text
   part in the message's order, e.g. the alternatives a view does not
   pick. It reads at most 64 parts and 1 MiB over both, the shown ones
-  first.
+  first. It also says whether a view offers any part as a download, from
+  the whole part tree, whatever those limits leave: a PDF or a photo a
+  phone sends beside the text counts, a logo the HTML shows does not. An
+  image in the HTML's `multipart/related` that the HTML never refers to,
+  which the reading pane also offers, does not count: telling it apart
+  takes the sanitized HTML.
 - `search.BodyText` turns each group into a field's text: plain text as
   it is, and the text of HTML that a reader sees, as the HTML Standard's
   default rendering decides it, read token by token and never parsed into
