@@ -38,7 +38,7 @@ export const ResponseConversationActionResult = zod.object({
   "id": zod.uuid(),
   "reason": zod.enum(['not-found', 'needs-reconnect', 'failed']).describe('not-found: the signed-in account has no such conversation, or the provider no longer has it. needs-reconnect: its connected account must be reconnected first. failed: the provider failed, refused, or took too long; trying again may work.')
 })).describe('The conversations the action left as they were, in the order of ids.'),
-  "undo": zod.enum(['read', 'unread', 'archive', 'unarchive', 'trash', 'untrash', 'star', 'unstar']).describe('The action that undoes this one, for the changed conversations.')
+  "undo": zod.enum(['read', 'unread', 'archive', 'unarchive', 'trash', 'untrash', 'star', 'unstar', 'spam', 'unspam']).describe('The action that undoes this one, for the changed conversations.')
 })
 })
 

@@ -23,7 +23,9 @@ type labelChange struct {
 
 // labelChanges are the actions that are a change of labels, by Gmail's
 // rules (ADR007, "Gmail labels as mailboxes"): read is UNREAD removed,
-// archive is INBOX removed, and star is STARRED added.
+// archive is INBOX removed, star is STARRED added, and spam is SPAM added
+// and INBOX removed, as Gmail's Report spam does. SPAM and INBOX are both
+// labels a client can set (Gmail's "Manage labels" guide).
 var labelChanges = map[conversation.Action]labelChange{
 	conversation.ActionRead:      {remove: []string{labelUnread}},
 	conversation.ActionUnread:    {add: []string{labelUnread}},
@@ -31,6 +33,8 @@ var labelChanges = map[conversation.Action]labelChange{
 	conversation.ActionUnarchive: {add: []string{labelInbox}},
 	conversation.ActionStar:      {add: []string{labelStarred}},
 	conversation.ActionUnstar:    {remove: []string{labelStarred}},
+	conversation.ActionSpam:      {add: []string{labelSpam}, remove: []string{labelInbox}},
+	conversation.ActionUnspam:    {add: []string{labelInbox}, remove: []string{labelSpam}},
 }
 
 // ChangeThread applies action to every message of the thread with

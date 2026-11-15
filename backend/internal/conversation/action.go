@@ -32,12 +32,15 @@ const (
 	ActionUntrash   Action = "untrash"
 	ActionStar      Action = "star"
 	ActionUnstar    Action = "unstar"
+	ActionSpam      Action = "spam"   // reported as spam, out of the inbox
+	ActionUnspam    Action = "unspam" // not spam, back into the inbox
 )
 
 // Actions lists every action, each beside its opposite.
 var Actions = []Action{
 	ActionRead, ActionUnread, ActionArchive, ActionUnarchive,
 	ActionTrash, ActionUntrash, ActionStar, ActionUnstar,
+	ActionSpam, ActionUnspam,
 }
 
 // opposites pairs each action with the one that undoes it.
@@ -46,6 +49,7 @@ var opposites = map[Action]Action{
 	ActionArchive: ActionUnarchive, ActionUnarchive: ActionArchive,
 	ActionTrash: ActionUntrash, ActionUntrash: ActionTrash,
 	ActionStar: ActionUnstar, ActionUnstar: ActionStar,
+	ActionSpam: ActionUnspam, ActionUnspam: ActionSpam,
 }
 
 // Opposite returns the action that undoes a, or empty for no action.

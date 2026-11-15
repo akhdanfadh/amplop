@@ -12,8 +12,9 @@ export type Action = ConversationActionBodyOutput["action"];
 export type ActionResult = ConversationActionResultOutput;
 
 // The flags each action sets on a conversation, before the API answers.
-// Trash also leaves every label, as Gmail does, so a label list drops it
-// at once (ADR031, TanStack DB gate, rule 8).
+// Trash and Spam also leave every other place but the Spam or Trash they
+// share, as the server's rows show a conversation only there, so a label
+// or Sent list drops it at once (ADR031, TanStack DB gate, rule 8).
 const guesses: Record<Action, Partial<Conversation>> = {
   read: { unread: false },
   unread: { unread: true },
@@ -21,12 +22,14 @@ const guesses: Record<Action, Partial<Conversation>> = {
   unarchive: { inbox: true },
   star: { starred: true },
   unstar: { starred: false },
-  trash: { trash: true, inbox: false, allMail: false, labelIds: [] },
+  trash: { trash: true, inbox: false, allMail: false, sent: false, spam: false, labelIds: [] },
   untrash: { trash: false, allMail: true },
+  spam: { spam: true, inbox: false, allMail: false, sent: false, labelIds: [] },
+  unspam: { spam: false, inbox: true, allMail: true },
 };
 
 // The flags a guess can set.
-const flags = ["unread", "inbox", "starred", "trash", "allMail"] as const;
+const flags = ["unread", "inbox", "starred", "trash", "allMail", "sent", "spam"] as const;
 
 // guessChanges reports whether action's guess would change conversation.
 export function guessChanges(conversation: Conversation, action: Action): boolean {

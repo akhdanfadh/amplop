@@ -17,4 +17,19 @@ describe("guessChanges", () => {
     expect(guessChanges(labelled, "trash")).toBe(true);
     expect(guessChanges({ ...labelled, labelIds: [] }, "trash")).toBe(false);
   });
+
+  it("leaves Sent with Trash, as the server's rows show it", () => {
+    const sent = toConversation(conversation(1, { inbox: false, sent: true }));
+    expect(guessChanges(sent, "trash")).toBe(true);
+    expect(guessChanges({ ...sent, sent: false, allMail: false, trash: true }, "trash")).toBe(
+      false,
+    );
+  });
+
+  it("is false for spam only in Spam, true for one in a label", () => {
+    const onlySpam = toConversation(conversation(1, { spam: true, inbox: false, allMail: false }));
+    expect(guessChanges(onlySpam, "spam")).toBe(false);
+    expect(guessChanges({ ...onlySpam, labelIds: ["work"] }, "spam")).toBe(true);
+    expect(guessChanges(onlySpam, "unspam")).toBe(true);
+  });
 });

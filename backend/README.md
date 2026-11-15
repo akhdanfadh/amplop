@@ -2848,7 +2848,8 @@ about 11 ms.
 
 `POST /conversations/actions {action, ids}` changes up to 100 of the
 member's conversations: `read` and `unread`, `archive` and `unarchive`,
-`trash` and `untrash`, `star` and `unstar`, each pair undoing the other.
+`trash` and `untrash`, `star` and `unstar`, `spam` and `unspam`, each
+pair undoing the other.
 `conversation.ActionService` calls Gmail inside the request, and inbok
 writes only what Gmail answers (ADR031, "Mail actions as built"):
 

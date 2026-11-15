@@ -77,6 +77,17 @@ func TestActionFlow(t *testing.T) {
 	assert.True(t, row.InInbox)
 	assert.False(t, row.Unread)
 	assert.Equal(t, []string{"INBOX"}, stored.messages(t, account.ID)["m2"].MailboxProviderIDs)
+
+	// When the member reports it as spam.
+	row = apply(conversation.ActionSpam)
+
+	// Then it is only in Spam; not spam puts it back in the inbox.
+	assert.True(t, row.InSpam)
+	assert.False(t, row.InInbox)
+	assert.False(t, row.InAllMail)
+	row = apply(conversation.ActionSpam.Opposite())
+	assert.False(t, row.InSpam)
+	assert.True(t, row.InInbox)
 }
 
 // An action's answer written after a poll has brought in a newer change to

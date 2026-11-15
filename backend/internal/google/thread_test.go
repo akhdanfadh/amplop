@@ -43,6 +43,8 @@ func TestChangeThread(t *testing.T) {
 		{conversation.ActionUnstar, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
 		{conversation.ActionArchive, both(mailsync.MessageUpdate{})},
 		{conversation.ActionUnarchive, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
+		{conversation.ActionSpam, both(mailsync.MessageUpdate{MailboxProviderIDs: []string{labelSpam}})},
+		{conversation.ActionUnspam, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
 		{conversation.ActionTrash, both(mailsync.MessageUpdate{MailboxProviderIDs: []string{labelTrash}})},
 		{conversation.ActionUntrash, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
 	} {
