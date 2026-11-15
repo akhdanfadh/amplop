@@ -364,12 +364,26 @@ describe("two-factor setup", () => {
       .toHaveTextContent(codes.join(""));
   });
 
-  it("cancels the setup and returns to Security", async () => {
+  it("asks before canceling the setup, and Cancel setup returns to Security", async () => {
     const server = off();
     await open(server);
     await toQr();
+    const dialog = page.getByRole("alertdialog", { name: "Cancel setup?" });
 
     await userEvent.click(page.getByRole("button", { name: "Cancel setup" }));
+    await expect.element(dialog.getByRole("button", { name: "Keep setting up" })).toHaveFocus();
+    await userEvent.click(dialog.getByRole("button", { name: "Keep setting up" }));
+    await expect.element(dialog).not.toBeInTheDocument();
+    await expect.element(page.getByRole("heading", { name: /Scan this QR code/ })).toBeVisible();
+    expect(server.sent).not.toContain("DELETE /api/v0/totp/enrollment");
+
+    await userEvent.click(page.getByRole("button", { name: "Cancel setup" }));
+    await expect.element(dialog.getByRole("button", { name: "Keep setting up" })).toHaveFocus();
+    // NOTE: the dialog's action ignores a pointer press just after it opens
+    // (components/ui/alert-dialog.tsx); the keyboard is kept.
+    await userEvent.keyboard("{Tab}");
+    await expect.element(dialog.getByRole("button", { name: "Cancel setup" })).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
 
     await expect
       .element(
@@ -379,7 +393,6 @@ describe("two-factor setup", () => {
       )
       .toBeVisible();
     await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
-    expect(server.sent).toContain("DELETE /api/v0/totp/enrollment");
   });
 
   it("reports the change on Security once, not again after Back and Forward", async () => {

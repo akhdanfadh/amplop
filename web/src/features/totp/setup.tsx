@@ -20,6 +20,16 @@ import { uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { ReadError } from "@/components/read-error";
 import { RequestError } from "@/components/request-error";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { CodeStep } from "./code-step";
 import { CodesStep, notWaitingType } from "./codes-step";
@@ -141,17 +151,32 @@ export function useSetupFlow({
     });
   }
 
+  // Canceling throws away a secret the app may already hold, so it asks
+  // first (DESIGN.md "Feedback").
   const cancelButton = (
     <div className="flex flex-col items-start gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        isPending={cancel.isPending}
-        isDisabled={finish.isPending || check.isPending}
-        onPress={cancelSetup}
-      >
-        {cancel.isPending ? cancelText.working : cancelText.label}
-      </Button>
+      <AlertDialogTrigger>
+        <Button
+          type="button"
+          variant="outline"
+          isPending={cancel.isPending}
+          isDisabled={finish.isPending || check.isPending}
+        >
+          {cancel.isPending ? cancelText.working : cancelText.label}
+        </Button>
+        <AlertDialog>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{cancelText.title}</AlertDialogTitle>
+            <AlertDialogDescription>{cancelText.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{cancelText.keep}</AlertDialogCancel>
+            <AlertDialogAction type="button" variant="destructive" onPress={cancelSetup}>
+              {cancelText.label}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialog>
+      </AlertDialogTrigger>
       {cancel.error && cancel.error.status !== unauthorized && (
         <RequestError
           errors={[{ message: userMessage(cancel.error) }]}

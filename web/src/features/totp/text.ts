@@ -108,10 +108,14 @@ export const setupLead = "Add inbok to an authenticator app, then save your back
 export const startForm = "Start setup";
 export const showCodesForm = "Show your backup codes";
 
-// Cancel setup, a way out of the QR and codes steps, and its working words.
+// Cancel setup, a way out of the QR and codes steps, and the dialog that
+// asks first: canceling throws away a secret the app may already hold.
 export const cancelText = {
   label: "Cancel setup",
   working: "Canceling setup...",
+  title: "Cancel setup?",
+  description: "You'll need to remove the inbok entry from your authenticator app and start again.",
+  keep: "Keep setting up",
 } as const;
 
 // The QR step: its two numbered headings, the QR code's name for a screen

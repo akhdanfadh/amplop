@@ -370,7 +370,9 @@ stays in memory:
 A reload asks for the password again, then shows the same QR code or the
 same codes, for 15 minutes from the start. After that the page says the
 setup expired and to remove the inbok entry from the app. Cancel setup sits
-on steps 2 and 3; "I've saved these codes" waits while it runs. Only step 3 warns before leaving, with `LeaveWarning` ("Leave
+on steps 2 and 3 and asks first in an `AlertDialog`, since the app may
+already hold the secret it throws away; "I've saved these codes" waits while
+it runs. Only step 3 warns before leaving, with `LeaveWarning` ("Leave
 before two-factor authentication is on?"), because someone may think it is
 on. A conflict or a lost answer rereads the status, which the page then
 follows; a code another tab showed again asks for the password here too.
