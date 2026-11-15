@@ -364,6 +364,8 @@ stays in memory:
    codes", which turns two-factor on, signs out the other browsers, and
    renews this browser's session; every query is reset with it, so nothing
    read under the old cookie stays, even when the member left meanwhile.
+   While that request runs, every other request waits for it
+   (`transport`), so none carries the cookie it replaces.
 
 A reload asks for the password again, then shows the same QR code or the
 same codes, for 15 minutes from the start. After that the page says the

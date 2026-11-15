@@ -36,11 +36,13 @@ const codes = [
 ];
 
 // The server the pages talk to: its two-factor status, the role the
-// session read answers, and the requests it was sent ("METHOD /path").
+// session read answers, the requests it was sent ("METHOD /path"), and,
+// when set, a finish it holds unanswered.
 type Server = {
   totp: TotpStatus;
   role?: CurrentSession["role"];
   sent: string[];
+  hold?: Promise<void>;
   // Whether a turn-off commits but its answer never arrives.
   loseTurnOff?: boolean;
   // Requests ("METHOD /path") refused with a problem of status and type,
@@ -144,6 +146,7 @@ async function answer(
     return Response.json({ data: { backupCodes: codes, token: "setup-token" } });
   }
   if (method === "POST" && path === "/api/v0/totp/enrollment/finish") {
+    await server.hold;
     server.totp = { status: "on", backupCodesLeft: 10, backupCodesWaiting: false };
     return Response.json({ data: server.totp });
   }
@@ -258,7 +261,8 @@ async function toCodes(): Promise<void> {
     .toHaveFocus();
 }
 
-// Lets a held sessions read answer.
+// Lets a held finish answer. The transport holds every later request
+// behind it, in this test and the next, until it settles.
 let release: (() => void) | undefined;
 
 afterEach(() => {
@@ -457,6 +461,43 @@ describe("two-factor setup", () => {
     await expect.element(page.getByText(onNotice)).toBeVisible();
     await expect.element(page.getByText("Loading signed-in browsers...")).toBeVisible();
     expect(page.getByRole("button", { name: "Sign out Safari on iOS" }).query()).toBeNull();
+  });
+
+  it("sends no other request while I've saved replaces the cookie, even after leaving", async () => {
+    const server = off();
+    server.hold = new Promise((resolve) => {
+      release = resolve;
+    });
+    await open(server);
+    await toQr();
+    await toCodes();
+
+    await userEvent.click(page.getByRole("button", { name: "I've saved these codes" }));
+    await expect.element(page.getByRole("button", { name: /Turning on/ })).toBeVisible();
+    // The finish still runs, so leaving asks; the member leaves anyway.
+    await userEvent.click(backLink());
+    const dialog = page.getByRole("alertdialog", {
+      name: "Leave before two-factor authentication is on?",
+    });
+    await expect.element(dialog).toBeVisible();
+    // NOTE: a pointer press on Leave anyway soon after the dialog opens is
+    // dropped and the leave never proceeds; the keyboard is not affected.
+    await expect.element(dialog.getByRole("button", { name: "Stay" })).toHaveFocus();
+    await userEvent.keyboard("{Tab}");
+    await expect.element(dialog.getByRole("button", { name: "Leave anyway" })).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
+    const finishAt = server.sent.indexOf("POST /api/v0/totp/enrollment/finish");
+    expect(server.sent.slice(finishAt)).toEqual(["POST /api/v0/totp/enrollment/finish"]);
+
+    release?.();
+
+    await expect.element(page.getByText(/Firefox on Linux/)).toBeVisible();
+    expect(server.sent.slice(finishAt + 1)).toContain("GET /api/v0/sessions/current");
+    await expect
+      .element(page.getByRole("heading", { name: "Two-factor authentication" }))
+      .toBeVisible();
+    expect(page.getByText("Sign in").query()).toBeNull();
   });
 });
 

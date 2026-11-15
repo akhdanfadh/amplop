@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi, type MockInstance } from "vite-plus/test";
-import { createProbeEvent } from "./generated/inbok";
+import { createProbeEvent, getFinishTOTPEnrollmentUrl } from "./generated/inbok";
 import { ResponseHealthStatus } from "./generated/model";
 import { userMessage } from "./problem";
-import { ApiError, transport } from "./transport";
+import { ApiError, cookieReplacingPaths, transport } from "./transport";
 
 const url = "/api/v0/health";
 const init = { schema: ResponseHealthStatus };
@@ -402,5 +402,50 @@ describe("received error facts", () => {
         ),
     );
     await expect(transport(url, { ...init, signal: caller.signal })).rejects.toBe(cancelled);
+  });
+});
+
+describe("a request that replaces the session cookie", () => {
+  it("is the contract's address for finishing two-factor setup", () => {
+    expect(cookieReplacingPaths).toEqual([getFinishTOTPEnrollmentUrl()]);
+  });
+
+  it("holds every other request until it settles, so none carries the old cookie", async () => {
+    const sent: string[] = [];
+    let finish: ((res: Response) => void) | undefined;
+    vi.stubGlobal("fetch", async (input: string) => {
+      sent.push(input);
+      if (input !== getFinishTOTPEnrollmentUrl()) return Response.json({ data: { status: "ok" } });
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    });
+
+    const replacing = transport(getFinishTOTPEnrollmentUrl(), { method: "POST" }).catch(
+      () => undefined,
+    );
+    const read = transport(url, init);
+    await vi.waitFor(() => expect(sent).toEqual([getFinishTOTPEnrollmentUrl()]));
+
+    finish?.(new Response(null, { status: httpStatus.noContent }));
+    await replacing;
+    await expect(read).resolves.toEqual({ data: { status: "ok" } });
+    expect(sent).toEqual([getFinishTOTPEnrollmentUrl(), url]);
+  });
+
+  it("holds them after a failure too, then lets them go", async () => {
+    const sent: string[] = [];
+    vi.stubGlobal("fetch", async (input: string) => {
+      sent.push(input);
+      if (input === getFinishTOTPEnrollmentUrl()) throw new TypeError("Failed to fetch");
+      return Response.json({ data: { status: "ok" } });
+    });
+
+    const replacing = transport(getFinishTOTPEnrollmentUrl(), { method: "POST" });
+    const read = transport(url, init);
+
+    await expect(replacing).rejects.toBeInstanceOf(ApiError);
+    await expect(read).resolves.toEqual({ data: { status: "ok" } });
+    expect(sent).toEqual([getFinishTOTPEnrollmentUrl(), url]);
   });
 });
