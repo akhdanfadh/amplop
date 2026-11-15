@@ -437,11 +437,14 @@ opens, before anything renders or fetches: it keeps the secret in memory and
 removes it from the address, so the address bar and a copied URL lose it even
 if the setup status check fails, and Back or Forward to the page finds no
 link. The browser's history list still holds the full link. Reloading after
-that asks for the emailed link again. The page reads its secret with
-`useLinkSecret` (`hooks/use-link-secret.ts`), which drops the kept copy from
-memory and also removes the secret of a link pasted into the tab later. A
-page for a new kind of link exports its path from its feature, adds it to
-the list in `getRouter`, and calls the hook.
+that asks for the emailed link again. Leaving a link page, or reloading it,
+loses what was typed and this tab's copy of the link, without a warning:
+the email's link still opens the page, within its lifetime, and the page
+without it says to open it (web/DESIGN.md "Forms"). The page reads its
+secret with `useLinkSecret` (`hooks/use-link-secret.ts`), which drops the
+kept copy from memory and also removes the secret of a link pasted into
+the tab later. A page for a new kind of link exports its path from its
+feature, adds it to the list in `getRouter`, and calls the hook.
 
 "Verify email" sends the secret. A link that is expired, used, unknown, or
 sent to an old address cannot be retried; if the signed-in account is

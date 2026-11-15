@@ -750,8 +750,10 @@ pull-to-refresh, which would reload the app, never starts.
   ignores repeats. A second submit, e.g. "Save only" beside "Save and send
   test", is outlined and comes after the main one, which Enter in a field
   presses; while one sends, the other waits. A request failure shows under the button through
-  `RequestError` (a reference only for faults); success is a quiet
-  "Saved".
+  `RequestError` (a reference only for faults). Success shows as what the
+  save leads to: the settings view again, with its badge and a note under
+  it naming any next step ("Settings saved. Send a test message to check
+  them."), or an outcome screen; no form stays open to say "Saved".
 - A 429 says when to try again, as a clock time rounded up to the minute
   ("Too many attempts. Try again after 2:32 PM."), with the weekday when it
   is another day, and "later" past six days; it stays while the member
@@ -760,10 +762,17 @@ pull-to-refresh, which would reload the app, never starts.
   (only scripts reach the per-browser limit), and the text never turns
   into "You can try again now" (people meet only limits of 15 minutes or
   more). Times are English with the browser's 12 or 24 hour clock.
-- Any form with unsaved typing warns before in-app navigation with
-  `LeaveWarning`; closing the tab gets the browser's question. Typing back
-  what the form opened with counts as no change. Cancel on a form opened
-  in place discards without asking: its name says so.
+- A page warns before leaving (`LeaveWarning`) only when leaving loses what
+  can't be redone in moments: a long text (compose), settings being edited
+  (System email), backup codes that won't show again. Sign-in, the code
+  forms, setup, and the pages emailed links open don't: what they hold is
+  quick to type again, and an emailed link still works from the email. In
+  app the warning is a dialog; closing the tab gets the browser's
+  question. Typing back what the form opened with counts as no change.
+  Cancel on a form opened in place discards without asking: its name says
+  so, and what it drops is settings, quick to enter again. Discard on a
+  reply asks first when it would drop typed text, as leaving would: a
+  reply is a long text.
 - A lost answer to a save that replaces settings asks to save again
   ("Save again to make sure."): saving the same values twice is safe, so
   the form stays open and editable.
