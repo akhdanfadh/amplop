@@ -106,6 +106,8 @@ func assertSettings(t *testing.T, index *Index, owner int64) {
 	assert.Equal(t, &meili.Pagination{MaxTotalHits: search.MaxTotal}, settings.Pagination)
 	assert.Equal(t, []string{"words", "typo", "proximity", "attributeRank", "sort", "wordPosition", "exactness", "internal_date:desc"}, settings.RankingRules)
 	assert.True(t, settings.TypoTolerance.Enabled)
+	assert.True(t, settings.TypoTolerance.DisableOnNumbers)
+	assert.Equal(t, meili.MinWordSizeForTypos{OneTypo: 5, TwoTypos: 9}, settings.TypoTolerance.MinWordSizeForTypos)
 }
 
 // message returns a document of owner's in account with subject, a new

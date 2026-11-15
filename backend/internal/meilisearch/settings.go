@@ -29,8 +29,25 @@ func indexSettings() meili.Settings {
 		// otherwise they come in the order they were written, which a
 		// rebuild shuffles.
 		RankingRules: []string{"words", "typo", "proximity", "attributeRank", "sort", "wordPosition", "exactness", fieldDate + ":desc"},
+		// NOTE: the client sends every typo setting, as none is omitempty,
+		// so this repeats Meilisearch's defaults but for numbers: a number
+		// a typo away, e.g. order 4471828 for 4471829, is another number,
+		// not a misspelling.
+		TypoTolerance: &meili.TypoTolerance{
+			Enabled:             true,
+			MinWordSizeForTypos: meili.MinWordSizeForTypos{OneTypo: oneTypoWordSize, TwoTypos: twoTyposWordSize},
+			DisableOnWords:      []string{},
+			DisableOnAttributes: []string{},
+			DisableOnNumbers:    true,
+		},
 	}
 }
+
+// Meilisearch's default shortest words that may hold one typo and two.
+const (
+	oneTypoWordSize  = 5
+	twoTyposWordSize = 9
+)
 
 // Prepare applies the settings to every member's index and waits until
 // Meilisearch has applied them. An index a member gets later receives them

@@ -3042,9 +3042,10 @@ too.
   filter added later adds its field, and Meilisearch reindexes from the
   documents it holds. The ranking rules are Meilisearch's defaults and
   then the date, newest first, so equal matches keep one order however
-  the index was written. An update leaves the settings it omits as the
-  index has them, which on a new index are Meilisearch's defaults, e.g.
-  its typo tolerance. Applying the same settings again, or from two processes at
+  the index was written; typo tolerance is the default but for numbers,
+  so order 4471829 never finds 4471828. An update leaves the settings it
+  omits as the index has them, which on a new index are Meilisearch's
+  defaults. Applying the same settings again, or from two processes at
   once, changes nothing. The worker calls `Prepare` when it starts,
   before any job runs.
 - `messagecontent.Texts` reads a message's stored text parts from

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/stretchr/testify/assert"
@@ -96,6 +97,31 @@ func TestQuote(t *testing.T) {
 	}
 	for value, want := range cases {
 		assert.Equal(t, want, quote(value), value)
+	}
+}
+
+// Each word narrows a search, a number is never a typo away from another,
+// and of equal matches the newest comes first, whatever order they were
+// written in.
+func TestSearchRelevance(t *testing.T) {
+	index := newIndex(t)
+	budi := message("Invoice from Budi")
+	shop := message("Invoice from Shop")
+	order := message("Order 4471829")
+	nearOrder := message("Order 4471828")
+	older, newer := message("Receipt"), message("Receipt")
+	older.InternalDate = newer.InternalDate.Add(-24 * time.Hour)
+	require.NoError(t, index.Upsert(t.Context(), []search.Document{budi, shop, order, nearOrder, older, newer}))
+
+	cases := map[string][]uuid.UUID{
+		"invoice budi": {budi.ID},
+		"4471829":      {order.ID},
+		"recept":       {newer.ID, older.ID}, // a word still allows a typo
+	}
+	for text, want := range cases {
+		result, err := index.Search(t.Context(), owner, search.Query{Text: text, Page: 1, PageSize: 10})
+		require.NoError(t, err, text)
+		assert.Equal(t, want, ids(result), text)
 	}
 }
 
