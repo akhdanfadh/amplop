@@ -23,6 +23,7 @@ import (
 	"inbok/internal/httpapi"
 	"inbok/internal/logging"
 	"inbok/internal/mailsync"
+	"inbok/internal/meilisearch"
 	"inbok/internal/messagecontent"
 	"inbok/internal/outgoingmessage"
 	"inbok/internal/passwordreset"
@@ -30,6 +31,7 @@ import (
 	"inbok/internal/registration"
 	"inbok/internal/repository/postgres"
 	"inbok/internal/s3"
+	"inbok/internal/search"
 	"inbok/internal/session"
 	"inbok/internal/smtp"
 	"inbok/internal/systememail"
@@ -115,6 +117,10 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 	if err != nil {
 		return err
 	}
+	searchURL, searchKey, err := config.SearchIndex()
+	if err != nil {
+		return err
+	}
 
 	// 2. Open the database.
 	db, err := postgres.Open(ctx, url)
@@ -176,6 +182,9 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		OutgoingMessages:        outgoingmessage.NewService(db, connectedAccounts, time.Now),
 		Syncs:                   mailsync.NewService(db, jobs, time.Now),
 		Conversations:           conversation.NewService(db, google.WebApp{}),
+		// Meilisearch is asked only when a member searches, so an index
+		// that is down keeps no one from signing in.
+		Search: search.NewSearcher(meilisearch.New(searchURL, searchKey), db),
 	}
 	// Without the bucket check of the worker's s3.Open: a store that is
 	// down then stops no one signing in, only reading message content.

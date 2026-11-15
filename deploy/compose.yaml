@@ -155,6 +155,9 @@ services:
       INBOK_S3_ENDPOINT: http://seaweedfs:8333
       INBOK_S3_ACCESS_KEY_ID: *s3-access-key-id
       INBOK_S3_SECRET_ACCESS_KEY: *s3-secret-access-key
+      # It searches members' mail.
+      INBOK_MEILISEARCH_URL: http://meilisearch:7700
+      INBOK_MEILISEARCH_KEY: ${INBOK_MEILISEARCH_KEY:?set it in deploy/.env}
       # Caddy's own addresses below, and nothing else: a forwarded client
       # address from any other peer is ignored.
       INBOK_TRUSTED_PROXIES: 10.83.70.2/32,fd24:44bd:915f::2/128

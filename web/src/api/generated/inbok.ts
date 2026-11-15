@@ -41,6 +41,7 @@ import {
   ResponseListedMembers,
   ResponseListedSessions,
   ResponseMessageContent,
+  ResponseMessageSearchPage,
   ResponseNewConversationCount,
   ResponseOutgoingMessage,
   ResponseOutgoingMessages,
@@ -84,6 +85,7 @@ import type {
   NewSystemEmailSettings,
   PasswordProof,
   Problem,
+  SearchMessagesParams,
   SystemEmailTestMessageRecipient,
   TotpDisableCode,
   TotpEnrollmentCode,
@@ -1738,6 +1740,116 @@ export const useReactivateMember = <TError = ErrorType<Problem>,
       > => {
       return useMutation(getReactivateMemberMutationOptions(options), queryClient);
     }
+
+export const getSearchMessagesUrl = (params: SearchMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v0/messages/search?${stringifiedParams}` : `/api/v0/messages/search`
+}
+
+/**
+ * Finds the signed-in account's messages whose subject, sender, recipients, or body text match q, most relevant first, across its connected accounts or one of them. Each conversation appears once, through its best-matching message. Messages in Spam or Trash, and drafts, are left out. A message whose body is not stored yet is found by its headers. The search index catches up with new mail within moments, so a message synchronized a moment ago may not be found yet. The signed-in account may have two searches running at once.
+ * @summary Search Messages
+ */
+export const searchMessages = async (params: SearchMessagesParams, options?: Parameters<typeof transport>[1]): Promise<ResponseMessageSearchPage> => {
+
+  return transport<ResponseMessageSearchPage>(getSearchMessagesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseMessageSearchPage
+  }
+);}
+
+
+
+
+
+export const getSearchMessagesQueryKey = (params?: SearchMessagesParams,) => {
+    return [
+    `/api/v0/messages/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchMessagesQueryOptions = <TData = Awaited<ReturnType<typeof searchMessages>>, TError = ErrorType<Problem>>(params: SearchMessagesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof searchMessages>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchMessagesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchMessages>>> = ({ signal }) => searchMessages(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchMessages>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type SearchMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof searchMessages>>>
+export type SearchMessagesQueryError = ErrorType<Problem>
+
+
+export function useSearchMessages<TData = Awaited<ReturnType<typeof searchMessages>>, TError = ErrorType<Problem>>(
+ params: SearchMessagesParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof searchMessages>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof searchMessages>>,
+          TError,
+          Awaited<ReturnType<typeof searchMessages>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useSearchMessages<TData = Awaited<ReturnType<typeof searchMessages>>, TError = ErrorType<Problem>>(
+ params: SearchMessagesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof searchMessages>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof searchMessages>>,
+          TError,
+          Awaited<ReturnType<typeof searchMessages>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useSearchMessages<TData = Awaited<ReturnType<typeof searchMessages>>, TError = ErrorType<Problem>>(
+ params: SearchMessagesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof searchMessages>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Search Messages
+ */
+
+export function useSearchMessages<TData = Awaited<ReturnType<typeof searchMessages>>, TError = ErrorType<Problem>>(
+ params: SearchMessagesParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof searchMessages>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getSearchMessagesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetMessageContentUrl = (id: string,) => {
 

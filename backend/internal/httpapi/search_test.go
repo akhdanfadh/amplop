@@ -1,0 +1,312 @@
+package httpapi
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+	"uuid"
+
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"inbok/internal/account"
+	"inbok/internal/mailsync"
+	"inbok/internal/search"
+	"inbok/internal/session"
+)
+
+// fakeSearches answers with page or err, or panics with panicWith when it
+// is set, and records what it was asked.
+// When block is set, each search first says so on started, then waits
+// until block is closed or its context ends.
+type fakeSearches struct {
+	page      search.Page
+	err       error
+	block     chan struct{}
+	started   chan struct{}
+	panicWith any
+
+	mu      sync.Mutex
+	called  bool
+	owner   int64
+	request search.Request
+}
+
+func (f *fakeSearches) Search(ctx context.Context, owner int64, request search.Request) (search.Page, error) {
+	f.mu.Lock()
+	f.called, f.owner, f.request = true, owner, request
+	f.mu.Unlock()
+	if f.block != nil {
+		f.started <- struct{}{}
+		select {
+		case <-f.block:
+		case <-ctx.Done():
+			return search.Page{}, ctx.Err()
+		}
+	}
+	if f.panicWith != nil {
+		panic(f.panicWith)
+	}
+	return f.page, f.err
+}
+
+// searchAPI returns the API searching with searches for a signed-in
+// member, whose session may be read by several requests at once.
+func searchAPI(searches *fakeSearches) *API {
+	return New(discard, Services{Search: searches, Session: &lockedSessions{fakeSessions: memberSessions(account.RoleMember)}})
+}
+
+// lockedSessions is [fakeSessions] whose Current, which records each call,
+// is safe for concurrent requests.
+type lockedSessions struct {
+	*fakeSessions
+	mu sync.Mutex
+}
+
+func (l *lockedSessions) Current(ctx context.Context, secret string) (session.Authenticated, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.fakeSessions.Current(ctx, secret)
+}
+
+// A search answers each result as a list row shows it, its matches in
+// UTF-16 code units, and the total; the signed-in member is the owner.
+func TestSearchMessages(t *testing.T) {
+	id := uuid.MustParse("0190a5f6-1c2d-7e3f-8a4b-5c6d7e8f9a0b")
+	// é is two bytes and one unit; 😀 four bytes and two units.
+	subject := "Café 😀 invoice"
+	preview := "…pay the invoice"
+	searches := &fakeSearches{page: search.Page{Total: 37, Found: []search.Found{{
+		Message: search.Message{
+			ID:        id,
+			AccountID: 3,
+			Date:      time.Date(2026, 11, 2, 9, 14, 0, 0, time.UTC),
+			From:      []mailsync.Address{{Name: "Budi", Address: "budi@example.co.id"}},
+			Subject:   subject,
+			Preview:   "Gmail's snippet",
+			Unread:    true,
+		},
+		SubjectMatches: []search.Span{{Start: strings.Index(subject, "invoice"), Length: 7}},
+		Preview:        preview,
+		PreviewMatches: []search.Span{{Start: strings.Index(preview, "invoice"), Length: 7}},
+	}}}}
+	api := searchAPI(searches)
+
+	response := requestAuthenticated(api, http.MethodGet, "/messages/search?q=invoce&account=3&page=2&limit=5", "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"total":37,"messages":[{
+		"id":"0190a5f6-1c2d-7e3f-8a4b-5c6d7e8f9a0b","accountId":3,"date":"2026-11-02T09:14:00Z",
+		"from":[{"name":"Budi","address":"budi@example.co.id"}],
+		"subject":"Café 😀 invoice","subjectMatches":[{"start":8,"length":7}],
+		"preview":"…pay the invoice","previewMatches":[{"start":9,"length":7}],
+		"unread":true,"starred":false
+	}]}}`, response.Body.String())
+	assert.Equal(t, int64(42), searches.owner)
+	assert.Equal(t, search.Request{Text: "invoce", Account: 3, Page: 2, Limit: 5}, searches.request)
+}
+
+// Without paging parameters a search asks for the first page of 50, every
+// account, and lists empty matches as empty lists.
+func TestSearchMessagesDefaults(t *testing.T) {
+	searches := &fakeSearches{page: search.Page{Found: []search.Found{{Message: search.Message{Subject: "Hello"}, Preview: "Hi"}}, Total: 1}}
+	api := searchAPI(searches)
+
+	response := requestAuthenticated(api, http.MethodGet, "/messages/search?q=hello", "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, search.Request{Text: "hello", Page: 1, Limit: 50}, searches.request)
+	assert.Contains(t, response.Body.String(), `"from":[],"subject":"Hello","subjectMatches":[],"preview":"Hi","previewMatches":[]`)
+}
+
+// Text that is missing, blank, or too long, and paging out of range, are
+// refused before searching.
+func TestSearchMessagesInvalid(t *testing.T) {
+	cases := map[string]string{
+		"missing":    "",
+		"blank":      "q=%20%20",
+		"too long":   "q=" + strings.Repeat("a", 201),
+		"page 0":     "q=a&page=0",
+		"page 1001":  "q=a&page=1001",
+		"limit 0":    "q=a&limit=0",
+		"limit 51":   "q=a&limit=51",
+		"account 0":  "q=a&account=0",
+		"not a page": "q=a&page=two",
+	}
+	for name, query := range cases {
+		searches := &fakeSearches{}
+		api := searchAPI(searches)
+
+		response := requestAuthenticated(api, http.MethodGet, "/messages/search?"+query, "")
+
+		assert.Equal(t, http.StatusUnprocessableEntity, response.Code, name)
+		assert.False(t, searches.called, name)
+	}
+}
+
+// Text of exactly 200 characters, not bytes, is searched.
+func TestSearchMessagesLongest(t *testing.T) {
+	searches := &fakeSearches{}
+	api := searchAPI(searches)
+
+	response := requestAuthenticated(api, http.MethodGet, "/messages/search?q="+strings.Repeat("é", 200), "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.True(t, searches.called)
+}
+
+// A search's failures answer their problems: an account the member does
+// not have is 404, and an index that does not answer is 503 with
+// Retry-After.
+func TestSearchMessagesProblems(t *testing.T) {
+	cases := map[string]struct {
+		err        error
+		status     int
+		problem    string
+		retryAfter string
+	}{
+		"account": {search.ErrAccountNotFound, http.StatusNotFound, connectedAccountNotFoundType, ""},
+		"index":   {fmt.Errorf("search: %w", search.ErrUnavailable), http.StatusServiceUnavailable, searchUnavailableType, "15"},
+		"other":   {errors.New("database down"), http.StatusInternalServerError, "", ""},
+	}
+	for name, c := range cases {
+		api := searchAPI(&fakeSearches{err: c.err})
+
+		response := requestAuthenticated(api, http.MethodGet, "/messages/search?q=invoice", "")
+
+		assert.Equal(t, c.status, response.Code, name)
+		if c.problem != "" {
+			assert.Contains(t, response.Body.String(), c.problem, name)
+		}
+		assert.Equal(t, c.retryAfter, response.Header().Get(retryAfterHeader), name)
+	}
+}
+
+// A member may run two searches at once; a third is refused with 429 and
+// Retry-After before it reaches the index, until one ends.
+func TestSearchMessagesRunning(t *testing.T) {
+	searches := &fakeSearches{block: make(chan struct{}), started: make(chan struct{}, 3)}
+	api := searchAPI(searches)
+	codes := make(chan int, 2)
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() { codes <- requestAuthenticated(api, http.MethodGet, "/messages/search?q=a", "").Code })
+	}
+	<-searches.started
+	<-searches.started
+
+	third := requestAuthenticated(api, http.MethodGet, "/messages/search?q=a", "")
+	close(searches.block)
+	wg.Wait()
+	close(codes)
+	after := requestAuthenticated(api, http.MethodGet, "/messages/search?q=a", "")
+
+	assert.Equal(t, http.StatusTooManyRequests, third.Code)
+	assert.Equal(t, "1", third.Header().Get(retryAfterHeader))
+	assert.Contains(t, third.Body.String(), searchesRunningType)
+	for code := range codes {
+		assert.Equal(t, http.StatusOK, code)
+	}
+	assert.Equal(t, http.StatusOK, after.Code)
+}
+
+// A search whose client gave up runs on, apart from the request, and keeps
+// its place until it ends, so cancelling and sending again never runs more
+// than two at once.
+func TestSearchMessagesCancelled(t *testing.T) {
+	searches := &fakeSearches{block: make(chan struct{}), started: make(chan struct{}, 3)}
+	api := searchAPI(searches)
+	ctx, cancel := context.WithCancel(t.Context())
+	request := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/v0/messages/search?q=a", nil)
+	request.Header.Set("Origin", "http://"+request.Host)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
+	gaveUp := make(chan struct{})
+	go func() {
+		api.Handler().ServeHTTP(httptest.NewRecorder(), request)
+		close(gaveUp)
+	}()
+	<-searches.started
+	cancel()
+	<-gaveUp
+	var wg sync.WaitGroup
+	wg.Go(func() { requestAuthenticated(api, http.MethodGet, "/messages/search?q=a", "") })
+	<-searches.started
+
+	third := requestAuthenticated(api, http.MethodGet, "/messages/search?q=a", "")
+	close(searches.block)
+	wg.Wait()
+
+	assert.Equal(t, http.StatusTooManyRequests, third.Code)
+}
+
+// A search that panics answers 500 and gives its place back, and the
+// process goes on.
+func TestSearchMessagesPanics(t *testing.T) {
+	searches := &fakeSearches{panicWith: "index client bug"}
+	api := searchAPI(searches)
+
+	codes := []int{}
+	for range maxRunningSearches + 1 {
+		codes = append(codes, requestAuthenticated(api, http.MethodGet, "/messages/search?q=a", "").Code)
+	}
+
+	assert.Equal(t, []int{500, 500, 500}, codes)
+}
+
+// Each member's searches count apart, and an ended search gives its place
+// back.
+func TestRunningSearches(t *testing.T) {
+	running := newRunningSearches(2)
+
+	first, second, third := running.take(1), running.take(1), running.take(1)
+	other := running.take(2)
+	running.release(1)
+	again := running.take(1)
+	running.release(1)
+	running.release(1)
+	running.release(2)
+
+	assert.Equal(t, []bool{true, true, false, true, true}, []bool{first, second, third, other, again})
+	assert.Empty(t, running.members)
+}
+
+// The page and total limits in the contract are the most matches a search
+// counts.
+func TestSearchMessagesBounds(t *testing.T) {
+	doc := searchAPI(&fakeSearches{}).api.OpenAPI()
+	operation := doc.Paths["/messages/search"].Get
+	var page *huma.Param
+	for _, p := range operation.Parameters {
+		if p.Name == "page" {
+			page = p
+		}
+	}
+	total := doc.Components.Schemas.Map()["MessageSearchPage"].Properties["total"]
+
+	require.NotNil(t, page)
+	assert.InDelta(t, float64(search.MaxTotal), *page.Schema.Maximum, 0)
+	assert.InDelta(t, float64(search.MaxTotal), *total.Maximum, 0)
+}
+
+// Byte offsets become UTF-16 code units: one for a character up to U+FFFF,
+// two past it.
+func TestTextMatchesOf(t *testing.T) {
+	text := "a é ✓ 😀 z"
+	spans := []search.Span{
+		{Start: strings.Index(text, "é"), Length: len("é")},
+		{Start: strings.Index(text, "✓"), Length: len("✓")},
+		{Start: strings.Index(text, "😀"), Length: len("😀")},
+		{Start: strings.Index(text, "z"), Length: 1},
+	}
+
+	got := textMatchesOf(text, spans)
+
+	assert.Equal(t, []textMatch{{Start: 2, Length: 1}, {Start: 4, Length: 1}, {Start: 6, Length: 2}, {Start: 9, Length: 1}}, got)
+}

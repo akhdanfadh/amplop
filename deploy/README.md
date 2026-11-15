@@ -144,8 +144,8 @@ it.
 work survives a restart. It reaches PostgreSQL, the [search
 index](#the-search-index), SeaweedFS, and, to send inbok's email, mail
 servers on the internet; it needs `INBOK_ENCRYPTION_KEYS`,
-`INBOK_PUBLIC_URL`, and the SeaweedFS keys like the server,
-`INBOK_MEILISEARCH_KEY`, and the same `INBOK_GOOGLE_CLIENT_ID` and
+`INBOK_PUBLIC_URL`, the SeaweedFS keys, and `INBOK_MEILISEARCH_KEY`
+like the server, and the same `INBOK_GOOGLE_CLIENT_ID` and
 `INBOK_GOOGLE_CLIENT_SECRET`, which `compose.yaml` passes to both, for
 synchronizing members' Gmail accounts every minute and for the job that
 asks Google to end inbok's permission for a Gmail account a member
@@ -164,8 +164,8 @@ one ID and run some work twice. One worker runs many jobs at once.
 
 `meilisearch` runs [Meilisearch](https://www.meilisearch.com) Community
 Edition, the search index: it holds a copy of members' messages for
-search, which the worker keeps in step with their mail. Search itself is
-not part of this release yet. It has no published port and
+search, which the worker keeps in step with their mail and inbok
+searches when a member does. It has no published port and
 sits on the internal network with PostgreSQL, so the internet and Caddy
 cannot reach it. Apart from its health check, it answers only requests
 with a valid key: `INBOK_MEILISEARCH_KEY`, its master key, or a key made
@@ -173,8 +173,9 @@ from it. Meilisearch's anonymous usage reports are turned off.
 
 The worker applies the index's settings each time it starts, and stops
 with an error, which `docker compose logs worker` shows, if Meilisearch
-does not accept them within a minute. The server does not need
-Meilisearch to start.
+does not accept them within a minute. The server needs its address and
+key but not Meilisearch itself to start: while it is down, searching
+answers that search is unavailable and the rest of inbok works.
 
 Everything in it comes from the database and the stored text of
 messages, so its volume needs no [backup](#backups). The index is

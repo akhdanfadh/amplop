@@ -82,7 +82,7 @@ The worker reads these environment variables:
 | `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of Gmail accounts, connected or removed. |
 | `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with, the [send](#sending-a-message) job sends with, and the [syncs](#synchronization) read Gmail with. Empty: the worker runs none of them and leaves them queued. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
-| `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. The worker applies the [search index](#search-index)'s settings when it starts. |
+| `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. Serve [searches](#searching) it; the worker applies the [search index](#search-index)'s settings when it starts and keeps the index in step. |
 | `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, which signs every request. |
 
 DBOS's own `DBOS__APPVERSION` and `DBOS__VMID` would replace the version
@@ -1026,6 +1026,8 @@ its request.
 | `INBOK_S3_ENDPOINT` | none, required | The S3 service that holds message content, e.g. `http://127.0.0.1:8333`; see Message content store below. |
 | `INBOK_S3_ACCESS_KEY_ID` | none, required | The key ID inbok signs in to it with. |
 | `INBOK_S3_SECRET_ACCESS_KEY` | none, required | The secret for that key ID. |
+| `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers, as the worker reads it; serve [searches](#searching) it. Serve starts without asking it, and a search answers 503 while it is down. |
+| `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, as the worker reads it. |
 | `GIN_MODE` | `debug`; the image sets `release` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
@@ -2963,10 +2965,12 @@ access tokens itself, as the worker does.
 ## Search index
 
 Search finds a member's messages through Meilisearch, a derived index: a
-searchable copy of message data that returns only message IDs, while the
-messages themselves load from PostgreSQL with the usual ownership check.
+searchable copy of message data that returns message IDs, with where the
+query matched and an excerpt of the body around it, while the messages
+themselves load from PostgreSQL with the usual ownership check.
 ADR005 in the project's decision records explains the choices. Jobs
-keep the index in step with synchronized mail; nothing searches it yet.
+keep the index in step with synchronized mail, and Search Messages
+[searches](#searching) it.
 
 The index holds every message inbok keeps, Spam and Trash included, and
 a query decides which mailboxes it leaves out. Each write to a member's
@@ -3077,6 +3081,63 @@ too.
   test pass while mail leaked between members. `meilisearch`'s tests run
   against the image the Compose files use, through Testcontainers, like
   the PostgreSQL tests.
+
+### Searching
+
+Search Messages (`GET /api/v0/messages/search`) calls
+`search.Searcher`, which reads through `SearchStorage`, which
+`repository/postgres` implements:
+
+1. A search of one account checks it is the member's, so a search of
+   one they no longer have answers 404 rather than finding nothing.
+2. It looks up the IDs of the member's mailboxes with the roles junk,
+   trash, and drafts, and searches the index without the messages in
+   them: Spam and Trash as Gmail leaves them out, and drafts, which no
+   view shows.
+3. It reads the messages found from PostgreSQL by their IDs, keeping the
+   index's order and dropping those in such a mailbox now, deleted, or
+   another member's. The index may lag behind, so PostgreSQL decides
+   what is shown: at worst a page holds fewer results than its limit,
+   and the total is off, until the index catches up.
+
+The index returns one message per conversation, its best match
+(Meilisearch's search-time `distinct` on `conversation`), so the total
+and the pages count conversations. Every word of the query must match
+(`matchingStrategy: all`), as in Gmail, so adding a word narrows a
+search; Meilisearch reads only a query's first 10 words. Each hit
+carries its subject and an excerpt of its body text around the best
+match, which Meilisearch crops to about 20 words, both with every match
+marked by STX and ETX, two control characters `search.BodyText` drops
+from body text, so they never stand for its text (a subject holding one
+loses its marks); the adapter takes the
+marks out and keeps where they were, in UTF-8 bytes. It never asks for
+Meilisearch's `_matchesPosition`, which lists every match in both body
+texts: a crafted mailbox made one page of 100 results decode to about
+500 MB. Meilisearch matches a query's last word as a prefix too and
+marks as many of its characters as the query word has, so the adapter
+completes a mark to its word's end when at most two letters are left,
+Meilisearch's most typos per word: a typo, `anggran`, marks the whole
+of "Anggaran", while a prefix, `inv`, stays as typed in "Invoice". The
+searcher keeps a subject's matches only when the index's subject is
+PostgreSQL's, drops any match that leaves its text or splits a
+character, and starts an excerpt at most three words before its first
+match, so the match shows on a phone's one line. A message whose body
+text did not match shows the provider's preview, with nothing marked.
+The handler turns byte positions into UTF-16 code units, which is what
+a JavaScript string counts. A Meilisearch that does not answer, or
+answers that it failed, is a 503 `search-unavailable` with
+`Retry-After: 15`.
+
+Cutting excerpts is most of a search's cost in Meilisearch, and it grows
+with each result's body text: on 100 crafted 64 KiB messages, a page of
+100 took 0.76 s against 4 ms for IDs alone. So a page holds at most 50
+results, and a member may have two searches running at once
+(`runningSearches`, counted in serve's memory); a third answers 429
+`searches-running` with `Retry-After: 1` before it reaches
+Meilisearch. A search runs apart from its request and gives its place
+back only when it ends, within 15 seconds, so a client that gives up and
+asks again cannot run more; Meilisearch may go on past that, but serve
+stops waiting. Each serve process counts on its own.
 
 ### Rebuilding the index
 
@@ -3325,7 +3386,7 @@ httpapi --> mailsync <-- repository/postgres
 httpapi --> conversation <-- repository/postgres
                          <-- google
             conversation --> mailsync, connectedaccount
-            search <-- meilisearch
+httpapi --> search <-- meilisearch
                    <-- repository/postgres
             search --> mailsync, messagecontent
 httpapi --> messagecontent <-- s3

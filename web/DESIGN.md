@@ -404,8 +404,10 @@ last two redirect into settings, so settings can move without the server.
 ### Message list
 
 - **Rows are conversations** (one per provider thread), newest first by
-  their newest message; search results are messages. A conversation is in
-  a view when one of its messages is. Its row, the same in every view, is
+  their newest message. A search result is a conversation too, shown
+  through its best-matching message: that message's sender, date,
+  subject, and the text around the match. A conversation is in a view
+  when one of its messages is. Its row, the same in every view, is
   made from its messages outside Spam and Trash, or from its Spam and
   Trash ones when it has no other; Gmail drafts are not shown. So a reply
   moves its conversation up in every view it is in, as in Gmail's
@@ -639,7 +641,13 @@ The box at the top of the list ("Search mail"). From 2 characters, after
 Enter, Escape). "Show all results" or Enter replaces the list pane with
 results, most relevant first, with account chips and the note "Spam and
 Trash are not searched." Matched words use `highlight`, from the API's
-match positions, never from matching text in the browser.
+match positions (UTF-16 offsets, as JavaScript strings count), never
+from matching text in the browser: in the subject, and in the snippet,
+which shows the text around the match when the body matched. A match
+only in the sender or recipients marks nothing. Each box has one search
+in flight at a time: typing cancels the one before. The server lets an
+account run two searches at once; refused (429 with Retry-After), the
+box waits that long and asks again without showing an error.
 
 ### Phones
 

@@ -59,6 +59,7 @@ type Services struct {
 	// ConversationActions is nil when no Google client is configured, and
 	// actions then refuse with a 409.
 	ConversationActions conversationActionService
+	Search              searchService
 }
 
 // New registers operations; logger receives one line per request. Build it
@@ -143,6 +144,7 @@ func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API 
 	registerOutgoingMessages(api, services.OutgoingMessages)
 	registerMessageContent(api, services.MessageContent)
 	registerConversations(api, logger, services.Conversations, services.ConversationActions)
+	registerSearch(api, logger, services.Search)
 
 	documentRateLimits(api)
 	documentEnrollmentAccess(api)
