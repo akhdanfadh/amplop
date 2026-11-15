@@ -359,7 +359,9 @@ stays in memory:
    field's description; a hidden username field lets a password manager
    offer the right one. Wrong passwords count against sign-in's limits.
 2. The QR code, drawn locally, and the setup key in groups of four, then the
-   first code from the app. Checking it leaves two-factor off.
+   first code from the app. Checking it leaves two-factor off. On a narrow
+   page or a touch pointer, "Add to authenticator app" opens the code's
+   `otpauth://` address, since a phone cannot scan its own screen.
 3. The ten backup codes, with copy and download, then "I've saved these
    codes", which turns two-factor on, signs out the other browsers, and
    renews this browser's session; every query is reset with it, so nothing

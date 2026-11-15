@@ -18,6 +18,7 @@ import type {
 } from "@/api/generated/model";
 import { uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
+import { lineLink } from "@/components/link-style";
 import { ReadError } from "@/components/read-error";
 import { RequestError } from "@/components/request-error";
 import {
@@ -31,6 +32,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import { CodeStep } from "./code-step";
 import { CodesStep, notWaitingType } from "./codes-step";
 import { PasswordStep } from "./password-step";
@@ -339,6 +341,13 @@ function QrStep({
             marginSize={qrQuietZone}
           />
         </div>
+        {/* Only where the page is narrow or the pointer a finger, as on the
+            phone that holds the app. Narrow is the page width below which
+            settings sections stack (@lg, 512 px of page): the page caps at
+            720 px, so a wider breakpoint would never hide it. */}
+        <a href={enrollment.uri} className={cn(lineLink, "@lg:pointer-fine:hidden")}>
+          {qrText.addToApp}
+        </a>
         <p className="text-sm text-muted-foreground">{qrText.keyLead}</p>
         {/* Groups of four are easier to type; authenticator apps ignore the
             spaces. Copy gives the key without them. */}

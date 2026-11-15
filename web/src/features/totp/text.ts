@@ -124,6 +124,9 @@ export const qrText = {
   scan: "1. Scan this QR code with your authenticator app",
   enter: "2. Enter the six-digit code the app shows",
   image: "QR code that adds inbok to an authenticator app",
+  // A phone cannot scan its own screen: its authenticator app opens the
+  // code's address instead.
+  addToApp: "Add to authenticator app",
   keyLead: "Can't scan it? Enter the setup key instead:",
   copy: "Copy setup key",
   copied: "Setup key copied.",

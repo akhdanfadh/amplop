@@ -668,6 +668,9 @@ pull-to-refresh, which would reload the app, never starts.
   member sees, never sent to recipients, unlike Gmail's sender name; it
   shows in mail instead of the address, and an empty one goes back to the
   address. Saving keeps focus in the field and says "Saved".
+- A QR code for a phone app also links its address (e.g. "Add to
+  authenticator app", `otpauth://`) on a narrow page or a touch pointer: a
+  phone cannot scan its own screen.
 - Below 1024 px the settings sidebar is a drawer, as mail's is.
 - Signed-out pages (sign-in, setup, registration, password reset, email
   verification): the `muted` surface with one column about 400 px wide,
