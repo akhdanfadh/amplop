@@ -267,6 +267,13 @@
             },
             "type": "array"
           },
+          "places": {
+            "description": "Every place with its unread count after the action, as List Places answers; left out when counting failed.",
+            "items": {
+              "$ref": "#/components/schemas/PlaceCount"
+            },
+            "type": "array"
+          },
           "refused": {
             "description": "The conversations the action left as they were, in the order of ids.",
             "items": {

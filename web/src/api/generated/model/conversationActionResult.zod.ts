@@ -7,6 +7,8 @@
 import * as zod from 'zod';
 
 
+export const conversationActionResultPlacesItemUnreadMin = 0;
+
 
 export const ConversationActionResult = zod.object({
   "conversations": zod.array(zod.object({
@@ -33,6 +35,13 @@ export const ConversationActionResult = zod.object({
   "trash": zod.boolean().describe('Whether a message is in Trash.'),
   "unread": zod.boolean().describe('Whether a shown message is unread.')
 })).describe('The conversations the action changed, as the provider answered, in the order of ids. One that no longer exists is in neither list.'),
+  "places": zod.array(zod.object({
+  "accountId": zod.int(),
+  "name": zod.string().nullable().describe('A label\'s own name under its parent, e.g. Projects for a Gmail label Work/Projects under its label Work. It keeps what the provider names the levels the member has no label for, so it can hold the provider\'s separator: Home/Bills with no label Home, at the top; 2026/Q4 for Work/Projects/2026/Q4 under Projects with no label Work/Projects/2026. Null for a view.'),
+  "parent": zod.uuid().nullable().describe('The place, a label\'s id, that a label nests under, so no client parses a provider\'s names; null for a view and a label at the top.'),
+  "place": zod.string().describe('A view\'s name or a label\'s id, as the place of List Conversations takes it.'),
+  "unread": zod.int().min(conversationActionResultPlacesItemUnreadMin).describe('How many of its conversations are unread.')
+})).optional().describe('Every place with its unread count after the action, as List Places answers; left out when counting failed.'),
   "refused": zod.array(zod.object({
   "id": zod.uuid(),
   "reason": zod.enum(['not-found', 'needs-reconnect', 'failed']).describe('not-found: the signed-in account has no such conversation, or the provider no longer has it. needs-reconnect: its connected account must be reconnected first. failed: the provider failed, refused, or took too long; trying again may work.')

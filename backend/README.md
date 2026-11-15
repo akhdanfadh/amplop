@@ -2876,7 +2876,9 @@ writes only what Gmail answers (ADR031, "Mail actions as built"):
    brought to a newer version keeps it.
 4. It answers with the changed rows, as read after the writes, each
    refused conversation with its reason (`not-found`,
-   `needs-reconnect`, or `failed`), and `undo`, the opposite action.
+   `needs-reconnect`, or `failed`), `undo`, the opposite action, and
+   `places`, every unread count as `GET /places` answers, left out and
+   logged when counting fails.
 
 Each conversation is changed or refused on its own, so one answer can
 hold both, and nothing changes in inbok that Gmail did not accept: a

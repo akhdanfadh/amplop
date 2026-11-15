@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -301,7 +302,14 @@ func (f *fakeConversationActions) Apply(_ context.Context, userID int64, action 
 }
 
 func newActionsAPI(actions *fakeConversationActions) *API {
-	services := Services{Conversations: &fakeConversations{}, Session: memberSessions(account.RoleMember)}
+	return newActionsCountsAPI(actions, &fakeConversations{})
+}
+
+// newActionsCountsAPI returns an API that applies actions with actions, as
+// [newActionsAPI] does, and reads places and conversations with
+// conversations.
+func newActionsCountsAPI(actions *fakeConversationActions, conversations *fakeConversations) *API {
+	services := Services{Conversations: conversations, Session: memberSessions(account.RoleMember)}
 	if actions != nil {
 		services.ConversationActions = actions
 	}
@@ -311,23 +319,58 @@ func newActionsAPI(actions *fakeConversationActions) *API {
 var goneID = uuid.MustParse("0b1b2c3d-0000-4000-8000-000000000002")
 
 // An action answers with the conversations it changed, those it refused
-// with why, and the action that undoes it.
+// with why, the action that undoes it, and the member's unread counts
+// after it.
 func TestApplyAction(t *testing.T) {
 	actions := &fakeConversationActions{applied: conversation.Applied{
 		Conversations: []conversation.Conversation{report},
 		Refused:       []conversation.Refusal{{ID: goneID, Reason: conversation.ReasonNeedsReconnect}},
 	}}
-	api := newActionsAPI(actions)
+	conversations := &fakeConversations{counts: []conversation.PlaceCount{
+		{Account: 3, Place: conversation.Place{View: conversation.ViewInbox}, Unread: 2},
+	}}
+	api := newActionsCountsAPI(actions, conversations)
 
 	response := requestAuthenticated(api, http.MethodPost, "/conversations/actions",
 		`{"action":"unread","ids":["`+reportID.String()+`","`+goneID.String()+`"]}`)
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.JSONEq(t, `{"data":{"conversations":[`+reportJSON+`],`+
-		`"refused":[{"id":"`+goneID.String()+`","reason":"needs-reconnect"}],"undo":"read"}}`, response.Body.String())
+		`"refused":[{"id":"`+goneID.String()+`","reason":"needs-reconnect"}],"undo":"read",`+
+		`"places":[{"accountId":3,"place":"inbox","name":null,"parent":null,"unread":2}]}}`, response.Body.String())
 	assert.Equal(t, int64(42), actions.userID)
 	assert.Equal(t, conversation.ActionUnread, actions.action)
 	assert.Equal(t, []uuid.UUID{reportID, goneID}, actions.ids)
+	assert.Equal(t, int64(42), conversations.userID)
+}
+
+// Counting no places, e.g. once the member's last account is gone, answers
+// an empty list, which tells the web app to clear its counts.
+func TestApplyActionNoPlaces(t *testing.T) {
+	actions := &fakeConversationActions{applied: conversation.Applied{
+		Conversations: []conversation.Conversation{}, Refused: []conversation.Refusal{{ID: goneID, Reason: conversation.ReasonNotFound}},
+	}}
+	api := newActionsCountsAPI(actions, &fakeConversations{})
+
+	response := requestAuthenticated(api, http.MethodPost, "/conversations/actions", `{"action":"read","ids":["`+goneID.String()+`"]}`)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"conversations":[],"refused":[{"id":"`+goneID.String()+`","reason":"not-found"}],`+
+		`"undo":"unread","places":[]}}`, response.Body.String())
+}
+
+// The action is done at the provider, so counts that fail after it leave
+// only the counts out.
+func TestApplyActionCountsFail(t *testing.T) {
+	actions := &fakeConversationActions{applied: conversation.Applied{
+		Conversations: []conversation.Conversation{report}, Refused: []conversation.Refusal{},
+	}}
+	api := newActionsCountsAPI(actions, &fakeConversations{err: errors.New("database down")})
+
+	response := requestAuthenticated(api, http.MethodPost, "/conversations/actions", `{"action":"spam","ids":["`+reportID.String()+`"]}`)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"conversations":[`+reportJSON+`],"refused":[],"undo":"unspam"}}`, response.Body.String())
 }
 
 // A bad action or ID list is refused with the field it is in, before the

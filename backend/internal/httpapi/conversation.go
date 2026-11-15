@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -40,10 +41,11 @@ type conversationHandler struct {
 	conversations conversationService
 	// actions is nil when no Google client is configured.
 	actions conversationActionService
+	logger  *slog.Logger
 }
 
-func registerConversations(api huma.API, conversations conversationService, actions conversationActionService) {
-	handler := conversationHandler{conversations: conversations, actions: actions}
+func registerConversations(api huma.API, logger *slog.Logger, conversations conversationService, actions conversationActionService) {
+	handler := conversationHandler{conversations: conversations, actions: actions, logger: logger}
 
 	registerConversationList(api, handler)
 	registerNewConversationCount(api, handler)
@@ -301,7 +303,12 @@ func (h conversationHandler) handleListPlaces(ctx context.Context, _ *struct{}) 
 	if err != nil {
 		return nil, err
 	}
-	listed := places{Places: make([]placeCount, 0, len(counts))}
+	return respondData(places{Places: placeCountsOf(counts)}), nil
+}
+
+// placeCountsOf returns counts as List Places answers them.
+func placeCountsOf(counts []conversation.PlaceCount) []placeCount {
+	listed := make([]placeCount, 0, len(counts))
 	for _, count := range counts {
 		item := placeCount{AccountID: count.Account, Place: count.Place.String(), Unread: count.Unread}
 		if count.Place.View == "" {
@@ -311,9 +318,9 @@ func (h conversationHandler) handleListPlaces(ctx context.Context, _ *struct{}) 
 		if count.Parent != uuid.Nil() {
 			item.Parent = &count.Parent
 		}
-		listed.Places = append(listed.Places, item)
+		listed = append(listed, item)
 	}
-	return respondData(listed), nil
+	return listed
 }
 
 // ========================
@@ -456,6 +463,9 @@ type conversationActionResult struct {
 	Conversations []conversationRow     `json:"conversations" nullable:"false" doc:"The conversations the action changed, as the provider answered, in the order of ids. One that no longer exists is in neither list."`
 	Refused       []refusedConversation `json:"refused" nullable:"false" doc:"The conversations the action left as they were, in the order of ids."`
 	Undo          conversation.Action   `json:"undo" doc:"The action that undoes this one, for the changed conversations."`
+	// A pointer, so a successful count of no places is [] and only a failed
+	// one is left out.
+	Places *[]placeCount `json:"places,omitempty" nullable:"false" doc:"Every place with its unread count after the action, as List Places answers; left out when counting failed."`
 }
 
 // TransformSchema lists undo's values from [conversation.Actions].
@@ -513,5 +523,14 @@ func (h conversationHandler) handleApplyConversationAction(ctx context.Context, 
 	for _, refused := range applied.Refused {
 		result.Refused = append(result.Refused, refusedConversation(refused))
 	}
+	// The action is done at the provider, so a count that fails is left out
+	// rather than failing the answer; the next List Places brings it.
+	counts, err := h.conversations.Places(ctx, user.ID)
+	if err != nil {
+		h.logger.WarnContext(ctx, "place counts after a conversation action failed", "err", err)
+		return respondData(result), nil
+	}
+	listed := placeCountsOf(counts)
+	result.Places = &listed
 	return respondData(result), nil
 }
