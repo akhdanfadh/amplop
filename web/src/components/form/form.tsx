@@ -1,15 +1,29 @@
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { useSelector } from "@tanstack/react-form";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useFormContext } from "./form-context";
 
+// The action of the submit button that started the current submit;
+// undefined for a form's only button.
+const SubmitAction = createContext<string | undefined>(undefined);
+
 // Form is the current form's <form> element, named label for screen
 // readers. It submits through TanStack Form and ignores a submit while one
 // is sending. A submit started from a field moves focus to the submit
 // button; after each submit, focus moves to the first invalid field. A
-// submit that throws shows the app's crash screen.
+// submit that throws shows the app's crash screen. A form with several
+// submit buttons passes the pressed one's action to onSubmit as its meta,
+// { action }: Enter in a field presses the first.
 export function Form({
   label,
   className,
@@ -25,6 +39,7 @@ export function Form({
   // Counts finished submits; each moves focus once its errors render.
   const [finished, setFinished] = useState(0);
   const [crash, setCrash] = useState<{ error: unknown }>();
+  const [action, setAction] = useState<string>();
 
   useEffect(() => {
     if (finished > 0 && ref.current) focusFirstInvalid(ref.current);
@@ -48,22 +63,29 @@ export function Form({
         event.preventDefault();
         // Enter in a field submits even while the button is pending.
         if (form.state.isSubmitting) return;
-        focusSubmitButton(event.currentTarget);
-        form.handleSubmit().then(
+        // Enter in a field submits with the form's first submit button
+        // (HTML, "Implicit submission").
+        const { submitter } = event.nativeEvent;
+        const pressed = submitter instanceof HTMLElement ? submitter : null;
+        const name = pressed?.dataset.action;
+        setAction(name);
+        focusSubmitButton(event.currentTarget, pressed);
+        form.handleSubmit(name === undefined ? undefined : { action: name }).then(
           () => setFinished((count) => count + 1),
           (error: unknown) => setCrash({ error }),
         );
       }}
     >
-      {children}
+      <SubmitAction value={action}>{children}</SubmitAction>
     </form>
   );
 }
 
-// focusSubmitButton moves focus to form's submit button when it is on
-// another control in form, e.g. a field where Enter submitted it.
-function focusSubmitButton(form: HTMLFormElement): void {
-  const button = form.querySelector<HTMLElement>('[type="submit"]');
+// focusSubmitButton moves focus to pressed, or form's first submit button,
+// when it is on another control in form, e.g. a field where Enter
+// submitted it.
+function focusSubmitButton(form: HTMLFormElement, pressed: HTMLElement | null): void {
+  const button = pressed ?? form.querySelector<HTMLElement>('[type="submit"]');
   const focused = document.activeElement;
   // The submit locks the fields, which would drop focus to the page. The
   // pending button keeps it and tells a screen reader that it is working.
@@ -90,20 +112,26 @@ function focusFirstInvalid(form: HTMLFormElement): void {
 // "Sign in", and working what it is doing while the form sends, e.g.
 // "Signing in...". isDisabled also blocks it, e.g. while a test waits for
 // saved settings. variant "destructive" marks a submit that removes
-// something, e.g. turning off two-factor authentication.
+// something, e.g. turning off two-factor authentication, and "outline" a
+// second submit beside the main one. action names this button's submit
+// in a form with several, e.g. "test"; while one sends, the others wait.
 export function SubmitButton({
   children,
   working,
   isDisabled,
   variant = "default",
+  action,
 }: {
   children: ReactNode;
   working: string;
   isDisabled?: boolean;
-  variant?: "default" | "destructive";
+  variant?: "default" | "destructive" | "outline";
+  action?: string;
 }): ReactElement {
   const form = useFormContext();
-  const sending = useSelector(form.store, (state) => state.isSubmitting);
+  const submitting = useSelector(form.store, (state) => state.isSubmitting);
+  const pressed = useContext(SubmitAction);
+  const sending = submitting && pressed === action;
 
   return (
     // Pending, unlike disabled, keeps focus on the button and tells a screen
@@ -113,7 +141,8 @@ export function SubmitButton({
       variant={variant}
       className="whitespace-normal"
       isPending={sending}
-      isDisabled={isDisabled}
+      isDisabled={isDisabled || (submitting && !sending)}
+      data-action={action}
     >
       {sending ? (
         <>

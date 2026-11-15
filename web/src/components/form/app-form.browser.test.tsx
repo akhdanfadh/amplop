@@ -410,6 +410,8 @@ const ServerSchema = z
     error: "Choose TLS to sign in.",
   });
 type ServerValues = z.infer<typeof ServerSchema>;
+type ServerMeta = { action: "test" | "save" };
+const saveMeta: ServerMeta = { action: "save" };
 const serverStart: ServerValues = {
   host: "",
   port: "465",
@@ -424,13 +426,19 @@ const modes = [
 ] as const;
 
 // ServerTestForm holds another service's settings in the text, choice, and
-// password kinds; send gets the values.
-function ServerTestForm({ send }: { send: (value: ServerValues) => Promise<void> }) {
+// password kinds, with two submit buttons; send gets the values and which
+// button sent them.
+function ServerTestForm({
+  send,
+}: {
+  send: (value: ServerValues, action: string) => Promise<void>;
+}) {
   const form = useAppForm({
     defaultValues: serverStart,
     validationLogic: revalidateLogic(),
     validators: { onDynamic: ServerSchema },
-    onSubmit: ({ value }) => send(value),
+    onSubmitMeta: saveMeta,
+    onSubmit: ({ value, meta }) => send(value, meta.action),
   });
 
   return (
@@ -469,14 +477,20 @@ function ServerTestForm({ send }: { send: (value: ServerValues) => Promise<void>
             <field.PasswordField label="Password" autoComplete="off" passwordManagers="ignore" />
           )}
         </form.AppField>
-        <form.SubmitButton working="Saving...">Save</form.SubmitButton>
+        <form.SubmitButton action="test" working="Saving...">
+          Save and test
+        </form.SubmitButton>
+        <form.SubmitButton action="save" variant="outline" working="Saving...">
+          Save only
+        </form.SubmitButton>
       </form.Form>
     </form.AppForm>
   );
 }
 
 const host = () => page.getByRole("textbox", { name: "Server" });
-const save = () => page.getByRole("button", { name: "Save" });
+const saveAndTest = () => page.getByRole("button", { name: "Save and test" });
+const saveOnly = () => page.getByRole("button", { name: "Save only" });
 
 describe("the text, choice, and password kinds", () => {
   it("type a literal value without capitals or spelling fixes, and a port on a number pad", async () => {
@@ -511,7 +525,7 @@ describe("the text, choice, and password kinds", () => {
   });
 
   it("choose an option by keyboard, under the label as its group's name", async () => {
-    const send = vi.fn<(value: ServerValues) => Promise<void>>(async () => {});
+    const send = vi.fn<(value: ServerValues, action: string) => Promise<void>>(async () => {});
     await render(<ServerTestForm send={send} />);
     await userEvent.type(host(), "smtp.example.com");
 
@@ -527,10 +541,10 @@ describe("the text, choice, and password kinds", () => {
     await userEvent.click(page.getByText("Encrypted.", { exact: true }));
     await expect.element(page.getByRole("radio", { name: "TLS" })).toBeChecked();
     await userEvent.keyboard("{ArrowDown}");
-    await userEvent.click(save());
+    await userEvent.click(saveOnly());
 
     await vi.waitFor(() =>
-      expect(send).toHaveBeenCalledWith(expect.objectContaining({ mode: "none" })),
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({ mode: "none" }), "save"),
     );
   });
 
@@ -540,10 +554,38 @@ describe("the text, choice, and password kinds", () => {
     await userEvent.type(page.getByRole("textbox", { name: "Username" }), "inbok");
 
     await userEvent.click(page.getByText("None", { exact: true }));
-    await userEvent.click(save());
+    await userEvent.click(saveOnly());
 
     const none = page.getByRole("radio", { name: "None" });
     await expect.element(none).toHaveFocus();
     await expect.element(none).toHaveAccessibleDescription("Not encrypted. Choose TLS to sign in.");
+  });
+
+  it("send with the pressed button's action, which alone shows it is working", async () => {
+    const request = pending();
+    const send = vi.fn<(value: ServerValues, action: string) => Promise<void>>(
+      () => request.promise,
+    );
+    await render(<ServerTestForm send={send} />);
+    await userEvent.type(host(), "smtp.example.com");
+
+    await userEvent.click(saveOnly());
+    const working = page.getByRole("button", { name: "Saving..." });
+    await expect.element(working).toHaveAttribute("data-action", "save");
+    await expect.element(saveAndTest()).toBeDisabled();
+    await expect.element(page.getByRole("radio", { name: "TLS" })).toBeDisabled();
+    request.resolve();
+
+    await expect.element(saveAndTest()).toBeEnabled();
+    expect(send).toHaveBeenCalledWith(expect.anything(), "save");
+  });
+
+  it("send Enter in a field with the first button's action", async () => {
+    const send = vi.fn<(value: ServerValues, action: string) => Promise<void>>(async () => {});
+    await render(<ServerTestForm send={send} />);
+
+    await userEvent.type(host(), "smtp.example.com{Enter}");
+
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.anything(), "test"));
   });
 });
