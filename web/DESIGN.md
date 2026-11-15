@@ -857,8 +857,8 @@ The tone says what the status asks of the member:
 | ----------- | ------------ | ------------------------------------------------------------------------------------------ |
 | Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser |
 | Info        | To wait      | Sending, Syncing (spinner)                                                                 |
-| Success     | Nothing more | Sent, Up to date, Active, Verified, Two-factor on                                          |
-| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect                                               |
+| Success     | Nothing more | Sent, Up to date, Active, Verified, Two-factor on, Tested                                  |
+| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect, Not set up                                   |
 | Destructive | A fix        | Not sent, Sync failed                                                                      |
 
 Deactivated is an admin's choice, not a fault. Up to date and Active show
@@ -866,10 +866,12 @@ only on the page whose job is that status (Connected accounts, Members);
 elsewhere the usual state shows nothing.
 Admin and the Members table's Verified column wait for the settings pages'
 redesign (`feat/design-forms`); Two-factor on shows on Security and the
-two-factor page. The sidebar shows an account's Syncing, Reconnect, or
-Sync failed as the icon alone, in its tone, the words read to screen
-readers and shown on hover, and with the icon on a line under the name
-for a touch.
+two-factor page. Tested, Not confirmed, and Not set up show beside System
+email's title: whether inbok can send its own email, which sign-in codes,
+password resets, and Registration need. The sidebar shows an account's
+Syncing, Reconnect, or Sync failed as the icon alone, in its tone, the
+words read to screen readers and shown on hover, and with the icon on a
+line under the name for a touch.
 
 ## Data for mail
 

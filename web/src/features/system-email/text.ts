@@ -15,6 +15,15 @@ export const mailServerAbout = "The SMTP server and sender inbok's own messages 
 export const testTitle = "Test message";
 export const testAbout = "Sends a message with the saved settings, to check that they work.";
 
+// The badge beside the title: whether inbok can send its own email.
+export const badgeText = {
+  tested: "Tested",
+  // True after a failed test as before any: Go clears the tested time
+  // when a test fails.
+  untested: "Not confirmed",
+  none: "Not set up",
+};
+
 // The summary's names for the saved settings, and its words for what is
 // not set.
 export const summaryText = {

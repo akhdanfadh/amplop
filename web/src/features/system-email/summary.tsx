@@ -1,6 +1,8 @@
 import type { ReactElement, ReactNode } from "react";
+import { CircleAlertIcon, CircleCheckIcon } from "lucide-react";
 import type { SystemEmailSettings } from "@/api/generated/model";
-import { securityLabel, summaryText } from "./text";
+import { StatusBadge } from "@/components/status-badge";
+import { badgeText, securityLabel, summaryText } from "./text";
 
 // Summary lists the saved settings, the password only as saved or not.
 export function Summary({ settings }: { settings: SystemEmailSettings }): ReactElement {
@@ -37,5 +39,26 @@ export function Summary({ settings }: { settings: SystemEmailSettings }): ReactE
         </div>
       ))}
     </dl>
+  );
+}
+
+// SystemEmailBadge says whether inbok can send its own email: settings
+// saved that passed a test, saved but untested, or none saved, absent
+// settings.
+export function SystemEmailBadge({
+  settings,
+}: {
+  settings: SystemEmailSettings | undefined;
+}): ReactElement {
+  if (settings?.testedAt)
+    return (
+      <StatusBadge tone="success" icon={CircleCheckIcon}>
+        {badgeText.tested}
+      </StatusBadge>
+    );
+  return (
+    <StatusBadge tone="warning" icon={CircleAlertIcon}>
+      {settings ? badgeText.untested : badgeText.none}
+    </StatusBadge>
   );
 }

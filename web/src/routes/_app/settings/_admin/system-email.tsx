@@ -10,7 +10,7 @@ import { loadSignedIn, useSessionEnd } from "@/features/auth/session-end";
 import { SettingsPage, SettingsSection } from "@/features/settings/page";
 import { pageName } from "@/features/settings/text";
 import { SettingsForm } from "@/features/system-email/settings-form";
-import { Summary } from "@/features/system-email/summary";
+import { Summary, SystemEmailBadge } from "@/features/system-email/summary";
 import { TestMessageForm } from "@/features/system-email/test-message-form";
 import {
   formText,
@@ -84,7 +84,11 @@ function SystemEmail(): ReactElement {
   }
 
   return (
-    <SettingsPage title={pageName.systemEmail} lead={systemEmailLead}>
+    <SettingsPage
+      title={pageName.systemEmail}
+      aside={<SystemEmailBadge settings={settings} />}
+      lead={systemEmailLead}
+    >
       {/* A failed refresh keeps the sections and says why (DESIGN.md
           "States"); a 401 opens sign-in instead. */}
       {systemEmail.error && systemEmail.error.status !== unauthorized && (

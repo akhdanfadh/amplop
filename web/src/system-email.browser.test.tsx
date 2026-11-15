@@ -184,6 +184,7 @@ describe("System email", () => {
   it("shows the saved settings and opens the form in their place", async () => {
     await open({ settings: saved, sent: [], bodies: [] });
 
+    await expect.element(page.getByText("Tested", { exact: true })).toBeVisible();
     await expect.element(page.getByText("inbok <inbok@example.com>")).toBeVisible();
     await expect.element(page.getByText(/Last test passed/)).toBeVisible();
 
@@ -213,6 +214,7 @@ describe("System email", () => {
     await expect
       .element(page.getByText("Settings saved. Send a test message to check them."))
       .toBeVisible();
+    await expect.element(page.getByText("Not confirmed", { exact: true })).toBeVisible();
     // The port goes as a number, the password left out keeps the saved one.
     expect(server.bodies).toEqual([
       expect.objectContaining({ port: 465, password: "", fromName: "inbok team" }),
@@ -261,11 +263,13 @@ describe("System email", () => {
     await userEvent.click(button("Cancel"));
 
     await expect.element(page.getByText("inbok team <inbok@example.com>")).toBeVisible();
+    await expect.element(page.getByText("Not confirmed", { exact: true })).toBeVisible();
   });
 
   it("opens the form at once when nothing is saved, with nothing to cancel", async () => {
     await open({ sent: [], bodies: [] });
 
+    await expect.element(page.getByText("Not set up", { exact: true })).toBeVisible();
     await expect.element(field("Server")).toBeVisible();
     await expect.element(field("Port")).toHaveValue("587");
     expect(button("Cancel").elements()).toHaveLength(0);
@@ -339,6 +343,7 @@ describe("System email", () => {
       )
       .toBeVisible();
     await expect.element(page.getByText("These settings haven't passed a test yet.")).toBeVisible();
+    await expect.element(page.getByText("Not confirmed", { exact: true })).toBeVisible();
   });
 
   it("keeps the summary when a refresh fails, says so, and recovers on Try again", async () => {
