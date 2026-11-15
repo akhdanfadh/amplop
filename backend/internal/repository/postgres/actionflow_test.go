@@ -114,6 +114,18 @@ func TestActionFlow(t *testing.T) {
 	row = apply(conversation.ActionSpam.Opposite())
 	assert.False(t, row.InSpam)
 	assert.True(t, row.InInbox)
+
+	// When the member deletes it, then moves it out of Trash.
+	row = apply(conversation.ActionTrash)
+
+	// Then it is only in Trash, and out of Trash it is back in the inbox,
+	// as Gmail's Move to Inbox puts it, though Trash took INBOX away.
+	assert.True(t, row.InTrash)
+	assert.False(t, row.InInbox)
+	assert.False(t, row.InAllMail)
+	row = apply(conversation.ActionTrash.Opposite())
+	assert.False(t, row.InTrash)
+	assert.True(t, row.InInbox)
 }
 
 // An action's answer written after a poll has brought in a newer change to

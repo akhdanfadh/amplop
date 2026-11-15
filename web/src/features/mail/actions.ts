@@ -23,7 +23,7 @@ const guesses: Record<Action, Partial<Conversation>> = {
   star: { starred: true },
   unstar: { starred: false },
   trash: { trash: true, inbox: false, allMail: false, sent: false, spam: false, labelIds: [] },
-  untrash: { trash: false, allMail: true },
+  untrash: { trash: false, allMail: true, inbox: true },
   spam: { spam: true, inbox: false, allMail: false, sent: false, labelIds: [] },
   unspam: { spam: false, inbox: true, allMail: true },
 };

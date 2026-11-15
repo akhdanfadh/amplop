@@ -434,7 +434,7 @@ type conversationActionInput struct {
 }
 
 type conversationActionBody struct {
-	Action conversation.Action `json:"action" doc:"What to do: mark read or unread, archive out of the inbox or unarchive back into it, move to Trash or out of it, star or unstar, report spam (out of the inbox) or not spam (back into it). star and unread mark a conversation's newest message, the newest it did not send when it has one, as the provider's own web app does. Every other action applies to every message of a conversation, as the provider's own thread action does."`
+	Action conversation.Action `json:"action" doc:"What to do: mark read or unread, archive out of the inbox or unarchive back into it, move to Trash (out of the inbox) or out of it (back into the inbox), star or unstar, report spam (out of the inbox) or not spam (back into it). star and unread mark a conversation's newest message, the newest it did not send when it has one, as the provider's own web app does. Every other action applies to every message of a conversation, as the provider's own thread action does."`
 	IDs    []uuid.UUID         `json:"ids" nullable:"false" format:"uuid" minItems:"1" maxItems:"100" uniqueItems:"true" doc:"The conversations to act on, by id from a list."`
 }
 

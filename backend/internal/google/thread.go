@@ -33,8 +33,9 @@ type labelChange struct {
 // labelChanges are the actions that are a change of labels, by Gmail's
 // rules (ADR007, "Gmail labels as mailboxes"): read is UNREAD removed,
 // archive is INBOX removed, star is STARRED added, and spam is SPAM added
-// and INBOX removed, as Gmail's Report spam does. SPAM and INBOX are both
-// labels a client can set (Gmail's "Manage labels" guide).
+// and INBOX removed, as Gmail's Report spam does, and untrash is TRASH
+// removed and INBOX added. SPAM, TRASH, and INBOX are all labels a client
+// can set (Gmail's "Manage labels" guide).
 var labelChanges = map[conversation.Action]labelChange{
 	conversation.ActionRead:      {remove: []string{labelUnread}},
 	conversation.ActionUnread:    {add: []string{labelUnread}},
@@ -44,12 +45,15 @@ var labelChanges = map[conversation.Action]labelChange{
 	conversation.ActionUnstar:    {remove: []string{labelStarred}},
 	conversation.ActionSpam:      {add: []string{labelSpam}, remove: []string{labelInbox}},
 	conversation.ActionUnspam:    {add: []string{labelInbox}, remove: []string{labelSpam}},
+	// As Gmail's own Move to Inbox from Trash: threads.untrash would leave
+	// the thread out of the inbox, which Trash took it out of.
+	conversation.ActionUntrash: {add: []string{labelInbox}, remove: []string{labelTrash}},
 }
 
 // ChangeThread applies action to thread: to its newest message with
 // messages.modify when action is [conversation.Action.OnNewest], else to
-// every message with threads.modify, or threads.trash and threads.untrash
-// for Trash. It returns each changed message's labels as Gmail answers, as inbok keeps
+// every message with threads.modify, or threads.trash for Trash. It
+// returns each changed message's labels as Gmail answers, as inbok keeps
 // them, without a version, and an error wrapping
 // [conversation.ErrNotFound] when Gmail no longer has the thread or that
 // message.
@@ -80,10 +84,6 @@ func (c *Client) ChangeThread(ctx context.Context, token connectedaccount.Access
 	case action == conversation.ActionTrash:
 		call = threadMessages(func() (*gmail.Thread, error) {
 			return threads.Trash(gmailUser, thread.ProviderThreadID).Fields(threadFields).Context(ctx).Do()
-		})
-	case action == conversation.ActionUntrash:
-		call = threadMessages(func() (*gmail.Thread, error) {
-			return threads.Untrash(gmailUser, thread.ProviderThreadID).Fields(threadFields).Context(ctx).Do()
 		})
 	default:
 		return nil, fmt.Errorf("gmail api: no call for action %q", action)

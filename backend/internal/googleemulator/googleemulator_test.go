@@ -168,7 +168,8 @@ func TestEmulatorProfile(t *testing.T) {
 }
 
 // Label changes and Trash answer as Gmail does, which inbok's patch makes
-// so (observed on inbok's test account, 2026-11-15): without history IDs.
+// so (observed on inbok's test account, 2026-11-15): without history IDs,
+// Trash takes SPAM off too, and untrash puts nothing back, INBOX included.
 func TestEmulatorActions(t *testing.T) {
 	e, cfg := startTestEmulator(t)
 	token := connect(t, e, cfg, "alex@example.com")
@@ -179,25 +180,28 @@ func TestEmulatorActions(t *testing.T) {
 	threads := service.Users.Threads
 	m1, err := service.Users.Messages.Get("me", "m1").Format("minimal").Context(t.Context()).Do()
 	require.NoError(t, err)
-	// answered fails on a message answered with a history ID.
-	answered := func(name string, messages []*gmail.Message) {
+	// answered returns each message's labels, failing on a history ID.
+	answered := func(name string, messages []*gmail.Message) [][]string {
 		t.Helper()
-		for _, message := range messages {
+		labels := make([][]string, len(messages))
+		for i, message := range messages {
 			assert.Zero(t, message.HistoryId, name)
+			labels[i] = message.LabelIds
 		}
+		return labels
 	}
 
 	spam, err := threads.Modify("me", m1.ThreadId, &gmail.ModifyThreadRequest{AddLabelIds: []string{"SPAM"}, RemoveLabelIds: []string{"INBOX"}}).Context(t.Context()).Do()
 	require.NoError(t, err)
-	answered("spam", spam.Messages)
+	assert.Equal(t, [][]string{{"SPAM"}}, answered("spam", spam.Messages))
 
 	trashed, err := threads.Trash("me", m1.ThreadId).Context(t.Context()).Do()
 	require.NoError(t, err)
-	answered("trash", trashed.Messages)
+	assert.Equal(t, [][]string{{"TRASH"}}, answered("trash", trashed.Messages))
 
 	untrashed, err := threads.Untrash("me", m1.ThreadId).Context(t.Context()).Do()
 	require.NoError(t, err)
-	answered("untrash", untrashed.Messages)
+	assert.Equal(t, [][]string{{}}, answered("untrash", untrashed.Messages))
 
 	starred, err := service.Users.Messages.Modify("me", "m1", &gmail.ModifyMessageRequest{AddLabelIds: []string{"STARRED"}}).Context(t.Context()).Do()
 	require.NoError(t, err)

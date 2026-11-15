@@ -1,6 +1,7 @@
 package google
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -19,8 +20,8 @@ var t1 = conversation.Thread{ProviderThreadID: "t1", ProviderNewestMessageID: "m
 // Star and Mark unread change the newest message, every other action every
 // message of the thread, and the answer is where each message it names
 // stands after, as inbok keeps it, without a version, as Gmail answers:
-// Trash by Gmail's own rules, which take the thread out of the inbox and
-// back.
+// Trash by Gmail's own rules, which take the thread out of the inbox, and
+// untrash back into it.
 func TestChangeThread(t *testing.T) {
 	client, token := startMailbox(t, nil, []googleemulator.Message{
 		{ID: "m1", ThreadID: "t1", Mailbox: alexMailbox, From: "a@example.com", Subject: "Hi", LabelIDs: []string{labelInbox, labelUnread}},
@@ -108,6 +109,22 @@ func TestChangeThreadBusy(t *testing.T) {
 
 	require.ErrorIs(t, err, mailsync.ErrProviderBusy)
 	assert.Len(t, pauses.all(), retryAttempts-1)
+}
+
+// Untrash is one threads.modify: TRASH removed and INBOX added.
+func TestChangeThreadUntrashRequest(t *testing.T) {
+	client, _ := stubGmail(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/gmail/v1/users/me/threads/t1/modify", r.URL.Path)
+		var body map[string][]string
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		assert.Equal(t, map[string][]string{"addLabelIds": {labelInbox}, "removeLabelIds": {labelTrash}}, body)
+		gmailMessage(w, map[string]any{"messages": []map[string]any{{"id": "m1", "labelIds": []string{labelInbox}}}})
+	})
+
+	updates, err := client.ChangeThread(t.Context(), connectedaccount.NewAccessToken("access-1"), t1, conversation.ActionUntrash)
+
+	require.NoError(t, err)
+	assert.Equal(t, []mailsync.MessageUpdate{{ProviderID: "m1", MailboxProviderIDs: []string{labelInbox}, Seen: true}}, updates)
 }
 
 // The account's version is its history ID, and a change after it carries

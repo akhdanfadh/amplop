@@ -26,6 +26,15 @@ describe("guessChanges", () => {
     );
   });
 
+  it("returns an untrashed conversation to the inbox, as the server does", () => {
+    const trashed = toConversation(conversation(1, { trash: true, inbox: false, allMail: false }));
+    expect(guessChanges(trashed, "untrash")).toBe(true);
+    expect(guessChanges({ ...trashed, trash: false, allMail: true, inbox: true }, "untrash")).toBe(
+      false,
+    );
+    expect(guessChanges({ ...trashed, trash: false, allMail: true }, "untrash")).toBe(true);
+  });
+
   it("is false for spam only in Spam, true for one in a label", () => {
     const onlySpam = toConversation(conversation(1, { spam: true, inbox: false, allMail: false }));
     expect(guessChanges(onlySpam, "spam")).toBe(false);
