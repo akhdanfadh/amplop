@@ -59,5 +59,9 @@ describe("parseScope", () => {
     expect(() => parseScope({ where: call("eq", ref("accountId"), value(1)) })).toThrow(
       "No single place in a load.",
     );
+    // Starred is always asked with All mail.
+    expect(() => parseScope({ where: call("eq", ref("starred"), value(true)) })).toThrow(
+      "No single place in a load.",
+    );
   });
 });

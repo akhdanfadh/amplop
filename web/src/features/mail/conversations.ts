@@ -1,14 +1,10 @@
 import { onlineManager, type QueryClient } from "@tanstack/react-query";
 import {
   BasicIndex,
-  and,
   createCollection,
-  eq,
-  inArray,
   parseOrderByExpression,
   parseWhereExpression,
   type LoadSubsetOptions,
-  type Ref,
 } from "@tanstack/db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
 import {
@@ -22,7 +18,8 @@ import type { ResponsePlacesOutput } from "@/api/generated/model/responsePlaces.
 import type { ConversationRowOutput } from "@/api/generated/model/conversationRow.zod";
 import { listConversationsParamsLimitMax } from "@/api/generated/model/listConversationsParams.zod";
 import { onAccountCacheClear } from "@/features/auth/session-cache";
-import { isViewPlace, type Place, type ViewPlace } from "./places";
+import { viewPlaces, type Place } from "./places";
+import { viewFlags, type Flag } from "./rules";
 
 // Conversation is a list row as the API sends it, plus its date as a
 // number: lists sort by dateMs, then id.
@@ -37,50 +34,12 @@ export function toConversation(row: ConversationRowOutput): Conversation {
   return { ...row, dateMs: Date.parse(row.date) };
 }
 
-// The row flag each view filters on; Starred also needs allMail.
-const viewFlag = {
-  inbox: "inbox",
-  starred: "starred",
-  sent: "sent",
-  all: "allMail",
-  spam: "spam",
-  trash: "trash",
-} as const satisfies Record<ViewPlace, keyof Conversation>;
-
-type Flag = (typeof viewFlag)[ViewPlace];
-
-// The view each flag stands for, viewFlag read backwards.
-const flagView: Record<Flag, ViewPlace> = {
-  inbox: "inbox",
-  starred: "starred",
-  sent: "sent",
-  allMail: "all",
-  spam: "spam",
-  trash: "trash",
-};
+// The flags the views filter on.
+const viewFlagNames = new Set<string>(Object.values(viewFlags).flat());
 
 // isFlag reports whether name is a view's flag.
 function isFlag(name: string): name is Flag {
-  return Object.hasOwn(flagView, name);
-}
-
-// Test is one condition of a list's filter.
-type Test = ReturnType<typeof eq>;
-
-// placeWhere returns the filter of a list: the conversations in place, a
-// view or a label's ID, and of account alone when given.
-//
-// DESIGN: a label is a test on labelIds, which TanStack DB evaluates as
-// "contains" and loadConversations sends as place=<label id> (ADR031,
-// TanStack DB gate, rule 8); so rows keep labelIds.
-export function placeWhere(c: Ref<Conversation>, place: Place, account: number | undefined): Test {
-  const tests: Test[] = [];
-  if (!isViewPlace(place)) tests.push(inArray(place, c.labelIds));
-  else if (place === "starred") tests.push(eq(c.starred, true), eq(c.allMail, true));
-  else tests.push(eq(c[viewFlag[place]], true));
-  if (account !== undefined) tests.push(eq(c.accountId, account));
-  const [first, second, ...rest] = tests;
-  return second === undefined ? first : and(first, second, ...rest);
+  return viewFlagNames.has(name);
 }
 
 // Scope is what one load asks the API for: a place, perhaps one account,
@@ -159,16 +118,18 @@ export function parseScope(options: LoadSubsetOptions): Scope {
   visit(options.where);
   visit(options.cursor?.whereFrom);
 
-  // Starred is the starred conversations of All mail.
-  if (flags.has("starred")) flags.delete("allMail");
   let place: Place;
   if (label !== undefined) {
     if (flags.size > 0) throw new Error("A label and a view in one load.");
     place = label;
   } else {
-    const [flag] = flags;
-    if (flags.size !== 1 || flag === undefined) throw new Error("No single place in a load.");
-    place = flagView[flag];
+    // The view whose flags the load tests, all of them and no other.
+    const view = viewPlaces.find(
+      (name) =>
+        viewFlags[name].length === flags.size && viewFlags[name].every((flag) => flags.has(flag)),
+    );
+    if (view === undefined) throw new Error("No single place in a load.");
+    place = view;
   }
   return { place, account, upper, lower, dateMs };
 }

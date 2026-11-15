@@ -27,11 +27,12 @@ import { Spinner } from "@/components/ui/spinner";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
 import { runAction } from "./actions";
-import { currentMail, mailData, placeWhere, refreshNewest, restartMail } from "./conversations";
+import { currentMail, mailData, refreshNewest, restartMail } from "./conversations";
 import { useToday } from "./dates";
 import { useKeepPlace, useRestIntent, useRowSize } from "./list-state";
 import type { Place } from "./places";
 import { ConversationRow, createOpenStore, type RowAccount } from "./row";
+import { placeWhere } from "./rules";
 import {
   connectGmail,
   emptyTitle,
@@ -212,7 +213,7 @@ export function ConversationList({
   // arrives once the member's mail has ended, e.g. after sign-out.
   const star = (id: string, starred: boolean) => {
     const current = () => currentMail(client)?.conversations === conversations;
-    runAction(conversations, starred ? "star" : "unstar", [id]).then(
+    runAction(conversations, { action: starred ? "star" : "unstar", ids: [id] }).then(
       (result) => {
         const refused = result.refused[0];
         if (refused && current()) showError(starFailed(starred), refusedText[refused.reason]);

@@ -134,8 +134,9 @@ Put shared code in the folder for its responsibility:
   when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
   names, the conversation list and its rows, the reading pane, mail's
-  TanStack DB collections (`conversations.ts`), how a row shows its date
-  and people, and the address Back to mail returns to.
+  TanStack DB collections (`conversations.ts`), what actions guess and
+  which places a conversation is in (`rules.ts`), how a row shows its
+  date and people, and the address Back to mail returns to.
 - `src/features/settings`: the settings sidebar.
 - `src/components`: shared components, such as the shell around every
   page (`AppShell`), the password input, the request error under a form,
