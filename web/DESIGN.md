@@ -662,9 +662,17 @@ pull-to-refresh, which would reload the app, never starts.
 - A task of several steps, e.g. setting up two-factor authentication, gets
   its own page under its settings page (`/settings/security/two-factor`),
   with "‹ Security" above the title; the settings page keeps one row with
-  the status and a way in. A section whose step needs the width, e.g. a
-  form opened in place, stacks its heading over it
-  (`layout="stacked"`).
+  the status and a way in. A section whose step needs more than the right
+  column, e.g. a QR code, stacks its heading over it
+  (`layout="stacked"`); a form fits the right column.
+- Settings that save together, e.g. System email, show what is saved as a
+  summary with "Edit settings"; the form opens in its place, in the same
+  columns, with Save and Cancel, and closes on a save, so the page always
+  says what is saved. With nothing saved the form shows at once, without
+  Cancel. What depends on the saved settings, e.g. a test message, waits
+  while the form is open. A form with several groups titles each in the
+  right column (`FieldSet` and `FieldLegend`), e.g. Connection, Sign-in,
+  Sender.
 - Connected accounts gives each account a Name field ("Name (optional)",
   one explanation for all of them under the heading): a name only the
   member sees, never sent to recipients, unlike Gmail's sender name; it
@@ -725,7 +733,12 @@ pull-to-refresh, which would reload the app, never starts.
   (in 4 minutes).", then "You can try again now." Times are English with
   the browser's 12 or 24 hour clock.
 - Any form with unsaved typing warns before in-app navigation with
-  `LeaveWarning`; closing the tab gets the browser's question.
+  `LeaveWarning`; closing the tab gets the browser's question. Typing back
+  what the form opened with counts as no change. Cancel on a form opened
+  in place discards without asking: its name says so.
+- A lost answer to a save that replaces settings asks to save again
+  ("Save again to make sure."): saving the same values twice is safe, so
+  the form stays open and editable.
 - One independent choice (theme, a switch) applies at once; related fields
   save together with Save.
 
@@ -813,7 +826,8 @@ outcome.
 
 ### States
 
-- **Loading:** routes load data in `loader` with `ensureQueryData`;
+- **Loading:** routes load data in `loader` with the query client's
+  `query` and `staleTime: "static"` (`ensureQueryData` is deprecated);
   `pendingComponent` appears after 300 ms and stays at least 500 ms (on
   the first load it is not held, so a quick one shows nothing): a list's
   own as placeholder rows shaped like real ones, any other page's the

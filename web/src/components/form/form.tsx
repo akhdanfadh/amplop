@@ -88,9 +88,9 @@ function focusFirstInvalid(form: HTMLFormElement): void {
 
 // SubmitButton submits the current form: children name what it does, e.g.
 // "Sign in", and working what it is doing while the form sends, e.g.
-// "Signing in...". isDisabled also blocks it, e.g. while the form checks
-// an earlier request's outcome. variant "destructive" marks a submit that
-// removes something, e.g. turning off two-factor authentication.
+// "Signing in...". isDisabled also blocks it, e.g. while a test waits for
+// saved settings. variant "destructive" marks a submit that removes
+// something, e.g. turning off two-factor authentication.
 export function SubmitButton({
   children,
   working,

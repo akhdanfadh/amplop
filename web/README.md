@@ -209,6 +209,18 @@ after the guard ran, e.g. from another tab. The router counts a session
 read in the last 5 s as fresh (`sessionFreshMs`), so a page that opens
 just after a guard read it does not read it again.
 
+A page whose data it cannot draw without, e.g. System email, reads it in
+its route's `loader` through `loadSignedIn`
+(`src/features/auth/session-end.ts`), so the router's loading and failure
+views below cover it, and the page reads it again as it opens. A 401 there
+clears the account cache and opens sign-in, which returns to the page
+afterwards; once the page has drawn, `useSessionEnd` does the same for a
+read or a write that gets one, without asking to leave unsaved typing,
+which can no longer be saved. A 403 on such a page is an ordinary
+failure: no administrator loses the role while signed in today, and a
+feature that adds a way to, e.g. a role change, decides what an open page
+does then.
+
 Every page gets the same states from the router (`src/router.tsx`):
 `RoutePending`, a spinner with "Loading...", when the page's checks take
 over 300 ms, then for at least 500 ms so it does not flash. The first

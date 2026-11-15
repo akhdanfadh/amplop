@@ -1,147 +1,152 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import {
-  getGetCurrentSessionQueryKey,
-  getGetSystemEmailQueryKey,
-  useGetCurrentSession,
-  useGetSystemEmail,
-} from "@/api/generated/inbok";
+import type { QueryClient } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
+import { getGetSystemEmailQueryOptions, useGetSystemEmail } from "@/api/generated/inbok";
+import type { ResponseSystemEmail } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
-import type { ApiError } from "@/api/transport";
-import { clearAccountCache } from "@/features/auth/session-cache";
-import { SettingsForm } from "@/features/system-email/settings-form";
-import { TestMessageForm } from "@/features/system-email/test-message-form";
+import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
-import { textLink } from "@/components/link-style";
+import { loadSignedIn, useSessionEnd } from "@/features/auth/session-end";
+import { SettingsPage, SettingsSection } from "@/features/settings/page";
+import { pageName } from "@/features/settings/text";
+import { SettingsForm } from "@/features/system-email/settings-form";
+import { Summary } from "@/features/system-email/summary";
+import { TestMessageForm } from "@/features/system-email/test-message-form";
+import {
+  formText,
+  mailServerAbout,
+  mailServerTitle,
+  readFailed,
+  savedNotice,
+  systemEmailLead,
+  testAbout,
+  testTitle,
+} from "@/features/system-email/text";
 
 const unauthorized = 401;
-const forbidden = 403;
 
 export const Route = createFileRoute("/_app/settings/_admin/system-email")({
+  loader: loadSystemEmail,
   component: SystemEmail,
   head: () => ({ meta: [{ title: "System email - inbok" }] }),
 });
 
-// SystemEmail is the mail server inbok sends its own messages through,
-// with a test message.
+// loadSystemEmail reads the settings before the page draws, so the router
+// shows its loading and failure views meanwhile (web/README.md "Routes"),
+// for the page at location. A cached read will do, since the page reads
+// them again as it opens.
+export function loadSystemEmail({
+  context,
+  location,
+}: {
+  context: { queryClient: QueryClient };
+  location: { href: string };
+}): Promise<ResponseSystemEmail> {
+  return loadSignedIn(context.queryClient, location.href, () =>
+    context.queryClient.query({ ...getGetSystemEmailQueryOptions(), staleTime: "static" }),
+  );
+}
+
+// SystemEmail is the mail server inbok sends its own messages through: the
+// saved settings, a form to change them, and a test message.
 function SystemEmail(): ReactElement {
-  const client = useQueryClient();
-  const navigate = useNavigate();
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const [savedAt, setSavedAt] = useState(0);
-  const [writeExpired, setWriteExpired] = useState(false);
-  const current = useGetCurrentSession();
+  const { session } = Route.useRouteContext();
+  const loaded = Route.useLoaderData();
   const systemEmail = useGetSystemEmail();
-  const adminReads = [systemEmail];
-  const reads = [current, ...adminReads];
-  const expired = writeExpired || reads.some((read) => read.error?.status === unauthorized);
-  // Access can be lost after the page loaded, so a 403 hides the forms even
-  // with settings already read.
-  const denied = !expired && adminReads.some((read) => read.error?.status === forbidden);
-  const account = current.data?.data;
-  const settings = systemEmail.data?.data.settings;
+  const sessionEnd = useSessionEnd();
+  const settings = (systemEmail.data ?? loaded).data.settings;
+  // Nothing saved yet opens the form, with no summary to go back to.
+  const [editing, setEditing] = useState(!settings);
+  // The notice under the summary once a save closed the form.
+  const [notice, setNotice] = useState<string>();
+  // When a save last may have replaced the settings, which hides an older
+  // test result.
+  const [savedAt, setSavedAt] = useState(0);
+  const editRef = useRef<HTMLButtonElement>(null);
+  // Set when the form closes; Edit settings then takes focus, since the
+  // button that had it is gone.
+  const refocus = useRef(false);
 
   useEffect(() => {
-    headingRef.current?.focus();
-  }, []);
-  useEffect(() => {
-    if (!expired) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true });
-  }, [expired, client, navigate]);
+    sessionEnd(systemEmail.error);
+  }, [systemEmail.error, sessionEnd]);
 
-  // Ends the page on a lost session and rereads access on a 403 from a write.
-  function handleAccessError(err: ApiError): void {
-    if (err.status === unauthorized) setWriteExpired(true);
-    if (err.status !== forbidden) return;
-    void client.invalidateQueries({ queryKey: getGetSystemEmailQueryKey() });
-    void client.invalidateQueries({ queryKey: getGetCurrentSessionQueryKey() });
+  useEffect(() => {
+    if (!refocus.current || editing) return;
+    refocus.current = false;
+    editRef.current?.focus();
+  });
+
+  // close closes the form and gives Edit settings focus.
+  function close(): void {
+    refocus.current = true;
+    setEditing(false);
   }
 
-  // A failed read without data hides the forms; a failed refetch keeps them.
-  const readError =
-    expired || denied ? null : (reads.find((read) => !read.data && read.error)?.error ?? null);
-
   return (
-    <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-        System email
-      </h1>
-      <p>
-        The mail server inbok sends its own messages through. Members&apos; mailboxes are separate.
-      </p>
-
-      {reads.some((read) => read.isPending) && !readError && !denied && (
-        <output>Loading system email settings...</output>
-      )}
-      {expired && <output>Opening sign-in...</output>}
-
-      {denied && (
-        <p>
-          System email settings are available only to administrators with two-factor authentication.
-          {account?.role === "admin" && (
-            <>
-              {" "}
-              <Link to="/settings/security" className={textLink}>
-                Set up two-factor authentication
-              </Link>
-              .
-            </>
-          )}
-        </p>
-      )}
-      {readError && (
-        <div className="flex flex-col gap-3" role="alert">
-          <p>Could not load system email settings. {userMessage(readError)}</p>
-          {readError.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{readError.requestId}</code>
-            </p>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            className="w-fit"
-            isDisabled={reads.some((read) => read.isFetching)}
-            onPress={() => {
-              for (const read of reads) void read.refetch();
-            }}
-          >
-            Try again
-          </Button>
+    <SettingsPage title={pageName.systemEmail} lead={systemEmailLead}>
+      {/* A failed refresh keeps the sections and says why (DESIGN.md
+          "States"); a 401 opens sign-in instead. */}
+      {systemEmail.error && systemEmail.error.status !== unauthorized && (
+        <div className="py-6">
+          <ReadError
+            message={`${readFailed} ${userMessage(systemEmail.error)}`}
+            error={systemEmail.error}
+            retrying={systemEmail.isFetching}
+            onRetry={() => void systemEmail.refetch()}
+          />
         </div>
       )}
-
-      {account && systemEmail.data && !expired && !denied && (
-        <>
+      <SettingsSection title={mailServerTitle} about={mailServerAbout}>
+        {editing || !settings ? (
           <SettingsForm
             saved={settings}
-            onCheck={() => systemEmail.refetch()}
-            onSaved={() => setSavedAt(Date.now())}
-            onAccessError={handleAccessError}
+            focusFirst={settings !== undefined}
+            onWrite={() => setSavedAt(Date.now())}
+            onSaved={() => {
+              setNotice(savedNotice);
+              close();
+            }}
+            onCancel={
+              settings &&
+              (() => {
+                setNotice(undefined);
+                close();
+              })
+            }
           />
+        ) : (
+          <>
+            <Summary settings={settings} />
+            <Button
+              ref={editRef}
+              type="button"
+              variant="outline"
+              onPress={() => {
+                setNotice(undefined);
+                setEditing(true);
+              }}
+            >
+              {formText.edit}
+            </Button>
+          </>
+        )}
+        {/* Always present, so a screen reader announces the notice that
+            fills it. */}
+        <output aria-atomic="true" className="text-sm empty:hidden">
+          {!editing && notice}
+        </output>
+      </SettingsSection>
 
-          <section className="flex flex-col gap-6" aria-labelledby="test-message-heading">
-            <div className="flex flex-col gap-2">
-              <h2 id="test-message-heading" className="text-xl font-semibold">
-                Test message
-              </h2>
-              <p>
-                Sends a message with the saved settings. A pass marks them as tested. A failure
-                marks them as untested, even when only the recipient is wrong.
-              </p>
-            </div>
-            <TestMessageForm
-              key={account.email}
-              settings={settings}
-              recipient={account.email}
-              savedAt={savedAt}
-              onAccessError={handleAccessError}
-            />
-          </section>
-        </>
-      )}
-    </main>
+      <SettingsSection title={testTitle} about={testAbout}>
+        <TestMessageForm
+          key={session.email}
+          settings={settings}
+          recipient={session.email}
+          editing={editing || !settings}
+          savedAt={savedAt}
+        />
+      </SettingsSection>
+    </SettingsPage>
   );
 }
