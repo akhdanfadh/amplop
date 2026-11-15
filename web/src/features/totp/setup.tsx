@@ -32,6 +32,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { resetSession } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
 import { CodeStep } from "./code-step";
 import { CodesStep, notWaitingType } from "./codes-step";
@@ -103,12 +104,11 @@ export function useSetupFlow({
       // Finishing replaces this session's cookie: a read sent with the old
       // one now would find it ended.
       onMutate: () => client.cancelQueries(),
-      // What the app read under the old cookie belongs to a session that
-      // ended, so no query keeps it. Reset, not removed as
-      // clearAccountCache does: a page already open, e.g. Security after
-      // leaving mid-request, still watches its queries, which then read
-      // afresh; a removed one would leave it waiting.
-      onSuccess: () => void client.resetQueries(),
+      // What the app read about the old session ended with it. Reset, not
+      // removed as clearAccountCache does: a page already open, e.g.
+      // Security after leaving mid-request, still watches its queries,
+      // which then read afresh; a removed one would leave it waiting.
+      onSuccess: () => void resetSession(client),
       onError,
     },
   });

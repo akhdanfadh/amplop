@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
 import {
   Outlet,
   RouterProvider,
@@ -11,6 +11,7 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import type { CurrentSession, TotpStatus } from "@/api/generated/model";
+import { SetupGate } from "@/features/setup/gate";
 import { Route as Security } from "@/routes/_app/settings/security/index";
 import { Route as TwoFactor } from "@/routes/_app/settings/security/two-factor";
 
@@ -111,6 +112,8 @@ async function answer(
     return Response.json({ data: { sessions } });
   }
   if (method === "GET" && path === "/api/v0/totp") return Response.json({ data: server.totp });
+  if (method === "GET" && path === "/api/v0/setup")
+    return Response.json({ data: { status: "done" } });
   if (method === "POST" && path === "/api/v0/totp") {
     if (
       !(
@@ -193,7 +196,15 @@ async function open(
       },
     ),
   );
-  const root = createRootRoute({ component: Outlet });
+  // The setup gate sits at the root, as in the app, so a page that drops
+  // its status unmounts every page for a moment.
+  const root = createRootRoute({
+    component: () => (
+      <SetupGate>
+        <Outlet />
+      </SetupGate>
+    ),
+  });
   // The signed-in layout, under its real id, so the two-factor route finds
   // the session in its context.
   const app = createRoute({
@@ -221,6 +232,7 @@ async function open(
     history: createMemoryHistory({ initialEntries: [start] }),
   });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  opened = queryClient;
   await render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -264,6 +276,8 @@ async function toCodes(): Promise<void> {
 // Lets a held finish answer. The transport holds every later request
 // behind it, in this test and the next, until it settles.
 let release: (() => void) | undefined;
+// The query client of the page open() opened last.
+let opened: QueryClient | undefined;
 
 afterEach(() => {
   release?.();
@@ -499,6 +513,39 @@ describe("two-factor setup", () => {
     await expect.element(page.getByText(onNotice)).toBeVisible();
     await expect.element(page.getByText("Loading signed-in browsers...")).toBeVisible();
     expect(page.getByRole("button", { name: "Sign out Safari on iOS" }).query()).toBeNull();
+  });
+
+  it("keeps the member's other reads once I've saved, e.g. mail's", async () => {
+    const server = off();
+    await open(server);
+    // A read outside the session that something watches, as mail's
+    // collections watch theirs.
+    let reads = 0;
+    const mail = new QueryObserver(opened!, {
+      queryKey: ["/api/v0/conversations"],
+      queryFn: () => {
+        reads += 1;
+        return reads;
+      },
+      staleTime: Infinity,
+    });
+    const stop = mail.subscribe(() => undefined);
+    try {
+      await expect.poll(() => reads).toBe(1);
+      await toQr();
+      await toCodes();
+
+      await userEvent.click(page.getByRole("button", { name: "I've saved these codes" }));
+
+      await expect.element(page.getByText(onNotice)).toBeVisible();
+      await expect
+        .poll(() => server.sent.filter((s) => s === "GET /api/v0/sessions").length)
+        .toBeGreaterThan(0);
+      expect(reads).toBe(1);
+      expect(opened!.getQueryData(["/api/v0/conversations"])).toBe(1);
+    } finally {
+      stop();
+    }
   });
 
   it("sends no other request while I've saved replaces the cookie, even after leaving", async () => {

@@ -1,5 +1,10 @@
 import { hashKey, type QueryClient } from "@tanstack/react-query";
-import { getGetSetupStatusQueryKey } from "@/api/generated/inbok";
+import {
+  getGetCurrentSessionQueryKey,
+  getGetSetupStatusQueryKey,
+  getGetTOTPStatusQueryKey,
+  getListSessionsQueryKey,
+} from "@/api/generated/inbok";
 import { closeToasts } from "@/components/ui/toast";
 import { forgetMailHref } from "@/features/mail/places";
 
@@ -58,4 +63,27 @@ export function clearAccountCache(client: QueryClient): void {
   const setupHash = hashKey(getGetSetupStatusQueryKey());
   client.removeQueries({ predicate: (query) => query.queryHash !== setupHash });
   client.getMutationCache().clear();
+}
+
+// The reads that describe a session rather than the member's data: the
+// session itself, its two-factor status, and the browsers signed in.
+const sessionKeys = [
+  getGetCurrentSessionQueryKey(),
+  getGetTOTPStatusQueryKey(),
+  getListSessionsQueryKey(),
+];
+
+// resetSession drops what the app read about a session whose cookie was just
+// replaced for the same member, e.g. as two-factor authentication turns on,
+// and reads it again where a page shows it; the guards then read the new
+// session. It returns once those reads are done.
+//
+// DESIGN: the member is the same, so the rest of their data stays, mail's
+// collections included, which refresh only a list's newest page, on their
+// own timer (ADR031). A read the old session was refused, e.g. an
+// administrator's before two-factor authentication, is read again as its
+// page mounts (TanStack Query's retryOnMount). A new read that describes the
+// session joins sessionKeys.
+export async function resetSession(client: QueryClient): Promise<void> {
+  await Promise.all(sessionKeys.map((queryKey) => client.resetQueries({ queryKey, exact: true })));
 }
