@@ -1,5 +1,6 @@
 import { retryAfterTime } from "./retry-after";
 import type { ApiError } from "./transport";
+import { clockTime } from "@/lib/datetime";
 
 // ===============================================
 // Request messages
@@ -30,14 +31,7 @@ const tryLater = "Try again later.";
 const millisecondsPerMinute = 60_000;
 // A weekday names one day only within the next six.
 const longestNamedWait = 6 * 24 * 60 * millisecondsPerMinute;
-// English, as all of inbok's words; the browser's locale chooses only 12-
-// or 24-hour time.
-const { hourCycle } = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions();
-const clockTime = new Intl.DateTimeFormat("en-US", {
-  hour: "numeric",
-  minute: "2-digit",
-  hourCycle,
-});
+// English, as all of inbok's words; the time is the shared clock's.
 const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long" });
 
 // uncertainOutcome reports whether err leaves it unknown whether its write

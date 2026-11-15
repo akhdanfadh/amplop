@@ -4,6 +4,7 @@ import type { ApiError } from "@/api/transport";
 import type { LeaveWarningText } from "@/components/leave-warning";
 import { formatCount } from "@/lib/count";
 import type { FailedStatus, SyncFailure } from "./sync";
+import { clockTime, dayAndTime, dayDate } from "@/lib/datetime";
 
 const notFound = 404;
 const conflict = 409;
@@ -11,9 +12,6 @@ const tooManyRequests = 429;
 export const accountNotFoundType: ProblemType = "/api/v0/problems/connected-account-not-found";
 export const needsReconnectType: ProblemType = "/api/v0/problems/account-needs-reconnect";
 export const throttledType: ProblemType = "/api/v0/problems/sync-throttled";
-const shownDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
-const sameDay = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
-const otherDay = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 // OutcomeNotice is what the page says about how a connection ended, as a
 // polite notice or an interrupting alert.
@@ -59,7 +57,7 @@ export function outcomeNotice(outcome: ConnectOutcome): OutcomeNotice {
 
 // formatDate shows the calendar date of iso in the reader's locale and time zone.
 export function formatDate(iso: string): string {
-  return shownDate.format(new Date(iso));
+  return dayDate.format(new Date(iso));
 }
 
 // startErrorMessage describes a connect or reconnect that could not open
@@ -110,7 +108,7 @@ export const checkingText = "Checking...";
 // zone, with its date unless it falls on the same day as now.
 export function formatMoment(iso: string, now: Date = new Date()): string {
   const at = new Date(iso);
-  return at.toDateString() === now.toDateString() ? sameDay.format(at) : otherDay.format(at);
+  return at.toDateString() === now.toDateString() ? clockTime.format(at) : dayAndTime.format(at);
 }
 
 // runningText says how far a running full sync has copied.

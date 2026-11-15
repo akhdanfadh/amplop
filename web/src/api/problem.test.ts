@@ -308,7 +308,7 @@ function unprocessable(errors: { location: string; message: string }[]): ApiErro
 // English, on the test locale's 12- or 24-hour clock.
 function clock(day: number, hour: number, minute: number): string {
   const { hourCycle } = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions();
-  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hourCycle }).format(
+  return new Intl.DateTimeFormat("en-GB", { hour: "numeric", minute: "2-digit", hourCycle }).format(
     new Date(2026, 10, day, hour, minute),
   );
 }

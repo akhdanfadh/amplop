@@ -56,6 +56,7 @@ import {
   refreshFailed,
   stillSyncing,
 } from "./text";
+import { clockTime } from "@/lib/datetime";
 
 const unauthorized = 401;
 
@@ -467,7 +468,7 @@ function firstError(node: HealthNode | undefined): unknown {
   return undefined;
 }
 
-// clock returns the time of day at ms, as the browser writes it.
+// clock returns the time of day at ms, as inbok writes one.
 function clock(ms: number): string {
-  return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return clockTime.format(ms);
 }

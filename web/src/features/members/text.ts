@@ -1,6 +1,7 @@
 import type { Member } from "@/api/generated/model";
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
+import { dayDate } from "@/lib/datetime";
 
 // MemberAction is a change an administrator can ask of an account, as the
 // API names it in a member's allowedActions.
@@ -40,8 +41,6 @@ const words: Record<MemberAction, Words> = {
   },
 };
 
-const shownDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
-
 // The page's lead and its section.
 export const membersLead = "Everyone with an account on this inbok.";
 export const accountsTitle = "Accounts";
@@ -52,7 +51,7 @@ export const listReadFailed = "Couldn't refresh the member list.";
 
 // formatDate shows the calendar date of iso in the reader's locale and time zone.
 export function formatDate(iso: string): string {
-  return shownDate.format(new Date(iso));
+  return dayDate.format(new Date(iso));
 }
 
 // actionWords returns how the page names action.

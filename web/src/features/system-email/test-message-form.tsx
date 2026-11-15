@@ -15,15 +15,11 @@ import { RequestError } from "@/components/request-error";
 import { useSessionEnd } from "@/features/auth/session-end";
 import { testErrorMessage, testResultMessage } from "./test-result";
 import { testText } from "./text";
+import { dayAndTime } from "@/lib/datetime";
 
 const recipientFields = ["recipient"] as const;
 const recipientSchema = SystemEmailTestMessageRecipient.extend({
   recipient: emailAddress(SystemEmailTestMessageRecipient.shape.recipient),
-});
-
-const testedFormat = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
 });
 
 // TestMessageForm sends a test message with the saved settings, absent
@@ -140,7 +136,7 @@ function TestedStatus({ settings }: { settings: SystemEmailSettings | undefined 
   return (
     <>
       {testText.passed}{" "}
-      <time dateTime={settings.testedAt}>{testedFormat.format(new Date(settings.testedAt))}</time>.
+      <time dateTime={settings.testedAt}>{dayAndTime.format(new Date(settings.testedAt))}</time>.
     </>
   );
 }

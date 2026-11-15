@@ -161,8 +161,8 @@ Put shared code in the folder for its responsibility:
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
-  secret of an emailed link, or keeping a server's field error through a
-  blur.
+  secret of an emailed link, keeping a server's field error through a
+  blur, or writing dates and times (`datetime.ts`).
 - `src/hooks`: React hooks shared by features, such as a page reading its
   link's secret, the layout the window's width allows, or a page focusing
   its heading once a closing drawer lets go (`useFocusOnOpen`).

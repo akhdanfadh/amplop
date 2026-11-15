@@ -1,12 +1,12 @@
 import type { ListedSession, ProblemType } from "@/api/generated/model";
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
+import { dayAndTime } from "@/lib/datetime";
 
 const notFound = 404;
 const sessionNotFoundType: ProblemType = "/api/v0/problems/session-not-found";
 // The server records activity at most once an hour.
 const activityWindowMs = 60 * 60 * 1000;
-const shownTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 // browserName names a session by its browser and operating system, when known.
 export function browserName(session: Pick<ListedSession, "browser" | "os">): string {
@@ -15,9 +15,10 @@ export function browserName(session: Pick<ListedSession, "browser" | "os">): str
   return os ? `${browser} on ${os}` : browser;
 }
 
-// formatTime shows a timestamp in the reader's locale and time zone.
+// formatTime shows a timestamp as inbok writes one, in the reader's time
+// zone.
 export function formatTime(iso: string): string {
-  return shownTime.format(new Date(iso));
+  return dayAndTime.format(new Date(iso));
 }
 
 // lastActive describes when a session was last used, without an exact time

@@ -132,6 +132,11 @@ letter spacing below 16 px; `tabular-nums` on every number that lines up;
 lines under about 75 characters (the message sheet caps near 640 px of
 text).
 
+Dates and times are inbok's British English on the browser's 12 or 24 hour
+clock and in its time zone, everywhere: "2:32 pm" or "14:32", "14 Nov
+2026", "14 Nov 2026, 2:32 pm" (`src/lib/datetime.ts`). The browser's
+language never changes the words or the digits.
+
 In dark, text is drawn with grayscale smoothing: macOS browsers otherwise
 thicken every stroke by the same amount, most visibly light on dark,
 which brings 400 and 600 close. Unread rows also take 650 there.
@@ -755,7 +760,7 @@ pull-to-refresh, which would reload the app, never starts.
   it naming any next step ("Settings saved. Send a test message to check
   them."), or an outcome screen; no form stays open to say "Saved".
 - A 429 says when to try again, as a clock time rounded up to the minute
-  ("Too many attempts. Try again after 2:32 PM."), with the weekday when it
+  ("Too many attempts. Try again after 2:32 pm."), with the weekday when it
   is another day, and "later" past six days; it stays while the member
   retypes. A time stays true while it is on screen, which "in 4 minutes"
   would not. Accepted: a wait under a minute reads as the next minute

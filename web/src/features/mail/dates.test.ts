@@ -8,7 +8,12 @@ describe("listDate", () => {
   it("shows today's time", () => {
     const morning = new Date(2026, 10, 12, 9, 5);
     expect(listDate(morning, now)).toBe(
-      new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(morning),
+      new Intl.DateTimeFormat("en-GB", {
+        hour: "numeric",
+        minute: "2-digit",
+        hourCycle: new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions()
+          .hourCycle,
+      }).format(morning),
     );
   });
 
