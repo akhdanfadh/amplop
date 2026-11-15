@@ -921,7 +921,12 @@ text and a stable type. This includes expected 5xx failures: an explicitly
 mapped 503 can explain maintenance. Unclassified errors are returned as is,
 become a fixed 500 `internal-error`, and log their technical cause with the
 request ID. One that the request's own deadline caused becomes a 503
-`service-busy` instead (see [Timeouts and shutdown](#timeouts-and-shutdown)).
+`service-busy` instead (see [Timeouts and shutdown](#timeouts-and-shutdown)),
+and one that is the cancellation of a request whose client left is
+logged at info level as "client closed request", status 499, nginx's
+code, which a client rarely receives, e.g. one that closed only its
+sending side. The error must be that cancellation alone: joined with
+another failure, it stays a 500.
 Huma status helpers alone do not declare text safe for display.
 
 The contract lists problem types in the `ProblemType` schema:
@@ -991,7 +996,11 @@ the cause as a warning, "request timed out". The request's own log line is a
 warning too, as for every 503; other 5xx lines are errors. A deadline error
 from inside a call while the request still has time stays an unexpected 500. A
 write may have committed before the deadline, so the 503 does not say it was
-not.
+not. A client that leaves cancels its request's context; serve's shutdown
+never does, as it waits for requests instead. Returning that cancellation
+logs "client closed request" at info level, and the request's line shows
+status 499, as a client leaving is no failure of inbok's; any other error
+while the client leaves stays an unexpected 500.
 
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and gives
 in-flight requests up to 5 seconds to finish. The password reset link and

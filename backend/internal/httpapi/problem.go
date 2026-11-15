@@ -37,6 +37,10 @@ type problem struct {
 	// timedOut marks a service-busy problem built from a request that timed
 	// out, whose cause is logged and whose retry is announced.
 	timedOut bool
+	// clientGone marks a problem built from a request whose client left,
+	// which a client rarely receives and which is logged as no failure of
+	// inbok's.
+	clientGone bool
 	// mapped marks the entire public response as explicitly selected as safe.
 	mapped bool
 }
