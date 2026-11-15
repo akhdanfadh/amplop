@@ -205,9 +205,9 @@ func (in idempotencyKeyInput) parseKey() (uuid.UUID, error) {
 // (ADR006).
 type newOutgoingMessage struct {
 	ConnectedAccountID int64    `json:"connectedAccountId" minimum:"1" doc:"The sending account, one of the signed-in account's connected accounts."`
-	To                 []string `json:"to" nullable:"false" maxItems:"100" format:"email" maxLength:"254" doc:"To, Cc, and Bcc together need at least one address."`
-	Cc                 []string `json:"cc" nullable:"false" maxItems:"100" format:"email" maxLength:"254"`
-	Bcc                []string `json:"bcc" nullable:"false" maxItems:"100" format:"email" maxLength:"254"`
+	To                 []string `json:"to" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254" doc:"To, Cc, and Bcc together need at least one address."`
+	Cc                 []string `json:"cc" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254"`
+	Bcc                []string `json:"bcc" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254"`
 	Subject            string   `json:"subject" maxLength:"500" doc:"May be empty. No line breaks or other control characters."`
 	Body               string   `json:"body" maxLength:"100000" doc:"Plain text."`
 }
@@ -337,9 +337,9 @@ type replyInput struct {
 // the reply takes from the answered message.
 type newReply struct {
 	ConnectedAccountID int64    `json:"connectedAccountId" minimum:"1" doc:"The sending account, one of the signed-in account's connected accounts. It need not be the account that holds the answered message."`
-	To                 []string `json:"to" nullable:"false" maxItems:"100" format:"email" maxLength:"254" doc:"To, Cc, and Bcc together need at least one address."`
-	Cc                 []string `json:"cc" nullable:"false" maxItems:"100" format:"email" maxLength:"254"`
-	Bcc                []string `json:"bcc" nullable:"false" maxItems:"100" format:"email" maxLength:"254"`
+	To                 []string `json:"to" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254" doc:"To, Cc, and Bcc together need at least one address."`
+	Cc                 []string `json:"cc" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254"`
+	Bcc                []string `json:"bcc" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254"`
 	Body               string   `json:"body" maxLength:"100000" doc:"Plain text."`
 }
 

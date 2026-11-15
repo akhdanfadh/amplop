@@ -106,7 +106,7 @@ const invalidCredentialsType = problemPrefix + "invalid-credentials"
 
 // newSession is the sign-in request body. Password creation rules do not apply.
 type newSession struct {
-	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"Letters A to Z match in either case."`
+	Email    string `json:"email" format:"idn-email" minLength:"3" maxLength:"254" doc:"Letters A to Z match in either case."`
 	Password string `json:"password" writeOnly:"true" maxLength:"128"`
 }
 
@@ -346,7 +346,7 @@ func registerCurrentSession(api huma.API, handler sessionHandler) {
 		Summary:     "Get Current Session",
 		Tags:        []string{tagSessions},
 		Description: "Returns the signed-in account.",
-		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Metadata:    map[string]any{accessKey: session.AccessEnrollment},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   currentSessionResponses(api),
 	}, handler.handleGetCurrentSession)
@@ -389,7 +389,7 @@ func registerSignOut(api huma.API, handler sessionHandler) {
 		Tags:          []string{tagSessions},
 		Description:   "Ends the current session.",
 		DefaultStatus: http.StatusNoContent,
-		Metadata:      map[string]any{accessKey: session.AccessMember},
+		Metadata:      map[string]any{accessKey: session.AccessEnrollment},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:     signOutResponses(api),
 	}, handler.handleDeleteCurrentSession)

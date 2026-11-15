@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ApiError } from "@/api/transport";
 import { alreadyVerified, linkInvalid, redeemErrorMessage, sendErrorMessage } from "./text";
+import { clockTime } from "@/lib/datetime";
 
 const alreadyVerifiedProblem = {
   type: "/api/v0/problems/email-already-verified",
@@ -46,9 +47,7 @@ describe("sendErrorMessage", () => {
       receivedAt: new Date(2026, 10, 1, 14, 30).getTime(),
       problem: { detail: "Too many verification links were sent recently." },
     });
-    const at = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
-      new Date(2026, 10, 1, 14, 44),
-    );
+    const at = clockTime.format(new Date(2026, 10, 1, 14, 44));
     expect(sendErrorMessage(err)).toBe(
       `Too many verification links were sent recently. Try again after ${at}.`,
     );

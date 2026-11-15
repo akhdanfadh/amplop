@@ -8,6 +8,14 @@ const noContentStatus = 204;
 // Leave room for delivery around the backend's ten-second work limit.
 const requestTimeoutMs = 15_000;
 
+// The addresses of requests that replace this browser's session cookie:
+// finishing two-factor setup ends every session and issues a new one.
+// transport.test.ts holds each to the contract's address.
+export const cookieReplacingPaths: readonly string[] = ["/api/v0/totp/enrollment/finish"];
+
+// The settling of the cookie-replacing request now running, if any.
+let replacing: Promise<void> | undefined;
+
 // ===============================================
 // Request failures
 // ===============================================
@@ -76,6 +84,29 @@ export async function transport(
   url: string,
   init: RequestInit & { schema?: ZodType },
 ): Promise<unknown> {
+  // While a request replaces the session cookie, every other request waits
+  // for it to settle, so none carries the cookie it replaces: the server
+  // would answer 401, and a page would sign out a member whose session lives
+  // on, e.g. one who left the two-factor page mid-request.
+  const before = replacing;
+  if (!cookieReplacingPaths.includes(url.split("?", 1)[0] ?? url)) {
+    if (before) await before;
+    return send(url, init);
+  }
+  const sent = before ? before.then(() => send(url, init)) : send(url, init);
+  const settled = sent.then(
+    () => undefined,
+    () => undefined,
+  );
+  replacing = settled;
+  void settled.then(() => {
+    if (replacing === settled) replacing = undefined;
+  });
+  return sent;
+}
+
+// send makes one request and checks its answer, as transport describes.
+async function send(url: string, init: RequestInit & { schema?: ZodType }): Promise<unknown> {
   // schema is our validation setting, not a fetch option.
   const { schema, ...rest } = init;
   const facts: ErrorFacts = { method: init.method?.toUpperCase() ?? "GET" };

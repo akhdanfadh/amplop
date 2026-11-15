@@ -7,12 +7,16 @@ this file is what to do.
 
 Status: decided 2026-11-11. `feat/design-system` builds the foundation
 (tokens, the React Aria flavour, the shell, the status badge);
-`feat/design-forms` the shared form fields; the mail branches build on
+`feat/design-forms` the shared form fields, the settings and signed-out
+pages, messages, leave warnings, and banners; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
-work to this file, not to the old code. Not built yet: the row menu and
-picking several conversations (`feat/list-actions`), and the Outbox in
-the mail list (`feat/outbox-list`; ADR031, "Mitigations and follow-up").
+work to this file, not to the old code. Not built yet: Connected accounts
+on the settings layout (`feat/connected-accounts`), the docked compose
+window (`feat/docked-compose`), one rule for a session that ends on an
+open page (`feat/session-end`), the row menu and picking several
+conversations (`feat/list-actions`), and the Outbox in the mail list
+(`feat/outbox-list`; ADR031, "Mitigations and follow-up").
 
 ## Principles
 
@@ -115,21 +119,27 @@ IBM Plex Sans Variable (`@fontsource-variable/ibm-plex-sans`), one family,
 bundled with the app (ADR026 allows no font service). It tells `I`, `l`,
 `1`, `O`, and `0` apart, which sender addresses and codes need.
 
-| Use                                       | Size / line height | Weight                       |
-| ----------------------------------------- | ------------------ | ---------------------------- |
-| Meta: dates, counts, field help           | 12 / 16            | 400                          |
-| Snippets, secondary text                  | 13 / 20            | 400                          |
-| Interface body: rows, nav, forms, buttons | 14 / 20            | 400; 500 for buttons and nav |
-| Unread sender, subject, date              | 14 / 20            | 600; 650 in dark             |
-| Plain-text message body                   | 15 / 24            | 400                          |
-| Pane and dialog titles                    | 18 / 24            | 600                          |
-| Message subject in the reading pane       | 22 / 28            | 600                          |
-| Page titles                               | 24 / 32            | 600                          |
+| Use                                                                    | Size / line height | Weight                       |
+| ---------------------------------------------------------------------- | ------------------ | ---------------------------- |
+| Meta: dates, counts, field help                                        | 12 / 16            | 400                          |
+| Snippets, secondary text                                               | 13 / 20            | 400                          |
+| Interface body: rows, nav, forms, buttons, settings leads and sections | 14 / 20            | 400; 500 for buttons and nav |
+| Unread sender, subject, date                                           | 14 / 20            | 600; 650 in dark             |
+| Plain-text message body                                                | 15 / 24            | 400                          |
+| Settings section headings                                              | 16 / 24            | 600                          |
+| Pane and dialog titles                                                 | 18 / 24            | 600                          |
+| Message subject in the reading pane                                    | 22 / 28            | 600                          |
+| Page titles                                                            | 24 / 32            | 600                          |
 
 Sentence case everywhere; no uppercase or letter-spaced labels; no negative
 letter spacing below 16 px; `tabular-nums` on every number that lines up;
 lines under about 75 characters (the message sheet caps near 640 px of
 text).
+
+Dates and times are inbok's British English on the browser's 12 or 24 hour
+clock and in its time zone, everywhere: "2:32 pm" or "14:32", "14 Nov
+2026", "14 Nov 2026, 2:32 pm" (`src/lib/datetime.ts`). The browser's
+language never changes the words or the digits.
 
 In dark, text is drawn with grayscale smoothing: macOS browsers otherwise
 thicken every stroke by the same amount, most visibly light on dark,
@@ -177,6 +187,19 @@ which brings 400 and 600 close. Unread rows also take 650 there.
   once; keyboard focus shows it at once; it closes as soon as the
   pointer or focus leaves. Nothing loops except a spinner while work is
   actually running.
+- **Press:** a pressed button scales to 97% over 150 ms, so a tap shows it
+  landed before any answer; a text link does not, and reduced motion keeps
+  buttons still. A keyboard press scales it too: a press is a press, and no
+  button here is pressed often enough for 150 ms to slow anyone. A button
+  stands back up while the menu, dialog, or sheet it opened is open. A
+  sending form's button shows a spinner before its working words ("Signing
+  in..."). With reduced motion a spinner fades in and out instead of
+  turning, so it still says that work runs where no words sit beside it.
+- **Step change:** when a signed-out page, or a settings page holding a
+  task of several steps, moves to its next step, e.g. from the password to
+  the code, the step's content fades in and rises 4 px over 200 ms
+  (`stepEnter`); the page's first step is there at once, a step that keeps
+  its title keeps its header still, and reduced motion keeps only the fade.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
   focusable element, defined once in the components. One exception: the
   message editor's text fields, which have no box, show only the caret,
@@ -184,18 +207,22 @@ which brings 400 and 600 close. Unread rows also take 650 there.
   chips, buttons, and From keep the ring for the keyboard. Every page
   focuses its heading when it opens, the first load included, so the
   keyboard starts in the page, not in the sidebar, whose landmark is
-  named. No skip link: a skip button (a `#` link would change the address)
-  is the next step if testing shows a need.
+  named. A step that continues what the member is typing focuses its one
+  field instead, its instruction as the field's description: the sign-in
+  code, so a code typed at once lands. No skip link: a skip button (a `#`
+  link would change the address) is the next step if testing shows a
+  need.
 - **Cursor:** the hand only over links, which take the member somewhere
   else; buttons, list rows, and every other control keep the arrow, as in
   desktop apps (Tailwind 4's default for buttons).
 - **Links:** primary colour, underlined; the underline thickens on hover
   (`textLink` in `src/components/link-style.ts`; `lineLink` for a link on
-  a line of its own, 44 px tall). An action inside a line of muted text
-  that stays on the page, e.g. the reading pane's "In reply to", is a
-  muted link: a button drawn as a link (`Button variant="link"`) in
-  `muted-foreground`, underlined, with the arrow cursor of a button, 44 px
-  tall on touch.
+  a line of its own, 44 px tall; `smallLink` for one in small text beside
+  a label, 24 px tall, the least WCAG 2.2 allows outside a sentence). An
+  action inside a line of muted text that stays on the page, e.g. the
+  reading pane's "In reply to", is a muted link: a button drawn as a link
+  (`Button variant="link"`) in `muted-foreground`, underlined, with the
+  arrow cursor of a button, 44 px tall on touch.
 
 ### Themes
 
@@ -291,8 +318,9 @@ resizing is in ADR031's backlog.
 The URL holds where the member is, never passing state (picked rows,
 unsent text, the compose window). Clicking a conversation adds a history
 entry. Guarded layout routes check access in `beforeLoad` before anything
-draws: `_app` the session, `_app/settings/_admin` the role and two-factor
-authentication, `_auth/_signed-out` that a signed-in member skips sign-in.
+draws: `_app` the session, and sends an administrator without two-factor
+authentication to `/two-factor-setup`; `_app/settings/_admin` the role;
+`_auth/_signed-out` that a signed-in member skips sign-in.
 The addresses the server puts in emails and redirects (`/sign-in`,
 `/verify-email`, `/reset-password`, `/register/complete`, `/security`,
 `/connected-accounts`) always open their page, or old emails break; the
@@ -631,50 +659,158 @@ pull-to-refresh, which would reload the app, never starts.
 ### Settings and signed-out pages
 
 - `/settings/<page>` in the same frame with its own sidebar: Back to mail
-  (to the exact mail URL), Preferences, Security, Connected accounts, then
+  (to the exact mail URL), Security, Connected accounts, then
   for administrators a "This inbok" heading with Members, Registration,
-  System email. An administrator without two-factor authentication sees
-  that group locked with one line pointing to Security.
-- A page: title, one-sentence lead, then sections divided by hairlines,
-  heading and explanation on the left, controls on the right; content caps
-  at 720 px; no cards around everything.
+  System email. An administrator without two-factor authentication never
+  sees settings: the server lets their session only set it up, on the
+  signed-out card at `/two-factor-setup`.
+- A page (`SettingsPage`, `SettingsSection`): title, one-sentence lead,
+  then sections divided by hairlines, heading and explanation on the left,
+  controls on the right, stacked below 512 px of page; content caps at
+  720 px; no cards around everything. A result to report, e.g. "Two-factor
+  authentication is on.", sits under the lead.
+- A task of several steps, e.g. setting up two-factor authentication, gets
+  its own page under its settings page (`/settings/security/two-factor`),
+  with "‹ Security" above the title; the settings page keeps one row with
+  the status and a way in. A section whose step needs more than the right
+  column, e.g. a QR code, stacks its heading over it
+  (`layout="stacked"`); a form fits the right column.
+- Settings that save together, e.g. System email, show what is saved as a
+  summary with "Edit settings"; the form opens in its place, in the same
+  columns, with Save and Cancel, and closes on a save, so the page always
+  says what is saved. With nothing saved the form shows at once, without
+  Cancel. What depends on the saved settings, e.g. a test message, waits
+  while the form is open. A form with several groups titles each in the
+  right column (`FieldSet` and `FieldLegend`), e.g. Connection, Sign-in,
+  Sender.
 - Connected accounts gives each account a Name field ("Name (optional)",
   one explanation for all of them under the heading): a name only the
   member sees, never sent to recipients, unlike Gmail's sender name; it
   shows in mail instead of the address, and an empty one goes back to the
   address. Saving keeps focus in the field and says "Saved".
+- A setting with one change at a time, e.g. Registration, states what it is
+  in a sentence (and a badge beside the title) and offers one button for
+  the change that fits, e.g. Open registration or Close registration. A
+  change the server does not allow now has no button; a sentence says why
+  and a link leads to the fix, e.g. "Go to System email".
+- A page that is one list, e.g. Members, fills the window
+  (`SettingsPage height="fill"`, `SettingsSection layout="fill"`): its title
+  and section heading stay, and the list scrolls in the height left, down
+  to 12 rem, below which the page scrolls too.
+- A table scrolls inside one box both ways, focusable while it scrolls so
+  the keyboard can scroll it (no Tab stop when it fits), named for what
+  scrolls ("Member list"), with a fade at its right edge while columns lie
+  beyond it, e.g. a row's action on a phone, and at its bottom while rows
+  do. Its header stays at the top and its first column, the one that says
+  whose row it is, stays at the left; each draws its own edge, since a
+  table's borders scroll with its rows, and the first column's edge shows
+  only while the rest scroll sideways. A long address wraps at its seams
+  (before "@" and before dots) and breaks anywhere only when a part cannot
+  fit. A row's action is a button until a row has more than one; then a
+  menu. The member list is not paged: an inbok is a household or a team.
+- A QR code for a phone app also links its address (e.g. "Add to
+  authenticator app", `otpauth://`) on a narrow page or a touch pointer: a
+  phone cannot scan its own screen.
 - Below 1024 px the settings sidebar is a drawer, as mail's is.
 - Signed-out pages (sign-in, setup, registration, password reset, email
-  verification): the wordmark and one centred column about 400 px wide.
+  verification): the `muted` surface with one column about 400 px wide,
+  centred both ways. The wordmark sits above a `card` holding a centred
+  page title, a one-line lead, then the form or message; a link out of the
+  flow, e.g. "No account yet? Create an account", sits under the card
+  (`SignedOutPage`). "Forgot password?" sits beside the Password label.
 
 ## Patterns
 
 ### Forms
 
-- Build fields with the shared `createFormHook` components (`useAppForm`:
-  text, email, password, radio, checkbox, submit). They own the label,
-  description, error, `aria-describedby`, and the server-refusal check.
+- Build fields with the shared `createFormHook` components (`useAppForm`
+  in `src/components/form/`: a field kind per control, e.g. email and
+  password, plus the form and its submit button; a new kind joins with its
+  first form). They own the label, description, error, `aria-describedby`,
+  and the lock while the form sends; the form owns focus after a submit.
 - Schemas extend the generated Zod schemas; messages come from
-  `src/api/validation.ts`; fields read `maxLength`, `inputMode`, and
-  `autocomplete` from the same schema. Forms set `noValidate`.
+  `src/api/validation.ts`. An email field takes what the
+  server takes, an @ with text on both sides (`emailAddress`), never Zod's
+  stricter `email()`; a refused address reads "Enter an email address,
+  like name@example.com.", from the web and the server alike. Fields set
+  no `maxLength`, which would cut a pasted value without a word; the
+  length error says it instead. Forms set `noValidate`.
 - Label above (the message editor's rows put it on the left); description
   before the control; error under it, with an icon and words. "(optional)"
-  marks optional fields; required ones are unmarked.
+  marks optional fields; required ones are unmarked. A link or button about
+  the field sits at the end of the label's line in small text, e.g. "Forgot
+  password?" or "Use a backup code", and comes after the control in Tab
+  order, so Tab from one field reaches the next, not the action.
+- A one-time code is one box per character in two halves; it takes a
+  paste and the browser's one-time-code fill.
+- A number that names something, e.g. a port, is a text box with a number
+  keyboard (`inputMode="numeric"`), short; `type="number"` is for amounts,
+  since its arrow keys and wheel change the value.
+- Another service's username and password, e.g. a mail server's, keep
+  password managers out (`passwordManagers="ignore"`), so they neither
+  fill in the member's inbok sign-in nor save these as one. Browsers' own
+  managers have no such switch and may still offer to save them.
 - Errors appear after the first submit, then update live. Focus moves to
-  the first invalid field. A server refusal stays while the field holds
-  the refused value; a refusal naming two fields clears when either
-  changes.
+  the first invalid field. A server refusal stays while its field holds
+  the refused value, returns if the member types that value again, and
+  keeps that value from being sent. A rule that spans fields is also in
+  the form's schema, which refuses it first.
 - The submit button names what it does while working ("Saving...") and
-  ignores repeats. A request failure shows under the button through
-  `RequestError` (a reference only for faults); success is a quiet
-  "Saved".
-- A 429 wait stays visible while the member retypes: "Try again at 14:32
-  (in 4 minutes).", then "You can try again now." Times are English with
-  the browser's 12 or 24 hour clock.
-- Any form with unsaved typing warns before in-app navigation with
-  `LeaveWarning`; closing the tab gets the browser's question.
+  ignores repeats. A second submit, e.g. "Save only" beside "Save and send
+  test", is outlined and comes after the main one, which Enter in a field
+  presses; while one sends, the other waits. A request failure shows under the button through
+  `RequestError` (a reference only for faults). Success shows as what the
+  save leads to: the settings view again, with its badge and a note under
+  it naming any next step ("Settings saved. Send a test message to check
+  them."), or an outcome screen; no form stays open to say "Saved".
+- A 429 says when to try again, as a clock time rounded up to the minute
+  ("Too many attempts. Try again after 2:32 pm."), with the weekday when it
+  is another day, and "later" past six days; it stays while the member
+  retypes. A time stays true while it is on screen, which "in 4 minutes"
+  would not. Accepted: a wait under a minute reads as the next minute
+  (only scripts reach the per-browser limit), and the text never turns
+  into "You can try again now" (people meet only limits of 15 minutes or
+  more). Times are English with the browser's 12 or 24 hour clock.
+- A page warns before leaving (`LeaveWarning`) only when leaving loses what
+  can't be redone in moments: a long text (compose), settings being edited
+  (System email), backup codes that won't show again. Sign-in, the code
+  forms, setup, and the pages emailed links open don't: what they hold is
+  quick to type again, and an emailed link still works from the email. In
+  app the warning is a dialog; closing the tab gets the browser's
+  question. Typing back what the form opened with counts as no change.
+  Cancel on a form opened in place discards without asking: its name says
+  so, and what it drops is settings, quick to enter again. Discard on a
+  reply asks first when it would drop typed text, as leaving would: a
+  reply is a long text.
+- A lost answer to a save that replaces settings asks to save again
+  ("Save again to make sure."): saving the same values twice is safe, so
+  the form stays open and editable.
 - One independent choice (theme, a switch) applies at once; related fields
   save together with Save.
+
+### Outcome screens
+
+When a signed-out page's form gives way to a result, e.g. "Check your
+email", "This link no longer works", or "This sign-in has ended" on the
+code step, the result becomes the page (`SignedOutPage`), in the same card
+as the form pages and, like them, without an icon: the title says the
+outcome.
+
+- The title says what happened and takes focus, so a screen reader reads
+  the outcome first. A short lead or paragraph says why and what next.
+- An email address the outcome is about, e.g. where a link went, sits on
+  a line of its own under the title, in the text colour (`AddressLine`):
+  set inside a sentence, a long address wraps at its own hyphens and reads
+  like hyphenated words. The sign-in notice after an account or password
+  change shows it the same way.
+- The ways on are full-width buttons (`OutcomeLinks`): the most useful
+  primary, any other outlined. A button that only brings the form back,
+  e.g. "Use a different email address" under "Check your email", stays
+  outlined even alone: the way on is the inbox. A failed check's "Try
+  again" is its way on, so primary. A link out of the flow, e.g. "Back to
+  sign in", stays under the card.
+- Showing the form again, e.g. "Use a different email address", keeps
+  what was typed and puts focus in the field.
 
 ### Feedback
 
@@ -711,19 +847,47 @@ pull-to-refresh, which would reload the app, never starts.
   (DEBT.md, "Undo per message"). A result that stays in view,
   e.g. a star or Mark read, gets no Undo. A bulk action Gmail refuses for
   some conversations rolls back only those, and says how many failed.
-- **Irreversible actions** (disconnect, deactivate, turn off two-factor
-  authentication, discard typed text) ask first in an `AlertDialog`: the
-  title asks, the body states the consequence and what is kept, the
-  buttons name the actions ("Disconnect Studio"), focus starts on the safe
-  one.
+- **Irreversible actions** (disconnect, deactivate, discard typed text)
+  ask first in an `AlertDialog`: the title asks, the body states the
+  consequence and what is kept, the buttons name the actions ("Disconnect
+  Studio"), focus starts on the safe one. The dialog holds the change until
+  the server answers (`ConfirmDialog`): its button turns and says what is
+  happening ("Deactivating..."), Cancel and Escape wait, it closes on
+  success, and a failure or a lost answer shows inside it, where pressing
+  again retries. Focus then returns to the button that opened it, or, when
+  the change removed that button, to what took its place. Members and
+  Registration do this; Disconnect on Connected accounts, the sign-outs on
+  Security, Send again, and cancelling two-factor setup still close at once
+  and report on the page (Not now). One that already asks for a code
+  or a password, e.g. turning off two-factor authentication, confirms with
+  it on the page instead: the red button opens the field, the consequence
+  sits above it, the submit is red (`SubmitButton variant="destructive"`),
+  and a way back keeps things as they are.
 - **A failed action** rolls back and shows an error toast that stays until
   dismissed, with the fix.
 - **Toasts** report failures, and stay until closed; an action's Undo is
   the Undo bar's, not a toast's. Form
   results stay inline. Nothing important lives only in a toast.
-- **Banners** for conditions that last: offline at the top of the content;
-  an account problem above that account's mail; setup the member owes at the
-  top of settings, e.g. an unverified email address.
+- **Banners** for conditions that last (`Banner`: an icon, a sentence, and,
+  where something fixes it, a link to it, tinted, with a line in its tone
+  at 35% under it so stacked banners stay apart; the line only separates,
+  so it needs no contrast check): an account problem above that account's
+  mail; at the top of the content of every signed-in page, stacked, offline
+  (`warning`), then each setup step the member owes (`info`): system email
+  for an administrator (nothing saved: "Finish setting up system email:
+  until it works, members can't reset a password or verify their
+  address."; no passing test: "Finish setting up system email: until a
+  test message passes, registration can't open."), then an unverified
+  address. Each banner follows one fact from the server and none waits for
+  another: what a step can't do yet, e.g. a verification link while nothing
+  is saved, the server refuses and says why. A banner stays on every page
+  until its step is done; on the page where it is done it keeps its
+  sentence and drops its link, which would lead to itself. The setup
+  banners sit in a "Setup reminders" landmark: they come before the heading
+  a page focuses, so a screen reader finds them there. The system
+  email step reflects the last test, not whether mail sent since arrives:
+  the server records only tests (Not now). Signed-out pages show only
+  offline.
 - Every mail action has its words once, in `features/mail/words.ts`
   (label, icon, failure, and for an action that moves a conversation its
   result and where it went), a `Record` over the API's actions, so a new
@@ -733,7 +897,13 @@ pull-to-refresh, which would reload the app, never starts.
 
 ### States
 
-- **Loading:** routes load data in `loader` with `ensureQueryData`;
+- **Loading:** routes load data in `loader` with the query client's
+  `query` (`ensureQueryData` is deprecated). A settings page reads with
+  `staleTime: Infinity` and `staleReloadMode: "blocking"`: a cached read
+  serves until the member's own change marks it out of date, and a visit
+  back then waits for that reread instead of drawing the page as it was.
+  Mail serves whatever is cached (`"static"`) and reads again as the page
+  mounts. One approach for both is planned (`feat/connected-accounts`);
   `pendingComponent` appears after 300 ms and stays at least 500 ms (on
   the first load it is not held, so a quick one shows nothing): a list's
   own as placeholder rows shaped like real ones, any other page's the
@@ -759,22 +929,27 @@ One `badge`, a soft tint, always an icon and a word: `StatusBadge`
 (`src/components/status-badge.tsx`) takes the tone, the icon, and the word.
 The tone says what the status asks of the member:
 
-| Tone        | Asks         | Used for                                                                                   |
-| ----------- | ------------ | ------------------------------------------------------------------------------------------ |
-| Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser |
-| Info        | To wait      | Sending, Syncing (spinner)                                                                 |
-| Success     | Nothing more | Sent, Up to date, Active, Verified, Two-factor on                                          |
-| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect                                               |
-| Destructive | A fix        | Not sent, Sync failed                                                                      |
+| Tone        | Asks         | Used for                                                                                                 |
+| ----------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser, Open, Closed |
+| Info        | To wait      | Sending, Syncing (spinner)                                                                               |
+| Success     | Nothing more | Sent, Up to date, Verified, Two-factor on, Tested                                                        |
+| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect, Not set up, Paused                                         |
+| Destructive | A fix        | Not sent, Sync failed                                                                                    |
 
-Deactivated is an admin's choice, not a fault. Up to date and Active show
-only on the page whose job is that status (Connected accounts, Members);
-elsewhere the usual state shows nothing.
-Admin, Two-factor on, and the Members table's Verified column wait for
-the settings pages' redesign (`feat/design-forms`). The sidebar shows an
-account's Syncing, Reconnect, or Sync failed as the icon alone, in its
-tone, the words read to screen readers and shown on hover, and with the
-icon on a line under the name for a touch.
+Deactivated, Open, and Closed are an admin's choice, not a fault, so
+neutral; Paused (registration opened, but system email untested) asks for
+a look. Up to date shows only on the page whose job is that status
+(Connected accounts); elsewhere the usual state shows nothing. Members
+marks only what differs from an ordinary member, You, Admin, Not
+verified, Deactivated, and writes Active as plain grey text in its Status
+column. Two-factor on shows on Security and the two-factor page. Tested,
+Not confirmed, and Not set up show beside System email's title: whether
+inbok can send its own email, which sign-in codes, password resets, and
+Registration need. The sidebar shows an account's Syncing, Reconnect, or
+Sync failed as the icon alone, in its tone, the words read to screen
+readers and shown on hover, and with the icon on a line under the name
+for a touch.
 
 ## Data for mail
 
@@ -878,16 +1053,19 @@ reading-pane position settings, sender pictures (BIMI logos after DMARC,
 contact photos), merging one email received by two accounts, swipe
 gestures, drafts beyond the tab, an installable app with offline mail,
 per-member theme storage, folds kept across devices (per member, on the
-server). Pull-to-refresh and a top bar that hides while scrolling down:
-Check for new mail is one tap in the top bar, both gestures need
-hand-written touch handling over the Virtualizer's scrolling box that
-only a real phone can check, and a native app gets both from its platform
-(ADR031, branch 3 checkpoint 5).
+server), a Preferences settings page (the theme, the only preference,
+lives in the member menu), the remaining confirmations holding their
+change in the dialog (`ConfirmDialog`) as Members and Registration do, a
+setup reminder when system email stops delivering (the server would first
+have to record failed sends), dismissing a banner. Pull-to-refresh and a
+top bar that hides while scrolling down: Check for new mail is one tap in
+the top bar, both gestures need hand-written touch handling over the
+Virtualizer's scrolling box that only a real phone can check, and a
+native app gets both from its platform (ADR031, branch 3 checkpoint 5).
 
 App keyboard shortcuts, once built, go on TanStack Hotkeys (`useHotkey`,
 its `Mod` key, and its display formatter), which then also takes the
 sidebar's Ctrl+B, Send's Ctrl+Enter, and the Undo bar's Ctrl+Z. Until
 then those three are plain key handlers, the two letter ones sharing one
 check of what the key may reach (`isShortcut` in `src/lib/shortcut.ts`):
-the library was in beta in 2026-11, and three shortcuts did not need
-it.
+the library was in beta in 2026-11, and three shortcuts did not need it.

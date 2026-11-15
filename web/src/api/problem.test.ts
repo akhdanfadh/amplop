@@ -304,17 +304,18 @@ function unprocessable(errors: { location: string; message: string }[]): ApiErro
   return new ApiError("http", { method: "GET", status: 422, problem: { errors } });
 }
 
-// clock words a local time on a day of November 2026 as the app does, in
-// the test's locale.
+// clock words a local time on a day of November 2026 as the app does: in
+// English, on the test locale's 12- or 24-hour clock.
 function clock(day: number, hour: number, minute: number): string {
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
+  const { hourCycle } = new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions();
+  return new Intl.DateTimeFormat("en-GB", { hour: "numeric", minute: "2-digit", hourCycle }).format(
     new Date(2026, 10, day, hour, minute),
   );
 }
 
-// weekdayOf words a day of November 2026 as a weekday, in the test's locale.
+// weekdayOf words a day of November 2026 as a weekday, in English.
 function weekdayOf(date: number): string {
-  return new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(new Date(2026, 10, date));
+  return new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(new Date(2026, 10, date));
 }
 
 describe("throttled requests", () => {

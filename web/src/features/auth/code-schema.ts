@@ -3,8 +3,18 @@ import { REGEXP_ONLY_DIGITS, REGEXP_ONLY_DIGITS_AND_CHARS } from "input-otp";
 import type { ZodString } from "zod";
 
 export const codeFormats = {
-  authenticator: { length: 6, pattern: REGEXP_ONLY_DIGITS, label: "Authenticator code" },
-  backup: { length: 10, pattern: REGEXP_ONLY_DIGITS_AND_CHARS, label: "Backup code" },
+  authenticator: {
+    length: 6,
+    pattern: REGEXP_ONLY_DIGITS,
+    inputMode: "numeric",
+    label: "Authenticator code",
+  },
+  backup: {
+    length: 10,
+    pattern: REGEXP_ONLY_DIGITS_AND_CHARS,
+    inputMode: "text",
+    label: "Backup code",
+  },
 } as const;
 
 export type CodeKind = keyof typeof codeFormats;

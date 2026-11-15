@@ -108,7 +108,7 @@ type newSystemEmailSettings struct {
 	Security    systememail.Security `json:"security" enum:"tls,starttls,none"`
 	Username    string               `json:"username,omitempty" maxLength:"254" doc:"Omit or leave empty for a server that needs no sign-in."`
 	Password    string               `json:"password,omitempty" writeOnly:"true" maxLength:"255" doc:"Omit or leave empty to keep the saved password, if the host, port, and username are unchanged."`
-	FromAddress string               `json:"fromAddress" format:"email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
+	FromAddress string               `json:"fromAddress" format:"idn-email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
 	FromName    string               `json:"fromName" maxLength:"64" pattern:"\\S" patternDescription:"not blank"`
 }
 
@@ -195,7 +195,7 @@ func systemEmailSaveProblem(err error) error {
 const systemEmailNotConfiguredType = problemPrefix + "system-email-not-configured"
 
 type systemEmailTestMessageRecipient struct {
-	Recipient string `json:"recipient" format:"email" maxLength:"254" doc:"Where to send the test message. Letters A to Z are sent in lowercase."`
+	Recipient string `json:"recipient" format:"idn-email" maxLength:"254" doc:"Where to send the test message. Letters A to Z are sent in lowercase."`
 }
 
 // testMessageStatus is whether the server accepted the test message.

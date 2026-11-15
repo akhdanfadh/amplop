@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"inbok/internal/account"
 	"inbok/internal/repository/postgres/sqlc"
 	"inbok/internal/session"
 )
@@ -32,7 +33,9 @@ func (db *DB) StartSignIn(ctx context.Context, userID int64, update func(session
 		if err != nil {
 			return err
 		}
-		next, err := update(session.SignInState{PasswordHash: user.PasswordHash, Factor: factor, Deactivated: user.Deactivated})
+		next, err := update(session.SignInState{
+			PasswordHash: user.PasswordHash, Role: account.Role(user.Role), Factor: factor, Deactivated: user.Deactivated,
+		})
 		if err != nil {
 			return err
 		}

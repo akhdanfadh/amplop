@@ -47,7 +47,7 @@ func TestRecoveryStdin(t *testing.T) {
 	assert.Contains(t, output.String(), "4 backup codes removed")
 	assert.Contains(t, output.String(), "2 sessions ended")
 	assert.Contains(t, output.String(), "6 password reset links cleared")
-	assert.Contains(t, output.String(), "Security page")
+	assert.Contains(t, output.String(), "set up TOTP")
 	assert.NotContains(t, output.String(), service.password)
 	assert.NotContains(t, output.String(), "Continue?")
 	assert.Contains(t, output.String(), "Every active administrator will be emailed about this recovery")

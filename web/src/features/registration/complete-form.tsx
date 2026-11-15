@@ -1,19 +1,15 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
-import { useForm, useSelector } from "@tanstack/react-form";
-import { Link } from "@tanstack/react-router";
+import { useRef, type ReactElement } from "react";
+import { revalidateLogic } from "@tanstack/react-form";
 import { useRedeemRegistrationLink } from "@/api/generated/inbok";
 import {
   redeemRegistrationLinkBodyPasswordMax,
   redeemRegistrationLinkBodyPasswordMin,
 } from "@/api/generated/model";
-import { formErrors, formSummary, uncertainOutcome } from "@/api/problem";
-import { PasswordInput } from "@/components/password-input";
+import { uncertainOutcome } from "@/api/problem";
+import { useAppForm } from "@/components/form/app-form";
+import { useFormRequest } from "@/components/form/request";
 import { RequestError } from "@/components/request-error";
-import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { useFocusAfterError } from "@/hooks/use-focus-after-error";
-import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
+import { FieldGroup } from "@/components/ui/field";
 import { CompleteSchema } from "./complete-schema";
 import {
   completeEnd,
@@ -22,78 +18,55 @@ import {
   type EarlierTries,
   type Ended,
 } from "./visitor-text";
-import { lineLink } from "@/components/link-style";
 
-const emptyValues = { email: "", password: "", confirmPassword: "" };
-const emailId = "register-email";
-
-const inputs = [
-  {
-    name: "password",
-    label: "Password",
-    description: `Use ${redeemRegistrationLinkBodyPasswordMin} to ${redeemRegistrationLinkBodyPasswordMax} characters.`,
-    toggle: "password",
-  },
-  {
-    name: "confirmPassword",
-    label: "Confirm password",
-    description: "Enter the same password again.",
-    toggle: "password confirmation",
-  },
-] as const;
-const completeFields = ["email", ...inputs.map((input) => input.name)] as const;
+const completeFields = ["email", "password", "confirmPassword"] as const;
 
 // CompleteForm creates a member account from secret, the text after # in a
 // sign-up link, the email the visitor types, which must be the one the link
 // was sent to, and the password they choose. onDone receives the account's
-// email, for signing in.
+// email, for signing in; onEnded receives the page's end once no try with
+// this link can work.
 export function CompleteForm({
   secret,
   onDone,
+  onEnded,
 }: {
   secret: string;
   onDone: (email: string) => void;
+  onEnded: (ended: Ended) => void;
 }): ReactElement {
-  const formRef = useRef<HTMLFormElement>(null);
-  const submitRef = useRef<HTMLButtonElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
   // A try whose outcome is unknown may have created the account.
   const earlier = useRef<EarlierTries>("refused");
-  const [ended, setEnded] = useState<Ended>();
   // Do not keep the chosen password after the form unmounts.
   const redeem = useRedeemRegistrationLink({ mutation: { gcTime: 0 } });
-  const form = useForm({
-    defaultValues: emptyValues,
-    validators: { onChange: CompleteSchema },
-    onSubmitInvalid: ({ formApi }) => {
-      const name = completeFields.find((field) => formApi.getFieldMeta(field)?.errors.length);
-      if (name) formRef.current?.querySelector<HTMLInputElement>(`[name="${name}"]`)?.focus();
-    },
-    onSubmit: ({ value, formApi }) => {
-      if (redeem.isPending) return;
-      redeem.mutate(
-        { data: { secret, email: value.email, password: value.password } },
-        {
-          onSuccess: (result) => {
-            formApi.reset();
-            onDone(result.data.email);
-          },
-          onError: (err) => {
-            const end = completeEnd(err);
-            if (end) {
-              setEnded(endOf(err, end, earlier.current));
-              // The end screen needs neither the password nor the secret.
-              formApi.reset();
-              redeem.reset();
-              return;
-            }
+  const request = useFormRequest(redeem, completeFields);
+  const form = useAppForm({
+    defaultValues: { email: "", password: "", confirmPassword: "" },
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: request.check(CompleteSchema) },
+    onSubmit: async ({ value, formApi }) => {
+      const sent = await request.send(formApi, value, {
+        data: { secret, email: value.email, password: value.password },
+      });
+      if (sent.outcome === "done") {
+        formApi.reset();
+        onDone(sent.data.data.email);
+        return;
+      }
+      if (sent.outcome !== "refused") return;
 
-            if (uncertainOutcome(err)) earlier.current = "unknown";
-            const { fields } = formErrors(err, completeFields);
-            if (Object.keys(fields).length > 0) formApi.setErrorMap({ onSubmit: { fields } });
-          },
-        },
-      );
+      // 1. A refusal no retry with this link can change ends the page; the
+      // end needs neither the password nor the secret.
+      const end = completeEnd(sent.error);
+      if (end) {
+        formApi.reset();
+        redeem.reset();
+        onEnded(endOf(sent.error, end, earlier.current));
+        return;
+      }
+      // 2. Remember a try that may have created the account, for the end's
+      // wording.
+      if (uncertainOutcome(sent.error)) earlier.current = "unknown";
     },
     // An idle reset still re-renders the whole form, so only clear an error.
     listeners: {
@@ -102,152 +75,48 @@ export function CompleteForm({
       },
     },
   });
-  const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const summary = redeem.error
-    ? formSummary(completeErrorMessage(redeem.error), formErrors(redeem.error, completeFields))
-    : [];
-
-  useFocusAfterError(redeem.error, redeem.isPending, formRef, submitRef);
-
-  // The end replaces the focused form, so it takes focus.
-  useEffect(() => {
-    if (ended) endRef.current?.focus();
-  }, [ended]);
-
-  // No retry with this link can work, so the form goes.
-  if (ended)
-    return (
-      <div ref={endRef} tabIndex={-1} className="flex flex-col gap-4">
-        <p>{ended.message}</p>
-        {ended.links.map((link) =>
-          link === "new-link" ? (
-            // Exact, or the router marks /register current on
-            // /register/complete and a screen reader says so.
-            <Link key={link} to="/register" activeOptions={{ exact: true }} className={lineLink}>
-              Ask for a new link
-            </Link>
-          ) : (
-            <Link key={link} to="/sign-in" className={lineLink}>
-              Sign in
-            </Link>
-          ),
-        )}
-      </div>
-    );
 
   return (
-    <form
-      ref={formRef}
-      className="flex flex-col gap-6"
-      noValidate
-      aria-label="Create your account"
-      aria-busy={redeem.isPending}
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
-      <p>
-        Enter the email address this link was sent to and choose a password for your new inbok
-        account. If you didn&apos;t ask to create an account, close this page.
-      </p>
-      <FieldGroup>
-        <form.Field name="email">
-          {(field) => {
-            const errors = field.state.meta.isBlurred || submitted ? field.state.meta.errors : [];
-            // Only the server's refusal is a submit error, almost always
-            // because the link was sent to another email; only a link to
-            // that address can create its account. Reading the field, not
-            // the request, keeps the link exactly as long as the error.
-            const refused = field.state.meta.errorMap.onSubmit !== undefined;
-            return (
-              <Field data-invalid={errors.length > 0} data-disabled={redeem.isPending}>
-                <FieldLabel htmlFor={emailId}>Email address</FieldLabel>
-                <Input
-                  id={emailId}
-                  name="email"
-                  type="email"
-                  // "username" lets a password manager save it with the new
-                  // password as one login.
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  disabled={redeem.isPending}
-                  aria-invalid={errors.length > 0}
-                  aria-describedby={
-                    errors.length > 0
-                      ? `${emailId}-description ${emailId}-error`
-                      : `${emailId}-description`
-                  }
-                  value={field.state.value}
-                  onBlur={() => blurKeepingSubmitErrors(field)}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                <FieldDescription id={`${emailId}-description`}>
-                  The address you asked to sign up with.
-                </FieldDescription>
-                <FieldError id={`${emailId}-error`} errors={errors} />
-                {refused && (
-                  // Field stretches its children; the paragraph keeps the
-                  // link's focus outline to its text. An action, not part of
-                  // the error, so a link, not in its colour.
-                  <p>
-                    <Link
-                      to="/register"
-                      // Exact, as above.
-                      activeOptions={{ exact: true }}
-                      className={lineLink}
-                    >
-                      Ask for a new link
-                    </Link>
-                  </p>
-                )}
-              </Field>
-            );
-          }}
-        </form.Field>
-        {inputs.map(({ name, label, description, toggle }) => (
-          <form.Field key={name} name={name}>
-            {(field) => {
-              const errors = field.state.meta.isBlurred || submitted ? field.state.meta.errors : [];
-              const id = `register-${name}`;
-              return (
-                <Field data-invalid={errors.length > 0} data-disabled={redeem.isPending}>
-                  <FieldLabel htmlFor={id}>{label}</FieldLabel>
-                  <PasswordInput
-                    label={toggle}
-                    id={id}
-                    name={name}
-                    type="password"
-                    autoComplete="new-password"
-                    disabled={redeem.isPending}
-                    aria-invalid={errors.length > 0}
-                    aria-describedby={
-                      errors.length > 0 ? `${id}-description ${id}-error` : `${id}-description`
-                    }
-                    value={field.state.value}
-                    onBlur={() => blurKeepingSubmitErrors(field)}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                  <FieldDescription id={`${id}-description`}>{description}</FieldDescription>
-                  <FieldError id={`${id}-error`} errors={errors} />
-                </Field>
-              );
-            }}
-          </form.Field>
-        ))}
-      </FieldGroup>
-
-      <Button
-        ref={submitRef}
-        type="submit"
-        className="whitespace-normal"
-        isDisabled={redeem.isPending}
-      >
-        {redeem.isPending ? "Creating account..." : "Create account"}
-      </Button>
-
-      <RequestError errors={summary} requestId={redeem.error?.requestId} />
-    </form>
+    <form.AppForm>
+      <form.Form label="Create your account">
+        <FieldGroup>
+          <form.AppField name="email">
+            {(field) => (
+              <field.EmailField
+                label="Email address"
+                description="The address you asked to sign up with."
+                // "username" lets a password manager save it with the new
+                // password as one login.
+                autoComplete="username"
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="password">
+            {(field) => (
+              <field.PasswordField
+                label="Password"
+                description={`Use ${redeemRegistrationLinkBodyPasswordMin} to ${redeemRegistrationLinkBodyPasswordMax} characters.`}
+                autoComplete="new-password"
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="confirmPassword">
+            {(field) => (
+              <field.PasswordField
+                label="Confirm password"
+                description="Enter the same password again."
+                autoComplete="new-password"
+                toggle="password confirmation"
+              />
+            )}
+          </form.AppField>
+        </FieldGroup>
+        <form.SubmitButton working="Creating account...">Create account</form.SubmitButton>
+        <RequestError
+          errors={request.summary(completeErrorMessage)}
+          requestId={request.reference}
+        />
+      </form.Form>
+    </form.AppForm>
   );
 }

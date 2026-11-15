@@ -1,25 +1,21 @@
-import { useEffect, useRef, useState, type ComponentProps, type ReactElement } from "react";
-import { useForm, useSelector } from "@tanstack/react-form";
+import { useEffect, useRef, useState, type ReactElement } from "react";
+import { revalidateLogic } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useCreateSession, useGetCurrentSession } from "@/api/generated/inbok";
-import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
+import { uncertainOutcome, userMessage } from "@/api/problem";
 import { sessionMessage } from "./session-error";
 import { clearAccountCache } from "./session-cache";
 import { SignInSchema } from "./sign-in-schema";
+import { useAppForm } from "@/components/form/app-form";
+import { useFormRequest } from "@/components/form/request";
+import { smallLink } from "@/components/link-style";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { useFocusAfterError } from "@/hooks/use-focus-after-error";
-import { PasswordInput } from "@/components/password-input";
-import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
+import { FieldGroup } from "@/components/ui/field";
 
 const unauthorized = 401;
-const inputs = [
-  { name: "email", label: "Email address", type: "email", autoComplete: "username" },
-  { name: "password", label: "Password", type: "password", autoComplete: "current-password" },
-] as const;
-const signInFields = inputs.map((input) => input.name);
+const signInFields = ["email", "password"] as const;
 
 // SignInForm submits credentials and reports the completed sign-in step.
 // email fills in the email field, e.g. for an account just created.
@@ -33,8 +29,6 @@ export function SignInForm({
   onCodeRequired: () => void;
 }): ReactElement {
   const queryClient = useQueryClient();
-  const formRef = useRef<HTMLFormElement>(null);
-  const submitRef = useRef<HTMLButtonElement>(null);
   const checkRef = useRef<HTMLButtonElement>(null);
   const [checkMessage, setCheckMessage] = useState<string>();
   const [checking, setChecking] = useState(false);
@@ -50,36 +44,24 @@ export function SignInForm({
       onSettled: () => clearAccountCache(queryClient),
     },
   });
-  const form = useForm({
+  const request = useFormRequest(create, signInFields);
+  const form = useAppForm({
     defaultValues: { email, password: "" },
-    validators: { onChange: SignInSchema },
-    onSubmitInvalid: ({ formApi }) => {
-      const name = signInFields.find((field) => formApi.getFieldMeta(field)?.errors.length);
-      if (name) formRef.current?.querySelector<HTMLInputElement>(`[name="${name}"]`)?.focus();
-    },
-    onSubmit: ({ value, formApi }) => {
-      if (create.isPending || checkRequest.current) return;
-      create.mutate(
-        { data: SignInSchema.parse(value) },
-        {
-          onSuccess: (result) => {
-            switch (result.data.step) {
-              case "complete":
-                formApi.reset();
-                onDone();
-                break;
-              case "totp":
-                formApi.reset();
-                onCodeRequired();
-                break;
-            }
-          },
-          onError: (err) => {
-            const { fields } = formErrors(err, signInFields);
-            if (Object.keys(fields).length > 0) formApi.setErrorMap({ onSubmit: { fields } });
-          },
-        },
-      );
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: request.check(SignInSchema) },
+    onSubmit: async ({ value, formApi }) => {
+      if (checkRequest.current) return;
+      const sent = await request.send(formApi, value, { data: SignInSchema.parse(value) });
+      if (sent.outcome !== "done") return;
+      formApi.reset();
+      switch (sent.data.data.step) {
+        case "complete":
+          onDone();
+          break;
+        case "totp":
+          onCodeRequired();
+          break;
+      }
     },
     listeners: {
       onChange: () => {
@@ -93,10 +75,7 @@ export function SignInForm({
       },
     },
   });
-  const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const summary = create.error
-    ? formSummary(sessionMessage(create.error, "sign-in"), formErrors(create.error, signInFields))
-    : [];
+  const summary = request.summary((err) => sessionMessage(err, "sign-in"));
 
   useEffect(
     () => () => {
@@ -106,20 +85,18 @@ export function SignInForm({
     [],
   );
 
-  useFocusAfterError(create.error, create.isPending, formRef, submitRef);
-
   useEffect(() => {
     if (checkMessage && !checking) checkRef.current?.focus();
   }, [checkMessage, checking]);
 
   async function checkSession(): Promise<void> {
     if (create.isPending || checkRequest.current) return;
-    const request = {};
-    checkRequest.current = request;
+    const attempt = {};
+    checkRequest.current = attempt;
     setChecking(true);
     setCheckMessage(undefined);
     const result = await current.refetch();
-    if (checkRequest.current !== request) return;
+    if (checkRequest.current !== attempt) return;
     checkRequest.current = null;
     setChecking(false);
     if (result.isSuccess) {
@@ -136,77 +113,49 @@ export function SignInForm({
   }
 
   return (
-    <form
-      ref={formRef}
-      className="flex flex-col gap-6"
-      noValidate
-      aria-label="Sign in"
-      aria-busy={create.isPending}
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
-      <FieldGroup>
-        {inputs.map(({ name, label, type, autoComplete }) => (
-          <form.Field key={name} name={name}>
-            {(field) => {
-              const errors = field.state.meta.isBlurred || submitted ? field.state.meta.errors : [];
-              const id = `sign-in-${name}`;
-              const inputProps: ComponentProps<"input"> = {
-                id,
-                name,
-                type,
-                autoComplete,
-                autoCapitalize: "none",
-                spellCheck: false,
-                disabled: create.isPending,
-                "aria-invalid": errors.length > 0,
-                "aria-describedby": errors.length > 0 ? `${id}-error` : undefined,
-                value: field.state.value,
-                onBlur: () => blurKeepingSubmitErrors(field),
-                onChange: (event) => field.handleChange(event.target.value),
-              };
-              return (
-                <Field data-invalid={errors.length > 0} data-disabled={create.isPending}>
-                  <FieldLabel htmlFor={id}>{label}</FieldLabel>
-                  {name === "password" ? (
-                    <PasswordInput label="password" {...inputProps} />
-                  ) : (
-                    <Input {...inputProps} />
-                  )}
-                  <FieldError id={`${id}-error`} errors={errors} />
-                </Field>
-              );
-            }}
-          </form.Field>
-        ))}
-      </FieldGroup>
+    <form.AppForm>
+      <form.Form label="Sign in">
+        <FieldGroup>
+          <form.AppField name="email">
+            {(field) => <field.EmailField label="Email address" autoComplete="username" />}
+          </form.AppField>
+          <form.AppField name="password">
+            {(field) => (
+              <field.PasswordField
+                label="Password"
+                autoComplete="current-password"
+                labelAction={
+                  <Link to="/forgot-password" className={smallLink}>
+                    Forgot password?
+                  </Link>
+                }
+              />
+            )}
+          </form.AppField>
+        </FieldGroup>
 
-      <Button
-        ref={submitRef}
-        className="whitespace-normal"
-        type="submit"
-        isDisabled={create.isPending || checking}
-      >
-        {create.isPending ? "Signing in..." : "Sign in"}
-      </Button>
+        <form.SubmitButton working="Signing in..." isDisabled={checking}>
+          Sign in
+        </form.SubmitButton>
 
-      <RequestError errors={summary} requestId={create.error?.requestId} />
-      {create.error && uncertainOutcome(create.error) && (
-        <div className="flex flex-col gap-3">
-          <Button
-            ref={checkRef}
-            type="button"
-            variant="outline"
-            isDisabled={checking}
-            onPress={() => void checkSession()}
-          >
-            {checking ? "Checking your session..." : "Check session"}
-          </Button>
-          <output>{checkMessage}</output>
-        </div>
-      )}
-    </form>
+        <RequestError errors={summary} requestId={request.reference} />
+        {create.error && uncertainOutcome(create.error) && (
+          <div className="flex flex-col">
+            <Button
+              ref={checkRef}
+              type="button"
+              variant="outline"
+              isDisabled={checking}
+              onPress={() => void checkSession()}
+            >
+              {checking ? "Checking your session..." : "Check session"}
+            </Button>
+            {/* Always present, so a screen reader announces the message that
+                fills it; empty, it takes no space. */}
+            <output className="not-empty:mt-3">{checkMessage}</output>
+          </div>
+        )}
+      </form.Form>
+    </form.AppForm>
   );
 }

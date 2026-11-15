@@ -65,7 +65,7 @@ func TestSetupThrottling(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			accounts := &fakeAccounts{setupErr: c.setupErr}
 			limiter := &fakeThrottle{beginErr: c.beginErr, deleteErr: c.deleteErr}
-			api := New(discard, Services{Account: accounts, Throttle: limiter})
+			api := New(discard, Services{Account: accounts, Throttle: limiter, FirstAdminSignIn: &fakeFirstAdmin{}})
 			require.NoError(t, api.SetTrustedProxies([]string{"10.0.0.0/8"}))
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(setupBody(t, setupFields())))
 			request.Header.Set("Origin", "http://"+request.Host)
@@ -80,7 +80,9 @@ func TestSetupThrottling(t *testing.T) {
 			assert.Equal(t, netip.MustParseAddr("198.51.100.20"), limiter.addr)
 			assert.Len(t, accounts.created, c.created)
 			assert.Equal(t, c.removed, limiter.removed)
-			assert.Empty(t, response.Result().Cookies())
+			if c.code != http.StatusCreated {
+				assert.Empty(t, response.Result().Cookies())
+			}
 			if c.beginErr == session.ErrThrottled {
 				assert.Equal(t, "/api/v0/problems/sign-in-throttled", decodeJSON(t, response.Body.Bytes())["type"])
 			}
@@ -91,7 +93,7 @@ func TestSetupThrottling(t *testing.T) {
 func TestSetupValidationFirst(t *testing.T) {
 	limiter := &fakeThrottle{beginErr: session.ErrThrottled}
 	accounts := &fakeAccounts{}
-	api := New(discard, Services{Account: accounts, Throttle: limiter})
+	api := New(discard, Services{Account: accounts, Throttle: limiter, FirstAdminSignIn: &fakeFirstAdmin{}})
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(`{"token":"private-token","email":"bad","password":"short"}`))
 	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", jsonContentType)
@@ -131,13 +133,17 @@ func TestRetryAfter(t *testing.T) {
 		{"code sign-in", func() *httptest.ResponseRecorder {
 			return postCode(New(discard, Services{CodeSignIn: &fakeCodeSignIn{err: refused(totp.ErrThrottled)}}), `{"code":"012345"}`, "http://example.com")
 		}, "totp-throttled"},
-		{"TOTP confirmation", func() *httptest.ResponseRecorder {
-			api := New(discard, Services{Session: memberSessions(account.RoleMember), Enrollment: &fakeEnrollment{err: refused(totp.ErrThrottled)}})
-			return postTOTPConfirm(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
+		{"TOTP setup code", func() *httptest.ResponseRecorder {
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), TOTP: &fakeTOTP{err: refused(totp.ErrThrottled)}})
+			return postTOTP(api, "/enrollment/code", `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
 		}, "totp-throttled"},
+		{"TOTP setup password", func() *httptest.ResponseRecorder {
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), TOTP: &fakeTOTP{err: refused(session.ErrThrottled)}})
+			return postTOTP(api, "", `{"password":"pw"}`, "http://example.com", totpAuthAuthenticated)
+		}, "sign-in-throttled"},
 		{"backup codes", func() *httptest.ResponseRecorder {
 			api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: &fakeBackups{err: refused(totp.ErrThrottled)}})
-			return postBackupRegeneration(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
+			return postTOTP(api, "/backup-codes", `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
 		}, "totp-throttled"},
 		{"TOTP turn-off", func() *httptest.ResponseRecorder {
 			api := New(discard, Services{Session: memberSessions(account.RoleMember), Disabler: &fakeDisabler{err: refused(totp.ErrThrottled)}})
@@ -213,5 +219,5 @@ func TestRetryAfterDocumented(t *testing.T) {
 			assert.Equal(t, huma.TypeInteger, header.Schema.Type, path)
 		}
 	}
-	assert.Equal(t, 19, throttled, "setup, sign-in, code sign-in, confirm, backup codes, turn-off, verification links, redeem, the probe, both registration writes, both password reset writes, both Gmail connection starts, the three sends, and an account's sync")
+	assert.Equal(t, 21, throttled, "setup, sign-in, code sign-in, two-factor start, its code check, showing waiting codes, backup codes, turn-off, verification links, redeem, the probe, both registration writes, both password reset writes, both Gmail connection starts, the three sends, and an account's sync")
 }

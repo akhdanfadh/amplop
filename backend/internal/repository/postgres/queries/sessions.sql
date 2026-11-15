@@ -38,8 +38,9 @@ DELETE FROM sessions
 WHERE user_id = @user_id AND (expires_at <= @expires_by OR last_used_at <= @last_used_by);
 
 -- name: LockSessionUser :one
--- The owner lock comes first, as in enrollment confirmation, so deleting
--- several of the user's sessions cannot deadlock with it.
+-- The owner lock comes first, as in finishing two-factor enrollment
+-- (FinishTOTP), so deleting several of the user's sessions cannot deadlock
+-- with it.
 SELECT id FROM users WHERE id = @user_id FOR UPDATE;
 
 -- name: DeleteUserOtherSessions :many

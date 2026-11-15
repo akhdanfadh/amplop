@@ -48,13 +48,38 @@ type member struct {
 	EmailVerified bool         `json:"emailVerified"`
 	TOTPEnabled   bool         `json:"totpEnabled" doc:"Whether a confirmed authenticator protects sign-in."`
 	DeactivatedAt *time.Time   `json:"deactivatedAt" nullable:"true" doc:"When the account was deactivated; null while it is active."`
+	// Listed here, so every client offers only what the service accepts
+	// instead of restating its rule (AGENTS.md, "API contract").
+	AllowedActions []string `json:"allowedActions" nullable:"false" doc:"What an administrator can ask of this account now: deactivate (Deactivate Member) and reactivate (Reactivate Member). Empty for an administrator's account, which can't be deactivated or reactivated. An action that would change nothing, e.g. deactivating an account already deactivated, is listed and succeeds without a change. A listed action can still be refused when the account changed since this read. Clients ignore values they don't know."`
+}
+
+// TransformSchema lists allowedActions' values from [account.MemberActions].
+func (member) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	values := make([]any, 0, len(account.MemberActions))
+	for _, action := range account.MemberActions {
+		values = append(values, memberActionNames[action])
+	}
+	s.Properties["allowedActions"].Items.Enum = values
+	return s
+}
+
+// memberActionNames are the API's names of [account.MemberAction] values.
+var memberActionNames = map[account.MemberAction]string{
+	account.MemberDeactivate: "deactivate",
+	account.MemberReactivate: "reactivate",
 }
 
 // memberOf returns the response form of m.
 func memberOf(m account.Member) member {
+	// Empty, not nil: the contract promises a list, never null.
+	actions := make([]string, 0, len(account.MemberActions))
+	for _, action := range m.AllowedActions() {
+		actions = append(actions, memberActionNames[action])
+	}
 	return member{
 		ID: m.ID, Email: m.Email, Role: m.Role, JoinedAt: m.JoinedAt,
 		EmailVerified: m.EmailVerified, TOTPEnabled: m.TOTPEnabled, DeactivatedAt: m.DeactivatedAt,
+		AllowedActions: actions,
 	}
 }
 

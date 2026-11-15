@@ -46,12 +46,12 @@ func TestSettings(t *testing.T) {
 		record Record
 		want   Settings
 	}{
-		{"closed", Record{State: StateClosed}, Settings{Status: StatusClosed}},
-		{"closed with tested system email", Record{State: StateClosed, SystemEmailTested: true}, Settings{Status: StatusClosed, SystemEmailTested: true}},
-		{"open", Record{State: StateOpen, SystemEmailTested: true}, Settings{Status: StatusOpen, SystemEmailTested: true}},
+		{"closed", Record{State: StateClosed}, Settings{Status: StatusClosed, AllowedActions: []Action{ActionClose}}},
+		{"closed with tested system email", Record{State: StateClosed, SystemEmailTested: true}, Settings{Status: StatusClosed, SystemEmailTested: true, AllowedActions: []Action{ActionOpen, ActionClose}}},
+		{"open", Record{State: StateOpen, SystemEmailTested: true}, Settings{Status: StatusOpen, SystemEmailTested: true, AllowedActions: []Action{ActionOpen, ActionClose}}},
 		// New system email settings clear the tested time; registration
 		// waits for a pass instead of closing behind the administrator.
-		{"open without tested system email", Record{State: StateOpen}, Settings{Status: StatusPaused}},
+		{"open without tested system email", Record{State: StateOpen}, Settings{Status: StatusPaused, AllowedActions: []Action{ActionClose}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service := NewService(&memoryStorage{record: c.record})
@@ -80,12 +80,12 @@ func TestSave(t *testing.T) {
 		state   State
 		want    Settings
 	}{
-		{"open", Record{State: StateClosed, SystemEmailTested: true}, StateOpen, Settings{Status: StatusOpen, SystemEmailTested: true}},
-		{"close", Record{State: StateOpen, SystemEmailTested: true}, StateClosed, Settings{Status: StatusClosed, SystemEmailTested: true}},
+		{"open", Record{State: StateClosed, SystemEmailTested: true}, StateOpen, Settings{Status: StatusOpen, SystemEmailTested: true, AllowedActions: []Action{ActionOpen, ActionClose}}},
+		{"close", Record{State: StateOpen, SystemEmailTested: true}, StateClosed, Settings{Status: StatusClosed, SystemEmailTested: true, AllowedActions: []Action{ActionOpen, ActionClose}}},
 		// Closing needs no tested system email, so an administrator can always stop a
 		// paused registration.
-		{"close while paused", Record{State: StateOpen}, StateClosed, Settings{Status: StatusClosed}},
-		{"open again", Record{State: StateOpen, SystemEmailTested: true}, StateOpen, Settings{Status: StatusOpen, SystemEmailTested: true}},
+		{"close while paused", Record{State: StateOpen}, StateClosed, Settings{Status: StatusClosed, AllowedActions: []Action{ActionClose}}},
+		{"open again", Record{State: StateOpen, SystemEmailTested: true}, StateOpen, Settings{Status: StatusOpen, SystemEmailTested: true, AllowedActions: []Action{ActionOpen, ActionClose}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			storage := &memoryStorage{record: c.current}

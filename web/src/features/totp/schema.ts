@@ -1,29 +1,36 @@
-import { REGEXP_ONLY_DIGITS } from "input-otp";
+import * as z from "zod";
 import {
-  TotpConfirmationCode,
+  PasswordProof,
+  passwordProofPasswordMax,
   TotpDisableCode,
-  totpConfirmationCodeCodeMax,
-  TotpRegenerationCode,
-  totpRegenerationCodeCodeMax,
+  TotpReplacementCode,
+  TotpEnrollmentCode,
 } from "@/api/generated/model";
 import { completeCode, type CodeKind } from "@/features/auth/code-schema";
 
-const authenticatorDigits = totpConfirmationCodeCodeMax;
-export const ConfirmationSchema = TotpConfirmationCode.extend({
-  code: TotpConfirmationCode.shape.code
-    .length(authenticatorDigits, { error: `Enter all ${authenticatorDigits} digits.` })
-    .regex(new RegExp(REGEXP_ONLY_DIGITS), { error: "Use digits only." }),
+// EnrollmentCodeSchema is the first code from the authenticator being set up.
+export const EnrollmentCodeSchema = TotpEnrollmentCode.extend({
+  code: completeCode(TotpEnrollmentCode.shape.code, "authenticator"),
 });
 
-export const RegenerationSchema = TotpRegenerationCode.extend({
-  code: TotpRegenerationCode.shape.code
-    .length(totpRegenerationCodeCodeMax, {
-      error: `Enter all ${totpRegenerationCodeCodeMax} digits.`,
-    })
-    .regex(new RegExp(REGEXP_ONLY_DIGITS), { error: "Use digits only." }),
+// ReplacementCodeSchema is a fresh authenticator code; a backup code
+// cannot replace the backup codes.
+export const ReplacementCodeSchema = TotpReplacementCode.extend({
+  code: completeCode(TotpReplacementCode.shape.code, "authenticator"),
 });
 
-// Turning off accepts either proof, so the field follows the selected kind.
+// PasswordSchema is the account's current password, asked before the
+// enrollment's secret or its waiting backup codes show.
+export const PasswordSchema = PasswordProof.extend({
+  password: z
+    .string()
+    .min(1, { error: "Enter your password." })
+    .max(passwordProofPasswordMax, {
+      error: `Use at most ${passwordProofPasswordMax} characters.`,
+    }),
+});
+
+// turnOffSchema takes either proof, so the field follows the selected kind.
 export function turnOffSchema(kind: CodeKind) {
   return TotpDisableCode.extend({ code: completeCode(TotpDisableCode.shape.code, kind) });
 }

@@ -23,6 +23,19 @@ address, answers 403 with type fetch-destination-refused; the browser's
 Sec-Fetch-Dest header says what it loads the answer as. Requests without
 that header, e.g. from the command line, pass.
 
+An administrator without two-factor authentication gets a 15-minute session
+that can only set it up: Get Current Session, Sign Out, Get Two-Factor
+Status, Start Two-Factor Enrollment, Check Two-Factor Enrollment Code, Show
+Waiting Backup Codes, Finish Two-Factor Enrollment, and Cancel Two-Factor
+Enrollment. Every other operation that needs a session answers 403 with type
+totp-required.
+
+The server checks every write itself. Where it refuses some actions on some
+items, the item lists the ones it accepts now in allowedActions, e.g. a
+member's deactivate and reactivate, which an administrator's account lacks;
+offer only those. A listed action can still be refused when the item changed
+since it was read; the refusal's type says why. Ignore values you don't know.
+
 Writes that need no session, such as sign-in, also limit how fast one client
 can send each of them. Past that limit they answer 429 with type
 too-many-requests and Retry-After, before reading the request body.

@@ -1,175 +1,111 @@
-import { useRef, type ReactElement } from "react";
-import { useForm, useSelector } from "@tanstack/react-form";
+import type { ReactElement } from "react";
+import { revalidateLogic } from "@tanstack/react-form";
 import { useCreateFirstAdmin } from "@/api/generated/inbok";
-import { newSetupPasswordMin, newSetupPasswordMax, type ProblemType } from "@/api/generated/model";
-import { formErrors, formSummary, userMessage } from "@/api/problem";
-import { SetupSchema } from "./schema";
+import { newSetupPasswordMax, newSetupPasswordMin, type ProblemType } from "@/api/generated/model";
+import { userMessage } from "@/api/problem";
+import type { ApiError } from "@/api/transport";
+import { useAppForm } from "@/components/form/app-form";
+import { useFormRequest } from "@/components/form/request";
 import { RequestError } from "@/components/request-error";
-import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { useFocusAfterError } from "@/hooks/use-focus-after-error";
-import { PasswordInput } from "@/components/password-input";
-import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
+import { FieldGroup } from "@/components/ui/field";
+import { SetupSchema } from "./schema";
 
-const emptySetup = { token: "", email: "", password: "", confirmPassword: "" };
 const conflict = 409;
 const setupDoneType: ProblemType = "/api/v0/problems/setup-done";
+const setupFields = ["token", "email", "password", "confirmPassword"] as const;
 
-const inputs = [
-  {
-    name: "token",
-    label: "Setup token",
-    type: "password",
-    autoComplete: "off",
-    description: "Enter the INBOK_SETUP_TOKEN configured on the server.",
-  },
-  {
-    name: "email",
-    label: "Email address",
-    type: "email",
-    autoComplete: "email",
-    description: "The email address for the first administrator account.",
-  },
-  {
-    name: "password",
-    label: "Password",
-    type: "password",
-    autoComplete: "new-password",
-    description: `Use ${newSetupPasswordMin} to ${newSetupPasswordMax} characters.`,
-  },
-  {
-    name: "confirmPassword",
-    label: "Confirm password",
-    type: "password",
-    autoComplete: "new-password",
-    description: "Enter the same password again.",
-  },
-] as const;
-const setupFields = inputs.map((input) => input.name);
+// setupDone reports whether err refused setup because it is already done.
+function setupDone(err: ApiError): boolean {
+  return err.status === conflict && err.problem?.type === setupDoneType;
+}
 
+// SetupForm creates the first administrator with the server's setup token.
+// onAttempt reports that a try started, which may complete setup even if
+// its answer is lost; onDone, that setup is complete, here or before.
 export function SetupForm({
   onAttempt,
   onDone,
 }: {
   onAttempt: () => void;
-  onDone: () => void;
+  onDone: () => Promise<void>;
 }): ReactElement {
-  const formRef = useRef<HTMLFormElement>(null);
-  const submitRef = useRef<HTMLButtonElement>(null);
-  // Do not retain submitted credentials after the form is unmounted.
   const create = useCreateFirstAdmin({
     mutation: {
+      // Do not retain submitted credentials after the form is unmounted.
       gcTime: 0,
+      // On the mutation, not the form, so they run even if the page has
+      // gone when the answer comes.
       onMutate: onAttempt,
       onSuccess: onDone,
-      onError: (err) => {
-        if (err.status === conflict && err.problem?.type === setupDoneType) return onDone();
+      onError: async (err) => {
+        if (setupDone(err)) await onDone();
       },
     },
   });
-  const form = useForm({
-    defaultValues: emptySetup,
-    validators: { onChange: SetupSchema },
-    onSubmitInvalid: ({ formApi }) => {
-      const name = setupFields.find((field) => formApi.getFieldMeta(field)?.errors.length);
-      if (!name) return;
-
-      formRef.current?.querySelector<HTMLInputElement>(`[name="${name}"]`)?.focus();
-    },
-    onSubmit: ({ value, formApi }) => {
+  const request = useFormRequest(create, setupFields);
+  const form = useAppForm({
+    defaultValues: { token: "", email: "", password: "", confirmPassword: "" },
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: request.check(SetupSchema) },
+    onSubmit: async ({ value, formApi }) => {
       const { token, email, password } = value;
-      create.mutate(
-        { data: { token, email, password } },
-        {
-          onSuccess: () => {
-            formApi.reset();
-          },
-          onError: (err) => {
-            if (err.status === conflict && err.problem?.type === setupDoneType) {
-              formApi.reset();
-              return;
-            }
-            const { fields } = formErrors(err, setupFields);
-            if (Object.keys(fields).length > 0) formApi.setErrorMap({ onSubmit: { fields } });
-          },
-        },
-      );
+      const sent = await request.send(formApi, value, { data: { token, email, password } });
+      // Done here or before, the credentials have no further use.
+      if (sent.outcome === "done" || (sent.outcome === "refused" && setupDone(sent.error)))
+        formApi.reset();
     },
     listeners: { onChange: () => create.reset() },
   });
-  const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const summary = create.error
-    ? formSummary(userMessage(create.error), formErrors(create.error, setupFields))
-    : [];
-
-  useFocusAfterError(create.error, create.isPending, formRef, submitRef);
 
   return (
-    <form
-      ref={formRef}
-      className="flex flex-col gap-6"
-      noValidate
-      aria-label="Create the first administrator"
-      aria-busy={create.isPending}
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
-      <FieldGroup>
-        {inputs.map(({ name, label, type, autoComplete, description }) => (
-          <form.Field key={name} name={name}>
-            {(field) => {
-              const errors = field.state.meta.isBlurred || submitted ? field.state.meta.errors : [];
-              const id = `setup-${name}`;
-              const inputProps = {
-                id,
-                name,
-                type,
-                autoComplete,
-                placeholder: name === "email" ? "you@example.com" : undefined,
-                autoCapitalize: "none",
-                spellCheck: false,
-                disabled: create.isPending,
-                "aria-invalid": errors.length > 0,
-                "aria-describedby":
-                  errors.length > 0 ? `${id}-description ${id}-error` : `${id}-description`,
-                value: field.state.value,
-                onBlur: () => blurKeepingSubmitErrors(field),
-                onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
-                  field.handleChange(event.target.value),
-              };
-              return (
-                <Field data-invalid={errors.length > 0} data-disabled={create.isPending}>
-                  <FieldLabel htmlFor={id}>{label}</FieldLabel>
-                  {name === "password" || name === "confirmPassword" ? (
-                    <PasswordInput
-                      label={name === "password" ? "password" : "password confirmation"}
-                      {...inputProps}
-                    />
-                  ) : (
-                    <Input {...inputProps} />
-                  )}
-                  <FieldDescription id={`${id}-description`}>{description}</FieldDescription>
-                  <FieldError id={`${id}-error`} errors={errors} />
-                </Field>
-              );
-            }}
-          </form.Field>
-        ))}
-      </FieldGroup>
-
-      <Button
-        ref={submitRef}
-        className="whitespace-normal"
-        type="submit"
-        isDisabled={create.isPending}
-      >
-        {create.isPending ? "Creating administrator..." : "Create administrator"}
-      </Button>
-
-      <RequestError errors={summary} requestId={create.error?.requestId} />
-    </form>
+    <form.AppForm>
+      <form.Form label="Create the first administrator">
+        <FieldGroup>
+          <form.AppField name="token">
+            {(field) => (
+              <field.PasswordField
+                label="Setup token"
+                description="Enter the INBOK_SETUP_TOKEN configured on the server."
+                autoComplete="off"
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="email">
+            {(field) => (
+              <field.EmailField
+                label="Email address"
+                description="The email address for the first administrator account."
+                // "username" lets a password manager save it with the new
+                // password as one login.
+                autoComplete="username"
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="password">
+            {(field) => (
+              <field.PasswordField
+                label="Password"
+                description={`Use ${newSetupPasswordMin} to ${newSetupPasswordMax} characters.`}
+                autoComplete="new-password"
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="confirmPassword">
+            {(field) => (
+              <field.PasswordField
+                label="Confirm password"
+                description="Enter the same password again."
+                autoComplete="new-password"
+                toggle="password confirmation"
+              />
+            )}
+          </form.AppField>
+        </FieldGroup>
+        <form.SubmitButton working="Creating administrator...">
+          Create administrator
+        </form.SubmitButton>
+        <RequestError errors={request.summary(userMessage)} requestId={request.reference} />
+      </form.Form>
+    </form.AppForm>
   );
 }

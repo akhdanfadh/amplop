@@ -22,7 +22,7 @@ import (
 
 func newTurnOff(t *testing.T) (*confirmationFixture, *totp.Disabler) {
 	t.Helper()
-	f, _ := newRegeneration(t)
+	f, _ := newReplacement(t)
 	_, err := f.conn.Exec(t.Context(), "UPDATE users SET role='member' WHERE id=$1", f.state.UserID)
 	require.NoError(t, err)
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
@@ -173,7 +173,7 @@ func TestDisableHTTP(t *testing.T) {
 		t.Run(code, func(t *testing.T) {
 			f, disabler := newTurnOff(t)
 			api := httpapi.New(slog.New(slog.DiscardHandler), httpapi.Services{
-				Session: f.sessions, Disabler: disabler, TOTP: totp.NewService(f.db, nil),
+				Session: f.sessions, Disabler: disabler, TOTP: newTOTPService(t, f.db, time.Now),
 			})
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/disable", strings.NewReader(`{"code":"`+code+`"}`))
 			request.Header.Set("Content-Type", "application/json")
@@ -186,7 +186,7 @@ func TestDisableHTTP(t *testing.T) {
 			api.Handler().ServeHTTP(response, request)
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0}}`, response.Body.String())
+			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0,"backupCodesWaiting":false}}`, response.Body.String())
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 			assert.Empty(t, response.Result().Cookies())
 

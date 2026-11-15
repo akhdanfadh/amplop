@@ -96,11 +96,7 @@ func (db *DB) CompleteSignIn(ctx context.Context, userID int64, hash [sha256.Siz
 
 		// 7. Consume the TOTP step or the backup code used.
 		if next.Factor != nil {
-			err := queries.UpsertUserTOTP(ctx, sqlc.UpsertUserTOTPParams{
-				UserID: userID, KeyID: next.Factor.KeyID, SecretCiphertext: next.Factor.Ciphertext,
-				ConfirmedAt: next.Factor.ConfirmedAt, LastStep: next.Factor.LastStep,
-			})
-			if err != nil {
+			if err := saveTOTP(ctx, queries, userID, *next.Factor); err != nil {
 				return fmt.Errorf("consume sign-in TOTP step: %w", err)
 			}
 		}

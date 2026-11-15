@@ -20,12 +20,12 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AuthSignedOutRouteImport } from './routes/_auth/_signed-out'
 import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
 import { Route as AuthSetupRouteImport } from './routes/_auth/setup'
+import { Route as AuthTwoFactorSetupRouteImport } from './routes/_auth/two-factor-setup'
 import { Route as AuthVerifyEmailRouteImport } from './routes/_auth/verify-email'
 import { Route as AppMailComposeRouteImport } from './routes/_app/_mail/compose'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsAdminRouteImport } from './routes/_app/settings/_admin'
 import { Route as AppSettingsConnectedAccountsRouteImport } from './routes/_app/settings/connected-accounts'
-import { Route as AppSettingsSecurityRouteImport } from './routes/_app/settings/security'
 import { Route as AuthSignedOutForgotPasswordRouteImport } from './routes/_auth/_signed-out/forgot-password'
 import { Route as AuthSignedOutSignInRouteImport } from './routes/_auth/_signed-out/sign-in'
 import { Route as AuthRegisterCompleteRouteImport } from './routes/_auth/register/complete'
@@ -34,6 +34,8 @@ import { Route as AppMailMailPlaceRouteImport } from './routes/_app/_mail/mail/$
 import { Route as AppSettingsAdminMembersRouteImport } from './routes/_app/settings/_admin/members'
 import { Route as AppSettingsAdminRegistrationRouteImport } from './routes/_app/settings/_admin/registration'
 import { Route as AppSettingsAdminSystemEmailRouteImport } from './routes/_app/settings/_admin/system-email'
+import { Route as AppSettingsSecurityIndexRouteImport } from './routes/_app/settings/security/index'
+import { Route as AppSettingsSecurityTwoFactorRouteImport } from './routes/_app/settings/security/two-factor'
 import { Route as AuthSignedOutRegisterIndexRouteImport } from './routes/_auth/_signed-out/register/index'
 import { Route as AppMailMailPlaceIndexRouteImport } from './routes/_app/_mail/mail/$place/index'
 import { Route as AppMailMailPlaceConversationIdRouteImport } from './routes/_app/_mail/mail/$place/$conversationId'
@@ -91,6 +93,11 @@ const AuthSetupRoute = AuthSetupRouteImport.update({
   path: '/setup',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthTwoFactorSetupRoute = AuthTwoFactorSetupRouteImport.update({
+  id: '/two-factor-setup',
+  path: '/two-factor-setup',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthVerifyEmailRoute = AuthVerifyEmailRouteImport.update({
   id: '/verify-email',
   path: '/verify-email',
@@ -116,11 +123,6 @@ const AppSettingsConnectedAccountsRoute =
     path: '/connected-accounts',
     getParentRoute: () => AppSettingsRoute,
   } as any)
-const AppSettingsSecurityRoute = AppSettingsSecurityRouteImport.update({
-  id: '/security',
-  path: '/security',
-  getParentRoute: () => AppSettingsRoute,
-} as any)
 const AuthSignedOutForgotPasswordRoute =
   AuthSignedOutForgotPasswordRouteImport.update({
     id: '/forgot-password',
@@ -164,6 +166,18 @@ const AppSettingsAdminSystemEmailRoute =
     path: '/system-email',
     getParentRoute: () => AppSettingsAdminRoute,
   } as any)
+const AppSettingsSecurityIndexRoute =
+  AppSettingsSecurityIndexRouteImport.update({
+    id: '/security/',
+    path: '/security/',
+    getParentRoute: () => AppSettingsRoute,
+  } as any)
+const AppSettingsSecurityTwoFactorRoute =
+  AppSettingsSecurityTwoFactorRouteImport.update({
+    id: '/security/two-factor',
+    path: '/security/two-factor',
+    getParentRoute: () => AppSettingsRoute,
+  } as any)
 const AuthSignedOutRegisterIndexRoute =
   AuthSignedOutRegisterIndexRouteImport.update({
     id: '/register/',
@@ -200,10 +214,10 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRouteWithChildren
   '/reset-password': typeof AuthResetPasswordRoute
   '/setup': typeof AuthSetupRoute
+  '/two-factor-setup': typeof AuthTwoFactorSetupRoute
   '/verify-email': typeof AuthVerifyEmailRoute
   '/compose': typeof AppMailComposeRoute
   '/settings/connected-accounts': typeof AppSettingsConnectedAccountsRoute
-  '/settings/security': typeof AppSettingsSecurityRoute
   '/forgot-password': typeof AuthSignedOutForgotPasswordRoute
   '/sign-in': typeof AuthSignedOutSignInRoute
   '/register/complete': typeof AuthRegisterCompleteRoute
@@ -212,7 +226,9 @@ export interface FileRoutesByFullPath {
   '/settings/members': typeof AppSettingsAdminMembersRoute
   '/settings/registration': typeof AppSettingsAdminRegistrationRoute
   '/settings/system-email': typeof AppSettingsAdminSystemEmailRoute
+  '/settings/security/two-factor': typeof AppSettingsSecurityTwoFactorRoute
   '/mail/': typeof AppMailMailIndexRoute
+  '/settings/security/': typeof AppSettingsSecurityIndexRoute
   '/register/': typeof AuthSignedOutRegisterIndexRoute
   '/mail/$place/$conversationId': typeof AppMailMailPlaceConversationIdRoute
   '/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
@@ -226,18 +242,20 @@ export interface FileRoutesByTo {
   '/security': typeof SecurityRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/setup': typeof AuthSetupRoute
+  '/two-factor-setup': typeof AuthTwoFactorSetupRoute
   '/verify-email': typeof AuthVerifyEmailRoute
   '/compose': typeof AppMailComposeRoute
   '/settings': typeof AppSettingsIndexRoute
   '/settings/connected-accounts': typeof AppSettingsConnectedAccountsRoute
-  '/settings/security': typeof AppSettingsSecurityRoute
   '/forgot-password': typeof AuthSignedOutForgotPasswordRoute
   '/sign-in': typeof AuthSignedOutSignInRoute
   '/register/complete': typeof AuthRegisterCompleteRoute
   '/settings/members': typeof AppSettingsAdminMembersRoute
   '/settings/registration': typeof AppSettingsAdminRegistrationRoute
   '/settings/system-email': typeof AppSettingsAdminSystemEmailRoute
+  '/settings/security/two-factor': typeof AppSettingsSecurityTwoFactorRoute
   '/mail': typeof AppMailMailIndexRoute
+  '/settings/security': typeof AppSettingsSecurityIndexRoute
   '/register': typeof AuthSignedOutRegisterIndexRoute
   '/mail/$place/$conversationId': typeof AppMailMailPlaceConversationIdRoute
   '/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
@@ -256,12 +274,12 @@ export interface FileRoutesById {
   '/_auth/_signed-out': typeof AuthSignedOutRouteWithChildren
   '/_auth/reset-password': typeof AuthResetPasswordRoute
   '/_auth/setup': typeof AuthSetupRoute
+  '/_auth/two-factor-setup': typeof AuthTwoFactorSetupRoute
   '/_auth/verify-email': typeof AuthVerifyEmailRoute
   '/_app/': typeof AppIndexRoute
   '/_app/_mail/compose': typeof AppMailComposeRoute
   '/_app/settings/_admin': typeof AppSettingsAdminRouteWithChildren
   '/_app/settings/connected-accounts': typeof AppSettingsConnectedAccountsRoute
-  '/_app/settings/security': typeof AppSettingsSecurityRoute
   '/_auth/_signed-out/forgot-password': typeof AuthSignedOutForgotPasswordRoute
   '/_auth/_signed-out/sign-in': typeof AuthSignedOutSignInRoute
   '/_auth/register/complete': typeof AuthRegisterCompleteRoute
@@ -270,7 +288,9 @@ export interface FileRoutesById {
   '/_app/settings/_admin/members': typeof AppSettingsAdminMembersRoute
   '/_app/settings/_admin/registration': typeof AppSettingsAdminRegistrationRoute
   '/_app/settings/_admin/system-email': typeof AppSettingsAdminSystemEmailRoute
+  '/_app/settings/security/two-factor': typeof AppSettingsSecurityTwoFactorRoute
   '/_app/_mail/mail/': typeof AppMailMailIndexRoute
+  '/_app/settings/security/': typeof AppSettingsSecurityIndexRoute
   '/_auth/_signed-out/register/': typeof AuthSignedOutRegisterIndexRoute
   '/_app/_mail/mail/$place/$conversationId': typeof AppMailMailPlaceConversationIdRoute
   '/_app/_mail/mail/outbox/$id': typeof AppMailMailOutboxIdRoute
@@ -287,10 +307,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/reset-password'
     | '/setup'
+    | '/two-factor-setup'
     | '/verify-email'
     | '/compose'
     | '/settings/connected-accounts'
-    | '/settings/security'
     | '/forgot-password'
     | '/sign-in'
     | '/register/complete'
@@ -299,7 +319,9 @@ export interface FileRouteTypes {
     | '/settings/members'
     | '/settings/registration'
     | '/settings/system-email'
+    | '/settings/security/two-factor'
     | '/mail/'
+    | '/settings/security/'
     | '/register/'
     | '/mail/$place/$conversationId'
     | '/mail/outbox/$id'
@@ -313,18 +335,20 @@ export interface FileRouteTypes {
     | '/security'
     | '/reset-password'
     | '/setup'
+    | '/two-factor-setup'
     | '/verify-email'
     | '/compose'
     | '/settings'
     | '/settings/connected-accounts'
-    | '/settings/security'
     | '/forgot-password'
     | '/sign-in'
     | '/register/complete'
     | '/settings/members'
     | '/settings/registration'
     | '/settings/system-email'
+    | '/settings/security/two-factor'
     | '/mail'
+    | '/settings/security'
     | '/register'
     | '/mail/$place/$conversationId'
     | '/mail/outbox/$id'
@@ -342,12 +366,12 @@ export interface FileRouteTypes {
     | '/_auth/_signed-out'
     | '/_auth/reset-password'
     | '/_auth/setup'
+    | '/_auth/two-factor-setup'
     | '/_auth/verify-email'
     | '/_app/'
     | '/_app/_mail/compose'
     | '/_app/settings/_admin'
     | '/_app/settings/connected-accounts'
-    | '/_app/settings/security'
     | '/_auth/_signed-out/forgot-password'
     | '/_auth/_signed-out/sign-in'
     | '/_auth/register/complete'
@@ -356,7 +380,9 @@ export interface FileRouteTypes {
     | '/_app/settings/_admin/members'
     | '/_app/settings/_admin/registration'
     | '/_app/settings/_admin/system-email'
+    | '/_app/settings/security/two-factor'
     | '/_app/_mail/mail/'
+    | '/_app/settings/security/'
     | '/_auth/_signed-out/register/'
     | '/_app/_mail/mail/$place/$conversationId'
     | '/_app/_mail/mail/outbox/$id'
@@ -451,6 +477,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSetupRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/two-factor-setup': {
+      id: '/_auth/two-factor-setup'
+      path: '/two-factor-setup'
+      fullPath: '/two-factor-setup'
+      preLoaderRoute: typeof AuthTwoFactorSetupRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/verify-email': {
       id: '/_auth/verify-email'
       path: '/verify-email'
@@ -484,13 +517,6 @@ declare module '@tanstack/react-router' {
       path: '/connected-accounts'
       fullPath: '/settings/connected-accounts'
       preLoaderRoute: typeof AppSettingsConnectedAccountsRouteImport
-      parentRoute: typeof AppSettingsRoute
-    }
-    '/_app/settings/security': {
-      id: '/_app/settings/security'
-      path: '/security'
-      fullPath: '/settings/security'
-      preLoaderRoute: typeof AppSettingsSecurityRouteImport
       parentRoute: typeof AppSettingsRoute
     }
     '/_auth/_signed-out/forgot-password': {
@@ -548,6 +574,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/system-email'
       preLoaderRoute: typeof AppSettingsAdminSystemEmailRouteImport
       parentRoute: typeof AppSettingsAdminRoute
+    }
+    '/_app/settings/security/': {
+      id: '/_app/settings/security/'
+      path: '/security'
+      fullPath: '/settings/security/'
+      preLoaderRoute: typeof AppSettingsSecurityIndexRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/security/two-factor': {
+      id: '/_app/settings/security/two-factor'
+      path: '/security/two-factor'
+      fullPath: '/settings/security/two-factor'
+      preLoaderRoute: typeof AppSettingsSecurityTwoFactorRouteImport
+      parentRoute: typeof AppSettingsRoute
     }
     '/_auth/_signed-out/register/': {
       id: '/_auth/_signed-out/register/'
@@ -637,15 +677,17 @@ const AppSettingsAdminRouteWithChildren =
 interface AppSettingsRouteChildren {
   AppSettingsAdminRoute: typeof AppSettingsAdminRouteWithChildren
   AppSettingsConnectedAccountsRoute: typeof AppSettingsConnectedAccountsRoute
-  AppSettingsSecurityRoute: typeof AppSettingsSecurityRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
+  AppSettingsSecurityTwoFactorRoute: typeof AppSettingsSecurityTwoFactorRoute
+  AppSettingsSecurityIndexRoute: typeof AppSettingsSecurityIndexRoute
 }
 
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAdminRoute: AppSettingsAdminRouteWithChildren,
   AppSettingsConnectedAccountsRoute: AppSettingsConnectedAccountsRoute,
-  AppSettingsSecurityRoute: AppSettingsSecurityRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
+  AppSettingsSecurityTwoFactorRoute: AppSettingsSecurityTwoFactorRoute,
+  AppSettingsSecurityIndexRoute: AppSettingsSecurityIndexRoute,
 }
 
 const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
@@ -686,6 +728,7 @@ interface AuthRouteChildren {
   AuthSignedOutRoute: typeof AuthSignedOutRouteWithChildren
   AuthResetPasswordRoute: typeof AuthResetPasswordRoute
   AuthSetupRoute: typeof AuthSetupRoute
+  AuthTwoFactorSetupRoute: typeof AuthTwoFactorSetupRoute
   AuthVerifyEmailRoute: typeof AuthVerifyEmailRoute
   AuthRegisterCompleteRoute: typeof AuthRegisterCompleteRoute
 }
@@ -694,6 +737,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthSignedOutRoute: AuthSignedOutRouteWithChildren,
   AuthResetPasswordRoute: AuthResetPasswordRoute,
   AuthSetupRoute: AuthSetupRoute,
+  AuthTwoFactorSetupRoute: AuthTwoFactorSetupRoute,
   AuthVerifyEmailRoute: AuthVerifyEmailRoute,
   AuthRegisterCompleteRoute: AuthRegisterCompleteRoute,
 }

@@ -20,7 +20,7 @@ import (
 
 func TestAccessGate(t *testing.T) {
 	member := session.Identity{User: account.User{ID: 42, Role: account.RoleMember}, Access: session.AccessMember}
-	adminPending := session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessMember, TOTPRequired: true}
+	adminPending := session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessEnrollment, TOTPRequired: true}
 	admin := session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessAdmin}
 	for _, c := range []struct {
 		name     string
@@ -35,9 +35,12 @@ func TestAccessGate(t *testing.T) {
 		{"no cookie", session.AccessMember, member, "", nil, http.StatusUnauthorized, "unauthenticated"},
 		{"expired", session.AccessMember, member, "expired-secret", session.ErrUnauthenticated, http.StatusUnauthorized, "unauthenticated"},
 		{"member", session.AccessMember, member, "test-secret", nil, http.StatusOK, ""},
-		{"pending admin as member", session.AccessMember, adminPending, "test-secret", nil, http.StatusOK, ""},
+		{"pending admin", session.AccessEnrollment, adminPending, "test-secret", nil, http.StatusOK, ""},
+		{"member at enrollment level", session.AccessEnrollment, member, "test-secret", nil, http.StatusOK, ""},
+		{"pending admin as member", session.AccessMember, adminPending, "test-secret", nil, http.StatusForbidden, "totp-required"},
 		{"member as admin", session.AccessAdmin, member, "test-secret", nil, http.StatusForbidden, "forbidden"},
-		{"pending admin", session.AccessAdmin, adminPending, "test-secret", nil, http.StatusForbidden, "totp-required"},
+		{"pending admin as admin", session.AccessAdmin, adminPending, "test-secret", nil, http.StatusForbidden, "totp-required"},
+		{"member cannot claim enrollment", session.AccessMember, session.Identity{User: member.User, Access: session.AccessEnrollment}, "test-secret", nil, http.StatusForbidden, "forbidden"},
 		{"admin", session.AccessAdmin, admin, "test-secret", nil, http.StatusOK, ""},
 		{"omitted defaults admin", nil, adminPending, "test-secret", nil, http.StatusForbidden, "totp-required"},
 		{"wrong metadata type", "public", adminPending, "test-secret", nil, http.StatusForbidden, "totp-required"},
@@ -169,7 +172,7 @@ func TestAccessDeclarations(t *testing.T) {
 	}
 	current := doc.Paths["/sessions/current"].Get
 	require.NotNil(t, current)
-	assert.Equal(t, session.AccessMember, current.Metadata[accessKey])
+	assert.Equal(t, session.AccessEnrollment, current.Metadata[accessKey])
 	assert.Equal(t, "getCurrentSession", current.OperationID)
 	assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, current.Security)
 	require.Len(t, current.Responses, 3)
@@ -186,4 +189,37 @@ func TestAccessDeclarations(t *testing.T) {
 	assert.ElementsMatch(t, []string{"email", "role", "totpRequired", "emailVerified"}, result.Required)
 	require.NotNil(t, result.Properties["role"])
 	assert.ElementsMatch(t, []any{"member", "admin"}, result.Properties["role"].Enum)
+}
+
+// Every operation that needs more than enrollment access documents the
+// 403 totp-required that [withAccess] answers an administrator without
+// two-factor authentication, beside its own 403s; the others do not.
+func TestEnrollmentAccessDocumented(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+
+	var enrollment []string
+	for _, op := range operations(doc) {
+		refused := op.Responses[strconv.Itoa(http.StatusForbidden)]
+		if operationAccess(op) > session.AccessEnrollment {
+			require.NotNil(t, refused, op.OperationID)
+			assert.Contains(t, refused.Description, enrollmentAccessCause, op.OperationID)
+			examples := refused.Content[problemContentType].Examples
+			assert.Equal(t, totpRequiredProblem(), examples["totpRequired"].Value, op.OperationID)
+			continue
+		}
+		if refused != nil {
+			assert.NotContains(t, refused.Content[problemContentType].Examples, "totpRequired", op.OperationID)
+		}
+		if operationAccess(op) == session.AccessEnrollment {
+			enrollment = append(enrollment, op.OperationID)
+		}
+	}
+	assert.ElementsMatch(t, []string{
+		"getCurrentSession", "deleteCurrentSession", "getTOTPStatus", "startTOTPEnrollment",
+		"cancelTOTPEnrollment", "checkTOTPEnrollmentCode", "finishTOTPEnrollment", "showWaitingTOTPBackupCodes",
+	}, enrollment)
+
+	// Turning off keeps its own refusal beside it.
+	disable := doc.Paths[totpPath+"/disable"].Post.Responses[strconv.Itoa(http.StatusForbidden)]
+	assert.Contains(t, disable.Content[problemContentType].Examples, "refused")
 }

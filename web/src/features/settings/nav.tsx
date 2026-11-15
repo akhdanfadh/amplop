@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Link, linkOptions, useLocation, type ToOptions } from "@tanstack/react-router";
+import { linkOptions, useLocation, type ToOptions } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
   LinkIcon,
@@ -18,16 +18,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { mailHref } from "@/features/mail/places";
-import { backToMail, lockedAfter, lockedBefore, pageName, thisInbok } from "./text";
-import { textLink } from "@/components/link-style";
+import { backToMail, pageName, thisInbok } from "./text";
 
 // A settings page, as the router names it.
 type SettingsPath = Extract<NonNullable<ToOptions["to"]>, `/settings/${string}`>;
 
 // SettingsNav is the settings sidebar's content (DESIGN.md "Settings and
 // signed-out pages"): Back to mail, the member's own pages, then, for
-// administrators, "This inbok", locked until they set up two-factor
-// authentication.
+// administrators, "This inbok".
 export function SettingsNav(): ReactElement {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { dismiss: closeDrawer } = useSidebar();
@@ -65,21 +63,11 @@ export function SettingsNav(): ReactElement {
         <SidebarGroup>
           <SidebarGroupLabel elementType="h2">{thisInbok}</SidebarGroupLabel>
           <SidebarGroupContent>
-            {session.totpRequired ? (
-              <p className="px-2 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
-                {lockedBefore}{" "}
-                <Link to="/settings/security" className={textLink} onClick={closeDrawer}>
-                  {pageName.security}
-                </Link>{" "}
-                {lockedAfter}
-              </p>
-            ) : (
-              <SidebarMenu>
-                {item("/settings/members", pageName.members, UsersIcon)}
-                {item("/settings/registration", pageName.registration, UserPlusIcon)}
-                {item("/settings/system-email", pageName.systemEmail, MailIcon)}
-              </SidebarMenu>
-            )}
+            <SidebarMenu>
+              {item("/settings/members", pageName.members, UsersIcon)}
+              {item("/settings/registration", pageName.registration, UserPlusIcon)}
+              {item("/settings/system-email", pageName.systemEmail, MailIcon)}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       )}

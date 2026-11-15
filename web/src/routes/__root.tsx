@@ -12,6 +12,7 @@ import {
 import { I18nProvider, RouterProvider, type LinkProps } from "react-aria-components";
 import appCss from "../styles.css?url";
 import pressableCss from "../react-aria-pressable.css?url";
+import inputOtpCss from "../components/ui/input-otp.css?url";
 import { AppShell } from "@/components/app-shell";
 import { Toaster } from "@/components/ui/toast";
 import { onAccountCacheClear } from "@/features/auth/session-cache";
@@ -71,6 +72,9 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       // the app's touch-* utilities override it.
       { rel: "stylesheet", href: pressableCss, id: "react-aria-pressable-style" },
       { rel: "stylesheet", href: appCss },
+      // input-otp skips its own inline copy when it finds the id; the
+      // comment in src/components/ui/input-otp.tsx says why it sits here.
+      { rel: "stylesheet", href: inputOtpCss, id: "input-otp-style" },
     ],
     // In the prerendered shell's head, so the page never shows the wrong
     // theme first. The server's Content-Security-Policy allows the shell's

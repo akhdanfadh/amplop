@@ -181,7 +181,7 @@ func (n *RecoveryNotices) ownBody(email string, recoveredAt time.Time) string {
 	b.WriteString("If you asked for this, sign in with the new password:\n\n")
 	b.WriteString(signIn.String())
 	b.WriteString("\n\n")
-	b.WriteString("Then set up two-factor authentication again on the Security page. Until you do, your account has member access only:\n\n")
+	b.WriteString("Then set up two-factor authentication again: inbok asks for it as soon as you sign in, and until you do, your account can do nothing else. It opens here too:\n\n")
 	b.WriteString(security.String())
 	b.WriteString("\n\n")
 	b.WriteString("If you did not ask for this, someone else may now control your administrator account. " +

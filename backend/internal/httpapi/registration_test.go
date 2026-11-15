@@ -80,9 +80,16 @@ func TestGetRegistrationSettings(t *testing.T) {
 		settings registration.Settings
 		want     string
 	}{
-		{"closed", registration.Settings{Status: registration.StatusClosed}, `{"data":{"status":"closed","systemEmailTested":false}}`},
-		{"open", registration.Settings{Status: registration.StatusOpen, SystemEmailTested: true}, `{"data":{"status":"open","systemEmailTested":true}}`},
-		{"paused", registration.Settings{Status: registration.StatusPaused}, `{"data":{"status":"paused","systemEmailTested":false}}`},
+		{
+			"closed", registration.Settings{Status: registration.StatusClosed, AllowedActions: []registration.Action{registration.ActionClose}},
+			`{"data":{"status":"closed","systemEmailTested":false,"allowedActions":["close"]}}`,
+		},
+		{
+			"open", registration.Settings{Status: registration.StatusOpen, SystemEmailTested: true, AllowedActions: []registration.Action{registration.ActionOpen, registration.ActionClose}},
+			`{"data":{"status":"open","systemEmailTested":true,"allowedActions":["open","close"]}}`,
+		},
+		// The contract promises a list: a nil one encodes as [], never null.
+		{"nil actions", registration.Settings{Status: registration.StatusClosed}, `{"data":{"status":"closed","systemEmailTested":false,"allowedActions":[]}}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			api := New(discard, Services{Registration: &fakeRegistration{settings: c.settings}, Session: adminSessions()})
@@ -105,7 +112,10 @@ func TestSaveRegistrationSettings(t *testing.T) {
 		{`{"open":false}`, registration.StateClosed},
 	} {
 		t.Run(c.body, func(t *testing.T) {
-			service := &fakeRegistration{settings: registration.Settings{Status: registration.StatusOpen, SystemEmailTested: true}}
+			service := &fakeRegistration{settings: registration.Settings{
+				Status: registration.StatusOpen, SystemEmailTested: true,
+				AllowedActions: []registration.Action{registration.ActionOpen, registration.ActionClose},
+			}}
 			api := New(discard, Services{Registration: service, Session: adminSessions()})
 
 			response := requestAuthenticated(api, http.MethodPut, "/registration/settings", c.body)
@@ -113,7 +123,7 @@ func TestSaveRegistrationSettings(t *testing.T) {
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 			assert.Equal(t, int64(42), service.actorID, "the actor is the signed-in administrator")
 			assert.Equal(t, c.want, service.state)
-			assert.JSONEq(t, `{"data":{"status":"open","systemEmailTested":true}}`, response.Body.String())
+			assert.JSONEq(t, `{"data":{"status":"open","systemEmailTested":true,"allowedActions":["open","close"]}}`, response.Body.String())
 		})
 	}
 }
@@ -408,6 +418,15 @@ func TestCompleteRegistrationPasswordRule(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, strconv.Itoa(account.PasswordMinLength), field.Tag.Get("minLength"))
 	assert.Equal(t, strconv.Itoa(account.PasswordMaxLength), field.Tag.Get("maxLength"))
+}
+
+func TestRegistrationSettingsOpenAPI(t *testing.T) {
+	settings := New(discard, Services{}).api.OpenAPI().Components.Schemas.Map()["RegistrationSettings"]
+	require.NotNil(t, settings)
+
+	assert.Contains(t, settings.Required, "allowedActions")
+	// A client draws one control per value, so the contract names them all.
+	assert.Equal(t, []any{"open", "close"}, settings.Properties["allowedActions"].Items.Enum)
 }
 
 func TestRegistrationLinksOpenAPI(t *testing.T) {

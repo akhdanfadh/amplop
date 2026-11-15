@@ -154,7 +154,7 @@ func (db *DB) DeleteUserOtherSessions(ctx context.Context, userID int64, keep [s
 		queries := sqlc.New(tx)
 
 		// 1. Lock the owner. Taking it before the kept session's lock, as
-		// ConfirmTOTP does, keeps the two from deadlocking.
+		// [DB.FinishTOTP] does, keeps the two from deadlocking.
 		if _, err := queries.LockSessionUser(ctx, userID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return session.ErrNotFound

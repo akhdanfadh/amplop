@@ -1,92 +1,112 @@
-import { useEffect, useRef, type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useGetRegistration } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
+import { RequestError } from "@/components/request-error";
+import { textLink } from "@/components/link-style";
+import { SignedOutPage } from "@/components/signed-out-page";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { RequestForm } from "@/features/registration/request-form";
-import { lineLink } from "@/components/link-style";
-
-// Shown is the last answer the page showed about registration, "none"
-// before the first.
-type Shown = "none" | "error" | "open" | "closed";
+import { requested } from "@/features/registration/visitor-text";
 
 export const Route = createFileRoute("/_auth/_signed-out/register/")({
   component: Register,
   head: () => ({ meta: [{ title: "Create an account - inbok" }] }),
 });
 
+// What the page shows once registration is open: the form, first or
+// again, or the answer for an address.
+type Shown =
+  | { step: "form"; email: string; shown: "first" | "again" }
+  | { step: "sent"; email: string };
+
 function Register(): ReactElement {
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const closedRef = useRef<HTMLParagraphElement>(null);
-  const retryRef = useRef<HTMLButtonElement>(null);
   // Offline still asks, so the page never waits without saying why.
   const availability = useGetRegistration({ query: { networkMode: "always" } });
   const open = availability.data?.data.open;
   const failed = availability.isError && !availability.data;
-  const shown = useRef<Shown>("none");
+  const [shown, setShown] = useState<Shown>({ step: "form", email: "", shown: "first" });
+  const signIn = (
+    <p className="text-center text-sm text-muted-foreground">
+      Already have an account?{" "}
+      <Link to="/sign-in" className={textLink}>
+        Sign in
+      </Link>
+    </p>
+  );
 
-  useEffect(() => {
-    headingRef.current?.focus();
-  }, []);
+  if (failed)
+    return (
+      <SignedOutPage
+        title="Couldn't check registration"
+        lead="inbok couldn't tell whether registration is open."
+        step="failed"
+        after={signIn}
+      >
+        {/* The way on, so primary; the error and its reference follow, as
+            under a form's button. */}
+        <Button onPress={() => void availability.refetch()}>Try again</Button>
+        <RequestError
+          errors={[{ message: userMessage(availability.error) }]}
+          requestId={availability.error.requestId}
+        />
+      </SignedOutPage>
+    );
 
-  // The form or the error block can unmount while focused: a refused
-  // request finds registration closed, or a retry, which shows "Checking"
-  // first because no status was read yet, ends. Focus would fall to the
-  // page, so the new content takes it. The first check keeps the heading's.
-  useEffect(() => {
-    if (!failed && open === undefined) return;
-    const now: Shown = failed ? "error" : open ? "open" : "closed";
-    const first = shown.current === "none";
-    shown.current = now;
-    if (first) return;
+  // Paused reads as closed: no visitor can register until it resumes.
+  if (open === false)
+    return (
+      <SignedOutPage
+        title="Registration is closed"
+        lead="This inbok isn't accepting new accounts right now."
+        step="closed"
+        after={signIn}
+      />
+    );
 
-    if (now === "error") retryRef.current?.focus();
-    if (now === "closed") closedRef.current?.focus();
-    if (now === "open") headingRef.current?.focus();
-  }, [failed, open]);
+  if (open && shown.step === "sent") {
+    return (
+      <SignedOutPage
+        title="Check your email"
+        address={shown.email}
+        lead={requested.lead}
+        step="sent"
+        after={signIn}
+      >
+        <p>{requested.body}</p>
+        <Button
+          variant="outline"
+          className="whitespace-normal"
+          onPress={() => setShown({ step: "form", email: shown.email, shown: "again" })}
+        >
+          Use a different email address
+        </Button>
+      </SignedOutPage>
+    );
+  }
 
   return (
-    <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-        Create an account
-      </h1>
-
-      {availability.isPending && <output>Checking whether registration is open...</output>}
-
-      {failed && (
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2" role="alert">
-            <p>Could not check whether registration is open. {userMessage(availability.error)}</p>
-            {availability.error.requestId && (
-              <p className="text-sm text-muted-foreground">
-                Request reference: <code className="break-all">{availability.error.requestId}</code>
-              </p>
-            )}
-          </div>
-          <Button
-            ref={retryRef}
-            type="button"
-            variant="outline"
-            className="w-fit"
-            onPress={() => void availability.refetch()}
-          >
-            Try again
-          </Button>
-        </div>
+    <SignedOutPage
+      title="Create an account"
+      lead="We'll email you a link to choose your password."
+      step={open ? "form" : "checking"}
+      after={signIn}
+    >
+      {open ? (
+        <RequestForm
+          email={shown.email}
+          shown={shown.step === "form" ? shown.shown : "first"}
+          onSent={(email) => setShown({ step: "sent", email })}
+        />
+      ) : (
+        // Shown after 300 ms, so a quick check shows nothing (DESIGN.md
+        // "States").
+        <output className="flex pending-delay items-center gap-2 text-muted-foreground">
+          <Spinner />
+          Checking whether registration is open...
+        </output>
       )}
-
-      {/* Paused reads as closed: no visitor can register until it resumes. */}
-      {open === false && (
-        <p ref={closedRef} tabIndex={-1}>
-          This inbok isn&apos;t accepting new accounts right now.
-        </p>
-      )}
-
-      {open && <RequestForm />}
-
-      <Link to="/sign-in" className={lineLink}>
-        Sign in to an existing account
-      </Link>
-    </main>
+    </SignedOutPage>
   );
 }

@@ -147,6 +147,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 	// 5. Build the services and the API.
 	throttle := session.NewThrottle(db, time.Now)
 	codeThrottle := totp.NewThrottle(db, time.Now, logger)
+	sessions := session.NewService(db, accounts, throttle, time.Now)
 	mailer := systememail.NewMailer(db, cfg.Encryption, smtp.NewSender(cfg.PublicURL.Hostname()), logger)
 	connectedAccounts := connectedaccount.NewService(db, cfg.Encryption)
 	services := httpapi.Services{
@@ -160,13 +161,14 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		PasswordResetRequests:   passwordreset.NewRequests(db, time.Now),
 		PasswordResetCompletion: passwordreset.NewCompletion(db, time.Now),
 		Disabler:                totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
-		Backups:                 totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
+		Backups:                 totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
 		CodeSignIn:              session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
-		Enrollment:              session.NewEnrollment(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
-		TOTP:                    totp.NewService(db, cfg.Encryption),
+		Enrollment:              session.NewEnrollment(db, time.Now),
+		TOTP:                    totp.NewService(db, cfg.Encryption, sessions, totp.NewVerifier(time.Now), codeThrottle, time.Now),
 		Probe:                   probe.NewService(db),
 		Account:                 accounts,
-		Session:                 session.NewService(db, accounts, throttle, time.Now),
+		Session:                 sessions,
+		FirstAdminSignIn:        sessions,
 		Throttle:                throttle,
 		ConnectedAccounts:       connectedAccounts,
 		OutgoingMessages:        outgoingmessage.NewService(db, connectedAccounts, time.Now),

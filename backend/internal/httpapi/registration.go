@@ -89,6 +89,19 @@ func (h registrationHandler) handleGetRegistration(ctx context.Context, _ *struc
 type registrationSettings struct {
 	Status            registration.Status `json:"status" enum:"closed,open,paused" doc:"Closed: visitors cannot register. Open: anyone who can reach this inbok can register. Paused: opened, but the system email settings in use have not passed a test, so visitors cannot register until one does."`
 	SystemEmailTested bool                `json:"systemEmailTested" doc:"Whether the system email settings in use passed a test, which opening registration needs."`
+	// Listed here, so every client offers only what the service accepts
+	// instead of restating its rule (AGENTS.md, "API contract").
+	AllowedActions []registration.Action `json:"allowedActions" nullable:"false" doc:"What an administrator can ask of registration now: open (Save Registration Settings with open true) and close (with open false). open is missing until the system email settings in use pass a test. An action that would change nothing, e.g. closing registration already closed, is listed and succeeds without a change. A listed action can still be refused when the settings changed since this read. Clients ignore values they don't know."`
+}
+
+// TransformSchema lists allowedActions' values from [registration.Actions].
+func (registrationSettings) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	values := make([]any, 0, len(registration.Actions))
+	for _, action := range registration.Actions {
+		values = append(values, string(action))
+	}
+	s.Properties["allowedActions"].Items.Enum = values
+	return s
 }
 
 func registerRegistrationSettings(api huma.API, handler registrationHandler) {
@@ -114,7 +127,16 @@ func (h registrationHandler) handleGetRegistrationSettings(ctx context.Context, 
 
 // registrationSettingsOf returns settings in the response's shape.
 func registrationSettingsOf(settings registration.Settings) registrationSettings {
-	return registrationSettings{Status: settings.Status, SystemEmailTested: settings.SystemEmailTested}
+	// The contract promises a list, never null.
+	actions := settings.AllowedActions
+	if actions == nil {
+		actions = []registration.Action{}
+	}
+	return registrationSettings{
+		Status:            settings.Status,
+		SystemEmailTested: settings.SystemEmailTested,
+		AllowedActions:    actions,
+	}
 }
 
 // ========================
@@ -193,7 +215,7 @@ const registrationRequested registrationRequestStatus = "requested"
 
 // newRegistrationRequest is the request body.
 type newRegistrationRequest struct {
-	Email string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
+	Email string `json:"email" format:"idn-email" minLength:"3" maxLength:"254" doc:"Letters A to Z are saved in lowercase."`
 }
 
 // registrationRequestInput combines the email with the resolved client
@@ -285,7 +307,7 @@ const (
 // newMember is the completion request body.
 type newMember struct {
 	Secret   string `json:"secret" writeOnly:"true" doc:"The text after # in the emailed link."`
-	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"The email the link was sent to, typed by the person using it. Letters A to Z match in either case."`
+	Email    string `json:"email" format:"idn-email" minLength:"3" maxLength:"254" doc:"The email the link was sent to, typed by the person using it. Letters A to Z match in either case."`
 	Password string `json:"password" writeOnly:"true" minLength:"15" maxLength:"128"`
 }
 

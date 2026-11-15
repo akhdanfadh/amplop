@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useGetRegistration } from "@/api/generated/inbok";
 import { SignInForm } from "@/features/auth/sign-in-form";
+import { userMessage } from "@/api/problem";
+import type { ApiError } from "@/api/transport";
+import { Button } from "@/components/ui/button";
 import { CodeForm } from "@/features/auth/code-form";
-import { useSetup } from "@/features/setup/gate";
+import { SetupDoneNotice } from "@/features/setup/done-notice";
 import { signInSearch } from "@/features/auth/search";
 import { clearAccountCache } from "@/features/auth/session-cache";
-import { lineLink } from "@/components/link-style";
+import { textLink } from "@/components/link-style";
+import { AddressLine, SignedOutPage } from "@/components/signed-out-page";
 
 const noticeId = "sign-in-notice";
 
@@ -21,9 +25,9 @@ function SignIn(): ReactElement {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
-  const { completedHere } = useSetup();
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const [step, setStep] = useState<"password" | "code">("password");
+  const [step, setStep] = useState<"password" | "code" | "ended">("password");
+  // Why the code step ended the attempt, for its end screen.
+  const [ended, setEnded] = useState<ApiError>();
   // Set by /register/complete and /reset-password, which create no session.
   const registeredEmail = useLocation({ select: (location) => location.state.registeredEmail });
   const resetEmail = useLocation({ select: (location) => location.state.passwordResetEmail });
@@ -35,13 +39,15 @@ function SignIn(): ReactElement {
     step !== "password"
       ? undefined
       : registeredEmail
-        ? `The account for ${registeredEmail} is created. Sign in with your new password.`
+        ? { address: registeredEmail, done: "Your account is created." }
         : resetEmail
-          ? `The password for ${resetEmail} is changed. Sign in with your new password.`
+          ? { address: resetEmail, done: "Your password is changed." }
           : undefined;
-  useEffect(() => {
-    headingRef.current?.focus();
-  }, [step]);
+
+  function restart(): void {
+    setEnded(undefined);
+    setStep("password");
+  }
 
   function finishSignIn(): void {
     clearAccountCache(queryClient);
@@ -49,37 +55,55 @@ function SignIn(): ReactElement {
     void navigate({ href: redirect ?? "/", replace: true });
   }
 
+  // The attempt ended (expired, used, or the account deactivated): only
+  // starting again can continue (DESIGN.md "Outcome screens").
+  if (step === "ended" && ended)
+    return (
+      <SignedOutPage title="This sign-in has ended" step="ended">
+        <p>{userMessage(ended)}</p>
+        <Button className="whitespace-normal" onPress={restart}>
+          Start sign-in again
+        </Button>
+      </SignedOutPage>
+    );
+
   return (
-    <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-      {/* Focus lands on the heading, so it reads the notice too. */}
-      <h1
-        ref={headingRef}
-        tabIndex={-1}
-        className="text-3xl font-bold tracking-tight"
-        aria-describedby={notice ? noticeId : undefined}
-      >
-        {step === "code" ? "Verify your sign-in" : "Sign in to inbok"}
-      </h1>
-      <div aria-live="polite" aria-atomic="true" className={completedHere ? undefined : "sr-only"}>
-        {completedHere && (
-          <section className="flex flex-col gap-3" aria-labelledby="setup-done">
-            <h2 id="setup-done" className="text-xl font-semibold">
-              Setup complete
-            </h2>
-            <p>An administrator account has been created.</p>
-            <p>
-              Remove <code>INBOK_SETUP_TOKEN</code> from the server configuration and restart the
-              server.
-            </p>
-          </section>
-        )}
-      </div>
-      {notice && <p id={noticeId}>{notice}</p>}
+    <SignedOutPage
+      title={step === "code" ? "Verify your sign-in" : "Sign in to inbok"}
+      // The code step's instruction is its field's description: the field
+      // takes focus there (DESIGN.md "Focus").
+      lead={step === "code" ? undefined : "Use your email address and password."}
+      step={step}
+      // The title takes focus, so it reads the notice too.
+      describedBy={notice ? noticeId : undefined}
+      after={
+        canRegister && (
+          <p className="text-center text-sm text-muted-foreground">
+            No account yet?{" "}
+            <Link to="/register" className={textLink}>
+              Create an account
+            </Link>
+          </p>
+        )
+      }
+    >
+      <SetupDoneNotice />
+      {notice && (
+        <p id={noticeId}>
+          {/* The address the page before changed, on a line of its own. */}
+          <AddressLine>{notice.address}</AddressLine>
+          {notice.done} Sign in with your new password.
+        </p>
+      )}
       {step === "code" ? (
-        <>
-          <p>Enter the current code from your authenticator app, or an unused backup code.</p>
-          <CodeForm onDone={finishSignIn} onRestart={() => setStep("password")} />
-        </>
+        <CodeForm
+          onDone={finishSignIn}
+          onEnded={(err) => {
+            setEnded(err);
+            setStep("ended");
+          }}
+          onRestart={restart}
+        />
       ) : (
         <SignInForm
           email={registeredEmail ?? resetEmail}
@@ -87,18 +111,6 @@ function SignIn(): ReactElement {
           onCodeRequired={() => setStep("code")}
         />
       )}
-      {step === "password" && (
-        <div className="flex flex-col">
-          <Link to="/forgot-password" className={lineLink}>
-            Forgot password?
-          </Link>
-          {canRegister && (
-            <Link to="/register" className={lineLink}>
-              Create an account
-            </Link>
-          )}
-        </div>
-      )}
-    </main>
+    </SignedOutPage>
   );
 }

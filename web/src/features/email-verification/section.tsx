@@ -5,8 +5,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getGetCurrentSessionQueryKey, useRequestEmailVerification } from "@/api/generated/inbok";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { StatusBadge } from "@/components/status-badge";
+import { SettingsSection } from "@/features/settings/page";
 import { Button } from "@/components/ui/button";
-import { alreadyVerified, sendErrorMessage, sentMessage } from "./text";
+import { alreadyVerified, emailAbout, emailTitle, sendErrorMessage, sentMessage } from "./text";
 
 const unauthorized = 401;
 
@@ -28,7 +29,8 @@ export function EmailVerificationSection({
   const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  // Set when a send starts; focus returns to the button once it ends.
+  // Set when a send starts; once it ends, focus that fell to the page goes
+  // back to the button, or to the heading if the answer removed it.
   const refocus = useRef(false);
   const send = useRequestEmailVerification({
     mutation: {
@@ -56,8 +58,9 @@ export function EmailVerificationSection({
     void navigate({ to: "/sign-in", replace: true, ignoreBlocker: true });
   }, [expired, client, navigate]);
 
-  // The button is disabled while sending or locked; give focus back once it
-  // is usable, or to the heading once a verified address removed it.
+  // The button keeps focus while it sends. Focus falls to the page when a
+  // lock disables it meanwhile, or a verified address removes it: give it
+  // back to the button once usable, or to the heading.
   useEffect(() => {
     if (!refocus.current || send.isPending || locked) return;
     refocus.current = false;
@@ -67,10 +70,7 @@ export function EmailVerificationSection({
   });
 
   return (
-    <section className="flex flex-col gap-6" aria-labelledby="email-heading">
-      <h2 id="email-heading" ref={headingRef} tabIndex={-1} className="text-xl font-semibold">
-        Email
-      </h2>
+    <SettingsSection title={emailTitle} about={emailAbout} headingRef={headingRef}>
       <p className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{email}</span>
         {verified ? (
@@ -85,7 +85,7 @@ export function EmailVerificationSection({
       </p>
       {!verified && (
         <>
-          <p>
+          <p className="text-sm text-muted-foreground">
             We&apos;ll email you a link. Open it to confirm this address is yours. Until you do, a
             forgotten password can&apos;t be reset by email.
           </p>
@@ -93,8 +93,11 @@ export function EmailVerificationSection({
             ref={buttonRef}
             type="button"
             variant="outline"
-            className="w-fit whitespace-normal"
-            isDisabled={locked || send.isPending}
+            className="whitespace-normal"
+            // Pending, not disabled: focus stays on the button while it
+            // sends, and presses do nothing.
+            isDisabled={locked}
+            isPending={send.isPending}
             onPress={() => {
               if (locked || send.isPending) return;
               refocus.current = true;
@@ -119,6 +122,6 @@ export function EmailVerificationSection({
       <output aria-atomic="true" className={notice ? undefined : "sr-only"}>
         {notice}
       </output>
-    </section>
+    </SettingsSection>
   );
 }

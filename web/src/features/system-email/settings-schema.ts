@@ -1,16 +1,29 @@
+import * as z from "zod";
 import { NewSystemEmailSettings, type SystemEmailSettings } from "@/api/generated/model";
+import { emailAddress } from "@/api/validation";
 
-// The form holds exactly the request body, so it is sent as is.
-export type SettingsValues = Required<NewSystemEmailSettings>;
+type Security = SystemEmailSettings["security"];
+
+// The form's values: the request body, with the port as typed, since a
+// port is a number that names something, typed in a text box.
+export type SettingsValues = Omit<Required<NewSystemEmailSettings>, "port"> & { port: string };
 
 const newSettings: SettingsValues = {
   host: "",
-  port: 587,
   security: "starttls",
+  port: "587",
   username: "",
   password: "",
   fromAddress: "",
   fromName: "inbok",
+};
+
+// The port each mode usually uses (RFC 8314 section 3.3 for TLS, RFC 6409
+// for STARTTLS submission). None has none: a test server picks its own.
+export const usualPort: Record<Security, string | undefined> = {
+  tls: "465",
+  starttls: "587",
+  none: undefined,
 };
 
 // settingsValues returns the form's starting values: the saved settings with
@@ -18,31 +31,54 @@ const newSettings: SettingsValues = {
 export function settingsValues(saved: SystemEmailSettings | undefined): SettingsValues {
   if (!saved) return newSettings;
   const { host, port, security, username, fromAddress, fromName } = saved;
-  return { host, port, security, username, password: "", fromAddress, fromName };
+  return { host, security, port: String(port), username, password: "", fromAddress, fromName };
 }
 
-// sameAccount reports whether values name the saved host, port, and
-// username, compared as Go saves them.
-function sameAccount(saved: SystemEmailSettings, values: SettingsValues): boolean {
+// followedPort returns the port for security after it changed, given the
+// port the form holds: the new mode's usual port when port is still a
+// mode's usual one, so switching modes does not keep the other mode's
+// port; a port the member typed, or a mode without one, keeps port.
+export function followedPort(security: Security, port: string): string {
+  const usual = usualPort[security];
+  const wasUsual = Object.values(usualPort).includes(port.trim());
+  return usual !== undefined && wasUsual ? usual : port;
+}
+
+// portNumber reads a typed port: digits only, so "1e3" or "0x1f" are not
+// numbers here though Number() reads them; anything else is NaN, which
+// the contract's number check words as its rule.
+function portNumber(text: string): number {
+  const trimmed = text.trim();
+  return /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+}
+
+// keepsSaved reports whether saving body without a password keeps the
+// saved password, as Go decides: only for the same host, port, and
+// username.
+function keepsSaved(
+  saved: SystemEmailSettings | undefined,
+  body: { host: string; port: number; username: string },
+): boolean {
   // Go trims the host and username before saving.
-  return (
-    saved.host === values.host.trim() &&
-    saved.port === values.port &&
-    saved.username === values.username.trim()
+  return Boolean(
+    saved?.hasPassword &&
+    body.username.trim() &&
+    saved.host === body.host.trim() &&
+    saved.port === body.port &&
+    saved.username === body.username.trim(),
   );
 }
 
-// keepsPassword reports whether saving values without a password keeps the
-// saved one, as Go decides: only for the same host, port, and username.
-export function keepsPassword(saved: SystemEmailSettings | undefined, values: SettingsValues) {
-  return Boolean(saved?.hasPassword && values.username.trim() && sameAccount(saved, values));
-}
-
 // settingsSchema checks the contract's limits and the rules Go applies
-// between fields, given the settings saved now.
+// between fields, given the settings saved now. Parsing returns the request
+// body, the port a number.
 export function settingsSchema(saved: SystemEmailSettings | undefined) {
   return (
     NewSystemEmailSettings.required()
+      .extend({
+        port: z.string().transform(portNumber).pipe(NewSystemEmailSettings.shape.port),
+        fromAddress: emailAddress(NewSystemEmailSettings.shape.fromAddress),
+      })
       // Go saves a blank username as none, so these rules read it trimmed.
       .refine((value) => value.security !== "none" || !value.username.trim(), {
         path: ["security"],
@@ -52,32 +88,9 @@ export function settingsSchema(saved: SystemEmailSettings | undefined) {
         path: ["username"],
         error: "Enter the username for this password.",
       })
-      .refine((value) => !value.username.trim() || value.password || keepsPassword(saved, value), {
+      .refine((value) => !value.username.trim() || value.password || keepsSaved(saved, value), {
         path: ["password"],
         error: "Enter the password for this server and username.",
       })
   );
-}
-
-// savedAddress returns address as Go saves it: trimmed, with the letters A to
-// Z lowercased and other letters as typed (ADR025).
-function savedAddress(address: string): string {
-  return address.trim().replace(/[A-Z]/g, (letter) => letter.toLowerCase());
-}
-
-// checkedSave compares the settings read after an uncertain save with the
-// form.
-export function checkedSave(
-  saved: SystemEmailSettings | undefined,
-  values: SettingsValues,
-): "saved" | "passwordUnconfirmed" | "different" {
-  const matches =
-    saved !== undefined &&
-    sameAccount(saved, values) &&
-    saved.security === values.security &&
-    saved.fromAddress === savedAddress(values.fromAddress) &&
-    saved.fromName === values.fromName;
-  if (!matches) return "different";
-  // The password is never read back, so a typed one stays unconfirmed.
-  return values.password ? "passwordUnconfirmed" : "saved";
 }

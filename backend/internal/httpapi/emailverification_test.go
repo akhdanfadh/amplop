@@ -62,13 +62,13 @@ func postRedeem(api *API, body, cookie string) *httptest.ResponseRecorder {
 // Email verification request
 // ========================
 
-// Any signed-in user can ask, including an administrator still enrolling
-// TOTP; the link is for the session's own account.
+// Any signed-in member or administrator can ask; the link is for the
+// session's own account.
 func TestRequestEmailVerification(t *testing.T) {
 	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
 		t.Run(string(role), func(t *testing.T) {
 			service := &fakeEmailVerification{address: "alice@example.com"}
-			api := New(discard, Services{EmailVerification: service, Session: memberSessions(role)})
+			api := New(discard, Services{EmailVerification: service, Session: confirmedSessions(role)})
 
 			response := sendSessionRequest(api, http.MethodPost, "/account/email-verification")
 
@@ -211,7 +211,7 @@ func TestEmailVerificationOpenAPI(t *testing.T) {
 		access    session.Access
 		statuses  []string
 	}{
-		{doc.Paths["/account/email-verification"].Post, "requestEmailVerification", session.AccessMember, []string{"200", "401", "409", "429", "502", "default"}},
+		{doc.Paths["/account/email-verification"].Post, "requestEmailVerification", session.AccessMember, []string{"200", "401", "403", "409", "429", "502", "default"}},
 		{doc.Paths["/email-verifications/redeem"].Post, "redeemEmailVerification", session.AccessPublic, []string{"200", "404", "422", "429", "default"}},
 	} {
 		operation := op.operation

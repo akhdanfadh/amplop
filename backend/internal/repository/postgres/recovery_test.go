@@ -47,7 +47,7 @@ func recoveryNotices(t *testing.T, conn *pgx.Conn) []int64 {
 
 func newRecovery(t *testing.T) *confirmationFixture {
 	t.Helper()
-	f, _ := newRegeneration(t)
+	f, _ := newReplacement(t)
 	f.db = f.db.WithWorkflows(tableWorkflows{})
 	_, err := f.conn.Exec(t.Context(), `
  CREATE TABLE test_recovery_notices (user_id bigint NOT NULL);

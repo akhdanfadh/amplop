@@ -48,3 +48,7 @@ export function redeemErrorMessage(err: ApiError, verified: boolean): string {
     "We couldn't confirm whether your email address was verified. Try again.",
   );
 }
+
+// Security's email section: its heading and what the address is for.
+export const emailTitle = "Email address";
+export const emailAbout = "You sign in with it, and inbok sends your account emails here.";

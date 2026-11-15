@@ -1185,14 +1185,16 @@ without leading zeros; each key is 32 random bytes in standard base64, from
 `openssl rand -base64 32`. Startup fails, without printing key material, if
 the list is empty or an entry is malformed or repeated.
 
-The first entry encrypts new TOTP secrets, a newly entered system email
-password, and the refresh token of a newly connected or reconnected Gmail
-account with AES-256-GCM. Every entry can decrypt. Each stored secret
-records its key ID and is bound to what it belongs to: a TOTP secret to its
-user; the system email password to its mail server host, port, and
-username; a refresh token to its member and connected account. A
-ciphertext copied elsewhere does not decrypt. Backup codes and account
-passwords use Argon2id hashes and do not depend on these keys.
+The first entry encrypts new TOTP secrets, the copy of a two-factor
+enrollment's backup codes kept until the member saves them, a newly
+entered system email password, and the refresh token of a newly connected
+or reconnected Gmail account with AES-256-GCM. Every entry can decrypt.
+Each stored secret records its key ID and is bound to what it belongs to:
+a TOTP secret and a backup-code copy to their user; the system email
+password to its mail server host, port, and username; a refresh token to
+its member and connected account. A ciphertext copied elsewhere does not
+decrypt. Backup codes and account passwords use Argon2id hashes and do
+not depend on these keys.
 
 To rotate, generate a key, put it first under an unused ID, keep the old
 entries, and restart every API instance and worker with the same list.
@@ -1207,6 +1209,7 @@ old key indefinitely. Remove an old key only when no query lists its ID:
 
 ```sql
 SELECT key_id, count(*) FROM user_totp GROUP BY key_id;
+SELECT key_id, count(*) FROM totp_waiting_backup_codes WHERE key_id IS NOT NULL GROUP BY key_id;
 SELECT password_key_id FROM system_email WHERE password_key_id IS NOT NULL;
 SELECT refresh_token_key_id, count(*) FROM connected_accounts GROUP BY refresh_token_key_id;
 SELECT refresh_token_key_id, count(*) FROM account_removals GROUP BY refresh_token_key_id;
@@ -1639,24 +1642,28 @@ logs the token or returns it in an error.
 `GET /api/v0/setup` reports `unconfigured`, `open`, or `done`. An existing
 administrator always means `done`, even after the token is removed.
 `POST /api/v0/setup` creates one administrator atomically; concurrent claims
-cannot create a second one. Setup creates no workspace, membership, session,
-or cookie. If the token remains configured after setup, `serve` logs a
-startup warning asking the operator to remove it.
+cannot create a second one. Setup creates no workspace or membership. It
+signs the new administrator in with a 15-minute session that can only set
+up two-factor authentication (`session.Service.SignInFirstAdmin`), the same
+session sign-in gives an administrator without it. That sign-in runs after
+the administrator is saved: if it fails, the request answers 500 and the
+administrator signs in as usual. If the token remains configured after
+setup, `serve` logs a startup warning asking the operator to remove it.
 
-Setup does not sign the administrator in. The web app opens sign-in after
-completion and shows the token-removal instructions there. Before setup is
-complete, every web page leads to setup. After completion, `/setup` returns
-to the normal entry page. The API's database claim enforces setup completion
+The web app opens two-factor setup after completion and shows the
+token-removal instructions there. Before setup is complete, every web page
+leads to setup. After completion, `/setup` returns to the normal entry
+page. The API's database claim enforces setup completion
 independently of these browser redirects.
 
 ## Sign-in and browser sessions
 
-`POST /api/v0/sessions` accepts email and password. Without confirmed TOTP,
-it creates a fresh session and returns HTTP 201 with
+`POST /api/v0/sessions` accepts email and password. Without confirmed TOTP, it
+creates a fresh session and returns HTTP 201 with
 `{"data":{"step":"complete"}}`. With confirmed TOTP, it returns
-`{"data":{"step":"totp"}}` and a temporary `__Host-inbok-challenge` cookie;
-no session is created. The factor check and the chosen write share one user
-lock, so enrollment confirmation cannot race a password-only session into
+`{"data":{"step":"totp"}}` and a temporary `__Host-inbok-challenge` cookie; no
+session is created. The factor check and the chosen write share one user lock,
+so finishing two-factor enrollment cannot race a password-only session into
 existence afterward. Unknown email and wrong password return the same HTTP
 401; unknown users still incur an Argon2id password check. A deactivated
 account with the right password returns HTTP 403 `account-deactivated`
@@ -1688,13 +1695,21 @@ Authentication responses use Cache-Control: no-store.
 `GET /api/v0/sessions/current` returns the current email, role,
 `totpRequired`, and `emailVerified`. An administrator with confirmed TOTP receives admin access
 and `totpRequired: false`. An administrator without confirmed TOTP receives
-member access and `totpRequired: true`. Members always receive member access
-and `totpRequired: false`, whether or not they enable TOTP.
+enrollment access and `totpRequired: true`: only the current session,
+sign-out, and the two-factor enrollment operations accept it, every other
+operation answers 403 `totp-required`, and its session lives 15 minutes.
+Finishing enrollment replaces it with a full session. Members always
+receive member access and `totpRequired: false`, whether or not they enable
+TOTP. Operations declare their level in `accessKey` metadata
+(`session.AccessEnrollment`, `AccessMember`, `AccessAdmin`); missing
+metadata means admin.
 
 Identity reads the current account and factor through the session row in one
-query. A session revoked by enrollment confirmation cannot gain admin access
-from a previous session check. The web app's `/security` page handles
-enrollment, backup codes, and turn-off; sign-in shows the code step.
+query. A session revoked by finishing two-factor enrollment cannot gain admin
+access from a previous session check. The web app's two-factor page,
+`/settings/security/two-factor`, handles setup, backup codes, and turn-off;
+an administrator without two-factor sees setup alone at
+`/two-factor-setup`; sign-in shows the code step.
 
 `DELETE /api/v0/sessions/current` deletes the checked session and clears its
 cookie, returning HTTP 204. A missing or expired session returns HTTP 401
@@ -1746,7 +1761,9 @@ rather than disabling Secure or changing the cookie name.
 Session rules are constants, not environment settings:
 
 - Idle expiry is 7 days since the stored last-use time; maximum lifetime is
-  30 days from sign-in and is never extended.
+  30 days from sign-in and is never extended. A session with enrollment
+  access, an administrator's without confirmed TOTP, lives 15 minutes from
+  sign-in instead (`enrollmentSessionLifetime`).
 - Each authenticated request loads the session and current user from
   PostgreSQL. It updates last-use time only when at least an hour has passed
   since the stored value. This reduces writes, not reads.
@@ -1866,11 +1883,12 @@ before the worker tries: the notice is saved either way, and the worker
 reads the settings when it sends. Recovery itself sends nothing and needs
 no encryption keys.
 
-The administrator signs in with the new password and has member access until
-they enroll TOTP on the Security page. Confirmation restores administrator
-access. Enrollment happens in the web app. A sign-in that verified the old
-password before recovery cannot create a session afterward, even if recovery
-sets the same password again.
+The administrator signs in with the new password and gets a 15-minute
+session with enrollment access, which can only set up two-factor
+authentication; the web app opens that setup at once. Finishing the
+enrollment restores administrator access. A sign-in that verified the old
+password before recovery cannot create a session afterward, even if
+recovery sets the same password again.
 
 Recovery leaves `users.deactivated_at` as it is. The web app cannot
 deactivate an administrator, but one deactivated directly in the database
@@ -2070,9 +2088,11 @@ user.
 
 `GET /api/v0/members` returns every account, oldest first, in
 `data.members`. Each has its `id` (the user ID), `email`, `role`,
-`joinedAt`, `emailVerified`, `totpEnabled`, and `deactivatedAt`, null while
-active. It holds nothing about mail, sessions, or activity. There is no
-paging.
+`joinedAt`, `emailVerified`, `totpEnabled`, `deactivatedAt`, null while
+active, and `allowedActions`: `deactivate` and `reactivate` for a member
+(either may change nothing), none for an administrator. Deactivate and
+Reactivate refuse through the same rule (`account.Member.AllowedActions`).
+It holds nothing about mail, sessions, or activity. There is no paging.
 
 `POST /api/v0/members/{id}/deactivate` and `.../reactivate` return HTTP 200
 with the member as saved in `data.member`. An unknown ID answers 404
@@ -2129,7 +2149,9 @@ each choice below and the alternatives it was chosen over.
 
 `GET` and `PUT /api/v0/registration/settings` need administrator access.
 `PUT` takes `{"open": true}` or `{"open": false}`. Registration starts
-closed.
+closed. Both answer `{status, systemEmailTested, allowedActions}`:
+`allowedActions` is `close`, plus `open` once the system email settings in
+use passed a test, the same rule `PUT` refuses through.
 
 - Opening needs system email settings that passed a test message;
   otherwise it answers 409 `system-email-not-tested`. Closing always
@@ -2138,8 +2160,8 @@ closed.
   the administrator as `actor_user_id` and no target, even a save that
   changes nothing.
 - Saving new system email settings, or a failed test, clears their tested
-  time. Registration then reports `paused`: still open, but no visitor can register until a
-  test passes. Nothing closes it behind the administrator's back.
+  time. Registration then reports `paused`: still open, but no visitor can
+  register until a test passes. Nothing closes it behind the administrator's back.
 - Closing deletes every registration attempt and link, so no visitor's
   email or IP address is kept while it stays closed. The cost: a link sent
   before the close stops working even after registration reopens, and the

@@ -81,13 +81,18 @@ func requestProblem(status int) *problem {
 	}
 }
 
+// invalidEmailMessage corrects an email address field; the web app shows
+// the same text for an address its own check refuses.
+const invalidEmailMessage = "Enter an email address, like name@example.com."
+
 // invalidEmailProblem returns the 422 for an address [emailaddress.Parse]
 // rejects at location, e.g. "body.email".
 func invalidEmailProblem(location string) *problem {
 	invalid := requestProblem(http.StatusUnprocessableEntity)
-	// Huma's own format "email" failure reads the same, so the response does
-	// not depend on which check rejected the address.
-	invalid.Errors = []inputError{{Location: location, Message: "Enter a valid value."}}
+	// Huma's own failure of an "idn-email" field reads the same (see
+	// publicInputError), so the response does not depend on which check
+	// rejected the address.
+	invalid.Errors = []inputError{{Location: location, Message: invalidEmailMessage}}
 	return invalid
 }
 

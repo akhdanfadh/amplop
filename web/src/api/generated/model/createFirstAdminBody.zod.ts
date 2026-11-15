@@ -14,7 +14,7 @@ export const createFirstAdminBodyPasswordMax = 128;
 
 
 export const CreateFirstAdminBody = zod.object({
-  "email": zod.email().min(createFirstAdminBodyEmailMin).max(createFirstAdminBodyEmailMax).describe('Letters A to Z are saved in lowercase.'),
+  "email": zod.string().min(createFirstAdminBodyEmailMin).max(createFirstAdminBodyEmailMax).describe('Letters A to Z are saved in lowercase.'),
   "password": zod.string().min(createFirstAdminBodyPasswordMin).max(createFirstAdminBodyPasswordMax),
   "token": zod.string()
 })

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"time"
 
 	"inbok/internal/account"
@@ -25,10 +26,11 @@ type SignedIn struct {
 	ExpiresAt time.Time
 }
 
-// SignInState is the current password hash, factor, and status, read with
-// the user locked.
+// SignInState is the current password hash, role, factor, and status, read
+// with the user locked.
 type SignInState struct {
 	PasswordHash string
+	Role         account.Role
 	Factor       *totp.Factor
 	Deactivated  bool
 }
@@ -94,7 +96,7 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, devic
 
 	// 5. Under the user's lock, check the proof again and issue a session
 	// or a code challenge.
-	var result SignedIn
+	var result issuedSignIn
 	err = s.storage.StartSignIn(ctx, credentials.User.ID, func(state SignInState) (SignInChange, error) {
 		// A recovery invalidates password proof even when the plaintext is unchanged.
 		if state.PasswordHash != credentials.PasswordHash {
@@ -107,16 +109,14 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, devic
 		}
 
 		// The current factor determines whether a second sign-in step is required.
-		if state.Factor != nil && state.Factor.ConfirmedAt != nil {
+		if factorConfirmed(state.Factor) {
 			secret, challenge := newChallenge(credentials.User.ID, s.now)
-			result = SignedIn{Step: SignInStepTOTP, Secret: secret, ExpiresAt: challenge.ExpiresAt}
+			result = issuedSignIn{SignedIn: SignedIn{Step: SignInStepTOTP, Secret: secret, ExpiresAt: challenge.ExpiresAt}}
 			return SignInChange{Step: result.Step, Challenge: challenge, Cutoff: s.now().UTC()}, nil
 		}
 
-		issued := newSession(credentials.User.ID, device, s.now)
-		result = SignedIn{Step: SignInStepComplete, Secret: issued.Secret, ExpiresAt: issued.State.ExpiresAt}
-		now := s.now()
-		return SignInChange{Step: result.Step, Session: issued.State, Expiry: expiryAt(now), Cutoff: now.UTC()}, nil
+		result = s.signedIn(credentials.User.ID, state, device)
+		return s.sessionChange(result), nil
 	})
 	if errors.Is(err, ErrNotFound) {
 		return SignedIn{}, account.ErrInvalidCredentials
@@ -124,5 +124,87 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, devic
 	if err != nil {
 		return SignedIn{}, err
 	}
-	return result, nil
+	return result.SignedIn, nil
+}
+
+// SignInFirstAdmin signs in the administrator that first-admin setup just
+// created, with enrollment access only, so they go straight to setting up
+// two-factor authentication. It returns [ErrNotFound] unless userID is an
+// active administrator without a confirmed factor.
+//
+// DESIGN: setup already proved the setup token and the new password, so a
+// second password entry would prove nothing. If this fails after setup
+// commits, the administrator still exists and signs in as usual.
+func (s *Service) SignInFirstAdmin(ctx context.Context, userID int64, device Device) (SignedIn, error) {
+	var result issuedSignIn
+	err := s.storage.StartSignIn(ctx, userID, func(state SignInState) (SignInChange, error) {
+		if state.Deactivated || state.Role != account.RoleAdmin || factorConfirmed(state.Factor) {
+			return SignInChange{}, ErrNotFound
+		}
+		result = s.signedIn(userID, state, device)
+		return s.sessionChange(result), nil
+	})
+	if err != nil {
+		return SignedIn{}, err
+	}
+	return result.SignedIn, nil
+}
+
+// VerifyPassword confirms password is user's current password, counting the
+// attempt against the sign-in limits for user's email from addr, so a
+// session cookie alone cannot be used to guess it. It returns
+// [account.ErrInvalidCredentials] for a wrong password and an
+// [*attemptlimit.Error] wrapping [ErrThrottled] when a limit is reached.
+func (s *Service) VerifyPassword(ctx context.Context, user account.User, password string, addr netip.Addr) error {
+	// 1. Reserve an attempt before the password hash.
+	id, err := s.throttle.Begin(ctx, user.Email, addr)
+	if err != nil {
+		return err
+	}
+
+	// 2. Verify the password. A failure keeps the attempt, so it counts.
+	credentials, err := s.accounts.Authenticate(ctx, user.Email, password)
+	if err != nil {
+		return err
+	}
+	if credentials.User.ID != user.ID {
+		return account.ErrInvalidCredentials
+	}
+
+	// 3. Remove the attempt: only failures count.
+	return s.throttle.Succeed(ctx, id)
+}
+
+// issuedSignIn is a complete sign-in's cookie and the session to save.
+type issuedSignIn struct {
+	SignedIn
+	state State
+}
+
+// signedIn issues a complete sign-in's session for userID with state's
+// role and factor. An administrator without a confirmed factor gets
+// enrollment access, so the session lives only [enrollmentSessionLifetime];
+// finishing enrollment replaces it with a full session.
+func (s *Service) signedIn(userID int64, state SignInState, device Device) issuedSignIn {
+	lifetime := maxLifetime
+	if state.Role == account.RoleAdmin && !factorConfirmed(state.Factor) {
+		lifetime = enrollmentSessionLifetime
+	}
+	issued := newSession(userID, device, lifetime, s.now)
+	return issuedSignIn{
+		SignedIn: SignedIn{Step: SignInStepComplete, Secret: issued.Secret, ExpiresAt: issued.State.ExpiresAt},
+		state:    issued.State,
+	}
+}
+
+// sessionChange returns the change that saves issued's session and prunes
+// the user's expired sessions.
+func (s *Service) sessionChange(issued issuedSignIn) SignInChange {
+	now := s.now()
+	return SignInChange{Step: SignInStepComplete, Session: issued.state, Expiry: expiryAt(now), Cutoff: now.UTC()}
+}
+
+// factorConfirmed reports whether factor exists and is confirmed.
+func factorConfirmed(factor *totp.Factor) bool {
+	return factor != nil && factor.ConfirmedAt != nil
 }

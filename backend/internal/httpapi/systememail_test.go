@@ -199,7 +199,7 @@ func TestSaveSystemEmailInvalid(t *testing.T) {
 		{"long host", `"host":"smtp.example.com"`, `"host":"` + strings.Repeat("a", 254) + `"`, "body.host", "Use at most 253 characters."},
 		{"port zero", `"port":587`, `"port":0`, "body.port", "Enter a whole number from 1 to 65535."},
 		{"unknown security", `"security":"starttls"`, `"security":"ssl"`, "body.security", "Enter a valid value."},
-		{"from address", `"fromAddress":"inbok@example.com"`, `"fromAddress":"Inbok <inbok@example.com>"`, "body.fromAddress", "Enter a valid value."},
+		{"from address", `"fromAddress":"inbok@example.com"`, `"fromAddress":"Inbok <inbok@example.com>"`, "body.fromAddress", "Enter an email address, like name@example.com."},
 		{"blank from name", `"fromName":"inbok"`, `"fromName":""`, "body.fromName", "Enter a valid value."},
 		{"long password", `"password":"app password 7f3c"`, `"password":"` + strings.Repeat("p", 256) + `"`, "body.password", "Use at most 255 characters."},
 	} {
@@ -233,7 +233,7 @@ func TestSaveSystemEmailRejected(t *testing.T) {
 		{systememail.ErrInvalidUsername, "body.username", "Enter a username without control characters."},
 		{systememail.ErrInvalidPassword, "body.password", "Enter a password of at most 255 bytes, without control characters."},
 		{systememail.ErrInvalidFromName, "body.fromName", "Enter a name without control characters."},
-		{emailaddress.ErrInvalid, "body.fromAddress", "Enter a valid value."},
+		{emailaddress.ErrInvalid, "body.fromAddress", "Enter an email address, like name@example.com."},
 	} {
 		t.Run(c.err.Error(), func(t *testing.T) {
 			api := New(discard, Services{SystemEmail: &fakeSystemEmail{err: c.err}, Session: adminSessions()})
@@ -281,7 +281,7 @@ func TestSendSystemEmailTestMessageInvalidRecipient(t *testing.T) {
 			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 			assert.Zero(t, service.calls)
 			problem := decodeJSON(t, response.Body.Bytes())
-			assert.Equal(t, []any{map[string]any{"location": "body.recipient", "message": "Enter a valid value."}}, problem["errors"])
+			assert.Equal(t, []any{map[string]any{"location": "body.recipient", "message": "Enter an email address, like name@example.com."}}, problem["errors"])
 		})
 	}
 }
@@ -295,7 +295,7 @@ func TestSendSystemEmailTestMessageRejectedRecipient(t *testing.T) {
 	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
 	problem := decodeJSON(t, response.Body.Bytes())
 	assert.Equal(t, problemPrefix+"validation-error", problem["type"])
-	assert.Equal(t, []any{map[string]any{"location": "body.recipient", "message": "Enter a valid value."}}, problem["errors"])
+	assert.Equal(t, []any{map[string]any{"location": "body.recipient", "message": "Enter an email address, like name@example.com."}}, problem["errors"])
 }
 
 func TestSendSystemEmailTestMessageNotConfigured(t *testing.T) {
@@ -339,7 +339,7 @@ func TestSystemEmailUnexpectedFailure(t *testing.T) {
 // TOTP are refused before any service runs.
 func TestSystemEmailAccess(t *testing.T) {
 	member := &fakeSessions{identity: session.Identity{User: account.User{ID: 7, Role: account.RoleMember}, Access: session.AccessMember}}
-	pending := &fakeSessions{identity: session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessMember, TOTPRequired: true}}
+	pending := &fakeSessions{identity: session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessEnrollment, TOTPRequired: true}}
 	for _, op := range []struct {
 		name, method, path, body string
 	}{
@@ -394,7 +394,7 @@ func TestSystemEmailOpenAPI(t *testing.T) {
 		assert.ElementsMatch(t, op.statuses, statuses, op.id)
 	}
 	forbidden := doc.Paths["/system-email"].Get.Responses["403"].Content[problemContentType].Examples
-	assert.Equal(t, forbiddenProblem(), forbidden["forbidden"].Value)
+	assert.Equal(t, forbiddenProblem(), forbidden["refused"].Value)
 	assert.Equal(t, totpRequiredProblem(), forbidden["totpRequired"].Value)
 	schemas := doc.Components.Schemas.Map()
 	require.NotNil(t, schemas["NewSystemEmailSettings"])

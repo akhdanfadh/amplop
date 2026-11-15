@@ -176,7 +176,7 @@ func TestSendMessageInvalid(t *testing.T) {
 		{"key as a URN", "urn:uuid:0a1b2c3d-0000-4000-8000-0000000000aa", lunchRequest, "header.Idempotency-Key", "Enter a valid value."},
 		{"key without hyphens", "0a1b2c3d0000400080000000000000aa", lunchRequest, "header.Idempotency-Key", "Enter a valid value."},
 		{"too many recipients", lunchKey.String(), strings.Replace(lunchRequest, `"cc":[]`, `"cc":`+hundredOne, 1), "body.cc", "Use at most 100 items."},
-		{"recipient not an address", lunchKey.String(), strings.Replace(lunchRequest, `"cc":[]`, `"cc":["Ann <ann@example.com>"]`, 1), "body.cc[0]", "Enter a valid value."},
+		{"recipient not an address", lunchKey.String(), strings.Replace(lunchRequest, `"cc":[]`, `"cc":["Ann <ann@example.com>"]`, 1), "body.cc[0]", "Enter an email address, like name@example.com."},
 		{"subject too long", lunchKey.String(), strings.Replace(lunchRequest, `"Lunch"`, `"`+strings.Repeat("s", 501)+`"`, 1), "body.subject", "Use at most 500 characters."},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -214,7 +214,7 @@ func TestSendMessageRefused(t *testing.T) {
 		{"no recipients", outgoingmessage.ErrNoRecipients, http.StatusUnprocessableEntity, problemPrefix + "validation-error", "",
 			map[string]any{"location": "body.to", "message": "Add at least one recipient."}},
 		{"recipient", &outgoingmessage.RecipientError{Field: outgoingmessage.FieldBcc, Index: 4}, http.StatusUnprocessableEntity, problemPrefix + "validation-error", "",
-			map[string]any{"location": "body.bcc[4]", "message": "Enter a valid value."}},
+			map[string]any{"location": "body.bcc[4]", "message": "Enter an email address, like name@example.com."}},
 		{"too many", &outgoingmessage.TooManyRecipientsError{Field: outgoingmessage.FieldTo}, http.StatusUnprocessableEntity, problemPrefix + "validation-error", "",
 			map[string]any{"location": "body.to", "message": "Use at most 100 items."}},
 		{"subject", outgoingmessage.ErrSubjectInvalid, http.StatusUnprocessableEntity, problemPrefix + "validation-error", "",

@@ -109,17 +109,23 @@ Put shared code in the folder for its responsibility:
 - `src/features/auth`: sign-in form, validation, session messages, the code
   step's rule for when a sign-in has ended, and account cache cleanup.
 - `src/features/probe`: the probe demo form.
-- `src/features/totp`: authenticator enrollment, confirmation, backup-code
-  management, and turning TOTP off.
+- `src/features/totp`: two-factor setup (`useSetupFlow`), backup-code
+  replacement, turning it off, and Security's two-factor section.
 - `src/features/sessions`: the signed-in browser list and ending sessions.
 - `src/features/email-verification`: the Security page's Email section, the
-  `/verify-email` form, and their wording.
+  `/verify-email` page, and their wording. That page, unlike the other link
+  pages, lives here whole: its outcome screens read the session and the
+  redeem's result.
 - `src/features/system-email`: the system email settings form, its schema,
-  and the test message form and its result wording.
+  the test message form and its result wording, and whether the saved
+  settings passed a test (`systemEmailState`), which the badge and the
+  setup reminder share.
+- `src/features/setup-reminder`: the banners for each setup step the
+  signed-in member owes (`SetupReminder`), and their wording.
 - `src/features/members`: the member list's columns and cells, the table
   with its confirmation dialog, and its wording.
-- `src/features/registration`: the Registration page's section, the
-  `/register` and `/register/complete` forms, and their wording.
+- `src/features/registration`: the Registration page's section and badge,
+  the `/register` and `/register/complete` forms, and their wording.
 - `src/features/password-reset`: the `/forgot-password` and
   `/reset-password` forms, the reset form's schema, and their wording.
 - `src/features/connected-accounts`: the Connected accounts list with its
@@ -139,17 +145,25 @@ Put shared code in the folder for its responsibility:
   action's words (`words.ts`), running an action (`perform.ts`) and its
   Undo bar (`undo.tsx`), how a row shows its date and people, and the
   address Back to mail returns to.
-- `src/features/settings`: the settings sidebar.
-- `src/components`: shared components, such as the shell around every
-  page (`AppShell`), the password input, the request error under a form,
-  the status badge, the link styles, the signed-in frame and its member
-  menu, the offline banner, and the pages for loading, failure, and Page
-  not found. `ui/` holds the shadcn components we own.
+- `src/features/settings`: the settings sidebar and the settings page
+  layout (`SettingsPage`, `SettingsSection`) every settings page uses but
+  Connected accounts, which `feat/connected-accounts` moves onto it.
+- `src/components`: shared components, such as the shell around every page
+  (`AppShell`), the password input, the request error under a form, the
+  status badge, the link styles, the signed-in frame and its member menu,
+  the banner and the offline banner, and the pages for loading, failure,
+  and Page not found, and `SignedOutPage`, the card every signed-out page
+  puts its content in, with `OutcomeLinks` for the buttons of its outcome
+  screens. `ui/` holds the shadcn components we own. `form/` is the form
+  kit, kept together because its parts only work as one: `useAppForm` with
+  the field kinds and the form parts it is built from, and
+  `useFormRequest`, which sends a form's values and whose check plugs into
+  it; "Forms" below says how to use it.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
-  secret of an emailed link, or keeping a server's field error through a
-  blur.
+  secret of an emailed link, keeping a server's field error through a
+  blur, or writing dates and times (`datetime.ts`).
 - `src/hooks`: React hooks shared by features, such as a page reading its
   link's secret, the layout the window's width allows, or a page focusing
   its heading once a closing drawer lets go (`useFocusOnOpen`).
@@ -176,17 +190,18 @@ to the address. Each guard runs in `beforeLoad`, before anything draws,
 and reads the session through `readSession` (`features/auth/guard.ts`),
 which uses the cached session when a page has read it:
 
-| Layout route           | Pages                                       | Guard                                                                                             |
-| ---------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `_app`                 | Everything signed in                        | No session: `/sign-in?redirect=<address>`, which returns there after sign-in                      |
-| `_app/_mail`           | `/mail/<place>`, `/mail/outbox`, `/compose` | None; the mail frame                                                                              |
-| `_app/settings`        | `/settings/<page>`                          | None; the settings frame                                                                          |
-| `_app/settings/_admin` | Members, Registration, System email         | A member gets Page not found; an administrator without two-factor authentication goes to Security |
-| `_auth`                | Signed-out pages                            | None; the wordmark over one column                                                                |
-| `_auth/_signed-out`    | Sign-in, Forgot password, Register          | A signed-in member goes to `/`; a failed check shows the page                                     |
+| Layout route           | Pages                                       | Guard                                                                                                                                                 |
+| ---------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_app`                 | Everything signed in                        | No session: `/sign-in?redirect=<address>`, which returns there after sign-in; an administrator without two-factor authentication: `/two-factor-setup` |
+| `_app/_mail`           | `/mail/<place>`, `/mail/outbox`, `/compose` | None; the mail frame                                                                                                                                  |
+| `_app/settings`        | `/settings/<page>`                          | None; the settings frame                                                                                                                              |
+| `_app/settings/_admin` | Members, Registration, System email         | A member gets Page not found                                                                                                                          |
+| `_auth`                | Signed-out pages                            | None; the wordmark over one column                                                                                                                    |
+| `_auth/_signed-out`    | Sign-in, Forgot password, Register          | A signed-in member goes to `/`; a failed check shows the page                                                                                         |
 
-`/` opens `/mail/inbox`, or Security for an administrator without
-two-factor authentication. Pages emailed links open (`/verify-email`,
+`/` opens `/mail/inbox`. `/two-factor-setup` sits in `_auth` with its own
+guard: no session goes to sign-in, a session with two-factor on to `/`.
+Pages emailed links open (`/verify-email`,
 `/reset-password`, `/register/complete`) keep their addresses and sit in
 `_auth` without a guard, so they work signed in or out. The server's
 other entry addresses, `/security` (the recovery notice) and
@@ -198,6 +213,30 @@ the session itself and opens sign-in on a 401, since a session can end
 after the guard ran, e.g. from another tab. The router counts a session
 read in the last 5 s as fresh (`sessionFreshMs`), so a page that opens
 just after a guard read it does not read it again.
+
+A page whose data it cannot draw without, e.g. System email, Registration,
+or Members, reads it in its route's loader, made by `signedInLoader`
+(`src/features/auth/session-end.ts`) over `loadSignedIn`, so the router's
+loading and failure views below cover it. The loader reads with
+`staleTime: Infinity`, a cached read until something marks it out of date,
+which only the member's own change in this tab does, e.g. a System email
+save marks Registration's, and runs with `staleReloadMode: "blocking"`, so
+a visit back waits for that reread: Registration never asks for a test
+message just after one passed. Mail's loaders serve whatever is cached
+(`staleTime: "static"`) and read again as the page mounts, since mail's
+data changes all the time and corrects itself in place. One approach for
+both, every loader serving the cache and a write rereading at once what it
+changed (`refetchType: "all"`), is planned as the first checkpoint of
+`feat/connected-accounts` (ADR031). The page's own query counts what
+the loader read in the last 5 s as fresh (`loadedFreshMs`), so it does not
+read it again as it opens, and rereads older data then. A 401 there
+clears the account cache and opens sign-in, which returns to the page
+afterwards; once the page has drawn, `useSessionEnd` does the same for a
+read or a write that gets one, without asking to leave unsaved typing,
+which can no longer be saved. A 403 on such a page is an ordinary
+failure: no administrator loses the role while signed in today, and a
+feature that adds a way to, e.g. a role change, decides what an open page
+does then.
 
 Every page gets the same states from the router (`src/router.tsx`):
 `RoutePending`, a spinner with "Loading...", when the page's checks take
@@ -266,7 +305,28 @@ whose page still offers to send it (`unfinished`), so a message sent
 again stops counting. The member menu at the bottom of the sidebar opens
 Settings, the theme choice, and Sign out. Both frames and the signed-out
 layout show `OfflineBanner` at the top of the content while the browser
-reports no connection, read from TanStack Query's `onlineManager`.
+reports no connection, read from TanStack Query's `onlineManager`. Under
+it, both frames show `SetupReminder`, a banner for each setup step the
+member owes, stacked (web/DESIGN.md "Feedback"): for an administrator,
+system email with nothing saved or without a passing test; for anyone, an
+unverified address. Each follows its own fact from the server, with no
+order between them: the server, not the reminder, refuses a verification
+link while nothing is saved. The banners sit in a "Setup reminders"
+landmark, since they come before the heading each page focuses. The
+reminder reads system email for an administrator only, through the System
+email page's own query, so that page's saves and tests move it on; a
+failed later read keeps the last answer, as that page does. The `_app`
+loader makes the page load's first try before the page draws, so the
+banner never pushes a drawn page down; it never waits for the connection,
+a failure only leaves system email out, and after that first try, answered
+or not, it waits for nothing. Accepted: a first read that hangs holds the
+first draw until the request times out (15 s), as a page's own read does.
+The reminder's reads end the page on a 401 (`useSessionEnd`), since its
+focus reread can be the first to find the session gone. Unlike the frame's
+other session readers, the reminder rereads the session when the window
+regains focus, since an address is often verified from the email in
+another tab. A banner shows on every page; on
+the page where its step is done it drops its link.
 
 A place in mail, `/mail/<place>`, is a view (`inbox`, `starred`, `sent`,
 `all`, `spam`, `trash`) or a label's ID from the API's places, and
@@ -290,7 +350,9 @@ with Back at the start of the conversation's toolbar, which goes back in
 history as the phone's own back does.
 
 The application checks setup status once per fresh page load and shares
-the result during navigation. Before setup is complete, every page
+the result during navigation. Once it has seen setup done, it keeps that
+for the rest of the page load, since done never goes back: a reset of the
+query cache cannot bring back the loading view. Before setup is complete, every page
 redirects to `/setup`, including direct sign-in, demo, and unknown URLs.
 The check attempts the API even when the browser reports offline. While it
 runs, the page shows the app's first-load view (above); a failed first
@@ -302,10 +364,12 @@ error beside the form.
 The `/setup` page shows token configuration instructions or the
 first-admin form. See [First administrator
 setup](../backend/README.md#first-administrator-setup) for the operator
-steps. Completing setup updates the shared status and opens `/sign-in`,
-with instructions to remove the setup token and restart the server. Setup
-does not sign the administrator in. Later visits to `/setup` redirect to
-`/`, whose guard chooses mail or sign-in. The browser remembers a local
+steps. Completing setup signs the new administrator in, with a session
+that may only set up two-factor authentication, updates the shared status,
+and opens `/`, whose guard sends them on to `/two-factor-setup`. That card
+shows the instructions to remove the setup token and restart the server;
+if the sign-in failed, or its answer was lost, sign-in shows them instead.
+Later visits to `/setup` redirect to `/`. The browser remembers a local
 setup attempt until reload, so a status check that confirms completion
 after a lost response also shows the instructions.
 
@@ -321,51 +385,86 @@ A rejected code can be retried; an expired or exhausted challenge requires
 starting sign-in again. Reloading also returns to the password step.
 A deactivated account with the right password sees "This account is
 deactivated. Ask your administrator." The code step answers a 403 the same
-way as an ended challenge: the form stops and offers to start again.
+way as an ended challenge: the form gives way to an end screen, "This
+sign-in has ended", with the server's reason and "Start sign-in again".
 An uncertain response offers a session check before another attempt.
-Administrators without confirmed TOTP land on `/settings/security` to
-enroll. Members reach the same page through the settings sidebar.
+An administrator without confirmed TOTP gets a session the server lets only
+set it up, for 15 minutes, so `_app` sends them to `/two-factor-setup`, a
+signed-out card with the setup and "Not now? Sign out" under it; `/setup`
+signs the first administrator in and leads there too. A 401 there, e.g.
+when the 15 minutes run out, opens sign-in, which leads back to the card.
+Members reach two-factor through Security.
 
-Security starts enrollment on request and renders the QR code locally, with a
-manual setup key as an alternative. A six-digit authenticator code confirms it,
-renews this session, and ends other sessions. Backup codes are shown once with
-copy and download actions. Leaving before saving them prompts for confirmation.
-The secret and codes stay in memory; closing or reloading loses them and may
-leave an inactive pending enrollment. Canceling sends a deletion request and
-clears the setup key only after success. A rejected cancellation keeps setup
-available; an uncertain outcome requires checking status before continuing.
-Starting again replaces a pending setup key.
-An uncertain confirmation requires checking status before another attempt. If
-confirmation succeeded but its response was lost, backup codes cannot be read
-again; the page explains that the authenticator must remain available.
+Security (`/settings/security`) is a settings page with three sections:
+Email address, Two-factor authentication, and Signed-in browsers. The
+two-factor row has two states: on, with the "Two-factor on" badge, the
+backup codes left, and "Manage two-factor authentication"; or off, with
+"Set up two-factor authentication", which also continues an unfinished
+setup. Both open `/settings/security/two-factor`, which has a "‹ Security"
+link back. Finishing setup, canceling it, and turning two-factor off return
+to Security, whose notice says what changed (history state
+`twoFactorChange`). Security shows it once: it clears the state from the
+history entry, so Back or a reload does not repeat it, and drops a notice
+its own status read contradicts. Once the page has shown two-factor on, any
+status read that finds it off returns to Security the same way, e.g. after a
+turn-off whose answer was lost, or one from another tab. A 401 from any read
+or write on the page clears the account cache and opens sign-in.
 
-Enabled accounts see how many backup codes remain, with a warning at two or
-fewer. Replacing codes requires a fresh authenticator code and invalidates
-every old backup code; existing sessions stay signed in. The replacement set
-has the same one-time display, copy, download, and save acknowledgment as
-enrollment. An uncertain replacement blocks another attempt until status is
-checked. A count cannot recover lost codes or prove which set is current;
-the page directs the user to generate another set with a fresh authenticator
-code.
+Setup (`useSetupFlow`, the same steps on the page and on the card) follows
+the server's status, so a reload or another tab lands on the right step;
+only what the server shows after the password stays in memory:
 
-Members can turn TOTP off with a fresh authenticator code or an unused backup
-code; the same control switches between them as at sign-in. Turning off removes
-the authenticator and every backup code, and sessions stay signed in.
-Administrators see that they must keep TOTP instead. If the account became an
-administrator after the page loaded, the HTTP 403 refreshes the session and the
-page switches to that notice. An HTTP 409 means TOTP is already off, so the
-page offers enrollment again. An uncertain turn-off blocks another attempt until
-status is checked.
+1. The password, before any secret shows, with what the step needs as the
+   field's description; a hidden username field lets a password manager
+   offer the right one. Wrong passwords count against sign-in's limits.
+2. The QR code, drawn locally, and the setup key in groups of four, then the
+   first code from the app. Checking it leaves two-factor off. On a narrow
+   page or a touch pointer, "Add to authenticator app" opens the code's
+   `otpauth://` address, since a phone cannot scan its own screen.
+3. The ten backup codes, with copy and download, then "I've saved these
+   codes", which turns two-factor on, signs out the other browsers, and
+   renews this browser's session. What describes the session, the session
+   itself, its two-factor status, and the browsers signed in, is reset with
+   it (`resetSession`), so none of it stays from the old cookie, even when
+   the member left meanwhile; the member's other data, mail's included,
+   stays.
+   While that request runs, every other request waits for it
+   (`transport`), so none carries the cookie it replaces.
+
+A reload asks for the password again, then shows the same QR code or the
+same codes, for 15 minutes from the start. After that the page says the
+setup expired and to remove the inbok entry from the app. Cancel setup sits
+on steps 2 and 3 and asks first in an `AlertDialog`, since the app may
+already hold the secret it throws away; "I've saved these codes" waits while
+it runs. Only step 3 warns before leaving, with `LeaveWarning` ("Leave
+before two-factor authentication is on?"), because someone may think it is
+on. A conflict or a lost answer rereads the status, which the page then
+follows; a code another tab showed again asks for the password here too.
+Each step after the first fades in (DESIGN.md "Motion").
+
+While two-factor is on, the page shows the backup codes left and "Replace
+backup codes": a fresh authenticator code makes a new set, shown with the
+same step 3, whose "I've saved these codes" swaps it in; the old codes work
+until then, and its leave warning says so. The new codes show only in that
+answer: the server never shows them again while two-factor is on, since
+only the authenticator may hand out a new second factor, so codes left
+unsaved, e.g. after a reload, mean making another set. Members turn
+two-factor off on the page: the red button opens the code field, with "Use
+a backup code" as at sign-in, and the code confirms it, so no dialog asks
+again; the answer's status takes the page back to Security. A refused
+turn-off (403) rereads the session, whose role the page reads live, so a
+member made an administrator since sees that administrators must keep it
+on.
 
 Security opens with the account's email address and whether it is
 verified. "Send verification link" emails a link that expires in 24 hours.
 A lost reply or failed send can be repeated without a check: the server
-limits how many links are sent, and every unexpired link works. Sending
-and TOTP writes wait for each other, because confirming TOTP replaces this
-browser's session. An unverified account also sees a banner on every other
-settings page that links to Security. Both say a forgotten password can't
+limits how many links are sent, and every unexpired link works. An
+unverified account also sees the setup reminder on every page, linking
+to Security from the others. Both say a forgotten password can't
 be reset by email until the address is verified, since the reset page's
-answer cannot say why nothing arrived.
+answer cannot say why nothing arrived. "Send verification link" is pending,
+not disabled, while it sends, so focus stays on it.
 
 The link opens `/verify-email`, which works signed in or out. The secret after
 `#` never reaches the server with the page request. `getRouter` calls
@@ -374,26 +473,33 @@ opens, before anything renders or fetches: it keeps the secret in memory and
 removes it from the address, so the address bar and a copied URL lose it even
 if the setup status check fails, and Back or Forward to the page finds no
 link. The browser's history list still holds the full link. Reloading after
-that asks for the emailed link again. The page reads its secret with
-`useLinkSecret` (`hooks/use-link-secret.ts`), which drops the kept copy from
-memory and also removes the secret of a link pasted into the tab later. A
-page for a new kind of link exports its path from its feature, adds it to
-the list in `getRouter`, and calls the hook.
+that asks for the emailed link again. Leaving a link page, or reloading it,
+loses what was typed and this tab's copy of the link, without a warning:
+the email's link still opens the page, within its lifetime, and the page
+without it says to open it (web/DESIGN.md "Forms"). The page reads its
+secret with `useLinkSecret` (`hooks/use-link-secret.ts`), which drops the
+kept copy from memory and also removes the secret of a link pasted into
+the tab later. A page for a new kind of link exports its path from its
+feature, adds it to the list in `getRouter`, and calls the hook.
 
 "Verify email" sends the secret. A link that is expired, used, unknown, or
 sent to an old address cannot be retried; if the signed-in account is
 already verified, the page says so instead. Any other failure offers
 another try. Redeeming needs no session, so a link can verify
 an account other than the signed-in one; the page then says the signed-in
-account is still not verified.
+account is still not verified. The outcome links lead home (`/`) and to
+Security, which both ask a visitor without a session to sign in first, so
+they work whoever opened the page; only a 401 from the session read words
+them "Sign in", and a failed read words them as for a signed-in member.
 
 `/register` asks for an email address while registration is open, and says
 the inbok isn't accepting new accounts otherwise. A paused registration,
 open but with untested email settings, reads as closed.
-Every accepted request gets the same "Check your inbox" answer, so the page
-never tells whether an email has an account. "Use a different email
-address" brings the form back with the address kept. Sign-in shows a
-"Create an account" link only while visitors can register.
+Every accepted request gets the same "Check your email" answer, with the
+address on a line of its own, so the page never tells whether an email has
+an account. "Use a different email address" brings the form back with the
+address kept and focus in the field. Sign-in shows "No account yet? Create
+an account" under its card only while visitors can register.
 
 A sign-up email's link opens `/register/complete`, whose secret is kept the
 same way as `/verify-email`'s. The visitor types the email the link was
@@ -403,14 +509,16 @@ this link was sent to."), so a link someone sends for an address they
 control cannot create that account for a visitor typing their own. The
 email field is marked `autocomplete="username"`, so a password manager
 saves it with the new password. Success creates no session: the page opens
-sign-in with the email filled in and a notice naming the new account. The
+sign-in with the email filled in and a notice, the address on a line of its
+own, then "Your account is created. Sign in with your new password." The
 email travels in history state, data the browser keeps with the history
-entry, not in the URL. When the server refuses the email, an "Ask for a
-new link" link to `/register` follows the error. A spent or expired link, or
-an email that already has an account, ends the page with where to go next.
-After a try whose result was lost, a spent link means that try probably
-created the account, so the page points to sign-in first and says to sign
-in with the password sent then, since the fields may have changed since.
+entry, not in the URL. Under the card, "Link sent to another address? Ask
+for a new link" leads to `/register` for every visitor, not only after a
+refusal. A spent or expired link, or an email that already has an account,
+ends the page with where to go next. After a try whose result was lost, a
+spent link means that try probably created the account, so the page points
+to sign-in first and says to sign in with the password sent then, since the
+fields may have changed since.
 
 Sign-in's "Forgot password?" link opens `/forgot-password`, which asks for
 the email the account signs in with. The API answers before it looks the
@@ -425,11 +533,12 @@ The reset email's link opens `/reset-password`, whose secret is kept the
 same way as `/verify-email`'s. Like `/register/complete`, the visitor types
 the email the link was sent to, marked `autocomplete="username"`, and a new
 password of 15 to 128 characters, entered twice; another email is refused
-on the email field, followed by "Ask for a new link" to `/forgot-password`.
-Success creates no session: the page opens sign-in in its place with the
-email filled in and "The password for <email> is changed. Sign in with your
-new password." A reset signs the account out everywhere, so success, or a
-result that may have been one, clears this browser's account caches, even
+on the email field, and "Link sent to another address? Ask for a new link"
+under the card leads to `/forgot-password`. Success creates no session: the
+page opens sign-in in its place with the email filled in and a notice, the
+address on a line of its own, then "Your password is changed. Sign in with
+your new password." A reset signs the account out everywhere, so success,
+or a result that may have been one, clears this browser's account caches, even
 if the page has closed. A spent or expired link ends the page with "Ask for
 a new link" and "Sign in"; after a lost result, sign-in comes first, as on
 `/register/complete`.
@@ -444,61 +553,61 @@ browsers" asks first. A short line says this does not stop someone who knows
 the password. Ending sessions is safe to repeat, so every outcome reloads the
 list instead of requiring a check. A session the API reports gone reads
 "already signed out"; an uncertain outcome asks the user to check the
-reloaded list. Ending sessions and TOTP writes wait for each other, because
-confirming TOTP replaces this browser's session and ends the others.
+reloaded list. "Sign out of this browser" waits for a send or an ending to
+finish.
 
 Administrators with confirmed TOTP see "This inbok" in the settings
 sidebar: Members, Registration, and System email (`/settings/members`,
 `/settings/registration`, `/settings/system-email`). An administrator
-without it sees the group locked with a line pointing to Security. If
-access is lost after a page loaded, the page says the settings are for
-administrators with two-factor authentication, with a link to Security for
-an administrator. A 401 from a save or test signs out; a 403 reads access
-again.
+without it never reaches settings: `_app` sends them to
+`/two-factor-setup`. A 401 on these pages opens sign-in, which comes back;
+a 403 is an ordinary failure (above).
 
-System email configures the server inbok sends its own mail through. The
-form applies Go's rules between fields before sending, and its password
-description says when an empty password keeps the saved one. Inputs are
-read-only, not disabled, while a save runs, so focus stays and the values
-remain readable. A save whose response is lost locks the form and the test
-until "Check saved settings" reads them again and says whether they match;
-a typed password is never read back, so it stays unconfirmed. The username
-and password inputs carry password-manager opt-outs, so the inbok sign-in
-is neither filled in nor saved there.
+System email configures the server inbok sends its own mail through. It
+shows the saved settings as a summary with "Edit settings"; the form opens
+in its place and closes on a save (web/DESIGN.md "Settings and signed-out
+pages"). The form applies Go's rules between fields before sending, and its
+password description says when an empty password keeps the saved one. A
+save whose answer is lost keeps the form open and asks to save again: a
+save replaces the settings whole, so repeating it is safe. "Save and send
+test" saves, then sends a test. The username and password inputs carry
+password-manager opt-outs, so the inbok sign-in is neither filled in nor
+saved there. A save or a test also marks Registration's status out of date,
+since either can pause or resume it.
 
 Its test section sends to the signed-in address by default and words each
 failure by the step that failed. A lost result can be sent again without a
 check. Editing the recipient or a later save hides an earlier result. A save
 and a test never run at the same time.
 
-The Registration page opens and closes public registration with a switch,
-which shows the status the server saved, not the click. Each change asks
-first: opening says anyone who can reach this inbok can create a member
+The Registration page says whether visitors can create accounts, as a
+sentence and a badge beside the title (Open, Closed, Paused), and offers
+one button for the change that fits: Open registration or Close
+registration. The server lists the changes it allows now
+(`allowedActions`), and the page offers only those: until the system email
+settings in use pass a test, there is no Open, but a note says why and
+"Go to System email" leads there. An open registration whose settings no
+longer have a passing test reads Paused, with Close and the same link. Each
+change asks first in a `ConfirmDialog`, which holds it until the server
+answers: opening says anyone who can reach this inbok can create a member
 account, and each adds storage and sync work; closing says unused sign-up
-links stop working. Until the system email settings in use pass a test,
-opening is blocked: the switch stays focusable but read-only, with a note:
-save the settings, then send a test that passes. An open registration whose
-settings no longer have a passing test reads paused until one passes. The
-section reads its status again after every save that keeps access and
-whenever the settings' tested time changes, and says so when a lost response
-leaves the status unknown.
+links stop working. Every outcome rereads the status.
 
-Members lists every account, oldest first, in a table: the address, with
-the signed-in one marked "You", its status, active or deactivated with the
-date, then role, joined date, whether the email is verified, and whether
-two-factor authentication is on. Status and the action come right after
-the address, so a phone shows them first; the table scrolls sideways in a
-region the keyboard can focus. Members have a Deactivate or Reactivate
-button; the signed-in administrator and other administrators have none.
-Both actions ask first in a dialog, and the request starts once the dialog
-has closed, so focus can return to the row's button. The changed row
-updates from the server's answer at once, and every outcome rereads the
-list. A failed reread keeps the list with "Could not reload members, so
-the list may be out of date." and Try again. An unknown outcome asks the
-user to check the list before trying again; a 404 or 409 shows the
-server's explanation. Like the other "This inbok" pages, it says it is for
-administrators with two-factor authentication when access is lost after it
-loaded, a 401 signs out, and a 403 reads access again.
+Members lists every account, oldest first, in a table that fills the
+window and scrolls inside its own box, the "Member list" region the
+keyboard can focus while it scrolls, a fade marking columns to its
+right, with the header and the Member column held (web/DESIGN.md
+"Settings and signed-out pages"). Columns: Member (the address, with badges
+for You, Admin, and Not verified), Status (Active in grey, or Deactivated
+with the date), Two-factor, Joined, and the row's action. A row offers
+Deactivate or Reactivate, whichever changes its status, when the member's
+`allowedActions` from the server include it; administrators have none.
+Each asks first in a `ConfirmDialog` that holds the request: focus returns
+to the row's button, now the other action. The changed row updates from
+the server's answer at once, and every outcome rereads the list. A failed
+reread keeps the list with "Couldn't refresh the member list." and Try
+again. A lost answer says trying again is safe: repeating either action
+changes nothing the second time.
 
 Settings' Connected accounts (`/settings/connected-accounts`) is where
 members connect Gmail accounts. The page lists the member's accounts,
@@ -886,6 +995,13 @@ Tests sit next to the code they test, in two Vitest projects set up in
   `src/test/message-server.ts`, which serves them on the test page's
   origin with the headers the Go server's body route sends.
 
+A page's own flows, e.g. submitting its form, are tested in a router of
+the page's own (`src/signed-out-pages.browser.test.tsx`).
+`src/test/app-router.ts` loads the whole app, for what needs every route,
+e.g. guards and addresses; submitting a form, typing, or showing a toast
+through it freezes the test browser, and the run hangs instead of failing
+(`DEBT.md`, "Find why a whole-app browser test freezes on some presses").
+
 The browser project needs Playwright's Chromium, once per machine and
 again after a Playwright upgrade. From `web`:
 
@@ -951,10 +1067,12 @@ pnpm fix
 After adding one, read it: some aria-nova files lag React Aria. Ours differ
 from the registry here:
 
-- `checkbox`, `switch`, `radio-group`: built on React Aria's
-  `CheckboxField`/`CheckboxButton` (and the Switch and Radio pairs), which
-  replace the deprecated `Checkbox`, `Switch`, and `Radio`. The label is
-  the component's children.
+- `checkbox`, `radio-group`: built on React Aria's
+  `CheckboxField`/`CheckboxButton` (and the Radio pair), which replace the
+  deprecated `Checkbox` and `Radio`. The label is the component's children.
+  `switch`, built the same way, left with its last caller (Registration's
+  old switch); its first new caller restores it from git history
+  (`web/src/components/ui/switch.tsx` at d3cf22bd).
 - `alert-dialog`: one `AlertDialog` holds the overlay and the dialog (no
   `AlertDialogContent`); `AlertDialogDescription` is React Aria's
   description slot, so the dialog is described by it; Cancel takes focus.
@@ -1031,23 +1149,29 @@ from the registry here:
   theme, a popover's outline) gets a `forced-colors:` variant that keeps
   it in Windows' contrast themes, which drop both.
 
-React Aria components take React Aria props: `isDisabled`, not
-`disabled`; `onPress`, not `onClick`; `isSelected` and `onChange` on a
-checkbox or switch. A disabled button leaves the tab order, so the button
-that opened a confirmation gets `isPending` while the write it started
-runs: it keeps focus, so focus has a place when the dialog closes, and
-ignores presses. Its label says what is running, e.g. "Disconnecting...":
-React Aria announces the label, not a busy state ([Button,
-Pending](https://react-aria.adobe.com/Button#pending)). Other buttons the
-write blocks get `isDisabled`. Any other button that runs its own request
-(form submits, Try again) still uses `isDisabled` until
-the forms branch moves them to one pending pattern.
+React Aria components take React Aria props: `isDisabled`, not `disabled`;
+`onPress`, not `onClick`; `isSelected` and `onChange` on a checkbox or
+switch. A disabled button leaves the tab order, so on a page whose
+confirmation closes at once (all but Members and Registration, which use
+`ConfirmDialog` below), the button that opened it gets `isPending` while the
+write it started runs: it keeps focus, so focus has a place when the dialog
+closes, and ignores presses. Its label says what is running, e.g.
+"Disconnecting...": React Aria announces the label, not a busy state
+([Button, Pending](https://react-aria.adobe.com/Button#pending)). Other
+buttons the write blocks get `isDisabled`. Any other button that runs its
+own request (form submits, Try again) still uses `isDisabled` until the
+forms branch moves them to one pending pattern.
 
 `AlertDialogAction`, the confirming button of a dialog that asks first,
 ignores a mouse or touch press that starts within 500 ms of the dialog
 opening: a dialog can open with that button under the pointer, and the
 second click of a double-click would confirm what the member never read.
-Enter and Space still confirm at once.
+Enter and Space still confirm at once. With `closes="by-caller"` it leaves
+closing to the page: `ConfirmDialog` (`src/components/confirm-dialog.tsx`)
+keeps the dialog open while its request runs, with Cancel and Escape
+waiting, closes it on success, and shows a failure inside it, where
+pressing again retries. When the change removed the button that opened
+the dialog, `fallbackFocus` says where focus goes.
 
 The theme is light, dark, or the system's, kept per browser in
 `localStorage` by `src/lib/theme.ts`; `useTheme` from `src/hooks` reads
@@ -1330,36 +1454,111 @@ for IDs, which match no other member's accounts, not for text.
 
 ## Forms
 
-Forms use [TanStack Form](https://tanstack.com/form), which holds each
-field's value, with shadcn's `Field` components for labels and messages.
-`src/features/probe/form.tsx` is the example: it sends a write with its
-generated mutation hook, `useCreateProbeEvent()`, and locks its inputs
-and button while the request runs. A failed request's message, e.g. "The
-counter is full.", stays below the form until the next edit or submit.
-Before sending, the form checks each edit against the generated schema,
-`NewProbeEvent`, and sends nothing while a value breaks it. A field shows
-its error once the user leaves it or clicks submit, then updates live.
-A screen reader reads a field's error with the field rather than
-announcing each change, so give each `FieldError` an `id` and name it in
-the field's `aria-describedby`; an error nothing names is never read.
-If Go still rejects a value, e.g. after a rule changed in Go before
-`pnpm generate`, `formErrors` from `src/api/problem.ts` attaches the server's
-safe messages only to fields that the form renders; an item's error,
-e.g. `body.to[3]`, marks a list the form renders as one field. Editing a
-field clears its server error. TanStack Form also drops it when a check on
-leaving the field passes, so every field leaves through
-`blurKeepingSubmitErrors` (`src/lib/blur-keeping-submit-errors.ts`), which
-puts it back. Rejected
-inputs outside those fields stay visible in the request summary below the
-form, which `formSummary` builds and `RequestError`
-(`src/components/request-error.tsx`) shows as an alert, announced as it
-appears: the request's message, then those inputs.
-When every rejected input shows on a field, the summary is empty and no
-request reference shows, since the fields tell the whole refusal. Once a
-request fails, focus moves to the first invalid field, else to the submit
-button, which lost it while disabled: through `useFocusAfterError`
-(`src/hooks/use-focus-after-error.ts`), or by a form's own rules where it
-has other targets, such as the code forms' restart button or the system
-email form's check button. Request failures without input errors do not enter
-form validation state, so valid input can be submitted again without an
-edit.
+Forms use [TanStack Form](https://tanstack.com/form) through the app's
+kit in `src/components/form/`: `useAppForm`, built with
+[`createFormHook`](https://tanstack.com/form/latest/docs/framework/react/guides/form-composition),
+renders each field as a field kind and the form as `form.Form` with a
+`form.SubmitButton`. `src/features/auth/sign-in-form.tsx` is the example:
+
+```tsx
+const create = useCreateSession({ mutation: { gcTime: 0 } });
+const request = useFormRequest(create, ["email", "password"]);
+const form = useAppForm({
+  defaultValues: { email: "", password: "" },
+  validationLogic: revalidateLogic(),
+  validators: { onDynamic: request.check(SignInSchema) },
+  onSubmit: async ({ value, formApi }) => {
+    const sent = await request.send(formApi, value, { data: SignInSchema.parse(value) });
+    if (sent.outcome !== "done") return;
+    formApi.reset();
+    onDone();
+  },
+  listeners: { onChange: () => create.reset() },
+});
+
+<form.AppForm>
+  <form.Form label="Sign in">
+    <form.AppField name="email">
+      {(field) => <field.EmailField label="Email address" autoComplete="username" />}
+    </form.AppField>
+    <form.AppField name="password">
+      {(field) => <field.PasswordField label="Password" autoComplete="current-password" />}
+    </form.AppField>
+    <form.SubmitButton working="Signing in...">Sign in</form.SubmitButton>
+    <RequestError
+      errors={request.summary((err) => sessionMessage(err, "sign-in"))}
+      requestId={request.reference}
+    />
+  </form.Form>
+</form.AppForm>;
+```
+
+- **Checks.** The schema extends the generated one, e.g. `NewSession`,
+  and adds `emailAddress` to an email field: the contract's `idn-email`
+  gets no generated check, and Zod's `email()` refuses addresses the server
+  takes. `revalidateLogic()` runs the check from the first submit, then on
+  every change, so errors appear after a submit and update as the member
+  types.
+- **Sending.** `request.send` awaits the generated mutation hook's
+  `mutateAsync`, and `onSubmit` awaits `send`, so TanStack Form's
+  `isSubmitting` lasts as long as the request: the fields lock, the
+  button shows its `working` words and ignores presses (React Aria's
+  `isPending`), and `Form` ignores Enter.
+  A submit started from a field moves focus to the button, which stays
+  focusable while pending; after a submit, `Form` moves focus to the first
+  invalid field. `send` returns the outcome: `"done"` with the answer,
+  `"refused"` with the `ApiError`, or `"left"` when the form was gone when
+  the answer came (`useMounted`), so a late answer cannot navigate from a
+  page the member has left. Code after it acts only on `"done"`, or on
+  `"refused"` for a form-specific end, e.g. an expired link. A failure
+  that is not the request's `ApiError` is a fault: `send` throws it, and
+  `Form` shows it on the app's crash screen.
+- **Refusals.** `send` keeps the server's field errors, from `formErrors`
+  in `src/api/problem.ts`, with the values sent; an answer clears them.
+  `request.check` returns each one, with the schema's issues, while its
+  field holds the refused value: it survives a blur, comes back if the
+  member types that value again, and blocks sending it. A rule that spans
+  fields must also be in the schema, which refuses it first; the server's
+  refusal of it clears only when its own field changes. An error on an
+  input the form does not render stays out of the fields.
+- **Request failures** stay in the mutation (`create.error`), and an edit
+  clears one with `create.reset()`. `request.summary` builds the summary
+  under the button from a function that words the failure, which
+  `RequestError` (`src/components/request-error.tsx`) shows as an alert,
+  announced as it appears: the request's message, then rejected inputs no
+  field shows.
+  When every rejected input shows on a field, the summary is empty and no
+  request reference shows, since the fields tell the whole refusal.
+  `request.reference` is the failure's request reference only for a fault
+  (a 5xx or a lost answer), so a refusal, e.g. a wrong password, shows
+  none.
+- **Field kinds** are `TextField`, `EmailField`, `PasswordField`,
+  `ChoiceField`, radios with a line about each, and `CodeField`, a
+  one-time code in boxes. Each takes a `label` and an optional
+  `description` shown before the control; all but `ChoiceField` also take
+  `optional` and `labelAction`, a link or button beside the label, e.g.
+  "Forgot password?". `TextField` takes `text="literal"` for a value typed
+  exactly, e.g. a host name, and `inputMode="numeric"` with
+  `width="short"` for a number that names something, e.g. a port; the
+  form keeps it as typed and the schema turns it into the number the API
+  takes. `TextField` and `PasswordField` take `passwordManagers="ignore"`
+  for another service's credentials, e.g. a mail server's.
+- **Several submit buttons**, e.g. "Save and send test" and "Save only",
+  each name an `action`; `onSubmit` gets the pressed one's as
+  `meta.action`, with `onSubmitMeta` as the default, and Enter in a field
+  presses the first. Only the pressed button shows its `working` words;
+  the others wait.
+- **A new field kind** goes in `src/components/form/fields.tsx` with its
+  first form: render the control through `FieldFrame`, which reads the
+  field from `useFieldContext` and gives the control its id, name, value,
+  lock, `aria-invalid`, and `aria-describedby`, and a function that sets
+  the value; then add it to
+  `fieldComponents` in `app-form.ts`. Its browser test joins
+  `app-form.browser.test.tsx`.
+
+Forms not yet on the kit still wire shadcn's `Field` components
+themselves, with `blurKeepingSubmitErrors`
+(`src/lib/blur-keeping-submit-errors.ts`) and `useFocusAfterError`: the
+connected account's name, which `feat/connected-accounts` moves onto the
+kit; compose and the reply editor, which `feat/docked-compose` rewrites on
+it together with the docked window; and the probe demo (ADR031).

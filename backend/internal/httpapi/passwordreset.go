@@ -54,7 +54,7 @@ const passwordResetRequested passwordResetRequestStatus = "requested"
 
 // newPasswordResetRequest is the request body.
 type newPasswordResetRequest struct {
-	Email string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"The email the account signs in with. Any valid email gets the same answer."`
+	Email string `json:"email" format:"idn-email" minLength:"3" maxLength:"254" doc:"The email the account signs in with. Any valid email gets the same answer."`
 }
 
 // passwordResetRequestInput combines the email with the resolved client
@@ -130,7 +130,7 @@ const passwordResetLinkInvalidType = problemPrefix + "password-reset-link-invali
 // newPasswordFromLink is the completion request body.
 type newPasswordFromLink struct {
 	Secret   string `json:"secret" writeOnly:"true" doc:"The text after # in the emailed link."`
-	Email    string `json:"email" format:"email" minLength:"3" maxLength:"254" doc:"The email the link was sent to, typed by the person using it. Letters A to Z match in either case."`
+	Email    string `json:"email" format:"idn-email" minLength:"3" maxLength:"254" doc:"The email the link was sent to, typed by the person using it. Letters A to Z match in either case."`
 	Password string `json:"password" writeOnly:"true" minLength:"15" maxLength:"128"`
 }
 

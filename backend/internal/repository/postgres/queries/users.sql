@@ -26,7 +26,7 @@ WHERE id = @id;
 -- name: LockSignInUser :one
 -- Compare password proof with the current hash while recovery shares this lock,
 -- and see a deactivation that committed while the password was checked.
-SELECT password_hash, (deactivated_at IS NOT NULL)::boolean AS deactivated
+SELECT password_hash, role, (deactivated_at IS NOT NULL)::boolean AS deactivated
 FROM users WHERE id = @user_id FOR UPDATE;
 
 -- name: HasUserEmail :one

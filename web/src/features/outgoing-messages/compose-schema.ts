@@ -6,6 +6,7 @@ import {
   newOutgoingMessageToMax,
   type OutgoingMessage,
 } from "@/api/generated/model";
+import { emailAddress } from "@/api/validation";
 import { invalidAddressMessage } from "./text";
 
 // What the compose form holds. Each recipient list holds its addresses as
@@ -50,7 +51,7 @@ export const chooseAccount = "Choose the account to send from.";
 const controlInSubject = "Enter a subject without line breaks or other control characters.";
 
 // The contract's rule for one address, the same in every list.
-const address = NewOutgoingMessage.shape.to.element;
+const address = emailAddress(NewOutgoingMessage.shape.to.element);
 
 // isAddress reports whether value is one address the contract accepts.
 export function isAddress(value: string): boolean {

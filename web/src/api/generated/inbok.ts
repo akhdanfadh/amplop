@@ -58,13 +58,13 @@ import {
   ResponseSignInResult,
   ResponseSystemEmail,
   ResponseSystemEmailTestMessageResult,
-  ResponseTotpBackupCodes,
-  ResponseTotpConfirmation,
   ResponseTotpEnrollment,
-  ResponseTotpStatus
+  ResponseTotpStatus,
+  ResponseWaitingBackupCodes
 } from './model';
 import type {
   AccountRenameInputBody,
+  BackupCodesToken,
   ConversationActionBody,
   ConversationChangesBody,
   CountNewConversationsParams,
@@ -82,11 +82,12 @@ import type {
   NewSession,
   NewSetup,
   NewSystemEmailSettings,
+  PasswordProof,
   Problem,
   SystemEmailTestMessageRecipient,
-  TotpConfirmationCode,
   TotpDisableCode,
-  TotpRegenerationCode
+  TotpEnrollmentCode,
+  TotpReplacementCode
 } from './model';
 
 import { transport } from '../transport';
@@ -3774,7 +3775,7 @@ export const getGetSetupStatusUrl = () => {
 }
 
 /**
- * Whether the first administrator can be created: done once an administrator exists; otherwise unconfigured without a setup token, or open with one.
+ * Whether the first administrator can be created: done once an administrator exists, and done stays done; otherwise unconfigured without a setup token, or open with one.
  * @summary Get Setup Status
  */
 export const getSetupStatus = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseSetupStatus> => {
@@ -3877,7 +3878,7 @@ export const getCreateFirstAdminUrl = () => {
 }
 
 /**
- * Creates the first administrator with the setup token. Works once, and only while a setup token is configured.
+ * Creates the first administrator with the setup token and signs them in with a 15-minute session that can only set up two-factor authentication. Works once, and only while a setup token is configured.
  * @summary Create First Administrator
  */
 export const createFirstAdmin = async (newSetup: NewSetup, options?: Parameters<typeof transport>[1]): Promise<ResponseFirstAdmin> => {
@@ -4352,17 +4353,31 @@ export const getStartTOTPEnrollmentUrl = () => {
 }
 
 /**
- * Starts enrollment, or restarts a pending one.
+ * Checks the password, then starts an enrollment, or returns the same secret for one started in the last 15 minutes. An older unfinished enrollment is replaced. Both answer 201. Wrong passwords count toward the sign-in limits.
  * @summary Start Two-Factor Enrollment
  */
-export const startTOTPEnrollment = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseTotpEnrollment> => {
+export const startTOTPEnrollment = async (passwordProof: PasswordProof, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpEnrollment> => {
 
-  return transport<ResponseTotpEnrollment>(getStartTOTPEnrollmentUrl(),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseTotpEnrollment>(getStartTOTPEnrollmentUrl(),
   {
     ...options,
-    method: 'POST'
-
-    ,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(passwordProof),
     schema: ResponseTotpEnrollment
   }
 );}
@@ -4374,8 +4389,8 @@ export const startTOTPEnrollment = async ( options?: Parameters<typeof transport
 export const getStartTOTPEnrollmentMutationKey = () => ['startTOTPEnrollment'] as const;
 
 export const getStartTOTPEnrollmentMutationOptions = <TError = ErrorType<Problem>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTOTPEnrollment>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
-): UseMutationOptions<Awaited<ReturnType<typeof startTOTPEnrollment>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTOTPEnrollment>>, TError,StartTOTPEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof startTOTPEnrollment>>, TError,StartTOTPEnrollmentMutationVariables, TContext> => {
 
 const mutationKey = getStartTOTPEnrollmentMutationKey();
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -4387,10 +4402,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startTOTPEnrollment>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startTOTPEnrollment>>, StartTOTPEnrollmentMutationVariables> = (props) => {
+          const {data} = props ?? {};
 
-
-          return  startTOTPEnrollment(requestOptions)
+          return  startTOTPEnrollment(data,requestOptions)
         }
 
 
@@ -4401,25 +4416,25 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type StartTOTPEnrollmentMutationResult = NonNullable<Awaited<ReturnType<typeof startTOTPEnrollment>>>
-
+    export type StartTOTPEnrollmentMutationBody = PasswordProof
     export type StartTOTPEnrollmentMutationError = ErrorType<Problem>
-
+    export type StartTOTPEnrollmentMutationVariables = {data: PasswordProof}
 
     /**
  * @summary Start Two-Factor Enrollment
  */
 export const useStartTOTPEnrollment = <TError = ErrorType<Problem>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTOTPEnrollment>>, TError,void, TContext>, request?: SecondParameter<typeof transport>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTOTPEnrollment>>, TError,StartTOTPEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof startTOTPEnrollment>>,
         TError,
-        void,
+        StartTOTPEnrollmentMutationVariables,
         TContext
       > => {
       return useMutation(getStartTOTPEnrollmentMutationOptions(options), queryClient);
     }
 
-export const getRegenerateTOTPBackupCodesUrl = () => {
+export const getReplaceTOTPBackupCodesUrl = () => {
 
 
 
@@ -4428,10 +4443,10 @@ export const getRegenerateTOTPBackupCodesUrl = () => {
 }
 
 /**
- * Requires a fresh authenticator code. Invalidates the old backup codes and returns ten replacements once. Existing sessions stay signed in.
+ * Requires a fresh authenticator code. Returns ten new backup codes and a one-time token, in this answer only: nothing shows them again. The old codes keep working until Finish Backup Code Replacement, within 15 minutes. Existing sessions stay signed in.
  * @summary Replace Backup Codes
  */
-export const regenerateTOTPBackupCodes = async (totpRegenerationCode: TotpRegenerationCode, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpBackupCodes> => {
+export const replaceTOTPBackupCodes = async (totpReplacementCode: TotpReplacementCode, options?: Parameters<typeof transport>[1]): Promise<ResponseWaitingBackupCodes> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4447,13 +4462,13 @@ export const regenerateTOTPBackupCodes = async (totpRegenerationCode: TotpRegene
     }
     return headers;
   };
-return transport<ResponseTotpBackupCodes>(getRegenerateTOTPBackupCodesUrl(),
+return transport<ResponseWaitingBackupCodes>(getReplaceTOTPBackupCodesUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(totpRegenerationCode),
-    schema: ResponseTotpBackupCodes
+    body: JSON.stringify(totpReplacementCode),
+    schema: ResponseWaitingBackupCodes
   }
 );}
 
@@ -4461,13 +4476,13 @@ return transport<ResponseTotpBackupCodes>(getRegenerateTOTPBackupCodesUrl(),
 
 
 
-export const getRegenerateTOTPBackupCodesMutationKey = () => ['regenerateTOTPBackupCodes'] as const;
+export const getReplaceTOTPBackupCodesMutationKey = () => ['replaceTOTPBackupCodes'] as const;
 
-export const getRegenerateTOTPBackupCodesMutationOptions = <TError = ErrorType<Problem>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>, TError,RegenerateTOTPBackupCodesMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
-): UseMutationOptions<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>, TError,RegenerateTOTPBackupCodesMutationVariables, TContext> => {
+export const getReplaceTOTPBackupCodesMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceTOTPBackupCodes>>, TError,ReplaceTOTPBackupCodesMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof replaceTOTPBackupCodes>>, TError,ReplaceTOTPBackupCodesMutationVariables, TContext> => {
 
-const mutationKey = getRegenerateTOTPBackupCodesMutationKey();
+const mutationKey = getReplaceTOTPBackupCodesMutationKey();
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -4477,10 +4492,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>, RegenerateTOTPBackupCodesMutationVariables> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof replaceTOTPBackupCodes>>, ReplaceTOTPBackupCodesMutationVariables> = (props) => {
           const {data} = props ?? {};
 
-          return  regenerateTOTPBackupCodes(data,requestOptions)
+          return  replaceTOTPBackupCodes(data,requestOptions)
         }
 
 
@@ -4490,38 +4505,38 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type RegenerateTOTPBackupCodesMutationResult = NonNullable<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>>
-    export type RegenerateTOTPBackupCodesMutationBody = TotpRegenerationCode
-    export type RegenerateTOTPBackupCodesMutationError = ErrorType<Problem>
-    export type RegenerateTOTPBackupCodesMutationVariables = {data: TotpRegenerationCode}
+    export type ReplaceTOTPBackupCodesMutationResult = NonNullable<Awaited<ReturnType<typeof replaceTOTPBackupCodes>>>
+    export type ReplaceTOTPBackupCodesMutationBody = TotpReplacementCode
+    export type ReplaceTOTPBackupCodesMutationError = ErrorType<Problem>
+    export type ReplaceTOTPBackupCodesMutationVariables = {data: TotpReplacementCode}
 
     /**
  * @summary Replace Backup Codes
  */
-export const useRegenerateTOTPBackupCodes = <TError = ErrorType<Problem>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>, TError,RegenerateTOTPBackupCodesMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+export const useReplaceTOTPBackupCodes = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceTOTPBackupCodes>>, TError,ReplaceTOTPBackupCodesMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof regenerateTOTPBackupCodes>>,
+        Awaited<ReturnType<typeof replaceTOTPBackupCodes>>,
         TError,
-        RegenerateTOTPBackupCodesMutationVariables,
+        ReplaceTOTPBackupCodesMutationVariables,
         TContext
       > => {
-      return useMutation(getRegenerateTOTPBackupCodesMutationOptions(options), queryClient);
+      return useMutation(getReplaceTOTPBackupCodesMutationOptions(options), queryClient);
     }
 
-export const getConfirmTOTPEnrollmentUrl = () => {
+export const getFinishTOTPBackupCodeReplacementUrl = () => {
 
 
 
 
-  return `/api/v0/totp/confirm`
+  return `/api/v0/totp/backup-codes/finish`
 }
 
 /**
- * Activates the authenticator, ends all existing sessions, and issues a replacement session cookie. Backup codes are returned once.
- * @summary Confirm Two-Factor Enrollment
+ * Call once the person has saved the new backup codes. Makes them active and ends the old ones. Existing sessions stay signed in.
+ * @summary Finish Backup Code Replacement
  */
-export const confirmTOTPEnrollment = async (totpConfirmationCode: TotpConfirmationCode, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpConfirmation> => {
+export const finishTOTPBackupCodeReplacement = async (backupCodesToken: BackupCodesToken, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpStatus> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4537,13 +4552,13 @@ export const confirmTOTPEnrollment = async (totpConfirmationCode: TotpConfirmati
     }
     return headers;
   };
-return transport<ResponseTotpConfirmation>(getConfirmTOTPEnrollmentUrl(),
+return transport<ResponseTotpStatus>(getFinishTOTPBackupCodeReplacementUrl(),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(totpConfirmationCode),
-    schema: ResponseTotpConfirmation
+    body: JSON.stringify(backupCodesToken),
+    schema: ResponseTotpStatus
   }
 );}
 
@@ -4551,13 +4566,13 @@ return transport<ResponseTotpConfirmation>(getConfirmTOTPEnrollmentUrl(),
 
 
 
-export const getConfirmTOTPEnrollmentMutationKey = () => ['confirmTOTPEnrollment'] as const;
+export const getFinishTOTPBackupCodeReplacementMutationKey = () => ['finishTOTPBackupCodeReplacement'] as const;
 
-export const getConfirmTOTPEnrollmentMutationOptions = <TError = ErrorType<Problem>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmTOTPEnrollment>>, TError,ConfirmTOTPEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
-): UseMutationOptions<Awaited<ReturnType<typeof confirmTOTPEnrollment>>, TError,ConfirmTOTPEnrollmentMutationVariables, TContext> => {
+export const getFinishTOTPBackupCodeReplacementMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finishTOTPBackupCodeReplacement>>, TError,FinishTOTPBackupCodeReplacementMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof finishTOTPBackupCodeReplacement>>, TError,FinishTOTPBackupCodeReplacementMutationVariables, TContext> => {
 
-const mutationKey = getConfirmTOTPEnrollmentMutationKey();
+const mutationKey = getFinishTOTPBackupCodeReplacementMutationKey();
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -4567,10 +4582,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmTOTPEnrollment>>, ConfirmTOTPEnrollmentMutationVariables> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof finishTOTPBackupCodeReplacement>>, FinishTOTPBackupCodeReplacementMutationVariables> = (props) => {
           const {data} = props ?? {};
 
-          return  confirmTOTPEnrollment(data,requestOptions)
+          return  finishTOTPBackupCodeReplacement(data,requestOptions)
         }
 
 
@@ -4580,23 +4595,113 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type ConfirmTOTPEnrollmentMutationResult = NonNullable<Awaited<ReturnType<typeof confirmTOTPEnrollment>>>
-    export type ConfirmTOTPEnrollmentMutationBody = TotpConfirmationCode
-    export type ConfirmTOTPEnrollmentMutationError = ErrorType<Problem>
-    export type ConfirmTOTPEnrollmentMutationVariables = {data: TotpConfirmationCode}
+    export type FinishTOTPBackupCodeReplacementMutationResult = NonNullable<Awaited<ReturnType<typeof finishTOTPBackupCodeReplacement>>>
+    export type FinishTOTPBackupCodeReplacementMutationBody = BackupCodesToken
+    export type FinishTOTPBackupCodeReplacementMutationError = ErrorType<Problem>
+    export type FinishTOTPBackupCodeReplacementMutationVariables = {data: BackupCodesToken}
 
     /**
- * @summary Confirm Two-Factor Enrollment
+ * @summary Finish Backup Code Replacement
  */
-export const useConfirmTOTPEnrollment = <TError = ErrorType<Problem>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmTOTPEnrollment>>, TError,ConfirmTOTPEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+export const useFinishTOTPBackupCodeReplacement = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finishTOTPBackupCodeReplacement>>, TError,FinishTOTPBackupCodeReplacementMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof confirmTOTPEnrollment>>,
+        Awaited<ReturnType<typeof finishTOTPBackupCodeReplacement>>,
         TError,
-        ConfirmTOTPEnrollmentMutationVariables,
+        FinishTOTPBackupCodeReplacementMutationVariables,
         TContext
       > => {
-      return useMutation(getConfirmTOTPEnrollmentMutationOptions(options), queryClient);
+      return useMutation(getFinishTOTPBackupCodeReplacementMutationOptions(options), queryClient);
+    }
+
+export const getShowWaitingTOTPBackupCodesUrl = () => {
+
+
+
+
+  return `/api/v0/totp/backup-codes/waiting`
+}
+
+/**
+ * Checks the password, then returns an unfinished enrollment's backup codes, waiting to be saved, with a new one-time token that replaces the earlier one. Codes made by Replace Backup Codes are never shown again: once two-factor authentication is on, only a fresh authenticator code makes new ones. Wrong passwords count toward the sign-in limits.
+ * @summary Show Waiting Backup Codes
+ */
+export const showWaitingTOTPBackupCodes = async (passwordProof: PasswordProof, options?: Parameters<typeof transport>[1]): Promise<ResponseWaitingBackupCodes> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseWaitingBackupCodes>(getShowWaitingTOTPBackupCodesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(passwordProof),
+    schema: ResponseWaitingBackupCodes
+  }
+);}
+
+
+
+
+
+export const getShowWaitingTOTPBackupCodesMutationKey = () => ['showWaitingTOTPBackupCodes'] as const;
+
+export const getShowWaitingTOTPBackupCodesMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof showWaitingTOTPBackupCodes>>, TError,ShowWaitingTOTPBackupCodesMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof showWaitingTOTPBackupCodes>>, TError,ShowWaitingTOTPBackupCodesMutationVariables, TContext> => {
+
+const mutationKey = getShowWaitingTOTPBackupCodesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof showWaitingTOTPBackupCodes>>, ShowWaitingTOTPBackupCodesMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  showWaitingTOTPBackupCodes(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ShowWaitingTOTPBackupCodesMutationResult = NonNullable<Awaited<ReturnType<typeof showWaitingTOTPBackupCodes>>>
+    export type ShowWaitingTOTPBackupCodesMutationBody = PasswordProof
+    export type ShowWaitingTOTPBackupCodesMutationError = ErrorType<Problem>
+    export type ShowWaitingTOTPBackupCodesMutationVariables = {data: PasswordProof}
+
+    /**
+ * @summary Show Waiting Backup Codes
+ */
+export const useShowWaitingTOTPBackupCodes = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof showWaitingTOTPBackupCodes>>, TError,ShowWaitingTOTPBackupCodesMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof showWaitingTOTPBackupCodes>>,
+        TError,
+        ShowWaitingTOTPBackupCodesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getShowWaitingTOTPBackupCodesMutationOptions(options), queryClient);
     }
 
 export const getDisableTOTPUrl = () => {
@@ -4698,7 +4803,7 @@ export const getCancelTOTPEnrollmentUrl = () => {
 }
 
 /**
- * Removes unconfirmed enrollment. Repeating cancellation succeeds if no factor remains. Confirmed authenticators cannot be canceled; existing sessions stay signed in.
+ * Removes an unfinished enrollment and any backup codes waiting. Repeating cancellation succeeds if no factor remains. Confirmed authenticators cannot be canceled; existing sessions stay signed in.
  * @summary Cancel Two-Factor Enrollment
  */
 export const cancelTOTPEnrollment = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseTotpStatus> => {
@@ -4763,4 +4868,184 @@ export const useCancelTOTPEnrollment = <TError = ErrorType<Problem>,
         TContext
       > => {
       return useMutation(getCancelTOTPEnrollmentMutationOptions(options), queryClient);
+    }
+
+export const getCheckTOTPEnrollmentCodeUrl = () => {
+
+
+
+
+  return `/api/v0/totp/enrollment/code`
+}
+
+/**
+ * Checks a code from the authenticator being set up, then returns ten backup codes and a one-time token. Two-factor authentication stays off until Finish Two-Factor Enrollment.
+ * @summary Check Two-Factor Enrollment Code
+ */
+export const checkTOTPEnrollmentCode = async (totpEnrollmentCode: TotpEnrollmentCode, options?: Parameters<typeof transport>[1]): Promise<ResponseWaitingBackupCodes> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseWaitingBackupCodes>(getCheckTOTPEnrollmentCodeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(totpEnrollmentCode),
+    schema: ResponseWaitingBackupCodes
+  }
+);}
+
+
+
+
+
+export const getCheckTOTPEnrollmentCodeMutationKey = () => ['checkTOTPEnrollmentCode'] as const;
+
+export const getCheckTOTPEnrollmentCodeMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkTOTPEnrollmentCode>>, TError,CheckTOTPEnrollmentCodeMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof checkTOTPEnrollmentCode>>, TError,CheckTOTPEnrollmentCodeMutationVariables, TContext> => {
+
+const mutationKey = getCheckTOTPEnrollmentCodeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof checkTOTPEnrollmentCode>>, CheckTOTPEnrollmentCodeMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  checkTOTPEnrollmentCode(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CheckTOTPEnrollmentCodeMutationResult = NonNullable<Awaited<ReturnType<typeof checkTOTPEnrollmentCode>>>
+    export type CheckTOTPEnrollmentCodeMutationBody = TotpEnrollmentCode
+    export type CheckTOTPEnrollmentCodeMutationError = ErrorType<Problem>
+    export type CheckTOTPEnrollmentCodeMutationVariables = {data: TotpEnrollmentCode}
+
+    /**
+ * @summary Check Two-Factor Enrollment Code
+ */
+export const useCheckTOTPEnrollmentCode = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkTOTPEnrollmentCode>>, TError,CheckTOTPEnrollmentCodeMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof checkTOTPEnrollmentCode>>,
+        TError,
+        CheckTOTPEnrollmentCodeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCheckTOTPEnrollmentCodeMutationOptions(options), queryClient);
+    }
+
+export const getFinishTOTPEnrollmentUrl = () => {
+
+
+
+
+  return `/api/v0/totp/enrollment/finish`
+}
+
+/**
+ * Call once the person has saved the backup codes. Turns two-factor authentication on, makes the codes active, ends all existing sessions, and issues a replacement session cookie. An administrator's 15-minute enrollment session becomes a full one.
+ * @summary Finish Two-Factor Enrollment
+ */
+export const finishTOTPEnrollment = async (backupCodesToken: BackupCodesToken, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpStatus> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseTotpStatus>(getFinishTOTPEnrollmentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(backupCodesToken),
+    schema: ResponseTotpStatus
+  }
+);}
+
+
+
+
+
+export const getFinishTOTPEnrollmentMutationKey = () => ['finishTOTPEnrollment'] as const;
+
+export const getFinishTOTPEnrollmentMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finishTOTPEnrollment>>, TError,FinishTOTPEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof finishTOTPEnrollment>>, TError,FinishTOTPEnrollmentMutationVariables, TContext> => {
+
+const mutationKey = getFinishTOTPEnrollmentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof finishTOTPEnrollment>>, FinishTOTPEnrollmentMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  finishTOTPEnrollment(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FinishTOTPEnrollmentMutationResult = NonNullable<Awaited<ReturnType<typeof finishTOTPEnrollment>>>
+    export type FinishTOTPEnrollmentMutationBody = BackupCodesToken
+    export type FinishTOTPEnrollmentMutationError = ErrorType<Problem>
+    export type FinishTOTPEnrollmentMutationVariables = {data: BackupCodesToken}
+
+    /**
+ * @summary Finish Two-Factor Enrollment
+ */
+export const useFinishTOTPEnrollment = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finishTOTPEnrollment>>, TError,FinishTOTPEnrollmentMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof finishTOTPEnrollment>>,
+        TError,
+        FinishTOTPEnrollmentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getFinishTOTPEnrollmentMutationOptions(options), queryClient);
     }

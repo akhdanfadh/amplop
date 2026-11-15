@@ -22,19 +22,21 @@ import (
 
 func TestCancelEnrollmentStorage(t *testing.T) {
 	f := newConfirmation(t)
-	service := totp.NewService(f.db, nil)
+	service := newTOTPService(t, f.db, time.Now)
 	queries := sqlc.New(f.conn)
 	foreign, err := f.db.ReadTOTP(t.Context(), f.foreign.UserID)
 	require.NoError(t, err)
 	foreignCodes, err := queries.ReadTOTPBackupCodes(t.Context(), f.foreign.UserID)
 	require.NoError(t, err)
 
-	// Repeating cancellation is harmless, including for an admin awaiting setup.
+	// Repeating cancellation is harmless, including for an admin awaiting
+	// setup, and removes the waiting codes.
 	for range 2 {
 		require.NoError(t, service.Cancel(t.Context(), f.state.UserID))
 		status, err := service.Status(t.Context(), f.state.UserID)
 		require.NoError(t, err)
 		assert.Equal(t, totp.Status{State: totp.StateOff}, status)
+		assert.Nil(t, readWaitingCodes(t, f.conn, f.state.UserID))
 	}
 
 	other, err := f.db.ReadTOTP(t.Context(), f.foreign.UserID)
@@ -53,7 +55,7 @@ func TestCancelEnrollmentStorage(t *testing.T) {
 
 func TestCancelConfirmedEnrollment(t *testing.T) {
 	f := newConfirmation(t)
-	_, err := f.service.Confirm(t.Context(), f.current, "287082", session.Device{})
+	_, err := f.service.Finish(t.Context(), f.current, f.codes.Token, session.Device{})
 	require.NoError(t, err)
 	before, err := f.db.ReadTOTP(t.Context(), f.state.UserID)
 	require.NoError(t, err)
@@ -62,7 +64,7 @@ func TestCancelConfirmedEnrollment(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, codes, 10)
 
-	err = totp.NewService(f.db, nil).Cancel(t.Context(), f.state.UserID)
+	err = newTOTPService(t, f.db, time.Now).Cancel(t.Context(), f.state.UserID)
 
 	require.ErrorIs(t, err, totp.ErrAlreadyOn)
 	after, err := f.db.ReadTOTP(t.Context(), f.state.UserID)
@@ -92,7 +94,7 @@ func TestCancelEnrollmentRollback(t *testing.T) {
  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_cancel();`)
 		require.NoError(t, err)
 
-		err = totp.NewService(f.db, nil).Cancel(t.Context(), f.state.UserID)
+		err = newTOTPService(t, f.db, time.Now).Cancel(t.Context(), f.state.UserID)
 
 		require.ErrorContains(t, err, "forced cancellation failure")
 		assertPendingConfirmation(t, f)
@@ -121,7 +123,8 @@ func TestCancelSeesConfirmation(t *testing.T) {
 	require.NoError(t, err)
 
 	results := make(chan error, 1)
-	go func() { results <- totp.NewService(f.db, nil).Cancel(ctx, f.state.UserID) }()
+	service := newTOTPService(t, f.db, time.Now)
+	go func() { results <- service.Cancel(ctx, f.state.UserID) }()
 	// Cancellation must wait for confirmation's owner lock, then read its commit.
 	require.Eventually(t, func() bool {
 		var blocked bool
@@ -164,7 +167,7 @@ func TestCancelBeforeConfirmation(t *testing.T) {
 		require.FailNow(t, "cancellation did not acquire the owner lock")
 	}
 	go func() {
-		_, err := f.service.Confirm(ctx, f.current, "287082", session.Device{})
+		_, err := f.service.Finish(ctx, f.current, f.codes.Token, session.Device{})
 		confirmed <- err
 	}()
 	require.Eventually(t, func() bool {
@@ -189,7 +192,7 @@ func TestCancelEnrollmentHTTP(t *testing.T) {
 			_, err := f.conn.Exec(t.Context(), "UPDATE users SET role=$1 WHERE id=$2", string(role), f.state.UserID)
 			require.NoError(t, err)
 			api := httpapi.New(slog.New(slog.DiscardHandler), httpapi.Services{
-				Session: f.sessions, TOTP: totp.NewService(f.db, nil),
+				Session: f.sessions, TOTP: newTOTPService(t, f.db, time.Now),
 			})
 			cookie := &http.Cookie{Name: "__Host-inbok-session", Value: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
 
@@ -201,7 +204,7 @@ func TestCancelEnrollmentHTTP(t *testing.T) {
 				api.Handler().ServeHTTP(response, request)
 
 				require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-				assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0}}`, response.Body.String())
+				assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0,"backupCodesWaiting":false}}`, response.Body.String())
 				assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 				assert.Empty(t, response.Result().Cookies())
 			}
@@ -212,7 +215,7 @@ func TestCancelEnrollmentHTTP(t *testing.T) {
 			response := httptest.NewRecorder()
 			api.Handler().ServeHTTP(response, request)
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0}}`, response.Body.String())
+			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0,"backupCodesWaiting":false}}`, response.Body.String())
 			assert.Equal(t, f.state, readSession(t, f.db, f.state.TokenHash))
 			assert.Equal(t, f.other, readSession(t, f.db, f.other.TokenHash))
 		})
@@ -221,7 +224,7 @@ func TestCancelEnrollmentHTTP(t *testing.T) {
 
 func TestCancelConfirmedHTTP(t *testing.T) {
 	f := newConfirmation(t)
-	confirmed, err := f.service.Confirm(t.Context(), f.current, "287082", session.Device{})
+	confirmed, err := f.service.Finish(t.Context(), f.current, f.codes.Token, session.Device{})
 	require.NoError(t, err)
 	queries := sqlc.New(f.conn)
 	before, err := f.db.ReadTOTP(t.Context(), f.state.UserID)
@@ -230,11 +233,11 @@ func TestCancelConfirmedHTTP(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, codes, 10)
 	api := httpapi.New(slog.New(slog.DiscardHandler), httpapi.Services{
-		Session: f.sessions, TOTP: totp.NewService(f.db, nil),
+		Session: f.sessions, TOTP: newTOTPService(t, f.db, time.Now),
 	})
 	request := httptest.NewRequest(http.MethodDelete, "/api/v0/totp/enrollment", nil)
 	request.Header.Set("Origin", "http://example.com")
-	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: confirmed.Session.Secret})
+	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: confirmed.Secret})
 	response := httptest.NewRecorder()
 
 	api.Handler().ServeHTTP(response, request)
@@ -249,5 +252,5 @@ func TestCancelConfirmedHTTP(t *testing.T) {
 	afterCodes, err := queries.ReadTOTPBackupCodes(t.Context(), f.state.UserID)
 	require.NoError(t, err)
 	assert.Equal(t, codes, afterCodes)
-	assert.Equal(t, confirmed.Session.State, readSession(t, f.db, confirmed.Session.State.TokenHash))
+	assert.Equal(t, confirmed.State, readSession(t, f.db, confirmed.State.TokenHash))
 }

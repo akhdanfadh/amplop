@@ -30,13 +30,14 @@ type signInStorage struct {
 	expiries     []Expiry
 	challenges   []Challenge
 	factor       *totp.Factor
+	role         account.Role
 	passwordHash string
 	deactivated  bool
 	err          error
 }
 
 func (f *signInStorage) StartSignIn(_ context.Context, _ int64, update func(SignInState) (SignInChange, error)) error {
-	next, err := update(SignInState{PasswordHash: f.passwordHash, Factor: f.factor, Deactivated: f.deactivated})
+	next, err := update(SignInState{PasswordHash: f.passwordHash, Role: f.role, Factor: f.factor, Deactivated: f.deactivated})
 	if err != nil {
 		return err
 	}
@@ -197,16 +198,22 @@ func TestStartSignInErrors(t *testing.T) {
 func TestPasswordRequiresTOTP(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, time.October, 29, 12, 0, 0, 0, time.UTC)}
 	for _, c := range []struct {
-		name   string
-		factor *totp.Factor
-		step   SignInStep
+		name     string
+		role     account.Role
+		factor   *totp.Factor
+		step     SignInStep
+		lifetime time.Duration
 	}{
-		{"missing", nil, SignInStepComplete},
-		{"pending", &totp.Factor{}, SignInStepComplete},
-		{"confirmed", &totp.Factor{ConfirmedAt: &clock.now}, SignInStepTOTP},
+		{"member missing", account.RoleMember, nil, SignInStepComplete, maxLifetime},
+		{"member pending", account.RoleMember, &totp.Factor{}, SignInStepComplete, maxLifetime},
+		{"member confirmed", account.RoleMember, &totp.Factor{ConfirmedAt: &clock.now}, SignInStepTOTP, 0},
+		// An administrator without two-factor gets a short enrollment session.
+		{"admin missing", account.RoleAdmin, nil, SignInStepComplete, enrollmentSessionLifetime},
+		{"admin pending", account.RoleAdmin, &totp.Factor{}, SignInStepComplete, enrollmentSessionLifetime},
+		{"admin confirmed", account.RoleAdmin, &totp.Factor{ConfirmedAt: &clock.now}, SignInStepTOTP, 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			store := &signInStorage{factor: c.factor}
+			store := &signInStorage{factor: c.factor, role: c.role}
 			accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
 				return account.Credentials{User: account.User{ID: 42}}, nil
 			}}
@@ -220,6 +227,8 @@ func TestPasswordRequiresTOTP(t *testing.T) {
 			if c.step == SignInStepComplete {
 				assert.Empty(t, store.challenges)
 				require.Len(t, store.states, 1)
+				assert.Equal(t, clock.Now().Add(c.lifetime), store.states[0].ExpiresAt)
+				assert.Equal(t, store.states[0].ExpiresAt, result.ExpiresAt)
 				return
 			}
 			assert.Empty(t, store.states)
@@ -301,4 +310,99 @@ func TestStartSignInDeactivatedStalePassword(t *testing.T) {
 	_, err := NewService(store, accounts, throttle, time.Now).StartSignIn(t.Context(), "member@example.com", "password", Device{Addr: netip.MustParseAddr("192.0.2.1")})
 
 	require.ErrorIs(t, err, account.ErrInvalidCredentials)
+}
+
+func TestSignInFirstAdmin(t *testing.T) {
+	clock := &fakeClock{now: time.Date(2026, time.October, 29, 12, 0, 0, 0, time.UTC)}
+	store := &signInStorage{role: account.RoleAdmin}
+	service := NewService(store, nil, nil, clock.Now)
+	device := Device{UserAgent: "setup browser", Addr: netip.MustParseAddr("192.0.2.1")}
+
+	result, err := service.SignInFirstAdmin(t.Context(), 42, device)
+
+	require.NoError(t, err)
+	assert.Equal(t, SignInStepComplete, result.Step)
+	require.Len(t, store.states, 1)
+	assert.Equal(t, clock.Now().Add(enrollmentSessionLifetime), store.states[0].ExpiresAt, "enrollment access only")
+	assert.Equal(t, store.states[0].ExpiresAt, result.ExpiresAt)
+	assert.Equal(t, device, store.states[0].Device)
+	hash, err := randomsecret.Hash(result.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, hash, store.states[0].TokenHash)
+}
+
+func TestSignInFirstAdminRefused(t *testing.T) {
+	now := time.Now()
+	for _, c := range []struct {
+		name  string
+		store *signInStorage
+	}{
+		{"member", &signInStorage{role: account.RoleMember}},
+		{"deactivated", &signInStorage{role: account.RoleAdmin, deactivated: true}},
+		{"two-factor on", &signInStorage{role: account.RoleAdmin, factor: &totp.Factor{ConfirmedAt: &now}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := NewService(c.store, nil, nil, time.Now).SignInFirstAdmin(t.Context(), 42, Device{})
+
+			require.ErrorIs(t, err, ErrNotFound)
+			assert.Empty(t, result)
+			assert.Empty(t, c.store.states)
+		})
+	}
+}
+
+func TestVerifyPassword(t *testing.T) {
+	addr := netip.MustParseAddr("192.0.2.1")
+	alice := account.User{ID: 42, Email: "alice@example.com"}
+	for _, c := range []struct {
+		name        string
+		password    string
+		owner       int64
+		want        error
+		wantPending int
+	}{
+		{"right", "right", 42, nil, 0},
+		{"wrong", "wrong", 42, account.ErrInvalidCredentials, 1},
+		{"another account's", "right", 7, account.ErrInvalidCredentials, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			attempts := &memoryAttempts{rows: map[int64]Attempt{}}
+			accounts := signInAccounts{authenticate: func(_ context.Context, email, password string) (account.Credentials, error) {
+				assert.Equal(t, alice.Email, email)
+				assert.Len(t, attempts.rows, 1, "reserve before checking the password")
+				if password != "right" {
+					return account.Credentials{}, account.ErrInvalidCredentials
+				}
+				return account.Credentials{User: account.User{ID: c.owner}}, nil
+			}}
+			service := NewService(nil, accounts, NewThrottle(attempts, time.Now), time.Now)
+
+			err := service.VerifyPassword(t.Context(), alice, c.password, addr)
+
+			if c.want == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, c.want)
+			}
+			assert.Len(t, attempts.rows, c.wantPending, "only failures count")
+		})
+	}
+}
+
+func TestVerifyPasswordThrottled(t *testing.T) {
+	attempts := &memoryAttempts{rows: map[int64]Attempt{}}
+	throttle := NewThrottle(attempts, time.Now)
+	addr := netip.MustParseAddr("192.0.2.1")
+	for range 5 {
+		_, err := throttle.Begin(t.Context(), "alice@example.com", addr)
+		require.NoError(t, err)
+	}
+	accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
+		t.Fatal("a throttled check must not hash the password")
+		return account.Credentials{}, nil
+	}}
+
+	err := NewService(nil, accounts, throttle, time.Now).VerifyPassword(t.Context(), account.User{ID: 42, Email: "alice@example.com"}, "right", addr)
+
+	require.ErrorIs(t, err, ErrThrottled)
 }

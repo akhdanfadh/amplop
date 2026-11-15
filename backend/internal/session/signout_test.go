@@ -27,8 +27,8 @@ func (f *signOutStorage) DeleteSession(_ context.Context, hash [sha256.Size]byte
 }
 
 func TestSignOut(t *testing.T) {
-	issued := newSession(42, Device{}, time.Now)
-	other := newSession(42, Device{}, time.Now)
+	issued := newSession(42, Device{}, maxLifetime, time.Now)
+	other := newSession(42, Device{}, maxLifetime, time.Now)
 	store := &signOutStorage{currentStorage: &currentStorage{row: &issued.State}}
 	service := NewService(store, nil, nil, time.Now)
 	current, err := service.Current(t.Context(), issued.Secret)
@@ -57,7 +57,7 @@ func TestSignOutMissingReference(t *testing.T) {
 }
 
 func TestSignOutStorageFailure(t *testing.T) {
-	issued := newSession(42, Device{}, time.Now)
+	issued := newSession(42, Device{}, maxLifetime, time.Now)
 	lost := errors.New("session storage unavailable")
 	store := &signOutStorage{currentStorage: &currentStorage{row: &issued.State}, err: lost}
 	service := NewService(store, nil, nil, time.Now)

@@ -12,12 +12,12 @@ import (
 	"inbok/internal/session"
 )
 
-// ConfirmTOTP activates userID's factor, replaces their sessions and backup
-// codes, and clears the successful attempt, in one transaction, with the
+// FinishTOTP activates userID's factor, makes its waiting codes the active
+// backup codes, and replaces their sessions, in one transaction, with the
 // change update returns for the session with hash. It returns
 // [session.ErrNotFound] when the session is gone or the owner is deactivated.
 // An error rolls back every write.
-func (db *DB) ConfirmTOTP(ctx context.Context, userID int64, hash [sha256.Size]byte, update func(session.EnrollmentState) (session.EnrollmentChange, error)) error {
+func (db *DB) FinishTOTP(ctx context.Context, userID int64, hash [sha256.Size]byte, update func(session.EnrollmentState) (session.EnrollmentChange, error)) error {
 	return pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
 		queries := sqlc.New(tx)
 
@@ -29,18 +29,22 @@ func (db *DB) ConfirmTOTP(ctx context.Context, userID int64, hash [sha256.Size]b
 			return session.ErrNotFound
 		}
 		if err != nil {
-			return fmt.Errorf("lock confirmation owner: %w", err)
+			return fmt.Errorf("lock finishing owner: %w", err)
 		}
 
-		// 2. Lock the session and read the factor.
+		// 2. Lock the session and read the factor and waiting set.
 		row, err := queries.LockUserSession(ctx, sqlc.LockUserSessionParams{UserID: userID, TokenHash: hash[:]})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return session.ErrNotFound
 		}
 		if err != nil {
-			return fmt.Errorf("lock confirmation session: %w", err)
+			return fmt.Errorf("lock finishing session: %w", err)
 		}
 		factor, err := readTOTP(ctx, queries, userID)
+		if err != nil {
+			return err
+		}
+		waiting, err := readWaiting(ctx, queries, userID)
 		if err != nil {
 			return err
 		}
@@ -50,47 +54,30 @@ func (db *DB) ConfirmTOTP(ctx context.Context, userID int64, hash [sha256.Size]b
 		if err != nil {
 			return err
 		}
-		next, err := update(session.EnrollmentState{Session: state, Factor: factor})
+		next, err := update(session.EnrollmentState{Session: state, Factor: factor, Waiting: waiting})
 		if err != nil {
 			return err
 		}
 
-		// 4. Activate the factor.
-		err = queries.UpsertUserTOTP(ctx, sqlc.UpsertUserTOTPParams{
-			UserID: userID, KeyID: next.Factor.KeyID, SecretCiphertext: next.Factor.Ciphertext,
-			ConfirmedAt: next.Factor.ConfirmedAt, LastStep: next.Factor.LastStep,
-		})
-		if err != nil {
-			return fmt.Errorf("confirm TOTP factor: %w", err)
+		// 4. Activate the factor, make the waiting codes active, and delete
+		// the waiting set with its display copy.
+		if err := saveTOTP(ctx, queries, userID, next.Factor); err != nil {
+			return fmt.Errorf("activate TOTP factor: %w", err)
+		}
+		if err := replaceBackupCodes(ctx, queries, userID, next.BackupHashes); err != nil {
+			return err
+		}
+		if err := queries.DeleteTOTPWaitingBackupCodes(ctx, userID); err != nil {
+			return fmt.Errorf("delete finished waiting codes: %w", err)
 		}
 
-		// 5. Replace the whole set of backup codes, so no older hash survives
-		// confirmation.
-		if err := queries.DeleteTOTPBackupCodes(ctx, userID); err != nil {
-			return fmt.Errorf("replace confirmation backup codes: %w", err)
-		}
-		for _, hash := range next.BackupHashes {
-			err := queries.InsertTOTPBackupCode(ctx, sqlc.InsertTOTPBackupCodeParams{UserID: userID, CodeHash: hash})
-			if err != nil {
-				return fmt.Errorf("save confirmation backup code: %w", err)
-			}
-		}
-
-		// 6. Remove every old password-only session before inserting its
-		// replacement.
+		// 5. Remove every old session, including password-only ones, before
+		// inserting the replacement.
 		if err := queries.DeleteUserSessions(ctx, userID); err != nil {
-			return fmt.Errorf("end confirmation sessions: %w", err)
+			return fmt.Errorf("end finishing sessions: %w", err)
 		}
-		err = queries.InsertSession(ctx, insertSessionParams(next.Session))
-		if err != nil {
-			return fmt.Errorf("save confirmation session: %w", err)
-		}
-
-		// 7. Clear the attempt here, so it rolls back with confirmation and
-		// nothing fails after the secrets are issued.
-		err = queries.DeleteUserTOTPAttempt(ctx, sqlc.DeleteUserTOTPAttemptParams{UserID: userID, ID: next.AttemptID})
-		if err != nil {
-			return fmt.Errorf("clear confirmation attempt: %w", err)
+		if err := queries.InsertSession(ctx, insertSessionParams(next.Session)); err != nil {
+			return fmt.Errorf("save finishing session: %w", err)
 		}
 		return nil
 	})

@@ -14,6 +14,12 @@ const (
 	idleTimeout   = 7 * 24 * time.Hour
 	maxLifetime   = 30 * 24 * time.Hour
 	touchInterval = time.Hour
+
+	// enrollmentSessionLifetime is the fixed lifetime of a session with
+	// enrollment access. Product policy: enough to set up two-factor
+	// authentication, matching the enrollment's own limit; a forgotten one
+	// ends soon.
+	enrollmentSessionLifetime = 15 * time.Minute
 )
 
 var errExpired = errors.New("session is expired")
@@ -36,9 +42,10 @@ type Issued struct {
 	State  State
 }
 
-// newSession creates a fresh secret and fixes the maximum lifetime.
-// It keeps the device details of the request that creates the session.
-func newSession(userID int64, device Device, now func() time.Time) Issued {
+// newSession creates a fresh secret that lives at most lifetime, normally
+// [maxLifetime]. It keeps the device details of the request that creates
+// the session.
+func newSession(userID int64, device Device, lifetime time.Duration, now func() time.Time) Issued {
 	secret, hash := randomsecret.New()
 	createdAt := now().UTC()
 	return Issued{
@@ -48,7 +55,7 @@ func newSession(userID int64, device Device, now func() time.Time) Issued {
 			UserID:     userID,
 			CreatedAt:  createdAt,
 			LastUsedAt: createdAt,
-			ExpiresAt:  createdAt.Add(maxLifetime),
+			ExpiresAt:  createdAt.Add(lifetime),
 			Device:     cleanDevice(device),
 		},
 	}

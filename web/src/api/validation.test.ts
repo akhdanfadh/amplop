@@ -1,7 +1,7 @@
 import * as z from "zod";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
-import { NewProbeEvent } from "./generated/model";
-import { validationMessage } from "./validation";
+import { NewProbeEvent, NewSession } from "./generated/model";
+import { emailAddress, validationMessage } from "./validation";
 
 const valid = { note: "n", amount: 1, highlighted: false, tag: null };
 
@@ -52,5 +52,44 @@ describe("validationMessage", () => {
     ],
   ])("states the rule for %s", (_case, schema, value, message) => {
     expect(messages(schema, value)).toEqual([message]);
+  });
+});
+
+describe("emailAddress", () => {
+  const email = emailAddress(NewSession.shape.email);
+
+  // The server takes what Go's net/mail does (backend/internal/emailaddress),
+  // including internationalized addresses (RFC 6531) and names without a dot.
+  it.each([
+    ["a plain address", "ana@example.com"],
+    ["capitals and a tag", "Ana.B+tag@Example.COM"],
+    ["an accented local part", "josé@example.com"],
+    ["an internationalized domain", "ana@münchen.de"],
+    ["a punycode top-level domain", "x@e.xn--p1ai"],
+    ["a domain without a dot", "ana@localhost"],
+    ["an apostrophe", "o'brien@example.com"],
+  ])("accepts %s", (_case, value) => {
+    expect(messages(email, value)).toBeUndefined();
+  });
+
+  it.each([
+    ["no @", "ana.example.com"],
+    ["nothing before @", "@example.com"],
+    ["nothing after @", "ana@"],
+    ["a space", "ana @example.com"],
+    ["two @", "ana@b@example.com"],
+    ["a quoted local part", '"ana"@example.com'],
+  ])("refuses %s", (_case, value) => {
+    expect(messages(email, value)).toEqual(["Enter an email address, like name@example.com."]);
+  });
+
+  it("gives an empty field one message", () => {
+    expect(messages(email, "")).toEqual(["Enter an email address, like name@example.com."]);
+  });
+
+  it("keeps the contract's length limits for an address that is otherwise one", () => {
+    const long = `${"a".repeat(64)}@${"b".repeat(190)}.com`;
+
+    expect(messages(email, long)).toEqual(["Must be 3 to 254 characters."]);
   });
 });

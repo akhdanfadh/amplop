@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { SystemEmailSettings } from "@/api/generated/model";
 import { validationMessage } from "@/api/validation";
-import { checkedSave, keepsPassword, settingsSchema, settingsValues } from "./settings-schema";
+import { followedPort, settingsSchema, settingsValues } from "./settings-schema";
 
 const saved: SystemEmailSettings = {
   host: "smtp.example.com",
@@ -29,8 +29,8 @@ describe("settingsValues", () => {
   it("starts from the saved settings without a password", () => {
     expect(values).toEqual({
       host: "smtp.example.com",
-      port: 587,
       security: "starttls",
+      port: "587",
       username: "inbok@example.com",
       password: "",
       fromAddress: "inbok@example.com",
@@ -39,29 +39,28 @@ describe("settingsValues", () => {
   });
 
   it("starts a first save from STARTTLS defaults", () => {
-    expect(settingsValues(undefined)).toMatchObject({ host: "", port: 587, security: "starttls" });
+    expect(settingsValues(undefined)).toMatchObject({
+      host: "",
+      port: "587",
+      security: "starttls",
+    });
   });
 });
 
-describe("keepsPassword", () => {
-  it("keeps the saved password for the same server and username", () => {
-    expect(keepsPassword(saved, values)).toBe(true);
-    expect(keepsPassword(saved, { ...values, host: " smtp.example.com " })).toBe(true);
+describe("followedPort", () => {
+  it("moves a mode's usual port to the new mode's", () => {
+    expect(followedPort("tls", "587")).toBe("465");
+    expect(followedPort("starttls", "465")).toBe("587");
+    expect(followedPort("starttls", " 465 ")).toBe("587");
   });
 
-  it.each([
-    ["host", { host: "smtp.other.example" }],
-    ["port", { port: 465 }],
-    ["username", { username: "other@example.com" }],
-    ["username case", { username: "Inbok@example.com" }],
-    ["blank username", { username: "  " }],
-  ])("needs it again for another %s", (_, change) => {
-    expect(keepsPassword(saved, { ...values, ...change })).toBe(false);
+  it("keeps a port the member typed", () => {
+    expect(followedPort("tls", "2525")).toBe("2525");
+    expect(followedPort("starttls", "")).toBe("");
   });
 
-  it("has nothing to keep without a saved password", () => {
-    expect(keepsPassword(undefined, values)).toBe(false);
-    expect(keepsPassword({ ...saved, hasPassword: false }, values)).toBe(false);
+  it("keeps the port for a mode without a usual one", () => {
+    expect(followedPort("none", "587")).toBe("587");
   });
 });
 
@@ -71,11 +70,42 @@ describe("settingsSchema", () => {
   });
 
   it("accepts a server without sign-in", () => {
-    expect(issues({ ...values, security: "none", username: "", port: 1025 })).toEqual([]);
+    expect(issues({ ...values, security: "none", username: "", port: "1025" })).toEqual([]);
   });
 
   it("reads a blank username as no sign-in", () => {
-    expect(issues({ ...values, security: "none", username: "  ", port: 1025 })).toEqual([]);
+    expect(issues({ ...values, security: "none", username: "  ", port: "1025" })).toEqual([]);
+  });
+
+  it("sends the port as a number", () => {
+    expect(
+      settingsSchema(undefined).parse({ ...values, username: "", port: " 2525 " }),
+    ).toMatchObject({
+      port: 2525,
+    });
+  });
+
+  it("keeps the saved password for the same server and username, as Go compares them", () => {
+    expect(
+      issues({ ...values, host: " smtp.example.com ", username: " inbok@example.com " }),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["host", { host: "smtp.other.example" }],
+    ["port", { port: "465" }],
+    ["username", { username: "other@example.com" }],
+    ["username case", { username: "Inbok@example.com" }],
+  ])("needs the password again for another %s", (_, change) => {
+    expect(issues({ ...values, ...change })).toEqual([
+      { path: ["password"], message: "Enter the password for this server and username." },
+    ]);
+  });
+
+  it("has no saved password to keep when none is saved", () => {
+    expect(issuesWith({ ...saved, hasPassword: false }, values)).toEqual([
+      { path: ["password"], message: "Enter the password for this server and username." },
+    ]);
   });
 
   it("accepts a new server with its password", () => {
@@ -112,47 +142,15 @@ describe("settingsSchema", () => {
 
   it.each([
     ["host", { host: " " }, "Can't be blank."],
-    ["port", { port: 0 }, "Enter a whole number from 1 to 65535."],
-    ["port", { port: Number.NaN }, "Enter a whole number from 1 to 65535."],
-    ["fromAddress", { fromAddress: "inbok" }, "Enter a valid value."],
+    ["port", { port: "0" }, "Enter a whole number from 1 to 65535."],
+    ["port", { port: "65536" }, "Enter a whole number from 1 to 65535."],
+    ["port", { port: "" }, "Enter a whole number from 1 to 65535."],
+    ["port", { port: "1e3" }, "Enter a whole number from 1 to 65535."],
+    ["port", { port: "4.5" }, "Enter a whole number from 1 to 65535."],
+    ["fromAddress", { fromAddress: "inbok" }, "Enter an email address, like name@example.com."],
     ["fromName", { fromName: "n".repeat(65) }, "Must be at most 64 characters."],
     ["password", { password: "p".repeat(256) }, "Must be at most 255 characters."],
   ])("applies the contract's limit on %s", (field, change, message) => {
     expect(issues({ ...values, ...change })).toContainEqual({ path: [field], message });
-  });
-});
-
-describe("checkedSave", () => {
-  it("confirms settings that match the form", () => {
-    expect(checkedSave(saved, values)).toBe("saved");
-  });
-
-  it("compares the host, username, and From address as Go saves them", () => {
-    expect(
-      checkedSave(saved, {
-        ...values,
-        host: " smtp.example.com ",
-        username: " inbok@example.com ",
-        fromAddress: " Inbok@Example.COM ",
-      }),
-    ).toBe("saved");
-  });
-
-  it("keeps the case of non-ASCII letters in the From address", () => {
-    const settings = { ...saved, fromAddress: "élise@example.fr" };
-
-    expect(checkedSave(settings, { ...values, fromAddress: "Élise@example.fr" })).toBe("different");
-  });
-
-  it("cannot confirm a typed password", () => {
-    expect(checkedSave(saved, { ...values, password: "app password" })).toBe("passwordUnconfirmed");
-  });
-
-  it.each([
-    ["nothing saved", undefined, values],
-    ["another host", saved, { ...values, host: "smtp.other.example" }],
-    ["another From name", saved, { ...values, fromName: "Changed" }],
-  ])("reports %s as different", (_, settings, form) => {
-    expect(checkedSave(settings, form)).toBe("different");
   });
 });

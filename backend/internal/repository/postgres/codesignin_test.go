@@ -52,9 +52,7 @@ func newCodeFixture(t *testing.T) *codeFixture {
 	require.NoError(t, err)
 	id, ciphertext, err := ring.Seal([]byte(confirmationSecret), "totp:"+strconv.FormatInt(user.ID, 10))
 	require.NoError(t, err)
-	require.NoError(t, db.UpdateTOTP(t.Context(), user.ID, func(*totp.Factor) (totp.Factor, error) {
-		return totp.Factor{KeyID: id, Ciphertext: ciphertext, ConfirmedAt: &f.now, LastStep: -1}, nil
-	}))
+	require.NoError(t, saveFactor(t.Context(), db, user.ID, totp.Factor{KeyID: id, Ciphertext: ciphertext, ConfirmedAt: &f.now, LastStep: -1}))
 	require.NoError(t, sqlc.New(conn).InsertTOTPBackupCode(t.Context(), sqlc.InsertTOTPBackupCodeParams{UserID: user.ID, CodeHash: hashPassword(t, "ABCDEFGHJK")}))
 	f.code, err = hotp.GenerateCode(confirmationSecret, uint64(f.now.Unix()/30))
 	require.NoError(t, err)

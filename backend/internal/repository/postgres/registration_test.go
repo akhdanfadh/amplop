@@ -50,7 +50,7 @@ func TestRegistrationStorage(t *testing.T) {
 	// A new installation starts closed, without system email.
 	settings, err := service.Settings(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, registration.Settings{Status: registration.StatusClosed}, settings)
+	assert.Equal(t, registration.Settings{Status: registration.StatusClosed, AllowedActions: []registration.Action{registration.ActionClose}}, settings)
 
 	// Neither missing nor untested settings can open it.
 	_, err = service.Save(t.Context(), admin, registration.StateOpen)
@@ -63,18 +63,20 @@ func TestRegistrationStorage(t *testing.T) {
 	saveSystemEmail(t, conn, tested)
 	saved, err := service.Save(t.Context(), admin, registration.StateOpen)
 	require.NoError(t, err)
-	assert.Equal(t, registration.Settings{Status: registration.StatusOpen, SystemEmailTested: true}, saved)
+	assert.Equal(t, registration.Settings{
+		Status: registration.StatusOpen, SystemEmailTested: true, AllowedActions: []registration.Action{registration.ActionOpen, registration.ActionClose},
+	}, saved)
 
 	// Settings that lose their test pause it.
 	saveSystemEmail(t, conn, untested)
 	settings, err = service.Settings(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, registration.Settings{Status: registration.StatusPaused}, settings)
+	assert.Equal(t, registration.Settings{Status: registration.StatusPaused, AllowedActions: []registration.Action{registration.ActionClose}}, settings)
 
 	// Closing needs no tested settings.
 	saved, err = service.Save(t.Context(), admin, registration.StateClosed)
 	require.NoError(t, err)
-	assert.Equal(t, registration.Settings{Status: registration.StatusClosed}, saved)
+	assert.Equal(t, registration.Settings{Status: registration.StatusClosed, AllowedActions: []registration.Action{registration.ActionClose}}, saved)
 
 	// Each save is audited with its administrator and no account; the
 	// refused ones are not.

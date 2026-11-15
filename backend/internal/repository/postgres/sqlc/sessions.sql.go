@@ -142,8 +142,9 @@ const lockSessionUser = `-- name: LockSessionUser :one
 SELECT id FROM users WHERE id = $1 FOR UPDATE
 `
 
-// The owner lock comes first, as in enrollment confirmation, so deleting
-// several of the user's sessions cannot deadlock with it.
+// The owner lock comes first, as in finishing two-factor enrollment
+// (FinishTOTP), so deleting several of the user's sessions cannot deadlock
+// with it.
 func (q *Queries) LockSessionUser(ctx context.Context, userID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, lockSessionUser, userID)
 	var id int64

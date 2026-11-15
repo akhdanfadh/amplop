@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MonitorIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,21 +22,38 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { StatusBadge } from "@/components/status-badge";
+import { SettingsSection } from "@/features/settings/page";
 import { Button } from "@/components/ui/button";
-import { browserName, endedOthersMessage, endMessage, formatTime, lastActive } from "./text";
+import {
+  browserName,
+  endedOthersMessage,
+  endMessage,
+  formatTime,
+  lastActive,
+  sessionsAbout,
+  sessionsTitle,
+  signOutLimit,
+} from "./text";
 
 const unauthorized = 401;
-const buttonClass = "w-fit whitespace-normal";
+const buttonClass = "whitespace-normal";
 
+// SessionList is Security's signed-in browsers section: each browser with a
+// session, a way to sign each other one out, or all of them, then children,
+// e.g. signing out of this one. locked disables the writes; paused stops
+// reads while another write may replace or end this session's cookie;
+// onWritingChange receives whether a write runs.
 export function SessionList({
   locked,
   paused,
   onWritingChange,
+  children,
 }: {
   locked: boolean;
   // Another write may replace or end this session's cookie; a read sent now could see a 401.
   paused: boolean;
   onWritingChange: (pending: boolean) => void;
+  children?: ReactNode;
 }) {
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -109,11 +126,7 @@ export function SessionList({
   }
 
   return (
-    <section className="flex flex-col gap-6" aria-labelledby="sessions-heading">
-      <h2 id="sessions-heading" ref={headingRef} tabIndex={-1} className="text-xl font-semibold">
-        Signed-in browsers
-      </h2>
-      <p>Signing out a browser does not stop someone who knows your password from signing in.</p>
+    <SettingsSection title={sessionsTitle} about={sessionsAbout} headingRef={headingRef}>
       {/* Stay mounted so screen readers announce changed text. */}
       <output className={notice ? undefined : "sr-only"}>{notice}</output>
       {end.error && end.error.status !== unauthorized && (
@@ -124,7 +137,7 @@ export function SessionList({
       )}
       {list.isPending && <output>Loading signed-in browsers...</output>}
       {list.error && list.error.status !== unauthorized && (
-        <div className="flex flex-col gap-3" role="alert">
+        <div className="flex flex-col items-start gap-3" role="alert">
           <p>Could not load signed-in browsers. {userMessage(list.error)}</p>
           <Button
             type="button"
@@ -138,7 +151,7 @@ export function SessionList({
         </div>
       )}
       {sessions && (
-        <ul className="flex flex-col divide-y border-y" aria-busy={list.isFetching}>
+        <ul className="flex w-full flex-col divide-y" aria-busy={list.isFetching}>
           {sessions.map((session) => (
             <SessionRow
               key={session.id}
@@ -151,6 +164,7 @@ export function SessionList({
           ))}
         </ul>
       )}
+      <p className="text-sm text-muted-foreground">{signOutLimit}</p>
       {others > 0 && (
         <AlertDialogTrigger isOpen={confirming && others > 0} onOpenChange={setConfirming}>
           <Button
@@ -182,7 +196,8 @@ export function SessionList({
           </AlertDialog>
         </AlertDialogTrigger>
       )}
-    </section>
+      {children}
+    </SettingsSection>
   );
 }
 
@@ -203,7 +218,8 @@ function SessionRow({
   const detailsId = `session-${session.id}`;
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-4">
+    // A grid, so the button keeps its side however the name wraps.
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 py-3 first:pt-0">
       <div className="flex min-w-0 flex-col gap-1">
         <p className="flex flex-wrap items-center gap-2 font-medium">
           {name}

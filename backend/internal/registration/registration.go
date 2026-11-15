@@ -5,6 +5,7 @@ package registration
 import (
 	"context"
 	"errors"
+	"slices"
 )
 
 // State is whether an administrator has opened registration.
@@ -26,6 +27,17 @@ const (
 	StatusPaused Status = "paused"
 )
 
+// Action is a change an administrator can ask of registration.
+type Action string
+
+const (
+	ActionOpen  Action = "open"
+	ActionClose Action = "close"
+)
+
+// Actions are every [Action], in the order the API lists them.
+var Actions = []Action{ActionOpen, ActionClose}
+
 // ErrSystemEmailNotTested means registration cannot open: no system email
 // settings are saved, or the saved ones have not passed a test message.
 var ErrSystemEmailNotTested = errors.New("system email has not passed a test")
@@ -44,6 +56,7 @@ type Record struct {
 type Settings struct {
 	Status            Status
 	SystemEmailTested bool
+	AllowedActions    []Action // what [Service.Save] accepts now
 }
 
 // Storage keeps the registration state.
@@ -69,8 +82,8 @@ func NewService(storage Storage) *Service {
 	return &Service{storage: storage}
 }
 
-// Settings returns the saved state as a [Status], and whether the system email
-// settings in use passed a test.
+// Settings returns the saved state as a [Status], whether the system email
+// settings in use passed a test, and the actions [Service.Save] accepts now.
 func (s *Service) Settings(ctx context.Context) (Settings, error) {
 	record, err := s.storage.ReadRegistration(ctx)
 	if err != nil {
@@ -98,7 +111,7 @@ func (s *Service) Save(ctx context.Context, actorID int64, state State) (Setting
 	// save.
 	var saved Record
 	err := s.storage.UpdateRegistration(ctx, actorID, func(current Record) (State, error) {
-		if state == StateOpen && !current.SystemEmailTested {
+		if state == StateOpen && !slices.Contains(allowedActions(current), ActionOpen) {
 			return "", ErrSystemEmailNotTested
 		}
 		saved = Record{State: state, SystemEmailTested: current.SystemEmailTested}
@@ -112,7 +125,25 @@ func (s *Service) Save(ctx context.Context, actorID int64, state State) (Setting
 
 // settingsOf returns record as shown to administrators.
 func settingsOf(record Record) Settings {
-	return Settings{Status: statusOf(record), SystemEmailTested: record.SystemEmailTested}
+	return Settings{
+		Status:            statusOf(record),
+		SystemEmailTested: record.SystemEmailTested,
+		AllowedActions:    allowedActions(record),
+	}
+}
+
+// allowedActions returns the actions [Service.Save] accepts with record in
+// place: closing always, opening once the system email settings in use
+// passed a test, since visitors get their link by email. Either may change
+// nothing.
+//
+// DESIGN: Closing is never refused, so Save checks only opening against
+// this list; a rule that ever refuses closing must be checked there too.
+func allowedActions(record Record) []Action {
+	if !record.SystemEmailTested {
+		return []Action{ActionClose}
+	}
+	return []Action{ActionOpen, ActionClose}
 }
 
 // statusOf returns whether visitors can register with record in place.

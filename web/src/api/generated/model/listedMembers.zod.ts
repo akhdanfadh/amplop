@@ -10,6 +10,7 @@ import * as zod from 'zod';
 
 export const ListedMembers = zod.object({
   "members": zod.array(zod.object({
+  "allowedActions": zod.array(zod.enum(['deactivate', 'reactivate'])).describe('What an administrator can ask of this account now: deactivate (Deactivate Member) and reactivate (Reactivate Member). Empty for an administrator\'s account, which can\'t be deactivated or reactivated. An action that would change nothing, e.g. deactivating an account already deactivated, is listed and succeeds without a change. A listed action can still be refused when the account changed since this read. Clients ignore values they don\'t know.'),
   "deactivatedAt": zod.iso.datetime({"offset":true}).nullable().describe('When the account was deactivated; null while it is active.'),
   "email": zod.string(),
   "emailVerified": zod.boolean(),

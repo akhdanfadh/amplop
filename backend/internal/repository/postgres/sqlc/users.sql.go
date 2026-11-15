@@ -82,12 +82,13 @@ func (q *Queries) InsertMemberUser(ctx context.Context, arg InsertMemberUserPara
 }
 
 const lockSignInUser = `-- name: LockSignInUser :one
-SELECT password_hash, (deactivated_at IS NOT NULL)::boolean AS deactivated
+SELECT password_hash, role, (deactivated_at IS NOT NULL)::boolean AS deactivated
 FROM users WHERE id = $1 FOR UPDATE
 `
 
 type LockSignInUserRow struct {
 	PasswordHash string
+	Role         string
 	Deactivated  bool
 }
 
@@ -96,7 +97,7 @@ type LockSignInUserRow struct {
 func (q *Queries) LockSignInUser(ctx context.Context, userID int64) (LockSignInUserRow, error) {
 	row := q.db.QueryRow(ctx, lockSignInUser, userID)
 	var i LockSignInUserRow
-	err := row.Scan(&i.PasswordHash, &i.Deactivated)
+	err := row.Scan(&i.PasswordHash, &i.Role, &i.Deactivated)
 	return i, err
 }
 

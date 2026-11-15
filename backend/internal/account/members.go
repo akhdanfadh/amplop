@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 )
 
@@ -21,7 +22,8 @@ type Member struct {
 	DeactivatedAt *time.Time // nil: the account is active
 }
 
-// MemberAction is the status change [MemberStorage.UpdateMember] saves.
+// MemberAction is a status change: one an administrator asks of an
+// account, and the one [MemberStorage.UpdateMember] saves.
 type MemberAction int
 
 const (
@@ -29,6 +31,20 @@ const (
 	MemberDeactivate                     // the member is deactivated at [MemberChange.At]
 	MemberReactivate                     // the member is active again
 )
+
+// MemberActions are the actions an administrator can ask of an account, in
+// the order the API lists them; [MemberKeep] is none.
+var MemberActions = []MemberAction{MemberDeactivate, MemberReactivate}
+
+// AllowedActions returns the actions [Members] accepts for m: deactivating
+// and reactivating a member, either of which may change nothing, and none
+// for an administrator.
+func (m Member) AllowedActions() []MemberAction {
+	if m.Role != RoleMember {
+		return nil
+	}
+	return []MemberAction{MemberDeactivate, MemberReactivate}
+}
 
 // MemberChange is what [MemberStorage.UpdateMember] saves. The zero value
 // saves nothing.
@@ -79,7 +95,7 @@ func (m *Members) List(ctx context.Context) ([]Member, error) {
 // an unknown account.
 func (m *Members) Deactivate(ctx context.Context, actorID, memberID int64) (Member, error) {
 	return m.storage.UpdateMember(ctx, actorID, memberID, func(member Member) (MemberChange, error) {
-		if member.Role != RoleMember {
+		if !slices.Contains(member.AllowedActions(), MemberDeactivate) {
 			return MemberChange{}, ErrAdminTarget
 		}
 		if member.DeactivatedAt != nil {
@@ -95,7 +111,7 @@ func (m *Members) Deactivate(ctx context.Context, actorID, memberID int64) (Memb
 // administrator and [ErrUserNotFound] for an unknown account.
 func (m *Members) Reactivate(ctx context.Context, actorID, memberID int64) (Member, error) {
 	return m.storage.UpdateMember(ctx, actorID, memberID, func(member Member) (MemberChange, error) {
-		if member.Role != RoleMember {
+		if !slices.Contains(member.AllowedActions(), MemberReactivate) {
 			return MemberChange{}, ErrAdminTarget
 		}
 		if member.DeactivatedAt == nil {

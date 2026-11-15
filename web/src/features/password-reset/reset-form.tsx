@@ -1,61 +1,38 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
-import { useForm, useSelector } from "@tanstack/react-form";
+import { useRef, type ReactElement } from "react";
+import { revalidateLogic } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { useRedeemPasswordResetLink } from "@/api/generated/inbok";
 import {
   redeemPasswordResetLinkBodyPasswordMax,
   redeemPasswordResetLinkBodyPasswordMin,
 } from "@/api/generated/model";
-import { formErrors, formSummary, uncertainOutcome } from "@/api/problem";
-import { PasswordInput } from "@/components/password-input";
+import { uncertainOutcome } from "@/api/problem";
+import { useAppForm } from "@/components/form/app-form";
+import { useFormRequest } from "@/components/form/request";
 import { RequestError } from "@/components/request-error";
-import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { useFocusAfterError } from "@/hooks/use-focus-after-error";
-import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
+import { FieldGroup } from "@/components/ui/field";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { ResetSchema } from "./reset-schema";
 import { completeErrorMessage, endOf, linkInvalid, type EarlierTries, type Ended } from "./text";
-import { lineLink } from "@/components/link-style";
 
-const emptyValues = { email: "", password: "", confirmPassword: "" };
-const emailId = "reset-email";
-
-const inputs = [
-  {
-    name: "password",
-    label: "New password",
-    description: `Use ${redeemPasswordResetLinkBodyPasswordMin} to ${redeemPasswordResetLinkBodyPasswordMax} characters.`,
-    toggle: "new password",
-  },
-  {
-    name: "confirmPassword",
-    label: "Confirm new password",
-    description: "Enter the same password again.",
-    toggle: "new password confirmation",
-  },
-] as const;
-const resetFields = ["email", ...inputs.map((input) => input.name)] as const;
+const resetFields = ["email", "password", "confirmPassword"] as const;
 
 // ResetForm sets a new password from secret, the text after # in a reset
 // link, the email the visitor types, which must be the one the link was sent
-// to, and the password they choose. onDone receives the account's email, for
-// signing in.
+// to, and the password they choose. onDone receives the account's email,
+// for signing in; onEnded receives the page's end once the link no longer
+// works.
 export function ResetForm({
   secret,
   onDone,
+  onEnded,
 }: {
   secret: string;
   onDone: (email: string) => void;
+  onEnded: (ended: Ended) => void;
 }): ReactElement {
-  const formRef = useRef<HTMLFormElement>(null);
-  const submitRef = useRef<HTMLButtonElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
   // A try whose outcome is unknown may have changed the password.
   const earlier = useRef<EarlierTries>("refused");
-  const [ended, setEnded] = useState<Ended>();
   const queryClient = useQueryClient();
   const redeem = useRedeemPasswordResetLink({
     mutation: {
@@ -70,40 +47,32 @@ export function ResetForm({
       },
     },
   });
-  const form = useForm({
-    defaultValues: emptyValues,
-    validators: { onChange: ResetSchema },
-    onSubmitInvalid: ({ formApi }) => {
-      const name = resetFields.find((field) => formApi.getFieldMeta(field)?.errors.length);
-      if (name) formRef.current?.querySelector<HTMLInputElement>(`[name="${name}"]`)?.focus();
-    },
-    onSubmit: ({ value, formApi }) => {
-      if (redeem.isPending) return;
-      redeem.mutate(
-        { data: { secret, email: value.email, password: value.password } },
-        {
-          onSuccess: (result) => {
-            formApi.reset();
-            onDone(result.data.email);
-          },
-          onError: (err) => {
-            // 1. A link that no longer works ends the page.
-            if (linkInvalid(err)) {
-              setEnded(endOf(err, earlier.current));
-              // The end screen needs neither the password nor the secret.
-              formApi.reset();
-              redeem.reset();
-              return;
-            }
+  const request = useFormRequest(redeem, resetFields);
+  const form = useAppForm({
+    defaultValues: { email: "", password: "", confirmPassword: "" },
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: request.check(ResetSchema) },
+    onSubmit: async ({ value, formApi }) => {
+      const sent = await request.send(formApi, value, {
+        data: { secret, email: value.email, password: value.password },
+      });
+      if (sent.outcome === "done") {
+        formApi.reset();
+        onDone(sent.data.data.email);
+        return;
+      }
+      if (sent.outcome !== "refused") return;
 
-            // 2. Remember a try that may have reset, for the end's wording.
-            if (uncertainOutcome(err)) earlier.current = "unknown";
-            // 3. Mark the fields the refusal names.
-            const { fields } = formErrors(err, resetFields);
-            if (Object.keys(fields).length > 0) formApi.setErrorMap({ onSubmit: { fields } });
-          },
-        },
-      );
+      // 1. A link that no longer works ends the page; the end needs neither
+      // the password nor the secret.
+      if (linkInvalid(sent.error)) {
+        formApi.reset();
+        redeem.reset();
+        onEnded(endOf(sent.error, earlier.current));
+        return;
+      }
+      // 2. Remember a try that may have reset, for the end's wording.
+      if (uncertainOutcome(sent.error)) earlier.current = "unknown";
     },
     // An idle reset still re-renders the whole form, so only clear an error.
     listeners: {
@@ -112,141 +81,46 @@ export function ResetForm({
       },
     },
   });
-  const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const summary = redeem.error
-    ? formSummary(completeErrorMessage(redeem.error), formErrors(redeem.error, resetFields))
-    : [];
-
-  useFocusAfterError(redeem.error, redeem.isPending, formRef, submitRef);
-
-  // The end replaces the focused form, so it takes focus.
-  useEffect(() => {
-    if (ended) endRef.current?.focus();
-  }, [ended]);
-
-  // No retry with this link can work, so the form goes.
-  if (ended)
-    return (
-      <div ref={endRef} tabIndex={-1} className="flex flex-col gap-4">
-        <p>{ended.message}</p>
-        {ended.links.map((link) =>
-          link === "new-link" ? (
-            <Link key={link} to="/forgot-password" className={lineLink}>
-              Ask for a new link
-            </Link>
-          ) : (
-            <Link key={link} to="/sign-in" className={lineLink}>
-              Sign in
-            </Link>
-          ),
-        )}
-      </div>
-    );
 
   return (
-    <form
-      ref={formRef}
-      className="flex flex-col gap-6"
-      noValidate
-      aria-label="Choose a new password"
-      aria-busy={redeem.isPending}
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
-      <div className="flex flex-col gap-3">
-        <p>
-          Enter the email address this link was sent to and choose a new password. Changing it signs
-          your account out on every browser.
-        </p>
-        <p>If you sign in with an authenticator app, you&apos;ll still need its code.</p>
-      </div>
-      <FieldGroup>
-        <form.Field name="email">
-          {(field) => {
-            const errors = field.state.meta.isBlurred || submitted ? field.state.meta.errors : [];
-            // Only the server's refusal is a submit error, almost always
-            // because the link was sent to another email; only a link to
-            // that address can reset its password. Reading the field, not
-            // the request, keeps the link exactly as long as the error.
-            const refused = field.state.meta.errorMap.onSubmit !== undefined;
-            return (
-              <Field data-invalid={errors.length > 0} data-disabled={redeem.isPending}>
-                <FieldLabel htmlFor={emailId}>Email address</FieldLabel>
-                <Input
-                  id={emailId}
-                  name="email"
-                  type="email"
-                  // "username" lets a password manager save it with the new
-                  // password as one login.
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  disabled={redeem.isPending}
-                  aria-invalid={errors.length > 0}
-                  aria-describedby={errors.length > 0 ? `${emailId}-error` : undefined}
-                  value={field.state.value}
-                  onBlur={() => blurKeepingSubmitErrors(field)}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                <FieldError id={`${emailId}-error`} errors={errors} />
-                {refused && (
-                  // Field stretches its children; the paragraph keeps the
-                  // link's focus outline to its text. An action, not part of
-                  // the error, so a link, not in its colour.
-                  <p>
-                    <Link to="/forgot-password" className={lineLink}>
-                      Ask for a new link
-                    </Link>
-                  </p>
-                )}
-              </Field>
-            );
-          }}
-        </form.Field>
-        {inputs.map(({ name, label, description, toggle }) => (
-          <form.Field key={name} name={name}>
-            {(field) => {
-              const errors = field.state.meta.isBlurred || submitted ? field.state.meta.errors : [];
-              const id = `reset-${name}`;
-              return (
-                <Field data-invalid={errors.length > 0} data-disabled={redeem.isPending}>
-                  <FieldLabel htmlFor={id}>{label}</FieldLabel>
-                  <PasswordInput
-                    label={toggle}
-                    id={id}
-                    name={name}
-                    type="password"
-                    autoComplete="new-password"
-                    disabled={redeem.isPending}
-                    aria-invalid={errors.length > 0}
-                    aria-describedby={
-                      errors.length > 0 ? `${id}-description ${id}-error` : `${id}-description`
-                    }
-                    value={field.state.value}
-                    onBlur={() => blurKeepingSubmitErrors(field)}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                  />
-                  <FieldDescription id={`${id}-description`}>{description}</FieldDescription>
-                  <FieldError id={`${id}-error`} errors={errors} />
-                </Field>
-              );
-            }}
-          </form.Field>
-        ))}
-      </FieldGroup>
-
-      <Button
-        ref={submitRef}
-        type="submit"
-        className="whitespace-normal"
-        isDisabled={redeem.isPending}
-      >
-        {redeem.isPending ? "Changing password..." : "Change password"}
-      </Button>
-
-      <RequestError errors={summary} requestId={redeem.error?.requestId} />
-    </form>
+    <form.AppForm>
+      <form.Form label="Choose a new password">
+        <FieldGroup>
+          <form.AppField name="email">
+            {(field) => (
+              <field.EmailField
+                label="Email address"
+                description="The address this link was sent to."
+                autoComplete="username"
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="password">
+            {(field) => (
+              <field.PasswordField
+                label="New password"
+                description={`Use ${redeemPasswordResetLinkBodyPasswordMin} to ${redeemPasswordResetLinkBodyPasswordMax} characters.`}
+                autoComplete="new-password"
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="confirmPassword">
+            {(field) => (
+              <field.PasswordField
+                label="Confirm new password"
+                description="Enter the same password again."
+                autoComplete="new-password"
+                toggle="new password confirmation"
+              />
+            )}
+          </form.AppField>
+        </FieldGroup>
+        <form.SubmitButton working="Changing password...">Change password</form.SubmitButton>
+        <RequestError
+          errors={request.summary(completeErrorMessage)}
+          requestId={request.reference}
+        />
+      </form.Form>
+    </form.AppForm>
   );
 }

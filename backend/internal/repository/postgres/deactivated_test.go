@@ -60,7 +60,7 @@ func newDeactivatedAccounts(t *testing.T, withTOTP bool) deactivatedAccounts {
 		hashPassword(t, deactivatedPassword)).Scan(&f.member))
 	if withTOTP {
 		_, err := conn.Exec(t.Context(),
-			"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at) VALUES ($1, '1', 'ciphertext', now())", f.member)
+			"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, started_at) VALUES ($1, '1', 'ciphertext', now(), now())", f.member)
 		require.NoError(t, err)
 	}
 	return f
@@ -192,9 +192,9 @@ func TestDeactivatedWrites(t *testing.T) {
 		want  error
 	}{
 		{"start enrollment", func(t *testing.T) error {
-			return f.db.UpdateTOTP(t.Context(), f.member, func(*totp.Factor) (totp.Factor, error) {
+			return f.db.UpdateTOTP(t.Context(), f.member, func(totp.Record) (totp.Change, error) {
 				called(t)
-				return totp.Factor{}, nil
+				return totp.Change{}, nil
 			})
 		}, account.ErrUserNotFound},
 		{"cancel enrollment", func(t *testing.T) error {
@@ -203,18 +203,12 @@ func TestDeactivatedWrites(t *testing.T) {
 				return nil
 			})
 		}, account.ErrUserNotFound},
-		{"confirm enrollment", func(t *testing.T) error {
-			return f.db.ConfirmTOTP(t.Context(), f.member, live.TokenHash, func(session.EnrollmentState) (session.EnrollmentChange, error) {
+		{"finish enrollment", func(t *testing.T) error {
+			return f.db.FinishTOTP(t.Context(), f.member, live.TokenHash, func(session.EnrollmentState) (session.EnrollmentChange, error) {
 				called(t)
 				return session.EnrollmentChange{}, nil
 			})
 		}, session.ErrNotFound},
-		{"regenerate backup codes", func(t *testing.T) error {
-			return f.db.ReplaceTOTPBackupCodes(t.Context(), f.member, func(*totp.Factor) (totp.BackupChange, error) {
-				called(t)
-				return totp.BackupChange{}, nil
-			})
-		}, account.ErrUserNotFound},
 		{"turn off", func(t *testing.T) error {
 			return f.db.DisableTOTP(t.Context(), f.member, 0, func(totp.DisableState) error {
 				called(t)
@@ -321,7 +315,7 @@ func deactivatedAPI(t *testing.T, f deactivatedAccounts) (*http.Cookie, func(met
 	t.Helper()
 
 	_, err := f.conn.Exec(t.Context(),
-		"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at) VALUES ($1, '1', 'ciphertext', now())", f.admin)
+		"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, started_at) VALUES ($1, '1', 'ciphertext', now(), now())", f.admin)
 	require.NoError(t, err)
 	now := time.Now()
 	require.NoError(t, f.db.InsertSession(t.Context(), session.State{

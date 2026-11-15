@@ -22,10 +22,7 @@ type sessionKey struct{}
 // Missing or invalid access metadata requires admin access.
 func withAccess(api huma.API, service sessionService) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		level, ok := ctx.Operation().Metadata[accessKey].(session.Access)
-		if !ok || level < session.AccessPublic || level > session.AccessAdmin {
-			level = session.AccessAdmin
-		}
+		level := operationAccess(ctx.Operation())
 		if level == session.AccessPublic {
 			next(ctx)
 			return
@@ -51,12 +48,13 @@ func withAccess(api huma.API, service sessionService) func(huma.Context, func(hu
 		}
 
 		identity := current.Identity
-		allowed := memberAllowed(identity)
-		if level == session.AccessAdmin && identity.User.Role == account.RoleAdmin && identity.TOTPRequired {
+		known := identity.Access >= session.AccessEnrollment && identity.Access <= session.AccessAdmin && knownRole(identity)
+		// An administrator without two-factor authentication may only set it up.
+		if known && level > session.AccessEnrollment && identity.User.Role == account.RoleAdmin && identity.TOTPRequired {
 			writeProblem(humagin.Unwrap(ctx), totpRequiredProblem())
 			return
 		}
-		if !allowed || identity.Access < level || (level == session.AccessAdmin && identity.User.Role != account.RoleAdmin) {
+		if !known || identity.Access < level || (level == session.AccessAdmin && identity.User.Role != account.RoleAdmin) {
 			writeProblem(humagin.Unwrap(ctx), forbiddenProblem())
 			return
 		}
@@ -64,10 +62,24 @@ func withAccess(api huma.API, service sessionService) func(huma.Context, func(hu
 	}
 }
 
+// operationAccess returns op's required access level from its metadata.
+// Missing or invalid metadata requires admin access.
+func operationAccess(op *huma.Operation) session.Access {
+	level, ok := op.Metadata[accessKey].(session.Access)
+	if !ok || level < session.AccessPublic || level > session.AccessAdmin {
+		return session.AccessAdmin
+	}
+	return level
+}
+
 // memberAllowed reports whether identity may use member operations.
 func memberAllowed(identity session.Identity) bool {
-	return identity.Access >= session.AccessMember && identity.Access <= session.AccessAdmin &&
-		(identity.User.Role == account.RoleMember || identity.User.Role == account.RoleAdmin)
+	return identity.Access >= session.AccessMember && identity.Access <= session.AccessAdmin && knownRole(identity)
+}
+
+// knownRole reports whether identity's role is one access checks know.
+func knownRole(identity session.Identity) bool {
+	return identity.User.Role == account.RoleMember || identity.User.Role == account.RoleAdmin
 }
 
 const unauthenticatedType = problemPrefix + "unauthenticated"
@@ -87,10 +99,11 @@ func unauthenticatedProblem() *problem {
 	return newProblem(http.StatusUnauthorized, unauthenticatedType, "Sign-in required", "Sign in to continue.")
 }
 
-// totpRequiredProblem is the response for an administrator without confirmed TOTP.
+// totpRequiredProblem is the response for an administrator without
+// confirmed TOTP, whose session may only set it up.
 func totpRequiredProblem() *problem {
 	return newProblem(http.StatusForbidden, problemPrefix+"totp-required",
-		"TOTP required", "Set up two-factor authentication to use administrator features.")
+		"TOTP required", "Set up two-factor authentication to continue.")
 }
 
 // forbiddenProblem is the response for an account without the required access.
@@ -108,10 +121,44 @@ func adminResponses(api huma.API, statuses ...int) map[string]*huma.Response {
 	unauthorized.Content[problemContentType].Example = unauthenticatedProblem()
 
 	forbidden := responses[strconv.Itoa(http.StatusForbidden)]
-	forbidden.Description = "The account is not an administrator, or has not set up two-factor authentication."
-	forbidden.Content[problemContentType].Examples = map[string]*huma.Example{
-		"forbidden":    {Value: forbiddenProblem()},
-		"totpRequired": {Value: totpRequiredProblem()},
-	}
+	forbidden.Description = "The account is not an administrator."
+	forbidden.Content[problemContentType].Example = forbiddenProblem()
 	return responses
+}
+
+// enrollmentAccessCause says why [withAccess] refuses an operation with 403
+// totp-required.
+const enrollmentAccessCause = "An administrator without two-factor authentication may only set it up."
+
+// documentEnrollmentAccess adds [withAccess]'s 403 totp-required to every
+// operation that needs more than enrollment access, beside any 403 the
+// operation sends itself. Call it once, after every operation is
+// registered, before [registerProblemTypes].
+func documentEnrollmentAccess(api huma.API) {
+	status := strconv.Itoa(http.StatusForbidden)
+	for _, op := range operations(api.OpenAPI()) {
+		if operationAccess(op) <= session.AccessEnrollment {
+			continue
+		}
+
+		refused, ok := op.Responses[status]
+		if !ok {
+			refused = problemResponses(api, http.StatusForbidden)[status]
+			refused.Description = enrollmentAccessCause
+			op.Responses[status] = refused
+		} else {
+			refused.Description += " " + enrollmentAccessCause
+		}
+
+		// One response holds every 403 as named examples.
+		media := refused.Content[problemContentType]
+		if media.Examples == nil {
+			media.Examples = map[string]*huma.Example{}
+		}
+		if media.Example != nil {
+			media.Examples["refused"] = &huma.Example{Value: media.Example}
+			media.Example = nil
+		}
+		media.Examples["totpRequired"] = &huma.Example{Value: totpRequiredProblem()}
+	}
 }

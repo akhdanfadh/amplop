@@ -55,9 +55,9 @@ func newMemberAccounts(t *testing.T) memberAccounts {
 		args []any
 	}{
 		{"UPDATE users SET email_verified_at = '2026-03-02T00:00:00Z' WHERE id = $1", []any{f.member}},
-		{`INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at) VALUES
-			($1, '1', 'admin ciphertext', NULL),
-			($2, '1', 'member ciphertext', '2026-03-03T00:00:00Z')`, []any{f.admin, f.member}},
+		{`INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, started_at) VALUES
+			($1, '1', 'admin ciphertext', NULL, now()),
+			($2, '1', 'member ciphertext', '2026-03-03T00:00:00Z', '2026-03-03T00:00:00Z')`, []any{f.admin, f.member}},
 		{"INSERT INTO totp_backup_codes (user_id, code_hash) VALUES ($1, 'backup code hash')", []any{f.member}},
 		{"INSERT INTO totp_attempts (user_id, created_at) VALUES ($1, now())", []any{f.member}},
 		{`INSERT INTO sessions (token_hash, user_id, expires_at)

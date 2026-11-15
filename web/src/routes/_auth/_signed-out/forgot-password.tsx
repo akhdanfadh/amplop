@@ -1,29 +1,65 @@
-import { useEffect, useRef, type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { RequestForm } from "@/features/password-reset/request-form";
+import { requested } from "@/features/password-reset/text";
+import { cn } from "@/lib/cn";
 import { lineLink } from "@/components/link-style";
+import { SignedOutPage } from "@/components/signed-out-page";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_auth/_signed-out/forgot-password")({
   component: ForgotPassword,
   head: () => ({ meta: [{ title: "Reset your password - inbok" }] }),
 });
 
-function ForgotPassword(): ReactElement {
-  const headingRef = useRef<HTMLHeadingElement>(null);
+// What the page shows: the form, first or again, or the answer for an
+// address.
+type Shown =
+  | { step: "form"; email: string; shown: "first" | "again" }
+  | { step: "sent"; email: string };
 
-  useEffect(() => {
-    headingRef.current?.focus();
-  }, []);
+function ForgotPassword(): ReactElement {
+  const [shown, setShown] = useState<Shown>({ step: "form", email: "", shown: "first" });
+  const back = (
+    // On a line of its own, so 44 px tall (DESIGN.md "Links").
+    <Link to="/sign-in" className={cn(lineLink, "self-center text-sm")}>
+      Back to sign in
+    </Link>
+  );
+
+  if (shown.step === "sent") {
+    return (
+      <SignedOutPage
+        title="Check your email"
+        address={shown.email}
+        lead={requested.lead}
+        step="sent"
+        after={back}
+      >
+        <p>{requested.body}</p>
+        <Button
+          variant="outline"
+          className="whitespace-normal"
+          onPress={() => setShown({ step: "form", email: shown.email, shown: "again" })}
+        >
+          Use a different email address
+        </Button>
+      </SignedOutPage>
+    );
+  }
 
   return (
-    <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-        Reset your password
-      </h1>
-      <RequestForm />
-      <Link to="/sign-in" className={lineLink}>
-        Back to sign in
-      </Link>
-    </main>
+    <SignedOutPage
+      title="Reset your password"
+      lead="Enter the email address you sign in with."
+      step="form"
+      after={back}
+    >
+      <RequestForm
+        email={shown.email}
+        shown={shown.shown}
+        onSent={(email) => setShown({ step: "sent", email })}
+      />
+    </SignedOutPage>
   );
 }

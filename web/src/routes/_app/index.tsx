@@ -1,10 +1,8 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-// The site's address opens the Inbox, or, for an administrator who must
-// set up two-factor authentication first, Security.
+// The site's address opens the Inbox.
 export const Route = createFileRoute("/_app/")({
-  beforeLoad: ({ context }) => {
-    if (context.session.totpRequired) throw redirect({ to: "/settings/security", replace: true });
+  beforeLoad: () => {
     throw redirect({ to: "/mail/$place", params: { place: "inbox" }, replace: true });
   },
 });

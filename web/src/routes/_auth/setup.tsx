@@ -1,84 +1,65 @@
-import { useEffect, useRef, type ReactElement } from "react";
+import type { ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useSetup } from "@/features/setup/gate";
 import { userMessage } from "@/api/problem";
-import { SetupForm } from "@/features/setup/form";
+import { RequestError } from "@/components/request-error";
+import { SignedOutPage } from "@/components/signed-out-page";
 import { Button } from "@/components/ui/button";
+import { SetupForm } from "@/features/setup/form";
+import { useSetup } from "@/features/setup/gate";
 
 export const Route = createFileRoute("/_auth/setup")({
   component: Setup,
   head: () => ({ meta: [{ title: "Set up inbok" }] }),
 });
 
+// Setup shows how to give the server a setup token, then the form that
+// creates the first administrator with it. SetupGate shows this page only
+// while setup is not done, and handles a first status read that fails.
 function Setup(): ReactElement {
   const { status, attempt, complete } = useSetup();
   const current = status.data?.data.status;
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    headingRef.current?.focus();
-  }, []);
+  // A later recheck that fails keeps the page and says so.
+  const recheckFailed = status.isError && (
+    <RequestError
+      errors={[{ message: `Could not check setup status. ${userMessage(status.error)}` }]}
+      requestId={status.error.requestId}
+    />
+  );
 
-  return (
-    <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-        Set up inbok
-      </h1>
-
-      {current === "unconfigured" && (
-        <section className="space-y-4" aria-labelledby="setup-unconfigured">
-          <h2 id="setup-unconfigured" className="text-xl font-semibold">
-            Configure a setup token
-          </h2>
-          <p className="leading-relaxed">
-            Set <code className="break-all">INBOK_SETUP_TOKEN</code> on the server to a random token
-            of at least 32 characters, then restart the server.
-          </p>
-          <p className="leading-relaxed">
-            Generate a token with <code>openssl rand -base64 32</code>. Keep it for the next step.
-          </p>
-        </section>
-      )}
-
-      {current === "open" && (
-        <section className="space-y-6" aria-labelledby="setup-open">
-          <div className="space-y-2">
-            <h2 id="setup-open" className="text-xl font-semibold">
-              Create the first administrator
-            </h2>
-            <p className="leading-relaxed text-muted-foreground">
-              Use the setup token from the server configuration to create the account.
-            </p>
-          </div>
-          <SetupForm onAttempt={attempt} onDone={complete} />
-        </section>
-      )}
-
-      {status.isError && (
-        <div className="space-y-2" role="alert">
-          <p>Could not check setup status. {userMessage(status.error)}</p>
-          {status.error.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{status.error.requestId}</code>
-            </p>
-          )}
-        </div>
-      )}
-
-      {current !== "done" && !status.isPending && (
+  if (current === "unconfigured")
+    return (
+      <SignedOutPage
+        title="Configure a setup token"
+        lead="The server needs one before anyone can set up inbok."
+        step="unconfigured"
+      >
+        <p>
+          Set <code className="break-all">INBOK_SETUP_TOKEN</code> on the server to a random token
+          of at least 32 characters, then restart the server.
+        </p>
+        <p>
+          Generate a token with <code className="whitespace-nowrap">openssl rand -base64 32</code>.
+          Keep it for the next step.
+        </p>
         <Button
           className="whitespace-normal"
-          type="button"
-          variant="outline"
-          isDisabled={status.isFetching}
+          isPending={status.isFetching}
           onPress={() => void status.refetch()}
         >
-          {status.isFetching
-            ? "Checking setup status..."
-            : status.isError
-              ? "Try again"
-              : "Check setup status"}
+          {status.isFetching ? "Checking setup status..." : "Check setup status"}
         </Button>
-      )}
-    </main>
+        {recheckFailed}
+      </SignedOutPage>
+    );
+
+  return (
+    <SignedOutPage
+      title="Set up inbok"
+      lead="Create the first administrator with the server's setup token."
+      step="open"
+    >
+      {recheckFailed}
+      <SetupForm onAttempt={attempt} onDone={complete} />
+    </SignedOutPage>
   );
 }
