@@ -133,10 +133,12 @@ Put shared code in the folder for its responsibility:
   message's status with Send again and Edit and send, their wording, and
   when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
-  names, the conversation list and its rows, the reading pane, mail's
-  TanStack DB collections (`conversations.ts`), what actions guess and
-  which places a conversation is in (`rules.ts`), how a row shows its
-  date and people, and the address Back to mail returns to.
+  names, the conversation list and its rows, the reading pane and its
+  toolbar, mail's TanStack DB collections (`conversations.ts`), what
+  actions guess and which places a conversation is in (`rules.ts`), each
+  action's words (`words.ts`), running an action (`perform.ts`) and its
+  Undo bar (`undo.tsx`), how a row shows its date and people, and the
+  address Back to mail returns to.
 - `src/features/settings`: the settings sidebar.
 - `src/components`: shared components, such as the shell around every
   page (`AppShell`), the password input, the request error under a form,
@@ -1267,8 +1269,7 @@ to settle reads them again. The reading pane reads its row from the same
 collection by ID, loaded from Get Conversation when no list holds it, so
 an action anywhere shows there at once; a failed read of it keeps the
 row as last confirmed, without an action's guess, and only a 404 lets it
-go. Opening an unread conversation runs
-`read`. The package ships agent
+go. Opening an unread conversation runs `read`. The package ships agent
 guides for its installed version in `node_modules/@tanstack/db/skills`.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:

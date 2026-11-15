@@ -33,9 +33,9 @@ type Opened = {
 // open renders the signed-in frame around a place's page, on a window
 // width wide, with two accounts.
 //
-// DESIGN: not the whole app (test/app-router.ts): rendered at a drawer's
-// width after other tests, it froze Chromium (DEBT.md, "Find why a
-// whole-app browser test freezes on some presses").
+// DESIGN: not the whole app (test/app-router.ts), so each test gives the
+// place's names, account, and pane directly rather than through its
+// route's loader.
 async function open(
   width: number,
   { place = "inbox", name = "Inbox", ownName = name, account, pane = "list" }: Opened = {},
