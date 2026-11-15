@@ -133,11 +133,18 @@ function AlertDialogDescription({
 }
 
 // AlertDialogAction is the confirming button; it closes the dialog after
-// onPress. It ignores a mouse or touch press that starts within a
-// double-click of the dialog opening, and the dialog stays open: the second
-// click of a double-click on the button that opened the dialog can land on
-// it. A keyboard press is kept.
-function AlertDialogAction({ className, onPressStart, onPress, ...props }: ButtonProps) {
+// onPress, or, with closes "by-caller", leaves that to the caller, e.g. once
+// the change it confirms is saved. It ignores a mouse or touch press that
+// starts within a double-click of the dialog opening, and the dialog stays
+// open: the second click of a double-click on the button that opened the
+// dialog can land on it. A keyboard press is kept.
+function AlertDialogAction({
+  className,
+  onPressStart,
+  onPress,
+  closes = "on-press",
+  ...props
+}: ButtonProps & { closes?: "on-press" | "by-caller" }) {
   const openedAt = React.use(OpenedAtContext);
   const dialog = React.use(OverlayTriggerStateContext);
   const early = React.useRef(false);
@@ -152,7 +159,7 @@ function AlertDialogAction({ className, onPressStart, onPress, ...props }: Butto
       onPress={(event) => {
         if (early.current) return;
         onPress?.(event);
-        dialog?.close();
+        if (closes === "on-press") dialog?.close();
       }}
       {...props}
     />

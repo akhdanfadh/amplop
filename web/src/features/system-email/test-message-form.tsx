@@ -2,7 +2,11 @@ import { useEffect, useRef, type ReactElement } from "react";
 import { revalidateLogic } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { CircleAlertIcon } from "lucide-react";
-import { getGetSystemEmailQueryKey, useSendSystemEmailTestMessage } from "@/api/generated/inbok";
+import {
+  getGetRegistrationSettingsQueryKey,
+  getGetSystemEmailQueryKey,
+  useSendSystemEmailTestMessage,
+} from "@/api/generated/inbok";
 import { SystemEmailTestMessageRecipient, type SystemEmailSettings } from "@/api/generated/model";
 import { emailAddress } from "@/api/validation";
 import { useAppForm } from "@/components/form/app-form";
@@ -49,8 +53,12 @@ export function TestMessageForm({
     mutation: {
       onError: (err) => void sessionEnd(err),
       // A pass records the tested time and a failure clears it; a lost
-      // response may have done either.
-      onSettled: () => client.invalidateQueries({ queryKey: getGetSystemEmailQueryKey() }),
+      // response may have done either. Either resumes or pauses an open
+      // registration, so Registration reads its status again too.
+      onSettled: () => {
+        void client.invalidateQueries({ queryKey: getGetRegistrationSettingsQueryKey() });
+        return client.invalidateQueries({ queryKey: getGetSystemEmailQueryKey() });
+      },
     },
   });
   const request = useFormRequest(send, recipientFields);

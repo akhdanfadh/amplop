@@ -1,73 +1,52 @@
 import { describe, expect, it } from "vite-plus/test";
+import type { RegistrationSettings } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
-import {
-  confirmation,
-  pendingMessage,
-  saveErrorMessage,
-  savedMessage,
-  statusMessage,
-  untestedMessage,
-} from "./text";
+import { actionWords, offeredAction, saveErrorMessage, statusMessage } from "./text";
 
 describe("statusMessage", () => {
   it.each([
-    ["closed", "Registration is closed. Visitors can't create accounts."],
-    ["open", "Registration is open. Visitors can create accounts."],
-    [
-      "paused",
-      "Registration is paused: the system email settings in use haven't passed a test, so visitors can't create accounts. It resumes once a test message passes.",
-    ],
-    ["unknown", "We couldn't confirm whether registration is open. Reload the page to check."],
-  ] as const)("says what %s means", (status, message) => {
+    ["closed", "Closed. Visitors can't create accounts."],
+    ["open", "Open. Anyone who can reach this inbok can create a member account."],
+  ] as const)("says what %s means for visitors", (status, message) => {
     expect(statusMessage(status)).toBe(message);
   });
-});
 
-describe("untestedMessage", () => {
-  // Before the first save there is nothing to test yet.
-  it("names both steps before opening", () => {
-    expect(untestedMessage()).toBe(
-      "To open registration, save the system email settings and send a test message that passes. Visitors get their sign-up link by email.",
+  it("says why paused registration takes no one and how it resumes", () => {
+    expect(statusMessage("paused")).toBe(
+      "Paused. Registration is open, but visitors can't create accounts until a test message passes with the system email settings in use.",
     );
   });
 });
 
-describe("confirmation", () => {
-  // US019 and AUTH.md: the administrator learns who can join and what it costs.
+describe("offeredAction", () => {
+  const tested: RegistrationSettings["allowedActions"] = ["open", "close"];
+  it.each([
+    ["closed", tested, "open"],
+    ["open", tested, "close"],
+    ["paused", ["close"], "close"],
+  ] as const)("offers the change from %s", (status, allowedActions, want) => {
+    expect(
+      offeredAction({ status, systemEmailTested: true, allowedActions: [...allowedActions] }),
+    ).toBe(want);
+  });
+
+  it("offers nothing the server refuses", () => {
+    // Opening waits for tested system email; the server says so, not the page.
+    expect(
+      offeredAction({ status: "closed", systemEmailTested: false, allowedActions: ["close"] }),
+    ).toBeUndefined();
+  });
+});
+
+describe("actionWords", () => {
   it("says who can join before opening", () => {
-    expect(confirmation("open")).toEqual({
-      title: "Open registration?",
-      description:
-        "Anyone who can reach this inbok can create a member account. Each member adds storage and sync work to this server.",
-      action: "Open registration",
-    });
+    expect(actionWords("open").description).toMatch(/Anyone who can reach this inbok/);
   });
 
   it("says what closing cancels and keeps", () => {
-    expect(confirmation("close")).toEqual({
-      title: "Close registration?",
-      description:
-        "Sign-up links that haven't been used stop working. Existing members keep their accounts.",
-      action: "Close registration",
-    });
-  });
-});
-
-describe("pendingMessage", () => {
-  it.each([
-    ["open", "Opening registration..."],
-    ["close", "Closing registration..."],
-  ] as const)("says %s is saving", (change, message) => {
-    expect(pendingMessage(change)).toBe(message);
-  });
-});
-
-describe("savedMessage", () => {
-  it.each([
-    ["open", "Registration opened."],
-    ["close", "Registration closed."],
-  ] as const)("announces %s", (change, message) => {
-    expect(savedMessage(change)).toBe(message);
+    expect(actionWords("close").description).toBe(
+      "Sign-up links that haven't been used stop working. Existing members keep their accounts.",
+    );
   });
 });
 
@@ -83,15 +62,15 @@ describe("saveErrorMessage", () => {
       },
     });
     expect(saveErrorMessage(err, "open")).toBe(
-      "Save the system email settings and send a test message that passes before opening registration.",
+      "Couldn't open registration. Save the system email settings and send a test message that passes before opening registration.",
     );
   });
 
   it.each([
-    ["open", "We couldn't confirm whether registration was opened. Try again."],
-    ["close", "We couldn't confirm whether registration was closed. Try again."],
-  ] as const)("offers another try when %s is uncertain", (change, message) => {
-    expect(saveErrorMessage(new ApiError("network", { method: "PUT" }), change)).toBe(message);
+    ["open", "Couldn't confirm whether registration was opened. Trying again is safe."],
+    ["close", "Couldn't confirm whether registration was closed. Trying again is safe."],
+  ] as const)("offers another try when %s is uncertain", (action, message) => {
+    expect(saveErrorMessage(new ApiError("network", { method: "PUT" }), action)).toBe(message);
   });
 
   it("keeps the server's explanation of an uncertain save", () => {
@@ -101,7 +80,7 @@ describe("saveErrorMessage", () => {
       problem: { detail: "Something failed." },
     });
     expect(saveErrorMessage(err, "close")).toBe(
-      "Something failed. We couldn't confirm whether registration was closed. Try again.",
+      "Something failed. Couldn't confirm whether registration was closed. Trying again is safe.",
     );
   });
 });

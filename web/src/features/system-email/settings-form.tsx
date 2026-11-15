@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode
 import { revalidateLogic, useSelector } from "@tanstack/react-form";
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import {
+  getGetRegistrationSettingsQueryKey,
   getGetSystemEmailQueryKey,
   getSendSystemEmailTestMessageMutationKey,
   useSaveSystemEmail,
@@ -90,6 +91,10 @@ export function SettingsForm({
         onWrite();
         void client.invalidateQueries({ queryKey: getGetSystemEmailQueryKey() });
       },
+      // A save clears the tested time, which pauses an open registration, so
+      // Registration reads its status again before it next draws.
+      onSettled: () =>
+        void client.invalidateQueries({ queryKey: getGetRegistrationSettingsQueryKey() }),
     },
   });
   const request = useFormRequest(save, settingsFields);

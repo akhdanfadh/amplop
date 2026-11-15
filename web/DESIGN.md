@@ -679,6 +679,11 @@ pull-to-refresh, which would reload the app, never starts.
   member sees, never sent to recipients, unlike Gmail's sender name; it
   shows in mail instead of the address, and an empty one goes back to the
   address. Saving keeps focus in the field and says "Saved".
+- A setting with one change at a time, e.g. Registration, states what it is
+  in a sentence (and a badge beside the title) and offers one button for
+  the change that fits, e.g. Open registration or Close registration. A
+  change the server does not allow now has no button; a sentence says why
+  and a link leads to the fix, e.g. "Go to System email".
 - A QR code for a phone app also links its address (e.g. "Add to
   authenticator app", `otpauth://`) on a narrow page or a touch pointer: a
   phone cannot scan its own screen.
@@ -807,7 +812,15 @@ outcome.
 - **Irreversible actions** (disconnect, deactivate, discard typed text)
   ask first in an `AlertDialog`: the title asks, the body states the
   consequence and what is kept, the buttons name the actions ("Disconnect
-  Studio"), focus starts on the safe one. One that already asks for a code
+  Studio"), focus starts on the safe one. The dialog holds the change until
+  the server answers (`ConfirmDialog`): its button turns and says what is
+  happening ("Opening..."), Cancel and Escape wait, it closes on success,
+  and a failure or a lost answer shows inside it, where pressing again
+  retries. Focus then returns to the button that opened it, or, when the
+  change removed that button, to what took its place. Registration does
+  this; Disconnect on Connected accounts, the sign-outs on Security, Send
+  again, and cancelling two-factor setup still close at once and report on
+  the page (Not now). One that already asks for a code
   or a password, e.g. turning off two-factor authentication, confirms with
   it on the page instead: the red button opens the field, the consequence
   sits above it, the submit is red (`SubmitButton variant="destructive"`),
@@ -859,17 +872,19 @@ One `badge`, a soft tint, always an icon and a word: `StatusBadge`
 (`src/components/status-badge.tsx`) takes the tone, the icon, and the word.
 The tone says what the status asks of the member:
 
-| Tone        | Asks         | Used for                                                                                   |
-| ----------- | ------------ | ------------------------------------------------------------------------------------------ |
-| Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser |
-| Info        | To wait      | Sending, Syncing (spinner)                                                                 |
-| Success     | Nothing more | Sent, Up to date, Active, Verified, Two-factor on, Tested                                  |
-| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect, Not set up                                   |
-| Destructive | A fix        | Not sent, Sync failed                                                                      |
+| Tone        | Asks         | Used for                                                                                                 |
+| ----------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser, Open, Closed |
+| Info        | To wait      | Sending, Syncing (spinner)                                                                               |
+| Success     | Nothing more | Sent, Up to date, Active, Verified, Two-factor on, Tested                                                |
+| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect, Not set up, Paused                                         |
+| Destructive | A fix        | Not sent, Sync failed                                                                                    |
 
-Deactivated is an admin's choice, not a fault. Up to date and Active show
-only on the page whose job is that status (Connected accounts, Members);
-elsewhere the usual state shows nothing.
+Deactivated, Open, and Closed are an admin's choice, not a fault, so
+neutral; Paused (registration opened, but system email untested) asks for
+a look. Up to date and Active show only on the page whose job is that
+status (Connected accounts, Members); elsewhere the usual state shows
+nothing.
 Admin and the Members table's Verified column wait for the settings pages'
 redesign (`feat/design-forms`); Two-factor on shows on Security and the
 two-factor page. Tested, Not confirmed, and Not set up show beside System
@@ -981,11 +996,12 @@ reading-pane position settings, sender pictures (BIMI logos after DMARC,
 contact photos), merging one email received by two accounts, swipe
 gestures, drafts beyond the tab, an installable app with offline mail,
 per-member theme storage, folds kept across devices (per member, on the
-server). Pull-to-refresh and a top bar that hides while scrolling down:
-Check for new mail is one tap in the top bar, both gestures need
-hand-written touch handling over the Virtualizer's scrolling box that
-only a real phone can check, and a native app gets both from its platform
-(ADR031, branch 3 checkpoint 5).
+server), the remaining confirmations holding their change in the dialog
+(`ConfirmDialog`) as Registration does. Pull-to-refresh and a top bar
+that hides while scrolling down: Check for new mail is one tap in the top
+bar, both gestures need hand-written touch handling over the
+Virtualizer's scrolling box that only a real phone can check, and a
+native app gets both from its platform (ADR031, branch 3 checkpoint 5).
 
 App keyboard shortcuts, once built, go on TanStack Hotkeys (`useHotkey`,
 its `Mod` key, and its display formatter), which then also takes the

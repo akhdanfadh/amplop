@@ -120,8 +120,8 @@ Put shared code in the folder for its responsibility:
   and the test message form and its result wording.
 - `src/features/members`: the member list's columns and cells, the table
   with its confirmation dialog, and its wording.
-- `src/features/registration`: the Registration page's section, the
-  `/register` and `/register/complete` forms, and their wording.
+- `src/features/registration`: the Registration page's section and badge,
+  the `/register` and `/register/complete` forms, and their wording.
 - `src/features/password-reset`: the `/forgot-password` and
   `/reset-password` forms, the reset form's schema, and their wording.
 - `src/features/connected-accounts`: the Connected accounts list with its
@@ -209,15 +209,16 @@ after the guard ran, e.g. from another tab. The router counts a session
 read in the last 5 s as fresh (`sessionFreshMs`), so a page that opens
 just after a guard read it does not read it again.
 
-A page whose data it cannot draw without, e.g. System email, reads it in
-its route's loader, made by `signedInLoader`
+A page whose data it cannot draw without, e.g. System email or
+Registration, reads it in its route's loader, made by `signedInLoader`
 (`src/features/auth/session-end.ts`) over `loadSignedIn`, so the router's
 loading and failure views below cover it. The loader reads with
 `staleTime: Infinity`, a cached read until something marks it out of date,
-and runs with `staleReloadMode: "blocking"`, so a visit back waits for that
-reread instead of showing the page as it was. The page's own query counts
-what the loader read in the last 5 s as fresh (`loadedFreshMs`), so it does
-not read it again as it opens, and rereads older data then. A 401 there
+e.g. a System email save marks Registration's, and runs with
+`staleReloadMode: "blocking"`, so a visit back waits for that reread
+instead of showing the page as it was. The page's own query counts what
+the loader read in the last 5 s as fresh (`loadedFreshMs`), so it does not
+read it again as it opens, and rereads older data then. A 401 there
 clears the account cache and opens sign-in, which returns to the page
 afterwards; once the page has drawn, `useSessionEnd` does the same for a
 read or a write that gets one, without asking to leave unsaved typing,
@@ -517,10 +518,8 @@ Administrators with confirmed TOTP see "This inbok" in the settings
 sidebar: Members, Registration, and System email (`/settings/members`,
 `/settings/registration`, `/settings/system-email`). An administrator
 without it never reaches settings: `_app` sends them to
-`/two-factor-setup`. If access is lost after a page loaded, the page says
-the settings are for administrators with two-factor authentication, with a link to Security for
-an administrator. A 401 from a save or test signs out; a 403 reads access
-again.
+`/two-factor-setup`. A 401 on these pages opens sign-in, which comes back;
+a 403 is an ordinary failure (above).
 
 System email configures the server inbok sends its own mail through. It
 shows the saved settings as a summary with "Edit settings"; the form opens
@@ -531,24 +530,26 @@ save whose answer is lost keeps the form open and asks to save again: a
 save replaces the settings whole, so repeating it is safe. "Save and send
 test" saves, then sends a test. The username and password inputs carry
 password-manager opt-outs, so the inbok sign-in is neither filled in nor
-saved there.
+saved there. A save or a test also marks Registration's status out of date,
+since either can pause or resume it.
 
 Its test section sends to the signed-in address by default and words each
 failure by the step that failed. A lost result can be sent again without a
 check. Editing the recipient or a later save hides an earlier result. A save
 and a test never run at the same time.
 
-The Registration page opens and closes public registration with a switch,
-which shows the status the server saved, not the click. Each change asks
-first: opening says anyone who can reach this inbok can create a member
+The Registration page says whether visitors can create accounts, as a
+sentence and a badge beside the title (Open, Closed, Paused), and offers
+one button for the change that fits: Open registration or Close
+registration. The server lists the changes it allows now
+(`allowedActions`), and the page offers only those: until the system email
+settings in use pass a test, there is no Open, but a note says why and
+"Go to System email" leads there. An open registration whose settings no
+longer have a passing test reads Paused, with Close and the same link. Each
+change asks first in a `ConfirmDialog`, which holds it until the server
+answers: opening says anyone who can reach this inbok can create a member
 account, and each adds storage and sync work; closing says unused sign-up
-links stop working. Until the system email settings in use pass a test,
-opening is blocked: the switch stays focusable but read-only, with a note:
-save the settings, then send a test that passes. An open registration whose
-settings no longer have a passing test reads paused until one passes. The
-section reads its status again after every save that keeps access and
-whenever the settings' tested time changes, and says so when a lost response
-leaves the status unknown.
+links stop working. Every outcome rereads the status.
 
 Members lists every account, oldest first, in a table: the address, with
 the signed-in one marked "You", its status, active or deactivated with the
@@ -563,7 +564,7 @@ updates from the server's answer at once, and every outcome rereads the
 list. A failed reread keeps the list with "Could not reload members, so
 the list may be out of date." and Try again. An unknown outcome asks the
 user to check the list before trying again; a 404 or 409 shows the
-server's explanation. Like the other "This inbok" pages, it says it is for
+server's explanation. Unlike the other "This inbok" pages, it says it is for
 administrators with two-factor authentication when access is lost after it
 loaded, a 401 signs out, and a 403 reads access again.
 
@@ -1025,10 +1026,12 @@ pnpm fix
 After adding one, read it: some aria-nova files lag React Aria. Ours differ
 from the registry here:
 
-- `checkbox`, `switch`, `radio-group`: built on React Aria's
-  `CheckboxField`/`CheckboxButton` (and the Switch and Radio pairs), which
-  replace the deprecated `Checkbox`, `Switch`, and `Radio`. The label is
-  the component's children.
+- `checkbox`, `radio-group`: built on React Aria's
+  `CheckboxField`/`CheckboxButton` (and the Radio pair), which replace the
+  deprecated `Checkbox` and `Radio`. The label is the component's children.
+  `switch`, built the same way, left with its last caller (Registration's
+  old switch); its first new caller restores it from git history
+  (`web/src/components/ui/switch.tsx` at d3cf22bd).
 - `alert-dialog`: one `AlertDialog` holds the overlay and the dialog (no
   `AlertDialogContent`); `AlertDialogDescription` is React Aria's
   description slot, so the dialog is described by it; Cancel takes focus.
@@ -1105,23 +1108,29 @@ from the registry here:
   theme, a popover's outline) gets a `forced-colors:` variant that keeps
   it in Windows' contrast themes, which drop both.
 
-React Aria components take React Aria props: `isDisabled`, not
-`disabled`; `onPress`, not `onClick`; `isSelected` and `onChange` on a
-checkbox or switch. A disabled button leaves the tab order, so the button
-that opened a confirmation gets `isPending` while the write it started
-runs: it keeps focus, so focus has a place when the dialog closes, and
-ignores presses. Its label says what is running, e.g. "Disconnecting...":
-React Aria announces the label, not a busy state ([Button,
-Pending](https://react-aria.adobe.com/Button#pending)). Other buttons the
-write blocks get `isDisabled`. Any other button that runs its own request
-(form submits, Try again) still uses `isDisabled` until
-the forms branch moves them to one pending pattern.
+React Aria components take React Aria props: `isDisabled`, not `disabled`;
+`onPress`, not `onClick`; `isSelected` and `onChange` on a checkbox or
+switch. A disabled button leaves the tab order, so on a page whose
+confirmation closes at once (all but Registration, which uses
+`ConfirmDialog` below), the button that opened it gets `isPending` while the
+write it started runs: it keeps focus, so focus has a place when the dialog
+closes, and ignores presses. Its label says what is running, e.g.
+"Disconnecting...": React Aria announces the label, not a busy state
+([Button, Pending](https://react-aria.adobe.com/Button#pending)). Other
+buttons the write blocks get `isDisabled`. Any other button that runs its
+own request (form submits, Try again) still uses `isDisabled` until the
+forms branch moves them to one pending pattern.
 
 `AlertDialogAction`, the confirming button of a dialog that asks first,
 ignores a mouse or touch press that starts within 500 ms of the dialog
 opening: a dialog can open with that button under the pointer, and the
 second click of a double-click would confirm what the member never read.
-Enter and Space still confirm at once.
+Enter and Space still confirm at once. With `closes="by-caller"` it leaves
+closing to the page: `ConfirmDialog` (`src/components/confirm-dialog.tsx`)
+keeps the dialog open while its request runs, with Cancel and Escape
+waiting, closes it on success, and shows a failure inside it, where
+pressing again retries. When the change removed the button that opened
+the dialog, `fallbackFocus` says where focus goes.
 
 The theme is light, dark, or the system's, kept per browser in
 `localStorage` by `src/lib/theme.ts`; `useTheme` from `src/hooks` reads

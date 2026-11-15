@@ -126,6 +126,34 @@ describe("AlertDialog", () => {
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 
+  it("leaves closing to the caller when asked", async () => {
+    const onConfirm = vi.fn<() => void>();
+    function Held() {
+      const [open, setOpen] = useState(true);
+      return (
+        <AlertDialog isOpen={open} onOpenChange={setOpen}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect Studio?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction closes="by-caller" onPress={onConfirm}>
+              Disconnect Studio
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialog>
+      );
+    }
+    await render(<Held />);
+    await userEvent.keyboard("{Tab}{Enter}");
+
+    expect(onConfirm).toHaveBeenCalledOnce();
+    // Still open past its closing animation: the caller closes it, e.g. once
+    // the change it confirms is saved.
+    await new Promise((done) => setTimeout(done, 400));
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+  });
+
   it("cancels on Escape", async () => {
     const onConfirm = vi.fn<() => void>();
     await render(<Confirm onConfirm={onConfirm} />);
