@@ -1,5 +1,6 @@
 import { useCallback, useEffect, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { eq, useLiveQuery } from "@tanstack/react-db";
 import { ArrowLeftIcon } from "lucide-react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { getGetConversationQueryOptions, useListConnectedAccounts } from "@/api/generated/inbok";
@@ -26,8 +27,8 @@ const notFoundStatus = 404;
 
 // Reader is the reading pane's conversation, shown by the conversation
 // view (features/messages). It draws the subject and account from the
-// list's row at once, keeps them when a read fails, and names the tab
-// after the subject.
+// conversation's row at once, keeps them when a read fails, and names the
+// tab after the subject.
 //
 // back is its list, which a phone, showing one pane at a time, returns to
 // with Back in the view's toolbar. A conversation that does not exist,
@@ -46,7 +47,12 @@ export function Reader({
   const router = useRouter();
   const accounts = useListConnectedAccounts();
   const phone = useLayout() === "phone";
-  const read = useQuery(getGetConversationQueryOptions(conversationId));
+  // Read again with the lists, by inbok's timer, the tab showing again, or
+  // the connection coming back (refreshNewest), not on focus too.
+  const read = useQuery({
+    ...getGetConversationQueryOptions(conversationId),
+    refetchOnWindowFocus: false,
+  });
   const expired = read.error?.status === unauthorized;
   // signOut opens sign-in once a read finds the session gone.
   const signOut = useCallback(() => {
@@ -59,11 +65,22 @@ export function Reader({
   }, [expired, signOut]);
 
   const detail = read.data?.data;
-  // The list's row, read here rather than as the query's placeholder,
-  // which the query drops once a read fails: the frame then stays, with
-  // the failure and Try again under the title.
-  const conversation =
-    detail?.conversation ?? currentMail(client)?.conversations.get(conversationId);
+  const mail = currentMail(client);
+  // The conversation's row in the mail collection, which an action
+  // anywhere changes at once: the list's, or loaded by ID (ADR031). Read
+  // here rather than as the query's placeholder, which the query drops
+  // once a read fails: the frame then stays, with the failure and Try
+  // again under the title.
+  const { data: row } = useLiveQuery({
+    query: (q) =>
+      mail
+        ? q
+            .from({ c: mail.conversations })
+            .where(({ c }) => eq(c.id, conversationId))
+            .findOne()
+        : undefined,
+  });
+  const conversation = row ?? detail?.conversation;
   const account = accounts.data?.data.accounts.find((a) => a.id === conversation?.accountId);
   // Back returns to the list the member came from, as the phone's own back
   // does, so it adds no history; a conversation opened from a link goes to

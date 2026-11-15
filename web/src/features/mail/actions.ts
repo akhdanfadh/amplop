@@ -1,6 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createOptimisticAction } from "@tanstack/db";
-import { applyConversationAction, getListPlacesQueryKey } from "@/api/generated/inbok";
+import {
+  applyConversationAction,
+  getGetConversationQueryKey,
+  getListPlacesQueryKey,
+} from "@/api/generated/inbok";
 import type { ConversationActionResultOutput } from "@/api/generated/model/conversationActionResult.zod";
 import type { ResponsePlacesOutput } from "@/api/generated/model/responsePlaces.zod";
 import {
@@ -197,14 +201,16 @@ const pending = new WeakMap<Conversations, Map<string, Promise<unknown>>>();
 // runAction applies request, an action, to its conversations in mail:
 // every list and unread count shows it at once, and the API's answer
 // settles it. It returns the answer, whose refused rows are back as they
-// were, and throws, every row back, when the request fails. A request
-// still waiting when mail ends is never sent: it throws MailEnded.
+// were, and throws, every row back, when the request fails. Once it
+// settles, an open conversation's messages are read again, for their own
+// flags, while mail is current. A request still waiting when mail ends is
+// never sent: it throws MailEnded.
 //
 // DESIGN: a conversation's requests reach the API one after another, each
 // once the one before is answered, so a quick star and unstar end as the
 // member left them; each guess still shows at once.
 export async function runAction(mail: ActionMail, request: Request): Promise<ActionResult> {
-  const { conversations } = mail;
+  const { client, conversations } = mail;
   const { ids } = request;
   let queue = pending.get(conversations);
   if (!queue) {
@@ -217,7 +223,12 @@ export async function runAction(mail: ActionMail, request: Request): Promise<Act
   try {
     return await run;
   } finally {
-    for (const id of ids) if (queue.get(id) === run) queue.delete(id);
+    const reading = isCurrent(mail);
+    for (const id of ids) {
+      if (queue.get(id) === run) queue.delete(id);
+      // Only a conversation open in the reading pane is read now.
+      if (reading) void client.invalidateQueries({ queryKey: getGetConversationQueryKey(id) });
+    }
   }
 }
 

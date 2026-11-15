@@ -723,6 +723,14 @@ gate"):
   agree. The counts change at once, in the action's transaction; the
   answer's counts go into List Places' query cache, after cancelling a
   read of them in flight, which that cache would let land over them.
+- The reading pane reads its row by ID (`eq(id)`): the list's, or loaded
+  from Get Conversation through the shared query cache, which joins the
+  pane's own read, so a link costs no extra request. That load holds the
+  row while the pane is open, after its list drops it. A failed load gives
+  no row, never the collection's error, which every list would show. It is
+  read again with each list's newest page, every 30 s, when the tab shows
+  again, and back online, so a row the pane holds after its list let it
+  go is as current as the list.
 
 ## Wording
 

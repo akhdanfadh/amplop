@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { IR } from "@tanstack/db";
-import { parseScope } from "./conversations";
+import { idOf, parseScope } from "./conversations";
 
 const ref = (name: string) => new IR.PropRef([name]);
 const value = (v: unknown) => new IR.Value(v);
@@ -63,5 +63,25 @@ describe("parseScope", () => {
     expect(() => parseScope({ where: call("eq", ref("starred"), value(true)) })).toThrow(
       "No single place in a load.",
     );
+  });
+});
+
+describe("idOf", () => {
+  it("reads the reading pane's load of one conversation", () => {
+    expect(idOf({ where: call("eq", ref("id"), value("conversation-id")) })).toBe(
+      "conversation-id",
+    );
+  });
+
+  it("is undefined for a list's load", () => {
+    expect(idOf({ where: call("eq", ref("inbox"), value(true)) })).toBeUndefined();
+    expect(idOf({ where: call("in", value("label-id"), ref("labelIds")) })).toBeUndefined();
+    const where = call(
+      "and",
+      call("eq", ref("id"), value("conversation-id")),
+      call("eq", ref("inbox"), value(true)),
+    );
+    expect(idOf({ where })).toBeUndefined();
+    expect(idOf({})).toBeUndefined();
   });
 });

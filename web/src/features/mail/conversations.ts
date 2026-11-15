@@ -8,6 +8,7 @@ import {
 } from "@tanstack/db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
 import {
+  getGetConversationQueryOptions,
   getListConnectedAccountsQueryKey,
   getListPlacesQueryKey,
   listConversations,
@@ -17,6 +18,7 @@ import type { PlaceCountOutput } from "@/api/generated/model/placeCount.zod";
 import type { ResponsePlacesOutput } from "@/api/generated/model/responsePlaces.zod";
 import type { ConversationRowOutput } from "@/api/generated/model/conversationRow.zod";
 import { listConversationsParamsLimitMax } from "@/api/generated/model/listConversationsParams.zod";
+import { ApiError } from "@/api/transport";
 import { onAccountCacheClear } from "@/features/auth/session-cache";
 import { viewPlaces, type Place } from "./places";
 import { viewFlags, type Flag } from "./rules";
@@ -33,6 +35,8 @@ export type Conversation = ConversationRowOutput & { dateMs: number };
 export function toConversation(row: ConversationRowOutput): Conversation {
   return { ...row, dateMs: Date.parse(row.date) };
 }
+
+const notFound = 404;
 
 // The flags the views filter on.
 const viewFlagNames = new Set<string>(Object.values(viewFlags).flat());
@@ -262,6 +266,47 @@ function outside(conversation: Conversation, scope: Scope): boolean {
   return conversation.dateMs < dateMs || (!inclusive && conversation.dateMs === dateMs);
 }
 
+// idOf returns the conversation ID a load asks for alone, as the reading
+// pane's query by ID writes it, or undefined for any other load.
+export function idOf(options: LoadSubsetOptions): string | undefined {
+  if (options.cursor) return undefined;
+  const id = parseWhereExpression<string | null>(options.where, {
+    handlers: {
+      eq: (field: string[], value: unknown) =>
+        field.join(".") === "id" && typeof value === "string" ? value : null,
+    },
+    onUnknownOperator: () => null,
+  });
+  return id ?? undefined;
+}
+
+// loadOne returns conversation id as Get Conversation reads it through
+// client's cache, so the reading pane's own read of its messages serves;
+// none once the API says it is gone, and held, the collection's confirmed
+// row, if any, when it cannot be read.
+//
+// DESIGN: a fetch, not the cache's last answer: an answer read minutes
+// ago, e.g. as the member's pointer rested on the row, would overwrite the
+// list's newer row. Joining the route's read while it is still in flight,
+// it costs no request. A load's rows are the whole of its subset, and one
+// with none gives the row up, which removes it unless a list holds it
+// too, e.g. a conversation opened from a link: so a failed read keeps the
+// row, rather than giving the collection the error, which every list on
+// it would show; the pane says why from its own read, with Try again.
+async function loadOne(
+  client: QueryClient,
+  id: string,
+  held: Conversation | undefined,
+): Promise<Conversation[]> {
+  try {
+    const detail = await client.query(getGetConversationQueryOptions(id));
+    return [toConversation(detail.data.conversation)];
+  } catch (err) {
+    if (err instanceof ApiError && err.status === notFound) return [];
+    return held ? [held] : [];
+  }
+}
+
 // WholePlaceRefused is the error of a load that asked for a whole place,
 // which loadConversations refuses.
 export class WholePlaceRefused extends Error {
@@ -302,6 +347,8 @@ export function placeKey(accountId: number, place: string): string {
 // open list's newest page (ADR031, TanStack DB gate, rule 2).
 function createConversations(client: QueryClient, id: string) {
   const ties = new Map<string, Ties>();
+  // Reads the collection's confirmed row by ID, once it exists.
+  const rows: { held?: (id: string) => Conversation | undefined } = {};
   const conversations = createCollection(
     queryCollectionOptions<Conversation>({
       id,
@@ -317,12 +364,21 @@ function createConversations(client: QueryClient, id: string) {
       refetchOnReconnect: false,
       staleTime: 0,
       queryFn: async ({ meta, signal }) => {
-        const options = (meta as { loadSubsetOptions?: LoadSubsetOptions } | undefined)
-          ?.loadSubsetOptions;
-        return loadConversations(options ?? {}, ties, signal);
+        const options =
+          (meta as { loadSubsetOptions?: LoadSubsetOptions } | undefined)?.loadSubsetOptions ?? {};
+        // The reading pane's row, which no list may own, e.g. from a link.
+        const conversationId = idOf(options);
+        if (conversationId !== undefined) {
+          return loadOne(client, conversationId, rows.held?.(conversationId));
+        }
+        return loadConversations(options, ties, signal);
       },
     }),
   );
+  // The synced row, without an action's guess: a guess loaded as the
+  // subset's row would become synced, and the action's refusal could not
+  // put the row back.
+  rows.held = (key) => conversations.base.get(key);
   conversations.createIndex((conversation) => conversation.dateMs);
   return conversations;
 }
@@ -421,17 +477,24 @@ export async function refreshMail(client: QueryClient): Promise<void> {
   ]);
 }
 
-// refreshNewest reads the newest page of each list open on client again,
-// and settles when they have; older pages stay as they are.
+// refreshNewest reads again, on client, the newest page of each list open
+// and the conversation open in the reading pane, with its messages, and
+// settles when they have; older pages stay as they are.
+//
+// DESIGN: the open conversation with the lists, so a row the pane holds
+// after its list let it go is as current as the list (ADR031, "Mail
+// actions as built", checkpoint 7b).
 export async function refreshNewest(client: QueryClient): Promise<void> {
   await client.refetchQueries({
     queryKey: conversationsKey,
     type: "active",
-    // A list's newest page: a load with a limit, from the newest.
     predicate: (query) => {
       const options = (query.meta as { loadSubsetOptions?: LoadSubsetOptions } | undefined)
         ?.loadSubsetOptions;
-      return !!options && !options.cursor && !options.offset && options.limit !== undefined;
+      if (!options) return false;
+      // A list's newest page: a load with a limit, from the newest.
+      const newest = !options.cursor && !options.offset && options.limit !== undefined;
+      return newest || idOf(options) !== undefined;
     },
   });
 }

@@ -837,7 +837,8 @@ the frame stays while the messages load or a read fails, with Try again
 under the title. It names the tab, shows Page not found only while
 nothing is shown (a 404 on a later read leaves a reply being typed in
 place), says when the accounts could not be read, and opens sign-in for
-an ended session.
+an ended session. It reads the conversation's row by ID from the mail
+collection, so an action anywhere shows at once.
 
 ## Checks and tests
 
@@ -1236,7 +1237,11 @@ rows and counts the API answers with; a conversation the API refuses, or
 every one when the request fails, goes back as it was, and the caller
 says why. Actions in flight at once keep none of their answers' counts,
 which each hold the whole of List Places at their own moment; the last
-to settle reads them again. The package ships agent
+to settle reads them again. The reading pane reads its row from the same
+collection by ID, loaded from Get Conversation when no list holds it, so
+an action anywhere shows there at once; a failed read of it keeps the
+row as last confirmed, without an action's guess, and only a 404 lets it
+go. The package ships agent
 guides for its installed version in `node_modules/@tanstack/db/skills`.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:
