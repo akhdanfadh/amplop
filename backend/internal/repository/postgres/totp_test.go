@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net/netip"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -33,6 +36,13 @@ func saveFactor(ctx context.Context, db *DB, userID int64, factor totp.Factor) e
 	})
 }
 
+// acceptPasswords is a password check that accepts every password.
+type acceptPasswords struct{}
+
+func (acceptPasswords) VerifyPassword(context.Context, account.User, string, netip.Addr) error {
+	return nil
+}
+
 // readWaitingCodes returns userID's waiting backup-code set, nil when none.
 func readWaitingCodes(t *testing.T, conn *pgx.Conn, userID int64) *totp.Waiting {
 	t.Helper()
@@ -41,10 +51,12 @@ func readWaitingCodes(t *testing.T, conn *pgx.Conn, userID int64) *totp.Waiting 
 	return waiting
 }
 
-// newTOTPService is the enrollment service on db at clock.
+// newTOTPService is the enrollment service on db at clock, accepting every
+// password.
 func newTOTPService(t *testing.T, db *DB, clock func() time.Time) *totp.Service {
 	t.Helper()
-	return totp.NewService(db, testKeyring(t), clock)
+	throttle := totp.NewThrottle(db, clock, slog.New(slog.DiscardHandler))
+	return totp.NewService(db, testKeyring(t), acceptPasswords{}, totp.NewVerifier(clock), throttle, clock)
 }
 
 func TestTOTPEnrollmentStorage(t *testing.T) {
@@ -53,12 +65,15 @@ func TestTOTPEnrollmentStorage(t *testing.T) {
 	require.NoError(t, conn.QueryRow(t.Context(), "INSERT INTO users (email, password_hash, role) VALUES ('alice@example.com', 'unused', 'member') RETURNING id").Scan(&id))
 	require.Positive(t, id)
 	ring := testKeyring(t)
-	service := newTOTPService(t, db, time.Now)
+	now := time.Unix(1_000_000, 0).UTC()
+	clock := func() time.Time { return now }
+	service := newTOTPService(t, db, clock)
+	alice := account.User{ID: id, Email: "alice@example.com"}
 	status, err := service.Status(t.Context(), id)
 	require.NoError(t, err)
 	assert.Equal(t, totp.StateOff, status.State)
 
-	first, err := service.Start(t.Context(), account.User{ID: id, Email: "alice@example.com"})
+	first, err := service.Start(t.Context(), alice)
 	require.NoError(t, err)
 	factor, err := db.ReadTOTP(t.Context(), id)
 	require.NoError(t, err)
@@ -69,19 +84,25 @@ func TestTOTPEnrollmentStorage(t *testing.T) {
 	assert.Equal(t, first.Secret, string(opened))
 	assert.Nil(t, factor.ConfirmedAt)
 	assert.Equal(t, int64(-1), factor.LastStep)
+	assert.True(t, now.Equal(factor.StartedAt))
 	status, err = service.Status(t.Context(), id)
 	require.NoError(t, err)
-	assert.Equal(t, totp.StatePending, status.State)
+	assert.Equal(t, totp.Status{State: totp.StatePending}, status)
 
-	second, err := service.Start(t.Context(), account.User{ID: id, Email: "alice@example.com"})
+	// An unfinished enrollment expires after 15 minutes; starting again
+	// replaces it.
+	now = now.Add(15 * time.Minute)
+	status, err = service.Status(t.Context(), id)
 	require.NoError(t, err)
-	assert.NotEqual(t, first.Secret, second.Secret)
+	assert.Equal(t, totp.StateExpired, status.State)
+	third, err := service.Start(t.Context(), alice)
+	require.NoError(t, err)
+	assert.NotEqual(t, first.Secret, third.Secret)
 	factor, err = db.ReadTOTP(t.Context(), id)
 	require.NoError(t, err)
-	require.NotNil(t, factor)
 	opened, err = ring.Open(factor.KeyID, factor.Ciphertext, "totp:"+fmt.Sprint(id))
 	require.NoError(t, err)
-	assert.Equal(t, second.Secret, string(opened))
+	assert.Equal(t, third.Secret, string(opened))
 
 	// A callback error rolls back a replacement.
 	rejected := errors.New("replacement rejected")
@@ -91,10 +112,9 @@ func TestTOTPEnrollmentStorage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, factor, unchanged)
 
-	// The storage schema supports confirmation, but no HTTP operation activates it yet.
 	_, err = conn.Exec(t.Context(), "UPDATE user_totp SET confirmed_at = now(), last_step = 12 WHERE user_id = $1", id)
 	require.NoError(t, err)
-	result, err := service.Start(t.Context(), account.User{ID: id, Email: "alice@example.com"})
+	result, err := service.Start(t.Context(), alice)
 	require.ErrorIs(t, err, totp.ErrAlreadyOn)
 	assert.Empty(t, result)
 	factor, err = db.ReadTOTP(t.Context(), id)
@@ -104,12 +124,56 @@ func TestTOTPEnrollmentStorage(t *testing.T) {
 	assert.Equal(t, int64(12), factor.LastStep)
 }
 
+func TestTOTPWaitingCodesStorage(t *testing.T) {
+	db, conn := setupStorage(t)
+	alice := account.User{Email: "alice@example.com"}
+	require.NoError(t, conn.QueryRow(t.Context(), "INSERT INTO users (email, password_hash, role) VALUES ($1, 'unused', 'member') RETURNING id", alice.Email).Scan(&alice.ID))
+	ring := testKeyring(t)
+	now := time.Unix(59, 0).UTC()
+	clock := func() time.Time { return now }
+	service := newTOTPService(t, db, clock)
+	keyID, ciphertext, err := ring.Seal([]byte(confirmationSecret), "totp:"+fmt.Sprint(alice.ID))
+	require.NoError(t, err)
+	require.NoError(t, saveFactor(t.Context(), db, alice.ID, totp.Factor{KeyID: keyID, Ciphertext: ciphertext, LastStep: -1, StartedAt: now}))
+
+	codes, err := service.VerifyCode(t.Context(), alice.ID, "287082")
+	require.NoError(t, err)
+
+	waiting := readWaitingCodes(t, conn, alice.ID)
+	require.NotNil(t, waiting)
+	require.Len(t, waiting.Hashes, 10)
+	for i, code := range codes.Codes {
+		require.NoError(t, totp.VerifyBackupCode(t.Context(), code, waiting.Hashes[i]))
+	}
+	copied, err := ring.Open(waiting.KeyID, waiting.Ciphertext, "totp-backup-codes:"+fmt.Sprint(alice.ID))
+	require.NoError(t, err)
+	assert.Equal(t, strings.Join(codes.Codes, "\n"), string(copied))
+	assert.True(t, now.Add(15*time.Minute).Equal(waiting.ExpiresAt))
+	require.NoError(t, totp.VerifyWaiting(waiting, codes.Token, now))
+	status, err := service.Status(t.Context(), alice.ID)
+	require.NoError(t, err)
+	assert.Equal(t, totp.Status{State: totp.StatePending, BackupCodesWaiting: true}, status)
+
+	// Showing the codes again keeps them and replaces the token.
+	again, err := service.ShowWaiting(t.Context(), alice, "password", netip.MustParseAddr("192.0.2.1"))
+	require.NoError(t, err)
+	assert.Equal(t, codes.Codes, again.Codes)
+	shown := readWaitingCodes(t, conn, alice.ID)
+	require.ErrorIs(t, totp.VerifyWaiting(shown, codes.Token, now), totp.ErrNotWaiting)
+	require.NoError(t, totp.VerifyWaiting(shown, again.Token, now))
+	assert.Equal(t, waiting.Hashes, shown.Hashes)
+
+	// Cancelling removes the waiting codes with the enrollment.
+	require.NoError(t, service.Cancel(t.Context(), alice.ID))
+	assert.Nil(t, readWaitingCodes(t, conn, alice.ID))
+}
+
 func TestTOTPWaitingCodesBelongToTheirUser(t *testing.T) {
 	db, conn := setupStorage(t)
 	alice := backupCodeUser(t, conn, "alice@example.com")
 	bob := backupCodeUser(t, conn, "bob@example.com")
 	now := time.Now().UTC()
-	waiting := totp.Waiting{Hashes: []string{"hash"}, ExpiresAt: now}
+	waiting := totp.Waiting{Hashes: []string{"hash"}, KeyID: "1", Ciphertext: []byte("copy"), ExpiresAt: now}
 	require.NoError(t, db.UpdateTOTP(t.Context(), alice, func(totp.Record) (totp.Change, error) {
 		return totp.Change{WaitingWrite: totp.SaveWaiting, Waiting: &waiting}, nil
 	}))
@@ -120,6 +184,29 @@ func TestTOTPWaitingCodesBelongToTheirUser(t *testing.T) {
 		return totp.Change{WaitingWrite: totp.DeleteWaiting}, nil
 	}))
 	assert.NotNil(t, readWaitingCodes(t, conn, alice), "deleting is per user")
+}
+
+func TestTOTPWaitingCopyWhole(t *testing.T) {
+	db, conn := setupStorage(t)
+	alice := backupCodeUser(t, conn, "alice@example.com")
+	now := time.Now().UTC()
+
+	// A display copy is its key and ciphertext together, or neither.
+	half := totp.Waiting{Hashes: []string{"hash"}, KeyID: "1", ExpiresAt: now}
+	err := db.UpdateTOTP(t.Context(), alice, func(totp.Record) (totp.Change, error) {
+		return totp.Change{WaitingWrite: totp.SaveWaiting, Waiting: &half}, nil
+	})
+	require.Error(t, err)
+	assert.Nil(t, readWaitingCodes(t, conn, alice))
+
+	none := totp.Waiting{Hashes: []string{"hash"}, ExpiresAt: now}
+	require.NoError(t, db.UpdateTOTP(t.Context(), alice, func(totp.Record) (totp.Change, error) {
+		return totp.Change{WaitingWrite: totp.SaveWaiting, Waiting: &none}, nil
+	}))
+	saved := readWaitingCodes(t, conn, alice)
+	require.NotNil(t, saved)
+	assert.Empty(t, saved.KeyID)
+	assert.Empty(t, saved.Ciphertext)
 }
 
 func TestTOTPEnrollmentSerializes(t *testing.T) {

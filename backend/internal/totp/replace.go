@@ -47,7 +47,7 @@ func (s *Backups) Replace(ctx context.Context, userID int64, code string) (Codes
 	}
 
 	// 2. Make the codes before taking the owner's write lock: salted hashes
-	// are slow.
+	// are slow. They keep no display copy, so nothing can show them again.
 	set, err := newWaitingSet(ctx)
 	if err != nil {
 		// No code was verified.
@@ -78,7 +78,7 @@ func (s *Backups) Replace(ctx context.Context, userID int64, code string) (Codes
 		next := *factor
 		next.LastStep = step
 		return Change{
-			Factor: &next, WaitingWrite: SaveWaiting, Waiting: set.waiting(s.now().Add(waitingLifetime)),
+			Factor: &next, WaitingWrite: SaveWaiting, Waiting: set.waiting(s.now().Add(enrollmentLifetime)),
 			AttemptID: attemptID,
 		}, nil
 	})

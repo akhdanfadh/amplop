@@ -136,7 +136,7 @@ func newResetAccounts(t *testing.T) resetAccounts {
 	f.member = insert("member@example.com")
 	f.bystander = insert("bystander@example.com")
 	for _, statement := range []string{
-		"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at) SELECT id, '1', 'ciphertext', now() FROM users",
+		"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, started_at) SELECT id, '1', 'ciphertext', now(), now() FROM users",
 		"INSERT INTO totp_backup_codes (user_id, code_hash) SELECT id, 'backup code hash' FROM users",
 		"INSERT INTO totp_attempts (user_id, created_at) SELECT id, now() FROM users",
 		"INSERT INTO sessions (token_hash, user_id, expires_at) SELECT decode(md5(email), 'hex'), id, now() + interval '1 day' FROM users",

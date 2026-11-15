@@ -286,10 +286,12 @@ type TotpBackupCode struct {
 }
 
 type TotpWaitingBackupCode struct {
-	UserID     int64
-	CodeHashes []string
-	TokenHash  []byte
-	ExpiresAt  time.Time
+	UserID          int64
+	CodeHashes      []string
+	TokenHash       []byte
+	ExpiresAt       time.Time
+	KeyID           *string
+	CodesCiphertext []byte
 }
 
 type User struct {
@@ -306,6 +308,7 @@ type UserTotp struct {
 	UserID           int64
 	KeyID            string
 	SecretCiphertext []byte
+	StartedAt        time.Time
 	ConfirmedAt      *time.Time
 	LastStep         int64
 }

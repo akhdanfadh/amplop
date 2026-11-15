@@ -5,6 +5,7 @@ import (
 	"errors"
 	"maps"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"time"
 
@@ -22,7 +23,7 @@ const (
 
 	// A refused code's detail is also its field's message, so a form that
 	// shows only the field loses nothing. Enrollment names the new entry:
-	// an app may still hold one from an earlier setup, whose codes fail.
+	// an app may still hold one from an earlier enrollment, whose codes fail.
 	pendingTOTPCodeMessage   = "Enter the current code from the authenticator entry you just added."
 	confirmedTOTPCodeMessage = "Enter a current code from your authenticator app."
 )
@@ -30,11 +31,14 @@ const (
 type totpService interface {
 	Status(ctx context.Context, userID int64) (totp.Status, error)
 	Start(ctx context.Context, user account.User) (totp.Started, error)
+	VerifyCode(ctx context.Context, userID int64, code string) (totp.Codes, error)
+	ShowWaiting(ctx context.Context, user account.User, password string, addr netip.Addr) (totp.Codes, error)
 	Cancel(ctx context.Context, userID int64) error
 }
 
 type enrollmentService interface {
 	Confirm(ctx context.Context, current session.Authenticated, code string, device session.Device) (session.Confirmed, error)
+	Finish(ctx context.Context, current session.Authenticated, token string, device session.Device) (session.Finished, error)
 }
 
 type backupService interface {
@@ -65,6 +69,9 @@ func registerTOTP(api huma.API, service totpService, enrollment enrollmentServic
 	registerTOTPEnrollment(api, handler)
 	registerTOTPCancellation(api, handler)
 	registerTOTPConfirmation(api, handler)
+	registerTOTPCodeCheck(api, handler)
+	registerTOTPFinish(api, handler)
+	registerWaitingBackupCodes(api, handler)
 	registerBackupReplacement(api, handler)
 	registerBackupReplacementFinish(api, handler)
 	registerTOTPDisable(api, handler)
@@ -75,9 +82,9 @@ func registerTOTP(api huma.API, service totpService, enrollment enrollmentServic
 // ========================
 
 type totpStatus struct {
-	Status             totp.State `json:"status" enum:"off,pending,on"`
+	Status             totp.State `json:"status" enum:"off,pending,expired,on" doc:"pending: enrollment started; expired: an unfinished enrollment ran out of time."`
 	BackupCodesLeft    int        `json:"backupCodesLeft" minimum:"0" maximum:"10"`
-	BackupCodesWaiting bool       `json:"backupCodesWaiting" doc:"Whether new backup codes, made while replacing them, wait for Finish Backup Code Replacement."`
+	BackupCodesWaiting bool       `json:"backupCodesWaiting" doc:"Whether new backup codes wait for Finish: during enrollment after the code check, or while replacing codes."`
 }
 
 func registerTOTPStatus(api huma.API, handler totpHandler) {
@@ -111,14 +118,75 @@ func totpStatusResponses(api huma.API) map[string]*huma.Response {
 }
 
 // ========================
+// Password check
+// ========================
+
+const invalidPasswordType = problemPrefix + "invalid-password"
+
+// invalidPasswordMessage is both the detail and the field message, so a form
+// that shows only the field loses nothing.
+const invalidPasswordMessage = "Enter your current password."
+
+// passwordProof is a body carrying the account's current password.
+type passwordProof struct {
+	Password string `json:"password" writeOnly:"true" maxLength:"128" doc:"The account's current password."`
+}
+
+// passwordProofInput adds the client address the password check counts
+// attempts by.
+type passwordProofInput struct {
+	addr netip.Addr
+	Body passwordProof
+}
+
+// Resolve fills the client address for throttling using Gin's proxy rules.
+func (in *passwordProofInput) Resolve(ctx huma.Context) []error {
+	return resolveClientAddr(ctx, &in.addr)
+}
+
+// passwordProofResponses adds the password check's failures to responses.
+func passwordProofResponses(responses map[string]*huma.Response) {
+	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
+	invalid.Description = "The request inputs or the password are invalid."
+	invalid.Content[problemContentType].Examples = map[string]*huma.Example{
+		"invalidPassword": {Value: passwordProblem(account.ErrInvalidCredentials)},
+		"invalidInput":    {Value: requestProblem(http.StatusUnprocessableEntity)},
+	}
+
+	throttled := responses[strconv.Itoa(http.StatusTooManyRequests)]
+	throttled.Description = "Too many recent wrong passwords for this account from this address."
+	throttled.Content[problemContentType].Example = throttleProblem(session.ErrThrottled)
+}
+
+// passwordProblem maps the password check's failures, or returns err
+// unchanged.
+func passwordProblem(err error) error {
+	switch {
+	case errors.Is(err, account.ErrInvalidCredentials):
+		return newProblem(http.StatusUnprocessableEntity, invalidPasswordType, "Incorrect password", invalidPasswordMessage,
+			inputError{Location: "body.password", Message: invalidPasswordMessage})
+	// The account was deactivated after its session was checked.
+	case errors.Is(err, account.ErrDeactivated), errors.Is(err, account.ErrUserNotFound):
+		return unauthenticatedProblem()
+	}
+	return throttleProblem(err)
+}
+
+// ========================
 // TOTP enrollment
 // ========================
 
-const totpAlreadyOnType = problemPrefix + "totp-already-on"
+const (
+	totpAlreadyOnType         = problemPrefix + "totp-already-on"
+	totpNotPendingType        = problemPrefix + "totp-not-pending"
+	totpEnrollmentExpiredType = problemPrefix + "totp-enrollment-expired"
+	totpCodeCheckedType       = problemPrefix + "totp-code-checked"
+	notWaitingType            = problemPrefix + "backup-codes-not-waiting"
+)
 
 type totpEnrollment struct {
-	Secret string `json:"secret" doc:"Manual authenticator setup secret. Keep private."`
-	URI    string `json:"uri" doc:"Authenticator setup URI containing the secret. Keep private."`
+	Secret string `json:"secret" doc:"Manual authenticator enrollment secret. Keep private."`
+	URI    string `json:"uri" doc:"Authenticator enrollment URI containing the secret. Keep private."`
 }
 
 func registerTOTPEnrollment(api huma.API, handler totpHandler) {
@@ -128,7 +196,7 @@ func registerTOTPEnrollment(api huma.API, handler totpHandler) {
 		Path:          totpPath,
 		Summary:       "Start Two-Factor Enrollment",
 		Tags:          []string{tagTwoFactor},
-		Description:   "Starts enrollment, or restarts a pending one.",
+		Description:   "Starts an enrollment, replacing an unfinished one and any backup codes waiting for it.",
 		DefaultStatus: http.StatusCreated,
 		Metadata:      map[string]any{accessKey: session.AccessMember},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
@@ -154,15 +222,30 @@ func totpEnrollmentResponses(api huma.API) map[string]*huma.Response {
 	return responses
 }
 
+// totpEnrollmentProblem maps enrollment's expected failures, then the password
+// check's.
 func totpEnrollmentProblem(err error) error {
 	switch {
 	// The account was deleted or deactivated after its session was checked.
-	case errors.Is(err, account.ErrUserNotFound):
+	case errors.Is(err, account.ErrUserNotFound), errors.Is(err, session.ErrUnauthenticated):
 		return unauthenticatedProblem()
 	case errors.Is(err, totp.ErrAlreadyOn):
 		return newProblem(http.StatusConflict, totpAlreadyOnType, "Two-factor authentication already on", "An authenticator is already confirmed for this account.")
+	case errors.Is(err, totp.ErrNotPending):
+		return newProblem(http.StatusConflict, totpNotPendingType, "Enrollment not started", "Start two-factor setup first.")
+	case errors.Is(err, totp.ErrEnrollmentExpired):
+		return newProblem(http.StatusConflict, totpEnrollmentExpiredType, "Enrollment expired", "This setup expired after 15 minutes. Start again.")
+	case errors.Is(err, totp.ErrCodeChecked):
+		return newProblem(http.StatusConflict, totpCodeCheckedType, "Code already checked", "Your backup codes are waiting. Show them again to finish setup.")
+	case errors.Is(err, totp.ErrNotWaiting):
+		return notWaitingProblem()
 	}
-	return err
+	return passwordProblem(err)
+}
+
+// notWaitingProblem is the answer when no backup codes wait for a token.
+func notWaitingProblem() *problem {
+	return newProblem(http.StatusConflict, notWaitingType, "Backup codes not waiting", "These backup codes are no longer waiting to be saved.")
 }
 
 // ========================
@@ -176,7 +259,7 @@ func registerTOTPCancellation(api huma.API, handler totpHandler) {
 		Path:          totpPath + "/enrollment",
 		Summary:       "Cancel Two-Factor Enrollment",
 		Tags:          []string{tagTwoFactor},
-		Description:   "Removes unconfirmed enrollment. Repeating cancellation succeeds if no factor remains. Confirmed authenticators cannot be canceled; existing sessions stay signed in.",
+		Description:   "Removes an unfinished enrollment and any backup codes waiting. Repeating cancellation succeeds if no factor remains. Confirmed authenticators cannot be canceled; existing sessions stay signed in.",
 		DefaultStatus: http.StatusOK,
 		Metadata:      map[string]any{accessKey: session.AccessMember},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
@@ -191,14 +274,12 @@ func (h totpHandler) handleCancelTOTPEnrollment(ctx context.Context, _ *struct{}
 	}
 
 	// The transaction already established off; avoid a second read after commit.
-	return respondData(totpStatus{Status: totp.StateOff, BackupCodesLeft: 0}), nil
+	return respondData(totpStatus{Status: totp.StateOff}), nil
 }
 
 // ========================
 // TOTP confirmation
 // ========================
-
-const totpNotPendingType = problemPrefix + "totp-not-pending"
 
 type totpConfirmationCode struct {
 	// Keep leading zeros; malformed codes within this bound count as attempts.
@@ -294,23 +375,193 @@ func totpConfirmationProblem(err error) error {
 }
 
 // ========================
-// Backup-code replacement
+// TOTP enrollment code check
 // ========================
 
-const notWaitingType = problemPrefix + "backup-codes-not-waiting"
-
-type totpReplacementCode struct {
-	Code string `json:"code" writeOnly:"true" maxLength:"6" doc:"Fresh six-digit code from the confirmed authenticator."`
+type totpEnrollmentCode struct {
+	// Keep leading zeros; malformed codes within this bound count as attempts.
+	Code string `json:"code" writeOnly:"true" maxLength:"6" doc:"Six-digit code from the authenticator being set up."`
 }
 
 type waitingBackupCodes struct {
 	BackupCodes []string `json:"backupCodes" nullable:"false" minItems:"10" maxItems:"10" doc:"Not active yet. Save these codes, then send the token to Finish."`
-	Token       string   `json:"token" doc:"One-time token that activates these codes. Keep private."`
+	Token       string   `json:"token" doc:"One-time token that activates these codes. Keep private; showing the codes again replaces it."`
 }
+
+func registerTOTPCodeCheck(api huma.API, handler totpHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "checkTOTPEnrollmentCode",
+		Method:      http.MethodPost,
+		Path:        totpPath + "/enrollment/code",
+		Summary:     "Check Two-Factor Enrollment Code",
+		Tags:        []string{tagTwoFactor},
+		Description: "Checks a code from the authenticator being set up, then returns ten backup codes and a one-time token. Two-factor authentication stays off until Finish Two-Factor Enrollment.",
+		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:   totpCodeCheckResponses(api),
+	}, handler.handleCheckTOTPEnrollmentCode)
+}
+
+func (h totpHandler) handleCheckTOTPEnrollmentCode(ctx context.Context, in *struct{ Body totpEnrollmentCode }) (*output[waitingBackupCodes], error) {
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	codes, err := h.service.VerifyCode(ctx, user.ID, in.Body.Code)
+	if err != nil {
+		return nil, totpCodeCheckProblem(err)
+	}
+	return respondData(waitingBackupCodes{BackupCodes: codes.Codes, Token: codes.Token}), nil
+}
+
+func totpCodeCheckResponses(api huma.API) map[string]*huma.Response {
+	responses := totpStatusResponses(api)
+	maps.Copy(responses, problemResponses(api, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests))
+
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "No live enrollment awaits a code: none started, it expired, its code was already checked, or two-factor authentication is on."
+	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
+		"notPending":        {Value: totpCodeCheckProblem(totp.ErrNotPending)},
+		"enrollmentExpired": {Value: totpCodeCheckProblem(totp.ErrEnrollmentExpired)},
+		"codeChecked":       {Value: totpCodeCheckProblem(totp.ErrCodeChecked)},
+		"alreadyOn":         {Value: totpCodeCheckProblem(totp.ErrAlreadyOn)},
+	}
+
+	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
+	invalid.Description = "The request inputs or authenticator code are invalid."
+	invalid.Content[problemContentType].Examples = map[string]*huma.Example{
+		"invalidCode":  {Value: totpCodeCheckProblem(totp.ErrInvalidCode)},
+		"invalidInput": {Value: requestProblem(http.StatusUnprocessableEntity)},
+	}
+
+	throttled := responses[strconv.Itoa(http.StatusTooManyRequests)]
+	throttled.Description = "Too many recent failed code attempts for this account."
+	throttled.Content[problemContentType].Example = totpThrottleProblem(totp.ErrThrottled)
+	return responses
+}
+
+func totpCodeCheckProblem(err error) error {
+	switch {
+	case errors.Is(err, totp.ErrInvalidCode):
+		return newProblem(http.StatusUnprocessableEntity, invalidTOTPCodeType, "Invalid authenticator code", pendingTOTPCodeMessage,
+			inputError{Location: "body.code", Message: pendingTOTPCodeMessage})
+	case errors.Is(err, totp.ErrThrottled):
+		return totpThrottleProblem(err)
+	}
+	return totpEnrollmentProblem(err)
+}
+
+// ========================
+// TOTP enrollment finish
+// ========================
 
 type backupCodesToken struct {
 	// randomsecret tokens are 43 characters; 64 bounds the body (inbok's choice).
 	Token string `json:"token" writeOnly:"true" maxLength:"64" doc:"The one-time token that came with the waiting backup codes."`
+}
+
+// totpFinishInput adds the device details the replacement session keeps.
+type totpFinishInput struct {
+	device session.Device
+	Body   backupCodesToken
+}
+
+// Resolve reads the device details the replacement session keeps.
+func (in *totpFinishInput) Resolve(ctx huma.Context) []error {
+	return resolveDevice(ctx, &in.device)
+}
+
+type totpFinishOutput struct {
+	SetCookie http.Cookie `header:"Set-Cookie"`
+	Body      response[totpStatus]
+}
+
+func registerTOTPFinish(api huma.API, handler totpHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "finishTOTPEnrollment",
+		Method:      http.MethodPost,
+		Path:        totpPath + "/enrollment/finish",
+		Summary:     "Finish Two-Factor Enrollment",
+		Tags:        []string{tagTwoFactor},
+		Description: "Call once the person has saved the backup codes. Turns two-factor authentication on, makes the codes active, ends all existing sessions, and issues a replacement session cookie.",
+		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:   totpFinishResponses(api),
+	}, handler.handleFinishTOTPEnrollment)
+}
+
+func (h totpHandler) handleFinishTOTPEnrollment(ctx context.Context, in *totpFinishInput) (*totpFinishOutput, error) {
+	current := ctx.Value(sessionKey{}).(session.Authenticated)
+	finished, err := h.enrollment.Finish(ctx, current, in.Body.Token, in.device)
+	if err != nil {
+		return nil, totpEnrollmentProblem(err)
+	}
+
+	// Finish returns only after the factor, backup codes, and session commit.
+	return &totpFinishOutput{
+		SetCookie: sessionCookie(finished.Secret, int(time.Until(finished.State.ExpiresAt)/time.Second)),
+		Body:      respondData(totpStatus{Status: totp.StateOn, BackupCodesLeft: finished.BackupCodesLeft}).Body,
+	}, nil
+}
+
+func totpFinishResponses(api huma.API) map[string]*huma.Response {
+	responses := totpStatusResponses(api)
+	maps.Copy(responses, problemResponses(api, http.StatusConflict))
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "No live enrollment has codes waiting for this token, or two-factor authentication is already on."
+	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
+		"notPending":        {Value: totpEnrollmentProblem(totp.ErrNotPending)},
+		"enrollmentExpired": {Value: totpEnrollmentProblem(totp.ErrEnrollmentExpired)},
+		"notWaiting":        {Value: totpEnrollmentProblem(totp.ErrNotWaiting)},
+		"alreadyOn":         {Value: totpEnrollmentProblem(totp.ErrAlreadyOn)},
+	}
+	return responses
+}
+
+// ========================
+// Waiting backup codes
+// ========================
+
+func registerWaitingBackupCodes(api huma.API, handler totpHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "showWaitingTOTPBackupCodes",
+		Method:      http.MethodPost,
+		Path:        totpPath + "/backup-codes/waiting",
+		Summary:     "Show Waiting Backup Codes",
+		Tags:        []string{tagTwoFactor},
+		Description: "Checks the password, then returns an unfinished enrollment's backup codes, waiting to be saved, with a new one-time token that replaces the earlier one. Codes made by Replace Backup Codes are never shown again: once two-factor authentication is on, only a fresh authenticator code makes new ones. Wrong passwords count toward the sign-in limits.",
+		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:   waitingBackupCodesResponses(api),
+	}, handler.handleShowWaitingTOTPBackupCodes)
+}
+
+func (h totpHandler) handleShowWaitingTOTPBackupCodes(ctx context.Context, in *passwordProofInput) (*output[waitingBackupCodes], error) {
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	codes, err := h.service.ShowWaiting(ctx, user, in.Body.Password, in.addr)
+	if err != nil {
+		return nil, totpEnrollmentProblem(err)
+	}
+	return respondData(waitingBackupCodes{BackupCodes: codes.Codes, Token: codes.Token}), nil
+}
+
+func waitingBackupCodesResponses(api huma.API) map[string]*huma.Response {
+	responses := totpStatusResponses(api)
+	maps.Copy(responses, problemResponses(api, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests))
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "No backup codes are waiting, the enrollment they belong to expired, or two-factor authentication is on."
+	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
+		"notWaiting":        {Value: totpEnrollmentProblem(totp.ErrNotWaiting)},
+		"enrollmentExpired": {Value: totpEnrollmentProblem(totp.ErrEnrollmentExpired)},
+		"alreadyOn":         {Value: totpEnrollmentProblem(totp.ErrAlreadyOn)},
+	}
+	passwordProofResponses(responses)
+	return responses
+}
+
+// ========================
+// Backup-code replacement
+// ========================
+
+type totpReplacementCode struct {
+	Code string `json:"code" writeOnly:"true" maxLength:"6" doc:"Fresh six-digit code from the confirmed authenticator."`
 }
 
 func registerBackupReplacement(api huma.API, handler totpHandler) {
@@ -377,7 +628,7 @@ func backupReplacementProblem(err error) error {
 		)
 
 	case errors.Is(err, totp.ErrNotWaiting):
-		return newProblem(http.StatusConflict, notWaitingType, "Backup codes not waiting", "These backup codes are no longer waiting to be saved.")
+		return notWaitingProblem()
 
 	default:
 		return totpThrottleProblem(err)

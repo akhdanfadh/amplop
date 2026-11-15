@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"time"
 
 	"inbok/internal/account"
@@ -125,4 +126,29 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, devic
 		return SignedIn{}, err
 	}
 	return result, nil
+}
+
+// VerifyPassword confirms password is user's current password, counting the
+// attempt against the sign-in limits for user's email from addr, so a
+// session cookie alone cannot be used to guess it. It returns
+// [account.ErrInvalidCredentials] for a wrong password and an
+// [*attemptlimit.Error] wrapping [ErrThrottled] when a limit is reached.
+func (s *Service) VerifyPassword(ctx context.Context, user account.User, password string, addr netip.Addr) error {
+	// 1. Reserve an attempt before the password hash.
+	id, err := s.throttle.Begin(ctx, user.Email, addr)
+	if err != nil {
+		return err
+	}
+
+	// 2. Verify the password. A failure keeps the attempt, so it counts.
+	credentials, err := s.accounts.Authenticate(ctx, user.Email, password)
+	if err != nil {
+		return err
+	}
+	if credentials.User.ID != user.ID {
+		return account.ErrInvalidCredentials
+	}
+
+	// 3. Remove the attempt: only failures count.
+	return s.throttle.Succeed(ctx, id)
 }

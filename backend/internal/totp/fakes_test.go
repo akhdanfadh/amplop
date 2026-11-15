@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/netip"
+
+	"inbok/internal/account"
 )
 
 // memoryTOTP is [Storage] in memory. It applies a [Change] the way
@@ -22,7 +25,8 @@ func (m *memoryTOTP) ReadTOTPStatus(context.Context, int64) (*StatusRecord, erro
 		return nil, m.readErr
 	}
 	status := &StatusRecord{
-		ConfirmedAt: m.record.Factor.ConfirmedAt, BackupCodesLeft: len(m.backupHashes),
+		ConfirmedAt: m.record.Factor.ConfirmedAt, StartedAt: m.record.Factor.StartedAt,
+		BackupCodesLeft: len(m.backupHashes),
 	}
 	if m.record.Waiting != nil {
 		expiresAt := m.record.Waiting.ExpiresAt
@@ -100,6 +104,23 @@ func (f *fakeCipher) Open(_ string, ciphertext []byte, owner string) ([]byte, er
 
 // sealedSecret is vectorSecret as [fakeCipher] seals it for user 42.
 var sealedSecret = []byte("totp:42|" + vectorSecret)
+
+// fakePasswords accepts only password "right".
+type fakePasswords struct {
+	err   error
+	calls int
+}
+
+func (f *fakePasswords) VerifyPassword(_ context.Context, _ account.User, password string, _ netip.Addr) error {
+	f.calls++
+	if f.err != nil {
+		return f.err
+	}
+	if password != "right" {
+		return account.ErrInvalidCredentials
+	}
+	return nil
+}
 
 type backupOpener struct {
 	err   error

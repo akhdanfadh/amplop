@@ -12,7 +12,7 @@ export const waitingBackupCodesBackupCodesMax = 10;
 
 export const WaitingBackupCodes = zod.object({
   "backupCodes": zod.array(zod.string()).min(waitingBackupCodesBackupCodesMin).max(waitingBackupCodesBackupCodesMax).describe('Not active yet. Save these codes, then send the token to Finish.'),
-  "token": zod.string().describe('One-time token that activates these codes. Keep private.')
+  "token": zod.string().describe('One-time token that activates these codes. Keep private; showing the codes again replaces it.')
 })
 
 export type WaitingBackupCodes = zod.input<typeof WaitingBackupCodes>;

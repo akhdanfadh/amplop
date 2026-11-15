@@ -29,12 +29,14 @@ func TestCancelEnrollmentStorage(t *testing.T) {
 	foreignCodes, err := queries.ReadTOTPBackupCodes(t.Context(), f.foreign.UserID)
 	require.NoError(t, err)
 
-	// Repeating cancellation is harmless, including for an admin awaiting setup.
+	// Repeating cancellation is harmless, including for an admin awaiting
+	// setup, and removes the waiting codes.
 	for range 2 {
 		require.NoError(t, service.Cancel(t.Context(), f.state.UserID))
 		status, err := service.Status(t.Context(), f.state.UserID)
 		require.NoError(t, err)
 		assert.Equal(t, totp.Status{State: totp.StateOff}, status)
+		assert.Nil(t, readWaitingCodes(t, f.conn, f.state.UserID))
 	}
 
 	other, err := f.db.ReadTOTP(t.Context(), f.foreign.UserID)
@@ -53,7 +55,7 @@ func TestCancelEnrollmentStorage(t *testing.T) {
 
 func TestCancelConfirmedEnrollment(t *testing.T) {
 	f := newConfirmation(t)
-	_, err := f.service.Confirm(t.Context(), f.current, "287082", session.Device{})
+	_, err := f.service.Finish(t.Context(), f.current, f.codes.Token, session.Device{})
 	require.NoError(t, err)
 	before, err := f.db.ReadTOTP(t.Context(), f.state.UserID)
 	require.NoError(t, err)
@@ -165,7 +167,7 @@ func TestCancelBeforeConfirmation(t *testing.T) {
 		require.FailNow(t, "cancellation did not acquire the owner lock")
 	}
 	go func() {
-		_, err := f.service.Confirm(ctx, f.current, "287082", session.Device{})
+		_, err := f.service.Finish(ctx, f.current, f.codes.Token, session.Device{})
 		confirmed <- err
 	}()
 	require.Eventually(t, func() bool {
@@ -222,7 +224,7 @@ func TestCancelEnrollmentHTTP(t *testing.T) {
 
 func TestCancelConfirmedHTTP(t *testing.T) {
 	f := newConfirmation(t)
-	confirmed, err := f.service.Confirm(t.Context(), f.current, "287082", session.Device{})
+	confirmed, err := f.service.Finish(t.Context(), f.current, f.codes.Token, session.Device{})
 	require.NoError(t, err)
 	queries := sqlc.New(f.conn)
 	before, err := f.db.ReadTOTP(t.Context(), f.state.UserID)
@@ -235,7 +237,7 @@ func TestCancelConfirmedHTTP(t *testing.T) {
 	})
 	request := httptest.NewRequest(http.MethodDelete, "/api/v0/totp/enrollment", nil)
 	request.Header.Set("Origin", "http://example.com")
-	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: confirmed.Session.Secret})
+	request.AddCookie(&http.Cookie{Name: "__Host-inbok-session", Value: confirmed.Secret})
 	response := httptest.NewRecorder()
 
 	api.Handler().ServeHTTP(response, request)
@@ -250,5 +252,5 @@ func TestCancelConfirmedHTTP(t *testing.T) {
 	afterCodes, err := queries.ReadTOTPBackupCodes(t.Context(), f.state.UserID)
 	require.NoError(t, err)
 	assert.Equal(t, codes, afterCodes)
-	assert.Equal(t, confirmed.Session.State, readSession(t, f.db, confirmed.Session.State.TokenHash))
+	assert.Equal(t, confirmed.State, readSession(t, f.db, confirmed.State.TokenHash))
 }

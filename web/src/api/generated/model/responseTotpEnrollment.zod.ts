@@ -8,8 +8,8 @@ import * as zod from 'zod';
 
 export const ResponseTotpEnrollment = zod.object({
   "data": zod.object({
-  "secret": zod.string().describe('Manual authenticator setup secret. Keep private.'),
-  "uri": zod.string().describe('Authenticator setup URI containing the secret. Keep private.')
+  "secret": zod.string().describe('Manual authenticator enrollment secret. Keep private.'),
+  "uri": zod.string().describe('Authenticator enrollment URI containing the secret. Keep private.')
 })
 })
 

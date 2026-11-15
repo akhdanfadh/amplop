@@ -23,8 +23,8 @@ func (db *DB) ReadTOTPStatus(ctx context.Context, userID int64) (*totp.StatusRec
 	}
 
 	return &totp.StatusRecord{
-		ConfirmedAt: row.ConfirmedAt, BackupCodesLeft: int(row.BackupCodesLeft),
-		WaitingExpiresAt: row.WaitingExpiresAt,
+		ConfirmedAt: row.ConfirmedAt, StartedAt: row.StartedAt,
+		BackupCodesLeft: int(row.BackupCodesLeft), WaitingExpiresAt: row.WaitingExpiresAt,
 	}, nil
 }
 
@@ -41,18 +41,22 @@ func readTOTP(ctx context.Context, queries *sqlc.Queries, userID int64) (*totp.F
 	if err != nil {
 		return nil, fmt.Errorf("read TOTP: %w", err)
 	}
-	return &totp.Factor{KeyID: row.KeyID, Ciphertext: row.SecretCiphertext, ConfirmedAt: row.ConfirmedAt, LastStep: row.LastStep}, nil
+	return &totp.Factor{
+		KeyID: row.KeyID, Ciphertext: row.SecretCiphertext, ConfirmedAt: row.ConfirmedAt,
+		LastStep: row.LastStep, StartedAt: row.StartedAt,
+	}, nil
 }
 
 // saveTOTP saves userID's factor.
 func saveTOTP(ctx context.Context, queries *sqlc.Queries, userID int64, factor totp.Factor) error {
 	return queries.UpsertUserTOTP(ctx, sqlc.UpsertUserTOTPParams{
 		UserID: userID, KeyID: factor.KeyID, SecretCiphertext: factor.Ciphertext,
-		ConfirmedAt: factor.ConfirmedAt, LastStep: factor.LastStep,
+		ConfirmedAt: factor.ConfirmedAt, LastStep: factor.LastStep, StartedAt: factor.StartedAt,
 	})
 }
 
-// readWaiting returns userID's waiting backup-code set, nil when none.
+// readWaiting returns userID's waiting backup-code set, nil when none. A set
+// without a display copy has an empty key and ciphertext.
 func readWaiting(ctx context.Context, queries *sqlc.Queries, userID int64) (*totp.Waiting, error) {
 	row, err := queries.ReadTOTPWaitingBackupCodes(ctx, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -61,7 +65,10 @@ func readWaiting(ctx context.Context, queries *sqlc.Queries, userID int64) (*tot
 	if err != nil {
 		return nil, fmt.Errorf("read waiting backup codes: %w", err)
 	}
-	waiting := &totp.Waiting{Hashes: row.CodeHashes, ExpiresAt: row.ExpiresAt}
+	waiting := &totp.Waiting{Hashes: row.CodeHashes, Ciphertext: row.CodesCiphertext, ExpiresAt: row.ExpiresAt}
+	if row.KeyID != nil {
+		waiting.KeyID = *row.KeyID
+	}
 	if copy(waiting.TokenHash[:], row.TokenHash) != len(waiting.TokenHash) {
 		return nil, errors.New("invalid waiting backup-code token hash")
 	}
@@ -83,6 +90,7 @@ func replaceBackupCodes(ctx context.Context, queries *sqlc.Queries, userID int64
 }
 
 // writeWaiting keeps, deletes, or saves userID's waiting set as change says.
+// A set without a display copy saves NULL for its key and ciphertext.
 func writeWaiting(ctx context.Context, queries *sqlc.Queries, userID int64, change totp.Change) error {
 	switch change.WaitingWrite {
 	case totp.KeepWaiting:
@@ -99,6 +107,9 @@ func writeWaiting(ctx context.Context, queries *sqlc.Queries, userID int64, chan
 		}
 		params := sqlc.UpsertTOTPWaitingBackupCodesParams{
 			UserID: userID, CodeHashes: w.Hashes, TokenHash: w.TokenHash[:], ExpiresAt: w.ExpiresAt,
+		}
+		if w.KeyID != "" || len(w.Ciphertext) > 0 {
+			params.KeyID, params.CodesCiphertext = &w.KeyID, w.Ciphertext
 		}
 		if err := queries.UpsertTOTPWaitingBackupCodes(ctx, params); err != nil {
 			return fmt.Errorf("save waiting backup codes: %w", err)

@@ -23,7 +23,7 @@ func backupFixture() (*Backups, *memoryTOTP, *fakeCipher, *backupAttempts, *fake
 }
 
 func TestReplaceBackupCodes(t *testing.T) {
-	service, store, _, attempts, clock := backupFixture()
+	service, store, cipher, attempts, clock := backupFixture()
 	loaded := store.record.Factor
 
 	codes, err := service.Replace(t.Context(), 42, "287082")
@@ -36,7 +36,10 @@ func TestReplaceBackupCodes(t *testing.T) {
 		require.NoError(t, VerifyBackupCode(t.Context(), code, waiting.Hashes[i]))
 	}
 	assert.Equal(t, []string{"old-1", "old-2"}, store.backupHashes, "the old codes work until finish")
-	assert.Equal(t, clock.now.Add(waitingLifetime), waiting.ExpiresAt)
+	assert.Equal(t, clock.now.Add(enrollmentLifetime), waiting.ExpiresAt)
+	assert.Empty(t, cipher.sealed, "a replacement keeps no display copy")
+	assert.Empty(t, waiting.KeyID)
+	assert.Empty(t, waiting.Ciphertext)
 	require.NoError(t, VerifyWaiting(waiting, codes.Token, clock.now))
 	assert.Equal(t, int64(42), store.userID)
 	assert.Equal(t, int64(1), store.record.Factor.LastStep)
@@ -141,7 +144,7 @@ func TestFinishBackupReplacement(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, backupSetSize, active)
 	assert.Equal(t, hashes, store.backupHashes)
-	assert.Nil(t, store.record.Waiting)
+	assert.Nil(t, store.record.Waiting, "the display copy is deleted")
 }
 
 func TestFinishBackupReplacementRefused(t *testing.T) {
@@ -151,7 +154,7 @@ func TestFinishBackupReplacementRefused(t *testing.T) {
 		want error
 	}{
 		{"wrong token", func(s *memoryTOTP, _ *fakeClock) { s.record.Waiting.TokenHash[0] ^= 1 }, ErrNotWaiting},
-		{"expired", func(_ *memoryTOTP, c *fakeClock) { c.Advance(waitingLifetime) }, ErrNotWaiting},
+		{"expired", func(_ *memoryTOTP, c *fakeClock) { c.Advance(enrollmentLifetime) }, ErrNotWaiting},
 		{"nothing waiting", func(s *memoryTOTP, _ *fakeClock) { s.record.Waiting = nil }, ErrNotWaiting},
 		{"turned off", func(s *memoryTOTP, _ *fakeClock) { s.record.Factor.ConfirmedAt = nil }, ErrNotOn},
 	} {

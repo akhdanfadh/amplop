@@ -60,7 +60,7 @@ func newDeactivatedAccounts(t *testing.T, withTOTP bool) deactivatedAccounts {
 		hashPassword(t, deactivatedPassword)).Scan(&f.member))
 	if withTOTP {
 		_, err := conn.Exec(t.Context(),
-			"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at) VALUES ($1, '1', 'ciphertext', now())", f.member)
+			"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, started_at) VALUES ($1, '1', 'ciphertext', now(), now())", f.member)
 		require.NoError(t, err)
 	}
 	return f
@@ -209,6 +209,12 @@ func TestDeactivatedWrites(t *testing.T) {
 				return session.EnrollmentChange{}, nil
 			})
 		}, session.ErrNotFound},
+		{"finish enrollment", func(t *testing.T) error {
+			return f.db.FinishTOTP(t.Context(), f.member, live.TokenHash, func(session.EnrollmentState) (session.EnrollmentChange, error) {
+				called(t)
+				return session.EnrollmentChange{}, nil
+			})
+		}, session.ErrNotFound},
 		{"turn off", func(t *testing.T) error {
 			return f.db.DisableTOTP(t.Context(), f.member, 0, func(totp.DisableState) error {
 				called(t)
@@ -315,7 +321,7 @@ func deactivatedAPI(t *testing.T, f deactivatedAccounts) (*http.Cookie, func(met
 	t.Helper()
 
 	_, err := f.conn.Exec(t.Context(),
-		"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at) VALUES ($1, '1', 'ciphertext', now())", f.admin)
+		"INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, started_at) VALUES ($1, '1', 'ciphertext', now(), now())", f.admin)
 	require.NoError(t, err)
 	now := time.Now()
 	require.NoError(t, f.db.InsertSession(t.Context(), session.State{

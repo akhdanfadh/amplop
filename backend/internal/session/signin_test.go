@@ -302,3 +302,59 @@ func TestStartSignInDeactivatedStalePassword(t *testing.T) {
 
 	require.ErrorIs(t, err, account.ErrInvalidCredentials)
 }
+
+func TestVerifyPassword(t *testing.T) {
+	addr := netip.MustParseAddr("192.0.2.1")
+	alice := account.User{ID: 42, Email: "alice@example.com"}
+	for _, c := range []struct {
+		name        string
+		password    string
+		owner       int64
+		want        error
+		wantPending int
+	}{
+		{"right", "right", 42, nil, 0},
+		{"wrong", "wrong", 42, account.ErrInvalidCredentials, 1},
+		{"another account's", "right", 7, account.ErrInvalidCredentials, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			attempts := &memoryAttempts{rows: map[int64]Attempt{}}
+			accounts := signInAccounts{authenticate: func(_ context.Context, email, password string) (account.Credentials, error) {
+				assert.Equal(t, alice.Email, email)
+				assert.Len(t, attempts.rows, 1, "reserve before checking the password")
+				if password != "right" {
+					return account.Credentials{}, account.ErrInvalidCredentials
+				}
+				return account.Credentials{User: account.User{ID: c.owner}}, nil
+			}}
+			service := NewService(nil, accounts, NewThrottle(attempts, time.Now), time.Now)
+
+			err := service.VerifyPassword(t.Context(), alice, c.password, addr)
+
+			if c.want == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, c.want)
+			}
+			assert.Len(t, attempts.rows, c.wantPending, "only failures count")
+		})
+	}
+}
+
+func TestVerifyPasswordThrottled(t *testing.T) {
+	attempts := &memoryAttempts{rows: map[int64]Attempt{}}
+	throttle := NewThrottle(attempts, time.Now)
+	addr := netip.MustParseAddr("192.0.2.1")
+	for range 5 {
+		_, err := throttle.Begin(t.Context(), "alice@example.com", addr)
+		require.NoError(t, err)
+	}
+	accounts := signInAccounts{authenticate: func(context.Context, string, string) (account.Credentials, error) {
+		t.Fatal("a throttled check must not hash the password")
+		return account.Credentials{}, nil
+	}}
+
+	err := NewService(nil, accounts, throttle, time.Now).VerifyPassword(t.Context(), account.User{ID: 42, Email: "alice@example.com"}, "right", addr)
+
+	require.ErrorIs(t, err, ErrThrottled)
+}

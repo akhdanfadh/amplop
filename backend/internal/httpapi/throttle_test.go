@@ -135,6 +135,10 @@ func TestRetryAfter(t *testing.T) {
 			api := New(discard, Services{Session: memberSessions(account.RoleMember), Enrollment: &fakeEnrollment{err: refused(totp.ErrThrottled)}})
 			return postTOTPConfirm(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
 		}, "totp-throttled"},
+		{"TOTP setup code", func() *httptest.ResponseRecorder {
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), TOTP: &fakeTOTP{err: refused(totp.ErrThrottled)}})
+			return postTOTP(api, "/enrollment/code", `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
+		}, "totp-throttled"},
 		{"backup codes", func() *httptest.ResponseRecorder {
 			api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: &fakeBackups{err: refused(totp.ErrThrottled)}})
 			return postTOTP(api, "/backup-codes", `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
@@ -213,5 +217,5 @@ func TestRetryAfterDocumented(t *testing.T) {
 			assert.Equal(t, huma.TypeInteger, header.Schema.Type, path)
 		}
 	}
-	assert.Equal(t, 19, throttled, "setup, sign-in, code sign-in, confirm, backup codes, turn-off, verification links, redeem, the probe, both registration writes, both password reset writes, both Gmail connection starts, the three sends, and an account's sync")
+	assert.Equal(t, 21, throttled, "setup, sign-in, code sign-in, confirm, two-factor enrollment's code check, showing waiting codes, backup codes, turn-off, verification links, redeem, the probe, both registration writes, both password reset writes, both Gmail connection starts, the three sends, and an account's sync")
 }

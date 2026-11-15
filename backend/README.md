@@ -1185,14 +1185,16 @@ without leading zeros; each key is 32 random bytes in standard base64, from
 `openssl rand -base64 32`. Startup fails, without printing key material, if
 the list is empty or an entry is malformed or repeated.
 
-The first entry encrypts new TOTP secrets, a newly entered system email
-password, and the refresh token of a newly connected or reconnected Gmail
-account with AES-256-GCM. Every entry can decrypt. Each stored secret
-records its key ID and is bound to what it belongs to: a TOTP secret to its
-user; the system email password to its mail server host, port, and
-username; a refresh token to its member and connected account. A
-ciphertext copied elsewhere does not decrypt. Backup codes and account
-passwords use Argon2id hashes and do not depend on these keys.
+The first entry encrypts new TOTP secrets, the copy of a two-factor
+enrollment's backup codes kept until the member saves them, a newly
+entered system email password, and the refresh token of a newly connected
+or reconnected Gmail account with AES-256-GCM. Every entry can decrypt.
+Each stored secret records its key ID and is bound to what it belongs to:
+a TOTP secret and a backup-code copy to their user; the system email
+password to its mail server host, port, and username; a refresh token to
+its member and connected account. A ciphertext copied elsewhere does not
+decrypt. Backup codes and account passwords use Argon2id hashes and do
+not depend on these keys.
 
 To rotate, generate a key, put it first under an unused ID, keep the old
 entries, and restart every API instance and worker with the same list.
@@ -1207,6 +1209,7 @@ old key indefinitely. Remove an old key only when no query lists its ID:
 
 ```sql
 SELECT key_id, count(*) FROM user_totp GROUP BY key_id;
+SELECT key_id, count(*) FROM totp_waiting_backup_codes WHERE key_id IS NOT NULL GROUP BY key_id;
 SELECT password_key_id FROM system_email WHERE password_key_id IS NOT NULL;
 SELECT refresh_token_key_id, count(*) FROM connected_accounts GROUP BY refresh_token_key_id;
 SELECT refresh_token_key_id, count(*) FROM account_removals GROUP BY refresh_token_key_id;
@@ -1651,12 +1654,12 @@ independently of these browser redirects.
 
 ## Sign-in and browser sessions
 
-`POST /api/v0/sessions` accepts email and password. Without confirmed TOTP,
-it creates a fresh session and returns HTTP 201 with
+`POST /api/v0/sessions` accepts email and password. Without confirmed TOTP, it
+creates a fresh session and returns HTTP 201 with
 `{"data":{"step":"complete"}}`. With confirmed TOTP, it returns
-`{"data":{"step":"totp"}}` and a temporary `__Host-inbok-challenge` cookie;
-no session is created. The factor check and the chosen write share one user
-lock, so enrollment confirmation cannot race a password-only session into
+`{"data":{"step":"totp"}}` and a temporary `__Host-inbok-challenge` cookie; no
+session is created. The factor check and the chosen write share one user lock,
+so finishing two-factor enrollment cannot race a password-only session into
 existence afterward. Unknown email and wrong password return the same HTTP
 401; unknown users still incur an Argon2id password check. A deactivated
 account with the right password returns HTTP 403 `account-deactivated`
@@ -1692,9 +1695,10 @@ member access and `totpRequired: true`. Members always receive member access
 and `totpRequired: false`, whether or not they enable TOTP.
 
 Identity reads the current account and factor through the session row in one
-query. A session revoked by enrollment confirmation cannot gain admin access
-from a previous session check. The web app's `/security` page handles
-enrollment, backup codes, and turn-off; sign-in shows the code step.
+query. A session revoked by finishing two-factor enrollment cannot gain admin
+access from a previous session check. The web app's two-factor page,
+`/settings/security/two-factor`, handles setup, backup codes, and turn-off;
+sign-in shows the code step.
 
 `DELETE /api/v0/sessions/current` deletes the checked session and clears its
 cookie, returning HTTP 204. A missing or expired session returns HTTP 401
@@ -1867,10 +1871,11 @@ reads the settings when it sends. Recovery itself sends nothing and needs
 no encryption keys.
 
 The administrator signs in with the new password and has member access until
-they enroll TOTP on the Security page. Confirmation restores administrator
-access. Enrollment happens in the web app. A sign-in that verified the old
-password before recovery cannot create a session afterward, even if recovery
-sets the same password again.
+they enroll an authenticator again, on the web app's two-factor page
+(`/settings/security/two-factor`). Finishing the enrollment restores
+administrator access. A sign-in that verified the old password before
+recovery cannot create a session afterward, even if recovery sets the same
+password again.
 
 Recovery leaves `users.deactivated_at` as it is. The web app cannot
 deactivate an administrator, but one deactivated directly in the database

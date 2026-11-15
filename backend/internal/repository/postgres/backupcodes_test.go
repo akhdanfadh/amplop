@@ -19,7 +19,7 @@ func backupCodeUser(t *testing.T, conn *pgx.Conn, email string) int64 {
 	var id int64
 	err := conn.QueryRow(t.Context(), "INSERT INTO users (email, password_hash, role) VALUES ($1, 'unused', 'member') RETURNING id", email).Scan(&id)
 	require.NoError(t, err)
-	_, err = conn.Exec(t.Context(), "INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at) VALUES ($1, '1', 'ciphertext', now())", id)
+	_, err = conn.Exec(t.Context(), "INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, started_at) VALUES ($1, '1', 'ciphertext', now(), now())", id)
 	require.NoError(t, err)
 	return id
 }

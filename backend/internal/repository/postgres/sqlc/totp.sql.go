@@ -62,25 +62,33 @@ func (q *Queries) LockTOTPUserRole(ctx context.Context, userID int64) (LockTOTPU
 }
 
 const readTOTPWaitingBackupCodes = `-- name: ReadTOTPWaitingBackupCodes :one
-SELECT code_hashes, token_hash, expires_at
+SELECT code_hashes, key_id, codes_ciphertext, token_hash, expires_at
 FROM totp_waiting_backup_codes WHERE user_id = $1
 `
 
 type ReadTOTPWaitingBackupCodesRow struct {
-	CodeHashes []string
-	TokenHash  []byte
-	ExpiresAt  time.Time
+	CodeHashes      []string
+	KeyID           *string
+	CodesCiphertext []byte
+	TokenHash       []byte
+	ExpiresAt       time.Time
 }
 
 func (q *Queries) ReadTOTPWaitingBackupCodes(ctx context.Context, userID int64) (ReadTOTPWaitingBackupCodesRow, error) {
 	row := q.db.QueryRow(ctx, readTOTPWaitingBackupCodes, userID)
 	var i ReadTOTPWaitingBackupCodesRow
-	err := row.Scan(&i.CodeHashes, &i.TokenHash, &i.ExpiresAt)
+	err := row.Scan(
+		&i.CodeHashes,
+		&i.KeyID,
+		&i.CodesCiphertext,
+		&i.TokenHash,
+		&i.ExpiresAt,
+	)
 	return i, err
 }
 
 const readUserTOTP = `-- name: ReadUserTOTP :one
-SELECT key_id, secret_ciphertext, confirmed_at, last_step
+SELECT key_id, secret_ciphertext, confirmed_at, last_step, started_at
 FROM user_totp WHERE user_id = $1
 `
 
@@ -89,6 +97,7 @@ type ReadUserTOTPRow struct {
 	SecretCiphertext []byte
 	ConfirmedAt      *time.Time
 	LastStep         int64
+	StartedAt        time.Time
 }
 
 func (q *Queries) ReadUserTOTP(ctx context.Context, userID int64) (ReadUserTOTPRow, error) {
@@ -99,12 +108,13 @@ func (q *Queries) ReadUserTOTP(ctx context.Context, userID int64) (ReadUserTOTPR
 		&i.SecretCiphertext,
 		&i.ConfirmedAt,
 		&i.LastStep,
+		&i.StartedAt,
 	)
 	return i, err
 }
 
 const readUserTOTPStatus = `-- name: ReadUserTOTPStatus :one
-SELECT factor.confirmed_at,
+SELECT factor.confirmed_at, factor.started_at,
     (SELECT count(*) FROM totp_backup_codes AS codes WHERE codes.user_id = $1) AS backup_codes_left,
     waiting.expires_at AS waiting_expires_at
 FROM user_totp AS factor
@@ -114,6 +124,7 @@ WHERE factor.user_id = $1
 
 type ReadUserTOTPStatusRow struct {
 	ConfirmedAt      *time.Time
+	StartedAt        time.Time
 	BackupCodesLeft  int64
 	WaitingExpiresAt *time.Time
 }
@@ -122,30 +133,41 @@ type ReadUserTOTPStatusRow struct {
 func (q *Queries) ReadUserTOTPStatus(ctx context.Context, userID int64) (ReadUserTOTPStatusRow, error) {
 	row := q.db.QueryRow(ctx, readUserTOTPStatus, userID)
 	var i ReadUserTOTPStatusRow
-	err := row.Scan(&i.ConfirmedAt, &i.BackupCodesLeft, &i.WaitingExpiresAt)
+	err := row.Scan(
+		&i.ConfirmedAt,
+		&i.StartedAt,
+		&i.BackupCodesLeft,
+		&i.WaitingExpiresAt,
+	)
 	return i, err
 }
 
 const upsertTOTPWaitingBackupCodes = `-- name: UpsertTOTPWaitingBackupCodes :exec
-INSERT INTO totp_waiting_backup_codes (user_id, code_hashes, token_hash, expires_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO totp_waiting_backup_codes (user_id, code_hashes, key_id, codes_ciphertext, token_hash, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (user_id) DO UPDATE SET
     code_hashes = EXCLUDED.code_hashes,
+    key_id = EXCLUDED.key_id,
+    codes_ciphertext = EXCLUDED.codes_ciphertext,
     token_hash = EXCLUDED.token_hash,
     expires_at = EXCLUDED.expires_at
 `
 
 type UpsertTOTPWaitingBackupCodesParams struct {
-	UserID     int64
-	CodeHashes []string
-	TokenHash  []byte
-	ExpiresAt  time.Time
+	UserID          int64
+	CodeHashes      []string
+	KeyID           *string
+	CodesCiphertext []byte
+	TokenHash       []byte
+	ExpiresAt       time.Time
 }
 
 func (q *Queries) UpsertTOTPWaitingBackupCodes(ctx context.Context, arg UpsertTOTPWaitingBackupCodesParams) error {
 	_, err := q.db.Exec(ctx, upsertTOTPWaitingBackupCodes,
 		arg.UserID,
 		arg.CodeHashes,
+		arg.KeyID,
+		arg.CodesCiphertext,
 		arg.TokenHash,
 		arg.ExpiresAt,
 	)
@@ -153,13 +175,14 @@ func (q *Queries) UpsertTOTPWaitingBackupCodes(ctx context.Context, arg UpsertTO
 }
 
 const upsertUserTOTP = `-- name: UpsertUserTOTP :exec
-INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, last_step)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, last_step, started_at)
+VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (user_id) DO UPDATE SET
     key_id = EXCLUDED.key_id,
     secret_ciphertext = EXCLUDED.secret_ciphertext,
     confirmed_at = EXCLUDED.confirmed_at,
-    last_step = EXCLUDED.last_step
+    last_step = EXCLUDED.last_step,
+    started_at = EXCLUDED.started_at
 `
 
 type UpsertUserTOTPParams struct {
@@ -168,6 +191,7 @@ type UpsertUserTOTPParams struct {
 	SecretCiphertext []byte
 	ConfirmedAt      *time.Time
 	LastStep         int64
+	StartedAt        time.Time
 }
 
 func (q *Queries) UpsertUserTOTP(ctx context.Context, arg UpsertUserTOTPParams) error {
@@ -177,6 +201,7 @@ func (q *Queries) UpsertUserTOTP(ctx context.Context, arg UpsertUserTOTPParams) 
 		arg.SecretCiphertext,
 		arg.ConfirmedAt,
 		arg.LastStep,
+		arg.StartedAt,
 	)
 	return err
 }

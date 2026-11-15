@@ -99,9 +99,9 @@ func TestCurrentDeleteFailure(t *testing.T) {
 func TestCurrentConfirmedAccess(t *testing.T) {
 	f := newConfirmation(t)
 
-	issued, err := f.service.Confirm(t.Context(), f.current, "287082", session.Device{})
+	issued, err := f.service.Finish(t.Context(), f.current, f.codes.Token, session.Device{})
 	require.NoError(t, err)
-	current, err := f.sessions.Current(t.Context(), issued.Session.Secret)
+	current, err := f.sessions.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
 	assert.Equal(t, session.AccessAdmin, current.Identity.Access)
 	assert.False(t, current.Identity.TOTPRequired)
@@ -113,7 +113,7 @@ func TestCurrentConfirmedAccess(t *testing.T) {
 	// Identity always uses the current role and factor rather than cookie claims.
 	_, err = f.conn.Exec(t.Context(), "UPDATE users SET role='member' WHERE id=$1", f.state.UserID)
 	require.NoError(t, err)
-	current, err = f.sessions.Current(t.Context(), issued.Session.Secret)
+	current, err = f.sessions.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
 	assert.Equal(t, session.AccessMember, current.Identity.Access)
 	assert.False(t, current.Identity.TOTPRequired)
@@ -122,14 +122,14 @@ func TestCurrentConfirmedAccess(t *testing.T) {
 	require.NoError(t, err)
 	_, err = f.conn.Exec(t.Context(), "UPDATE user_totp SET confirmed_at=NULL WHERE user_id=$1", f.state.UserID)
 	require.NoError(t, err)
-	current, err = f.sessions.Current(t.Context(), issued.Session.Secret)
+	current, err = f.sessions.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
 	assert.Equal(t, session.AccessMember, current.Identity.Access)
 	assert.True(t, current.Identity.TOTPRequired)
 
 	_, err = f.conn.Exec(t.Context(), "DELETE FROM user_totp WHERE user_id=$1", f.state.UserID)
 	require.NoError(t, err)
-	current, err = f.sessions.Current(t.Context(), issued.Session.Secret)
+	current, err = f.sessions.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
 	assert.Equal(t, session.AccessMember, current.Identity.Access)
 	assert.True(t, current.Identity.TOTPRequired)

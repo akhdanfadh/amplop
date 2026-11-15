@@ -20,11 +20,13 @@ import (
 )
 
 // newReplacement turns the fixture's factor on, with two active backup
-// codes.
+// codes and no codes waiting.
 func newReplacement(t *testing.T) (*confirmationFixture, *totp.Backups) {
 	t.Helper()
 	f := newConfirmation(t)
 	_, err := f.conn.Exec(t.Context(), "UPDATE user_totp SET confirmed_at=$1, last_step=-1 WHERE user_id=$2", f.now, f.state.UserID)
+	require.NoError(t, err)
+	_, err = f.conn.Exec(t.Context(), "DELETE FROM totp_waiting_backup_codes WHERE user_id=$1", f.state.UserID)
 	require.NoError(t, err)
 	f.factor, err = f.db.ReadTOTP(t.Context(), f.state.UserID)
 	require.NoError(t, err)
@@ -57,6 +59,12 @@ func TestReplacePersistence(t *testing.T) {
 	for i, hash := range waiting.Hashes {
 		require.NoError(t, totp.VerifyBackupCode(t.Context(), codes.Codes[i], hash))
 	}
+	// The codes appear only in Replace's answer: no copy is stored.
+	var copies int
+	require.NoError(t, f.conn.QueryRow(t.Context(),
+		"SELECT count(*) FROM totp_waiting_backup_codes WHERE user_id = $1 AND (key_id IS NOT NULL OR codes_ciphertext IS NOT NULL)",
+		f.state.UserID).Scan(&copies))
+	assert.Zero(t, copies)
 	unchanged, err := queries.ReadTOTPBackupCodes(t.Context(), f.state.UserID)
 	require.NoError(t, err)
 	assert.Equal(t, old, unchanged, "the old codes work until finish")
