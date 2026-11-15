@@ -50,6 +50,8 @@ function Conversation(): ReactElement {
   return (
     <Reader
       conversationId={conversationId}
+      place={place}
+      account={account}
       back={linkOptions({ to: "/mail/$place", params: { place }, search: { account } })}
     />
   );

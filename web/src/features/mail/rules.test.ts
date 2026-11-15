@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vite-plus/test";
 import { conversation } from "@/test/mail-api";
 import { toConversation } from "./conversations";
-import { countChanges, guess, guessChanges, placesOf, type Action, type Request } from "./rules";
+import type { ConversationRow } from "@/api/generated/model";
+import {
+  actionsFor,
+  countChanges,
+  guess,
+  guessChanges,
+  leavesList,
+  placesOf,
+  type Action,
+  type Request,
+} from "./rules";
 
 // act returns action as a request; a guess reads no IDs.
 const act = (action: Action): Request => ({ action, ids: [] });
@@ -108,5 +118,73 @@ describe("countChanges", () => {
   it("changes nothing for a read conversation", () => {
     const read = { ...unread, unread: false };
     expect(countChanges(read, guess(read, act("trash")))).toEqual([]);
+  });
+});
+
+// rowWith returns a conversation with changes.
+function rowWith(changes: Partial<ConversationRow>) {
+  return toConversation(conversation(1, changes));
+}
+
+describe("actionsFor", () => {
+  const cases: [string, Partial<ConversationRow>, string, Action[]][] = [
+    ["an Inbox conversation", {}, "inbox", ["archive", "trash", "spam", "unread", "star"]],
+    [
+      "an unread, starred one",
+      { unread: true, starred: true },
+      "inbox",
+      ["archive", "trash", "spam", "read", "unstar"],
+    ],
+    [
+      "an archived one, in a label",
+      { inbox: false, labelIds: ["work"] },
+      "work",
+      ["unarchive", "trash", "spam", "unread", "star"],
+    ],
+    [
+      "one only in Spam, in Starred",
+      { inbox: false, allMail: false, spam: true },
+      "starred",
+      ["unspam", "trash", "unread", "star"],
+    ],
+    [
+      "one in the Inbox, in the Spam list",
+      { spam: true },
+      "spam",
+      ["unspam", "trash", "unread", "star"],
+    ],
+    [
+      "one only in Trash",
+      { inbox: false, allMail: false, trash: true },
+      "all",
+      ["untrash", "unread", "star"],
+    ],
+    [
+      "one in the Inbox, in the Trash list",
+      { trash: true },
+      "trash",
+      ["untrash", "unread", "star"],
+    ],
+  ];
+  it.each(cases)("offers %s its state's actions", (_, changes, list, actions) => {
+    expect(actionsFor(rowWith(changes), list)).toEqual(actions);
+  });
+});
+
+describe("leavesList", () => {
+  const inbox = toConversation(conversation(1, { labelIds: ["work"] }));
+
+  it("is true when the action takes it out of the list's place", () => {
+    expect(leavesList(inbox, "archive", "inbox", undefined)).toBe(true);
+    expect(leavesList(inbox, "trash", "work", 1)).toBe(true);
+  });
+
+  it("is false when it stays in the list, e.g. archived in a label", () => {
+    expect(leavesList(inbox, "archive", "work", undefined)).toBe(false);
+    expect(leavesList(inbox, "star", "inbox", undefined)).toBe(false);
+  });
+
+  it("is always true for Mark unread", () => {
+    expect(leavesList(inbox, "unread", "inbox", undefined)).toBe(true);
   });
 });

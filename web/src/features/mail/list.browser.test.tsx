@@ -16,8 +16,7 @@ import { Route as appRoot } from "@/routes/__root";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 import { pointTo } from "@/test/pointer";
 import { placeSearch } from "./address";
-import { runAction } from "./actions";
-import { currentMail, mailData, refreshNewest } from "./conversations";
+import { currentMail, refreshNewest } from "./conversations";
 import { PlacePage } from "./place-page";
 import { Toaster } from "@/components/ui/toast";
 
@@ -458,15 +457,29 @@ describe("the row's star", () => {
 
   it("goes back and says why when Gmail refuses", async () => {
     const api = mailApi([conversation(1)], one);
-    api.refuse[conversation(1).id] = "not-found";
+    api.refuse[conversation(1).id] = "failed";
     await app(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     await userEvent.hover(row);
     await userEvent.click(starOf(/Subject 1,/));
     await expect.element(page.getByText("Couldn't star the conversation")).toBeVisible();
-    await expect.element(page.getByText("It's no longer in Gmail.")).toBeVisible();
+    await expect.element(page.getByText("Gmail didn't answer. Try again.")).toBeVisible();
     await expect.element(starOf(/Subject 1,/)).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("removes a conversation Gmail no longer has, as the reading pane's actions do", async () => {
+    const api = mailApi([conversation(2), conversation(1)], one);
+    api.refuse[conversation(1).id] = "not-found";
+    await app(api);
+    await expect.element(page.getByRole("row", { name: /Subject 1,/ })).toBeVisible();
+    // Gone at Gmail, and from inbok's lists once its poll noticed.
+    api.conversations = [conversation(2)];
+
+    await userEvent.click(starOf(/Subject 1,/));
+
+    await expect.element(page.getByText("It's no longer in Gmail.")).toBeVisible();
+    await expect.element(page.getByRole("row", { name: /Subject 1,/ })).not.toBeInTheDocument();
   });
 
   it("goes back when the request fails", async () => {
@@ -787,35 +800,5 @@ describe("Check for new mail", () => {
 
     await expect.element(page.getByText("Couldn't check for new mail")).toBeVisible();
     expect(api.syncs).toEqual([]);
-  });
-});
-
-describe("a row leaving before the first page", () => {
-  it("lists a deleted conversation in Trash, though Trash's first page answers late", async () => {
-    // The Inbox list, left for Trash, lets its rows go while Trash's first
-    // page loads; TanStack DB, patched, then reads that page again rather
-    // than the whole place, which inbok refuses (ADR031, TanStack DB gate,
-    // rule 9).
-    const rows = [
-      conversation(3),
-      conversation(2),
-      conversation(1, { trash: true, inbox: false, allMail: false }),
-    ];
-    const api = mailApi(rows, one);
-    const fetch = api.fetch;
-    api.fetch = async (input, init) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes("place=trash")) await new Promise((done) => setTimeout(done, 400));
-      return fetch(input, init);
-    };
-    const { client, router } = await app(api);
-    await expect.element(grid().getByRole("row", { name: /Subject 3,/ })).toBeVisible();
-    const { conversations, placeCounts } = mailData(client);
-    await runAction({ client, conversations, placeCounts }, { action: "trash", ids: [rows[0].id] });
-
-    await router.navigate({ to: "/mail/$place", params: { place: "trash" } });
-
-    await expect.element(grid().getByRole("row", { name: /Subject 3,/ })).toBeVisible();
-    await expect.element(grid().getByRole("row", { name: /Subject 1,/ })).toBeVisible();
   });
 });

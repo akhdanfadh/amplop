@@ -53,7 +53,12 @@ async function app(api: MailApi, id: string, opened: "from-list" | "from-link" =
   }
   const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({
     component: () => (
-      <Reader conversationId={id} back={{ to: "/mail/$place", params: { place: "inbox" } }} />
+      <Reader
+        conversationId={id}
+        place="inbox"
+        account={undefined}
+        back={{ to: "/mail/$place", params: { place: "inbox" } }}
+      />
     ),
   });
   const router = createRouter({
@@ -115,6 +120,14 @@ function withMessage(api: MailApi, row: ConversationRow): () => number {
     });
   });
   return () => reads;
+}
+
+// withProviderUrl makes api answer the read of row with its message and
+// providerUrl, its address in Gmail.
+function withProviderUrl(api: MailApi, row: ConversationRow, providerUrl: string): void {
+  answer(api, row.id, () =>
+    Response.json({ data: { conversation: row, messages: [onlyMessage(row)], providerUrl } }),
+  );
 }
 
 // problem returns a Problem Details response of status.
@@ -388,7 +401,7 @@ describe("Reader, opening", () => {
     expect(reads()).toBe(1);
   });
 
-  it("keeps a conversation no list holds through a failed refresh", async () => {
+  it("keeps a conversation no list holds through a failed refresh, and its toolbar", async () => {
     const row = conversation(1);
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
     answer(api, row.id, (read) =>
@@ -399,12 +412,13 @@ describe("Reader, opening", () => {
         : problem(503, "service-busy"),
     );
     await app(api, row.id);
-    await expect.poll(() => mailData(current!).conversations.has(row.id)).toBe(true);
+    const toolbar = page.getByRole("toolbar", { name: "Conversation actions" });
+    await expect.element(toolbar).toBeVisible();
 
     await refreshNewest(current!);
 
     expect(mailData(current!).conversations.has(row.id)).toBe(true);
-    await expect.element(page.getByRole("heading", { level: 2, name: row.subject })).toBeVisible();
+    await expect.element(toolbar).toBeVisible();
   });
 
   it("puts a conversation no list holds back as it was when an action fails across a failed refresh", async () => {
@@ -429,8 +443,8 @@ describe("Reader, opening", () => {
       return problem(500, "internal");
     };
     await app(api, row.id);
+    await expect.element(page.getByRole("toolbar", { name: "Conversation actions" })).toBeVisible();
     const mail = mailData(current!);
-    await expect.poll(() => mail.conversations.has(row.id)).toBe(true);
     const starring = runAction(
       { client: current!, conversations: mail.conversations, placeCounts: mail.placeCounts },
       { action: "star", ids: [row.id] },
@@ -461,5 +475,34 @@ describe("Reader, opening", () => {
     await refreshNewest(current!);
 
     await expect.poll(() => mailData(current!).conversations.has(row.id)).toBe(false);
+  });
+
+  it("opens the conversation in Gmail in a new tab, with no way back to inbok", async () => {
+    const row = conversation(1);
+    const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
+    const url = `https://mail.google.com/mail/?authuser=ana%40example.com#all/${row.id}`;
+    withProviderUrl(api, row, url);
+    await app(api, row.id);
+
+    await userEvent.click(page.getByRole("button", { name: "More actions" }));
+
+    const link = page.getByRole("menuitem", { name: /Open in Gmail/ });
+    await expect.element(link).toHaveAttribute("href", url);
+    await expect.element(link).toHaveAttribute("target", "_blank");
+    await expect.element(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("offers no Open in Gmail for an address that is not https", async () => {
+    const row = conversation(1);
+    const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
+    withProviderUrl(api, row, "javascript:alert(1)");
+    await app(api, row.id);
+    await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
+
+    // More still holds Report spam.
+    await userEvent.click(page.getByRole("button", { name: "More actions" }));
+
+    await expect.element(page.getByRole("menuitem", { name: "Report spam" })).toBeVisible();
+    expect(page.getByRole("menuitem", { name: /Open in Gmail/ }).query()).toBeNull();
   });
 });

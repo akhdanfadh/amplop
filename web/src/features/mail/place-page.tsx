@@ -5,6 +5,7 @@ import { useTopBarSlot } from "@/components/frame";
 import { useFocusOnOpen } from "@/hooks/use-focus-on-open";
 import { useLayout } from "@/hooks/use-layout";
 import { CheckMail } from "./check-mail";
+import { listKey, useRowFocusRequest } from "./focus-request";
 import { ConversationList } from "./list";
 import { MailPanes } from "./panes";
 import type { Place } from "./places";
@@ -48,7 +49,12 @@ export function PlacePage({
   // its first draw, so the heading is drawn once, in its place, and
   // focused there.
   const placed = !inBar || slot !== null;
-  useFocusOnOpen(headingRef, pane === "list" && placed ? `${place} ${account?.id ?? ""}` : null);
+  // A list asked to focus a row, as an action sends the member back to it,
+  // takes focus itself.
+  const rowAsked = useRowFocusRequest(listKey(place, account?.id)) !== undefined;
+  useFocusOnOpen(headingRef, pane === "list" && placed ? `${place} ${account?.id ?? ""}` : null, {
+    unless: rowAsked,
+  });
   // On a phone the open conversation has its own bar, so the place's
   // header leaves the top bar to the wordmark.
   const hidden = useLayout() === "phone" && pane === "reader";
@@ -76,6 +82,7 @@ export function PlacePage({
             placeName={ownName}
             account={account?.id}
             openId={openId}
+            heading={headingRef}
             onRetry={() => setAttempt((n) => n + 1)}
           />
         </main>

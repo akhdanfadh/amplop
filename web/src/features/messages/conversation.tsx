@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { ChevronDownIcon, ChevronUpIcon, PaperclipIcon, ReplyIcon } from "lucide-react";
+import { Toolbar } from "react-aria-components";
 import { cn } from "@/lib/cn";
 import type { ConversationMessageOutput } from "@/api/generated/model";
 import { AccountMark, type AccountColor } from "@/components/account-mark";
@@ -134,9 +135,10 @@ function Conversation({
     const pane = scroller.current;
     if (!bar || !pane) return undefined;
     // Whatever scrolls into view, by focus or by a link, stops below the
-    // pinned toolbar, which grows when large text wraps it (WCAG 2.4.11).
+    // pinned toolbar (WCAG 2.4.11); once it no longer pins, nothing covers.
     const observer = new ResizeObserver(() => {
-      pane.style.scrollPaddingTop = `${bar.offsetHeight}px`;
+      const pinned = getComputedStyle(bar).position === "sticky";
+      pane.style.scrollPaddingTop = pinned ? `${bar.offsetHeight}px` : "";
     });
     observer.observe(bar);
     return () => observer.disconnect();
@@ -161,28 +163,39 @@ function Conversation({
         data-raised={titleHidden || undefined}
         // Wraps only when large text leaves no room; DESIGN.md keeps five
         // buttons and More.
-        className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 border-b border-transparent bg-background px-4 data-raised:border-border"
+        // Pinned while its buttons fit one row: under 20em, as large text
+        // makes a phone's pane (six 44 px buttons and the gutters), it
+        // would take a third of the screen, so it scrolls away instead.
+        // The query counts in em, so it follows the text size, not pixels.
+        className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 border-b border-transparent bg-background px-4 data-raised:border-border @max-[20em]:static"
       >
         {back}
         <p
           // The title says it already, for anyone reading in order; and as
           // a copy, faded out until then, it takes no pointer or selection.
           aria-hidden="true"
+          // A subject's direction from its first letter, as the list's.
+          dir="auto"
+          // Under a 512 px pane it may shrink, so the toolbar keeps one
+          // row (ADR031, "Mail actions as built", checkpoint 7c); under
+          // 28em, e.g. a phone, it would be a few letters between Back and
+          // the actions, so it hides. In em, so it follows the text size.
           className={cn(
-            "pointer-events-none min-w-24 flex-1 truncate px-2 text-sm font-semibold transition-opacity duration-150 select-none",
+            "pointer-events-none min-w-0 flex-1 truncate px-2 text-sm font-semibold transition-opacity duration-150 select-none @max-[28em]:hidden @lg:min-w-24",
             titleHidden ? "opacity-100" : "opacity-0",
           )}
         >
           {title}
         </p>
         {actions && (
-          <div
-            role="toolbar"
+          // React Aria's toolbar: Tab reaches it once, arrow keys move
+          // between its buttons.
+          <Toolbar
             aria-label={conversationActions}
             className="ml-auto flex flex-wrap items-center gap-0.5"
           >
             {actions}
-          </div>
+          </Toolbar>
         )}
       </div>
       <article aria-labelledby={`${id}-title`} className="flex flex-col px-4 pb-6 @lg:px-6">
@@ -191,6 +204,7 @@ function Conversation({
             ref={heading}
             id={`${id}-title`}
             tabIndex={-1}
+            dir="auto"
             className="text-subject font-semibold wrap-break-word outline-none"
           >
             {title}

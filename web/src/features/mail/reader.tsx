@@ -9,13 +9,18 @@ import { accountName } from "@/components/account-mark";
 import { ReadError } from "@/components/read-error";
 import { NotFound } from "@/components/route-states";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { Spinner } from "@/components/ui/spinner";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { ConversationView } from "@/features/messages/conversation";
 import { useLayout } from "@/hooks/use-layout";
 import { isCurrent, runAction, type ActionMail } from "./actions";
 import { currentMail } from "./conversations";
-import type { AppHref } from "./places";
+import { listKey, requestRowFocus } from "./focus-request";
+import { perform } from "./perform";
+import type { AppHref, Place } from "./places";
+import { leavesList, staysInList, type Action } from "./rules";
+import { ConversationToolbar } from "./toolbar";
 import {
   accountsUnreadable,
   backToList,
@@ -30,18 +35,25 @@ const notFoundStatus = 404;
 // Reader is the reading pane's conversation, shown by the conversation
 // view (features/messages). It draws the subject and account from the
 // conversation's row at once, keeps them when a read fails, and names the
-// tab after the subject. Opening an unread conversation marks it read.
+// tab after the subject. Opening an unread conversation marks it read. Its
+// toolbar's actions follow its state in place's list, of account alone
+// when given (ConversationToolbar).
 //
-// back is its list, which a phone, showing one pane at a time, returns to
-// with Back in the view's toolbar. A conversation that does not exist,
+// back is that list, which a phone, showing one pane at a time, returns
+// to with Back in the view's toolbar, as does an action that takes the
+// conversation out of the list. A conversation that does not exist,
 // e.g. deleted since the list drew it, is Page not found unless it is
 // already shown, so a reply being typed stays; an ended session opens
 // sign-in.
 export function Reader({
   conversationId,
+  place,
+  account: listAccount,
   back,
 }: {
   conversationId: string;
+  place: Place;
+  account: number | undefined;
   back: AppHref;
 }): ReactElement {
   const client = useQueryClient();
@@ -96,11 +108,46 @@ export function Reader({
     signOut,
   );
   // Back returns to the list the member came from, as the phone's own back
-  // does, so it adds no history; a conversation opened from a link goes to
-  // its list in its place.
+  // does, so it adds no history, when a row of it opened the conversation;
+  // one opened another way, e.g. from a link or Settings' Back to mail,
+  // goes to its list in its place, rather than back out of mail.
   const goBack = () => {
-    if (router.history.canGoBack()) router.history.back();
+    if (router.state.location.state.fromList) router.history.back();
     else void navigate({ ...back, replace: true });
+  };
+  // The conversation an action took out of its list, which takes no more
+  // actions: going back takes a moment, and a second press of a double
+  // click would land on the button's opposite, e.g. Move to Inbox.
+  const left = useRef<string | null>(null);
+  useEffect(() => {
+    left.current = null;
+  }, [conversationId]);
+  // onAction runs one of the toolbar's actions on the row. One that takes
+  // the conversation out of its list, as the guess shows it, goes back to
+  // it at once, where the row that took its place takes focus, or the row
+  // itself after Mark unread; a refusal then says why on the list. One the
+  // provider no longer has goes back too, its row gone, while the address
+  // is still the one it was run at.
+  const onAction = (action: Action) => {
+    if (!row || !actionMail || left.current === row.id) return;
+    const leaves = leavesList(row, action, place, listAccount);
+    // The address, not the pane's drawn conversation: a row chosen since
+    // moves the address at once, while the pane draws this conversation
+    // until the next one's page has loaded.
+    const at = router.state.location.href;
+    void perform({ mail: actionMail, conversation: row, action, onUnauthorized: signOut }).then(
+      (outcome) => {
+        if (outcome === "gone" && !leaves && router.state.location.href === at) goBack();
+      },
+    );
+    if (!leaves) return;
+    left.current = row.id;
+    requestRowFocus(listKey(place, listAccount), {
+      id: row.id,
+      dateMs: row.dateMs,
+      stays: staysInList(row, action, place, listAccount),
+    });
+    goBack();
   };
   // What shows in the messages' place, or the whole pane's without a frame.
   const status =
@@ -145,12 +192,32 @@ export function Reader({
         messages={detail?.messages}
         placeholder={status}
         onUnauthorized={signOut}
+        actions={
+          row && (
+            <ConversationToolbar
+              conversation={row}
+              list={place}
+              providerUrl={detail?.providerUrl}
+              onAction={onAction}
+            />
+          )
+        }
         back={
+          // An arrow alone, so the toolbar keeps one row at 390 px (ADR031,
+          // "Mail actions as built", checkpoint 7c).
           phone && (
-            <Button variant="ghost" onPress={goBack} className="-ml-2 gap-1 px-2">
-              <ArrowLeftIcon aria-hidden="true" className="size-4" />
-              {backToList}
-            </Button>
+            <TooltipTrigger>
+              <Button
+                variant="ghost"
+                size="icon"
+                onPress={goBack}
+                aria-label={backToList}
+                className="-ml-2"
+              >
+                <ArrowLeftIcon aria-hidden="true" />
+              </Button>
+              <Tooltip>{backToList}</Tooltip>
+            </TooltipTrigger>
           )
         }
       />

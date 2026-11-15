@@ -83,18 +83,17 @@ export const yesterday = "Yesterday";
 // The star button's name, which says whether it is pressed.
 export const starName = "Star";
 
-// starFailed returns what a failed star or unstar says, by starred, what
-// it asked for.
-export function starFailed(starred: boolean): string {
-  return starred ? "Couldn't star the conversation" : "Couldn't remove the star";
-}
-
 // Why the API refused to change a conversation, with the fix.
 export const refusedText = {
   "not-found": "It's no longer in Gmail.",
   "needs-reconnect": "Reconnect its account in Settings, then try again.",
   failed: "Gmail didn't answer. Try again.",
 } as const;
+
+// What a conversation's toolbar's More menu is called, and its link.
+export const moreName = "More actions";
+export const openInGmail = "Open in Gmail";
+export const opensInNewTab = "(opens in a new tab)";
 
 // Who a row names when its newest messages carry no sender at all.
 export const unknownSender = "Unknown sender";
@@ -107,7 +106,7 @@ export const listLoading = "Loading conversations...";
 export const listLoadingMore = "Loading older conversations...";
 
 // The phone's way from a conversation back to its list.
-export const backToList = "Back";
+export const backToList = "Back to list";
 
 // newConversations returns the button that shows conversations which
 // arrived while the member was scrolled down.

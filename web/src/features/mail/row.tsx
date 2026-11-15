@@ -26,8 +26,9 @@ export function rowHeight(): number {
 // ConversationRow is one conversation in a list (DESIGN.md "Message
 // list"): its senders, count, and date; its subject; its preview and star;
 // led by its newest sender's initials, ringed in account's colour unless
-// the list shows one account (ringed false). href opens it; openStore
-// says whether it is the one in the reading pane; now is the day its date
+// the list shows one account (ringed false). href opens it, with fromList
+// in its history state as the reading pane's Back needs it; openStore
+// says which conversation the reading pane shows; now is the day its date
 // is shown at; onRest and onLeave run as the pointer comes to rest on it
 // and leaves, to read it ahead; onStar stars or unstars it.
 export function ConversationRow({
@@ -52,6 +53,13 @@ export function ConversationRow({
   onStar: (starred: boolean) => void;
 }): ReactElement {
   const open = useIsOpen(openStore, conversation.id);
+  // Opening a conversation while another is open replaces that one in the
+  // history: choosing in the reading pane is not a new page, so Back, the
+  // phone's or the browser's, returns to the list rather than through each
+  // conversation. Read as the row opens: React Aria draws a row once and
+  // keeps it, so a value set then would be stale (the reason for
+  // openStore).
+  const replaces = () => openStore.get() !== undefined;
   const names = senders(conversation.participants, account?.email);
   const who = names.join(", ") || unknownSender;
   const date = new Date(conversation.dateMs);
@@ -62,20 +70,24 @@ export function ConversationRow({
   return (
     <GridListItem
       id={conversation.id}
-      href={href}
-      // Opening a conversation while another is open replaces that one in
-      // the history: choosing in the reading pane is not a new page, so
-      // Back, the phone's or the browser's, returns to the list rather than
-      // through each conversation. A getter, read as the row opens: React
-      // Aria draws a row once and keeps it, so a value set then would be
-      // stale (the reason for openStore).
+      href={{
+        ...href,
+        // Whether the entry before the conversation's is this list, so the
+        // reading pane's Back can go back through history: so when the row
+        // adds an entry after the list's; when it replaces an open
+        // conversation's, only if that entry's was. The router runs this
+        // function as it navigates, with the state of the entry it leaves
+        // or replaces.
+        state: (left) => ({ fromList: !replaces() || left.fromList === true }),
+      }}
+      // A getter, so replaces runs at the press.
       // NOTE: React Aria documents only that routerOptions reaches the
       // RouterProvider's navigate; that it passes this object on uncopied,
       // so the getter runs at the press, is what react-aria 3.53 does. The
       // history test in list.browser.test.tsx fails if that changes.
       routerOptions={{
         get replace() {
-          return openStore.get() !== undefined;
+          return replaces();
         },
       }}
       // A screen reader names the row by this, not by its whole text.

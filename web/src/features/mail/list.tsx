@@ -1,9 +1,11 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FocusEvent,
   type ReactElement,
+  type RefObject,
   type UIEvent,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,7 +16,6 @@ import { Collection, Link } from "react-aria-components";
 import { ArrowUpIcon } from "lucide-react";
 import { useCountNewConversations, useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccountOutput } from "@/api/generated/model/listedAccount.zod";
-import { userMessage } from "@/api/problem";
 import { ApiError } from "@/api/transport";
 import { accountName } from "@/components/account-mark";
 import { ReadError } from "@/components/read-error";
@@ -22,22 +23,22 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { GridList, GridListEnd, GridListLoadMore } from "@/components/ui/grid-list";
 import { Skeleton } from "@/components/ui/skeleton";
-import { showError } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
-import { runAction } from "./actions";
 import {
   WholePlaceRefused,
-  currentMail,
   mailData,
   refreshNewest,
   restartMail,
+  type Conversation,
 } from "./conversations";
 import { useToday } from "./dates";
+import { listKey, nextRow, takeRowFocus, useRowFocusRequest } from "./focus-request";
 import { useKeepPlace, useRestIntent, useRowSize } from "./list-state";
 import type { Place } from "./places";
 import { ConversationRow, createOpenStore, type RowAccount } from "./row";
+import { perform } from "./perform";
 import { placeWhere } from "./rules";
 import {
   connectGmail,
@@ -53,8 +54,6 @@ import {
   tryAgain,
   noAccountsTitle,
   refreshFailed,
-  refusedText,
-  starFailed,
   stillSyncing,
 } from "./text";
 
@@ -67,6 +66,9 @@ const pageSize = 50;
 // the list's newest page.
 const newCountEveryMs = 30_000;
 
+// How many frames a row to focus has to appear in, about half a second.
+const maxFocusFrames = 30;
+
 // Placeholder rows while the first page loads: about a window's worth.
 const placeholderRows = 10;
 
@@ -74,19 +76,22 @@ const placeholderRows = 10;
 // alone when given (DESIGN.md "Message list"): newest first, 50 at a time
 // as the member scrolls; new mail waits behind "N new conversations"
 // while the member is scrolled down. openId is the conversation the
-// reading pane shows; placeName names the place in an empty list's words.
-// onRetry starts the list again after a page failed.
+// reading pane shows; placeName names the place in an empty list's words;
+// heading is the place's heading, which takes focus when an action leaves
+// no row to focus. onRetry starts the list again after a page failed.
 export function ConversationList({
   place,
   placeName,
   account,
   openId,
+  heading,
   onRetry,
 }: {
   place: Place;
   placeName: string;
   account: number | undefined;
   openId: string | undefined;
+  heading: RefObject<HTMLElement | null>;
   onRetry: () => void;
 }): ReactElement {
   const client = useQueryClient();
@@ -134,6 +139,42 @@ export function ConversationList({
 
   const { size: rowSize, probe } = useRowSize();
   const keepPlace = useKeepPlace(rows, rowSize);
+
+  // An action in the reading pane that sent the member back to this list
+  // asks it, once the pane has closed, to focus the row that took its
+  // conversation's place, or that row itself while it stays (ADR031, "Mail
+  // actions as built", checkpoint 7c): scrolled into view first, as only
+  // the rows on screen are drawn. With no row left, the heading takes it,
+  // as focus would fall to the page.
+  const listBox = useRef<HTMLDivElement>(null);
+  const focusKey = listKey(place, account);
+  const focusRequest = useRowFocusRequest(focusKey);
+  // Not while the first page loads, which would leave no row to focus.
+  const drawn = !list.isLoading && !list.isIdle;
+  useEffect(() => {
+    if (!focusRequest || openId !== undefined || !drawn) return;
+    takeRowFocus(focusKey);
+    const index = nextRow(rows, focusRequest);
+    const grid = listBox.current?.querySelector<HTMLElement>("[role=grid]");
+    if (index === undefined || !grid) {
+      requestAnimationFrame(() => heading.current?.focus());
+      return;
+    }
+    const top = index * rowSize;
+    if (top < grid.scrollTop || top + rowSize > grid.scrollTop + grid.clientHeight) {
+      grid.scrollTop = Math.max(0, top - (grid.clientHeight - rowSize) / 2);
+    }
+    const id = rows[index].id;
+    // A list hidden behind the pane, as on a phone, draws its rows only
+    // once it shows again, a frame or more later.
+    let frames = 0;
+    const focus = () => {
+      const target = grid.querySelector<HTMLElement>(`[data-conversation="${CSS.escape(id)}"]`);
+      if (target) target.focus();
+      else if (grid.isConnected && ++frames < maxFocusFrames) requestAnimationFrame(focus);
+    };
+    requestAnimationFrame(focus);
+  }, [focusRequest, openId, drawn, focusKey, rows, rowSize, heading]);
 
   // Scrolled down, the newest row shown holds the list; back at the top
   // with nothing waiting, it is live again.
@@ -223,30 +264,19 @@ export function ConversationList({
     });
   }
 
-  // star stars or unstars a conversation; every list shows it at once, and
-  // a refusal or failure puts it back and says why (DESIGN.md "Feedback").
-  // No toast on success: the star stays in view, nor for an answer that
-  // arrives once the member's mail has ended, e.g. after sign-out.
-  const star = (id: string, starred: boolean) => {
-    const current = () => currentMail(client)?.conversations === conversations;
-    runAction(
-      { client, conversations, placeCounts },
-      { action: starred ? "star" : "unstar", ids: [id] },
-    ).then(
-      (result) => {
-        const refused = result.refused[0];
-        if (refused && current()) showError(starFailed(starred), refusedText[refused.reason]);
+  // star stars or unstars a conversation as perform runs an action: every
+  // list shows it at once, and a refusal or failure puts it back and says
+  // why (DESIGN.md "Feedback").
+  const star = (conversation: Conversation, starred: boolean) => {
+    void perform({
+      mail: { client, conversations, placeCounts },
+      conversation,
+      action: starred ? "star" : "unstar",
+      onUnauthorized: () => {
+        clearAccountCache(client);
+        void navigate({ to: "/sign-in", replace: true });
       },
-      (err: unknown) => {
-        if (!current()) return;
-        if (err instanceof ApiError && err.status === unauthorized) {
-          clearAccountCache(client);
-          void navigate({ to: "/sign-in", replace: true });
-          return;
-        }
-        showError(starFailed(starred), err instanceof ApiError ? userMessage(err) : undefined);
-      },
-    );
+    });
   };
 
   // Focus resting on a row reads its conversation ahead, as hovering does.
@@ -258,7 +288,12 @@ export function ConversationList({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" onFocus={onFocus} onBlur={readAhead.leave}>
+    <div
+      ref={listBox}
+      className="flex min-h-0 flex-1 flex-col"
+      onFocus={onFocus}
+      onBlur={readAhead.leave}
+    >
       {/* 1 rem square, so the rows follow the browser's text size. */}
       <span
         ref={probe}
@@ -312,7 +347,7 @@ export function ConversationList({
                 // conversation ahead, as its own Link would (ADR031).
                 onRest={() => readAhead.rest(conversation.id)}
                 onLeave={readAhead.leave}
-                onStar={(starred) => star(conversation.id, starred)}
+                onStar={(starred) => star(conversation, starred)}
               />
             )}
           </Collection>

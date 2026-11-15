@@ -802,10 +802,12 @@ one other than the row just above says so, "In reply to Ana Lima on 2 Nov
 2026, 9:00 am" (the name in a `<bdi>`), a link that opens that
 message (out of "N more messages" if it was there), scrolls it to the
 pane's top, focuses the message itself (its `<article>`, `tabIndex`
--1), and flashes it (`flash-selection` in `styles.css`). The toolbar's
-actions arrive with the mail actions (checkpoint 7). The view takes focus
-when it opens and scrolls itself, so give it a height, and a `key` per
-conversation, so folding starts afresh; its scroll padding follows the
+-1), and flashes it (`flash-selection` in `styles.css`). The view's
+`actions` sit in React Aria's `Toolbar`, one Tab stop with arrow keys
+between its buttons; the bar pins under the pane's top only while it is
+20em wide or more, and its scroll padding goes with the pin. The view
+takes focus when it opens and scrolls itself, so give it a height, and a
+`key` per conversation, so folding starts afresh; its scroll padding follows the
 pinned toolbar's height (a `ResizeObserver`), so nothing focused or
 scrolled to sits under it. Each open message loads its content through
 `useMessageContent` (`content.ts`), so folded messages cost no request;
@@ -839,7 +841,17 @@ nothing is shown (a 404 on a later read leaves a reply being typed in
 place), says when the accounts could not be read, and opens sign-in for
 an ended session. It reads the conversation's row by ID from the mail
 collection, so an action anywhere shows at once, and marks an unread
-conversation read once its messages are read and the tab shows.
+conversation read once its messages are read and the tab shows. Its
+toolbar (`mail/toolbar.tsx`) offers what `actionsFor` (`mail/rules.ts`)
+gives for the conversation in the list it was opened from, each action
+run by `perform` (`mail/perform.ts`), which says why a refused one
+failed. An action that
+takes the conversation out of that list (`leavesList`) goes back to it,
+through history when a row of it opened the conversation (the row's
+link sets `fromList` in its history state, or keeps the flag of the
+open conversation's entry it replaces), else to the list in its place, and asks the list, through `mail/focus-request.ts`, to focus the
+row that took its place, or the conversation's own row after Mark
+unread.
 
 ## Checks and tests
 
@@ -976,6 +988,9 @@ from the registry here:
     technology never reads it. Its `aria-describedby` repeats an icon
     button's name, which is React Aria's doing.
   - `skeleton` does not pulse. `spinner` is decoration.
+- `dropdown-menu`: React Aria's `Menu` in a `Popover`; its items are
+  44 px on a touch screen (`pointer-coarse:min-h-11`), and it opens below
+  its trigger, at its start, unless `placement` says otherwise.
 - `grid-list` is ours: the message list, React Aria's `GridList` in its
   `Virtualizer`, rows of one height, type-to-find off. `GridListItem`
   takes `current` for the open row (`aria-current`, which React Aria
@@ -1232,11 +1247,12 @@ collections live per query client and end with the member's session
 router's loaded pages. `clearAccountCache` tells the browser's other
 inbok tabs over a `BroadcastChannel`, and a signed-in frame that hears
 it loads again, so a tab never shows one member's mail beside another's.
-Mail actions, e.g. the row's star, go through `runAction`
+Mail actions, e.g. the row's star, go through `perform`
+(`features/mail/perform.ts`), which runs `runAction`
 (`features/mail/actions.ts`) instead of a mutation hook: it changes the
 rows and their unread counts at once, sends the action, and keeps the
 rows and counts the API answers with; a conversation the API refuses, or
-every one when the request fails, goes back as it was, and the caller
+every one when the request fails, goes back as it was, and `perform`
 says why. Actions in flight at once keep none of their answers' counts,
 which each hold the whole of List Places at their own moment; the last
 to settle reads them again. The reading pane reads its row from the same

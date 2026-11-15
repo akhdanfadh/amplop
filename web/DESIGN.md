@@ -408,13 +408,41 @@ last two redirect into settings, so settings can move without the server.
 
 ### Reading pane
 
-- A pinned conversation toolbar (archive, delete, mark unread, star, More
-  with Open in Gmail, which opens Gmail's own page for the conversation
-  in a new tab, an address Google does not document; Back first where one pane shows at a time). At most
-  five buttons, then More: a sixth action goes in More, chosen by hand,
-  never moved there by width; the bar wraps only for large text. Once the
-  title scrolls under it, the subject fades in (150 ms) and a hairline
-  shows below it.
+- A pinned conversation toolbar of icon buttons, each named by its
+  tooltip: where one pane shows at a time, an arrow Back first, named
+  "Back to list"; then the conversation's state's first action, Delete,
+  Mark read or unread, Star (a toggle), and More with Report spam and
+  Open in Gmail, which opens Gmail's own page for the conversation in a
+  new tab, an address Google does not document; More hides when empty.
+  The actions follow the conversation, not the address, except in Spam
+  and Trash (`actionsFor` in `features/mail/rules.ts`): in a Spam list,
+  Not spam, Delete, Mark read or unread, Star; in a Trash list, Move to
+  Inbox, Mark read or unread, Star; elsewhere in the inbox, Archive,
+  Delete, Report spam, Mark read or unread, Star; archived, Move to
+  Inbox in place of Archive; only in Spam or only in Trash, as in those
+  lists. No Delete forever. At most five buttons, then More: a sixth
+  action goes in More, chosen by hand, never moved there by width; the
+  same buttons at every width. The faded subject may shrink under a
+  512 px pane, so the bar keeps one 48 px row, and hides under a 28em
+  pane, e.g. a phone, where it would be a few letters; the bar wraps
+  only for large text, and pins only while its buttons fit one row:
+  under a 20em pane (a phone at 200% text) it scrolls away with the
+  title rather than hold a third of the screen. Its icons are named by
+  tooltips only, which touch never shows, as Gmail's app does. Once the title scrolls under
+  it, the subject fades in (150 ms) and a hairline shows below it.
+- After an action the pane goes back to its list when the conversation
+  was in that list's place and account before and is not after, and
+  always after Mark unread; otherwise it stays, e.g. Archive inside a
+  label. Back is the history's when a row of that list opened the
+  conversation, else the list in its place, so an action never leaves
+  mail, e.g. after Settings' Back to mail. Once an action has taken the
+  conversation out, the pane takes no more actions on it, so a double
+  click never runs Archive and then Move to Inbox. The row that took its
+  place takes focus: the next older, else the one above; after Mark
+  unread, the conversation's own row; with no row left, the list's
+  heading. A button whose action changes, e.g. Archive to Move to Inbox,
+  keeps focus. A refused action leaves the member on the list with an
+  error toast; one the provider no longer has also removes the row.
 - Opening an unread conversation marks it read, once: when its messages
   have come (they decide which start open) and the tab shows, and not for
   an account that needs reconnecting. Its row un-bolds and the counts
@@ -646,9 +674,11 @@ pull-to-refresh, which would reload the app, never starts.
 - **Banners** for conditions that last: offline at the top of the content;
   an account problem above that account's mail; setup the member owes at the
   top of settings, e.g. an unverified email address.
-- Every mail action is defined once in the actions registry (label, icon,
-  bulk support, run, undo, result text); toolbars, menus, the picked-rows
-  bar, and toasts read from it.
+- Every mail action has its words once, in `features/mail/words.ts`
+  (label, icon, and failure), a `Record` over the API's actions, so a new
+  one fails the build until it has words; `perform` runs an action with
+  its guess, counts, and error toast; toolbars, menus, the picked-rows
+  bar, and toasts read from them.
 
 ### States
 
@@ -748,7 +778,8 @@ gate"):
 - Plain and exact, in the second person. "inbok" is lowercase, even at the
   start of a sentence.
 - Sentence case. Buttons are a verb and what it acts on, and the verb
-  carries into the result ("Archive", "Conversation archived").
+  carries into the result ("Archive", "Conversation archived"). Gmail's
+  own names win where members know them: "Not spam".
 - Errors say what happened and what to do; no "Sorry", "Oops", or
   exclamation marks.
 - Full sentences end with a period; labels, buttons, headings, and badges

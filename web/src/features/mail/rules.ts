@@ -113,3 +113,53 @@ export function countChanges(before: Conversation, after: Conversation): UnreadC
     ...[...was].filter((place) => !is.has(place)).map((place) => ({ accountId, place, by: -1 })),
   ];
 }
+
+// actionsFor returns the actions conversation offers in list, a place's
+// list, in the toolbar's order: by the first state that fits. A Spam or
+// Trash list offers its own, so a conversation with one message there can
+// leave it; elsewhere its flags decide: in the inbox, archived, or only in
+// Spam or Trash, as those lists. No Delete forever: it cannot be undone.
+export function actionsFor(conversation: Conversation, list: Place): Action[] {
+  const mark: Action = conversation.unread ? "read" : "unread";
+  const star: Action = conversation.starred ? "unstar" : "star";
+  const onlyIn = (view: "spam" | "trash") => conversation[view] && !conversation.allMail;
+  if (list === "spam" || (list !== "trash" && onlyIn("spam")))
+    return ["unspam", "trash", mark, star];
+  if (list === "trash" || onlyIn("trash")) return ["untrash", mark, star];
+  if (conversation.inbox) return ["archive", "trash", "spam", mark, star];
+  return ["unarchive", "trash", "spam", mark, star];
+}
+
+// leavesList reports whether action takes conversation out of the list it
+// was opened from, place and account (undefined for every account's), as
+// its guess shows it; Mark unread always does, so the member comes back to
+// it unread.
+export function leavesList(
+  conversation: Conversation,
+  action: Action,
+  place: Place,
+  account: number | undefined,
+): boolean {
+  if (action === "unread") return true;
+  return inList(conversation, place, account) && !staysInList(conversation, action, place, account);
+}
+
+// staysInList reports whether conversation is in place's list, of account
+// alone when given, once action's guess shows.
+export function staysInList(
+  conversation: Conversation,
+  action: Action,
+  place: Place,
+  account: number | undefined,
+): boolean {
+  return inList(guess(conversation, { action, ids: [conversation.id] }), place, account);
+}
+
+// inList reports whether conversation is in place's list, of account alone
+// when given.
+function inList(conversation: Conversation, place: Place, account: number | undefined): boolean {
+  return (
+    placesOf(conversation).includes(place) &&
+    (account === undefined || conversation.accountId === account)
+  );
+}
