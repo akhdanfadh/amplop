@@ -2,6 +2,7 @@ import type { OutgoingMessageSummary, ProblemType } from "@/api/generated/model"
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import type { LeaveWarningText } from "@/components/leave-warning";
+import { shortcutModifier } from "@/lib/shortcut";
 
 type Status = OutgoingMessageSummary["status"];
 type Failure = NonNullable<OutgoingMessageSummary["failure"]>;
@@ -220,7 +221,7 @@ export function needsReconnectNote(email: string): string {
 // sendTooltip is the Send button's tooltip: its name and the keys that
 // send, as the platform's keyboard writes them (DESIGN.md "Wording").
 export function sendTooltip(): string {
-  return /Mac|iPhone|iPad/.test(navigator.userAgent) ? "Send (Cmd+Enter)" : "Send (Ctrl+Enter)";
+  return `Send (${shortcutModifier()}+Enter)`;
 }
 
 // What the reply editor's buttons say: each opens the editor for one mode.

@@ -4,6 +4,7 @@ import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { InboxIcon, PlusIcon } from "lucide-react";
 import { useLayout } from "@/hooks/use-layout";
+import { shortcutModifier } from "@/lib/shortcut";
 import { Button } from "./button";
 import { Popover, PopoverTrigger } from "./popover";
 import {
@@ -579,12 +580,11 @@ describe("Sidebar", () => {
     await page.viewport(1440, 900);
     await render(<Frame />);
     // The keyboard reaches the trigger after the wordmark; focus opens its
-    // tooltip. Apple keyboards say Cmd.
-    const key = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "Cmd" : "Ctrl";
+    // tooltip.
     await userEvent.keyboard("{Tab}{Tab}");
     await expect
       .poll(() => document.querySelector("[role=tooltip]")?.textContent)
-      .toBe(`Collapse sidebar (${key}+B)`);
+      .toBe(`Collapse sidebar (${shortcutModifier()}+B)`);
   });
 
   it("stops scrolling at the drawer's end, so the page behind stays still", async () => {
