@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { SystemEmailSettings } from "@/api/generated/model";
 import { validationMessage } from "@/api/validation";
-import { settingsSchema, settingsValues } from "./settings-schema";
+import { followedPort, settingsSchema, settingsValues } from "./settings-schema";
 
 const saved: SystemEmailSettings = {
   host: "smtp.example.com",
@@ -44,6 +44,23 @@ describe("settingsValues", () => {
       port: "587",
       security: "starttls",
     });
+  });
+});
+
+describe("followedPort", () => {
+  it("moves a mode's usual port to the new mode's", () => {
+    expect(followedPort("tls", "587")).toBe("465");
+    expect(followedPort("starttls", "465")).toBe("587");
+    expect(followedPort("starttls", " 465 ")).toBe("587");
+  });
+
+  it("keeps a port the member typed", () => {
+    expect(followedPort("tls", "2525")).toBe("2525");
+    expect(followedPort("starttls", "")).toBe("");
+  });
+
+  it("keeps the port for a mode without a usual one", () => {
+    expect(followedPort("none", "587")).toBe("587");
   });
 });
 

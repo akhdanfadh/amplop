@@ -13,7 +13,7 @@ import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { FieldDescription, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
 import { useSessionEnd } from "@/features/auth/session-end";
-import { settingsSchema, settingsValues, usualPort } from "./settings-schema";
+import { followedPort, settingsSchema, settingsValues, usualPort } from "./settings-schema";
 import {
   fieldText,
   formText,
@@ -57,6 +57,9 @@ export function SettingsForm({
   const client = useQueryClient();
   const sessionEnd = useSessionEnd();
   const ref = useRef<HTMLDivElement>(null);
+  // The port Security last moved the field to, which it says while the
+  // field still holds it.
+  const [followedTo, setFollowedTo] = useState<string>();
   // What the form opened with: leaving after changing it asks first.
   const [start] = useState(() => settingsValues(saved));
   const save = useSaveSystemEmail({
@@ -92,6 +95,7 @@ export function SettingsForm({
     listeners: { onChange: () => save.reset() },
   });
   const security = useSelector(form.store, (state) => state.values.security);
+  const port = useSelector(form.store, (state) => state.values.port);
   // Typing back what the form opened with counts as no change.
   const changed = useSelector(form.store, (state) => !state.isDefaultValue);
 
@@ -113,14 +117,29 @@ export function SettingsForm({
                   <field.TextField {...fieldText.host} autoComplete="off" text="literal" />
                 )}
               </form.AppField>
-              <form.AppField name="security">
+              <form.AppField
+                name="security"
+                listeners={{
+                  onChange: ({ value }) => {
+                    const current = form.getFieldValue("port");
+                    const next = followedPort(value, current);
+                    if (next === current) return;
+                    setFollowedTo(next);
+                    form.setFieldValue("port", next);
+                  },
+                }}
+              >
                 {(field) => <field.ChoiceField {...fieldText.security} options={securityOptions} />}
               </form.AppField>
               <form.AppField name="port">
                 {(field) => (
                   <field.TextField
                     {...fieldText.port}
-                    description={portHint(security, usualPort[security])}
+                    description={portHint(
+                      security,
+                      usualPort[security],
+                      port === followedTo ? "changed" : "kept",
+                    )}
                     autoComplete="off"
                     text="literal"
                     inputMode="numeric"

@@ -266,6 +266,24 @@ describe("System email", () => {
     await expect.element(page.getByText("Not confirmed", { exact: true })).toBeVisible();
   });
 
+  it("moves a usual port with Security and keeps a typed one", async () => {
+    await open({ settings: saved, sent: [], bodies: [] });
+    await userEvent.click(button("Edit settings"));
+
+    await userEvent.click(page.getByText("STARTTLS", { exact: true }));
+    await expect.element(field("Port")).toHaveValue("587");
+    await expect
+      .element(field("Port"))
+      .toHaveAccessibleDescription("Changed to 587, the usual port for STARTTLS.");
+
+    await userEvent.fill(field("Port"), "2525");
+    await userEvent.click(page.getByText("TLS", { exact: true }));
+    await expect.element(field("Port")).toHaveValue("2525");
+    await expect
+      .element(field("Port"))
+      .toHaveAccessibleDescription("The usual port for TLS is 465.");
+  });
+
   it("opens the form at once when nothing is saved, with nothing to cancel", async () => {
     await open({ sent: [], bodies: [] });
 

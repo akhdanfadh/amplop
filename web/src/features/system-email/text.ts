@@ -89,10 +89,18 @@ export const fieldText = {
 };
 
 // portHint names port as the usual port for security, or, for a mode
-// without one (port undefined), says the test server picks it.
-export function portHint(security: Security, port: string | undefined): string {
+// without one (port undefined), says the test server picks it. state says
+// whether the field holds the port because it "changed" with Security just
+// now, or as the member "kept" it.
+export function portHint(
+  security: Security,
+  port: string | undefined,
+  state: "changed" | "kept",
+): string {
   if (!port) return "The port your test server listens on.";
-  return `The usual port for ${securityLabel(security)} is ${port}.`;
+  const mode = securityLabel(security);
+  if (state === "changed") return `Changed to ${port}, the usual port for ${mode}.`;
+  return `The usual port for ${mode} is ${port}.`;
 }
 
 // The form's buttons and what they say while they work.

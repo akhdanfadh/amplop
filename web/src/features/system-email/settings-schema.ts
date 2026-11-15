@@ -34,6 +34,16 @@ export function settingsValues(saved: SystemEmailSettings | undefined): Settings
   return { host, security, port: String(port), username, password: "", fromAddress, fromName };
 }
 
+// followedPort returns the port for security after it changed, given the
+// port the form holds: the new mode's usual port when port is still a
+// mode's usual one, so switching modes does not keep the other mode's
+// port; a port the member typed, or a mode without one, keeps port.
+export function followedPort(security: Security, port: string): string {
+  const usual = usualPort[security];
+  const wasUsual = Object.values(usualPort).includes(port.trim());
+  return usual !== undefined && wasUsual ? usual : port;
+}
+
 // portNumber reads a typed port: digits only, so "1e3" or "0x1f" are not
 // numbers here though Number() reads them; anything else is NaN, which
 // the contract's number check words as its rule.
