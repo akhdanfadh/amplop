@@ -156,6 +156,7 @@ func conversationParams(accountID int64, thread string, summary conversation.Sum
 		Unread:             summary.Unread,
 		Flagged:            summary.Flagged,
 		InAllMail:          summary.InAllMail,
+		NewestMessageID:    summary.NewestMessageID,
 	}, nil
 }
 

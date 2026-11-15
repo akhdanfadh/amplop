@@ -11,12 +11,16 @@ import (
 	"inbok/internal/mailsync"
 )
 
-// threadFields are the parts of a thread an action's answer is read for:
-// each message's labels and the version they are of (Gmail's performance
-// tips, "Partial response").
-const threadFields = "messages(id,labelIds,historyId)"
+// threadFields and messageFields are the parts of a thread, or of one
+// message, an action's answer is read for: each message's labels and the
+// version they are of (Gmail's performance tips, "Partial response").
+const (
+	threadFields  = "messages(id,labelIds,historyId)"
+	messageFields = "id,labelIds,historyId"
+)
 
-// labelChange is the labels a threads.modify adds and removes.
+// labelChange is the labels a threads.modify or messages.modify adds and
+// removes.
 type labelChange struct {
 	add, remove []string
 }
@@ -37,43 +41,51 @@ var labelChanges = map[conversation.Action]labelChange{
 	conversation.ActionUnspam:    {add: []string{labelInbox}, remove: []string{labelSpam}},
 }
 
-// ChangeThread applies action to every message of the thread with
-// threadID, with threads.modify, or threads.trash and threads.untrash for
-// Trash, and returns each message's labels as Gmail answers, as inbok keeps
-// them. It returns an error wrapping [conversation.ErrNotFound] when Gmail
-// no longer has the thread.
-//
-// DESIGN: star adds STARRED to every message, as threads.modify does,
-// where Gmail's own web app stars only the newest (ADR031, "Mail actions as
-// built").
-func (c *Client) ChangeThread(ctx context.Context, token connectedaccount.AccessToken, threadID string, action conversation.Action) ([]mailsync.MessageUpdate, error) {
+// ChangeThread applies action to thread: to its newest message with
+// messages.modify when action is [conversation.Action.OnNewest], else to
+// every message with threads.modify, or threads.trash and threads.untrash
+// for Trash. It returns each changed message's labels as Gmail answers, as
+// inbok keeps them, and an error wrapping [conversation.ErrNotFound] when
+// Gmail no longer has the thread or that message.
+func (c *Client) ChangeThread(ctx context.Context, token connectedaccount.AccessToken, thread conversation.Thread, action conversation.Action) ([]mailsync.MessageUpdate, error) {
 	service, err := c.gmail(ctx, token)
 	if err != nil {
 		return nil, err
 	}
 	threads := service.Users.Threads
-	var call func() (*gmail.Thread, error)
-	switch change, ok := labelChanges[action]; {
-	case ok:
+	// call returns the changed messages.
+	var call func() ([]*gmail.Message, error)
+	change, isLabels := labelChanges[action]
+	switch {
+	case isLabels && action.OnNewest():
+		request := &gmail.ModifyMessageRequest{AddLabelIds: change.add, RemoveLabelIds: change.remove}
+		call = func() ([]*gmail.Message, error) {
+			message, err := service.Users.Messages.Modify(gmailUser, thread.ProviderNewestMessageID, request).Fields(messageFields).Context(ctx).Do()
+			if err != nil {
+				return nil, err
+			}
+			return []*gmail.Message{message}, nil
+		}
+	case isLabels:
 		request := &gmail.ModifyThreadRequest{AddLabelIds: change.add, RemoveLabelIds: change.remove}
-		call = func() (*gmail.Thread, error) {
-			return threads.Modify(gmailUser, threadID, request).Fields(threadFields).Context(ctx).Do()
-		}
+		call = threadMessages(func() (*gmail.Thread, error) {
+			return threads.Modify(gmailUser, thread.ProviderThreadID, request).Fields(threadFields).Context(ctx).Do()
+		})
 	case action == conversation.ActionTrash:
-		call = func() (*gmail.Thread, error) {
-			return threads.Trash(gmailUser, threadID).Fields(threadFields).Context(ctx).Do()
-		}
+		call = threadMessages(func() (*gmail.Thread, error) {
+			return threads.Trash(gmailUser, thread.ProviderThreadID).Fields(threadFields).Context(ctx).Do()
+		})
 	case action == conversation.ActionUntrash:
-		call = func() (*gmail.Thread, error) {
-			return threads.Untrash(gmailUser, threadID).Fields(threadFields).Context(ctx).Do()
-		}
+		call = threadMessages(func() (*gmail.Thread, error) {
+			return threads.Untrash(gmailUser, thread.ProviderThreadID).Fields(threadFields).Context(ctx).Do()
+		})
 	default:
 		return nil, fmt.Errorf("gmail api: no call for action %q", action)
 	}
 
 	// Each call sets labels rather than toggling them, so a retried one
 	// that Gmail already applied changes nothing more.
-	thread, err := retry(ctx, c, call)
+	messages, err := retry(ctx, c, call)
 	if isNotFound(err) {
 		return nil, fmt.Errorf("%w: %w", conversation.ErrNotFound, redactGmail(err))
 	}
@@ -82,11 +94,11 @@ func (c *Client) ChangeThread(ctx context.Context, token connectedaccount.Access
 	}
 	// A thread has at least one message; an answer without one cannot say
 	// where the thread stands.
-	if len(thread.Messages) == 0 {
+	if len(messages) == 0 {
 		return nil, errGmailAnswer
 	}
-	updates := make([]mailsync.MessageUpdate, 0, len(thread.Messages))
-	for _, message := range thread.Messages {
+	updates := make([]mailsync.MessageUpdate, 0, len(messages))
+	for _, message := range messages {
 		if message.Id == "" {
 			return nil, errGmailAnswer
 		}
@@ -95,4 +107,15 @@ func (c *Client) ChangeThread(ctx context.Context, token connectedaccount.Access
 		updates = append(updates, update)
 	}
 	return updates, nil
+}
+
+// threadMessages returns call as a call that returns the thread's messages.
+func threadMessages(call func() (*gmail.Thread, error)) func() ([]*gmail.Message, error) {
+	return func() ([]*gmail.Message, error) {
+		thread, err := call()
+		if err != nil {
+			return nil, err
+		}
+		return thread.Messages, nil
+	}
 }

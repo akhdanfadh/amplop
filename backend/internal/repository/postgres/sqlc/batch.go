@@ -96,9 +96,9 @@ func (b *InsertMessagePartBatchResults) Close() error {
 
 const upsertConversation = `-- name: UpsertConversation :batchone
 INSERT INTO conversations (connected_account_id, provider_thread_id, latest_date, subject, preview,
-    latest_from, participants, message_count, unread, flagged, in_all_mail)
+    latest_from, participants, message_count, unread, flagged, in_all_mail, newest_message_id)
 VALUES ($1, $2, $3, $4, $5,
-    $6, $7, $8, $9, $10, $11)
+    $6, $7, $8, $9, $10, $11, $12)
 ON CONFLICT (connected_account_id, provider_thread_id) DO UPDATE SET
     latest_date = excluded.latest_date,
     subject = excluded.subject,
@@ -108,7 +108,8 @@ ON CONFLICT (connected_account_id, provider_thread_id) DO UPDATE SET
     message_count = excluded.message_count,
     unread = excluded.unread,
     flagged = excluded.flagged,
-    in_all_mail = excluded.in_all_mail
+    in_all_mail = excluded.in_all_mail,
+    newest_message_id = excluded.newest_message_id
 RETURNING id
 `
 
@@ -130,6 +131,7 @@ type UpsertConversationParams struct {
 	Unread             bool
 	Flagged            bool
 	InAllMail          bool
+	NewestMessageID    uuid.UUID
 }
 
 // A thread that has a conversation already keeps its row and ID.
@@ -148,6 +150,7 @@ func (q *Queries) UpsertConversation(ctx context.Context, arg []UpsertConversati
 			a.Unread,
 			a.Flagged,
 			a.InAllMail,
+			a.NewestMessageID,
 		}
 		batch.Queue(upsertConversation, vals...)
 	}

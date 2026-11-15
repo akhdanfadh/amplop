@@ -26,9 +26,9 @@ WHERE connected_account_id = @connected_account_id
 -- name: UpsertConversation :batchone
 -- A thread that has a conversation already keeps its row and ID.
 INSERT INTO conversations (connected_account_id, provider_thread_id, latest_date, subject, preview,
-    latest_from, participants, message_count, unread, flagged, in_all_mail)
+    latest_from, participants, message_count, unread, flagged, in_all_mail, newest_message_id)
 VALUES (@connected_account_id, @provider_thread_id, @latest_date, @subject, @preview,
-    @latest_from, @participants, @message_count, @unread, @flagged, @in_all_mail)
+    @latest_from, @participants, @message_count, @unread, @flagged, @in_all_mail, @newest_message_id)
 ON CONFLICT (connected_account_id, provider_thread_id) DO UPDATE SET
     latest_date = excluded.latest_date,
     subject = excluded.subject,
@@ -38,7 +38,8 @@ ON CONFLICT (connected_account_id, provider_thread_id) DO UPDATE SET
     message_count = excluded.message_count,
     unread = excluded.unread,
     flagged = excluded.flagged,
-    in_all_mail = excluded.in_all_mail
+    in_all_mail = excluded.in_all_mail,
+    newest_message_id = excluded.newest_message_id
 RETURNING id;
 
 -- name: DeleteConversationMailboxes :exec
@@ -224,9 +225,13 @@ WHERE ca.user_id = @user_id
 ORDER BY ca.created_at, ca.id;
 
 -- name: ListConversationThreads :many
--- The member's conversations of those named, with their threads, which an
--- action changes at the provider.
-SELECT c.id, c.connected_account_id, c.provider_thread_id
+-- The member's conversations of those named, with their threads and their
+-- newest messages, which an action changes at the provider. The newest
+-- message is derived with the row, in the transaction that writes the
+-- mail, so it exists.
+SELECT c.id, c.connected_account_id, c.provider_thread_id,
+    m.provider_message_id AS provider_newest_message_id
 FROM conversations c
 JOIN connected_accounts ca ON ca.id = c.connected_account_id
+JOIN messages m ON m.connected_account_id = c.connected_account_id AND m.id = c.newest_message_id
 WHERE c.id = ANY (@ids::uuid[]) AND ca.user_id = @user_id;

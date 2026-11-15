@@ -66,6 +66,7 @@ type Conversation struct {
 	Unread             bool
 	Flagged            bool
 	InAllMail          bool
+	NewestMessageID    uuid.UUID
 }
 
 type ConversationMailbox struct {

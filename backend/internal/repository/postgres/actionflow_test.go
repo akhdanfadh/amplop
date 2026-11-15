@@ -78,6 +78,23 @@ func TestActionFlow(t *testing.T) {
 	assert.False(t, row.Unread)
 	assert.Equal(t, []string{"INBOX"}, stored.messages(t, account.ID)["m2"].MailboxProviderIDs)
 
+	// When the member stars the thread and marks it unread.
+	apply(conversation.ActionStar)
+	row = apply(conversation.ActionUnread)
+
+	// Then only the newest message is starred and unread, in inbok and at
+	// Gmail, and the row shows both.
+	assert.True(t, row.Flagged)
+	assert.True(t, row.Unread)
+	messages = stored.messages(t, account.ID)
+	assert.True(t, messages["m1"].Seen)
+	assert.False(t, messages["m1"].Flagged)
+	assert.False(t, messages["m2"].Seen)
+	assert.True(t, messages["m2"].Flagged)
+	at, err := f.gmailAt(t, account.ID).Users.Messages.Get("me", "m1").Format("minimal").Do()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"INBOX"}, at.LabelIds)
+
 	// When the member reports it as spam.
 	row = apply(conversation.ActionSpam)
 
@@ -110,7 +127,7 @@ func TestActionFlowLate(t *testing.T) {
 	// When an action reads the thread at Gmail, the member then stars it
 	// elsewhere, a poll brings the star in, and only then is the action's
 	// answer written.
-	answer, err := f.google.ChangeThread(t.Context(), token, "t1", conversation.ActionRead)
+	answer, err := f.google.ChangeThread(t.Context(), token, conversation.Thread{ProviderThreadID: "t1"}, conversation.ActionRead)
 	require.NoError(t, err)
 	_, err = f.gmailAt(t, account.ID).Users.Messages.Modify("me", "m1", &gmail.ModifyMessageRequest{AddLabelIds: []string{"STARRED"}}).Do()
 	require.NoError(t, err)

@@ -224,7 +224,7 @@
         "additionalProperties": false,
         "properties": {
           "action": {
-            "description": "What to do: mark read or unread, archive out of the inbox or unarchive back into it, move to Trash or out of it, star or unstar, report spam (out of the inbox) or not spam (back into it). Each applies to every message of a conversation, as the provider's own thread action does.",
+            "description": "What to do: mark read or unread, archive out of the inbox or unarchive back into it, move to Trash or out of it, star or unstar, report spam (out of the inbox) or not spam (back into it). star and unread mark a conversation's newest message, the newest it did not send when it has one, as the provider's own web app does. Every other action applies to every message of a conversation, as the provider's own thread action does.",
             "enum": [
               "read",
               "unread",

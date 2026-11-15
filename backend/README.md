@@ -2849,16 +2849,20 @@ about 11 ms.
 `POST /conversations/actions {action, ids}` changes up to 100 of the
 member's conversations: `read` and `unread`, `archive` and `unarchive`,
 `trash` and `untrash`, `star` and `unstar`, `spam` and `unspam`, each
-pair undoing the other.
+pair undoing the other. `star` and `unread` change a conversation's
+newest message (`Action.OnNewest`): the newest message its row is made
+from that is not in Sent, else the newest, which `Derive` records as
+`newest_message_id`; the rest change every message.
 `conversation.ActionService` calls Gmail inside the request, and inbok
 writes only what Gmail answers (ADR031, "Mail actions as built"):
 
 1. It finds the member's threads; another ID is refused `not-found`.
 2. Per account, at once, it takes an access token, then calls
    `threads.modify`, `threads.trash`, or `threads.untrash` for each
-   thread, four at a time per request, for at most 7 seconds and never
-   into the last 3 of the request's 10, which the writes and answer
-   keep. `google.Client.ChangeThread` holds Gmail's rules, which action
+   thread, or `messages.modify` for its newest message, four at a time
+   per request, for at most 7 seconds and never into the last 3 of the
+   request's 10, which the writes and answer keep.
+   `google.Client.ChangeThread` holds Gmail's rules, which action
    is which label, and returns each message's labels as Gmail answered,
    at Gmail's version.
 3. It writes those labels through `UpdateSyncedMail`

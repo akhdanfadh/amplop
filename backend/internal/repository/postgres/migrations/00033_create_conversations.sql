@@ -33,6 +33,10 @@ CREATE TABLE conversations (
     unread               boolean NOT NULL, -- denormalized: whether a message is not seen
     flagged              boolean NOT NULL, -- denormalized: whether a message is flagged
     in_all_mail          boolean NOT NULL, -- denormalized: whether the thread has a visible message, so All mail lists it
+    -- The message Star and Mark unread change. No foreign key: a sync
+    -- deletes messages before it derives their conversations again, in the
+    -- same transaction.
+    newest_message_id    uuid NOT NULL, -- denormalized: the newest message not in Sent, else the newest
     -- Places name a conversation with its account, as memberships do.
     CONSTRAINT conversations_account_id_key UNIQUE (connected_account_id, id)
 );

@@ -50,20 +50,46 @@ func TestDeriveReply(t *testing.T) {
 	summary, ok := Derive([]Message{reply, received})
 
 	// Then the row is dated by the reply, takes the first subject, both
-	// senders, and every mailbox.
+	// senders, and every mailbox, and its newest message is the received
+	// one, not the reply in Sent.
 	assert.True(t, ok)
 	assert.Equal(t, Summary{
-		LatestDate:   reply.Date,
-		Subject:      "Subject asha",
-		Preview:      "Preview member",
-		LatestFrom:   []mailsync.Address{sender("member")},
-		Participants: []mailsync.Address{sender("asha"), sender("member")},
-		MessageCount: 2,
-		Unread:       true,
-		Flagged:      true,
-		InAllMail:    true,
-		Mailboxes:    []uuid.UUID{inbox.ID, sent.ID, receipts.ID},
+		LatestDate:      reply.Date,
+		Subject:         "Subject asha",
+		Preview:         "Preview member",
+		LatestFrom:      []mailsync.Address{sender("member")},
+		Participants:    []mailsync.Address{sender("asha"), sender("member")},
+		MessageCount:    2,
+		Unread:          true,
+		Flagged:         true,
+		InAllMail:       true,
+		NewestMessageID: received.ID,
+		Mailboxes:       []uuid.UUID{inbox.ID, sent.ID, receipts.ID},
 	}, summary)
+}
+
+// The newest message is the newest the row is made from that is not in
+// Sent, else the newest of all.
+func TestDeriveNewestMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		messages []Message
+		want     int
+	}{
+		{"received last", []Message{message(1, "member", sent), message(2, "asha", inbox)}, 2},
+		{"sent last", []Message{message(1, "asha", inbox), message(2, "member", sent), message(3, "member", sent)}, 1},
+		{"only sent", []Message{message(1, "member", sent), message(2, "member", sent)}, 2},
+		{"sent to self", []Message{message(1, "asha", inbox), message(2, "member", inbox, sent)}, 1},
+		{"hidden left out", []Message{message(1, "asha", inbox), message(2, "blair", trash), message(3, "member", drafts)}, 1},
+		{"only hidden", []Message{message(1, "asha", spam), message(2, "blair", trash)}, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			summary, _ := Derive(tt.messages)
+
+			assert.Equal(t, message(tt.want, "", inbox).ID, summary.NewestMessageID)
+		})
+	}
 }
 
 // A message in Spam or Trash counts only there: the row is made from the

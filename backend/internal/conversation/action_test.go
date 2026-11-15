@@ -28,6 +28,31 @@ func TestActionOpposite(t *testing.T) {
 	assert.Empty(t, Action("delete").Opposite())
 }
 
+// Star and Mark unread change only the newest message; every other action,
+// their opposites too, changes every message.
+func TestActionOnNewest(t *testing.T) {
+	var onNewest []Action
+	for _, action := range Actions {
+		if action.OnNewest() {
+			onNewest = append(onNewest, action)
+		}
+	}
+	assert.Equal(t, []Action{ActionUnread, ActionStar}, onNewest)
+}
+
+// The provider is handed each thread as storage listed it, with its newest
+// message.
+func TestApplyThread(t *testing.T) {
+	thread := Thread{ID: idA, AccountID: 1, ProviderThreadID: "ta", ProviderNewestMessageID: "ma"}
+	provider := &fakeProvider{}
+	actions := newTestActions(&fakeActionStorage{threads: []Thread{thread}}, fakeAccess{}, provider)
+
+	_, err := actions.Apply(t.Context(), 42, ActionStar, []uuid.UUID{idA})
+
+	require.NoError(t, err)
+	assert.Equal(t, []Thread{thread}, provider.threads)
+}
+
 type fakeActionStorage struct {
 	mu      sync.Mutex
 	threads []Thread
@@ -104,13 +129,16 @@ type fakeProvider struct {
 	// hold keeps each call in flight until it is closed, when not nil.
 	hold     chan struct{}
 	calls    []string
+	threads  []Thread
 	inFlight int
 	most     int
 }
 
-func (f *fakeProvider) ChangeThread(ctx context.Context, token connectedaccount.AccessToken, threadID string, action Action) ([]mailsync.MessageUpdate, error) {
+func (f *fakeProvider) ChangeThread(ctx context.Context, token connectedaccount.AccessToken, thread Thread, action Action) ([]mailsync.MessageUpdate, error) {
+	threadID := thread.ProviderThreadID
 	f.mu.Lock()
 	f.calls = append(f.calls, fmt.Sprint(token.Value(), "/", threadID, "/", action))
+	f.threads = append(f.threads, thread)
 	f.inFlight++
 	f.most = max(f.most, f.inFlight)
 	f.mu.Unlock()

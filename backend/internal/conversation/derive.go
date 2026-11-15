@@ -86,6 +86,10 @@ type Summary struct {
 	// InAllMail is whether the thread has a visible message, which All mail
 	// and Starred list.
 	InAllMail bool
+	// NewestMessageID is the newest message the row is made from that is
+	// not in Sent, or the newest when each is: the one an action that is
+	// [Action.OnNewest] changes.
+	NewestMessageID uuid.UUID
 	// Mailboxes are the IDs of the mailboxes the conversation is in, in ID
 	// order: those holding a visible message of it, and Spam and Trash when
 	// they hold any.
@@ -129,6 +133,15 @@ func Derive(messages []Message) (Summary, bool) {
 		MessageCount: len(shown),
 		InAllMail:    len(visible) > 0,
 		Mailboxes:    places(kept),
+	}
+	// A star or unread mark goes on a message the member received, as
+	// Gmail's own web app puts it, unless the member sent every one.
+	summary.NewestMessageID = newest.ID
+	for _, m := range slices.Backward(shown) {
+		if !m.InSent() {
+			summary.NewestMessageID = m.ID
+			break
+		}
 	}
 	for _, m := range shown {
 		summary.Unread = summary.Unread || !m.Seen

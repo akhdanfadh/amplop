@@ -57,9 +57,22 @@ func (a Action) Opposite() Action {
 	return opposites[a]
 }
 
+// OnNewest reports whether a changes only a conversation's newest message,
+// [Summary.NewestMessageID], rather than every message of its thread.
+//
+// DESIGN: Star and Mark unread mark one message, as Gmail's own web app
+// does: mail clients, Gmail's among them, open a conversation's unread
+// messages, so marking each unread would open them all on the next visit,
+// and a star on each shows on each. Their opposites clear every message,
+// so Unstar and Mark read leave no star or unread message behind, and
+// undoing them marks only the newest (ADR031, "Mail actions as built").
+func (a Action) OnNewest() bool {
+	return a == ActionStar || a == ActionUnread
+}
+
 // MaxActionIDs is how many conversations one action changes at most,
 // inbok's choice: a page at [MaxLimit]. Each costs a provider call, e.g. a
-// Gmail call of 10 or 20 of the member's 6,000 quota units a minute
+// Gmail call of 5, 10, or 20 of the member's 6,000 quota units a minute
 // (Gmail's usage limits), so one action spends at most a third of a
 // minute's.
 const MaxActionIDs = MaxLimit
@@ -113,13 +126,17 @@ type Thread struct {
 	ID               uuid.UUID
 	AccountID        int64
 	ProviderThreadID string
+	// ProviderNewestMessageID is the provider's ID of the conversation's
+	// [Summary.NewestMessageID], which an action that is [Action.OnNewest]
+	// changes.
+	ProviderNewestMessageID string
 }
 
 // ActionStorage reads the conversations an action changes and writes what
 // the provider answers.
 type ActionStorage interface {
 	// ListThreads returns userID's conversations of ids with their
-	// threads, leaving out any that is not theirs.
+	// threads and newest messages, leaving out any that is not theirs.
 	ListThreads(ctx context.Context, userID int64, ids []uuid.UUID) ([]Thread, error)
 
 	// UpdateMessages writes updates to accountID's messages and their
@@ -141,11 +158,13 @@ type accountAccess interface {
 
 // ThreadChanger applies actions at a provider.
 type ThreadChanger interface {
-	// ChangeThread applies action to every message of the thread with
-	// threadID at the provider, and returns where each stands after, as
-	// the provider answers. It returns an error wrapping [ErrNotFound]
-	// when the provider no longer has the thread.
-	ChangeThread(ctx context.Context, token connectedaccount.AccessToken, threadID string, action Action) ([]mailsync.MessageUpdate, error)
+	// ChangeThread applies action to thread at the provider: to its newest
+	// message, [Thread.ProviderNewestMessageID], when action is
+	// [Action.OnNewest], else to every message of the thread.
+	// It returns where each changed message stands after, as the provider
+	// answers, and an error wrapping [ErrNotFound] when the provider no
+	// longer has the thread or that message.
+	ChangeThread(ctx context.Context, token connectedaccount.AccessToken, thread Thread, action Action) ([]mailsync.MessageUpdate, error)
 }
 
 // ========================
@@ -313,7 +332,7 @@ func (a *ActionService) applyAccount(ctx, budget context.Context, action Action,
 	group.SetLimit(actionConcurrency)
 	for i, thread := range outcome.threads {
 		group.Go(func() error {
-			changed, err := a.provider.ChangeThread(budget, token, thread.ProviderThreadID, action)
+			changed, err := a.provider.ChangeThread(budget, token, thread, action)
 			switch {
 			case ctx.Err() != nil:
 				return ctx.Err()

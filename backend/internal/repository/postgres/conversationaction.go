@@ -11,8 +11,8 @@ import (
 	"inbok/internal/repository/postgres/sqlc"
 )
 
-// ListThreads returns userID's conversations of ids with their threads,
-// leaving out any that is not theirs.
+// ListThreads returns userID's conversations of ids with their threads and
+// newest messages, leaving out any that is not theirs.
 func (db *DB) ListThreads(ctx context.Context, userID int64, ids []uuid.UUID) ([]conversation.Thread, error) {
 	rows, err := sqlc.New(db.pool).ListConversationThreads(ctx, sqlc.ListConversationThreadsParams{Ids: ids, UserID: userID})
 	if err != nil {
@@ -20,7 +20,12 @@ func (db *DB) ListThreads(ctx context.Context, userID int64, ids []uuid.UUID) ([
 	}
 	threads := make([]conversation.Thread, 0, len(rows))
 	for _, row := range rows {
-		threads = append(threads, conversation.Thread{ID: row.ID, AccountID: row.ConnectedAccountID, ProviderThreadID: row.ProviderThreadID})
+		threads = append(threads, conversation.Thread{
+			ID:                      row.ID,
+			AccountID:               row.ConnectedAccountID,
+			ProviderThreadID:        row.ProviderThreadID,
+			ProviderNewestMessageID: row.ProviderNewestMessageID,
+		})
 	}
 	return threads, nil
 }

@@ -302,9 +302,11 @@ func (q *Queries) ListConversationMessages(ctx context.Context, id uuid.UUID) ([
 }
 
 const listConversationThreads = `-- name: ListConversationThreads :many
-SELECT c.id, c.connected_account_id, c.provider_thread_id
+SELECT c.id, c.connected_account_id, c.provider_thread_id,
+    m.provider_message_id AS provider_newest_message_id
 FROM conversations c
 JOIN connected_accounts ca ON ca.id = c.connected_account_id
+JOIN messages m ON m.connected_account_id = c.connected_account_id AND m.id = c.newest_message_id
 WHERE c.id = ANY ($1::uuid[]) AND ca.user_id = $2
 `
 
@@ -314,13 +316,16 @@ type ListConversationThreadsParams struct {
 }
 
 type ListConversationThreadsRow struct {
-	ID                 uuid.UUID
-	ConnectedAccountID int64
-	ProviderThreadID   string
+	ID                      uuid.UUID
+	ConnectedAccountID      int64
+	ProviderThreadID        string
+	ProviderNewestMessageID string
 }
 
-// The member's conversations of those named, with their threads, which an
-// action changes at the provider.
+// The member's conversations of those named, with their threads and their
+// newest messages, which an action changes at the provider. The newest
+// message is derived with the row, in the transaction that writes the
+// mail, so it exists.
 func (q *Queries) ListConversationThreads(ctx context.Context, arg ListConversationThreadsParams) ([]ListConversationThreadsRow, error) {
 	rows, err := q.db.Query(ctx, listConversationThreads, arg.Ids, arg.UserID)
 	if err != nil {
@@ -330,7 +335,12 @@ func (q *Queries) ListConversationThreads(ctx context.Context, arg ListConversat
 	var items []ListConversationThreadsRow
 	for rows.Next() {
 		var i ListConversationThreadsRow
-		if err := rows.Scan(&i.ID, &i.ConnectedAccountID, &i.ProviderThreadID); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConnectedAccountID,
+			&i.ProviderThreadID,
+			&i.ProviderNewestMessageID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

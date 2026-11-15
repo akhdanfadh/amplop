@@ -12,11 +12,12 @@ import (
 	"inbok/internal/mailsync"
 )
 
-// [DB.ListThreads] finds the member's conversations' threads, in any of
-// their accounts, and leaves out another member's and an unknown ID.
+// [DB.ListThreads] finds the member's conversations' threads, each with
+// its newest message not in Sent, in any of their accounts, and leaves out
+// another member's and an unknown ID.
 func TestListThreads(t *testing.T) {
 	c := newConversationReadTest(t)
-	c.saveTo(t, c.account, threadMessage("a1", "t1", 1, "asha", "INBOX"))
+	c.saveTo(t, c.account, threadMessage("a1", "t1", 1, "asha", "INBOX"), threadMessage("a2", "t1", 2, "member", "SENT"))
 	c.saveTo(t, c.other, threadMessage("b1", "t2", 1, "blair", "INBOX"))
 	c.saveTo(t, c.strangerAccount, threadMessage("s1", "t3", 1, "casey", "INBOX"))
 	mine := c.conversations(t, c.account)["t1"].ID
@@ -27,8 +28,8 @@ func TestListThreads(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []conversation.Thread{
-		{ID: mine, AccountID: c.account, ProviderThreadID: "t1"},
-		{ID: other, AccountID: c.other, ProviderThreadID: "t2"},
+		{ID: mine, AccountID: c.account, ProviderThreadID: "t1", ProviderNewestMessageID: "a1"},
+		{ID: other, AccountID: c.other, ProviderThreadID: "t2", ProviderNewestMessageID: "b1"},
 	}, threads)
 }
 

@@ -14,8 +14,12 @@ import (
 	"inbok/internal/mailsync"
 )
 
-// Each action changes every message of the thread, and the answer is
-// where each stands after, as inbok keeps it, at a version past the one
+// t1 is the thread of [TestChangeThread], with m2 its newest message.
+var t1 = conversation.Thread{ProviderThreadID: "t1", ProviderNewestMessageID: "m2"}
+
+// Star and Mark unread change the newest message, every other action every
+// message of the thread, and the answer is where each message it names
+// stands after, as inbok keeps it, at a newest version past the one
 // before: Trash by Gmail's own rules, which take the thread out of the
 // inbox and back.
 func TestChangeThread(t *testing.T) {
@@ -24,11 +28,6 @@ func TestChangeThread(t *testing.T) {
 		{ID: "m2", ThreadID: "t1", Mailbox: alexMailbox, From: "a@example.com", Subject: "Re: Hi", LabelIDs: []string{labelInbox}},
 		{ID: "other", ThreadID: "t2", Mailbox: alexMailbox, From: "b@example.com", Subject: "Else", LabelIDs: []string{labelInbox, labelUnread}},
 	})
-	both := func(update mailsync.MessageUpdate) []mailsync.MessageUpdate {
-		first, second := update, update
-		first.ProviderID, second.ProviderID = "m1", "m2"
-		return []mailsync.MessageUpdate{first, second}
-	}
 	inbox := []string{labelInbox}
 
 	// In order, as each starts from where the one before left the thread.
@@ -37,25 +36,24 @@ func TestChangeThread(t *testing.T) {
 		action conversation.Action
 		want   []mailsync.MessageUpdate
 	}{
-		{conversation.ActionRead, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox, Seen: true})},
-		{conversation.ActionUnread, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
-		{conversation.ActionStar, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox, Flagged: true})},
-		{conversation.ActionUnstar, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
-		{conversation.ActionArchive, both(mailsync.MessageUpdate{})},
-		{conversation.ActionUnarchive, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
-		{conversation.ActionSpam, both(mailsync.MessageUpdate{MailboxProviderIDs: []string{labelSpam}})},
-		{conversation.ActionUnspam, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
-		{conversation.ActionTrash, both(mailsync.MessageUpdate{MailboxProviderIDs: []string{labelTrash}})},
-		{conversation.ActionUntrash, both(mailsync.MessageUpdate{MailboxProviderIDs: inbox})},
+		{conversation.ActionRead, []mailsync.MessageUpdate{{ProviderID: "m1", MailboxProviderIDs: inbox, Seen: true}, {ProviderID: "m2", MailboxProviderIDs: inbox, Seen: true}}},
+		{conversation.ActionUnread, []mailsync.MessageUpdate{{ProviderID: "m2", MailboxProviderIDs: inbox}}},
+		{conversation.ActionStar, []mailsync.MessageUpdate{{ProviderID: "m2", MailboxProviderIDs: inbox, Flagged: true}}},
+		{conversation.ActionUnstar, []mailsync.MessageUpdate{{ProviderID: "m1", MailboxProviderIDs: inbox, Seen: true}, {ProviderID: "m2", MailboxProviderIDs: inbox}}},
+		{conversation.ActionArchive, []mailsync.MessageUpdate{{ProviderID: "m1", Seen: true}, {ProviderID: "m2"}}},
+		{conversation.ActionUnarchive, []mailsync.MessageUpdate{{ProviderID: "m1", MailboxProviderIDs: inbox, Seen: true}, {ProviderID: "m2", MailboxProviderIDs: inbox}}},
+		{conversation.ActionSpam, []mailsync.MessageUpdate{{ProviderID: "m1", MailboxProviderIDs: []string{labelSpam}, Seen: true}, {ProviderID: "m2", MailboxProviderIDs: []string{labelSpam}}}},
+		{conversation.ActionUnspam, []mailsync.MessageUpdate{{ProviderID: "m1", MailboxProviderIDs: inbox, Seen: true}, {ProviderID: "m2", MailboxProviderIDs: inbox}}},
+		{conversation.ActionTrash, []mailsync.MessageUpdate{{ProviderID: "m1", MailboxProviderIDs: []string{labelTrash}, Seen: true}, {ProviderID: "m2", MailboxProviderIDs: []string{labelTrash}}}},
+		{conversation.ActionUntrash, []mailsync.MessageUpdate{{ProviderID: "m1", MailboxProviderIDs: inbox, Seen: true}, {ProviderID: "m2", MailboxProviderIDs: inbox}}},
 	} {
-		updates, err := client.ChangeThread(t.Context(), token, "t1", step.action)
+		updates, err := client.ChangeThread(t.Context(), token, t1, step.action)
 
 		require.NoError(t, err, string(step.action))
 		changed, versions := versionless(updates)
 		assert.ElementsMatch(t, step.want, changed, string(step.action))
-		for _, version := range versions {
-			assert.Greater(t, version, last, string(step.action))
-		}
+		// A message the call left as it was keeps its version.
+		assert.Greater(t, slices.Max(versions), last, string(step.action))
 		last = slices.Max(versions)
 	}
 
@@ -71,9 +69,25 @@ func TestChangeThread(t *testing.T) {
 func TestChangeThreadNotFound(t *testing.T) {
 	client, token := startMailbox(t, nil, nil)
 
-	_, err := client.ChangeThread(t.Context(), token, "gone", conversation.ActionTrash)
+	for _, action := range []conversation.Action{conversation.ActionTrash, conversation.ActionStar} {
+		_, err := client.ChangeThread(t.Context(), token, conversation.Thread{ProviderThreadID: "gone", ProviderNewestMessageID: "gone"}, action)
 
-	require.ErrorIs(t, err, conversation.ErrNotFound)
+		require.ErrorIs(t, err, conversation.ErrNotFound, string(action))
+	}
+}
+
+// An action on the newest message asks for that message's labels only.
+func TestChangeThreadNewestRequest(t *testing.T) {
+	client, _ := stubGmail(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/gmail/v1/users/me/messages/m2/modify", r.URL.Path)
+		assert.Equal(t, messageFields, r.URL.Query().Get("fields"))
+		gmailMessage(w, map[string]any{"id": "m2", "labelIds": []string{labelInbox, labelStarred}, "historyId": "7"})
+	})
+
+	updates, err := client.ChangeThread(t.Context(), connectedaccount.NewAccessToken("access-1"), t1, conversation.ActionStar)
+
+	require.NoError(t, err)
+	assert.Equal(t, []mailsync.MessageUpdate{{ProviderID: "m2", Version: 7, MailboxProviderIDs: []string{labelInbox}, Seen: true, Flagged: true}}, updates)
 }
 
 // The request asks for each message's labels only, and Gmail's answer
@@ -85,7 +99,7 @@ func TestChangeThreadNoMessages(t *testing.T) {
 		gmailMessage(w, map[string]any{"id": "t1"})
 	})
 
-	_, err := client.ChangeThread(t.Context(), connectedaccount.NewAccessToken("access-1"), "t1", conversation.ActionRead)
+	_, err := client.ChangeThread(t.Context(), connectedaccount.NewAccessToken("access-1"), t1, conversation.ActionRead)
 
 	require.ErrorIs(t, err, errGmailAnswer)
 }
@@ -96,7 +110,7 @@ func TestChangeThreadBusy(t *testing.T) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	})
 
-	_, err := client.ChangeThread(t.Context(), connectedaccount.NewAccessToken("access-1"), "t1", conversation.ActionUntrash)
+	_, err := client.ChangeThread(t.Context(), connectedaccount.NewAccessToken("access-1"), t1, conversation.ActionUntrash)
 
 	require.ErrorIs(t, err, mailsync.ErrProviderBusy)
 	assert.Len(t, pauses.all(), retryAttempts-1)
