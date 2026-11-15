@@ -69,5 +69,7 @@ declare module "@tanstack/react-router" {
     // A conversation opened from its list's row, so the entry before it
     // is that list.
     fromList?: boolean;
+    // What the two-factor page just changed, for Security to report.
+    twoFactorChange?: "off";
   }
 }

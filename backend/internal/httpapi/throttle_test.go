@@ -137,7 +137,7 @@ func TestRetryAfter(t *testing.T) {
 		}, "totp-throttled"},
 		{"backup codes", func() *httptest.ResponseRecorder {
 			api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: &fakeBackups{err: refused(totp.ErrThrottled)}})
-			return postBackupRegeneration(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
+			return postTOTP(api, "/backup-codes", `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
 		}, "totp-throttled"},
 		{"TOTP turn-off", func() *httptest.ResponseRecorder {
 			api := New(discard, Services{Session: memberSessions(account.RoleMember), Disabler: &fakeDisabler{err: refused(totp.ErrThrottled)}})

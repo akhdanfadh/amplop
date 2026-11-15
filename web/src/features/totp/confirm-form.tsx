@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import type { ApiError } from "@/api/transport";
 import { formErrors, formSummary, uncertainOutcome, userMessage } from "@/api/problem";
-import { codeFormats, codePaste, type CodeKind } from "@/features/auth/code-schema";
+import { codeFormats, codePaste } from "@/features/auth/code-schema";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -13,30 +13,15 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
-import { ConfirmationSchema, RegenerationSchema, turnOffSchema } from "./schema";
+import { ConfirmationSchema } from "./schema";
 
 const fieldNames = ["code"] as const;
 const purposes = {
   enrollment: {
-    schema: () => ConfirmationSchema,
-    backup: false,
+    schema: ConfirmationSchema,
     label: "Confirm authenticator",
     action: "Enable two-factor authentication",
     pending: "Enabling...",
-  },
-  regeneration: {
-    schema: () => RegenerationSchema,
-    backup: false,
-    label: "Replace backup codes",
-    action: "Generate new backup codes",
-    pending: "Generating backup codes...",
-  },
-  turnOff: {
-    schema: turnOffSchema,
-    backup: true,
-    label: "Confirm turning off two-factor authentication",
-    action: "Turn off two-factor authentication",
-    pending: "Turning off...",
   },
 } as const;
 
@@ -59,19 +44,17 @@ export function ConfirmForm({
   onConfirm: (code: string, reject: (err: ApiError) => void) => void;
 }) {
   const config = purposes[purpose];
-  const [kind, setKind] = useState<CodeKind>("authenticator");
-  const format = codeFormats[kind];
+  const format = codeFormats.authenticator;
   const groupSize = format.length / 2;
   const groups = [0, groupSize];
   const inputId = `${purpose}-code`;
   const inputRef = useRef<HTMLInputElement>(null);
   const focused = useRef(false);
-  const kindChanged = useRef(false);
   const submitRef = useRef<HTMLButtonElement>(null);
   const focusedError = useRef<ApiError | null>(null);
   const form = useForm({
     defaultValues: { code: "" },
-    validators: { onChange: config.schema(kind) },
+    validators: { onChange: config.schema },
     listeners: { onChange: onEdit },
     onSubmitInvalid: () => inputRef.current?.focus(),
     onSubmit: ({ value, formApi }) => {
@@ -100,20 +83,6 @@ export function ConfirmForm({
     focusedError.current = error;
   }, [error, pending, locked, checking, codeRejected]);
 
-  useEffect(() => {
-    // The keyed input remounts with the new kind.
-    if (!kindChanged.current) return;
-    kindChanged.current = false;
-    inputRef.current?.focus();
-  }, [kind]);
-
-  function changeKind(): void {
-    onEdit();
-    form.reset();
-    kindChanged.current = true;
-    setKind(kind === "authenticator" ? "backup" : "authenticator");
-  }
-
   return (
     <form
       className="flex flex-col gap-6"
@@ -131,22 +100,8 @@ export function ConfirmForm({
             const errors = submitted || field.state.meta.isBlurred ? field.state.meta.errors : [];
             return (
               <Field data-invalid={errors.length > 0} data-disabled={pending || locked}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <FieldLabel htmlFor={inputId}>{format.label}</FieldLabel>
-                  {config.backup && (
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="w-fit whitespace-normal"
-                      isDisabled={pending || locked || checking}
-                      onPress={changeKind}
-                    >
-                      {kind === "authenticator" ? "Use a backup code" : "Use authenticator app"}
-                    </Button>
-                  )}
-                </div>
+                <FieldLabel htmlFor={inputId}>{format.label}</FieldLabel>
                 <InputOTP
-                  key={kind}
                   ref={inputRef}
                   id={inputId}
                   name="code"
@@ -155,7 +110,7 @@ export function ConfirmForm({
                   onBlur={() => blurKeepingSubmitErrors(field)}
                   maxLength={format.length}
                   pattern={format.pattern}
-                  inputMode={kind === "authenticator" ? "numeric" : "text"}
+                  inputMode="numeric"
                   autoComplete="one-time-code"
                   autoCapitalize="none"
                   spellCheck={false}

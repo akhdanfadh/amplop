@@ -54,15 +54,11 @@ func newConfirmation(t *testing.T) *confirmationFixture {
 	require.NoError(t, err)
 	keyID, ciphertext, err := ring.Seal([]byte(confirmationSecret), "totp:"+strconv.FormatInt(user.ID, 10))
 	require.NoError(t, err)
-	require.NoError(t, db.UpdateTOTP(t.Context(), user.ID, func(*totp.Factor) (totp.Factor, error) {
-		return totp.Factor{KeyID: keyID, Ciphertext: ciphertext, LastStep: -1}, nil
-	}))
+	require.NoError(t, saveFactor(t.Context(), db, user.ID, totp.Factor{KeyID: keyID, Ciphertext: ciphertext, LastStep: -1}))
 
 	now := time.Unix(59, 0).UTC()
 	clock := func() time.Time { return now }
-	require.NoError(t, db.UpdateTOTP(t.Context(), otherUser, func(*totp.Factor) (totp.Factor, error) {
-		return totp.Factor{KeyID: "1", Ciphertext: []byte("other ciphertext"), ConfirmedAt: &now, LastStep: 1}, nil
-	}))
+	require.NoError(t, saveFactor(t.Context(), db, otherUser, totp.Factor{KeyID: "1", Ciphertext: []byte("other ciphertext"), ConfirmedAt: &now, LastStep: 1}))
 	require.NoError(t, sqlc.New(conn).InsertTOTPBackupCode(t.Context(), sqlc.InsertTOTPBackupCodeParams{UserID: otherUser, CodeHash: setupTestHash}))
 
 	// This cookie is the base64url encoding of 32 zero bytes.

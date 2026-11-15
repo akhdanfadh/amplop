@@ -109,8 +109,8 @@ Put shared code in the folder for its responsibility:
 - `src/features/auth`: sign-in form, validation, session messages, the code
   step's rule for when a sign-in has ended, and account cache cleanup.
 - `src/features/probe`: the probe demo form.
-- `src/features/totp`: authenticator enrollment, confirmation, backup-code
-  management, turning TOTP off, and Security's two-factor section.
+- `src/features/totp`: authenticator enrollment and confirmation, backup-code
+  replacement, turning it off, and Security's two-factor section.
 - `src/features/sessions`: the signed-in browser list and ending sessions.
 - `src/features/email-verification`: the Security page's Email section, the
   `/verify-email` page, and their wording. That page, unlike the other link
@@ -342,7 +342,14 @@ two-factor row has two states: on, with the "Two-factor on" badge, the
 backup codes left, and "Manage two-factor authentication"; or off, with
 "Set up two-factor authentication", which also continues an unfinished
 setup. Both open `/settings/security/two-factor`, which has a "‹ Security"
-link back.
+link back. Turning two-factor off returns to Security, whose notice says
+what changed (history state `twoFactorChange`). Security shows it once: it
+clears the state from the history entry, so Back or a reload does not
+repeat it, and drops a notice its own status read contradicts. Once the
+page has shown two-factor on, any status read that finds it off returns to
+Security the same way, e.g. after a turn-off whose answer was lost, or one
+from another tab. A 401 from any read or write on the page clears the
+account cache and opens sign-in.
 
 The two-factor page starts enrollment on request and renders the QR code
 locally, with a manual setup key as an alternative. A six-digit authenticator
@@ -354,26 +361,22 @@ sends a deletion request and clears the setup key only after success. A
 rejected cancellation keeps setup available; an uncertain outcome requires
 checking status before continuing. Starting again replaces a pending setup key.
 An uncertain confirmation requires checking status before another attempt. If
-confirmation succeeded but its response was lost, backup codes cannot be read
-again; the page explains that the authenticator must remain available.
+confirmation succeeded but its response was lost, its backup codes cannot be
+read again; the page shows two-factor on, where they can be replaced.
 
-Enabled accounts see how many backup codes remain, with a warning at two or
-fewer. Replacing codes requires a fresh authenticator code and invalidates
-every old backup code; existing sessions stay signed in. The replacement set
-has the same one-time display, copy, download, and save acknowledgment as
-enrollment. An uncertain replacement blocks another attempt until status is
-checked. A count cannot recover lost codes or prove which set is current;
-the page directs the user to generate another set with a fresh authenticator
-code.
-
-Members can turn TOTP off with a fresh authenticator code or an unused backup
-code; the same control switches between them as at sign-in. Turning off removes
-the authenticator and every backup code, and sessions stay signed in.
-Administrators see that they must keep TOTP instead. If the account became an
-administrator after the page loaded, the HTTP 403 refreshes the session and the
-page switches to that notice. An HTTP 409 means TOTP is already off, so the
-page offers enrollment again. An uncertain turn-off blocks another attempt until
-status is checked.
+While two-factor is on, the page shows the backup codes left and "Replace
+backup codes": a fresh authenticator code makes a new set, shown with copy
+and download, whose "I've saved these codes" swaps it in; the old codes
+work until then, and leaving first asks, with `LeaveWarning`. The new codes
+show only in that answer: the server never shows them again while
+two-factor is on, since only the authenticator may hand out a new second
+factor, so codes left unsaved, e.g. after a reload, mean making another
+set. Members turn two-factor off on the page: the red button opens the code
+field, with "Use a backup code" as at sign-in, and the code confirms it, so
+no dialog asks again; the answer's status takes the page back to Security.
+A refused turn-off (403) rereads the session, whose role the page reads
+live, so a member made an administrator since sees that administrators
+must keep it on.
 
 Security opens with the account's email address and whether it is
 verified. "Send verification link" emails a link that expires in 24 hours.

@@ -17,8 +17,11 @@ FROM user_totp WHERE user_id = @user_id;
 -- name: ReadUserTOTPStatus :one
 -- One statement keeps the factor and count consistent during concurrent writes.
 SELECT factor.confirmed_at,
-    (SELECT count(*) FROM totp_backup_codes AS codes WHERE codes.user_id = @user_id) AS backup_codes_left
-FROM user_totp AS factor WHERE factor.user_id = @user_id;
+    (SELECT count(*) FROM totp_backup_codes AS codes WHERE codes.user_id = @user_id) AS backup_codes_left,
+    waiting.expires_at AS waiting_expires_at
+FROM user_totp AS factor
+LEFT JOIN totp_waiting_backup_codes AS waiting ON waiting.user_id = factor.user_id
+WHERE factor.user_id = @user_id;
 
 -- name: UpsertUserTOTP :exec
 INSERT INTO user_totp (user_id, key_id, secret_ciphertext, confirmed_at, last_step)
@@ -31,3 +34,18 @@ ON CONFLICT (user_id) DO UPDATE SET
 
 -- name: DeleteUserTOTP :exec
 DELETE FROM user_totp WHERE user_id = @user_id;
+
+-- name: ReadTOTPWaitingBackupCodes :one
+SELECT code_hashes, token_hash, expires_at
+FROM totp_waiting_backup_codes WHERE user_id = @user_id;
+
+-- name: UpsertTOTPWaitingBackupCodes :exec
+INSERT INTO totp_waiting_backup_codes (user_id, code_hashes, token_hash, expires_at)
+VALUES (@user_id, @code_hashes, @token_hash, @expires_at)
+ON CONFLICT (user_id) DO UPDATE SET
+    code_hashes = EXCLUDED.code_hashes,
+    token_hash = EXCLUDED.token_hash,
+    expires_at = EXCLUDED.expires_at;
+
+-- name: DeleteTOTPWaitingBackupCodes :exec
+DELETE FROM totp_waiting_backup_codes WHERE user_id = @user_id;

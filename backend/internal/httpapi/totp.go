@@ -38,7 +38,8 @@ type enrollmentService interface {
 }
 
 type backupService interface {
-	Regenerate(ctx context.Context, userID int64, code string) ([]string, error)
+	Replace(ctx context.Context, userID int64, code string) (totp.Codes, error)
+	Finish(ctx context.Context, userID int64, token string) (int, error)
 }
 
 type disableService interface {
@@ -64,7 +65,8 @@ func registerTOTP(api huma.API, service totpService, enrollment enrollmentServic
 	registerTOTPEnrollment(api, handler)
 	registerTOTPCancellation(api, handler)
 	registerTOTPConfirmation(api, handler)
-	registerBackupRegeneration(api, handler)
+	registerBackupReplacement(api, handler)
+	registerBackupReplacementFinish(api, handler)
 	registerTOTPDisable(api, handler)
 }
 
@@ -73,8 +75,9 @@ func registerTOTP(api huma.API, service totpService, enrollment enrollmentServic
 // ========================
 
 type totpStatus struct {
-	Status          totp.State `json:"status" enum:"off,pending,on"`
-	BackupCodesLeft int        `json:"backupCodesLeft" minimum:"0" maximum:"10"`
+	Status             totp.State `json:"status" enum:"off,pending,on"`
+	BackupCodesLeft    int        `json:"backupCodesLeft" minimum:"0" maximum:"10"`
+	BackupCodesWaiting bool       `json:"backupCodesWaiting" doc:"Whether new backup codes, made while replacing them, wait for Finish Backup Code Replacement."`
 }
 
 func registerTOTPStatus(api huma.API, handler totpHandler) {
@@ -96,7 +99,7 @@ func (h totpHandler) handleGetTOTPStatus(ctx context.Context, _ *struct{}) (*out
 	if err != nil {
 		return nil, err
 	}
-	return respondData(totpStatus{Status: status.State, BackupCodesLeft: status.BackupCodesLeft}), nil
+	return respondData(totpStatus{Status: status.State, BackupCodesLeft: status.BackupCodesLeft, BackupCodesWaiting: status.BackupCodesWaiting}), nil
 }
 
 func totpStatusResponses(api huma.API) map[string]*huma.Response {
@@ -291,54 +294,60 @@ func totpConfirmationProblem(err error) error {
 }
 
 // ========================
-// Backup-code regeneration
+// Backup-code replacement
 // ========================
 
-type totpRegenerationCode struct {
+const notWaitingType = problemPrefix + "backup-codes-not-waiting"
+
+type totpReplacementCode struct {
 	Code string `json:"code" writeOnly:"true" maxLength:"6" doc:"Fresh six-digit code from the confirmed authenticator."`
 }
 
-type totpBackupCodes struct {
-	BackupCodes []string `json:"backupCodes" nullable:"false" minItems:"10" maxItems:"10" doc:"Shown once. Save these replacement codes before leaving this page."`
+type waitingBackupCodes struct {
+	BackupCodes []string `json:"backupCodes" nullable:"false" minItems:"10" maxItems:"10" doc:"Not active yet. Save these codes, then send the token to Finish."`
+	Token       string   `json:"token" doc:"One-time token that activates these codes. Keep private."`
 }
 
-func registerBackupRegeneration(api huma.API, handler totpHandler) {
+type backupCodesToken struct {
+	// randomsecret tokens are 43 characters; 64 bounds the body (inbok's choice).
+	Token string `json:"token" writeOnly:"true" maxLength:"64" doc:"The one-time token that came with the waiting backup codes."`
+}
+
+func registerBackupReplacement(api huma.API, handler totpHandler) {
 	huma.Register(api, huma.Operation{
-		OperationID: "regenerateTOTPBackupCodes",
+		OperationID: "replaceTOTPBackupCodes",
 		Method:      http.MethodPost,
 		Path:        totpPath + "/backup-codes",
 		Summary:     "Replace Backup Codes",
 		Tags:        []string{tagTwoFactor},
-		Description: "Requires a fresh authenticator code. Invalidates the old backup codes and returns ten replacements once. Existing sessions stay signed in.",
+		Description: "Requires a fresh authenticator code. Returns ten new backup codes and a one-time token, in this answer only: nothing shows them again. The old codes keep working until Finish Backup Code Replacement, within 15 minutes. Existing sessions stay signed in.",
 		Metadata:    map[string]any{accessKey: session.AccessMember},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
-		Responses:   backupRegenerationResponses(api),
-	}, handler.handleRegenerateBackupCodes)
+		Responses:   backupReplacementResponses(api),
+	}, handler.handleReplaceTOTPBackupCodes)
 }
 
-func (h totpHandler) handleRegenerateBackupCodes(ctx context.Context, in *struct{ Body totpRegenerationCode }) (*output[totpBackupCodes], error) {
+func (h totpHandler) handleReplaceTOTPBackupCodes(ctx context.Context, in *struct{ Body totpReplacementCode }) (*output[waitingBackupCodes], error) {
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
-	codes, err := h.backups.Regenerate(ctx, user.ID, in.Body.Code)
+	codes, err := h.backups.Replace(ctx, user.ID, in.Body.Code)
 	if err != nil {
-		return nil, backupRegenerationProblem(err)
+		return nil, backupReplacementProblem(err)
 	}
-
-	// The service exposes these codes only after replacement commits.
-	return respondData(totpBackupCodes{BackupCodes: codes}), nil
+	return respondData(waitingBackupCodes{BackupCodes: codes.Codes, Token: codes.Token}), nil
 }
 
-func backupRegenerationResponses(api huma.API) map[string]*huma.Response {
+func backupReplacementResponses(api huma.API) map[string]*huma.Response {
 	responses := totpStatusResponses(api)
 	maps.Copy(responses, problemResponses(api, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests))
 
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
 	conflict.Description = "No confirmed authenticator is available."
-	conflict.Content[problemContentType].Example = backupRegenerationProblem(totp.ErrNotOn)
+	conflict.Content[problemContentType].Example = backupReplacementProblem(totp.ErrNotOn)
 
 	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
 	invalid.Description = "The request inputs or authenticator code are invalid."
 	invalid.Content[problemContentType].Examples = map[string]*huma.Example{
-		"invalidCode":  {Value: backupRegenerationProblem(totp.ErrInvalidCode)},
+		"invalidCode":  {Value: backupReplacementProblem(totp.ErrInvalidCode)},
 		"invalidInput": {Value: requestProblem(http.StatusUnprocessableEntity)},
 	}
 
@@ -349,7 +358,7 @@ func backupRegenerationResponses(api huma.API) map[string]*huma.Response {
 	return responses
 }
 
-func backupRegenerationProblem(err error) error {
+func backupReplacementProblem(err error) error {
 	switch {
 	case errors.Is(err, account.ErrUserNotFound):
 		return unauthenticatedProblem()
@@ -357,7 +366,7 @@ func backupRegenerationProblem(err error) error {
 	case errors.Is(err, totp.ErrNotOn):
 		return newProblem(
 			http.StatusConflict, totpNotOnType,
-			"Authenticator not enabled", "Confirm an authenticator before replacing backup codes.",
+			"Authenticator not enabled", "Turn on two-factor authentication before replacing backup codes.",
 		)
 
 	case errors.Is(err, totp.ErrInvalidCode):
@@ -367,9 +376,47 @@ func backupRegenerationProblem(err error) error {
 			inputError{Location: "body.code", Message: confirmedTOTPCodeMessage},
 		)
 
+	case errors.Is(err, totp.ErrNotWaiting):
+		return newProblem(http.StatusConflict, notWaitingType, "Backup codes not waiting", "These backup codes are no longer waiting to be saved.")
+
 	default:
 		return totpThrottleProblem(err)
 	}
+}
+
+func registerBackupReplacementFinish(api huma.API, handler totpHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "finishTOTPBackupCodeReplacement",
+		Method:      http.MethodPost,
+		Path:        totpPath + "/backup-codes/finish",
+		Summary:     "Finish Backup Code Replacement",
+		Tags:        []string{tagTwoFactor},
+		Description: "Call once the person has saved the new backup codes. Makes them active and ends the old ones. Existing sessions stay signed in.",
+		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses:   backupReplacementFinishResponses(api),
+	}, handler.handleFinishTOTPBackupCodeReplacement)
+}
+
+func (h totpHandler) handleFinishTOTPBackupCodeReplacement(ctx context.Context, in *struct{ Body backupCodesToken }) (*output[totpStatus], error) {
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	active, err := h.backups.Finish(ctx, user.ID, in.Body.Token)
+	if err != nil {
+		return nil, backupReplacementProblem(err)
+	}
+	return respondData(totpStatus{Status: totp.StateOn, BackupCodesLeft: active}), nil
+}
+
+func backupReplacementFinishResponses(api huma.API) map[string]*huma.Response {
+	responses := totpStatusResponses(api)
+	maps.Copy(responses, problemResponses(api, http.StatusConflict))
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "No new backup codes wait for this token, or two-factor authentication is off."
+	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
+		"notWaiting": {Value: backupReplacementProblem(totp.ErrNotWaiting)},
+		"notOn":      {Value: backupReplacementProblem(totp.ErrNotOn)},
+	}
+	return responses
 }
 
 // ========================

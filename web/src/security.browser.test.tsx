@@ -34,7 +34,7 @@ function answer(path: string): Response {
   if (path.endsWith("/totp"))
     return failing.totp
       ? problem()
-      : Response.json({ data: { status: "off", backupCodesLeft: 0 } });
+      : Response.json({ data: { status: "off", backupCodesLeft: 0, backupCodesWaiting: false } });
   if (path.endsWith("/sessions"))
     return Response.json({
       data: {

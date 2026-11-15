@@ -3,7 +3,6 @@ package totp
 import (
 	"context"
 	"errors"
-	"strconv"
 
 	"inbok/internal/account"
 )
@@ -20,8 +19,9 @@ type DisableState struct {
 
 type disableStore interface {
 	// DisableTOTP locks the user and loads role, factor, and remaining backup hashes.
-	// On successful proof it deletes the factor (cascading to all backup codes)
-	// and this owned attempt in one transaction. Sessions remain unchanged.
+	// On successful proof it deletes the factor (cascading to all backup codes,
+	// active and waiting) and this owned attempt in one transaction. Sessions
+	// remain unchanged.
 	// A missing or deactivated user returns [account.ErrUserNotFound].
 	DisableTOTP(ctx context.Context, userID, attemptID int64, check func(DisableState) error) error
 }
@@ -61,7 +61,7 @@ func (s *Disabler) Disable(ctx context.Context, userID int64, code string) error
 		// 3. Verify the code: a TOTP code against the decrypted secret, or
 		// else a backup code.
 		if isTOTPCode(code) {
-			secret, err := s.encryption.Open(state.Factor.KeyID, state.Factor.Ciphertext, "totp:"+strconv.FormatInt(userID, 10))
+			secret, err := s.encryption.Open(state.Factor.KeyID, state.Factor.Ciphertext, secretOwner(userID))
 			if err != nil {
 				return err
 			}

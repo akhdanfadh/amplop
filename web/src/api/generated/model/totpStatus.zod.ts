@@ -12,6 +12,7 @@ export const totpStatusBackupCodesLeftMax = 10;
 
 export const TotpStatus = zod.object({
   "backupCodesLeft": zod.int().min(totpStatusBackupCodesLeftMin).max(totpStatusBackupCodesLeftMax),
+  "backupCodesWaiting": zod.boolean().describe('Whether new backup codes, made while replacing them, wait for Finish Backup Code Replacement.'),
   "status": zod.enum(['off', 'pending', 'on'])
 })
 

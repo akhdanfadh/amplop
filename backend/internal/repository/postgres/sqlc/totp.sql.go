@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+const deleteTOTPWaitingBackupCodes = `-- name: DeleteTOTPWaitingBackupCodes :exec
+DELETE FROM totp_waiting_backup_codes WHERE user_id = $1
+`
+
+func (q *Queries) DeleteTOTPWaitingBackupCodes(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, deleteTOTPWaitingBackupCodes, userID)
+	return err
+}
+
 const deleteUserTOTP = `-- name: DeleteUserTOTP :exec
 DELETE FROM user_totp WHERE user_id = $1
 `
@@ -52,6 +61,24 @@ func (q *Queries) LockTOTPUserRole(ctx context.Context, userID int64) (LockTOTPU
 	return i, err
 }
 
+const readTOTPWaitingBackupCodes = `-- name: ReadTOTPWaitingBackupCodes :one
+SELECT code_hashes, token_hash, expires_at
+FROM totp_waiting_backup_codes WHERE user_id = $1
+`
+
+type ReadTOTPWaitingBackupCodesRow struct {
+	CodeHashes []string
+	TokenHash  []byte
+	ExpiresAt  time.Time
+}
+
+func (q *Queries) ReadTOTPWaitingBackupCodes(ctx context.Context, userID int64) (ReadTOTPWaitingBackupCodesRow, error) {
+	row := q.db.QueryRow(ctx, readTOTPWaitingBackupCodes, userID)
+	var i ReadTOTPWaitingBackupCodesRow
+	err := row.Scan(&i.CodeHashes, &i.TokenHash, &i.ExpiresAt)
+	return i, err
+}
+
 const readUserTOTP = `-- name: ReadUserTOTP :one
 SELECT key_id, secret_ciphertext, confirmed_at, last_step
 FROM user_totp WHERE user_id = $1
@@ -78,21 +105,51 @@ func (q *Queries) ReadUserTOTP(ctx context.Context, userID int64) (ReadUserTOTPR
 
 const readUserTOTPStatus = `-- name: ReadUserTOTPStatus :one
 SELECT factor.confirmed_at,
-    (SELECT count(*) FROM totp_backup_codes AS codes WHERE codes.user_id = $1) AS backup_codes_left
-FROM user_totp AS factor WHERE factor.user_id = $1
+    (SELECT count(*) FROM totp_backup_codes AS codes WHERE codes.user_id = $1) AS backup_codes_left,
+    waiting.expires_at AS waiting_expires_at
+FROM user_totp AS factor
+LEFT JOIN totp_waiting_backup_codes AS waiting ON waiting.user_id = factor.user_id
+WHERE factor.user_id = $1
 `
 
 type ReadUserTOTPStatusRow struct {
-	ConfirmedAt     *time.Time
-	BackupCodesLeft int64
+	ConfirmedAt      *time.Time
+	BackupCodesLeft  int64
+	WaitingExpiresAt *time.Time
 }
 
 // One statement keeps the factor and count consistent during concurrent writes.
 func (q *Queries) ReadUserTOTPStatus(ctx context.Context, userID int64) (ReadUserTOTPStatusRow, error) {
 	row := q.db.QueryRow(ctx, readUserTOTPStatus, userID)
 	var i ReadUserTOTPStatusRow
-	err := row.Scan(&i.ConfirmedAt, &i.BackupCodesLeft)
+	err := row.Scan(&i.ConfirmedAt, &i.BackupCodesLeft, &i.WaitingExpiresAt)
 	return i, err
+}
+
+const upsertTOTPWaitingBackupCodes = `-- name: UpsertTOTPWaitingBackupCodes :exec
+INSERT INTO totp_waiting_backup_codes (user_id, code_hashes, token_hash, expires_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (user_id) DO UPDATE SET
+    code_hashes = EXCLUDED.code_hashes,
+    token_hash = EXCLUDED.token_hash,
+    expires_at = EXCLUDED.expires_at
+`
+
+type UpsertTOTPWaitingBackupCodesParams struct {
+	UserID     int64
+	CodeHashes []string
+	TokenHash  []byte
+	ExpiresAt  time.Time
+}
+
+func (q *Queries) UpsertTOTPWaitingBackupCodes(ctx context.Context, arg UpsertTOTPWaitingBackupCodesParams) error {
+	_, err := q.db.Exec(ctx, upsertTOTPWaitingBackupCodes,
+		arg.UserID,
+		arg.CodeHashes,
+		arg.TokenHash,
+		arg.ExpiresAt,
+	)
+	return err
 }
 
 const upsertUserTOTP = `-- name: UpsertUserTOTP :exec

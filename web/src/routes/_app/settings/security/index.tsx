@@ -1,7 +1,11 @@
 import { useEffect, useState, type ReactElement } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useLocation, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useDeleteCurrentSession, useGetCurrentSession } from "@/api/generated/inbok";
+import {
+  useDeleteCurrentSession,
+  useGetCurrentSession,
+  useGetTOTPStatus,
+} from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
@@ -12,7 +16,7 @@ import { SessionList } from "@/features/sessions/list";
 import { SettingsPage } from "@/features/settings/page";
 import { pageName, securityLead } from "@/features/settings/text";
 import { TwoFactorSection } from "@/features/totp/security-section";
-import { adminReason } from "@/features/totp/text";
+import { adminReason, changeNotice } from "@/features/totp/text";
 
 const unauthorized = 401;
 
@@ -27,6 +31,15 @@ export const Route = createFileRoute("/_app/settings/security/")({
 function Security(): ReactElement {
   const client = useQueryClient();
   const navigate = useNavigate();
+  // What the two-factor page just changed, handed over in history state,
+  // kept from the first render: the entry then loses it, so Back or a
+  // reload does not report it again.
+  const handedOver = useLocation({ select: (location) => location.state.twoFactorChange });
+  const [change] = useState(handedOver);
+  const twoFactor = useGetTOTPStatus({ query: { networkMode: "always" } });
+  // A notice the status read contradicts, e.g. "off" from a page that
+  // turned it off before another tab turned it on again, says nothing true.
+  const notice = change && twoFactor.data?.data.status !== "on" ? changeNotice[change] : undefined;
   const [ending, setEnding] = useState(false);
   const [sending, setSending] = useState(false);
   const signOut = useDeleteCurrentSession({
@@ -49,13 +62,22 @@ function Security(): ReactElement {
   }
 
   useEffect(() => {
+    if (!handedOver) return;
+    void navigate({
+      to: "/settings/security",
+      replace: true,
+      state: (state) => ({ ...state, twoFactorChange: undefined }),
+    });
+  }, [handedOver, navigate]);
+
+  useEffect(() => {
     if (current.error?.status !== unauthorized) return;
     clearAccountCache(client);
     void navigate({ to: "/sign-in", replace: true, ignoreBlocker: true });
   }, [current.error, client, navigate]);
 
   return (
-    <SettingsPage title={pageName.security} lead={securityLead}>
+    <SettingsPage title={pageName.security} lead={securityLead} notice={notice}>
       {/* Only a first check says so: DESIGN.md has background re-reads
           show nothing, and the text would push the page down and back. */}
       {current.isFetching && !current.data && (

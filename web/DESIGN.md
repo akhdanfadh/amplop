@@ -655,11 +655,14 @@ pull-to-refresh, which would reload the app, never starts.
 - A page (`SettingsPage`, `SettingsSection`): title, one-sentence lead,
   then sections divided by hairlines, heading and explanation on the left,
   controls on the right, stacked below 512 px of page; content caps at
-  720 px; no cards around everything.
+  720 px; no cards around everything. A result to report, e.g. "Two-factor
+  authentication is off.", sits under the lead.
 - A task of several steps, e.g. setting up two-factor authentication, gets
   its own page under its settings page (`/settings/security/two-factor`),
   with "‹ Security" above the title; the settings page keeps one row with
-  the status and a way in.
+  the status and a way in. A section whose step needs the width, e.g. a
+  form opened in place, stacks its heading over it
+  (`layout="stacked"`).
 - Connected accounts gives each account a Name field ("Name (optional)",
   one explanation for all of them under the heading): a name only the
   member sees, never sent to recipients, unlike Gmail's sender name; it
@@ -773,11 +776,14 @@ outcome.
   (DEBT.md, "Undo per message"). A result that stays in view,
   e.g. a star or Mark read, gets no Undo. A bulk action Gmail refuses for
   some conversations rolls back only those, and says how many failed.
-- **Irreversible actions** (disconnect, deactivate, turn off two-factor
-  authentication, discard typed text) ask first in an `AlertDialog`: the
-  title asks, the body states the consequence and what is kept, the
-  buttons name the actions ("Disconnect Studio"), focus starts on the safe
-  one.
+- **Irreversible actions** (disconnect, deactivate, discard typed text)
+  ask first in an `AlertDialog`: the title asks, the body states the
+  consequence and what is kept, the buttons name the actions ("Disconnect
+  Studio"), focus starts on the safe one. One that already asks for a code
+  or a password, e.g. turning off two-factor authentication, confirms with
+  it on the page instead: the red button opens the field, the consequence
+  sits above it, the submit is red (`SubmitButton variant="destructive"`),
+  and a way back keeps things as they are.
 - **A failed action** rolls back and shows an error toast that stays until
   dismissed, with the fix.
 - **Toasts** report failures, and stay until closed; an action's Undo is
@@ -833,10 +839,11 @@ Deactivated is an admin's choice, not a fault. Up to date and Active show
 only on the page whose job is that status (Connected accounts, Members);
 elsewhere the usual state shows nothing.
 Admin and the Members table's Verified column wait for the settings pages'
-redesign (`feat/design-forms`); Two-factor on shows on Security. The
-sidebar shows an account's Syncing, Reconnect, or Sync failed as the icon
-alone, in its tone, the words read to screen readers and shown on hover,
-and with the icon on a line under the name for a touch.
+redesign (`feat/design-forms`); Two-factor on shows on Security and the
+two-factor page. The sidebar shows an account's Syncing, Reconnect, or
+Sync failed as the icon alone, in its tone, the words read to screen
+readers and shown on hover, and with the icon on a line under the name
+for a touch.
 
 ## Data for mail
 

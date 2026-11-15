@@ -285,6 +285,13 @@ type TotpBackupCode struct {
 	CodeHash string
 }
 
+type TotpWaitingBackupCode struct {
+	UserID     int64
+	CodeHashes []string
+	TokenHash  []byte
+	ExpiresAt  time.Time
+}
+
 type User struct {
 	ID              int64
 	Email           string

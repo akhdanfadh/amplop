@@ -5,7 +5,8 @@ The enrollment service encrypts secrets before passing them to storage.
 Starting enrollment creates a pending factor; restarting replaces only a
 pending factor. PostgreSQL stores the encrypted factor and serializes
 updates by locking its user. Signed-in users can start or restart enrollment
-with `POST /api/v0/totp` and read status with `GET /api/v0/totp`. Starting
+with `POST /api/v0/totp` and read status with `GET /api/v0/totp`, whose
+`backupCodesWaiting` says new codes wait for a replacement. Starting
 enrollment does not activate TOTP. Confirm with `POST /api/v0/totp/confirm`
 and a code from the pending authenticator.
 
@@ -16,7 +17,7 @@ step atomically with its action.
 ## Service ownership
 
 - `totp` owns factor state, code rules, backup-code rules, enrollment start
-  and status, backup-code regeneration, and member turn-off. Its service
+  and status, backup-code replacement, and member turn-off. Its service
   declares the small encryption interface it consumes. It may import
   `account` for user and role types; it never imports `session`.
 - `session` already imports `account` and may import `totp`. It owns
@@ -29,7 +30,8 @@ step atomically with its action.
   feature's decision, then saves the factor and backup codes, ends other
   sessions, and replaces the current session in one transaction.
 - `totp.Storage` uses the same update-function pattern for factor-only
-  writes. Turn-off checks the role from the locked user row. Every code
+  writes: one `UpdateTOTP` loads the factor and its waiting codes and saves
+  the `Change` the feature returns. Turn-off checks the role from the locked user row. Every code
   acceptance checks and records the last step in that transaction.
 - `repository/postgres` implements both storage interfaces. Feature code
   receives neither a transaction nor SQL queries.
@@ -60,7 +62,7 @@ for v1.5.0. These checks do not establish that the package has no defects.
 `Throttle` defines the per-user limits. PostgreSQL locks the user while it
 cleans that user's expired attempts, counts the rest with `attemptlimit.Wait`,
 and saves a reservation only if one more fits, in one transaction. Enrollment
-confirmation, code sign-in, backup-code regeneration, and turn-off use this
+confirmation, code sign-in, backup-code replacement, and turn-off use this
 limiter.
 
 Reserve an attempt with `Begin` before checking a code. Pending checks count
@@ -74,7 +76,7 @@ verification.
 The policy allows 5 failed or pending attempts per 15 minutes and 20 per 24
 hours. Attempts exactly at a window's cutoff no longer count. TOTP codes,
 backup codes, and replayed codes share the same allowance across sign-in,
-enrollment confirmation, backup-code regeneration, and turn-off. Restarting
+enrollment confirmation, backup-code replacement, and turn-off. Restarting
 enrollment does not reset that allowance.
 
 These values are product policy. OWASP recommends strict OTP attempt limits
@@ -110,8 +112,9 @@ preserve their bytes; backup codes are normalized by `totp` before hashing.
 `NewBackupCodes` keeps display codes separate from storage hashes. Generate
 these hashes before taking a database write lock. Return display codes only
 after the operation saving their hashes commits. `VerifyBackupCode` performs
-comparison only. Confirmation and regeneration store the hashes; code sign-in
-consumes matched rows atomically.
+comparison only. Confirmation stores the hashes; replacement stores them as a
+waiting set, which finishing makes active; code sign-in consumes matched rows
+atomically.
 
 Salted hashes require verifying the user's remaining hashes, up to ten, rather
 than looking up a fast hash. A fast lookup digest would also let an attacker
@@ -154,7 +157,8 @@ or encryption key because it cannot remove a confirmed authenticator.
 
 `DELETE /api/v0/totp/enrollment` exposes cancellation to signed-in members
 and administrators. It takes no body and selects the owner from the checked
-session. HTTP 200 returns `data.status: "off"` and `data.backupCodesLeft: 0`,
+session. HTTP 200 returns `data.status: "off"`, `data.backupCodesLeft: 0`, and
+`data.backupCodesWaiting: false`,
 including repeated cancellation. A confirmed authenticator returns HTTP 409
 (`totp-already-on`); a missing account returns HTTP 401. Responses use
 `Cache-Control: no-store` and do not replace the session cookie.
@@ -198,8 +202,8 @@ TOTP. Administrators without it keep member access and `totpRequired: true`.
 Members keep member access and `totpRequired: false` regardless of TOTP.
 Identity reads account and factor metadata through the session row in one
 snapshot, rejecting proof revoked since the earlier lifetime check.
-`GET /api/v0/totp` reads confirmation metadata and the remaining backup-code
-count in one database snapshot. It reports usable codes only for a confirmed
+`GET /api/v0/totp` reads confirmation metadata, the remaining backup-code
+count, and the waiting set's expiry in one database snapshot. It reports usable codes only for a confirmed
 factor. Status reads load neither the encrypted secret nor backup-code hashes.
 
 
@@ -254,30 +258,26 @@ proof returns HTTP 401 and clears the challenge cookie. A wrong code returns
 HTTP 422 with `body.code`; shared throttling returns HTTP 429. Retryable
 errors preserve the challenge. Neither endpoint logs codes or cookie secrets.
 
-## Backup-code regeneration
+## Backup-code replacement
 
-`Backups.Regenerate` takes a checked user's ID and a fresh authenticator
-code. Backup codes cannot authorize regeneration. Missing or pending factors
-return `ErrNotOn`; invalid or reused TOTP codes return `ErrInvalidCode`.
+Replacement has two steps. `Backups.Replace`
+takes a checked user's ID and a fresh authenticator code; a backup code
+cannot replace the backup codes. It reserves a code attempt and makes the new
+set before the owner's lock, then saves the accepted step and the set as
+waiting, for 15 minutes, replacing any earlier waiting set. The old codes
+keep working. The codes appear only in `Replace`'s answer: nothing stores
+them to show again, since only the authenticator may hand out a new second
+factor, so a reload or a lost answer needs a fresh code and a new set.
+`Backups.Finish` takes the
+set's token and swaps the waiting hashes in for the active ones. Missing or
+pending factors return `ErrNotOn`; a wrong, expired, or replaced token
+`ErrNotWaiting`.
 
-The service reserves a shared code attempt and prepares ten salted hashes
-before taking a write lock. PostgreSQL locks the owner, loads the latest
-factor, and calls the service's decision. The transaction records the accepted
-step, replaces the entire backup set, and deletes only the successful attempt.
-A failure rolls back every write, preserving the old set and replay state.
-Earlier failed attempts remain counted, and existing sessions stay unchanged.
-
-The service returns display codes only after commit. It does not perform
-cleanup afterward, so a cleanup error cannot hide the only copy of the new
-codes after invalidating the old set.
-
-Signed-in members and administrators can call `POST /api/v0/totp/backup-codes`
-with `code`. HTTP 200 returns `data.backupCodes`, exactly ten strings, without
-changing session cookies. The response is marked `Cache-Control: no-store`.
-Missing or pending TOTP returns HTTP 409 (`totp-not-on`). Invalid or reused
-codes return HTTP 422 (`invalid-totp-code`) with field location `body.code`;
-shared throttling returns HTTP 429 (`totp-throttled`). Failed requests return
-no backup codes. Unexpected causes stay private behind the shared 500 error.
+`POST /api/v0/totp/backup-codes` with `code` answers HTTP 200 with
+`data.backupCodes` and `data.token`; `POST /api/v0/totp/backup-codes/finish`
+with `token` answers `data.status: "on"` and the new count. Neither changes
+session cookies. A waiting set that expires is ignored and replaced by the
+next one; turning two-factor off deletes it with the factor.
 
 ## Turning TOTP off
 
@@ -296,7 +296,7 @@ After proof succeeds, one transaction deletes the factor and its backup codes
 through the foreign-key cascade, including any backup code used as proof.
 It also removes only the successful attempt. Earlier failures and all existing
 sessions remain. An error, including commit failure, rolls everything back.
-The owner lock serializes proof checks with sign-in and regeneration.
+The owner lock serializes proof checks with sign-in and replacement.
 
 Signed-in members can call `POST /api/v0/totp/disable` with `code`. HTTP 200
 returns `data.status: "off"` and `data.backupCodesLeft: 0`, without changing

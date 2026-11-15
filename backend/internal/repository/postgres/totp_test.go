@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -17,14 +18,42 @@ import (
 	"inbok/internal/totp"
 )
 
+// testKeyring is an encryption keyring with one fixed test key.
+func testKeyring(t *testing.T) *encryption.Keyring {
+	t.Helper()
+	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
+	require.NoError(t, err)
+	return ring
+}
+
+// saveFactor saves factor for userID through [DB.UpdateTOTP].
+func saveFactor(ctx context.Context, db *DB, userID int64, factor totp.Factor) error {
+	return db.UpdateTOTP(ctx, userID, func(totp.Record) (totp.Change, error) {
+		return totp.Change{Factor: &factor}, nil
+	})
+}
+
+// readWaitingCodes returns userID's waiting backup-code set, nil when none.
+func readWaitingCodes(t *testing.T, conn *pgx.Conn, userID int64) *totp.Waiting {
+	t.Helper()
+	waiting, err := readWaiting(t.Context(), sqlc.New(conn), userID)
+	require.NoError(t, err)
+	return waiting
+}
+
+// newTOTPService is the enrollment service on db at clock.
+func newTOTPService(t *testing.T, db *DB, clock func() time.Time) *totp.Service {
+	t.Helper()
+	return totp.NewService(db, testKeyring(t), clock)
+}
+
 func TestTOTPEnrollmentStorage(t *testing.T) {
 	db, conn := setupStorage(t)
 	var id int64
 	require.NoError(t, conn.QueryRow(t.Context(), "INSERT INTO users (email, password_hash, role) VALUES ('alice@example.com', 'unused', 'member') RETURNING id").Scan(&id))
 	require.Positive(t, id)
-	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
-	require.NoError(t, err)
-	service := totp.NewService(db, ring)
+	ring := testKeyring(t)
+	service := newTOTPService(t, db, time.Now)
 	status, err := service.Status(t.Context(), id)
 	require.NoError(t, err)
 	assert.Equal(t, totp.StateOff, status.State)
@@ -56,7 +85,7 @@ func TestTOTPEnrollmentStorage(t *testing.T) {
 
 	// A callback error rolls back a replacement.
 	rejected := errors.New("replacement rejected")
-	err = db.UpdateTOTP(t.Context(), id, func(*totp.Factor) (totp.Factor, error) { return totp.Factor{}, rejected })
+	err = db.UpdateTOTP(t.Context(), id, func(totp.Record) (totp.Change, error) { return totp.Change{}, rejected })
 	require.ErrorIs(t, err, rejected)
 	unchanged, err := db.ReadTOTP(t.Context(), id)
 	require.NoError(t, err)
@@ -75,6 +104,24 @@ func TestTOTPEnrollmentStorage(t *testing.T) {
 	assert.Equal(t, int64(12), factor.LastStep)
 }
 
+func TestTOTPWaitingCodesBelongToTheirUser(t *testing.T) {
+	db, conn := setupStorage(t)
+	alice := backupCodeUser(t, conn, "alice@example.com")
+	bob := backupCodeUser(t, conn, "bob@example.com")
+	now := time.Now().UTC()
+	waiting := totp.Waiting{Hashes: []string{"hash"}, ExpiresAt: now}
+	require.NoError(t, db.UpdateTOTP(t.Context(), alice, func(totp.Record) (totp.Change, error) {
+		return totp.Change{WaitingWrite: totp.SaveWaiting, Waiting: &waiting}, nil
+	}))
+
+	assert.Nil(t, readWaitingCodes(t, conn, bob))
+	require.NoError(t, db.UpdateTOTP(t.Context(), bob, func(current totp.Record) (totp.Change, error) {
+		assert.Nil(t, current.Waiting)
+		return totp.Change{WaitingWrite: totp.DeleteWaiting}, nil
+	}))
+	assert.NotNil(t, readWaitingCodes(t, conn, alice), "deleting is per user")
+}
+
 func TestTOTPEnrollmentSerializes(t *testing.T) {
 	db, conn := setupStorage(t)
 	var id int64
@@ -87,16 +134,16 @@ func TestTOTPEnrollmentSerializes(t *testing.T) {
 	defer unblock()
 	firstDone, secondDone := make(chan error, 1), make(chan error, 1)
 	go func() {
-		firstDone <- db.UpdateTOTP(ctx, id, func(current *totp.Factor) (totp.Factor, error) {
-			if current != nil {
-				return totp.Factor{}, errors.New("expected no factor")
+		firstDone <- db.UpdateTOTP(ctx, id, func(current totp.Record) (totp.Change, error) {
+			if current.Factor != nil {
+				return totp.Change{}, errors.New("expected no factor")
 			}
 			close(ready)
 			select {
 			case <-release:
-				return totp.Factor{KeyID: "1", Ciphertext: []byte("first ciphertext"), LastStep: -1}, nil
+				return totp.Change{Factor: &totp.Factor{KeyID: "1", Ciphertext: []byte("first ciphertext"), LastStep: -1}}, nil
 			case <-ctx.Done():
-				return totp.Factor{}, ctx.Err()
+				return totp.Change{}, ctx.Err()
 			}
 		})
 	}()
@@ -107,11 +154,11 @@ func TestTOTPEnrollmentSerializes(t *testing.T) {
 	}
 	go func() {
 		close(secondStarted)
-		secondDone <- db.UpdateTOTP(ctx, id, func(current *totp.Factor) (totp.Factor, error) {
-			if current == nil || string(current.Ciphertext) != "first ciphertext" {
-				return totp.Factor{}, errors.New("did not see committed factor")
+		secondDone <- db.UpdateTOTP(ctx, id, func(current totp.Record) (totp.Change, error) {
+			if current.Factor == nil || string(current.Factor.Ciphertext) != "first ciphertext" {
+				return totp.Change{}, errors.New("did not see committed factor")
 			}
-			return totp.Factor{KeyID: "1", Ciphertext: []byte("second ciphertext"), LastStep: -1}, nil
+			return totp.Change{Factor: &totp.Factor{KeyID: "1", Ciphertext: []byte("second ciphertext"), LastStep: -1}}, nil
 		})
 	}()
 	<-secondStarted
@@ -131,9 +178,9 @@ func TestTOTPEnrollmentSerializes(t *testing.T) {
 
 func TestTOTPUnknownUser(t *testing.T) {
 	db, _ := setupStorage(t)
-	err := db.UpdateTOTP(t.Context(), 123, func(*totp.Factor) (totp.Factor, error) {
+	err := db.UpdateTOTP(t.Context(), 123, func(totp.Record) (totp.Change, error) {
 		t.Fatal("must not call update for an unknown user")
-		return totp.Factor{}, nil
+		return totp.Change{}, nil
 	})
 	require.ErrorIs(t, err, account.ErrUserNotFound)
 }
@@ -142,6 +189,13 @@ func TestTOTPMigrationDown(t *testing.T) {
 	url := newDatabase(t)
 	provider := migratedProvider(t, url)
 	_, err := provider.DownTo(t.Context(), 4)
+	require.NoError(t, err)
+	_, err = provider.Up(t.Context())
+	require.NoError(t, err)
+
+	// The waiting codes' migration goes down and up again, on an empty
+	// schema: nothing is deployed, so no saved rows need carrying over.
+	_, err = provider.DownTo(t.Context(), 31)
 	require.NoError(t, err)
 	_, err = provider.Up(t.Context())
 	require.NoError(t, err)
@@ -158,9 +212,7 @@ func TestTOTPCommitFailure(t *testing.T) {
   CREATE CONSTRAINT TRIGGER reject_totp AFTER INSERT ON user_totp
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_totp();`)
 	require.NoError(t, err)
-	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
-	require.NoError(t, err)
-	service := totp.NewService(db, ring)
+	service := newTOTPService(t, db, time.Now)
 	result, err := service.Start(t.Context(), account.User{ID: id, Email: "alice@example.com"})
 	require.ErrorContains(t, err, "forced TOTP failure")
 	assert.Empty(t, result)
@@ -173,7 +225,7 @@ func TestTOTPStatusBackupCodes(t *testing.T) {
 	db, conn := setupStorage(t)
 	alice := backupCodeUser(t, conn, "alice@example.com")
 	bob := backupCodeUser(t, conn, "bob@example.com")
-	service := totp.NewService(db, nil)
+	service := newTOTPService(t, db, time.Now)
 	queries := sqlc.New(conn)
 
 	// Count rows, not hash contents; another user's codes must stay separate.

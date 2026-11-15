@@ -79,15 +79,18 @@ function focusFirstInvalid(form: HTMLFormElement): void {
 // SubmitButton submits the current form: children name what it does, e.g.
 // "Sign in", and working what it is doing while the form sends, e.g.
 // "Signing in...". isDisabled also blocks it, e.g. while the form checks
-// an earlier request's outcome.
+// an earlier request's outcome. variant "destructive" marks a submit that
+// removes something, e.g. turning off two-factor authentication.
 export function SubmitButton({
   children,
   working,
   isDisabled,
+  variant = "default",
 }: {
   children: ReactNode;
   working: string;
   isDisabled?: boolean;
+  variant?: "default" | "destructive";
 }): ReactElement {
   const form = useFormContext();
   const sending = useSelector(form.store, (state) => state.isSubmitting);
@@ -95,7 +98,13 @@ export function SubmitButton({
   return (
     // Pending, unlike disabled, keeps focus on the button and tells a screen
     // reader that it is working, while presses do nothing.
-    <Button type="submit" className="whitespace-normal" isPending={sending} isDisabled={isDisabled}>
+    <Button
+      type="submit"
+      variant={variant}
+      className="whitespace-normal"
+      isPending={sending}
+      isDisabled={isDisabled}
+    >
       {sending ? (
         <>
           {/* Turns while the request runs; the words say what runs. */}

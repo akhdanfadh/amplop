@@ -3,7 +3,6 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ShieldCheckIcon } from "lucide-react";
 import { useGetTOTPStatus } from "@/api/generated/inbok";
-import { totpStatusBackupCodesLeftMax } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import { cn } from "@/lib/cn";
 import { ReadError } from "@/components/read-error";
@@ -11,7 +10,6 @@ import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { SettingsSection } from "@/features/settings/page";
-import { lowBackupCodes } from "./backup-settings";
 import {
   checkingStatus,
   codesLeft,
@@ -27,7 +25,7 @@ import {
 const unauthorized = 401;
 
 // TwoFactorBadge is the status badge for two-factor authentication on.
-function TwoFactorBadge(): ReactElement {
+export function TwoFactorBadge(): ReactElement {
   return (
     <StatusBadge tone="success" icon={ShieldCheckIcon}>
       {onBadge}
@@ -73,7 +71,7 @@ export function TwoFactorSection({ children }: { children?: ReactNode }): ReactE
       )}
       {current && on && (
         <>
-          <p>{codesLeft(current.backupCodesLeft, totpStatusBackupCodesLeftMax, lowBackupCodes)}</p>
+          <p>{codesLeft(current)}</p>
           <Link
             to="/settings/security/two-factor"
             className={cn(buttonVariants({ variant: "outline" }), "whitespace-normal")}

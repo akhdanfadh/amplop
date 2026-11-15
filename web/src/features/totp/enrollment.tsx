@@ -10,10 +10,8 @@ import {
   useStartTOTPEnrollment,
   useConfirmTOTPEnrollment,
   useCancelTOTPEnrollment,
-  useRegenerateTOTPBackupCodes,
-  useDisableTOTP,
 } from "@/api/generated/inbok";
-import type { CurrentSession, TotpEnrollment } from "@/api/generated/model";
+import type { TotpEnrollment } from "@/api/generated/model";
 import type { ApiError } from "@/api/transport";
 import { uncertainOutcome, userMessage } from "@/api/problem";
 import { clearAccountCache } from "@/features/auth/session-cache";
@@ -21,24 +19,18 @@ import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { BackupCodes } from "./backup-codes";
 import { ConfirmForm } from "./confirm-form";
-import { BackupSettings } from "./backup-settings";
-import { TurnOff } from "./turn-off";
 
 const unauthorized = 401;
-const forbidden = 403;
-const conflict = 409;
-const turnedOffNotice =
-  "Two-factor authentication is off. Remove inbok from your authenticator app.";
 // QR codes require a clear border of four modules for scanners.
 const qrQuietZone = 4;
 
+// Enrollment sets up two-factor authentication while it is off, and shows
+// the backup codes its confirmation returns.
 export function Enrollment({
-  role,
   locked,
   onWritingChange,
   onCodesChange,
 }: {
-  role: CurrentSession["role"];
   locked: boolean;
   onWritingChange: (pending: boolean) => void;
   onCodesChange: (present: boolean) => void;
@@ -47,15 +39,12 @@ export function Enrollment({
   const navigate = useNavigate();
   const [enrollment, setEnrollment] = useState<TotpEnrollment>();
   const [codes, setCodes] = useState<string[]>();
-  const [codeSource, setCodeSource] = useState<"enrollment" | "regeneration">("enrollment");
   const [copyMessage, setCopyMessage] = useState("");
   const [notice, setNotice] = useState("");
   const startRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const checkRef = useRef<HTMLButtonElement>(null);
   const focusStart = useRef(false);
-  const adminRef = useRef<HTMLParagraphElement>(null);
-  const focusAdmin = useRef(false);
   const focusCancel = useRef(false);
   const setupRef = useRef<HTMLHeadingElement>(null);
   const setupFocused = useRef(false);
@@ -92,56 +81,17 @@ export function Enrollment({
       },
     },
   });
-  const regenerate = useRegenerateTOTPBackupCodes({
-    mutation: {
-      gcTime: 0,
-      onMutate: prepareWrite,
-      onSettled: () => {
-        onWritingChange(false);
-        refreshStatus();
-      },
-    },
-  });
-  const disable = useDisableTOTP({
-    mutation: {
-      gcTime: 0,
-      onMutate: prepareWrite,
-      onSettled: () => {
-        onWritingChange(false);
-        refreshStatus();
-      },
-    },
-  });
-  const pending =
-    start.isPending ||
-    confirm.isPending ||
-    cancel.isPending ||
-    regenerate.isPending ||
-    disable.isPending;
+  const pending = start.isPending || confirm.isPending || cancel.isPending;
   const status = useGetTOTPStatus({
     query: { enabled: !locked && !pending, gcTime: 0, networkMode: "always" },
   });
-  const expired = [
-    status.error,
-    start.error,
-    confirm.error,
-    cancel.error,
-    regenerate.error,
-    disable.error,
-  ].some((error) => error?.status === unauthorized);
+  const expired = [status.error, start.error, confirm.error, cancel.error].some(
+    (error) => error?.status === unauthorized,
+  );
   const confirmationUncertain = Boolean(confirm.error && uncertainOutcome(confirm.error));
-  const regenerationUncertain = Boolean(regenerate.error && uncertainOutcome(regenerate.error));
-  const turnOffUncertain = Boolean(disable.error && uncertainOutcome(disable.error));
-  const resetTurnOff = disable.reset;
   const uncertain =
-    confirmationUncertain ||
-    regenerationUncertain ||
-    Boolean(cancel.error && uncertainOutcome(cancel.error));
-  const factor = status.data?.data;
-  // A status read can show that a turn-off with a lost response committed.
-  const turnedOff = turnOffUncertain && factor?.status === "off";
-  const shownNotice = turnedOff ? turnedOffNotice : notice;
-  const enabled = factor?.status === "on";
+    confirmationUncertain || Boolean(cancel.error && uncertainOutcome(cancel.error));
+  const enabled = status.data?.data.status === "on";
   const blocked = pending || Boolean(codes);
 
   useEffect(() => () => onCodesChange(false), [onCodesChange]);
@@ -171,25 +121,10 @@ export function Enrollment({
   }, [enrollment, locked]);
 
   useEffect(() => {
-    if (turnedOff) focusStart.current = true;
-  }, [turnedOff]);
-
-  useEffect(() => {
     if (!focusStart.current || locked || status.isFetching || !startRef.current) return;
     startRef.current.focus();
     focusStart.current = false;
-  }, [shownNotice, locked, status.isFetching]);
-
-  useEffect(() => {
-    // Administrators cannot turn off; drop a stale attempt and its code.
-    if (role !== "member") resetTurnOff();
-  }, [role, resetTurnOff]);
-
-  useEffect(() => {
-    if (role === "member" || !focusAdmin.current || locked) return;
-    adminRef.current?.focus();
-    focusAdmin.current = false;
-  }, [role, locked]);
+  }, [notice, locked, status.isFetching]);
 
   useEffect(() => {
     if (!cancel.error || !focusCancel.current || pending || locked || status.isFetching) return;
@@ -222,8 +157,6 @@ export function Enrollment({
         setCopyMessage("");
         setNotice("");
         cancel.reset();
-        regenerate.reset();
-        disable.reset();
         start.reset();
       },
     });
@@ -237,84 +170,11 @@ export function Enrollment({
       {
         onSuccess: (result) => {
           onCodesChange(true);
-          setCodeSource("enrollment");
           setCodes(result.data.backupCodes);
           setEnrollment(undefined);
           confirm.reset();
         },
         onError: reject,
-      },
-    );
-  }
-
-  function replaceCodes(code: string, reject: (err: ApiError) => void): void {
-    if (
-      locked ||
-      pending ||
-      regenerationUncertain ||
-      status.isFetching ||
-      status.isError ||
-      !enabled
-    )
-      return;
-    regenerate.mutate(
-      { data: { code } },
-      {
-        onSuccess: (result) => {
-          setNotice("");
-          onCodesChange(true);
-          setCodeSource("regeneration");
-          setCodes(result.data.backupCodes);
-          setEnrollment(undefined);
-          confirm.reset();
-          regenerate.reset();
-        },
-        onError: reject,
-      },
-    );
-  }
-
-  function turnOff(code: string, reject: (err: ApiError) => void): void {
-    if (
-      locked ||
-      pending ||
-      turnOffUncertain ||
-      status.isFetching ||
-      status.isError ||
-      !enabled ||
-      role !== "member"
-    )
-      return;
-    setNotice("");
-    disable.mutate(
-      { data: { code } },
-      {
-        onSuccess: (result) => {
-          client.setQueryData(status.queryKey, result);
-          focusStart.current = true;
-          setNotice(turnedOffNotice);
-          confirm.reset();
-          regenerate.reset();
-          disable.reset();
-        },
-        onError: (err) => {
-          if (err.status === forbidden) {
-            // The role may have changed since this page read the session.
-            focusAdmin.current = true;
-            void client.invalidateQueries({ queryKey: getGetCurrentSessionQueryKey() });
-          }
-          if (err.status === conflict) {
-            disable.reset();
-            // Announce only what a fresh status read confirms.
-            void status.refetch().then((result) => {
-              if (!result.isSuccess || result.data.data.status === "on") return;
-              focusStart.current = true;
-              setNotice("Two-factor authentication is already off.");
-            });
-            return;
-          }
-          reject(err);
-        },
       },
     );
   }
@@ -351,32 +211,14 @@ export function Enrollment({
     const result = await status.refetch();
     if (!result.isSuccess) return;
     cancel.reset();
-    disable.reset();
-    if (regenerationUncertain) {
-      // A count cannot recover a lost code set, even when it says ten remain.
-      regenerate.reset();
-      setNotice(
-        "Replacement codes could not be retrieved. Your old codes may no longer work. Generate a new set with a fresh authenticator code.",
-      );
-    }
-    if (result.data.data.status === "on") {
-      if (turnOffUncertain)
-        setNotice("Two-factor authentication is still on. Try again with a new code.");
-      return;
-    }
+    if (result.data.data.status === "on") return;
     // A confirmed pending state permits another deliberate attempt.
     confirm.reset();
     if (result.data.data.status === "off") {
       setEnrollment(undefined);
       setCopyMessage("");
       focusStart.current = true;
-      setNotice(
-        turnOffUncertain
-          ? turnedOffNotice
-          : regenerationUncertain
-            ? "Two-factor authentication is no longer enabled."
-            : "Enrollment canceled.",
-      );
+      setNotice("Enrollment canceled.");
     }
   }
 
@@ -385,7 +227,6 @@ export function Enrollment({
       <BackupCodes
         active={!locked}
         codes={codes}
-        source={codeSource}
         onDone={() => {
           setCodes(undefined);
           onCodesChange(false);
@@ -401,7 +242,7 @@ export function Enrollment({
       aria-busy={pending}
     >
       {/* Stay mounted so screen readers announce changed text. */}
-      <output className={shownNotice ? undefined : "sr-only"}>{shownNotice}</output>
+      <output className={notice ? undefined : "sr-only"}>{notice}</output>
       {status.isFetching && <output>Checking two-factor authentication...</output>}
       {status.error && (
         <div className="flex flex-col gap-3" role="alert">
@@ -410,52 +251,13 @@ export function Enrollment({
             type="button"
             variant="outline"
             isDisabled={locked || status.isFetching}
-            onPress={() => {
-              if (regenerationUncertain || turnOffUncertain) void checkStatus();
-              else void status.refetch();
-            }}
+            onPress={() => void status.refetch()}
           >
             Check status
           </Button>
         </div>
       )}
-      {enabled ? (
-        <>
-          <p>Two-factor authentication is enabled.</p>
-          {confirmationUncertain && (
-            <p>We could not retrieve your backup codes. Keep access to your authenticator app.</p>
-          )}
-          <BackupSettings
-            left={factor.backupCodesLeft}
-            locked={pending || status.isError || (turnOffUncertain && role === "member")}
-            pending={regenerate.isPending}
-            checking={locked || status.isFetching}
-            error={regenerate.error}
-            onEdit={() => {
-              if (!regenerationUncertain) regenerate.reset();
-            }}
-            onReplace={replaceCodes}
-            onCheck={() => void checkStatus()}
-          />
-          {role === "member" ? (
-            <TurnOff
-              locked={pending || status.isError || regenerationUncertain}
-              pending={disable.isPending}
-              checking={locked || status.isFetching}
-              error={disable.error}
-              onEdit={() => {
-                if (!turnOffUncertain) disable.reset();
-              }}
-              onTurnOff={turnOff}
-              onCheck={() => void checkStatus()}
-            />
-          ) : (
-            <p ref={adminRef} tabIndex={-1}>
-              Administrators must keep two-factor authentication enabled.
-            </p>
-          )}
-        </>
-      ) : enrollment ? (
+      {enabled ? null : enrollment ? (
         <>
           <h2 ref={setupRef} tabIndex={-1} className="text-xl font-semibold">
             Add inbok to your authenticator

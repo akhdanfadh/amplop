@@ -95,10 +95,10 @@ func TestGetTOTPStatus(t *testing.T) {
 			if state == totp.StateOn {
 				count = 7
 			}
-			service := &fakeTOTP{status: totp.Status{State: state, BackupCodesLeft: count}}
+			service := &fakeTOTP{status: totp.Status{State: state, BackupCodesLeft: count, BackupCodesWaiting: state == totp.StateOn}}
 			response := requestTOTP(New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)}), http.MethodGet, totpAuthAuthenticated)
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-			assert.JSONEq(t, fmt.Sprintf(`{"data":{"status":"%s","backupCodesLeft":%d}}`, state, count), response.Body.String())
+			assert.JSONEq(t, fmt.Sprintf(`{"data":{"status":"%s","backupCodesLeft":%d,"backupCodesWaiting":%t}}`, state, count, state == totp.StateOn), response.Body.String())
 			assert.Equal(t, int64(42), service.userID)
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 		})
@@ -333,73 +333,89 @@ func TestConfirmTOTPOpenAPI(t *testing.T) {
 }
 
 // ========================
-// Backup-code regeneration
+// Backup-code replacement
 // ========================
 
-type fakeBackups struct {
-	codes  []string
-	err    error
-	calls  int
-	userID int64
-	code   string
+// tenCodes is a backup-code set a fake returns.
+var tenCodes = []string{
+	"ABCDE-FGHJK", "MNPQR-STUVW", "XYZ23-45678", "9ABCD-EFGHJ", "KMNPQ-RSTUV",
+	"WXYZ2-34567", "89ABC-DEFGH", "JKMNP-QRSTU", "VWXYZ-23456", "789AB-CDEFG",
 }
 
-func (f *fakeBackups) Regenerate(_ context.Context, userID int64, code string) ([]string, error) {
-	f.calls++
-	f.userID, f.code = userID, code
-	return f.codes, f.err
-}
-
-func postBackupRegeneration(api *API, body, origin string, auth totpAuth) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/backup-codes", strings.NewReader(body))
+// postTOTP sends body as JSON to the two-factor operation at path, below
+// /api/v0/totp.
+func postTOTP(api *API, path, body, origin string, auth totpAuth) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp"+path, strings.NewReader(body))
 	request.Header.Set("Content-Type", jsonContentType)
 	request.Header.Set("Origin", origin)
+	request.Header.Set("User-Agent", "inbok-totp-test/1.0")
 	if auth == totpAuthAuthenticated {
 		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
 	}
-
 	response := httptest.NewRecorder()
 	api.Handler().ServeHTTP(response, request)
 	return response
 }
 
-func TestRegenerateBackupCodes(t *testing.T) {
+// confirmedSessions is an account with two-factor on.
+func confirmedSessions(role account.Role) *fakeSessions {
+	sessions := memberSessions(role)
+	if role == account.RoleAdmin {
+		sessions.identity.Access, sessions.identity.TOTPRequired = session.AccessAdmin, false
+	}
+	return sessions
+}
+
+type fakeBackups struct {
+	codes  totp.Codes
+	active int
+	err    error
+	calls  int
+	userID int64
+	code   string
+	token  string
+}
+
+func (f *fakeBackups) Replace(_ context.Context, userID int64, code string) (totp.Codes, error) {
+	f.calls++
+	f.userID, f.code = userID, code
+	return f.codes, f.err
+}
+
+func (f *fakeBackups) Finish(_ context.Context, userID int64, token string) (int, error) {
+	f.calls++
+	f.userID, f.token = userID, token
+	return f.active, f.err
+}
+
+func TestReplaceBackupCodes(t *testing.T) {
 	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
 		t.Run(string(role), func(t *testing.T) {
-			service := &fakeBackups{codes: []string{
-				"ABCDE-FGHJK", "MNPQR-STUVW", "XYZ23-45678", "9ABCD-EFGHJ", "KMNPQ-RSTUV",
-				"WXYZ2-34567", "89ABC-DEFGH", "JKMNP-QRSTU", "VWXYZ-23456", "789AB-CDEFG",
-			}}
-			sessions := memberSessions(role)
-			if role == account.RoleAdmin {
-				sessions.identity.Access = session.AccessAdmin
-				sessions.identity.TOTPRequired = false
-			}
+			service := &fakeBackups{codes: totp.Codes{Codes: tenCodes, Token: "one-time-token"}}
 			var logs bytes.Buffer
-			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{Session: sessions, Backups: service})
+			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{Session: confirmedSessions(role), Backups: service})
 
-			response := postBackupRegeneration(api, `{"code":"012345"}`, "http://example.com", totpAuthAuthenticated)
+			response := postTOTP(api, "/backup-codes", `{"code":"012345"}`, "http://example.com", totpAuthAuthenticated)
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 			var body struct {
-				Data totpBackupCodes `json:"data"`
+				Data waitingBackupCodes `json:"data"`
 			}
 			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
-			assert.Equal(t, service.codes, body.Data.BackupCodes)
+			assert.Equal(t, tenCodes, body.Data.BackupCodes)
+			assert.Equal(t, "one-time-token", body.Data.Token)
 			assert.Equal(t, int64(42), service.userID)
 			assert.Equal(t, "012345", service.code)
-			assert.Equal(t, 1, service.calls)
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
-			assert.Empty(t, response.Result().Cookies(), "regeneration does not replace or clear sessions")
-			assert.NotContains(t, response.Body.String(), service.code)
-			for _, secret := range append([]string{"012345", "session-secret"}, service.codes...) {
+			assert.Empty(t, response.Result().Cookies(), "replacement does not replace or clear sessions")
+			for _, secret := range append([]string{"012345", "one-time-token", "session-secret"}, tenCodes...) {
 				assert.NotContains(t, logs.String(), secret)
 			}
 		})
 	}
 }
 
-func TestRegenerateProblems(t *testing.T) {
+func TestReplaceBackupCodesProblems(t *testing.T) {
 	for _, c := range []struct {
 		name    string
 		err     error
@@ -413,14 +429,13 @@ func TestRegenerateProblems(t *testing.T) {
 		{"commit failure", errors.New("private storage cause"), http.StatusInternalServerError, "internal-error"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			service := &fakeBackups{codes: []string{"must-not-reveal"}, err: fmt.Errorf("regeneration: %w", c.err)}
+			service := &fakeBackups{codes: totp.Codes{Codes: []string{"must-not-reveal"}}, err: fmt.Errorf("replace: %w", c.err)}
 			api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: service})
 
-			response := postBackupRegeneration(api, `{"code":"012345"}`, "http://example.com", totpAuthAuthenticated)
+			response := postTOTP(api, "/backup-codes", `{"code":"012345"}`, "http://example.com", totpAuthAuthenticated)
 
 			require.Equal(t, c.status, response.Code, response.Body.String())
 			assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/`+c.problem+`"`)
-			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 			assertSessionCookieCleared(t, response, c.problem == "unauthenticated")
 			for _, secret := range []string{"012345", "must-not-reveal", "private storage cause"} {
 				assert.NotContains(t, response.Body.String(), secret)
@@ -432,7 +447,7 @@ func TestRegenerateProblems(t *testing.T) {
 	}
 }
 
-func TestRegenerateRequestGate(t *testing.T) {
+func TestReplaceBackupCodesRequestGate(t *testing.T) {
 	for _, c := range []struct {
 		name, body, origin string
 		auth               totpAuth
@@ -448,7 +463,7 @@ func TestRegenerateRequestGate(t *testing.T) {
 			service := &fakeBackups{}
 			api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: service})
 
-			response := postBackupRegeneration(api, c.body, c.origin, c.auth)
+			response := postTOTP(api, "/backup-codes", c.body, c.origin, c.auth)
 
 			require.Equal(t, c.status, response.Code, response.Body.String())
 			assert.Zero(t, service.calls)
@@ -456,25 +471,73 @@ func TestRegenerateRequestGate(t *testing.T) {
 	}
 }
 
-func TestRegenerateOpenAPI(t *testing.T) {
-	doc := New(discard, Services{}).api.OpenAPI()
-	path := doc.Paths["/totp/backup-codes"]
-	require.NotNil(t, path)
-	op := path.Post
-	require.NotNil(t, op)
-	assert.Equal(t, "regenerateTOTPBackupCodes", op.OperationID)
-	assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
-	assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
-	for _, status := range []int{http.StatusOK, http.StatusUnauthorized, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests} {
-		require.NotNil(t, op.Responses[strconv.Itoa(status)])
+func TestFinishBackupReplacement(t *testing.T) {
+	service := &fakeBackups{active: 10}
+	api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: service})
+
+	response := postTOTP(api, "/backup-codes/finish", `{"token":"one-time-token"}`, "http://example.com", totpAuthAuthenticated)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"status":"on","backupCodesLeft":10,"backupCodesWaiting":false}}`, response.Body.String())
+	assert.Equal(t, int64(42), service.userID)
+	assert.Equal(t, "one-time-token", service.token)
+	assert.Empty(t, response.Result().Cookies())
+}
+
+func TestFinishBackupReplacementProblems(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		err     error
+		status  int
+		problem string
+	}{
+		{"not waiting", totp.ErrNotWaiting, http.StatusConflict, "backup-codes-not-waiting"},
+		{"not on", totp.ErrNotOn, http.StatusConflict, "totp-not-on"},
+		{"deleted user", account.ErrUserNotFound, http.StatusUnauthorized, "unauthenticated"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			service := &fakeBackups{err: c.err}
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: service})
+
+			response := postTOTP(api, "/backup-codes/finish", `{"token":"one-time-token"}`, "http://example.com", totpAuthAuthenticated)
+
+			require.Equal(t, c.status, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/`+c.problem+`"`)
+		})
 	}
-	input := doc.Components.Schemas.Map()["TotpRegenerationCode"]
-	require.NotNil(t, input)
-	require.NotNil(t, input.Properties["code"])
-	assert.True(t, input.Properties["code"].WriteOnly)
-	result := doc.Components.Schemas.Map()["TotpBackupCodes"]
-	require.NotNil(t, result)
-	codes := result.Properties["backupCodes"]
+}
+
+func TestBackupReplacementOpenAPI(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+	for _, c := range []struct {
+		path, id string
+		statuses []int
+	}{
+		{"/totp/backup-codes", "replaceTOTPBackupCodes", []int{200, 401, 409, 422, 429}},
+		{"/totp/backup-codes/finish", "finishTOTPBackupCodeReplacement", []int{200, 401, 409}},
+	} {
+		t.Run(c.id, func(t *testing.T) {
+			path := doc.Paths[c.path]
+			require.NotNil(t, path)
+			op := path.Post
+			require.NotNil(t, op)
+			assert.Equal(t, c.id, op.OperationID)
+			assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
+			assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
+			for _, status := range c.statuses {
+				require.NotNil(t, op.Responses[strconv.Itoa(status)], "status %d", status)
+			}
+		})
+	}
+
+	schemas := doc.Components.Schemas.Map()
+	for name, field := range map[string]string{"TotpReplacementCode": "code", "BackupCodesToken": "token"} {
+		input := schemas[name]
+		require.NotNil(t, input, name)
+		require.NotNil(t, input.Properties[field], name)
+		assert.True(t, input.Properties[field].WriteOnly, name)
+	}
+	codes := schemas["WaitingBackupCodes"].Properties["backupCodes"]
 	require.NotNil(t, codes)
 	assert.False(t, codes.Nullable)
 	require.NotNil(t, codes.MinItems)
@@ -523,7 +586,7 @@ func TestDisableTOTP(t *testing.T) {
 			response := postDisableTOTP(api, `{"code":"`+code+`"}`, "http://example.com", totpAuthAuthenticated)
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0}}`, response.Body.String())
+			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0,"backupCodesWaiting":false}}`, response.Body.String())
 			assert.Equal(t, int64(42), service.userID)
 			assert.Equal(t, code, service.code)
 			assert.Equal(t, 1, service.calls)
@@ -641,7 +704,7 @@ func TestCancelTOTPEnrollment(t *testing.T) {
 			response := deleteTOTPEnrollment(api, "http://example.com", totpAuthAuthenticated)
 
 			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0}}`, response.Body.String())
+			assert.JSONEq(t, `{"data":{"status":"off","backupCodesLeft":0,"backupCodesWaiting":false}}`, response.Body.String())
 			assert.Equal(t, int64(42), service.userID, "use the checked account")
 			assert.Equal(t, 1, service.calls, "success must not perform another status read")
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))

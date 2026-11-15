@@ -3,8 +3,7 @@ import {
   TotpConfirmationCode,
   TotpDisableCode,
   totpConfirmationCodeCodeMax,
-  TotpRegenerationCode,
-  totpRegenerationCodeCodeMax,
+  TotpReplacementCode,
 } from "@/api/generated/model";
 import { completeCode, type CodeKind } from "@/features/auth/code-schema";
 
@@ -15,15 +14,13 @@ export const ConfirmationSchema = TotpConfirmationCode.extend({
     .regex(new RegExp(REGEXP_ONLY_DIGITS), { error: "Use digits only." }),
 });
 
-export const RegenerationSchema = TotpRegenerationCode.extend({
-  code: TotpRegenerationCode.shape.code
-    .length(totpRegenerationCodeCodeMax, {
-      error: `Enter all ${totpRegenerationCodeCodeMax} digits.`,
-    })
-    .regex(new RegExp(REGEXP_ONLY_DIGITS), { error: "Use digits only." }),
+// ReplacementCodeSchema is a fresh authenticator code; a backup code
+// cannot replace the backup codes.
+export const ReplacementCodeSchema = TotpReplacementCode.extend({
+  code: completeCode(TotpReplacementCode.shape.code, "authenticator"),
 });
 
-// Turning off accepts either proof, so the field follows the selected kind.
+// turnOffSchema takes either proof, so the field follows the selected kind.
 export function turnOffSchema(kind: CodeKind) {
   return TotpDisableCode.extend({ code: completeCode(TotpDisableCode.shape.code, kind) });
 }

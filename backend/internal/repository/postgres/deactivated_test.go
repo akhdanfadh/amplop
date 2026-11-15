@@ -192,9 +192,9 @@ func TestDeactivatedWrites(t *testing.T) {
 		want  error
 	}{
 		{"start enrollment", func(t *testing.T) error {
-			return f.db.UpdateTOTP(t.Context(), f.member, func(*totp.Factor) (totp.Factor, error) {
+			return f.db.UpdateTOTP(t.Context(), f.member, func(totp.Record) (totp.Change, error) {
 				called(t)
-				return totp.Factor{}, nil
+				return totp.Change{}, nil
 			})
 		}, account.ErrUserNotFound},
 		{"cancel enrollment", func(t *testing.T) error {
@@ -209,12 +209,6 @@ func TestDeactivatedWrites(t *testing.T) {
 				return session.EnrollmentChange{}, nil
 			})
 		}, session.ErrNotFound},
-		{"regenerate backup codes", func(t *testing.T) error {
-			return f.db.ReplaceTOTPBackupCodes(t.Context(), f.member, func(*totp.Factor) (totp.BackupChange, error) {
-				called(t)
-				return totp.BackupChange{}, nil
-			})
-		}, account.ErrUserNotFound},
 		{"turn off", func(t *testing.T) error {
 			return f.db.DisableTOTP(t.Context(), f.member, 0, func(totp.DisableState) error {
 				called(t)

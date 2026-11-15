@@ -1,13 +1,20 @@
-import type { ReactElement } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronLeftIcon } from "lucide-react";
-import { useGetCurrentSession } from "@/api/generated/inbok";
+import { useGetCurrentSession, useGetTOTPStatus } from "@/api/generated/inbok";
+import type { ApiError } from "@/api/transport";
 import { cn } from "@/lib/cn";
 import { lineLink } from "@/components/link-style";
+import { clearAccountCache } from "@/features/auth/session-cache";
 import { SettingsPage } from "@/features/settings/page";
 import { pageName } from "@/features/settings/text";
+import { BackupCodesSection, TurnOffSection, type OpenSection } from "@/features/totp/manage";
 import { Enrollment } from "@/features/totp/enrollment";
-import { twoFactorAbout, twoFactorTitle } from "@/features/totp/text";
+import { TwoFactorBadge } from "@/features/totp/security-section";
+import { backupText, twoFactorAbout, twoFactorTitle } from "@/features/totp/text";
+
+const unauthorized = 401;
 
 export const Route = createFileRoute("/_app/settings/security/two-factor")({
   component: TwoFactor,
@@ -24,30 +31,129 @@ function ignore(): void {}
 // growing inside Security (DESIGN.md "Settings and signed-out pages").
 function TwoFactor(): ReactElement {
   const { session } = Route.useRouteContext();
-  // The live role: a refused turn-off rereads it when the member has become
-  // an administrator since the page opened.
-  const current = useGetCurrentSession({ query: { networkMode: "always" } });
-  const role = current.data?.data.role ?? session.role;
+  const client = useQueryClient();
+  const navigate = useNavigate();
+  const status = useGetTOTPStatus({ query: { networkMode: "always" } });
+  // The live role: a refused turn-off rereads it, e.g. for a member made an
+  // administrator since the page opened.
+  const reader = useGetCurrentSession({ query: { networkMode: "always" } });
+  const role = reader.data?.data.role ?? session.role;
+  const current = status.data?.data;
+  const on = current?.status === "on";
+  // Whether this page has shown two-factor authentication on.
+  const [shownOn, setShownOn] = useState(false);
+  // Set while rendering, as React's "Adjusting some state when a prop
+  // changes" does, so no render shows the setup in between.
+  if (on && !shownOn) setShownOn(true);
+  // A read that finds it off after that, e.g. a turn-off's own answer, one
+  // whose answer was lost, or one from another tab, means it was turned off.
+  const turnedOff = shownOn && current !== undefined && !on;
+  // A 401 from any request on this page: the session ended, e.g. from
+  // another browser, after the guard ran.
+  const [ended, setEnded] = useState(false);
+  const signedOut =
+    ended || status.error?.status === unauthorized || reader.error?.status === unauthorized;
+  const onError = useCallback((err: ApiError) => {
+    if (err.status === unauthorized) setEnded(true);
+  }, []);
+  // Whether the enrollment shows the backup codes its confirmation
+  // returned: two-factor is on by then, but the codes stay until the
+  // member is done with them.
+  const [enrollmentCodes, setEnrollmentCodes] = useState(false);
+  const back = (
+    // Named for where it goes back to: the sidebar has a Security link too.
+    <Link
+      to="/settings/security"
+      aria-label={`Back to ${pageName.security}`}
+      className={cn(lineLink, "-mt-3 mb-1 gap-1 text-sm")}
+    >
+      <ChevronLeftIcon aria-hidden="true" className="size-4" />
+      {pageName.security}
+    </Link>
+  );
+
+  useEffect(() => {
+    if (!signedOut) return;
+    clearAccountCache(client);
+    void navigate({ to: "/sign-in", replace: true, ignoreBlocker: true });
+  }, [signedOut, client, navigate]);
+
+  useEffect(() => {
+    if (!turnedOff || signedOut) return;
+    void navigate({
+      to: "/settings/security",
+      state: { twoFactorChange: "off" },
+      ignoreBlocker: true,
+    });
+  }, [turnedOff, signedOut, navigate]);
+
+  // Security takes over at once; the setup must not flash in between.
+  if (turnedOff) return <></>;
+  if (on && !enrollmentCodes)
+    return (
+      <Manage role={role} back={back} onError={onError} onStale={() => void status.refetch()} />
+    );
+
+  return (
+    <SettingsPage title={twoFactorTitle} lead={twoFactorAbout} back={back}>
+      <div className="py-6">
+        <Enrollment locked={false} onWritingChange={ignore} onCodesChange={setEnrollmentCodes} />
+      </div>
+    </SettingsPage>
+  );
+}
+
+// Manage is the page while two-factor authentication is on, with one
+// section open at a time. Its notice reports replaced backup codes.
+function Manage({
+  role,
+  back,
+  onError,
+  onStale,
+}: {
+  role: "member" | "admin";
+  back: ReactElement;
+  onError: (err: ApiError) => void;
+  onStale: () => void;
+}): ReactElement {
+  const status = useGetTOTPStatus({ query: { networkMode: "always" } });
+  const [notice, setNotice] = useState("");
+  const [open, setOpen] = useState<OpenSection>("none");
+  // Turning off is a member's; a role changed to administrator closes its
+  // form, so the other section opens again.
+  if (role !== "member" && open === "turnOff") setOpen("none");
+  const current = status.data?.data;
+
+  function openSection(next: OpenSection): void {
+    setOpen(next);
+    if (next !== "none") setNotice("");
+  }
 
   return (
     <SettingsPage
       title={twoFactorTitle}
+      aside={<TwoFactorBadge />}
       lead={twoFactorAbout}
-      back={
-        // Named for where it goes back to: the sidebar has a Security link too.
-        <Link
-          to="/settings/security"
-          aria-label={`Back to ${pageName.security}`}
-          className={cn(lineLink, "-mt-3 mb-1 gap-1 text-sm")}
-        >
-          <ChevronLeftIcon aria-hidden="true" className="size-4" />
-          {pageName.security}
-        </Link>
-      }
+      back={back}
+      notice={notice}
     >
-      <div className="py-6">
-        <Enrollment role={role} locked={false} onWritingChange={ignore} onCodesChange={ignore} />
-      </div>
+      {current && (
+        <BackupCodesSection
+          status={current}
+          open={open}
+          onOpen={openSection}
+          onError={onError}
+          onStale={onStale}
+          onReplaced={() => setNotice(backupText.replaced)}
+        />
+      )}
+      <TurnOffSection
+        role={role}
+        open={open}
+        onOpen={openSection}
+        onError={onError}
+        onStale={onStale}
+      />
     </SettingsPage>
   );
 }

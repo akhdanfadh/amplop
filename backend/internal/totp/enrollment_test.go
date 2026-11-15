@@ -1,7 +1,6 @@
 package totp
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -11,30 +10,6 @@ import (
 
 	"inbok/internal/account"
 )
-
-type memoryFactors struct {
-	factor          *Factor
-	backupCodesLeft int
-	err             error
-}
-
-func (m *memoryFactors) ReadTOTPStatus(context.Context, int64) (*StatusRecord, error) {
-	if m.err != nil || m.factor == nil {
-		return nil, m.err
-	}
-	return &StatusRecord{ConfirmedAt: m.factor.ConfirmedAt, BackupCodesLeft: m.backupCodesLeft}, nil
-}
-func (m *memoryFactors) UpdateTOTP(_ context.Context, _ int64, update func(*Factor) (Factor, error)) error {
-	if m.err != nil {
-		return m.err
-	}
-	next, err := update(m.factor)
-	if err != nil {
-		return err
-	}
-	m.factor = &next
-	return nil
-}
 
 type fakeSealer struct {
 	owner     string
@@ -48,21 +23,22 @@ func (f *fakeSealer) Seal(value []byte, owner string) (string, []byte, error) {
 }
 
 func TestStartEnrollment(t *testing.T) {
-	storage, sealer := &memoryFactors{}, &fakeSealer{}
-	service := NewService(storage, sealer)
+	storage, sealer := &memoryTOTP{}, &fakeSealer{}
+	service := NewService(storage, sealer, time.Now)
 	user := account.User{ID: 42, Email: "alice@example.com", Role: account.RoleMember}
 
 	first, err := service.Start(t.Context(), user)
 	require.NoError(t, err)
-	require.NotNil(t, storage.factor)
+	factor := storage.record.Factor
+	require.NotNil(t, factor)
 	assert.NotEmpty(t, first.Secret)
 	assert.Contains(t, first.URI, "otpauth://totp/")
 	assert.Equal(t, []byte(first.Secret), sealer.plaintext)
 	assert.Equal(t, "totp:42", sealer.owner)
-	assert.Equal(t, "1", storage.factor.KeyID)
-	assert.Equal(t, []byte("encrypted"), storage.factor.Ciphertext)
-	assert.Nil(t, storage.factor.ConfirmedAt)
-	assert.Equal(t, int64(-1), storage.factor.LastStep)
+	assert.Equal(t, "1", factor.KeyID)
+	assert.Equal(t, []byte("encrypted"), factor.Ciphertext)
+	assert.Nil(t, factor.ConfirmedAt)
+	assert.Equal(t, int64(-1), factor.LastStep)
 
 	second, err := service.Start(t.Context(), user)
 	require.NoError(t, err)
@@ -73,37 +49,45 @@ func TestStartEnrollment(t *testing.T) {
 func TestStartEnrollmentAlreadyOn(t *testing.T) {
 	now := time.Now()
 	original := &Factor{KeyID: "1", Ciphertext: []byte("original"), ConfirmedAt: &now, LastStep: 12}
-	storage := &memoryFactors{factor: original}
-	service := NewService(storage, &fakeSealer{})
+	storage := &memoryTOTP{record: Record{Factor: original}}
+	service := NewService(storage, &fakeSealer{}, time.Now)
 
 	result, err := service.Start(t.Context(), account.User{ID: 42, Email: "alice@example.com"})
 	require.ErrorIs(t, err, ErrAlreadyOn)
 	assert.Empty(t, result)
-	assert.Equal(t, original, storage.factor)
+	assert.Equal(t, original, storage.record.Factor)
 }
 
 func TestEnrollmentStatus(t *testing.T) {
 	now := time.Now()
+	live := &Waiting{ExpiresAt: now.Add(time.Minute)}
+	ended := &Waiting{ExpiresAt: now.Add(-time.Minute)}
 	for _, c := range []struct {
-		name      string
-		factor    *Factor
-		want      State
-		count     int
-		wantCount int
+		name        string
+		factor      *Factor
+		waiting     *Waiting
+		want        State
+		count       int
+		wantCount   int
+		wantWaiting bool
 	}{
-		{"off", nil, StateOff, 0, 0},
-		{"pending", &Factor{LastStep: -1}, StatePending, 0, 0},
-		{"pending hides codes", &Factor{LastStep: -1}, StatePending, 10, 0},
-		{"on with all codes", &Factor{ConfirmedAt: &now}, StateOn, 10, 10},
-		{"on with some codes", &Factor{ConfirmedAt: &now}, StateOn, 3, 3},
-		{"on without codes", &Factor{ConfirmedAt: &now}, StateOn, 0, 0},
+		{"off", nil, nil, StateOff, 0, 0, false},
+		{"pending", &Factor{LastStep: -1}, nil, StatePending, 0, 0, false},
+		{"pending hides codes", &Factor{LastStep: -1}, nil, StatePending, 10, 0, false},
+		{"on with all codes", &Factor{ConfirmedAt: &now}, nil, StateOn, 10, 10, false},
+		{"on with some codes", &Factor{ConfirmedAt: &now}, nil, StateOn, 3, 3, false},
+		{"on without codes", &Factor{ConfirmedAt: &now}, nil, StateOn, 0, 0, false},
+		{"on with new codes waiting", &Factor{ConfirmedAt: &now}, live, StateOn, 3, 3, true},
+		{"on with new codes that ended", &Factor{ConfirmedAt: &now}, ended, StateOn, 3, 3, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			service := NewService(&memoryFactors{factor: c.factor, backupCodesLeft: c.count}, &fakeSealer{})
+			storage := &memoryTOTP{record: Record{Factor: c.factor, Waiting: c.waiting}, backupHashes: make([]string, c.count)}
+			service := NewService(storage, &fakeSealer{}, func() time.Time { return now })
 			status, err := service.Status(t.Context(), 42)
 			require.NoError(t, err)
 			assert.Equal(t, c.want, status.State)
 			assert.Equal(t, c.wantCount, status.BackupCodesLeft)
+			assert.Equal(t, c.wantWaiting, status.BackupCodesWaiting)
 		})
 	}
 }
@@ -112,37 +96,26 @@ func TestStartEnrollmentFailure(t *testing.T) {
 	failure := errors.New("storage or encryption unavailable")
 	for _, c := range []struct {
 		name    string
-		storage *memoryFactors
+		storage *memoryTOTP
 		sealer  *fakeSealer
 	}{
-		{"storage", &memoryFactors{err: failure}, &fakeSealer{}},
-		{"encryption", &memoryFactors{}, &fakeSealer{err: failure}},
+		{"storage", &memoryTOTP{readErr: failure}, &fakeSealer{}},
+		{"encryption", &memoryTOTP{}, &fakeSealer{err: failure}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			result, err := NewService(c.storage, c.sealer).Start(t.Context(), account.User{ID: 42, Email: "alice@example.com"})
+			result, err := NewService(c.storage, c.sealer, time.Now).Start(t.Context(), account.User{ID: 42, Email: "alice@example.com"})
 			require.ErrorIs(t, err, failure)
 			assert.Empty(t, result, "failed enrollment must not return a secret")
-			assert.Nil(t, c.storage.factor)
+			assert.Nil(t, c.storage.record.Factor)
 		})
 	}
 }
 
 func TestEnrollmentStatusFailure(t *testing.T) {
 	failure := errors.New("storage unavailable")
-	status, err := NewService(&memoryFactors{err: failure}, &fakeSealer{}).Status(t.Context(), 42)
+	status, err := NewService(&memoryTOTP{readErr: failure}, &fakeSealer{}, time.Now).Status(t.Context(), 42)
 	require.ErrorIs(t, err, failure)
 	assert.Empty(t, status)
-}
-
-func (m *memoryFactors) CancelTOTP(_ context.Context, _ int64, check func(*Factor) error) error {
-	if m.err != nil {
-		return m.err
-	}
-	if err := check(m.factor); err != nil {
-		return err
-	}
-	m.factor = nil
-	return nil
 }
 
 func TestCancelEnrollment(t *testing.T) {
@@ -157,17 +130,17 @@ func TestCancelEnrollment(t *testing.T) {
 		{"confirmed", &Factor{KeyID: "1", Ciphertext: []byte("confirmed"), ConfirmedAt: &now}, ErrAlreadyOn},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			storage := &memoryFactors{factor: c.factor}
-			service := NewService(storage, nil)
+			storage := &memoryTOTP{record: Record{Factor: c.factor}}
+			service := NewService(storage, nil, time.Now)
 
 			err := service.Cancel(t.Context(), 42)
 
 			require.ErrorIs(t, err, c.wantErr)
 			if c.wantErr != nil {
-				assert.Equal(t, c.factor, storage.factor)
+				assert.Equal(t, c.factor, storage.record.Factor)
 				return
 			}
-			assert.Nil(t, storage.factor)
+			assert.Nil(t, storage.record.Factor)
 		})
 	}
 }
@@ -175,17 +148,17 @@ func TestCancelEnrollment(t *testing.T) {
 func TestCancelEnrollmentFailure(t *testing.T) {
 	failure := errors.New("cancellation storage unavailable")
 	original := &Factor{Ciphertext: []byte("pending")}
-	storage := &memoryFactors{factor: original, err: failure}
+	storage := &memoryTOTP{record: Record{Factor: original}, readErr: failure}
 
-	err := NewService(storage, nil).Cancel(t.Context(), 42)
+	err := NewService(storage, nil, time.Now).Cancel(t.Context(), 42)
 
 	require.ErrorIs(t, err, failure)
-	assert.Equal(t, original, storage.factor)
+	assert.Equal(t, original, storage.record.Factor)
 }
 
 func TestCancelEnrollmentInvalidUser(t *testing.T) {
 	for _, userID := range []int64{0, -1} {
-		err := NewService(nil, nil).Cancel(t.Context(), userID)
+		err := NewService(nil, nil, time.Now).Cancel(t.Context(), userID)
 		require.ErrorIs(t, err, account.ErrUserNotFound)
 	}
 }
