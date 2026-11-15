@@ -452,7 +452,10 @@ sent to an old address cannot be retried; if the signed-in account is
 already verified, the page says so instead. Any other failure offers
 another try. Redeeming needs no session, so a link can verify
 an account other than the signed-in one; the page then says the signed-in
-account is still not verified.
+account is still not verified. The outcome links lead home (`/`) and to
+Security, which both ask a visitor without a session to sign in first, so
+they work whoever opened the page; only a 401 from the session read words
+them "Sign in", and a failed read words them as for a signed-in member.
 
 `/register` asks for an email address while registration is open, and says
 the inbok isn't accepting new accounts otherwise. A paused registration,

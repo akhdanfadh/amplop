@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { retryOptions } from "@/api/retry";
 import {
   Outlet,
   RouterProvider,
@@ -21,6 +22,7 @@ import { Route as VerifyEmail } from "@/routes/_auth/verify-email";
 const accepted = 202;
 const notFound = 404;
 const unauthorized = 401;
+const fault = 500;
 
 // The pages under test, by address.
 const pages: Record<string, RouteComponent | undefined> = {
@@ -43,6 +45,10 @@ function problem(status: number, type: string, detail: string): Response {
 }
 
 const signedOut: Answer = () => problem(unauthorized, "/api/v0/problems/unauthorized", "");
+
+// broken answers with a server fault, as a failed session read would.
+const broken: Answer = () =>
+  problem(fault, "/api/v0/problems/internal-error", "Something went wrong on our side.");
 
 // requested answers an accepted request for a reset link.
 const requested: Answer = () =>
@@ -70,7 +76,8 @@ async function open(address: string, answers: Record<string, Answer> = {}) {
   });
   await router.load();
   await render(
-    <QueryClientProvider client={new QueryClient()}>
+    // The app's retries: a 401 or a fault answers at once.
+    <QueryClientProvider client={new QueryClient({ defaultOptions: retryOptions })}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
@@ -196,9 +203,60 @@ describe("signed-out pages", () => {
     await expect
       .element(page.getByRole("heading", { name: "Open the link from your email" }))
       .toBeVisible();
+    // Security has a visitor without a session sign in, then opens.
     await expect
       .element(page.getByRole("link", { name: "Sign in to ask for a new link" }))
-      .toBeVisible();
+      .toHaveAttribute("href", "/settings/security");
+  });
+
+  describe("on /verify-email, when the session read fails,", () => {
+    it("link to a new link in words for signed in or out", async () => {
+      await open("/verify-email", { "/api/v0/sessions/current": broken });
+
+      await expect
+        .element(page.getByRole("heading", { name: "Open the link from your email" }))
+        .toBeVisible();
+      await expect
+        .element(page.getByRole("link", { name: "Ask for a new link in Security" }))
+        .toHaveAttribute("href", "/settings/security");
+    });
+
+    it("lead home after verifying", async () => {
+      await open("/verify-email#secret", {
+        "/api/v0/sessions/current": broken,
+        "/api/v0/email-verifications/redeem": () => Response.json({ data: { status: "verified" } }),
+      });
+
+      await userEvent.click(page.getByRole("button", { name: "Verify email" }));
+
+      await expect
+        .element(page.getByRole("heading", { name: "Your email address is verified" }))
+        .toBeVisible();
+      await expect
+        .element(page.getByRole("link", { name: "Go to home" }))
+        .toHaveAttribute("href", "/");
+    });
+
+    it("link to a new link after a refused one", async () => {
+      await open("/verify-email#secret", {
+        "/api/v0/sessions/current": broken,
+        "/api/v0/email-verifications/redeem": () =>
+          problem(
+            notFound,
+            "/api/v0/problems/email-verification-link-invalid",
+            "This link has expired, was already used, or is not valid.",
+          ),
+      });
+
+      await userEvent.click(page.getByRole("button", { name: "Verify email" }));
+
+      await expect
+        .element(page.getByRole("heading", { name: "This link no longer works" }))
+        .toBeVisible();
+      await expect
+        .element(page.getByRole("link", { name: "Ask for a new link in Security" }))
+        .toHaveAttribute("href", "/settings/security");
+    });
   });
 
   it("keep a title still when a check finds the form under it", async () => {
