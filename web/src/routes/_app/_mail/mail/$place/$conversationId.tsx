@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { createFileRoute, linkOptions, notFound } from "@tanstack/react-router";
 import * as z from "zod";
+import { cachedRead } from "@/api/cached-read";
 import { getGetConversationQueryOptions } from "@/api/generated/inbok";
 import { ApiError } from "@/api/transport";
 import { conversationIdSchema } from "@/features/mail/address";
@@ -37,12 +38,14 @@ export const Route = createFileRoute("/_app/_mail/mail/$place/$conversationId")(
   loader: async ({ context: { queryClient }, params: { conversationId }, location }) => {
     const options = getGetConversationQueryOptions(conversationId);
     if (currentMail(queryClient)?.conversations.has(conversationId)) {
-      // A failed read shows in the reading pane, which reads again.
+      // Not cachedRead, and not awaited: this read only refreshes the
+      // messages, which the pane shows in place once they come (web/README.md
+      // "Routes"). A failed read shows in the reading pane, which reads again.
       void queryClient.query(options).catch(() => undefined);
       return;
     }
     try {
-      await queryClient.query({ ...options, staleTime: "static" });
+      await cachedRead(queryClient, options);
     } catch (err) {
       if (err instanceof ApiError && err.status === notFoundStatus) throw notFound();
       if (isSessionEnded(err)) throw sessionEnded(queryClient, location.href);

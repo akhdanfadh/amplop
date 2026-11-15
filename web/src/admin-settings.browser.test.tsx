@@ -237,6 +237,10 @@ async function open(server: Server, path: string, width = 360) {
     ]),
     history: createMemoryHistory({ initialEntries: [path] }),
     defaultErrorComponent: RouteError,
+    // As the app's router does (router.tsx): a visit, a preloaded one too,
+    // waits for a read marked out of date.
+    defaultStaleReloadMode: "blocking",
+    defaultPreloadStaleTime: 0,
     context: { queryClient, compose: new ComposeStore() },
   });
   await render(

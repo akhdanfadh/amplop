@@ -164,7 +164,8 @@ Put shared code in the folder for its responsibility:
   `useFormRequest`, which sends a form's values and whose check plugs into
   it; "Forms" below says how to use it.
 - `src/api`: generated client and schemas, transport, shared validation and
-  error messages, and retry handling.
+  error messages, retry handling, and the cached read every loader uses
+  (`cachedRead`).
 - `src/lib`: code that knows no feature and no React, such as keeping the
   secret of an emailed link, keeping a server's field error through a
   blur, splitting typed recipients into addresses (`recipients.ts`), or
@@ -219,30 +220,45 @@ are routes that only redirect into settings, so the server never follows
 the settings' layout; `src/entry-paths.browser.test.tsx` lists every
 entry address and fails when one stops being a page. A page still reads
 the session itself and opens sign-in on a 401, since a session can end
-after the guard ran, e.g. from another tab. The router counts a session
-read in the last 5 s as fresh (`sessionFreshMs`), so a page that opens
+after the guard ran, e.g. from another tab. The query client counts a
+session read in the last 5 s as fresh (`sessionFreshMs`), so a page that opens
 just after a guard read it does not read it again.
+
+Every guard and loader reads through `cachedRead`
+(`src/api/cached-read.ts`): the cached answer, unless a write marked it
+out of date (`invalidateQueries`), and then a fresh read, joining one
+already running. Not TanStack Query's `staleTime: "static"`, which serves
+a marked answer too. The router waits for a page's loaders when it runs
+them again on a visit back (`defaultStaleReloadMode: "blocking"` in
+`src/router.tsx`), and runs them again after a preload instead of reusing
+its result (`defaultPreloadStaleTime: 0`), so a visit after a write draws
+from the fresh answer: Registration never offers a choice a System email
+save just changed. A write only marks what it changes; it need not read it
+again itself. A refresh that only polls, e.g. mail's every 30 s, reads
+again with `refetchQueries` and marks nothing, or the next visit would
+wait for it. Besides a read the cache lacks, a visit waits for one a write
+marked, about one request; the loading view stays hidden for its first 300
+ms, so on a slow connection it may show then (accepted). A visit made
+offline gets a marked answer too, under the offline banner, rather than
+wait for the connection. Accepted limits: a connection lost during that
+one request waits for its return, then draws the fresh answer; a read that
+began before the write and is still running when the member comes back is
+joined, and its older answer drawn; and a conversation the list holds
+opens from its row at once, its messages refreshing in place (DESIGN.md
+"States"). The server refuses any change a stale page offers, with its
+reason. Test routers that load such pages set the same two router options.
 
 A page whose data it cannot draw without, e.g. System email, Registration,
 or Members, reads it in its route's loader, made by `signedInLoader`
 (`src/features/auth/session-end.ts`) over `loadSignedIn`, so the router's
-loading and failure views below cover it. The loader reads with
-`staleTime: Infinity`, a cached read until something marks it out of date,
-which only the member's own change in this tab does, e.g. a System email
-save marks Registration's, and runs with `staleReloadMode: "blocking"`, so
-a visit back waits for that reread: Registration never asks for a test
-message just after one passed. Mail's loaders serve whatever is cached
-(`staleTime: "static"`) and read again as the page mounts, since mail's
-data changes all the time and corrects itself in place. One approach for
-both, every loader serving the cache and a write rereading at once what it
-changed (`refetchType: "all"`), is planned as the first checkpoint of
-`feat/connected-accounts` (ADR031). The page's own query counts what
-the loader read in the last 5 s as fresh (`loadedFreshMs`), so it does not
-read it again as it opens, and rereads older data then. A 401 there
-clears the account cache and opens sign-in, which returns to the page
-afterwards; once the page has drawn, `useSessionEnd` does the same for a
-read or a write that gets one, without asking to leave unsaved typing,
-which can no longer be saved. A 403 on such a page is an ordinary
+loading and failure views below cover it; mail's loaders check that the
+address names a label or account the member has. The page's own query
+counts what the loader read in the last 5 s as fresh (`loadedFreshMs`), so
+it does not read it again as it opens, and rereads older data then. A 401
+there clears the account cache and opens sign-in, which returns to the
+page afterwards; once the page has drawn, `useSessionEnd` does the same
+for a read or a write that gets one, without asking to leave unsaved
+typing, which can no longer be saved. A 403 on such a page is an ordinary
 failure: no administrator loses the role while signed in today, and a
 feature that adds a way to, e.g. a role change, decides what an open page
 does then.

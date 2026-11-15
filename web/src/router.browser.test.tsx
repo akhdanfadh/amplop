@@ -30,4 +30,13 @@ describe("getRouter", () => {
     expect(router.options.defaultPendingMinMs).toBe(500);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  // The pages' tests build their own routers with the same two options;
+  // this holds the app's to them.
+  it("waits on a visit for a read marked out of date, a preloaded visit too", () => {
+    expect(getRouter().options).toMatchObject({
+      defaultStaleReloadMode: "blocking",
+      defaultPreloadStaleTime: 0,
+    });
+  });
 });

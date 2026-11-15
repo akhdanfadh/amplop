@@ -1012,18 +1012,18 @@ outcome.
 ### States
 
 - **Loading:** routes load data in `loader` with the query client's
-  `query` (`ensureQueryData` is deprecated). A settings page reads with
-  `staleTime: Infinity` and `staleReloadMode: "blocking"`: a cached read
-  serves until the member's own change marks it out of date, and a visit
-  back then waits for that reread instead of drawing the page as it was.
-  Mail serves whatever is cached (`"static"`) and reads again as the page
-  mounts. One approach for both is planned (`feat/connected-accounts`);
-  `pendingComponent` appears after 300 ms and stays at least 500 ms (on
-  the first load it is not held, so a quick one shows nothing): a list's
-  own as placeholder rows shaped like real ones, any other page's the
-  router's default, a spinner with "Loading...". Background re-reads show
-  nothing. Hovering or focusing a row preloads its conversation, and the
-  reading pane starts from the list row's data.
+  `query` (`ensureQueryData` is deprecated), every one through
+  `cachedRead`: a cached read serves until the member's own change marks
+  it out of date, and a visit back then waits for that reread instead of
+  drawing the page as it was (web/README.md "Routes"); a page visited
+  offline draws what it has under the offline banner. The page's own read
+  then refreshes older data in place. `pendingComponent` appears after
+  300 ms and stays at least 500 ms (on the first load it is not held, so a
+  quick one shows nothing): a list's own as placeholder rows shaped like
+  real ones, any other page's the router's default, a spinner with
+  "Loading...". Background re-reads show nothing. Hovering or focusing a
+  row preloads its conversation, and the reading pane starts from the list
+  row's data.
 - **Empty:** words only, the cause and one next step: "Connect your first
   account" with Connect Gmail; "Nothing in Inbox", also under an account
   filter, whose header already names the account; "Nothing in Projects",

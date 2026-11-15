@@ -164,6 +164,10 @@ async function open(server: Server) {
       createRoute({ getParentRoute: () => root, path: "/sign-in", component: () => "Sign in" }),
     ]),
     history: createMemoryHistory({ initialEntries: ["/settings/system-email"] }),
+    // As the app's router does (router.tsx): a visit, a preloaded one too,
+    // waits for a read marked out of date.
+    defaultStaleReloadMode: "blocking",
+    defaultPreloadStaleTime: 0,
     context: { queryClient, compose: new ComposeStore() },
   });
   await render(

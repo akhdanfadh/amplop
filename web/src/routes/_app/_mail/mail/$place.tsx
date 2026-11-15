@@ -1,5 +1,6 @@
 import { useMemo, type ReactElement } from "react";
 import { Outlet, createFileRoute, notFound, redirect, useMatch } from "@tanstack/react-router";
+import { cachedRead } from "@/api/cached-read";
 import {
   getListConnectedAccountsQueryOptions,
   getListPlacesQueryOptions,
@@ -32,18 +33,19 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
   validateSearch: mailSearch,
   loaderDeps: ({ search }) => ({ account: search.account }),
   // A label the member doesn't have is Page not found; one they have opens
-  // in its account. A read already cached serves; the page reads again as
-  // it mounts. An ended session opens sign-in.
+  // in its account. A read already cached serves unless a write marked it
+  // out of date (cachedRead); the page reads again as it mounts. An ended
+  // session opens sign-in.
   loader: async ({ context: { queryClient }, params: { place }, deps: { account }, location }) => {
     const search = place === searchPlace;
     const view = isViewPlace(place);
     const [places, accounts] = await Promise.all([
       // A search names labels in its filters, as a label's list does.
-      view ? undefined : queryClient.query({ ...getListPlacesQueryOptions(), staleTime: "static" }),
+      view ? undefined : cachedRead(queryClient, getListPlacesQueryOptions()),
       // Only a view's or a search's filter is checked against the accounts.
       (!view && !search) || account === undefined
         ? undefined
-        : queryClient.query({ ...getListConnectedAccountsQueryOptions(), staleTime: "static" }),
+        : cachedRead(queryClient, getListConnectedAccountsQueryOptions()),
     ]).catch((err: unknown) => {
       throw isSessionEnded(err) ? sessionEnded(queryClient, location.href) : err;
     });

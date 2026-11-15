@@ -525,11 +525,15 @@ function createMail(client: QueryClient, number: number): MailData {
 // refreshMail reads again what the mail pages on client show: each open
 // list's newest page, the places' unread counts, and the accounts, whose
 // sync status the sidebar words; it settles when they have.
+//
+// DESIGN: it reads again and marks nothing out of date: only a write does
+// that, and a loader waits for a marked read (cachedRead), so a refresh
+// that marked the accounts would hold up the next visit, or fail it.
 export async function refreshMail(client: QueryClient): Promise<void> {
   await Promise.all([
     refreshNewest(client),
     client.refetchQueries({ queryKey: getListPlacesQueryKey(), type: "active" }),
-    client.invalidateQueries({ queryKey: getListConnectedAccountsQueryKey() }),
+    client.refetchQueries({ queryKey: getListConnectedAccountsQueryKey(), type: "active" }),
   ]);
 }
 

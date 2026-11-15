@@ -42,6 +42,16 @@ export function getRouter(): Router<typeof routeTree> {
     // nothing holds it, and RoutePending hides itself for 300 ms then.
     defaultPendingMinMs: 0,
     defaultPendingComponent: RoutePending,
+    // A visit back waits for the page's loader, so a read marked out of date
+    // (cachedRead) is read again before the page draws; a read not marked
+    // answers from the cache at once. The default, "background", would draw
+    // the page from the old answer meanwhile.
+    defaultStaleReloadMode: "blocking",
+    // A visit after a preload, e.g. a conversation's on hover, runs the
+    // loaders again instead of taking the preload's result for 30 s, so the
+    // query cache decides what is fresh (TanStack Router's advice when an
+    // external cache holds the data).
+    defaultPreloadStaleTime: 0,
     defaultErrorComponent: RouteError,
     defaultNotFoundComponent: NotFound,
     // Gives every component the query cache, e.g. for useGetHealth().

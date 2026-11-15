@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { getGetSystemEmailQueryOptions } from "@/api/generated/inbok";
+import { cachedRead } from "@/api/cached-read";
 import { readSession } from "@/features/auth/guard";
 import { ComposeWindow } from "@/features/outgoing-messages/compose-window";
 import { ComposeProvider, useCompose } from "@/features/outgoing-messages/compose-store";
@@ -34,9 +35,9 @@ export const Route = createFileRoute("/_app")({
       return;
     // Tried even when the browser reports offline, so it never waits for
     // the connection.
-    await context.queryClient
-      .query({ ...options, staleTime: Infinity, networkMode: "always" })
-      .catch(() => undefined);
+    await cachedRead(context.queryClient, { ...options, networkMode: "always" }).catch(
+      () => undefined,
+    );
   },
 });
 
