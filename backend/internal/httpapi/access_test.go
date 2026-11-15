@@ -190,3 +190,36 @@ func TestAccessDeclarations(t *testing.T) {
 	require.NotNil(t, result.Properties["role"])
 	assert.ElementsMatch(t, []any{"member", "admin"}, result.Properties["role"].Enum)
 }
+
+// Every operation that needs more than enrollment access documents the
+// 403 totp-required that [withAccess] answers an administrator without
+// two-factor authentication, beside its own 403s; the others do not.
+func TestEnrollmentAccessDocumented(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+
+	var enrollment []string
+	for _, op := range operations(doc) {
+		refused := op.Responses[strconv.Itoa(http.StatusForbidden)]
+		if operationAccess(op) > session.AccessEnrollment {
+			require.NotNil(t, refused, op.OperationID)
+			assert.Contains(t, refused.Description, enrollmentAccessCause, op.OperationID)
+			examples := refused.Content[problemContentType].Examples
+			assert.Equal(t, totpRequiredProblem(), examples["totpRequired"].Value, op.OperationID)
+			continue
+		}
+		if refused != nil {
+			assert.NotContains(t, refused.Content[problemContentType].Examples, "totpRequired", op.OperationID)
+		}
+		if operationAccess(op) == session.AccessEnrollment {
+			enrollment = append(enrollment, op.OperationID)
+		}
+	}
+	assert.ElementsMatch(t, []string{
+		"getCurrentSession", "deleteCurrentSession", "getTOTPStatus", "startTOTPEnrollment",
+		"cancelTOTPEnrollment", "checkTOTPEnrollmentCode", "finishTOTPEnrollment", "showWaitingTOTPBackupCodes",
+	}, enrollment)
+
+	// Turning off keeps its own refusal beside it.
+	disable := doc.Paths[totpPath+"/disable"].Post.Responses[strconv.Itoa(http.StatusForbidden)]
+	assert.Contains(t, disable.Content[problemContentType].Examples, "refused")
+}

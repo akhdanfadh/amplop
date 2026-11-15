@@ -723,9 +723,9 @@ func TestSessionListAndEndOpenAPI(t *testing.T) {
 		id       string
 		statuses []int
 	}{
-		{doc.Paths["/sessions"].Get, "listSessions", []int{http.StatusOK, http.StatusUnauthorized}},
-		{doc.Paths["/sessions/{id}"].Delete, "deleteSession", []int{http.StatusOK, http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict}},
-		{doc.Paths["/sessions/others"].Delete, "deleteOtherSessions", []int{http.StatusOK, http.StatusUnauthorized}},
+		{doc.Paths["/sessions"].Get, "listSessions", []int{http.StatusOK, http.StatusUnauthorized, http.StatusForbidden}},
+		{doc.Paths["/sessions/{id}"].Delete, "deleteSession", []int{http.StatusOK, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusConflict}},
+		{doc.Paths["/sessions/others"].Delete, "deleteOtherSessions", []int{http.StatusOK, http.StatusUnauthorized, http.StatusForbidden}},
 	} {
 		require.NotNil(t, c.op, c.id)
 		assert.Equal(t, c.id, c.op.OperationID)

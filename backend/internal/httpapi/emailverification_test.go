@@ -211,7 +211,7 @@ func TestEmailVerificationOpenAPI(t *testing.T) {
 		access    session.Access
 		statuses  []string
 	}{
-		{doc.Paths["/account/email-verification"].Post, "requestEmailVerification", session.AccessMember, []string{"200", "401", "409", "429", "502", "default"}},
+		{doc.Paths["/account/email-verification"].Post, "requestEmailVerification", session.AccessMember, []string{"200", "401", "403", "409", "429", "502", "default"}},
 		{doc.Paths["/email-verifications/redeem"].Post, "redeemEmailVerification", session.AccessPublic, []string{"200", "404", "422", "429", "default"}},
 	} {
 		operation := op.operation

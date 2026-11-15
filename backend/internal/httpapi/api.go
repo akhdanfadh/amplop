@@ -144,6 +144,7 @@ func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API 
 	registerConversations(api, logger, services.Conversations, services.ConversationActions)
 
 	documentRateLimits(api)
+	documentEnrollmentAccess(api)
 	registerProblemTypes(api)
 
 	return &API{router: router, api: api, limiter: limiter}

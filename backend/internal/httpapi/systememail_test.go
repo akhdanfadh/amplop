@@ -394,7 +394,7 @@ func TestSystemEmailOpenAPI(t *testing.T) {
 		assert.ElementsMatch(t, op.statuses, statuses, op.id)
 	}
 	forbidden := doc.Paths["/system-email"].Get.Responses["403"].Content[problemContentType].Examples
-	assert.Equal(t, forbiddenProblem(), forbidden["forbidden"].Value)
+	assert.Equal(t, forbiddenProblem(), forbidden["refused"].Value)
 	assert.Equal(t, totpRequiredProblem(), forbidden["totpRequired"].Value)
 	schemas := doc.Components.Schemas.Map()
 	require.NotNil(t, schemas["NewSystemEmailSettings"])

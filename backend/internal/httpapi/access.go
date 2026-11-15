@@ -121,10 +121,44 @@ func adminResponses(api huma.API, statuses ...int) map[string]*huma.Response {
 	unauthorized.Content[problemContentType].Example = unauthenticatedProblem()
 
 	forbidden := responses[strconv.Itoa(http.StatusForbidden)]
-	forbidden.Description = "The account is not an administrator, or has not set up two-factor authentication."
-	forbidden.Content[problemContentType].Examples = map[string]*huma.Example{
-		"forbidden":    {Value: forbiddenProblem()},
-		"totpRequired": {Value: totpRequiredProblem()},
-	}
+	forbidden.Description = "The account is not an administrator."
+	forbidden.Content[problemContentType].Example = forbiddenProblem()
 	return responses
+}
+
+// enrollmentAccessCause says why [withAccess] refuses an operation with 403
+// totp-required.
+const enrollmentAccessCause = "An administrator without two-factor authentication may only set it up."
+
+// documentEnrollmentAccess adds [withAccess]'s 403 totp-required to every
+// operation that needs more than enrollment access, beside any 403 the
+// operation sends itself. Call it once, after every operation is
+// registered, before [registerProblemTypes].
+func documentEnrollmentAccess(api huma.API) {
+	status := strconv.Itoa(http.StatusForbidden)
+	for _, op := range operations(api.OpenAPI()) {
+		if operationAccess(op) <= session.AccessEnrollment {
+			continue
+		}
+
+		refused, ok := op.Responses[status]
+		if !ok {
+			refused = problemResponses(api, http.StatusForbidden)[status]
+			refused.Description = enrollmentAccessCause
+			op.Responses[status] = refused
+		} else {
+			refused.Description += " " + enrollmentAccessCause
+		}
+
+		// One response holds every 403 as named examples.
+		media := refused.Content[problemContentType]
+		if media.Examples == nil {
+			media.Examples = map[string]*huma.Example{}
+		}
+		if media.Example != nil {
+			media.Examples["refused"] = &huma.Example{Value: media.Example}
+			media.Example = nil
+		}
+		media.Examples["totpRequired"] = &huma.Example{Value: totpRequiredProblem()}
+	}
 }
