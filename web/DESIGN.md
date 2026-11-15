@@ -830,7 +830,10 @@ outcome.
 ### States
 
 - **Loading:** routes load data in `loader` with the query client's
-  `query` and `staleTime: "static"` (`ensureQueryData` is deprecated);
+  `query` and `staleTime: Infinity`, so a cached read serves until
+  something marks it out of date (`ensureQueryData` is deprecated;
+  `"static"` would ignore that mark), and `staleReloadMode: "blocking"`, so
+  a visit back waits for that reread instead of drawing the page as it was;
   `pendingComponent` appears after 300 ms and stays at least 500 ms (on
   the first load it is not held, so a quick one shows nothing): a list's
   own as placeholder rows shaped like real ones, any other page's the

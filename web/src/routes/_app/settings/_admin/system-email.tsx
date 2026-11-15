@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
-import type { QueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { getGetSystemEmailQueryOptions, useGetSystemEmail } from "@/api/generated/inbok";
-import type { ResponseSystemEmail } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
-import { loadSignedIn, useSessionEnd } from "@/features/auth/session-end";
+import { loadedFreshMs, signedInLoader, useSessionEnd } from "@/features/auth/session-end";
 import { SettingsPage, SettingsSection } from "@/features/settings/page";
 import { pageName } from "@/features/settings/text";
 import { SettingsForm } from "@/features/system-email/settings-form";
@@ -25,34 +23,21 @@ import {
 
 const unauthorized = 401;
 
+// systemEmailLoader reads what the page shows before it draws.
+export const systemEmailLoader = signedInLoader(getGetSystemEmailQueryOptions);
+
 export const Route = createFileRoute("/_app/settings/_admin/system-email")({
-  loader: loadSystemEmail,
+  loader: systemEmailLoader,
   component: SystemEmail,
   head: () => ({ meta: [{ title: "System email - inbok" }] }),
 });
-
-// loadSystemEmail reads the settings before the page draws, so the router
-// shows its loading and failure views meanwhile (web/README.md "Routes"),
-// for the page at location. A cached read will do, since the page reads
-// them again as it opens.
-export function loadSystemEmail({
-  context,
-  location,
-}: {
-  context: { queryClient: QueryClient };
-  location: { href: string };
-}): Promise<ResponseSystemEmail> {
-  return loadSignedIn(context.queryClient, location.href, () =>
-    context.queryClient.query({ ...getGetSystemEmailQueryOptions(), staleTime: "static" }),
-  );
-}
 
 // SystemEmail is the mail server inbok sends its own messages through: the
 // saved settings, a form to change them, and a test message.
 function SystemEmail(): ReactElement {
   const { session } = Route.useRouteContext();
   const loaded = Route.useLoaderData();
-  const systemEmail = useGetSystemEmail();
+  const systemEmail = useGetSystemEmail({ query: { staleTime: loadedFreshMs } });
   const sessionEnd = useSessionEnd();
   const settings = (systemEmail.data ?? loaded).data.settings;
   // Nothing saved yet opens the form, with no summary to go back to.
@@ -96,7 +81,7 @@ function SystemEmail(): ReactElement {
       {/* A failed refresh keeps the sections and says why (DESIGN.md
           "States"); a 401 opens sign-in instead. */}
       {systemEmail.error && systemEmail.error.status !== unauthorized && (
-        <div className="py-6">
+        <div className="py-6 text-sm">
           <ReadError
             message={`${readFailed} ${userMessage(systemEmail.error)}`}
             error={systemEmail.error}

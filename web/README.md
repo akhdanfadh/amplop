@@ -210,9 +210,14 @@ read in the last 5 s as fresh (`sessionFreshMs`), so a page that opens
 just after a guard read it does not read it again.
 
 A page whose data it cannot draw without, e.g. System email, reads it in
-its route's `loader` through `loadSignedIn`
-(`src/features/auth/session-end.ts`), so the router's loading and failure
-views below cover it, and the page reads it again as it opens. A 401 there
+its route's loader, made by `signedInLoader`
+(`src/features/auth/session-end.ts`) over `loadSignedIn`, so the router's
+loading and failure views below cover it. The loader reads with
+`staleTime: Infinity`, a cached read until something marks it out of date,
+and runs with `staleReloadMode: "blocking"`, so a visit back waits for that
+reread instead of showing the page as it was. The page's own query counts
+what the loader read in the last 5 s as fresh (`loadedFreshMs`), so it does
+not read it again as it opens, and rereads older data then. A 401 there
 clears the account cache and opens sign-in, which returns to the page
 afterwards; once the page has drawn, `useSessionEnd` does the same for a
 read or a write that gets one, without asking to leave unsaved typing,
@@ -517,15 +522,16 @@ the settings are for administrators with two-factor authentication, with a link 
 an administrator. A 401 from a save or test signs out; a 403 reads access
 again.
 
-System email configures the server inbok sends its own mail through. The
-form applies Go's rules between fields before sending, and its password
-description says when an empty password keeps the saved one. Inputs are
-read-only, not disabled, while a save runs, so focus stays and the values
-remain readable. A save whose response is lost locks the form and the test
-until "Check saved settings" reads them again and says whether they match;
-a typed password is never read back, so it stays unconfirmed. The username
-and password inputs carry password-manager opt-outs, so the inbok sign-in
-is neither filled in nor saved there.
+System email configures the server inbok sends its own mail through. It
+shows the saved settings as a summary with "Edit settings"; the form opens
+in its place and closes on a save (web/DESIGN.md "Settings and signed-out
+pages"). The form applies Go's rules between fields before sending, and its
+password description says when an empty password keeps the saved one. A
+save whose answer is lost keeps the form open and asks to save again: a
+save replaces the settings whole, so repeating it is safe. "Save and send
+test" saves, then sends a test. The username and password inputs carry
+password-manager opt-outs, so the inbok sign-in is neither filled in nor
+saved there.
 
 Its test section sends to the signed-in address by default and words each
 failure by the step that failed. A lost result can be sent again without a

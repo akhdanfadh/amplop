@@ -13,7 +13,10 @@ import {
 } from "@tanstack/react-router";
 import { NewSystemEmailSettings, type SystemEmailSettings } from "@/api/generated/model";
 import { Route as App } from "@/routes/_app";
-import { Route as SystemEmail, loadSystemEmail } from "@/routes/_app/settings/_admin/system-email";
+import {
+  Route as SystemEmail,
+  systemEmailLoader,
+} from "@/routes/_app/settings/_admin/system-email";
 
 const ok = 200;
 const unauthorized = 401;
@@ -144,7 +147,7 @@ async function open(server: Server) {
             createRoute({
               getParentRoute: () => admin,
               path: "system-email",
-              loader: loadSystemEmail,
+              loader: systemEmailLoader,
               component: SystemEmail.options.component,
             }),
           ]),
@@ -211,6 +214,16 @@ describe("System email", () => {
       .element(page.getByText("Save or cancel your changes to send a test."))
       .toBeVisible();
     expect(summary().elements()).toHaveLength(0);
+  });
+
+  it("reads the settings once as it opens", async () => {
+    const server: Server = { settings: saved, sent: [], bodies: [] };
+    await open(server);
+    await expect.element(page.getByText("inbok <inbok@example.com>")).toBeVisible();
+
+    // The page uses what its loader just read rather than reading it again.
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    expect(server.sent.filter((request) => request === "GET /api/v0/system-email")).toHaveLength(1);
   });
 
   it("saves only, closes the form, and gives focus back to Edit settings", async () => {
