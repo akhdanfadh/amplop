@@ -14,7 +14,9 @@ import { cn } from "@/lib/cn";
 // pages"): back, e.g. a link up to the page it belongs to, the title, aside
 // it, e.g. a status badge, a one-sentence lead, notice, a result to report,
 // e.g. "Two-factor authentication is on.", then the sections, divided by
-// hairlines, capped at 720 px. The title takes focus when the page opens,
+// hairlines, capped at 720 px. height "fill" keeps the page to the window
+// and gives its last section, laid out "fill", the height left, e.g. for a
+// table that scrolls inside it. The title takes focus when the page opens,
 // so a screen reader starts there.
 export function SettingsPage({
   title,
@@ -22,6 +24,7 @@ export function SettingsPage({
   lead,
   back,
   notice,
+  height = "content",
   children,
 }: {
   title: string;
@@ -29,6 +32,7 @@ export function SettingsPage({
   lead: string;
   back?: ReactNode;
   notice?: string;
+  height?: "content" | "fill";
   children: ReactNode;
 }): ReactElement {
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -53,7 +57,14 @@ export function SettingsPage({
   return (
     // A container, so a section lays itself out by the page's width, not
     // the window's: the settings sidebar takes part of a wide window.
-    <main className="@container mx-auto w-full max-w-180 px-4 pt-6 pb-12 wrap-anywhere sm:px-6 sm:pt-8">
+    <main
+      className={cn(
+        "@container mx-auto w-full max-w-180 px-4 pt-6 pb-12 wrap-anywhere sm:px-6 sm:pt-8",
+        // Shrinks to the frame's height; below its last section's floor the
+        // frame scrolls as for any page.
+        height === "fill" && "flex min-h-0 flex-1 flex-col pb-6",
+      )}
+    >
       {back}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <h1 ref={titleRef} tabIndex={-1} className="text-2xl font-semibold outline-none">
@@ -71,7 +82,14 @@ export function SettingsPage({
           </span>
         )}
       </output>
-      <div className="mt-6 divide-y border-t">{children}</div>
+      <div
+        className={cn(
+          "mt-6 divide-y border-t",
+          height === "fill" && "flex min-h-0 flex-1 flex-col",
+        )}
+      >
+        {children}
+      </div>
     </main>
   );
 }
@@ -80,8 +98,10 @@ export function SettingsPage({
 // a status badge, and about, one sentence on what the section is for, on the
 // left, and the controls on the right. layout "stacked" puts the heading
 // over the controls so they get the whole width, e.g. for a step with a QR
-// code; below 512 px of page every section stacks. headingRef reaches the heading,
-// e.g. to give it focus when the control that had it goes away.
+// code; below 512 px of page every section stacks. layout "fill" stacks too
+// and takes the height a SettingsPage of height "fill" leaves, for controls
+// that scroll inside it. headingRef reaches the heading, e.g. to give it
+// focus when the control that had it goes away.
 export function SettingsSection({
   title,
   about,
@@ -93,7 +113,7 @@ export function SettingsSection({
   title: string;
   about: string;
   aside?: ReactNode;
-  layout?: "columns" | "stacked";
+  layout?: "columns" | "stacked" | "fill";
   headingRef?: Ref<HTMLHeadingElement>;
   children: ReactNode;
 }): ReactElement {
@@ -104,6 +124,7 @@ export function SettingsSection({
       className={cn(
         "grid gap-4 py-6",
         layout === "columns" && "@lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] @lg:gap-8",
+        layout === "fill" && "flex min-h-0 flex-1 flex-col pb-0",
       )}
     >
       <div className="flex flex-col gap-1">
@@ -115,7 +136,14 @@ export function SettingsSection({
         </div>
         <p className="text-sm text-muted-foreground">{about}</p>
       </div>
-      <div className="flex min-w-0 flex-col items-start gap-4 text-sm">{children}</div>
+      <div
+        className={cn(
+          "flex min-w-0 flex-col items-start gap-4 text-sm",
+          layout === "fill" && "min-h-0 flex-1 items-stretch",
+        )}
+      >
+        {children}
+      </div>
     </section>
   );
 }

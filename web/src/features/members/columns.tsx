@@ -1,112 +1,153 @@
 import type { ReactElement } from "react";
-import { BanIcon, CircleCheckIcon, UserRoundIcon } from "lucide-react";
+import { BanIcon, CircleDashedIcon, ShieldUserIcon, UserRoundIcon } from "lucide-react";
 import { createColumnHelper, metaHelper, tableFeatures } from "@tanstack/react-table";
 import type { Member } from "@/api/generated/model";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { canChange, formatDate, roleName, type MemberChange } from "./text";
-
-const actionLabels: Record<MemberChange, string> = {
-  deactivate: "Deactivate",
-  reactivate: "Reactivate",
-};
-const runningLabels: Record<MemberChange, string> = {
-  deactivate: "Deactivating...",
-  reactivate: "Reactivating...",
-};
-
-// actionId returns the id of the row button that changes member id.
-export function actionId(id: number): string {
-  return `member-${id}-action`;
-}
+import { actionWords, formatDate, offeredAction, type MemberAction } from "./text";
 
 // MemberTableMeta is what the cells read from the table that renders them.
-export type MemberTableMeta = {
+type MemberTableMeta = {
   yourEmail: string;
-  // The write that is running and the member it acts on, or null. The row may
-  // already show the result, so the write, not the row, names the action.
-  running: { change: MemberChange; id: number } | null;
-  disabled: boolean;
-  // Asks to confirm change for member.
-  onChoose: (change: MemberChange, member: Member) => void;
+  // Asks to confirm action for member.
+  onChoose: (action: MemberAction, member: Member) => void;
 };
+
+// The first column stays at the left while the rest scroll sideways under
+// it; a hairline marks its edge only while they do (data-scrolled on the
+// scroll box, the group "table"). Its background follows the row's hover,
+// or scrolled cells would show through.
+const pinned =
+  "sticky left-0 bg-background group-hover/row:bg-muted group-data-scrolled/table:shadow-[inset_-1px_0_0_var(--color-border)]";
 
 // features are the table features the member list uses, with its meta types.
 export const features = tableFeatures({
   tableMeta: metaHelper<MemberTableMeta>(),
-  columnMeta: metaHelper<{ cellClassName?: string }>(),
+  columnMeta: metaHelper<{ headClassName?: string; cellClassName?: string; rowHeader?: true }>(),
 });
 const column = createColumnHelper<typeof features, Member>();
 
-// columns are the member list's columns, in display order.
+// columns are the member list's columns, in display order: who, then the
+// status the page's action changes, then the rest, then the action.
 export const columns = column.columns([
   column.accessor("email", {
-    header: "Email",
-    meta: { cellClassName: "max-w-64 min-w-48 whitespace-normal" },
-    cell: ({ getValue, table }) => (
-      <EmailCell email={getValue()} you={getValue() === table.options.meta?.yourEmail} />
+    header: "Member",
+    meta: {
+      rowHeader: true,
+      // The header is pinned both ways; its edge shows on both sides while
+      // the columns scroll under it.
+      headClassName:
+        "left-0 z-30 group-data-scrolled/table:shadow-[inset_-1px_-1px_0_var(--color-border)]",
+      cellClassName: `${pinned} z-10 max-w-64 min-w-36 whitespace-normal @md:min-w-48`,
+    },
+    cell: ({ row, table }) => (
+      <MemberCell
+        member={row.original}
+        you={row.original.email === table.options.meta?.yourEmail}
+      />
     ),
   }),
-  // Status and its action come right after the address, so a phone shows
-  // them before the table scrolls sideways.
   column.accessor("deactivatedAt", {
     id: "status",
     header: "Status",
     cell: ({ getValue }) => <StatusCell deactivatedAt={getValue()} />,
   }),
-  column.display({
-    id: "action",
-    header: () => <span className="sr-only">Actions</span>,
-    cell: ({ row, table }) => {
-      const meta = table.options.meta;
-      return meta ? <ActionCell member={row.original} meta={meta} /> : null;
-    },
-  }),
-  column.accessor("role", { header: "Role", cell: ({ getValue }) => roleName(getValue()) }),
-  column.accessor("joinedAt", {
-    header: "Joined",
-    cell: ({ getValue }) => <DateCell iso={getValue()} />,
-  }),
-  column.accessor("emailVerified", {
-    header: "Verified",
-    cell: ({ getValue }) => (getValue() ? "Yes" : "No"),
-  }),
   column.accessor("totpEnabled", {
     header: "Two-factor",
     cell: ({ getValue }) => (getValue() ? "On" : "Off"),
   }),
+  column.accessor("joinedAt", {
+    header: "Joined",
+    meta: { cellClassName: "tabular-nums" },
+    cell: ({ getValue }) => <DateCell iso={getValue()} />,
+  }),
+  column.display({
+    id: "action",
+    header: () => <span className="sr-only">Actions</span>,
+    meta: { cellClassName: "text-right" },
+    cell: ({ row, table }) => {
+      const meta = table.options.meta;
+      return meta ? <ActionCell member={row.original} onChoose={meta.onChoose} /> : null;
+    },
+  }),
 ]);
 
-// EmailCell shows an address, marked "You" when it is the signed-in account's.
-function EmailCell({ email, you }: { email: string; you: boolean }): ReactElement {
+// MemberCell shows an account's address and, as badges, only what differs
+// from an ordinary member: you, an administrator, an unverified address.
+function MemberCell({ member, you }: { member: Member; you: boolean }): ReactElement {
+  const admin = member.role === "admin";
   return (
-    <span className="flex flex-wrap items-center gap-2">
-      <span className="wrap-anywhere" translate="no">
-        {email}
-      </span>
-      {you && (
-        <StatusBadge tone="neutral" icon={UserRoundIcon}>
-          You
-        </StatusBadge>
+    <span className="flex flex-col items-start gap-1">
+      <Address email={member.email} />
+      {(you || admin || !member.emailVerified) && (
+        <span className="flex flex-wrap gap-1">
+          {you && (
+            <StatusBadge tone="neutral" icon={UserRoundIcon}>
+              You
+            </StatusBadge>
+          )}
+          {admin && (
+            <StatusBadge tone="neutral" icon={ShieldUserIcon}>
+              Admin
+            </StatusBadge>
+          )}
+          {!member.emailVerified && (
+            <StatusBadge tone="neutral" icon={CircleDashedIcon}>
+              Not verified
+            </StatusBadge>
+          )}
+        </span>
       )}
     </span>
   );
 }
 
-// StatusCell shows whether an account is active, or since when it is deactivated.
+// Address shows email, wrapping at its seams: first before the "@", so the
+// local part and the domain each stay whole while they fit, then before a
+// dot. A part too long for its line still breaks anywhere, e.g. a
+// 64-character local part (RFC 5321), rather than spilling under the next
+// column. Screen readers get the address whole.
+export function Address({ email }: { email: string }): ReactElement {
+  const at = email.lastIndexOf("@");
+  const split = at < 0 ? email.length : at;
+  // A whole half moves to the next line before it breaks inside.
+  const half = "inline-block max-w-full";
+  return (
+    <span translate="no">
+      {/* Chrome joins the parts below with spaces when it names a dialog or
+          a cell, so the parts are for the eye and this is for the ear. */}
+      <span className="sr-only">{email}</span>
+      <span aria-hidden="true" className="wrap-anywhere">
+        <span className={half}>{dotted(email.slice(0, split))}</span>
+        <wbr />
+        <span className={half}>{dotted(email.slice(split))}</span>
+      </span>
+    </span>
+  );
+}
+
+// dotted returns text with a break opportunity before each dot.
+function dotted(text: string): ReactElement[] {
+  const parts: ReactElement[] = [];
+  let offset = 0;
+  for (const part of text.split(/(?=\.)/)) {
+    if (offset > 0) parts.push(<wbr key={`break-${offset}`} />);
+    parts.push(<span key={offset}>{part}</span>);
+    offset += part.length;
+  }
+  return parts;
+}
+
+// StatusCell shows Active quietly, as most rows are, and a deactivated
+// account as a badge with its date.
 function StatusCell({ deactivatedAt }: { deactivatedAt: string | null }): ReactElement {
-  if (deactivatedAt === null)
-    return (
-      <StatusBadge tone="success" icon={CircleCheckIcon}>
-        Active
-      </StatusBadge>
-    );
+  if (deactivatedAt === null) return <span className="text-muted-foreground">Active</span>;
   return (
     <span className="flex flex-col items-start gap-1">
       <StatusBadge tone="neutral" icon={BanIcon}>
         Deactivated
       </StatusBadge>
-      <DateCell iso={deactivatedAt} className="text-xs text-muted-foreground" />
+      <DateCell iso={deactivatedAt} className="text-xs text-muted-foreground tabular-nums" />
     </span>
   );
 }
@@ -120,31 +161,19 @@ function DateCell({ iso, className }: { iso: string; className?: string }): Reac
   );
 }
 
-// ActionCell is the button that deactivates or reactivates member, or nothing
-// when canChange refuses it.
+// ActionCell is the button for the action member's row offers, or nothing.
 function ActionCell({
   member,
-  meta,
+  onChoose,
 }: {
   member: Member;
-  meta: MemberTableMeta;
+  onChoose: (action: MemberAction, member: Member) => void;
 }): ReactElement | null {
-  if (!canChange(member, meta.yourEmail)) return null;
-  const change: MemberChange = member.deactivatedAt === null ? "deactivate" : "reactivate";
-  const running = meta.running?.id === member.id ? meta.running.change : null;
-
+  const action = offeredAction(member);
+  if (!action) return null;
   return (
-    <Button
-      id={actionId(member.id)}
-      type="button"
-      variant="outline"
-      // The button whose write runs stays focusable as pending, so focus
-      // has a place when the dialog closes; the rest are disabled.
-      isDisabled={meta.disabled && running === null}
-      isPending={running !== null}
-      onPress={() => meta.onChoose(change, member)}
-    >
-      {running ? runningLabels[running] : actionLabels[change]}
+    <Button type="button" variant="outline" onPress={() => onChoose(action, member)}>
+      {actionWords(action).action}
       <span className="sr-only"> {member.email}</span>
     </Button>
   );

@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement, type RefObject } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTable } from "@tanstack/react-table";
+import { cn } from "@/lib/cn";
 import {
   getListMembersQueryKey,
   useDeactivateMember,
@@ -8,15 +9,7 @@ import {
 } from "@/api/generated/inbok";
 import type { Member, ResponseChangedMember, ResponseListedMembers } from "@/api/generated/model";
 import type { ApiError } from "@/api/transport";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmDialog, type Failure } from "@/components/confirm-dialog";
 import {
   Table,
   TableBody,
@@ -25,99 +18,102 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { actionId, columns, features } from "./columns";
-import { changedMessage, changeErrorMessage, type MemberChange } from "./text";
+import { useSessionEnd } from "@/features/auth/session-end";
+import { Address, columns, features } from "./columns";
+import {
+  actionWords,
+  listTitle,
+  changedMessage,
+  changeErrorMessage,
+  type MemberAction,
+} from "./text";
 
 const unauthorized = 401;
-const forbidden = 403;
-const focusClass = "focus-visible:focus-ring";
+// The fades' size, Tailwind's 8 (w-8, h-8).
+const fadePx = 32;
 
-// MemberTable lists every account and deactivates or reactivates members.
-// yourEmail is the signed-in account's address, whose row has no actions;
-// administrators have none either. fetching marks the list as being reread.
-// onAccessError receives a write's 401 or 403.
+// The header stays at the top of the scroll box with its own bottom edge: a
+// table's borders belong to its rows, which scroll away under it.
+const stickyHead = "sticky top-0 z-20 bg-background shadow-[inset_0_-1px_0_var(--color-border)]";
+
+// MemberTable lists every account and deactivates or reactivates members,
+// each change confirmed and held in a dialog until the server answers.
+// yourEmail is the signed-in account's address, marked You. The table
+// scrolls inside its own box, which fills the height its page leaves
+// (SettingsPage "fill").
 export function MemberTable({
   members,
   yourEmail,
-  fetching,
-  onAccessError,
 }: {
   members: Member[];
   yourEmail: string;
-  fetching: boolean;
-  onAccessError: (err: ApiError) => void;
 }): ReactElement {
   const client = useQueryClient();
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  // The member a write last acted on; focus returns to its row's button.
-  const restoreFocus = useRef<number | null>(null);
-  // The change and member the dialog asks about, kept while it closes so its
-  // text stays.
-  const [confirming, setConfirming] = useState<{ change: MemberChange; member: Member } | null>(
-    null,
-  );
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [changed, setChanged] = useState<{ change: MemberChange; email: string } | null>(null);
+  const sessionEnd = useSessionEnd();
+  // The change the dialog asks about, kept while it closes so its words stay.
+  const [asked, setAsked] = useState<{ action: MemberAction; member: Member }>();
+  const [open, setOpen] = useState(false);
+  // Read by screen readers once a change is saved; the row shows it to sight.
+  const [announcement, setAnnouncement] = useState("");
+  const boxRef = useRef<HTMLDivElement>(null);
+  const { scrollable, moreRight, moreBelow } = useScrollBox(boxRef);
   const writeOptions = {
     mutation: {
       gcTime: 0,
-      onMutate: prepareWrite,
+      // A list read that started before the write could land after it.
+      onMutate: () => client.cancelQueries({ queryKey: getListMembersQueryKey(), exact: true }),
       onSuccess: showChanged,
-      onSettled: finishWrite,
-      onError: (err: ApiError) => {
-        // The page signs out or rereads access instead of a message here.
-        if (isAccessError(err)) onAccessError(err);
-      },
+      onError: (err: ApiError) => sessionEnd(err),
+      // Every outcome, a lost answer included, is settled by the server's list.
+      onSettled: () => void client.invalidateQueries({ queryKey: getListMembersQueryKey() }),
     },
   };
   const deactivate = useDeactivateMember(writeOptions);
   const reactivate = useReactivateMember(writeOptions);
-  const pending = deactivate.isPending || reactivate.isPending;
+  const write = asked?.action === "reactivate" ? reactivate : deactivate;
   const table = useTable({
     features,
     columns,
     data: members,
     getRowId: (member) => String(member.id),
-    meta: {
-      yourEmail,
-      // Variables outlive the write, so only a pending one is running.
-      running: deactivate.isPending
-        ? { change: "deactivate", id: deactivate.variables.id }
-        : reactivate.isPending
-          ? { change: "reactivate", id: reactivate.variables.id }
-          : null,
-      disabled: pending,
-      onChoose: (change, member) => {
-        setConfirming({ change, member });
-        setDialogOpen(true);
-      },
-    },
+    meta: { yourEmail, onChoose: choose },
   });
-  const write = changed?.change === "deactivate" ? deactivate : reactivate;
-  const notice = changed && write.isSuccess ? changedMessage(changed.change, changed.email) : "";
-  const failure =
-    changed && write.error && !isAccessError(write.error)
-      ? changeErrorMessage(write.error, changed.change, changed.email)
-      : "";
+  const failure: Failure | undefined =
+    asked && write.error && write.error.status !== unauthorized
+      ? {
+          message: changeErrorMessage(write.error, asked.action, asked.member.email),
+          requestId: write.error.requestId,
+        }
+      : undefined;
+  const words = asked ? actionWords(asked.action) : actionWords("deactivate");
 
-  useEffect(() => {
-    // A disabled button loses focus, so give it back once the list is reread.
-    const id = restoreFocus.current;
-    if (id === null || pending || fetching) return;
-    restoreFocus.current = null;
-    if (document.activeElement !== document.body) return;
-    (document.getElementById(actionId(id)) ?? headingRef.current)?.focus();
-  }, [pending, fetching]);
-
-  // prepareWrite stops a list read, so it cannot overwrite the write's result.
-  async function prepareWrite(): Promise<void> {
-    await client.cancelQueries({ queryKey: getListMembersQueryKey(), exact: true });
+  // choose opens the dialog that confirms action for member.
+  function choose(action: MemberAction, member: Member): void {
+    deactivate.reset();
+    reactivate.reset();
+    setAsked({ action, member });
+    setOpen(true);
   }
 
-  // showChanged puts the member from result into the cached list.
+  // confirm sends the change the dialog asks about.
+  function confirm(): void {
+    if (!asked || write.isPending) return;
+    setAnnouncement("");
+    write.mutate(
+      { id: asked.member.id },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          setAnnouncement(changedMessage(asked.action, asked.member.email));
+        },
+      },
+    );
+  }
+
+  // showChanged puts the member from result into the cached list, so its
+  // row is right at once; the reread only confirms it.
   function showChanged(result: ResponseChangedMember): void {
     const saved = result.data.member;
-    // The row is right at once; the reread only confirms it.
     client.setQueryData<ResponseListedMembers>(getListMembersQueryKey(), (list) =>
       list
         ? {
@@ -131,108 +127,158 @@ export function MemberTable({
     );
   }
 
-  // finishWrite rereads the list after any outcome.
-  function finishWrite(): void {
-    // Every outcome, including a lost response, is settled by the server's list.
-    void client.invalidateQueries({ queryKey: getListMembersQueryKey() });
-  }
-
-  // start runs change for member unless another write is running.
-  function start(change: MemberChange, member: Member): void {
-    if (pending) return;
-    deactivate.reset();
-    reactivate.reset();
-    restoreFocus.current = member.id;
-    setChanged({ change, email: member.email });
-    (change === "deactivate" ? deactivate : reactivate).mutate({ id: member.id });
-  }
-
   return (
-    // The scrolling table is the named region; naming the section too would repeat it.
-    <section className="flex flex-col gap-6">
-      <div className="flex max-w-prose flex-col gap-2">
-        <h2 id="members-heading" ref={headingRef} tabIndex={-1} className="text-xl font-semibold">
-          Member list
-        </h2>
-        <p>
-          Deactivating a member signs them out and stops them from signing in. Reactivating them
-          lets them sign in again as before. Administrators can&apos;t be deactivated.
-        </p>
+    <>
+      <output aria-atomic="true" className="sr-only">
+        {announcement}
+      </output>
+      {/* One scroll box both ways, so the header and the first column stick
+          to it, not to a box around it (MDN, position: sticky). The frame
+          around it holds the fade, which stays put while the box scrolls. */}
+      <div className="relative flex min-h-48 flex-1 flex-col">
+        <Table
+          className="wrap-normal"
+          containerProps={{
+            ref: boxRef,
+            // Focusable while it scrolls, so the keyboard can scroll it
+            // (DESIGN.md "Settings and signed-out pages"); a list that fits
+            // needs no extra Tab stop.
+            tabIndex: scrollable ? 0 : undefined,
+            // A region only while it scrolls, named for what scrolls; the
+            // section is already the "Accounts" region.
+            role: scrollable ? "region" : undefined,
+            "aria-label": scrollable ? listTitle : undefined,
+            className:
+              // Scrolling to a focused button stops clear of the sticky header
+              // (40 px) and the bottom fade (32 px), not under them.
+              "group/table @container min-h-0 flex-1 scroll-pt-10 scroll-pb-8 overflow-auto overscroll-y-contain focus-visible:focus-ring",
+          }}
+        >
+          <TableHeader className="[&_tr]:border-0">
+            {table.getHeaderGroups().map((group) => (
+              <TableRow key={group.id} className="hover:bg-transparent">
+                {group.headers.map((header) => (
+                  <TableHead
+                    key={header.id}
+                    scope="col"
+                    className={cn(stickyHead, header.column.columnDef.meta?.headClassName)}
+                  >
+                    <table.FlexRender header={header} />
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id} className="group/row hover:bg-muted">
+                {row.getAllCells().map((cell) => {
+                  const meta = cell.column.columnDef.meta;
+                  return meta?.rowHeader ? (
+                    <TableHead
+                      key={cell.id}
+                      scope="row"
+                      className={cn("h-auto p-2 font-normal", meta.cellClassName)}
+                    >
+                      <table.FlexRender cell={cell} />
+                    </TableHead>
+                  ) : (
+                    <TableCell key={cell.id} className={meta?.cellClassName}>
+                      <table.FlexRender cell={cell} />
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {/* More rows lie below, e.g. in a short window. */}
+        {moreBelow && (
+          <div
+            aria-hidden="true"
+            data-slot="more-below"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-40 h-8 bg-linear-to-t from-background"
+          />
+        )}
+        {/* More columns lie to the right, e.g. the row's action on a phone. */}
+        {moreRight && (
+          <div
+            aria-hidden="true"
+            data-slot="more-right"
+            className="pointer-events-none absolute inset-y-0 right-0 z-40 w-8 bg-linear-to-l from-background"
+          />
+        )}
       </div>
-      {/* Stay mounted so screen readers announce changed text. */}
-      <output className={notice ? undefined : "sr-only"}>{notice}</output>
-      {failure && <p role="alert">{failure}</p>}
-      {failure && write.error?.requestId && (
-        <p className="text-sm text-muted-foreground">
-          Request reference: <code className="break-all">{write.error.requestId}</code>
-        </p>
-      )}
-      {/* The page wraps long words anywhere; in the table that would squeeze columns to a letter. */}
-      <Table
-        className="wrap-normal"
-        aria-labelledby="members-heading"
-        aria-busy={fetching || pending}
-        // The table scrolls sideways on a phone; focus lets the keyboard scroll it.
-        containerProps={{
-          tabIndex: 0,
-          role: "region",
-          "aria-labelledby": "members-heading",
-          className: focusClass,
-        }}
-      >
-        <TableHeader>
-          {table.getHeaderGroups().map((group) => (
-            <TableRow key={group.id}>
-              {group.headers.map((header) => (
-                <TableHead key={header.id} scope="col">
-                  <table.FlexRender header={header} />
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow key={row.id}>
-              {row.getAllCells().map((cell) => (
-                <TableCell key={cell.id} className={cell.column.columnDef.meta?.cellClassName}>
-                  <table.FlexRender cell={cell} />
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      <AlertDialog isOpen={dialogOpen} onOpenChange={setDialogOpen}>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="wrap-anywhere">
-            {confirming?.change === "reactivate" ? "Reactivate" : "Deactivate"}{" "}
-            <span translate="no">{confirming?.member.email}</span>?
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {confirming?.change === "reactivate"
-              ? "They can sign in again as before."
-              : "They are signed out of every browser now and can't sign in until you reactivate them. Their account and sign-in details are kept."}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            type="button"
-            variant={confirming?.change === "reactivate" ? "default" : "destructive"}
-            onPress={() => {
-              if (confirming) start(confirming.change, confirming.member);
-            }}
-          >
-            {confirming?.change === "reactivate" ? "Reactivate" : "Deactivate"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialog>
-    </section>
+      <ConfirmDialog
+        isOpen={open}
+        onOpenChange={setOpen}
+        title={
+          asked && (
+            <>
+              {/* Heard as one sentence; the address is split only for the eye. */}
+              <span className="sr-only">{`${words.action} ${asked.member.email}?`}</span>
+              <span aria-hidden="true">
+                {words.action} <Address email={asked.member.email} />?
+              </span>
+            </>
+          )
+        }
+        description={words.consequence}
+        action={words.action}
+        working={words.working}
+        tone={asked?.action === "deactivate" ? "destructive" : "default"}
+        pending={write.isPending}
+        failure={failure}
+        onConfirm={confirm}
+      />
+    </>
   );
 }
 
-// isAccessError reports whether err is a 401 or 403.
-function isAccessError(err: ApiError): boolean {
-  return err.status === unauthorized || err.status === forbidden;
+// useScrollBox follows the scroll box ref holds as it scrolls and as it or
+// its table changes size: whether it scrolls at all, and whether content
+// lies beyond its right or bottom edge. It marks the box data-scrolled while its
+// columns are scrolled sideways, which shows the first column's edge.
+function useScrollBox(ref: RefObject<HTMLDivElement | null>): {
+  scrollable: boolean;
+  moreRight: boolean;
+  moreBelow: boolean;
+} {
+  const [state, setState] = useState({
+    scrollable: false,
+    moreRight: false,
+    moreBelow: false,
+  });
+
+  useEffect(() => {
+    const box = ref.current;
+    // The box renders with the table, so it is there by now.
+    if (!box) return () => {};
+    const measure = () => {
+      const scrollable = box.scrollWidth > box.clientWidth || box.scrollHeight > box.clientHeight;
+      // Only more than a fade's width: a sliver left would put the whole
+      // fade over every row's button, e.g. at 200% zoom.
+      const moreRight = box.scrollWidth - box.clientWidth - box.scrollLeft > fadePx;
+      const moreBelow = box.scrollHeight - box.clientHeight - box.scrollTop > fadePx;
+      box.toggleAttribute("data-scrolled", box.scrollLeft > 0);
+      setState((last) =>
+        last.scrollable === scrollable &&
+        last.moreRight === moreRight &&
+        last.moreBelow === moreBelow
+          ? last
+          : { scrollable, moreRight, moreBelow },
+      );
+    };
+    measure();
+    const resized = new ResizeObserver(measure);
+    resized.observe(box);
+    if (box.firstElementChild) resized.observe(box.firstElementChild);
+    box.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      resized.disconnect();
+      box.removeEventListener("scroll", measure);
+    };
+  }, [ref]);
+
+  return state;
 }

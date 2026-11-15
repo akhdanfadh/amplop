@@ -209,8 +209,8 @@ after the guard ran, e.g. from another tab. The router counts a session
 read in the last 5 s as fresh (`sessionFreshMs`), so a page that opens
 just after a guard read it does not read it again.
 
-A page whose data it cannot draw without, e.g. System email or
-Registration, reads it in its route's loader, made by `signedInLoader`
+A page whose data it cannot draw without, e.g. System email, Registration,
+or Members, reads it in its route's loader, made by `signedInLoader`
 (`src/features/auth/session-end.ts`) over `loadSignedIn`, so the router's
 loading and failure views below cover it. The loader reads with
 `staleTime: Infinity`, a cached read until something marks it out of date,
@@ -551,22 +551,21 @@ answers: opening says anyone who can reach this inbok can create a member
 account, and each adds storage and sync work; closing says unused sign-up
 links stop working. Every outcome rereads the status.
 
-Members lists every account, oldest first, in a table: the address, with
-the signed-in one marked "You", its status, active or deactivated with the
-date, then role, joined date, whether the email is verified, and whether
-two-factor authentication is on. Status and the action come right after
-the address, so a phone shows them first; the table scrolls sideways in a
-region the keyboard can focus. Members have a Deactivate or Reactivate
-button; the signed-in administrator and other administrators have none.
-Both actions ask first in a dialog, and the request starts once the dialog
-has closed, so focus can return to the row's button. The changed row
-updates from the server's answer at once, and every outcome rereads the
-list. A failed reread keeps the list with "Could not reload members, so
-the list may be out of date." and Try again. An unknown outcome asks the
-user to check the list before trying again; a 404 or 409 shows the
-server's explanation. Unlike the other "This inbok" pages, it says it is for
-administrators with two-factor authentication when access is lost after it
-loaded, a 401 signs out, and a 403 reads access again.
+Members lists every account, oldest first, in a table that fills the
+window and scrolls inside its own box, the "Member list" region the
+keyboard can focus while it scrolls, a fade marking columns to its
+right, with the header and the Member column held (web/DESIGN.md
+"Settings and signed-out pages"). Columns: Member (the address, with badges
+for You, Admin, and Not verified), Status (Active in grey, or Deactivated
+with the date), Two-factor, Joined, and the row's action. A row offers
+Deactivate or Reactivate, whichever changes its status, when the member's
+`allowedActions` from the server include it; administrators have none.
+Each asks first in a `ConfirmDialog` that holds the request: focus returns
+to the row's button, now the other action. The changed row updates from
+the server's answer at once, and every outcome rereads the list. A failed
+reread keeps the list with "Couldn't refresh the member list." and Try
+again. A lost answer says trying again is safe: repeating either action
+changes nothing the second time.
 
 Settings' Connected accounts (`/settings/connected-accounts`) is where
 members connect Gmail accounts. The page lists the member's accounts,
@@ -1111,7 +1110,7 @@ from the registry here:
 React Aria components take React Aria props: `isDisabled`, not `disabled`;
 `onPress`, not `onClick`; `isSelected` and `onChange` on a checkbox or
 switch. A disabled button leaves the tab order, so on a page whose
-confirmation closes at once (all but Registration, which uses
+confirmation closes at once (all but Members and Registration, which use
 `ConfirmDialog` below), the button that opened it gets `isPending` while the
 write it started runs: it keeps focus, so focus has a place when the dialog
 closes, and ignores presses. Its label says what is running, e.g.

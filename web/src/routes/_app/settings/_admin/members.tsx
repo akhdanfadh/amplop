@@ -1,136 +1,55 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import {
-  getGetCurrentSessionQueryKey,
-  useGetCurrentSession,
-  useListMembers,
-} from "@/api/generated/inbok";
+import { useEffect, type ReactElement } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { getListMembersQueryOptions, useListMembers } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
-import type { ApiError } from "@/api/transport";
-import { clearAccountCache } from "@/features/auth/session-cache";
+import { ReadError } from "@/components/read-error";
+import { loadedFreshMs, signedInLoader, useSessionEnd } from "@/features/auth/session-end";
 import { MemberTable } from "@/features/members/table";
-import { Button } from "@/components/ui/button";
-import { textLink } from "@/components/link-style";
+import { accountsAbout, accountsTitle, listReadFailed, membersLead } from "@/features/members/text";
+import { SettingsPage, SettingsSection } from "@/features/settings/page";
+import { pageName } from "@/features/settings/text";
 
 const unauthorized = 401;
-const forbidden = 403;
+
+// membersLoader reads what the page shows before it draws.
+export const membersLoader = signedInLoader(getListMembersQueryOptions);
 
 export const Route = createFileRoute("/_app/settings/_admin/members")({
+  loader: membersLoader,
   component: Members,
   head: () => ({ meta: [{ title: "Members - inbok" }] }),
 });
 
+// Members lists every account on this inbok and deactivates or reactivates
+// members. The page fills the window and the list scrolls inside it.
 function Members(): ReactElement {
-  const client = useQueryClient();
-  const navigate = useNavigate();
-  const headingRef = useRef<HTMLHeadingElement>(null);
-  const [writeExpired, setWriteExpired] = useState(false);
-  const current = useGetCurrentSession();
-  const list = useListMembers();
-  const expired =
-    writeExpired || [current.error, list.error].some((err) => err?.status === unauthorized);
-  // Access can be lost after the page loaded, so a 403 hides the list even
-  // with members already read.
-  const denied = !expired && list.error?.status === forbidden;
-  const account = current.data?.data;
-  const members = list.data?.data.members;
+  const { session } = Route.useRouteContext();
+  const loaded = Route.useLoaderData();
+  const list = useListMembers({ query: { staleTime: loadedFreshMs } });
+  const sessionEnd = useSessionEnd();
+  const members = (list.data ?? loaded).data.members;
 
   useEffect(() => {
-    headingRef.current?.focus();
-  }, []);
-  useEffect(() => {
-    if (!expired) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true });
-  }, [expired, client, navigate]);
-
-  // Ends the page on a lost session and rereads access on a 403 from a write.
-  function handleAccessError(err: ApiError): void {
-    if (err.status === unauthorized) setWriteExpired(true);
-    // The table rereads the list after every write, which shows the 403 here.
-    if (err.status === forbidden)
-      void client.invalidateQueries({ queryKey: getGetCurrentSessionQueryKey() });
-  }
-
-  // A failed read without data hides the list; a failed refetch keeps it.
-  const readError =
-    expired || denied
-      ? null
-      : (!current.data && current.error) || (!list.data && list.error) || null;
-  // A kept list may be older than a change, so say it could not be reread.
-  const staleError = !expired && !denied && list.data && list.error;
+    sessionEnd(list.error);
+  }, [list.error, sessionEnd]);
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-        Members
-      </h1>
-
-      {(current.isPending || list.isPending) && !readError && !denied && !expired && (
-        <output>Loading members...</output>
-      )}
-      {expired && <output>Opening sign-in...</output>}
-
-      {denied && (
-        <p>
-          The member list is available only to administrators with two-factor authentication.
-          {account?.role === "admin" && (
-            <>
-              {" "}
-              <Link to="/settings/security" className={textLink}>
-                Set up two-factor authentication
-              </Link>
-              .
-            </>
-          )}
-        </p>
-      )}
-      {readError && (
-        <div className="flex flex-col gap-3" role="alert">
-          <p>Could not load members. {userMessage(readError)}</p>
-          {readError.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{readError.requestId}</code>
-            </p>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            className="w-fit"
-            isDisabled={current.isFetching || list.isFetching}
-            onPress={() => {
-              void current.refetch();
-              void list.refetch();
-            }}
-          >
-            Try again
-          </Button>
+    <SettingsPage title={pageName.members} lead={membersLead} height="fill">
+      {/* A failed refresh keeps the list and says why (DESIGN.md "States");
+          a 401 opens sign-in instead. */}
+      {list.error && list.error.status !== unauthorized && (
+        <div className="py-6 text-sm">
+          <ReadError
+            message={`${listReadFailed} ${userMessage(list.error)}`}
+            error={list.error}
+            retrying={list.isFetching}
+            onRetry={() => void list.refetch()}
+          />
         </div>
       )}
-
-      {staleError && (
-        <div className="flex flex-col gap-3" role="alert">
-          <p>Could not reload members, so the list may be out of date. {userMessage(staleError)}</p>
-          <Button
-            type="button"
-            variant="outline"
-            className="w-fit"
-            isDisabled={list.isFetching}
-            onPress={() => void list.refetch()}
-          >
-            Try again
-          </Button>
-        </div>
-      )}
-      {account && members && !expired && !denied && (
-        <MemberTable
-          members={members}
-          yourEmail={account.email}
-          fetching={list.isFetching}
-          onAccessError={handleAccessError}
-        />
-      )}
-    </main>
+      <SettingsSection title={accountsTitle} about={accountsAbout} layout="fill">
+        <MemberTable members={members} yourEmail={session.email} />
+      </SettingsSection>
+    </SettingsPage>
   );
 }

@@ -684,6 +684,21 @@ pull-to-refresh, which would reload the app, never starts.
   the change that fits, e.g. Open registration or Close registration. A
   change the server does not allow now has no button; a sentence says why
   and a link leads to the fix, e.g. "Go to System email".
+- A page that is one list, e.g. Members, fills the window
+  (`SettingsPage height="fill"`, `SettingsSection layout="fill"`): its title
+  and section heading stay, and the list scrolls in the height left, down
+  to 12 rem, below which the page scrolls too.
+- A table scrolls inside one box both ways, focusable while it scrolls so
+  the keyboard can scroll it (no Tab stop when it fits), named for what
+  scrolls ("Member list"), with a fade at its right edge while columns lie
+  beyond it, e.g. a row's action on a phone, and at its bottom while rows
+  do. Its header stays at the top and its first column, the one that says
+  whose row it is, stays at the left; each draws its own edge, since a
+  table's borders scroll with its rows, and the first column's edge shows
+  only while the rest scroll sideways. A long address wraps at its seams
+  (before "@" and before dots) and breaks anywhere only when a part cannot
+  fit. A row's action is a button until a row has more than one; then a
+  menu. The member list is not paged: an inbok is a household or a team.
 - A QR code for a phone app also links its address (e.g. "Add to
   authenticator app", `otpauth://`) on a narrow page or a touch pointer: a
   phone cannot scan its own screen.
@@ -814,13 +829,13 @@ outcome.
   consequence and what is kept, the buttons name the actions ("Disconnect
   Studio"), focus starts on the safe one. The dialog holds the change until
   the server answers (`ConfirmDialog`): its button turns and says what is
-  happening ("Opening..."), Cancel and Escape wait, it closes on success,
-  and a failure or a lost answer shows inside it, where pressing again
-  retries. Focus then returns to the button that opened it, or, when the
-  change removed that button, to what took its place. Registration does
-  this; Disconnect on Connected accounts, the sign-outs on Security, Send
-  again, and cancelling two-factor setup still close at once and report on
-  the page (Not now). One that already asks for a code
+  happening ("Deactivating..."), Cancel and Escape wait, it closes on
+  success, and a failure or a lost answer shows inside it, where pressing
+  again retries. Focus then returns to the button that opened it, or, when
+  the change removed that button, to what took its place. Members and
+  Registration do this; Disconnect on Connected accounts, the sign-outs on
+  Security, Send again, and cancelling two-factor setup still close at once
+  and report on the page (Not now). One that already asks for a code
   or a password, e.g. turning off two-factor authentication, confirms with
   it on the page instead: the red button opens the field, the consequence
   sits above it, the submit is red (`SubmitButton variant="destructive"`),
@@ -876,23 +891,23 @@ The tone says what the status asks of the member:
 | ----------- | ------------ | -------------------------------------------------------------------------------------------------------- |
 | Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser, Open, Closed |
 | Info        | To wait      | Sending, Syncing (spinner)                                                                               |
-| Success     | Nothing more | Sent, Up to date, Active, Verified, Two-factor on, Tested                                                |
+| Success     | Nothing more | Sent, Up to date, Verified, Two-factor on, Tested                                                        |
 | Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect, Not set up, Paused                                         |
 | Destructive | A fix        | Not sent, Sync failed                                                                                    |
 
 Deactivated, Open, and Closed are an admin's choice, not a fault, so
 neutral; Paused (registration opened, but system email untested) asks for
-a look. Up to date and Active show only on the page whose job is that
-status (Connected accounts, Members); elsewhere the usual state shows
-nothing.
-Admin and the Members table's Verified column wait for the settings pages'
-redesign (`feat/design-forms`); Two-factor on shows on Security and the
-two-factor page. Tested, Not confirmed, and Not set up show beside System
-email's title: whether inbok can send its own email, which sign-in codes,
-password resets, and Registration need. The sidebar shows an account's
-Syncing, Reconnect, or Sync failed as the icon alone, in its tone, the
-words read to screen readers and shown on hover, and with the icon on a
-line under the name for a touch.
+a look. Up to date shows only on the page whose job is that status
+(Connected accounts); elsewhere the usual state shows nothing. Members
+marks only what differs from an ordinary member, You, Admin, Not
+verified, Deactivated, and writes Active as plain grey text in its Status
+column. Two-factor on shows on Security and the two-factor page. Tested,
+Not confirmed, and Not set up show beside System email's title: whether
+inbok can send its own email, which sign-in codes, password resets, and
+Registration need. The sidebar shows an account's Syncing, Reconnect, or
+Sync failed as the icon alone, in its tone, the words read to screen
+readers and shown on hover, and with the icon on a line under the name
+for a touch.
 
 ## Data for mail
 
@@ -997,9 +1012,9 @@ contact photos), merging one email received by two accounts, swipe
 gestures, drafts beyond the tab, an installable app with offline mail,
 per-member theme storage, folds kept across devices (per member, on the
 server), the remaining confirmations holding their change in the dialog
-(`ConfirmDialog`) as Registration does. Pull-to-refresh and a top bar
-that hides while scrolling down: Check for new mail is one tap in the top
-bar, both gestures need hand-written touch handling over the
+(`ConfirmDialog`) as Members and Registration do. Pull-to-refresh and a
+top bar that hides while scrolling down: Check for new mail is one tap in
+the top bar, both gestures need hand-written touch handling over the
 Virtualizer's scrolling box that only a real phone can check, and a
 native app gets both from its platform (ADR031, branch 3 checkpoint 5).
 

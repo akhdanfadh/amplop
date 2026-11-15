@@ -1,28 +1,41 @@
 import { describe, expect, it } from "vite-plus/test";
+import type { Member } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
-import { canChange, changedMessage, changeErrorMessage, formatDate, roleName } from "./text";
+import { changedMessage, changeErrorMessage, formatDate, offeredAction } from "./text";
 
 const httpStatus = { ok: 200, notFound: 404, conflict: 409, internalServerError: 500 };
 const email = "member@example.com";
 
-describe("member rows", () => {
-  it("names each role", () => {
-    expect(roleName("admin")).toBe("Administrator");
-    expect(roleName("member")).toBe("Member");
-  });
+// member returns an active member the server lets an administrator change.
+function member(changes: Partial<Member> = {}): Member {
+  return {
+    id: 7,
+    email,
+    role: "member",
+    joinedAt: "2026-03-01T09:00:00Z",
+    emailVerified: true,
+    totpEnabled: false,
+    deactivatedAt: null,
+    allowedActions: ["deactivate", "reactivate"],
+    ...changes,
+  };
+}
 
+describe("member rows", () => {
   it("shows a date without its time", () => {
     // The exact wording follows the reader's locale, but never the time.
     expect(formatDate("2026-03-01T12:00:00Z")).not.toMatch(/\d:\d\d/);
   });
 
-  it("offers changes for other members only", () => {
-    const you = "admin@example.com";
-    expect(canChange({ role: "member", email }, you)).toBe(true);
-    expect(canChange({ role: "admin", email: "other-admin@example.com" }, you)).toBe(false);
-    expect(canChange({ role: "admin", email: you }, you)).toBe(false);
-    // A member is never signed in on this page, but their own row still has no action.
-    expect(canChange({ role: "member", email: you }, you)).toBe(false);
+  it("offers the action that changes the status", () => {
+    expect(offeredAction(member())).toBe("deactivate");
+    expect(offeredAction(member({ deactivatedAt: "2026-11-02T09:30:00Z" }))).toBe("reactivate");
+  });
+
+  it("offers only what the server allows", () => {
+    // The server decides who can be changed, e.g. not administrators.
+    expect(offeredAction(member({ role: "admin", allowedActions: [] }))).toBeUndefined();
+    expect(offeredAction(member({ allowedActions: ["reactivate"] }))).toBeUndefined();
   });
 });
 
@@ -39,7 +52,7 @@ describe("member change messages", () => {
       problem: { detail: "This account doesn't exist." },
     });
     expect(changeErrorMessage(missing, "deactivate", email)).toBe(
-      "Could not deactivate member@example.com. This account doesn't exist.",
+      "Couldn't deactivate member@example.com. This account doesn't exist.",
     );
     const administrator = new ApiError("http", {
       status: httpStatus.conflict,
@@ -47,13 +60,13 @@ describe("member change messages", () => {
       problem: { detail: "Administrators can't be deactivated or reactivated." },
     });
     expect(changeErrorMessage(administrator, "reactivate", email)).toBe(
-      "Could not reactivate member@example.com. Administrators can't be deactivated or reactivated.",
+      "Couldn't reactivate member@example.com. Administrators can't be deactivated or reactivated.",
     );
   });
 
-  it("asks for a look at the list when the outcome is unknown", () => {
+  it("says trying again is safe when the outcome is unknown", () => {
     const advice =
-      "Could not confirm whether member@example.com is deactivated. Check the list before trying again.";
+      "Couldn't confirm whether member@example.com was deactivated. Trying again is safe.";
     for (const err of [
       new ApiError("network", { method: "POST" }),
       new ApiError("timeout", { method: "POST" }),
