@@ -151,7 +151,8 @@ Put shared code in the folder for its responsibility:
 - `src/components`: shared components, such as the shell around every page
   (`AppShell`), the password input, the request error under a form, the
   status badge, the link styles, the signed-in frame and its member menu,
-  the banner and the offline banner, and the pages for loading, failure,
+  the banner and the offline banner, the recipient chips input
+  (`RecipientInput`), and the pages for loading, failure,
   and Page not found, and `SignedOutPage`, the card every signed-out page
   puts its content in, with `OutcomeLinks` for the buttons of its outcome
   screens. `ui/` holds the shadcn components we own. `form/` is the form
@@ -163,7 +164,8 @@ Put shared code in the folder for its responsibility:
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
   secret of an emailed link, keeping a server's field error through a
-  blur, or writing dates and times (`datetime.ts`).
+  blur, splitting typed recipients into addresses (`recipients.ts`), or
+  writing dates and times (`datetime.ts`).
 - `src/hooks`: React hooks shared by features, such as a page reading its
   link's secret, the layout the window's width allows, or a page focusing
   its heading once a closing drawer lets go (`useFocusOnOpen`).
@@ -702,12 +704,12 @@ accounts instead. Once shown, the form stays, even if a later read finds
 no usable account, so typed input is never dropped; a 401 then, e.g. a
 session ended from another tab, keeps the form too, with an alert to copy
 what was typed and sign in, and the leave warning still asks before going.
-To, Cc, and Bcc are `RecipientField`s
-(`src/features/outgoing-messages/recipient-field.tsx`): each address is a
-chip, on React Aria's `TagGroup`, and the input after them turns typed
-text into chips on a comma, semicolon, or Enter, on leaving, and on
-pasting a list, keeping the address of "Name <address>"
-(`parseRecipients`). Backspace in the empty input removes the last chip;
+To, Cc, and Bcc are `RecipientInput`s
+(`src/components/recipient-input.tsx`), given the contract's address rule
+as `isAddress`: each address is a chip, on React Aria's `TagGroup`, and the
+input after them turns typed text into chips on a comma, semicolon, or
+Enter, on leaving, and on pasting a list, keeping the address of
+"Name <address>" (`parseRecipients`, `src/lib/recipients.ts`). Backspace in the empty input removes the last chip;
 the chips are one Tab stop with Delete to remove one. An address the
 contract refuses stays a chip, marked and named "not an email address",
 and its field's error names it. At most 100 per list, with at least one
@@ -797,7 +799,7 @@ conversation view passes a message in as it is. `replyDefaults`
 The editor is DESIGN.md's message editor card: rows for From (a quiet
 React Aria `select`, each account by its mark, its address, and the name
 the member chose), To, and the Cc and Bcc that are filled or added from
-the To row's buttons, each a `RecipientField`; then Message, and a bar with Send
+the To row's buttons, each a `RecipientInput`; then Message, and a bar with Send
 and Discard. There is no subject: the server sets it. A line under From
 says when the chosen account didn't receive the message, since the reply
 then starts a new conversation in that account's Gmail. Focus starts in

@@ -204,9 +204,6 @@ export const notAnswerable = "This message can't be answered here.";
 export const replyStatusStale =
   "Could not read this reply's status again, so it may be out of date.";
 
-// What a recipient chip adds after a value that isn't an address.
-export const notAnAddress = "not an email address";
-
 // invalidAddressMessage says value, in a recipient list, isn't an address.
 export function invalidAddressMessage(value: string): string {
   return `"${value}" isn't an email address. Fix it or remove it.`;

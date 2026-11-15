@@ -2,8 +2,10 @@ import { useState, type KeyboardEvent, type ReactElement } from "react";
 import { Button as AriaButton, Tag, TagGroup, TagList } from "react-aria-components";
 import { XIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { isAddress, parseRecipients } from "./compose-schema";
-import { notAnAddress } from "./text";
+import { parseRecipients } from "@/lib/recipients";
+
+// What a chip adds after a value that isn't an address.
+const notAnAddress = "not an email address";
 
 // Whether a recipient field's input holds text not yet a chip.
 export type Typing = "typing" | "idle";
@@ -12,15 +14,16 @@ export type Typing = "typing" | "idle";
 // while text is typed, so an empty field leaves it to the form.
 const separatorKeys = new Set([",", ";"]);
 
-// RecipientField is one recipient list as chips, one per address, then an
+// RecipientInput is one recipient list as chips, one per address, then an
 // input whose text becomes chips on a comma, semicolon, or Enter, on
 // leaving, and on pasting a list. id is the input's, for its label; label
-// names the chips for assistive technology. value is the list and onChange
-// receives the next one; onBlur runs when focus leaves the input, after its
-// text became chips. invalid marks the field; describedBy names its
-// description and error. readOnly locks it, e.g. while sending: no typing,
-// paste, or removal changes the list. onKeyDown sees every key the input
-// does not take, e.g. a send shortcut, after typed text became chips.
+// names the chips for assistive technology. isAddress tells an address
+// from text that isn't one, by the contract's rule. value is the list and
+// onChange receives the next one; onBlur runs when focus leaves the input,
+// after its text became chips. invalid marks the field; describedBy names
+// its description and error. readOnly locks it, e.g. while sending: no
+// typing, paste, or removal changes the list. onKeyDown sees every key the
+// input does not take, e.g. a send shortcut, after typed text became chips.
 // onTyping reports whether the input holds text not yet a chip
 // ("typing") or none ("idle"); a form counts typing as an edit, e.g.
 // before discarding.
@@ -29,9 +32,10 @@ const separatorKeys = new Set([",", ";"]);
 // "not an email address", so the member fixes or removes it in place; the
 // form's error says which. React Aria's TagGroup gives the chips one Tab
 // stop, arrows between them, and Delete or Backspace to remove one.
-export function RecipientField({
+export function RecipientInput({
   id,
   label,
+  isAddress,
   value,
   onChange,
   onBlur,
@@ -44,6 +48,7 @@ export function RecipientField({
 }: {
   id: string;
   label: string;
+  isAddress: (value: string) => boolean;
   value: string[];
   onChange: (value: string[]) => void;
   onBlur?: () => void;
@@ -105,7 +110,12 @@ export function RecipientField({
         >
           <TagList className="contents">
             {value.map((address, index) => (
-              <Chip key={keys[index]} id={keys[index]} address={address} />
+              <Chip
+                key={keys[index]}
+                id={keys[index]}
+                address={address}
+                valid={isAddress(address)}
+              />
             ))}
           </TagList>
         </TagGroup>
@@ -168,9 +178,16 @@ function chipKeys(value: string[]): string[] {
   });
 }
 
-// Chip is one address in a RecipientField, marked when it isn't one.
-function Chip({ id, address }: { id: string; address: string }): ReactElement {
-  const valid = isAddress(address);
+// Chip is one address in a RecipientInput, marked when valid is false.
+function Chip({
+  id,
+  address,
+  valid,
+}: {
+  id: string;
+  address: string;
+  valid: boolean;
+}): ReactElement {
   return (
     <Tag
       id={id}

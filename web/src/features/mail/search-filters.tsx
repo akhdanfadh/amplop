@@ -13,7 +13,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverTrigger } from "@/components/ui/popover";
-import { RecipientField } from "@/features/outgoing-messages/recipient-field";
+import { RecipientInput } from "@/components/recipient-input";
+import { isAddress } from "@/features/outgoing-messages/compose-schema";
 import { dayDate } from "@/lib/datetime";
 import { labelPath, usePlaceCounts } from "./place-counts";
 import { isViewPlace, viewPlaces, type Place } from "./places";
@@ -309,9 +310,11 @@ function FromEditor({
       <p id={`${id}-help`} className="text-xs text-muted-foreground">
         {fromHelp(searchConversationsParamsFromMax)}
       </p>
-      <RecipientField
+      <RecipientInput
         id={`${id}-field`}
         label={sendersName}
+        // A sender is an address, as the compose form's recipients are.
+        isAddress={isAddress}
         value={[...from]}
         onChange={(next) => onChange(next.slice(0, searchConversationsParamsFromMax))}
         describedBy={`${id}-help`}

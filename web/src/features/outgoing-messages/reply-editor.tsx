@@ -40,7 +40,8 @@ import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
 import { describedBy, shownErrors, type Submission } from "./field-errors";
-import { RecipientField, withTyping } from "./recipient-field";
+import { RecipientInput, withTyping } from "@/components/recipient-input";
+import { isAddress } from "./compose-schema";
 import type { ReplyMode, ReplyValues } from "./reply-defaults";
 import { ReplySchema, replyFields, replyRequest } from "./reply-schema";
 import {
@@ -329,9 +330,10 @@ export function ReplyEditor({
                       >
                         {label}
                       </Label>
-                      <RecipientField
+                      <RecipientInput
                         id={id}
                         label={label}
+                        isAddress={isAddress}
                         value={field.state.value}
                         onChange={(value) => field.handleChange(value)}
                         onBlur={() => blurKeepingSubmitErrors(field)}

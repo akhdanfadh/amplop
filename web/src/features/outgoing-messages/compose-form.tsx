@@ -16,12 +16,18 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { describedBy, shownErrors, type Submission } from "./field-errors";
-import { RecipientField, withTyping } from "./recipient-field";
+import { RecipientInput, withTyping } from "@/components/recipient-input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { useFocusAfterError } from "@/hooks/use-focus-after-error";
 import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
-import { ComposeSchema, composeFields, composeRequest, type ComposeValues } from "./compose-schema";
+import {
+  ComposeSchema,
+  composeFields,
+  composeRequest,
+  isAddress,
+  type ComposeValues,
+} from "./compose-schema";
 import {
   keyReused,
   leaveText,
@@ -207,9 +213,10 @@ export function ComposeForm({
                   <FieldLabel htmlFor={id}>{label}</FieldLabel>
                   {/* Outlined as Input is, around the chips and the input. */}
                   <div className="flex min-h-9 items-center rounded-lg border border-input bg-card px-1.5 py-1 has-[input:focus]:focus-ring has-[input[aria-invalid=true]]:border-destructive dark:bg-input/10 pointer-coarse:min-h-11">
-                    <RecipientField
+                    <RecipientInput
                       id={id}
                       label={label}
+                      isAddress={isAddress}
                       value={field.state.value}
                       onChange={(value) => field.handleChange(value)}
                       onBlur={() => blurKeepingSubmitErrors(field)}
