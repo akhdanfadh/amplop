@@ -26,4 +26,20 @@ describe("DropdownMenu", () => {
       expect(getComputedStyle(item.element()).outlineStyle).toBe("solid");
     },
   );
+
+  it("stops scrolling at its end, so the page behind stays still", async () => {
+    await render(
+      <DropdownMenuTrigger>
+        <Button>More</Button>
+        <DropdownMenu aria-label="More">
+          <DropdownMenuItem id="gmail">Open in Gmail</DropdownMenuItem>
+        </DropdownMenu>
+      </DropdownMenuTrigger>,
+    );
+
+    await userEvent.click(page.getByRole("button", { name: "More" }));
+
+    const menu = page.getByRole("menu").element();
+    expect(getComputedStyle(menu).overscrollBehaviorY).toBe("contain");
+  });
 });
