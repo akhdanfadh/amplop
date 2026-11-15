@@ -3046,8 +3046,9 @@ read re-reads its stored body text too.
   first upsert, their searches find nothing and their deletes do nothing.
   Searches and account deletes also filter on the owner inside the
   member's index. Its errors carry Meilisearch's error code, never the
-  text of its reply, which can quote a message. An error from a call cut short by its context wraps the
-  context's error, so a request's deadline still becomes a 503.
+  text of its reply, which can quote a message. An error from a call cut
+  short by its context wraps the context's error, so a request's
+  deadline still becomes a 503.
 - `Prepare` applies the settings to every member's index, and every
   upsert to its member's: which fields a search matches, in order of
   weight, and which it filters on, only those today's searches use: a
@@ -3059,7 +3060,11 @@ read re-reads its stored body text too.
   omits as the index has them, which on a new index are Meilisearch's
   defaults. Applying the same settings again, or from two processes at
   once, changes nothing. The worker calls `Prepare` when it starts,
-  before any job runs.
+  before any job runs and before it reports healthy. Since every write
+  applies its worker's settings too, an old worker still running would
+  undo a new release's, so `deploy/upgrade.sh` replaces the worker before
+  the server, and a rollback the server before the worker: no server
+  filters on a field the index does not allow.
 - `messagecontent.Texts` reads a message's stored text parts from
   content storage, apart by whether a view shows them: the bodies
   `messagecontent.Choose` picks, in that order, and every other text
@@ -3230,6 +3235,20 @@ stop searching, filtering, and sorting on it, then stop writing it. An
 upgrade that fails and goes back to the previous image then never runs
 code that needs a field the new worker's documents lack; until the
 nightly rebuild, those documents are only found less well.
+
+A field added to documents, or a rule that changes one, e.g. which parts
+count as attachments, reaches documents written before it only at the
+next successful rebuild: `upgrade.sh` runs one, but keeps the new
+release when it fails, and the nightly rebuild then tries again. Until
+then a filter on a new field misses the documents that lack it, minutes
+for a rebuild that succeeds. When that gap matters, ship the field and
+its filterable setting one release before the filter that uses it.
+Changing what a field holds is worse: when `internal_date` went from
+seconds to milliseconds, old documents fell inside every `before` and
+outside every `since` until the rebuild. Until the first release, such a
+change, or a removal such as `from_address`'s, goes in one release with
+a rebuild or wiped data; after it, add a field under a new name
+instead.
 
 To see what the index holds during development, open Meilisearch's
 dashboard at `http://localhost:7700`, give it `INBOK_MEILISEARCH_KEY`,

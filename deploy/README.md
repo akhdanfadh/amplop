@@ -217,10 +217,13 @@ git pull
 ```
 
 `upgrade.sh` builds a candidate image, runs the new migrations with it
-while the old server keeps serving, and only then switches the image and
-restarts the server and the worker. The site is unavailable for about two
-seconds while the server restarts; the new worker resumes the work the
-old one left unfinished. Last, it [rebuilds the search
+while the old server keeps serving, and only then switches the image. It
+replaces the worker first and waits until it is healthy, which it is
+once it has applied the search index's settings, then the server: so the
+new server never searches an index set up for the old one. Background
+work pauses while the worker restarts, and the new worker resumes what
+the old one left unfinished. The site is unavailable for about two
+seconds while the server restarts. Last, it [rebuilds the search
 index](#the-search-index) with the new release. The script exits with an
 error if anything fails:
 
@@ -232,9 +235,17 @@ error if anything fails:
   and the old server keeps running: the previous image would not repair
   it. The script starts all of them first, except Caddy, which waits for
   the server. `docker compose logs <service>` shows why one failed.
-- If the new server or worker does not become healthy, the script starts
-  the previous image again, on the migrated database. `docker compose logs
-  inbok` or `worker` shows why the new one failed. Messages the new worker
+- If the new worker does not become healthy, the script starts the
+  previous image's worker again, and the old server, never replaced,
+  keeps serving. If the new server does not, the script starts the
+  previous image again for both, on the migrated database, the server
+  first: the previous worker applies its own search settings, which the
+  new server could not search with. If the previous server fails too,
+  the new worker stays. `docker
+  compose logs worker` or `inbok` shows why the new one failed. A worker
+  that applies new search settings needs them done within a minute to
+  start; Meilisearch reindexes a member's mail for a new filter, which
+  takes seconds for thousands of messages. Messages the new worker
   indexed before it was replaced keep its way of indexing them until the
   nightly rebuild, or until you run the rebuild.
 - If the rebuild fails, the new release keeps running: the previous image
@@ -268,9 +279,11 @@ which `upgrade.sh` rebuilds as it does after an upgrade.
 After a migration, the old server and worker can run on the new schema:
 during an upgrade, and after the rollback above. Every migration must
 therefore keep the previous release working: add tables and columns, and
-remove old ones only in a later release. Background work a release left
-unfinished resumes in the next one, so it must keep working across
-releases too.
+remove old ones only in a later release. The old server also runs
+beside the new worker's search settings, so those too only add what the
+new release needs, and remove nothing the previous one uses. Background
+work a release left unfinished resumes in the next one, so it must keep
+working across releases too.
 
 ## Backups
 
