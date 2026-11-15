@@ -135,7 +135,9 @@ Put shared code in the folder for its responsibility:
   the message view, its HTML and plain-text bodies, sizing the body's
   frame, plain-text links, and the header's wording.
 - `src/features/outgoing-messages`: the compose form and its schema, the
-  reply editor with its defaults and schema, the Outbox list, one
+  reply editor with its defaults and schema, the parts both editors
+  share (`editor.tsx`: the card, the recipient rows, the send's key), the
+  Outbox list, one
   message's status with Send again and Edit and send, their wording, and
   when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
@@ -704,12 +706,18 @@ accounts instead. Once shown, the form stays, even if a later read finds
 no usable account, so typed input is never dropped; a 401 then, e.g. a
 session ended from another tab, keeps the form too, with an alert to copy
 what was typed and sign in, and the leave warning still asks before going.
-To, Cc, and Bcc are `RecipientInput`s
-(`src/components/recipient-input.tsx`), given the contract's address rule
-as `isAddress`: each address is a chip, on React Aria's `TagGroup`, and the
-input after them turns typed text into chips on a comma, semicolon, or
-Enter, on leaving, and on pasting a list, keeping the address of
-"Name <address>" (`parseRecipients`, `src/lib/recipients.ts`). Backspace in the empty input removes the last chip;
+The form is the message editor, the same card as Reply's (`EditorCard`,
+`editor.tsx`): rows for From, To, the Cc and Bcc that are filled or added
+from the To row's buttons, and Subject, then Message and a bar with Send,
+which Ctrl+Enter, or Cmd+Enter on a Mac, presses from any field. It is on
+the form kit, so its errors show after the first Send and focus moves to
+the first. To, Cc, and Bcc are the kit's `RecipientsField` rows, grouped
+for both editors as `RecipientRows`: each address is a chip
+(`RecipientInput`, `src/components/recipient-input.tsx`), on React Aria's
+`TagGroup`, and the input after them turns typed text into chips on a
+comma, semicolon, or Enter, on leaving, and on pasting a list, keeping
+the address of "Name <address>" (`parseRecipients`,
+`src/lib/recipients.ts`). Backspace in the empty input removes the last chip;
 the chips are one Tab stop with Delete to remove one. An address the
 contract refuses stays a chip, marked and named "not an email address",
 and its field's error names it. At most 100 per list, with at least one
@@ -1563,8 +1571,19 @@ const form = useAppForm({
   `meta.action`, with `onSubmitMeta` as the default, and Enter in a field
   presses the first. Only the pressed button shows its `working` words;
   the others wait.
+- **Message editor rows** are `FromField`, the quiet select of the
+  member's connected accounts (a value of 0 while none is chosen, an
+  account the server doesn't report usable listed but not choosable, and a
+  `description` under the row); `RecipientsField`, chips by the
+  `isAddress` it is given, with `after` for the row's end and `onTyping`
+  for typed text not yet a chip; `SubjectField`; and `MessageField`, with
+  `focus="mount"` to start in it. They render through `RowFrame`: a muted
+  label on the left, a hairline under the row, the error under the value.
+  A part several forms share, e.g. both editors' recipient rows, is a
+  `withFieldGroup` over the fields each form names.
 - **A new field kind** goes in `src/components/form/fields.tsx` with its
-  first form: render the control through `FieldFrame`, which reads the
+  first form: render the control through `FieldFrame` for a stacked field,
+  or `RowFrame` for a message editor's row; each reads the
   field from `useFieldContext` and gives the control its id, name, value,
   lock, `aria-invalid`, and `aria-describedby`, and a function that sets
   the value; then add it to
@@ -1575,5 +1594,5 @@ Forms not yet on the kit still wire shadcn's `Field` components
 themselves, with `blurKeepingSubmitErrors`
 (`src/lib/blur-keeping-submit-errors.ts`) and `useFocusAfterError`: the
 connected account's name, which `feat/connected-accounts` moves onto the
-kit; compose and the reply editor, which `feat/docked-compose` rewrites on
-it together with the docked window; and the probe demo (ADR031).
+kit; the reply editor, which follows compose onto it; and the probe demo
+(ADR031).

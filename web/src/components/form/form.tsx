@@ -95,7 +95,15 @@ function focusSubmitButton(form: HTMLFormElement, pressed: HTMLElement | null): 
 // focusFirstInvalid moves focus to form's first invalid field, which reads
 // its error with it. Without one, focus stays where the submit left it.
 function focusFirstInvalid(form: HTMLFormElement): void {
-  const invalid = form.querySelector<HTMLElement>('[aria-invalid="true"]');
+  const invalid = form.querySelector<HTMLElement>(
+    '[aria-invalid="true"], [data-slot="select"][data-invalid]',
+  );
+  // React Aria marks an invalid select on its box, not on the button that
+  // takes focus.
+  if (invalid?.dataset.slot === "select") {
+    invalid.querySelector<HTMLElement>('[data-slot="select-trigger"]')?.focus();
+    return;
+  }
   if (invalid?.getAttribute("role") !== "radiogroup") {
     invalid?.focus();
     return;

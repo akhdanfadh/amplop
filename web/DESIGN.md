@@ -607,8 +607,7 @@ last two redirect into settings, so settings can move without the server.
 - **From** is a quiet `select`: no outline at rest, `accent` on hover and
   while its list is open, its chevron and label marking it. Each account
   shows its mark, its address, which recipients see, and the name the
-  member chose for it, which only the member does; the compose form's
-  native list holds words only, so it reads "address (name)". A line under
+  member chose for it, which only the member does. A line under
   it says when the chosen account didn't receive the message (the reply
   then starts a new conversation in that account's Gmail), or which
   account needs reconnecting when none could be chosen.
@@ -620,6 +619,9 @@ last two redirect into settings, so settings can move without the server.
   removes one; the remove buttons stay out of the Tab order. An address
   that isn't one stays a chip in `destructive` on its tint, named "not an
   email address", and the field's error says which.
+- **Compose** is the same editor card with a Subject row after the
+  recipients. Until the docked window below is built, it fills a page of
+  its own, without Discard: leaving the page is discarding, and asks first.
 - **A new message** opens in a 560 px window docked bottom right that stays
   while the member moves around; minimise, full screen, close. On phones
   a new message is a full-screen editor, which keeps its layout until it

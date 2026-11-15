@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { CatchBoundary } from "@tanstack/react-router";
+import type { ConnectedAccount } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
 import { emailAddress } from "@/api/validation";
 import { RequestError } from "@/components/request-error";
@@ -587,5 +588,102 @@ describe("the text, choice, and password kinds", () => {
     await userEvent.type(host(), "smtp.example.com{Enter}");
 
     await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.anything(), "test"));
+  });
+});
+
+// The message editor's rows, as compose and reply use them.
+const MessageSchema = z.object({
+  connectedAccountId: z.int().min(1, { error: "Choose an account." }),
+  to: z.array(z.string()).min(1, { error: "Add a recipient." }),
+  body: z.string(),
+});
+type MessageValues = z.infer<typeof MessageSchema>;
+const account: ConnectedAccount = {
+  id: 7,
+  provider: "gmail",
+  email: "studio@example.com",
+  name: null,
+  color: 1,
+  status: "usable",
+  createdAt: "2026-11-01T00:00:00Z",
+  needsReconnectSince: null,
+};
+const addressRule = emailAddress(z.string());
+
+// MessageTestForm is a message editor's rows, sending with send.
+function MessageTestForm({ send }: { send: (value: MessageValues) => Promise<void> }) {
+  const mutation = useMutation<void, ApiError, MessageValues>({ mutationFn: send, gcTime: 0 });
+  const request = useFormRequest(mutation, ["connectedAccountId", "to", "body"]);
+  const form = useAppForm({
+    defaultValues: { connectedAccountId: 0, to: [] as string[], body: "" },
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: request.check(MessageSchema) },
+    onSubmit: async ({ value, formApi }) => {
+      await request.send(formApi, value, value);
+    },
+  });
+
+  return (
+    <form.AppForm>
+      <form.Form label="Message">
+        <form.AppField name="connectedAccountId">
+          {(field) => (
+            <field.FromField label="From" accounts={[account]} description="About this account." />
+          )}
+        </form.AppField>
+        <form.AppField name="to">
+          {(field) => (
+            <field.RecipientsField
+              label="To"
+              isAddress={(value) => addressRule.safeParse(value).success}
+            />
+          )}
+        </form.AppField>
+        <form.AppField name="body">
+          {(field) => <field.MessageField label="Message" focus="mount" />}
+        </form.AppField>
+        <form.SubmitButton working="Sending...">Send</form.SubmitButton>
+      </form.Form>
+    </form.AppForm>
+  );
+}
+
+describe("message editor rows", () => {
+  it("focus the message when asked, and tie each row to its note and error", async () => {
+    await render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MessageTestForm send={async () => {}} />
+      </QueryClientProvider>,
+    );
+    const from = page.getByRole("button", { name: /From/ });
+    const to = page.getByRole("textbox", { name: "To" });
+
+    await expect.element(page.getByRole("textbox", { name: "Message" })).toHaveFocus();
+    await expect.element(from).toHaveAccessibleDescription("About this account.");
+
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+    await expect.element(from).toHaveFocus();
+    await expect.element(to).toHaveAccessibleDescription("Add a recipient.");
+    await expect.element(to).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("lock every row while the form sends", async () => {
+    const request = pending();
+    await render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MessageTestForm send={() => request.promise} />
+      </QueryClientProvider>,
+    );
+    await userEvent.click(page.getByRole("button", { name: /From/ }));
+    await userEvent.click(page.getByRole("option", { name: "studio@example.com" }));
+    await userEvent.type(page.getByRole("textbox", { name: "To" }), "ana@example.com,");
+
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+
+    await expect.element(page.getByRole("button", { name: /From/ })).toBeDisabled();
+    await expect.element(page.getByRole("textbox", { name: "To" })).toHaveAttribute("readonly");
+    await expect.element(page.getByRole("textbox", { name: "Message" })).toBeDisabled();
+    request.resolve();
+    await expect.element(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
   });
 });
