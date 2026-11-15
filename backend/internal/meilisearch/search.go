@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 	"uuid"
@@ -42,15 +44,16 @@ type formatted struct {
 }
 
 // Search returns one page of owner's messages that match every word of
-// query, most relevant first and one per conversation, and no matches for
-// a member with no index yet. It returns [search.ErrNoOwner] or
-// [search.ErrBadPage] before searching.
+// query and its filters, most relevant first, or with no words newest
+// first, one per conversation, and no matches for a member with no index
+// yet. It returns [search.ErrNoOwner], [search.ErrBadPage], or
+// [search.ErrBadRange] before searching.
 func (i *Index) Search(ctx context.Context, owner int64, query search.Query) (search.Result, error) {
 	if err := search.ValidateQuery(owner, query); err != nil {
 		return search.Result{}, err
 	}
 	page, size := pageWithin(query)
-	response, err := i.client.Index(i.uid(owner)).SearchWithContext(ctx, query.Text, &meili.SearchRequest{
+	request := &meili.SearchRequest{
 		Filter: filter(owner, query),
 		// page and hitsPerPage, unlike offset and limit, count every match
 		// instead of estimating.
@@ -64,16 +67,21 @@ func (i *Index) Search(ctx context.Context, owner int64, query search.Query) (se
 		// drops the last words until something matches.
 		MatchingStrategy:     meili.All,
 		AttributesToRetrieve: []string{fieldID},
+	}
+	// With no words there is nothing to mark, and cutting excerpts is most
+	// of a search's time, so a search without words asks for IDs alone.
+	if strings.TrimSpace(query.Text) != "" {
 		// Marks rather than showMatchesPosition, which lists every match in
 		// both body texts, up to 64 KiB each: a crafted mailbox made one
 		// page of 100 decode to about 500 MB.
-		AttributesToCrop:      []string{fieldBodyText, fieldAltText},
-		CropLength:            excerptWords,
-		CropMarker:            search.ExcerptCut,
-		AttributesToHighlight: []string{fieldSubject, fieldBodyText, fieldAltText},
-		HighlightPreTag:       markStart,
-		HighlightPostTag:      markEnd,
-	})
+		request.AttributesToCrop = []string{fieldBodyText, fieldAltText}
+		request.CropLength = excerptWords
+		request.CropMarker = search.ExcerptCut
+		request.AttributesToHighlight = []string{fieldSubject, fieldBodyText, fieldAltText}
+		request.HighlightPreTag = markStart
+		request.HighlightPostTag = markEnd
+	}
+	response, err := i.client.Index(i.uid(owner)).SearchWithContext(ctx, query.Text, request)
 	if err != nil {
 		err = describe(ctx, "search", err)
 		if errors.Is(err, errIndexMissing) {
@@ -203,8 +211,10 @@ func pageWithin(query search.Query) (page, size int64) {
 }
 
 // filter returns a search's filter, a list whose every expression must
-// hold: always the owner first, then the accounts and mailboxes query
-// names.
+// hold: always the owner first, then the accounts, mailboxes, senders,
+// dates, and attachment query names. Each value from the member is quoted
+// whole inside its own expression, never joined to another with OR
+// outside a list.
 func filter(owner int64, query search.Query) []string {
 	// The owner too, although the index is already the member's own: a
 	// second guard, should a document ever reach the wrong index.
@@ -224,7 +234,38 @@ func filter(owner int64, query search.Query) []string {
 		// On a list field, IN holds when any of its values is listed.
 		expressions = append(expressions, fieldMailboxes+" NOT IN ["+strings.Join(ids, ", ")+"]")
 	}
+	if len(query.From) > 0 {
+		addresses := make([]string, len(query.From))
+		for n, address := range query.From {
+			addresses[n] = quote(address)
+		}
+		// Meilisearch's = and IN ignore case on strings, as its filter
+		// reference says.
+		expressions = append(expressions, fieldFromAddresses+" IN ["+strings.Join(addresses, ", ")+"]")
+	}
+	if !query.Since.IsZero() {
+		expressions = append(expressions, fieldDate+" >= "+strconv.FormatInt(milliUp(query.Since), 10))
+	}
+	if !query.Before.IsZero() {
+		expressions = append(expressions, fieldDate+" < "+strconv.FormatInt(milliUp(query.Before), 10))
+	}
+	if query.WithAttachment {
+		expressions = append(expressions, fieldAttachment+" = true")
+	}
 	return expressions
+}
+
+// milliUp returns t in Unix milliseconds, the index's dates, rounded up.
+//
+// DESIGN: a date in the index is a whole number of milliseconds, so it is
+// at or after t, or before t, exactly when it is so against t rounded up:
+// one rounding serves both bounds.
+func milliUp(t time.Time) int64 {
+	ms := t.UnixMilli()
+	if t.Nanosecond()%int(time.Millisecond) != 0 {
+		ms++
+	}
+	return ms
 }
 
 // quote returns value as a double-quoted string in a filter.

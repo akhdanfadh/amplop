@@ -49,8 +49,18 @@ type Query struct {
 	// Mailboxes whose messages to leave out, e.g. the owner's Spam and
 	// Trash: a message in any of them is left out.
 	ExcludeMailboxes []uuid.UUID
-	Page             int // from 1
-	PageSize         int // at least 1
+	// From keeps messages whose From holds any of these addresses,
+	// ignoring case as the index compares text; empty: any sender.
+	From []string
+	// Since and Before keep messages the provider received at or after
+	// Since and before Before; a zero time leaves its end open.
+	Since  time.Time
+	Before time.Time
+	// WithAttachment keeps only messages with an attachment, as
+	// [Document.HasAttachment] says.
+	WithAttachment bool
+	Page           int // from 1
+	PageSize       int // at least 1
 }
 
 // Result is one page of a search.
@@ -93,8 +103,9 @@ const MaxTotal = 1000
 
 // Errors for a search the index refuses before running it.
 var (
-	ErrNoOwner = errors.New("search: no owner")
-	ErrBadPage = errors.New("search: page and page size must be at least 1")
+	ErrNoOwner  = errors.New("search: no owner")
+	ErrBadPage  = errors.New("search: page and page size must be at least 1")
+	ErrBadRange = errors.New("search: the range's start is not before its end")
 )
 
 // ErrUnavailable is an index that did not answer, or answered that it
@@ -132,10 +143,13 @@ type Index interface {
 	DeleteAccount(ctx context.Context, owner, accountID int64) error
 
 	// Search returns one page of owner's messages that match every word of
-	// query, and never another member's, even for another member's account
-	// ID: at most one message per conversation, its best match. It returns
-	// [ErrNoOwner] or [ErrBadPage], from [ValidateQuery], before searching,
-	// and an error wrapping [ErrUnavailable] when the index does not answer.
+	// query and all of its filters, and never another member's, even for
+	// another member's account ID: at most one message per conversation,
+	// its best match among those, or with no words its newest. Without
+	// words, results come newest first, and hits carry no matches. It
+	// returns [ErrNoOwner], [ErrBadPage], or [ErrBadRange], from
+	// [ValidateQuery], before searching, and an error wrapping
+	// [ErrUnavailable] when the index does not answer.
 	Search(ctx context.Context, owner int64, query Query) (Result, error)
 
 	// Owners returns, in no set order, every owner the index keeps
@@ -178,14 +192,18 @@ func ValidateDocuments(documents []Document) error {
 }
 
 // ValidateQuery holds a search to the rules every [Index] checks before it
-// runs one. It returns [ErrNoOwner] from [ValidateOwner], and [ErrBadPage]
-// when the page or the page size is below 1.
+// runs one. It returns [ErrNoOwner] from [ValidateOwner], [ErrBadPage]
+// when the page or the page size is below 1, and [ErrBadRange] when
+// [Query.Since] is not before [Query.Before], a range nothing is in.
 func ValidateQuery(owner int64, query Query) error {
 	if err := ValidateOwner(owner); err != nil {
 		return err
 	}
 	if query.Page < 1 || query.PageSize < 1 {
 		return ErrBadPage
+	}
+	if !query.Since.IsZero() && !query.Before.IsZero() && !query.Since.Before(query.Before) {
+		return ErrBadRange
 	}
 	return nil
 }

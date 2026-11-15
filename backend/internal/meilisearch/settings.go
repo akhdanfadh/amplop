@@ -21,9 +21,9 @@ func indexSettings() meili.Settings {
 		// which a search keeps one match of: Meilisearch takes only a
 		// filterable field for that. A filter added later adds its field
 		// here, and Meilisearch reindexes from the documents it holds.
-		FilterableAttributes: []string{fieldOwner, fieldAccount, fieldMailboxes, fieldConversation},
+		FilterableAttributes: []string{fieldOwner, fieldAccount, fieldMailboxes, fieldConversation, fieldFromAddresses, fieldDate, fieldAttachment},
 		Pagination:           &meili.Pagination{MaxTotalHits: search.MaxTotal},
-		// NOTE: a list of ranking rules replaces Meilisearch's whole list,
+		// A list of ranking rules replaces Meilisearch's whole list,
 		// so it repeats v1.56.1's default rules, in their order. The date,
 		// last, only orders matches the others leave equal, newest first:
 		// otherwise they come in the order they were written, which a

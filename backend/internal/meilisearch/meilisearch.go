@@ -37,6 +37,9 @@ const (
 	// ID, which a search returns one message of.
 	fieldConversation = "conversation"
 	fieldDate         = "internal_date"
+	// Every address of the message's From, as storage holds it.
+	fieldFromAddresses = "from_addresses"
+	fieldAttachment    = "has_attachment"
 )
 
 // Index is the message index on one Meilisearch server: one Meilisearch

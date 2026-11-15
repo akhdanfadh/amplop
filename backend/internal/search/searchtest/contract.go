@@ -35,8 +35,9 @@ var (
 var firstPage = search.Query{Page: 1, PageSize: 20}
 
 // RunContract tests the behaviour every [search.Index] shares: owners, account
-// and mailbox filters, which fields a search matches, every word of a query,
-// one message per conversation, where it matched, replacing, deleting within
+// and mailbox filters, sender, date, and attachment filters, which fields a
+// search matches, every word of a query, one message per conversation, the
+// order with no words, where it matched, replacing, deleting within
 // one owner's documents, listing and deleting owners and their document IDs,
 // paging, cancellation, and refused calls. open returns
 // a new, prepared index for one test. Text matching beyond whole words, e.g.
@@ -110,6 +111,162 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		result := find(t, index, asha, q)
 
 		assert.ElementsMatch(t, []uuid.UUID{inbox.ID, none.ID}, result.IDs)
+	})
+
+	t.Run("from", func(t *testing.T) {
+		index := open(t)
+		fajar := document(asha, ashaWork, "invoice")
+		// Two senders, one written in capitals.
+		both := document(asha, ashaWork, "invoice")
+		both.FromAddresses = []string{"ani@example.com", "Citra@Example.com"}
+		umlaut := document(asha, ashaWork, "invoice")
+		umlaut.FromAddresses = []string{"Ümit@example.com"}
+		theirs := document(budi, budiAccount, "invoice")
+		theirs.FromAddresses = []string{"citra@example.com"}
+		upsert(t, index, fajar, both, umlaut, theirs)
+
+		sentBy := func(from ...string) []uuid.UUID {
+			q := query("invoice")
+			q.From = from
+			return find(t, index, asha, q).IDs
+		}
+
+		assert.Equal(t, []uuid.UUID{both.ID}, sentBy("CITRA@example.com"), "any sender, ignoring case")
+		assert.ElementsMatch(t, []uuid.UUID{fajar.ID, both.ID}, sentBy("nobody@example.com", "fajar@example.com", "ani@example.com"), "any of them")
+		assert.Equal(t, []uuid.UUID{umlaut.ID}, sentBy("ümit@example.com"), "beyond ASCII")
+		assert.Empty(t, sentBy("citra@example"), "the whole address")
+	})
+
+	t.Run("from cannot widen", func(t *testing.T) {
+		index := open(t)
+		mine := document(asha, ashaWork, "invoice")
+		mine.HasAttachment = true
+		upsert(t, index, mine, document(budi, budiAccount, "invoice"))
+
+		// Text a filter would read as its own expressions, were it not
+		// quoted whole.
+		for _, from := range []string{
+			`x" OR has_attachment = true OR from_addresses = "x`,
+			`x"] OR owner_user_id = "2`,
+			`x\" OR has_attachment = true OR from_addresses = "x`,
+			`x\`,
+			`"`,
+		} {
+			q := query("")
+			q.From = []string{from, "nobody@example.com"}
+			result := find(t, index, asha, q)
+
+			assert.Empty(t, result.IDs, from)
+		}
+	})
+
+	t.Run("dates", func(t *testing.T) {
+		index := open(t)
+		at := time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC)
+		// Milliseconds apart, as Gmail dates messages.
+		first := document(asha, ashaWork, "invoice")
+		first.InternalDate = at
+		second := document(asha, ashaWork, "invoice")
+		second.InternalDate = at.Add(900 * time.Millisecond)
+		third := document(asha, ashaWork, "invoice")
+		third.InternalDate = at.Add(time.Second)
+		upsert(t, index, first, second, third)
+
+		within := func(since, before time.Time) []uuid.UUID {
+			q := query("invoice")
+			q.Since, q.Before = since, before
+			return find(t, index, asha, q).IDs
+		}
+		ms := time.Millisecond
+
+		assert.ElementsMatch(t, []uuid.UUID{second.ID, third.ID}, within(at.Add(500*ms), time.Time{}), "since")
+		assert.ElementsMatch(t, []uuid.UUID{first.ID, second.ID}, within(time.Time{}, at.Add(time.Second)), "before, not at")
+		assert.ElementsMatch(t, []uuid.UUID{first.ID}, within(time.Time{}, at.Add(500*ms)), "before, within a second")
+		assert.Equal(t, []uuid.UUID{second.ID}, within(at.Add(100*ms), at.Add(950*ms)), "between")
+		// A bound finer than a millisecond keeps a message exactly as a
+		// bound at that instant does.
+		assert.Equal(t, []uuid.UUID{second.ID}, within(at.Add(900*ms-1), at.Add(900*ms+1)), "finer than a millisecond")
+		assert.Equal(t, []uuid.UUID{first.ID}, within(at, at.Add(1)), "at since")
+	})
+
+	t.Run("bad range", func(t *testing.T) {
+		index := open(t)
+		at := time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC)
+
+		equal, swapped := query("invoice"), query("invoice")
+		equal.Since, equal.Before = at, at
+		swapped.Since, swapped.Before = at.Add(time.Hour), at
+		_, equalErr := index.Search(t.Context(), asha, equal)
+		_, swappedErr := index.Search(t.Context(), asha, swapped)
+
+		require.ErrorIs(t, equalErr, search.ErrBadRange)
+		require.ErrorIs(t, swappedErr, search.ErrBadRange)
+	})
+
+	t.Run("attachment", func(t *testing.T) {
+		index := open(t)
+		with := document(asha, ashaWork, "invoice")
+		with.HasAttachment = true
+		without := document(asha, ashaWork, "invoice")
+		upsert(t, index, with, without)
+
+		q := query("invoice")
+		q.WithAttachment = true
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{with.ID}, Total: 1}, result)
+	})
+
+	t.Run("filters before one per conversation", func(t *testing.T) {
+		index := open(t)
+		// The attachment came first; a newer reply has none.
+		attached := document(asha, ashaWork, "invoice")
+		attached.HasAttachment = true
+		reply := document(asha, ashaWork, "invoice")
+		reply.ThreadID = attached.ThreadID
+		reply.InternalDate = attached.InternalDate.Add(time.Hour)
+		// The words in one message, the attachment in another.
+		words := document(asha, ashaWork, "invoice")
+		file := document(asha, ashaWork, "scan")
+		file.ThreadID = words.ThreadID
+		file.HasAttachment = true
+		upsert(t, index, attached, reply, words, file)
+
+		q := query("invoice")
+		q.WithAttachment = true
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{attached.ID}, Total: 1}, result)
+	})
+
+	t.Run("newest first with no words", func(t *testing.T) {
+		index := open(t)
+		at := time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC)
+		// Written in another order than their dates.
+		middle := document(asha, ashaWork, "hello")
+		middle.InternalDate = at
+		oldest := document(asha, ashaWork, "invoice")
+		oldest.InternalDate = at.Add(-time.Hour)
+		newest := document(asha, ashaHome, "receipt")
+		newest.InternalDate = at.Add(time.Hour)
+		// Newer than the rest, but filtered out.
+		other := document(asha, ashaWork, "hello")
+		other.InternalDate = at.Add(2 * time.Hour)
+		other.FromAddresses = []string{"citra@example.com"}
+		upsert(t, index, middle, oldest, newest, other)
+
+		q := search.Query{From: []string{"fajar@example.com"}, Page: 1, PageSize: 2}
+		first := find(t, index, asha, q)
+		q.Page = 2
+		second := find(t, index, asha, q)
+		all := hits(t, index, asha, search.Query{Page: 1, PageSize: 20})
+
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{newest.ID, middle.ID}, Total: 3}, first)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{oldest.ID}, Total: 3}, second)
+		for _, hit := range all.Hits {
+			assert.Empty(t, hit.SubjectMatches)
+			assert.Empty(t, hit.ExcerptMatches)
+		}
 	})
 
 	t.Run("cancelled", func(t *testing.T) {

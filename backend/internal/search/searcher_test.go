@@ -299,6 +299,44 @@ func TestSearchExcerptLead(t *testing.T) {
 	}
 }
 
+// Each filter of a request reaches the index, with words or without.
+func TestSearchFilters(t *testing.T) {
+	s := newSearchStack()
+	kept := s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
+	other := s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
+	document, ok := s.index.Document(asha, kept.ID)
+	require.True(t, ok)
+	document.FromAddresses = []string{"dewi@example.com"}
+	document.HasAttachment = true
+	require.NoError(t, s.index.Upsert(t.Context(), []search.Document{document}))
+	at := kept.Date
+
+	cases := map[string]struct {
+		request search.Request
+		want    []uuid.UUID
+	}{
+		"from":       {search.Request{From: []string{"DEWI@example.com"}}, []uuid.UUID{kept.ID}},
+		"attachment": {search.Request{Text: "invoice", WithAttachment: true}, []uuid.UUID{kept.ID}},
+		"since":      {search.Request{Since: at.Add(time.Millisecond)}, nil},
+		"before":     {search.Request{Before: at}, nil},
+		"within":     {search.Request{Since: at, Before: at.Add(time.Millisecond)}, []uuid.UUID{kept.ID, other.ID}},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			c.request.Page, c.request.Limit = 1, 20
+
+			page, err := s.searcher.Search(t.Context(), asha, c.request)
+			require.NoError(t, err)
+
+			var ids []uuid.UUID
+			for _, f := range page.Found {
+				ids = append(ids, f.Message.ID)
+			}
+			assert.ElementsMatch(t, c.want, ids)
+		})
+	}
+}
+
 // An index that does not answer fails the search with
 // [search.ErrUnavailable]; storage that fails fails it too.
 func TestSearchFails(t *testing.T) {
@@ -315,14 +353,20 @@ func TestSearchFails(t *testing.T) {
 	require.ErrorIs(t, storageErr, broken)
 }
 
-// No owner, or no page, is refused before anything is read.
+// No owner, no page, or a range nothing is in, is refused before
+// anything is read.
 func TestSearchRefused(t *testing.T) {
 	s := newSearchStack()
 	s.memory.fail = errors.New("must not be read")
+	at := time.Date(2026, 11, 7, 0, 0, 0, 0, time.UTC)
 
 	_, noOwner := s.searcher.Search(t.Context(), 0, request("invoice"))
 	_, noPage := s.searcher.Search(t.Context(), asha, search.Request{Text: "invoice", Limit: 20})
+	swapped := request("invoice")
+	swapped.Since, swapped.Before = at, at
+	_, noRange := s.searcher.Search(t.Context(), asha, swapped)
 
 	require.ErrorIs(t, noOwner, search.ErrNoOwner)
 	require.ErrorIs(t, noPage, search.ErrBadPage)
+	require.ErrorIs(t, noRange, search.ErrBadRange)
 }

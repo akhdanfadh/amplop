@@ -86,6 +86,96 @@ func TestOwnerFilter(t *testing.T) {
 	require.NoError(t, keptErr)
 }
 
+// A sender the member types stays one value of its list, however it is
+// written: it neither reaches a stray document of another owner's in the
+// index, nor turns into expressions of its own.
+func TestSenderFilterStray(t *testing.T) {
+	// Given the owner's message from Fajar, and a stray document of
+	// another owner's that every widened filter would match.
+	index := newIndex(t)
+	mine := message("Invoice")
+	mine.FromAddresses = []string{"fajar@example.com"}
+	require.NoError(t, index.Upsert(t.Context(), []search.Document{mine}))
+	stray := map[string]any{
+		"id": uuid.New().String(), "owner_user_id": "2", "connected_account_id": "11", "subject": "Invoice",
+		"from_addresses": []string{"x", "fajar@example.com"}, "has_attachment": true, "internal_date": 1,
+	}
+	seed(t, index, owner, stray)
+
+	// When the owner searches with crafted senders beside a real one, and
+	// with crafted ones alone.
+	sent := func(from ...string) []uuid.UUID {
+		result, err := index.Search(t.Context(), owner, fromQuery(from))
+		require.NoError(t, err)
+		return ids(result)
+	}
+	crafted := []string{
+		`x" OR owner_user_id = "2`,
+		`x"] OR owner_user_id = "2" OR from_addresses IN ["x`,
+		`x\" OR has_attachment = true OR from_addresses = "x`,
+		`x\`,
+	}
+
+	// Then only the owner's message from Fajar is ever found.
+	assert.Equal(t, []uuid.UUID{mine.ID}, sent(append(crafted, "fajar@example.com")...))
+	for _, from := range crafted {
+		assert.Empty(t, sent(from), from)
+	}
+}
+
+// fromQuery returns a search without words for messages from any of
+// from, on the first page.
+func fromQuery(from []string) search.Query {
+	return search.Query{From: from, Page: 1, PageSize: 10}
+}
+
+// A search without words asks for IDs alone: with nothing to mark, cutting
+// excerpts would be wasted time.
+func TestSearchNoWordsAsksIDsOnly(t *testing.T) {
+	index := newIndex(t)
+	require.NoError(t, index.Upsert(t.Context(), []search.Document{message("Invoice")}))
+	var body map[string]any
+	index.client = proxied(t, func(r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/search") {
+			raw, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(bytes.NewReader(raw))
+			_ = json.Unmarshal(raw, &body)
+		}
+	})
+
+	result, err := index.Search(t.Context(), owner, search.Query{Page: 1, PageSize: 10})
+	require.NoError(t, err)
+
+	assert.Len(t, ids(result), 1)
+	require.NotNil(t, body)
+	for _, field := range []string{"attributesToCrop", "attributesToHighlight", "showMatchesPosition"} {
+		assert.NotContains(t, body, field)
+	}
+}
+
+// A bound is the index's milliseconds, rounded up, so a date finer than a
+// millisecond keeps the same messages as a bound exactly at it.
+func TestMilliUp(t *testing.T) {
+	at := time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC)
+	cases := map[time.Duration]int64{
+		0:                          at.UnixMilli(),
+		time.Nanosecond:            at.UnixMilli() + 1,
+		time.Millisecond:           at.UnixMilli() + 1,
+		time.Millisecond + 1:       at.UnixMilli() + 2,
+		-time.Nanosecond:           at.UnixMilli(),
+		-time.Millisecond:          at.UnixMilli() - 1,
+		-time.Millisecond - 1:      at.UnixMilli() - 1,
+		-time.Millisecond + 1:      at.UnixMilli(),
+		999*time.Millisecond + 999: at.UnixMilli() + 1000,
+	}
+	for offset, want := range cases {
+		assert.Equal(t, want, milliUp(at.Add(offset)), "%v", offset)
+	}
+	// Before 1970, where Unix time is negative.
+	assert.Equal(t, int64(-1000), milliUp(time.Unix(-1, 0)))
+	assert.Equal(t, int64(-999), milliUp(time.Unix(-1, 1)))
+}
+
 // A filter keeps a quote or a backslash inside the value it ends.
 func TestQuote(t *testing.T) {
 	cases := map[string]string{

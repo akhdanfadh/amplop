@@ -59,10 +59,16 @@ type SearchStorage interface {
 
 // Request is what a member searches their mail for.
 type Request struct {
-	Text    string // the member's words
+	Text    string // the member's words; empty finds every message the filters keep
 	Account int64  // a connected account to search alone; 0 searches every one
-	Page    int    // from 1
-	Limit   int    // results per page, at least 1
+	// From, Since, Before, and WithAttachment filter as [Query]'s fields
+	// of those names do.
+	From           []string
+	Since          time.Time
+	Before         time.Time
+	WithAttachment bool
+	Page           int // from 1
+	Limit          int // results per page, at least 1
 }
 
 // Found is one result of a search: a conversation's best-matching message,
@@ -102,16 +108,25 @@ func NewSearcher(index Index, storage SearchStorage) *Searcher {
 }
 
 // Search returns one page of owner's conversations whose messages match
-// request, each by its best match, leaving out Spam, Trash, and drafts.
-// It returns [ErrNoOwner] or [ErrBadPage] before reading anything,
-// [ErrAccountNotFound] for an account owner does not have, and an error
-// wrapping [ErrUnavailable] when the index does not answer.
+// request, each by its best match, or with no words its newest, leaving
+// out Spam, Trash, and drafts. It returns [ErrNoOwner], [ErrBadPage], or
+// [ErrBadRange] before reading anything, [ErrAccountNotFound] for an
+// account owner does not have, and an error wrapping [ErrUnavailable]
+// when the index does not answer.
 //
 // DESIGN: the index may lag behind storage (ADR005), so storage decides
 // what is shown: the index leaves out messages in Spam, Trash, or drafts
 // as it last saw them, and storage drops those there now.
 func (s *Searcher) Search(ctx context.Context, owner int64, request Request) (Page, error) {
-	query := Query{Text: request.Text, Page: request.Page, PageSize: request.Limit}
+	query := Query{
+		Text:           request.Text,
+		From:           request.From,
+		Since:          request.Since,
+		Before:         request.Before,
+		WithAttachment: request.WithAttachment,
+		Page:           request.Page,
+		PageSize:       request.Limit,
+	}
 	if err := ValidateQuery(owner, query); err != nil {
 		return Page{}, err
 	}

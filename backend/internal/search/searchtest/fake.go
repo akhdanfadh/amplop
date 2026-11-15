@@ -19,11 +19,16 @@ import (
 // Fake is a [search.Index] in memory. It matches text more simply than a
 // real index: a document matches when each word of the query appears,
 // ignoring case, in its subject, sender, recipients, or either body text;
-// there are no typos, prefixes, phrases, or exclusions. It returns matches
-// in the order they were first added, each conversation's newest, and
-// marks every place a word appears: in the subject,
-// and in the whole of the first body text it appears in, uncut. The zero
-// value is empty and ready. It is safe for concurrent use.
+// there are no typos, prefixes, phrases, or exclusions. It compares sender
+// addresses as [strings.EqualFold] does, which agrees with Meilisearch on
+// the cases [RunContract] tests, e.g. ASCII letters and Ü, but not on
+// every one: Meilisearch also normalizes, e.g. a decomposed ü to ü, trims
+// spaces around a value, and matches no value past about 490 bytes. It
+// returns matches in the order they were first added, or with no words
+// newest first, each conversation's newest, and marks every place a word
+// appears: in the subject, and in the whole of the first body text it
+// appears in, uncut. The zero value is empty and ready. It is safe for
+// concurrent use.
 type Fake struct {
 	// Fail, when set, is the error every method returns without doing
 	// anything.
@@ -126,10 +131,12 @@ func (f *Fake) Search(ctx context.Context, owner int64, query search.Query) (sea
 	var matches []search.Hit
 	newest := map[conversation]int{} // each conversation's place in matches
 	dates := map[conversation]time.Time{}
+	dateOf := map[uuid.UUID]time.Time{}
 	for _, document := range f.documents {
 		if !matchesFilters(document, owner, query) || !matchesText(document, query.Text) {
 			continue
 		}
+		dateOf[document.ID] = document.InternalDate
 		key := conversation{document.ConnectedAccountID, document.ThreadID}
 		at, seen := newest[key]
 		switch {
@@ -139,6 +146,13 @@ func (f *Fake) Search(ctx context.Context, owner int64, query search.Query) (sea
 		case document.InternalDate.After(dates[key]):
 			matches[at], dates[key] = hit(document, query.Text), document.InternalDate
 		}
+	}
+	// With no words to rank by, the date orders every match, as
+	// Meilisearch's last ranking rule does.
+	if strings.TrimSpace(query.Text) == "" {
+		slices.SortStableFunc(matches, func(a, b search.Hit) int {
+			return dateOf[b.ID].Compare(dateOf[a.ID])
+		})
 	}
 	matches = matches[:min(len(matches), search.MaxTotal)]
 
@@ -227,7 +241,8 @@ func (f *Fake) find(owner int64, id uuid.UUID) int {
 }
 
 // matchesFilters reports whether document is owner's, in one of query's
-// accounts when it names any, and in none of its excluded mailboxes.
+// accounts when it names any, in none of its excluded mailboxes, and
+// passes its sender, date, and attachment filters.
 func matchesFilters(document search.Document, owner int64, query search.Query) bool {
 	if document.OwnerUserID != owner {
 		return false
@@ -235,9 +250,23 @@ func matchesFilters(document search.Document, owner int64, query search.Query) b
 	if len(query.Accounts) > 0 && !slices.Contains(query.Accounts, document.ConnectedAccountID) {
 		return false
 	}
-	return !slices.ContainsFunc(document.MailboxIDs, func(id uuid.UUID) bool {
+	if slices.ContainsFunc(document.MailboxIDs, func(id uuid.UUID) bool {
 		return slices.Contains(query.ExcludeMailboxes, id)
-	})
+	}) {
+		return false
+	}
+	if len(query.From) > 0 && !slices.ContainsFunc(document.FromAddresses, func(address string) bool {
+		return slices.ContainsFunc(query.From, func(wanted string) bool { return strings.EqualFold(address, wanted) })
+	}) {
+		return false
+	}
+	if !query.Since.IsZero() && document.InternalDate.Before(query.Since) {
+		return false
+	}
+	if !query.Before.IsZero() && !document.InternalDate.Before(query.Before) {
+		return false
+	}
+	return !query.WithAttachment || document.HasAttachment
 }
 
 // matchesText reports whether each word of text appears, ignoring case, in
