@@ -33,9 +33,9 @@ func pendingFactor(at time.Time) *Factor {
 }
 
 func TestStartEnrollment(t *testing.T) {
-	service, store, cipher, _, _, clock := enrollmentFixture()
+	service, store, cipher, passwords, _, clock := enrollmentFixture()
 
-	first, err := service.Start(t.Context(), alice)
+	first, err := service.Start(t.Context(), alice, "right", aliceAddr)
 
 	require.NoError(t, err)
 	require.NotNil(t, store.record.Factor)
@@ -47,54 +47,82 @@ func TestStartEnrollment(t *testing.T) {
 	assert.Nil(t, store.record.Factor.ConfirmedAt)
 	assert.Equal(t, int64(-1), store.record.Factor.LastStep)
 	assert.Equal(t, clock.now, store.record.Factor.StartedAt)
+	assert.Equal(t, 1, passwords.calls)
 
-	// Starting again replaces the unfinished enrollment, with a new clock.
-	clock.Advance(time.Minute)
-	second, err := service.Start(t.Context(), alice)
+	// Continuing within the enrollment's time shows the same entry and saves
+	// nothing, so the clock does not restart.
+	saved := store.record.Factor
+	clock.Advance(enrollmentLifetime - time.Second)
+	second, err := service.Start(t.Context(), alice, "right", aliceAddr)
 	require.NoError(t, err)
-	assert.NotEqual(t, first.Secret, second.Secret)
+	assert.Equal(t, first, second)
+	assert.Same(t, saved, store.record.Factor)
+
+	// An expired enrollment is replaced, with a new clock.
+	clock.Advance(time.Second)
+	third, err := service.Start(t.Context(), alice, "right", aliceAddr)
+	require.NoError(t, err)
+	assert.NotEqual(t, first.Secret, third.Secret)
 	assert.Equal(t, clock.now, store.record.Factor.StartedAt)
 }
 
-func TestStartEnrollmentReplacesWaitingCodes(t *testing.T) {
+func TestStartEnrollmentReplacesExpiredWaitingCodes(t *testing.T) {
 	service, store, _, _, _, clock := enrollmentFixture()
 	store.record = Record{
-		Factor:  pendingFactor(clock.now),
-		Waiting: &Waiting{Hashes: []string{"old"}, ExpiresAt: clock.now.Add(enrollmentLifetime)},
+		Factor:  pendingFactor(clock.now.Add(-enrollmentLifetime)),
+		Waiting: &Waiting{Hashes: []string{"old"}, ExpiresAt: clock.now},
 	}
 
-	_, err := service.Start(t.Context(), alice)
+	_, err := service.Start(t.Context(), alice, "right", aliceAddr)
 
 	require.NoError(t, err)
 	assert.Nil(t, store.record.Waiting, "codes for the old secret go with it")
 }
 
-func TestStartEnrollmentAlreadyOn(t *testing.T) {
+func TestStartEnrollmentRefused(t *testing.T) {
 	confirmed := time.Unix(1, 0)
-	service, store, _, _, _, _ := enrollmentFixture()
-	store.record = Record{Factor: &Factor{Ciphertext: sealedSecret, ConfirmedAt: &confirmed}}
-	record := store.record
+	for _, c := range []struct {
+		name     string
+		record   Record
+		password string
+		want     error
+	}{
+		{"wrong password", Record{}, "wrong", account.ErrInvalidCredentials},
+		{"already on", Record{Factor: &Factor{Ciphertext: sealedSecret, ConfirmedAt: &confirmed}}, "right", ErrAlreadyOn},
+		{"code checked", Record{Factor: pendingFactor(time.Unix(59, 0)), Waiting: &Waiting{ExpiresAt: time.Unix(59, 0).Add(enrollmentLifetime)}}, "right", ErrCodeChecked},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			service, store, cipher, _, _, _ := enrollmentFixture()
+			store.record = c.record
 
-	started, err := service.Start(t.Context(), alice)
+			started, err := service.Start(t.Context(), alice, c.password, aliceAddr)
 
-	require.ErrorIs(t, err, ErrAlreadyOn)
-	assert.Empty(t, started)
-	assert.Equal(t, record, store.record)
+			require.ErrorIs(t, err, c.want)
+			assert.Empty(t, started)
+			assert.Equal(t, c.record, store.record)
+			if c.name == "wrong password" {
+				assert.Zero(t, store.calls, "nothing is made before the password is right")
+				assert.Empty(t, cipher.sealed)
+			}
+		})
+	}
 }
 
 func TestStartEnrollmentFailure(t *testing.T) {
-	failure := errors.New("storage or encryption unavailable")
-	for _, stage := range []string{"seal", "storage"} {
+	failure := errors.New("storage, encryption, or password check unavailable")
+	for _, stage := range []string{"password", "seal", "storage"} {
 		t.Run(stage, func(t *testing.T) {
-			service, store, cipher, _, _, _ := enrollmentFixture()
+			service, store, cipher, passwords, _, _ := enrollmentFixture()
 			switch stage {
+			case "password":
+				passwords.err = failure
 			case "seal":
 				cipher.sealErr = failure
 			case "storage":
 				store.readErr = failure
 			}
 
-			started, err := service.Start(t.Context(), alice)
+			started, err := service.Start(t.Context(), alice, "right", aliceAddr)
 
 			require.ErrorIs(t, err, failure)
 			assert.Empty(t, started, "failed enrollment must not return a secret")

@@ -16,7 +16,7 @@ import {
   manageLink,
   offState,
   onBadge,
-  setUpLink,
+  setUpName,
   statusReadFailed,
   twoFactorAbout,
   twoFactorTitle,
@@ -88,7 +88,7 @@ export function TwoFactorSection({ children }: { children?: ReactNode }): ReactE
             to="/settings/security/two-factor"
             className={cn(buttonVariants({ variant: "default" }), "whitespace-normal")}
           >
-            {setUpLink}
+            {setUpName}
           </Link>
         </>
       )}

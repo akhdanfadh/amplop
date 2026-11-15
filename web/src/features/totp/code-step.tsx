@@ -7,13 +7,13 @@ import { useFormRequest } from "@/components/form/request";
 import { RequestError } from "@/components/request-error";
 import { FieldGroup } from "@/components/ui/field";
 import { codeFormats, codePaste } from "@/features/auth/code-schema";
-import type { ReplacementCodeSchema } from "./schema";
+import type { EnrollmentCodeSchema } from "./schema";
 
 const codeFields = ["code"] as const;
 const authenticator = codeFormats.authenticator;
 
 // The part of a generated mutation hook's result the form sends with, e.g.
-// useReplaceTOTPBackupCodes()'s.
+// useCheckTOTPEnrollmentCode()'s.
 type CodeMutation<TData> = {
   mutateAsync: (variables: { data: { code: string } }) => Promise<TData>;
   error: ApiError | null;
@@ -23,15 +23,16 @@ type CodeMutation<TData> = {
 // CodeStep asks for a code from the authenticator app and sends
 // it with mutation: onDone receives the answer, onRefused a failure, after
 // its field error, if any, shows. label names the form for a screen reader;
-// action and working are its button's words. The field takes focus when it
-// appears: the member asked for the step, e.g. Replace backup codes.
-// children follow the button, e.g. a way back.
+// action and working are its button's words. focusOnShow puts focus in the
+// field when it appears, for a step the member asked for, e.g. Replace
+// backup codes. children follow the button, e.g. a way back.
 export function CodeStep<TData>({
   label,
   action,
   working,
   schema,
   mutation,
+  focusOnShow = false,
   onDone,
   onRefused,
   children,
@@ -39,8 +40,9 @@ export function CodeStep<TData>({
   label: string;
   action: string;
   working: string;
-  schema: typeof ReplacementCodeSchema;
+  schema: typeof EnrollmentCodeSchema;
   mutation: CodeMutation<TData>;
+  focusOnShow?: boolean;
   onDone: (data: TData) => void;
   onRefused?: (err: ApiError) => void;
   children?: ReactNode;
@@ -63,8 +65,8 @@ export function CodeStep<TData>({
   });
 
   useEffect(() => {
-    fieldsRef.current?.querySelector("input")?.focus();
-  }, []);
+    if (focusOnShow) fieldsRef.current?.querySelector("input")?.focus();
+  }, [focusOnShow]);
 
   return (
     <form.AppForm>

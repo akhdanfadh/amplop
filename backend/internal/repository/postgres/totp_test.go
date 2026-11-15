@@ -69,11 +69,12 @@ func TestTOTPEnrollmentStorage(t *testing.T) {
 	clock := func() time.Time { return now }
 	service := newTOTPService(t, db, clock)
 	alice := account.User{ID: id, Email: "alice@example.com"}
+	addr := netip.MustParseAddr("192.0.2.1")
 	status, err := service.Status(t.Context(), id)
 	require.NoError(t, err)
 	assert.Equal(t, totp.StateOff, status.State)
 
-	first, err := service.Start(t.Context(), alice)
+	first, err := service.Start(t.Context(), alice, "password", addr)
 	require.NoError(t, err)
 	factor, err := db.ReadTOTP(t.Context(), id)
 	require.NoError(t, err)
@@ -89,13 +90,20 @@ func TestTOTPEnrollmentStorage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, totp.Status{State: totp.StatePending}, status)
 
-	// An unfinished enrollment expires after 15 minutes; starting again
-	// replaces it.
+	// Continuing returns the saved secret and changes nothing.
+	second, err := service.Start(t.Context(), alice, "password", addr)
+	require.NoError(t, err)
+	assert.Equal(t, first, second)
+	unchanged, err := db.ReadTOTP(t.Context(), id)
+	require.NoError(t, err)
+	assert.Equal(t, factor, unchanged)
+
+	// An expired enrollment is replaced.
 	now = now.Add(15 * time.Minute)
 	status, err = service.Status(t.Context(), id)
 	require.NoError(t, err)
 	assert.Equal(t, totp.StateExpired, status.State)
-	third, err := service.Start(t.Context(), alice)
+	third, err := service.Start(t.Context(), alice, "password", addr)
 	require.NoError(t, err)
 	assert.NotEqual(t, first.Secret, third.Secret)
 	factor, err = db.ReadTOTP(t.Context(), id)
@@ -108,13 +116,13 @@ func TestTOTPEnrollmentStorage(t *testing.T) {
 	rejected := errors.New("replacement rejected")
 	err = db.UpdateTOTP(t.Context(), id, func(totp.Record) (totp.Change, error) { return totp.Change{}, rejected })
 	require.ErrorIs(t, err, rejected)
-	unchanged, err := db.ReadTOTP(t.Context(), id)
+	unchanged, err = db.ReadTOTP(t.Context(), id)
 	require.NoError(t, err)
 	assert.Equal(t, factor, unchanged)
 
 	_, err = conn.Exec(t.Context(), "UPDATE user_totp SET confirmed_at = now(), last_step = 12 WHERE user_id = $1", id)
 	require.NoError(t, err)
-	result, err := service.Start(t.Context(), alice)
+	result, err := service.Start(t.Context(), alice, "password", addr)
 	require.ErrorIs(t, err, totp.ErrAlreadyOn)
 	assert.Empty(t, result)
 	factor, err = db.ReadTOTP(t.Context(), id)
@@ -300,7 +308,7 @@ func TestTOTPCommitFailure(t *testing.T) {
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_totp();`)
 	require.NoError(t, err)
 	service := newTOTPService(t, db, time.Now)
-	result, err := service.Start(t.Context(), account.User{ID: id, Email: "alice@example.com"})
+	result, err := service.Start(t.Context(), account.User{ID: id, Email: "alice@example.com"}, "password", netip.MustParseAddr("192.0.2.1"))
 	require.ErrorContains(t, err, "forced TOTP failure")
 	assert.Empty(t, result)
 	factor, err := db.ReadTOTP(t.Context(), id)

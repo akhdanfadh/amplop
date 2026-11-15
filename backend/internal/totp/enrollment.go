@@ -173,8 +173,8 @@ type Service struct {
 }
 
 // NewService supplies storage, owner-bound encryption for saved secrets, the
-// password check that guards showing waiting codes again, the code verifier
-// and attempt limit, and a clock.
+// password check that guards showing them, the code verifier and attempt
+// limit, and a clock.
 func NewService(storage Storage, encryption sealer, passwords passwordVerifier, verifier *Verifier, throttle codeAttempts, now func() time.Time) *Service {
 	return &Service{storage: storage, encryption: encryption, passwords: passwords, verifier: verifier, throttle: throttle, now: now}
 }
@@ -201,32 +201,62 @@ type StatusRecord struct {
 	WaitingExpiresAt *time.Time
 }
 
-// Start starts an enrollment, replacing an unfinished one and any codes
-// waiting for it, but cannot replace a confirmed factor.
-func (s *Service) Start(ctx context.Context, user account.User) (Started, error) {
-	// 1. Create and seal the secret before storage takes its lock.
-	value, err := newEnrollment(user.Email)
+// Start checks user's password, then starts an enrollment, or continues an
+// unfinished one by returning its secret again. An expired enrollment is
+// replaced. It returns [ErrCodeChecked] once the enrollment's code was checked,
+// [ErrAlreadyOn] for a confirmed factor, and the password check's errors.
+func (s *Service) Start(ctx context.Context, user account.User, password string, addr netip.Addr) (Started, error) {
+	// 1. Check the password before any secret is made or shown: a session
+	// cookie alone must not reveal or add an authenticator.
+	if err := s.passwords.VerifyPassword(ctx, user, password, addr); err != nil {
+		return Started{}, err
+	}
+
+	// 2. Create and seal a secret before storage takes its lock, in case
+	// there is no enrollment to continue.
+	fresh, err := newEnrollment(user.Email)
 	if err != nil {
 		return Started{}, err
 	}
-	keyID, ciphertext, err := s.encryption.Seal([]byte(value.secret), secretOwner(user.ID))
+	owner := secretOwner(user.ID)
+	keyID, ciphertext, err := s.encryption.Seal([]byte(fresh.secret), owner)
 	if err != nil {
 		return Started{}, err
 	}
 
-	// 2. Under the owner's lock, save it unless a confirmed factor exists.
-	// Waiting codes belonged to the old secret, so they go.
+	// 3. Under the owner's lock, continue a live enrollment or save the new one.
+	var started Started
 	err = s.storage.UpdateTOTP(ctx, user.ID, func(current Record) (Change, error) {
-		if current.Factor != nil && current.Factor.ConfirmedAt != nil {
-			return Change{}, ErrAlreadyOn
+		now := s.now().UTC()
+		if factor := current.Factor; factor != nil {
+			if factor.ConfirmedAt != nil {
+				return Change{}, ErrAlreadyOn
+			}
+			if CheckEnrollment(*factor, now) == nil {
+				if current.Waiting != nil {
+					return Change{}, ErrCodeChecked
+				}
+				secret, err := s.encryption.Open(factor.KeyID, factor.Ciphertext, owner)
+				if err != nil {
+					return Change{}, err
+				}
+				existing, err := existingEnrollment(user.Email, string(secret))
+				if err != nil {
+					return Change{}, err
+				}
+				started = Started{Secret: existing.secret, URI: existing.uri}
+				return Change{}, nil
+			}
 		}
-		factor := Factor{KeyID: keyID, Ciphertext: ciphertext, LastStep: -1, StartedAt: s.now().UTC()}
+
+		started = Started{Secret: fresh.secret, URI: fresh.uri}
+		factor := Factor{KeyID: keyID, Ciphertext: ciphertext, LastStep: -1, StartedAt: now}
 		return Change{Factor: &factor, WaitingWrite: DeleteWaiting}, nil
 	})
 	if err != nil {
 		return Started{}, err
 	}
-	return Started{Secret: value.secret, URI: value.uri}, nil
+	return started, nil
 }
 
 // Codes is a waiting backup-code set to show, and the one-time token that

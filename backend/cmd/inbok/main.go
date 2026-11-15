@@ -163,7 +163,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		Disabler:                totp.NewDisabler(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle),
 		Backups:                 totp.NewBackups(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
 		CodeSignIn:              session.NewCodeSignIn(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
-		Enrollment:              session.NewEnrollment(db, cfg.Encryption, totp.NewVerifier(time.Now), codeThrottle, time.Now),
+		Enrollment:              session.NewEnrollment(db, time.Now),
 		TOTP:                    totp.NewService(db, cfg.Encryption, sessions, totp.NewVerifier(time.Now), codeThrottle, time.Now),
 		Probe:                   probe.NewService(db),
 		Account:                 accounts,

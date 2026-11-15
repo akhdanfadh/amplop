@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -23,6 +24,12 @@ import (
 	"inbok/internal/session"
 	"inbok/internal/totp"
 )
+
+// tenCodes is a backup-code set a fake returns.
+var tenCodes = []string{
+	"ABCDE-FGHJK", "MNPQR-STUVW", "XYZ23-45678", "9ABCD-EFGHJ", "KMNPQ-RSTUV",
+	"WXYZ2-34567", "89ABC-DEFGH", "JKMNP-QRSTU", "VWXYZ-23456", "789AB-CDEFG",
+}
 
 type fakeTOTP struct {
 	status   totp.Status
@@ -43,9 +50,9 @@ func (f *fakeTOTP) Status(_ context.Context, userID int64) (totp.Status, error) 
 	return f.status, f.err
 }
 
-func (f *fakeTOTP) Start(_ context.Context, user account.User) (totp.Started, error) {
+func (f *fakeTOTP) Start(_ context.Context, user account.User, password string, addr netip.Addr) (totp.Started, error) {
 	f.calls++
-	f.user = user
+	f.user, f.password, f.addr = user, password, addr
 	return f.started, f.err
 }
 
@@ -67,9 +74,51 @@ func (f *fakeTOTP) Cancel(_ context.Context, userID int64) error {
 	return f.err
 }
 
+type totpAuth int
+
+const (
+	totpAuthAnonymous totpAuth = iota
+	totpAuthAuthenticated
+)
+
+func requestTOTP(api *API, method string, auth totpAuth) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, "/api/v0/totp", nil)
+	request.Header.Set("Origin", "http://"+request.Host)
+	if auth == totpAuthAuthenticated {
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
+	}
+	response := httptest.NewRecorder()
+	api.Handler().ServeHTTP(response, request)
+	return response
+}
+
+// postTOTP sends body as JSON to the two-factor operation at path, below
+// /api/v0/totp.
+func postTOTP(api *API, path, body, origin string, auth totpAuth) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp"+path, strings.NewReader(body))
+	request.Header.Set("Content-Type", jsonContentType)
+	request.Header.Set("Origin", origin)
+	request.Header.Set("User-Agent", "inbok-totp-test/1.0")
+	if auth == totpAuthAuthenticated {
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
+	}
+	response := httptest.NewRecorder()
+	api.Handler().ServeHTTP(response, request)
+	return response
+}
+
 // enrollingSessions is an administrator without two-factor, enrolling.
 func enrollingSessions() *fakeSessions {
 	return memberSessions(account.RoleAdmin)
+}
+
+// confirmedSessions is an account with two-factor on.
+func confirmedSessions(role account.Role) *fakeSessions {
+	sessions := memberSessions(role)
+	if role == account.RoleAdmin {
+		sessions.identity.Access, sessions.identity.TOTPRequired = session.AccessAdmin, false
+	}
+	return sessions
 }
 
 // throttledFor returns err as a throttle reports it, with a wait.
@@ -98,40 +147,29 @@ func assertCodeFieldHoldsDetail(t *testing.T, body []byte) {
 	assertFieldHoldsDetail(t, body, "body.code")
 }
 
-type totpAuth int
-
-const (
-	totpAuthAnonymous totpAuth = iota
-	totpAuthAuthenticated
-)
-
-func requestTOTP(api *API, method string, auth totpAuth) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(method, "/api/v0/totp", nil)
-	request.Header.Set("Origin", "http://"+request.Host)
-	if auth == totpAuthAuthenticated {
-		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
-	}
-	response := httptest.NewRecorder()
-	api.Handler().ServeHTTP(response, request)
-	return response
-}
+// ========================
+// Status and start
+// ========================
 
 func TestStartTOTPEnrollment(t *testing.T) {
-	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
-		t.Run(string(role), func(t *testing.T) {
+	for _, sessions := range []*fakeSessions{memberSessions(account.RoleMember), enrollingSessions()} {
+		t.Run(string(sessions.identity.User.Role), func(t *testing.T) {
 			service := &fakeTOTP{started: totp.Started{Secret: "manual-secret", URI: "otpauth://test"}}
-			sessions := memberSessions(role)
 			var logs bytes.Buffer
-			logger := slog.New(slog.NewTextHandler(&logs, nil))
-			api := New(logger, Services{TOTP: service, Session: sessions})
-			response := requestTOTP(api, http.MethodPost, totpAuthAuthenticated)
+			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{TOTP: service, Session: sessions})
+
+			response := postTOTP(api, "", `{"password":"current password"}`, "http://example.com", totpAuthAuthenticated)
+
 			require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 			assert.JSONEq(t, `{"data":{"secret":"manual-secret","uri":"otpauth://test"}}`, response.Body.String())
 			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
 			assert.Equal(t, sessions.identity.User, service.user)
+			assert.Equal(t, "current password", service.password)
+			assert.Equal(t, netip.MustParseAddr("192.0.2.1"), service.addr, "wrong passwords count per client")
 			assert.Equal(t, 1, service.calls)
-			assert.NotContains(t, logs.String(), service.started.Secret)
-			assert.NotContains(t, logs.String(), service.started.URI)
+			for _, secret := range []string{"current password", service.started.Secret, service.started.URI} {
+				assert.NotContains(t, logs.String(), secret)
+			}
 		})
 	}
 }
@@ -169,24 +207,64 @@ func TestTOTPRequiresSession(t *testing.T) {
 	}
 }
 
-func TestStartTOTPAlreadyOn(t *testing.T) {
-	service := &fakeTOTP{err: totp.ErrAlreadyOn}
-	response := requestTOTP(New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)}), http.MethodPost, totpAuthAuthenticated)
-	require.Equal(t, http.StatusConflict, response.Code)
-	assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/totp-already-on"`)
-	assert.NotContains(t, response.Body.String(), `"secret"`)
+func TestStartTOTPProblems(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		err     error
+		status  int
+		problem string
+	}{
+		{"already on", totp.ErrAlreadyOn, http.StatusConflict, "totp-already-on"},
+		{"code checked", totp.ErrCodeChecked, http.StatusConflict, "totp-code-checked"},
+		{"wrong password", account.ErrInvalidCredentials, http.StatusUnprocessableEntity, "invalid-password"},
+		{"throttled", throttledFor(session.ErrThrottled), http.StatusTooManyRequests, "sign-in-throttled"},
+		// An account removed or deactivated after its session was checked
+		// is answered as signed out.
+		{"account removed", account.ErrUserNotFound, http.StatusUnauthorized, "unauthenticated"},
+		{"account deactivated", account.ErrDeactivated, http.StatusUnauthorized, "unauthenticated"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			service := &fakeTOTP{err: fmt.Errorf("wrapped: %w", c.err), started: totp.Started{Secret: "must-not-reveal"}}
+			api := New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)})
+
+			response := postTOTP(api, "", `{"password":"wrong password"}`, "http://example.com", totpAuthAuthenticated)
+
+			require.Equal(t, c.status, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/`+c.problem+`"`)
+			assertSessionCookieCleared(t, response, c.problem == "unauthenticated")
+			assert.NotContains(t, response.Body.String(), "must-not-reveal")
+			assert.NotContains(t, response.Body.String(), "wrong password")
+			if c.problem == "invalid-password" {
+				assertFieldHoldsDetail(t, response.Body.Bytes(), "body.password")
+			}
+			if c.problem == "sign-in-throttled" {
+				assert.NotEmpty(t, response.Header().Get(retryAfterHeader))
+			}
+		})
+	}
 }
 
-// An account removed or deactivated after its session was checked is
-// answered as signed out.
-func TestStartTOTPAccountEnded(t *testing.T) {
-	service := &fakeTOTP{err: fmt.Errorf("wrapped: %w", account.ErrUserNotFound)}
+func TestStartTOTPRequestGate(t *testing.T) {
+	for _, c := range []struct {
+		name, body, origin string
+		auth               totpAuth
+		status             int
+	}{
+		{"anonymous before parsing", `{`, "http://example.com", totpAuthAnonymous, http.StatusUnauthorized},
+		{"cross origin", `{"password":"pw"}`, "https://untrusted.example", totpAuthAuthenticated, http.StatusForbidden},
+		{"missing password", `{}`, "http://example.com", totpAuthAuthenticated, http.StatusUnprocessableEntity},
+		{"too long", `{"password":"` + strings.Repeat("p", 129) + `"}`, "http://example.com", totpAuthAuthenticated, http.StatusUnprocessableEntity},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			service := &fakeTOTP{}
+			api := New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)})
 
-	response := requestTOTP(New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)}), http.MethodPost, totpAuthAuthenticated)
+			response := postTOTP(api, "", c.body, c.origin, c.auth)
 
-	require.Equal(t, http.StatusUnauthorized, response.Code, response.Body.String())
-	assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/unauthenticated"`)
-	assertSessionCookieCleared(t, response, true)
+			require.Equal(t, c.status, response.Code, response.Body.String())
+			assert.Zero(t, service.calls)
+		})
+	}
 }
 
 func TestTOTPUnexpectedFailure(t *testing.T) {
@@ -194,202 +272,18 @@ func TestTOTPUnexpectedFailure(t *testing.T) {
 		t.Run(method, func(t *testing.T) {
 			service := &fakeTOTP{err: errors.New("private storage cause")}
 			var logs bytes.Buffer
-			logger := slog.New(slog.NewTextHandler(&logs, nil))
-			response := requestTOTP(New(logger, Services{TOTP: service, Session: memberSessions(account.RoleMember)}), method, totpAuthAuthenticated)
+			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{TOTP: service, Session: memberSessions(account.RoleMember)})
+			var response *httptest.ResponseRecorder
+			if method == http.MethodGet {
+				response = requestTOTP(api, method, totpAuthAuthenticated)
+			} else {
+				response = postTOTP(api, "", `{"password":"pw"}`, "http://example.com", totpAuthAuthenticated)
+			}
 			require.Equal(t, http.StatusInternalServerError, response.Code)
 			assert.NotContains(t, response.Body.String(), "private storage cause")
 			assert.Contains(t, logs.String(), "private storage cause")
 		})
 	}
-}
-
-func TestTOTPCrossOrigin(t *testing.T) {
-	service := &fakeTOTP{}
-	api := New(discard, Services{TOTP: service, Session: memberSessions(account.RoleMember)})
-	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp", nil)
-	request.Header.Set("Origin", "https://untrusted.example")
-	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
-	response := httptest.NewRecorder()
-	api.Handler().ServeHTTP(response, request)
-	require.Equal(t, http.StatusForbidden, response.Code)
-	assert.Zero(t, service.calls)
-}
-
-type fakeEnrollment struct {
-	result  session.Confirmed
-	issued  session.Finished
-	err     error
-	current session.Authenticated
-	code    string
-	token   string
-	device  session.Device
-	calls   int
-}
-
-func (f *fakeEnrollment) Confirm(_ context.Context, current session.Authenticated, code string, device session.Device) (session.Confirmed, error) {
-	f.calls++
-	f.current, f.code, f.device = current, code, device
-	return f.result, f.err
-}
-
-func (f *fakeEnrollment) Finish(_ context.Context, current session.Authenticated, token string, device session.Device) (session.Finished, error) {
-	f.calls++
-	f.current, f.token, f.device = current, token, device
-	return f.issued, f.err
-}
-
-func postTOTPConfirm(api *API, body, origin string, auth totpAuth) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/confirm", strings.NewReader(body))
-	request.Header.Set("Content-Type", jsonContentType)
-	request.Header.Set("Origin", origin)
-	request.Header.Set("User-Agent", "inbok-confirm-test/1.0")
-	if auth == totpAuthAuthenticated {
-		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "old-cookie-secret"})
-	}
-	response := httptest.NewRecorder()
-	api.Handler().ServeHTTP(response, request)
-	return response
-}
-
-func TestConfirmTOTPEnrollment(t *testing.T) {
-	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
-		t.Run(string(role), func(t *testing.T) {
-			sessions := memberSessions(role)
-			sessions.reference = checkedReference(t)
-			expires := time.Now().Add(2 * time.Hour)
-			service := &fakeEnrollment{result: session.Confirmed{
-				Session: session.Issued{Secret: "replacement-cookie-secret", State: session.State{ExpiresAt: expires}},
-				BackupCodes: []string{
-					"ABCDE-FGHJK", "MNPQR-STUVW", "XYZ23-45678", "9ABCD-EFGHJ", "KMNPQ-RSTUV",
-					"WXYZ2-34567", "89ABC-DEFGH", "JKMNP-QRSTU", "VWXYZ-23456", "789AB-CDEFG",
-				},
-			}}
-			var logs bytes.Buffer
-			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{Session: sessions, Enrollment: service})
-
-			response := postTOTPConfirm(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
-
-			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-			var body struct {
-				Data totpConfirmation `json:"data"`
-			}
-			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
-			assert.Equal(t, service.result.BackupCodes, body.Data.BackupCodes)
-			assert.Equal(t, session.Authenticated{Identity: sessions.identity, Session: sessions.reference}, service.current)
-			assert.Equal(t, "287082", service.code)
-			assert.Equal(t, session.Device{UserAgent: "inbok-confirm-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, service.device)
-			assert.Equal(t, 1, service.calls)
-			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
-			cookies := response.Result().Cookies()
-			require.Len(t, cookies, 1)
-			cookie := cookies[0]
-			assert.Equal(t, sessionCookieName, cookie.Name)
-			assert.Equal(t, service.result.Session.Secret, cookie.Value)
-			assert.Equal(t, "/", cookie.Path)
-			assert.Empty(t, cookie.Domain)
-			assert.True(t, cookie.Secure)
-			assert.True(t, cookie.HttpOnly)
-			assert.Equal(t, http.SameSiteLaxMode, cookie.SameSite)
-			assert.InDelta(t, int((2*time.Hour)/time.Second), cookie.MaxAge, 2)
-			for _, secret := range []string{"287082", "old-cookie-secret", service.result.Session.Secret, "ABCDE-FGHJK", "MNPQR-STUVW"} {
-				assert.NotContains(t, logs.String(), secret)
-			}
-			assert.NotContains(t, response.Body.String(), service.result.Session.Secret)
-		})
-	}
-}
-
-func TestConfirmTOTPFailures(t *testing.T) {
-	for _, c := range []struct {
-		name    string
-		err     error
-		status  int
-		problem string
-	}{
-		{"invalid code", totp.ErrInvalidCode, http.StatusUnprocessableEntity, "invalid-totp-code"},
-		{"not pending", totp.ErrNotPending, http.StatusConflict, "totp-not-pending"},
-		{"already on", totp.ErrAlreadyOn, http.StatusConflict, "totp-already-on"},
-		{"throttled", totp.ErrThrottled, http.StatusTooManyRequests, "totp-throttled"},
-		{"session revoked during confirmation", session.ErrUnauthenticated, http.StatusUnauthorized, "unauthenticated"},
-		{"commit failed", errors.New("private commit failure"), http.StatusInternalServerError, "internal-error"},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			service := &fakeEnrollment{err: fmt.Errorf("confirmation: %w", c.err), result: session.Confirmed{
-				Session: session.Issued{Secret: "must-not-issue"}, BackupCodes: []string{"must-not-reveal"},
-			}}
-			var logs bytes.Buffer
-			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{Session: memberSessions(account.RoleMember), Enrollment: service})
-
-			response := postTOTPConfirm(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
-
-			require.Equal(t, c.status, response.Code, response.Body.String())
-			assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/`+c.problem+`"`)
-			assertSessionCookieCleared(t, response, c.problem == "unauthenticated")
-			assert.Equal(t, "no-store", response.Header().Get("Cache-Control"))
-			for _, secret := range []string{"287082", "must-not-issue", "must-not-reveal"} {
-				assert.NotContains(t, response.Body.String(), secret)
-				assert.NotContains(t, logs.String(), secret)
-			}
-			assert.NotContains(t, response.Body.String(), "private commit failure")
-			if c.err == totp.ErrInvalidCode {
-				assertCodeFieldHoldsDetail(t, response.Body.Bytes())
-			}
-		})
-	}
-}
-
-func TestConfirmTOTPRequestGate(t *testing.T) {
-	for _, c := range []struct {
-		name, body, origin string
-		auth               totpAuth
-		status             int
-	}{
-		{"anonymous before parsing", `{`, "http://example.com", totpAuthAnonymous, http.StatusUnauthorized},
-		{"cross origin", `{"code":"287082"}`, "https://untrusted.example", totpAuthAuthenticated, http.StatusForbidden},
-		{"missing body", ``, "http://example.com", totpAuthAuthenticated, http.StatusBadRequest},
-		{"missing code", `{}`, "http://example.com", totpAuthAuthenticated, http.StatusUnprocessableEntity},
-		{"wrong type", `{"code":287082}`, "http://example.com", totpAuthAuthenticated, http.StatusUnprocessableEntity},
-		{"too long", `{"code":"1234567"}`, "http://example.com", totpAuthAuthenticated, http.StatusUnprocessableEntity},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			service := &fakeEnrollment{}
-			api := New(discard, Services{Session: memberSessions(account.RoleMember), Enrollment: service})
-
-			response := postTOTPConfirm(api, c.body, c.origin, c.auth)
-
-			require.Equal(t, c.status, response.Code, response.Body.String())
-			assert.Zero(t, service.calls)
-			assert.NotContains(t, response.Body.String(), "287082")
-		})
-	}
-}
-
-func TestConfirmTOTPOpenAPI(t *testing.T) {
-	doc := New(discard, Services{}).api.OpenAPI()
-	path := doc.Paths["/totp/confirm"]
-	require.NotNil(t, path)
-	op := path.Post
-	require.NotNil(t, op)
-	assert.Equal(t, "confirmTOTPEnrollment", op.OperationID)
-	assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
-	assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
-	for _, status := range []int{http.StatusOK, http.StatusUnauthorized, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests} {
-		require.NotNil(t, op.Responses[strconv.Itoa(status)])
-	}
-	require.NotNil(t, op.Responses["200"].Headers["Set-Cookie"])
-	input := doc.Components.Schemas.Map()["TotpConfirmationCode"]
-	require.NotNil(t, input)
-	require.NotNil(t, input.Properties["code"])
-	assert.True(t, input.Properties["code"].WriteOnly)
-	result := doc.Components.Schemas.Map()["TotpConfirmation"]
-	require.NotNil(t, result)
-	codes := result.Properties["backupCodes"]
-	require.NotNil(t, codes)
-	assert.False(t, codes.Nullable)
-	require.NotNil(t, codes.MinItems)
-	require.NotNil(t, codes.MaxItems)
-	assert.Equal(t, 10, *codes.MinItems)
-	assert.Equal(t, 10, *codes.MaxItems)
 }
 
 // ========================
@@ -483,6 +377,21 @@ func TestCheckTOTPCodeRequestGate(t *testing.T) {
 // ========================
 // Enrollment finish
 // ========================
+
+type fakeEnrollment struct {
+	issued  session.Finished
+	err     error
+	current session.Authenticated
+	token   string
+	device  session.Device
+	calls   int
+}
+
+func (f *fakeEnrollment) Finish(_ context.Context, current session.Authenticated, token string, device session.Device) (session.Finished, error) {
+	f.calls++
+	f.current, f.token, f.device = current, token, device
+	return f.issued, f.err
+}
 
 func TestFinishTOTPEnrollment(t *testing.T) {
 	sessions := enrollingSessions()
@@ -625,74 +534,9 @@ func TestShowWaitingBackupCodesProblems(t *testing.T) {
 	}
 }
 
-func TestTOTPEnrollmentStepsOpenAPI(t *testing.T) {
-	doc := New(discard, Services{}).api.OpenAPI()
-	for _, c := range []struct {
-		path, id   string
-		statuses   []int
-		setsCookie bool
-	}{
-		{"/totp/enrollment/code", "checkTOTPEnrollmentCode", []int{200, 401, 409, 422, 429}, false},
-		{"/totp/enrollment/finish", "finishTOTPEnrollment", []int{200, 401, 409}, true},
-		{"/totp/backup-codes/waiting", "showWaitingTOTPBackupCodes", []int{200, 401, 409, 422, 429}, false},
-	} {
-		t.Run(c.id, func(t *testing.T) {
-			path := doc.Paths[c.path]
-			require.NotNil(t, path)
-			op := path.Post
-			require.NotNil(t, op)
-			assert.Equal(t, c.id, op.OperationID)
-			assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
-			assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
-			for _, status := range c.statuses {
-				require.NotNil(t, op.Responses[strconv.Itoa(status)], "status %d", status)
-			}
-			assert.Equal(t, c.setsCookie, op.Responses["200"].Headers["Set-Cookie"] != nil)
-		})
-	}
-
-	schemas := doc.Components.Schemas.Map()
-	for name, field := range map[string]string{"PasswordProof": "password", "TotpEnrollmentCode": "code"} {
-		input := schemas[name]
-		require.NotNil(t, input, name)
-		require.NotNil(t, input.Properties[field], name)
-		assert.True(t, input.Properties[field].WriteOnly, name)
-	}
-}
-
 // ========================
 // Backup-code replacement
 // ========================
-
-// tenCodes is a backup-code set a fake returns.
-var tenCodes = []string{
-	"ABCDE-FGHJK", "MNPQR-STUVW", "XYZ23-45678", "9ABCD-EFGHJ", "KMNPQ-RSTUV",
-	"WXYZ2-34567", "89ABC-DEFGH", "JKMNP-QRSTU", "VWXYZ-23456", "789AB-CDEFG",
-}
-
-// postTOTP sends body as JSON to the two-factor operation at path, below
-// /api/v0/totp.
-func postTOTP(api *API, path, body, origin string, auth totpAuth) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp"+path, strings.NewReader(body))
-	request.Header.Set("Content-Type", jsonContentType)
-	request.Header.Set("Origin", origin)
-	request.Header.Set("User-Agent", "inbok-totp-test/1.0")
-	if auth == totpAuthAuthenticated {
-		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
-	}
-	response := httptest.NewRecorder()
-	api.Handler().ServeHTTP(response, request)
-	return response
-}
-
-// confirmedSessions is an account with two-factor on.
-func confirmedSessions(role account.Role) *fakeSessions {
-	sessions := memberSessions(role)
-	if role == account.RoleAdmin {
-		sessions.identity.Access, sessions.identity.TOTPRequired = session.AccessAdmin, false
-	}
-	return sessions
-}
 
 type fakeBackups struct {
 	codes  totp.Codes
@@ -835,31 +679,45 @@ func TestFinishBackupReplacementProblems(t *testing.T) {
 	}
 }
 
-func TestBackupReplacementOpenAPI(t *testing.T) {
+func TestTOTPOpenAPI(t *testing.T) {
 	doc := New(discard, Services{}).api.OpenAPI()
 	for _, c := range []struct {
-		path, id string
-		statuses []int
+		method, path, id string
+		access           session.Access
+		statuses         []int
+		setsCookie       bool
 	}{
-		{"/totp/backup-codes", "replaceTOTPBackupCodes", []int{200, 401, 409, 422, 429}},
-		{"/totp/backup-codes/finish", "finishTOTPBackupCodeReplacement", []int{200, 401, 409}},
+		{http.MethodGet, "/totp", "getTOTPStatus", session.AccessMember, []int{200, 401}, false},
+		{http.MethodPost, "/totp", "startTOTPEnrollment", session.AccessMember, []int{201, 401, 409, 422, 429}, false},
+		{http.MethodPost, "/totp/enrollment/code", "checkTOTPEnrollmentCode", session.AccessMember, []int{200, 401, 409, 422, 429}, false},
+		{http.MethodPost, "/totp/enrollment/finish", "finishTOTPEnrollment", session.AccessMember, []int{200, 401, 409}, true},
+		{http.MethodPost, "/totp/backup-codes/waiting", "showWaitingTOTPBackupCodes", session.AccessMember, []int{200, 401, 409, 422, 429}, false},
+		{http.MethodDelete, "/totp/enrollment", "cancelTOTPEnrollment", session.AccessMember, []int{200, 401, 409}, false},
+		{http.MethodPost, "/totp/backup-codes", "replaceTOTPBackupCodes", session.AccessMember, []int{200, 401, 409, 422, 429}, false},
+		{http.MethodPost, "/totp/backup-codes/finish", "finishTOTPBackupCodeReplacement", session.AccessMember, []int{200, 401, 409}, false},
+		{http.MethodPost, "/totp/disable", "disableTOTP", session.AccessMember, []int{200, 401, 403, 409, 422, 429}, false},
 	} {
 		t.Run(c.id, func(t *testing.T) {
 			path := doc.Paths[c.path]
 			require.NotNil(t, path)
-			op := path.Post
+			op := map[string]*huma.Operation{http.MethodGet: path.Get, http.MethodPost: path.Post, http.MethodDelete: path.Delete}[c.method]
 			require.NotNil(t, op)
 			assert.Equal(t, c.id, op.OperationID)
-			assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
+			assert.Equal(t, c.access, op.Metadata[accessKey])
 			assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
 			for _, status := range c.statuses {
 				require.NotNil(t, op.Responses[strconv.Itoa(status)], "status %d", status)
 			}
+			success := op.Responses[strconv.Itoa(c.statuses[0])]
+			assert.Equal(t, c.setsCookie, success.Headers["Set-Cookie"] != nil)
 		})
 	}
 
 	schemas := doc.Components.Schemas.Map()
-	for name, field := range map[string]string{"TotpReplacementCode": "code", "BackupCodesToken": "token"} {
+	for name, field := range map[string]string{
+		"PasswordProof": "password", "TotpEnrollmentCode": "code", "BackupCodesToken": "token",
+		"TotpReplacementCode": "code", "TotpDisableCode": "code",
+	} {
 		input := schemas[name]
 		require.NotNil(t, input, name)
 		require.NotNil(t, input.Properties[field], name)
@@ -892,16 +750,7 @@ func (f *fakeDisabler) Disable(_ context.Context, userID int64, code string) err
 }
 
 func postDisableTOTP(api *API, body, origin string, auth totpAuth) *httptest.ResponseRecorder {
-	request := httptest.NewRequest(http.MethodPost, "/api/v0/totp/disable", strings.NewReader(body))
-	request.Header.Set("Content-Type", jsonContentType)
-	request.Header.Set("Origin", origin)
-	if auth == totpAuthAuthenticated {
-		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session-secret"})
-	}
-
-	response := httptest.NewRecorder()
-	api.Handler().ServeHTTP(response, request)
-	return response
+	return postTOTP(api, "/disable", body, origin, auth)
 }
 
 func TestDisableTOTP(t *testing.T) {
@@ -945,9 +794,7 @@ func TestDisableTOTPProblems(t *testing.T) {
 			service := &fakeDisabler{err: fmt.Errorf("turn off: %w", c.err)}
 			sessions := memberSessions(account.RoleMember)
 			if c.err == totp.ErrDisableForbidden {
-				sessions = memberSessions(account.RoleAdmin)
-				sessions.identity.Access = session.AccessAdmin
-				sessions.identity.TOTPRequired = false
+				sessions = confirmedSessions(account.RoleAdmin)
 			}
 			api := New(discard, Services{Session: sessions, Disabler: service})
 
@@ -992,24 +839,9 @@ func TestDisableTOTPRequestGate(t *testing.T) {
 	}
 }
 
-func TestDisableTOTPOpenAPI(t *testing.T) {
-	doc := New(discard, Services{}).api.OpenAPI()
-	path := doc.Paths["/totp/disable"]
-	require.NotNil(t, path)
-	op := path.Post
-	require.NotNil(t, op)
-	assert.Equal(t, "disableTOTP", op.OperationID)
-	assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
-	assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
-	for _, status := range []int{http.StatusOK, http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests} {
-		require.NotNil(t, op.Responses[strconv.Itoa(status)])
-	}
-	input := doc.Components.Schemas.Map()["TotpDisableCode"]
-	require.NotNil(t, input)
-	require.NotNil(t, input.Properties["code"])
-	assert.True(t, input.Properties["code"].WriteOnly)
-	assert.Nil(t, op.Responses["200"].Headers["Set-Cookie"])
-}
+// ========================
+// Enrollment cancellation
+// ========================
 
 func deleteTOTPEnrollment(api *API, origin string, auth totpAuth) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodDelete, "/api/v0/totp/enrollment", nil)
@@ -1023,11 +855,11 @@ func deleteTOTPEnrollment(api *API, origin string, auth totpAuth) *httptest.Resp
 }
 
 func TestCancelTOTPEnrollment(t *testing.T) {
-	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
-		t.Run(string(role), func(t *testing.T) {
+	for _, sessions := range []*fakeSessions{memberSessions(account.RoleMember), enrollingSessions()} {
+		t.Run(string(sessions.identity.User.Role), func(t *testing.T) {
 			service := &fakeTOTP{}
 			var logs bytes.Buffer
-			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{TOTP: service, Session: memberSessions(role)})
+			api := New(slog.New(slog.NewTextHandler(&logs, nil)), Services{TOTP: service, Session: sessions})
 
 			response := deleteTOTPEnrollment(api, "http://example.com", totpAuthAuthenticated)
 
@@ -1092,21 +924,4 @@ func TestCancelTOTPRequestGate(t *testing.T) {
 			assert.Zero(t, service.calls)
 		})
 	}
-}
-
-func TestCancelTOTPOpenAPI(t *testing.T) {
-	doc := New(discard, Services{}).api.OpenAPI()
-	path := doc.Paths["/totp/enrollment"]
-	require.NotNil(t, path)
-	op := path.Delete
-	require.NotNil(t, op)
-	assert.Equal(t, "cancelTOTPEnrollment", op.OperationID)
-	assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
-	assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
-	assert.Nil(t, op.RequestBody, "cancellation needs no code or account selector")
-	assert.Empty(t, op.Parameters)
-	for _, status := range []int{http.StatusOK, http.StatusUnauthorized, http.StatusConflict} {
-		require.NotNil(t, op.Responses[strconv.Itoa(status)])
-	}
-	assert.Nil(t, op.Responses["200"].Headers["Set-Cookie"])
 }

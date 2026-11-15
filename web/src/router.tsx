@@ -70,6 +70,6 @@ declare module "@tanstack/react-router" {
     // is that list.
     fromList?: boolean;
     // What the two-factor page just changed, for Security to report.
-    twoFactorChange?: "off";
+    twoFactorChange?: "on" | "off" | "canceled";
   }
 }

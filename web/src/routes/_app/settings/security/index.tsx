@@ -37,9 +37,13 @@ function Security(): ReactElement {
   const handedOver = useLocation({ select: (location) => location.state.twoFactorChange });
   const [change] = useState(handedOver);
   const twoFactor = useGetTOTPStatus({ query: { networkMode: "always" } });
-  // A notice the status read contradicts, e.g. "off" from a page that
-  // turned it off before another tab turned it on again, says nothing true.
-  const notice = change && twoFactor.data?.data.status !== "on" ? changeNotice[change] : undefined;
+  const nowOn = twoFactor.data && twoFactor.data.data.status === "on";
+  // A notice the status read contradicts, e.g. "on" from another tab's
+  // turn-off since, says nothing true.
+  const notice =
+    change && (nowOn === undefined || nowOn === (change === "on"))
+      ? changeNotice[change]
+      : undefined;
   const [ending, setEnding] = useState(false);
   const [sending, setSending] = useState(false);
   const signOut = useDeleteCurrentSession({

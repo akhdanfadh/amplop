@@ -30,14 +30,13 @@ const (
 
 type totpService interface {
 	Status(ctx context.Context, userID int64) (totp.Status, error)
-	Start(ctx context.Context, user account.User) (totp.Started, error)
+	Start(ctx context.Context, user account.User, password string, addr netip.Addr) (totp.Started, error)
 	VerifyCode(ctx context.Context, userID int64, code string) (totp.Codes, error)
 	ShowWaiting(ctx context.Context, user account.User, password string, addr netip.Addr) (totp.Codes, error)
 	Cancel(ctx context.Context, userID int64) error
 }
 
 type enrollmentService interface {
-	Confirm(ctx context.Context, current session.Authenticated, code string, device session.Device) (session.Confirmed, error)
 	Finish(ctx context.Context, current session.Authenticated, token string, device session.Device) (session.Finished, error)
 }
 
@@ -68,7 +67,6 @@ func registerTOTP(api huma.API, service totpService, enrollment enrollmentServic
 	registerTOTPStatus(api, handler)
 	registerTOTPEnrollment(api, handler)
 	registerTOTPCancellation(api, handler)
-	registerTOTPConfirmation(api, handler)
 	registerTOTPCodeCheck(api, handler)
 	registerTOTPFinish(api, handler)
 	registerWaitingBackupCodes(api, handler)
@@ -196,7 +194,7 @@ func registerTOTPEnrollment(api huma.API, handler totpHandler) {
 		Path:          totpPath,
 		Summary:       "Start Two-Factor Enrollment",
 		Tags:          []string{tagTwoFactor},
-		Description:   "Starts an enrollment, replacing an unfinished one and any backup codes waiting for it.",
+		Description:   "Checks the password, then starts an enrollment, or returns the same secret for one started in the last 15 minutes. An older unfinished enrollment is replaced. Both answer 201. Wrong passwords count toward the sign-in limits.",
 		DefaultStatus: http.StatusCreated,
 		Metadata:      map[string]any{accessKey: session.AccessMember},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
@@ -204,9 +202,9 @@ func registerTOTPEnrollment(api huma.API, handler totpHandler) {
 	}, handler.handleStartTOTPEnrollment)
 }
 
-func (h totpHandler) handleStartTOTPEnrollment(ctx context.Context, _ *struct{}) (*output[totpEnrollment], error) {
+func (h totpHandler) handleStartTOTPEnrollment(ctx context.Context, in *passwordProofInput) (*output[totpEnrollment], error) {
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
-	started, err := h.service.Start(ctx, user)
+	started, err := h.service.Start(ctx, user, in.Body.Password, in.addr)
 	if err != nil {
 		return nil, totpEnrollmentProblem(err)
 	}
@@ -215,10 +213,14 @@ func (h totpHandler) handleStartTOTPEnrollment(ctx context.Context, _ *struct{})
 
 func totpEnrollmentResponses(api huma.API) map[string]*huma.Response {
 	responses := totpStatusResponses(api)
-	maps.Copy(responses, problemResponses(api, http.StatusConflict))
+	maps.Copy(responses, problemResponses(api, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests))
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
-	conflict.Description = "Two-factor authentication is already on."
-	conflict.Content[problemContentType].Example = totpEnrollmentProblem(totp.ErrAlreadyOn)
+	conflict.Description = "Two-factor authentication is already on, or the enrollment's code was already checked."
+	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
+		"alreadyOn":   {Value: totpEnrollmentProblem(totp.ErrAlreadyOn)},
+		"codeChecked": {Value: totpEnrollmentProblem(totp.ErrCodeChecked)},
+	}
+	passwordProofResponses(responses)
 	return responses
 }
 
@@ -263,7 +265,7 @@ func registerTOTPCancellation(api huma.API, handler totpHandler) {
 		DefaultStatus: http.StatusOK,
 		Metadata:      map[string]any{accessKey: session.AccessMember},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
-		Responses:     totpEnrollmentResponses(api),
+		Responses:     totpCancellationResponses(api),
 	}, handler.handleCancelTOTPEnrollment)
 }
 
@@ -277,101 +279,13 @@ func (h totpHandler) handleCancelTOTPEnrollment(ctx context.Context, _ *struct{}
 	return respondData(totpStatus{Status: totp.StateOff}), nil
 }
 
-// ========================
-// TOTP confirmation
-// ========================
-
-type totpConfirmationCode struct {
-	// Keep leading zeros; malformed codes within this bound count as attempts.
-	Code string `json:"code" writeOnly:"true" maxLength:"6" doc:"Six-digit code from the pending authenticator."`
-}
-
-type totpConfirmation struct {
-	BackupCodes []string `json:"backupCodes" nullable:"false" minItems:"10" maxItems:"10" doc:"Shown once. Save these codes before leaving this page."`
-}
-
-// totpConfirmationInput adds the device details the replacement session keeps.
-type totpConfirmationInput struct {
-	device session.Device
-	Body   totpConfirmationCode
-}
-
-// Resolve reads the device details the replacement session keeps.
-func (in *totpConfirmationInput) Resolve(ctx huma.Context) []error {
-	return resolveDevice(ctx, &in.device)
-}
-
-type totpConfirmationOutput struct {
-	SetCookie http.Cookie `header:"Set-Cookie"`
-	Body      response[totpConfirmation]
-}
-
-func registerTOTPConfirmation(api huma.API, handler totpHandler) {
-	huma.Register(api, huma.Operation{
-		OperationID: "confirmTOTPEnrollment",
-		Method:      http.MethodPost,
-		Path:        totpPath + "/confirm",
-		Summary:     "Confirm Two-Factor Enrollment",
-		Tags:        []string{tagTwoFactor},
-		Description: "Activates the authenticator, ends all existing sessions, and issues a replacement session cookie. Backup codes are returned once.",
-		Metadata:    map[string]any{accessKey: session.AccessMember},
-		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
-		Responses:   totpConfirmationResponses(api),
-	}, handler.handleConfirmTOTPEnrollment)
-}
-
-func (h totpHandler) handleConfirmTOTPEnrollment(ctx context.Context, in *totpConfirmationInput) (*totpConfirmationOutput, error) {
-	current := ctx.Value(sessionKey{}).(session.Authenticated)
-	confirmed, err := h.enrollment.Confirm(ctx, current, in.Body.Code, in.device)
-	if err != nil {
-		return nil, totpConfirmationProblem(err)
-	}
-
-	// Confirm returns only after the factor, backup hashes, and session commit.
-	return &totpConfirmationOutput{
-		SetCookie: sessionCookie(confirmed.Session.Secret, int(time.Until(confirmed.Session.State.ExpiresAt)/time.Second)),
-		Body:      respondData(totpConfirmation{BackupCodes: confirmed.BackupCodes}).Body,
-	}, nil
-}
-
-func totpConfirmationResponses(api huma.API) map[string]*huma.Response {
+func totpCancellationResponses(api huma.API) map[string]*huma.Response {
 	responses := totpStatusResponses(api)
-	maps.Copy(responses, problemResponses(api, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests))
-
+	maps.Copy(responses, problemResponses(api, http.StatusConflict))
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
-	conflict.Description = "Enrollment has not started or the authenticator is already confirmed."
-	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
-		"notPending": {Value: totpConfirmationProblem(totp.ErrNotPending)},
-		"alreadyOn":  {Value: totpConfirmationProblem(totp.ErrAlreadyOn)},
-	}
-
-	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
-	invalid.Description = "The request inputs or authenticator code are invalid."
-	invalid.Content[problemContentType].Examples = map[string]*huma.Example{
-		"invalidCode":  {Value: totpConfirmationProblem(totp.ErrInvalidCode)},
-		"invalidInput": {Value: requestProblem(http.StatusUnprocessableEntity)},
-	}
-
-	throttled := responses[strconv.Itoa(http.StatusTooManyRequests)]
-	throttled.Description = "Too many recent failed code attempts for this account."
-	throttled.Content[problemContentType].Example = totpConfirmationProblem(totp.ErrThrottled)
+	conflict.Description = "Two-factor authentication is already on."
+	conflict.Content[problemContentType].Example = totpEnrollmentProblem(totp.ErrAlreadyOn)
 	return responses
-}
-
-func totpConfirmationProblem(err error) error {
-	switch {
-	case errors.Is(err, session.ErrUnauthenticated):
-		return unauthenticatedProblem()
-	case errors.Is(err, totp.ErrNotPending):
-		return newProblem(http.StatusConflict, totpNotPendingType, "Enrollment not started", "Start authenticator enrollment before confirming a code.")
-	case errors.Is(err, totp.ErrInvalidCode):
-		return newProblem(http.StatusUnprocessableEntity, invalidTOTPCodeType, "Invalid authenticator code", pendingTOTPCodeMessage,
-			inputError{Location: "body.code", Message: pendingTOTPCodeMessage})
-	case errors.Is(err, totp.ErrThrottled):
-		return totpThrottleProblem(err)
-	default:
-		return totpEnrollmentProblem(err)
-	}
 }
 
 // ========================

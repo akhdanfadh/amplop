@@ -135,6 +135,7 @@ export function BackupCodesSection({
             working={checkingLabel}
             schema={ReplacementCodeSchema}
             mutation={replace}
+            focusOnShow
             onDone={(result) => showCodes(result.data)}
             onRefused={recheck}
           >
@@ -146,6 +147,9 @@ export function BackupCodesSection({
       )}
       {step === "codes" && codes && (
         <CodesStep
+          kind="replace"
+          // Under this section's heading.
+          headingLevel={3}
           codes={codes.backupCodes}
           saving={finish.isPending}
           error={finish.error}

@@ -203,12 +203,6 @@ func TestDeactivatedWrites(t *testing.T) {
 				return nil
 			})
 		}, account.ErrUserNotFound},
-		{"confirm enrollment", func(t *testing.T) error {
-			return f.db.ConfirmTOTP(t.Context(), f.member, live.TokenHash, func(session.EnrollmentState) (session.EnrollmentChange, error) {
-				called(t)
-				return session.EnrollmentChange{}, nil
-			})
-		}, session.ErrNotFound},
 		{"finish enrollment", func(t *testing.T) error {
 			return f.db.FinishTOTP(t.Context(), f.member, live.TokenHash, func(session.EnrollmentState) (session.EnrollmentChange, error) {
 				called(t)

@@ -109,7 +109,7 @@ Put shared code in the folder for its responsibility:
 - `src/features/auth`: sign-in form, validation, session messages, the code
   step's rule for when a sign-in has ended, and account cache cleanup.
 - `src/features/probe`: the probe demo form.
-- `src/features/totp`: authenticator enrollment and confirmation, backup-code
+- `src/features/totp`: two-factor setup (`useSetupFlow`), backup-code
   replacement, turning it off, and Security's two-factor section.
 - `src/features/sessions`: the signed-in browser list and ending sessions.
 - `src/features/email-verification`: the Security page's Email section, the
@@ -342,41 +342,50 @@ two-factor row has two states: on, with the "Two-factor on" badge, the
 backup codes left, and "Manage two-factor authentication"; or off, with
 "Set up two-factor authentication", which also continues an unfinished
 setup. Both open `/settings/security/two-factor`, which has a "‹ Security"
-link back. Turning two-factor off returns to Security, whose notice says
-what changed (history state `twoFactorChange`). Security shows it once: it
-clears the state from the history entry, so Back or a reload does not
-repeat it, and drops a notice its own status read contradicts. Once the
-page has shown two-factor on, any status read that finds it off returns to
-Security the same way, e.g. after a turn-off whose answer was lost, or one
-from another tab. A 401 from any read or write on the page clears the
-account cache and opens sign-in.
+link back. Finishing setup, canceling it, and turning two-factor off return
+to Security, whose notice says what changed (history state
+`twoFactorChange`). Security shows it once: it clears the state from the
+history entry, so Back or a reload does not repeat it, and drops a notice
+its own status read contradicts. Once the page has shown two-factor on, any
+status read that finds it off returns to Security the same way, e.g. after a
+turn-off whose answer was lost, or one from another tab. A 401 from any read
+or write on the page clears the account cache and opens sign-in.
 
-The two-factor page starts enrollment on request and renders the QR code
-locally, with a manual setup key as an alternative. A six-digit authenticator
-code confirms it, renews this session, and ends other sessions. Backup codes
-are shown once with copy and download actions. Leaving before saving them
-prompts for confirmation. The secret and codes stay in memory; closing or
-reloading loses them and may leave an inactive pending enrollment. Canceling
-sends a deletion request and clears the setup key only after success. A
-rejected cancellation keeps setup available; an uncertain outcome requires
-checking status before continuing. Starting again replaces a pending setup key.
-An uncertain confirmation requires checking status before another attempt. If
-confirmation succeeded but its response was lost, its backup codes cannot be
-read again; the page shows two-factor on, where they can be replaced.
+Setup (`useSetupFlow`) follows the server's status, so a reload or another
+tab lands on the right step; only what the server shows after the password
+stays in memory:
+
+1. The password, before any secret shows, with what the step needs as the
+   field's description; a hidden username field lets a password manager
+   offer the right one. Wrong passwords count against sign-in's limits.
+2. The QR code, drawn locally, and the setup key in groups of four, then the
+   first code from the app. Checking it leaves two-factor off.
+3. The ten backup codes, with copy and download, then "I've saved these
+   codes", which turns two-factor on, signs out the other browsers, and
+   renews this browser's session; every query is reset with it, so nothing
+   read under the old cookie stays, even when the member left meanwhile.
+
+A reload asks for the password again, then shows the same QR code or the
+same codes, for 15 minutes from the start. After that the page says the
+setup expired and to remove the inbok entry from the app. Cancel setup sits
+on steps 2 and 3; "I've saved these codes" waits while it runs. Only step 3 warns before leaving, with `LeaveWarning` ("Leave
+before two-factor authentication is on?"), because someone may think it is
+on. A conflict or a lost answer rereads the status, which the page then
+follows; a code another tab showed again asks for the password here too.
 
 While two-factor is on, the page shows the backup codes left and "Replace
-backup codes": a fresh authenticator code makes a new set, shown with copy
-and download, whose "I've saved these codes" swaps it in; the old codes
-work until then, and leaving first asks, with `LeaveWarning`. The new codes
-show only in that answer: the server never shows them again while
-two-factor is on, since only the authenticator may hand out a new second
-factor, so codes left unsaved, e.g. after a reload, mean making another
-set. Members turn two-factor off on the page: the red button opens the code
-field, with "Use a backup code" as at sign-in, and the code confirms it, so
-no dialog asks again; the answer's status takes the page back to Security.
-A refused turn-off (403) rereads the session, whose role the page reads
-live, so a member made an administrator since sees that administrators
-must keep it on.
+backup codes": a fresh authenticator code makes a new set, shown with the
+same step 3, whose "I've saved these codes" swaps it in; the old codes work
+until then, and its leave warning says so. The new codes show only in that
+answer: the server never shows them again while two-factor is on, since
+only the authenticator may hand out a new second factor, so codes left
+unsaved, e.g. after a reload, mean making another set. Members turn
+two-factor off on the page: the red button opens the code field, with "Use
+a backup code" as at sign-in, and the code confirms it, so no dialog asks
+again; the answer's status takes the page back to Security. A refused
+turn-off (403) rereads the session, whose role the page reads live, so a
+member made an administrator since sees that administrators must keep it
+on.
 
 Security opens with the account's email address and whether it is
 verified. "Send verification link" emails a link that expires in 24 hours.

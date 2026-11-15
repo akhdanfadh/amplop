@@ -17,6 +17,40 @@ import (
 	"inbok/internal/totp"
 )
 
+// RFC 6238's SHA-1 test secret; code 287082 matches step 1 at Unix second 59.
+const vectorSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+
+type codeOpener struct {
+	keyID string
+	owner string
+	data  []byte
+	err   error
+	calls int
+}
+
+func (f *codeOpener) Open(keyID string, data []byte, owner string) ([]byte, error) {
+	f.calls++
+	f.keyID, f.data, f.owner = keyID, data, owner
+	return []byte(vectorSecret), f.err
+}
+
+type codeAttemptsFake struct {
+	calls    int
+	userID   int64
+	err      error
+	released []int64
+}
+
+func (f *codeAttemptsFake) Begin(_ context.Context, userID int64) (int64, error) {
+	f.calls++
+	f.userID = userID
+	return 7, f.err
+}
+
+func (f *codeAttemptsFake) Release(_ context.Context, id int64) {
+	f.released = append(f.released, id)
+}
+
 type codeSignInStorage struct {
 	state                        CodeSignInState
 	change                       *CodeSignInChange
@@ -44,15 +78,15 @@ func (f *codeSignInStorage) CompleteSignIn(_ context.Context, _ int64, _ [sha256
 	return nil
 }
 
-func codeSignInFixture() (*CodeSignIn, *codeSignInStorage, *enrollmentAttempts, string) {
+func codeSignInFixture() (*CodeSignIn, *codeSignInStorage, *codeAttemptsFake, string) {
 	clock := &fakeClock{now: time.Unix(59, 0).UTC()}
 	secret, challenge := newChallenge(42, clock.Now)
 	store := &codeSignInStorage{state: CodeSignInState{
 		Challenge: challenge,
 		Factor:    &totp.Factor{KeyID: "1", Ciphertext: []byte("encrypted"), ConfirmedAt: &clock.now, LastStep: -1},
 	}}
-	attempts := &enrollmentAttempts{}
-	return NewCodeSignIn(store, &enrollmentOpener{}, totp.NewVerifier(clock.Now), attempts, clock.Now), store, attempts, secret
+	attempts := &codeAttemptsFake{}
+	return NewCodeSignIn(store, &codeOpener{}, totp.NewVerifier(clock.Now), attempts, clock.Now), store, attempts, secret
 }
 
 func TestCodeSignInTOTP(t *testing.T) {
@@ -183,15 +217,15 @@ func TestCodeSignInUnchecked(t *testing.T) {
 	failure := errors.New("key unavailable")
 	for _, c := range []struct {
 		name string
-		edit func(*codeSignInStorage, *enrollmentOpener)
+		edit func(*codeSignInStorage, *codeOpener)
 		want error
 	}{
-		{"other user's challenge", func(s *codeSignInStorage, _ *enrollmentOpener) { s.state.Challenge.UserID++ }, ErrInvalidChallenge},
-		{"decryption", func(_ *codeSignInStorage, o *enrollmentOpener) { o.err = failure }, failure},
+		{"other user's challenge", func(s *codeSignInStorage, _ *codeOpener) { s.state.Challenge.UserID++ }, ErrInvalidChallenge},
+		{"decryption", func(_ *codeSignInStorage, o *codeOpener) { o.err = failure }, failure},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			service, store, attempts, secret := codeSignInFixture()
-			c.edit(store, service.encryption.(*enrollmentOpener))
+			c.edit(store, service.encryption.(*codeOpener))
 
 			issued, err := service.Complete(t.Context(), secret, "287082", Device{})
 

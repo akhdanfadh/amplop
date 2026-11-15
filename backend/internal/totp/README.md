@@ -5,7 +5,9 @@ The enrollment service encrypts secrets before passing them to storage.
 PostgreSQL stores the encrypted factor and serializes updates by locking its
 user. Enrollment has three steps, each its own request:
 
-1. `POST /api/v0/totp` starts an enrollment, replacing an unfinished one.
+1. `POST /api/v0/totp` with the account's password starts an enrollment, or
+   continues one started in the last 15 minutes by returning the same
+   secret. Nothing secret shows without the password.
 2. `POST /api/v0/totp/enrollment/code` checks a code from the new
    authenticator, then makes ten backup codes that wait, and returns them
    with a one-time token. Two-factor stays off.
@@ -14,11 +16,6 @@ user. Enrollment has three steps, each its own request:
 
 `GET /api/v0/totp` reads the status: `off`, `pending`, `expired`, or `on`,
 with `backupCodesWaiting` when codes wait for step 3 or for a replacement.
-
-The web app still turns two-factor on with the older
-`POST /api/v0/totp/confirm`, which takes a code and returns the backup codes
-in one step ("Confirming with a code alone"), until its setup moves to these
-steps.
 
 The verifier reads a supplied clock and returns the matched 30-second step.
 A successful check alone does not consume a code: the caller must save that
@@ -32,8 +29,8 @@ step atomically with its action.
   `account` for user and role types; it never imports `session`.
 - `session` already imports `account` and may import `totp`. It owns
   password sign-in, sign-in challenges, the code sign-in step, the password
-  check `totp` asks for, and finishing or confirming enrollment. Both belong
-  here because they replace the current session and end the other sessions.
+  check `totp` asks for, and finishing enrollment. Finishing belongs here because
+  it replaces the current session and ends the other sessions.
   Session-secret generation stays private to this package.
 - `session.Enrollment` declares an update-function storage method for
   finishing: storage locks and loads the user, the current session, the
@@ -73,10 +70,9 @@ for v1.5.0. These checks do not establish that the package has no defects.
 `Throttle` defines the per-user limits. PostgreSQL locks the user while it
 cleans that user's expired attempts, counts the rest with `attemptlimit.Wait`,
 and saves a reservation only if one more fits, in one transaction. The enrollment
-code check, enrollment confirmation, code sign-in, backup-code replacement,
-and turn-off use this limiter. The password asked before waiting codes show
-again counts against sign-in's limits instead
-(`session.Service.VerifyPassword`, ADR024).
+code check, code sign-in, backup-code replacement, and turn-off use this
+limiter. The password asked before a secret shows counts against sign-in's
+limits instead (`session.Service.VerifyPassword`, ADR024).
 
 Reserve an attempt with `Begin` before checking a code. Pending checks count
 against both limits, so parallel requests cannot all pass an earlier count.
@@ -89,8 +85,7 @@ verification.
 The policy allows 5 failed or pending attempts per 15 minutes and 20 per 24
 hours. Attempts exactly at a window's cutoff no longer count. TOTP codes,
 backup codes, and replayed codes share the same allowance across sign-in,
-the enrollment code check, enrollment confirmation, backup-code replacement,
-and turn-off. Starting enrollment
+the enrollment code check, backup-code replacement, and turn-off. Starting enrollment
 again does not reset that allowance.
 
 These values are product policy. OWASP recommends strict OTP attempt limits
@@ -127,8 +122,8 @@ preserve their bytes; backup codes are normalized by `totp` before hashing.
 these hashes before taking a database write lock. Return display codes only
 after the operation saving their hashes commits. `VerifyBackupCode` performs
 comparison only. The enrollment code check and replacement store the hashes as a
-waiting set; finishing makes them active; confirmation stores them active at
-once; code sign-in consumes matched rows atomically.
+waiting set; finishing makes them active; code sign-in consumes matched rows
+atomically.
 
 Salted hashes require verifying the user's remaining hashes, up to ten, rather
 than looking up a fast hash. A fast lookup digest would also let an attacker
@@ -179,17 +174,27 @@ including repeated cancellation. A confirmed authenticator returns HTTP 409
 
 ## Enrollment steps
 
-### Start
+### Start or continue
 
-`Service.Start` makes and seals a new secret before the owner's lock. Under
-it, a confirmed factor returns `ErrAlreadyOn`; otherwise the new secret
-replaces any unfinished enrollment, with `started_at` now, and any waiting
-codes, which belonged to the old secret, are deleted.
+`Service.Start` first checks the account's password through
+`session.Service.VerifyPassword`, which reserves a sign-in attempt for the
+account's email and the client's address (ADR024). A wrong password keeps
+the attempt, so a stolen session cookie cannot guess it freely. Then, under
+the owner's lock:
+
+- no factor, or an unfinished enrollment started 15 minutes ago or more: save a
+  new secret with `started_at` now, and delete any waiting codes, which
+  belonged to the old secret;
+- an unfinished enrollment younger than that, with no waiting codes: return its
+  secret and URI again and write nothing, so the clock does not restart;
+- an unfinished enrollment whose code was checked: `ErrCodeChecked`, because its
+  codes wait to be shown (`ShowWaiting`);
+- a confirmed factor: `ErrAlreadyOn`.
 
 The 15 minutes are product policy (`enrollmentLifetime`): long enough to scan a
 code and save the codes, short enough that a forgotten enrollment cannot be
-finished later. One clock runs from the start; checking the code does not
-reset it. An expired enrollment stays stored until the next
+finished later. One clock runs from the start; continuing or checking the
+code does not reset it. An expired enrollment stays stored until the next
 start replaces it or cancellation deletes it, so the page can say it
 expired; its secret can no longer become active. The same holds for a
 waiting set past its expiry: it stays until the member's next write
@@ -224,11 +229,7 @@ checked one, and a confirmed factor are distinct HTTP 409 problems
 
 ### Showing waiting codes again
 
-`Service.ShowWaiting` checks the account's password through
-`session.Service.VerifyPassword`, which reserves a sign-in attempt for the
-account's email and the client's address (ADR024); a wrong password keeps
-the attempt, so a stolen session cookie cannot guess it freely. It then
-decrypts an
+`Service.ShowWaiting` checks the password as `Start` does, then decrypts an
 unfinished enrollment's display copy and replaces the token with a fresh
 one. Only the newest token finishes, so a second tab that shows the codes
 takes over. `POST /api/v0/totp/backup-codes/waiting` serves enrollment only:
@@ -261,19 +262,6 @@ the person already holds the codes.
 `POST /api/v0/totp/enrollment/finish` sets the replacement session cookie
 and returns `data.status: "on"` and `data.backupCodesLeft`, the count of the
 codes it activated. Errors never return a cookie.
-
-### Confirming with a code alone
-
-`session.Enrollment.Confirm` reserves a code attempt, prepares ten backup
-hashes before taking a write lock, and, under the owner's lock, then the
-session's, rechecks the session and verifies a code against the unfinished
-factor. It confirms the factor, records the accepted step, saves the hashes
-as the active codes, replaces every session with a new one, and deletes only
-the successful attempt, in one transaction, then returns the cookie secret
-and the codes. `POST /api/v0/totp/confirm` sets the replacement cookie and
-returns `data.backupCodes` once; a wrong code is HTTP 422
-(`invalid-totp-code`), no enrollment or a confirmed one HTTP 409, and
-throttling HTTP 429. It goes once the web app's setup uses the steps above.
 
 ### Status
 

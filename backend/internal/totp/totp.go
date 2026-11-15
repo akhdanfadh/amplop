@@ -2,6 +2,7 @@
 package totp
 
 import (
+	"encoding/base32"
 	"errors"
 	"time"
 
@@ -85,13 +86,31 @@ type enrollment struct {
 }
 
 // newEnrollment fixes authenticator settings and generates a fresh random secret.
-// Only the enrollment operation may reveal the secret and URI to the user.
+// Only the enrollment operations may reveal the secret and URI to the user.
 func newEnrollment(email string) (enrollment, error) {
+	return generate(email, nil)
+}
+
+// existingEnrollment rebuilds the URI for secret, a base32 secret that
+// [newEnrollment] made, so continuing an enrollment shows the same authenticator
+// entry.
+func existingEnrollment(email, secret string) (enrollment, error) {
+	raw, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(secret)
+	if err != nil || len(raw) != secretSize {
+		return enrollment{}, errSecret
+	}
+	return generate(email, raw)
+}
+
+// generate returns the enrollment for raw, or for a fresh random secret when
+// raw is nil.
+func generate(email string, raw []byte) (enrollment, error) {
 	key, err := otptotp.Generate(otptotp.GenerateOpts{
 		Issuer:      issuer,
 		AccountName: email,
 		Period:      period,
 		SecretSize:  secretSize,
+		Secret:      raw,
 		Digits:      codeDigits,
 		Algorithm:   algorithm,
 	})

@@ -17,9 +17,11 @@ import { Route as TwoFactor } from "@/routes/_app/settings/security/two-factor";
 const unauthorized = 401;
 const forbidden = 403;
 const conflict = 409;
+const unprocessable = 422;
 const notWaitingType = "/api/v0/problems/backup-codes-not-waiting";
-const offNotice =
-  "Two-factor authentication is off. Remove the inbok entry from your authenticator app.";
+const onNotice = "Two-factor authentication is on. Your other browsers are signed out.";
+const password = "correct horse battery staple";
+const secret = "JBSWY3DPEHPK3PXP";
 const codes = [
   "AAAA-BBBB1",
   "AAAA-BBBB2",
@@ -46,6 +48,8 @@ type Server = {
   refuse?: Partial<Record<string, { status: number; type: string; before?: () => void }>>;
   // Requests ("METHOD /path") that commit, then lose their answer, once.
   lose?: Partial<Record<string, true>>;
+  // When set, a sessions read waits for it before answering.
+  holdSessions?: Promise<void>;
 };
 
 // problem is an answer refused with status and the problem type.
@@ -57,7 +61,12 @@ function problem(status: number, type: string): Response {
 }
 
 // answer replies to one request as inbok's API would.
-function answer(server: Server, method: string, path: string): Response {
+async function answer(
+  server: Server,
+  method: string,
+  path: string,
+  body: unknown,
+): Promise<Response> {
   const refusal = server.refuse?.[`${method} ${path}`];
   if (refusal) {
     delete server.refuse?.[`${method} ${path}`];
@@ -73,23 +82,71 @@ function answer(server: Server, method: string, path: string): Response {
         totpRequired: false,
       },
     });
-  if (method === "GET" && path === "/api/v0/sessions")
-    return Response.json({
-      data: {
-        sessions: [
-          {
-            id: "0193c8a0-0000-7000-8000-000000000001",
-            browser: "Firefox",
-            os: "Linux",
-            signedInAt: "2026-11-01T10:00:00Z",
-            signedInFrom: "203.0.113.7",
-            lastActiveAt: "2026-11-01T10:00:00Z",
-            current: true,
-          },
-        ],
+  if (method === "GET" && path === "/api/v0/sessions") {
+    await server.holdSessions;
+    const sessions = [
+      {
+        id: "0193c8a0-0000-7000-8000-000000000001",
+        browser: "Firefox",
+        os: "Linux",
+        signedInAt: "2026-11-01T10:00:00Z",
+        signedInFrom: "203.0.113.7",
+        lastActiveAt: "2026-11-01T10:00:00Z",
+        current: true,
       },
-    });
+    ];
+    // Turning on signs out the other browsers.
+    if (server.totp.status !== "on")
+      sessions.push({
+        id: "0193c8a0-0000-7000-8000-000000000002",
+        browser: "Safari",
+        os: "iOS",
+        signedInAt: "2026-11-02T10:00:00Z",
+        signedInFrom: "203.0.113.8",
+        lastActiveAt: "2026-11-02T10:00:00Z",
+        current: false,
+      });
+    return Response.json({ data: { sessions } });
+  }
   if (method === "GET" && path === "/api/v0/totp") return Response.json({ data: server.totp });
+  if (method === "POST" && path === "/api/v0/totp") {
+    if (
+      !(
+        typeof body === "object" &&
+        body !== null &&
+        "password" in body &&
+        body.password === password
+      )
+    )
+      return Response.json(
+        {
+          type: "/api/v0/problems/invalid-password",
+          status: unprocessable,
+          title: "Incorrect password",
+          detail: "Enter your current password.",
+          errors: [{ location: "body.password", message: "Enter your current password." }],
+        },
+        { status: unprocessable, headers: { "Content-Type": "application/problem+json" } },
+      );
+    server.totp = { status: "pending", backupCodesLeft: 0, backupCodesWaiting: false };
+    return Response.json({
+      data: { secret, uri: `otpauth://totp/inbok:ana%40example.com?secret=${secret}&issuer=inbok` },
+    });
+  }
+  if (method === "POST" && path === "/api/v0/totp/backup-codes/waiting")
+    return Response.json({ data: { backupCodes: codes, token: "shown-again-token" } });
+  if (method === "DELETE" && path === "/api/v0/totp/enrollment") {
+    server.totp = { status: "off", backupCodesLeft: 0, backupCodesWaiting: false };
+    return Response.json({ data: server.totp });
+  }
+  if (method === "POST" && path === "/api/v0/totp/enrollment/code") {
+    server.totp = { ...server.totp, backupCodesWaiting: true };
+    return Response.json({ data: { backupCodes: codes, token: "setup-token" } });
+  }
+  if (method === "POST" && path === "/api/v0/totp/enrollment/finish") {
+    server.totp = { status: "on", backupCodesLeft: 10, backupCodesWaiting: false };
+    return Response.json({ data: server.totp });
+  }
   if (method === "POST" && path === "/api/v0/totp/backup-codes") {
     server.totp = { ...server.totp, backupCodesWaiting: true };
     return Response.json({ data: { backupCodes: codes, token: "replace-token" } });
@@ -125,7 +182,8 @@ async function open(
           input instanceof Request ? input.url : input instanceof URL ? input.href : input;
         const path = new URL(address, location.href).pathname;
         server.sent.push(`${method} ${path}`);
-        const answered = answer(server, method, path);
+        const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+        const answered = await answer(server, method, path, body);
         if (!server.lose?.[`${method} ${path}`]) return answered;
         delete server.lose[`${method} ${path}`];
         throw new TypeError("Failed to fetch");
@@ -168,16 +226,238 @@ async function open(
   return router;
 }
 
+// off is a server where two-factor authentication is off.
+function off(): Server {
+  return { totp: { status: "off", backupCodesLeft: 0, backupCodesWaiting: false }, sent: [] };
+}
+
 // on is a server where two-factor authentication is on with ten codes.
 function on(): Server {
   return { totp: { status: "on", backupCodesLeft: 10, backupCodesWaiting: false }, sent: [] };
 }
 
+const passwordField = () => page.getByLabelText("Password", { exact: true });
 const codeField = () => page.getByRole("textbox", { name: "Authenticator code" });
 const backLink = () => page.getByRole("link", { name: "Back to Security" });
 
+// toQr enters the password on the setup's password step.
+async function toQr(): Promise<void> {
+  await expect.element(passwordField()).toHaveFocus();
+  await userEvent.fill(passwordField(), password);
+  await userEvent.click(page.getByRole("button", { name: "Continue" }));
+  await expect.element(page.getByRole("heading", { name: /Scan this QR code/ })).toHaveFocus();
+}
+
+// toCodes checks the first code on the QR step.
+async function toCodes(): Promise<void> {
+  await userEvent.click(codeField());
+  await userEvent.keyboard("123456");
+  await userEvent.click(page.getByRole("button", { name: "Continue" }));
+  await expect
+    .element(page.getByRole("heading", { level: 2, name: "Save your backup codes" }))
+    .toHaveFocus();
+}
+
+// Lets a held sessions read answer.
+let release: (() => void) | undefined;
+
 afterEach(() => {
+  release?.();
+  release = undefined;
   vi.unstubAllGlobals();
+});
+
+describe("two-factor setup", () => {
+  it("asks for the password, shows the QR code and the codes, and turns on at I've saved", async () => {
+    const server = off();
+    await open(server);
+    await expect
+      .element(page.getByRole("heading", { level: 1, name: "Set up two-factor authentication" }))
+      .toBeVisible();
+    await expect.element(passwordField()).toHaveFocus();
+
+    await userEvent.fill(passwordField(), "wrong password");
+    await userEvent.click(page.getByRole("button", { name: "Continue" }));
+    await expect.element(page.getByText("Enter your current password.")).toBeVisible();
+    await expect.element(passwordField()).toHaveAttribute("aria-invalid", "true");
+
+    await toQr();
+    await expect.element(page.getByText("JBSW Y3DP EHPK 3PXP")).toBeVisible();
+    await toCodes();
+    await expect
+      .element(page.getByRole("list", { name: "Backup codes" }))
+      .toHaveTextContent(codes.join(""));
+
+    await userEvent.click(page.getByRole("button", { name: "I've saved these codes" }));
+    await expect
+      .element(
+        page.getByText("Two-factor authentication is on. Your other browsers are signed out."),
+      )
+      .toBeVisible();
+    await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
+  });
+
+  it("asks before leaving the codes step, and Stay keeps the codes", async () => {
+    await open(off());
+    await toQr();
+    await toCodes();
+
+    await userEvent.click(backLink());
+    const dialog = page.getByRole("alertdialog", {
+      name: "Leave before two-factor authentication is on?",
+    });
+    await expect.element(dialog).toBeVisible();
+    await userEvent.click(dialog.getByRole("button", { name: "Stay" }));
+
+    await expect.element(dialog).not.toBeInTheDocument();
+    await expect.element(page.getByRole("list", { name: "Backup codes" })).toBeVisible();
+  });
+
+  it("leaves the QR step without asking", async () => {
+    const server = off();
+    const router = await open(server);
+    await toQr();
+
+    await userEvent.click(backLink());
+
+    await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
+    expect(page.getByRole("alertdialog").query()).toBeNull();
+    expect(router.state.location.pathname).toBe("/settings/security");
+  });
+
+  it("says an expired setup expired and starts again from the password", async () => {
+    await open({
+      totp: { status: "expired", backupCodesLeft: 0, backupCodesWaiting: false },
+      sent: [],
+    });
+
+    await expect.element(page.getByText(/This setup expired after 15 minutes\./)).toBeVisible();
+    await expect.element(passwordField()).toHaveFocus();
+  });
+
+  it("shows the codes again after the password when another tab showed them", async () => {
+    const server = off();
+    await open(server);
+    await toQr();
+    await toCodes();
+    server.refuse = {
+      "POST /api/v0/totp/enrollment/finish": { status: conflict, type: notWaitingType },
+    };
+
+    await userEvent.click(page.getByRole("button", { name: "I've saved these codes" }));
+
+    await expect.element(passwordField()).toHaveFocus();
+    await expect
+      .element(page.getByText("Enter your password to see the backup codes you haven't saved yet."))
+      .toBeVisible();
+    await userEvent.fill(passwordField(), password);
+    await userEvent.click(page.getByRole("button", { name: "Continue" }));
+    await expect
+      .element(page.getByRole("heading", { level: 2, name: "Save your backup codes" }))
+      .toHaveFocus();
+    await expect
+      .element(page.getByRole("list", { name: "Backup codes" }))
+      .toHaveTextContent(codes.join(""));
+  });
+
+  it("cancels the setup and returns to Security", async () => {
+    const server = off();
+    await open(server);
+    await toQr();
+
+    await userEvent.click(page.getByRole("button", { name: "Cancel setup" }));
+
+    await expect
+      .element(
+        page.getByText(
+          "Setup canceled. Remove the inbok entry from your authenticator app if you added it.",
+        ),
+      )
+      .toBeVisible();
+    await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
+    expect(server.sent).toContain("DELETE /api/v0/totp/enrollment");
+  });
+
+  it("reports the change on Security once, not again after Back and Forward", async () => {
+    const router = await open(off());
+    await toQr();
+    await toCodes();
+    await userEvent.click(page.getByRole("button", { name: "I've saved these codes" }));
+    await expect.element(page.getByText(onNotice)).toBeVisible();
+    await vi.waitFor(() => expect(router.state.location.state.twoFactorChange).toBeUndefined());
+
+    router.history.back();
+    await expect.element(page.getByRole("heading", { level: 2, name: "Turn off" })).toBeVisible();
+    router.history.forward();
+
+    await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
+    await expect.element(page.getByText(/Firefox on Linux/)).toBeVisible();
+    expect(page.getByText(onNotice).query()).toBeNull();
+  });
+
+  it("rereads the status when the start finds the codes already checked elsewhere", async () => {
+    const server = off();
+    server.refuse = {
+      "POST /api/v0/totp": {
+        status: conflict,
+        type: "/api/v0/problems/totp-code-checked",
+        before: () => {
+          server.totp = { status: "pending", backupCodesLeft: 0, backupCodesWaiting: true };
+        },
+      },
+    };
+    await open(server);
+
+    await userEvent.fill(passwordField(), password);
+    await userEvent.click(page.getByRole("button", { name: "Continue" }));
+
+    await expect
+      .element(page.getByText("Enter your password to see the backup codes you haven't saved yet."))
+      .toBeVisible();
+  });
+
+  it("rereads the status after a lost code check and shows the codes after the password", async () => {
+    const server = off();
+    server.lose = { "POST /api/v0/totp/enrollment/code": true };
+    await open(server);
+    await toQr();
+
+    await userEvent.click(codeField());
+    await userEvent.keyboard("123456");
+    await userEvent.click(page.getByRole("button", { name: "Continue" }));
+
+    await expect.element(passwordField()).toHaveFocus();
+    await expect
+      .element(page.getByText("Enter your password to see the backup codes you haven't saved yet."))
+      .toBeVisible();
+    await userEvent.fill(passwordField(), password);
+    await userEvent.click(page.getByRole("button", { name: "Continue" }));
+    await expect
+      .element(page.getByRole("heading", { level: 2, name: "Save your backup codes" }))
+      .toHaveFocus();
+  });
+
+  it("drops what the old session read once I've saved, so Security reads afresh", async () => {
+    const server = off();
+    await open(server, "member", "/settings/security");
+    await expect
+      .element(page.getByRole("button", { name: "Sign out Safari on iOS" }))
+      .toBeVisible();
+    await userEvent.click(page.getByRole("link", { name: "Set up two-factor authentication" }));
+    await toQr();
+    await toCodes();
+    // Security's read after the finish stays unanswered, so what shows is
+    // the cache, not a fresh read.
+    server.holdSessions = new Promise((resolve) => {
+      release = resolve;
+    });
+
+    await userEvent.click(page.getByRole("button", { name: "I've saved these codes" }));
+
+    await expect.element(page.getByText(onNotice)).toBeVisible();
+    await expect.element(page.getByText("Loading signed-in browsers...")).toBeVisible();
+    expect(page.getByRole("button", { name: "Sign out Safari on iOS" }).query()).toBeNull();
+  });
 });
 
 describe("two-factor management", () => {
@@ -195,27 +475,14 @@ describe("two-factor management", () => {
     await userEvent.keyboard("123456");
     await userEvent.click(page.getByRole("button", { name: "Turn off two-factor authentication" }));
 
-    await expect.element(page.getByText(offNotice)).toBeVisible();
-    await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
-  });
-
-  it("reports the turn-off on Security once, not again after Back and Forward", async () => {
-    const router = await open(on());
-    await userEvent.click(page.getByRole("button", { name: "Turn off two-factor authentication" }));
-    await userEvent.keyboard("123456");
-    await userEvent.click(page.getByRole("button", { name: "Turn off two-factor authentication" }));
-    await expect.element(page.getByText(offNotice)).toBeVisible();
-    await vi.waitFor(() => expect(router.state.location.state.twoFactorChange).toBeUndefined());
-
-    router.history.back();
     await expect
-      .element(page.getByRole("heading", { level: 1, name: "Two-factor authentication" }))
+      .element(
+        page.getByText(
+          "Two-factor authentication is off. Remove the inbok entry from your authenticator app.",
+        ),
+      )
       .toBeVisible();
-    router.history.forward();
-
     await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
-    await expect.element(page.getByText(/Firefox on Linux/)).toBeVisible();
-    expect(page.getByText(offNotice).query()).toBeNull();
   });
 
   it("reports a turn-off whose answer was lost once a status read finds it off", async () => {
@@ -225,7 +492,13 @@ describe("two-factor management", () => {
     await userEvent.keyboard("123456");
     await userEvent.click(page.getByRole("button", { name: "Turn off two-factor authentication" }));
 
-    await expect.element(page.getByText(offNotice)).toBeVisible();
+    await expect
+      .element(
+        page.getByText(
+          "Two-factor authentication is off. Remove the inbok entry from your authenticator app.",
+        ),
+      )
+      .toBeVisible();
     await expect.element(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
   });
 

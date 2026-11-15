@@ -131,14 +131,14 @@ func TestRetryAfter(t *testing.T) {
 		{"code sign-in", func() *httptest.ResponseRecorder {
 			return postCode(New(discard, Services{CodeSignIn: &fakeCodeSignIn{err: refused(totp.ErrThrottled)}}), `{"code":"012345"}`, "http://example.com")
 		}, "totp-throttled"},
-		{"TOTP confirmation", func() *httptest.ResponseRecorder {
-			api := New(discard, Services{Session: memberSessions(account.RoleMember), Enrollment: &fakeEnrollment{err: refused(totp.ErrThrottled)}})
-			return postTOTPConfirm(api, `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
-		}, "totp-throttled"},
 		{"TOTP setup code", func() *httptest.ResponseRecorder {
 			api := New(discard, Services{Session: memberSessions(account.RoleMember), TOTP: &fakeTOTP{err: refused(totp.ErrThrottled)}})
 			return postTOTP(api, "/enrollment/code", `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
 		}, "totp-throttled"},
+		{"TOTP setup password", func() *httptest.ResponseRecorder {
+			api := New(discard, Services{Session: memberSessions(account.RoleMember), TOTP: &fakeTOTP{err: refused(session.ErrThrottled)}})
+			return postTOTP(api, "", `{"password":"pw"}`, "http://example.com", totpAuthAuthenticated)
+		}, "sign-in-throttled"},
 		{"backup codes", func() *httptest.ResponseRecorder {
 			api := New(discard, Services{Session: memberSessions(account.RoleMember), Backups: &fakeBackups{err: refused(totp.ErrThrottled)}})
 			return postTOTP(api, "/backup-codes", `{"code":"287082"}`, "http://example.com", totpAuthAuthenticated)
@@ -217,5 +217,5 @@ func TestRetryAfterDocumented(t *testing.T) {
 			assert.Equal(t, huma.TypeInteger, header.Schema.Type, path)
 		}
 	}
-	assert.Equal(t, 21, throttled, "setup, sign-in, code sign-in, confirm, two-factor enrollment's code check, showing waiting codes, backup codes, turn-off, verification links, redeem, the probe, both registration writes, both password reset writes, both Gmail connection starts, the three sends, and an account's sync")
+	assert.Equal(t, 21, throttled, "setup, sign-in, code sign-in, two-factor start, its code check, showing waiting codes, backup codes, turn-off, verification links, redeem, the probe, both registration writes, both password reset writes, both Gmail connection starts, the three sends, and an account's sync")
 }

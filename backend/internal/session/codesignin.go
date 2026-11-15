@@ -58,6 +58,15 @@ type codeSignInStore interface {
 	CompleteSignIn(ctx context.Context, userID int64, hash [sha256.Size]byte, update func(CodeSignInState) (CodeSignInChange, error)) error
 }
 
+type secretOpener interface {
+	Open(keyID string, ciphertext []byte, owner string) ([]byte, error)
+}
+
+type codeAttempts interface {
+	Begin(ctx context.Context, userID int64) (int64, error)
+	Release(ctx context.Context, id int64)
+}
+
 // CodeSignIn exchanges password proof and a second factor for a session.
 type CodeSignIn struct {
 	storage    codeSignInStore
@@ -67,7 +76,8 @@ type CodeSignIn struct {
 	now        func() time.Time
 }
 
-// NewCodeSignIn supplies the same owner-bound encryption and limiter as enrollment.
+// NewCodeSignIn supplies owner-bound encryption, the code verifier and
+// attempt limit, and a clock.
 func NewCodeSignIn(storage codeSignInStore, encryption secretOpener, verifier *totp.Verifier, throttle codeAttempts, now func() time.Time) *CodeSignIn {
 	return &CodeSignIn{storage: storage, encryption: encryption, verifier: verifier, throttle: throttle, now: now}
 }

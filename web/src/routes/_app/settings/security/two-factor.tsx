@@ -10,9 +10,15 @@ import { clearAccountCache } from "@/features/auth/session-cache";
 import { SettingsPage } from "@/features/settings/page";
 import { pageName } from "@/features/settings/text";
 import { BackupCodesSection, TurnOffSection, type OpenSection } from "@/features/totp/manage";
-import { Enrollment } from "@/features/totp/enrollment";
 import { TwoFactorBadge } from "@/features/totp/security-section";
-import { backupText, twoFactorAbout, twoFactorTitle } from "@/features/totp/text";
+import { useSetupFlow } from "@/features/totp/setup";
+import {
+  backupText,
+  setUpName,
+  setupLead,
+  twoFactorAbout,
+  twoFactorTitle,
+} from "@/features/totp/text";
 
 const unauthorized = 401;
 
@@ -20,10 +26,6 @@ export const Route = createFileRoute("/_app/settings/security/two-factor")({
   component: TwoFactor,
   head: () => ({ meta: [{ title: "Two-factor authentication - inbok" }] }),
 });
-
-// Nothing else on this page writes or ends the session, so the enrollment
-// has no other write to wait for.
-function ignore(): void {}
 
 // TwoFactor is two-factor authentication's own page, under Security: the
 // setup while it is off, or, while it is on, replacing the backup codes and
@@ -56,10 +58,6 @@ function TwoFactor(): ReactElement {
   const onError = useCallback((err: ApiError) => {
     if (err.status === unauthorized) setEnded(true);
   }, []);
-  // Whether the enrollment shows the backup codes its confirmation
-  // returned: two-factor is on by then, but the codes stay until the
-  // member is done with them.
-  const [enrollmentCodes, setEnrollmentCodes] = useState(false);
   const back = (
     // Named for where it goes back to: the sidebar has a Security link too.
     <Link
@@ -71,6 +69,14 @@ function TwoFactor(): ReactElement {
       {pageName.security}
     </Link>
   );
+
+  function backToSecurity(change: "on" | "off" | "canceled"): void {
+    void navigate({
+      to: "/settings/security",
+      state: { twoFactorChange: change },
+      ignoreBlocker: true,
+    });
+  }
 
   useEffect(() => {
     if (!signedOut) return;
@@ -89,16 +95,47 @@ function TwoFactor(): ReactElement {
 
   // Security takes over at once; the setup must not flash in between.
   if (turnedOff) return <></>;
-  if (on && !enrollmentCodes)
+  if (on)
     return (
       <Manage role={role} back={back} onError={onError} onStale={() => void status.refetch()} />
     );
 
   return (
-    <SettingsPage title={twoFactorTitle} lead={twoFactorAbout} back={back}>
-      <div className="py-6">
-        <Enrollment locked={false} onWritingChange={ignore} onCodesChange={setEnrollmentCodes} />
-      </div>
+    <Setup
+      email={session.email}
+      back={back}
+      onError={onError}
+      onFinished={() => backToSecurity("on")}
+      onCanceled={() => backToSecurity("canceled")}
+    />
+  );
+}
+
+// Setup is the page while two-factor authentication is off: the setup's
+// current step.
+function Setup({
+  email,
+  back,
+  onError,
+  onFinished,
+  onCanceled,
+}: {
+  email: string;
+  back: ReactElement;
+  onError: (err: ApiError) => void;
+  onFinished: () => void;
+  onCanceled: () => void;
+}): ReactElement {
+  const { stage, content } = useSetupFlow({ email, onFinished, onCanceled, onError });
+  // Until the status is read, the page may yet be the one for managing it.
+  const reading = stage === "loading" || stage === "error";
+  return (
+    <SettingsPage
+      title={reading ? twoFactorTitle : setUpName}
+      lead={reading ? twoFactorAbout : setupLead}
+      back={back}
+    >
+      <div className="py-6">{content}</div>
     </SettingsPage>
   );
 }

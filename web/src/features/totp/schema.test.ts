@@ -1,36 +1,46 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ConfirmationSchema, ReplacementCodeSchema, turnOffSchema } from "./schema";
+import {
+  EnrollmentCodeSchema,
+  PasswordSchema,
+  ReplacementCodeSchema,
+  turnOffSchema,
+} from "./schema";
 
-describe("enrollment confirmation", () => {
+describe.each([
+  ["the enrollment code", EnrollmentCodeSchema],
+  ["the replacement code", ReplacementCodeSchema],
+])("%s", (_, schema) => {
   it("keeps leading zeros", () => {
-    expect(ConfirmationSchema.parse({ code: "012345" })).toEqual({ code: "012345" });
+    expect(schema.parse({ code: "012345" })).toEqual({ code: "012345" });
   });
 
   it.each(["", "12345", "1234567", "abcdef", "abcde-fghjk"])(
     "rejects incomplete or non-authenticator input %s",
     (code) => {
-      expect(ConfirmationSchema.safeParse({ code }).success).toBe(false);
-    },
-  );
-});
-
-describe("the replacement code", () => {
-  it("keeps leading zeros", () => {
-    expect(ReplacementCodeSchema.parse({ code: "012345" })).toEqual({ code: "012345" });
-  });
-
-  it.each(["", "12345", "1234567", "abcdef", "abcde-fghjk"])(
-    "rejects incomplete or non-authenticator input %s",
-    (code) => {
-      expect(ReplacementCodeSchema.safeParse({ code }).success).toBe(false);
+      expect(schema.safeParse({ code }).success).toBe(false);
     },
   );
 
   // What the six-slot field lets a member type: one message, not one per
   // check. Longer input also meets the contract's own length limit.
   it.each(["", "12345", "abcdef"])("words input %s with one message", (code) => {
-    const issues = ReplacementCodeSchema.safeParse({ code }).error?.issues ?? [];
+    const issues = schema.safeParse({ code }).error?.issues ?? [];
     expect(new Set(issues.map((issue) => issue.message))).toEqual(new Set(["Enter all 6 digits."]));
+  });
+});
+
+describe("the password check", () => {
+  it("keeps the password as typed, spaces included", () => {
+    expect(PasswordSchema.parse({ password: " pass word " })).toEqual({ password: " pass word " });
+  });
+
+  it("asks for a password", () => {
+    const result = PasswordSchema.safeParse({ password: "" });
+    expect(result.error?.issues[0]?.message).toBe("Enter your password.");
+  });
+
+  it("refuses more than the server reads", () => {
+    expect(PasswordSchema.safeParse({ password: "p".repeat(129) }).success).toBe(false);
   });
 });
 
