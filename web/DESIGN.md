@@ -650,7 +650,7 @@ pull-to-refresh, which would reload the app, never starts.
 ### Settings and signed-out pages
 
 - `/settings/<page>` in the same frame with its own sidebar: Back to mail
-  (to the exact mail URL), Preferences, Security, Connected accounts, then
+  (to the exact mail URL), Security, Connected accounts, then
   for administrators a "This inbok" heading with Members, Registration,
   System email. An administrator without two-factor authentication never
   sees settings: the server lets their session only set it up, on the
@@ -1011,12 +1011,14 @@ reading-pane position settings, sender pictures (BIMI logos after DMARC,
 contact photos), merging one email received by two accounts, swipe
 gestures, drafts beyond the tab, an installable app with offline mail,
 per-member theme storage, folds kept across devices (per member, on the
-server), the remaining confirmations holding their change in the dialog
-(`ConfirmDialog`) as Members and Registration do. Pull-to-refresh and a
-top bar that hides while scrolling down: Check for new mail is one tap in
-the top bar, both gestures need hand-written touch handling over the
-Virtualizer's scrolling box that only a real phone can check, and a
-native app gets both from its platform (ADR031, branch 3 checkpoint 5).
+server), a Preferences settings page (the theme, the only preference,
+lives in the member menu), the remaining confirmations holding their
+change in the dialog (`ConfirmDialog`) as Members and Registration do.
+Pull-to-refresh and a top bar that hides while scrolling down: Check for
+new mail is one tap in the top bar, both gestures need hand-written touch
+handling over the Virtualizer's scrolling box that only a real phone can
+check, and a native app gets both from its platform (ADR031, branch 3
+checkpoint 5).
 
 App keyboard shortcuts, once built, go on TanStack Hotkeys (`useHotkey`,
 its `Mod` key, and its display formatter), which then also takes the
