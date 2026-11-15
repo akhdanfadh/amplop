@@ -7,6 +7,8 @@ package sqlc
 
 import (
 	"context"
+
+	"uuid"
 )
 
 const deleteUnlistedMailboxes = `-- name: DeleteUnlistedMailboxes :exec
@@ -44,6 +46,54 @@ func (q *Queries) ListMailboxProviderIDs(ctx context.Context, connectedAccountID
 			return nil, err
 		}
 		items = append(items, provider_mailbox_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlaceMailboxes = `-- name: ListPlaceMailboxes :many
+SELECT mb.connected_account_id, mb.id, mb.role, mb.provider_mailbox_id
+FROM mailboxes mb
+JOIN connected_accounts ca ON ca.id = mb.connected_account_id
+WHERE ca.user_id = $1
+    AND (mb.role = ANY ($2::text[]) OR (mb.role IS NULL AND mb.made_by = 'member'))
+ORDER BY mb.connected_account_id, mb.id
+`
+
+type ListPlaceMailboxesParams struct {
+	UserID int64
+	Roles  []string
+}
+
+type ListPlaceMailboxesRow struct {
+	ConnectedAccountID int64
+	ID                 uuid.UUID
+	Role               *string
+	ProviderMailboxID  string
+}
+
+// The member's accounts' mailboxes a conversation change can add to or
+// take out of: those of roles, and the member's own labels.
+func (q *Queries) ListPlaceMailboxes(ctx context.Context, arg ListPlaceMailboxesParams) ([]ListPlaceMailboxesRow, error) {
+	rows, err := q.db.Query(ctx, listPlaceMailboxes, arg.UserID, arg.Roles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPlaceMailboxesRow
+	for rows.Next() {
+		var i ListPlaceMailboxesRow
+		if err := rows.Scan(
+			&i.ConnectedAccountID,
+			&i.ID,
+			&i.Role,
+			&i.ProviderMailboxID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

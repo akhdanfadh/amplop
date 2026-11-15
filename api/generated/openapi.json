@@ -261,28 +261,28 @@
         "additionalProperties": false,
         "properties": {
           "conversations": {
-            "description": "The conversations the action changed, as the provider answered, in the order of ids. One that no longer exists is in neither list.",
+            "description": "The conversations it changed, as the provider answered, in the order of ids. One that no longer exists is in neither list.",
             "items": {
               "$ref": "#/components/schemas/ConversationRow"
             },
             "type": "array"
           },
           "places": {
-            "description": "Every place with its unread count after the action, as List Places answers; left out when counting failed.",
+            "description": "Every place with its unread count after it, as List Places answers; left out when counting failed.",
             "items": {
               "$ref": "#/components/schemas/PlaceCount"
             },
             "type": "array"
           },
           "refused": {
-            "description": "The conversations the action left as they were, in the order of ids.",
+            "description": "The conversations it left as they were, in the order of ids.",
             "items": {
               "$ref": "#/components/schemas/RefusedConversation"
             },
             "type": "array"
           },
           "undo": {
-            "description": "The changes that put each changed conversation back as it was before, as its row showed it. Conversations needing the same change share one. A conversation it changed nothing of is in none.",
+            "description": "The changes that put each changed conversation back as it was before, as its row showed it; send them as they are to Change Conversations. Conversations needing the same change share one. A conversation it changed nothing of is in none.",
             "items": {
               "$ref": "#/components/schemas/ConversationChange"
             },
@@ -304,6 +304,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 100,
             "type": "array",
             "uniqueItems": true
           },
@@ -323,6 +324,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 100,
             "type": "array",
             "uniqueItems": true
           },
@@ -337,6 +339,24 @@
         },
         "required": [
           "ids"
+        ],
+        "type": "object"
+      },
+      "ConversationChangesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "description": "The changes, each to its own conversations; together they name at most 100, each once.",
+            "items": {
+              "$ref": "#/components/schemas/ConversationChange"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "changes"
         ],
         "type": "object"
       },
@@ -3825,6 +3845,111 @@
           }
         ],
         "summary": "Apply Conversation Action",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/conversations/changes": {
+      "post": {
+        "description": "Changes the signed-in account's conversations at their provider as asked, by none of the provider's own rules, e.g. an action's undo, then returns them as the provider answered, as Apply Conversation Action does. Each change adds its conversations to places and takes them out of others: the inbox, Spam, Trash, or the member's labels; Sent, All mail, and Starred follow. A provider whose messages sit in one folder each moves them: such a change removes one place and adds one.",
+        "operationId": "changeConversations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationChangesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseConversationActionResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/place-not-found",
+                  "status": 404,
+                  "title": "Label not found",
+                  "detail": "The label does not exist. It may have been deleted."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "A label is not one of the member's in a conversation's account, e.g. deleted since."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/gmail-not-configured",
+                  "status": 409,
+                  "title": "Gmail not configured",
+                  "detail": "Conversations can't be changed until an administrator sets up a Google client."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No Google client is configured, so inbok can't reach Gmail."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change Conversations",
         "tags": [
           "Conversations"
         ]

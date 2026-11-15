@@ -64,3 +64,38 @@ func (db *DB) UpdateMessages(ctx context.Context, accountID int64, updates []mai
 func (db *DB) ReadConversations(ctx context.Context, userID int64, ids []uuid.UUID) ([]conversation.Conversation, error) {
 	return conversationRows(ctx, sqlc.New(db.pool), userID, ids)
 }
+
+// placeViews are the views a conversation change reaches, which
+// [DB.ListPlaceMailboxes] lists by their mailboxes' roles.
+var placeViews = []conversation.View{conversation.ViewInbox, conversation.ViewSpam, conversation.ViewTrash}
+
+// ListPlaceMailboxes returns the places of userID's accounts a change can
+// add a conversation to or take it out of, each with its mailbox at the
+// provider: each account's inbox, Spam, and Trash, and the member's own
+// labels.
+func (db *DB) ListPlaceMailboxes(ctx context.Context, userID int64) ([]conversation.PlaceMailbox, error) {
+	views := make(map[string]conversation.View, len(placeViews))
+	roles := make([]string, 0, len(placeViews))
+	for _, view := range placeViews {
+		role := string(viewRoles[view])
+		views[role] = view
+		roles = append(roles, role)
+	}
+	rows, err := sqlc.New(db.pool).ListPlaceMailboxes(ctx, sqlc.ListPlaceMailboxesParams{UserID: userID, Roles: roles})
+	if err != nil {
+		return nil, fmt.Errorf("list place mailboxes: %w", err)
+	}
+	mailboxes := make([]conversation.PlaceMailbox, 0, len(rows))
+	for _, row := range rows {
+		place := conversation.Place{Mailbox: row.ID}
+		if row.Role != nil {
+			place = conversation.Place{View: views[*row.Role]}
+		}
+		mailboxes = append(mailboxes, conversation.PlaceMailbox{
+			AccountID:  row.ConnectedAccountID,
+			Place:      place,
+			ProviderID: row.ProviderMailboxID,
+		})
+	}
+	return mailboxes, nil
+}

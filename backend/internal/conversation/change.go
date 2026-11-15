@@ -1,8 +1,13 @@
 package conversation
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"uuid"
+
+	"inbok/internal/connectedaccount"
+	"inbok/internal/mailsync"
 )
 
 // ========================
@@ -64,9 +69,154 @@ func (a Action) Reach() Reach {
 	return 0
 }
 
+// reach returns what c may change: its places when it names any, and each
+// mark it sets or clears.
+func (c Change) reach() Reach {
+	var reach Reach
+	if len(c.Add) > 0 || len(c.Remove) > 0 {
+		reach |= ReachPlaces
+	}
+	if c.Starred != MarkKept {
+		reach |= ReachStar
+	}
+	if c.Unread != MarkKept {
+		reach |= ReachUnread
+	}
+	return reach
+}
+
 // changeViews are the views a [Change] can add to or take out of; the
 // others follow from them and the marks.
 var changeViews = []View{ViewInbox, ViewSpam, ViewTrash}
+
+// Errors of [ActionService.ApplyChanges] a caller shows the member.
+var (
+	// ErrEmptyChange means a change changes nothing.
+	ErrEmptyChange = errors.New("conversation change changes nothing")
+	// ErrPlaceTwice means a change adds and removes one place, or names it
+	// twice.
+	ErrPlaceTwice = errors.New("conversation change names a place twice")
+	// ErrUnchangeablePlace means a change names a view that follows from
+	// others, e.g. Sent.
+	ErrUnchangeablePlace = errors.New("conversation change names a view it cannot change")
+)
+
+// PlaceMailbox is a place a [Change] can add a conversation to or take it
+// out of in one account, with its mailbox's ID at the provider.
+type PlaceMailbox struct {
+	AccountID  int64
+	Place      Place
+	ProviderID string
+}
+
+// Modification is a [Change] to one thread as its provider names it: the
+// mailboxes, by provider ID, it adds the thread's messages to and takes
+// them out of, and its marks.
+type Modification struct {
+	AddMailboxes    []string
+	RemoveMailboxes []string
+	Starred         Mark
+	Unread          Mark
+}
+
+// ValidateChange holds change to what [ActionService.ApplyChanges] takes,
+// its IDs aside: it changes something, names each place once, and only
+// the inbox, Spam, Trash, or labels. It returns [ErrEmptyChange],
+// [ErrPlaceTwice], or [ErrUnchangeablePlace].
+func ValidateChange(change Change) error {
+	if len(change.Add) == 0 && len(change.Remove) == 0 && change.Starred == MarkKept && change.Unread == MarkKept {
+		return ErrEmptyChange
+	}
+	places := slices.Concat(change.Add, change.Remove)
+	for i, place := range places {
+		if place.View != "" && !slices.Contains(changeViews, place.View) {
+			return ErrUnchangeablePlace
+		}
+		if slices.Contains(places[:i], place) {
+			return ErrPlaceTwice
+		}
+	}
+	return nil
+}
+
+// ApplyChanges applies changes to userID's conversations at their
+// providers, as [ActionService.Apply] applies an action, each conversation
+// its own change. It returns [ErrInvalidIDs] when the changes name no
+// conversation, more than [MaxActionIDs], or one twice; the errors of
+// [ValidateChange]; and [ErrPlaceNotFound] when a place is not in a
+// conversation's account, e.g. a label of another account or one deleted
+// since.
+func (a *ActionService) ApplyChanges(ctx context.Context, userID int64, changes []Change) (Applied, error) {
+	// 1. Refuse bad input before any read or provider call.
+	var ids []uuid.UUID
+	byID := make(map[uuid.UUID]Change)
+	for _, change := range changes {
+		if err := ValidateChange(change); err != nil {
+			return Applied{}, err
+		}
+		for _, id := range change.IDs {
+			if _, twice := byID[id]; twice {
+				return Applied{}, ErrInvalidIDs
+			}
+			byID[id] = change
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 || len(ids) > MaxActionIDs {
+		return Applied{}, ErrInvalidIDs
+	}
+
+	// 2. Find the member's threads, and name each one's change as its
+	// provider does, before any provider call.
+	threads, err := a.storage.ListThreads(ctx, userID, ids)
+	if err != nil {
+		return Applied{}, err
+	}
+	mailboxes, err := a.storage.ListPlaceMailboxes(ctx, userID)
+	if err != nil {
+		return Applied{}, err
+	}
+	modifications := make(map[uuid.UUID]Modification, len(threads))
+	for _, thread := range threads {
+		modification, err := modificationOf(byID[thread.ID], thread.AccountID, mailboxes)
+		if err != nil {
+			return Applied{}, err
+		}
+		modifications[thread.ID] = modification
+	}
+
+	reach := func(id uuid.UUID) Reach { return byID[id].reach() }
+	return a.run(ctx, userID, ids, threads, reach, func(ctx context.Context, token connectedaccount.AccessToken, thread Thread) ([]mailsync.MessageUpdate, error) {
+		return a.provider.ModifyThread(ctx, token, thread, modifications[thread.ID])
+	})
+}
+
+// modificationOf returns change as accountID's provider names it, from
+// mailboxes, or [ErrPlaceNotFound] for a place accountID does not have.
+func modificationOf(change Change, accountID int64, mailboxes []PlaceMailbox) (Modification, error) {
+	providerIDs := func(places []Place) ([]string, error) {
+		ids := make([]string, 0, len(places))
+		for _, place := range places {
+			i := slices.IndexFunc(mailboxes, func(m PlaceMailbox) bool {
+				return m.AccountID == accountID && m.Place == place
+			})
+			if i < 0 {
+				return nil, ErrPlaceNotFound
+			}
+			ids = append(ids, mailboxes[i].ProviderID)
+		}
+		return ids, nil
+	}
+	add, err := providerIDs(change.Add)
+	if err != nil {
+		return Modification{}, err
+	}
+	remove, err := providerIDs(change.Remove)
+	if err != nil {
+		return Modification{}, err
+	}
+	return Modification{AddMailboxes: add, RemoveMailboxes: remove, Starred: change.Starred, Unread: change.Unread}, nil
+}
 
 // ========================
 // Undo
@@ -132,9 +282,7 @@ func inverse(before, after Conversation, reach Reach) (Change, bool) {
 	if reach&ReachUnread != 0 && before.Unread != after.Unread {
 		change.Unread = markOf(before.Unread)
 	}
-	changed := len(change.Add) > 0 || len(change.Remove) > 0 ||
-		change.Starred != MarkKept || change.Unread != MarkKept
-	return change, changed
+	return change, ValidateChange(change) == nil
 }
 
 // changePlaces returns the places of c a [Change] reaches: its views in

@@ -2898,6 +2898,28 @@ as built"):
    put there whole comes back out of it whole, the message deleted on
    its own included (DEBT.md, "Undo per message").
 
+`POST /conversations/changes {changes}` applies changes as they are, by
+none of Gmail's rules, an action's `undo` among them: each adds its
+conversations to places and takes them out of others (the inbox, Spam,
+Trash, or the member's labels), stars or unstars them, or marks them
+unread or read, as the actions do, up to 100 conversations, each in one
+change. It runs as an action does, with the same answer, its own `undo`
+included, which reaches what each change names. The service turns each place into the conversation's
+account's mailbox (`ListPlaceMailboxes`), and refuses the whole request
+with 404 `place-not-found` for a label that is not in it, e.g. deleted
+since. `google.Client.ModifyThread` makes one `threads.modify` for the
+labels and the marks it clears, then one `messages.modify` for the
+newest message's marks it sets; when that second call fails, the first
+call's answer is written and the conversation counts as changed, its
+`undo` reaching only that part. Gmail takes at most 100 labels to add
+and 100 to remove per call, so a change adds and removes at most 100
+places each, and an `undo`, which swaps them, is a change the operation
+takes too; when the places to remove leave no room for the star and
+unread marks it clears, `ModifyThread` clears those in a second
+`threads.modify`, and when that one fails, the first's answer is written
+as above. A provider whose messages sit in one
+folder each moves them: such a change removes one place and adds one.
+
 Each conversation is changed or refused on its own, so one answer can
 hold both, and nothing changes in inbok that Gmail did not accept: a
 refusal needs no undoing. The poll that follows finds Gmail's record of

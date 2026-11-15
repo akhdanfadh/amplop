@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"inbok/internal/mailsync"
 )
 
 var (
@@ -16,6 +18,30 @@ var (
 	idE       = uuid.MustParse("00000000-0000-4000-8000-00000000000e")
 )
 
+// A change must change something, name each place once, and only places
+// a change reaches.
+func TestValidateChange(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		change Change
+		want   error
+	}{
+		{"a place", Change{Add: []Place{inInbox}}, nil},
+		{"a mark", Change{Starred: MarkSet}, nil},
+		{"a label out, Trash in", Change{Add: []Place{inTrash}, Remove: []Place{labelWork}}, nil},
+		{"nothing", Change{}, ErrEmptyChange},
+		{"added and removed", Change{Add: []Place{inInbox}, Remove: []Place{inInbox}}, ErrPlaceTwice},
+		{"added twice", Change{Add: []Place{inSpam, inSpam}}, ErrPlaceTwice},
+		{"Sent", Change{Add: []Place{{View: ViewSent}}}, ErrUnchangeablePlace},
+		{"Starred", Change{Remove: []Place{{View: ViewStarred}}}, ErrUnchangeablePlace},
+		{"All mail", Change{Add: []Place{{View: ViewAll}}}, ErrUnchangeablePlace},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			assert.ErrorIs(t, ValidateChange(c.change), c.want)
+		})
+	}
+}
+
 // Every action reaches what it changes: a move its places, a mark that
 // mark; a new action fails here until it says.
 func TestActionReach(t *testing.T) {
@@ -25,6 +51,13 @@ func TestActionReach(t *testing.T) {
 	assert.Equal(t, ReachPlaces, ActionTrash.Reach())
 	assert.Equal(t, ReachStar, ActionUnstar.Reach())
 	assert.Equal(t, ReachUnread, ActionRead.Reach())
+}
+
+// A change reaches what it names.
+func TestChangeReach(t *testing.T) {
+	assert.Equal(t, ReachPlaces, Change{Remove: []Place{labelWork}}.reach())
+	assert.Equal(t, ReachStar|ReachUnread, Change{Starred: MarkSet, Unread: MarkCleared}.reach())
+	assert.Equal(t, ReachPlaces|ReachUnread, Change{Add: []Place{inInbox}, Unread: MarkSet}.reach())
 }
 
 // An undo puts back only what changed within the change's reach: the
@@ -165,4 +198,93 @@ func TestUndoOf(t *testing.T) {
 		{IDs: []uuid.UUID{idA, idC}, Add: []Place{inInbox}, Remove: []Place{inTrash}},
 		{IDs: []uuid.UUID{idB}, Remove: []Place{inTrash}},
 	}, undo)
+}
+
+// Changes reach each conversation's provider as its own account names
+// their places, and the answer carries their undo.
+func TestApplyChanges(t *testing.T) {
+	storage := &fakeActionStorage{
+		threads: []Thread{
+			{ID: idA, AccountID: 1, ProviderThreadID: "ta"},
+			{ID: idB, AccountID: 2, ProviderThreadID: "tb"},
+		},
+		mailboxes: []PlaceMailbox{
+			{AccountID: 1, Place: inInbox, ProviderID: "INBOX"},
+			{AccountID: 1, Place: labelWork, ProviderID: "Label_1"},
+			{AccountID: 2, Place: inInbox, ProviderID: "INBOX-2"},
+			{AccountID: 2, Place: inTrash, ProviderID: "TRASH-2"},
+		},
+		before: map[uuid.UUID]Conversation{idA: {ID: idA, InAllMail: true}},
+		after:  map[uuid.UUID]Conversation{idA: {ID: idA, InInbox: true, InAllMail: true, LabelIDs: []uuid.UUID{labelWork.Mailbox}}},
+	}
+	provider := &fakeProvider{}
+	actions := newTestActions(storage, fakeAccess{}, provider)
+
+	applied, err := actions.ApplyChanges(t.Context(), 42, []Change{
+		{IDs: []uuid.UUID{idA}, Add: []Place{inInbox, labelWork}, Starred: MarkSet},
+		{IDs: []uuid.UUID{idB}, Add: []Place{inInbox}, Remove: []Place{inTrash}, Unread: MarkCleared},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string]Modification{
+		"ta": {AddMailboxes: []string{"INBOX", "Label_1"}, RemoveMailboxes: []string{}, Starred: MarkSet},
+		"tb": {AddMailboxes: []string{"INBOX-2"}, RemoveMailboxes: []string{"TRASH-2"}, Unread: MarkCleared},
+	}, provider.modifications)
+	assert.Empty(t, applied.Refused)
+	assert.Equal(t, []Change{{IDs: []uuid.UUID{idA}, Remove: []Place{inInbox, labelWork}}}, applied.Undo)
+}
+
+// A change the provider kept only part of, e.g. its labels but not its
+// newest message's mark, is written as the provider answered and reported
+// changed, its undo putting back only that part.
+func TestApplyChangesPartly(t *testing.T) {
+	storage := &fakeActionStorage{
+		threads:   []Thread{{ID: idA, AccountID: 1, ProviderThreadID: "ta"}},
+		mailboxes: []PlaceMailbox{{AccountID: 1, Place: inInbox, ProviderID: "INBOX"}},
+		before:    map[uuid.UUID]Conversation{idA: {ID: idA, InAllMail: true}},
+		after:     map[uuid.UUID]Conversation{idA: {ID: idA, InInbox: true, InAllMail: true}},
+	}
+	provider := &fakeProvider{
+		errs:   map[string]error{"ta": mailsync.ErrProviderBusy},
+		partly: map[string]bool{"ta": true},
+	}
+	actions := newTestActions(storage, fakeAccess{}, provider)
+
+	applied, err := actions.ApplyChanges(t.Context(), 42, []Change{
+		{IDs: []uuid.UUID{idA}, Add: []Place{inInbox}, Unread: MarkSet},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, []mailsync.MessageUpdate{{ProviderID: "ta-m", Seen: true}}, storage.written[1])
+	assert.Empty(t, applied.Refused)
+	assert.Equal(t, []Conversation{storage.after[idA]}, applied.Conversations)
+	assert.Equal(t, []Change{{IDs: []uuid.UUID{idA}, Remove: []Place{inInbox}}}, applied.Undo)
+}
+
+// Changes are refused whole, before any provider call, when they name a
+// conversation twice, or a place not in a conversation's account.
+func TestApplyChangesInvalid(t *testing.T) {
+	storage := &fakeActionStorage{
+		threads:   []Thread{{ID: idA, AccountID: 1, ProviderThreadID: "ta"}},
+		mailboxes: []PlaceMailbox{{AccountID: 2, Place: labelWork, ProviderID: "Label_1"}},
+	}
+	provider := &fakeProvider{}
+	actions := newTestActions(storage, fakeAccess{}, provider)
+
+	for _, c := range []struct {
+		name    string
+		changes []Change
+		want    error
+	}{
+		{"none", nil, ErrInvalidIDs},
+		{"twice", []Change{{IDs: []uuid.UUID{idA}, Add: []Place{inInbox}}, {IDs: []uuid.UUID{idA}, Starred: MarkSet}}, ErrInvalidIDs},
+		{"empty", []Change{{IDs: []uuid.UUID{idA}}}, ErrEmptyChange},
+		{"another account's label", []Change{{IDs: []uuid.UUID{idA}, Add: []Place{labelWork}}}, ErrPlaceNotFound},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := actions.ApplyChanges(t.Context(), 42, c.changes)
+			assert.ErrorIs(t, err, c.want)
+		})
+	}
+	assert.Empty(t, provider.calls)
 }

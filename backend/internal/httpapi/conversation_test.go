@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -289,15 +290,22 @@ type fakeConversationActions struct {
 	applied conversation.Applied
 	err     error
 
-	userID int64
-	action conversation.Action
-	ids    []uuid.UUID
-	calls  int
+	userID  int64
+	action  conversation.Action
+	ids     []uuid.UUID
+	changes []conversation.Change
+	calls   int
 }
 
 func (f *fakeConversationActions) Apply(_ context.Context, userID int64, action conversation.Action, ids []uuid.UUID) (conversation.Applied, error) {
 	f.calls++
 	f.userID, f.action, f.ids = userID, action, ids
+	return f.applied, f.err
+}
+
+func (f *fakeConversationActions) ApplyChanges(_ context.Context, userID int64, changes []conversation.Change) (conversation.Applied, error) {
+	f.calls++
+	f.userID, f.changes = userID, changes
 	return f.applied, f.err
 }
 
@@ -417,4 +425,122 @@ func TestApplyActionNoGmail(t *testing.T) {
 
 	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
 	assert.Equal(t, gmailNotConfiguredType, decodeJSON(t, response.Body.Bytes())["type"])
+}
+
+// ========================
+// Conversation changes
+// ========================
+
+var workLabel = uuid.MustParse("0b1b2c3d-0000-4000-8000-0000000000f1")
+
+// Changes reach the service as their places and marks, and answer as an
+// action does, their own undo included.
+func TestChangeConversations(t *testing.T) {
+	actions := &fakeConversationActions{applied: conversation.Applied{
+		Conversations: []conversation.Conversation{report},
+		Refused:       []conversation.Refusal{},
+		Undo: []conversation.Change{{
+			IDs: []uuid.UUID{reportID}, Add: []conversation.Place{{View: conversation.ViewTrash}},
+			Remove: []conversation.Place{{Mailbox: workLabel}}, Starred: conversation.MarkSet,
+		}},
+	}}
+	api := newActionsCountsAPI(actions, &fakeConversations{counts: []conversation.PlaceCount{}})
+
+	response := requestAuthenticated(api, http.MethodPost, "/conversations/changes",
+		`{"changes":[{"ids":["`+reportID.String()+`"],"add":["`+workLabel.String()+`"],"remove":["trash"],"starred":false},`+
+			`{"ids":["`+goneID.String()+`"],"unread":true}]}`)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"conversations":[`+reportJSON+`],"refused":[],`+
+		`"undo":[{"ids":["`+reportID.String()+`"],"add":["trash"],"remove":["`+workLabel.String()+`"],"starred":true}],"places":[]}}`,
+		response.Body.String())
+	assert.Equal(t, []conversation.Change{
+		{
+			IDs: []uuid.UUID{reportID}, Add: []conversation.Place{{Mailbox: workLabel}},
+			Remove: []conversation.Place{{View: conversation.ViewTrash}}, Starred: conversation.MarkCleared,
+		},
+		{IDs: []uuid.UUID{goneID}, Add: []conversation.Place{}, Remove: []conversation.Place{}, Unread: conversation.MarkSet},
+	}, actions.changes)
+}
+
+// A change that is none, names a place twice or one it cannot reach, or
+// repeats a conversation is refused with the field it is in, before the
+// service runs.
+func TestChangeConversationsInvalid(t *testing.T) {
+	id := `"` + reportID.String() + `"`
+	// One place more than Gmail's 100 labels a side.
+	labels := make([]string, 101)
+	for i := range labels {
+		labels[i] = `"` + uuid.New().String() + `"`
+	}
+	for _, c := range []struct {
+		name, body, location string
+	}{
+		{"no changes", `{"changes":[]}`, "body.changes"},
+		{"a change of nothing", `{"changes":[{"ids":[` + id + `]}]}`, "body.changes[0]"},
+		{"a place added and removed", `{"changes":[{"ids":[` + id + `],"add":["inbox"],"remove":["inbox"]}]}`, "body.changes[0]"},
+		{"Sent", `{"changes":[{"ids":[` + id + `],"add":["inbox"],"remove":["trash","sent"]}]}`, "body.changes[0].remove[1]"},
+		{"no place", `{"changes":[{"ids":[` + id + `],"add":["nope"]}]}`, "body.changes[0].add[0]"},
+		{"too many places", `{"changes":[{"ids":[` + id + `],"remove":[` + strings.Join(labels, ",") + `]}]}`, "body.changes[0].remove"},
+		{"one conversation twice", `{"changes":[{"ids":[` + id + `],"add":["inbox"]},{"ids":[` + id + `],"unread":true}]}`, "body.changes[1].ids"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			actions := &fakeConversationActions{}
+			api := newActionsAPI(actions)
+
+			response := requestAuthenticated(api, http.MethodPost, "/conversations/changes", c.body)
+
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+			errs, ok := decodeJSON(t, response.Body.Bytes())["errors"].([]any)
+			require.True(t, ok, response.Body.String())
+			require.NotEmpty(t, errs)
+			assert.Equal(t, c.location, errs[0].(map[string]any)["location"])
+			assert.Zero(t, actions.calls)
+		})
+	}
+}
+
+// The undo a change answers with is a change the operation takes too, at
+// its limits: one adding 100 places is undone by one removing them, as
+// sent back unchanged.
+func TestChangeConversationsUndoTaken(t *testing.T) {
+	places := make([]conversation.Place, 100)
+	texts := make([]string, 100)
+	for i := range places {
+		label := uuid.New()
+		places[i] = conversation.Place{Mailbox: label}
+		texts[i] = `"` + label.String() + `"`
+	}
+	actions := &fakeConversationActions{applied: conversation.Applied{
+		Conversations: []conversation.Conversation{report},
+		Refused:       []conversation.Refusal{},
+		Undo:          []conversation.Change{{IDs: []uuid.UUID{reportID}, Remove: places}},
+	}}
+	api := newActionsCountsAPI(actions, &fakeConversations{counts: []conversation.PlaceCount{}})
+	response := requestAuthenticated(api, http.MethodPost, "/conversations/changes",
+		`{"changes":[{"ids":["`+reportID.String()+`"],"add":[`+strings.Join(texts, ",")+`]}]}`)
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var answer struct {
+		Data struct {
+			Undo json.RawMessage `json:"undo"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &answer))
+
+	response = requestAuthenticated(api, http.MethodPost, "/conversations/changes", `{"changes":`+string(answer.Data.Undo)+`}`)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, places, actions.changes[0].Remove)
+}
+
+// A label not in a conversation's account, e.g. deleted since, is not
+// found.
+func TestChangeConversationsPlaceNotFound(t *testing.T) {
+	api := newActionsAPI(&fakeConversationActions{err: conversation.ErrPlaceNotFound})
+
+	response := requestAuthenticated(api, http.MethodPost, "/conversations/changes",
+		`{"changes":[{"ids":["`+reportID.String()+`"],"add":["`+workLabel.String()+`"]}]}`)
+
+	require.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
+	assert.Equal(t, placeNotFoundType, decodeJSON(t, response.Body.Bytes())["type"])
 }

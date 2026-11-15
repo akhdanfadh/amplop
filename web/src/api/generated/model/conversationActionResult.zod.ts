@@ -9,7 +9,11 @@ import * as zod from 'zod';
 
 export const conversationActionResultPlacesItemUnreadMin = 0;
 
+export const conversationActionResultUndoItemAddMax = 100;
+
 export const conversationActionResultUndoItemIdsMax = 100;
+
+export const conversationActionResultUndoItemRemoveMax = 100;
 
 
 export const ConversationActionResult = zod.object({
@@ -36,25 +40,25 @@ export const ConversationActionResult = zod.object({
   "subject": zod.string().describe('Its oldest shown message\'s subject, as sent.'),
   "trash": zod.boolean().describe('Whether a message is in Trash.'),
   "unread": zod.boolean().describe('Whether a shown message is unread.')
-})).describe('The conversations the action changed, as the provider answered, in the order of ids. One that no longer exists is in neither list.'),
+})).describe('The conversations it changed, as the provider answered, in the order of ids. One that no longer exists is in neither list.'),
   "places": zod.array(zod.object({
   "accountId": zod.int(),
   "name": zod.string().nullable().describe('A label\'s own name under its parent, e.g. Projects for a Gmail label Work/Projects under its label Work. It keeps what the provider names the levels the member has no label for, so it can hold the provider\'s separator: Home/Bills with no label Home, at the top; 2026/Q4 for Work/Projects/2026/Q4 under Projects with no label Work/Projects/2026. Null for a view.'),
   "parent": zod.uuid().nullable().describe('The place, a label\'s id, that a label nests under, so no client parses a provider\'s names; null for a view and a label at the top.'),
   "place": zod.string().describe('A view\'s name or a label\'s id, as the place of List Conversations takes it.'),
   "unread": zod.int().min(conversationActionResultPlacesItemUnreadMin).describe('How many of its conversations are unread.')
-})).optional().describe('Every place with its unread count after the action, as List Places answers; left out when counting failed.'),
+})).optional().describe('Every place with its unread count after it, as List Places answers; left out when counting failed.'),
   "refused": zod.array(zod.object({
   "id": zod.uuid(),
   "reason": zod.enum(['not-found', 'needs-reconnect', 'failed']).describe('not-found: the signed-in account has no such conversation, or the provider no longer has it. needs-reconnect: its connected account must be reconnected first. failed: the provider failed, refused, or took too long; trying again may work.')
-})).describe('The conversations the action left as they were, in the order of ids.'),
+})).describe('The conversations it left as they were, in the order of ids.'),
   "undo": zod.array(zod.object({
-  "add": zod.array(zod.string()).optional().describe('The places to add each conversation\'s messages to: inbox, spam, trash, or one of the member\'s labels in its account, by id.'),
+  "add": zod.array(zod.string()).max(conversationActionResultUndoItemAddMax).optional().describe('The places to add each conversation\'s messages to: inbox, spam, trash, or one of the member\'s labels in its account, by id.'),
   "ids": zod.array(zod.uuid()).min(1).max(conversationActionResultUndoItemIdsMax).describe('The conversations to change, by id from a list.'),
-  "remove": zod.array(zod.string()).optional().describe('The places to take each conversation\'s messages out of, named as in add.'),
+  "remove": zod.array(zod.string()).max(conversationActionResultUndoItemRemoveMax).optional().describe('The places to take each conversation\'s messages out of, named as in add.'),
   "starred": zod.boolean().optional().describe('true stars each conversation\'s newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is.'),
   "unread": zod.boolean().optional().describe('true marks each conversation\'s newest message unread, as unread does; false marks every message read. Left out, it stays as it is.')
-})).describe('The changes that put each changed conversation back as it was before, as its row showed it. Conversations needing the same change share one. A conversation it changed nothing of is in none.')
+})).describe('The changes that put each changed conversation back as it was before, as its row showed it; send them as they are to Change Conversations. Conversations needing the same change share one. A conversation it changed nothing of is in none.')
 })
 
 export type ConversationActionResult = zod.input<typeof ConversationActionResult>;

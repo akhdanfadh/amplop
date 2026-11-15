@@ -199,6 +199,31 @@ func TestListConversationsLabel(t *testing.T) {
 	assert.Empty(t, other, "another account has none of its labels")
 }
 
+// The places a change reaches are each of the member's accounts' inbox,
+// Spam, and Trash, with their provider IDs, and the member's own labels;
+// never Sent, Gmail's own labels, or another member's.
+func TestListPlaceMailboxes(t *testing.T) {
+	c := newConversationReadTest(t)
+	c.saveTo(t, c.account, threadMessage("m1", "t1", 1, "asha", "Label_1"))
+
+	mailboxes, err := c.db.ListPlaceMailboxes(t.Context(), c.member)
+
+	require.NoError(t, err)
+	own := map[conversation.Place]string{}
+	for _, mailbox := range mailboxes {
+		if mailbox.AccountID == c.account {
+			own[mailbox.Place] = mailbox.ProviderID
+		}
+		assert.NotEqual(t, c.strangerAccount, mailbox.AccountID)
+	}
+	assert.Equal(t, map[conversation.Place]string{
+		{View: conversation.ViewInbox}:                  "INBOX",
+		{View: conversation.ViewSpam}:                   "SPAM",
+		{View: conversation.ViewTrash}:                  "TRASH",
+		{Mailbox: c.mailboxID(t, c.account, "Label_1")}: "Label_1",
+	}, own)
+}
+
 // A place's mailbox must be one of the member's own labels, and an
 // account filter one of the member's accounts; anything else is answered
 // as missing.

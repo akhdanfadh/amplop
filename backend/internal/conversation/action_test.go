@@ -117,9 +117,15 @@ type fakeActionStorage struct {
 	writeErr map[int64]error
 	readErr  error
 
+	// before and after are the rows read before and after the change, by
+	// ID; any other reads as its ID alone.
+	before, after map[uuid.UUID]Conversation
+	mailboxes     []PlaceMailbox
+
 	listed  []uuid.UUID
 	written map[int64][]mailsync.MessageUpdate
 	read    []uuid.UUID
+	reads   int
 }
 
 func (f *fakeActionStorage) ListThreads(_ context.Context, _ int64, ids []uuid.UUID) ([]Thread, error) {
@@ -154,11 +160,23 @@ func (f *fakeActionStorage) ReadConversations(ctx context.Context, _ int64, ids 
 		return nil, err
 	}
 	f.read = ids
+	f.reads++
 	rows := make([]Conversation, 0, len(ids))
 	for _, id := range ids {
-		rows = append(rows, Conversation{ID: id})
+		row, ok := f.after[id]
+		if f.reads == 1 {
+			row, ok = f.before[id]
+		}
+		if !ok {
+			row = Conversation{ID: id}
+		}
+		rows = append(rows, row)
 	}
 	return rows, f.readErr
+}
+
+func (f *fakeActionStorage) ListPlaceMailboxes(context.Context, int64) ([]PlaceMailbox, error) {
+	return f.mailboxes, nil
 }
 
 // fakeAccess hands out a token named after each account, or its error.
@@ -198,6 +216,11 @@ type fakeProvider struct {
 	// "change/<token>".
 	order []string
 	most  int
+	// modifications are the modifications asked, by provider thread ID.
+	modifications map[string]Modification
+	// partly names the threads whose error comes with their update, as a
+	// provider answers that kept part of a change.
+	partly map[string]bool
 }
 
 func (f *fakeProvider) Version(_ context.Context, token connectedaccount.AccessToken) (uint64, error) {
@@ -231,14 +254,27 @@ func (f *fakeProvider) ChangeThread(ctx context.Context, token connectedaccount.
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
-	if err := f.errs[threadID]; err != nil {
-		return nil, err
-	}
 	update := mailsync.MessageUpdate{ProviderID: threadID + "-m", Seen: true}
 	if f.versioned[threadID] {
 		update.Version = 9
 	}
+	if err := f.errs[threadID]; err != nil {
+		if f.partly[threadID] {
+			return []mailsync.MessageUpdate{update}, err
+		}
+		return nil, err
+	}
 	return []mailsync.MessageUpdate{update}, nil
+}
+
+func (f *fakeProvider) ModifyThread(ctx context.Context, token connectedaccount.AccessToken, thread Thread, modification Modification) ([]mailsync.MessageUpdate, error) {
+	f.mu.Lock()
+	if f.modifications == nil {
+		f.modifications = map[string]Modification{}
+	}
+	f.modifications[thread.ProviderThreadID] = modification
+	f.mu.Unlock()
+	return f.ChangeThread(ctx, token, thread, "modify")
 }
 
 func newTestActions(storage *fakeActionStorage, access fakeAccess, provider *fakeProvider) *ActionService {

@@ -57,7 +57,7 @@ func (a Action) OnNewest() bool {
 	return a == ActionStar || a == ActionUnread
 }
 
-// MaxActionIDs is how many conversations one action changes at most,
+// MaxActionIDs is how many conversations one action or change reaches at most,
 // inbok's choice: a page at [MaxLimit]. Each costs a provider call, e.g. a
 // Gmail call of 5, 10, or 20 of the member's 6,000 quota units a minute
 // (Gmail's usage limits), so one action spends at most a third of a
@@ -94,7 +94,7 @@ type Refusal struct {
 	Reason Reason
 }
 
-// Applied is what an action did.
+// Applied is what an action or a change did.
 type Applied struct {
 	// Conversations are the ones it changed, as they stand after, in the
 	// order asked; one that no longer exists is left out.
@@ -140,6 +140,12 @@ type ActionStorage interface {
 	// ReadConversations returns userID's conversations of ids, in the
 	// order of ids, leaving out any that is not theirs.
 	ReadConversations(ctx context.Context, userID int64, ids []uuid.UUID) ([]Conversation, error)
+
+	// ListPlaceMailboxes returns the places of userID's accounts a
+	// [Change] can add a conversation to or take it out of, each with its
+	// mailbox at the provider: each account's inbox, Spam, and Trash, and
+	// the member's own labels.
+	ListPlaceMailboxes(ctx context.Context, userID int64) ([]PlaceMailbox, error)
 }
 
 // accountAccess hands out access tokens, e.g. [connectedaccount.Access].
@@ -163,7 +169,21 @@ type ThreadChanger interface {
 	// answers without one, and an error wrapping [ErrNotFound] when the
 	// provider no longer has the thread or that message.
 	ChangeThread(ctx context.Context, token connectedaccount.AccessToken, thread Thread, action Action) ([]mailsync.MessageUpdate, error)
+
+	// ModifyThread applies modification to thread at the provider as it
+	// is, by none of the provider's own rules: its mailboxes to every
+	// message, and a [MarkSet] mark to the newest message,
+	// [Thread.ProviderNewestMessageID], as [Action.OnNewest] does, a
+	// [MarkCleared] one to every message. It returns as
+	// [ThreadChanger.ChangeThread] does, except that when it applied part
+	// of modification before failing, it returns the updates of that part
+	// with the error, as the provider kept them.
+	ModifyThread(ctx context.Context, token connectedaccount.AccessToken, thread Thread, modification Modification) ([]mailsync.MessageUpdate, error)
 }
+
+// threadCall applies one action or change to thread at its provider with
+// token, calling it with ctx, as [ThreadChanger.ChangeThread] returns.
+type threadCall func(ctx context.Context, token connectedaccount.AccessToken, thread Thread) ([]mailsync.MessageUpdate, error)
 
 // ========================
 // Applying an action
@@ -201,22 +221,15 @@ func NewActionService(storage ActionStorage, access accountAccess, provider Thre
 
 // Apply applies action to userID's conversations of ids at their
 // providers, and writes each thread's messages as the provider answers,
-// one write per account, the accounts at once. It returns what changed and
-// the changes that undo it, within what the action reaches
-// ([Action.Reach]); [ErrInvalidAction] and [ErrInvalidIDs] for bad input;
-// and any other error as a failure of the whole action; a conversation's
-// own failure is a [Refusal].
+// one write per account, the accounts at once. It returns
+// [ErrInvalidAction] and [ErrInvalidIDs] for bad input, and any other error
+// as a failure of the whole action; a conversation's own failure is a
+// [Refusal].
 //
 // DESIGN: inbok writes only what the provider answered, so it never shows
 // a change the provider does not have, and copies none of the provider's
 // rules, e.g. what Trash does to a thread's other labels (ADR031, "Mail
 // actions as built").
-//
-// DESIGN: the undo is the difference between each conversation's row
-// before and after, within its reach, so it puts back only what this
-// changed: a label added meanwhile elsewhere stays, and a star or unread
-// mark that changed during a move, e.g. a new reply's, is not taken back
-// (ADR031, "Mail actions as built", checkpoint 7c).
 func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, ids []uuid.UUID) (Applied, error) {
 	// 1. Refuse bad input before any read or provider call.
 	if !slices.Contains(Actions, action) {
@@ -232,6 +245,25 @@ func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, 
 	if err != nil {
 		return Applied{}, err
 	}
+	reach := func(uuid.UUID) Reach { return action.Reach() }
+	return a.run(ctx, userID, ids, threads, reach, func(ctx context.Context, token connectedaccount.AccessToken, thread Thread) ([]mailsync.MessageUpdate, error) {
+		return a.provider.ChangeThread(ctx, token, thread, action)
+	})
+}
+
+// run applies call to threads, userID's conversations of ids, at their
+// providers, and writes each thread's messages as the provider answers,
+// one write per account, the accounts at once. It returns what changed,
+// refusing every ID with no thread as not found, and the changes that
+// undo it, each within what reach says call may change of that
+// conversation.
+//
+// DESIGN: the undo is the difference between each conversation's row
+// before and after, within its reach, so it puts back only what this
+// changed: a label added meanwhile elsewhere stays, and a star or unread
+// mark that changed during a move, e.g. a new reply's, is not taken back
+// (ADR031, "Mail actions as built", checkpoint 7c).
+func (a *ActionService) run(ctx context.Context, userID int64, ids []uuid.UUID, threads []Thread, reach func(uuid.UUID) Reach, call threadCall) (Applied, error) {
 	reasons := make(map[uuid.UUID]Reason, len(ids))
 	for _, id := range ids {
 		reasons[id] = ReasonNotFound
@@ -244,14 +276,14 @@ func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, 
 		found = append(found, thread.ID)
 	}
 
-	// 3. Read the rows as they stand before any change, which the undo
+	// 1. Read the rows as they stand before any change, which the undo
 	// returns to.
 	before, err := a.storage.ReadConversations(ctx, userID, found)
 	if err != nil {
 		return Applied{}, err
 	}
 
-	// 4. Act at each account's provider, all at once, within the budget.
+	// 2. Act at each account's provider, all at once, within the budget.
 	outcomes := make([]accountOutcome, 0, len(byAccount))
 	for accountID, accountThreads := range byAccount {
 		outcomes = append(outcomes, accountOutcome{accountID: accountID, threads: accountThreads})
@@ -261,14 +293,14 @@ func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, 
 	defer cancel()
 	for i := range outcomes {
 		group.Go(func() error {
-			return a.applyAccount(groupCtx, budget, action, &outcomes[i])
+			return a.applyAccount(groupCtx, budget, call, &outcomes[i])
 		})
 	}
 	if err := group.Wait(); err != nil {
 		return Applied{}, err
 	}
 
-	// 5. Read the changed rows as they stand after every account's write.
+	// 3. Read the changed rows as they stand after every account's write.
 	isChanged := make(map[uuid.UUID]bool)
 	for _, outcome := range outcomes {
 		for _, id := range outcome.changed {
@@ -283,7 +315,6 @@ func (a *ActionService) Apply(ctx context.Context, userID int64, action Action, 
 	if err != nil {
 		return Applied{}, err
 	}
-	reach := func(uuid.UUID) Reach { return action.Reach() }
 	applied := Applied{Conversations: rows, Refused: []Refusal{}, Undo: undoOf(before, rows, reach)}
 	for _, id := range ids {
 		if reason, ok := reasons[id]; ok {
@@ -313,7 +344,7 @@ type accountOutcome struct {
 	refused   map[uuid.UUID]Reason
 }
 
-// applyAccount applies action to outcome's threads at their provider,
+// applyAccount applies call to outcome's threads at their provider,
 // calling it within budget, writes what it answered with ctx, and records
 // each thread's result in outcome. It returns an error only for a failure
 // of the whole action, e.g. storage's or ctx ending.
@@ -326,7 +357,7 @@ type accountOutcome struct {
 // poll that brings it still writes over this one, and the action's own
 // record comes again with that poll (ADR031, "Mail actions as built",
 // checkpoint 7a).
-func (a *ActionService) applyAccount(ctx, budget context.Context, action Action, outcome *accountOutcome) error {
+func (a *ActionService) applyAccount(ctx, budget context.Context, call threadCall, outcome *accountOutcome) error {
 	outcome.refused = make(map[uuid.UUID]Reason)
 	refuseAll := func(reason Reason) {
 		for _, thread := range outcome.threads {
@@ -368,10 +399,17 @@ func (a *ActionService) applyAccount(ctx, budget context.Context, action Action,
 	group.SetLimit(actionConcurrency)
 	for i, thread := range outcome.threads {
 		group.Go(func() error {
-			changed, err := a.provider.ChangeThread(budget, token, thread, action)
+			changed, err := call(budget, token, thread)
 			switch {
 			case ctx.Err() != nil:
 				return ctx.Err()
+			case err != nil && len(changed) > 0:
+				// The provider kept part of the change: written, the row
+				// shows where the thread stands, and the undo puts back
+				// only that part.
+				a.logger.WarnContext(ctx, "conversation change partly applied at provider",
+					"account_id", outcome.accountID, "conversation_id", thread.ID, "err", err)
+				updates[i] = changed
 			case errors.Is(err, ErrNotFound):
 				reasons[i] = ReasonNotFound
 			case err != nil:

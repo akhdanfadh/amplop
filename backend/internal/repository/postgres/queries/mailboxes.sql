@@ -18,3 +18,13 @@ WHERE connected_account_id = @connected_account_id
 
 -- name: ListMailboxProviderIDs :many
 SELECT provider_mailbox_id FROM mailboxes WHERE connected_account_id = @connected_account_id;
+
+-- name: ListPlaceMailboxes :many
+-- The member's accounts' mailboxes a conversation change can add to or
+-- take out of: those of roles, and the member's own labels.
+SELECT mb.connected_account_id, mb.id, mb.role, mb.provider_mailbox_id
+FROM mailboxes mb
+JOIN connected_accounts ca ON ca.id = mb.connected_account_id
+WHERE ca.user_id = @user_id
+    AND (mb.role = ANY (@roles::text[]) OR (mb.role IS NULL AND mb.made_by = 'member'))
+ORDER BY mb.connected_account_id, mb.id;

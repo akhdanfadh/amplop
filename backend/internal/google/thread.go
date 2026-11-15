@@ -3,6 +3,7 @@ package google
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"google.golang.org/api/gmail/v1"
 
@@ -23,6 +24,10 @@ const (
 	threadFields  = "messages(id,labelIds)"
 	messageFields = "id,labelIds"
 )
+
+// maxModifyLabels is how many labels one threads.modify takes to add,
+// and how many to remove (Gmail API reference, users.threads.modify).
+const maxModifyLabels = 100
 
 // labelChange is the labels a threads.modify or messages.modify adds and
 // removes.
@@ -88,7 +93,83 @@ func (c *Client) ChangeThread(ctx context.Context, token connectedaccount.Access
 	default:
 		return nil, fmt.Errorf("gmail api: no call for action %q", action)
 	}
+	return c.changed(ctx, call)
+}
 
+// ModifyThread applies modification to thread as it is: its labels and
+// cleared marks to every message with threads.modify, then its set marks
+// to the newest message with messages.modify, each only when it has any.
+// Labels and cleared marks together over what one threads.modify removes
+// (maxModifyLabels) take two: the labels, then the cleared marks. It
+// returns as [Client.ChangeThread] does, except that when a call fails
+// after another, it returns the last answer's updates, which Gmail kept,
+// with the failed call's error.
+func (c *Client) ModifyThread(ctx context.Context, token connectedaccount.AccessToken, thread conversation.Thread, modification conversation.Modification) ([]mailsync.MessageUpdate, error) {
+	service, err := c.gmail(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	every := labelChange{add: modification.AddMailboxes, remove: slices.Clone(modification.RemoveMailboxes)}
+	var cleared []string
+	var newest labelChange
+	for _, mark := range []struct {
+		label string
+		mark  conversation.Mark
+	}{{labelStarred, modification.Starred}, {labelUnread, modification.Unread}} {
+		switch mark.mark {
+		case conversation.MarkSet:
+			newest.add = append(newest.add, mark.label)
+		case conversation.MarkCleared:
+			cleared = append(cleared, mark.label)
+		}
+	}
+	threadChanges := []labelChange{every}
+	if len(every.remove)+len(cleared) > maxModifyLabels {
+		threadChanges = append(threadChanges, labelChange{remove: cleared})
+	} else {
+		threadChanges[0].remove = append(threadChanges[0].remove, cleared...)
+	}
+
+	// 1. Every message first, so the newest message's answer, last, is
+	// where it stands after both. Each answer holds every message, so the
+	// last is where the thread stands.
+	var updates []mailsync.MessageUpdate
+	for _, change := range threadChanges {
+		if len(change.add) == 0 && len(change.remove) == 0 {
+			continue
+		}
+		request := &gmail.ModifyThreadRequest{AddLabelIds: change.add, RemoveLabelIds: change.remove}
+		changed, err := c.changed(ctx, threadMessages(func() (*gmail.Thread, error) {
+			return service.Users.Threads.Modify(gmailUser, thread.ProviderThreadID, request).Fields(threadFields).Context(ctx).Do()
+		}))
+		if err != nil {
+			return updates, err
+		}
+		updates = changed
+	}
+	// 2. The newest message.
+	if len(newest.add) > 0 {
+		request := &gmail.ModifyMessageRequest{AddLabelIds: newest.add}
+		changed, err := c.changed(ctx, func() ([]*gmail.Message, error) {
+			message, err := service.Users.Messages.Modify(gmailUser, thread.ProviderNewestMessageID, request).Fields(messageFields).Context(ctx).Do()
+			if err != nil {
+				return nil, err
+			}
+			return []*gmail.Message{message}, nil
+		})
+		if err != nil {
+			return updates, err
+		}
+		updates = slices.DeleteFunc(updates, func(u mailsync.MessageUpdate) bool { return u.ProviderID == changed[0].ProviderID })
+		updates = append(updates, changed...)
+	}
+	return updates, nil
+}
+
+// changed makes call, retrying as [retry] does, and returns the messages
+// it answers with as inbok keeps them, without a version, or an error
+// wrapping [conversation.ErrNotFound] when Gmail no longer has them.
+func (c *Client) changed(ctx context.Context, call func() ([]*gmail.Message, error)) ([]mailsync.MessageUpdate, error) {
 	// Each call sets labels rather than toggling them, so a retried one
 	// that Gmail already applied changes nothing more.
 	messages, err := retry(ctx, c, call)

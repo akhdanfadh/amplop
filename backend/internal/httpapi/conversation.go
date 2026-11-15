@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -31,10 +32,11 @@ type conversationService interface {
 	Get(ctx context.Context, userID int64, id uuid.UUID) (conversation.Detail, error)
 }
 
-// conversationActionService applies the member's actions to their
-// conversations.
+// conversationActionService applies the member's actions and changes to
+// their conversations.
 type conversationActionService interface {
 	Apply(ctx context.Context, userID int64, action conversation.Action, ids []uuid.UUID) (conversation.Applied, error)
+	ApplyChanges(ctx context.Context, userID int64, changes []conversation.Change) (conversation.Applied, error)
 }
 
 type conversationHandler struct {
@@ -52,6 +54,7 @@ func registerConversations(api huma.API, logger *slog.Logger, conversations conv
 	registerPlaceList(api, handler)
 	registerConversationRead(api, handler)
 	registerConversationAction(api, handler)
+	registerConversationChanges(api, handler)
 }
 
 // mailAddress is one entry of an address header.
@@ -460,12 +463,12 @@ type refusedConversation struct {
 }
 
 type conversationActionResult struct {
-	Conversations []conversationRow     `json:"conversations" nullable:"false" doc:"The conversations the action changed, as the provider answered, in the order of ids. One that no longer exists is in neither list."`
-	Refused       []refusedConversation `json:"refused" nullable:"false" doc:"The conversations the action left as they were, in the order of ids."`
-	Undo          []conversationChange  `json:"undo" nullable:"false" doc:"The changes that put each changed conversation back as it was before, as its row showed it. Conversations needing the same change share one. A conversation it changed nothing of is in none."`
+	Conversations []conversationRow     `json:"conversations" nullable:"false" doc:"The conversations it changed, as the provider answered, in the order of ids. One that no longer exists is in neither list."`
+	Refused       []refusedConversation `json:"refused" nullable:"false" doc:"The conversations it left as they were, in the order of ids."`
+	Undo          []conversationChange  `json:"undo" nullable:"false" doc:"The changes that put each changed conversation back as it was before, as its row showed it; send them as they are to Change Conversations. Conversations needing the same change share one. A conversation it changed nothing of is in none."`
 	// A pointer, so a successful count of no places is [] and only a failed
 	// one is left out.
-	Places *[]placeCount `json:"places,omitempty" nullable:"false" doc:"Every place with its unread count after the action, as List Places answers; left out when counting failed."`
+	Places *[]placeCount `json:"places,omitempty" nullable:"false" doc:"Every place with its unread count after it, as List Places answers; left out when counting failed."`
 }
 
 // conversationActionProblem maps the errors of applying an action.
@@ -506,6 +509,12 @@ func (h conversationHandler) handleApplyConversationAction(ctx context.Context, 
 	if err != nil {
 		return nil, conversationActionProblem(err)
 	}
+	return h.respondApplied(ctx, user.ID, applied), nil
+}
+
+// respondApplied returns applied as userID's answer, with the unread
+// counts after it.
+func (h conversationHandler) respondApplied(ctx context.Context, userID int64, applied conversation.Applied) *output[conversationActionResult] {
 	result := conversationActionResult{
 		Conversations: make([]conversationRow, 0, len(applied.Conversations)),
 		Refused:       make([]refusedConversation, 0, len(applied.Refused)),
@@ -520,26 +529,43 @@ func (h conversationHandler) handleApplyConversationAction(ctx context.Context, 
 	for _, refused := range applied.Refused {
 		result.Refused = append(result.Refused, refusedConversation(refused))
 	}
-	// The action is done at the provider, so a count that fails is left out
+	// The change is done at the provider, so a count that fails is left out
 	// rather than failing the answer; the next List Places brings it.
-	counts, err := h.conversations.Places(ctx, user.ID)
+	counts, err := h.conversations.Places(ctx, userID)
 	if err != nil {
-		h.logger.WarnContext(ctx, "place counts after a conversation action failed", "err", err)
-		return respondData(result), nil
+		h.logger.WarnContext(ctx, "place counts after a conversation change failed", "err", err)
+		return respondData(result)
 	}
 	listed := placeCountsOf(counts)
 	result.Places = &listed
-	return respondData(result), nil
+	return respondData(result)
+}
+
+// ========================
+// Conversation changes
+// ========================
+
+type conversationChangesInput struct {
+	Body conversationChangesBody
+}
+
+type conversationChangesBody struct {
+	Changes []conversationChange `json:"changes" nullable:"false" minItems:"1" maxItems:"100" doc:"The changes, each to its own conversations; together they name at most 100, each once."`
 }
 
 // conversationChange is a change of conversations as it is: an action's
-// undo.
+// undo, or one to send.
 type conversationChange struct {
-	IDs     []uuid.UUID `json:"ids" nullable:"false" format:"uuid" minItems:"1" maxItems:"100" uniqueItems:"true" doc:"The conversations to change, by id from a list."`
-	Add     []string    `json:"add,omitempty" nullable:"false" uniqueItems:"true" doc:"The places to add each conversation's messages to: inbox, spam, trash, or one of the member's labels in its account, by id."`
-	Remove  []string    `json:"remove,omitempty" nullable:"false" uniqueItems:"true" doc:"The places to take each conversation's messages out of, named as in add."`
-	Starred *bool       `json:"starred,omitempty" doc:"true stars each conversation's newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is."`
-	Unread  *bool       `json:"unread,omitempty" doc:"true marks each conversation's newest message unread, as unread does; false marks every message read. Left out, it stays as it is."`
+	IDs []uuid.UUID `json:"ids" nullable:"false" format:"uuid" minItems:"1" maxItems:"100" uniqueItems:"true" doc:"The conversations to change, by id from a list."`
+	// Gmail takes at most 100 labels to add and 100 to remove per
+	// threads.modify (users.threads.modify reference). The same limit on
+	// both, so an undo, which swaps them, is a change this takes too; the
+	// Google client sends cleared marks in a call of their own when the
+	// labels leave no room for them.
+	Add     []string `json:"add,omitempty" nullable:"false" maxItems:"100" uniqueItems:"true" doc:"The places to add each conversation's messages to: inbox, spam, trash, or one of the member's labels in its account, by id."`
+	Remove  []string `json:"remove,omitempty" nullable:"false" maxItems:"100" uniqueItems:"true" doc:"The places to take each conversation's messages out of, named as in add."`
+	Starred *bool    `json:"starred,omitempty" doc:"true stars each conversation's newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is."`
+	Unread  *bool    `json:"unread,omitempty" doc:"true marks each conversation's newest message unread, as unread does; false marks every message read. Left out, it stays as it is."`
 }
 
 // conversationChangeOf returns change as the API sends it.
@@ -565,4 +591,122 @@ func conversationChangeOf(change conversation.Change) conversationChange {
 		Starred: mark(change.Starred),
 		Unread:  mark(change.Unread),
 	}
+}
+
+// parseChanges parses body's changes, or returns a 422 naming each field
+// that is not one.
+func parseChanges(body conversationChangesBody) ([]conversation.Change, error) {
+	var errs []inputError
+	places := func(location string, texts []string) []conversation.Place {
+		parsed := make([]conversation.Place, 0, len(texts))
+		for j, text := range texts {
+			place, err := conversation.ParsePlace(text)
+			// A view the others decide, e.g. Sent, is no place to name:
+			// the service's own rule, asked of this place alone, so the
+			// error points at it.
+			if err != nil || errors.Is(conversation.ValidateChange(conversation.Change{Add: []conversation.Place{place}}), conversation.ErrUnchangeablePlace) {
+				errs = append(errs, inputError{Location: fmt.Sprintf("%s[%d]", location, j), Message: "Choose inbox, spam, trash, or one of your labels."})
+				continue
+			}
+			parsed = append(parsed, place)
+		}
+		return parsed
+	}
+	mark := func(set *bool) conversation.Mark {
+		switch {
+		case set == nil:
+			return conversation.MarkKept
+		case *set:
+			return conversation.MarkSet
+		default:
+			return conversation.MarkCleared
+		}
+	}
+	changes := make([]conversation.Change, 0, len(body.Changes))
+	seen := make(map[uuid.UUID]bool)
+	total := 0
+	for i, in := range body.Changes {
+		location := fmt.Sprintf("body.changes[%d]", i)
+		change := conversation.Change{
+			IDs:     in.IDs,
+			Add:     places(location+".add", in.Add),
+			Remove:  places(location+".remove", in.Remove),
+			Starred: mark(in.Starred),
+			Unread:  mark(in.Unread),
+		}
+		// An unreachable place was named above, at its item, and left out.
+		switch err := conversation.ValidateChange(change); {
+		case len(change.Add) < len(in.Add) || len(change.Remove) < len(in.Remove):
+		case errors.Is(err, conversation.ErrEmptyChange):
+			errs = append(errs, inputError{Location: location, Message: "Change at least one place or mark."})
+		case errors.Is(err, conversation.ErrPlaceTwice):
+			errs = append(errs, inputError{Location: location, Message: "Name each place once, to add or to remove."})
+		}
+		for _, id := range in.IDs {
+			if seen[id] {
+				errs = append(errs, inputError{Location: location + ".ids", Message: "Name each conversation in one change only."})
+				break
+			}
+			seen[id] = true
+		}
+		total += len(in.IDs)
+		changes = append(changes, change)
+	}
+	if total > conversation.MaxActionIDs {
+		errs = append(errs, inputError{Location: "body.changes", Message: fmt.Sprintf("Change at most %d conversations at once.", conversation.MaxActionIDs)})
+	}
+	if len(errs) > 0 {
+		invalid := requestProblem(http.StatusUnprocessableEntity)
+		invalid.Errors = errs
+		return nil, invalid
+	}
+	return changes, nil
+}
+
+// conversationChangesProblem maps the errors of applying changes.
+func conversationChangesProblem(err error) error {
+	if errors.Is(err, conversation.ErrPlaceNotFound) {
+		return placeProblem(err)
+	}
+	return conversationActionProblem(err)
+}
+
+func registerConversationChanges(api huma.API, handler conversationHandler) {
+	responses := memberResponses(api, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity)
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "No Google client is configured, so inbok can't reach Gmail."
+	conflict.Content[problemContentType].Example = conversationActionProblem(errGmailNotConfigured)
+	notFound := responses[strconv.Itoa(http.StatusNotFound)]
+	notFound.Description = "A label is not one of the member's in a conversation's account, e.g. deleted since."
+	notFound.Content[problemContentType].Example = placeProblem(conversation.ErrPlaceNotFound)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "changeConversations",
+		Method:      http.MethodPost,
+		Path:        conversationsPath + "/changes",
+		Summary:     "Change Conversations",
+		Tags:        []string{tagConversations},
+		Description: "Changes the signed-in account's conversations at their provider as asked, by none of the provider's own rules, e.g. an action's undo, then returns them as the provider answered, as Apply Conversation Action does. " +
+			"Each change adds its conversations to places and takes them out of others: the inbox, Spam, Trash, or the member's labels; Sent, All mail, and Starred follow. " +
+			"A provider whose messages sit in one folder each moves them: such a change removes one place and adds one.",
+		Metadata:  map[string]any{accessKey: session.AccessMember},
+		Security:  []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses: responses,
+	}, handler.handleChangeConversations)
+}
+
+func (h conversationHandler) handleChangeConversations(ctx context.Context, in *conversationChangesInput) (*output[conversationActionResult], error) {
+	if h.actions == nil {
+		return nil, conversationActionProblem(errGmailNotConfigured)
+	}
+	changes, err := parseChanges(in.Body)
+	if err != nil {
+		return nil, err
+	}
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	applied, err := h.actions.ApplyChanges(ctx, user.ID, changes)
+	if err != nil {
+		return nil, conversationChangesProblem(err)
+	}
+	return h.respondApplied(ctx, user.ID, applied), nil
 }
