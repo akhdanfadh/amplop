@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 	"uuid"
@@ -291,4 +292,57 @@ func TestRebuildReads(t *testing.T) {
 	assert.ElementsMatch(t, ids, mine)
 	assert.Equal(t, []uuid.UUID{theirs}, theirIDs)
 	assert.Empty(t, none)
+}
+
+// A search reads whether an account is the member's, the IDs of the
+// member's mailboxes with given roles in every account, and the member's
+// found messages as a result shows them, leaving out those in such a
+// mailbox now, another member's, and unknown IDs.
+func TestSearchReads(t *testing.T) {
+	s := newMessagePartsTest(t)
+	mailboxes := append(slices.Clone(gmailMailboxes), mailsync.Mailbox{ProviderID: "DRAFT", Name: "DRAFT", Role: mailsync.RoleDrafts, MadeBy: mailsync.MadeByProvider})
+	shown, spam, trash, draft := syncedMessage("shown"), syncedMessage("spam"), syncedMessage("trash"), syncedMessage("draft")
+	shown.Seen = false
+	spam.MailboxProviderIDs = []string{"INBOX", "SPAM"}
+	trash.MailboxProviderIDs = []string{"TRASH"}
+	draft.MailboxProviderIDs = []string{"DRAFT"}
+	s.update(t, s.account, mailsync.Change{State: running(1), Mailboxes: mailboxes, Saved: []mailsync.Message{shown, spam, trash, draft}})
+	saved := s.messages(t, s.account)
+	stranger := insertConnectingMember(t, s.conn, "stranger@example.com")
+	theirAccount := insertSyncingAccount(t, s.conn, stranger, "sub-stranger")
+	s.update(t, theirAccount, mailsync.Change{State: running(1), Mailboxes: gmailMailboxes, Saved: []mailsync.Message{syncedMessage("theirs")}})
+	theirs := s.messages(t, theirAccount)["theirs"].ID
+	hidden := []mailsync.Role{mailsync.RoleJunk, mailsync.RoleTrash, mailsync.RoleDrafts}
+
+	owns, err := s.db.OwnsAccount(t.Context(), s.member, s.account)
+	require.NoError(t, err)
+	foreign, err := s.db.OwnsAccount(t.Context(), s.member, theirAccount)
+	require.NoError(t, err)
+	missing, err := s.db.OwnsAccount(t.Context(), s.member, theirAccount+1000)
+	require.NoError(t, err)
+	boxes, err := s.db.MailboxIDs(t.Context(), s.member, hidden)
+	require.NoError(t, err)
+	found, err := s.db.FoundMessages(t.Context(), s.member, []uuid.UUID{
+		saved["shown"].ID, saved["spam"].ID, saved["trash"].ID, saved["draft"].ID, theirs, uuid.New(),
+	}, hidden)
+	require.NoError(t, err)
+
+	assert.True(t, owns)
+	assert.False(t, foreign)
+	assert.False(t, missing)
+	// The member's other account's too; never the stranger's.
+	assert.ElementsMatch(t, []uuid.UUID{
+		s.mailboxID(t, s.account, "SPAM"), s.mailboxID(t, s.account, "TRASH"), s.mailboxID(t, s.account, "DRAFT"),
+		s.mailboxID(t, s.other, "SPAM"), s.mailboxID(t, s.other, "TRASH"),
+	}, boxes)
+	assert.Equal(t, []search.Message{{
+		ID:        saved["shown"].ID,
+		AccountID: s.account,
+		Date:      shown.InternalDate,
+		From:      shown.From,
+		Subject:   shown.Subject,
+		Preview:   shown.Preview,
+		Unread:    true,
+		Starred:   true,
+	}}, found)
 }

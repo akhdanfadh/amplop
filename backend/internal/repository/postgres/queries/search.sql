@@ -32,3 +32,29 @@ FROM messages m
 JOIN connected_accounts a ON a.id = m.connected_account_id
 WHERE a.user_id = @owner
 ORDER BY m.id;
+
+-- name: ListMailboxIDsWithRoles :many
+-- The member's mailboxes with any of the roles, in every account.
+SELECT b.id
+FROM mailboxes b
+JOIN connected_accounts a ON a.id = b.connected_account_id
+WHERE a.user_id = @owner
+    AND b.role = ANY (@roles::text[])
+ORDER BY b.id;
+
+-- name: ListFoundMessages :many
+-- The member's messages among the IDs that are in no mailbox with any of
+-- the roles, as a search result shows them.
+SELECT m.id, m.connected_account_id, m.internal_date, m.from_addresses,
+    m.subject, m.preview, m.seen, m.flagged
+FROM messages m
+JOIN connected_accounts a ON a.id = m.connected_account_id
+WHERE a.user_id = @owner
+    AND m.id = ANY (@ids::uuid[])
+    AND NOT EXISTS (
+        SELECT 1
+        FROM message_mailboxes mm
+        JOIN mailboxes b ON b.connected_account_id = mm.connected_account_id AND b.id = mm.mailbox_id
+        WHERE mm.message_id = m.id
+            AND b.role = ANY (@roles::text[])
+    );

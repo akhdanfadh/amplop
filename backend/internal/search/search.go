@@ -56,8 +56,8 @@ type Result struct {
 // Hit is a message a search found: its conversation's best match, and
 // where in its text the query matched. A match covers the word matched,
 // or the typed start of a longer word, as a search-as-you-type prefix. An
-// index may return matches that overlap or leave their text, which a
-// caller drops or merges before it marks the text.
+// index may return matches that overlap or leave their text; the
+// [Searcher] drops those that leave it and merges those that overlap.
 type Hit struct {
 	ID uuid.UUID
 	// Subject is the message's subject as the index holds it, which

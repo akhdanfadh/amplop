@@ -12,6 +12,70 @@ import (
 	"uuid"
 )
 
+const listFoundMessages = `-- name: ListFoundMessages :many
+SELECT m.id, m.connected_account_id, m.internal_date, m.from_addresses,
+    m.subject, m.preview, m.seen, m.flagged
+FROM messages m
+JOIN connected_accounts a ON a.id = m.connected_account_id
+WHERE a.user_id = $1
+    AND m.id = ANY ($2::uuid[])
+    AND NOT EXISTS (
+        SELECT 1
+        FROM message_mailboxes mm
+        JOIN mailboxes b ON b.connected_account_id = mm.connected_account_id AND b.id = mm.mailbox_id
+        WHERE mm.message_id = m.id
+            AND b.role = ANY ($3::text[])
+    )
+`
+
+type ListFoundMessagesParams struct {
+	Owner int64
+	Ids   []uuid.UUID
+	Roles []string
+}
+
+type ListFoundMessagesRow struct {
+	ID                 uuid.UUID
+	ConnectedAccountID int64
+	InternalDate       time.Time
+	FromAddresses      []byte
+	Subject            string
+	Preview            string
+	Seen               bool
+	Flagged            bool
+}
+
+// The member's messages among the IDs that are in no mailbox with any of
+// the roles, as a search result shows them.
+func (q *Queries) ListFoundMessages(ctx context.Context, arg ListFoundMessagesParams) ([]ListFoundMessagesRow, error) {
+	rows, err := q.db.Query(ctx, listFoundMessages, arg.Owner, arg.Ids, arg.Roles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFoundMessagesRow
+	for rows.Next() {
+		var i ListFoundMessagesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConnectedAccountID,
+			&i.InternalDate,
+			&i.FromAddresses,
+			&i.Subject,
+			&i.Preview,
+			&i.Seen,
+			&i.Flagged,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIndexSources = `-- name: ListIndexSources :many
 SELECT m.id, m.connected_account_id, m.provider_thread_id, m.internal_date,
     m.subject, m.from_addresses, m.to_addresses, m.cc_addresses,
@@ -71,6 +135,41 @@ func (q *Queries) ListIndexSources(ctx context.Context, arg ListIndexSourcesPara
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMailboxIDsWithRoles = `-- name: ListMailboxIDsWithRoles :many
+SELECT b.id
+FROM mailboxes b
+JOIN connected_accounts a ON a.id = b.connected_account_id
+WHERE a.user_id = $1
+    AND b.role = ANY ($2::text[])
+ORDER BY b.id
+`
+
+type ListMailboxIDsWithRolesParams struct {
+	Owner int64
+	Roles []string
+}
+
+// The member's mailboxes with any of the roles, in every account.
+func (q *Queries) ListMailboxIDsWithRoles(ctx context.Context, arg ListMailboxIDsWithRolesParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listMailboxIDsWithRoles, arg.Owner, arg.Roles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

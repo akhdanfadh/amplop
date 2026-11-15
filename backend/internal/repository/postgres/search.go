@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"uuid"
 
@@ -68,6 +69,56 @@ func (db *DB) MessageIDs(ctx context.Context, owner int64) ([]uuid.UUID, error) 
 		return nil, fmt.Errorf("list user message IDs: %w", err)
 	}
 	return ids, nil
+}
+
+// OwnsAccount reports whether member owner has connected account
+// accountID.
+func (db *DB) OwnsAccount(ctx context.Context, owner, accountID int64) (bool, error) {
+	user, err := sqlc.New(db.pool).ReadAccountOwner(ctx, accountID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read account owner: %w", err)
+	}
+	return user == owner, nil
+}
+
+// MailboxIDs returns the IDs of member owner's mailboxes with any of
+// roles, in every connected account.
+func (db *DB) MailboxIDs(ctx context.Context, owner int64, roles []mailsync.Role) ([]uuid.UUID, error) {
+	ids, err := sqlc.New(db.pool).ListMailboxIDsWithRoles(ctx, sqlc.ListMailboxIDsWithRolesParams{Owner: owner, Roles: roleTexts(roles)})
+	if err != nil {
+		return nil, fmt.Errorf("list mailboxes with roles: %w", err)
+	}
+	return ids, nil
+}
+
+// FoundMessages returns member owner's messages among ids that are in no
+// mailbox with any of hidden's roles, in no set order.
+func (db *DB) FoundMessages(ctx context.Context, owner int64, ids []uuid.UUID, hidden []mailsync.Role) ([]search.Message, error) {
+	rows, err := sqlc.New(db.pool).ListFoundMessages(ctx, sqlc.ListFoundMessagesParams{Owner: owner, Ids: ids, Roles: roleTexts(hidden)})
+	if err != nil {
+		return nil, fmt.Errorf("list found messages: %w", err)
+	}
+	messages := make([]search.Message, 0, len(rows))
+	for _, row := range rows {
+		from, err := decodeAddresses(row.FromAddresses)
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, search.Message{
+			ID:        row.ID,
+			AccountID: row.ConnectedAccountID,
+			Date:      row.InternalDate.UTC(),
+			From:      from,
+			Subject:   row.Subject,
+			Preview:   row.Preview,
+			Unread:    !row.Seen,
+			Starred:   row.Flagged,
+		})
+	}
+	return messages, nil
 }
 
 // indexAfter saves, in tx, the job that brings accountID's messages with
