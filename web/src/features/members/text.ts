@@ -49,7 +49,8 @@ export const accountsAbout =
 export const listTitle = "Member list";
 export const listReadFailed = "Couldn't refresh the member list.";
 
-// formatDate shows the calendar date of iso in the reader's locale and time zone.
+// formatDate shows the calendar date of iso as inbok writes one, in the
+// reader's time zone.
 export function formatDate(iso: string): string {
   return dayDate.format(new Date(iso));
 }

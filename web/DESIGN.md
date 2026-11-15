@@ -7,12 +7,16 @@ this file is what to do.
 
 Status: decided 2026-11-11. `feat/design-system` builds the foundation
 (tokens, the React Aria flavour, the shell, the status badge);
-`feat/design-forms` the shared form fields; the mail branches build on
+`feat/design-forms` the shared form fields, the settings and signed-out
+pages, messages, leave warnings, and banners; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
-work to this file, not to the old code. Not built yet: the row menu and
-picking several conversations (`feat/list-actions`), and the Outbox in
-the mail list (`feat/outbox-list`; ADR031, "Mitigations and follow-up").
+work to this file, not to the old code. Not built yet: Connected accounts
+on the settings layout (`feat/connected-accounts`), the docked compose
+window (`feat/docked-compose`), one rule for a session that ends on an
+open page (`feat/session-end`), the row menu and picking several
+conversations (`feat/list-actions`), and the Outbox in the mail list
+(`feat/outbox-list`; ADR031, "Mitigations and follow-up").
 
 ## Principles
 

@@ -55,7 +55,8 @@ export function outcomeNotice(outcome: ConnectOutcome): OutcomeNotice {
   return outcomeNotices[outcome];
 }
 
-// formatDate shows the calendar date of iso in the reader's locale and time zone.
+// formatDate shows the calendar date of iso as inbok writes one, in the
+// reader's time zone.
 export function formatDate(iso: string): string {
   return dayDate.format(new Date(iso));
 }
@@ -104,8 +105,8 @@ export const checkNowText = "Check now";
 export const tryAgainText = "Try again";
 export const checkingText = "Checking...";
 
-// formatMoment shows iso as a clock time in the reader's locale and time
-// zone, with its date unless it falls on the same day as now.
+// formatMoment shows iso as a clock time as inbok writes one, in the
+// reader's time zone, with its date unless it falls on the same day as now.
 export function formatMoment(iso: string, now: Date = new Date()): string {
   const at = new Date(iso);
   return at.toDateString() === now.toDateString() ? clockTime.format(at) : dayAndTime.format(at);

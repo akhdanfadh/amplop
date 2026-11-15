@@ -146,7 +146,8 @@ Put shared code in the folder for its responsibility:
   Undo bar (`undo.tsx`), how a row shows its date and people, and the
   address Back to mail returns to.
 - `src/features/settings`: the settings sidebar and the settings page
-  layout (`SettingsPage`, `SettingsSection`) every settings page uses.
+  layout (`SettingsPage`, `SettingsSection`) every settings page uses but
+  Connected accounts, which `feat/connected-accounts` moves onto it.
 - `src/components`: shared components, such as the shell around every page
   (`AppShell`), the password input, the request error under a form, the
   status badge, the link styles, the signed-in frame and its member menu,
