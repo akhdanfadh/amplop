@@ -185,11 +185,11 @@ which brings 400 and 600 close. Unread rows also take 650 there.
   sending form's button shows a spinner before its working words ("Signing
   in..."). With reduced motion a spinner fades in and out instead of
   turning, so it still says that work runs where no words sit beside it.
-- **Step change:** when a signed-out page moves to its next step, e.g.
-  from the password to the code, the card's content fades in and rises
-  4 px over 200 ms; the page's first step is there at once, a step that
-  keeps its title keeps its header still, and reduced motion keeps only the
-  fade.
+- **Step change:** when a signed-out page, or a settings page holding a
+  task of several steps, moves to its next step, e.g. from the password to
+  the code, the step's content fades in and rises 4 px over 200 ms
+  (`stepEnter`); the page's first step is there at once, a step that keeps
+  its title keeps its header still, and reduced motion keeps only the fade.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
   focusable element, defined once in the components. One exception: the
   message editor's text fields, which have no box, show only the caret,

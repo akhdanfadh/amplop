@@ -378,6 +378,7 @@ it runs. Only step 3 warns before leaving, with `LeaveWarning` ("Leave
 before two-factor authentication is on?"), because someone may think it is
 on. A conflict or a lost answer rereads the status, which the page then
 follows; a code another tab showed again asks for the password here too.
+Each step after the first fades in (DESIGN.md "Motion").
 
 While two-factor is on, the page shows the backup codes left and "Replace
 backup codes": a fresh authenticator code makes a new set, shown with the

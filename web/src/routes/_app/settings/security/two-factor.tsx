@@ -6,12 +6,13 @@ import { useGetCurrentSession, useGetTOTPStatus } from "@/api/generated/inbok";
 import type { ApiError } from "@/api/transport";
 import { cn } from "@/lib/cn";
 import { lineLink } from "@/components/link-style";
+import { stepEnter } from "@/components/step-change";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { SettingsPage } from "@/features/settings/page";
 import { pageName } from "@/features/settings/text";
 import { BackupCodesSection, TurnOffSection, type OpenSection } from "@/features/totp/manage";
 import { TwoFactorBadge } from "@/features/totp/security-section";
-import { useSetupFlow } from "@/features/totp/setup";
+import { useSetupFlow, type SetupStage } from "@/features/totp/setup";
 import {
   backupText,
   setUpName,
@@ -112,7 +113,8 @@ function TwoFactor(): ReactElement {
 }
 
 // Setup is the page while two-factor authentication is off: the setup's
-// current step.
+// current step, which fades in as it changes (DESIGN.md "Motion"); the
+// first step is there at once.
 function Setup({
   email,
   back,
@@ -129,13 +131,22 @@ function Setup({
   const { stage, content } = useSetupFlow({ email, onFinished, onCanceled, onError });
   // Until the status is read, the page may yet be the one for managing it.
   const reading = stage === "loading" || stage === "error";
+  // The first step shown after the read, and whether a later one has come.
+  // Set while rendering, React's way to keep what an earlier render saw.
+  const [first, setFirst] = useState<SetupStage>();
+  const [stepped, setStepped] = useState(false);
+  if (!reading && first === undefined) setFirst(stage);
+  if (!reading && first !== undefined && !stepped && stage !== first) setStepped(true);
   return (
     <SettingsPage
       title={reading ? twoFactorTitle : setUpName}
       lead={reading ? twoFactorAbout : setupLead}
       back={back}
     >
-      <div className="py-6">{content}</div>
+      {/* Keyed by step, so each step enters afresh. */}
+      <div key={stage} className={cn("py-6", stepped && stepEnter)}>
+        {content}
+      </div>
     </SettingsPage>
   );
 }
