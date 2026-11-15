@@ -415,7 +415,9 @@ last two redirect into settings, so settings can move without the server.
   popover shadow, which shows them on top and moves focus to the newest.
   Rows changing above the screen, e.g. a reply moving one to the top,
   leave the rows on screen where they are. The end says
-  "That's everything inbok has copied. Older mail stays in Gmail."
+  "That's everything inbok has copied. Older mail stays in Gmail.", 12 px
+  under the last row; the loading spinner before it is centred in a row's
+  height.
 - **Check for new mail:** an icon button at the end of the list's header
   (the phone's top bar), named by a tooltip, that asks each account in the
   filter that inbok can use to check for mail now; its icon turns while

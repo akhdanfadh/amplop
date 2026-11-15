@@ -80,19 +80,22 @@ function GridListItem<T extends object>({
 }
 
 // GridListLoadMore asks for more rows, by onLoadMore, as the member
-// scrolls near the end, and shows children while isLoading.
+// scrolls near the end, and shows children while isLoading, centred in a
+// row's height.
 function GridListLoadMore({ className, ...props }: GridListLoadMoreItemProps) {
   return (
     <AriaGridListLoadMoreItem
       data-slot="grid-list-load-more"
-      className={cn("flex items-center", className)}
+      // h-full: the layout gives it a row's height (loaderSize), and its
+      // children centre in all of it rather than sit against the row above.
+      className={cn("flex h-full items-center", className)}
       {...props}
     />
   );
 }
 
 // GridListEnd closes a list that has nothing more to load with children,
-// e.g. where the copied mail ends.
+// e.g. where the copied mail ends, 12 px under the last row.
 //
 // DESIGN: it is React Aria's load-more row, shown: the only row a
 // virtualized GridList draws that is not an item, so the keyboard skips
@@ -102,7 +105,9 @@ function GridListEnd({ className, children }: { className?: string; children: st
     <AriaGridListLoadMoreItem
       data-slot="grid-list-end"
       isLoading
-      className={cn("flex items-center px-4 text-sm text-muted-foreground", className)}
+      // Its words start at the top of the row's height the layout gives it
+      // (loaderSize), so two or three lines fit in any width.
+      className={cn("px-4 pt-3 text-sm text-muted-foreground", className)}
     >
       {children}
     </AriaGridListLoadMoreItem>

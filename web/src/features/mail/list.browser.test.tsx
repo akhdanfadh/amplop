@@ -152,6 +152,18 @@ describe("ConversationList", () => {
     expect(reads.some((r) => r.includes("before="))).toBe(true);
   });
 
+  it("ends with its words 12 px under the last row", async () => {
+    await app(mailApi([conversation(1)], one));
+    const words = page.getByText("That's everything inbok has copied.", { exact: false });
+    await expect.element(words).toBeVisible();
+
+    const row = page
+      .getByRole("row", { name: /Subject 1,/ })
+      .element()
+      .getBoundingClientRect();
+    expect(words.element().getBoundingClientRect().top - row.bottom).toBe(12);
+  });
+
   it("keeps new mail behind a button while the member is scrolled down", async () => {
     const api = mailApi(
       Array.from({ length: 60 }, (_, n) => conversation(n)),
