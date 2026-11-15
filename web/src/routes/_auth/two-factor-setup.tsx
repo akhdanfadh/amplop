@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { readSession } from "@/features/auth/guard";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { sessionMessage } from "@/features/auth/session-error";
+import { SetupDoneNotice } from "@/features/setup/done-notice";
 import { useSetupFlow } from "@/features/totp/setup";
 import { adminSetupLead, cardSignOut, changeNotice, setUpName } from "@/features/totp/text";
 
@@ -122,6 +123,7 @@ function TwoFactorSetup(): ReactElement {
         </div>
       }
     >
+      <SetupDoneNotice />
       {canceled && stage === "password" && <output>{changeNotice.canceled}</output>}
       {content}
     </SignedOutPage>

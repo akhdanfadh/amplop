@@ -56,6 +56,43 @@ func TestStartSignInPersistence(t *testing.T) {
 	assert.Equal(t, int64(1), count, "failures cannot create sessions")
 }
 
+// SignInFirstAdmin reads the new administrator's role under the sign-in lock
+// and saves a session with enrollment access only.
+func TestSignInFirstAdminPersistence(t *testing.T) {
+	db, conn := setupStorage(t)
+	accounts := account.NewService(db, setupTestToken)
+	user, err := accounts.Setup(t.Context(), account.SetupInput{
+		Token: setupTestToken, Email: "admin@example.com", Password: "a long sign-in password",
+	})
+	require.NoError(t, err)
+	now := time.Date(2026, time.October, 28, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	service := session.NewService(db, accounts, session.NewThrottle(db, clock), clock)
+	device := session.Device{UserAgent: "setup browser", Addr: netip.MustParseAddr("192.0.2.1")}
+
+	issued, err := service.SignInFirstAdmin(t.Context(), user.ID, device)
+
+	require.NoError(t, err)
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(issued.Secret)
+	require.NoError(t, err)
+	stored := readSession(t, db, sha256.Sum256(raw))
+	assert.Equal(t, user.ID, stored.UserID)
+	assert.Equal(t, device, stored.Device)
+	assert.Equal(t, now.Add(15*time.Minute), stored.ExpiresAt)
+	current, err := service.Current(t.Context(), issued.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, session.AccessEnrollment, current.Identity.Access)
+
+	// Once the account is no longer an administrator, nothing is issued.
+	_, err = conn.Exec(t.Context(), "UPDATE users SET role = 'member' WHERE id = $1", user.ID)
+	require.NoError(t, err)
+	_, err = service.SignInFirstAdmin(t.Context(), user.ID, device)
+	require.ErrorIs(t, err, session.ErrNotFound)
+	var count int64
+	require.NoError(t, conn.QueryRow(t.Context(), "SELECT count(*) FROM sessions").Scan(&count))
+	assert.Equal(t, int64(1), count)
+}
+
 func TestStartSignInExpiredSessions(t *testing.T) {
 	f := newUserSessions(t)
 	now := time.Now().UTC().Truncate(time.Microsecond)

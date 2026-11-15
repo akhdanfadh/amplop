@@ -8,17 +8,20 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"inbok/internal/account"
 	"inbok/internal/emailaddress"
+	"inbok/internal/session"
 )
 
 // ========================
@@ -58,12 +61,34 @@ func (f *fakeAccounts) Setup(_ context.Context, input account.SetupInput) (accou
 }
 
 func postSetup(logger *slog.Logger, accounts *fakeAccounts, body string) *httptest.ResponseRecorder {
+	return postSetupSignIn(logger, accounts, &fakeFirstAdmin{}, body)
+}
+
+func postSetupSignIn(logger *slog.Logger, accounts *fakeAccounts, signIn *fakeFirstAdmin, body string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(body))
 	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("User-Agent", "inbok-setup-test/1.0")
 	response := httptest.NewRecorder()
-	New(logger, Services{Account: accounts, Throttle: &fakeThrottle{}}).Handler().ServeHTTP(response, request)
+	New(logger, Services{Account: accounts, Throttle: &fakeThrottle{}, FirstAdminSignIn: signIn}).Handler().ServeHTTP(response, request)
 	return response
+}
+
+// fakeFirstAdmin signs the new administrator in with a fixed secret.
+type fakeFirstAdmin struct {
+	err    error
+	calls  int
+	userID int64
+	device session.Device
+}
+
+func (f *fakeFirstAdmin) SignInFirstAdmin(_ context.Context, userID int64, device session.Device) (session.SignedIn, error) {
+	f.calls++
+	f.userID, f.device = userID, device
+	if f.err != nil {
+		return session.SignedIn{}, f.err
+	}
+	return session.SignedIn{Step: session.SignInStepComplete, Secret: "first-admin-session", ExpiresAt: time.Now().Add(15 * time.Minute)}, nil
 }
 
 // ========================
@@ -88,16 +113,56 @@ func TestGetSetupStatus(t *testing.T) {
 
 func TestCreateFirstAdmin(t *testing.T) {
 	accounts := &fakeAccounts{}
+	signIn := &fakeFirstAdmin{}
 	body := `{"token":"test-only-setup-token-for-http-tests","email":"Admin@Example.COM","password":"a long setup password"}`
 
-	response := postSetup(discard, accounts, body)
+	response := postSetupSignIn(discard, accounts, signIn, body)
 
 	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
 	assert.JSONEq(t, `{"data":{"id":7,"email":"admin@example.com"}}`, response.Body.String())
-	assert.Empty(t, response.Header().Values("Set-Cookie"))
 	assert.Equal(t, []account.SetupInput{{
 		Token: "test-only-setup-token-for-http-tests", Email: "Admin@Example.COM", Password: "a long setup password",
 	}}, accounts.created)
+
+	// Setup signs the new administrator in, with enrollment access only.
+	assert.Equal(t, 1, signIn.calls)
+	assert.Equal(t, int64(7), signIn.userID)
+	assert.Equal(t, session.Device{UserAgent: "inbok-setup-test/1.0", Addr: netip.MustParseAddr("192.0.2.1")}, signIn.device)
+	cookies := response.Result().Cookies()
+	require.Len(t, cookies, 2)
+	assert.Equal(t, sessionCookieName, cookies[0].Name)
+	assert.Equal(t, "first-admin-session", cookies[0].Value)
+	assert.True(t, cookies[0].HttpOnly)
+	assert.True(t, cookies[0].Secure)
+	assert.InDelta(t, int((15*time.Minute)/time.Second), cookies[0].MaxAge, 2)
+	assert.Equal(t, challengeCookieName, cookies[1].Name)
+	assert.Negative(t, cookies[1].MaxAge)
+}
+
+// When signing in fails after setup commits, the administrator exists and
+// signs in as usual; the request reports the failure without a cookie.
+func TestCreateFirstAdminSignInFailure(t *testing.T) {
+	accounts := &fakeAccounts{}
+	signIn := &fakeFirstAdmin{err: errors.New("private session failure")}
+
+	response := postSetupSignIn(discard, accounts, signIn, setupBody(t, setupFields()))
+
+	require.Equal(t, http.StatusInternalServerError, response.Code, response.Body.String())
+	assert.Len(t, accounts.created, 1)
+	assert.Empty(t, response.Result().Cookies())
+	assert.NotContains(t, response.Body.String(), "private session failure")
+}
+
+// A refused setup signs no one in.
+func TestCreateFirstAdminRefusedNoSignIn(t *testing.T) {
+	accounts := &fakeAccounts{setupErr: account.ErrSetupDone}
+	signIn := &fakeFirstAdmin{}
+
+	response := postSetupSignIn(discard, accounts, signIn, setupBody(t, setupFields()))
+
+	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	assert.Zero(t, signIn.calls)
+	assert.Empty(t, response.Result().Cookies())
 }
 
 // An email the service rejects is the same field error as one Huma rejects.

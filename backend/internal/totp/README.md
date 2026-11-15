@@ -312,6 +312,8 @@ a sign-in waiting behind finishing sees the confirmed factor instead. The
 lock also reads the role: an administrator without a confirmed factor gets
 a session that lives 15 minutes, like an enrollment, and has enrollment
 access only; finishing enrollment replaces it with a full session.
+First-admin setup signs its new administrator in the same way
+(`session.Service.SignInFirstAdmin`).
 
 `session.CodeSignIn.Complete` locates the challenge owner, reserves a shared
 code attempt, and calls `CompleteSignIn`. Its locked callback checks expiry,

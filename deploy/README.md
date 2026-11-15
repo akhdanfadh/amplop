@@ -48,9 +48,9 @@ Run every command here from this folder, `deploy/`.
    exited with code 0.
 
 4. Open `https://<your domain>/setup`, enter `INBOK_SETUP_TOKEN`, and
-   create the first administrator. Then sign in: inbok asks you to set up
-   two-factor authentication at once, within 15 minutes; an administrator
-   needs it. If you leave, sign in again to continue.
+   create the first administrator. inbok signs you in and asks you to set
+   up two-factor authentication at once, within 15 minutes; an
+   administrator needs it. If you leave, sign in again to continue.
 
 5. Empty `INBOK_SETUP_TOKEN` in `.env` and apply it:
 

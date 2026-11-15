@@ -7822,7 +7822,7 @@
         ]
       },
       "post": {
-        "description": "Creates the first administrator with the setup token. Works once, and only while a setup token is configured.",
+        "description": "Creates the first administrator with the setup token and signs them in with a 15-minute session that can only set up two-factor authentication. Works once, and only while a setup token is configured.",
         "operationId": "createFirstAdmin",
         "requestBody": {
           "content": {
@@ -7843,7 +7843,14 @@
                 }
               }
             },
-            "description": "Created"
+            "description": "Created",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "403": {
             "content": {

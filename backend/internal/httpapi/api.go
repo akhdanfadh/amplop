@@ -46,6 +46,7 @@ type Services struct {
 	Probe                   probeService
 	Account                 accountService
 	Session                 sessionService
+	FirstAdminSignIn        firstAdminSignIn
 	Throttle                setupThrottle
 	ConnectedAccounts       connectedAccountService
 	// Connections is nil when no Google client is configured, and Gmail is
@@ -130,7 +131,7 @@ func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API 
 
 	registerHealth(api)
 	registerProbe(api, services.Probe)
-	registerAccount(api, services.Account, services.Throttle)
+	registerAccount(api, services.Account, services.Throttle, services.FirstAdminSignIn)
 	registerSession(api, services.Session, services.CodeSignIn)
 	registerTOTP(api, services.TOTP, services.Enrollment, services.Backups, services.Disabler)
 	registerSystemEmail(api, services.SystemEmail, services.TestMessages)

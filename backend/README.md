@@ -1642,14 +1642,18 @@ logs the token or returns it in an error.
 `GET /api/v0/setup` reports `unconfigured`, `open`, or `done`. An existing
 administrator always means `done`, even after the token is removed.
 `POST /api/v0/setup` creates one administrator atomically; concurrent claims
-cannot create a second one. Setup creates no workspace, membership, session,
-or cookie. If the token remains configured after setup, `serve` logs a
-startup warning asking the operator to remove it.
+cannot create a second one. Setup creates no workspace or membership. It
+signs the new administrator in with a 15-minute session that can only set
+up two-factor authentication (`session.Service.SignInFirstAdmin`), the same
+session sign-in gives an administrator without it. That sign-in runs after
+the administrator is saved: if it fails, the request answers 500 and the
+administrator signs in as usual. If the token remains configured after
+setup, `serve` logs a startup warning asking the operator to remove it.
 
-Setup does not sign the administrator in. The web app opens sign-in after
-completion and shows the token-removal instructions there. Before setup is
-complete, every web page leads to setup. After completion, `/setup` returns
-to the normal entry page. The API's database claim enforces setup completion
+The web app opens two-factor setup after completion and shows the
+token-removal instructions there. Before setup is complete, every web page
+leads to setup. After completion, `/setup` returns to the normal entry
+page. The API's database claim enforces setup completion
 independently of these browser redirects.
 
 ## Sign-in and browser sessions

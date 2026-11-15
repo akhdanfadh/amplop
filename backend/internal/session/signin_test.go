@@ -312,6 +312,45 @@ func TestStartSignInDeactivatedStalePassword(t *testing.T) {
 	require.ErrorIs(t, err, account.ErrInvalidCredentials)
 }
 
+func TestSignInFirstAdmin(t *testing.T) {
+	clock := &fakeClock{now: time.Date(2026, time.October, 29, 12, 0, 0, 0, time.UTC)}
+	store := &signInStorage{role: account.RoleAdmin}
+	service := NewService(store, nil, nil, clock.Now)
+	device := Device{UserAgent: "setup browser", Addr: netip.MustParseAddr("192.0.2.1")}
+
+	result, err := service.SignInFirstAdmin(t.Context(), 42, device)
+
+	require.NoError(t, err)
+	assert.Equal(t, SignInStepComplete, result.Step)
+	require.Len(t, store.states, 1)
+	assert.Equal(t, clock.Now().Add(enrollmentSessionLifetime), store.states[0].ExpiresAt, "enrollment access only")
+	assert.Equal(t, store.states[0].ExpiresAt, result.ExpiresAt)
+	assert.Equal(t, device, store.states[0].Device)
+	hash, err := randomsecret.Hash(result.Secret)
+	require.NoError(t, err)
+	assert.Equal(t, hash, store.states[0].TokenHash)
+}
+
+func TestSignInFirstAdminRefused(t *testing.T) {
+	now := time.Now()
+	for _, c := range []struct {
+		name  string
+		store *signInStorage
+	}{
+		{"member", &signInStorage{role: account.RoleMember}},
+		{"deactivated", &signInStorage{role: account.RoleAdmin, deactivated: true}},
+		{"two-factor on", &signInStorage{role: account.RoleAdmin, factor: &totp.Factor{ConfirmedAt: &now}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := NewService(c.store, nil, nil, time.Now).SignInFirstAdmin(t.Context(), 42, Device{})
+
+			require.ErrorIs(t, err, ErrNotFound)
+			assert.Empty(t, result)
+			assert.Empty(t, c.store.states)
+		})
+	}
+}
+
 func TestVerifyPassword(t *testing.T) {
 	addr := netip.MustParseAddr("192.0.2.1")
 	alice := account.User{ID: 42, Email: "alice@example.com"}

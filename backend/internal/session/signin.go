@@ -127,6 +127,29 @@ func (s *Service) StartSignIn(ctx context.Context, email, password string, devic
 	return result.SignedIn, nil
 }
 
+// SignInFirstAdmin signs in the administrator that first-admin setup just
+// created, with enrollment access only, so they go straight to setting up
+// two-factor authentication. It returns [ErrNotFound] unless userID is an
+// active administrator without a confirmed factor.
+//
+// DESIGN: setup already proved the setup token and the new password, so a
+// second password entry would prove nothing. If this fails after setup
+// commits, the administrator still exists and signs in as usual.
+func (s *Service) SignInFirstAdmin(ctx context.Context, userID int64, device Device) (SignedIn, error) {
+	var result issuedSignIn
+	err := s.storage.StartSignIn(ctx, userID, func(state SignInState) (SignInChange, error) {
+		if state.Deactivated || state.Role != account.RoleAdmin || factorConfirmed(state.Factor) {
+			return SignInChange{}, ErrNotFound
+		}
+		result = s.signedIn(userID, state, device)
+		return s.sessionChange(result), nil
+	})
+	if err != nil {
+		return SignedIn{}, err
+	}
+	return result.SignedIn, nil
+}
+
 // VerifyPassword confirms password is user's current password, counting the
 // attempt against the sign-in limits for user's email from addr, so a
 // session cookie alone cannot be used to guess it. It returns
@@ -159,9 +182,9 @@ type issuedSignIn struct {
 }
 
 // signedIn issues a complete sign-in's session for userID with state's
-// role and factor. An administrator without a confirmed factor gets a
-// session that lives only [enrollmentSessionLifetime]; finishing
-// enrollment replaces it with a full session.
+// role and factor. An administrator without a confirmed factor gets
+// enrollment access, so the session lives only [enrollmentSessionLifetime];
+// finishing enrollment replaces it with a full session.
 func (s *Service) signedIn(userID int64, state SignInState, device Device) issuedSignIn {
 	lifetime := maxLifetime
 	if state.Role == account.RoleAdmin && !factorConfirmed(state.Factor) {

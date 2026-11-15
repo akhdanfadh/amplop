@@ -168,6 +168,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		Probe:                   probe.NewService(db),
 		Account:                 accounts,
 		Session:                 sessions,
+		FirstAdminSignIn:        sessions,
 		Throttle:                throttle,
 		ConnectedAccounts:       connectedAccounts,
 		OutgoingMessages:        outgoingmessage.NewService(db, connectedAccounts, time.Now),

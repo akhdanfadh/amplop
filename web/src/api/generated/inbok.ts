@@ -3878,7 +3878,7 @@ export const getCreateFirstAdminUrl = () => {
 }
 
 /**
- * Creates the first administrator with the setup token. Works once, and only while a setup token is configured.
+ * Creates the first administrator with the setup token and signs them in with a 15-minute session that can only set up two-factor authentication. Works once, and only while a setup token is configured.
  * @summary Create First Administrator
  */
 export const createFirstAdmin = async (newSetup: NewSetup, options?: Parameters<typeof transport>[1]): Promise<ResponseFirstAdmin> => {

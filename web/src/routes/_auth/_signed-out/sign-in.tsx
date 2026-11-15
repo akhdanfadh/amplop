@@ -7,7 +7,7 @@ import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { Button } from "@/components/ui/button";
 import { CodeForm } from "@/features/auth/code-form";
-import { useSetup } from "@/features/setup/gate";
+import { SetupDoneNotice } from "@/features/setup/done-notice";
 import { signInSearch } from "@/features/auth/search";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { textLink } from "@/components/link-style";
@@ -25,7 +25,6 @@ function SignIn(): ReactElement {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
-  const { completedHere } = useSetup();
   const [step, setStep] = useState<"password" | "code" | "ended">("password");
   // Why the code step ended the attempt, for its end screen.
   const [ended, setEnded] = useState<ApiError>();
@@ -88,20 +87,7 @@ function SignIn(): ReactElement {
         )
       }
     >
-      <div aria-live="polite" aria-atomic="true" className={completedHere ? undefined : "sr-only"}>
-        {completedHere && (
-          <section className="flex flex-col gap-2" aria-labelledby="setup-done">
-            <h2 id="setup-done" className="text-lg/6 font-semibold">
-              Setup complete
-            </h2>
-            <p>An administrator account has been created.</p>
-            <p>
-              Remove <code>INBOK_SETUP_TOKEN</code> from the server configuration and restart the
-              server.
-            </p>
-          </section>
-        )}
-      </div>
+      <SetupDoneNotice />
       {notice && (
         <p id={noticeId}>
           {/* The address the page before changed, on a line of its own. */}

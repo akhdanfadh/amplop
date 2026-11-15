@@ -312,10 +312,12 @@ error beside the form.
 The `/setup` page shows token configuration instructions or the
 first-admin form. See [First administrator
 setup](../backend/README.md#first-administrator-setup) for the operator
-steps. Completing setup updates the shared status and opens `/sign-in`,
-with instructions to remove the setup token and restart the server. Setup
-does not sign the administrator in. Later visits to `/setup` redirect to
-`/`, whose guard chooses mail or sign-in. The browser remembers a local
+steps. Completing setup signs the new administrator in, with a session
+that may only set up two-factor authentication, updates the shared status,
+and opens `/`, whose guard sends them on to `/two-factor-setup`. That card
+shows the instructions to remove the setup token and restart the server;
+if the sign-in failed, or its answer was lost, sign-in shows them instead.
+Later visits to `/setup` redirect to `/`. The browser remembers a local
 setup attempt until reload, so a status check that confirms completion
 after a lost response also shows the instructions.
 
@@ -336,9 +338,10 @@ sign-in has ended", with the server's reason and "Start sign-in again".
 An uncertain response offers a session check before another attempt.
 An administrator without confirmed TOTP gets a session the server lets only
 set it up, for 15 minutes, so `_app` sends them to `/two-factor-setup`, a
-signed-out card with the setup and "Not now? Sign out" under it. A 401
-there, e.g. when the 15 minutes run out, opens sign-in, which leads back
-to the card. Members reach two-factor through Security.
+signed-out card with the setup and "Not now? Sign out" under it; `/setup`
+signs the first administrator in and leads there too. A 401 there, e.g.
+when the 15 minutes run out, opens sign-in, which leads back to the card.
+Members reach two-factor through Security.
 
 Security (`/settings/security`) is a settings page with three sections:
 Email address, Two-factor authentication, and Signed-in browsers. The

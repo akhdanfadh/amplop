@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strconv"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -22,14 +23,20 @@ type accountService interface {
 	Setup(ctx context.Context, input account.SetupInput) (account.User, error)
 }
 
+// firstAdminSignIn signs in the administrator setup just created.
+type firstAdminSignIn interface {
+	SignInFirstAdmin(ctx context.Context, userID int64, device session.Device) (session.SignedIn, error)
+}
+
 // accountHandler holds the dependencies shared by setup HTTP handlers.
 type accountHandler struct {
 	service  accountService
 	throttle setupThrottle
+	signIn   firstAdminSignIn
 }
 
-func registerAccount(api huma.API, service accountService, throttle setupThrottle) {
-	handler := accountHandler{service: service, throttle: throttle}
+func registerAccount(api huma.API, service accountService, throttle setupThrottle, signIn firstAdminSignIn) {
+	handler := accountHandler{service: service, throttle: throttle, signIn: signIn}
 	registerSetupStatus(api, handler)
 	registerFirstAdmin(api, handler)
 }
@@ -92,16 +99,23 @@ type newSetup struct {
 	Password string `json:"password" writeOnly:"true" minLength:"15" maxLength:"128"`
 }
 
-// setupInput combines setup fields with the resolved client address.
+// setupInput combines setup fields with the requesting browser's details.
 type setupInput struct {
-	Body newSetup
-	addr netip.Addr
+	Body   newSetup
+	device session.Device
 }
 
-// Resolve fills the client address for throttling using Gin's proxy rules.
+// Resolve reads the device details: the User-Agent and the client address
+// Gin's proxy rules select, used for throttling and kept by the new session.
 // Huma calls it automatically after parsing the request, before the handler.
 func (in *setupInput) Resolve(ctx huma.Context) []error {
-	return resolveClientAddr(ctx, &in.addr)
+	return resolveDevice(ctx, &in.device)
+}
+
+// firstAdminOutput carries the new administrator and its session cookie.
+type firstAdminOutput struct {
+	SetCookie []http.Cookie `header:"Set-Cookie"`
+	Body      response[firstAdmin]
 }
 
 type firstAdmin struct {
@@ -118,19 +132,21 @@ func registerFirstAdmin(api huma.API, handler accountHandler) {
 		Path:          setupPath,
 		Summary:       "Create First Administrator",
 		Tags:          []string{tagSetup},
-		Description:   "Creates the first administrator with the setup token. Works once, and only while a setup token is configured.",
+		Description:   "Creates the first administrator with the setup token and signs them in with a 15-minute session that can only set up two-factor authentication. Works once, and only while a setup token is configured.",
 		DefaultStatus: http.StatusCreated,
 		Responses:     firstAdminResponses(api),
 	}, handler.handleCreateFirstAdmin)
 }
 
-// handleCreateFirstAdmin reserves a throttle attempt before claiming setup.
-func (h accountHandler) handleCreateFirstAdmin(ctx context.Context, in *setupInput) (*output[firstAdmin], error) {
-	id, err := h.throttle.BeginSetup(ctx, in.addr)
+// handleCreateFirstAdmin creates the first administrator and signs them in.
+func (h accountHandler) handleCreateFirstAdmin(ctx context.Context, in *setupInput) (*firstAdminOutput, error) {
+	// 1. Reserve a throttle attempt before claiming setup.
+	id, err := h.throttle.BeginSetup(ctx, in.device.Addr)
 	if err != nil {
 		return nil, throttleProblem(err)
 	}
 
+	// 2. Claim setup. A failure keeps the attempt, so it counts.
 	user, err := h.service.Setup(ctx, account.SetupInput{
 		Token:    in.Body.Token,
 		Email:    in.Body.Email,
@@ -142,7 +158,18 @@ func (h accountHandler) handleCreateFirstAdmin(ctx context.Context, in *setupInp
 	if err := h.throttle.Succeed(ctx, id); err != nil {
 		return nil, err
 	}
-	return respondData(firstAdmin{ID: user.ID, Email: user.Email}), nil
+
+	// 3. Sign the administrator in, only once they exist. If this fails,
+	// they sign in as usual.
+	signedIn, err := h.signIn.SignInFirstAdmin(ctx, user.ID, in.device)
+	if err != nil {
+		return nil, err
+	}
+	maxAge := int(time.Until(signedIn.ExpiresAt) / time.Second)
+	return &firstAdminOutput{
+		SetCookie: []http.Cookie{sessionCookie(signedIn.Secret, maxAge), challengeCookie("", -1)},
+		Body:      respondData(firstAdmin{ID: user.ID, Email: user.Email}).Body,
+	}, nil
 }
 
 // firstAdminResponses documents the operation's expected failures.

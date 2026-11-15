@@ -65,7 +65,7 @@ func TestSetupThrottling(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			accounts := &fakeAccounts{setupErr: c.setupErr}
 			limiter := &fakeThrottle{beginErr: c.beginErr, deleteErr: c.deleteErr}
-			api := New(discard, Services{Account: accounts, Throttle: limiter})
+			api := New(discard, Services{Account: accounts, Throttle: limiter, FirstAdminSignIn: &fakeFirstAdmin{}})
 			require.NoError(t, api.SetTrustedProxies([]string{"10.0.0.0/8"}))
 			request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(setupBody(t, setupFields())))
 			request.Header.Set("Origin", "http://"+request.Host)
@@ -80,7 +80,9 @@ func TestSetupThrottling(t *testing.T) {
 			assert.Equal(t, netip.MustParseAddr("198.51.100.20"), limiter.addr)
 			assert.Len(t, accounts.created, c.created)
 			assert.Equal(t, c.removed, limiter.removed)
-			assert.Empty(t, response.Result().Cookies())
+			if c.code != http.StatusCreated {
+				assert.Empty(t, response.Result().Cookies())
+			}
 			if c.beginErr == session.ErrThrottled {
 				assert.Equal(t, "/api/v0/problems/sign-in-throttled", decodeJSON(t, response.Body.Bytes())["type"])
 			}
@@ -91,7 +93,7 @@ func TestSetupThrottling(t *testing.T) {
 func TestSetupValidationFirst(t *testing.T) {
 	limiter := &fakeThrottle{beginErr: session.ErrThrottled}
 	accounts := &fakeAccounts{}
-	api := New(discard, Services{Account: accounts, Throttle: limiter})
+	api := New(discard, Services{Account: accounts, Throttle: limiter, FirstAdminSignIn: &fakeFirstAdmin{}})
 	request := httptest.NewRequest(http.MethodPost, "/api/v0/setup", strings.NewReader(`{"token":"private-token","email":"bad","password":"short"}`))
 	request.Header.Set("Origin", "http://"+request.Host)
 	request.Header.Set("Content-Type", jsonContentType)
