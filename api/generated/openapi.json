@@ -9901,7 +9901,7 @@
       "name": "Conversations"
     },
     {
-      "description": "Read the signed-in account's messages: their bodies, images, and attachments.",
+      "description": "Read and search the signed-in account's messages: their bodies, images, and attachments.",
       "name": "Messages"
     },
     {
