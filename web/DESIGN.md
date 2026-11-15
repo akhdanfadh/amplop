@@ -859,9 +859,26 @@ outcome.
 - **Toasts** report failures, and stay until closed; an action's Undo is
   the Undo bar's, not a toast's. Form
   results stay inline. Nothing important lives only in a toast.
-- **Banners** for conditions that last: offline at the top of the content;
-  an account problem above that account's mail; setup the member owes at the
-  top of settings, e.g. an unverified email address.
+- **Banners** for conditions that last (`Banner`: an icon, a sentence, and,
+  where something fixes it, a link to it, tinted, with a line in its tone
+  at 35% under it so stacked banners stay apart; the line only separates,
+  so it needs no contrast check): an account problem above that account's
+  mail; at the top of the content of every signed-in page, stacked, offline
+  (`warning`), then each setup step the member owes (`info`): system email
+  for an administrator (nothing saved: "Finish setting up system email:
+  until it works, members can't reset a password or verify their
+  address."; no passing test: "Finish setting up system email: until a
+  test message passes, registration can't open."), then an unverified
+  address. Each banner follows one fact from the server and none waits for
+  another: what a step can't do yet, e.g. a verification link while nothing
+  is saved, the server refuses and says why. A banner stays on every page
+  until its step is done; on the page where it is done it keeps its
+  sentence and drops its link, which would lead to itself. The setup
+  banners sit in a "Setup reminders" landmark: they come before the heading
+  a page focuses, so a screen reader finds them there. The system
+  email step reflects the last test, not whether mail sent since arrives:
+  the server records only tests (Not now). Signed-out pages show only
+  offline.
 - Every mail action has its words once, in `features/mail/words.ts`
   (label, icon, failure, and for an action that moves a conversation its
   result and where it went), a `Record` over the API's actions, so a new
@@ -1027,17 +1044,17 @@ gestures, drafts beyond the tab, an installable app with offline mail,
 per-member theme storage, folds kept across devices (per member, on the
 server), a Preferences settings page (the theme, the only preference,
 lives in the member menu), the remaining confirmations holding their
-change in the dialog (`ConfirmDialog`) as Members and Registration do.
-Pull-to-refresh and a top bar that hides while scrolling down: Check for
-new mail is one tap in the top bar, both gestures need hand-written touch
-handling over the Virtualizer's scrolling box that only a real phone can
-check, and a native app gets both from its platform (ADR031, branch 3
-checkpoint 5).
+change in the dialog (`ConfirmDialog`) as Members and Registration do, a
+setup reminder when system email stops delivering (the server would first
+have to record failed sends), dismissing a banner. Pull-to-refresh and a
+top bar that hides while scrolling down: Check for new mail is one tap in
+the top bar, both gestures need hand-written touch handling over the
+Virtualizer's scrolling box that only a real phone can check, and a
+native app gets both from its platform (ADR031, branch 3 checkpoint 5).
 
 App keyboard shortcuts, once built, go on TanStack Hotkeys (`useHotkey`,
 its `Mod` key, and its display formatter), which then also takes the
 sidebar's Ctrl+B, Send's Ctrl+Enter, and the Undo bar's Ctrl+Z. Until
 then those three are plain key handlers, the two letter ones sharing one
 check of what the key may reach (`isShortcut` in `src/lib/shortcut.ts`):
-the library was in beta in 2026-11, and three shortcuts did not need
-it.
+the library was in beta in 2026-11, and three shortcuts did not need it.

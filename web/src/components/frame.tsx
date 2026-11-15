@@ -12,6 +12,7 @@ import { Link } from "@tanstack/react-router";
 import { cn } from "@/lib/cn";
 import { MemberMenu } from "@/components/member-menu";
 import { OfflineBanner } from "@/components/offline-banner";
+import { SetupReminder } from "@/features/setup-reminder/reminder";
 import {
   Sidebar,
   SidebarContent,
@@ -105,7 +106,9 @@ export function Frame({
       </Sidebar>
       <SidebarInset className="h-svh">
         <TopBar slotRef={setSlot} />
+        {/* Stacked, the condition of the moment above the setup still owed. */}
         <OfflineBanner />
+        <SetupReminder />
         {/* Relative, so what is placed absolutely in a page, e.g. a
             screen-reader-only label, is placed in this box and scrolls
             with it, instead of stretching the whole page. */}

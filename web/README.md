@@ -118,7 +118,10 @@ Put shared code in the folder for its responsibility:
   redeem's result.
 - `src/features/system-email`: the system email settings form, its schema,
   the test message form and its result wording, and whether the saved
-  settings passed a test (`systemEmailState`), which the badge shows.
+  settings passed a test (`systemEmailState`), which the badge and the
+  setup reminder share.
+- `src/features/setup-reminder`: the banners for each setup step the
+  signed-in member owes (`SetupReminder`), and their wording.
 - `src/features/members`: the member list's columns and cells, the table
   with its confirmation dialog, and its wording.
 - `src/features/registration`: the Registration page's section and badge,
@@ -295,7 +298,28 @@ whose page still offers to send it (`unfinished`), so a message sent
 again stops counting. The member menu at the bottom of the sidebar opens
 Settings, the theme choice, and Sign out. Both frames and the signed-out
 layout show `OfflineBanner` at the top of the content while the browser
-reports no connection, read from TanStack Query's `onlineManager`.
+reports no connection, read from TanStack Query's `onlineManager`. Under
+it, both frames show `SetupReminder`, a banner for each setup step the
+member owes, stacked (web/DESIGN.md "Feedback"): for an administrator,
+system email with nothing saved or without a passing test; for anyone, an
+unverified address. Each follows its own fact from the server, with no
+order between them: the server, not the reminder, refuses a verification
+link while nothing is saved. The banners sit in a "Setup reminders"
+landmark, since they come before the heading each page focuses. The
+reminder reads system email for an administrator only, through the System
+email page's own query, so that page's saves and tests move it on; a
+failed later read keeps the last answer, as that page does. The `_app`
+loader makes the page load's first try before the page draws, so the
+banner never pushes a drawn page down; it never waits for the connection,
+a failure only leaves system email out, and after that first try, answered
+or not, it waits for nothing. Accepted: a first read that hangs holds the
+first draw until the request times out (15 s), as a page's own read does.
+The reminder's reads end the page on a 401 (`useSessionEnd`), since its
+focus reread can be the first to find the session gone. Unlike the frame's
+other session readers, the reminder rereads the session when the window
+regains focus, since an address is often verified from the email in
+another tab. A banner shows on every page; on
+the page where its step is done it drops its link.
 
 A place in mail, `/mail/<place>`, is a view (`inbox`, `starred`, `sent`,
 `all`, `spam`, `trash`) or a label's ID from the API's places, and
@@ -426,8 +450,8 @@ Security opens with the account's email address and whether it is
 verified. "Send verification link" emails a link that expires in 24 hours.
 A lost reply or failed send can be repeated without a check: the server
 limits how many links are sent, and every unexpired link works. An
-unverified account also sees a banner on every other settings page that
-links to Security. Both say a forgotten password can't
+unverified account also sees the setup reminder on every page, linking
+to Security from the others. Both say a forgotten password can't
 be reset by email until the address is verified, since the reset page's
 answer cannot say why nothing arrived. "Send verification link" is pending,
 not disabled, while it sends, so focus stays on it.
