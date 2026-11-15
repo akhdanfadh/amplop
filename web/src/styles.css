@@ -239,14 +239,6 @@
   outline-offset: -2px;
 }
 
-/* Fades a line's end out, for an icon laid over its last 16 px: clear
- * under the last 1.5 rem, 8 px to spare beside the icon, then whole by
- * 2.75 rem. A mask fades the text itself, so it works on any surface the
- * row has (rest, hover, open) in either theme. */
-@utility fade-end {
-  mask-image: linear-gradient(to left, transparent 1.5rem, black 2.75rem);
-}
-
 /* Fades a scrolling box's edge while there is more to scroll that way,
  * 24 px at the bottom until its end, and at the top once scrolled, so a
  * row cut at the edge reads as more below, not as the list's end. A

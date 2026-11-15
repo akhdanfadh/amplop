@@ -43,15 +43,21 @@ export function subjectText(subject: string): string {
   return subject.trim() || noSubject;
 }
 
+// inboxChip is the chip a row outside the Inbox shows while its
+// conversation is in the Inbox, as Gmail's list marks it.
+export const inboxChip = "Inbox";
+
 // rowName returns what a screen reader calls a list row: whether it is
 // unread, who, how many messages when more than one, its subject and date,
-// whether it is starred, and its account when the list mixes accounts.
+// whether its list marks it in the Inbox (inbox) and whether it is
+// starred, and its account when the list mixes accounts.
 export function rowName(row: {
   who: string;
   count: number | undefined;
   subject: string;
   date: string;
   unread: boolean;
+  inbox: boolean;
   starred: boolean;
   account: string | undefined;
 }): string {
@@ -61,6 +67,7 @@ export function rowName(row: {
     row.count !== undefined && `${messageCount(row.count)} messages`,
     row.subject,
     row.date,
+    row.inbox && `In ${inboxChip}`,
     row.starred && "Starred",
     row.account,
   ]
@@ -79,9 +86,6 @@ export const me = "me";
 
 // A date on the day before today.
 export const yesterday = "Yesterday";
-
-// The star button's name, which says whether it is pressed.
-export const starName = "Star";
 
 // Why the API refused to change a conversation, with the fix.
 export const refusedText = {

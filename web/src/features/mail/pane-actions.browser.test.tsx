@@ -226,6 +226,21 @@ describe("the reading pane's actions", () => {
     await expect.element(list().getByRole("row", { name: /Subject 1/ })).toBeVisible();
   });
 
+  it("archives in All mail in place, its Inbox chip gone, and Move to Inbox brings it back", async () => {
+    const rows = [conversation(1)];
+    const router = await open(rows, 0, "all");
+    await expect.element(list().getByRole("row", { name: /Subject 1, .*In Inbox/ })).toBeVisible();
+
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+
+    const row = list().getByRole("row", { name: /Subject 1,/ });
+    await expect.poll(() => row.element().getAttribute("aria-label")).not.toContain("In Inbox");
+    expect(router.state.location.pathname).toBe(`/mail/all/${rows[0].id}`);
+
+    await userEvent.click(toolbar().getByRole("button", { name: "Move to Inbox" }));
+    await expect.element(list().getByRole("row", { name: /Subject 1, .*In Inbox/ })).toBeVisible();
+  });
+
   it("stars in place, with no Undo, the star pressed", async () => {
     const rows = [conversation(1)];
     const router = await open(rows, 0);
@@ -562,7 +577,7 @@ describe("the Undo bar's keys", () => {
 
     await expect.poll(() => api.actions.at(-1)?.action).toBe("changes");
     await expect.element(bar()).not.toBeInTheDocument();
-    await expect.poll(() => api.conversations[0].inbox).toBe(true);
+    await expect.element(list().getByRole("row", { name: /Subject 1, .*In Inbox/ })).toBeVisible();
   });
 
   it("leaves Ctrl+Z to the reply editor, Ctrl+Shift+Z, and an open menu, dialog, or sheet", async () => {

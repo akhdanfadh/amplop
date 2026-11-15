@@ -136,7 +136,7 @@ text).
   (`pointer-coarse:`), set in the components themselves, never per page.
   A control inside a list row, e.g. the star, is 24 px, WCAG 2.2's
   smallest target (2.5.8), so it fits its 20 px line; on a touch screen
-  it is only a mark, and its action is in the row's menu.
+  its target reaches 8 px past it, moving nothing.
   Nav rows 32 px (44 px coarse); list rows 76 px. Buttons in dense bars
   (the sidebar's header, a toast, a drawer's close) 32 px (44 px coarse),
   so they sit level with the nav rows beside them.
@@ -374,17 +374,19 @@ last two redirect into settings, so settings can move without the server.
   moves its conversation up in every view it is in, as in Gmail's
   conversation view.
 - **Row, three lines:** who (first names, "me", count) and date / subject /
-  snippet, ended by the star button. A starred row's snippet gives way to
-  it; an unstarred row's keeps its whole width, and the star lies over its
-  end, which fades out under it, so no text moves as the pointer passes. The
-  star shows while the row is hovered or has keyboard focus (→ reaches it),
-  or while starred; pressing it stars or unstars at once. A 36 px initials
+  snippet, ended by the row's marks: an "Inbox" chip (the `secondary`
+  badge, 16 px) outside the Inbox while the conversation is in it, so All
+  mail, Starred, Sent, and labels tell it from an archived one, as
+  Gmail's list does; then the star button, on every row as in Gmail's
+  list and app, outlined until starred (→ reaches it from the row);
+  pressing it stars or unstars at once. A 36 px initials
   avatar ringed in the account colour leads (initials of the newest
   message's sender), its top on the first line's, 16 px from the list's edge
   (the heading's inset) and 12 px from the text, closer than the edge so it
   reads with its text; filtered to one account, the ring is dropped. Unread
   rows are 600 weight. Markers: an attachment clip, a star filled in the
-  text colour.
+  text colour, the Inbox chip; a screen reader hears "In Inbox" and
+  "Starred" in the row's name.
 - **Dates:** today the time (the browser's 12 or 24 hour clock),
   "Yesterday", the weekday within 7 days, "2 Nov" this year, "2 Nov 2025"
   in another year, a later day too; the full date and time on hover.

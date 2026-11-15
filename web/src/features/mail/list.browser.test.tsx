@@ -355,90 +355,20 @@ describe("the list's rows", () => {
 });
 
 describe("the row's star", () => {
-  it("shows on hover, and stars the conversation at Gmail", async () => {
-    const api = mailApi([conversation(1), conversation(2)], one);
+  it("shows on every row, and stars the conversation at Gmail", async () => {
+    const api = mailApi([conversation(1), conversation(2, { starred: true })], one);
     await app(api);
-    const row = page.getByRole("row", { name: /^Bo Tan, Subject 1,/ });
+    // At rest: the pointer off every row, wherever an earlier test left it.
+    await userEvent.hover(page.getByRole("heading", { level: 1 }));
     const star = starOf(/^Bo Tan, Subject 1,/);
-    await expect.element(row).toBeVisible();
-    await expect.element(star).toHaveStyle({ opacity: "0" });
-    await userEvent.hover(row);
+    await expect.element(star).toBeVisible();
     await expect.element(star).toHaveStyle({ opacity: "1" });
+    await expect.element(starOf(/^Bo Tan, Subject 2,/)).toHaveStyle({ opacity: "1" });
 
     await userEvent.click(star);
     await expect.element(star).toHaveAttribute("aria-pressed", "true");
     expect(api.actions).toEqual([{ action: "star", ids: [conversation(1).id] }]);
     await expect.element(page.getByRole("row", { name: /Subject 1, .*Starred/ })).toBeVisible();
-  });
-
-  it("lies over an unstarred preview's faded end, so the preview never moves", async () => {
-    const long = `Long preview ${"word ".repeat(60)}`;
-    const api = mailApi(
-      [conversation(1, { preview: long }), conversation(2, { preview: long, starred: true })],
-      one,
-    );
-    await app(api);
-    const row = page.getByRole("row", { name: /^Bo Tan, Subject 1,/ });
-    const starredRow = page.getByRole("row", { name: /^Bo Tan, Subject 2,/ });
-    await expect.element(row).toBeVisible();
-    await expect.element(starredRow).toBeVisible();
-    const preview = row.getByText(/^Long preview/).element();
-    const starred = starredRow.getByText(/^Long preview/).element();
-    // At rest: the pointer off every row, wherever an earlier test left it.
-    await userEvent.hover(page.getByRole("heading", { level: 1 }));
-    const width = preview.getBoundingClientRect().width;
-    expect(getComputedStyle(preview).maskImage).toBe("none");
-    // A starred row's preview gives way to its star.
-    expect(starred.getBoundingClientRect().width).toBeLessThan(width);
-
-    // From the next row, as the pointer comes to it: one left resting on
-    // this row by an earlier test would raise no hover.
-    await userEvent.hover(starredRow);
-    await userEvent.hover(row);
-    await expect.element(starOf(/^Bo Tan, Subject 1,/)).toHaveStyle({ opacity: "1" });
-    expect(preview.getBoundingClientRect().width).toBe(width);
-    expect(getComputedStyle(preview).maskImage).toContain("linear-gradient");
-
-    // Leaving, the star is gone by the time the text returns.
-    await userEvent.unhover(row);
-    await vi.waitFor(() => expect(getComputedStyle(preview).maskImage).toBe("none"), {
-      timeout: 10_000,
-    });
-    expect(getComputedStyle(starOf(/^Bo Tan, Subject 1,/).element()).opacity).toBe("0");
-  });
-
-  it("fades the preview's end under it when the keyboard reaches the row or the star", async () => {
-    const api = mailApi([conversation(1), conversation(2)], one);
-    await app(api);
-    const first = page.getByRole("row", { name: /^Bo Tan, Subject 2,/ });
-    const row = page.getByRole("row", { name: /^Bo Tan, Subject 1,/ });
-    const preview = () => row.getByText("Preview 1").element();
-    await expect.element(row).toBeVisible();
-    expect(getComputedStyle(preview()).maskImage).toBe("none");
-
-    first.element().focus();
-    await userEvent.keyboard("{ArrowDown}");
-    await expect.element(row).toHaveAttribute("data-focus-visible", "true");
-    expect(getComputedStyle(preview()).maskImage).toContain("linear-gradient");
-
-    // On the star, the row itself no longer has focus.
-    await userEvent.keyboard("{ArrowRight}");
-    await expect.element(starOf(/^Bo Tan, Subject 1,/)).toHaveFocus();
-    await expect.element(row).not.toHaveAttribute("data-focus-visible");
-    expect(getComputedStyle(preview()).maskImage).toContain("linear-gradient");
-  });
-
-  it("hides again once the pointer leaves an unstarred row", async () => {
-    const api = mailApi([conversation(1, { starred: true })], one);
-    await app(api);
-    const row = page.getByRole("row", { name: /Subject 1,/ });
-    const star = starOf(/Subject 1,/);
-    await expect.element(star).toHaveStyle({ opacity: "1" });
-    await userEvent.hover(row);
-    await userEvent.click(star);
-    await expect.element(star).toHaveAttribute("aria-pressed", "false");
-    await userEvent.unhover(row);
-    await expect.element(star).toHaveStyle({ opacity: "0" });
   });
 
   it("is reached from its row with the arrow keys", async () => {
@@ -450,7 +380,6 @@ describe("the row's star", () => {
     await userEvent.keyboard("{ArrowRight}");
     const star = starOf(/Subject 1,/);
     await expect.element(star).toHaveFocus();
-    await expect.element(star).toHaveStyle({ opacity: "1" });
     await userEvent.keyboard(" ");
     await expect.element(star).toHaveAttribute("aria-pressed", "true");
   });
@@ -461,7 +390,6 @@ describe("the row's star", () => {
     await app(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
-    await userEvent.hover(row);
     await userEvent.click(starOf(/Subject 1,/));
     await expect.element(page.getByText("Couldn't star the conversation")).toBeVisible();
     await expect.element(page.getByText("Gmail didn't answer. Try again.")).toBeVisible();
@@ -490,6 +418,41 @@ describe("the row's star", () => {
     await userEvent.click(starOf(/Subject 1,/));
     await expect.element(page.getByText("Couldn't remove the star")).toBeVisible();
     await expect.element(starOf(/Subject 1,/)).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("the Inbox chip", () => {
+  it("marks a conversation still in the Inbox outside the Inbox, e.g. in All mail", async () => {
+    await app(mailApi([conversation(1), conversation(2, { inbox: false })], one), "/mail/all");
+
+    const inbox = page.getByRole("row", { name: /Subject 1, .*In Inbox/ });
+    await expect.element(inbox).toBeVisible();
+    await expect.element(inbox.getByText("Inbox", { exact: true })).toBeVisible();
+    const archived = page.getByRole("row", { name: /Subject 2,/ });
+    expect(archived.element().getAttribute("aria-label")).not.toContain("In Inbox");
+    expect(archived.getByText("Inbox", { exact: true }).query()).toBeNull();
+  });
+
+  it("keeps its shape on a hovered row, whose surface is its own fill", async () => {
+    await app(mailApi([conversation(1)], one), "/mail/all");
+    const row = page.getByRole("row", { name: /Subject 1, .*In Inbox/ });
+    const chip = row.getByText("Inbox", { exact: true });
+    await expect.element(chip).toBeVisible();
+
+    await userEvent.hover(row);
+    await expect.element(row).toHaveAttribute("data-hovered", "true");
+    expect(getComputedStyle(chip.element()).backgroundColor).not.toBe(
+      getComputedStyle(row.element()).backgroundColor,
+    );
+  });
+
+  it("marks nothing in the Inbox, where every row is", async () => {
+    await app(mailApi([conversation(1)], one));
+
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
+    expect(row.element().getAttribute("aria-label")).not.toContain("In Inbox");
+    expect(row.getByText("Inbox", { exact: true }).query()).toBeNull();
   });
 });
 

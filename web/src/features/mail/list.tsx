@@ -340,6 +340,7 @@ export function ConversationList({
                 conversation={conversation}
                 account={rowAccount(accountsById.get(conversation.accountId))}
                 ringed={ringed}
+                markInbox={place !== "inbox"}
                 href={conversationHref(conversation.id)}
                 openStore={openStore}
                 now={now}

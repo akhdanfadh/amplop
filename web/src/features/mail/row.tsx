@@ -3,13 +3,15 @@ import { cn } from "@/lib/cn";
 import { ToggleButton } from "react-aria-components";
 import { StarIcon } from "lucide-react";
 import { accountName, type AccountColor } from "@/components/account-mark";
+import { Badge } from "@/components/ui/badge";
 import { GridListItem } from "@/components/ui/grid-list";
 import type { AppHref } from "./places";
 import type { Conversation } from "./conversations";
 import { fullDate, listDate } from "./dates";
 import { senders } from "./people";
 import { SenderAvatar } from "./sender-avatar";
-import { messageCount, rowName, starName, subjectText, unknownSender } from "./text";
+import { inboxChip, messageCount, rowName, subjectText, unknownSender } from "./text";
+import { actionWords } from "./words";
 
 // RowAccount is what a row shows of its conversation's account.
 export type RowAccount = { color: AccountColor; email: string; name: string | null };
@@ -24,17 +26,20 @@ export function rowHeight(): number {
 }
 
 // ConversationRow is one conversation in a list (DESIGN.md "Message
-// list"): its senders, count, and date; its subject; its preview and star;
-// led by its newest sender's initials, ringed in account's colour unless
-// the list shows one account (ringed false). href opens it, with fromList
-// in its history state as the reading pane's Back needs it; openStore
-// says which conversation the reading pane shows; now is the day its date
-// is shown at; onRest and onLeave run as the pointer comes to rest on it
-// and leaves, to read it ahead; onStar stars or unstars it.
+// list"): its senders, count, and date; its subject; its preview, an
+// Inbox chip while it is in the Inbox and markInbox is set, e.g. in All
+// mail, and its star; led by its newest sender's initials, ringed in
+// account's colour unless the list shows one account (ringed false).
+// href opens it, with fromList in its history state as the reading
+// pane's Back needs it; openStore says which conversation the reading
+// pane shows; now is the day its date is shown at; onRest and onLeave run as
+// the pointer comes to rest on it and leaves, to read it ahead; onStar
+// stars or unstars it.
 export function ConversationRow({
   conversation,
   account,
   ringed,
+  markInbox,
   href,
   openStore,
   now,
@@ -45,6 +50,7 @@ export function ConversationRow({
   conversation: Conversation;
   account: RowAccount | undefined;
   ringed: boolean;
+  markInbox: boolean;
   href: AppHref;
   openStore: OpenStore;
   now: Date;
@@ -66,6 +72,7 @@ export function ConversationRow({
   const shownDate = listDate(date, now);
   const subject = subjectText(conversation.subject);
   const count = conversation.messageCount > 1 ? conversation.messageCount : undefined;
+  const inInbox = markInbox && conversation.inbox;
 
   return (
     <GridListItem
@@ -97,6 +104,7 @@ export function ConversationRow({
         subject,
         date: shownDate,
         unread: conversation.unread,
+        inbox: inInbox,
         starred: conversation.starred,
         // The ring is a colour alone, so the name says the account.
         account: ringed && account ? accountName(account) : undefined,
@@ -106,7 +114,7 @@ export function ConversationRow({
       onHoverEnd={onLeave}
       // The list reads the conversation ahead when focus rests here.
       data-conversation={conversation.id}
-      className="group/row h-full gap-3 border-b px-4 py-2"
+      className="h-full gap-3 border-b px-4 py-2"
     >
       {/* 36 px, its top on the first line's and its left edge on the list
           heading's (16 px); 12 px to the text, less than the edge, so it
@@ -158,21 +166,27 @@ export function ConversationRow({
         <span dir="auto" className="truncate">
           {subject}
         </span>
-        {/* The star ends the preview's line. A starred row's preview gives
-            way to it; an unstarred row's keeps its whole width, and its
-            end fades under the star while the star shows, so the text
-            doesn't move as the pointer passes. */}
-        <div className="group/line relative flex h-5 items-center gap-1.5">
+        {/* The chip and the star end the preview's line, the row's marks
+            beside its date, so the text above starts where it does. */}
+        <div className="flex h-5 items-center gap-1.5">
           <p
             dir="auto"
-            className={cn(
-              "min-w-0 flex-1 truncate text-snippet font-normal text-muted-foreground",
-              !conversation.starred &&
-                "not-pointer-coarse:group-has-data-focus-visible/line:fade-end not-pointer-coarse:group-data-focus-visible/row:fade-end not-pointer-coarse:group-data-hovered/row:fade-end",
-            )}
+            className="min-w-0 flex-1 truncate text-snippet font-normal text-muted-foreground"
           >
             {conversation.preview}
           </p>
+          {inInbox && (
+            // 16 px, the meta text's line and the star's icon, so 2 px
+            // stay between it and the subject above. A hovered or open
+            // row's surface is the chip's own fill, so there it takes the
+            // page's, to keep its shape.
+            <Badge
+              variant="secondary"
+              className="h-4 px-1.5 py-0 in-aria-[current=page]:bg-background in-data-hovered:bg-background"
+            >
+              {inboxChip}
+            </Badge>
+          )}
           <StarButton starred={conversation.starred} onStar={onStar} />
         </div>
       </div>
@@ -180,19 +194,16 @@ export function ConversationRow({
   );
 }
 
-// StarButton stars a row (DESIGN.md "Message list"): shown while the row is
-// hovered or has keyboard focus, or while starred. A touch screen, where
-// nothing hovers, gets no button, only the star's mark while starred; the
-// row's name already says it is starred.
+// StarButton stars a row (DESIGN.md "Message list"), on every row, as
+// Gmail's list and app show it: outlined, then filled in the text colour
+// once starred.
 //
 // DESIGN: 24 px, the smallest target WCAG 2.2 allows (2.5.8), so it fits
 // its 20 px line with 2 px to spare under the subject's letters; DESIGN.md
-// lets a control in a list row be this size. Unstarred, it lies over its
-// line's end rather than beside it, so the preview keeps its width while
-// the star is hidden and doesn't jump when it shows. A click leaves focus
-// on it, so focus shows it only when it came from the keyboard. No tooltip: its
-// icon and pressed state are its meaning, and one popping up over the
-// rows below as the pointer drifts would only get in the way.
+// lets a control in a list row be this size. A touch screen's target
+// reaches 8 px past it, without moving anything. No tooltip: its icon and
+// pressed state are its meaning, and one popping up over the rows below
+// as the pointer drifts would only get in the way.
 function StarButton({
   starred,
   onStar,
@@ -201,33 +212,19 @@ function StarButton({
   onStar: (starred: boolean) => void;
 }): ReactElement {
   return (
-    <>
-      <ToggleButton
-        aria-label={starName}
-        isSelected={starred}
-        onChange={onStar}
-        className={cn(
-          // Shows and hides at once, in the same frame as its preview's
-          // fade: a star still fading out over the preview's returning
-          // text would overlap it. The outline star darkens under the
-          // pointer, as the row's own hover surface is behind it.
-          "flex size-6 shrink-0 items-center justify-center rounded-md transition-colors outline-none data-focus-visible:focus-ring-inset pointer-coarse:hidden",
-          // 2 px past its 20 px line above and below, and 4 px into the
-          // row's padding, which puts its icon over the line's last 16 px.
-          starred
-            ? "-my-0.5 -mr-1 text-foreground"
-            : "absolute -top-0.5 -right-1 text-muted-foreground opacity-0 group-data-focus-visible/row:opacity-100 group-data-hovered/row:opacity-100 data-focus-visible:opacity-100 data-hovered:text-foreground",
-        )}
-      >
-        <StarIcon aria-hidden="true" className={cn("size-4", starred && "fill-current")} />
-      </ToggleButton>
-      {starred && (
-        <StarIcon
-          aria-hidden="true"
-          className="hidden size-4 shrink-0 fill-current pointer-coarse:block"
-        />
+    <ToggleButton
+      aria-label={actionWords.star.label}
+      isSelected={starred}
+      onChange={onStar}
+      className={cn(
+        // 2 px past its 20 px line above and below, and 4 px into the
+        // row's padding, which puts its icon over the line's last 16 px.
+        "relative -my-0.5 -mr-1 flex size-6 shrink-0 items-center justify-center rounded-md transition-colors outline-none data-focus-visible:focus-ring-inset data-hovered:text-foreground pointer-coarse:after:absolute pointer-coarse:after:-inset-2",
+        starred ? "text-foreground" : "text-muted-foreground",
       )}
-    </>
+    >
+      <StarIcon aria-hidden="true" className={cn("size-4", starred && "fill-current")} />
+    </ToggleButton>
   );
 }
 
