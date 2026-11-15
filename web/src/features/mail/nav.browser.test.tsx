@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { getListOutgoingMessagesQueryKey } from "@/api/generated/inbok";
-import type { OutgoingMessageSummary } from "@/api/generated/model";
+import type { OutgoingMessageSummary, PlaceCount } from "@/api/generated/model";
 import { Sidebar, SidebarContent, SidebarProvider } from "@/components/ui/sidebar";
 import { Route as appRoot } from "@/routes/__root";
 import { MailNav } from "./nav";
@@ -41,12 +41,15 @@ function message(
 }
 
 // app returns a router whose page is the mail sidebar, inside the app's
-// root, whose Outbox read answers with messages, and the sidebar's queries.
-function app(messages: OutgoingMessageSummary[]) {
+// root, whose Outbox read answers with messages and List Places with
+// places, and the sidebar's queries.
+function app(messages: OutgoingMessageSummary[], places: PlaceCount[] = []) {
   vi.stubGlobal(
     "fetch",
-    vi.fn<() => Promise<Response>>(async () =>
-      Response.json({ data: { messages } }, { status: ok }),
+    vi.fn<(input: RequestInfo | URL) => Promise<Response>>(async (input) =>
+      (input instanceof Request ? input.url : input.toString()).includes("/api/v0/places")
+        ? Response.json({ data: { places } }, { status: ok })
+        : Response.json({ data: { messages } }, { status: ok }),
     ),
   );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -113,5 +116,24 @@ describe("MailNav", () => {
     const outbox = page.getByRole("link", { name: /^Outbox/ });
     await expect.element(outbox).toHaveAccessibleName("Outbox");
     expect(outbox.element().querySelector("[data-slot=sidebar-menu-badge]")).toBeNull();
+  });
+
+  it("shows every account's unread Inbox count, in the weight of unread mail", async () => {
+    await page.viewport(1440, 900);
+    const { router } = app(
+      [],
+      [
+        { accountId: 1, place: "inbox", name: null, parent: null, unread: 12847 },
+        { accountId: 2, place: "inbox", name: null, parent: null, unread: 2 },
+        { accountId: 1, place: "spam", name: null, parent: null, unread: 9 },
+      ],
+    );
+    await render(<RouterProvider router={router} />);
+
+    const inbox = page.getByRole("link", { name: "Inbox 12,849 unread" });
+    await expect.element(inbox).toBeVisible();
+    await expect.element(inbox).toHaveClass(/font-semibold/);
+    // Only the Inbox counts among the views.
+    await expect.element(page.getByRole("link", { name: "Spam" })).toBeVisible();
   });
 });

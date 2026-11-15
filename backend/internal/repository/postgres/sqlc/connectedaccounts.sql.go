@@ -21,7 +21,7 @@ func (q *Queries) DeleteAccountRemoval(ctx context.Context, id int64) error {
 
 const deleteConnectedAccount = `-- name: DeleteConnectedAccount :one
 DELETE FROM connected_accounts WHERE id = $1 AND user_id = $2
-RETURNING id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at,
+RETURNING id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at, name, color,
     refresh_token_key_id, refresh_token_ciphertext
 `
 
@@ -38,6 +38,8 @@ type DeleteConnectedAccountRow struct {
 	OauthSubject           string
 	NeedsReconnectSince    *time.Time
 	CreatedAt              time.Time
+	Name                   *string
+	Color                  int16
 	RefreshTokenKeyID      string
 	RefreshTokenCiphertext []byte
 }
@@ -54,6 +56,8 @@ func (q *Queries) DeleteConnectedAccount(ctx context.Context, arg DeleteConnecte
 		&i.OauthSubject,
 		&i.NeedsReconnectSince,
 		&i.CreatedAt,
+		&i.Name,
+		&i.Color,
 		&i.RefreshTokenKeyID,
 		&i.RefreshTokenCiphertext,
 	)
@@ -93,12 +97,17 @@ func (q *Queries) InsertAccountRemoval(ctx context.Context, arg InsertAccountRem
 
 const insertConnectedAccount = `-- name: InsertConnectedAccount :one
 INSERT INTO connected_accounts (id, user_id, provider, email, oauth_subject,
-    refresh_token_key_id, refresh_token_ciphertext)
+    refresh_token_key_id, refresh_token_ciphertext, color)
 OVERRIDING SYSTEM VALUE
 VALUES ($1, $2, $3, $4, $5,
-    $6, $7)
+    $6, $7, (
+        SELECT slot::smallint FROM generate_series(1, 8) AS slot
+        ORDER BY (SELECT count(*) FROM connected_accounts other
+            WHERE other.user_id = $2 AND other.color = slot), slot
+        LIMIT 1
+    ))
 ON CONFLICT (user_id, provider, oauth_subject) DO NOTHING
-RETURNING id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at
+RETURNING id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at, name, color
 `
 
 type InsertConnectedAccountParams struct {
@@ -119,10 +128,13 @@ type InsertConnectedAccountRow struct {
 	OauthSubject        string
 	NeedsReconnectSince *time.Time
 	CreatedAt           time.Time
+	Name                *string
+	Color               int16
 }
 
 // Inserts nothing, and returns no row, when the user already has the
-// provider's subject.
+// provider's subject. The account takes the lowest of the eight colours
+// the user's other accounts use least.
 func (q *Queries) InsertConnectedAccount(ctx context.Context, arg InsertConnectedAccountParams) (InsertConnectedAccountRow, error) {
 	row := q.db.QueryRow(ctx, insertConnectedAccount,
 		arg.ID,
@@ -142,12 +154,14 @@ func (q *Queries) InsertConnectedAccount(ctx context.Context, arg InsertConnecte
 		&i.OauthSubject,
 		&i.NeedsReconnectSince,
 		&i.CreatedAt,
+		&i.Name,
+		&i.Color,
 	)
 	return i, err
 }
 
 const listConnectedAccounts = `-- name: ListConnectedAccounts :many
-SELECT id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at,
+SELECT id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at, name, color,
     refresh_token_key_id, refresh_token_ciphertext
 FROM connected_accounts
 WHERE user_id = $1
@@ -162,6 +176,8 @@ type ListConnectedAccountsRow struct {
 	OauthSubject           string
 	NeedsReconnectSince    *time.Time
 	CreatedAt              time.Time
+	Name                   *string
+	Color                  int16
 	RefreshTokenKeyID      string
 	RefreshTokenCiphertext []byte
 }
@@ -184,6 +200,8 @@ func (q *Queries) ListConnectedAccounts(ctx context.Context, userID int64) ([]Li
 			&i.OauthSubject,
 			&i.NeedsReconnectSince,
 			&i.CreatedAt,
+			&i.Name,
+			&i.Color,
 			&i.RefreshTokenKeyID,
 			&i.RefreshTokenCiphertext,
 		); err != nil {
@@ -197,8 +215,19 @@ func (q *Queries) ListConnectedAccounts(ctx context.Context, userID int64) ([]Li
 	return items, nil
 }
 
+const lockAccountColors = `-- name: LockAccountColors :exec
+SELECT pg_advisory_xact_lock(hashtextextended('inbok.account-color:' || ($1::bigint)::text, 0))
+`
+
+// Holds the user's account colours until the transaction ends, so two
+// connects of one user take colours one after the other.
+func (q *Queries) LockAccountColors(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, lockAccountColors, userID)
+	return err
+}
+
 const lockConnectedAccount = `-- name: LockConnectedAccount :one
-SELECT id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at
+SELECT id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at, name, color
 FROM connected_accounts
 WHERE id = $1 AND user_id = $2
 FOR NO KEY UPDATE
@@ -217,6 +246,8 @@ type LockConnectedAccountRow struct {
 	OauthSubject        string
 	NeedsReconnectSince *time.Time
 	CreatedAt           time.Time
+	Name                *string
+	Color               int16
 }
 
 // No key column changes, so foreign key checks on the row need not wait.
@@ -231,6 +262,8 @@ func (q *Queries) LockConnectedAccount(ctx context.Context, arg LockConnectedAcc
 		&i.OauthSubject,
 		&i.NeedsReconnectSince,
 		&i.CreatedAt,
+		&i.Name,
+		&i.Color,
 	)
 	return i, err
 }
@@ -334,6 +367,54 @@ func (q *Queries) ReadConnectedAccountAccess(ctx context.Context, id int64) (Rea
 	return i, err
 }
 
+const renameConnectedAccount = `-- name: RenameConnectedAccount :one
+UPDATE connected_accounts SET name = nullif($1::text, '')
+WHERE id = $2 AND user_id = $3
+RETURNING id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at, name, color,
+    refresh_token_key_id, refresh_token_ciphertext
+`
+
+type RenameConnectedAccountParams struct {
+	Name   string
+	ID     int64
+	UserID int64
+}
+
+type RenameConnectedAccountRow struct {
+	ID                     int64
+	UserID                 int64
+	Provider               string
+	Email                  string
+	OauthSubject           string
+	NeedsReconnectSince    *time.Time
+	CreatedAt              time.Time
+	Name                   *string
+	Color                  int16
+	RefreshTokenKeyID      string
+	RefreshTokenCiphertext []byte
+}
+
+// An empty name clears it. Returns the credential too, so the service can
+// tell whether a key still opens it.
+func (q *Queries) RenameConnectedAccount(ctx context.Context, arg RenameConnectedAccountParams) (RenameConnectedAccountRow, error) {
+	row := q.db.QueryRow(ctx, renameConnectedAccount, arg.Name, arg.ID, arg.UserID)
+	var i RenameConnectedAccountRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Provider,
+		&i.Email,
+		&i.OauthSubject,
+		&i.NeedsReconnectSince,
+		&i.CreatedAt,
+		&i.Name,
+		&i.Color,
+		&i.RefreshTokenKeyID,
+		&i.RefreshTokenCiphertext,
+	)
+	return i, err
+}
+
 const replaceConnectedAccountToken = `-- name: ReplaceConnectedAccountToken :execrows
 UPDATE connected_accounts SET
     refresh_token_key_id = $1,
@@ -372,7 +453,7 @@ UPDATE connected_accounts SET
     refresh_token_ciphertext = $3,
     needs_reconnect_since = NULL
 WHERE id = $4 AND user_id = $5
-RETURNING id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at
+RETURNING id, user_id, provider, email, oauth_subject, needs_reconnect_since, created_at, name, color
 `
 
 type UpdateConnectedAccountParams struct {
@@ -391,6 +472,8 @@ type UpdateConnectedAccountRow struct {
 	OauthSubject        string
 	NeedsReconnectSince *time.Time
 	CreatedAt           time.Time
+	Name                *string
+	Color               int16
 }
 
 // A new token clears needs_reconnect_since: Google has just accepted it.
@@ -411,6 +494,8 @@ func (q *Queries) UpdateConnectedAccount(ctx context.Context, arg UpdateConnecte
 		&i.OauthSubject,
 		&i.NeedsReconnectSince,
 		&i.CreatedAt,
+		&i.Name,
+		&i.Color,
 	)
 	return i, err
 }

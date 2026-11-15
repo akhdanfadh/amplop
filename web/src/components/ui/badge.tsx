@@ -7,8 +7,10 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
-        // A fill and a hairline: visible on every surface (the secondary
-        // surface is darker than the page in dark) and apart from outline.
+        // A fill and a hairline: visible on the page and the secondary
+        // surface (darker than the page in dark), and apart from outline.
+        // On an accent surface, e.g. a hovered list row, give it the
+        // page's fill.
         secondary: "border-border bg-accent text-foreground",
         destructive: "bg-destructive/8 text-destructive dark:bg-destructive/12",
         // inbok's status tones, on destructive's tint (DESIGN.md "Colour").

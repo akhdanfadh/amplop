@@ -27,6 +27,7 @@ import {
   leaveText,
   mayHaveSaved,
   needsReconnect,
+  fromOption,
   needsReconnectMark,
   sendErrorMessage,
 } from "./text";
@@ -182,7 +183,7 @@ export function ComposeForm({
                       // Its send could only fail; the server refuses it too.
                       disabled={account.status !== "usable"}
                     >
-                      {account.email}
+                      {fromOption(account)}
                       {account.status !== "usable" && ` ${needsReconnectMark}`}
                     </NativeSelectOption>
                   ))}

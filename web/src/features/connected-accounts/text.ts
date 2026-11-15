@@ -1,20 +1,19 @@
 import type { ConnectOutcome, ProblemType } from "@/api/generated/model";
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
+import type { LeaveWarningText } from "@/components/leave-warning";
+import { formatCount } from "@/lib/count";
 import type { FailedStatus, SyncFailure } from "./sync";
 
 const notFound = 404;
 const conflict = 409;
 const tooManyRequests = 429;
-const accountNotFoundType: ProblemType = "/api/v0/problems/connected-account-not-found";
-const needsReconnectType: ProblemType = "/api/v0/problems/account-needs-reconnect";
-const throttledType: ProblemType = "/api/v0/problems/sync-throttled";
+export const accountNotFoundType: ProblemType = "/api/v0/problems/connected-account-not-found";
+export const needsReconnectType: ProblemType = "/api/v0/problems/account-needs-reconnect";
+export const throttledType: ProblemType = "/api/v0/problems/sync-throttled";
 const shownDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 const sameDay = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 const otherDay = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-// Digits with a comma for thousands whatever the reader's locale (DESIGN.md,
-// "Wording").
-const count = new Intl.NumberFormat("en-US");
 
 // OutcomeNotice is what the page says about how a connection ended, as a
 // polite notice or an interrupting alert.
@@ -117,7 +116,7 @@ export function formatMoment(iso: string, now: Date = new Date()): string {
 // runningText says how far a running full sync has copied.
 export function runningText(messagesSoFar: number): string {
   const messages = messagesSoFar === 1 ? "message" : "messages";
-  return `Copying your last 90 days of mail into inbok: ${count.format(messagesSoFar)} ${messages} so far. New mail shows up in the meantime.`;
+  return `Copying your last 90 days of mail into inbok: ${formatCount(messagesSoFar)} ${messages} so far. New mail shows up in the meantime.`;
 }
 
 // failureWords returns the words around the time of failure on an account
@@ -162,3 +161,19 @@ export function syncErrorMessage(err: ApiError, email: string): string {
 export function syncStartedMessage(email: string): string {
   return `Checking ${email} for new mail.`;
 }
+
+// The account name field (DESIGN.md "Sidebar").
+export const nameLabel = "Name (optional)";
+// Private, unlike the sender name Gmail's "Send mail as" gives recipients.
+export const nameDescription =
+  "A name only you see, shown in mail instead of the address, e.g. Work. Leave it empty to show the address.";
+export const savedText = "Saved";
+export const saveNameText = "Save name";
+export const savingNameText = "Saving...";
+export const nameLeaveWarning: LeaveWarningText = {
+  title: "Leave without saving the name?",
+  description: "The name you typed isn't saved.",
+  stay: "Keep editing",
+  leave: "Leave",
+  leaveVariant: "destructive",
+};

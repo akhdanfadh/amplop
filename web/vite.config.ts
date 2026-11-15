@@ -52,6 +52,11 @@ export default defineConfig({
         extends: true,
         // Message bodies with the server's headers, for the message view.
         plugins: [messageServer()],
+        // NOTE: React Aria's Virtualizer stops virtualizing, and keeps every
+        // list scrolled to the top, when NODE_ENV is "test", which Vitest
+        // sets, unless VIRT_ON is set too (react-aria's ScrollView,
+        // updateSize). Browser tests check lists as they run in the app.
+        define: { "process.env.VIRT_ON": JSON.stringify("1") },
         test: {
           name: "browser",
           include: ["src/**/*.browser.test.tsx"],

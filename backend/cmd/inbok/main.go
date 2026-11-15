@@ -16,6 +16,7 @@ import (
 	"inbok/internal/account"
 	"inbok/internal/config"
 	"inbok/internal/connectedaccount"
+	"inbok/internal/conversation"
 	"inbok/internal/dbos"
 	"inbok/internal/emailverification"
 	"inbok/internal/google"
@@ -170,6 +171,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		ConnectedAccounts:       connectedAccounts,
 		OutgoingMessages:        outgoingmessage.NewService(db, connectedAccounts, time.Now),
 		Syncs:                   mailsync.NewService(db, jobs, time.Now),
+		Conversations:           conversation.NewService(db, google.WebApp{}),
 	}
 	// Without the bucket check of the worker's s3.Open: a store that is
 	// down then stops no one signing in, only reading message content.
@@ -186,6 +188,7 @@ func serve(ctx context.Context, logger *slog.Logger) (err error) {
 		access := connectedaccount.NewAccess(db, cfg.Encryption, client, time.Now)
 		fetcher := messagecontent.NewFetcher(messagecontent.NewContents(content, db), db, client, access, time.Now, logger)
 		services.MessageContent = messagecontent.NewReader(content, db, fetcher)
+		services.ConversationActions = conversation.NewActionService(db, access, client, logger)
 	}
 	api := httpapi.New(logger, services)
 	if err := api.SetTrustedProxies(cfg.TrustedProxies); err != nil {

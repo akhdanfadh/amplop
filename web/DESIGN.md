@@ -10,7 +10,9 @@ Status: decided 2026-11-11. `feat/design-system` builds the foundation
 `feat/design-forms` the shared form fields; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
-work to this file, not to the old code.
+work to this file, not to the old code. Not built yet: the row menu and
+picking several conversations (`feat/list-actions`), and the Outbox in
+the mail list (`feat/outbox-list`; ADR031, "Mitigations and follow-up").
 
 ## Principles
 
@@ -19,7 +21,8 @@ work to this file, not to the old code.
   member can act on. Account colours are the only other colour on screen,
   and they mean "which account".
 - **Colour never alone.** An account is a colour and its name. A status is
-  a colour, an icon, and a word. Unread is weight, not a dot.
+  a colour, an icon, and a word. Unread is weight and a bar at the row's
+  edge, with read rows a step quieter; never a colour alone.
 - **Only what exists.** A button, menu item, or link appears only when its
   action is built. No placeholders that do nothing.
 - **Words, not decoration.** Empty and error states explain the cause and
@@ -41,28 +44,33 @@ Every text pair below meets 4.5:1, every meaningful mark 3:1, checked in
 both themes. A new pair is checked before use (antislop-human's
 `contrast-check.py` or the WCAG formula); never assume a grey pair passes.
 
-| Token                            | Light                 | Dark                  | Use                                               |
-| -------------------------------- | --------------------- | --------------------- | ------------------------------------------------- |
-| `background`                     | `#fafafa`             | `#1c1c1c`             | Page and panes (mild, never pure white or black)  |
-| `foreground`                     | `#0a0a0a`             | `#fafafa`             | Body text                                         |
-| `sidebar`                        | `#f2f2f2`             | `#161616`             | Sidebar; also `muted` and `secondary` surfaces    |
-| `card`, `popover`                | `#ffffff`             | `#262626`             | Raised surfaces, menus                            |
-| `sheet` (new)                    | `#ffffff`             | `#ffffff`             | The message body's sheet, white in both themes    |
-| `muted-foreground`               | `#666666`             | `#a3a3a3`             | Secondary text, meta, snippets                    |
-| `border`                         | `#e3e3e3`             | `#2e2e2e`             | Hairlines; decoration only                        |
-| `input`                          | `#848484`             | `#808080`             | Field outlines (3:1, WCAG 1.4.11)                 |
-| `accent`                         | `#ececec`             | `#2e2e2e`             | Hover surface (shadcn's name; not a brand colour) |
-| `primary` / `primary-foreground` | `#2557d6` / `#ffffff` | `#86a8ff` / `#1c1c1c` | Primary buttons, links, the focus ring            |
-| `selection` (new)                | `#e5eaf6`             | `#272a33`             | The open row, the current nav item                |
-| `destructive`                    | `#a8000a`             | `#ffa3a5`             | Text and icons on its 8% tint (12% in dark)       |
-| `success` (new)                  | `#0f6630`             | `#4ade80`             | Same tint rule                                    |
-| `warning` (new)                  | `#904500`             | `#fbbf24`             | Same tint rule                                    |
-| `info` (new)                     | = `primary`           | = `primary`           | Same tint rule                                    |
-| `highlight` (new)                | `#fff3b0`             | `#5c4a00`             | Search matches; text on it uses `foreground`      |
-| `ring`                           | = `primary`           | = `primary`           | Focus ring                                        |
+| Token                            | Light                 | Dark                  | Use                                                                                               |
+| -------------------------------- | --------------------- | --------------------- | ------------------------------------------------------------------------------------------------- |
+| `background`                     | `#fafafa`             | `#1c1c1c`             | Page and panes (mild, never pure white or black)                                                  |
+| `foreground`                     | `#0a0a0a`             | `#fafafa`             | Body text                                                                                         |
+| `sidebar`                        | `#f2f2f2`             | `#161616`             | Sidebar; also `muted` and `secondary` surfaces                                                    |
+| `card`, `popover`                | `#ffffff`             | `#262626`             | Raised surfaces, menus                                                                            |
+| `sheet` (new)                    | `#ffffff`             | `#ffffff`             | The message body's sheet, white in both themes                                                    |
+| `muted-foreground`               | `#666666`             | `#a3a3a3`             | Secondary text, meta, snippets                                                                    |
+| `read-foreground` (new)          | `#3d3d3d`             | `#bdbdbd`             | A read row's sender and subject, a step quieter than an unread row's `foreground`                 |
+| `border`                         | `#e3e3e3`             | `#2e2e2e`             | Hairlines; decoration only                                                                        |
+| `input`                          | `#848484`             | `#808080`             | Field outlines (3:1, WCAG 1.4.11)                                                                 |
+| `accent`                         | `#ececec`             | `#2e2e2e`             | Hover surface (shadcn's name; not a brand colour)                                                 |
+| `primary` / `primary-foreground` | `#2557d6` / `#ffffff` | `#86a8ff` / `#1c1c1c` | Primary buttons, links, the focus ring                                                            |
+| `primary-hover` (new)            | `#3a67da`             | `#7b9ae8`             | A hovered primary button: primary at 90% over `background`, solid, so content never shows through |
+| `selection` (new)                | `#e5eaf6`             | `#272a33`             | The open row, the current nav item                                                                |
+| `destructive`                    | `#a8000a`             | `#ffa3a5`             | Text and icons on its 8% tint (12% in dark)                                                       |
+| `success` (new)                  | `#0f6630`             | `#4ade80`             | Same tint rule                                                                                    |
+| `warning` (new)                  | `#904500`             | `#fbbf24`             | Same tint rule                                                                                    |
+| `info` (new)                     | = `primary`           | = `primary`           | Same tint rule                                                                                    |
+| `highlight` (new)                | `#fff3b0`             | `#5c4a00`             | Search matches; text on it uses `foreground`                                                      |
+| `ring`                           | = `primary`           | = `primary`           | Focus ring                                                                                        |
 
 **Account colours** (`account-1` ... `account-8`), handed out in the order
-accounts are connected and stored with the account:
+accounts are connected and stored with the account. Each new account takes
+the lowest colour the member's other accounts use least: a disconnected
+account's colour goes to the next one connected, and a ninth account
+repeats one, its name telling them apart.
 
 | #   | Light             | Dark      | Note                                                            |
 | --- | ----------------- | --------- | --------------------------------------------------------------- |
@@ -88,8 +96,10 @@ surface changes.
 | --------------------------- | ----- | --------------------- | -------------------- |
 | `foreground`                | 4.5   | 16.43 (selection)     | 8.26 (highlight)     |
 | `muted-foreground`          | 4.5   | 4.77 (selection)      | 5.38 (accent)        |
+| `read-foreground`           | 4.5   | 9.02 (selection)      | 4.59 (highlight)     |
 | `primary` as link text      | 4.5   | 5.11 (selection)      | 5.86 (accent)        |
 | `primary-foreground`        | 4.5   | 6.15 (primary)        | 7.35 (primary)       |
+| `primary-foreground` hover  | 4.5   | 5.08 (primary-hover)  | 6.19 (primary-hover) |
 | `destructive` on its tint   | 4.5   | 5.62 (selection)      | 5.57 (accent)        |
 | `destructive` on hover tint | 4.5   | 5.22 (selection)      | 5.10 (accent)        |
 | `success` on its tint       | 4.5   | 5.23 (selection)      | 6.05 (accent)        |
@@ -110,7 +120,7 @@ bundled with the app (ADR026 allows no font service). It tells `I`, `l`,
 | Meta: dates, counts, field help           | 12 / 16            | 400                          |
 | Snippets, secondary text                  | 13 / 20            | 400                          |
 | Interface body: rows, nav, forms, buttons | 14 / 20            | 400; 500 for buttons and nav |
-| Unread sender, subject, date              | 14 / 20            | 600                          |
+| Unread sender, subject, date              | 14 / 20            | 600; 650 in dark             |
 | Plain-text message body                   | 15 / 24            | 400                          |
 | Pane and dialog titles                    | 18 / 24            | 600                          |
 | Message subject in the reading pane       | 22 / 28            | 600                          |
@@ -121,6 +131,10 @@ letter spacing below 16 px; `tabular-nums` on every number that lines up;
 lines under about 75 characters (the message sheet caps near 640 px of
 text).
 
+In dark, text is drawn with grayscale smoothing: macOS browsers otherwise
+thicken every stroke by the same amount, most visibly light on dark,
+which brings 400 and 600 close. Unread rows also take 650 there.
+
 ### Space, size, shape, motion
 
 - **Spacing:** Tailwind's 4 px steps. Inside a control 8-14 px; rows in a
@@ -129,6 +143,9 @@ text).
   no one-off values such as `mt-[13px]`.
 - **Control height:** 36 px for a fine pointer, 44 px for a coarse one
   (`pointer-coarse:`), set in the components themselves, never per page.
+  A control inside a list row, e.g. the star, is 24 px, WCAG 2.2's
+  smallest target (2.5.8), so it fits its 20 px line; on a touch screen
+  its target reaches 8 px past it, moving nothing.
   Nav rows 32 px (44 px coarse); list rows 76 px. Buttons in dense bars
   (the sidebar's header, a toast, a drawer's close) 32 px (44 px coarse),
   so they sit level with the nav rows beside them.
@@ -145,12 +162,19 @@ text).
   over the page dimmed by `scrim`, black at 30% (60% in dark); the drawer
   dims it the same way.
 - **Motion:** one easing, `cubic-bezier(0.22, 1, 0.36, 1)`; 150 ms hover
-  and press, 200 ms menus and tooltips, 250 ms dialogs and sheets. Animate
+  and press, 200 ms menus, tooltips, a toast's fade in, and the Undo
+  bar's rise and fade, 250 ms dialogs and sheets. Animate
   colour, background, border, opacity, and transform only
   (`transition-colors`, never `transition-all`). Reduced motion turns
-  movement into fades. A theme change switches every colour at once, with
-  no fades. A tooltip shows after the pointer rests 500 ms, then the next
-  ones at once; keyboard focus shows it at once; it closes as soon as the
+  movement into fades; the Undo bar's draining line keeps draining, as it
+  is the countdown, not decoration. A theme change switches every colour at once, with
+  no fades. A message a link sends the reader to (the reading pane's "In
+  reply to") flashes the `selection` tint: held 600 ms, then faded out
+  over 1 s, slow at both ends (ease-in-out), 1.6 s in all, so the eye finds where it
+  landed; the interface's easing would spend most of the fade in its
+  first 300 ms. A colour change only, so reduced motion keeps it. A
+  tooltip shows after the pointer rests 500 ms, then the next ones at
+  once; keyboard focus shows it at once; it closes as soon as the
   pointer or focus leaves. Nothing loops except a spinner while work is
   actually running.
 - **Focus:** a 2 px `ring`-coloured outline, 2 px offset, on every
@@ -162,9 +186,16 @@ text).
   keyboard starts in the page, not in the sidebar, whose landmark is
   named. No skip link: a skip button (a `#` link would change the address)
   is the next step if testing shows a need.
+- **Cursor:** the hand only over links, which take the member somewhere
+  else; buttons, list rows, and every other control keep the arrow, as in
+  desktop apps (Tailwind 4's default for buttons).
 - **Links:** primary colour, underlined; the underline thickens on hover
   (`textLink` in `src/components/link-style.ts`; `lineLink` for a link on
-  a line of its own, 44 px tall).
+  a line of its own, 44 px tall). An action inside a line of muted text
+  that stays on the page, e.g. the reading pane's "In reply to", is a
+  muted link: a button drawn as a link (`Button variant="link"`) in
+  `muted-foreground`, underlined, with the arrow cursor of a button, 44 px
+  tall on touch.
 
 ### Themes
 
@@ -180,24 +211,25 @@ shadcn/ui's **React Aria flavour** for every component, added with
 edit, each with its first caller. Icons are `lucide-react`, 16 px, in the
 text colour of their role.
 
-| Need                                     | Component                                                                        |
-| ---------------------------------------- | -------------------------------------------------------------------------------- |
-| Sidebar, rail, drawer                    | `sidebar`                                                                        |
-| List beside the reading pane             | none: the list has a fluid width ("Panes and widths")                            |
-| Member menu with the theme choice        | `popover` holding a `toggle-group`                                               |
-| More menus                               | `dropdown-menu`                                                                  |
-| Right-click row menu                     | `context-menu`                                                                   |
-| Icon button names, and Send's shortcut   | `tooltip`                                                                        |
-| Undo and error toasts                    | `toast.tsx` on React Aria's Toast (see below)                                    |
-| Phone editors and search                 | `sheet`                                                                          |
-| From picker in compose and reply         | `select` (shows the account mark)                                                |
-| Recipient chips                          | React Aria's `TagGroup` in the field; `combobox` once contacts suggest addresses |
-| Search box and its dropdown              | `combobox`                                                                       |
-| Placeholder rows, spinners, empty states | `skeleton`, `spinner`, `empty`                                                   |
-| Settings rows                            | `item`                                                                           |
-| Status                                   | `badge` with tones neutral, info, success, warning, destructive                  |
-| Initials avatars                         | `avatar`, plus the account ring                                                  |
-| Confirmations                            | `alert-dialog`                                                                   |
+| Need                                     | Component                                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Sidebar, rail, drawer                    | `sidebar`                                                                                   |
+| List beside the reading pane             | none: the list has a fluid width ("Panes and widths")                                       |
+| Member menu with the theme choice        | `popover` holding a `toggle-group`                                                          |
+| More menus                               | `dropdown-menu`                                                                             |
+| Right-click row menu                     | `context-menu`                                                                              |
+| Icon button names, and shortcuts         | `tooltip`, but none on an in-row toggle whose icon and state are its meaning, e.g. the star |
+| Error toasts                             | `toast.tsx` on React Aria's Toast (see below)                                               |
+| An action's Undo                         | the Undo bar, `features/mail/undo.tsx` ("Feedback")                                         |
+| Phone editors and search                 | `sheet`                                                                                     |
+| From picker in compose and reply         | `select` (shows the account mark)                                                           |
+| Recipient chips                          | React Aria's `TagGroup` in the field; `combobox` once contacts suggest addresses            |
+| Search box and its dropdown              | `combobox`                                                                                  |
+| Placeholder rows, spinners, empty states | `skeleton`, `spinner`, `empty`                                                              |
+| Settings rows                            | `item`                                                                                      |
+| Status                                   | `badge` with tones neutral, info, success, warning, destructive                             |
+| Initials avatars                         | `avatar`, plus the account ring                                                             |
+| Confirmations                            | `alert-dialog`                                                                              |
 
 **Toasts** use React Aria's own
 [Toast](https://react-aria.adobe.com/Toast), wrapped in inbok's
@@ -207,9 +239,12 @@ stands apart from the page. React Aria labels it alpha (`UNSTABLE_`
 names), which a `DEBT.md` entry covers. shadcn's React Aria flavour
 offers only `sonner`, whose runtime `<style>` the
 Content-Security-Policy blocks and whose timer keeps running when the
-keyboard reaches Undo. For the demo: Undo toasts last 10 s, error toasts
-stay until closed, an error already showing is not shown again, and
-toasts stack newest first.
+keyboard reaches Undo. Toasts report failures only: they stay until
+closed, an error already showing is not shown again, and they stack
+newest first, a scrolling box keeping what it shows above them
+(`--toast-space`). An action's Undo is the Undo bar (see Feedback), not
+a toast: a floating, timed toast covered rows and raced keyboard and
+screen-reader users (ADR031, checkpoint 7c).
 
 **The message list** is inbok's own `src/components/ui/grid-list.tsx` on
 React Aria's [GridList](https://react-aria.adobe.com/GridList) inside its
@@ -269,12 +304,51 @@ last two redirect into settings, so settings can move without the server.
 - Views: Inbox, Starred, Sent, All mail (everything but Spam and Trash),
   Spam, Trash.
 - Accounts: All accounts, then each account (its mark, its member-chosen
-  name or address, its inbox unread count), filtering every view. An
-  account's labels nest under it (Gmail `/` names as a tree); a label
-  belongs to one account.
-- Account status in words beside it: "Syncing" with a spinner (details on
-  hover: "Copying the last 90 days: N messages so far."), "Reconnect",
-  "Sync failed".
+  name or address, its inbox unread count), filtering every view; the
+  filter stays as the member moves between views. Choosing an account
+  keeps the open view, or the open label when it is that account's, else
+  opens the Inbox. An account's labels nest under it as List Places
+  nests them (each label's `parent`), each level in name order. A label
+  belongs to one account and opens in it: its account becomes the
+  filter, from every account's mail, another account's, or an old link,
+  so the sidebar marks the account the label is in; All accounts on a
+  label opens every account's Inbox. The Accounts section always marks
+  one scope, All accounts or one account, beside the open place. An open
+  label's heading names it with its parents ("Work/Projects"). Labels
+  show no icon: every one would show the same, and the name gets the
+  room.
+- Folding: an account's labels, and a parent label's children, fold
+  behind a chevron at the row's end, shown at rest on every device (as iOS
+  places it on touch), pointing right when folded and down when open. All
+  start folded; the way to the open place (its account and parent labels,
+  or the filtered account) unfolds as it opens. What the member folds or
+  unfolds is kept per tab, through its reloads, so two tabs can show two
+  accounts' labels; a tab without folds of its own starts from the
+  member's last press in any tab; signing out clears both in that tab, and another tab's own folds when it next signs in. The chevron is a 24 px button, named "Labels of <account>"
+  or "Labels under <label's path>", whose state screen readers hear. Every row of the Accounts
+  section keeps the chevron's column, folding or not, so its counts end
+  at one edge. Opening the sidebar, or another place, scrolls the open
+  place's row into view.
+- A name cut short by the ellipsis shows in full on hover or focus: an
+  account's before its status's details, a label's with its parents'. A
+  touch has neither, so there a name cut short stays cut (a known gap,
+  e.g. a label three levels deep in the drawer); the page it opens names
+  it in full, a label's heading and an account's mark in the list's
+  header.
+- Account status beside it, as its status's icon alone in the status's
+  tone (a spinner for Syncing, a triangle for Reconnect, a circle for Sync
+  failed), so a 240 px row keeps room for the name; the words are read to
+  screen readers and lead the details on hover, e.g. "Syncing. Copying the
+  last 90 days: N messages so far.". A touch has no hover, so with a
+  coarse pointer the icon and words take a line under the name, in
+  `text-xs`, and the row keeps its 44 px. Connected accounts shows
+  the full badge. An account up to date shows nothing. If the accounts
+  cannot be read, the group says "Couldn't load your accounts." with Try
+  again; the rail shows one alert icon that tries again, the words in its
+  tooltip. On the rail an account is its mark, with its name, count, and
+  status in the tooltip; labels show only open. The open place's item is
+  the current page; the filtering account's is marked as current too, but
+  not as a page.
 - Outbox, always, with how many of its messages are not sent yet
   (waiting, sending, or failed or unknown and not sent again): the
   sidebar stays still, and the count is what tells the member a send
@@ -285,63 +359,146 @@ last two redirect into settings, so settings can move without the server.
   the current nav item has its background and bar), Sign out. Its keys
   are React Aria's toolbar keys: arrows move, Space or Enter chooses.
 - Unread: name and count in 600 weight and `foreground`; counts only on
-  Inbox, accounts, and labels. Selected: `selection` background and a 2 px
-  bar in `foreground` at its left edge, never bold. Icons keep one column,
+  Inbox, accounts, and labels, with a comma ("12,847"). The Outbox's
+  count of messages not sent is in 600 weight, its name not: it is not
+  unread mail. Selected: `selection` background and a 2 px bar in
+  `foreground` at its left edge, never bold; the scope beside it (All
+  accounts, or the filtering account) has the bar alone, so the open
+  place stands out from the account it is in. Icons keep one column,
   open or as a rail. What follows a name (a count, status words) sits in
   the row after it and keeps its width; a long name or address is cut
   short with an ellipsis before it, never overlapped. A count is read
-  with its meaning, e.g. "12 unread".
+  with its meaning, e.g. "12 unread". When the sidebar scrolls, its edge
+  fades while there is more that way, so a row cut at the edge reads as
+  more below; each fade is whole within its 24 px, and a row that takes
+  focus scrolls clear of it.
 
 ### Message list
 
 - **Rows are conversations** (one per provider thread), newest first by
-  the newest message in the view; search results are messages.
-- **Row, three lines:** who (first names, "me", count) and date / subject
-  and markers / snippet. A 28 px initials avatar ringed in the account
-  colour leads (initials of the newest sender in the view); filtered to one
-  account, the ring is dropped. Unread rows are 600 weight. Markers: an
-  attachment clip, a star filled in the text colour.
+  their newest message; search results are messages. A conversation is in
+  a view when one of its messages is. Its row, the same in every view, is
+  made from its messages outside Spam and Trash, or from its Spam and
+  Trash ones when it has no other; Gmail drafts are not shown. So a reply
+  moves its conversation up in every view it is in, as in Gmail's
+  conversation view.
+- **Row, three lines:** who (first names, "me", count) and date / subject /
+  snippet, ended by the row's marks: an "Inbox" chip (the `secondary`
+  badge, 16 px) outside the Inbox while the conversation is in it, so All
+  mail, Starred, Sent, and labels tell it from an archived one, as
+  Gmail's list does; then the star button, on every row as in Gmail's
+  list and app, outlined until starred (→ reaches it from the row);
+  pressing it stars or unstars at once. A 36 px initials
+  avatar ringed in the account colour leads (initials of the newest
+  message's sender), its top on the first line's, 16 px from the list's edge
+  (the heading's inset) and 12 px from the text, closer than the edge so it
+  reads with its text; filtered to one account, the ring is dropped.
+  Unread rows are 600 weight (650 in dark) with a 3 px `primary` bar at
+  their leading edge, the text colour in forced colours; read rows' sender
+  and subject are `read-foreground`, a step quieter, so weight,
+  brightness, and the bar all tell them apart. The bar is not the
+  sidebar's 2 px `foreground` bar for the current item: a list row's
+  current state is its `selection` fill. Markers: an attachment clip, a star filled in the
+  text colour, the Inbox chip; a screen reader hears "In Inbox" and
+  "Starred" in the row's name.
 - **Dates:** today the time (the browser's 12 or 24 hour clock),
   "Yesterday", the weekday within 7 days, "2 Nov" this year, "2 Nov 2025"
-  before; the full date and time on hover.
-- **States:** open (`selection`), hover (`accent`), keyboard focus (the
-  ring) look different.
+  in another year, a later day too; the full date and time on hover.
+- **Missing data:** no sender reads "Unknown sender" with a person icon in
+  the avatar; no subject "(no subject)"; counts take a comma ("1,284").
+- **States:** open (`selection`, and `aria-current` for screen readers),
+  hover (`accent`), keyboard focus (the ring) look different.
 - **Picking:** the avatar becomes a checkbox on hover; Space, Shift ranges,
   long press on touch; the list header becomes the action bar with only
   built actions. No bulk action built means no picking.
 - **Loading more:** pages of 50 as the member nears the end. New mail while
-  scrolled waits behind a "N new conversations" button. The end says
-  "That's everything inbok has copied. Older mail stays in Gmail."
-- **Check for new mail:** a button in the list header (and the phone top
-  bar) that syncs the accounts in the filter; in-app pull-to-refresh runs
-  it on touch.
+  scrolled waits behind a "N new conversations" button floating over the
+  list's top, centred: a small primary button with an up arrow and the
+  popover shadow, which shows them on top and moves focus to the newest.
+  Rows changing above the screen, e.g. a reply moving one to the top,
+  leave the rows on screen where they are. The end says
+  "That's everything inbok has copied. Older mail stays in Gmail.", 12 px
+  under the last row; the loading spinner before it is centred in a row's
+  height.
+- **Check for new mail:** an icon button at the end of the list's header
+  (the phone's top bar), named by a tooltip, that asks each account in the
+  filter that inbok can use to check for mail now; its icon turns while
+  the requests run, whole turns, and dims instead with reduced motion.
+  Lists, counts, and account status are then read every 2 s for 30 s, so
+  new mail shows within seconds. A check started moments ago counts as
+  started; an account refused, none to check, or the browser offline is
+  said in an error toast, one sentence per reason naming every account it
+  holds ("3 accounts are no longer connected: A, B, and C.").
 
 ### Reading pane
 
-- A pinned conversation toolbar (archive, delete, mark unread, star, More
-  with Open in Gmail, which opens Gmail's own page for the conversation
-  in a new tab, an address Google does not document; Back first where one pane shows at a time). At most
-  five buttons, then More: a sixth action goes in More, chosen by hand,
-  never moved there by width; the bar wraps only for large text. Once the
-  title scrolls under it, the subject fades in (150 ms) and a hairline
-  shows below it.
-- Title (22 px), the account mark, the message count. The newest message
+- A pinned conversation toolbar of icon buttons, each named by its
+  tooltip: where one pane shows at a time, an arrow Back first, named
+  "Back to list"; then the conversation's state's first action, Delete,
+  Mark read or unread, Star (a toggle), and More with Report spam and
+  Open in Gmail, which opens Gmail's own page for the conversation in a
+  new tab, an address Google does not document; More hides when empty.
+  The actions follow the conversation, not the address, except in Spam
+  and Trash (`actionsFor` in `features/mail/rules.ts`): in a Spam list,
+  Not spam, Delete, Mark read or unread, Star; in a Trash list, Move to
+  Inbox, Mark read or unread, Star; elsewhere in the inbox, Archive,
+  Delete, Report spam, Mark read or unread, Star; archived, Move to
+  Inbox in place of Archive; only in Spam or only in Trash, as in those
+  lists. No Delete forever. At most five buttons, then More: a sixth
+  action goes in More, chosen by hand, never moved there by width; the
+  same buttons at every width. The faded subject may shrink under a
+  512 px pane, so the bar keeps one 48 px row, and hides under a 28em
+  pane, e.g. a phone, where it would be a few letters; the bar wraps
+  only for large text, and pins only while its buttons fit one row:
+  under a 20em pane (a phone at 200% text) it scrolls away with the
+  title rather than hold a third of the screen. Its icons are named by
+  tooltips only, which touch never shows, as Gmail's app does. Once the title scrolls under
+  it, the subject fades in (150 ms) and a hairline shows below it.
+- After an action the pane goes back to its list when the conversation
+  was in that list's place and account before and is not after, and
+  always after Mark unread; otherwise it stays, e.g. Archive inside a
+  label. Back is the history's when a row of that list opened the
+  conversation, else the list in its place, so an action never leaves
+  mail, e.g. after Settings' Back to mail. Once an action has taken the
+  conversation out, the pane takes no more actions on it, so a double
+  click never runs Archive and then Move to Inbox. The row that took its
+  place takes focus: the next older, else the one above; after Mark
+  unread, the conversation's own row; with no row left, the list's
+  heading. A button whose action changes, e.g. Archive to Move to Inbox,
+  keeps focus. A refused action leaves the member on the list with an
+  error toast; one the provider no longer has also removes the row.
+- Opening an unread conversation marks it read, once: when its messages
+  have come (they decide which start open) and the tab shows, and not for
+  an account that needs reconnecting. Its row un-bolds and the counts
+  drop at once. A read the server refuses or that fails puts both back
+  silently and is not tried again; arrow keys in the list only move
+  focus, never open.
+- Title (22 px), the account mark, the message count. The title and
+  account draw from the list's row at once; "Loading messages..." stands
+  under them until the messages come, and the view takes focus, so a
+  screen reader starts at the subject. The newest message
   and every unread one start open; the others fold to one row: avatar,
   sender, preview, a paperclip when inbok knows it has attachments (only
-  once its content was fetched), date (as the message list dates rows),
-  one line from a 512 px pane, two below. The first message and the newest three always
-  show; between them, a run of two or more folded messages the member has
+  once its content was fetched: the last 90 days' in the background,
+  older ones when opened, so an older unopened message shows none), date
+  (as the message list dates rows), one line from a 512 px pane, two
+  below. The first message and the newest three always show; between
+  them, a run of two or more folded messages the member has
   not opened or folded becomes one "N more messages" row, which shows them
   all, folded; a message the member opened or folded keeps its own row, so
   one folded again never disappears into the run. Pressing a row opens
   its message, which only then loads its content; a click on an open
   message's header, or its avatar, folds it. Rows fill the band between
   their hairlines on hover, square, with an inset focus ring.
-- An open message: 36 px ringed avatar (the list's size, so names line
-  up); the sender's name and full address (every sender's, when there are
+- An open message: 36 px avatar (the list's size, so names line up),
+  unringed: a conversation is one account's, which the account mark under
+  the title names, so a ring, as in a list filtered to one account, would
+  say nothing (the list rings rows only where accounts mix); the sender's name and full address (every sender's, when there are
   several) on one line while both fit,
   the address moving to the next line whole, never cut, since its domain
-  tells real mail from fake; the date, which moves to the "to" line in a
+  tells real mail from fake; the date ("14 Nov 2026, 6:18 pm": inbok's
+  words, the browser's clock, the day and time in full on hover), which
+  moves to the "to" line in a
   pane under 512 px. "to ..." (recipient names, "me" for the account, "to
   no one" when there are none) and a 20 px chevron that shows the details
   inline below: From, Reply-To, To, Cc (each lists 10 addresses, then "Show
@@ -352,10 +509,26 @@ last two redirect into settings, so settings can move without the server.
   out, nor is one on a message the account sent, which is answered to its
   To. A message with no From reads "Unknown sender"; a name that is its
   address shows once; a group without an address ("Undisclosed
-  recipients") shows its name alone. After the date: Reply, Reply all
+  recipients") shows its name alone. A message answering one other than
+  the row just above says which, under the sender: "In reply to Ana Lima
+  on 2 Nov 2026, 9:00 am", a muted link ("Links") naming the answered
+  message by its sender and its own header's date, so two messages from
+  one sender on one day stay apart; "on" keeps the date from reading as
+  one more sender. It opens that message,
+  out of "N more messages" if it was there, scrolls it to the pane's top
+  under the toolbar, focuses the message, and flashes it ("Motion"), so
+  the press shows even when the message was open and in sight (Gmail
+  shows a thread flat by date, so a late reply to an early message
+  otherwise reads as answering the one above it). The pane's scroll
+  padding follows the pinned toolbar's height, so nothing focused or
+  scrolled to sits under it. After the date: Reply, Reply all
   when others received it, and More (Forward / Mark unread from here,
   Star this message, Delete this message / Show original, Download .eml),
-  each only once built; in a narrow pane they end the "to" line.
+  each only once built. They end the sender's line at every width, in
+  `foreground`, so they never move from one message to the next; a 32 px
+  box overhanging the 20 px line, whose target ::before grows to 44 px on
+  touch without growing the line, 12 px apart there so the targets do not
+  meet.
 - Reply on a message opens the conversation's one editor right below that
   message; Reply and Reply all after the last message answer the newest,
   so the editor opens at the bottom. While it is open every Reply hides,
@@ -401,7 +574,10 @@ last two redirect into settings, so settings can move without the server.
   the end of the To row. Labels and values share one 32 px
   line, so a wrapped list keeps its label level with the first line.
 - **From** is a quiet `select`: no outline at rest, `accent` on hover and
-  while its list is open, its chevron and label marking it. A line under
+  while its list is open, its chevron and label marking it. Each account
+  shows its mark, its address, which recipients see, and the name the
+  member chose for it, which only the member does; the compose form's
+  native list holds words only, so it reads "address (name)". A line under
   it says when the chosen account didn't receive the message (the reply
   then starts a new conversation in that account's Gmail), or which
   account needs reconnecting when none could be chosen.
@@ -439,13 +615,18 @@ match positions, never from matching text in the browser.
 
 ### Phones
 
-One pane at a time; the list scrolls its own box. The top bar (menu,
-title and unread count, Check for new mail, search) hides while scrolling
-down and returns on a small scroll up or when focus enters it. Compose is
-a labelled floating button. A conversation has Back and its actions on
-top, and labelled Reply, Reply all, Forward at the bottom. Pull-to-refresh
-is inbok's own and runs Check for new mail; the list box sets
-`overscroll-behavior-y: contain`.
+One pane at a time; the list scrolls its own box. A conversation's Back
+goes back in history, as the phone's own back does. The top bar holds
+the menu, then the place's heading (a label's own name, its path read to
+screen readers), the account it is filtered to, and Check for new mail,
+later search; no unread count, as in phone mail apps: the list's bold
+rows show what is unread, and the drawer has the counts. It stays in
+place, and an open conversation leaves it to the wordmark. From 780 px
+to 1023 px, where the sidebar is also a drawer, the same bar holds them.
+Compose is a labelled floating button. A conversation has Back and its
+actions on top, and labelled Reply, Reply all, Forward at the bottom.
+The list box sets `overscroll-behavior-y: contain`, so the browser's own
+pull-to-refresh, which would reload the app, never starts.
 
 ### Settings and signed-out pages
 
@@ -457,6 +638,11 @@ is inbok's own and runs Check for new mail; the list box sets
 - A page: title, one-sentence lead, then sections divided by hairlines,
   heading and explanation on the left, controls on the right; content caps
   at 720 px; no cards around everything.
+- Connected accounts gives each account a Name field ("Name (optional)",
+  one explanation for all of them under the heading): a name only the
+  member sees, never sent to recipients, unlike Gmail's sender name; it
+  shows in mail instead of the address, and an empty one goes back to the
+  address. Saving keeps focus in the field and says "Saved".
 - Below 1024 px the settings sidebar is a drawer, as mail's is.
 - Signed-out pages (sign-in, setup, registration, password reset, email
   verification): the wordmark and one centred column about 400 px wide.
@@ -493,8 +679,38 @@ is inbok's own and runs Check for new mail; the list box sets
 ### Feedback
 
 - **Reversible actions** (archive, delete to Trash, read, star, and bulk
-  versions) happen at once; a toast says what happened, with Undo, which
-  sends the opposite action. Toasts last 10 s.
+  versions) happen at once, with the unread counts; an action that moves
+  a conversation to another place shows the **Undo bar** at once, docked
+  at the bottom of the list, under the row the action took away, and on
+  a phone, one pane at a time, under whichever pane shows, as an action
+  can keep the conversation open there: what happened,
+  the conversation's subject, Undo in the primary blue, and Close. It is
+  part of the layout, so it covers nothing, and Tab reaches it from the
+  list; it is a landmark named "Undo", which F6 reaches, and Ctrl or
+  Cmd+Z runs its Undo from anywhere but a text field or an open menu or
+  dialog, as Undo's tooltip says ("Undo (Ctrl+Z)"). However it closes,
+  by Undo, Close, its countdown, or its action's refusal, focus inside it
+  goes back to where it came from, a list's row rather than the row's
+  star, else to the list's heading. Screen readers hear it as it
+  appears, through a live region always in the page, with where the
+  conversation went ("Find it in Trash."), and "Undone: <subject>." once
+  an Undo has run; Undo's description names the conversation. Error
+  toasts stand above it while it shows. In the list's width, Undo and
+  Close stay near its words. Under 18em wide, e.g. a phone
+  at large text, its buttons wrap under the words, so the subject keeps
+  the width. It lasts 10 s, a line along its top draining as they pass,
+  paused while the pointer or focus is on it and while the tab is
+  hidden, and running on through a theme change; the next action's Undo
+  takes its place, and opening another conversation leaves it. Undo
+  applies the server's changes for the conversation's row and opens
+  nothing: the API answers each action with the changes that undo it,
+  and Undo sends those, after the action's answer, so it never reaches
+  Gmail first. They restore the row, not each message: a message deleted
+  on its own before a Delete comes back out of Trash with the rest, and
+  undoing a Delete puts the member's own replies in the Inbox too
+  (DEBT.md, "Undo per message"). A result that stays in view,
+  e.g. a star or Mark read, gets no Undo. A bulk action Gmail refuses for
+  some conversations rolls back only those, and says how many failed.
 - **Irreversible actions** (disconnect, deactivate, turn off two-factor
   authentication, discard typed text) ask first in an `AlertDialog`: the
   title asks, the body states the consequence and what is kept, the
@@ -502,14 +718,18 @@ is inbok's own and runs Check for new mail; the list box sets
   one.
 - **A failed action** rolls back and shows an error toast that stays until
   dismissed, with the fix.
-- **Toasts** only report actions whose result left the screen; form
+- **Toasts** report failures, and stay until closed; an action's Undo is
+  the Undo bar's, not a toast's. Form
   results stay inline. Nothing important lives only in a toast.
 - **Banners** for conditions that last: offline at the top of the content;
   an account problem above that account's mail; setup the member owes at the
   top of settings, e.g. an unverified email address.
-- Every mail action is defined once in the actions registry (label, icon,
-  bulk support, run, undo, result text); toolbars, menus, the picked-rows
-  bar, and toasts read from it.
+- Every mail action has its words once, in `features/mail/words.ts`
+  (label, icon, failure, and for an action that moves a conversation its
+  result and where it went), a `Record` over the API's actions, so a new
+  one fails the build until it has words; `perform` runs an action with
+  its guess, counts, Undo bar, and error toast; toolbars, menus, the
+  picked-rows bar, the Undo bar, and toasts read from them.
 
 ### States
 
@@ -521,12 +741,16 @@ is inbok's own and runs Check for new mail; the list box sets
   nothing. Hovering or focusing a row preloads its conversation, and the
   reading pane starts from the list row's data.
 - **Empty:** words only, the cause and one next step: "Connect your first
-  account" with Connect Gmail; "Nothing in Inbox"; "Nothing in Studio's
-  Inbox"; "Studio is still syncing. Its mail appears here as it is
-  copied."; "No spam"; "Trash is empty".
+  account" with Connect Gmail; "Nothing in Inbox", also under an account
+  filter, whose header already names the account; "Nothing in Projects",
+  a label by its own name, its parents in the header; "Studio is still
+  syncing. Its mail appears here as it is copied."; "No spam"; "Trash is
+  empty".
 - **Failure:** what failed, that nothing was lost, Try again, a reference
   for faults. A failed refresh keeps the list and adds a banner ("Couldn't
-  refresh. inbok isn't answering; showing mail from 10:42."). A real "Page
+  refresh. inbok isn't answering; showing mail from 10:42."). A failed
+  older page keeps the rows shown and stops loading, with "Couldn't load
+  older conversations." and Try again under the list. A real "Page
   not found" and a crash screen with Reload live in the shell.
 
 ### Status badges
@@ -540,15 +764,17 @@ The tone says what the status asks of the member:
 | Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser |
 | Info        | To wait      | Sending, Syncing (spinner)                                                                 |
 | Success     | Nothing more | Sent, Up to date, Active, Verified, Two-factor on                                          |
-| Warning     | A look       | Not confirmed, Needs reconnecting                                                          |
+| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect                                               |
 | Destructive | A fix        | Not sent, Sync failed                                                                      |
 
 Deactivated is an admin's choice, not a fault. Up to date and Active show
 only on the page whose job is that status (Connected accounts, Members);
 elsewhere the usual state shows nothing.
 Admin, Two-factor on, and the Members table's Verified column wait for
-the settings pages' redesign (`feat/design-forms`), and the sync words for
-account status (branch 3).
+the settings pages' redesign (`feat/design-forms`). The sidebar shows an
+account's Syncing, Reconnect, or Sync failed as the icon alone, in its
+tone, the words read to screen readers and shown on hover, and with the
+icon on a line under the name for a touch.
 
 ## Data for mail
 
@@ -556,25 +782,58 @@ Mail lists, the reading pane, and mail actions use TanStack DB collections
 over the generated client functions; everything else uses TanStack Query
 hooks. A message's content is the exception inside the reading pane: it
 never changes, so each open message reads it with its generated Query
-hook, cached for good (`messages/content.ts`). Rules from the spike (branch 3 confirms them against the real API):
+hook, cached for good (`messages/content.ts`). Rules from the spike,
+confirmed against the real API in branch 3's gate (ADR031, "TanStack DB
+gate"):
 
-- Sort by a numeric date, then the ID (`stringSort: "lexical"`); dates are
-  never null; one fixed order.
-- Refresh with inbok's own timer that re-reads only the newest page; the
-  built-in `refetchInterval` re-reads every loaded page.
+- Sort by the date as a number (`dateMs`), then the ID
+  (`stringSort: "lexical"`); dates are never null; one fixed order. The
+  API's date text does not sort by time.
+- Refresh with inbok's own timer that re-reads only each open list's
+  newest page; the built-in `refetchInterval` re-reads every loaded page.
 - Apply the "N new conversations" cut-off when drawing, never in the query.
 - One live query per view, each with an explicit key; no joins in paged
-  lists (look account details up instead); a conversation's places are
-  boolean flags.
+  lists (look account details up instead); a conversation's views are
+  boolean flags, and a label list tests `labelIds`
+  (`inArray(label, labelIds)`), so rows keep it.
+- Each page asks for one row more than it shows, so the next load of that
+  date's ties needs no request; "older than a date" is asked as the date
+  alone, without an ID.
+- A list never reads its whole place: the data layer refuses it, and
+  TanStack DB is patched so a row leaving a list before its first page
+  answers costs a page read again (ADR031, TanStack DB gate, rule 9). A
+  list that cannot read its rows in order says so, with Try again, never
+  that its place is empty.
 - Action handlers store the rows the server returns (`writeUpsert`) instead
-  of refetching.
+  of refetching; an action whose guess changes nothing sends its request
+  itself, since TanStack DB skips a transaction without changes. A list
+  read in flight never lands over those rows: TanStack DB keeps a direct
+  write over a read that started before it.
+- Which places a conversation is in comes from one table of flags
+  (`rules.ts`), which both filters the lists (`placeWhere`) and guesses
+  an action's unread counts (`countChanges`), so a count and its list
+  agree. The counts change at once, in the action's transaction; the
+  answer's counts go into List Places' query cache, after cancelling a
+  read of them in flight, which that cache would let land over them.
+- The reading pane reads its row by ID (`eq(id)`): the list's, or loaded
+  from Get Conversation through the shared query cache, which joins the
+  pane's own read, so a link costs no extra request. That load holds the
+  row while the pane is open, after its list drops it. A failed load gives
+  no row, never the collection's error, which every list would show. It is
+  read again with each list's newest page, every 30 s, when the tab shows
+  again, and back online, so a row the pane holds after its list let it
+  go is as current as the list.
 
 ## Wording
 
 - Plain and exact, in the second person. "inbok" is lowercase, even at the
   start of a sentence.
 - Sentence case. Buttons are a verb and what it acts on, and the verb
-  carries into the result ("Archive", "Conversation archived").
+  carries into the result ("Archive", "Conversation archived"). Gmail's
+  own names win where members know them: "Not spam". The Undo bar's
+  title is the result alone ("Archived"), as its second line names the
+  conversation; Delete's reads "Moved to Trash", as Gmail says, since it
+  moves the conversation rather than deleting it for good.
 - Errors say what happened and what to do; no "Sorry", "Oops", or
   exclamation marks.
 - Full sentences end with a period; labels, buttons, headings, and badges
@@ -618,10 +877,17 @@ a multi-account filter, a single-message view option, list density and
 reading-pane position settings, sender pictures (BIMI logos after DMARC,
 contact photos), merging one email received by two accounts, swipe
 gestures, drafts beyond the tab, an installable app with offline mail,
-per-member theme storage.
+per-member theme storage, folds kept across devices (per member, on the
+server). Pull-to-refresh and a top bar that hides while scrolling down:
+Check for new mail is one tap in the top bar, both gestures need
+hand-written touch handling over the Virtualizer's scrolling box that
+only a real phone can check, and a native app gets both from its platform
+(ADR031, branch 3 checkpoint 5).
 
 App keyboard shortcuts, once built, go on TanStack Hotkeys (`useHotkey`,
 its `Mod` key, and its display formatter), which then also takes the
-sidebar's Ctrl+B and Send's Ctrl+Enter. Until then those two are plain
-key handlers: the library was in beta in 2026-11, and two shortcuts did
-not need it.
+sidebar's Ctrl+B, Send's Ctrl+Enter, and the Undo bar's Ctrl+Z. Until
+then those three are plain key handlers, the two letter ones sharing one
+check of what the key may reach (`isShortcut` in `src/lib/shortcut.ts`):
+the library was in beta in 2026-11, and three shortcuts did not need
+it.

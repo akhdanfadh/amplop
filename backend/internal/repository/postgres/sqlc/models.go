@@ -49,6 +49,32 @@ type ConnectedAccount struct {
 	RefreshTokenCiphertext []byte
 	NeedsReconnectSince    *time.Time
 	CreatedAt              time.Time
+	Name                   *string
+	Color                  int16
+}
+
+type Conversation struct {
+	ID                 uuid.UUID
+	ConnectedAccountID int64
+	ProviderThreadID   string
+	LatestDate         time.Time
+	Subject            string
+	Preview            string
+	LatestFrom         []byte
+	Participants       []byte
+	MessageCount       int32
+	Unread             bool
+	Flagged            bool
+	InAllMail          bool
+	NewestMessageID    uuid.UUID
+}
+
+type ConversationMailbox struct {
+	ConnectedAccountID int64
+	ConversationID     uuid.UUID
+	MailboxID          uuid.UUID
+	LatestDate         time.Time
+	Unread             bool
 }
 
 type EmailVerificationLink struct {
@@ -65,6 +91,8 @@ type Mailbox struct {
 	ProviderMailboxID  string
 	Name               string
 	Role               *string
+	MadeBy             string
+	ProviderParentID   *string
 }
 
 type Message struct {
@@ -81,6 +109,7 @@ type Message struct {
 	Preview            string
 	Seen               bool
 	Flagged            bool
+	ProviderVersion    int64
 	InternetMessageID  string
 	InReplyTo          []string
 	InternetReferences []string

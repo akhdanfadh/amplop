@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
+import { isShortcut, shortcutName } from "@/lib/shortcut";
 
 // The drawer's width. The open sidebar (240 px) and the rail (56 px; 68 px
 // for a coarse pointer, so its 44 px rows fit) are set on the wrapper.
@@ -23,11 +24,9 @@ const drawerStyle: React.CSSProperties & Record<"--sheet-width", string> = {
 };
 
 // The shortcut that opens and closes the sidebar: B with Ctrl, or with Cmd
-// on a Mac, as in shadcn's sidebar and Gmail's.
+// on a Mac, as in shadcn's sidebar and Gmail's (isShortcut).
 const shortcutLetter = "b";
 const shortcutCode = "KeyB";
-const shortcutMac = "Cmd+B";
-const shortcutOther = "Ctrl+B";
 
 const triggerSelector = "[data-slot=sidebar-trigger]";
 const drawerSelector = "[data-sidebar=drawer]";
@@ -87,30 +86,6 @@ function useSidebarContext(): SidebarContextProps {
 // e.g. a menu that closes the drawer after a choice.
 function useSidebar(): SidebarState {
   return useSidebarContext();
-}
-
-// isToggleKey reports whether event is Ctrl+B, or Cmd+B, alone: no Shift
-// or Alt, not a held key's repeat, not typed into a text field, and not
-// in a dialog or menu other than the drawer.
-function isToggleKey(event: KeyboardEvent): boolean {
-  // B is the letter in any Latin layout, Caps Lock or not, so Dvorak's
-  // Ctrl+X stays cut; in any other layout, e.g. Cyrillic, it is the key
-  // where QWERTY has it.
-  const latin = /^[a-z]$/i.test(event.key);
-  if (latin ? event.key.toLowerCase() !== shortcutLetter : event.code !== shortcutCode) {
-    return false;
-  }
-  if (event.repeat || event.defaultPrevented) return false;
-  if (event.shiftKey || event.altKey || event.ctrlKey === event.metaKey) return false;
-  // In a field Ctrl+B already means something: back one character on a
-  // Mac, bold in an editor.
-  const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest("input, textarea, select, [contenteditable]")) return false;
-  // An open popover, menu, or dialog has the member's attention; the
-  // sidebar would change out of sight behind it, and the drawer would
-  // close around a popover opened from it.
-  const overlay = target?.closest("[role=dialog], [role=alertdialog], [role=menu]");
-  return !overlay || overlay.matches("[data-slot=sheet]");
 }
 
 // SidebarProvider holds the sidebar's state. open is the member's choice
@@ -231,7 +206,7 @@ function SidebarProvider({
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isToggleKey(event)) return;
+      if (!isShortcut(event, shortcutLetter, shortcutCode, drawerSelector)) return;
       event.preventDefault();
       if (hasDrawer) setDrawerOpen((value) => !value);
       else if (fullOpen) collapse();
@@ -367,9 +342,7 @@ function SidebarTrigger({ className, onPress, ...props }: React.ComponentProps<t
   // The rail expands into the drawer, which collapses back into the rail.
   if (railLayout) name = inDrawer ? "Collapse sidebar" : "Expand sidebar";
   if (isDrawer) name = drawerOpen ? "Close sidebar" : "Open sidebar";
-  // Apple keyboards say Cmd; the rest say Ctrl. Words, not the Command
-  // symbol, which no keyboard types (DESIGN.md "Wording").
-  const shortcut = /Mac|iPhone|iPad/.test(navigator.userAgent) ? shortcutMac : shortcutOther;
+  const shortcut = shortcutName(shortcutLetter);
 
   // NOTE: React Aria's Button drops aria-keyshortcuts, so the tooltip, its
   // description, is what tells assistive technology the shortcut.
@@ -452,12 +425,13 @@ function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof S
 function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   // Scrolling past its end stops there, so in the drawer the page behind
   // never moves: the part of React Aria's iOS scroll lock the
-  // Content-Security-Policy blocks (web/README.md).
+  // Content-Security-Policy blocks (web/README.md). Its edge fades while
+  // more is there to scroll (scroll-fade-y, styles.css).
   return (
     <div
       data-slot="sidebar-content"
       className={cn(
-        "flex min-h-0 flex-1 flex-col gap-0 overflow-auto overscroll-contain group-data-[collapsible=icon]:overflow-hidden",
+        "flex min-h-0 flex-1 scroll-fade-y flex-col gap-0 overflow-auto overscroll-contain group-data-[collapsible=icon]:overflow-hidden",
         className,
       )}
       {...props}
@@ -553,21 +527,31 @@ const activeBar =
 // Rows are 32 px for a fine pointer, 44 px for a coarse one (DESIGN.md
 // "Control height"), on the rail too, where only their icons show. The
 // icon keeps its place open or as a rail: 8 px in (14 px coarse), the
-// rail's centre. The open item keeps its tint while hovered. The name
+// rail's centre. The open item keeps its tint while hovered; the current
+// one of a set that is not a page, e.g. the account filtering it, has the
+// bar alone, so the page stands out from its scope (DESIGN.md "Sidebar").
+// The name
 // gives way, cut short with an ellipsis, to what follows it in the row (a
 // SidebarMenuBadge) and to a SidebarMenuAction pinned at the end.
-const sidebarMenuButtonClasses = `group/menu-button relative flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm font-medium transition-colors outline-none group-has-data-[slot=sidebar-menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:px-3.5 pointer-coarse:group-data-[collapsible=icon]:size-11! pointer-coarse:group-data-[collapsible=icon]:p-3.5! data-disabled:pointer-events-none data-disabled:opacity-50 pointer-coarse:h-11 data-active:bg-selection data-active:hover:bg-selection ${activeBar} data-active:text-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:not([data-slot])]:truncate`;
+const sidebarMenuButtonClasses = `group/menu-button relative flex h-8 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm font-medium transition-colors outline-none group-has-data-[slot=sidebar-menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:px-3.5 pointer-coarse:group-data-[collapsible=icon]:size-11! pointer-coarse:group-data-[collapsible=icon]:p-3.5! data-disabled:pointer-events-none data-disabled:opacity-50 pointer-coarse:h-11 data-active:bg-selection data-active:hover:bg-selection data-active:aria-[current=true]:bg-transparent data-active:aria-[current=true]:hover:bg-sidebar-accent ${activeBar} data-active:text-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:not([data-slot])]:truncate`;
 
 // SidebarMenuButton is one item: a link when it has an href, else a
-// button. isActive marks a link's page as the current one. On the rail,
-// tooltip names it.
+// button. isActive marks a link as the current one: its page, or with
+// current "true", the current one of a set that is not a page, e.g. an
+// account filtering the page. On the rail, tooltip names it; open,
+// detail, when given, says more about it on hover or focus, e.g. how far
+// an account's sync has come.
 function SidebarMenuButton({
   isActive = false,
+  current = "page",
   tooltip,
+  detail,
   className,
   ...props
 }: SidebarButtonProps & {
+  current?: "page" | "true";
   tooltip?: string;
+  detail?: string;
   className?: string;
 }) {
   const { rail } = useSidebar();
@@ -579,26 +563,28 @@ function SidebarMenuButton({
       <LinkPrimitive
         data-slot="sidebar-menu-button"
         data-active={isActive || undefined}
-        aria-current={isActive ? "page" : undefined}
+        aria-current={isActive ? current : undefined}
         className={classes}
         {...props}
       />
     );
 
-  if (!tooltip) {
+  const tip = rail ? tooltip : detail;
+  if (!tooltip && !detail) {
     return comp;
   }
 
   return (
-    <TooltipTrigger isDisabled={!rail}>
+    <TooltipTrigger isDisabled={!tip}>
       {comp}
-      <Tooltip placement="right">{tooltip}</Tooltip>
+      <Tooltip placement="right">{tip}</Tooltip>
     </TooltipTrigger>
   );
 }
 
 // SidebarMenuAction is a small button at the end of an item, e.g. More,
-// centred in the row; a coarse pointer gets a larger hit area around it.
+// 24 px (DESIGN.md "Control height"), centred in the row; a coarse
+// pointer gets a larger hit area around it.
 function SidebarMenuAction({
   className,
   ...props
@@ -609,7 +595,7 @@ function SidebarMenuAction({
     <ButtonPrimitive
       data-slot="sidebar-menu-action"
       className={cn(
-        "absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-none group-data-[collapsible=icon]:hidden after:absolute after:-inset-3 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:top-3 pointer-fine:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
+        "absolute top-1 right-1 flex aspect-square w-6 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-none group-data-[collapsible=icon]:hidden after:absolute after:-inset-3 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:top-2.5 pointer-fine:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
         className,
       )}
       {...props}
@@ -672,27 +658,41 @@ function SidebarMenuSubItem({ className, ...props }: React.ComponentProps<"li">)
   );
 }
 
+// SidebarMenuSubButton is one item under another, e.g. a label under its
+// account: a link when it has an href, else a button. isActive marks a
+// link's page as the current one; detail, when given, says more about it
+// on hover or focus, e.g. a name cut short in full.
 function SidebarMenuSubButton({
   isActive = false,
+  detail,
   className,
   ...props
 }: SidebarButtonProps & {
+  detail?: string;
   className?: string;
 }) {
   const classes = cn(
     `relative flex h-8 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sm font-medium text-sidebar-foreground transition-colors outline-none group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-focus-visible:focus-ring pointer-coarse:h-11 data-disabled:pointer-events-none data-disabled:opacity-50 data-active:bg-selection data-active:hover:bg-selection ${activeBar} data-active:text-foreground [&>span:not([data-slot])]:truncate [&>svg]:size-4 [&>svg]:shrink-0`,
     className,
   );
-  return props.href === undefined ? (
-    <ButtonPrimitive data-slot="sidebar-menu-sub-button" className={classes} {...props} />
-  ) : (
-    <LinkPrimitive
-      data-slot="sidebar-menu-sub-button"
-      data-active={isActive || undefined}
-      aria-current={isActive ? "page" : undefined}
-      className={classes}
-      {...props}
-    />
+  const comp =
+    props.href === undefined ? (
+      <ButtonPrimitive data-slot="sidebar-menu-sub-button" className={classes} {...props} />
+    ) : (
+      <LinkPrimitive
+        data-slot="sidebar-menu-sub-button"
+        data-active={isActive || undefined}
+        aria-current={isActive ? "page" : undefined}
+        className={classes}
+        {...props}
+      />
+    );
+  if (!detail) return comp;
+  return (
+    <TooltipTrigger>
+      {comp}
+      <Tooltip placement="right">{detail}</Tooltip>
+    </TooltipTrigger>
   );
 }
 

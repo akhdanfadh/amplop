@@ -3,7 +3,7 @@ import { linkOptions } from "@tanstack/react-router";
 import { expect, it } from "vite-plus/test";
 import { getGetSetupStatusQueryKey, getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
 import { mailHref, rememberMailHref } from "@/features/mail/places";
-import { clearAccountCache } from "./session-cache";
+import { clearAccountCache, onAccountCacheClear, onAccountEndedElsewhere } from "./session-cache";
 
 it("clears account data and credentials while retaining public setup status", async () => {
   const client = new QueryClient();
@@ -50,4 +50,38 @@ it("sends Back to mail to the Inbox, so the next member never gets the last one'
   rememberMailHref(linkOptions({ to: "/mail/outbox/$id", params: { id: "a" } }));
   clearAccountCache(new QueryClient());
   expect(mailHref()).toEqual({ to: "/mail/$place", params: { place: "inbox" } });
+});
+
+it("clears what else holds a member's data, until it stops", () => {
+  const client = new QueryClient();
+  const cleared: QueryClient[] = [];
+  const stop = onAccountCacheClear((c) => cleared.push(c));
+  clearAccountCache(client);
+  stop();
+  clearAccountCache(client);
+  expect(cleared).toEqual([client]);
+});
+
+it("tells this browser's other tabs, and hears theirs", async () => {
+  // Another tab's end of the channel.
+  const otherTab = new BroadcastChannel("inbok-account");
+  try {
+    const told = new Promise((resolve) => {
+      otherTab.addEventListener("message", (event) => resolve(event.data), { once: true });
+    });
+    clearAccountCache(new QueryClient());
+    expect(await told).toBe("ended");
+
+    const heard = new Promise<void>((resolve) => {
+      const stop = onAccountEndedElsewhere(() => {
+        stop();
+        resolve();
+      });
+    });
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel takes no origin.
+    otherTab.postMessage("ended");
+    await heard;
+  } finally {
+    otherTab.close();
+  }
 });

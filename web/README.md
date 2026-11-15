@@ -125,22 +125,26 @@ Put shared code in the folder for its responsibility:
 - `src/features/connected-accounts`: the Connected accounts list with its
   connect, reconnect, sync, and disconnect actions, and the page's wording,
   including each way a connection can end and where each sync stands.
-- `src/features/messages`: the message view, its HTML and plain-text
-  bodies, sizing the body's frame, plain-text links, and the header's
-  wording.
+- `src/features/messages`: the conversation view (`ConversationView`),
+  the message view, its HTML and plain-text bodies, sizing the body's
+  frame, plain-text links, and the header's wording.
 - `src/features/outgoing-messages`: the compose form and its schema, the
   reply editor with its defaults and schema, the Outbox list, one
   message's status with Send again and Edit and send, their wording, and
   when their pages read again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
-  names, the list beside the reading pane, and the address Back to mail
-  returns to.
+  names, the conversation list and its rows, the reading pane and its
+  toolbar, mail's TanStack DB collections (`conversations.ts`), what
+  actions guess and which places a conversation is in (`rules.ts`), each
+  action's words (`words.ts`), running an action (`perform.ts`) and its
+  Undo bar (`undo.tsx`), how a row shows its date and people, and the
+  address Back to mail returns to.
 - `src/features/settings`: the settings sidebar.
-- `src/components`: shared components, such as the password input, the
-  request error under a form, the status badge, the link styles, the
-  signed-in frame and its member menu, the offline banner, and the pages
-  for loading, failure, and Page not found. `ui/` holds the shadcn
-  components we own.
+- `src/components`: shared components, such as the shell around every
+  page (`AppShell`), the password input, the request error under a form,
+  the status badge, the link styles, the signed-in frame and its member
+  menu, the offline banner, and the pages for loading, failure, and Page
+  not found. `ui/` holds the shadcn components we own.
 - `src/api`: generated client and schemas, transport, shared validation and
   error messages, and retry handling.
 - `src/lib`: code that knows no feature and no React, such as keeping the
@@ -237,15 +241,53 @@ member moves between pages shows its loading view inside the frame; the
 first load is one loading view over the window, as above. In mail, the
 list grows with the window from 300 px to 440 px beside the reading pane
 (`features/mail/panes.tsx`), with no divider to drag; below 780 px one
-pane shows at a time. A state in the reading pane, e.g. a conversation not
-found, is a section with an `h2` (`StateRegion`), since the list holds the
-page's `main`. The mail sidebar's Outbox shows how many of its messages
-are not sent yet, from the Outbox page's own read: one being sent, or one
+pane shows at a time. A state in the reading pane, e.g. a conversation
+not found, is a section with an `h2` (`StateRegion`), since the list
+holds the page's `main`. In the mail sidebar, an account's labels and a
+parent label's children fold behind a chevron (React Aria's
+`Disclosure`); what is unfolded is a TanStack DB collection in the tab's
+`sessionStorage` (`features/mail/folds.ts`), so each tab keeps its own
+through reloads, and a tab without folds of its own starts from the
+folds as the member last pressed a chevron in any tab, a plain
+`localStorage` key; the sidebar also unfolds the way to the open place,
+which leaves that key as it was, and the folds clear at sign-out in the
+tab that signs out, and in another tab when it next signs in. A name cut
+short is offered in full in a tooltip, measured by `useOverflow`
+(`hooks/use-overflow.ts`). The sidebar's scrolling content fades at an
+edge with more beyond it
+(`scroll-fade-y` in `styles.css`, a scroll-driven animation). Where the
+sidebar is a drawer, a place's heading, account, and Check for new mail
+sit in the top bar instead of above the list: `Frame` gives its top bar
+a box (`useTopBarSlot`), and the place page puts its header there with a
+React portal, so the heading keeps its focus and the list's `main` keeps
+its name. The mail sidebar's Outbox shows how many of its messages are
+not sent yet, from the Outbox page's own read: one being sent, or one
 whose page still offers to send it (`unfinished`), so a message sent
 again stops counting. The member menu at the bottom of the sidebar opens
 Settings, the theme choice, and Sign out. Both frames and the signed-out
 layout show `OfflineBanner` at the top of the content while the browser
 reports no connection, read from TanStack Query's `onlineManager`.
+
+A place in mail, `/mail/<place>`, is a view (`inbox`, `starred`, `sent`,
+`all`, `spam`, `trash`) or a label's ID from the API's places, and
+`?account=<id>` shows one account's mail. A label the member doesn't
+have is Page not found. On a view `?account=` only filters, so an
+account the member doesn't have shows every account's mail, and one that
+is no ID is dropped; a label opens in its own account, so any other
+`?account=`, or none, becomes the label's. `/mail/<place>/<conversation
+id>` opens a conversation in the reading pane: one the list holds draws
+from its row at once while its messages load, and one it doesn't, e.g.
+from a link, waits for its read; one that no longer exists is Page not
+found either way. Its route splits its loader off
+(`codeSplitGroupings`), since it reads mail's TanStack DB collection,
+which must stay out of the app's first download. A loader whose read
+finds the session ended clears the member's data and opens sign-in
+(`sessionEnded` in `features/auth/guard.ts`). Rows are React Aria links,
+which never preload, so resting the pointer or focus on a row for 100 ms
+calls `router.preloadRoute`, which reads the conversation ahead;
+sweeping over rows reads none. On a phone the reading pane is the page,
+with Back at the start of the conversation's toolbar, which goes back in
+history as the phone's own back does.
 
 The application checks setup status once per fresh page load and shares
 the result during navigation. Before setup is complete, every page
@@ -460,7 +502,12 @@ loaded, a 401 signs out, and a 403 reads access again.
 
 Settings' Connected accounts (`/settings/connected-accounts`) is where
 members connect Gmail accounts. The page lists the member's accounts,
-oldest first, with the date each was connected. Connect Gmail asks the API
+oldest first, with the date each was connected, each by its mark and the
+name the member chose for it, else its address. Each has a Name field
+(`features/connected-accounts/name-form.tsx`) that saves through Rename
+Account and puts the server's answer in the accounts list, so the
+sidebar and every From list follow; an empty name goes back to the
+address. Connect Gmail asks the API
 for Google's consent page and sends the tab there; Google returns the
 browser to the API, which redirects to this page with `?outcome=`. The
 page validates it against the generated `ConnectOutcome`, ignores any
@@ -616,11 +663,12 @@ editor is inline on every screen, a phone's too, so an earlier message
 stays a scroll away while the member writes. While the editor is open every
 Reply hides, so the open editor is never replaced or moved, which would
 remount it and lose its text and Idempotency-Key. Each piece takes the
-answered message as an `AnsweredMessage`: branch 3's conversation message
-(senders and recipients as `{name, address}`), its account, and whether
-the account sent it, the per-message `sent` flag the conversation API is
-to add. `replyDefaults` (`reply-defaults.ts`) fills the editor, with
-table tests:
+answered message as an `AnsweredMessage`: a message of Get Conversation
+(senders and recipients as `{name, address}`, and `sent`, whether its
+account sent it: it is in that account's Sent mail) plus the
+conversation's `accountId`. It reads only the member's accounts, so the
+conversation view passes a message in as it is. `replyDefaults`
+(`reply-defaults.ts`) fills the editor, with table tests:
 
 - From is the account that received the message while it can send;
   otherwise none is chosen, and From's description names the account
@@ -634,9 +682,9 @@ table tests:
   copy.
 
 The editor is DESIGN.md's message editor card: rows for From (a quiet
-React Aria `select`, the account shown by its address until branch 3's
-account mark), To, and the Cc and Bcc that are filled or added from the To
-row's buttons, each a `RecipientField`; then Message, and a bar with Send
+React Aria `select`, each account by its mark, its address, and the name
+the member chose), To, and the Cc and Bcc that are filled or added from
+the To row's buttons, each a `RecipientField`; then Message, and a bar with Send
 and Discard. There is no subject: the server sets it. A line under From
 says when the chosen account didn't receive the message, since the reply
 then starts a new conversation in that account's Gmail. Focus starts in
@@ -734,26 +782,38 @@ them.
 conversation as DESIGN.md "Reading pane" describes it. Its props:
 
 - `subject` and `account` (ID, name, address, colour) for its title, and
-  `messages`, oldest first: each message's header fields, its preview,
-  whether it is unread, whether the account sent it (`sent`), and
-  whether it is known to have attachments (`attachments`, a paperclip on
-  its folded row).
+  `messages`, oldest first, as Get Conversation sends them: each
+  message's header fields, its preview, whether it is unread, whether the
+  account sent it (`sent`, in its Sent mail, from any of its addresses),
+  the message it answers (`answers`), and whether it is known to have
+  attachments (`attachments`, a paperclip on its folded row).
+  `messages` is undefined until they are read, and `placeholder` shows in
+  their place, under the title; the messages' `Thread` mounts once they
+  come, so which messages start open is decided from them.
 - `onUnauthorized`: runs when a read finds the session gone.
-- `actions`: the conversation's actions in the pinned toolbar, and Back
-  where one pane shows at a time.
+- `back`: the way back to the list at the toolbar's start, where one pane
+  shows at a time; `actions`: the conversation's actions at its end.
 - `messageActions(message)`: a message's other actions in its header,
   after Reply; shown only while the message is open.
 
 The view holds the reply editor's `ReplyProvider` and places its pieces
 ("Reply"): Reply in each open message's header, the editor below the
 message it answers, whose row then stays out of "N more messages", and
-the bottom's Reply after the last message. Without a `sent` flag, a
-message from the account's own address counts as sent; branch 3's
-conversation detail is to send the real flag. The toolbar's actions are
-the mail list's. The view scrolls itself,
-so give it a height, and a `key` per conversation, so folding starts
-afresh. Each open message loads its content through `useMessageContent`
-(`content.ts`), so folded messages cost no request; content never goes
+the bottom's Reply after the last message. An open message that answers
+one other than the row just above says so, "In reply to Ana Lima on 2 Nov
+2026, 9:00 am" (the name in a `<bdi>`), a link that opens that
+message (out of "N more messages" if it was there), scrolls it to the
+pane's top, focuses the message itself (its `<article>`, `tabIndex`
+-1), and flashes it (`flash-selection` in `styles.css`). The view's
+`actions` sit in React Aria's `Toolbar`, one Tab stop with arrow keys
+between its buttons; the bar pins under the pane's top only while it is
+20em wide or more, and its scroll padding goes with the pin. The view
+takes focus when it opens and scrolls itself, so give it a height, and a
+`key` per conversation, so folding starts afresh; its scroll padding follows the
+pinned toolbar's height (a `ResizeObserver`), so nothing focused or
+scrolled to sits under it. Each open message loads its content through
+`useMessageContent` (`content.ts`), so folded messages cost no request;
+content never goes
 stale, as a message's never changes, so it is not read again in the
 background, and a 401 runs `onUnauthorized`; the content shows in
 `MessageContentView`, the message view's part below its header.
@@ -770,10 +830,30 @@ it, which an `IntersectionObserver` on the view's own scroll box tells.
 The layout follows the pane, not the window, with container queries
 (`@container`, `@lg:`, 512 px at the default text size).
 
-Until branch 3 merges, its message type and the helpers it shares
-(initials, names, list dates, `useToday`) have copies here
-(`people.ts`, `text.ts`, `conversation.tsx`); whichever branch merges
-later keeps one.
+It shares the mail list's pieces: names, initials, and the Reply-To check
+(`mail/people.ts`), the sender's avatar (`mail/sender-avatar.tsx`), dates
+and `useToday` (`mail/dates.ts`), and words such as `subjectText` and
+"Unknown sender" (`mail/text.ts`). The mail's `Reader`
+(`mail/reader.tsx`) puts it in the reading pane: it reads Get
+Conversation and takes the subject and account from the list's row, not
+as the query's placeholder, which the query drops once a read fails, so
+the frame stays while the messages load or a read fails, with Try again
+under the title. It names the tab, shows Page not found only while
+nothing is shown (a 404 on a later read leaves a reply being typed in
+place), says when the accounts could not be read, and opens sign-in for
+an ended session. It reads the conversation's row by ID from the mail
+collection, so an action anywhere shows at once, and marks an unread
+conversation read once its messages are read and the tab shows. Its
+toolbar (`mail/toolbar.tsx`) offers what `actionsFor` (`mail/rules.ts`)
+gives for the conversation in the list it was opened from, each action
+run by `perform` (`mail/perform.ts`), which shows its Undo in the Undo
+bar (`mail/undo.tsx`) and says why a refused one failed. An action that
+takes the conversation out of that list (`leavesList`) goes back to it,
+through history when a row of it opened the conversation (the row's
+link sets `fromList` in its history state, or keeps the flag of the
+open conversation's entry it replaces), else to the list in its place, and asks the list, through `mail/focus-request.ts`, to focus the
+row that took its place, or the conversation's own row after Mark
+unread.
 
 ## Checks and tests
 
@@ -820,6 +900,22 @@ pnpm test
 pnpm exec vp test run --project browser
 pnpm exec vp test run src/lib/theme.browser.test.tsx
 ```
+
+React Aria's Virtualizer stops virtualizing, and keeps lists at their
+top, when `NODE_ENV` is `test`, as Vitest sets it, unless `VIRT_ON` is
+set; the browser project sets it (`vite.config.ts`), so a list test sees
+the list as the app has it. Scroll a virtualized list with the keyboard,
+e.g. End, which React Aria scrolls itself.
+
+A test of the whole app loads the real routes with `appRouter`
+(`src/test/app-router.ts`) and mounts them in a `<div>`, not on the
+document as the app does. So it renders the root route's `AppShell`
+without the `<html>` and `<body>` around it: React's own `<body>` there
+makes a later event loop forever
+([react#35480](https://github.com/react/react/issues/35480)), and a
+hanging test never fails by itself, since its timer runs on the frozen
+page. `src/test/app-router.browser.test.tsx` checks that React leaves the
+page's `<body>` alone; `make` stops the web tests after five minutes.
 
 Tests use [Vitest](https://vitest.dev), included in Vite+. Import its
 functions from `vite-plus/test`, not `vitest`; `pnpm check` flags the
@@ -894,8 +990,26 @@ from the registry here:
     technology never reads it. Its `aria-describedby` repeats an icon
     button's name, which is React Aria's doing.
   - `skeleton` does not pulse. `spinner` is decoration.
+- `dropdown-menu`: React Aria's `Menu` in a `Popover`; its items are
+  44 px on a touch screen (`pointer-coarse:min-h-11`), and it opens below
+  its trigger, at its start, unless `placement` says otherwise.
+- `grid-list` is ours: the message list, React Aria's `GridList` in its
+  `Virtualizer`, rows of one height, type-to-find off. `GridListItem`
+  takes `current` for the open row (`aria-current`, which React Aria
+  passes on only through its `render` prop), whose open surface stays
+  under the pointer; `GridListEnd` is the line under the last row.
+- `avatar`: as the registry's; the conversation row rings it in the
+  account colour. `empty`: words only.
 - `toast` is ours: the registry offers only `sonner` (see DESIGN.md).
-  `showUndo` shows a result with Undo and closes itself after 10 s;
+  It shows failures only; an action's Undo is `features/mail/undo.tsx`'s
+  `UndoBar`, docked under the mail panes, which `showUndo` fills and
+  `closeUndo` empties: a landmark F6 reaches (React Aria's
+  `useLandmark`, from `react-aria`), whose Undo also runs on Ctrl or
+  Cmd+Z, by `isShortcut` (`src/lib/shortcut.ts`), the check the
+  sidebar's Ctrl+B shares. While toasts show, `--toast-space` holds the
+  height they take, which a
+  scrolling box uses as `scroll-pb-(--toast-space)`, so focus never lands
+  under a toast (the list and the reading pane do);
   `showError` shows a failure until the member closes it, and not again
   while it shows; `closeToasts` closes all, e.g. on sign-out. It is React
   Aria's alpha toast (`UNSTABLE_`), so recheck it after an upgrade.
@@ -1116,9 +1230,103 @@ reconnection are separate operations too. A timeout ends a write's
 submission, an opted-in write's retries included, and leaves the form's
 values available with the uncertain-outcome message above.
 
+Mail is the exception: its lists read conversations through a [TanStack
+DB](https://tanstack.com/db) collection over the generated client
+(`features/mail/conversations.ts`), pinned to 1.0.0-rc.1.4 and patched
+(`patches/`, see the NOTE in `pnpm-workspace.yaml`), with
+`@tanstack/query-db-collection` 1.5.1 under it, so every list shares one
+copy of each conversation. A list is a live query that loads 50 rows at
+a time as it scrolls; `conversations.ts` turns each load into the API's
+pages, and re-reads only each open list's newest page: every 30 s while
+the tab shows, when it shows again, and back online (`refreshMail`). The
+sidebar's unread counts are a second collection over List Places, read
+whole and again with those pages, so a count changes with the rows it
+counts; it shares List Places' query with the place route's loader, so a
+page reads them once (TanStack DB's `select` takes the list out of the
+answer). The connected accounts, whose sync status the sidebar words,
+are read then too. Check for new mail (`features/mail/check-mail.tsx`)
+asks the server to sync each account the list shows, then reads all
+three every 2 s for 30 s. When a page fails, TanStack DB asks for the
+whole place to repair the list; `conversations.ts` refuses that
+(hundreds of requests for a large Inbox), so the list keeps its rows,
+stops loading, and offers Try again, which replaces the conversations
+collection with an empty one (`restartMail`); the counts stay. The rules
+that keep that cheap are in [DESIGN.md](DESIGN.md#data-for-mail). The
+collections live per query client and end with the member's session
+(`onAccountCacheClear` in `features/auth/session-cache.ts`), as do the
+router's loaded pages. `clearAccountCache` tells the browser's other
+inbok tabs over a `BroadcastChannel`, and a signed-in frame that hears
+it loads again, so a tab never shows one member's mail beside another's.
+Mail actions, e.g. the row's star, go through `perform`
+(`features/mail/perform.ts`), which runs `runAction`
+(`features/mail/actions.ts`) instead of a mutation hook: it changes the
+rows and their unread counts at once, sends the action, and keeps the
+rows and counts the API answers with; a conversation the API refuses, or
+every one when the request fails, goes back as it was, and `perform`
+says why. Actions in flight at once keep none of their answers' counts,
+which each hold the whole of List Places at their own moment; the last
+to settle reads them again. The reading pane reads its row from the same
+collection by ID, loaded from Get Conversation when no list holds it, so
+an action anywhere shows there at once; a failed read of it keeps the
+row as last confirmed, without an action's guess, and only a 404 lets it
+go. Opening an unread conversation runs `read`. The package ships agent
+guides for its installed version in `node_modules/@tanstack/db/skills`.
+
 Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.
 The `pnpm build` output sends it once.
+
+## Kept in the browser
+
+Any script on inbok's origin can read `localStorage` and
+`sessionStorage`, and another site cannot
+([MDN](https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy#cross-origin_data_storage_access)).
+What guards them is what guards the whole page: the Content-Security-Policy
+above and the message body's frame, which runs no script. A script that
+got in could already call the API with the member's session, so a value
+is kept in the browser by what it would reveal at rest, not to hide it
+from scripts. First, what may be kept
+([OWASP](https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html#local-storage)):
+
+- Never a secret: a session, password, code, or key. The server keeps the
+  session in an `HttpOnly` cookie, which no script reads.
+- A choice, or an ID that means nothing without the API, in
+  `localStorage` for the browser or `sessionStorage` for one tab.
+- Text the member wrote or received only in `sessionStorage`, and gone
+  from every tab when the session ends. A tab's storage outlives the
+  reload that `onAccountEndedElsewhere` makes, and a tab the browser
+  restores later heard nothing, so such a store, e.g. drafts, clears
+  itself in each tab that hears the session end, and shows nothing
+  until it knows the signed-in member wrote it.
+
+Then the way to keep it, by the value's shape. Keys start with `inbok-`.
+
+- Read before the first paint: a plain key that the root route's head
+  script reads, in its own module, as `lib/theme.ts` does.
+- One value, replaced whole: a plain key through `localStore`
+  (`lib/local-store.ts`); a tab reads it when it loads, and the last write
+  holds.
+- Rows changed one at a time: a TanStack DB collection from
+  `localStorageCollectionOptions`, read through a live query. In
+  `sessionStorage` the rows are the tab's own, as `features/mail/folds.ts`
+  keeps them. In `localStorage`, give it `window.localStorage` itself: each
+  tab then takes the others' writes into its rows, so its next write
+  keeps them, where a whole set written by hand from an old copy would
+  drop them. Two tabs writing at the same moment can still lose one
+  change; the collection takes no lock
+  ([TanStack DB](https://tanstack.com/db/latest/docs/collections/local-storage-collection#synchronization)).
+
+A value that belongs to the member registers its clearing with
+`onAccountCacheClear`, which runs in the tab that signs in or out. Other
+tabs keep their `sessionStorage` until they sign in or close: harmless
+for IDs, which match no other member's accounts, not for text.
+
+| Key                        | Holds                                                                                               | Way                         | At sign-out         |
+| -------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------- | ------------------- |
+| `inbok-theme`              | `light` or `dark`; none is the system's                                                             | head script, `lib/theme.ts` | kept                |
+| `inbok-sidebar-open`       | `true` or `false`: the full layout's sidebar open                                                   | `localStore`                | kept                |
+| `inbok-sidebar-folds`      | in `sessionStorage`: this tab's unfolded account IDs and label IDs                                  | collection                  | cleared in this tab |
+| `inbok-sidebar-last-folds` | the same, as the member last pressed them in any tab; a tab without folds of its own starts from it | `localStore`                | cleared             |
 
 ## Forms
 

@@ -1,9 +1,24 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { getGetCurrentSessionQueryOptions } from "@/api/generated/inbok";
 import type { CurrentSession } from "@/api/generated/model";
+import { redirect } from "@tanstack/react-router";
 import { ApiError } from "@/api/transport";
+import { clearAccountCache } from "./session-cache";
 
 const unauthorized = 401;
+
+// sessionEnded returns the redirect for a loader whose read found the
+// session ended, a 401 after the guard ran, e.g. from another tab: the
+// member's data is cleared and sign-in brings them back to href.
+export function sessionEnded(client: QueryClient, href: string) {
+  clearAccountCache(client);
+  return redirect({ to: "/sign-in", search: { redirect: href }, replace: true });
+}
+
+// isSessionEnded reports whether err is a read's 401.
+export function isSessionEnded(err: unknown): boolean {
+  return err instanceof ApiError && err.status === unauthorized;
+}
 
 // readSession returns the signed-in member's session for a route guard:
 // the cached one when a page has read it, else a fresh read. Returns

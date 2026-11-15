@@ -22,6 +22,8 @@ const studio: ListedAccount = {
   id: 7,
   provider: "gmail",
   email: "studio@example.com",
+  name: null,
+  color: 1,
   status: "usable",
   createdAt: "2026-11-01T00:00:00Z",
   needsReconnectSince: null,
@@ -329,6 +331,39 @@ describe("ConversationReply", () => {
       .toMatchTextContent(
         "This account didn't receive the message, so the reply starts a new conversation in its Gmail.",
       );
+  });
+
+  it("names each From account by its address and the name the member chose", async () => {
+    await page.viewport(1440, 900);
+    serve({ accounts: [{ ...studio, name: "Studio" }, personal] });
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    const editor = page.getByRole("form", { name: "Reply" });
+    await expect
+      .element(editor.getByRole("button", { name: /From/ }))
+      .toHaveTextContent("studio@example.comStudio");
+    await userEvent.click(editor.getByRole("button", { name: /From/ }));
+
+    await expect
+      .element(page.getByRole("option", { name: "studio@example.com Studio" }))
+      .toBeVisible();
+    await expect.element(page.getByRole("option", { name: "me@example.org" })).toBeVisible();
+    // The dot sits on the middle of the address, in the list and in From.
+    for (const box of [
+      page.getByRole("option", { name: "me@example.org" }).element(),
+      editor.getByRole("button", { name: /From/ }).element(),
+    ]) {
+      const dot = box.querySelector("[aria-hidden='true'].rounded-full")?.getBoundingClientRect();
+      const address = [...box.querySelectorAll("[translate='no']")][0]?.getBoundingClientRect();
+      expect(
+        Math.abs(
+          (dot?.top ?? 0) +
+            (dot?.height ?? 0) / 2 -
+            ((address?.top ?? 0) + (address?.height ?? 0) / 2),
+        ),
+      ).toBeLessThanOrEqual(1);
+    }
   });
 
   it("adds a Bcc row on demand, with focus in it", async () => {

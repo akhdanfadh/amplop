@@ -13,7 +13,10 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"inbok/internal/emailaddress"
 )
@@ -30,7 +33,17 @@ var (
 	// ErrDifferentAccount means a reconnect signed in to another Google
 	// account than the one being reconnected.
 	ErrDifferentAccount = errors.New("reconnected with a different Google account")
+	// ErrNameTooLong means an account's name is longer than
+	// [MaxNameLength] characters.
+	ErrNameTooLong = errors.New("account name too long")
+	// ErrNameInvalid means an account's name holds a control character or
+	// another line break.
+	ErrNameInvalid = errors.New("account name has a control character")
 )
+
+// MaxNameLength is the most characters an account's name may have:
+// inbok's choice, enough for a name beside the address in the sidebar.
+const MaxNameLength = 64
 
 // Input [Connections] never sends; they guard other callers.
 var (
@@ -86,6 +99,13 @@ type Account struct {
 	CreatedAt           time.Time
 	// Status is whether inbok can use the account now, as [Service] read it.
 	Status Status
+	// Name is what the member calls the account, shown instead of its
+	// address; empty until they choose one.
+	Name string
+	// Color is the account's mark, 1 to 8, one of the account colours of
+	// web/DESIGN.md. [Storage] gives a new account the lowest the member's
+	// other accounts use least.
+	Color int
 }
 
 // StoredAccount is an account with its sealed refresh token, as storage
@@ -137,6 +157,11 @@ type Storage interface {
 	// ListConnectedAccounts returns userID's accounts with their
 	// credentials, oldest first.
 	ListConnectedAccounts(ctx context.Context, userID int64) ([]StoredAccount, error)
+
+	// RenameConnectedAccount sets the name of userID's account accountID,
+	// clearing it when empty, and returns the account with its credential,
+	// or [ErrNotFound] when userID has no such account.
+	RenameConnectedAccount(ctx context.Context, userID, accountID int64, name string) (StoredAccount, error)
 
 	// DeleteConnectedAccount deletes userID's account accountID, keeps its
 	// credential as a removal, and saves the job that revokes it, in one
@@ -220,6 +245,44 @@ func (s *Service) List(ctx context.Context, userID int64) ([]Account, error) {
 		accounts = append(accounts, s.withStatus(account))
 	}
 	return accounts, nil
+}
+
+// Rename sets the name of userID's account accountID to name without its
+// leading and trailing white space, or clears it when that leaves nothing,
+// and returns the account. It returns [ErrNameTooLong] past
+// [MaxNameLength] characters, [ErrNameInvalid] for a control character or
+// line break, and [ErrNotFound] when userID has no such account.
+func (s *Service) Rename(ctx context.Context, userID, accountID int64, name string) (Account, error) {
+	parsed, err := parseName(name)
+	if err != nil {
+		return Account{}, err
+	}
+	stored, err := s.storage.RenameConnectedAccount(ctx, userID, accountID, parsed)
+	if err != nil {
+		return Account{}, err
+	}
+	return s.withStatus(stored), nil
+}
+
+// parseName returns name without its leading and trailing white space,
+// empty to clear a name. It returns [ErrNameTooLong] past [MaxNameLength]
+// characters, and [ErrNameInvalid] for a control character or a Unicode
+// line or paragraph separator, which would break the line it is shown on.
+func parseName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if utf8.RuneCountInString(name) > MaxNameLength {
+		return "", ErrNameTooLong
+	}
+	if strings.ContainsFunc(name, breaksLine) {
+		return "", ErrNameInvalid
+	}
+	return name, nil
+}
+
+// breaksLine reports whether r is a control character, e.g. a line feed,
+// or a Unicode line or paragraph separator, U+2028 or U+2029.
+func breaksLine(r rune) bool {
+	return unicode.IsControl(r) || unicode.In(r, unicode.Zl, unicode.Zp)
 }
 
 // Disconnect deletes userID's account accountID with its credential, which a

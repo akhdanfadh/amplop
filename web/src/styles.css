@@ -22,10 +22,12 @@
   --color-sheet-foreground: var(--sheet-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-read-foreground: var(--read-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-selection: var(--selection);
@@ -98,9 +100,14 @@
   --sheet-foreground: #0a0a0a;
   --primary: #2557d6;
   --primary-foreground: #ffffff;
+  /* primary at 90% over background, solid, so nothing shows through a
+   * hovered button floating over content. */
+  --primary-hover: #3a67da;
   --secondary: #f2f2f2;
   --muted: #f2f2f2;
   --muted-foreground: #666666;
+  /* A read row's sender and subject: a step quieter than an unread one's. */
+  --read-foreground: #3d3d3d;
   --accent: #ececec;
   --selection: #e5eaf6;
   --destructive: #a8000a;
@@ -136,9 +143,11 @@
   --popover: #262626;
   --primary: #86a8ff;
   --primary-foreground: #1c1c1c;
+  --primary-hover: #7b9ae8;
   --secondary: #161616;
   --muted: #161616;
   --muted-foreground: #a3a3a3;
+  --read-foreground: #bdbdbd;
   --accent: #2e2e2e;
   --selection: #272a33;
   --destructive: #ffa3a5;
@@ -191,9 +200,10 @@
 /* While the theme switches (applyTheme in src/lib/theme.ts), nothing fades
  * from the old colours to the new. Durations of zero, not "none": React
  * Aria removes a closing tooltip or menu when its exit animation finishes,
- * and a cancelled one never finishes, which would leave it on screen.
- * Unlayered, so it wins over utilities. */
-[data-theme-switching] *,
+ * and a cancelled one never finishes, which would leave it on screen. A
+ * countdown, e.g. the Undo bar's line, is a clock, not a fade: ended at
+ * once, it would close its bar. Unlayered, so it wins over utilities. */
+[data-theme-switching] *:not([data-countdown]),
 [data-theme-switching] *::before,
 [data-theme-switching] *::after {
   transition-duration: 0s;
@@ -233,6 +243,87 @@
   outline-offset: -2px;
 }
 
+/* Fades a scrolling box's edge while there is more to scroll that way,
+ * 24 px at the bottom until its end, and at the top once scrolled, so a
+ * row cut at the edge reads as more below, not as the list's end. A
+ * scroll-driven animation (Baseline since Firefox 159, 2026-10) moves the
+ * mask's stops with the scroll position; a box that does not scroll, or a
+ * browser without it, shows no fade. Not motion: the fade follows the
+ * scroll, so reduced motion keeps it. */
+@property --scroll-fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --scroll-fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@utility scroll-fade-y {
+  @supports (animation-timeline: scroll()) {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      black var(--scroll-fade-top),
+      black calc(100% - var(--scroll-fade-bottom)),
+      transparent
+    );
+    /* Each fade is whole within 24 px of its edge, however long the
+     * scroll, so a row cut at the top is cued as soon as it is cut. */
+    animation:
+      scroll-fade-top linear both,
+      scroll-fade-bottom linear both;
+    animation-timeline: scroll(self), scroll(self);
+    animation-range:
+      0 1.5rem,
+      calc(100% - 1.5rem) 100%;
+    /* A row that takes focus scrolls clear of the faded edges, so its
+     * focus ring is never under them. */
+    scroll-padding-block: 1.5rem;
+  }
+}
+
+@keyframes scroll-fade-top {
+  from {
+    --scroll-fade-top: 0px;
+  }
+  to {
+    --scroll-fade-top: 1.5rem;
+  }
+}
+
+@keyframes scroll-fade-bottom {
+  from {
+    --scroll-fade-bottom: 1.5rem;
+  }
+  to {
+    --scroll-fade-bottom: 0px;
+  }
+}
+
+/* A message the reader was sent to, e.g. by "In reply to": the selection
+ * tint, held 600 ms so the eye finds it, then faded out over a second,
+ * slow at both ends (ease-in-out; DESIGN.md "Motion"): the interface's
+ * easing would spend most of the fade in its first 300 ms. Only colour changes, so reduced motion
+ * keeps it. */
+@utility flash-selection {
+  animation: flash-selection 1.6s;
+}
+
+@keyframes flash-selection {
+  0% {
+    background-color: var(--color-selection);
+  }
+  37.5% {
+    background-color: var(--color-selection);
+    animation-timing-function: ease-in-out;
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
 /* Hidden for the router's pending delay (src/router.tsx), 300 ms, then
  * shown: for a loading view the router does not time, e.g. the setup
  * check's in the prerendered shell, so a quick check shows nothing. */
@@ -257,9 +348,27 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* macOS browsers thicken every stroke by the same amount, most visibly
+   * light on dark, which brings 400 and 600 close; grayscale smoothing
+   * drops it, so weight reads in dark as it does in light. Other systems
+   * ignore these. */
+  .dark body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
   /* Headings, landmarks, and messages that only code focuses (tabindex
    * -1), e.g. a page heading after navigation, are not controls: no ring. */
   [tabindex="-1"]:focus:where(h1, h2, h3, h4, main, section, div, p, output) {
     outline: none;
+  }
+}
+
+/* The Undo bar's 10 s countdown, its only clock (features/mail/undo.tsx). */
+@keyframes undo-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
   }
 }

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"sync"
 	"testing"
@@ -371,6 +372,102 @@ func TestConnectedAccountList(t *testing.T) {
 	assert.Equal(t, []connectedaccount.Account{first, second}, accounts)
 }
 
+// Each account takes the lowest colour the member's other accounts use
+// least, so a disconnect frees its colour for the next, and a ninth
+// account starts the eight again.
+func TestConnectedAccountColor(t *testing.T) {
+	c := newConnectedAccountsTest(t)
+	connect := func(userID int64, n int) connectedaccount.Account {
+		identity := connectedaccount.Identity{Subject: fmt.Sprintf("2000000000000000000%02d", n), Email: fmt.Sprintf("a%d@example.com", n)}
+		account, err := c.service.Connect(t.Context(), userID, identity, "refresh")
+		require.NoError(t, err)
+		return account
+	}
+	var colors []int
+	var accounts []connectedaccount.Account
+	for n := range 3 {
+		account := connect(c.member, n)
+		accounts = append(accounts, account)
+		colors = append(colors, account.Color)
+	}
+	_, err := c.service.Disconnect(t.Context(), c.member, accounts[1].ID)
+	require.NoError(t, err)
+
+	colors = append(colors, connect(c.member, 3).Color, connect(c.otherMember, 4).Color)
+	for n := 5; n < 11; n++ {
+		colors = append(colors, connect(c.member, n).Color)
+	}
+
+	assert.Equal(t, []int{1, 2, 3, 2, 1, 4, 5, 6, 7, 8, 1}, colors,
+		"a freed colour is reused; another member's accounts count apart; the ninth wraps")
+	listed, err := c.service.List(t.Context(), c.member)
+	require.NoError(t, err)
+	assert.Equal(t, 1, listed[0].Color, "the list carries the colour")
+}
+
+func TestConnectedAccountRename(t *testing.T) {
+	c := newConnectedAccountsTest(t)
+	account, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
+	require.NoError(t, err)
+
+	renamed, err := c.service.Rename(t.Context(), c.member, account.ID, "Studio")
+	require.NoError(t, err)
+	listed, err := c.service.List(t.Context(), c.member)
+	require.NoError(t, err)
+	cleared, err := c.service.Rename(t.Context(), c.member, account.ID, "")
+	require.NoError(t, err)
+
+	account.Name = "Studio"
+	assert.Equal(t, account, renamed)
+	assert.Equal(t, []connectedaccount.Account{account}, listed)
+	assert.Empty(t, cleared.Name)
+	var stored *string
+	require.NoError(t, c.conn.QueryRow(t.Context(), "SELECT name FROM connected_accounts WHERE id = $1", account.ID).Scan(&stored))
+	assert.Nil(t, stored, "a cleared name is NULL")
+}
+
+func TestAccountRenameOtherMember(t *testing.T) {
+	c := newConnectedAccountsTest(t)
+	account, err := c.service.Connect(t.Context(), c.otherMember, alexIdentity, "refresh-1")
+	require.NoError(t, err)
+
+	_, err = c.service.Rename(t.Context(), c.member, account.ID, "Studio")
+
+	require.ErrorIs(t, err, connectedaccount.ErrNotFound)
+}
+
+// A connect waits for another connect of the same member to commit, so
+// the two never take the same colour.
+func TestAccountColorConcurrent(t *testing.T) {
+	// Given another connect of the member that holds the colour lock and
+	// has saved its account, colour 1, but not committed.
+	c := newConnectedAccountsTest(t)
+	tx, err := c.conn.Begin(t.Context())
+	require.NoError(t, err)
+	_, err = tx.Exec(t.Context(), "SELECT pg_advisory_xact_lock(hashtextextended('inbok.account-color:' || $1::bigint::text, 0))", c.member)
+	require.NoError(t, err)
+	_, err = tx.Exec(t.Context(), `INSERT INTO connected_accounts (user_id, provider, email, oauth_subject, refresh_token_key_id, refresh_token_ciphertext, color)
+		VALUES ($1, 'gmail', 'other@example.com', 'sub-other', '1', '\x01', 1)`, c.member)
+	require.NoError(t, err)
+
+	// When this connect starts, and the other commits once it waits.
+	connected := make(chan connectedaccount.Account, 1)
+	go func() {
+		account, err := c.service.Connect(t.Context(), c.member, alexIdentity, "refresh-1")
+		assert.NoError(t, err)
+		connected <- account
+	}()
+	require.Eventually(t, func() bool {
+		var waiting bool
+		err := c.db.pool.QueryRow(t.Context(), "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%pg_advisory_xact_lock%')").Scan(&waiting)
+		return err == nil && waiting
+	}, 3*time.Second, 10*time.Millisecond)
+	require.NoError(t, tx.Commit(t.Context()))
+
+	// Then it takes the next colour.
+	assert.Equal(t, 2, (<-connected).Color)
+}
+
 func TestConnectedAccountListEmpty(t *testing.T) {
 	c := newConnectedAccountsTest(t)
 
@@ -463,8 +560,8 @@ func TestConnectedAccountUserDeleted(t *testing.T) {
 // skips it cannot either.
 func TestConnectedAccountsChecks(t *testing.T) {
 	c := newConnectedAccountsTest(t)
-	const insert = `INSERT INTO connected_accounts (user_id, provider, email, oauth_subject, refresh_token_key_id, refresh_token_ciphertext)
-		VALUES ($1, $2, $3, $4, '1', $5)`
+	const insert = `INSERT INTO connected_accounts (user_id, provider, email, oauth_subject, refresh_token_key_id, refresh_token_ciphertext, color)
+		VALUES ($1, $2, $3, $4, '1', $5, 1)`
 	cases := []struct {
 		name, provider, email, subject string
 		ciphertext                     []byte

@@ -20,6 +20,20 @@
         ],
         "type": "object"
       },
+      "AccountRenameInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The account's new name, at most 64 characters as sent. The white space around it is dropped; empty, or only white space, clears it.",
+            "maxLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "AccountSync": {
         "additionalProperties": false,
         "properties": {
@@ -124,6 +138,13 @@
       "ConnectedAccount": {
         "additionalProperties": false,
         "properties": {
+          "color": {
+            "description": "The account's colour, one of eight the web app defines, given at connect: the lowest the member's other accounts use least.",
+            "format": "int64",
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -134,6 +155,13 @@
           "id": {
             "format": "int64",
             "type": "integer"
+          },
+          "name": {
+            "description": "What the member calls the account, shown instead of its email; null until they choose one.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "needsReconnectSince": {
             "description": "When Google stopped accepting the account's permission; null until it does. Reconnecting clears it.",
@@ -165,7 +193,9 @@
           "email",
           "needsReconnectSince",
           "status",
-          "createdAt"
+          "createdAt",
+          "name",
+          "color"
         ],
         "type": "object"
       },
@@ -187,6 +217,393 @@
         "required": [
           "accounts",
           "syncStopped"
+        ],
+        "type": "object"
+      },
+      "ConversationActionBody": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "description": "What to do: mark read or unread, archive out of the inbox or unarchive back into it, move to Trash (out of the inbox) or out of it (back into the inbox), star or unstar, report spam (out of the inbox) or not spam (back into it). star and unread mark a conversation's newest message, the newest it did not send when it has one, as the provider's own web app does. Every other action applies to every message of a conversation, as the provider's own thread action does.",
+            "enum": [
+              "read",
+              "unread",
+              "archive",
+              "unarchive",
+              "trash",
+              "untrash",
+              "star",
+              "unstar",
+              "spam",
+              "unspam"
+            ],
+            "type": "string"
+          },
+          "ids": {
+            "description": "The conversations to act on, by id from a list.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "action",
+          "ids"
+        ],
+        "type": "object"
+      },
+      "ConversationActionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "conversations": {
+            "description": "The conversations it changed, as the provider answered, in the order of ids. One that no longer exists is in neither list.",
+            "items": {
+              "$ref": "#/components/schemas/ConversationRow"
+            },
+            "type": "array"
+          },
+          "places": {
+            "description": "Every place with its unread count after it, as List Places answers; left out when counting failed.",
+            "items": {
+              "$ref": "#/components/schemas/PlaceCount"
+            },
+            "type": "array"
+          },
+          "refused": {
+            "description": "The conversations it left as they were, in the order of ids.",
+            "items": {
+              "$ref": "#/components/schemas/RefusedConversation"
+            },
+            "type": "array"
+          },
+          "undo": {
+            "description": "The changes that put each changed conversation back as it was before, as its row showed it; send them as they are to Change Conversations. Conversations needing the same change share one. A conversation it changed nothing of is in none.",
+            "items": {
+              "$ref": "#/components/schemas/ConversationChange"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversations",
+          "refused",
+          "undo"
+        ],
+        "type": "object"
+      },
+      "ConversationChange": {
+        "additionalProperties": false,
+        "properties": {
+          "add": {
+            "description": "The places to add each conversation's messages to: inbox, spam, trash, or one of the member's labels in its account, by id.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "ids": {
+            "description": "The conversations to change, by id from a list.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "remove": {
+            "description": "The places to take each conversation's messages out of, named as in add.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "starred": {
+            "description": "true stars each conversation's newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is.",
+            "type": "boolean"
+          },
+          "unread": {
+            "description": "true marks each conversation's newest message unread, as unread does; false marks every message read. Left out, it stays as it is.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "type": "object"
+      },
+      "ConversationChangesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "description": "The changes, each to its own conversations; together they name at most 100, each once.",
+            "items": {
+              "$ref": "#/components/schemas/ConversationChange"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "type": "object"
+      },
+      "ConversationDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/ConversationRow"
+          },
+          "messages": {
+            "description": "Oldest first, drafts left out.",
+            "items": {
+              "$ref": "#/components/schemas/ConversationMessage"
+            },
+            "type": "array"
+          },
+          "providerUrl": {
+            "description": "Where the provider's own web app shows the conversation, signed in as its connected account, e.g. in Gmail; null for a provider without one. Gmail documents no such address, so it may stop working.",
+            "format": "uri",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "conversation",
+          "messages",
+          "providerUrl"
+        ],
+        "type": "object"
+      },
+      "ConversationMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "description": "The message of this conversation it answers, by its In-Reply-To header; null for none, or one this conversation does not hold.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attachments": {
+            "description": "Whether it has an attachment. inbok knows only once it has fetched the message's content: the last 90 days' in the background, others when opened. False until then.",
+            "type": "boolean"
+          },
+          "cc": {
+            "items": {
+              "$ref": "#/components/schemas/MailAddress"
+            },
+            "type": "array"
+          },
+          "date": {
+            "description": "When the provider received it.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "from": {
+            "items": {
+              "$ref": "#/components/schemas/MailAddress"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "labelIds": {
+            "description": "The account's labels it is in, in a stable order, by name.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "preview": {
+            "description": "A plain-text excerpt, as the provider made it.",
+            "type": "string"
+          },
+          "replyTo": {
+            "items": {
+              "$ref": "#/components/schemas/MailAddress"
+            },
+            "type": "array"
+          },
+          "sent": {
+            "description": "Whether it is in Sent: its account sent it, from its own address or an alias.",
+            "type": "boolean"
+          },
+          "spam": {
+            "description": "Whether it is in Spam.",
+            "type": "boolean"
+          },
+          "starred": {
+            "type": "boolean"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "to": {
+            "items": {
+              "$ref": "#/components/schemas/MailAddress"
+            },
+            "type": "array"
+          },
+          "trash": {
+            "description": "Whether it is in Trash.",
+            "type": "boolean"
+          },
+          "unread": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "subject",
+          "from",
+          "replyTo",
+          "to",
+          "cc",
+          "preview",
+          "unread",
+          "starred",
+          "spam",
+          "trash",
+          "sent",
+          "labelIds",
+          "answers",
+          "attachments"
+        ],
+        "type": "object"
+      },
+      "ConversationPage": {
+        "additionalProperties": false,
+        "properties": {
+          "conversations": {
+            "description": "Newest first, then by id descending. Fewer than limit means the place has no more.",
+            "items": {
+              "$ref": "#/components/schemas/ConversationRow"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversations"
+        ],
+        "type": "object"
+      },
+      "ConversationRow": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "description": "The connected account it belongs to.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "allMail": {
+            "description": "Whether it has a message in neither Spam nor Trash: All mail lists it, and Starred when starred.",
+            "type": "boolean"
+          },
+          "date": {
+            "description": "When the provider received its newest shown message: one in neither Spam nor Trash, or when it has none, in Spam or Trash; drafts are never shown. Lists sort by it, newest first, then by id descending.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "inbox": {
+            "description": "Whether it is in the inbox.",
+            "type": "boolean"
+          },
+          "labelIds": {
+            "description": "The account's labels it is in, in a stable order, by name.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "latestFrom": {
+            "description": "Its newest shown message's From, perhaps empty.",
+            "items": {
+              "$ref": "#/components/schemas/MailAddress"
+            },
+            "type": "array"
+          },
+          "messageCount": {
+            "description": "How many shown messages it has.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "participants": {
+            "description": "The senders of its shown messages in date order, each address once, at most 10.",
+            "items": {
+              "$ref": "#/components/schemas/MailAddress"
+            },
+            "type": "array"
+          },
+          "preview": {
+            "description": "A plain-text excerpt of its newest shown message, as the provider made it.",
+            "type": "string"
+          },
+          "sent": {
+            "description": "Whether it is in Sent.",
+            "type": "boolean"
+          },
+          "spam": {
+            "description": "Whether a message is in Spam.",
+            "type": "boolean"
+          },
+          "starred": {
+            "description": "Whether a shown message is starred.",
+            "type": "boolean"
+          },
+          "subject": {
+            "description": "Its oldest shown message's subject, as sent.",
+            "type": "string"
+          },
+          "trash": {
+            "description": "Whether a message is in Trash.",
+            "type": "boolean"
+          },
+          "unread": {
+            "description": "Whether a shown message is unread.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "date",
+          "subject",
+          "preview",
+          "latestFrom",
+          "participants",
+          "messageCount",
+          "unread",
+          "starred",
+          "inbox",
+          "sent",
+          "allMail",
+          "spam",
+          "trash",
+          "labelIds"
         ],
         "type": "object"
       },
@@ -326,6 +743,13 @@
       "ListedAccount": {
         "additionalProperties": false,
         "properties": {
+          "color": {
+            "description": "The account's colour, one of eight the web app defines, given at connect: the lowest the member's other accounts use least.",
+            "format": "int64",
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -336,6 +760,13 @@
           "id": {
             "format": "int64",
             "type": "integer"
+          },
+          "name": {
+            "description": "What the member calls the account, shown instead of its email; null until they choose one.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "needsReconnectSince": {
             "description": "When Google stopped accepting the account's permission; null until it does. Reconnecting clears it.",
@@ -371,6 +802,8 @@
           "needsReconnectSince",
           "status",
           "createdAt",
+          "name",
+          "color",
           "sync"
         ],
         "type": "object"
@@ -446,6 +879,24 @@
         },
         "required": [
           "sessions"
+        ],
+        "type": "object"
+      },
+      "MailAddress": {
+        "additionalProperties": false,
+        "properties": {
+          "address": {
+            "description": "The address; empty for an entry that is none, e.g. a group's name, which is then the name.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The display name, perhaps empty.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "address"
         ],
         "type": "object"
       },
@@ -577,6 +1028,21 @@
         },
         "required": [
           "code"
+        ],
+        "type": "object"
+      },
+      "NewConversationCount": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "How many conversations of the place are dated after after: new ones, and ones a new message moved up.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
         ],
         "type": "object"
       },
@@ -1189,6 +1655,64 @@
         ],
         "type": "object"
       },
+      "PlaceCount": {
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "description": "A label's own name under its parent, e.g. Projects for a Gmail label Work/Projects under its label Work. It keeps what the provider names the levels the member has no label for, so it can hold the provider's separator: Home/Bills with no label Home, at the top; 2026/Q4 for Work/Projects/2026/Q4 under Projects with no label Work/Projects/2026. Null for a view.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parent": {
+            "description": "The place, a label's id, that a label nests under, so no client parses a provider's names; null for a view and a label at the top.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "place": {
+            "description": "A view's name or a label's id, as the place of List Conversations takes it.",
+            "type": "string"
+          },
+          "unread": {
+            "description": "How many of its conversations are unread.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accountId",
+          "place",
+          "name",
+          "parent",
+          "unread"
+        ],
+        "type": "object"
+      },
+      "Places": {
+        "additionalProperties": false,
+        "properties": {
+          "places": {
+            "description": "Every place of each connected account, in a stable order: the accounts oldest first, each with its views, inbox, starred, sent, all, spam, and trash, then its labels by their own names. The web app orders them for display. Gmail's own labels, e.g. its inbox categories, are not places.",
+            "items": {
+              "$ref": "#/components/schemas/PlaceCount"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "places"
+        ],
+        "type": "object"
+      },
       "ProbeEvent": {
         "additionalProperties": false,
         "properties": {
@@ -1297,6 +1821,7 @@
           "/api/v0/problems/account-needs-reconnect",
           "/api/v0/problems/connect-throttled",
           "/api/v0/problems/connected-account-not-found",
+          "/api/v0/problems/conversation-not-found",
           "/api/v0/problems/counter-full",
           "/api/v0/problems/cross-origin-request",
           "/api/v0/problems/email-already-verified",
@@ -1325,6 +1850,7 @@
           "/api/v0/problems/outgoing-message-not-found",
           "/api/v0/problems/password-reset-link-invalid",
           "/api/v0/problems/password-reset-throttled",
+          "/api/v0/problems/place-not-found",
           "/api/v0/problems/registration-account-exists",
           "/api/v0/problems/registration-closed",
           "/api/v0/problems/registration-link-invalid",
@@ -1356,6 +1882,29 @@
           "/api/v0/problems/validation-error"
         ],
         "type": "string"
+      },
+      "RefusedConversation": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "reason": {
+            "description": "not-found: the signed-in account has no such conversation, or the provider no longer has it. needs-reconnect: its connected account must be reconnected first. failed: the provider failed, refused, or took too long; trying again may work.",
+            "enum": [
+              "not-found",
+              "needs-reconnect",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reason"
+        ],
+        "type": "object"
       },
       "RegisteredMember": {
         "additionalProperties": false,
@@ -1427,6 +1976,18 @@
         ],
         "type": "object"
       },
+      "RenamedAccount": {
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/ConnectedAccount"
+          }
+        },
+        "required": [
+          "account"
+        ],
+        "type": "object"
+      },
       "ResponseAccountProviders": {
         "additionalProperties": false,
         "properties": {
@@ -1480,6 +2041,42 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ConnectedAccounts"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponseConversationActionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConversationActionResult"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponseConversationDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConversationDetail"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponseConversationPage": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConversationPage"
           }
         },
         "required": [
@@ -1595,6 +2192,18 @@
         ],
         "type": "object"
       },
+      "ResponseNewConversationCount": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/NewConversationCount"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
       "ResponseOutgoingMessage": {
         "additionalProperties": false,
         "properties": {
@@ -1636,6 +2245,18 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/PasswordResetResult"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponsePlaces": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Places"
           }
         },
         "required": [
@@ -1696,6 +2317,18 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/RegistrationSettings"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "ResponseRenamedAccount": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RenamedAccount"
           }
         },
         "required": [
@@ -2151,7 +2784,7 @@
     }
   },
   "info": {
-    "description": "## Shared errors\n\nErrors use application/problem+json. The HTTP status describes the broad\nfailure; type identifies the specific problem. The body includes type,\nstatus, title, and detail. Quote the X-Request-ID response header when\nreporting a failure.\n\nEach operation documents its specific failures with examples. Its default\nresponse covers the shared ones, which Problem types below marks Any, using\nthe same Problem schema. A 405 lists the route's methods in the Allow\nheader.\n\nBody errors apply to operations that accept a body. A default response\ndescribes the body format, not a replacement HTTP status.\n\nWrite requests require Sec-Fetch-Site or Origin. Command-line clients can\nsend an Origin matching the request's target.\n\nA browser request a route does not answer, e.g. an image naming an API\naddress, answers 403 with type fetch-destination-refused; the browser's\nSec-Fetch-Dest header says what it loads the answer as. Requests without\nthat header, e.g. from the command line, pass.\n\nWrites that need no session, such as sign-in, also limit how fast one client\ncan send each of them. Past that limit they answer 429 with type\ntoo-many-requests and Retry-After, before reading the request body.\n\nA request still waiting when its time runs out, e.g. for a busy resource,\nanswers 503 with type service-busy and Retry-After. A write may have taken\neffect before the time ran out.\n\nInput errors can include an errors list with field locations and safe\ncorrection messages. For example, a 422 response from POST /setup:\n\n~~~json\n{\n  \"type\": \"/api/v0/problems/validation-error\",\n  \"status\": 422,\n  \"title\": \"Invalid request\",\n  \"detail\": \"Correct the rejected request inputs.\",\n  \"errors\": [\n    {\"location\": \"body.password\", \"message\": \"Use 15 to 128 characters.\"}\n  ]\n}\n~~~\n\nUse the actual HTTP status for request decisions. Handle unfamiliar problem\ntypes by showing their safe detail. An intermediary, such as a proxy, may\nreturn an error without a Problem Details body.\n\n## Problem types\n\nEvery problem type this API documents. Any marks a shared type, which\nan operation can answer without documenting it; the others list the\ngroups whose operations document them.\n\n| Type | Status | Title | Answered by |\n| --- | --- | --- | --- |\n| `/api/v0/problems/account-deactivated` | 403 | Account deactivated | Sessions |\n| `/api/v0/problems/account-needs-reconnect` | 409 | Account needs reconnecting | Connected Accounts, Messages |\n| `/api/v0/problems/connect-throttled` | 429 | Too many connections | Connected Accounts |\n| `/api/v0/problems/connected-account-not-found` | 404 | Account not found | Connected Accounts |\n| `/api/v0/problems/counter-full` | 409 | Counter full | Probe |\n| `/api/v0/problems/cross-origin-request` | 403 | Cross-origin request blocked | Any |\n| `/api/v0/problems/email-already-verified` | 409 | Email already verified | Email Verification |\n| `/api/v0/problems/email-not-sent` | 502 | Email not sent | Email Verification, Registration |\n| `/api/v0/problems/email-verification-link-invalid` | 404 | Link not valid | Email Verification |\n| `/api/v0/problems/email-verification-throttled` | 429 | Too many links | Email Verification |\n| `/api/v0/problems/fetch-destination-refused` | 403 | Request kind refused | Any |\n| `/api/v0/problems/forbidden` | 403 | Access denied | Registration, Members, System Email |\n| `/api/v0/problems/gmail-not-configured` | 409 | Gmail not configured | Connected Accounts |\n| `/api/v0/problems/idempotency-key-reused` | 422 | Idempotency key reused | Outgoing Messages |\n| `/api/v0/problems/internal-error` | 500 | Internal error | Any |\n| `/api/v0/problems/invalid-credentials` | 401 | Sign-in failed | Sessions |\n| `/api/v0/problems/invalid-request` | 400 | Invalid request | Any |\n| `/api/v0/problems/invalid-sign-in-code` | 422 | Invalid sign-in code | Sessions |\n| `/api/v0/problems/invalid-totp-code` | 422 | Invalid authenticator code | Two-Factor Authentication |\n| `/api/v0/problems/invalid-totp-proof` | 422 | Invalid second-factor proof | Two-Factor Authentication |\n| `/api/v0/problems/mail-provider-busy` | 503 | Mail provider busy | Messages |\n| `/api/v0/problems/member-is-administrator` | 409 | Member is an administrator | Members |\n| `/api/v0/problems/member-not-found` | 404 | Member not found | Members |\n| `/api/v0/problems/message-not-found` | 404 | Message not found | Messages, Outgoing Messages |\n| `/api/v0/problems/message-part-not-found` | 404 | Part not found | Messages |\n| `/api/v0/problems/message-unreadable` | 502 | Message can't be shown | Messages |\n| `/api/v0/problems/method-not-allowed` | 405 | Method not allowed | Any |\n| `/api/v0/problems/not-found` | 404 | Not found | Any |\n| `/api/v0/problems/not-sendable-again` | 409 | Message not sendable again | Outgoing Messages |\n| `/api/v0/problems/outgoing-message-not-found` | 404 | Message not found | Outgoing Messages |\n| `/api/v0/problems/password-reset-link-invalid` | 404 | Link not valid | Password Reset |\n| `/api/v0/problems/password-reset-throttled` | 429 | Too many password reset requests | Password Reset |\n| `/api/v0/problems/registration-account-exists` | 409 | Account exists | Registration |\n| `/api/v0/problems/registration-closed` | 409 | Registration not open | Registration |\n| `/api/v0/problems/registration-link-invalid` | 404 | Link not valid | Registration |\n| `/api/v0/problems/registration-throttled` | 429 | Too many registration requests | Registration |\n| `/api/v0/problems/request-timeout` | 408 | Request timeout | Any |\n| `/api/v0/problems/request-too-large` | 413 | Request too large | Any |\n| `/api/v0/problems/send-throttled` | 429 | Too many messages | Outgoing Messages |\n| `/api/v0/problems/sending-account-needs-reconnect` | 409 | Account needs reconnecting | Outgoing Messages |\n| `/api/v0/problems/service-busy` | 503 | Service busy | Any |\n| `/api/v0/problems/session-is-current` | 409 | Session is current | Sessions |\n| `/api/v0/problems/session-not-found` | 404 | Session not found | Sessions |\n| `/api/v0/problems/setup-done` | 409 | Setup complete | Setup |\n| `/api/v0/problems/setup-token-invalid` | 403 | Setup token invalid | Setup |\n| `/api/v0/problems/setup-unconfigured` | 409 | Setup unavailable | Setup |\n| `/api/v0/problems/sign-in-challenge-invalid` | 401 | Sign in again | Sessions |\n| `/api/v0/problems/sign-in-throttled` | 429 | Too many attempts | Setup, Sessions |\n| `/api/v0/problems/sync-throttled` | 429 | Sync requested recently | Connected Accounts |\n| `/api/v0/problems/system-email-not-configured` | 409 | System email not configured | Email Verification, System Email |\n| `/api/v0/problems/system-email-not-tested` | 409 | System email not tested | Registration |\n| `/api/v0/problems/too-many-requests` | 429 | Too many requests | Setup, Sessions, Email Verification, Password Reset, Registration, Probe |\n| `/api/v0/problems/totp-already-on` | 409 | Two-factor authentication already on | Two-Factor Authentication |\n| `/api/v0/problems/totp-disable-forbidden` | 403 | Two-factor authentication required | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-on` | 409 | Authenticator not enabled | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-pending` | 409 | Enrollment not started | Two-Factor Authentication |\n| `/api/v0/problems/totp-required` | 403 | TOTP required | Registration, Members, System Email |\n| `/api/v0/problems/totp-throttled` | 429 | Too many code attempts | Sessions, Two-Factor Authentication |\n| `/api/v0/problems/unauthenticated` | 401 | Sign-in required | Sessions, Two-Factor Authentication, Email Verification, Registration, Members, System Email, Connected Accounts, Messages, Outgoing Messages |\n| `/api/v0/problems/unsupported-media-type` | 415 | Unsupported media type | Any |\n| `/api/v0/problems/validation-error` | 422 | Invalid request | Any |\n",
+    "description": "## Shared errors\n\nErrors use application/problem+json. The HTTP status describes the broad\nfailure; type identifies the specific problem. The body includes type,\nstatus, title, and detail. Quote the X-Request-ID response header when\nreporting a failure.\n\nEach operation documents its specific failures with examples. Its default\nresponse covers the shared ones, which Problem types below marks Any, using\nthe same Problem schema. A 405 lists the route's methods in the Allow\nheader.\n\nBody errors apply to operations that accept a body. A default response\ndescribes the body format, not a replacement HTTP status.\n\nWrite requests require Sec-Fetch-Site or Origin. Command-line clients can\nsend an Origin matching the request's target.\n\nA browser request a route does not answer, e.g. an image naming an API\naddress, answers 403 with type fetch-destination-refused; the browser's\nSec-Fetch-Dest header says what it loads the answer as. Requests without\nthat header, e.g. from the command line, pass.\n\nWrites that need no session, such as sign-in, also limit how fast one client\ncan send each of them. Past that limit they answer 429 with type\ntoo-many-requests and Retry-After, before reading the request body.\n\nA request still waiting when its time runs out, e.g. for a busy resource,\nanswers 503 with type service-busy and Retry-After. A write may have taken\neffect before the time ran out.\n\nInput errors can include an errors list with field locations and safe\ncorrection messages. For example, a 422 response from POST /setup:\n\n~~~json\n{\n  \"type\": \"/api/v0/problems/validation-error\",\n  \"status\": 422,\n  \"title\": \"Invalid request\",\n  \"detail\": \"Correct the rejected request inputs.\",\n  \"errors\": [\n    {\"location\": \"body.password\", \"message\": \"Use 15 to 128 characters.\"}\n  ]\n}\n~~~\n\nUse the actual HTTP status for request decisions. Handle unfamiliar problem\ntypes by showing their safe detail. An intermediary, such as a proxy, may\nreturn an error without a Problem Details body.\n\n## Problem types\n\nEvery problem type this API documents. Any marks a shared type, which\nan operation can answer without documenting it; the others list the\ngroups whose operations document them.\n\n| Type | Status | Title | Answered by |\n| --- | --- | --- | --- |\n| `/api/v0/problems/account-deactivated` | 403 | Account deactivated | Sessions |\n| `/api/v0/problems/account-needs-reconnect` | 409 | Account needs reconnecting | Connected Accounts, Messages |\n| `/api/v0/problems/connect-throttled` | 429 | Too many connections | Connected Accounts |\n| `/api/v0/problems/connected-account-not-found` | 404 | Account not found | Connected Accounts, Conversations |\n| `/api/v0/problems/conversation-not-found` | 404 | Conversation not found | Conversations |\n| `/api/v0/problems/counter-full` | 409 | Counter full | Probe |\n| `/api/v0/problems/cross-origin-request` | 403 | Cross-origin request blocked | Any |\n| `/api/v0/problems/email-already-verified` | 409 | Email already verified | Email Verification |\n| `/api/v0/problems/email-not-sent` | 502 | Email not sent | Email Verification, Registration |\n| `/api/v0/problems/email-verification-link-invalid` | 404 | Link not valid | Email Verification |\n| `/api/v0/problems/email-verification-throttled` | 429 | Too many links | Email Verification |\n| `/api/v0/problems/fetch-destination-refused` | 403 | Request kind refused | Any |\n| `/api/v0/problems/forbidden` | 403 | Access denied | Registration, Members, System Email |\n| `/api/v0/problems/gmail-not-configured` | 409 | Gmail not configured | Connected Accounts, Conversations |\n| `/api/v0/problems/idempotency-key-reused` | 422 | Idempotency key reused | Outgoing Messages |\n| `/api/v0/problems/internal-error` | 500 | Internal error | Any |\n| `/api/v0/problems/invalid-credentials` | 401 | Sign-in failed | Sessions |\n| `/api/v0/problems/invalid-request` | 400 | Invalid request | Any |\n| `/api/v0/problems/invalid-sign-in-code` | 422 | Invalid sign-in code | Sessions |\n| `/api/v0/problems/invalid-totp-code` | 422 | Invalid authenticator code | Two-Factor Authentication |\n| `/api/v0/problems/invalid-totp-proof` | 422 | Invalid second-factor proof | Two-Factor Authentication |\n| `/api/v0/problems/mail-provider-busy` | 503 | Mail provider busy | Messages |\n| `/api/v0/problems/member-is-administrator` | 409 | Member is an administrator | Members |\n| `/api/v0/problems/member-not-found` | 404 | Member not found | Members |\n| `/api/v0/problems/message-not-found` | 404 | Message not found | Messages, Outgoing Messages |\n| `/api/v0/problems/message-part-not-found` | 404 | Part not found | Messages |\n| `/api/v0/problems/message-unreadable` | 502 | Message can't be shown | Messages |\n| `/api/v0/problems/method-not-allowed` | 405 | Method not allowed | Any |\n| `/api/v0/problems/not-found` | 404 | Not found | Any |\n| `/api/v0/problems/not-sendable-again` | 409 | Message not sendable again | Outgoing Messages |\n| `/api/v0/problems/outgoing-message-not-found` | 404 | Message not found | Outgoing Messages |\n| `/api/v0/problems/password-reset-link-invalid` | 404 | Link not valid | Password Reset |\n| `/api/v0/problems/password-reset-throttled` | 429 | Too many password reset requests | Password Reset |\n| `/api/v0/problems/place-not-found` | 404 | Label not found | Conversations |\n| `/api/v0/problems/registration-account-exists` | 409 | Account exists | Registration |\n| `/api/v0/problems/registration-closed` | 409 | Registration not open | Registration |\n| `/api/v0/problems/registration-link-invalid` | 404 | Link not valid | Registration |\n| `/api/v0/problems/registration-throttled` | 429 | Too many registration requests | Registration |\n| `/api/v0/problems/request-timeout` | 408 | Request timeout | Any |\n| `/api/v0/problems/request-too-large` | 413 | Request too large | Any |\n| `/api/v0/problems/send-throttled` | 429 | Too many messages | Outgoing Messages |\n| `/api/v0/problems/sending-account-needs-reconnect` | 409 | Account needs reconnecting | Outgoing Messages |\n| `/api/v0/problems/service-busy` | 503 | Service busy | Any |\n| `/api/v0/problems/session-is-current` | 409 | Session is current | Sessions |\n| `/api/v0/problems/session-not-found` | 404 | Session not found | Sessions |\n| `/api/v0/problems/setup-done` | 409 | Setup complete | Setup |\n| `/api/v0/problems/setup-token-invalid` | 403 | Setup token invalid | Setup |\n| `/api/v0/problems/setup-unconfigured` | 409 | Setup unavailable | Setup |\n| `/api/v0/problems/sign-in-challenge-invalid` | 401 | Sign in again | Sessions |\n| `/api/v0/problems/sign-in-throttled` | 429 | Too many attempts | Setup, Sessions |\n| `/api/v0/problems/sync-throttled` | 429 | Sync requested recently | Connected Accounts |\n| `/api/v0/problems/system-email-not-configured` | 409 | System email not configured | Email Verification, System Email |\n| `/api/v0/problems/system-email-not-tested` | 409 | System email not tested | Registration |\n| `/api/v0/problems/too-many-requests` | 429 | Too many requests | Setup, Sessions, Email Verification, Password Reset, Registration, Probe |\n| `/api/v0/problems/totp-already-on` | 409 | Two-factor authentication already on | Two-Factor Authentication |\n| `/api/v0/problems/totp-disable-forbidden` | 403 | Two-factor authentication required | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-on` | 409 | Authenticator not enabled | Two-Factor Authentication |\n| `/api/v0/problems/totp-not-pending` | 409 | Enrollment not started | Two-Factor Authentication |\n| `/api/v0/problems/totp-required` | 403 | TOTP required | Registration, Members, System Email |\n| `/api/v0/problems/totp-throttled` | 429 | Too many code attempts | Sessions, Two-Factor Authentication |\n| `/api/v0/problems/unauthenticated` | 401 | Sign-in required | Sessions, Two-Factor Authentication, Email Verification, Registration, Members, System Email, Connected Accounts, Conversations, Messages, Outgoing Messages |\n| `/api/v0/problems/unsupported-media-type` | 415 | Unsupported media type | Any |\n| `/api/v0/problems/validation-error` | 422 | Invalid request | Any |\n",
     "title": "inbok",
     "version": "0.0.0"
   },
@@ -2633,6 +3266,107 @@
         "tags": [
           "Connected Accounts"
         ]
+      },
+      "patch": {
+        "description": "Sets the name the web app shows for a connected account instead of its email, or clears it. Only inbok keeps the name; Google's account is unchanged.",
+        "operationId": "renameConnectedAccount",
+        "parameters": [
+          {
+            "description": "Connected account ID from the list.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Connected account ID from the list.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountRenameInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseRenamedAccount"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/connected-account-not-found",
+                  "status": 404,
+                  "title": "Account not found",
+                  "detail": "The connected account does not exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The signed-in account has no connected account with this id."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Rename Account",
+        "tags": [
+          "Connected Accounts"
+        ]
       }
     },
     "/connected-accounts/{id}/reconnect": {
@@ -2882,6 +3616,542 @@
         "summary": "Sync Account Now",
         "tags": [
           "Connected Accounts"
+        ]
+      }
+    },
+    "/conversations": {
+      "get": {
+        "description": "Lists one page of the signed-in account's conversations in a place, across its connected accounts or one of them. A conversation is an account's messages in one provider thread; it is in a place when one of its messages is. Messages in Spam or Trash count only there, and drafts nowhere.",
+        "operationId": "listConversations",
+        "parameters": [
+          {
+            "description": "A view, inbox, starred, sent, all, spam, or trash, or the id of one of the account's labels from List Places. all is every conversation but those only in Spam or Trash; starred is the starred ones of all.",
+            "explode": false,
+            "in": "query",
+            "name": "place",
+            "required": true,
+            "schema": {
+              "description": "A view, inbox, starred, sent, all, spam, or trash, or the id of one of the account's labels from List Places. all is every conversation but those only in Spam or Trash; starred is the starred ones of all.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A connected account's id, to list only its conversations; every account's when left out.",
+            "explode": false,
+            "in": "query",
+            "name": "account",
+            "schema": {
+              "description": "A connected account's id, to list only its conversations; every account's when left out.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The page holds conversations dated before it: the date of the last conversation of the page before, with beforeId, or any date alone. The first page leaves both out.",
+            "explode": false,
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "description": "The page holds conversations dated before it: the date of the last conversation of the page before, with beforeId, or any date alone. The first page leaves both out.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The id of the last conversation of the page before. With before, the page also holds conversations of its date with a lower id; it needs before.",
+            "explode": false,
+            "in": "query",
+            "name": "beforeId",
+            "schema": {
+              "description": "The id of the last conversation of the page before. With before, the page also holds conversations of its date with a lower id; it needs before.",
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "How many conversations to return, at most.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "How many conversations to return, at most.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseConversationPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "account": {
+                    "value": {
+                      "type": "/api/v0/problems/connected-account-not-found",
+                      "status": 404,
+                      "title": "Account not found",
+                      "detail": "The connected account does not exist."
+                    }
+                  },
+                  "label": {
+                    "value": {
+                      "type": "/api/v0/problems/place-not-found",
+                      "status": 404,
+                      "title": "Label not found",
+                      "detail": "The label does not exist. It may have been deleted."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The signed-in account has no label with the place's id, or no connected account with the account filter's id."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List Conversations",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/conversations/actions": {
+      "post": {
+        "description": "Applies one action to the signed-in account's conversations at their provider, then returns them as the provider answered. Nothing changes in inbok that the provider did not accept: each conversation is changed or refused on its own, so one answer can hold both. Opening a conversation does not mark it read; send read.",
+        "operationId": "applyConversationAction",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationActionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseConversationActionResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/gmail-not-configured",
+                  "status": 409,
+                  "title": "Gmail not configured",
+                  "detail": "Conversations can't be changed until an administrator sets up a Google client."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No Google client is configured, so inbok can't reach Gmail."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Apply Conversation Action",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/conversations/changes": {
+      "post": {
+        "description": "Changes the signed-in account's conversations at their provider as asked, by none of the provider's own rules, e.g. an action's undo, then returns them as the provider answered, as Apply Conversation Action does. Each change adds its conversations to places and takes them out of others: the inbox, Spam, Trash, or the member's labels; Sent, All mail, and Starred follow. A provider whose messages sit in one folder each moves them: such a change removes one place and adds one.",
+        "operationId": "changeConversations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationChangesBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseConversationActionResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/place-not-found",
+                  "status": 404,
+                  "title": "Label not found",
+                  "detail": "The label does not exist. It may have been deleted."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "A label is not one of the member's in a conversation's account, e.g. deleted since."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/gmail-not-configured",
+                  "status": 409,
+                  "title": "Gmail not configured",
+                  "detail": "Conversations can't be changed until an administrator sets up a Google client."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No Google client is configured, so inbok can't reach Gmail."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Change Conversations",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/conversations/new-count": {
+      "get": {
+        "description": "Counts a place's conversations dated after the newest one a list shows, for a list that keeps its place while new mail arrives.",
+        "operationId": "countNewConversations",
+        "parameters": [
+          {
+            "description": "A view, inbox, starred, sent, all, spam, or trash, or the id of one of the account's labels from List Places. all is every conversation but those only in Spam or Trash; starred is the starred ones of all.",
+            "explode": false,
+            "in": "query",
+            "name": "place",
+            "required": true,
+            "schema": {
+              "description": "A view, inbox, starred, sent, all, spam, or trash, or the id of one of the account's labels from List Places. all is every conversation but those only in Spam or Trash; starred is the starred ones of all.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A connected account's id, to list only its conversations; every account's when left out.",
+            "explode": false,
+            "in": "query",
+            "name": "account",
+            "schema": {
+              "description": "A connected account's id, to list only its conversations; every account's when left out.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The date of the newest conversation the list shows.",
+            "explode": false,
+            "in": "query",
+            "name": "after",
+            "required": true,
+            "schema": {
+              "description": "The date of the newest conversation the list shows.",
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseNewConversationCount"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "examples": {
+                  "account": {
+                    "value": {
+                      "type": "/api/v0/problems/connected-account-not-found",
+                      "status": 404,
+                      "title": "Account not found",
+                      "detail": "The connected account does not exist."
+                    }
+                  },
+                  "label": {
+                    "value": {
+                      "type": "/api/v0/problems/place-not-found",
+                      "status": 404,
+                      "title": "Label not found",
+                      "detail": "The label does not exist. It may have been deleted."
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The signed-in account has no label with the place's id, or no connected account with the account filter's id."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Count New Conversations",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/conversations/{id}": {
+      "get": {
+        "description": "Returns one of the signed-in account's conversations with its messages' headers, without their bodies.",
+        "operationId": "getConversation",
+        "parameters": [
+          {
+            "description": "Conversation ID from a list.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "Conversation ID from a list.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseConversationDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/conversation-not-found",
+                  "status": 404,
+                  "title": "Conversation not found",
+                  "detail": "The conversation does not exist. It may have been deleted."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The signed-in account has no conversation with this id."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Conversation",
+        "tags": [
+          "Conversations"
         ]
       }
     },
@@ -4766,6 +6036,59 @@
         "summary": "Reset Password",
         "tags": [
           "Password Reset"
+        ]
+      }
+    },
+    "/places": {
+      "get": {
+        "description": "Lists the places of each of the signed-in account's connected accounts, its views and labels, with how many of their conversations are unread. A label is a mailbox the member made at the provider: a Gmail label, and later an IMAP folder, shown alike. The provider's own mailboxes are places only through the views.",
+        "operationId": "listPlaces",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsePlaces"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "type": "/api/v0/problems/unauthenticated",
+                  "status": 401,
+                  "title": "Sign-in required",
+                  "detail": "Sign in to continue."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid session identifies a current account. The session cookie is cleared."
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Other errors. See Shared errors in the API overview."
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List Places",
+        "tags": [
+          "Conversations"
         ]
       }
     },
@@ -7142,6 +8465,10 @@
     {
       "description": "Connect, list, reconnect, and disconnect the signed-in account's Gmail accounts.",
       "name": "Connected Accounts"
+    },
+    {
+      "description": "List the signed-in account's conversations by place, across its connected accounts or one of them, count them, and read one.",
+      "name": "Conversations"
     },
     {
       "description": "Read the signed-in account's messages: their bodies, images, and attachments.",

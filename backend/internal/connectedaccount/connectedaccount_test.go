@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +89,15 @@ func (m *memoryStorage) ListConnectedAccounts(_ context.Context, userID int64) (
 		}
 	}
 	return accounts, nil
+}
+
+func (m *memoryStorage) RenameConnectedAccount(_ context.Context, userID, accountID int64, name string) (StoredAccount, error) {
+	i := m.find(userID, accountID)
+	if i < 0 {
+		return StoredAccount{}, ErrNotFound
+	}
+	m.accounts[i].account.Name = name
+	return StoredAccount{Account: m.accounts[i].account, Credential: m.accounts[i].credential}, nil
 }
 
 func (m *memoryStorage) DeleteConnectedAccount(_ context.Context, userID, accountID int64) (StoredAccount, error) {
@@ -357,6 +367,72 @@ func TestListEmpty(t *testing.T) {
 
 	assert.NotNil(t, accounts)
 	assert.Empty(t, accounts)
+}
+
+func TestRename(t *testing.T) {
+	service, storage, _ := newTestService(t)
+	account, err := service.Connect(t.Context(), member, alex, "refresh-1")
+	require.NoError(t, err)
+
+	renamed, err := service.Rename(t.Context(), member, account.ID, "  Studio  ")
+	require.NoError(t, err)
+
+	account.Name = "Studio"
+	assert.Equal(t, account, renamed, "trimmed, and usable as before")
+	assert.Equal(t, "Studio", storage.accounts[0].account.Name)
+}
+
+func TestRenameClears(t *testing.T) {
+	service, storage, _ := newTestService(t)
+	account, err := service.Connect(t.Context(), member, alex, "refresh-1")
+	require.NoError(t, err)
+	_, err = service.Rename(t.Context(), member, account.ID, "Studio")
+	require.NoError(t, err)
+
+	renamed, err := service.Rename(t.Context(), member, account.ID, " \t ")
+
+	require.NoError(t, err)
+	assert.Empty(t, renamed.Name)
+	assert.Empty(t, storage.accounts[0].account.Name)
+}
+
+func TestRenameRefused(t *testing.T) {
+	cases := map[string]struct {
+		name string
+		want error
+	}{
+		"too long":        {strings.Repeat("é", MaxNameLength+1), ErrNameTooLong},
+		"a line break":    {"Stu\ndio", ErrNameInvalid},
+		"a control":       {"Stu\u0007dio", ErrNameInvalid},
+		"no such account": {"Studio", ErrNotFound},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			service, storage, _ := newTestService(t)
+			account, err := service.Connect(t.Context(), otherMember, alex, "refresh-1")
+			require.NoError(t, err)
+			id := account.ID
+			if tc.want != ErrNotFound {
+				account, err = service.Connect(t.Context(), member, blair, "refresh-2")
+				require.NoError(t, err)
+				id = account.ID
+			}
+
+			_, err = service.Rename(t.Context(), member, id, tc.name)
+
+			require.ErrorIs(t, err, tc.want)
+			for _, s := range storage.accounts {
+				assert.Empty(t, s.account.Name, "nothing is saved")
+			}
+		})
+	}
+}
+
+func TestParseNameLength(t *testing.T) {
+	name, err := parseName(strings.Repeat("é", MaxNameLength))
+
+	require.NoError(t, err, "the limit counts characters, not bytes")
+	assert.Equal(t, strings.Repeat("é", MaxNameLength), name)
 }
 
 func TestDisconnect(t *testing.T) {

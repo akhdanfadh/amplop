@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { addressName, formatReceived, formatSize, splitName, subjectText } from "./text";
+import { addressName, formatReceived, formatSize, splitName } from "./text";
 
 describe("message header", () => {
   it("names an address by its display name when it has one", () => {
@@ -8,11 +8,6 @@ describe("message header", () => {
     expect(addressName({ name: " ", email: "ana@example.com" })).toBeUndefined();
     // A name that only repeats the address says nothing more.
     expect(addressName({ name: "ana@example.com", email: "ana@example.com" })).toBeUndefined();
-  });
-
-  it("says when a message has no subject", () => {
-    expect(subjectText("Lunch?")).toBe("Lunch?");
-    expect(subjectText("  ")).toBe("(no subject)");
   });
 
   it("shows the time short, and in full for its tooltip", () => {

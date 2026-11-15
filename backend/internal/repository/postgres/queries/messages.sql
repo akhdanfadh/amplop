@@ -4,11 +4,11 @@
 INSERT INTO messages (connected_account_id, provider_message_id, provider_thread_id,
     internal_date, subject, from_addresses, reply_to_addresses, to_addresses,
     cc_addresses, preview, seen, flagged, internet_message_id, in_reply_to,
-    internet_references, sync_generation)
+    internet_references, sync_generation, provider_version)
 VALUES (@connected_account_id, @provider_message_id, @provider_thread_id,
     @internal_date, @subject, @from_addresses, @reply_to_addresses, @to_addresses,
     @cc_addresses, @preview, @seen, @flagged, @internet_message_id, @in_reply_to,
-    @internet_references, @sync_generation)
+    @internet_references, @sync_generation, @provider_version)
 ON CONFLICT (connected_account_id, provider_message_id) DO UPDATE SET
     provider_thread_id = excluded.provider_thread_id,
     internal_date = excluded.internal_date,
@@ -23,7 +23,8 @@ ON CONFLICT (connected_account_id, provider_message_id) DO UPDATE SET
     internet_message_id = excluded.internet_message_id,
     in_reply_to = excluded.in_reply_to,
     internet_references = excluded.internet_references,
-    sync_generation = excluded.sync_generation
+    sync_generation = excluded.sync_generation,
+    provider_version = excluded.provider_version
 RETURNING id;
 
 -- name: DeleteMessageMailboxes :exec
@@ -42,24 +43,30 @@ JOIN mailboxes mb ON mb.connected_account_id = @connected_account_id
     AND mb.provider_mailbox_id = pair.provider_mailbox_id;
 
 -- name: DeleteMessages :one
--- Returns the blob IDs the deleted messages' parts named. Every
--- part of the statement reads the rows as they were before it, so the
--- select sees the parts the delete cascades to.
+-- Returns each deleted message's thread, whose conversation changes, and
+-- the blob IDs their parts named. Every part of the statement reads the
+-- rows as they were before it, so the select sees the parts the delete
+-- cascades to.
 WITH deleted AS (
     DELETE FROM messages m
     WHERE m.connected_account_id = @connected_account_id
         AND m.provider_message_id = ANY (@provider_message_ids::text[])
-    RETURNING m.id
+    RETURNING m.id, m.provider_thread_id
 )
-SELECT coalesce(array_agg(p.blob_id), '{}')::uuid[] AS blob_ids
-FROM message_parts p
-JOIN deleted d ON d.id = p.message_id
-WHERE p.blob_id IS NOT NULL;
+SELECT coalesce((
+        SELECT array_agg(d.provider_thread_id) FROM deleted d
+    ), '{}')::text[] AS thread_ids,
+    coalesce((
+        SELECT array_agg(p.blob_id)
+        FROM message_parts p
+        JOIN deleted d ON d.id = p.message_id
+        WHERE p.blob_id IS NOT NULL
+    ), '{}')::uuid[] AS blob_ids;
 
 -- name: DeleteEarlierMessages :one
 -- Deletes up to @max_deleted of the messages no step of the account's
--- current generation saved. Returns how many, and the blob IDs their
--- parts named, as DeleteMessages does.
+-- current generation saved. Returns how many, and their threads and the
+-- blob IDs their parts named, as DeleteMessages does.
 WITH deleted AS (
     DELETE FROM messages m
     WHERE m.id IN (
@@ -68,9 +75,12 @@ WITH deleted AS (
             AND earlier.sync_generation < @sync_generation
         LIMIT @max_deleted
     )
-    RETURNING m.id
+    RETURNING m.id, m.provider_thread_id
 )
 SELECT (SELECT count(*) FROM deleted)::bigint AS deleted,
+    coalesce((
+        SELECT array_agg(d.provider_thread_id) FROM deleted d
+    ), '{}')::text[] AS thread_ids,
     coalesce((
         SELECT array_agg(p.blob_id)
         FROM message_parts p
@@ -79,20 +89,24 @@ SELECT (SELECT count(*) FROM deleted)::bigint AS deleted,
     ), '{}')::uuid[] AS blob_ids;
 
 -- name: UpdateMessageFlags :many
--- Sets the flags of the account's messages named, one per position of the
--- three lists, which have the same length; a message the account does not
--- have is skipped. Returns the IDs of those it has.
+-- Sets the flags and version of the account's messages named, one per
+-- position of the four lists, which have the same length. A message the
+-- account does not have is skipped, and so is one whose stored version is
+-- newer. Returns the IDs and threads of those it set.
 UPDATE messages m SET
     seen = u.seen,
-    flagged = u.flagged
+    flagged = u.flagged,
+    provider_version = u.provider_version
 FROM (
     SELECT unnest(@provider_message_ids::text[]) AS provider_message_id,
         unnest(@seen::boolean[]) AS seen,
-        unnest(@flagged::boolean[]) AS flagged
+        unnest(@flagged::boolean[]) AS flagged,
+        unnest(@provider_versions::bigint[]) AS provider_version
 ) AS u
 WHERE m.connected_account_id = @connected_account_id
     AND m.provider_message_id = u.provider_message_id
-RETURNING m.id, m.provider_message_id;
+    AND m.provider_version <= u.provider_version
+RETURNING m.id, m.provider_message_id, m.provider_thread_id;
 
 -- name: OldestMessage :one
 -- When the provider received the account's oldest message, and whether it

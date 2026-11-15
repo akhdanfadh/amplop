@@ -28,6 +28,11 @@ const rings = [
   "after:border-account-8",
 ];
 
+// accountDot returns the class that fills an account's dot in color.
+export function accountDot(color: AccountColor): string {
+  return backgrounds[colorIndex(color)];
+}
+
 // accountRing returns the class that colours an avatar's ring, the border
 // it draws over its own edge, in color.
 export function accountRing(color: AccountColor): string {
@@ -46,11 +51,14 @@ export function AccountMark({
   name: string;
   className?: string;
 }): ReactElement {
+  // The name gives the mark its baseline, so beside other text, e.g. a
+  // heading, it sits on the same line; the dot, which has none, is
+  // centred on the name.
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>
+    <span className={cn("inline-flex min-w-0 items-baseline gap-1.5", className)}>
       <span
         aria-hidden="true"
-        className={cn("size-2 shrink-0 rounded-full", backgrounds[colorIndex(color)])}
+        className={cn("size-2 shrink-0 self-center rounded-full", accountDot(color))}
       />
       <span className="truncate">{name}</span>
     </span>

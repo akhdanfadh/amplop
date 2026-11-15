@@ -56,7 +56,10 @@ CREATE TABLE sync_states (
 -- Gmail's inbox tabs. Unlike JMAP, two mailboxes of an account may share a
 -- role, as two IMAP folders may report one special use. name is the
 -- provider's, as received: a nested Gmail label is one name with slashes,
--- e.g. Work/Projects. id is inbok's own.
+-- e.g. Work/Projects. made_by is who made it: the provider, for its own
+-- purpose, e.g. Gmail's INBOX or CATEGORY_SOCIAL, or the member; the
+-- labels a member sees have no role and are the member's. id is inbok's
+-- own.
 CREATE TABLE mailboxes (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     connected_account_id bigint NOT NULL REFERENCES sync_states (connected_account_id) ON DELETE CASCADE,
@@ -64,8 +67,14 @@ CREATE TABLE mailboxes (
     name                 text NOT NULL,
     role                 text CHECK (role IN ('all', 'archive', 'drafts', 'flagged', 'important', 'inbox',
                              'junk', 'memos', 'scheduled', 'sent', 'snoozed', 'trash')),
+    made_by              text NOT NULL CHECK (made_by IN ('provider', 'member')),
+    -- The provider's ID of the mailbox this one nests under, NULL at the
+    -- top, as each provider says it: Gmail by name (Work/Projects under
+    -- Work), later IMAP by its server's separator and Outlook by its
+    -- parent folder's ID. name is then the mailbox's own name. Not a
+    -- reference: the parent may be listed after it, or not at all.
+    provider_parent_id   text CHECK (provider_parent_id <> ''),
     -- IMAP and Outlook, not yet supported:
-    -- parent_id         uuid REFERENCES mailboxes (id) ON DELETE CASCADE, -- Outlook's folder tree; Gmail and IMAP nest by name
     -- role_choice       text, -- a role the member picked, for an IMAP server without SPECIAL-USE (RFC 6154)
     -- uid_validity      bigint, -- IMAP: a change makes every cached UID of the folder stale (RFC 9051 section 2.3.1.1); 32-bit
     -- uid_next          bigint, -- IMAP: the server's prediction of the next UID; 32-bit
@@ -109,6 +118,12 @@ CREATE TABLE messages (
     preview              text NOT NULL, -- the provider's plain-text excerpt of the body: Gmail's snippet
     seen                 boolean NOT NULL, -- read: IMAP \Seen, JMAP $seen; Gmail's UNREAD label is its absence
     flagged              boolean NOT NULL, -- starred: IMAP \Flagged, JMAP $flagged; Gmail's STARRED label
+    -- The provider's change number this state was read at, which grows
+    -- with every change: Gmail's historyId, of the message or of the
+    -- history record that changed it; later IMAP's MODSEQ, at most 63 bits
+    -- (RFC 7162). An update read at an older number is skipped, so a late
+    -- write never undoes a newer one.
+    provider_version     bigint NOT NULL CHECK (provider_version > 0),
     -- answered          boolean NOT NULL, -- IMAP \Answered, JMAP $answered; Gmail does not expose it
     -- The headers a reply threads with (RFC 5322 section 3.6.4), each
     -- msg-id with its angle brackets.
@@ -136,6 +151,8 @@ CREATE TABLE messages (
 CREATE UNIQUE INDEX messages_account_provider_id_idx ON messages (connected_account_id, provider_message_id);
 -- Lists an account's messages by date, and finds its oldest.
 CREATE INDEX messages_account_internal_date_idx ON messages (connected_account_id, internal_date);
+-- Finds a thread's messages, which its conversation is derived from.
+CREATE INDEX messages_account_thread_idx ON messages (connected_account_id, provider_thread_id);
 
 -- Which mailboxes a message is in; none for a Gmail message with no label,
 -- where JMAP would ask for at least one. Both sides are named with the

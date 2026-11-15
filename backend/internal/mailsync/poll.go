@@ -258,6 +258,7 @@ func (p *Poll) ApplyChanges(ctx context.Context, accountID int64, from PollFrom,
 				MailboxProviderIDs: message.MailboxProviderIDs,
 				Seen:               message.Seen,
 				Flagged:            message.Flagged,
+				Version:            message.Version,
 			})
 		}
 		change.Deleted = append(change.Deleted, fetched.Gone...)

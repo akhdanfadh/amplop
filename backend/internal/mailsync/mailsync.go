@@ -56,11 +56,31 @@ type Mailbox struct {
 	// ProviderID is the provider's ID for it, e.g. Gmail's label ID, which
 	// [Message.MailboxProviderIDs] lists.
 	ProviderID string
-	// Name is the provider's, as received; a nested Gmail label is one name
-	// with slashes, e.g. Work/Projects.
+	// Name is its own name, e.g. Projects for a Gmail label Work/Projects
+	// under Work; a mailbox at the top keeps the provider's whole name.
 	Name string
-	Role Role
+	// ProviderParentID is the provider's ID of the mailbox it nests under,
+	// empty at the top. Each provider says nesting its own way, so the
+	// features that read mail never parse names.
+	ProviderParentID string
+	Role             Role
+	// MadeBy is who made it. The labels a member sees are their own: no
+	// role, made by the member.
+	MadeBy Maker
 }
+
+// Maker is who made a mailbox.
+type Maker string
+
+const (
+	// MadeByProvider is a mailbox the provider made for its own purpose,
+	// e.g. Gmail's INBOX or CATEGORY_SOCIAL, or Outlook's well-known
+	// folders.
+	MadeByProvider Maker = "provider"
+	// MadeByMember is a mailbox the member made, e.g. a Gmail label of
+	// their own, or any IMAP folder.
+	MadeByMember Maker = "member"
+)
 
 // Address is one entry of an address header: a display name, which may be
 // empty, and the address. An entry that was not an address keeps its
@@ -100,6 +120,9 @@ type Message struct {
 	// is in, perhaps none. An archived Gmail message is in no mailbox with
 	// [RoleInbox] but keeps its other labels.
 	MailboxProviderIDs []string
+	// Version is the provider's change number this state was read at,
+	// which grows with every change, e.g. Gmail's historyId; never 0.
+	Version uint64
 	// MessageID is the Message-ID header's msg-id, with its angle brackets;
 	// empty when the header is missing.
 	MessageID string
@@ -182,7 +205,8 @@ type Change struct {
 	// repeated change keeps a saved message's ID.
 	Deleted []string
 	// Updated replace the mailboxes and flags of messages the account has,
-	// after [Change.Saved]; one it does not have is skipped. When one
+	// after [Change.Saved]; one it does not have is skipped, and so is one
+	// whose stored [Message.Version] is newer than the update's. When one
 	// ProviderID appears more than once, the last wins.
 	Updated []MessageUpdate
 	// DeleteEarlier is how many, at most, of the account's messages that no

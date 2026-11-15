@@ -66,5 +66,8 @@ declare module "@tanstack/react-router" {
     // The email of an account whose password was just reset, for sign-in
     // to fill in.
     passwordResetEmail?: string;
+    // A conversation opened from its list's row, so the entry before it
+    // is that list.
+    fromList?: boolean;
   }
 }

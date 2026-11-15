@@ -1264,7 +1264,7 @@ permission asked. `google-emulator/emulate.config.mjs` holds the seed:
 | Account | Mailbox |
 |---|---|
 | `alex@example.com` | three messages in two threads, a `Receipts` label |
-| `blair@example.com` | two messages |
+| `blair@example.com` | four messages, a `Work` label and `Work/Projects` under it |
 | `casey@example.com` | one message |
 | `unverified@example.com` | empty; its ID token says the address is not verified |
 | `testuser@gmail.com` | emulate's own: a few messages and a draft |
@@ -2403,7 +2403,16 @@ account once; two members may each connect it.
 
 `GET /api/v0/connected-accounts` lists the member's own accounts, oldest
 first: `id`, `provider` (`gmail`), `email`, `needsReconnectSince`, null
-while Google accepts the token, `status`, `createdAt`, and `sync`.
+while Google accepts the token, `status`, `createdAt`, `name`, `color`,
+and `sync`. `name` is what the member calls the account, null until they
+set one with `PATCH /api/v0/connected-accounts/{id}`, which refuses more
+than 64 characters as sent, or a line break or other control character
+(422 on `body.name`), trims white space, and clears the name when nothing
+is left. `color` is the account's mark in the web app, 1 to 8, given at
+connect: the lowest the member's other accounts use least, so a
+disconnected account's colour goes to the next and a ninth account
+starts the eight again. Two connects of one member at once take their
+colours in turn, under a lock on the member's colours.
 `status` is `needs-reconnect` once Google refused the token,
 `token-unreadable` when no configured key opens it, and `usable`
 otherwise; `Service.List` opens each token for it, saving nothing, so
@@ -2617,12 +2626,16 @@ labels, so the features that read mail never see Gmail's own encoding.
 Four tables hold it, each deleted with its account:
 
 - `mailboxes`: an account's Gmail labels, or later its folders, with the
-  provider's ID, its name as received (a nested Gmail label is one name
-  with slashes, e.g. `Work/Projects`), and a `role` for the special ones,
-  NULL for the member's own. The roles are the purposes in IANA's IMAP
-  Mailbox Name Attributes registry, as JMAP names them, e.g. `inbox`,
-  `sent`, `junk`, `trash`, or `snoozed`. ADR007 lists how Gmail's labels
-  map: `UNREAD` and `STARRED` are flags, not mailboxes.
+  provider's ID, its own name and the provider's ID of the mailbox it
+  nests under (`provider_parent_id`; the Gmail adapter stores a label
+  `Work/Projects` as `Projects` under `Work`), and a `role` for the
+  special ones, NULL for the member's own. The roles are the purposes in
+  IANA's IMAP Mailbox Name Attributes registry, as JMAP names them, e.g.
+  `inbox`, `sent`, `junk`, `trash`, or `snoozed`. ADR007 lists how
+  Gmail's labels map: `UNREAD` and `STARRED` are flags, not mailboxes.
+  `made_by` says who made it: the `provider`, for Gmail's labels of type
+  `system`, e.g. `INBOX` or `CATEGORY_SOCIAL`, or the `member`; the
+  labels a member sees have no role and are the member's.
 - `messages`: one row per provider message, with inbok's own random `id`
   (a UUID, never derived from mail), Gmail's message and thread IDs, the
   provider's own timestamp (`internal_date`, Gmail's `internalDate`), the
@@ -2660,12 +2673,13 @@ account's sync state, passes it to a function that returns a
 `mailsync.Change`, and writes the change in one transaction: the
 mailboxes, deleted messages, saved messages with their mailboxes,
 updated messages' mailboxes and flags, the sweep of earlier generations,
-the [content deletion](#content-deletion) of what the deleted messages
-had stored, and the new state.
-An update for a message the account does not have is
-skipped. A change that saves one message twice keeps the last, and one
-that deletes and saves a message only saves it, so the message keeps its
-`id` however often a step repeats. A saved or updated message naming a
+the conversations of every thread these touched, the
+[content deletion](#content-deletion) of what the deleted messages had
+stored, and the new state. An update for a message the account does not
+have is skipped. A change that saves one message twice keeps the last,
+and one that deletes and saves a message only saves it, so the message
+keeps its `id` however often a step repeats. A saved or updated message
+naming a
 mailbox the account does not have, e.g. a Gmail label made since the
 labels were listed, writes nothing and returns
 `mailsync.ErrUnknownMailbox`; so does any other error, e.g. a generation
@@ -2676,6 +2690,18 @@ generation that last saved it, so a full sync that finishes can delete
 the messages it did not see, a batch per change, without comparing
 clocks. Storage keeps one account's writes in order; checking that a
 step's generation is still the current one is the full sync's job.
+
+Writes can still land out of the order Gmail made them: an action's
+answer may be written after a poll has brought in a newer change to the
+same message. So each message keeps `provider_version`, the provider's
+change number its state was read at, which grows with every change:
+Gmail's `historyId` of a fetched message or an action's answer, or the
+ID of the history record a poll's update comes from. An update read at
+an older version than the stored one is skipped, its mailboxes and
+conversation too, so a late write never undoes a newer one. A save is
+written whatever its version: a full sync's stale save is followed by a
+poll from before it, which brings the newer state back. A message or
+update without a version, or past a `bigint`, writes nothing.
 
 `mailsync.Provider` is what synchronization reads from the provider, and
 the `google` client implements it for Gmail. Every method only reads and
@@ -2700,8 +2726,9 @@ takes an access token from [Calling Gmail](#calling-gmail):
   sorts each message it names into one list: deleted, whatever else
   happened to it; added, to fetch whole; relabelled, an update with the
   whole label set its last label record carries, `UNREAD` and `STARRED`
-  as `seen` and `flagged`; or reread, when that record lists no labels,
-  since Gmail leaves out an empty list too. Each label record's message
+  as `seen` and `flagged`, at the record's ID as its version; or reread,
+  when that record lists no labels, since Gmail leaves out an empty list
+  too. Each label record's message
   lists its labels just after the record (observed on real Gmail; ADR001
   "Reading Gmail"). Gmail's 404 for a history ID it no
   longer keeps returns `mailsync.ErrPositionExpired`, which means a full
@@ -2738,6 +2765,168 @@ five attempts, or for a `Retry-After` over 32 seconds, it returns
 Gmail's status, never its text, and an answer that does not decode fails
 without quoting it. The Google client's own logging is off, since at
 `GOOGLE_SDK_GO_LOGGING_LEVEL=debug` it would log whole answers.
+
+### Conversations
+
+The mail lists show conversations: an account's messages that share
+Gmail's thread ID (ADR031). Two tables keep them, derived from the
+synchronized mail so a list reads one index and never groups messages
+(ADR001, "Conversations"):
+
+- `conversations`: one row per thread with a message to show, with
+  inbok's own random `id`, which the web app's URLs and the other mail
+  features use, and every column a list row shows: the newest message's
+  date (`latest_date`), preview, and From, the oldest message's subject as
+  sent, up to 10 senders in date order, the message count, and whether a
+  message is unread or flagged. The row is made from the thread's
+  visible messages, those in neither Spam nor Trash and no drafts; a
+  thread with none is made from its Spam and Trash messages, and a thread
+  of drafts alone has no row. `in_all_mail` says it has a visible
+  message.
+- `conversation_mailboxes`: the mailboxes each conversation is in: those
+  holding a visible message of it, and Spam and Trash when they hold any.
+  Each row repeats the conversation's date and unread, so one index
+  serves a mailbox's list and its unread count.
+
+The rules are one Go function, `conversation.Derive`, which turns a
+thread's messages, each with its mailboxes' roles, into the row and the
+mailboxes, or into no row for a thread of drafts alone; its tests need no
+database. Both tables are written only by `deriveConversations` in
+`repository/postgres`, which `UpdateSyncedMail` runs for the threads its
+change touched, after every other write of the change: it reads those
+threads' messages, derives each, deletes the rows of threads left with
+nothing to show, and saves the rest, which keep their `id`. Every write to the mail tables goes
+through `UpdateSyncedMail`, which keeps the two right. SQL run by hand,
+or a write to `messages`, `message_mailboxes`, or `mailboxes` added
+anywhere else, leaves them stale: such a write must go through
+`UpdateSyncedMail` or derive the threads it touched. So does a change to
+how a row is derived, which leaves existing rows as they were until
+their thread is written again. ADR001 lists the fixes considered, and
+`DEBT.md` holds the planned one: a rules version that `inbok migrate`
+derives every thread again on.
+
+`conversation` reads them for the member, all under `/api/v0` and the
+Conversations tag. Each read first checks that the place's label, the
+account filter, or the conversation is the member's, then reads with the
+IDs it found, in one read-only snapshot:
+
+- `GET /conversations?place=&account=&before=&beforeId=&limit=` lists a
+  page, 50 by default and at most 100, newest first, then by `id`
+  descending. `place` is a view, `inbox`, `starred`, `sent`, `all`
+  (every visible conversation), `spam`, or `trash`, or the mailbox ID of
+  one of the member's labels (no role, made by the member); `account`
+  limits it to one account. A next page passes the last
+  row's `date` and `id` as `before` and `beforeId`; asking for 51 tells
+  whether one follows. Each page reads each mailbox's or account's index
+  and merges them. Each row carries the place flags `inbox`, `sent`,
+  `allMail`, `spam`, and `trash`, `starred`, and `labelIds`, so a client
+  can tell which lists hold it; Starred is `starred` and `allMail`.
+- `GET /conversations/new-count?place=&account=&after=` counts a place's
+  conversations dated after `after`, the newest one a list shows.
+- `GET /places` lists each account's six views and its labels, with
+  each one's unread conversations, in a stable order; the web app orders
+  them for display.
+- `GET /conversations/{id}` returns a conversation's row and its
+  messages but drafts, oldest first, with their headers, read and starred
+  state, labels, whether each is in Spam, Trash, or Sent (`sent`: its
+  account sent it, from its own address or an alias), the message it
+  answers (`answers`), and whether it has attachments (`attachments`); no
+  body. The repository returns every message with its mailboxes, its
+  Message-ID and In-Reply-To, and its stored parts, read in one more
+  query; `conversation`'s rules leave out the drafts, mark Spam, Trash,
+  and Sent, and link each message to the one its In-Reply-To names last
+  (`linkAnswers`). A message has attachments when its view offers a
+  download, as `messagecontent.Choose` decides for the message view, so
+  the two agree; one whose content was never fetched has none yet. Its
+  `providerUrl` is where the provider's own web app shows it, or null:
+  the service asks a `conversation.Linker`, and `google.WebApp` builds
+  Gmail's undocumented address from the account's address and the
+  thread, in Spam or Trash when the conversation is only there.
+
+A label of another member answers 404 `place-not-found`, an account
+filter of another member 404 `connected-account-not-found`, and another
+member's conversation 404 `conversation-not-found`. On 20,000 synthetic
+conversations over three accounts (PostgreSQL 18, 2026-11-11) a page
+reads in about 3 ms, deep pages included, and every unread count in
+about 11 ms.
+
+`POST /conversations/actions {action, ids}` changes up to 100 of the
+member's conversations, by Gmail's own rules: `read` and `unread`,
+`archive` and `unarchive`, `trash` and `untrash`, `star` and `unstar`,
+`spam` and `unspam`. `star` and `unread` change a conversation's
+newest message (`Action.OnNewest`): the newest message its row is made
+from that is not in Sent, else the newest, which `Derive` records as
+`newest_message_id`; the rest change every message. `untrash` puts a
+conversation back in the inbox, as Gmail's Move to Inbox does, since
+Trash took it out. `conversation.ActionService` calls Gmail inside the
+request, and inbok writes only what Gmail answers (ADR031, "Mail actions
+as built"):
+
+1. It finds the member's threads, another ID refused `not-found`, and
+   reads their rows as they stand before.
+2. Per account, at once, it takes an access token and reads the
+   account's version (`Version`, Gmail's history ID from
+   `users.getProfile`), then calls `threads.modify` or `threads.trash`
+   for each thread, or `messages.modify` for its newest message, four at
+   a time per request, for at most 7 seconds and never into the last 3
+   of the request's 10, which the writes and answer keep.
+   `google.Client.ChangeThread` holds Gmail's rules, which action is
+   which label, and returns each message's labels as Gmail answered.
+   Gmail answers without history IDs, so each update is written at the
+   version read before the calls: below any change made after them,
+   which the next poll then writes over it.
+3. It writes those labels through `UpdateSyncedMail`
+   (`UpdateMessages`), which derives the conversations again and
+   keeps the sync state; a label made since the last sync is left out
+   until the next poll lists it, and a message a poll has meanwhile
+   brought to a newer version keeps it.
+4. It answers with the changed rows, as read after the writes, each
+   refused conversation with its reason (`not-found`,
+   `needs-reconnect`, or `failed`), `undo`, and `places`, every unread
+   count as `GET /places` answers, left out and logged when counting
+   fails. `undo` is the changes that put each changed row back as it
+   was: the difference between its row before and after
+   (`conversation.undoOf`), within what the action reaches
+   (`Action.Reach`): an action that moves a conversation, its places
+   (the inbox, Spam, Trash, its labels); one that marks it, that star
+   or unread mark. So a mark changed meanwhile, e.g. a new reply's
+   unread, or one the row reads differently once its messages moved, is
+   not taken back. Conversations needing the same change go together.
+   By the row, not each message: undoing Trash also puts the member's
+   own replies in the inbox, as one `threads.modify` labels every
+   message, and a thread only partly in Trash or Spam that the action
+   put there whole comes back out of it whole, the message deleted on
+   its own included (DEBT.md, "Undo per message").
+
+`POST /conversations/changes {changes}` applies changes as they are, by
+none of Gmail's rules, an action's `undo` among them: each adds its
+conversations to places and takes them out of others (the inbox, Spam,
+Trash, or the member's labels), stars or unstars them, or marks them
+unread or read, as the actions do, up to 100 conversations, each in one
+change. It runs as an action does, with the same answer, its own `undo`
+included, which reaches what each change names. The service turns each place into the conversation's
+account's mailbox (`ListPlaceMailboxes`), and refuses the whole request
+with 404 `place-not-found` for a label that is not in it, e.g. deleted
+since. `google.Client.ModifyThread` makes one `threads.modify` for the
+labels and the marks it clears, then one `messages.modify` for the
+newest message's marks it sets; when that second call fails, the first
+call's answer is written and the conversation counts as changed, its
+`undo` reaching only that part. Gmail takes at most 100 labels to add
+and 100 to remove per call, so a change adds and removes at most 100
+places each, and an `undo`, which swaps them, is a change the operation
+takes too; when the places to remove leave no room for the star and
+unread marks it clears, `ModifyThread` clears those in a second
+`threads.modify`, and when that one fails, the first's answer is written
+as above. A provider whose messages sit in one
+folder each moves them: such a change removes one place and adds one.
+
+Each conversation is changed or refused on its own, so one answer can
+hold both, and nothing changes in inbok that Gmail did not accept: a
+refusal needs no undoing. The poll that follows finds Gmail's record of
+the action, which inbok already holds. Opening a conversation marks
+nothing read; the web app sends `read`. Without a Google client the
+operation answers 409 `gmail-not-configured`, and the API server takes
+access tokens itself, as the worker does.
 
 ## Search index
 
@@ -2933,12 +3122,13 @@ Goose knows only inbok's files: `goose reset` and `make db-reset` leave
 the `dbos` schema in place. To empty that too, run `DROP SCHEMA dbos CASCADE;` in `psql`; the
 next `migrate` creates it again.
 
-Until the first release, a schema change edits the migration that made
-the table, and every database that applied it is reset with
-`make db-reset`, losing its data; inbok keeps no compatibility with
-unreleased schemas (ADR001, "Conversations"). From the first release on,
-never edit a migration a shared database has already applied; add a new
-one.
+Until the first release, inbok is deployed nowhere, so a schema change
+edits the migration that made the table rather than adding one that
+alters it; inbok keeps no compatibility with unreleased schemas (ADR001,
+"Conversations"). A database that already applied it, e.g. your `.env`
+stack, then needs `make db-reset`, losing its data, and its accounts
+connected again. After the first release, never edit a migration a
+deployed database has applied; add a new one.
 
 ## Queries
 
@@ -2986,6 +3176,9 @@ httpapi --> connectedaccount <-- repository/postgres
 httpapi --> mailsync <-- repository/postgres
             mailsync --> connectedaccount
                      <-- google
+httpapi --> conversation <-- repository/postgres
+                         <-- google
+            conversation --> mailsync, connectedaccount
             search <-- meilisearch
 httpapi --> messagecontent <-- s3
                            <-- google
@@ -3033,9 +3226,10 @@ httpapi --> messagecontent <-- s3
   access, and its revocations: the OAuth client, the ID token checks, the
   refresh token trade, revocation, and Gmail's `users.getProfile`;
   `outgoingmessage`'s `Provider`: `messages.send` and the check after an
-  unanswered send; and `mailsync`'s `Provider`, the Gmail reads
-  synchronization makes. It uses `golang.org/x/oauth2` and Google's Gmail
-  client, whose types stay inside it; Gmail calls take
+  unanswered send; `mailsync`'s `Provider`, the Gmail reads
+  synchronization makes; and `conversation`'s `ThreadChanger`, the
+  thread calls a member's actions make. It uses `golang.org/x/oauth2`
+  and Google's Gmail client, whose types stay inside it; Gmail calls take
   `connectedaccount`'s `AccessToken`. It also implements
   `messagecontent`'s `Provider`, a message's content in full format and
   one part's bytes, turning a Gmail message's parts into

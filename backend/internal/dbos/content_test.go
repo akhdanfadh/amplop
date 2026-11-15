@@ -179,7 +179,7 @@ func newContentStack(t *testing.T) contentStack {
 	}
 	running := mailsync.SyncState{Status: mailsync.StatusRunning, Position: "1", Generation: 1}
 	require.NoError(t, update(t.Context(), mailsync.Change{State: running, Mailboxes: []mailsync.Mailbox{}, Saved: []mailsync.Message{{
-		ProviderID: "m1", ThreadID: "t1", InternalDate: time.Date(2026, 11, 2, 9, 30, 0, 0, time.UTC),
+		ProviderID: "m1", ThreadID: "t1", InternalDate: time.Date(2026, 11, 2, 9, 30, 0, 0, time.UTC), Version: 1,
 	}}}))
 	var message uuid.UUID
 	require.NoError(t, conn.QueryRow(t.Context(), "SELECT id FROM messages WHERE connected_account_id = $1", account.ID).Scan(&message))

@@ -1,19 +1,25 @@
 import type { ReactElement } from "react";
+import { cn } from "@/lib/cn";
+import { formatCount } from "@/lib/count";
 import type { LucideIcon } from "lucide-react";
 import type { LinkProps } from "react-aria-components";
 import { SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
-// A count beside an item's name: value, and label, which says what it
-// counts, e.g. "not sent", and is read after it.
-type NavCount = { value: number; label: string };
+// A count beside an item's name: value; label, which says what it counts,
+// e.g. "not sent", and is read after it; and unread, whether it counts
+// unread mail, which sets the name in 600 weight (DESIGN.md "Sidebar").
+type NavCount = { value: number; label: string; unread?: boolean };
 
 // NavItem is one sidebar link: href, its name, its icon, which alone shows
 // on the rail with the name in a tooltip, and count when above zero.
+// isActive marks it as the current one, its page unless current says
+// otherwise (SidebarMenuButton).
 export function NavItem({
   href,
   name,
   icon: Icon,
   isActive,
+  current,
   onPress,
   count,
 }: {
@@ -21,6 +27,7 @@ export function NavItem({
   name: string;
   icon: LucideIcon;
   isActive: boolean;
+  current?: "page" | "true";
   onPress: () => void;
   count?: NavCount;
 }): ReactElement {
@@ -30,15 +37,17 @@ export function NavItem({
       <SidebarMenuButton
         href={href}
         isActive={isActive}
+        current={current}
         // The rail hides the count, so its tooltip says it.
-        tooltip={counted ? `${name}, ${count.value} ${count.label}` : name}
+        tooltip={counted ? `${name}, ${formatCount(count.value)} ${count.label}` : name}
         onPress={onPress}
+        className={cn(counted && count.unread && "font-semibold text-foreground")}
       >
         <Icon aria-hidden="true" />
         <span>{name}</span>
         {counted && (
           <SidebarMenuBadge>
-            {count.value}
+            {formatCount(count.value)}
             <span className="sr-only"> {count.label}</span>
           </SidebarMenuBadge>
         )}

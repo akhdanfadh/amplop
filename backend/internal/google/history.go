@@ -17,8 +17,9 @@ const (
 	// 2 units however long it is (Gmail's usage limits).
 	historyPageSize = 500
 	// historyFields are the parts of history.list's answer [Client.Changes]
-	// reads: a label record's message carries its whole label set.
-	historyFields = "history(messagesAdded/message/id,messagesDeleted/message/id," +
+	// reads: a label record's message carries its whole label set, and the
+	// record's ID is the version of that set.
+	historyFields = "history(id,messagesAdded/message/id,messagesDeleted/message/id," +
 		"labelsAdded/message(id,labelIds),labelsRemoved/message(id,labelIds)),historyId,nextPageToken"
 )
 
@@ -79,12 +80,12 @@ func (c *Client) Changes(ctx context.Context, token connectedaccount.AccessToken
 		}
 		for _, m := range record.LabelsAdded {
 			if m != nil {
-				changes.relabelled(m.Message)
+				changes.relabelled(m.Message, record.Id)
 			}
 		}
 		for _, m := range record.LabelsRemoved {
 			if m != nil {
-				changes.relabelled(m.Message)
+				changes.relabelled(m.Message, record.Id)
 			}
 		}
 		for _, m := range record.MessagesDeleted {
@@ -120,6 +121,8 @@ type messageHistory struct {
 	// "Reading Gmail"); the emulator gives the set now. Either is where the
 	// message stands after its last record.
 	labels []string
+	// version is the ID of the record labels came with.
+	version uint64
 }
 
 // added records that m was added.
@@ -136,11 +139,12 @@ func (p *pageChanges) deleted(m *gmail.Message) {
 	}
 }
 
-// relabelled records that a label record changed m, with the labels it
-// carries, replacing an earlier record's.
-func (p *pageChanges) relabelled(m *gmail.Message) {
+// relabelled records that the label record with recordID changed m, with
+// the labels it carries, replacing an earlier record's.
+func (p *pageChanges) relabelled(m *gmail.Message, recordID uint64) {
 	if h := p.message(m); h != nil {
 		h.labels = m.LabelIds
+		h.version = recordID
 	}
 }
 
@@ -177,7 +181,7 @@ func (p *pageChanges) fill(page *mailsync.ChangePage) {
 		case h.labels == nil:
 			page.Reread = append(page.Reread, id)
 		default:
-			update := mailsync.MessageUpdate{ProviderID: id}
+			update := mailsync.MessageUpdate{ProviderID: id, Version: h.version}
 			update.MailboxProviderIDs, update.Seen, update.Flagged = labelState(h.labels)
 			page.Update = append(page.Update, update)
 		}

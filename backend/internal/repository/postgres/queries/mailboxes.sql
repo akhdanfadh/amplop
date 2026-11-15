@@ -1,11 +1,13 @@
 -- name: UpsertMailbox :batchexec
 -- A mailbox the account already has keeps its row and ID, and so its
 -- messages.
-INSERT INTO mailboxes (connected_account_id, provider_mailbox_id, name, role)
-VALUES (@connected_account_id, @provider_mailbox_id, @name, @role)
+INSERT INTO mailboxes (connected_account_id, provider_mailbox_id, name, role, made_by, provider_parent_id)
+VALUES (@connected_account_id, @provider_mailbox_id, @name, @role, @made_by, @provider_parent_id)
 ON CONFLICT (connected_account_id, provider_mailbox_id) DO UPDATE SET
     name = excluded.name,
-    role = excluded.role;
+    role = excluded.role,
+    made_by = excluded.made_by,
+    provider_parent_id = excluded.provider_parent_id;
 
 -- name: DeleteUnlistedMailboxes :exec
 -- The account's mailboxes the provider no longer lists, with their
@@ -13,3 +15,16 @@ ON CONFLICT (connected_account_id, provider_mailbox_id) DO UPDATE SET
 DELETE FROM mailboxes
 WHERE connected_account_id = @connected_account_id
     AND provider_mailbox_id <> ALL (@provider_mailbox_ids::text[]);
+
+-- name: ListMailboxProviderIDs :many
+SELECT provider_mailbox_id FROM mailboxes WHERE connected_account_id = @connected_account_id;
+
+-- name: ListPlaceMailboxes :many
+-- The member's accounts' mailboxes a conversation change can add to or
+-- take out of: those of roles, and the member's own labels.
+SELECT mb.connected_account_id, mb.id, mb.role, mb.provider_mailbox_id
+FROM mailboxes mb
+JOIN connected_accounts ca ON ca.id = mb.connected_account_id
+WHERE ca.user_id = @user_id
+    AND (mb.role = ANY (@roles::text[]) OR (mb.role IS NULL AND mb.made_by = 'member'))
+ORDER BY mb.connected_account_id, mb.id;

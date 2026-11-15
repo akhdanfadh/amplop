@@ -105,6 +105,37 @@ describe("Frame", () => {
       .toHaveFocus();
   });
 
+  it("opens the drawer with its button where the top bar's was, so nothing jumps", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => signedIn()),
+    );
+    await render(<RouterProvider router={app()} />);
+    for (const width of [390, 900]) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
+      await page.viewport(width, 800);
+      const open = page.getByRole("banner").getByRole("button", { name: "Open sidebar" });
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
+      await expect.element(open).toBeVisible();
+      const before = open.element().getBoundingClientRect();
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
+      await userEvent.click(open);
+      const drawer = page.getByRole("dialog").getByRole("button", { name: "Close sidebar" });
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
+      await expect.element(drawer).toBeVisible();
+      // Once the drawer has slid in.
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
+      await expect
+        .poll(() => {
+          const after = drawer.element().getBoundingClientRect();
+          return { width, x: after.x, y: after.y };
+        })
+        .toEqual({ width, x: before.x, y: before.y });
+      // oxlint-disable-next-line eslint/no-await-in-loop -- one window at a time.
+      await userEvent.keyboard("{Escape}");
+    }
+  });
+
   it("names the member in a tooltip on the rail, whose button opens the member menu", async () => {
     vi.stubGlobal(
       "fetch",

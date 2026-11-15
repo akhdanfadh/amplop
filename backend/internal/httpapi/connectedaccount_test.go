@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -28,6 +29,7 @@ type fakeConnectedAccounts struct {
 	err      error
 
 	userID, accountID int64
+	name              string
 	calls             int
 }
 
@@ -35,6 +37,17 @@ func (f *fakeConnectedAccounts) List(_ context.Context, userID int64) ([]connect
 	f.calls++
 	f.userID = userID
 	return f.accounts, f.err
+}
+
+func (f *fakeConnectedAccounts) Rename(_ context.Context, userID, accountID int64, name string) (connectedaccount.Account, error) {
+	f.calls++
+	f.userID, f.accountID, f.name = userID, accountID, name
+	if f.err != nil {
+		return connectedaccount.Account{}, f.err
+	}
+	renamed := f.accounts[0]
+	renamed.Name = name
+	return renamed, nil
 }
 
 func (f *fakeConnectedAccounts) Disconnect(_ context.Context, userID, accountID int64) (connectedaccount.Account, error) {
@@ -73,11 +86,11 @@ var (
 	alexRefused = time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
 	alexAccount = connectedaccount.Account{
 		ID: 3, UserID: 42, Provider: connectedaccount.ProviderGmail, Email: "alex@example.com",
-		Subject: "100000000000000000001", CreatedAt: alexCreated, Status: connectedaccount.StatusUsable,
+		Subject: "100000000000000000001", CreatedAt: alexCreated, Status: connectedaccount.StatusUsable, Color: 2,
 	}
 )
 
-const alexJSON = `{"id":3,"provider":"gmail","email":"alex@example.com","needsReconnectSince":null,"status":"usable","createdAt":"2026-11-05T09:00:00Z"}`
+const alexJSON = `{"id":3,"provider":"gmail","email":"alex@example.com","needsReconnectSince":null,"status":"usable","createdAt":"2026-11-05T09:00:00Z","name":null,"color":2}`
 
 // TestGoogleCallbackURL: Google's client registers the callback under the
 // public URL, at the path the setup guide names.
@@ -112,10 +125,10 @@ func TestListConnectedAccounts(t *testing.T) {
 			`{"data":{"accounts":[` + alexJSON[:len(alexJSON)-1] + `,` + waitingJSON + `}],"syncStopped":false}}`},
 		{"needs reconnecting", []connectedaccount.Account{refused}, false,
 			`{"data":{"accounts":[{"id":3,"provider":"gmail","email":"alex@example.com",` +
-				`"needsReconnectSince":"2026-11-06T09:00:00Z","status":"needs-reconnect","createdAt":"2026-11-05T09:00:00Z",` + waitingJSON + `}],"syncStopped":false}}`},
+				`"needsReconnectSince":"2026-11-06T09:00:00Z","status":"needs-reconnect","createdAt":"2026-11-05T09:00:00Z","name":null,"color":2,` + waitingJSON + `}],"syncStopped":false}}`},
 		{"token unreadable", []connectedaccount.Account{unreadable}, false,
 			`{"data":{"accounts":[{"id":3,"provider":"gmail","email":"alex@example.com",` +
-				`"needsReconnectSince":null,"status":"token-unreadable","createdAt":"2026-11-05T09:00:00Z",` + waitingJSON + `}],"syncStopped":false}}`},
+				`"needsReconnectSince":null,"status":"token-unreadable","createdAt":"2026-11-05T09:00:00Z","name":null,"color":2,` + waitingJSON + `}],"syncStopped":false}}`},
 		{"syncing stopped", []connectedaccount.Account{}, true, `{"data":{"accounts":[],"syncStopped":true}}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -433,6 +446,53 @@ func TestDisconnectAccount(t *testing.T) {
 	assert.JSONEq(t, `{"data":{"account":`+alexJSON+`}}`, response.Body.String())
 	assert.Equal(t, int64(42), accounts.userID)
 	assert.Equal(t, int64(3), accounts.accountID)
+}
+
+// ========================
+// Connected account rename
+// ========================
+
+func TestRenameAccount(t *testing.T) {
+	accounts := &fakeConnectedAccounts{accounts: []connectedaccount.Account{alexAccount}}
+	api := New(discard, Services{ConnectedAccounts: accounts, Session: memberSessions(account.RoleMember)})
+
+	response := requestAuthenticated(api, http.MethodPatch, "/connected-accounts/3", `{"name":"Studio"}`)
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.JSONEq(t, `{"data":{"account":`+strings.Replace(alexJSON, `"name":null`, `"name":"Studio"`, 1)+`}}`, response.Body.String())
+	assert.Equal(t, int64(42), accounts.userID)
+	assert.Equal(t, int64(3), accounts.accountID)
+	assert.Equal(t, "Studio", accounts.name)
+}
+
+func TestRenameAccountRefused(t *testing.T) {
+	for _, c := range []struct {
+		name, body string
+		err        error
+		status     int
+		message    string
+	}{
+		{"too long for the contract", `{"name":"` + strings.Repeat("é", 65) + `"}`, nil, http.StatusUnprocessableEntity, "Use at most 64 characters."},
+		{"too long for the service", `{"name":"Studio"}`, connectedaccount.ErrNameTooLong, http.StatusUnprocessableEntity, "Use at most 64 characters."},
+		{"a control character", `{"name":"Stu\ndio"}`, connectedaccount.ErrNameInvalid, http.StatusUnprocessableEntity, "Enter a name without line breaks or other control characters."},
+		{"another member's", `{"name":"Studio"}`, connectedaccount.ErrNotFound, http.StatusNotFound, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			accounts := &fakeConnectedAccounts{accounts: []connectedaccount.Account{alexAccount}, err: c.err}
+			api := New(discard, Services{ConnectedAccounts: accounts, Session: memberSessions(account.RoleMember)})
+
+			response := requestAuthenticated(api, http.MethodPatch, "/connected-accounts/3", c.body)
+
+			require.Equal(t, c.status, response.Code, response.Body.String())
+			body := decodeJSON(t, response.Body.Bytes())
+			if c.status == http.StatusNotFound {
+				assert.Equal(t, connectedAccountNotFoundType, body["type"])
+				return
+			}
+			assert.Equal(t, []any{map[string]any{"location": "body.name", "message": c.message}}, body["errors"])
+			assert.NotContains(t, response.Body.String(), "Studio", "the rejected value is not echoed")
+		})
+	}
 }
 
 // Another member's account is answered as a missing one.

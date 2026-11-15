@@ -153,6 +153,12 @@ generate-web: ## Web client from the OpenAPI document, and cn's tables from the 
 # without `make generate`; never edits files.
 FRESH := scripts/check-fresh.sh
 
+# The web tests take about a minute. A browser test that hangs Chromium's
+# page never fails on its own, since its timer runs on that page, so the
+# run is stopped here instead; -k force-kills the test runner if it does
+# not stop.
+WEB_TESTS := timeout -k 10s 5m pnpm -C web test
+
 check: check-backend check-web ## Everything a commit must pass
 
 # Fresh SQLC code first: stale code makes vet fail with confusing errors.
@@ -171,7 +177,7 @@ check-web: ## Generated code, build, format, lint, types, and tests
 	$(FRESH) web/src/lib/generated/cn-tables.ts $(MAKE) generate-web
 	$(FRESH) web/src/routeTree.gen.ts $(MAKE) web-build
 	pnpm -C web check
-	pnpm -C web test
+	$(WEB_TESTS)
 
 test: test-backend test-web ## Run all tests
 
@@ -179,7 +185,7 @@ test-backend: ## Go tests
 	go -C backend test ./...
 
 test-web: ## Web unit and browser tests (browser tests need Playwright's Chromium)
-	pnpm -C web test
+	$(WEB_TESTS)
 
 fix: fix-backend fix-web ## Fix formatting and what lint can fix
 

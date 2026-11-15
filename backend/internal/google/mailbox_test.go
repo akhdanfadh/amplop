@@ -47,16 +47,50 @@ func TestMailboxes(t *testing.T) {
 	for _, mailbox := range mailboxes {
 		byID[mailbox.ProviderID] = mailbox
 	}
-	assert.Equal(t, mailsync.Mailbox{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox}, byID["INBOX"])
+	assert.Equal(t, mailsync.Mailbox{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox, MadeBy: mailsync.MadeByProvider}, byID["INBOX"])
 	assert.Equal(t, mailsync.RoleSent, byID["SENT"].Role)
 	assert.Equal(t, mailsync.RoleDrafts, byID["DRAFT"].Role)
 	assert.Equal(t, mailsync.RoleJunk, byID["SPAM"].Role)
 	assert.Equal(t, mailsync.RoleTrash, byID["TRASH"].Role)
 	assert.Equal(t, mailsync.RoleImportant, byID["IMPORTANT"].Role)
-	assert.Equal(t, mailsync.Mailbox{ProviderID: "CATEGORY_SOCIAL", Name: "CATEGORY_SOCIAL"}, byID["CATEGORY_SOCIAL"])
-	assert.Equal(t, mailsync.Mailbox{ProviderID: "Label_receipts", Name: "Receipts/2026"}, byID["Label_receipts"])
+	assert.Equal(t, mailsync.Mailbox{ProviderID: "CATEGORY_SOCIAL", Name: "CATEGORY_SOCIAL", MadeBy: mailsync.MadeByProvider}, byID["CATEGORY_SOCIAL"], "Gmail's own label is no member's")
+	assert.Equal(t, mailsync.Mailbox{ProviderID: "Label_receipts", Name: "Receipts/2026", MadeBy: mailsync.MadeByMember}, byID["Label_receipts"], "the member's label")
 	assert.NotContains(t, byID, "UNREAD")
 	assert.NotContains(t, byID, "STARRED")
+}
+
+// TestNest checks [nest] gives a label nested by name its parent and its
+// own name: under the longest name of the labels that leads its name, else
+// at the top, whole.
+func TestNest(t *testing.T) {
+	label := func(id, name string) mailsync.Mailbox {
+		return mailsync.Mailbox{ProviderID: id, Name: name, MadeBy: mailsync.MadeByMember}
+	}
+	mailboxes := []mailsync.Mailbox{
+		{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox, MadeBy: mailsync.MadeByProvider},
+		label("work", "Work"),
+		label("projects", "Work/Projects"),
+		label("q4", "Work/Projects/2026/Q4"),
+		label("bills", "Home/Bills"),
+		label("trailing", "Work/"),
+		// Gmail's own labels are no parents: the member never sees them.
+		{ProviderID: "CATEGORY_SOCIAL", Name: "CATEGORY_SOCIAL", MadeBy: mailsync.MadeByProvider},
+		label("social", "CATEGORY_SOCIAL/Friends"),
+	}
+
+	nest(mailboxes)
+
+	assert.Equal(t, []mailsync.Mailbox{
+		{ProviderID: "INBOX", Name: "INBOX", Role: mailsync.RoleInbox, MadeBy: mailsync.MadeByProvider},
+		label("work", "Work"),
+		{ProviderID: "projects", Name: "Projects", ProviderParentID: "work", MadeBy: mailsync.MadeByMember},
+		{ProviderID: "q4", Name: "2026/Q4", ProviderParentID: "projects", MadeBy: mailsync.MadeByMember},
+		label("bills", "Home/Bills"),
+		// Nothing follows the separator, so it is no child of Work.
+		label("trailing", "Work/"),
+		{ProviderID: "CATEGORY_SOCIAL", Name: "CATEGORY_SOCIAL", MadeBy: mailsync.MadeByProvider},
+		label("social", "CATEGORY_SOCIAL/Friends"),
+	}, mailboxes)
 }
 
 // A refusal keeps only its status.

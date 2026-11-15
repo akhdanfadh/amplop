@@ -29,6 +29,9 @@ import {
   ResponseAuthorization,
   ResponseChangedMember,
   ResponseConnectedAccounts,
+  ResponseConversationActionResult,
+  ResponseConversationDetail,
+  ResponseConversationPage,
   ResponseCurrentSession,
   ResponseDisconnectedAccount,
   ResponseEmailVerificationResult,
@@ -38,15 +41,18 @@ import {
   ResponseListedMembers,
   ResponseListedSessions,
   ResponseMessageContent,
+  ResponseNewConversationCount,
   ResponseOutgoingMessage,
   ResponseOutgoingMessages,
   ResponsePasswordResetRequestResult,
   ResponsePasswordResetResult,
+  ResponsePlaces,
   ResponseProbeEventCreated,
   ResponseRegisteredMember,
   ResponseRegistrationAvailability,
   ResponseRegistrationRequestResult,
   ResponseRegistrationSettings,
+  ResponseRenamedAccount,
   ResponseSentEmailVerification,
   ResponseSetupStatus,
   ResponseSignInResult,
@@ -58,7 +64,12 @@ import {
   ResponseTotpStatus
 } from './model';
 import type {
+  AccountRenameInputBody,
+  ConversationActionBody,
+  ConversationChangesBody,
+  CountNewConversationsParams,
   EmailVerificationSecret,
+  ListConversationsParams,
   NewCodeSession,
   NewMember,
   NewOutgoingMessage,
@@ -533,6 +544,97 @@ export const useDisconnectConnectedAccount = <TError = ErrorType<Problem>,
       return useMutation(getDisconnectConnectedAccountMutationOptions(options), queryClient);
     }
 
+export const getRenameConnectedAccountUrl = (id: number,) => {
+
+
+
+
+  return `/api/v0/connected-accounts/${id}`
+}
+
+/**
+ * Sets the name the web app shows for a connected account instead of its email, or clears it. Only inbok keeps the name; Google's account is unchanged.
+ * @summary Rename Account
+ */
+export const renameConnectedAccount = async (id: number,
+    accountRenameInputBody: AccountRenameInputBody, options?: Parameters<typeof transport>[1]): Promise<ResponseRenamedAccount> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseRenamedAccount>(getRenameConnectedAccountUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(accountRenameInputBody),
+    schema: ResponseRenamedAccount
+  }
+);}
+
+
+
+
+
+export const getRenameConnectedAccountMutationKey = () => ['renameConnectedAccount'] as const;
+
+export const getRenameConnectedAccountMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renameConnectedAccount>>, TError,RenameConnectedAccountMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof renameConnectedAccount>>, TError,RenameConnectedAccountMutationVariables, TContext> => {
+
+const mutationKey = getRenameConnectedAccountMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof renameConnectedAccount>>, RenameConnectedAccountMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  renameConnectedAccount(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RenameConnectedAccountMutationResult = NonNullable<Awaited<ReturnType<typeof renameConnectedAccount>>>
+    export type RenameConnectedAccountMutationBody = AccountRenameInputBody
+    export type RenameConnectedAccountMutationError = ErrorType<Problem>
+    export type RenameConnectedAccountMutationVariables = {id: number;data: AccountRenameInputBody}
+
+    /**
+ * @summary Rename Account
+ */
+export const useRenameConnectedAccount = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renameConnectedAccount>>, TError,RenameConnectedAccountMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof renameConnectedAccount>>,
+        TError,
+        RenameConnectedAccountMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRenameConnectedAccountMutationOptions(options), queryClient);
+    }
+
 export const getReconnectConnectedAccountUrl = (id: number,) => {
 
 
@@ -684,6 +786,509 @@ export const useSyncConnectedAccount = <TError = ErrorType<Problem>,
       > => {
       return useMutation(getSyncConnectedAccountMutationOptions(options), queryClient);
     }
+
+export const getListConversationsUrl = (params: ListConversationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v0/conversations?${stringifiedParams}` : `/api/v0/conversations`
+}
+
+/**
+ * Lists one page of the signed-in account's conversations in a place, across its connected accounts or one of them. A conversation is an account's messages in one provider thread; it is in a place when one of its messages is. Messages in Spam or Trash count only there, and drafts nowhere.
+ * @summary List Conversations
+ */
+export const listConversations = async (params: ListConversationsParams, options?: Parameters<typeof transport>[1]): Promise<ResponseConversationPage> => {
+
+  return transport<ResponseConversationPage>(getListConversationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseConversationPage
+  }
+);}
+
+
+
+
+
+export const getListConversationsQueryKey = (params?: ListConversationsParams,) => {
+    return [
+    `/api/v0/conversations`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListConversationsQueryOptions = <TData = Awaited<ReturnType<typeof listConversations>>, TError = ErrorType<Problem>>(params: ListConversationsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConversations>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListConversationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listConversations>>> = ({ signal }) => listConversations(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listConversations>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListConversationsQueryResult = NonNullable<Awaited<ReturnType<typeof listConversations>>>
+export type ListConversationsQueryError = ErrorType<Problem>
+
+
+export function useListConversations<TData = Awaited<ReturnType<typeof listConversations>>, TError = ErrorType<Problem>>(
+ params: ListConversationsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConversations>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listConversations>>,
+          TError,
+          Awaited<ReturnType<typeof listConversations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListConversations<TData = Awaited<ReturnType<typeof listConversations>>, TError = ErrorType<Problem>>(
+ params: ListConversationsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConversations>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listConversations>>,
+          TError,
+          Awaited<ReturnType<typeof listConversations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListConversations<TData = Awaited<ReturnType<typeof listConversations>>, TError = ErrorType<Problem>>(
+ params: ListConversationsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConversations>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List Conversations
+ */
+
+export function useListConversations<TData = Awaited<ReturnType<typeof listConversations>>, TError = ErrorType<Problem>>(
+ params: ListConversationsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listConversations>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListConversationsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getApplyConversationActionUrl = () => {
+
+
+
+
+  return `/api/v0/conversations/actions`
+}
+
+/**
+ * Applies one action to the signed-in account's conversations at their provider, then returns them as the provider answered. Nothing changes in inbok that the provider did not accept: each conversation is changed or refused on its own, so one answer can hold both. Opening a conversation does not mark it read; send read.
+ * @summary Apply Conversation Action
+ */
+export const applyConversationAction = async (conversationActionBody: ConversationActionBody, options?: Parameters<typeof transport>[1]): Promise<ResponseConversationActionResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseConversationActionResult>(getApplyConversationActionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(conversationActionBody),
+    schema: ResponseConversationActionResult
+  }
+);}
+
+
+
+
+
+export const getApplyConversationActionMutationKey = () => ['applyConversationAction'] as const;
+
+export const getApplyConversationActionMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyConversationAction>>, TError,ApplyConversationActionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyConversationAction>>, TError,ApplyConversationActionMutationVariables, TContext> => {
+
+const mutationKey = getApplyConversationActionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyConversationAction>>, ApplyConversationActionMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  applyConversationAction(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyConversationActionMutationResult = NonNullable<Awaited<ReturnType<typeof applyConversationAction>>>
+    export type ApplyConversationActionMutationBody = ConversationActionBody
+    export type ApplyConversationActionMutationError = ErrorType<Problem>
+    export type ApplyConversationActionMutationVariables = {data: ConversationActionBody}
+
+    /**
+ * @summary Apply Conversation Action
+ */
+export const useApplyConversationAction = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyConversationAction>>, TError,ApplyConversationActionMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof applyConversationAction>>,
+        TError,
+        ApplyConversationActionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getApplyConversationActionMutationOptions(options), queryClient);
+    }
+
+export const getChangeConversationsUrl = () => {
+
+
+
+
+  return `/api/v0/conversations/changes`
+}
+
+/**
+ * Changes the signed-in account's conversations at their provider as asked, by none of the provider's own rules, e.g. an action's undo, then returns them as the provider answered, as Apply Conversation Action does. Each change adds its conversations to places and takes them out of others: the inbox, Spam, Trash, or the member's labels; Sent, All mail, and Starred follow. A provider whose messages sit in one folder each moves them: such a change removes one place and adds one.
+ * @summary Change Conversations
+ */
+export const changeConversations = async (conversationChangesBody: ConversationChangesBody, options?: Parameters<typeof transport>[1]): Promise<ResponseConversationActionResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseConversationActionResult>(getChangeConversationsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(conversationChangesBody),
+    schema: ResponseConversationActionResult
+  }
+);}
+
+
+
+
+
+export const getChangeConversationsMutationKey = () => ['changeConversations'] as const;
+
+export const getChangeConversationsMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeConversations>>, TError,ChangeConversationsMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof changeConversations>>, TError,ChangeConversationsMutationVariables, TContext> => {
+
+const mutationKey = getChangeConversationsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof changeConversations>>, ChangeConversationsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  changeConversations(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChangeConversationsMutationResult = NonNullable<Awaited<ReturnType<typeof changeConversations>>>
+    export type ChangeConversationsMutationBody = ConversationChangesBody
+    export type ChangeConversationsMutationError = ErrorType<Problem>
+    export type ChangeConversationsMutationVariables = {data: ConversationChangesBody}
+
+    /**
+ * @summary Change Conversations
+ */
+export const useChangeConversations = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof changeConversations>>, TError,ChangeConversationsMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof changeConversations>>,
+        TError,
+        ChangeConversationsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getChangeConversationsMutationOptions(options), queryClient);
+    }
+
+export const getCountNewConversationsUrl = (params: CountNewConversationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v0/conversations/new-count?${stringifiedParams}` : `/api/v0/conversations/new-count`
+}
+
+/**
+ * Counts a place's conversations dated after the newest one a list shows, for a list that keeps its place while new mail arrives.
+ * @summary Count New Conversations
+ */
+export const countNewConversations = async (params: CountNewConversationsParams, options?: Parameters<typeof transport>[1]): Promise<ResponseNewConversationCount> => {
+
+  return transport<ResponseNewConversationCount>(getCountNewConversationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseNewConversationCount
+  }
+);}
+
+
+
+
+
+export const getCountNewConversationsQueryKey = (params?: CountNewConversationsParams,) => {
+    return [
+    `/api/v0/conversations/new-count`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getCountNewConversationsQueryOptions = <TData = Awaited<ReturnType<typeof countNewConversations>>, TError = ErrorType<Problem>>(params: CountNewConversationsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof countNewConversations>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCountNewConversationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof countNewConversations>>> = ({ signal }) => countNewConversations(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof countNewConversations>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type CountNewConversationsQueryResult = NonNullable<Awaited<ReturnType<typeof countNewConversations>>>
+export type CountNewConversationsQueryError = ErrorType<Problem>
+
+
+export function useCountNewConversations<TData = Awaited<ReturnType<typeof countNewConversations>>, TError = ErrorType<Problem>>(
+ params: CountNewConversationsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof countNewConversations>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof countNewConversations>>,
+          TError,
+          Awaited<ReturnType<typeof countNewConversations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useCountNewConversations<TData = Awaited<ReturnType<typeof countNewConversations>>, TError = ErrorType<Problem>>(
+ params: CountNewConversationsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof countNewConversations>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof countNewConversations>>,
+          TError,
+          Awaited<ReturnType<typeof countNewConversations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useCountNewConversations<TData = Awaited<ReturnType<typeof countNewConversations>>, TError = ErrorType<Problem>>(
+ params: CountNewConversationsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof countNewConversations>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Count New Conversations
+ */
+
+export function useCountNewConversations<TData = Awaited<ReturnType<typeof countNewConversations>>, TError = ErrorType<Problem>>(
+ params: CountNewConversationsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof countNewConversations>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getCountNewConversationsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetConversationUrl = (id: string,) => {
+
+
+
+
+  return `/api/v0/conversations/${id}`
+}
+
+/**
+ * Returns one of the signed-in account's conversations with its messages' headers, without their bodies.
+ * @summary Get Conversation
+ */
+export const getConversation = async (id: string, options?: Parameters<typeof transport>[1]): Promise<ResponseConversationDetail> => {
+
+  return transport<ResponseConversationDetail>(getGetConversationUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponseConversationDetail
+  }
+);}
+
+
+
+
+
+export const getGetConversationQueryKey = (id: string,) => {
+    return [
+    `/api/v0/conversations/${id}`
+    ] as const;
+    }
+
+
+export const getGetConversationQueryOptions = <TData = Awaited<ReturnType<typeof getConversation>>, TError = ErrorType<Problem>>(id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConversation>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetConversationQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getConversation>>> = ({ signal }) => getConversation(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getConversation>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetConversationQueryResult = NonNullable<Awaited<ReturnType<typeof getConversation>>>
+export type GetConversationQueryError = ErrorType<Problem>
+
+
+export function useGetConversation<TData = Awaited<ReturnType<typeof getConversation>>, TError = ErrorType<Problem>>(
+ id: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConversation>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getConversation>>,
+          TError,
+          Awaited<ReturnType<typeof getConversation>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetConversation<TData = Awaited<ReturnType<typeof getConversation>>, TError = ErrorType<Problem>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConversation>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getConversation>>,
+          TError,
+          Awaited<ReturnType<typeof getConversation>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetConversation<TData = Awaited<ReturnType<typeof getConversation>>, TError = ErrorType<Problem>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConversation>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get Conversation
+ */
+
+export function useGetConversation<TData = Awaited<ReturnType<typeof getConversation>>, TError = ErrorType<Problem>>(
+ id: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getConversation>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetConversationQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getRedeemEmailVerificationUrl = () => {
 
@@ -1878,6 +2483,109 @@ export const useRedeemPasswordResetLink = <TError = ErrorType<Problem>,
       > => {
       return useMutation(getRedeemPasswordResetLinkMutationOptions(options), queryClient);
     }
+
+export const getListPlacesUrl = () => {
+
+
+
+
+  return `/api/v0/places`
+}
+
+/**
+ * Lists the places of each of the signed-in account's connected accounts, its views and labels, with how many of their conversations are unread. A label is a mailbox the member made at the provider: a Gmail label, and later an IMAP folder, shown alike. The provider's own mailboxes are places only through the views.
+ * @summary List Places
+ */
+export const listPlaces = async ( options?: Parameters<typeof transport>[1]): Promise<ResponsePlaces> => {
+
+  return transport<ResponsePlaces>(getListPlacesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+    ,
+    schema: ResponsePlaces
+  }
+);}
+
+
+
+
+
+export const getListPlacesQueryKey = () => {
+    return [
+    `/api/v0/places`
+    ] as const;
+    }
+
+
+export const getListPlacesQueryOptions = <TData = Awaited<ReturnType<typeof listPlaces>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlaces>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPlacesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPlaces>>> = ({ signal }) => listPlaces({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPlaces>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListPlacesQueryResult = NonNullable<Awaited<ReturnType<typeof listPlaces>>>
+export type ListPlacesQueryError = ErrorType<Problem>
+
+
+export function useListPlaces<TData = Awaited<ReturnType<typeof listPlaces>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlaces>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPlaces>>,
+          TError,
+          Awaited<ReturnType<typeof listPlaces>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPlaces<TData = Awaited<ReturnType<typeof listPlaces>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlaces>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPlaces>>,
+          TError,
+          Awaited<ReturnType<typeof listPlaces>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListPlaces<TData = Awaited<ReturnType<typeof listPlaces>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlaces>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List Places
+ */
+
+export function useListPlaces<TData = Awaited<ReturnType<typeof listPlaces>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlaces>>, TError, TData>>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListPlacesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getCreateProbeEventUrl = () => {
 

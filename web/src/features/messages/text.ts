@@ -1,10 +1,8 @@
+import { fullDate, headerDate } from "@/features/mail/dates";
+
 // An address in a message's header: the display name the sender gave, if
 // any, and the email address.
 export type Address = { name?: string; email: string };
-
-const noSubject = "(no subject)";
-const shownTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-const fullTime = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "long" });
 
 // addressName returns the display name to show for address, or undefined
 // when it has none or the name only repeats the email.
@@ -14,18 +12,14 @@ export function addressName(address: Address): string | undefined {
   return name;
 }
 
-// subjectText shows subject, or says the message has none.
-export function subjectText(subject: string): string {
-  return subject.trim() || noSubject;
-}
-
-// formatReceived shows a timestamp in the reader's locale and time zone,
-// short for the header and full for its tooltip. A value that is not a
-// time shows as given, rather than failing the whole view.
+// formatReceived shows a timestamp in the browser's time zone, short for
+// the header and in full for its tooltip, in the words and clock the list
+// uses (headerDate, fullDate), so a header and its tooltip agree. A value
+// that is not a time shows as given, rather than failing the whole view.
 export function formatReceived(iso: string): { short: string; full: string } {
   const time = new Date(iso);
   if (Number.isNaN(time.getTime())) return { short: iso, full: iso };
-  return { short: shownTime.format(time), full: fullTime.format(time) };
+  return { short: headerDate(time), full: fullDate(time) };
 }
 
 export const loadingMessage = "Loading message...";
@@ -48,10 +42,6 @@ export const textFilename = "message.txt";
 export const noText = "This message has no text.";
 
 // A conversation's words (DESIGN.md "Reading pane").
-// The account's own address, as names show it.
-export const me = "me";
-// A message with no From.
-export const unknownSender = "Unknown sender";
 // How a header's "to" line names a message with no recipients.
 export const noRecipients = "no one";
 export const conversationActions = "Conversation actions";
@@ -80,13 +70,21 @@ export function foldLabel(sender: string): string {
   return `Fold the message from ${sender}`;
 }
 
+// answersLead and answersOn frame the line naming the message an open
+// message answers, by its sender and date: "In reply to Ana Lima on 2 Nov
+// 2026, 9:00 am". "on" keeps the date from reading as one more sender
+// after a list of them.
+export const answersLead = "In reply to";
+export const answersOn = "on";
+
 // sentTo is an open message's "to" line, given who received it.
 export function sentTo(recipients: string): string {
   return `to ${recipients}`;
 }
 
-// messageCount says how many messages a conversation has.
-export function messageCount(count: number): string {
+// messageTotal says how many messages a conversation has, e.g. "4
+// messages", where the list's messageCount shows the bare number.
+export function messageTotal(count: number): string {
   return count === 1 ? "1 message" : `${count.toLocaleString("en")} messages`;
 }
 
@@ -99,50 +97,6 @@ export function moreMessages(count: number): string {
 // field.
 export function showAllAddresses(count: number): string {
   return `Show all ${count.toLocaleString("en")}`;
-}
-
-// listDate shows when a folded message arrived, as the message list
-// does, seen at now in the browser's time zone: today the time;
-// "Yesterday"; the weekday within a week; "2 Nov" this year; "2 Nov 2025"
-// before. A value that is not a time shows as given.
-//
-// DESIGN: follows branch 3's features/mail/dates.ts, not on dev yet.
-export function listDate(iso: string, now: Date): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const days = daysBetween(date, now);
-  if (days === 0) return listTime.format(date);
-  if (days === 1) return yesterday;
-  // A later day, e.g. from a sender whose clock runs ahead, shows its date.
-  if (days > 0 && days <= weekdayDays) return listWeekday.format(date);
-  if (date.getFullYear() === now.getFullYear()) return dayMonth.format(date);
-  return dayMonthYear.format(date);
-}
-
-const yesterday = "Yesterday";
-// Days before today that still show a weekday.
-const weekdayDays = 6;
-const msPerDay = 86_400_000;
-// The browser's own clock style; inbok's words are English.
-const listTime = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
-const listWeekday = new Intl.DateTimeFormat("en-US", { weekday: "short" });
-const dayMonth = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
-const dayMonthYear = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
-
-// daysBetween returns how many calendar days date's day is before now's,
-// in the browser's time zone; negative for a later day.
-function daysBetween(date: Date, now: Date): number {
-  // Round: a day with a daylight saving change is 23 or 25 hours long.
-  return Math.round((midnight(now) - midnight(date)) / msPerDay);
-}
-
-// midnight returns when d's day began, in the browser's time zone.
-function midnight(d: Date): number {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
 export const attachmentsLabel = "Attachments";
