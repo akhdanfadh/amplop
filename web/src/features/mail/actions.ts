@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { createOptimisticAction } from "@tanstack/db";
 import {
   applyConversationAction,
+  changeConversations,
   getGetConversationQueryKey,
   getListPlacesQueryKey,
 } from "@/api/generated/inbok";
@@ -14,10 +15,11 @@ import {
   type Conversations,
   type PlaceCounts,
 } from "./conversations";
-import { countChanges, guess, guessChanges, guessedFields, type Request } from "./rules";
+import { countChanges, guess, guessChanges, guessedFields, idsOf, type Request } from "./rules";
 
-// ActionResult is the API's answer: the conversations it changed, as the
-// provider left them, and the ones it refused, with why.
+// ActionResult is the API's answer to an action or changes: the
+// conversations it changed, as the provider left them, the ones it
+// refused, with why, and the changes that undo it.
 export type ActionResult = ConversationActionResultOutput;
 
 // ActionMail is what an action changes: one member's conversations and
@@ -70,7 +72,7 @@ function actionOn(mail: ActionMail) {
   if (!act) {
     act = createOptimisticAction<Run>({
       onMutate: ({ request }) => {
-        const shown = request.ids.flatMap((id) => conversations.get(id) ?? []);
+        const shown = idsOf(request).flatMap((id) => conversations.get(id) ?? []);
         const guessed = new Map(shown.map((row) => [row.id, guess(row, request)]));
         const by = new Map<string, number>();
         for (const conversation of shown) {
@@ -145,7 +147,11 @@ async function send(mail: ActionMail, request: Request): Promise<ActionResult> {
   if (flight.running > 1) flight.overlapped = true;
   let result: ActionResult;
   try {
-    result = (await applyConversationAction(request)).data;
+    result = (
+      "action" in request
+        ? await applyConversationAction(request)
+        : await changeConversations({ changes: request.changes })
+    ).data;
   } catch (err) {
     if (settle(flight) === "read" && isCurrent(mail)) {
       void client.refetchQueries({ queryKey: getListPlacesQueryKey(), type: "active" });
@@ -198,8 +204,8 @@ function settle(flight: { running: number; overlapped: boolean }): Counts {
 // Each conversation's last request not yet answered, per collection.
 const pending = new WeakMap<Conversations, Map<string, Promise<unknown>>>();
 
-// runAction applies request, an action, to its conversations in mail:
-// every list and unread count shows it at once, and the API's answer
+// runAction applies request, an action or changes, to its conversations in
+// mail: every list and unread count shows it at once, and the API's answer
 // settles it. It returns the answer, whose refused rows are back as they
 // were, and throws, every row back, when the request fails. Once it
 // settles, an open conversation's messages are read again, for their own
@@ -208,10 +214,11 @@ const pending = new WeakMap<Conversations, Map<string, Promise<unknown>>>();
 //
 // DESIGN: a conversation's requests reach the API one after another, each
 // once the one before is answered, so a quick star and unstar end as the
-// member left them; each guess still shows at once.
+// member left them, and an Undo pressed at once waits for the answer it
+// undoes; each guess still shows at once.
 export async function runAction(mail: ActionMail, request: Request): Promise<ActionResult> {
   const { client, conversations } = mail;
-  const { ids } = request;
+  const ids = idsOf(request);
   let queue = pending.get(conversations);
   if (!queue) {
     queue = new Map();
@@ -242,7 +249,7 @@ async function runAfter(
   // A guess that changes nothing records no change, and TanStack DB then
   // never runs the request (ADR031, TanStack DB gate, rule 5), e.g. a row
   // starred elsewhere since this one drew: send it directly.
-  const changing = request.ids.some((id) => {
+  const changing = idsOf(request).some((id) => {
     const conversation = mail.conversations.get(id);
     return conversation !== undefined && guessChanges(conversation, request);
   });

@@ -39,7 +39,11 @@ function GridList<T extends object>({
         selectionBehavior="toggle"
         // contain: scrolling past the end never moves the page, nor starts
         // a phone browser's own pull-to-refresh.
-        className={cn("h-full overflow-auto overscroll-y-contain outline-none", className)}
+        // scroll-pb: a focused row stops above a toast (toast.tsx).
+        className={cn(
+          "h-full scroll-pb-(--toast-space) overflow-auto overscroll-y-contain outline-none",
+          className,
+        )}
         {...props}
       />
     </Virtualizer>

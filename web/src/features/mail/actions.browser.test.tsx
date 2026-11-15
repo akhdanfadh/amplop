@@ -6,7 +6,7 @@ import type { PlaceCount } from "@/api/generated/model";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 import { runAction, type ActionMail } from "./actions";
-import { mailData, placeKey, refreshNewest } from "./conversations";
+import { mailData, placeKey, refreshNewest, toConversation } from "./conversations";
 import { placeWhere } from "./rules";
 
 let current: QueryClient | undefined;
@@ -153,6 +153,33 @@ describe("runAction", () => {
     await first;
 
     expect(mail.placeCounts.get(placeKey(1, "inbox"))?.unread).toBe(0);
+  });
+
+  it("puts a conversation back where it was by the answer's undo, though Move to Inbox would not", async () => {
+    // Archived, so not in the Inbox list: an All mail list holds it.
+    const row = conversation(1, { inbox: false, labelIds: ["work"] });
+    const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
+    const mail = await openInbox(api);
+    await mail.conversations.utils.writeUpsert(toConversation(row));
+
+    const deleted = await runAction(mail, { action: "trash", ids: [row.id] });
+    expect(mail.conversations.get(row.id)?.trash).toBe(true);
+    const undone = runAction(mail, { changes: deleted.undo });
+    // At once, before the API answers.
+    expect(mail.conversations.get(row.id)).toMatchObject({
+      trash: false,
+      inbox: false,
+      labelIds: ["work"],
+    });
+    await undone;
+
+    expect(api.actions.at(-1)).toEqual({ action: "changes", ids: [row.id] });
+    expect(mail.conversations.get(row.id)).toMatchObject({
+      trash: false,
+      inbox: false,
+      allMail: true,
+      labelIds: ["work"],
+    });
   });
 
   it("stores nothing of an action answered after the session ended, and sends none still waiting", async () => {

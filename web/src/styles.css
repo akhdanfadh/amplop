@@ -196,9 +196,10 @@
 /* While the theme switches (applyTheme in src/lib/theme.ts), nothing fades
  * from the old colours to the new. Durations of zero, not "none": React
  * Aria removes a closing tooltip or menu when its exit animation finishes,
- * and a cancelled one never finishes, which would leave it on screen.
- * Unlayered, so it wins over utilities. */
-[data-theme-switching] *,
+ * and a cancelled one never finishes, which would leave it on screen. A
+ * countdown, e.g. the Undo bar's line, is a clock, not a fade: ended at
+ * once, it would close its bar. Unlayered, so it wins over utilities. */
+[data-theme-switching] *:not([data-countdown]),
 [data-theme-switching] *::before,
 [data-theme-switching] *::after {
   transition-duration: 0s;
@@ -355,5 +356,15 @@
    * -1), e.g. a page heading after navigation, are not controls: no ring. */
   [tabindex="-1"]:focus:where(h1, h2, h3, h4, main, section, div, p, output) {
     outline: none;
+  }
+}
+
+/* The Undo bar's 10 s countdown, its only clock (features/mail/undo.tsx). */
+@keyframes undo-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
   }
 }

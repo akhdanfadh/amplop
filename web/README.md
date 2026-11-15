@@ -844,8 +844,8 @@ collection, so an action anywhere shows at once, and marks an unread
 conversation read once its messages are read and the tab shows. Its
 toolbar (`mail/toolbar.tsx`) offers what `actionsFor` (`mail/rules.ts`)
 gives for the conversation in the list it was opened from, each action
-run by `perform` (`mail/perform.ts`), which says why a refused one
-failed. An action that
+run by `perform` (`mail/perform.ts`), which shows its Undo in the Undo
+bar (`mail/undo.tsx`) and says why a refused one failed. An action that
 takes the conversation out of that list (`leavesList`) goes back to it,
 through history when a row of it opened the conversation (the row's
 link sets `fromList` in its history state, or keeps the flag of the
@@ -999,7 +999,15 @@ from the registry here:
 - `avatar`: as the registry's; the conversation row rings it in the
   account colour. `empty`: words only.
 - `toast` is ours: the registry offers only `sonner` (see DESIGN.md).
-  `showUndo` shows a result with Undo and closes itself after 10 s;
+  It shows failures only; an action's Undo is `features/mail/undo.tsx`'s
+  `UndoBar`, docked under the mail panes, which `showUndo` fills and
+  `closeUndo` empties: a landmark F6 reaches (React Aria's
+  `useLandmark`, from `react-aria`), whose Undo also runs on Ctrl or
+  Cmd+Z, by `isShortcut` (`src/lib/shortcut.ts`), the check the
+  sidebar's Ctrl+B shares. While toasts show, `--toast-space` holds the
+  height they take, which a
+  scrolling box uses as `scroll-pb-(--toast-space)`, so focus never lands
+  under a toast (the list and the reading pane do);
   `showError` shows a failure until the member closes it, and not again
   while it shows; `closeToasts` closes all, e.g. on sign-out. It is React
   Aria's alpha toast (`UNSTABLE_`), so recheck it after an upgrade.

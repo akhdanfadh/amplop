@@ -266,7 +266,7 @@ export function ConversationList({
 
   // star stars or unstars a conversation as perform runs an action: every
   // list shows it at once, and a refusal or failure puts it back and says
-  // why (DESIGN.md "Feedback").
+  // why (DESIGN.md "Feedback"). No Undo: the star stays in view.
   const star = (conversation: Conversation, starred: boolean) => {
     void perform({
       mail: { client, conversations, placeCounts },

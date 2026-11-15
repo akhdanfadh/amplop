@@ -90,6 +90,30 @@ export const refusedText = {
   failed: "Gmail didn't answer. Try again.",
 } as const;
 
+// findItIn returns where the conversation went, e.g. "Trash", which the
+// Undo bar tells screen readers.
+export function findItIn(where: string): string {
+  return `Find it in ${where}.`;
+}
+
+export const undoName = "Undo";
+// The Undo bar's name as a landmark, which F6 reaches.
+export const undoBarName = "Undo";
+export const closeName = "Close";
+export const undoFailed = "Couldn't undo";
+
+// undoTooltip is Undo's tooltip: its name and the keys that undo, as the
+// platform's keyboard writes them (DESIGN.md "Wording").
+export function undoTooltip(keys: string): string {
+  return `${undoName} (${keys})`;
+}
+
+// undone says, for screen readers, that Undo put the conversation of
+// subject back.
+export function undone(subject: string): string {
+  return `Undone: ${subject}.`;
+}
+
 // What a conversation's toolbar's More menu is called, and its link.
 export const moreName = "More actions";
 export const openInGmail = "Open in Gmail";

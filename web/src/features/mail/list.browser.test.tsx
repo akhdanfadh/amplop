@@ -480,6 +480,7 @@ describe("the row's star", () => {
 
     await expect.element(page.getByText("It's no longer in Gmail.")).toBeVisible();
     await expect.element(page.getByRole("row", { name: /Subject 1,/ })).not.toBeInTheDocument();
+    expect(page.getByRole("button", { name: "Undo" }).query()).toBeNull();
   });
 
   it("goes back when the request fails", async () => {

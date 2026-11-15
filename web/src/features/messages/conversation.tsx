@@ -157,7 +157,11 @@ function Conversation({
   }, []);
 
   return (
-    <div ref={scroller} className="@container h-full overflow-y-auto bg-background">
+    // scroll-pb: what scrolls into view stops above a toast (toast.tsx).
+    <div
+      ref={scroller}
+      className="@container h-full scroll-pb-(--toast-space) overflow-y-auto bg-background"
+    >
       <div
         ref={toolbar}
         data-raised={titleHidden || undefined}

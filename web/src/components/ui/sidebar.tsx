@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
+import { isShortcut, shortcutName } from "@/lib/shortcut";
 
 // The drawer's width. The open sidebar (240 px) and the rail (56 px; 68 px
 // for a coarse pointer, so its 44 px rows fit) are set on the wrapper.
@@ -23,11 +24,9 @@ const drawerStyle: React.CSSProperties & Record<"--sheet-width", string> = {
 };
 
 // The shortcut that opens and closes the sidebar: B with Ctrl, or with Cmd
-// on a Mac, as in shadcn's sidebar and Gmail's.
+// on a Mac, as in shadcn's sidebar and Gmail's (isShortcut).
 const shortcutLetter = "b";
 const shortcutCode = "KeyB";
-const shortcutMac = "Cmd+B";
-const shortcutOther = "Ctrl+B";
 
 const triggerSelector = "[data-slot=sidebar-trigger]";
 const drawerSelector = "[data-sidebar=drawer]";
@@ -87,30 +86,6 @@ function useSidebarContext(): SidebarContextProps {
 // e.g. a menu that closes the drawer after a choice.
 function useSidebar(): SidebarState {
   return useSidebarContext();
-}
-
-// isToggleKey reports whether event is Ctrl+B, or Cmd+B, alone: no Shift
-// or Alt, not a held key's repeat, not typed into a text field, and not
-// in a dialog or menu other than the drawer.
-function isToggleKey(event: KeyboardEvent): boolean {
-  // B is the letter in any Latin layout, Caps Lock or not, so Dvorak's
-  // Ctrl+X stays cut; in any other layout, e.g. Cyrillic, it is the key
-  // where QWERTY has it.
-  const latin = /^[a-z]$/i.test(event.key);
-  if (latin ? event.key.toLowerCase() !== shortcutLetter : event.code !== shortcutCode) {
-    return false;
-  }
-  if (event.repeat || event.defaultPrevented) return false;
-  if (event.shiftKey || event.altKey || event.ctrlKey === event.metaKey) return false;
-  // In a field Ctrl+B already means something: back one character on a
-  // Mac, bold in an editor.
-  const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest("input, textarea, select, [contenteditable]")) return false;
-  // An open popover, menu, or dialog has the member's attention; the
-  // sidebar would change out of sight behind it, and the drawer would
-  // close around a popover opened from it.
-  const overlay = target?.closest("[role=dialog], [role=alertdialog], [role=menu]");
-  return !overlay || overlay.matches("[data-slot=sheet]");
 }
 
 // SidebarProvider holds the sidebar's state. open is the member's choice
@@ -231,7 +206,7 @@ function SidebarProvider({
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isToggleKey(event)) return;
+      if (!isShortcut(event, shortcutLetter, shortcutCode, drawerSelector)) return;
       event.preventDefault();
       if (hasDrawer) setDrawerOpen((value) => !value);
       else if (fullOpen) collapse();
@@ -367,9 +342,7 @@ function SidebarTrigger({ className, onPress, ...props }: React.ComponentProps<t
   // The rail expands into the drawer, which collapses back into the rail.
   if (railLayout) name = inDrawer ? "Collapse sidebar" : "Expand sidebar";
   if (isDrawer) name = drawerOpen ? "Close sidebar" : "Open sidebar";
-  // Apple keyboards say Cmd; the rest say Ctrl. Words, not the Command
-  // symbol, which no keyboard types (DESIGN.md "Wording").
-  const shortcut = /Mac|iPhone|iPad/.test(navigator.userAgent) ? shortcutMac : shortcutOther;
+  const shortcut = shortcutName(shortcutLetter);
 
   // NOTE: React Aria's Button drops aria-keyshortcuts, so the tooltip, its
   // description, is what tells assistive technology the shortcut.

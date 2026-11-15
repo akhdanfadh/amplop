@@ -153,10 +153,12 @@ text).
   over the page dimmed by `scrim`, black at 30% (60% in dark); the drawer
   dims it the same way.
 - **Motion:** one easing, `cubic-bezier(0.22, 1, 0.36, 1)`; 150 ms hover
-  and press, 200 ms menus and tooltips, 250 ms dialogs and sheets. Animate
+  and press, 200 ms menus, tooltips, a toast's fade in, and the Undo
+  bar's rise and fade, 250 ms dialogs and sheets. Animate
   colour, background, border, opacity, and transform only
   (`transition-colors`, never `transition-all`). Reduced motion turns
-  movement into fades. A theme change switches every colour at once, with
+  movement into fades; the Undo bar's draining line keeps draining, as it
+  is the countdown, not decoration. A theme change switches every colour at once, with
   no fades. A message a link sends the reader to (the reading pane's "In
   reply to") flashes the `selection` tint: held 600 ms, then faded out
   over 1 s, slow at both ends (ease-in-out), 1.6 s in all, so the eye finds where it
@@ -207,8 +209,9 @@ text colour of their role.
 | Member menu with the theme choice        | `popover` holding a `toggle-group`                                                          |
 | More menus                               | `dropdown-menu`                                                                             |
 | Right-click row menu                     | `context-menu`                                                                              |
-| Icon button names, and Send's shortcut   | `tooltip`, but none on an in-row toggle whose icon and state are its meaning, e.g. the star |
-| Undo and error toasts                    | `toast.tsx` on React Aria's Toast (see below)                                               |
+| Icon button names, and shortcuts         | `tooltip`, but none on an in-row toggle whose icon and state are its meaning, e.g. the star |
+| Error toasts                             | `toast.tsx` on React Aria's Toast (see below)                                               |
+| An action's Undo                         | the Undo bar, `features/mail/undo.tsx` ("Feedback")                                         |
 | Phone editors and search                 | `sheet`                                                                                     |
 | From picker in compose and reply         | `select` (shows the account mark)                                                           |
 | Recipient chips                          | React Aria's `TagGroup` in the field; `combobox` once contacts suggest addresses            |
@@ -227,9 +230,12 @@ stands apart from the page. React Aria labels it alpha (`UNSTABLE_`
 names), which a `DEBT.md` entry covers. shadcn's React Aria flavour
 offers only `sonner`, whose runtime `<style>` the
 Content-Security-Policy blocks and whose timer keeps running when the
-keyboard reaches Undo. For the demo: Undo toasts last 10 s, error toasts
-stay until closed, an error already showing is not shown again, and
-toasts stack newest first.
+keyboard reaches Undo. Toasts report failures only: they stay until
+closed, an error already showing is not shown again, and they stack
+newest first, a scrolling box keeping what it shows above them
+(`--toast-space`). An action's Undo is the Undo bar (see Feedback), not
+a toast: a floating, timed toast covered rows and raced keyboard and
+screen-reader users (ADR031, checkpoint 7c).
 
 **The message list** is inbok's own `src/components/ui/grid-list.tsx` on
 React Aria's [GridList](https://react-aria.adobe.com/GridList) inside its
@@ -655,13 +661,38 @@ pull-to-refresh, which would reload the app, never starts.
 ### Feedback
 
 - **Reversible actions** (archive, delete to Trash, read, star, and bulk
-  versions) happen at once; when the result leaves the screen, e.g. an
-  archived row, a toast says what happened, with Undo, which sends the
-  undo the API answers with. Undo appears only once the action's request
-  has settled, as Gmail's own toast does: sent sooner, it could reach Gmail
-  before the action it undoes. Toasts last 10 s. A result that stays in
-  view, e.g. a star, gets no toast. A bulk action Gmail refuses for some
-  conversations rolls back only those, and says how many failed.
+  versions) happen at once, with the unread counts; an action that moves
+  a conversation to another place shows the **Undo bar** at once, docked
+  at the bottom of the list, under the row the action took away, and on
+  a phone, one pane at a time, under whichever pane shows, as an action
+  can keep the conversation open there: what happened,
+  the conversation's subject, Undo in the primary blue, and Close. It is
+  part of the layout, so it covers nothing, and Tab reaches it from the
+  list; it is a landmark named "Undo", which F6 reaches, and Ctrl or
+  Cmd+Z runs its Undo from anywhere but a text field or an open menu or
+  dialog, as Undo's tooltip says ("Undo (Ctrl+Z)"). However it closes,
+  by Undo, Close, its countdown, or its action's refusal, focus inside it
+  goes back to where it came from, a list's row rather than the row's
+  star, else to the list's heading. Screen readers hear it as it
+  appears, through a live region always in the page, with where the
+  conversation went ("Find it in Trash."), and "Undone: <subject>." once
+  an Undo has run; Undo's description names the conversation. Error
+  toasts stand above it while it shows. In the list's width, Undo and
+  Close stay near its words. Under 18em wide, e.g. a phone
+  at large text, its buttons wrap under the words, so the subject keeps
+  the width. It lasts 10 s, a line along its top draining as they pass,
+  paused while the pointer or focus is on it and while the tab is
+  hidden, and running on through a theme change; the next action's Undo
+  takes its place, and opening another conversation leaves it. Undo
+  applies the server's changes for the conversation's row and opens
+  nothing: the API answers each action with the changes that undo it,
+  and Undo sends those, after the action's answer, so it never reaches
+  Gmail first. They restore the row, not each message: a message deleted
+  on its own before a Delete comes back out of Trash with the rest, and
+  undoing a Delete puts the member's own replies in the Inbox too
+  (DEBT.md, "Undo per message"). A result that stays in view,
+  e.g. a star or Mark read, gets no Undo. A bulk action Gmail refuses for
+  some conversations rolls back only those, and says how many failed.
 - **Irreversible actions** (disconnect, deactivate, turn off two-factor
   authentication, discard typed text) ask first in an `AlertDialog`: the
   title asks, the body states the consequence and what is kept, the
@@ -669,16 +700,18 @@ pull-to-refresh, which would reload the app, never starts.
   one.
 - **A failed action** rolls back and shows an error toast that stays until
   dismissed, with the fix.
-- **Toasts** only report actions whose result left the screen; form
+- **Toasts** report failures, and stay until closed; an action's Undo is
+  the Undo bar's, not a toast's. Form
   results stay inline. Nothing important lives only in a toast.
 - **Banners** for conditions that last: offline at the top of the content;
   an account problem above that account's mail; setup the member owes at the
   top of settings, e.g. an unverified email address.
 - Every mail action has its words once, in `features/mail/words.ts`
-  (label, icon, and failure), a `Record` over the API's actions, so a new
+  (label, icon, failure, and for an action that moves a conversation its
+  result and where it went), a `Record` over the API's actions, so a new
   one fails the build until it has words; `perform` runs an action with
-  its guess, counts, and error toast; toolbars, menus, the picked-rows
-  bar, and toasts read from them.
+  its guess, counts, Undo bar, and error toast; toolbars, menus, the
+  picked-rows bar, the Undo bar, and toasts read from them.
 
 ### States
 
@@ -779,7 +812,10 @@ gate"):
   start of a sentence.
 - Sentence case. Buttons are a verb and what it acts on, and the verb
   carries into the result ("Archive", "Conversation archived"). Gmail's
-  own names win where members know them: "Not spam".
+  own names win where members know them: "Not spam". The Undo bar's
+  title is the result alone ("Archived"), as its second line names the
+  conversation; Delete's reads "Moved to Trash", as Gmail says, since it
+  moves the conversation rather than deleting it for good.
 - Errors say what happened and what to do; no "Sorry", "Oops", or
   exclamation marks.
 - Full sentences end with a period; labels, buttons, headings, and badges
@@ -832,6 +868,8 @@ only a real phone can check, and a native app gets both from its platform
 
 App keyboard shortcuts, once built, go on TanStack Hotkeys (`useHotkey`,
 its `Mod` key, and its display formatter), which then also takes the
-sidebar's Ctrl+B and Send's Ctrl+Enter. Until then those two are plain
-key handlers: the library was in beta in 2026-11, and two shortcuts did
-not need it.
+sidebar's Ctrl+B, Send's Ctrl+Enter, and the Undo bar's Ctrl+Z. Until
+then those three are plain key handlers, the two letter ones sharing one
+check of what the key may reach (`isShortcut` in `src/lib/shortcut.ts`):
+the library was in beta in 2026-11, and three shortcuts did not need
+it.

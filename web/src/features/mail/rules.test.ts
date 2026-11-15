@@ -121,6 +121,27 @@ describe("countChanges", () => {
   });
 });
 
+describe("guess of a change", () => {
+  const archived = toConversation(conversation(1, { inbox: false, labelIds: ["work"] }));
+  const trashed = guess(archived, act("trash"));
+
+  it("puts a deleted conversation back where it was, by the action's undo", () => {
+    const undo: Request = { changes: [{ ids: [archived.id], add: ["work"], remove: ["trash"] }] };
+    expect(guess(trashed, undo)).toEqual({ ...archived, sent: trashed.sent });
+  });
+
+  it("changes only the conversations a change names", () => {
+    const other: Request = { changes: [{ ids: ["another"], add: ["inbox"] }] };
+    expect(guess(archived, other)).toBe(archived);
+  });
+
+  it("sets and clears marks", () => {
+    const marked: Request = { changes: [{ ids: [archived.id], starred: true, unread: true }] };
+    expect(guess(archived, marked)).toEqual({ ...archived, starred: true, unread: true });
+    expect(guessChanges(archived, marked)).toBe(true);
+  });
+});
+
 // rowWith returns a conversation with changes.
 function rowWith(changes: Partial<ConversationRow>) {
   return toConversation(conversation(1, changes));

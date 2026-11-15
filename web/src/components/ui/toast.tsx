@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { useCallback, type ReactElement } from "react";
 import {
   Text,
   UNSTABLE_Toast as ToastPrimitive,
@@ -12,18 +12,13 @@ import { Button } from "@/components/ui/button";
 // NOTE: React Aria's toast is still alpha, hence UNSTABLE_; its API may
 // change in any upgrade, so recheck this file and its tests after one.
 
-// DESIGN.md "Feedback": an Undo toast closes itself after 10 s; React Aria
-// pauses the timer while the pointer is over a toast or focus is in one.
-const undoTimeout = 10_000;
-
-// ToastMessage is what one toast says: title, the result or the failure,
-// e.g. "Conversation archived"; description, an optional second sentence,
-// e.g. the fix; and an optional action, e.g. Undo.
+// ToastMessage is what one toast says: title, what failed, e.g. "Couldn't
+// archive the conversation"; and description, an optional sentence, the
+// fix. An action's Undo is not a toast: it has its own bar (DESIGN.md
+// "Feedback").
 type ToastMessage = {
-  tone: "result" | "error";
   title: string;
   description?: string;
-  action?: { label: string; onAction: () => void };
 };
 
 // The app's one queue. React Aria shows the newest toast first.
@@ -31,27 +26,17 @@ type ToastMessage = {
 // closed, and a limit would hide later ones.
 const queue = new ToastQueue<ToastMessage>();
 
-// showUndo shows title, the result of an action, with an Undo button that
-// runs onUndo and closes the toast. It closes itself after 10 s.
-export function showUndo(title: string, onUndo: () => void): void {
-  queue.add(
-    { tone: "result", title, action: { label: "Undo", onAction: onUndo } },
-    { timeout: undoTimeout },
-  );
-}
-
 // showError shows title, what failed, and description, the fix. It stays
 // until the member closes it. An error already showing is not shown again.
 export function showError(title: string, description?: string): void {
   // With no limit, a failure repeated, e.g. every action while offline,
   // would stack copies the member must close one by one.
   const shown = queue.visibleToasts.some(
-    ({ content }) =>
-      content.tone === "error" && content.title === title && content.description === description,
+    ({ content }) => content.title === title && content.description === description,
   );
   if (shown) return;
   // No timeout, so the fix can't vanish before it is read.
-  queue.add({ tone: "error", title, description });
+  queue.add({ title, description });
 }
 
 // closeToasts closes every toast, e.g. on sign-out, when no toast should
@@ -60,16 +45,48 @@ export function closeToasts(): void {
   queue.clear();
 }
 
+// The space the toasts take from the bottom of the window, as a CSS
+// variable, which a scrolling box sets as its scroll-padding-bottom
+// (`scroll-pb-(--toast-space)`), so what scrolls into view, e.g. a focused
+// row, stops above a toast rather than under it (WCAG 2.4.11).
+const toastSpace = "--toast-space";
+
 // Toaster is the region every toast appears in, bottom right (bottom on a
-// phone), above any open dialog or drawer. F6 moves focus into it and
+// phone), above any open dialog or drawer, and above the Undo bar while it
+// shows (--undo-space, features/mail/undo.tsx); toasts that do not fit
+// between there and the window's top scroll. F6 moves focus into it and
 // back. Render it once, in the root.
 export function Toaster(): ReactElement {
+  // React Aria draws the region only while a toast shows.
+  const region = useCallback((element: HTMLElement | null) => {
+    const root = document.documentElement;
+    if (!element) {
+      root.style.removeProperty(toastSpace);
+      return undefined;
+    }
+    const observer = new ResizeObserver(() => {
+      root.style.setProperty(
+        toastSpace,
+        `${window.innerHeight - element.getBoundingClientRect().top}px`,
+      );
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty(toastSpace);
+    };
+  }, []);
   return (
     // z-60, above a dialog's or drawer's scrim (z-50), so a toast shown
-    // before one opened stays in reach.
+    // before one opened stays in reach. At most the window's height less
+    // its 16 px edges and the Undo bar, scrolling past that, so a stack of
+    // errors never reaches above the window, where no Close could be
+    // pressed; 1 px inside its edge, so the scrolling box keeps the toasts'
+    // outline.
     <ToastRegionPrimitive
+      ref={region}
       queue={queue}
-      className="fixed right-4 bottom-4 left-4 z-60 flex flex-col gap-2 rounded-xl outline-none data-focus-visible:focus-ring sm:left-auto sm:w-sm"
+      className="fixed right-4 bottom-[calc(--spacing(4)+var(--undo-space,0px))] left-4 z-60 flex max-h-[calc(100dvh-var(--undo-space,0px)-2*--spacing(4))] flex-col gap-2 overflow-y-auto overscroll-contain rounded-xl p-px outline-none data-focus-visible:focus-ring sm:left-auto sm:w-sm"
     >
       {({ toast }) => (
         <ToastPrimitive
@@ -79,14 +96,15 @@ export function Toaster(): ReactElement {
           // everything in it, the dark theme's tokens. Its focus ring sits
           // inside, on that surface: outside, the dark theme's ring colour
           // would be too light on a light page.
-          className="dark flex items-start gap-3 rounded-xl bg-popover p-3 text-sm text-popover-foreground ring-1 ring-border outline-none data-focus-visible:focus-ring-inset forced-colors:outline-1 forced-colors:outline-solid"
+          // Fades in, so one toast replacing another is seen (DESIGN.md
+          // "Motion"); the duration is the fade's only: with no
+          // transition, the focus ring shows at once.
+          className="dark flex shrink-0 animate-in items-center gap-3 rounded-xl bg-popover p-3 text-sm text-popover-foreground ring-1 ring-border transition-none duration-200 ease-standard fade-in-0 outline-none data-focus-visible:focus-ring-inset forced-colors:outline-1 forced-colors:outline-solid"
         >
-          {toast.content.tone === "error" && (
-            <CircleAlertIcon
-              aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-destructive forced-colors:text-[CanvasText]"
-            />
-          )}
+          <CircleAlertIcon
+            aria-hidden="true"
+            className="size-4 shrink-0 text-destructive forced-colors:text-[CanvasText]"
+          />
           <ToastContentPrimitive className="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5">
             <Text slot="title" className="font-semibold">
               {toast.content.title}
@@ -95,18 +113,6 @@ export function Toaster(): ReactElement {
               <Text slot="description">{toast.content.description}</Text>
             )}
           </ToastContentPrimitive>
-          {toast.content.action && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onPress={() => {
-                toast.content.action?.onAction();
-                queue.close(toast.key);
-              }}
-            >
-              {toast.content.action.label}
-            </Button>
-          )}
           {/* React Aria names it "Close", in the locale the root sets. */}
           <Button slot="close" variant="ghost" size="icon-sm">
             <XIcon aria-hidden="true" />

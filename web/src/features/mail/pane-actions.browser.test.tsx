@@ -70,6 +70,11 @@ function subjectCopy(): Element {
   return copy;
 }
 
+// bar returns the Undo bar, a landmark named Undo.
+function bar() {
+  return page.getByRole("region", { name: "Undo" });
+}
+
 // hold makes api's answers to requests to path wait, each until released
 // in turn, and returns what releases the next and how many wait.
 function hold(path: string): { release: () => void; waiting: () => number } {
@@ -84,8 +89,55 @@ function hold(path: string): { release: () => void; waiting: () => number } {
   return { release: () => waiting.shift()?.(), waiting: () => waiting.length };
 }
 
+// withMessage makes api answer the read of row with one message, so the
+// pane offers Reply.
+function withMessage(row: ConversationRow): void {
+  const fetch = api.fetch;
+  api.fetch = async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const { pathname } = new URL(url, location.href);
+    if (pathname === `/api/v0/conversations/${row.id}`) {
+      const message = {
+        id: "00000000-0000-4000-8000-000000000901",
+        date: row.date,
+        subject: row.subject,
+        preview: "Hello",
+        from: [{ name: "Bo Tan", address: "bo@example.com" }],
+        to: [{ name: "", address: "ana@example.com" }],
+        cc: [],
+        replyTo: [],
+        labelIds: [],
+        spam: false,
+        trash: false,
+        sent: false,
+        starred: false,
+        unread: false,
+        answers: null,
+        attachments: false,
+      };
+      return Response.json({ data: { conversation: row, messages: [message], providerUrl: null } });
+    }
+    if (pathname.includes("/content")) {
+      return Response.json({ data: { remote: "none", attachments: [], bodies: [] } });
+    }
+    return fetch(input, init);
+  };
+}
+
+// press sends a key press to target, as from the keyboard, and returns
+// whether a handler took it.
+function press(target: Element, init: KeyboardEventInit): boolean {
+  const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+  target.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+// The key press that runs Undo, Ctrl+Z, which isShortcut takes on any
+// platform, as it takes Cmd+Z.
+const ctrlZ = { key: "z", code: "KeyZ", ctrlKey: true };
+
 describe("the reading pane's actions", () => {
-  it("archives from the Inbox: back to the list, the next row focused", async () => {
+  it("archives from the Inbox: back to the list, the next row focused, Undo in the bar puts it back", async () => {
     const rows = [conversation(3), conversation(2), conversation(1)];
     const router = await open(rows, 1);
 
@@ -94,7 +146,62 @@ describe("the reading pane's actions", () => {
     await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");
     await expect.element(list().getByRole("row", { name: /Subject 2/ })).not.toBeInTheDocument();
     await expect.element(list().getByRole("row", { name: /Subject 1/ })).toHaveFocus();
+    await expect.element(page.getByText("Archived", { exact: true })).toBeVisible();
+    await expect
+      .poll(() =>
+        page
+          .getByRole("status")
+          .elements()
+          .map((e) => e.textContent),
+      )
+      .toContain("Archived: Subject 2. Find it in All mail.");
     await expect.poll(() => api.actions).toEqual([{ action: "archive", ids: [rows[1].id] }]);
+
+    await userEvent.click(page.getByRole("button", { name: "Undo" }));
+
+    await expect.poll(() => api.actions.at(-1)).toEqual({ action: "changes", ids: [rows[1].id] });
+    await expect.element(list().getByRole("row", { name: /Subject 2/ })).toBeVisible();
+    // Undo puts it back; it opens nothing.
+    expect(router.state.location.pathname).toBe("/mail/inbox");
+    await expect.element(page.getByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the Undo while another conversation opens, and Tab reaches it from the list", async () => {
+    const rows = [conversation(3), conversation(2), conversation(1)];
+    const router = await open(rows, 1);
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await expect.element(list().getByRole("row", { name: /Subject 1/ })).toHaveFocus();
+
+    await userEvent.keyboard("{Tab}");
+    await expect.element(page.getByRole("button", { name: "Undo" })).toHaveFocus();
+
+    await userEvent.click(list().getByRole("row", { name: /Subject 3/ }));
+    await expect.poll(() => router.state.location.pathname).toBe(`/mail/inbox/${rows[0].id}`);
+    await expect.element(page.getByRole("button", { name: "Undo" })).toBeVisible();
+  });
+
+  it("replaces the Undo with the next action's", async () => {
+    const rows = [conversation(3), conversation(2), conversation(1)];
+    await open(rows, 1);
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await userEvent.click(list().getByRole("row", { name: /Subject 3/ }));
+    await userEvent.click(toolbar().getByRole("button", { name: "Delete" }));
+
+    await expect.element(page.getByText("Moved to Trash", { exact: true })).toBeVisible();
+    expect(page.getByText("Archived", { exact: true }).elements()).toHaveLength(0);
+    expect(page.getByRole("button", { name: "Undo" }).elements()).toHaveLength(1);
+  });
+
+  it("deletes an archived conversation from its label, and Undo puts it back archived", async () => {
+    const work = "11111111-1111-4111-8111-111111111111";
+    const rows = [conversation(1, { inbox: false, labelIds: [work] })];
+    await open(rows, 0, "all");
+
+    await userEvent.click(toolbar().getByRole("button", { name: "Delete" }));
+    await userEvent.click(page.getByRole("button", { name: "Undo" }));
+
+    await expect.poll(() => api.actions.at(-1)?.action).toBe("changes");
+    expect(api.conversations[0]).toMatchObject({ trash: false, inbox: false, labelIds: [work] });
   });
 
   it("lists a deleted conversation in Trash, though Trash's first page answers late", async () => {
@@ -119,7 +226,7 @@ describe("the reading pane's actions", () => {
     await expect.element(list().getByRole("row", { name: /Subject 1/ })).toBeVisible();
   });
 
-  it("stars in place, the star pressed", async () => {
+  it("stars in place, with no Undo, the star pressed", async () => {
     const rows = [conversation(1)];
     const router = await open(rows, 0);
 
@@ -129,6 +236,7 @@ describe("the reading pane's actions", () => {
       .element(toolbar().getByRole("button", { name: "Star" }))
       .toHaveAttribute("aria-pressed", "true");
     expect(router.state.location.pathname).toBe(`/mail/inbox/${rows[0].id}`);
+    expect(page.getByRole("button", { name: "Undo" }).elements()).toHaveLength(0);
   });
 
   it("goes back to the list after Mark unread, whatever the list", async () => {
@@ -159,6 +267,7 @@ describe("the reading pane's actions", () => {
     await expect
       .poll(() => api.actions)
       .toEqual([{ action: "spam", ids: [api.conversations[0].id] }]);
+    await expect.element(page.getByText("Reported as spam", { exact: true })).toBeVisible();
   });
 
   it("pins the toolbar while its buttons fit one row, not at large text on a phone", async () => {
@@ -190,6 +299,7 @@ describe("the reading pane's actions", () => {
     await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");
     await expect.element(page.getByText("Couldn't archive the conversation")).toBeVisible();
     await expect.element(list().getByRole("row", { name: /Subject 2/ })).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Undo" })).not.toBeInTheDocument();
   });
 
   it("removes a conversation the provider no longer has, back on the list", async () => {
@@ -321,6 +431,44 @@ describe("the reading pane's actions", () => {
     await expect.element(page.getByRole("heading", { level: 1, name: "Inbox" })).toHaveFocus();
   });
 
+  it("hands focus back to the row it came from after Undo, not to a star", async () => {
+    const rows = [conversation(3), conversation(2), conversation(1)];
+    await open(rows, 1);
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await expect.element(list().getByRole("row", { name: /Subject 1/ })).toHaveFocus();
+
+    await userEvent.keyboard("{Tab}");
+    await expect.element(bar().getByRole("button", { name: "Undo" })).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+
+    await expect.element(list().getByRole("row", { name: /Subject 1/ })).toHaveFocus();
+    // For screen readers, once it has run.
+    await expect
+      .poll(() =>
+        page
+          .getByRole("status")
+          .elements()
+          .map((e) => e.textContent),
+      )
+      .toContain("Undone: Subject 2.");
+  });
+
+  it("hands focus back when a refusal closes the Undo while focus is on it", async () => {
+    const rows = [conversation(3), conversation(2), conversation(1)];
+    await open(rows, 1);
+    const actions = hold("/api/v0/conversations/actions");
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await expect.element(list().getByRole("row", { name: /Subject 1/ })).toHaveFocus();
+    await userEvent.keyboard("{Tab}");
+    await expect.element(bar().getByRole("button", { name: "Undo" })).toHaveFocus();
+
+    api.refuse[rows[1].id] = "failed";
+    actions.release();
+
+    await expect.element(bar()).not.toBeInTheDocument();
+    await expect.element(list().getByRole("row", { name: /Subject 1/ })).toHaveFocus();
+  });
+
   it("stays on the conversation opened since, when a late answer finds the last one gone", async () => {
     const rows = [conversation(2), conversation(1)];
     const router = await open(rows, 0);
@@ -337,11 +485,159 @@ describe("the reading pane's actions", () => {
     expect(router.state.location.pathname).toBe(`/mail/inbox/${rows[1].id}`);
   });
 
+  it("says nothing of an Undo that fails after sign-out", async () => {
+    const rows = [conversation(2), conversation(1)];
+    const router = await open(rows, 0);
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    const changes = hold("/api/v0/conversations/changes");
+    await userEvent.click(bar().getByRole("button", { name: "Undo" }));
+    await expect.poll(changes.waiting).toBe(1);
+
+    clearAccountCache(router.options.context.queryClient);
+    api.failAction = 500;
+    changes.release();
+
+    await expect.poll(() => api.actions.at(-1)?.action).toBe("changes");
+    await new Promise((done) => setTimeout(done, 200));
+    expect(page.getByText("Couldn't undo").query()).toBeNull();
+  });
+
+  it("opens sign-in when an Undo finds the session ended", async () => {
+    const rows = [conversation(2), conversation(1)];
+    const router = await open(rows, 0);
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await expect.poll(() => api.actions).toHaveLength(1);
+    api.signedOut = true;
+
+    await userEvent.click(bar().getByRole("button", { name: "Undo" }));
+
+    await expect.poll(() => router.state.location.pathname).toBe("/sign-in");
+    expect(page.getByText("Couldn't undo").query()).toBeNull();
+  });
+
+  it("docks the Undo bar at the bottom of the list beside the reading pane", async () => {
+    const rows = [conversation(2), conversation(1)];
+    await open(rows, 0, "all");
+
+    // Archive keeps the conversation open in All mail.
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+
+    await expect.element(bar()).toBeVisible();
+    expect(bar().element().closest("main")).toBe(list().element().closest("main"));
+    const box = bar().element().getBoundingClientRect();
+    const undo = bar().getByRole("button", { name: "Undo" }).element().getBoundingClientRect();
+    // The list's width, so Undo sits near the words.
+    expect(box.width).toBeLessThan(500);
+    expect(undo.right).toBeLessThanOrEqual(box.right);
+  });
+
+  it("docks the Undo bar under the open conversation on a phone", async () => {
+    const rows = [conversation(2), conversation(1)];
+    await open(rows, 0, "all", undefined, 390);
+
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+
+    // The list is hidden while the conversation shows; the bar is not.
+    await expect.element(bar()).toBeVisible();
+    expect(bar().element().closest("main")).toBeNull();
+  });
+
   it("hides the pinned toolbar's subject where it would be a few letters, e.g. a phone", async () => {
     await open([conversation(1)], 0, "inbox", undefined, 390);
     expect(getComputedStyle(subjectCopy()).display).toBe("none");
 
     await page.viewport(1440, 900);
     await expect.poll(() => getComputedStyle(subjectCopy()).display).not.toBe("none");
+  });
+});
+
+describe("the Undo bar's keys", () => {
+  it("undoes with Ctrl+Z from inside the conversation", async () => {
+    const rows = [conversation(1)];
+    await open(rows, 0, "all");
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await expect.element(bar()).toBeVisible();
+
+    await userEvent.keyboard("{Control>}z{/Control}");
+
+    await expect.poll(() => api.actions.at(-1)?.action).toBe("changes");
+    await expect.element(bar()).not.toBeInTheDocument();
+    await expect.poll(() => api.conversations[0].inbox).toBe(true);
+  });
+
+  it("leaves Ctrl+Z to the reply editor, Ctrl+Shift+Z, and an open menu, dialog, or sheet", async () => {
+    const rows = [conversation(2), conversation(1)];
+    api = mailApi(rows, [listedAccount(1, "ana@example.com")]);
+    await open(rows, 0, "all");
+    withMessage(rows[0]);
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await expect.element(bar()).toBeVisible();
+
+    expect(press(toolbar().element(), { ...ctrlZ, shiftKey: true })).toBe(false);
+
+    await userEvent.click(toolbar().getByRole("button", { name: "More actions" }));
+    const menu = page.getByRole("menu");
+    await expect.element(menu).toBeVisible();
+    expect(press(menu.element(), ctrlZ)).toBe(false);
+    await userEvent.keyboard("{Escape}");
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    const inside = document.createElement("button");
+    dialog.append(inside);
+    document.body.append(dialog);
+    try {
+      expect(press(inside, ctrlZ)).toBe(false);
+      // A side sheet, e.g. the sidebar's drawer, is a dialog too.
+      dialog.dataset.slot = "sheet";
+      expect(press(inside, ctrlZ)).toBe(false);
+    } finally {
+      dialog.remove();
+    }
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }).last());
+    const message = page.getByRole("textbox", { name: "Message" });
+    await expect.element(message).toHaveFocus();
+    expect(press(message.element(), ctrlZ)).toBe(false);
+
+    expect(api.actions.map((a) => a.action)).toEqual(["archive"]);
+    await expect.element(bar()).toBeVisible();
+  });
+
+  it("leaves Ctrl+Z to the browser with no Undo showing", async () => {
+    await open([conversation(1)], 0);
+
+    expect(press(toolbar().element(), ctrlZ)).toBe(false);
+    expect(api.actions).toEqual([]);
+  });
+
+  it("names the shortcut in Undo's tooltip", async () => {
+    const rows = [conversation(2), conversation(1)];
+    await open(rows, 0);
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await expect.element(list().getByRole("row", { name: /Subject 1/ })).toHaveFocus();
+    // Apple keyboards say Cmd.
+    const key = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "Cmd" : "Ctrl";
+
+    await userEvent.keyboard("{Tab}");
+
+    await expect
+      .poll(() => document.querySelector("[role=tooltip]")?.textContent)
+      .toBe(`Undo (${key}+Z)`);
+    // And which conversation it puts back.
+    await expect
+      .element(bar().getByRole("button", { name: "Undo" }))
+      .toHaveAccessibleDescription(`Archived Subject 2 ${key}+Z`);
+  });
+
+  it("is reached with F6", async () => {
+    const rows = [conversation(1)];
+    await open(rows, 0, "all");
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await expect.element(bar()).toBeVisible();
+
+    await userEvent.keyboard("{F6}");
+
+    await expect.poll(() => bar().element().contains(document.activeElement)).toBe(true);
   });
 });

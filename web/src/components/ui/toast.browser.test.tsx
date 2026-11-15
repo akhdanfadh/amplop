@@ -4,28 +4,22 @@ import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { Button } from "./button";
 import { Sheet, SheetTitle } from "./sheet";
-import { pointAway, pointTo } from "@/test/pointer";
-import { closeToasts, showError, showUndo, Toaster } from "./toast";
-
-const undoTimeout = 10_000;
+import { closeToasts, showError, Toaster } from "./toast";
 
 // Counts the toasts on screen now, without waiting.
 function toasts(): number {
   return document.querySelectorAll("[role=alertdialog]").length;
 }
 
+// toastSpace returns the space the toasts take, as Toaster sets it.
+function toastSpace(): string {
+  return document.documentElement.style.getPropertyValue("--toast-space");
+}
+
 // Moves the fake clock by ms and lets React draw what changed.
 async function wait(ms: number): Promise<void> {
   vi.advanceTimersByTime(ms);
   await new Promise((resolve) => requestAnimationFrame(resolve));
-}
-
-// shown waits until the toast saying text is on screen and its timer
-// runs, which React Aria starts in an effect after drawing the toast; a
-// clock moved before that would not count.
-async function shown(text: string): Promise<void> {
-  await expect.element(page.getByText(text)).toBeVisible();
-  await expect.poll(() => vi.getTimerCount()).toBeGreaterThan(0);
 }
 
 // Host has a button that opens a drawer, beside the toast region.
@@ -56,58 +50,7 @@ afterEach(() => {
 });
 
 describe("Toaster", () => {
-  it("closes an Undo toast after 10 seconds", async () => {
-    await render(
-      <>
-        <Button>Elsewhere</Button>
-        <Toaster />
-      </>,
-    );
-    // A pointer left over the region by an earlier test would pause it.
-    await userEvent.hover(page.getByRole("button", { name: "Elsewhere" }));
-    showUndo("Conversation archived", () => {});
-    await shown("Conversation archived");
-
-    await wait(undoTimeout - 1_000);
-    expect(toasts()).toBe(1);
-    await wait(1_000);
-    expect(toasts()).toBe(0);
-  });
-
-  it("closes an Undo toast with its time left once the pointer leaves", async () => {
-    await render(
-      <>
-        <Button>Elsewhere</Button>
-        <Toaster />
-      </>,
-    );
-    await userEvent.hover(page.getByRole("button", { name: "Elsewhere" }));
-    showUndo("Conversation archived", () => {});
-    await shown("Conversation archived");
-    await wait(4_000);
-    const toast = page.getByText("Conversation archived").element();
-    pointTo(toast);
-    await wait(60_000);
-    expect(toasts()).toBe(1);
-
-    pointAway(toast);
-    await wait(5_000);
-    expect(toasts()).toBe(1);
-    await wait(2_000);
-    expect(toasts()).toBe(0);
-  });
-
-  it("keeps an Undo toast while the pointer is over it", async () => {
-    await render(<Toaster />);
-    showUndo("Conversation archived", () => {});
-    await shown("Conversation archived");
-    pointTo(page.getByText("Conversation archived").element());
-
-    await wait(undoTimeout * 2);
-    expect(toasts()).toBe(1);
-  });
-
-  it("keeps an Undo toast while focus is in it, which F6 moves to", async () => {
+  it("is reached by F6, its region taking focus", async () => {
     await render(
       <>
         <Button>Archive</Button>
@@ -115,26 +58,66 @@ describe("Toaster", () => {
       </>,
     );
     await userEvent.click(page.getByRole("button", { name: "Archive" }));
-    showUndo("Conversation archived", () => {});
-    await shown("Conversation archived");
+    showError("Couldn't archive the conversation");
+    await expect.element(page.getByText("Couldn't archive the conversation")).toBeVisible();
     await userEvent.keyboard("{F6}");
+
     const region = document.activeElement?.closest("[role=region]");
     expect(region).not.toBeNull();
     // The ring shows where focus went: the region itself.
     expect(getComputedStyle(document.activeElement ?? document.body).outlineStyle).toBe("solid");
-
-    await wait(undoTimeout * 2);
-    expect(toasts()).toBe(1);
   });
 
-  it("runs Undo and closes the toast", async () => {
-    const onUndo = vi.fn<() => void>();
+  it("gives scrolling boxes the space the toasts take, until they close", async () => {
     await render(<Toaster />);
-    showUndo("Conversation archived", onUndo);
-    await userEvent.click(page.getByRole("button", { name: "Undo" }));
+    showError("Couldn't archive the conversation");
 
-    expect(onUndo).toHaveBeenCalledOnce();
-    expect(toasts()).toBe(0);
+    await expect.poll(() => Number.parseFloat(toastSpace())).toBeGreaterThan(0);
+    closeToasts();
+    await expect.poll(toastSpace).toBe("");
+  });
+
+  it("stands above the Undo bar while it shows", async () => {
+    // As the Undo bar sets it (features/mail/undo.tsx).
+    document.documentElement.style.setProperty("--undo-space", "100px");
+    try {
+      await render(<Toaster />);
+      showError("Couldn't archive the conversation");
+      const toast = page.getByRole("alertdialog");
+      await expect.element(toast).toBeVisible();
+      const region = toast.element().closest("[role=region]") ?? toast.element();
+      // 16 px above the bar, as above the window's edge without one.
+      expect(window.innerHeight - region.getBoundingClientRect().bottom).toBe(116);
+    } finally {
+      document.documentElement.style.removeProperty("--undo-space");
+    }
+  });
+
+  it("keeps many toasts within the window, each Close scrolled to in turn", async () => {
+    await page.viewport(390, 500);
+    // As the Undo bar sets it (features/mail/undo.tsx).
+    document.documentElement.style.setProperty("--undo-space", "100px");
+    try {
+      await render(<Toaster />);
+      for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
+        showError(`Failure ${n}`, "Check your connection, then try again in a moment.");
+      }
+      await expect.element(page.getByText("Failure 8")).toBeVisible();
+
+      const region = page.getByRole("alertdialog").first().element().closest("[role=region]");
+      if (!(region instanceof HTMLElement)) throw new Error("No toast region.");
+      const box = region.getBoundingClientRect();
+      expect(box.top).toBeGreaterThanOrEqual(0);
+      expect(window.innerHeight - box.bottom).toBe(116);
+      for (const close of page.getByRole("button", { name: "Close" }).elements()) {
+        close.scrollIntoView({ block: "nearest" });
+        const at = close.getBoundingClientRect();
+        const top = document.elementFromPoint(at.x + at.width / 2, at.y + at.height / 2);
+        expect(close.contains(top)).toBe(true);
+      }
+    } finally {
+      document.documentElement.style.removeProperty("--undo-space");
+    }
   });
 
   it("keeps an error toast until it is closed", async () => {

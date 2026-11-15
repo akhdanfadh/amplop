@@ -1,13 +1,25 @@
 import { and, eq, inArray, type Ref } from "@tanstack/db";
 import type { ConversationActionBodyOutput } from "@/api/generated/model/conversationActionBody.zod";
+import type { ConversationChangeOutput } from "@/api/generated/model/conversationChange.zod";
 import type { Conversation } from "./conversations";
 import { isViewPlace, viewPlaces, type Place, type ViewPlace } from "./places";
 
-// Action is what the API can do to conversations, e.g. "star".
+// Action is what the API can do to conversations, e.g. "star", by their
+// provider's own rules.
 export type Action = ConversationActionBodyOutput["action"];
 
-// Request is what the web app asks of conversations: one action.
-export type Request = { action: Action; ids: string[] };
+// ConversationChange is a change of conversations as it is, e.g. an
+// action's undo, which Change Conversations applies.
+export type ConversationChange = ConversationChangeOutput;
+
+// Request is what the web app asks of conversations: one action, or
+// changes, each to its own.
+export type Request = { action: Action; ids: string[] } | { changes: ConversationChange[] };
+
+// idsOf returns the conversations request reaches, each once.
+export function idsOf(request: Request): string[] {
+  return "action" in request ? request.ids : request.changes.flatMap((change) => change.ids);
+}
 
 // The flags a conversation has, all of them, in each view: Starred is the
 // starred conversations of All mail, as List Places counts it. Each list
@@ -71,9 +83,38 @@ const guesses: Readonly<Record<Action, Partial<Conversation>>> = {
 const flags = ["unread", "inbox", "starred", "trash", "allMail", "sent", "spam"] as const;
 
 // guess returns conversation as request leaves it, before the API answers:
-// its action's guess.
+// an action's guess, or its own change as it is.
 export function guess(conversation: Conversation, request: Request): Conversation {
-  return { ...conversation, ...guesses[request.action] };
+  if ("action" in request) return { ...conversation, ...guesses[request.action] };
+  const change = request.changes.find((c) => c.ids.includes(conversation.id));
+  return change ? changed(conversation, change) : conversation;
+}
+
+// changed returns conversation with change applied as it is. All mail
+// follows Spam and Trash: a conversation out of both is in All mail.
+function changed(conversation: Conversation, change: ConversationChange): Conversation {
+  const add = change.add ?? [];
+  const remove = change.remove ?? [];
+  const has = (view: "inbox" | "spam" | "trash") =>
+    !remove.includes(view) && (add.includes(view) || conversation[view]);
+  const [inbox, spam, trash] = [has("inbox"), has("spam"), has("trash")];
+  const labels = add.filter((place) => !isViewPlace(place));
+  return {
+    ...conversation,
+    inbox,
+    spam,
+    trash,
+    allMail:
+      spam !== conversation.spam || trash !== conversation.trash
+        ? !spam && !trash
+        : conversation.allMail,
+    labelIds: [
+      ...conversation.labelIds.filter((label) => !remove.includes(label)),
+      ...labels.filter((label) => !conversation.labelIds.includes(label)),
+    ],
+    starred: change.starred ?? conversation.starred,
+    unread: change.unread ?? conversation.unread,
+  };
 }
 
 // guessedFields returns the fields of after that differ from before, as a

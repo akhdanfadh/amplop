@@ -8,6 +8,7 @@ import { CheckMail } from "./check-mail";
 import { listKey, useRowFocusRequest } from "./focus-request";
 import { ConversationList } from "./list";
 import { MailPanes } from "./panes";
+import { UndoBar } from "./undo";
 import type { Place } from "./places";
 
 // PlaceAccount is the account a place's list is filtered to.
@@ -57,7 +58,8 @@ export function PlacePage({
   });
   // On a phone the open conversation has its own bar, so the place's
   // header leaves the top bar to the wordmark.
-  const hidden = useLayout() === "phone" && pane === "reader";
+  const phone = useLayout() === "phone";
+  const hidden = phone && pane === "reader";
   const header = (
     <PlaceHeader
       name={name}
@@ -68,27 +70,36 @@ export function PlacePage({
     />
   );
 
+  // The Undo bar docks at the bottom of the list, under the row the action
+  // took away, and on a phone, which shows one pane at a time, under
+  // whichever shows, as an action can keep the reader open there; it covers
+  // neither (DESIGN.md "Feedback").
+  const undoBar = <UndoBar fallbackFocus={headingRef} />;
   return (
-    <MailPanes
-      pane={pane}
-      list={
-        <main className="flex h-full flex-col" aria-labelledby="place-heading">
-          {slot ? !hidden && createPortal(header, slot) : !inBar && header}
-          <ConversationList
-            // A new place, account, or attempt is a new list: its own
-            // scroll position, "N new" count, and first load.
-            key={`${place} ${account?.id ?? ""} ${attempt}`}
-            place={place}
-            placeName={ownName}
-            account={account?.id}
-            openId={openId}
-            heading={headingRef}
-            onRetry={() => setAttempt((n) => n + 1)}
-          />
-        </main>
-      }
-      reader={reader}
-    />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <MailPanes
+        pane={pane}
+        list={
+          <main className="flex h-full flex-col" aria-labelledby="place-heading">
+            {slot ? !hidden && createPortal(header, slot) : !inBar && header}
+            <ConversationList
+              // A new place, account, or attempt is a new list: its own
+              // scroll position, "N new" count, and first load.
+              key={`${place} ${account?.id ?? ""} ${attempt}`}
+              place={place}
+              placeName={ownName}
+              account={account?.id}
+              openId={openId}
+              heading={headingRef}
+              onRetry={() => setAttempt((n) => n + 1)}
+            />
+            {!phone && undoBar}
+          </main>
+        }
+        reader={reader}
+      />
+      {phone && undoBar}
+    </div>
   );
 }
 
