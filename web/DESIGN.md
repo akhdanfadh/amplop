@@ -308,8 +308,9 @@ resizing is in ADR031's backlog.
 The URL holds where the member is, never passing state (picked rows,
 unsent text, the compose window). Clicking a conversation adds a history
 entry. Guarded layout routes check access in `beforeLoad` before anything
-draws: `_app` the session, `_app/settings/_admin` the role and two-factor
-authentication, `_auth/_signed-out` that a signed-in member skips sign-in.
+draws: `_app` the session, and sends an administrator without two-factor
+authentication to `/two-factor-setup`; `_app/settings/_admin` the role;
+`_auth/_signed-out` that a signed-in member skips sign-in.
 The addresses the server puts in emails and redirects (`/sign-in`,
 `/verify-email`, `/reset-password`, `/register/complete`, `/security`,
 `/connected-accounts`) always open their page, or old emails break; the
@@ -650,8 +651,9 @@ pull-to-refresh, which would reload the app, never starts.
 - `/settings/<page>` in the same frame with its own sidebar: Back to mail
   (to the exact mail URL), Preferences, Security, Connected accounts, then
   for administrators a "This inbok" heading with Members, Registration,
-  System email. An administrator without two-factor authentication sees
-  that group locked with one line pointing to Security.
+  System email. An administrator without two-factor authentication never
+  sees settings: the server lets their session only set it up, on the
+  signed-out card at `/two-factor-setup`.
 - A page (`SettingsPage`, `SettingsSection`): title, one-sentence lead,
   then sections divided by hairlines, heading and explanation on the left,
   controls on the right, stacked below 512 px of page; content caps at

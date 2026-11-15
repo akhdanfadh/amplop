@@ -1691,16 +1691,21 @@ Authentication responses use Cache-Control: no-store.
 `GET /api/v0/sessions/current` returns the current email, role,
 `totpRequired`, and `emailVerified`. An administrator with confirmed TOTP receives admin access
 and `totpRequired: false`. An administrator without confirmed TOTP receives
-member access and `totpRequired: true`, and its session lives 15 minutes.
+enrollment access and `totpRequired: true`: only the current session,
+sign-out, and the two-factor enrollment operations accept it, every other
+operation answers 403 `totp-required`, and its session lives 15 minutes.
 Finishing enrollment replaces it with a full session. Members always
 receive member access and `totpRequired: false`, whether or not they enable
-TOTP.
+TOTP. Operations declare their level in `accessKey` metadata
+(`session.AccessEnrollment`, `AccessMember`, `AccessAdmin`); missing
+metadata means admin.
 
 Identity reads the current account and factor through the session row in one
 query. A session revoked by finishing two-factor enrollment cannot gain admin
 access from a previous session check. The web app's two-factor page,
 `/settings/security/two-factor`, handles setup, backup codes, and turn-off;
-sign-in shows the code step.
+an administrator without two-factor sees setup alone at
+`/two-factor-setup`; sign-in shows the code step.
 
 `DELETE /api/v0/sessions/current` deletes the checked session and clears its
 cookie, returning HTTP 204. A missing or expired session returns HTTP 401
@@ -1752,9 +1757,9 @@ rather than disabling Secure or changing the cookie name.
 Session rules are constants, not environment settings:
 
 - Idle expiry is 7 days since the stored last-use time; maximum lifetime is
-  30 days from sign-in and is never extended. An administrator's session
-  without confirmed TOTP lives 15 minutes from sign-in instead
-  (`enrollmentSessionLifetime`).
+  30 days from sign-in and is never extended. A session with enrollment
+  access, an administrator's without confirmed TOTP, lives 15 minutes from
+  sign-in instead (`enrollmentSessionLifetime`).
 - Each authenticated request loads the session and current user from
   PostgreSQL. It updates last-use time only when at least an hour has passed
   since the stored value. This reduces writes, not reads.
@@ -1874,12 +1879,12 @@ before the worker tries: the notice is saved either way, and the worker
 reads the settings when it sends. Recovery itself sends nothing and needs
 no encryption keys.
 
-The administrator signs in with the new password and has member access until
-they enroll an authenticator again, on the web app's two-factor page
-(`/settings/security/two-factor`). Finishing the enrollment restores
-administrator access. A sign-in that verified the old password before
-recovery cannot create a session afterward, even if recovery sets the same
-password again.
+The administrator signs in with the new password and gets a 15-minute
+session with enrollment access, which can only set up two-factor
+authentication; the web app opens that setup at once. Finishing the
+enrollment restores administrator access. A sign-in that verified the old
+password before recovery cannot create a session afterward, even if
+recovery sets the same password again.
 
 Recovery leaves `users.deactivated_at` as it is. The web app cannot
 deactivate an administrator, but one deactivated directly in the database

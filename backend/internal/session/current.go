@@ -10,10 +10,12 @@ import (
 )
 
 // Access is a request's allowed or required level, ordered by privilege.
+// AccessEnrollment allows only setting up two-factor authentication.
 type Access int
 
 const (
 	AccessPublic Access = iota
+	AccessEnrollment
 	AccessMember
 	AccessAdmin
 )
@@ -24,7 +26,7 @@ var ErrUnauthenticated = errors.New("unauthenticated")
 var errInvalidRole = errors.New("invalid user role")
 
 // Identity is the current user and the access allowed for this request.
-// An administrator without confirmed TOTP has member access.
+// An administrator without confirmed TOTP has enrollment access.
 type Identity struct {
 	User          account.User
 	Access        Access
@@ -99,12 +101,15 @@ func (s *Service) Current(ctx context.Context, secret string) (Authenticated, er
 		return Authenticated{}, errInvalidRole
 	}
 
-	// Role alone is insufficient; a confirmed factor is also required.
+	// Role alone is insufficient: an administrator without a confirmed
+	// factor may only set one up, because for an administrator the password
+	// alone must not open mail or administration.
 	identity := Identity{User: user, Access: AccessMember, EmailVerified: state.EmailVerified}
 	if user.Role == account.RoleAdmin {
 		identity.TOTPRequired = !state.TOTPConfirmed
-		if state.TOTPConfirmed {
-			identity.Access = AccessAdmin
+		identity.Access = AccessAdmin
+		if !state.TOTPConfirmed {
+			identity.Access = AccessEnrollment
 		}
 	}
 

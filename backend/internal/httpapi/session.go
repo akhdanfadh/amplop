@@ -346,7 +346,7 @@ func registerCurrentSession(api huma.API, handler sessionHandler) {
 		Summary:     "Get Current Session",
 		Tags:        []string{tagSessions},
 		Description: "Returns the signed-in account.",
-		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Metadata:    map[string]any{accessKey: session.AccessEnrollment},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   currentSessionResponses(api),
 	}, handler.handleGetCurrentSession)
@@ -389,7 +389,7 @@ func registerSignOut(api huma.API, handler sessionHandler) {
 		Tags:          []string{tagSessions},
 		Description:   "Ends the current session.",
 		DefaultStatus: http.StatusNoContent,
-		Metadata:      map[string]any{accessKey: session.AccessMember},
+		Metadata:      map[string]any{accessKey: session.AccessEnrollment},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:     signOutResponses(api),
 	}, handler.handleDeleteCurrentSession)

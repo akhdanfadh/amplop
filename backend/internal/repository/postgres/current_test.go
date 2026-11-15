@@ -35,7 +35,7 @@ func TestCurrentPersistence(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, user, current.Identity.User)
-	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.Equal(t, session.AccessEnrollment, current.Identity.Access)
 	assert.True(t, current.Identity.TOTPRequired)
 	assert.Equal(t, now, readSession(t, db, tokenHash).LastUsedAt)
 	assert.Equal(t, now.Add(15*time.Minute), readSession(t, db, tokenHash).ExpiresAt, "an administrator without two-factor gets a short session")
@@ -136,13 +136,13 @@ func TestCurrentConfirmedAccess(t *testing.T) {
 	require.NoError(t, err)
 	current, err = f.sessions.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
-	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.Equal(t, session.AccessEnrollment, current.Identity.Access)
 	assert.True(t, current.Identity.TOTPRequired)
 
 	_, err = f.conn.Exec(t.Context(), "DELETE FROM user_totp WHERE user_id=$1", f.state.UserID)
 	require.NoError(t, err)
 	current, err = f.sessions.Current(t.Context(), issued.Secret)
 	require.NoError(t, err)
-	assert.Equal(t, session.AccessMember, current.Identity.Access)
+	assert.Equal(t, session.AccessEnrollment, current.Identity.Access)
 	assert.True(t, current.Identity.TOTPRequired)
 }

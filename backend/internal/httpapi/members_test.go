@@ -184,7 +184,7 @@ func TestMembersUnexpectedFailure(t *testing.T) {
 // Only an administrator with two-factor authentication reaches the service.
 func TestMembersAccess(t *testing.T) {
 	member := &fakeSessions{identity: session.Identity{User: account.User{ID: 7, Role: account.RoleMember}, Access: session.AccessMember}}
-	pending := &fakeSessions{identity: session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessMember, TOTPRequired: true}}
+	pending := &fakeSessions{identity: session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessEnrollment, TOTPRequired: true}}
 	for _, op := range []struct{ name, method, path string }{
 		{"list", http.MethodGet, "/members"},
 		{"deactivate", http.MethodPost, "/members/7/deactivate"},

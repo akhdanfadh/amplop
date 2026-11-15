@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement, type ReactNode } from "react";
+import { useEffect, type ReactElement } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ShieldCheckIcon } from "lucide-react";
@@ -36,9 +36,8 @@ export function TwoFactorBadge(): ReactElement {
 // TwoFactorSection is Security's two-factor row: on, with the backup codes
 // left and a way to manage it, or off, with a way to set it up. An
 // unfinished setup counts as off: setting up continues it. The setup and
-// the changes happen on the two-factor page. children follow the state,
-// e.g. why an administrator must set it up.
-export function TwoFactorSection({ children }: { children?: ReactNode }): ReactElement {
+// the changes happen on the two-factor page.
+export function TwoFactorSection(): ReactElement {
   const client = useQueryClient();
   const navigate = useNavigate();
   const status = useGetTOTPStatus({ query: { networkMode: "always" } });
@@ -83,7 +82,6 @@ export function TwoFactorSection({ children }: { children?: ReactNode }): ReactE
       {current && !on && (
         <>
           <p>{offState}</p>
-          {children}
           <Link
             to="/settings/security/two-factor"
             className={cn(buttonVariants({ variant: "default" }), "whitespace-normal")}

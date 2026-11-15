@@ -165,10 +165,10 @@ sessions and code-attempt records stay unchanged. Cancellation needs no code
 or encryption key because it cannot remove a confirmed authenticator.
 
 `DELETE /api/v0/totp/enrollment` exposes cancellation to signed-in members
-and administrators. It takes no body and selects the owner from the checked
-session. HTTP 200 returns `data.status: "off"`, `data.backupCodesLeft: 0`, and
-`data.backupCodesWaiting: false`,
-including repeated cancellation. A confirmed authenticator returns HTTP 409
+and administrators, including a session with enrollment access. It takes no
+body and selects the owner from the checked session. HTTP 200 returns
+`data.status: "off"`, `data.backupCodesLeft: 0`, and
+`data.backupCodesWaiting: false`, including repeated cancellation. A confirmed authenticator returns HTTP 409
 (`totp-already-on`); a missing account returns HTTP 401. Responses use
 `Cache-Control: no-store` and do not replace the session cookie.
 
@@ -266,7 +266,9 @@ codes it activated. Errors never return a cookie.
 ### Status
 
 Session identity grants admin access only to an administrator with
-confirmed TOTP. An administrator without it gets member access and
+confirmed TOTP. An administrator without it gets enrollment access, which
+allows only the current session, sign-out, and the enrollment operations
+(status, start, code check, waiting codes, finish, cancel), and
 `totpRequired: true` (ADR020). Members keep
 member access and `totpRequired: false` regardless of TOTP. Identity reads
 account and factor metadata through the session row in one snapshot,
@@ -308,8 +310,8 @@ It also prunes that user's expired challenges. This shares enrollment's lock
 order: a password-only session created first is revoked by finishing enrollment;
 a sign-in waiting behind finishing sees the confirmed factor instead. The
 lock also reads the role: an administrator without a confirmed factor gets
-a session that lives 15 minutes, like an enrollment; finishing enrollment
-replaces it with a full session.
+a session that lives 15 minutes, like an enrollment, and has enrollment
+access only; finishing enrollment replaces it with a full session.
 
 `session.CodeSignIn.Complete` locates the challenge owner, reserves a shared
 code attempt, and calls `CompleteSignIn`. Its locked callback checks expiry,

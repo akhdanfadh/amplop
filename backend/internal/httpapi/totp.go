@@ -92,7 +92,7 @@ func registerTOTPStatus(api huma.API, handler totpHandler) {
 		Path:        totpPath,
 		Summary:     "Get Two-Factor Status",
 		Tags:        []string{tagTwoFactor},
-		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Metadata:    map[string]any{accessKey: session.AccessEnrollment},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   totpStatusResponses(api),
 	}, handler.handleGetTOTPStatus)
@@ -196,7 +196,7 @@ func registerTOTPEnrollment(api huma.API, handler totpHandler) {
 		Tags:          []string{tagTwoFactor},
 		Description:   "Checks the password, then starts an enrollment, or returns the same secret for one started in the last 15 minutes. An older unfinished enrollment is replaced. Both answer 201. Wrong passwords count toward the sign-in limits.",
 		DefaultStatus: http.StatusCreated,
-		Metadata:      map[string]any{accessKey: session.AccessMember},
+		Metadata:      map[string]any{accessKey: session.AccessEnrollment},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:     totpEnrollmentResponses(api),
 	}, handler.handleStartTOTPEnrollment)
@@ -263,7 +263,7 @@ func registerTOTPCancellation(api huma.API, handler totpHandler) {
 		Tags:          []string{tagTwoFactor},
 		Description:   "Removes an unfinished enrollment and any backup codes waiting. Repeating cancellation succeeds if no factor remains. Confirmed authenticators cannot be canceled; existing sessions stay signed in.",
 		DefaultStatus: http.StatusOK,
-		Metadata:      map[string]any{accessKey: session.AccessMember},
+		Metadata:      map[string]any{accessKey: session.AccessEnrollment},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:     totpCancellationResponses(api),
 	}, handler.handleCancelTOTPEnrollment)
@@ -310,7 +310,7 @@ func registerTOTPCodeCheck(api huma.API, handler totpHandler) {
 		Summary:     "Check Two-Factor Enrollment Code",
 		Tags:        []string{tagTwoFactor},
 		Description: "Checks a code from the authenticator being set up, then returns ten backup codes and a one-time token. Two-factor authentication stays off until Finish Two-Factor Enrollment.",
-		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Metadata:    map[string]any{accessKey: session.AccessEnrollment},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   totpCodeCheckResponses(api),
 	}, handler.handleCheckTOTPEnrollmentCode)
@@ -394,8 +394,8 @@ func registerTOTPFinish(api huma.API, handler totpHandler) {
 		Path:        totpPath + "/enrollment/finish",
 		Summary:     "Finish Two-Factor Enrollment",
 		Tags:        []string{tagTwoFactor},
-		Description: "Call once the person has saved the backup codes. Turns two-factor authentication on, makes the codes active, ends all existing sessions, and issues a replacement session cookie.",
-		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Description: "Call once the person has saved the backup codes. Turns two-factor authentication on, makes the codes active, ends all existing sessions, and issues a replacement session cookie. An administrator's 15-minute enrollment session becomes a full one.",
+		Metadata:    map[string]any{accessKey: session.AccessEnrollment},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   totpFinishResponses(api),
 	}, handler.handleFinishTOTPEnrollment)
@@ -441,7 +441,7 @@ func registerWaitingBackupCodes(api huma.API, handler totpHandler) {
 		Summary:     "Show Waiting Backup Codes",
 		Tags:        []string{tagTwoFactor},
 		Description: "Checks the password, then returns an unfinished enrollment's backup codes, waiting to be saved, with a new one-time token that replaces the earlier one. Codes made by Replace Backup Codes are never shown again: once two-factor authentication is on, only a fresh authenticator code makes new ones. Wrong passwords count toward the sign-in limits.",
-		Metadata:    map[string]any{accessKey: session.AccessMember},
+		Metadata:    map[string]any{accessKey: session.AccessEnrollment},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   waitingBackupCodesResponses(api),
 	}, handler.handleShowWaitingTOTPBackupCodes)

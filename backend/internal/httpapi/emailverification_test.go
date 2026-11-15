@@ -62,13 +62,13 @@ func postRedeem(api *API, body, cookie string) *httptest.ResponseRecorder {
 // Email verification request
 // ========================
 
-// Any signed-in user can ask, including an administrator still enrolling
-// TOTP; the link is for the session's own account.
+// Any signed-in member or administrator can ask; the link is for the
+// session's own account.
 func TestRequestEmailVerification(t *testing.T) {
 	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
 		t.Run(string(role), func(t *testing.T) {
 			service := &fakeEmailVerification{address: "alice@example.com"}
-			api := New(discard, Services{EmailVerification: service, Session: memberSessions(role)})
+			api := New(discard, Services{EmailVerification: service, Session: confirmedSessions(role)})
 
 			response := sendSessionRequest(api, http.MethodPost, "/account/email-verification")
 

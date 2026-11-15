@@ -20,6 +20,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AuthSignedOutRouteImport } from './routes/_auth/_signed-out'
 import { Route as AuthResetPasswordRouteImport } from './routes/_auth/reset-password'
 import { Route as AuthSetupRouteImport } from './routes/_auth/setup'
+import { Route as AuthTwoFactorSetupRouteImport } from './routes/_auth/two-factor-setup'
 import { Route as AuthVerifyEmailRouteImport } from './routes/_auth/verify-email'
 import { Route as AppMailComposeRouteImport } from './routes/_app/_mail/compose'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
@@ -90,6 +91,11 @@ const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
 const AuthSetupRoute = AuthSetupRouteImport.update({
   id: '/setup',
   path: '/setup',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthTwoFactorSetupRoute = AuthTwoFactorSetupRouteImport.update({
+  id: '/two-factor-setup',
+  path: '/two-factor-setup',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthVerifyEmailRoute = AuthVerifyEmailRouteImport.update({
@@ -208,6 +214,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRouteWithChildren
   '/reset-password': typeof AuthResetPasswordRoute
   '/setup': typeof AuthSetupRoute
+  '/two-factor-setup': typeof AuthTwoFactorSetupRoute
   '/verify-email': typeof AuthVerifyEmailRoute
   '/compose': typeof AppMailComposeRoute
   '/settings/connected-accounts': typeof AppSettingsConnectedAccountsRoute
@@ -235,6 +242,7 @@ export interface FileRoutesByTo {
   '/security': typeof SecurityRoute
   '/reset-password': typeof AuthResetPasswordRoute
   '/setup': typeof AuthSetupRoute
+  '/two-factor-setup': typeof AuthTwoFactorSetupRoute
   '/verify-email': typeof AuthVerifyEmailRoute
   '/compose': typeof AppMailComposeRoute
   '/settings': typeof AppSettingsIndexRoute
@@ -266,6 +274,7 @@ export interface FileRoutesById {
   '/_auth/_signed-out': typeof AuthSignedOutRouteWithChildren
   '/_auth/reset-password': typeof AuthResetPasswordRoute
   '/_auth/setup': typeof AuthSetupRoute
+  '/_auth/two-factor-setup': typeof AuthTwoFactorSetupRoute
   '/_auth/verify-email': typeof AuthVerifyEmailRoute
   '/_app/': typeof AppIndexRoute
   '/_app/_mail/compose': typeof AppMailComposeRoute
@@ -298,6 +307,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/reset-password'
     | '/setup'
+    | '/two-factor-setup'
     | '/verify-email'
     | '/compose'
     | '/settings/connected-accounts'
@@ -325,6 +335,7 @@ export interface FileRouteTypes {
     | '/security'
     | '/reset-password'
     | '/setup'
+    | '/two-factor-setup'
     | '/verify-email'
     | '/compose'
     | '/settings'
@@ -355,6 +366,7 @@ export interface FileRouteTypes {
     | '/_auth/_signed-out'
     | '/_auth/reset-password'
     | '/_auth/setup'
+    | '/_auth/two-factor-setup'
     | '/_auth/verify-email'
     | '/_app/'
     | '/_app/_mail/compose'
@@ -463,6 +475,13 @@ declare module '@tanstack/react-router' {
       path: '/setup'
       fullPath: '/setup'
       preLoaderRoute: typeof AuthSetupRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/two-factor-setup': {
+      id: '/_auth/two-factor-setup'
+      path: '/two-factor-setup'
+      fullPath: '/two-factor-setup'
+      preLoaderRoute: typeof AuthTwoFactorSetupRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/verify-email': {
@@ -709,6 +728,7 @@ interface AuthRouteChildren {
   AuthSignedOutRoute: typeof AuthSignedOutRouteWithChildren
   AuthResetPasswordRoute: typeof AuthResetPasswordRoute
   AuthSetupRoute: typeof AuthSetupRoute
+  AuthTwoFactorSetupRoute: typeof AuthTwoFactorSetupRoute
   AuthVerifyEmailRoute: typeof AuthVerifyEmailRoute
   AuthRegisterCompleteRoute: typeof AuthRegisterCompleteRoute
 }
@@ -717,6 +737,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthSignedOutRoute: AuthSignedOutRouteWithChildren,
   AuthResetPasswordRoute: AuthResetPasswordRoute,
   AuthSetupRoute: AuthSetupRoute,
+  AuthTwoFactorSetupRoute: AuthTwoFactorSetupRoute,
   AuthVerifyEmailRoute: AuthVerifyEmailRoute,
   AuthRegisterCompleteRoute: AuthRegisterCompleteRoute,
 }

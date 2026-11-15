@@ -15,10 +15,10 @@ const (
 	maxLifetime   = 30 * 24 * time.Hour
 	touchInterval = time.Hour
 
-	// enrollmentSessionLifetime is the fixed lifetime of an administrator's
-	// session without confirmed TOTP. Product policy: enough to set up
-	// two-factor authentication, matching the enrollment's own limit; a
-	// forgotten one ends soon.
+	// enrollmentSessionLifetime is the fixed lifetime of a session with
+	// enrollment access. Product policy: enough to set up two-factor
+	// authentication, matching the enrollment's own limit; a forgotten one
+	// ends soon.
 	enrollmentSessionLifetime = 15 * time.Minute
 )
 

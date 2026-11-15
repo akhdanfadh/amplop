@@ -23,6 +23,13 @@ address, answers 403 with type fetch-destination-refused; the browser's
 Sec-Fetch-Dest header says what it loads the answer as. Requests without
 that header, e.g. from the command line, pass.
 
+An administrator without two-factor authentication gets a 15-minute session
+that can only set it up: Get Current Session, Sign Out, Get Two-Factor
+Status, Start Two-Factor Enrollment, Check Two-Factor Enrollment Code, Show
+Waiting Backup Codes, Finish Two-Factor Enrollment, and Cancel Two-Factor
+Enrollment. Every other operation that needs a session answers 403 with type
+totp-required.
+
 Writes that need no session, such as sign-in, also limit how fast one client
 can send each of them. Past that limit they answer 429 with type
 too-many-requests and Retry-After, before reading the request body.

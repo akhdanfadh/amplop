@@ -12,7 +12,9 @@ function AuthLayout(): ReactElement {
   return (
     <div className="flex min-h-svh flex-col bg-muted">
       <OfflineBanner />
-      <div className="flex flex-1 flex-col items-center justify-center px-4 py-10 sm:px-6">
+      {/* A container, so content laid out by its width, e.g. the setup's
+          phone link, measures the window here as on a settings page. */}
+      <div className="@container flex flex-1 flex-col items-center justify-center px-4 py-10 sm:px-6">
         <div className="flex w-full max-w-sm flex-col gap-6">
           <Link
             to="/"

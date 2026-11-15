@@ -12,9 +12,6 @@ export const twoFactorAbout =
 // Security's two-factor row while it is off.
 export const offState = "Off. Signing in needs only your password.";
 
-// Why an administrator must set it up, under the off state.
-export const adminReason = "Administrators need it to manage this inbok.";
-
 // Prompt replacement before the last backup codes run out.
 const lowBackupCodes = 2;
 
@@ -53,6 +50,18 @@ export const manageLink = "Manage two-factor authentication";
 // Setting it up: the row's way in while it is off, and the two-factor
 // page's title during the setup.
 export const setUpName = "Set up two-factor authentication";
+
+// The setup card's lead, for an administrator whose session may do nothing
+// else until two-factor authentication is on.
+export const adminSetupLead =
+  "Administrators sign in with a code from an authenticator app as well as a password.";
+
+// The way out of the setup card, under it.
+export const cardSignOut = {
+  question: "Not now?",
+  label: "Sign out",
+  working: "Signing out...",
+};
 
 // What Security reports after the two-factor page changed something.
 export const changeNotice = {

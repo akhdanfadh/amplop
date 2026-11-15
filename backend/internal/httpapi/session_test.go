@@ -134,12 +134,17 @@ func requestAuthenticated(api *API, method, path, body string) *httptest.Respons
 	return response
 }
 
-// memberSessions returns a fake signed in with member access: a member, or an
-// administrator who still needs TOTP.
+// memberSessions returns a fake signed in without two-factor: a member with
+// member access, or an administrator who still needs TOTP, with enrollment
+// access.
 func memberSessions(role account.Role) *fakeSessions {
+	access := session.AccessMember
+	if role == account.RoleAdmin {
+		access = session.AccessEnrollment
+	}
 	return &fakeSessions{identity: session.Identity{
 		User:   account.User{ID: 42, Email: "alice@example.com", Role: role},
-		Access: session.AccessMember, TOTPRequired: role == account.RoleAdmin,
+		Access: access, TOTPRequired: role == account.RoleAdmin,
 	}}
 }
 
@@ -489,7 +494,7 @@ func TestSignOutOpenAPI(t *testing.T) {
 	require.NotNil(t, path.Delete)
 	op := path.Delete
 	assert.Equal(t, "deleteCurrentSession", op.OperationID)
-	assert.Equal(t, session.AccessMember, op.Metadata[accessKey])
+	assert.Equal(t, session.AccessEnrollment, op.Metadata[accessKey])
 	assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, op.Security)
 	assert.Empty(t, op.Parameters, "the cookie is documented by the security scheme")
 	require.Len(t, op.Responses, 3)
@@ -509,7 +514,7 @@ func TestListSessions(t *testing.T) {
 	signedIn := time.Date(2026, time.October, 30, 9, 0, 0, 0, time.UTC)
 	for _, role := range []account.Role{account.RoleMember, account.RoleAdmin} {
 		t.Run(string(role), func(t *testing.T) {
-			service := memberSessions(role)
+			service := confirmedSessions(role)
 			service.reference = checkedReference(t)
 			service.listed = []session.Listed{
 				{
@@ -624,7 +629,7 @@ func TestDeleteSessionRouting(t *testing.T) {
 // ========================
 
 func TestDeleteOtherSessions(t *testing.T) {
-	service := memberSessions(account.RoleAdmin)
+	service := confirmedSessions(account.RoleAdmin)
 	service.reference = checkedReference(t)
 	service.endedOthers = 2
 

@@ -20,7 +20,7 @@ import (
 
 func TestAccessGate(t *testing.T) {
 	member := session.Identity{User: account.User{ID: 42, Role: account.RoleMember}, Access: session.AccessMember}
-	adminPending := session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessMember, TOTPRequired: true}
+	adminPending := session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessEnrollment, TOTPRequired: true}
 	admin := session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessAdmin}
 	for _, c := range []struct {
 		name     string
@@ -35,9 +35,12 @@ func TestAccessGate(t *testing.T) {
 		{"no cookie", session.AccessMember, member, "", nil, http.StatusUnauthorized, "unauthenticated"},
 		{"expired", session.AccessMember, member, "expired-secret", session.ErrUnauthenticated, http.StatusUnauthorized, "unauthenticated"},
 		{"member", session.AccessMember, member, "test-secret", nil, http.StatusOK, ""},
-		{"pending admin as member", session.AccessMember, adminPending, "test-secret", nil, http.StatusOK, ""},
+		{"pending admin", session.AccessEnrollment, adminPending, "test-secret", nil, http.StatusOK, ""},
+		{"member at enrollment level", session.AccessEnrollment, member, "test-secret", nil, http.StatusOK, ""},
+		{"pending admin as member", session.AccessMember, adminPending, "test-secret", nil, http.StatusForbidden, "totp-required"},
 		{"member as admin", session.AccessAdmin, member, "test-secret", nil, http.StatusForbidden, "forbidden"},
-		{"pending admin", session.AccessAdmin, adminPending, "test-secret", nil, http.StatusForbidden, "totp-required"},
+		{"pending admin as admin", session.AccessAdmin, adminPending, "test-secret", nil, http.StatusForbidden, "totp-required"},
+		{"member cannot claim enrollment", session.AccessMember, session.Identity{User: member.User, Access: session.AccessEnrollment}, "test-secret", nil, http.StatusForbidden, "forbidden"},
 		{"admin", session.AccessAdmin, admin, "test-secret", nil, http.StatusOK, ""},
 		{"omitted defaults admin", nil, adminPending, "test-secret", nil, http.StatusForbidden, "totp-required"},
 		{"wrong metadata type", "public", adminPending, "test-secret", nil, http.StatusForbidden, "totp-required"},
@@ -169,7 +172,7 @@ func TestAccessDeclarations(t *testing.T) {
 	}
 	current := doc.Paths["/sessions/current"].Get
 	require.NotNil(t, current)
-	assert.Equal(t, session.AccessMember, current.Metadata[accessKey])
+	assert.Equal(t, session.AccessEnrollment, current.Metadata[accessKey])
 	assert.Equal(t, "getCurrentSession", current.OperationID)
 	assert.Equal(t, []map[string][]string{{sessionSecuritySchemeName: {}}}, current.Security)
 	require.Len(t, current.Responses, 3)

@@ -16,7 +16,7 @@ import { SessionList } from "@/features/sessions/list";
 import { SettingsPage } from "@/features/settings/page";
 import { pageName, securityLead } from "@/features/settings/text";
 import { TwoFactorSection } from "@/features/totp/security-section";
-import { adminReason, changeNotice } from "@/features/totp/text";
+import { changeNotice } from "@/features/totp/text";
 
 const unauthorized = 401;
 
@@ -108,11 +108,7 @@ function Security(): ReactElement {
             locked={!ready || signOut.isPending}
             onWritingChange={setSending}
           />
-          <TwoFactorSection>
-            {current.data.data.totpRequired && (
-              <p className="text-sm text-muted-foreground">{adminReason}</p>
-            )}
-          </TwoFactorSection>
+          <TwoFactorSection />
           <SessionList
             locked={!ready || signOut.isPending}
             paused={signOut.isPending}

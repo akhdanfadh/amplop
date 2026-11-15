@@ -77,8 +77,9 @@ type Shown =
 // and its content, for the page to place, e.g. in a settings page.
 // onFinished runs once two-factor is on here, after the session cookie it
 // replaced is cleared from the cache; onCanceled once the setup is
-// canceled; onError receives every request's failure, e.g. for the page to
-// sign out on a 401.
+// canceled; onError receives every request's failure, the status reads'
+// included, e.g. for the page to sign out on a 401. Pass a stable onError,
+// e.g. from useCallback: a failed read is reported again when it changes.
 export function useSetupFlow({
   email,
   onFinished,
@@ -117,6 +118,11 @@ export function useSetupFlow({
     query: { enabled: !finish.isPending, networkMode: "always" },
   });
   const stage = setupStage(status.data?.data, status.error, shown);
+  // A read fails as a write does, e.g. with a 401 once the session ended,
+  // also when an earlier read's status is still shown.
+  useEffect(() => {
+    if (status.error) onError(status.error);
+  }, [status.error, onError]);
   // A status that changes to one asking for the password, e.g. the setup
   // expired, makes what this page holds stale: drop it. Only a change counts:
   // a step's own answer reaches this page a render before the status it
@@ -333,7 +339,11 @@ function QrStep({
         <h2 ref={headingRef} tabIndex={-1} className="font-medium outline-none">
           {qrText.scan}
         </h2>
-        <div className="w-fit rounded-md border bg-white p-1">
+        {/* Centred under a signed-out card's centred title, and on a narrow
+            settings page, where it nearly fills the width (@max-lg, below
+            512 px of page, as sections stack). A wide settings page keeps
+            the left edge of the text around it. */}
+        <div className="w-fit rounded-md border bg-white p-1 in-data-[slot=card]:self-center @max-lg:self-center">
           <QRCodeSVG
             value={enrollment.uri}
             title={qrText.image}
@@ -342,9 +352,10 @@ function QrStep({
           />
         </div>
         {/* Only where the page is narrow or the pointer a finger, as on the
-            phone that holds the app. Narrow is the page width below which
-            settings sections stack (@lg, 512 px of page): the page caps at
-            720 px, so a wider breakpoint would never hide it. */}
+            phone that holds the app. Narrow is the width below which
+            settings sections stack (@lg, 512 px of the settings page or the
+            signed-out layout): the settings page caps at 720 px, so a wider
+            breakpoint would never hide it there. */}
         <a href={enrollment.uri} className={cn(lineLink, "@lg:pointer-fine:hidden")}>
           {qrText.addToApp}
         </a>

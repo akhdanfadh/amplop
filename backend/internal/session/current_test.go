@@ -77,7 +77,7 @@ func TestCurrent(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, user, current.Identity.User)
-	assert.Equal(t, AccessMember, current.Identity.Access, "an admin without TOTP acts as a member")
+	assert.Equal(t, AccessEnrollment, current.Identity.Access, "an admin without TOTP may only set it up")
 	assert.True(t, current.Identity.TOTPRequired)
 	assert.NotZero(t, current.Session)
 	assert.Equal(t, issued.State.ID, current.Session.ID())
@@ -217,7 +217,7 @@ func TestCurrentAccess(t *testing.T) {
 		access    Access
 		required  bool
 	}{
-		{"admin off", account.RoleAdmin, false, false, AccessMember, true},
+		{"admin off", account.RoleAdmin, false, false, AccessEnrollment, true},
 		{"admin on", account.RoleAdmin, true, true, AccessAdmin, false},
 		{"member off", account.RoleMember, false, true, AccessMember, false},
 		{"member on", account.RoleMember, true, false, AccessMember, false},

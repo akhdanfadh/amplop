@@ -107,7 +107,8 @@ func postTOTP(api *API, path, body, origin string, auth totpAuth) *httptest.Resp
 	return response
 }
 
-// enrollingSessions is an administrator without two-factor, enrolling.
+// enrollingSessions is an administrator without two-factor, whose session
+// has enrollment access.
 func enrollingSessions() *fakeSessions {
 	return memberSessions(account.RoleAdmin)
 }
@@ -679,6 +680,48 @@ func TestFinishBackupReplacementProblems(t *testing.T) {
 	}
 }
 
+// ========================
+// Enrollment access
+// ========================
+
+// An administrator without two-factor may call the enrollment operations and
+// nothing else that needs a session.
+func TestEnrollmentAccess(t *testing.T) {
+	services := Services{
+		Session: enrollingSessions(), TOTP: &fakeTOTP{}, Enrollment: &fakeEnrollment{},
+		Backups: &fakeBackups{}, Disabler: &fakeDisabler{},
+	}
+	api := New(discard, services)
+	allowed := []struct{ method, path, body string }{
+		{http.MethodGet, "/sessions/current", ""},
+		{http.MethodDelete, "/sessions/current", ""},
+		{http.MethodGet, "/totp", ""},
+		{http.MethodPost, "/totp", `{"password":"pw"}`},
+		{http.MethodPost, "/totp/enrollment/code", `{"code":"012345"}`},
+		{http.MethodPost, "/totp/enrollment/finish", `{"token":"t"}`},
+		{http.MethodPost, "/totp/backup-codes/waiting", `{"password":"pw"}`},
+		{http.MethodDelete, "/totp/enrollment", ""},
+	}
+	for _, c := range allowed {
+		response := requestAuthenticated(api, c.method, c.path, c.body)
+		assert.NotEqual(t, http.StatusForbidden, response.Code, "%s %s: %s", c.method, c.path, response.Body.String())
+	}
+	refused := []struct{ method, path, body string }{
+		{http.MethodPost, "/totp/backup-codes", `{"code":"012345"}`},
+		{http.MethodPost, "/totp/backup-codes/finish", `{"token":"t"}`},
+		{http.MethodPost, "/totp/disable", `{"code":"012345"}`},
+		{http.MethodGet, "/sessions", ""},
+		{http.MethodDelete, "/sessions/others", ""},
+		{http.MethodPost, "/account/email-verification", ""},
+		{http.MethodGet, "/members", ""},
+	}
+	for _, c := range refused {
+		response := requestAuthenticated(api, c.method, c.path, c.body)
+		require.Equal(t, http.StatusForbidden, response.Code, "%s %s: %s", c.method, c.path, response.Body.String())
+		assert.Contains(t, response.Body.String(), `"type":"/api/v0/problems/totp-required"`, "%s %s", c.method, c.path)
+	}
+}
+
 func TestTOTPOpenAPI(t *testing.T) {
 	doc := New(discard, Services{}).api.OpenAPI()
 	for _, c := range []struct {
@@ -687,12 +730,12 @@ func TestTOTPOpenAPI(t *testing.T) {
 		statuses         []int
 		setsCookie       bool
 	}{
-		{http.MethodGet, "/totp", "getTOTPStatus", session.AccessMember, []int{200, 401}, false},
-		{http.MethodPost, "/totp", "startTOTPEnrollment", session.AccessMember, []int{201, 401, 409, 422, 429}, false},
-		{http.MethodPost, "/totp/enrollment/code", "checkTOTPEnrollmentCode", session.AccessMember, []int{200, 401, 409, 422, 429}, false},
-		{http.MethodPost, "/totp/enrollment/finish", "finishTOTPEnrollment", session.AccessMember, []int{200, 401, 409}, true},
-		{http.MethodPost, "/totp/backup-codes/waiting", "showWaitingTOTPBackupCodes", session.AccessMember, []int{200, 401, 409, 422, 429}, false},
-		{http.MethodDelete, "/totp/enrollment", "cancelTOTPEnrollment", session.AccessMember, []int{200, 401, 409}, false},
+		{http.MethodGet, "/totp", "getTOTPStatus", session.AccessEnrollment, []int{200, 401}, false},
+		{http.MethodPost, "/totp", "startTOTPEnrollment", session.AccessEnrollment, []int{201, 401, 409, 422, 429}, false},
+		{http.MethodPost, "/totp/enrollment/code", "checkTOTPEnrollmentCode", session.AccessEnrollment, []int{200, 401, 409, 422, 429}, false},
+		{http.MethodPost, "/totp/enrollment/finish", "finishTOTPEnrollment", session.AccessEnrollment, []int{200, 401, 409}, true},
+		{http.MethodPost, "/totp/backup-codes/waiting", "showWaitingTOTPBackupCodes", session.AccessEnrollment, []int{200, 401, 409, 422, 429}, false},
+		{http.MethodDelete, "/totp/enrollment", "cancelTOTPEnrollment", session.AccessEnrollment, []int{200, 401, 409}, false},
 		{http.MethodPost, "/totp/backup-codes", "replaceTOTPBackupCodes", session.AccessMember, []int{200, 401, 409, 422, 429}, false},
 		{http.MethodPost, "/totp/backup-codes/finish", "finishTOTPBackupCodeReplacement", session.AccessMember, []int{200, 401, 409}, false},
 		{http.MethodPost, "/totp/disable", "disableTOTP", session.AccessMember, []int{200, 401, 403, 409, 422, 429}, false},

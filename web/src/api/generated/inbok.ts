@@ -4969,7 +4969,7 @@ export const getFinishTOTPEnrollmentUrl = () => {
 }
 
 /**
- * Call once the person has saved the backup codes. Turns two-factor authentication on, makes the codes active, ends all existing sessions, and issues a replacement session cookie.
+ * Call once the person has saved the backup codes. Turns two-factor authentication on, makes the codes active, ends all existing sessions, and issues a replacement session cookie. An administrator's 15-minute enrollment session becomes a full one.
  * @summary Finish Two-Factor Enrollment
  */
 export const finishTOTPEnrollment = async (backupCodesToken: BackupCodesToken, options?: Parameters<typeof transport>[1]): Promise<ResponseTotpStatus> => {

@@ -185,17 +185,18 @@ to the address. Each guard runs in `beforeLoad`, before anything draws,
 and reads the session through `readSession` (`features/auth/guard.ts`),
 which uses the cached session when a page has read it:
 
-| Layout route           | Pages                                       | Guard                                                                                             |
-| ---------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `_app`                 | Everything signed in                        | No session: `/sign-in?redirect=<address>`, which returns there after sign-in                      |
-| `_app/_mail`           | `/mail/<place>`, `/mail/outbox`, `/compose` | None; the mail frame                                                                              |
-| `_app/settings`        | `/settings/<page>`                          | None; the settings frame                                                                          |
-| `_app/settings/_admin` | Members, Registration, System email         | A member gets Page not found; an administrator without two-factor authentication goes to Security |
-| `_auth`                | Signed-out pages                            | None; the wordmark over one column                                                                |
-| `_auth/_signed-out`    | Sign-in, Forgot password, Register          | A signed-in member goes to `/`; a failed check shows the page                                     |
+| Layout route           | Pages                                       | Guard                                                                                                                                                 |
+| ---------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_app`                 | Everything signed in                        | No session: `/sign-in?redirect=<address>`, which returns there after sign-in; an administrator without two-factor authentication: `/two-factor-setup` |
+| `_app/_mail`           | `/mail/<place>`, `/mail/outbox`, `/compose` | None; the mail frame                                                                                                                                  |
+| `_app/settings`        | `/settings/<page>`                          | None; the settings frame                                                                                                                              |
+| `_app/settings/_admin` | Members, Registration, System email         | A member gets Page not found                                                                                                                          |
+| `_auth`                | Signed-out pages                            | None; the wordmark over one column                                                                                                                    |
+| `_auth/_signed-out`    | Sign-in, Forgot password, Register          | A signed-in member goes to `/`; a failed check shows the page                                                                                         |
 
-`/` opens `/mail/inbox`, or Security for an administrator without
-two-factor authentication. Pages emailed links open (`/verify-email`,
+`/` opens `/mail/inbox`. `/two-factor-setup` sits in `_auth` with its own
+guard: no session goes to sign-in, a session with two-factor on to `/`.
+Pages emailed links open (`/verify-email`,
 `/reset-password`, `/register/complete`) keep their addresses and sit in
 `_auth` without a guard, so they work signed in or out. The server's
 other entry addresses, `/security` (the recovery notice) and
@@ -333,8 +334,11 @@ deactivated. Ask your administrator." The code step answers a 403 the same
 way as an ended challenge: the form gives way to an end screen, "This
 sign-in has ended", with the server's reason and "Start sign-in again".
 An uncertain response offers a session check before another attempt.
-Administrators without confirmed TOTP land on `/settings/security` to
-enroll. Members reach the same page through the settings sidebar.
+An administrator without confirmed TOTP gets a session the server lets only
+set it up, for 15 minutes, so `_app` sends them to `/two-factor-setup`, a
+signed-out card with the setup and "Not now? Sign out" under it. A 401
+there, e.g. when the 15 minutes run out, opens sign-in, which leads back
+to the card. Members reach two-factor through Security.
 
 Security (`/settings/security`) is a settings page with three sections:
 Email address, Two-factor authentication, and Signed-in browsers. The
@@ -351,9 +355,9 @@ status read that finds it off returns to Security the same way, e.g. after a
 turn-off whose answer was lost, or one from another tab. A 401 from any read
 or write on the page clears the account cache and opens sign-in.
 
-Setup (`useSetupFlow`) follows the server's status, so a reload or another
-tab lands on the right step; only what the server shows after the password
-stays in memory:
+Setup (`useSetupFlow`, the same steps on the page and on the card) follows
+the server's status, so a reload or another tab lands on the right step;
+only what the server shows after the password stays in memory:
 
 1. The password, before any secret shows, with what the step needs as the
    field's description; a hidden username field lets a password manager
@@ -490,9 +494,9 @@ finish.
 Administrators with confirmed TOTP see "This inbok" in the settings
 sidebar: Members, Registration, and System email (`/settings/members`,
 `/settings/registration`, `/settings/system-email`). An administrator
-without it sees the group locked with a line pointing to Security. If
-access is lost after a page loaded, the page says the settings are for
-administrators with two-factor authentication, with a link to Security for
+without it never reaches settings: `_app` sends them to
+`/two-factor-setup`. If access is lost after a page loaded, the page says
+the settings are for administrators with two-factor authentication, with a link to Security for
 an administrator. A 401 from a save or test signs out; a 403 reads access
 again.
 

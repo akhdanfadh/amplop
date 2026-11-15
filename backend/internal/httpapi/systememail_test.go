@@ -339,7 +339,7 @@ func TestSystemEmailUnexpectedFailure(t *testing.T) {
 // TOTP are refused before any service runs.
 func TestSystemEmailAccess(t *testing.T) {
 	member := &fakeSessions{identity: session.Identity{User: account.User{ID: 7, Role: account.RoleMember}, Access: session.AccessMember}}
-	pending := &fakeSessions{identity: session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessMember, TOTPRequired: true}}
+	pending := &fakeSessions{identity: session.Identity{User: account.User{ID: 42, Role: account.RoleAdmin}, Access: session.AccessEnrollment, TOTPRequired: true}}
 	for _, op := range []struct {
 		name, method, path, body string
 	}{
