@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { stepEnter } from "@/components/step-change";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 
 // SignedOutPage is a signed-out page's content (DESIGN.md "Settings and
@@ -39,9 +40,7 @@ export function SignedOutPage({
   // The header is keyed by title and the content by step, so each enters
   // afresh when it changes. The header's entrance waits for a new title:
   // adding the class to a header that stays would start it anyway, e.g.
-  // when a check finds the form under the same title. Reduced motion keeps
-  // the fade without the rise (src/styles.css).
-  const enter = "animate-in fade-in-0 slide-in-from-bottom-1 duration-200 ease-standard";
+  // when a check finds the form under the same title.
 
   // A new page, or a new step on it, replaces what had focus, so a screen
   // reader starts from its title. A layout effect runs before the content's
@@ -58,7 +57,7 @@ export function SignedOutPage({
           // Keyed by title: a step that keeps its title, e.g. a check
           // that finds the form, keeps its header still.
           key={title}
-          className={cn("justify-items-center text-center", retitled && enter)}
+          className={cn("justify-items-center text-center", retitled && stepEnter)}
         >
           <h1
             ref={titleRef}
@@ -74,7 +73,7 @@ export function SignedOutPage({
         {children && (
           <CardContent
             key={`${step}-content`}
-            className={cn("flex flex-col gap-6", stepped && enter)}
+            className={cn("flex flex-col gap-6", stepped && stepEnter)}
           >
             {children}
           </CardContent>
