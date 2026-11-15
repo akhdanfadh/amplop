@@ -167,6 +167,43 @@ func TestEmulatorProfile(t *testing.T) {
 	assert.NotZero(t, profile.HistoryId)
 }
 
+// Label changes and Trash answer as Gmail does, which inbok's patch makes
+// so (observed on inbok's test account, 2026-11-15): without history IDs.
+func TestEmulatorActions(t *testing.T) {
+	e, cfg := startTestEmulator(t)
+	token := connect(t, e, cfg, "alex@example.com")
+	service, err := gmail.NewService(t.Context(),
+		option.WithTokenSource(cfg.TokenSource(t.Context(), token)),
+		option.WithEndpoint(e.BaseURL.String()+"/"))
+	require.NoError(t, err)
+	threads := service.Users.Threads
+	m1, err := service.Users.Messages.Get("me", "m1").Format("minimal").Context(t.Context()).Do()
+	require.NoError(t, err)
+	// answered fails on a message answered with a history ID.
+	answered := func(name string, messages []*gmail.Message) {
+		t.Helper()
+		for _, message := range messages {
+			assert.Zero(t, message.HistoryId, name)
+		}
+	}
+
+	spam, err := threads.Modify("me", m1.ThreadId, &gmail.ModifyThreadRequest{AddLabelIds: []string{"SPAM"}, RemoveLabelIds: []string{"INBOX"}}).Context(t.Context()).Do()
+	require.NoError(t, err)
+	answered("spam", spam.Messages)
+
+	trashed, err := threads.Trash("me", m1.ThreadId).Context(t.Context()).Do()
+	require.NoError(t, err)
+	answered("trash", trashed.Messages)
+
+	untrashed, err := threads.Untrash("me", m1.ThreadId).Context(t.Context()).Do()
+	require.NoError(t, err)
+	answered("untrash", untrashed.Messages)
+
+	starred, err := service.Users.Messages.Modify("me", "m1", &gmail.ModifyMessageRequest{AddLabelIds: []string{"STARRED"}}).Context(t.Context()).Do()
+	require.NoError(t, err)
+	answered("star", []*gmail.Message{starred})
+}
+
 // Gmail calls check the access token's scopes; without this the emulator
 // would answer any token (strict_scopes in the seed).
 func TestEmulatorScopes(t *testing.T) {

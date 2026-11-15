@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,6 +39,71 @@ func TestActionOnNewest(t *testing.T) {
 		}
 	}
 	assert.Equal(t, []Action{ActionUnread, ActionStar}, onNewest)
+}
+
+// An update the provider answers without a version is written at the
+// account's version read before the calls; one with a version keeps it.
+func TestApplyVersion(t *testing.T) {
+	storage := &fakeActionStorage{threads: []Thread{
+		{ID: idA, AccountID: 1, ProviderThreadID: "ta"},
+		{ID: idB, AccountID: 1, ProviderThreadID: "tb"},
+	}}
+	provider := &fakeProvider{version: 7, versioned: map[string]bool{"tb": true}}
+	actions := newTestActions(storage, fakeAccess{}, provider)
+
+	_, err := actions.Apply(t.Context(), 42, ActionArchive, []uuid.UUID{idA, idB})
+
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []mailsync.MessageUpdate{
+		{ProviderID: "ta-m", Seen: true, Version: 7},
+		{ProviderID: "tb-m", Seen: true, Version: 9},
+	}, storage.written[1])
+}
+
+// Each account's version is read once, before any of its changes, and
+// written with that account's updates only.
+func TestApplyVersionPerAccount(t *testing.T) {
+	storage := &fakeActionStorage{threads: []Thread{
+		{ID: idA, AccountID: 1, ProviderThreadID: "ta"},
+		{ID: idB, AccountID: 2, ProviderThreadID: "tb"},
+		{ID: idC, AccountID: 1, ProviderThreadID: "tc"},
+	}}
+	provider := &fakeProvider{versions: map[string]uint64{"token-1": 7, "token-2": 8}}
+	actions := newTestActions(storage, fakeAccess{}, provider)
+
+	_, err := actions.Apply(t.Context(), 42, ActionArchive, []uuid.UUID{idA, idB, idC})
+
+	require.NoError(t, err)
+	for _, token := range []string{"token-1", "token-2"} {
+		var mine []string
+		for _, call := range provider.order {
+			if strings.HasSuffix(call, "/"+token) {
+				mine = append(mine, call)
+			}
+		}
+		require.NotEmpty(t, mine, token)
+		assert.Equal(t, "version/"+token, mine[0], token)
+		assert.NotContains(t, mine[1:], "version/"+token, token)
+	}
+	assert.ElementsMatch(t, []mailsync.MessageUpdate{
+		{ProviderID: "ta-m", Seen: true, Version: 7}, {ProviderID: "tc-m", Seen: true, Version: 7},
+	}, storage.written[1])
+	assert.Equal(t, []mailsync.MessageUpdate{{ProviderID: "tb-m", Seen: true, Version: 8}}, storage.written[2])
+}
+
+// An account whose version cannot be read changes nothing: every thread is
+// refused as failed, before any call.
+func TestApplyVersionFails(t *testing.T) {
+	storage := &fakeActionStorage{threads: []Thread{{ID: idA, AccountID: 1, ProviderThreadID: "ta"}}}
+	provider := &fakeProvider{versionErr: errors.New("gmail down")}
+	actions := newTestActions(storage, fakeAccess{}, provider)
+
+	applied, err := actions.Apply(t.Context(), 42, ActionArchive, []uuid.UUID{idA})
+
+	require.NoError(t, err)
+	assert.Equal(t, []Refusal{{ID: idA, Reason: ReasonFailed}}, applied.Refused)
+	assert.Empty(t, provider.calls)
+	assert.Empty(t, storage.written)
 }
 
 // The provider is handed each thread as storage listed it, with its newest
@@ -131,13 +197,34 @@ type fakeProvider struct {
 	calls    []string
 	threads  []Thread
 	inFlight int
-	most     int
+	// version is each account's version, or versions by token; versionErr
+	// its error; versioned names the threads answered at version 9 rather
+	// than none.
+	version    uint64
+	versions   map[string]uint64
+	versionErr error
+	versioned  map[string]bool
+	// order is every call in the order made: "version/<token>" and
+	// "change/<token>".
+	order []string
+	most  int
+}
+
+func (f *fakeProvider) Version(_ context.Context, token connectedaccount.AccessToken) (uint64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.order = append(f.order, "version/"+token.Value())
+	if version, ok := f.versions[token.Value()]; ok {
+		return version, f.versionErr
+	}
+	return f.version, f.versionErr
 }
 
 func (f *fakeProvider) ChangeThread(ctx context.Context, token connectedaccount.AccessToken, thread Thread, action Action) ([]mailsync.MessageUpdate, error) {
 	threadID := thread.ProviderThreadID
 	f.mu.Lock()
 	f.calls = append(f.calls, fmt.Sprint(token.Value(), "/", threadID, "/", action))
+	f.order = append(f.order, "change/"+token.Value())
 	f.threads = append(f.threads, thread)
 	f.inFlight++
 	f.most = max(f.most, f.inFlight)
@@ -157,7 +244,11 @@ func (f *fakeProvider) ChangeThread(ctx context.Context, token connectedaccount.
 	if err := f.errs[threadID]; err != nil {
 		return nil, err
 	}
-	return []mailsync.MessageUpdate{{ProviderID: threadID + "-m", Seen: true}}, nil
+	update := mailsync.MessageUpdate{ProviderID: threadID + "-m", Seen: true}
+	if f.versioned[threadID] {
+		update.Version = 9
+	}
+	return []mailsync.MessageUpdate{update}, nil
 }
 
 func newTestActions(storage *fakeActionStorage, access fakeAccess, provider *fakeProvider) *ActionService {

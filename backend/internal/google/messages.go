@@ -63,17 +63,36 @@ const (
 // Position returns the account's current history ID, from
 // users.getProfile, as decimal text.
 func (c *Client) Position(ctx context.Context, token connectedaccount.AccessToken) (string, error) {
-	service, err := c.gmail(ctx, token)
+	historyID, err := c.historyID(ctx, token)
 	if err != nil {
 		return "", err
+	}
+	return formatHistoryID(historyID), nil
+}
+
+// Version returns the account's current history ID, from
+// users.getProfile: every change made after it carries a greater one, as
+// a mailbox's history IDs grow in time order and a message's historyId is
+// the ID of its last change (Gmail's users.history.list and Message
+// references).
+func (c *Client) Version(ctx context.Context, token connectedaccount.AccessToken) (uint64, error) {
+	return c.historyID(ctx, token)
+}
+
+// historyID returns the account's current history ID, from
+// users.getProfile.
+func (c *Client) historyID(ctx context.Context, token connectedaccount.AccessToken) (uint64, error) {
+	service, err := c.gmail(ctx, token)
+	if err != nil {
+		return 0, err
 	}
 	profile, err := retry(ctx, c, func() (*gmail.Profile, error) {
 		return service.Users.GetProfile(gmailUser).Fields(profileFields).Context(ctx).Do()
 	})
 	if err != nil {
-		return "", redactGmail(err)
+		return 0, redactGmail(err)
 	}
-	return formatHistoryID(profile.HistoryId), nil
+	return profile.HistoryId, nil
 }
 
 // ListMessages returns one page of the account's messages Gmail received

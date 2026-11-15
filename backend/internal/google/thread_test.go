@@ -2,7 +2,6 @@ package google
 
 import (
 	"net/http"
-	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,9 +18,9 @@ var t1 = conversation.Thread{ProviderThreadID: "t1", ProviderNewestMessageID: "m
 
 // Star and Mark unread change the newest message, every other action every
 // message of the thread, and the answer is where each message it names
-// stands after, as inbok keeps it, at a newest version past the one
-// before: Trash by Gmail's own rules, which take the thread out of the
-// inbox and back.
+// stands after, as inbok keeps it, without a version, as Gmail answers:
+// Trash by Gmail's own rules, which take the thread out of the inbox and
+// back.
 func TestChangeThread(t *testing.T) {
 	client, token := startMailbox(t, nil, []googleemulator.Message{
 		{ID: "m1", ThreadID: "t1", Mailbox: alexMailbox, From: "a@example.com", Subject: "Hi", LabelIDs: []string{labelInbox, labelUnread}},
@@ -31,7 +30,6 @@ func TestChangeThread(t *testing.T) {
 	inbox := []string{labelInbox}
 
 	// In order, as each starts from where the one before left the thread.
-	var last uint64
 	for _, step := range []struct {
 		action conversation.Action
 		want   []mailsync.MessageUpdate
@@ -50,11 +48,7 @@ func TestChangeThread(t *testing.T) {
 		updates, err := client.ChangeThread(t.Context(), token, t1, step.action)
 
 		require.NoError(t, err, string(step.action))
-		changed, versions := versionless(updates)
-		assert.ElementsMatch(t, step.want, changed, string(step.action))
-		// A message the call left as it was keeps its version.
-		assert.Greater(t, slices.Max(versions), last, string(step.action))
-		last = slices.Max(versions)
+		assert.ElementsMatch(t, step.want, updates, string(step.action))
 	}
 
 	// The other thread is untouched.
@@ -81,13 +75,13 @@ func TestChangeThreadNewestRequest(t *testing.T) {
 	client, _ := stubGmail(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/gmail/v1/users/me/messages/m2/modify", r.URL.Path)
 		assert.Equal(t, messageFields, r.URL.Query().Get("fields"))
-		gmailMessage(w, map[string]any{"id": "m2", "labelIds": []string{labelInbox, labelStarred}, "historyId": "7"})
+		gmailMessage(w, map[string]any{"id": "m2", "labelIds": []string{labelInbox, labelStarred}})
 	})
 
 	updates, err := client.ChangeThread(t.Context(), connectedaccount.NewAccessToken("access-1"), t1, conversation.ActionStar)
 
 	require.NoError(t, err)
-	assert.Equal(t, []mailsync.MessageUpdate{{ProviderID: "m2", Version: 7, MailboxProviderIDs: []string{labelInbox}, Seen: true, Flagged: true}}, updates)
+	assert.Equal(t, []mailsync.MessageUpdate{{ProviderID: "m2", MailboxProviderIDs: []string{labelInbox}, Seen: true, Flagged: true}}, updates)
 }
 
 // The request asks for each message's labels only, and Gmail's answer
@@ -114,4 +108,23 @@ func TestChangeThreadBusy(t *testing.T) {
 
 	require.ErrorIs(t, err, mailsync.ErrProviderBusy)
 	assert.Len(t, pauses.all(), retryAttempts-1)
+}
+
+// The account's version is its history ID, and a change after it carries
+// a greater one.
+func TestVersion(t *testing.T) {
+	client, token := startMailbox(t, nil, []googleemulator.Message{
+		{ID: "m1", ThreadID: "t1", Mailbox: alexMailbox, From: "a@example.com", Subject: "Hi", LabelIDs: []string{labelInbox, labelUnread}},
+	})
+
+	before, err := client.Version(t.Context(), token)
+	require.NoError(t, err)
+	_, err = client.ChangeThread(t.Context(), token, t1, conversation.ActionRead)
+	require.NoError(t, err)
+	fetched, err := client.Messages(t.Context(), token, 1, []string{"m1"})
+	require.NoError(t, err)
+	require.Len(t, fetched.Messages, 1)
+
+	assert.Positive(t, before)
+	assert.Greater(t, fetched.Messages[0].Version, before)
 }

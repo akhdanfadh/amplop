@@ -2861,14 +2861,17 @@ from that is not in Sent, else the newest, which `Derive` records as
 writes only what Gmail answers (ADR031, "Mail actions as built"):
 
 1. It finds the member's threads; another ID is refused `not-found`.
-2. Per account, at once, it takes an access token, then calls
-   `threads.modify`, `threads.trash`, or `threads.untrash` for each
-   thread, or `messages.modify` for its newest message, four at a time
-   per request, for at most 7 seconds and never into the last 3 of the
-   request's 10, which the writes and answer keep.
-   `google.Client.ChangeThread` holds Gmail's rules, which action
-   is which label, and returns each message's labels as Gmail answered,
-   at Gmail's version.
+2. Per account, at once, it takes an access token and reads the
+   account's version (`Version`, Gmail's history ID from
+   `users.getProfile`), then calls `threads.modify`, `threads.trash`, or
+   `threads.untrash` for each thread, or `messages.modify` for its newest
+   message, four at a time per request, for at most 7 seconds and never into the last 3
+   of the request's 10, which the writes and answer keep.
+   `google.Client.ChangeThread` holds Gmail's rules, which action is
+   which label, and returns each message's labels as Gmail answered.
+   Gmail answers without history IDs, so each update is written at the
+   version read before the calls: below any change made after them,
+   which the next poll then writes over it.
 3. It writes those labels through `UpdateSyncedMail`
    (`UpdateMessages`), which derives the conversations again and
    keeps the sync state; a label made since the last sync is left out

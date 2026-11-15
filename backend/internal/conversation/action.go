@@ -158,12 +158,19 @@ type accountAccess interface {
 
 // ThreadChanger applies actions at a provider.
 type ThreadChanger interface {
+	// Version returns the account's current change number at the
+	// provider, as [mailsync.Message.Version] counts: every change made
+	// after it carries a greater one. [ActionService.Apply] reads it before
+	// its first [ThreadChanger.ChangeThread] of the account.
+	Version(ctx context.Context, token connectedaccount.AccessToken) (uint64, error)
+
 	// ChangeThread applies action to thread at the provider: to its newest
 	// message, [Thread.ProviderNewestMessageID], when action is
 	// [Action.OnNewest], else to every message of the thread.
 	// It returns where each changed message stands after, as the provider
-	// answers, and an error wrapping [ErrNotFound] when the provider no
-	// longer has the thread or that message.
+	// answers, with [mailsync.MessageUpdate.Version] zero when the provider
+	// answers without one, and an error wrapping [ErrNotFound] when the
+	// provider no longer has the thread or that message.
 	ChangeThread(ctx context.Context, token connectedaccount.AccessToken, thread Thread, action Action) ([]mailsync.MessageUpdate, error)
 }
 
@@ -302,6 +309,15 @@ type accountOutcome struct {
 // calling it within budget, writes what it answered with ctx, and records
 // each thread's result in outcome. It returns an error only for a failure
 // of the whole action, e.g. storage's or ctx ending.
+//
+// DESIGN: an update the provider answers without a version, as Gmail's
+// label changes and Trash do, is written at the account's version read
+// before the calls. Every version inbok held then was read earlier, so the
+// write passes as not late, unless a poll stores a newer one meanwhile and
+// wins; a change made after that version carries a greater one, so the
+// poll that brings it still writes over this one, and the action's own
+// record comes again with that poll (ADR031, "Mail actions as built",
+// checkpoint 7a).
 func (a *ActionService) applyAccount(ctx, budget context.Context, action Action, outcome *accountOutcome) error {
 	outcome.refused = make(map[uuid.UUID]Reason)
 	refuseAll := func(reason Reason) {
@@ -325,7 +341,19 @@ func (a *ActionService) applyAccount(ctx, budget context.Context, action Action,
 		return err
 	}
 
-	// 2. Change each thread at the provider.
+	// 2. Read the account's version before any change, which the changes'
+	// unversioned updates are written at.
+	version, err := a.provider.Version(budget, token)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err != nil {
+		a.logger.WarnContext(ctx, "conversation action failed at provider", "account_id", outcome.accountID, "err", err)
+		refuseAll(ReasonFailed)
+		return nil
+	}
+
+	// 3. Change each thread at the provider.
 	updates := make([][]mailsync.MessageUpdate, len(outcome.threads))
 	reasons := make([]Reason, len(outcome.threads))
 	group := errgroup.Group{}
@@ -352,7 +380,7 @@ func (a *ActionService) applyAccount(ctx, budget context.Context, action Action,
 		return err
 	}
 
-	// 3. Write every changed thread's messages at once, with ctx: the
+	// 4. Write every changed thread's messages at once, with ctx: the
 	// provider has them now, whether or not the budget has run out.
 	var written []mailsync.MessageUpdate
 	for i, thread := range outcome.threads {
@@ -361,7 +389,12 @@ func (a *ActionService) applyAccount(ctx, budget context.Context, action Action,
 			continue
 		}
 		outcome.changed = append(outcome.changed, thread.ID)
-		written = append(written, updates[i]...)
+		for _, update := range updates[i] {
+			if update.Version == 0 {
+				update.Version = version
+			}
+			written = append(written, update)
+		}
 	}
 	if len(outcome.changed) == 0 {
 		return nil

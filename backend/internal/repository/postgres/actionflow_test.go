@@ -65,10 +65,19 @@ func TestActionFlow(t *testing.T) {
 	}
 	assert.False(t, messages["m3"].Seen)
 
-	// And the poll that follows applies Gmail's record of the action,
-	// which inbok already holds.
+	// And the poll that follows applies Gmail's record of the action:
+	// the labels inbok already holds, now at the record's own version,
+	// past the one the action wrote them at.
 	runPoll(t, mailsync.NewPoll(f.db, f.google, f.access, time.Now), account.ID)
-	assert.Equal(t, messages, stored.messages(t, account.ID))
+	polled := stored.messages(t, account.ID)
+	for id, message := range messages {
+		after := polled[id]
+		if id != "m3" {
+			assert.Greater(t, after.Version, message.Version, id)
+		}
+		after.Version = message.Version
+		assert.Equal(t, message, after, id)
+	}
 
 	// When the member undoes the archive.
 	row = apply(conversation.ActionArchive.Opposite())
@@ -126,9 +135,15 @@ func TestActionFlowLate(t *testing.T) {
 
 	// When an action reads the thread at Gmail, the member then stars it
 	// elsewhere, a poll brings the star in, and only then is the action's
-	// answer written.
+	// answer written, at the version read before the call, as
+	// conversation.ActionService writes it.
+	version, err := f.google.Version(t.Context(), token)
+	require.NoError(t, err)
 	answer, err := f.google.ChangeThread(t.Context(), token, conversation.Thread{ProviderThreadID: "t1"}, conversation.ActionRead)
 	require.NoError(t, err)
+	for i := range answer {
+		answer[i].Version = version
+	}
 	_, err = f.gmailAt(t, account.ID).Users.Messages.Modify("me", "m1", &gmail.ModifyMessageRequest{AddLabelIds: []string{"STARRED"}}).Do()
 	require.NoError(t, err)
 	runPoll(t, mailsync.NewPoll(f.db, f.google, f.access, time.Now), account.ID)

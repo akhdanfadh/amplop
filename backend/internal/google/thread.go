@@ -12,11 +12,16 @@ import (
 )
 
 // threadFields and messageFields are the parts of a thread, or of one
-// message, an action's answer is read for: each message's labels and the
-// version they are of (Gmail's performance tips, "Partial response").
+// message, an action's answer is read for: each message's labels (Gmail's
+// performance tips, "Partial response").
+//
+// NOTE: Gmail answers a label change and Trash without history IDs,
+// whatever the fields ask for (seen on inbok's test account, 2026-11-15),
+// so an action's updates carry no version; the action writes them at
+// [Client.Version] read before.
 const (
-	threadFields  = "messages(id,labelIds,historyId)"
-	messageFields = "id,labelIds,historyId"
+	threadFields  = "messages(id,labelIds)"
+	messageFields = "id,labelIds"
 )
 
 // labelChange is the labels a threads.modify or messages.modify adds and
@@ -44,9 +49,10 @@ var labelChanges = map[conversation.Action]labelChange{
 // ChangeThread applies action to thread: to its newest message with
 // messages.modify when action is [conversation.Action.OnNewest], else to
 // every message with threads.modify, or threads.trash and threads.untrash
-// for Trash. It returns each changed message's labels as Gmail answers, as
-// inbok keeps them, and an error wrapping [conversation.ErrNotFound] when
-// Gmail no longer has the thread or that message.
+// for Trash. It returns each changed message's labels as Gmail answers, as inbok keeps
+// them, without a version, and an error wrapping
+// [conversation.ErrNotFound] when Gmail no longer has the thread or that
+// message.
 func (c *Client) ChangeThread(ctx context.Context, token connectedaccount.AccessToken, thread conversation.Thread, action conversation.Action) ([]mailsync.MessageUpdate, error) {
 	service, err := c.gmail(ctx, token)
 	if err != nil {
@@ -102,7 +108,7 @@ func (c *Client) ChangeThread(ctx context.Context, token connectedaccount.Access
 		if message.Id == "" {
 			return nil, errGmailAnswer
 		}
-		update := mailsync.MessageUpdate{ProviderID: message.Id, Version: message.HistoryId}
+		update := mailsync.MessageUpdate{ProviderID: message.Id}
 		update.MailboxProviderIDs, update.Seen, update.Flagged = labelState(message.LabelIds)
 		updates = append(updates, update)
 	}
