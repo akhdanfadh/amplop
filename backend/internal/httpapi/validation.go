@@ -27,6 +27,7 @@ const emailFormat = "idn-email"
 // Required fields also carry a private marker for the missing field name.
 func configureValidation() {
 	inputMessages[validation.MsgExpectedInteger] = "Enter a whole number."
+	inputMessages[msgExpectedPlace] = placeMessage
 	original := huma.ErrorFormatter
 	huma.ErrorFormatter = func(format string, args ...any) string {
 		if len(args) != 1 {

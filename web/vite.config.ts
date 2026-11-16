@@ -116,9 +116,9 @@ export default defineConfig({
     },
     // Orval's generated code breaks three rules by design: it casts its own
     // types, defines a header helper inside each write function, and turns
-    // each value of a repeated query parameter, e.g. Search Messages' from,
-    // into a string with String() whatever its type. Only these rules are
-    // off there; every other rule and the type check still apply.
+    // each value of a repeated query parameter, e.g. Search Conversations'
+    // from, into a string with String() whatever its type. Only these rules
+    // are off there; every other rule and the type check still apply.
     overrides: [
       {
         files: ["src/api/generated/**"],

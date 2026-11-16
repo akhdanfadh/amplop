@@ -42,28 +42,42 @@ JOIN connected_accounts a ON a.id = m.connected_account_id
 WHERE a.user_id = @owner
 ORDER BY m.id;
 
--- name: ListMailboxIDsWithRoles :many
--- The member's mailboxes with any of the roles, in every account.
+-- name: ListRoleMailboxes :many
+-- The member's mailboxes that have a role, in every account.
+SELECT b.id, b.role::text AS role
+FROM mailboxes b
+JOIN connected_accounts a ON a.id = b.connected_account_id
+WHERE a.user_id = @owner
+    AND b.role IS NOT NULL
+ORDER BY b.id;
+
+-- name: ListMemberLabelIDs :many
+-- Those of the IDs that are the member's labels: mailboxes of theirs with
+-- no role that they made.
 SELECT b.id
 FROM mailboxes b
 JOIN connected_accounts a ON a.id = b.connected_account_id
 WHERE a.user_id = @owner
-    AND b.role = ANY (@roles::text[])
+    AND b.id = ANY (@ids::uuid[])
+    AND b.role IS NULL
+    AND b.made_by = 'member'
 ORDER BY b.id;
 
 -- name: ListFoundMessages :many
--- The member's messages among the IDs that are in no mailbox with any of
--- the roles, as a search result shows them.
+-- The member's messages among the IDs that have a conversation, as a
+-- search result shows them, with the roles of their mailboxes, an empty
+-- role for none, and their conversation's ID.
 SELECT m.id, m.connected_account_id, m.internal_date, m.from_addresses,
-    m.subject, m.preview, m.seen, m.flagged
-FROM messages m
-JOIN connected_accounts a ON a.id = m.connected_account_id
-WHERE a.user_id = @owner
-    AND m.id = ANY (@ids::uuid[])
-    AND NOT EXISTS (
-        SELECT 1
+    m.subject, m.preview, c.id AS conversation_id,
+    coalesce((
+        SELECT array_agg(coalesce(b.role, '') ORDER BY b.id)
         FROM message_mailboxes mm
         JOIN mailboxes b ON b.connected_account_id = mm.connected_account_id AND b.id = mm.mailbox_id
         WHERE mm.message_id = m.id
-            AND b.role = ANY (@roles::text[])
-    );
+    ), '{}')::text[] AS mailbox_roles
+FROM messages m
+JOIN connected_accounts a ON a.id = m.connected_account_id
+JOIN conversations c ON c.connected_account_id = m.connected_account_id
+    AND c.provider_thread_id = m.provider_thread_id
+WHERE a.user_id = @owner
+    AND m.id = ANY (@ids::uuid[]);

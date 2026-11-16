@@ -7,33 +7,30 @@
 import * as zod from 'zod';
 
 
-export const foundMessagePreviewMatchesItemStartMin = 0;
+export const searchMatchPreviewMatchesItemStartMin = 0;
 
 
-export const foundMessageSubjectMatchesItemStartMin = 0;
+export const searchMatchSubjectMatchesItemStartMin = 0;
 
 
-export const FoundMessage = zod.object({
-  "accountId": zod.int().describe('The connected account it belongs to.'),
+export const SearchMatch = zod.object({
   "date": zod.iso.datetime({"offset":true}).describe('When the provider received it.'),
   "from": zod.array(zod.object({
   "address": zod.string().describe('The address; empty for an entry that is none, e.g. a group\'s name, which is then the name.'),
   "name": zod.string().describe('The display name, perhaps empty.')
 })).describe('Its From, perhaps empty.'),
-  "id": zod.uuid().describe('The message\'s id.'),
+  "messageId": zod.uuid().describe('The message\'s id.'),
   "preview": zod.string().describe('Its body\'s text around the best match, starting or ending with an ellipsis where cut, when the search matched its body; otherwise a plain-text excerpt of its body, as the provider made it.'),
   "previewMatches": zod.array(zod.object({
   "length": zod.int().min(1).describe('How long the match is, in UTF-16 code units.'),
-  "start": zod.int().min(foundMessagePreviewMatchesItemStartMin).describe('Where the match starts, in UTF-16 code units from the text\'s start, as a JavaScript string counts.')
+  "start": zod.int().min(searchMatchPreviewMatchesItemStartMin).describe('Where the match starts, in UTF-16 code units from the text\'s start, as a JavaScript string counts.')
 })).describe('Where the search matched the preview, in order, none overlapping; empty when it shows the provider\'s excerpt.'),
-  "starred": zod.boolean().describe('Whether it is starred.'),
   "subject": zod.string().describe('Its subject, as sent.'),
   "subjectMatches": zod.array(zod.object({
   "length": zod.int().min(1).describe('How long the match is, in UTF-16 code units.'),
-  "start": zod.int().min(foundMessageSubjectMatchesItemStartMin).describe('Where the match starts, in UTF-16 code units from the text\'s start, as a JavaScript string counts.')
-})).describe('Where the search matched the subject, in order, none overlapping.'),
-  "unread": zod.boolean().describe('Whether it is unread.')
+  "start": zod.int().min(searchMatchSubjectMatchesItemStartMin).describe('Where the match starts, in UTF-16 code units from the text\'s start, as a JavaScript string counts.')
+})).describe('Where the search matched the subject, in order, none overlapping.')
 })
 
-export type FoundMessage = zod.input<typeof FoundMessage>;
-export type FoundMessageOutput = zod.output<typeof FoundMessage>;
+export type SearchMatch = zod.input<typeof SearchMatch>;
+export type SearchMatchOutput = zod.output<typeof SearchMatch>;

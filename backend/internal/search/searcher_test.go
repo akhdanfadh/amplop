@@ -12,26 +12,30 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"inbok/internal/conversation"
 	"inbok/internal/mailsync"
 	"inbok/internal/search"
 	"inbok/internal/search/searchtest"
 )
 
-// stored is a message storage holds, and the mailboxes it is in now.
+// stored is a message storage holds: the message, the mailboxes it is in
+// now, and its conversation, unless it has none.
 type stored struct {
-	message   search.Message
-	mailboxes []uuid.UUID
+	message      search.Message
+	mailboxes    []uuid.UUID
+	conversation *conversation.Conversation
 }
 
 // searchMemory is what a search reads, in memory: members' accounts,
 // mailboxes, and messages.
 type searchMemory struct {
-	accounts  map[int64]int64 // each account's member
-	roles     map[uuid.UUID]mailsync.Role
-	owners    map[uuid.UUID]int64 // each mailbox's member
-	messages  map[int64][]stored  // each member's messages
-	fail      error               // returned by every read when set
-	readRoles [][]mailsync.Role   // the hidden roles each read of messages named
+	accounts map[int64]int64 // each account's member
+	roles    map[uuid.UUID]mailsync.Role
+	owners   map[uuid.UUID]int64 // each mailbox's member
+	labels   map[uuid.UUID]bool  // the members' own mailboxes with no role
+	messages map[int64][]stored  // each member's messages
+	fail     error               // returned by every read when set
+	reads    int                 // how often messages were read
 }
 
 func newSearchMemory() *searchMemory {
@@ -39,6 +43,7 @@ func newSearchMemory() *searchMemory {
 		accounts: map[int64]int64{ashaWork: asha, ashaHome: asha, budiWork: budi},
 		roles:    map[uuid.UUID]mailsync.Role{},
 		owners:   map[uuid.UUID]int64{},
+		labels:   map[uuid.UUID]bool{},
 		messages: map[int64][]stored{},
 	}
 }
@@ -50,31 +55,48 @@ func (m *searchMemory) OwnsAccount(_ context.Context, owner, accountID int64) (b
 	return m.accounts[accountID] == owner, nil
 }
 
-func (m *searchMemory) MailboxIDs(_ context.Context, owner int64, roles []mailsync.Role) ([]uuid.UUID, error) {
+func (m *searchMemory) RoleMailboxes(_ context.Context, owner int64) (map[mailsync.Role][]uuid.UUID, error) {
 	if m.fail != nil {
 		return nil, m.fail
 	}
-	var ids []uuid.UUID
+	out := map[mailsync.Role][]uuid.UUID{}
 	for id, role := range m.roles {
-		if m.owners[id] == owner && slices.Contains(roles, role) {
-			ids = append(ids, id)
+		if m.owners[id] == owner && role != mailsync.RoleNone {
+			out[role] = append(out[role], id)
 		}
 	}
-	return ids, nil
+	return out, nil
 }
 
-func (m *searchMemory) FoundMessages(_ context.Context, owner int64, ids []uuid.UUID, hidden []mailsync.Role) ([]search.Message, error) {
+func (m *searchMemory) LabelIDs(_ context.Context, owner int64, ids []uuid.UUID) ([]uuid.UUID, error) {
 	if m.fail != nil {
 		return nil, m.fail
 	}
-	m.readRoles = append(m.readRoles, hidden)
-	var out []search.Message
+	var out []uuid.UUID
+	for _, id := range ids {
+		if m.labels[id] && m.owners[id] == owner {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+func (m *searchMemory) FoundMessages(_ context.Context, owner int64, ids []uuid.UUID) ([]search.Stored, error) {
+	if m.fail != nil {
+		return nil, m.fail
+	}
+	m.reads++
+	var out []search.Stored
 	// Backwards, so a search that kept storage's order would fail.
 	for _, s := range slices.Backward(m.messages[owner]) {
-		in := slices.ContainsFunc(s.mailboxes, func(id uuid.UUID) bool { return slices.Contains(hidden, m.roles[id]) })
-		if slices.Contains(ids, s.message.ID) && !in {
-			out = append(out, s.message)
+		if !slices.Contains(ids, s.message.ID) || s.conversation == nil {
+			continue
 		}
+		roles := []mailsync.Role{}
+		for _, id := range s.mailboxes {
+			roles = append(roles, m.roles[id])
+		}
+		out = append(out, search.Stored{Message: s.message, Roles: roles, Conversation: *s.conversation})
 	}
 	return out, nil
 }
@@ -84,6 +106,44 @@ func (m *searchMemory) mailbox(owner int64, role mailsync.Role) uuid.UUID {
 	id := uuid.New()
 	m.roles[id], m.owners[id] = role, owner
 	return id
+}
+
+// label adds owner's own mailbox with no role and returns its ID.
+func (m *searchMemory) label(owner int64) uuid.UUID {
+	id := m.mailbox(owner, mailsync.RoleNone)
+	m.labels[id] = true
+	return id
+}
+
+// placement is where a conversation is: its mailboxes, whether it is in
+// All mail, and whether it is starred.
+type placement struct {
+	mailboxes []uuid.UUID
+	allMail   bool
+	starred   bool
+}
+
+// conversationIn returns a conversation of account at p, as storage reads
+// its places from p's mailboxes.
+func (m *searchMemory) conversationIn(account int64, p placement) conversation.Conversation {
+	c := conversation.Conversation{ID: uuid.New(), AccountID: account, InAllMail: p.allMail, Flagged: p.starred, LabelIDs: []uuid.UUID{}}
+	for _, id := range p.mailboxes {
+		switch m.roles[id] {
+		case mailsync.RoleInbox:
+			c.InInbox = true
+		case mailsync.RoleSent:
+			c.InSent = true
+		case mailsync.RoleJunk:
+			c.InSpam = true
+		case mailsync.RoleTrash:
+			c.InTrash = true
+		case mailsync.RoleNone:
+			if m.labels[id] {
+				c.LabelIDs = append(c.LabelIDs, id)
+			}
+		}
+	}
+	return c
 }
 
 // More accounts of the search tests.
@@ -107,8 +167,10 @@ func newSearchStack() searchStack {
 }
 
 // add stores owner's message in account with subject and body in
-// mailboxes, and indexes it so.
-func (s searchStack) add(t *testing.T, owner, account int64, subject, body string, mailboxes ...uuid.UUID) search.Message {
+// mailboxes, alone in its conversation, and indexes it so. Its
+// conversation is in the message's mailboxes, or for a message in Spam or
+// Trash only there; a draft has none.
+func (s searchStack) add(t *testing.T, owner, account int64, subject, body string, mailboxes ...uuid.UUID) stored {
 	t.Helper()
 	m := search.Message{
 		ID:        uuid.New(),
@@ -117,20 +179,79 @@ func (s searchStack) add(t *testing.T, owner, account int64, subject, body strin
 		From:      []mailsync.Address{{Name: "Citra", Address: "citra@example.com"}},
 		Subject:   subject,
 		Preview:   "Gmail's snippet of " + subject,
-		Unread:    true,
 	}
-	s.memory.messages[owner] = append(s.memory.messages[owner], stored{message: m, mailboxes: mailboxes})
-	require.NoError(t, s.index.Upsert(t.Context(), []search.Document{{
-		ID:                 m.ID,
-		OwnerUserID:        owner,
-		ConnectedAccountID: account,
-		ThreadID:           "thread-" + m.ID.String(),
-		InternalDate:       m.Date,
-		Subject:            subject,
-		BodyText:           body,
-		MailboxIDs:         mailboxes,
-	}}))
+	added := stored{message: m, mailboxes: mailboxes}
+	if !s.has(mailboxes, mailsync.RoleDrafts) {
+		hidden := s.has(mailboxes, mailsync.RoleJunk) || s.has(mailboxes, mailsync.RoleTrash)
+		places := slices.DeleteFunc(slices.Clone(mailboxes), func(id uuid.UUID) bool {
+			role := s.memory.roles[id]
+			return hidden && role != mailsync.RoleJunk && role != mailsync.RoleTrash
+		})
+		c := s.memory.conversationIn(account, placement{mailboxes: places, allMail: !hidden})
+		added.conversation = &c
+	}
+	s.memory.messages[owner] = append(s.memory.messages[owner], added)
+	s.reindex(t, owner, added, body)
+	return added
+}
+
+// place moves m's conversation, owner's, to p, e.g. as a reply in the
+// thread does, in storage and in the index.
+func (s searchStack) place(t *testing.T, owner int64, m stored, p placement) stored {
+	t.Helper()
+	c := s.memory.conversationIn(m.message.AccountID, p)
+	c.ID = m.conversation.ID
+	for n, other := range s.memory.messages[owner] {
+		if other.message.ID == m.message.ID {
+			s.memory.messages[owner][n].conversation = &c
+		}
+	}
+	m.conversation = &c
+	document, ok := s.index.Document(owner, m.message.ID)
+	require.True(t, ok)
+	s.reindex(t, owner, m, document.BodyText)
 	return m
+}
+
+// reindex indexes owner's message m with body, with its conversation's
+// places.
+func (s searchStack) reindex(t *testing.T, owner int64, m stored, body string) {
+	t.Helper()
+	document := search.Document{
+		ID:                 m.message.ID,
+		OwnerUserID:        owner,
+		ConnectedAccountID: m.message.AccountID,
+		ThreadID:           "thread-" + m.message.ID.String(),
+		InternalDate:       m.message.Date,
+		Subject:            m.message.Subject,
+		BodyText:           body,
+		MailboxIDs:         m.mailboxes,
+	}
+	if c := m.conversation; c != nil {
+		document.ConversationFlagged = c.Flagged
+		for id, role := range s.memory.roles {
+			in := (role == mailsync.RoleInbox && c.InInbox) || (role == mailsync.RoleSent && c.InSent) ||
+				(role == mailsync.RoleJunk && c.InSpam) || (role == mailsync.RoleTrash && c.InTrash) || slices.Contains(c.LabelIDs, id)
+			if in && s.memory.owners[id] == owner {
+				document.ConversationMailboxIDs = append(document.ConversationMailboxIDs, id)
+			}
+		}
+	}
+	require.NoError(t, s.index.Upsert(t.Context(), []search.Document{document}))
+}
+
+// has reports whether any of mailboxes has role.
+func (s searchStack) has(mailboxes []uuid.UUID, role mailsync.Role) bool {
+	return slices.ContainsFunc(mailboxes, func(id uuid.UUID) bool { return s.memory.roles[id] == role })
+}
+
+// ids returns the IDs of the messages page found, in its order.
+func ids(page search.Page) []uuid.UUID {
+	out := []uuid.UUID{}
+	for _, f := range page.Found {
+		out = append(out, f.Message.ID)
+	}
+	return out
 }
 
 // request returns a search for text on the first page of 20.
@@ -138,8 +259,9 @@ func request(text string) search.Request {
 	return search.Request{Text: text, Page: 1, Limit: 20}
 }
 
-// A search shows each message as storage holds it, in the index's order,
-// with where the query matched its subject and its body text.
+// A search shows each conversation as storage holds it, through its
+// message, in the index's order, with where the query matched the
+// message's subject and its body text.
 func TestSearch(t *testing.T) {
 	s := newSearchStack()
 	first := s.add(t, asha, ashaWork, "Your invoice", "Hello Asha, please pay the invoice today.", s.inbox)
@@ -150,13 +272,15 @@ func TestSearch(t *testing.T) {
 
 	assert.Equal(t, search.Page{Total: 2, Found: []search.Found{
 		{
-			Message:        first,
+			Conversation:   *first.conversation,
+			Message:        first.message,
 			SubjectMatches: []search.Span{{Start: len("Your "), Length: len("invoice")}},
 			Preview:        "…please pay the invoice today.",
 			PreviewMatches: []search.Span{{Start: len("…please pay the "), Length: len("invoice")}},
 		},
 		{
-			Message:        second,
+			Conversation:   *second.conversation,
+			Message:        second.message,
 			Preview:        "The invoice is paid.",
 			PreviewMatches: []search.Span{{Start: len("The "), Length: len("invoice")}},
 		},
@@ -173,13 +297,14 @@ func TestSearchPreview(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, page.Found, 1)
-	assert.Equal(t, m.Preview, page.Found[0].Preview)
+	assert.Equal(t, m.message.Preview, page.Found[0].Preview)
 	assert.Empty(t, page.Found[0].PreviewMatches)
 }
 
-// Spam, Trash, and drafts are left out, whether the index knows a message
-// is there or only storage does: a message moved to Trash since the index
-// saw it still counts in the total until the index catches up.
+// Without places, a search looks in All mail: Spam, Trash, and drafts are
+// left out, whether the index knows a message is there or only storage
+// does. A message moved to Trash since the index saw it still counts in
+// the total until the index catches up.
 func TestSearchHidden(t *testing.T) {
 	s := newSearchStack()
 	spam := s.memory.mailbox(asha, mailsync.RoleJunk)
@@ -189,17 +314,132 @@ func TestSearchHidden(t *testing.T) {
 	s.add(t, asha, ashaWork, "Invoice", "", s.inbox, spam)
 	s.add(t, asha, ashaWork, "Invoice", "", trash)
 	s.add(t, asha, ashaWork, "Invoice", "", drafts)
-	moved := s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
+	s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
 	s.memory.messages[asha][len(s.memory.messages[asha])-1].mailboxes = []uuid.UUID{trash}
 
 	page, err := s.searcher.Search(t.Context(), asha, request("invoice"))
 	require.NoError(t, err)
 
-	require.Len(t, page.Found, 1)
-	assert.Equal(t, shown.ID, page.Found[0].Message.ID)
-	assert.NotEqual(t, moved.ID, page.Found[0].Message.ID)
+	assert.Equal(t, []uuid.UUID{shown.message.ID}, ids(page))
 	assert.Equal(t, 2, page.Total)
-	assert.Equal(t, [][]mailsync.Role{{mailsync.RoleJunk, mailsync.RoleTrash, mailsync.RoleDrafts}}, s.memory.readRoles)
+}
+
+// Each place finds the conversations its list shows: by the
+// conversation's places, through a message neither in Spam, Trash, nor
+// drafts, or for Spam and Trash any message but a draft.
+func TestSearchPlaces(t *testing.T) {
+	s := newSearchStack()
+	sent := s.memory.mailbox(asha, mailsync.RoleSent)
+	spam := s.memory.mailbox(asha, mailsync.RoleJunk)
+	trash := s.memory.mailbox(asha, mailsync.RoleTrash)
+	s.memory.mailbox(asha, mailsync.RoleDrafts)
+	clients := s.memory.label(asha)
+	family := s.memory.label(asha)
+
+	inbox := s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
+	// Archived itself, but a reply put its conversation in the inbox, and
+	// it is labelled Clients and starred.
+	archived := s.add(t, asha, ashaWork, "Invoice", "")
+	archived = s.place(t, asha, archived, placement{mailboxes: []uuid.UUID{s.inbox, clients}, allMail: true, starred: true})
+	sentOne := s.add(t, asha, ashaWork, "Invoice", "", sent)
+	spamOne := s.add(t, asha, ashaWork, "Invoice", "", spam)
+	trashOne := s.add(t, asha, ashaWork, "Invoice", "", trash)
+	// In Trash itself, in a conversation also in the inbox: found in Trash,
+	// not in the inbox.
+	trashedReply := s.add(t, asha, ashaWork, "Invoice", "", trash)
+	trashedReply = s.place(t, asha, trashedReply, placement{mailboxes: []uuid.UUID{s.inbox, trash}, allMail: true})
+	familyOne := s.add(t, asha, ashaHome, "Invoice", "", family)
+
+	cases := map[string]struct {
+		places []conversation.Place
+		want   []uuid.UUID
+	}{
+		"none":    {nil, []uuid.UUID{inbox.message.ID, archived.message.ID, sentOne.message.ID, familyOne.message.ID}},
+		"all":     {[]conversation.Place{{View: conversation.ViewAll}}, []uuid.UUID{inbox.message.ID, archived.message.ID, sentOne.message.ID, familyOne.message.ID}},
+		"inbox":   {[]conversation.Place{{View: conversation.ViewInbox}}, []uuid.UUID{inbox.message.ID, archived.message.ID}},
+		"starred": {[]conversation.Place{{View: conversation.ViewStarred}}, []uuid.UUID{archived.message.ID}},
+		"sent":    {[]conversation.Place{{View: conversation.ViewSent}}, []uuid.UUID{sentOne.message.ID}},
+		"spam":    {[]conversation.Place{{View: conversation.ViewSpam}}, []uuid.UUID{spamOne.message.ID}},
+		"trash":   {[]conversation.Place{{View: conversation.ViewTrash}}, []uuid.UUID{trashOne.message.ID, trashedReply.message.ID}},
+		"label":   {[]conversation.Place{{Mailbox: clients}}, []uuid.UUID{archived.message.ID}},
+		"any of":  {[]conversation.Place{{Mailbox: family}, {View: conversation.ViewSpam}}, []uuid.UUID{familyOne.message.ID, spamOne.message.ID}},
+		"everywhere": {
+			[]conversation.Place{{View: conversation.ViewAll}, {View: conversation.ViewSpam}, {View: conversation.ViewTrash}},
+			[]uuid.UUID{inbox.message.ID, archived.message.ID, sentOne.message.ID, spamOne.message.ID, trashOne.message.ID, trashedReply.message.ID, familyOne.message.ID},
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := request("invoice")
+			r.Places = c.places
+
+			page, err := s.searcher.Search(t.Context(), asha, r)
+			require.NoError(t, err)
+
+			assert.ElementsMatch(t, c.want, ids(page))
+			assert.Equal(t, len(c.want), page.Total)
+		})
+	}
+}
+
+// Storage decides the places: a conversation that left a place since the
+// index saw it is left out, though the index still counts it.
+func TestSearchPlaceLeftSince(t *testing.T) {
+	s := newSearchStack()
+	clients := s.memory.label(asha)
+	kept := s.add(t, asha, ashaWork, "Invoice", "", clients)
+	left := s.add(t, asha, ashaWork, "Invoice", "", clients)
+	for n, m := range s.memory.messages[asha] {
+		if m.message.ID == left.message.ID {
+			c := *m.conversation
+			c.LabelIDs = []uuid.UUID{}
+			s.memory.messages[asha][n].conversation = &c
+		}
+	}
+	r := request("invoice")
+	r.Places = []conversation.Place{{Mailbox: clients}}
+
+	page, err := s.searcher.Search(t.Context(), asha, r)
+	require.NoError(t, err)
+
+	assert.Equal(t, []uuid.UUID{kept.message.ID}, ids(page))
+	assert.Equal(t, 2, page.Total)
+}
+
+// A label the member does not have, another member's included, is
+// refused before the index is asked.
+func TestSearchLabelNotFound(t *testing.T) {
+	s := newSearchStack()
+	mine := s.memory.label(asha)
+	theirs := s.memory.label(budi)
+	s.add(t, asha, ashaWork, "Invoice", "", mine)
+	s.index.Fail = errors.New("must not be searched")
+
+	for name, label := range map[string]uuid.UUID{"another member's": theirs, "missing": uuid.New(), "a role's": s.inbox} {
+		t.Run(name, func(t *testing.T) {
+			r := request("invoice")
+			r.Places = []conversation.Place{{Mailbox: mine}, {Mailbox: label}}
+
+			_, err := s.searcher.Search(t.Context(), asha, r)
+
+			require.ErrorIs(t, err, conversation.ErrPlaceNotFound)
+		})
+	}
+}
+
+// A view whose mailbox the member does not have, e.g. Spam before any
+// account is connected, holds nothing, and asks the index nothing.
+func TestSearchPlaceWithoutMailbox(t *testing.T) {
+	s := newSearchStack()
+	s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
+	s.index.Fail = errors.New("must not be searched")
+	r := request("invoice")
+	r.Places = []conversation.Place{{View: conversation.ViewSpam}, {View: conversation.ViewSent}}
+
+	page, err := s.searcher.Search(t.Context(), asha, r)
+	require.NoError(t, err)
+
+	assert.Equal(t, search.Page{Found: []search.Found{}}, page)
 }
 
 // A search the index finds nothing for reads no messages from storage.
@@ -211,21 +451,23 @@ func TestSearchNothingFound(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, search.Page{Found: []search.Found{}}, page)
-	assert.Empty(t, s.memory.readRoles)
+	assert.Zero(t, s.memory.reads)
 }
 
-// A message deleted since the index saw it is left out.
+// A message deleted since the index saw it is left out, and so is one
+// whose conversation storage no longer has.
 func TestSearchDeletedSince(t *testing.T) {
 	s := newSearchStack()
 	kept := s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
 	s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
-	s.memory.messages[asha] = s.memory.messages[asha][:1]
+	s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
+	s.memory.messages[asha] = s.memory.messages[asha][:2]
+	s.memory.messages[asha][1].conversation = nil
 
 	page, err := s.searcher.Search(t.Context(), asha, request("invoice"))
 	require.NoError(t, err)
 
-	require.Len(t, page.Found, 1)
-	assert.Equal(t, kept.ID, page.Found[0].Message.ID)
+	assert.Equal(t, []uuid.UUID{kept.message.ID}, ids(page))
 }
 
 // A search of one account finds only its messages; one of an account the
@@ -247,8 +489,7 @@ func TestSearchAccount(t *testing.T) {
 	missing.Account = 99
 	_, missingErr := s.searcher.Search(t.Context(), asha, missing)
 
-	require.Len(t, page.Found, 1)
-	assert.Equal(t, work.ID, page.Found[0].Message.ID)
+	assert.Equal(t, []uuid.UUID{work.message.ID}, ids(page))
 	require.ErrorIs(t, foreignErr, search.ErrAccountNotFound)
 	require.ErrorIs(t, missingErr, search.ErrAccountNotFound)
 }
@@ -264,7 +505,7 @@ func TestSearchSubjectChanged(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, page.Found, 1)
-	assert.Equal(t, m.ID, page.Found[0].Message.ID)
+	assert.Equal(t, m.message.ID, page.Found[0].Message.ID)
 	assert.Equal(t, "Re: Invoice", page.Found[0].Message.Subject)
 	assert.Empty(t, page.Found[0].SubjectMatches)
 }
@@ -302,8 +543,8 @@ func TestSearchExcerptLead(t *testing.T) {
 // Each filter of a request reaches the index, with words or without.
 func TestSearchFilters(t *testing.T) {
 	s := newSearchStack()
-	kept := s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
-	other := s.add(t, asha, ashaWork, "Invoice", "", s.inbox)
+	kept := s.add(t, asha, ashaWork, "Invoice", "", s.inbox).message
+	other := s.add(t, asha, ashaWork, "Invoice", "", s.inbox).message
 	document, ok := s.index.Document(asha, kept.ID)
 	require.True(t, ok)
 	document.FromAddresses = []string{"dewi@example.com"}
@@ -328,11 +569,7 @@ func TestSearchFilters(t *testing.T) {
 			page, err := s.searcher.Search(t.Context(), asha, c.request)
 			require.NoError(t, err)
 
-			var ids []uuid.UUID
-			for _, f := range page.Found {
-				ids = append(ids, f.Message.ID)
-			}
-			assert.ElementsMatch(t, c.want, ids)
+			assert.ElementsMatch(t, c.want, ids(page))
 		})
 	}
 }

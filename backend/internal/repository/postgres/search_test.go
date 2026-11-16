@@ -341,25 +341,26 @@ func TestRebuildReads(t *testing.T) {
 	assert.Empty(t, none)
 }
 
-// A search reads whether an account is the member's, the IDs of the
-// member's mailboxes with given roles in every account, and the member's
-// found messages as a result shows them, leaving out those in such a
-// mailbox now, another member's, and unknown IDs.
+// A search reads whether an account is the member's, the member's
+// mailboxes with a role in every account, which of some IDs are the
+// member's labels, and the member's found messages as a result shows
+// them, with the roles of their mailboxes and their conversations,
+// leaving out a draft alone in its thread, another member's, and unknown
+// IDs.
 func TestSearchReads(t *testing.T) {
 	s := newMessagePartsTest(t)
 	mailboxes := append(slices.Clone(gmailMailboxes), mailsync.Mailbox{ProviderID: "DRAFT", Name: "DRAFT", Role: mailsync.RoleDrafts, MadeBy: mailsync.MadeByProvider})
-	shown, spam, trash, draft := syncedMessage("shown"), syncedMessage("spam"), syncedMessage("trash"), syncedMessage("draft")
+	shown, spam, draft := syncedMessage("shown"), syncedMessage("spam"), syncedMessage("draft")
 	shown.Seen = false
 	spam.MailboxProviderIDs = []string{"INBOX", "SPAM"}
-	trash.MailboxProviderIDs = []string{"TRASH"}
 	draft.MailboxProviderIDs = []string{"DRAFT"}
-	s.update(t, s.account, mailsync.Change{State: running(1), Mailboxes: mailboxes, Saved: []mailsync.Message{shown, spam, trash, draft}})
+	s.update(t, s.account, mailsync.Change{State: running(1), Mailboxes: mailboxes, Saved: []mailsync.Message{shown, spam, draft}})
 	saved := s.messages(t, s.account)
 	stranger := insertConnectingMember(t, s.conn, "stranger@example.com")
 	theirAccount := insertSyncingAccount(t, s.conn, stranger, "sub-stranger")
 	s.update(t, theirAccount, mailsync.Change{State: running(1), Mailboxes: gmailMailboxes, Saved: []mailsync.Message{syncedMessage("theirs")}})
 	theirs := s.messages(t, theirAccount)["theirs"].ID
-	hidden := []mailsync.Role{mailsync.RoleJunk, mailsync.RoleTrash, mailsync.RoleDrafts}
+	receipts := s.mailboxID(t, s.account, "Label_1")
 
 	owns, err := s.db.OwnsAccount(t.Context(), s.member, s.account)
 	require.NoError(t, err)
@@ -367,29 +368,54 @@ func TestSearchReads(t *testing.T) {
 	require.NoError(t, err)
 	missing, err := s.db.OwnsAccount(t.Context(), s.member, theirAccount+1000)
 	require.NoError(t, err)
-	boxes, err := s.db.MailboxIDs(t.Context(), s.member, hidden)
+	roles, err := s.db.RoleMailboxes(t.Context(), s.member)
+	require.NoError(t, err)
+	labels, err := s.db.LabelIDs(t.Context(), s.member, []uuid.UUID{
+		receipts, s.mailboxID(t, s.account, "CATEGORY_SOCIAL"), s.mailboxID(t, s.account, "INBOX"),
+		s.mailboxID(t, theirAccount, "Label_1"), uuid.New(),
+	})
 	require.NoError(t, err)
 	found, err := s.db.FoundMessages(t.Context(), s.member, []uuid.UUID{
-		saved["shown"].ID, saved["spam"].ID, saved["trash"].ID, saved["draft"].ID, theirs, uuid.New(),
-	}, hidden)
+		saved["shown"].ID, saved["spam"].ID, saved["draft"].ID, theirs, uuid.New(),
+	})
 	require.NoError(t, err)
 
 	assert.True(t, owns)
 	assert.False(t, foreign)
 	assert.False(t, missing)
 	// The member's other account's too; never the stranger's.
-	assert.ElementsMatch(t, []uuid.UUID{
-		s.mailboxID(t, s.account, "SPAM"), s.mailboxID(t, s.account, "TRASH"), s.mailboxID(t, s.account, "DRAFT"),
-		s.mailboxID(t, s.other, "SPAM"), s.mailboxID(t, s.other, "TRASH"),
-	}, boxes)
-	assert.Equal(t, []search.Message{{
+	assert.Len(t, roles, 4)
+	assert.ElementsMatch(t, []uuid.UUID{s.mailboxID(t, s.account, "INBOX"), s.mailboxID(t, s.other, "INBOX")}, roles[mailsync.RoleInbox])
+	assert.ElementsMatch(t, []uuid.UUID{s.mailboxID(t, s.account, "SPAM"), s.mailboxID(t, s.other, "SPAM")}, roles[mailsync.RoleJunk])
+	assert.ElementsMatch(t, []uuid.UUID{s.mailboxID(t, s.account, "TRASH"), s.mailboxID(t, s.other, "TRASH")}, roles[mailsync.RoleTrash])
+	assert.Equal(t, []uuid.UUID{s.mailboxID(t, s.account, "DRAFT")}, roles[mailsync.RoleDrafts])
+	assert.Equal(t, []uuid.UUID{receipts}, labels)
+
+	require.Len(t, found, 2)
+	byID := map[uuid.UUID]search.Stored{}
+	for _, f := range found {
+		byID[f.Message.ID] = f
+	}
+	shownFound, spamFound := byID[saved["shown"].ID], byID[saved["spam"].ID]
+	assert.Equal(t, search.Message{
 		ID:        saved["shown"].ID,
 		AccountID: s.account,
 		Date:      shown.InternalDate,
 		From:      shown.From,
 		Subject:   shown.Subject,
 		Preview:   shown.Preview,
-		Unread:    true,
-		Starred:   true,
-	}}, found)
+	}, shownFound.Message)
+	assert.ElementsMatch(t, []mailsync.Role{mailsync.RoleInbox, mailsync.RoleNone}, shownFound.Roles)
+	assert.NotEqual(t, uuid.Nil(), shownFound.Conversation.ID)
+	assert.Equal(t, s.account, shownFound.Conversation.AccountID)
+	assert.True(t, shownFound.Conversation.InInbox)
+	assert.True(t, shownFound.Conversation.InAllMail)
+	assert.True(t, shownFound.Conversation.Unread)
+	assert.True(t, shownFound.Conversation.Flagged)
+	assert.Equal(t, []uuid.UUID{receipts}, shownFound.Conversation.LabelIDs)
+	assert.ElementsMatch(t, []mailsync.Role{mailsync.RoleInbox, mailsync.RoleJunk}, spamFound.Roles)
+	// A message in Spam counts only there.
+	assert.True(t, spamFound.Conversation.InSpam)
+	assert.False(t, spamFound.Conversation.InInbox)
+	assert.False(t, spamFound.Conversation.InAllMail)
 }

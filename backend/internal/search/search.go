@@ -40,7 +40,7 @@ type Document struct {
 	// mailboxes it leaves out.
 	MailboxIDs []uuid.UUID
 	// ConversationMailboxIDs are the mailboxes the message's conversation
-	// is in, as lists place it, conversation.Summary.Mailboxes: a reply
+	// is in, as lists place it, [conversation.Summary.Mailboxes]: a reply
 	// in the inbox puts every message of its conversation there. Empty for
 	// a message with no conversation, e.g. a thread's only draft.
 	ConversationMailboxIDs []uuid.UUID

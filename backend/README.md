@@ -2969,7 +2969,7 @@ searchable copy of message data that returns message IDs, with where the
 query matched and an excerpt of the body around it, while the messages
 themselves load from PostgreSQL with the usual ownership check.
 ADR005 in the project's decision records explains the choices. Jobs
-keep the index in step with synchronized mail, and Search Messages
+keep the index in step with synchronized mail, and Search Conversations
 [searches](#searching) it.
 
 The index holds every message inbok keeps, Spam and Trash included, and
@@ -3113,21 +3113,38 @@ read re-reads its stored body text too.
 
 ### Searching
 
-Search Messages (`GET /api/v0/messages/search`) calls
+Search Conversations (`GET /api/v0/conversations/search`) calls
 `search.Searcher`, which reads through `SearchStorage`, which
-`repository/postgres` implements:
+`repository/postgres` implements. It searches the places `place` names,
+repeated for up to 20, each a view or a label as List Conversations reads
+it; a conversation in any of them matches, and none searches All mail. A
+place holds the conversations its list shows, found through their
+messages in neither Spam, Trash, nor drafts, as Gmail leaves those out;
+Spam and Trash through any message but a draft, which no view shows. So
+All mail, Spam, and Trash together search everywhere.
 
-1. A search of one account checks it is the member's, so a search of
-   one they no longer have answers 404 rather than finding nothing.
-2. It looks up the IDs of the member's mailboxes with the roles junk,
-   trash, and drafts, and searches the index without the messages in
-   them: Spam and Trash as Gmail leaves them out, and drafts, which no
-   view shows.
-3. It reads the messages found from PostgreSQL by their IDs, keeping the
-   index's order and dropping those in such a mailbox now, deleted, or
-   another member's. The index may lag behind, so PostgreSQL decides
-   what is shown: at worst a page holds fewer results than its limit,
-   and the total is off, until the index catches up.
+1. A search of one account checks it is the member's, and one of a
+   label checks it is the member's, so a search of either they no longer
+   have answers 404, `connected-account-not-found` or `place-not-found`
+   as for a list, rather than finding nothing.
+2. It looks up the member's mailboxes by role and makes each place a
+   scope: Inbox and Sent by their role's mailboxes, a label by its own,
+   Starred by the star, All mail by neither, Spam and Trash by theirs,
+   each leaving out the messages in junk, trash, and drafts, or for Spam
+   and Trash in drafts only. A view whose role no mailbox has, e.g. Spam
+   before any account is connected, holds nothing, and a search of only
+   such views asks the index nothing.
+3. It reads the messages found from PostgreSQL by their IDs, with the
+   roles of their mailboxes and their conversations as lists show them,
+   in one snapshot, keeping the index's order and dropping those no place
+   shows now (`conversation.Conversation.In`), deleted, without a
+   conversation, or another member's. The index may lag behind, so
+   PostgreSQL decides what is shown: at worst a page holds fewer results
+   than its limit, and the total is off, until the index catches up.
+
+Each result is the conversation as List Conversations shows it, and its
+best-matching message: its ID, date, sender, subject, and preview, with
+where the query matched them.
 
 The index returns one message per conversation, its best match
 (Meilisearch's search-time `distinct` on `conversation`), so the total
@@ -3459,7 +3476,7 @@ httpapi --> conversation <-- repository/postgres
             conversation --> mailsync, connectedaccount
 httpapi --> search <-- meilisearch
                    <-- repository/postgres
-            search --> mailsync, messagecontent
+            search --> conversation, mailsync, messagecontent
 httpapi --> messagecontent <-- s3
                            <-- google
                            <-- repository/postgres

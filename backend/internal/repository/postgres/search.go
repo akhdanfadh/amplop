@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"inbok/internal/conversation"
 	"inbok/internal/mailsync"
 	"inbok/internal/repository/postgres/sqlc"
 	"inbok/internal/search"
@@ -24,13 +25,14 @@ func (db *DB) IndexSources(ctx context.Context, owner int64, ids []uuid.UUID) ([
 	sources := make([]search.Source, 0, len(rows))
 	for _, row := range rows {
 		source := search.Source{
-			ID:                     row.ID,
-			AccountID:              row.ConnectedAccountID,
-			ThreadID:               row.ProviderThreadID,
-			InternalDate:           row.InternalDate.UTC(),
-			Subject:                row.Subject,
-			MailboxIDs:             row.MailboxIds,
-			HasParts:               row.HasParts,
+			ID:           row.ID,
+			AccountID:    row.ConnectedAccountID,
+			ThreadID:     row.ProviderThreadID,
+			InternalDate: row.InternalDate.UTC(),
+			Subject:      row.Subject,
+			MailboxIDs:   row.MailboxIds,
+			HasParts:     row.HasParts,
+
 			ConversationMailboxIDs: row.ConversationMailboxIds,
 			ConversationFlagged:    row.ConversationFlagged,
 		}
@@ -86,41 +88,85 @@ func (db *DB) OwnsAccount(ctx context.Context, owner, accountID int64) (bool, er
 	return user == owner, nil
 }
 
-// MailboxIDs returns the IDs of member owner's mailboxes with any of
-// roles, in every connected account.
-func (db *DB) MailboxIDs(ctx context.Context, owner int64, roles []mailsync.Role) ([]uuid.UUID, error) {
-	ids, err := sqlc.New(db.pool).ListMailboxIDsWithRoles(ctx, sqlc.ListMailboxIDsWithRolesParams{Owner: owner, Roles: roleTexts(roles)})
+// RoleMailboxes returns the IDs of member owner's mailboxes that have a
+// role, in every connected account, by role.
+func (db *DB) RoleMailboxes(ctx context.Context, owner int64) (map[mailsync.Role][]uuid.UUID, error) {
+	rows, err := sqlc.New(db.pool).ListRoleMailboxes(ctx, owner)
 	if err != nil {
-		return nil, fmt.Errorf("list mailboxes with roles: %w", err)
+		return nil, fmt.Errorf("list role mailboxes: %w", err)
 	}
-	return ids, nil
+	byRole := map[mailsync.Role][]uuid.UUID{}
+	for _, row := range rows {
+		byRole[mailsync.Role(row.Role)] = append(byRole[mailsync.Role(row.Role)], row.ID)
+	}
+	return byRole, nil
 }
 
-// FoundMessages returns member owner's messages among ids that are in no
-// mailbox with any of hidden's roles, in no set order.
-func (db *DB) FoundMessages(ctx context.Context, owner int64, ids []uuid.UUID, hidden []mailsync.Role) ([]search.Message, error) {
-	rows, err := sqlc.New(db.pool).ListFoundMessages(ctx, sqlc.ListFoundMessagesParams{Owner: owner, Ids: ids, Roles: roleTexts(hidden)})
+// LabelIDs returns those of ids that are member owner's labels, mailboxes
+// of theirs with no role that they made.
+func (db *DB) LabelIDs(ctx context.Context, owner int64, ids []uuid.UUID) ([]uuid.UUID, error) {
+	labels, err := sqlc.New(db.pool).ListMemberLabelIDs(ctx, sqlc.ListMemberLabelIDsParams{Owner: owner, Ids: ids})
 	if err != nil {
-		return nil, fmt.Errorf("list found messages: %w", err)
+		return nil, fmt.Errorf("list labels: %w", err)
 	}
-	messages := make([]search.Message, 0, len(rows))
-	for _, row := range rows {
-		from, err := decodeAddresses(row.FromAddresses)
+	return labels, nil
+}
+
+// FoundMessages returns member owner's messages among ids that have a
+// conversation, each with its conversation as lists show it and the roles
+// of its mailboxes, in no set order. It reads both from one snapshot, so
+// each message's roles and conversation agree.
+func (db *DB) FoundMessages(ctx context.Context, owner int64, ids []uuid.UUID) ([]search.Stored, error) {
+	var found []search.Stored
+	options := pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}
+	err := pgx.BeginTxFunc(ctx, db.pool, options, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+		rows, err := queries.ListFoundMessages(ctx, sqlc.ListFoundMessagesParams{Owner: owner, Ids: ids})
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("list found messages: %w", err)
 		}
-		messages = append(messages, search.Message{
-			ID:        row.ID,
-			AccountID: row.ConnectedAccountID,
-			Date:      row.InternalDate.UTC(),
-			From:      from,
-			Subject:   row.Subject,
-			Preview:   row.Preview,
-			Unread:    !row.Seen,
-			Starred:   row.Flagged,
-		})
+		conversationIDs := make([]uuid.UUID, len(rows))
+		for n, row := range rows {
+			conversationIDs[n] = row.ConversationID
+		}
+		conversations, err := conversationRows(ctx, queries, owner, conversationIDs)
+		if err != nil {
+			return err
+		}
+		byID := make(map[uuid.UUID]conversation.Conversation, len(conversations))
+		for _, c := range conversations {
+			byID[c.ID] = c
+		}
+
+		found = make([]search.Stored, 0, len(rows))
+		for _, row := range rows {
+			from, err := decodeAddresses(row.FromAddresses)
+			if err != nil {
+				return err
+			}
+			roles := make([]mailsync.Role, len(row.MailboxRoles))
+			for n, role := range row.MailboxRoles {
+				roles[n] = mailsync.Role(role)
+			}
+			found = append(found, search.Stored{
+				Message: search.Message{
+					ID:        row.ID,
+					AccountID: row.ConnectedAccountID,
+					Date:      row.InternalDate.UTC(),
+					From:      from,
+					Subject:   row.Subject,
+					Preview:   row.Preview,
+				},
+				Roles:        roles,
+				Conversation: byID[row.ConversationID],
+			})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return messages, nil
+	return found, nil
 }
 
 // indexAfter saves, in tx, the job that brings accountID's messages with
