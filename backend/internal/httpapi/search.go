@@ -86,7 +86,7 @@ type conversationSearchInput struct {
 	Before time.Time `query:"before" doc:"Only messages the provider received before this instant, which must be later than since."`
 	Has    string    `query:"has" enum:"attachment" doc:"attachment: only messages with a file to download, e.g. a PDF or a photo, but not a logo shown in the text. Only messages whose content inbok has fetched can match: most mail of the last 90 days outside Spam and Trash, a while after it arrives, and any message opened."`
 	// A page past 1000 holds nothing: a search counts at most
-	// [search.MaxTotal] matches, which TestSearchMessagesBounds ties to it.
+	// [search.MaxTotal] matches, which TestSearchConversationsBounds ties to it.
 	Page int `query:"page" minimum:"1" maximum:"1000" default:"1" doc:"Which page of results, from 1."`
 	// 50 is inbok's choice: the web's results page, and an index's time
 	// per search grows with each result's body text it cuts.
