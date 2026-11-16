@@ -1,13 +1,7 @@
 import type { ReactElement } from "react";
 import { CheckIcon, CircleHelpIcon, CircleXIcon, ClockIcon, RotateCwIcon } from "lucide-react";
 import type { OutgoingMessageSummary } from "@/api/generated/model";
-import {
-  StatusBadge,
-  StatusMark,
-  StatusWord,
-  type StatusIcon,
-  type Tone,
-} from "@/components/status-badge";
+import { StatusMark, StatusWord, type StatusIcon, type Tone } from "@/components/status-badge";
 import { Spinner } from "@/components/ui/spinner";
 import { sentAgainLabel, statusLabel } from "./text";
 
@@ -36,16 +30,6 @@ export function messageLook(
   if (message.sentAgainAs !== null)
     return { tone: "neutral", icon: RotateCwIcon, label: sentAgainLabel };
   return { ...looks[message.status], label: statusLabel(message.status) };
-}
-
-// MessageStatusBadge shows status as a badge, e.g. "Not sent".
-export function MessageStatusBadge({ status }: { status: Status }): ReactElement {
-  const { tone, icon } = looks[status];
-  return (
-    <StatusBadge tone={tone} icon={icon}>
-      {statusLabel(status)}
-    </StatusBadge>
-  );
 }
 
 // MessageStatusWord shows message's status inline, as its icon and word,

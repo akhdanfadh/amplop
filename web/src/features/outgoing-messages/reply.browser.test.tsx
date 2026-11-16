@@ -242,7 +242,7 @@ describe("ConversationReply", () => {
 
     await expect
       .element(page.getByRole("status"), { timeout: 5_000 })
-      .toMatchTextContent(/^Sent .+\.$/);
+      .toMatchTextContent(/^Sent to ana@example\.comFrom studio@example\.com/);
     const post = calls.find((call) => call.method === "POST");
     expect(post?.url).toBe(`/api/v0/messages/${answered.id}/replies`);
     expect(post?.headers.get("Idempotency-Key")).toMatch(/^"[0-9a-f-]{36}"$/);

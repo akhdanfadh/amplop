@@ -786,9 +786,11 @@ last two redirect into settings, so settings can move without the server.
   sent, the refused message reads Tried again, linking its copy, and
   leaves the Outbox count. While the compose window holds typed text,
   Edit and send asks before replacing it.
-- **After Send**, a reply waits in place as a card with its status until
-  synced mail replaces it. The compose window holds the new message's
-  status instead of the editor, shrunk to it: a 32 px circle in the
+- **After Send**, a reply waits in place until synced mail replaces it,
+  as a bordered `card` holding the same status as the compose window
+  below, with Open in Outbox, so one status reads the same in the window,
+  under a reply, and in the Outbox's pane. The compose window holds the
+  new message's status instead of the editor, shrunk to it: a 32 px circle in the
   status's tone with its icon, one line ("Sending to ana@example.com...",
   then "Sent to ana@example.com"), and under it in muted text the sending
   account's mark, its address, and the time; Open in Outbox below. A

@@ -968,7 +968,8 @@ phone, which steps past every page's warning (`ignoreBlocker`). An
 address typed but not yet a chip counts as typed. The editor keeps the
 message it answers until it closes, so a newer message synced meanwhile
 never changes what is being written. After Send the editor gives way to the reply's status, from the
-Outbox's read; a failed reread keeps the status,
+Outbox's read, drawn as the compose window's (`MessageStatus` look
+"window") in the reply's bordered card; a failed reread keeps the status,
 says it may be out of date, and offers Try again. It has Send again and a
 link to its Outbox page. A refused reply's Edit and send opens the editor
 again with its content and sends the reply again with the member's edits,

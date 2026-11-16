@@ -10,13 +10,11 @@ import {
   type ReactNode,
 } from "react";
 import { ReplyAllIcon, ReplyIcon } from "lucide-react";
-import { Link } from "@tanstack/react-router";
 import * as z from "zod";
 import { useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
-import { lineLink } from "@/components/link-style";
 import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
@@ -434,37 +432,37 @@ function ReplyStatus({
       ref={ref}
       tabIndex={-1}
       aria-label="Your reply"
-      className="flex flex-col gap-3 rounded-lg border p-4 outline-none"
+      className="flex flex-col rounded-lg border bg-card outline-none"
     >
       {reply && !gone && (
+        // The compose window's summary, in the card the Outbox's pane draws
+        // it in, so one status reads the same wherever it shows.
         <MessageStatus
           message={reply}
           accounts={accounts.data?.data.accounts}
           onSentAgain={onSentAgain}
           onUnauthorized={onUnauthorized}
           onEdit={() => onEdit(reply)}
+          look="window"
         />
       )}
       {/* A failed read without data, or a gone reply, replaces the status;
           a failed reread keeps it, saying it may have moved on, as the
           Outbox's page does. Polling stops on a failure; Try again restarts it. */}
       {read.error && !read.expired && (
-        <ReadError
-          message={
-            reply && !gone
-              ? `${replyStatusStale} ${userMessage(read.error)}`
-              : readErrorMessage(read.error)
-          }
-          error={read.error}
-          retrying={read.retrying}
-          onRetry={read.retry}
-        />
+        <div className="p-4">
+          <ReadError
+            message={
+              reply && !gone
+                ? `${replyStatusStale} ${userMessage(read.error)}`
+                : readErrorMessage(read.error)
+            }
+            error={read.error}
+            retrying={read.retrying}
+            onRetry={read.retry}
+          />
+        </div>
       )}
-      <p>
-        <Link to="/mail/outbox/$id" params={{ id }} className={lineLink}>
-          Open in Outbox
-        </Link>
-      </p>
     </section>
   );
 }

@@ -160,6 +160,7 @@ async function show(leaving: "quiet" | "warns" = "quiet", status: OutgoingMessag
           accounts={[studio]}
           onSentAgain={() => {}}
           onUnauthorized={() => {}}
+          look="pane"
         />
       </main>
     ),

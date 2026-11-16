@@ -24,7 +24,7 @@ import { stepEnter } from "@/components/step-change";
 import { formatReceived } from "@/features/messages/text";
 import { cn } from "@/lib/cn";
 import { useCompose } from "./compose-store";
-import { MessageStatusBadge, MessageStatusMark } from "./status-badge";
+import { MessageStatusMark } from "./status-badge";
 import {
   needsReconnect,
   nextSteps,
@@ -46,8 +46,7 @@ const statusLink = cn(lineLink, "text-sm");
 // onSentAgain receives the copy a Send again saved; onUnauthorized runs on
 // a 401. onEdit, when given, runs on Edit and send instead of opening the
 // compose window with message's content, e.g. so a reply is edited into a
-// new reply. look "page" names the status in a badge above its text;
-// "window" is the compose window's summary after Send (DESIGN.md "Compose
+// new reply. look "window" is the compose window's summary after Send (DESIGN.md "Compose
 // and reply"): a mark, one line, and the sending account in its colour,
 // with the actions in a bar when there are any, and Open in Outbox;
 // "pane" is that summary in a card, for the Outbox's reading pane, which
@@ -58,14 +57,14 @@ export function MessageStatus({
   onSentAgain,
   onUnauthorized,
   onEdit,
-  look = "page",
+  look,
 }: {
   message: OutgoingMessage;
   accounts: ListedAccount[] | undefined;
   onSentAgain: (copy: OutgoingMessage) => void;
   onUnauthorized: () => void;
   onEdit?: () => void;
-  look?: "page" | "window" | "pane";
+  look: "window" | "pane";
 }): ReactElement {
   const client = useQueryClient();
   const compose = useCompose().store;
@@ -124,8 +123,6 @@ export function MessageStatus({
     again.mutate({ id: message.id }, { onSuccess: (result) => onSentAgain(result.data) });
   }
 
-  // The window's summary, in the window or in the pane's card.
-  const window = look !== "page";
   const outboxLink = look === "window";
   const actions = (
     <>
@@ -181,102 +178,73 @@ export function MessageStatus({
     <section
       ref={sectionRef}
       tabIndex={-1}
-      className={cn(
-        "flex flex-col outline-none",
-        !window && "gap-4",
-        look === "pane" && "rounded-lg border bg-card",
-      )}
+      className={cn("flex flex-col outline-none", look === "pane" && "rounded-lg border bg-card")}
       aria-label="Status"
     >
-      {window ? (
-        <>
-          {/* Stays mounted, so each change of status is announced. */}
-          <output aria-atomic="true" className="block">
-            {announced && (
-              // A new status rises into place, as a step does (DESIGN.md "Motion").
-              <span
-                key={message.status}
-                className={cn(
-                  "flex items-start gap-3 p-4",
-                  (look !== "pane" || message.status !== opened) && stepEnter,
-                )}
-              >
-                <MessageStatusMark message={message} />
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5 pt-1">
-                  <span className="font-medium wrap-anywhere">{sentSummary(message)}</span>
-                  <span className="text-sm text-muted-foreground">
-                    {message.status === "failed" || message.status === "unknown" ? (
-                      steps.text.replace(notSentPrefix, "")
-                    ) : (
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        {color !== undefined && (
-                          <span
-                            aria-hidden="true"
-                            className={cn("size-2 shrink-0 rounded-full", accountDot(color))}
-                          />
-                        )}
-                        <span className="truncate" translate="no">
-                          From {message.from}
-                        </span>
-                        {message.sentAt !== null && sent && (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <time dateTime={message.sentAt} title={sent.full} className="shrink-0">
-                              {sent.short}
-                            </time>
-                          </>
-                        )}
-                      </span>
+      {/* Stays mounted, so each change of status is announced. */}
+      <output aria-atomic="true" className="block">
+        {announced && (
+          // A new status rises into place, as a step does (DESIGN.md "Motion").
+          <span
+            key={message.status}
+            className={cn(
+              "flex items-start gap-3 p-4",
+              (look !== "pane" || message.status !== opened) && stepEnter,
+            )}
+          >
+            <MessageStatusMark message={message} />
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5 pt-1">
+              <span className="font-medium wrap-anywhere">{sentSummary(message)}</span>
+              <span className="text-sm text-muted-foreground">
+                {message.status === "failed" || message.status === "unknown" ? (
+                  steps.text.replace(notSentPrefix, "")
+                ) : (
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {color !== undefined && (
+                      <span
+                        aria-hidden="true"
+                        className={cn("size-2 shrink-0 rounded-full", accountDot(color))}
+                      />
+                    )}
+                    <span className="truncate" translate="no">
+                      From {message.from}
+                    </span>
+                    {message.sentAt !== null && sent && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <time dateTime={message.sentAt} title={sent.full} className="shrink-0">
+                          {sent.short}
+                        </time>
+                      </>
                     )}
                   </span>
-                </span>
+                )}
               </span>
-            )}
-          </output>
-          <div className="flex flex-col gap-3 px-4 pb-4 pl-15 empty:hidden">
-            {!offersAny && outboxLink && (
-              <p>
-                <Link to="/mail/outbox/$id" params={{ id: message.id }} className={statusLink}>
-                  Open in Outbox
-                </Link>
-              </p>
-            )}
-          </div>
-          {offersAny && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-3 py-2">
-              {actions}
-              {outboxLink && (
-                <Link to="/mail/outbox/$id" params={{ id: message.id }} className={statusLink}>
-                  Open in Outbox
-                </Link>
-              )}
-            </div>
+            </span>
+          </span>
+        )}
+      </output>
+      <div className="flex flex-col gap-3 px-4 pb-4 pl-15 empty:hidden">
+        {!offersAny && outboxLink && (
+          <p>
+            <Link to="/mail/outbox/$id" params={{ id: message.id }} className={statusLink}>
+              Open in Outbox
+            </Link>
+          </p>
+        )}
+      </div>
+      {offersAny && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-3 py-2">
+          {actions}
+          {outboxLink && (
+            <Link to="/mail/outbox/$id" params={{ id: message.id }} className={statusLink}>
+              Open in Outbox
+            </Link>
           )}
-        </>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center gap-3">
-            <MessageStatusBadge status={message.status} />
-            {/* Stays mounted, so a status the page reads again is announced. */}
-            <output aria-atomic="true" className="basis-full">
-              {!announced ? null : message.status === "sent" && message.sentAt !== null && sent ? (
-                <>
-                  Sent{" "}
-                  <time dateTime={message.sentAt} title={sent.full}>
-                    {sent.short}
-                  </time>
-                  .
-                </>
-              ) : (
-                steps.text
-              )}
-            </output>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">{actions}</div>
-        </>
+        </div>
       )}
 
-      <div className={cn(window && "px-4 pb-4 empty:hidden")}>
+      <div className="px-4 pb-4 empty:hidden">
         <RequestError
           errors={again.error ? [{ message: sendAgainErrorMessage(again.error) }] : []}
           requestId={again.error?.requestId}
