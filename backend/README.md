@@ -1322,6 +1322,8 @@ uses a small `httptest` stub instead:
   its check are tested with stubs too.
 - It ignores `access_type` and `prompt` and always returns a refresh
   token.
+- It takes a label name over 255 bytes, which Gmail fails with a 500;
+  inbok refuses one before calling.
 - It ignores `fields` and answers whole resources, so no test catches a
   field list that leaves out what inbok reads, e.g. history's
   `labelIds`.

@@ -29,6 +29,51 @@ func (q *Queries) DeleteUnlistedMailboxes(ctx context.Context, arg DeleteUnliste
 	return err
 }
 
+const listAccountLabels = `-- name: ListAccountLabels :many
+SELECT mb.id, mb.provider_mailbox_id, mb.name, parent.id AS parent_id
+FROM mailboxes mb
+LEFT JOIN mailboxes parent ON parent.connected_account_id = mb.connected_account_id
+    AND parent.provider_mailbox_id = mb.provider_parent_id
+    AND parent.role IS NULL AND parent.made_by = 'member'
+WHERE mb.connected_account_id = $1 AND mb.role IS NULL AND mb.made_by = 'member'
+ORDER BY mb.name, mb.id
+`
+
+type ListAccountLabelsRow struct {
+	ID                uuid.UUID
+	ProviderMailboxID string
+	Name              string
+	ParentID          *uuid.UUID
+}
+
+// The account's own labels, those with no role that the member made, by
+// name, each with the label it nests under: one of the same account's own
+// labels, else none.
+func (q *Queries) ListAccountLabels(ctx context.Context, connectedAccountID int64) ([]ListAccountLabelsRow, error) {
+	rows, err := q.db.Query(ctx, listAccountLabels, connectedAccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAccountLabelsRow
+	for rows.Next() {
+		var i ListAccountLabelsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProviderMailboxID,
+			&i.Name,
+			&i.ParentID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMailboxProviderIDs = `-- name: ListMailboxProviderIDs :many
 SELECT provider_mailbox_id FROM mailboxes WHERE connected_account_id = $1
 `
@@ -99,4 +144,22 @@ func (q *Queries) ListPlaceMailboxes(ctx context.Context, arg ListPlaceMailboxes
 		return nil, err
 	}
 	return items, nil
+}
+
+const readMemberAccountExists = `-- name: ReadMemberAccountExists :one
+SELECT EXISTS (
+    SELECT 1 FROM connected_accounts WHERE id = $1 AND user_id = $2
+)
+`
+
+type ReadMemberAccountExistsParams struct {
+	ConnectedAccountID int64
+	UserID             int64
+}
+
+func (q *Queries) ReadMemberAccountExists(ctx context.Context, arg ReadMemberAccountExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, readMemberAccountExists, arg.ConnectedAccountID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
