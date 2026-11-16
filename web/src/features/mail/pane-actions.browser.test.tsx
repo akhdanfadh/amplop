@@ -242,6 +242,22 @@ describe("the reading pane's actions", () => {
     await expect.element(list().getByRole("row", { name: /Subject 1, .*In Inbox/ })).toBeVisible();
   });
 
+  it("closes an Undo's failure once Move to Inbox puts the conversation back", async () => {
+    const rows = [conversation(1)];
+    await open(rows, 0, "all");
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await expect.poll(() => api.actions).toHaveLength(1);
+    api.refuse[rows[0].id] = "failed";
+    await userEvent.click(bar().getByRole("button", { name: "Undo" }));
+    const error = page.getByText("Couldn't undo");
+    await expect.element(error).toBeVisible();
+
+    delete api.refuse[rows[0].id];
+    await userEvent.click(toolbar().getByRole("button", { name: "Move to Inbox" }));
+
+    await expect.element(error).not.toBeInTheDocument();
+  });
+
   it("stars in place, with no Undo, the star pressed", async () => {
     const rows = [conversation(1)];
     const router = await open(rows, 0);
@@ -265,13 +281,18 @@ describe("the reading pane's actions", () => {
     await expect.poll(() => api.conversations[0].unread).toBe(true);
   });
 
-  it("offers a Trash list's actions, and More with Report spam only elsewhere", async () => {
+  it("offers a Trash list's actions, and More with Move to but no Labels or Report spam", async () => {
     await open([conversation(1, { trash: true, inbox: false, allMail: false })], 0, "trash");
 
     await expect.element(toolbar().getByRole("button", { name: "Move to Inbox" })).toBeVisible();
     expect(toolbar().getByRole("button", { name: "Delete" }).elements()).toHaveLength(0);
-    // No provider link from the fake API, and nothing else for More.
-    expect(toolbar().getByRole("button", { name: "More actions" }).elements()).toHaveLength(0);
+    // More holds Move to…, Trash being a place to move out of, but not
+    // Labels…, as a row only in Trash lists no labels; no Report spam,
+    // and no provider link from the fake API.
+    await userEvent.click(toolbar().getByRole("button", { name: "More actions" }));
+    await expect.element(page.getByRole("menuitem", { name: "Move to…" })).toBeVisible();
+    expect(page.getByRole("menuitem", { name: "Labels…" }).elements()).toHaveLength(0);
+    expect(page.getByRole("menuitem", { name: "Report spam" }).elements()).toHaveLength(0);
   });
 
   it("keeps Report spam in More", async () => {

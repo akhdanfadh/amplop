@@ -28,7 +28,8 @@ import { takeRowFocus, useRowFocusRequest } from "./focus-request";
 import { Placeholder, rowAccount, syncing } from "./list";
 import { useRestIntent, useRowSize } from "./list-state";
 import { perform } from "./perform";
-import { searchPlace } from "./places";
+import { RowLabelsContext, rowLabelsOf, useLabels } from "./labels";
+import { isViewPlace, searchPlace } from "./places";
 import { ConversationRow, createOpenStore } from "./row";
 import { inList } from "./rules";
 import {
@@ -105,6 +106,16 @@ export function SearchResults({
   const accountsById = useMemo(
     () => new Map<number, ListedAccountOutput>(accounts?.map((a) => [a.id, a])),
     [accounts],
+  );
+  // The labels rows mark, one at most, so the snippet keeps its room to
+  // show the match; a search of one label leaves it out, as its list
+  // does.
+  const labels = useLabels();
+  const searched = searchPlaces(filters);
+  const only = searched.length === 1 && !isViewPlace(searched[0]) ? searched[0] : undefined;
+  const rowLabels = useMemo(
+    () => ({ labels: rowLabelsOf(labels), leaveOut: only, most: 1 as const }),
+    [labels, only],
   );
 
   const asks = searches(filters);
@@ -187,7 +198,7 @@ export function SearchResults({
     void perform({
       mail: { client, conversations, placeCounts },
       conversations: [conversation],
-      action: starred ? "star" : "unstar",
+      act: starred ? "star" : "unstar",
       onUnauthorized: signOut,
     });
   };
@@ -310,39 +321,41 @@ export function SearchResults({
           aria-hidden="true"
           className="pointer-events-none invisible absolute size-4"
         />
-        <GridList aria-label={resultsName} rowSize={rowSize} className="min-h-0 flex-1">
-          <Collection items={rows} dependencies={[now, accountsById, ringed]}>
-            {(row) => (
-              <ConversationRow
-                conversation={row}
-                match={row.found.match}
-                account={rowAccount(accountsById.get(row.accountId))}
-                ringed={ringed}
-                markInbox={!(places.length === 1 && places[0] === "inbox")}
-                href={href(row)}
-                openStore={openStore}
-                now={now}
-                onRest={() => readAhead.rest(row.id)}
-                onLeave={readAhead.leave}
-                onStar={(starred) => star(row, starred)}
-              />
+        <RowLabelsContext value={rowLabels}>
+          <GridList aria-label={resultsName} rowSize={rowSize} className="min-h-0 flex-1">
+            <Collection items={rows} dependencies={[now, accountsById, ringed]}>
+              {(row) => (
+                <ConversationRow
+                  conversation={row}
+                  match={row.found.match}
+                  account={rowAccount(accountsById.get(row.accountId))}
+                  ringed={ringed}
+                  markInbox={!(places.length === 1 && places[0] === "inbox")}
+                  href={href(row)}
+                  openStore={openStore}
+                  now={now}
+                  onRest={() => readAhead.rest(row.id)}
+                  onLeave={readAhead.leave}
+                  onStar={(starred) => star(row, starred)}
+                />
+              )}
+            </Collection>
+            {search.hasNextPage && !olderFailed ? (
+              <GridListLoadMore
+                isLoading={search.isFetchingNextPage}
+                onLoadMore={() => {
+                  if (!search.isFetchingNextPage) void search.fetchNextPage();
+                }}
+                className="justify-center"
+              >
+                <Spinner />
+                <span className="sr-only">{resultsLoadingMore}</span>
+              </GridListLoadMore>
+            ) : (
+              !olderFailed && <GridListEnd>{resultsEnd}</GridListEnd>
             )}
-          </Collection>
-          {search.hasNextPage && !olderFailed ? (
-            <GridListLoadMore
-              isLoading={search.isFetchingNextPage}
-              onLoadMore={() => {
-                if (!search.isFetchingNextPage) void search.fetchNextPage();
-              }}
-              className="justify-center"
-            >
-              <Spinner />
-              <span className="sr-only">{resultsLoadingMore}</span>
-            </GridListLoadMore>
-          ) : (
-            !olderFailed && <GridListEnd>{resultsEnd}</GridListEnd>
-          )}
-        </GridList>
+          </GridList>
+        </RowLabelsContext>
         {olderFailed && (
           <div role="alert" className="flex items-center gap-3 border-t px-4 py-2 text-sm">
             <p className="flex-1">{olderResultsFailed}</p>

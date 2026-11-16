@@ -39,7 +39,8 @@ import { useToday } from "./dates";
 import { listKey, nextRow, takeRowFocus, useRowFocusRequest } from "./focus-request";
 import { useKeepPlace, useRestIntent, useRowSize } from "./list-state";
 import type { Picking } from "./picking";
-import type { Place } from "./places";
+import { RowLabelsContext, rowLabelsOf, useLabels } from "./labels";
+import { isViewPlace, type Place } from "./places";
 import { ConversationRow, PickingContext, createOpenStore, type RowAccount } from "./row";
 import { perform } from "./perform";
 import { placeWhere } from "./rules";
@@ -115,6 +116,12 @@ export function ConversationList({
   const accountsById = useMemo(
     () => new Map<number, ListedAccountOutput>(accountList?.map((a) => [a.id, a])),
     [accountList],
+  );
+  // The labels rows mark, a label's own list leaving it out.
+  const labels = useLabels();
+  const rowLabels = useMemo(
+    () => ({ labels: rowLabelsOf(labels), leaveOut: isViewPlace(place) ? undefined : place }),
+    [labels, place],
   );
 
   // One live query per list, with its own key (ADR031, TanStack DB gate,
@@ -286,7 +293,7 @@ export function ConversationList({
     void perform({
       mail: { client, conversations, placeCounts },
       conversations: [conversation],
-      action: starred ? "star" : "unstar",
+      act: starred ? "star" : "unstar",
       onUnauthorized: () => {
         clearAccountCache(client);
         void navigate({ to: "/sign-in", replace: true });
@@ -391,57 +398,59 @@ export function ConversationList({
             </Button>
           </div>
         )}
-        <PickingContext value={anyPicked ? "picking" : "ready"}>
-          <GridList
-            key={shown}
-            aria-label={listName}
-            rowSize={rowSize}
-            // Only once the member pressed "N new", never as the page loads:
-            // the button they pressed is gone.
-            // oxlint-disable-next-line jsx-a11y/no-autofocus
-            autoFocus={shown > 0 ? "first" : undefined}
-            selectionMode="multiple"
-            selectedKeys={picking.ids}
-            onSelectionChange={onSelectionChange}
-            onScroll={onScroll}
-            className="min-h-0 flex-1"
-          >
-            <Collection items={rows} dependencies={[now, accountsById, ringed]}>
-              {(conversation) => (
-                <ConversationRow
-                  conversation={conversation}
-                  account={rowAccount(accountsById.get(conversation.accountId))}
-                  ringed={ringed}
-                  markInbox={place !== "inbox"}
-                  href={conversationHref(conversation.id)}
-                  openStore={openStore}
-                  now={now}
-                  // React Aria's links never preload: the router reads the
-                  // conversation ahead, as its own Link would (ADR031).
-                  onRest={() => readAhead.rest(conversation.id)}
-                  onLeave={readAhead.leave}
-                  onStar={(starred) => star(conversation, starred)}
-                />
-              )}
-            </Collection>
-            {/* After a failed page, nothing loads by itself again: the
+        <RowLabelsContext value={rowLabels}>
+          <PickingContext value={anyPicked ? "picking" : "ready"}>
+            <GridList
+              key={shown}
+              aria-label={listName}
+              rowSize={rowSize}
+              // Only once the member pressed "N new", never as the page loads:
+              // the button they pressed is gone.
+              // oxlint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus={shown > 0 ? "first" : undefined}
+              selectionMode="multiple"
+              selectedKeys={picking.ids}
+              onSelectionChange={onSelectionChange}
+              onScroll={onScroll}
+              className="min-h-0 flex-1"
+            >
+              <Collection items={rows} dependencies={[now, accountsById, ringed]}>
+                {(conversation) => (
+                  <ConversationRow
+                    conversation={conversation}
+                    account={rowAccount(accountsById.get(conversation.accountId))}
+                    ringed={ringed}
+                    markInbox={place !== "inbox"}
+                    href={conversationHref(conversation.id)}
+                    openStore={openStore}
+                    now={now}
+                    // React Aria's links never preload: the router reads the
+                    // conversation ahead, as its own Link would (ADR031).
+                    onRest={() => readAhead.rest(conversation.id)}
+                    onLeave={readAhead.leave}
+                    onStar={(starred) => star(conversation, starred)}
+                  />
+                )}
+              </Collection>
+              {/* After a failed page, nothing loads by itself again: the
               failure below offers Try again. */}
-            {list.hasNextPage && !olderFailed ? (
-              <GridListLoadMore
-                isLoading={list.isFetchingNextPage}
-                onLoadMore={() => {
-                  if (!list.isFetchingNextPage) void list.fetchNextPage();
-                }}
-                className="justify-center"
-              >
-                <Spinner />
-                <span className="sr-only">{listLoadingMore}</span>
-              </GridListLoadMore>
-            ) : (
-              !olderFailed && <GridListEnd>{listEnd}</GridListEnd>
-            )}
-          </GridList>
-        </PickingContext>
+              {list.hasNextPage && !olderFailed ? (
+                <GridListLoadMore
+                  isLoading={list.isFetchingNextPage}
+                  onLoadMore={() => {
+                    if (!list.isFetchingNextPage) void list.fetchNextPage();
+                  }}
+                  className="justify-center"
+                >
+                  <Spinner />
+                  <span className="sr-only">{listLoadingMore}</span>
+                </GridListLoadMore>
+              ) : (
+                !olderFailed && <GridListEnd>{listEnd}</GridListEnd>
+              )}
+            </GridList>
+          </PickingContext>
+        </RowLabelsContext>
       </div>
       {olderFailed && (
         <div role="alert" className="flex items-center gap-3 border-t px-4 py-2 text-sm">

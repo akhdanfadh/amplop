@@ -571,18 +571,46 @@ type conversationChange struct {
 	// both, so an undo, which swaps them, is a change this takes too; the
 	// Google client sends cleared marks in a call of their own when the
 	// labels leave no room for them.
-	Add     []string `json:"add,omitempty" nullable:"false" maxItems:"100" uniqueItems:"true" doc:"The places to add each conversation's messages to: inbox, spam, trash, or one of the member's labels in its account, by id."`
-	Remove  []string `json:"remove,omitempty" nullable:"false" maxItems:"100" uniqueItems:"true" doc:"The places to take each conversation's messages out of, named as in add."`
-	Starred *bool    `json:"starred,omitempty" doc:"true stars each conversation's newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is."`
-	Unread  *bool    `json:"unread,omitempty" doc:"true marks each conversation's newest message unread, as unread does; false marks every message read. Left out, it stays as it is."`
+	Add     []changePlace `json:"add,omitempty" nullable:"false" maxItems:"100" uniqueItems:"true" doc:"The places to add each conversation's messages to: inbox, spam, trash, or one of the member's labels in its account, by id."`
+	Remove  []changePlace `json:"remove,omitempty" nullable:"false" maxItems:"100" uniqueItems:"true" doc:"The places to take each conversation's messages out of, named as in add."`
+	Starred *bool         `json:"starred,omitempty" doc:"true stars each conversation's newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is."`
+	Unread  *bool         `json:"unread,omitempty" doc:"true marks each conversation's newest message unread, as unread does; false marks every message read. Left out, it stays as it is."`
+}
+
+// changePlaceSchemaName names the contract's places a change can name.
+const changePlaceSchemaName = "ChangePlace"
+
+// changePlace is a place a [conversationChange] names: one of
+// [conversation.ChangeViews], or the id of one of the member's labels.
+type changePlace string
+
+// Schema describes changePlace once, under its own name, as one of
+// [conversation.ChangeViews] or a label's id, so a client learns from the
+// contract which views a change can name, e.g. which lists a move can
+// leave.
+func (changePlace) Schema(r huma.Registry) *huma.Schema {
+	if _, ok := r.Map()[changePlaceSchemaName]; !ok {
+		views := make([]any, 0, len(conversation.ChangeViews))
+		for _, view := range conversation.ChangeViews {
+			views = append(views, string(view))
+		}
+		r.Map()[changePlaceSchemaName] = &huma.Schema{
+			Description: "A place a change can add a conversation to or take it out of: a view, inbox, spam, or trash, or the id of one of the member's labels from List Places. The other views follow: Sent from what a conversation's account sent, All mail from Spam and Trash, Starred from the star.",
+			AnyOf: []*huma.Schema{
+				{Type: huma.TypeString, Enum: views},
+				{Type: huma.TypeString, Format: "uuid"},
+			},
+		}
+	}
+	return &huma.Schema{Ref: "#/components/schemas/" + changePlaceSchemaName}
 }
 
 // conversationChangeOf returns change as the API sends it.
 func conversationChangeOf(change conversation.Change) conversationChange {
-	names := func(places []conversation.Place) []string {
-		texts := make([]string, 0, len(places))
+	names := func(places []conversation.Place) []changePlace {
+		texts := make([]changePlace, 0, len(places))
 		for _, place := range places {
-			texts = append(texts, place.String())
+			texts = append(texts, changePlace(place.String()))
 		}
 		return texts
 	}
@@ -606,10 +634,10 @@ func conversationChangeOf(change conversation.Change) conversationChange {
 // that is not one.
 func parseChanges(body conversationChangesBody) ([]conversation.Change, error) {
 	var errs []inputError
-	places := func(location string, texts []string) []conversation.Place {
+	places := func(location string, texts []changePlace) []conversation.Place {
 		parsed := make([]conversation.Place, 0, len(texts))
 		for j, text := range texts {
-			place, err := conversation.ParsePlace(text)
+			place, err := conversation.ParsePlace(string(text))
 			// A view the others decide, e.g. Sent, is no place to name:
 			// the service's own rule, asked of this place alone, so the
 			// error points at it.

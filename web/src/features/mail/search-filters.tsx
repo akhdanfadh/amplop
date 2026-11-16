@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, type ReactElement } from "react";
+import { useEffect, useId, type ReactElement } from "react";
 import { Button as AriaButton, type Selection } from "react-aria-components";
 import { useListConnectedAccounts } from "@/api/generated/inbok";
 import { searchConversationsParamsFromMax } from "@/api/generated/model/searchConversationsParams.zod";
@@ -16,7 +16,7 @@ import { Popover, PopoverTrigger } from "@/components/ui/popover";
 import { RecipientInput } from "@/components/recipient-input";
 import { isAddress } from "@/features/outgoing-messages/compose-schema";
 import { dayDate } from "@/lib/datetime";
-import { labelPath, usePlaceCounts } from "./place-counts";
+import { useLabels, type Label } from "./labels";
 import { isViewPlace, viewPlaces, type Place } from "./places";
 import { mostPlaces, type FilterChange, type SearchFilters } from "./search";
 import { DateChooser } from "./search-dates";
@@ -48,27 +48,6 @@ import {
   viewsGroupName,
   withAttachment,
 } from "./text";
-
-// A label as the menus show it: its account, its own name, and its name
-// with its parents', e.g. Work/Projects.
-type Label = { place: string; accountId: number; name: string; path: string };
-
-// useLabels returns the member's labels, each account's in name order.
-function useLabels(): Label[] {
-  const counts = usePlaceCounts();
-  return useMemo(() => {
-    const labels = counts
-      .filter((count) => count.name !== null)
-      .map((count) => ({
-        place: count.place,
-        accountId: count.accountId,
-        name: count.name ?? "",
-        path: labelPath(counts, count.place).join("/"),
-      }));
-    // oxlint-disable-next-line unicorn/no-array-sort -- a new array; tsconfig's lib has no toSorted.
-    return labels.sort((a, b) => a.path.localeCompare(b.path));
-  }, [counts]);
-}
 
 // placeLabel returns the name of place, a view or one of labels: a label's
 // own name, as the top bar names one, its path being in the menu.

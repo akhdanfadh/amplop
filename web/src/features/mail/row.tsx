@@ -22,7 +22,8 @@ import { fullDate, listDate } from "./dates";
 import { Marked } from "./marks";
 import { senders } from "./people";
 import { SenderAvatar } from "./sender-avatar";
-import { inboxChip, messageCount, rowName, subjectText, unknownSender } from "./text";
+import { RowLabelsContext, type RowLabel } from "./labels";
+import { inboxChip, messageCount, moreMarks, rowName, subjectText, unknownSender } from "./text";
 import { actionWords } from "./words";
 
 // Picks is what a list lets its rows do: off, no picking, e.g. a search's
@@ -105,6 +106,13 @@ export function ConversationRow({
   const subject = subjectText(match ? match.subject : conversation.subject);
   const count = conversation.messageCount > 1 ? conversation.messageCount : undefined;
   const inInbox = markInbox && conversation.inbox;
+  const { labels: known, leaveOut } = useContext(RowLabelsContext);
+  // Its labels in the sidebar's order, but the list's own.
+  const labels = conversation.labelIds
+    .filter((place) => place !== leaveOut)
+    .flatMap((place) => known.get(place) ?? [])
+    // oxlint-disable-next-line unicorn/no-array-sort -- a new array; tsconfig's lib has no toSorted.
+    .sort((a, b) => a.order - b.order);
 
   return (
     <GridListItem
@@ -137,6 +145,7 @@ export function ConversationRow({
         date: shownDate,
         unread: conversation.unread,
         inbox: inInbox,
+        labels: labels.map((label) => label.path),
         starred: conversation.starred,
         // The ring is a colour alone, so the name says the account.
         account: ringed && account ? accountName(account) : undefined,
@@ -177,6 +186,7 @@ export function ConversationRow({
             shownDate={shownDate}
             subject={subject}
             inInbox={inInbox}
+            labels={labels}
             onStar={onStar}
           />
         </>
@@ -201,6 +211,7 @@ const RowText = memo(function RowText({
   shownDate,
   subject,
   inInbox,
+  labels,
   onStar,
 }: {
   conversation: Conversation;
@@ -213,6 +224,7 @@ const RowText = memo(function RowText({
   shownDate: string;
   subject: string;
   inInbox: boolean;
+  labels: readonly RowLabel[];
   onStar: (starred: boolean) => void;
 }): ReactElement {
   return (
@@ -267,8 +279,9 @@ const RowText = memo(function RowText({
         )}
       </span>
       {/* The chip and the star end the preview's line, the row's marks
-            beside its date, so the text above starts where it does. */}
-      <div className="flex h-5 items-center gap-1.5">
+            beside its date, so the text above starts where it does. Its
+            width decides how many marks show (RowMarks). */}
+      <div className="@container flex h-5 items-center gap-1.5">
         <p
           dir="auto"
           className="min-w-0 flex-1 truncate text-snippet font-normal text-muted-foreground"
@@ -279,23 +292,94 @@ const RowText = memo(function RowText({
             conversation.preview
           )}
         </p>
-        {inInbox && (
-          // 16 px, the meta text's line and the star's icon, so 2 px
-          // stay between it and the subject above. A hovered or open
-          // row's surface is the chip's own fill, so there it takes the
-          // page's, to keep its shape.
-          <Badge
-            variant="secondary"
-            className="h-4 px-1.5 py-0 in-aria-[current=page]:bg-background in-data-hovered:bg-background"
-          >
-            {inboxChip}
-          </Badge>
-        )}
+        <RowMarks inbox={inInbox} labels={labels} />
         <StarButton starred={conversation.starred} onStar={onStar} />
       </div>
     </div>
   );
 });
+
+// RowMarks ends a row's preview line with where its conversation is: the
+// Inbox chip while inbox, then its labels by their row names, then how
+// many more, the full paths on hover, in at most 60% of the line. A row
+// is one line, so a chip is cut rather than wrapped, at 6rem, or shorter
+// to fit, down to 3.5rem, a short word: as the line narrows below what
+// that floor needs, it shows two marks, then one, then none, each with
+// how many more; one at most where the list says so (RowLabelsContext). Screen readers hear every label in the row's name
+// (rowName), and the reading pane shows them whole.
+//
+// DESIGN: the line's width picks the marks in CSS, so no row measures
+// itself. A step shows where its marks fit 60% of the line at their
+// floor, with "+N" (2.25rem) and the gaps: two chips need 9.75rem, so a
+// 16.25rem line; one needs 6rem, so a 10rem line. In rem, so it holds at
+// any text size.
+function RowMarks({
+  inbox,
+  labels,
+}: {
+  inbox: boolean;
+  labels: readonly RowLabel[];
+}): ReactElement | null {
+  const marks = [
+    ...(inbox ? [{ key: "inbox", name: inboxChip, path: inboxChip }] : []),
+    ...labels.map((label) => ({ key: label.path, name: label.name, path: label.path })),
+  ];
+  // Search results show one at most: their snippet says why each is
+  // there.
+  const { most = 2 } = useContext(RowLabelsContext);
+  if (marks.length === 0) return null;
+  // 16 px, the meta text's line and the star's icon, so 2 px stay between
+  // it and the subject above. A hovered or open row's surface is the
+  // chip's own fill, so there it takes the page's, to keep its shape.
+  const chip = "h-4 px-1.5 py-0 in-aria-[current=page]:bg-background in-data-hovered:bg-background";
+  return (
+    <span
+      // The row's name says them all; the hover's title repeats it.
+      aria-hidden="true"
+      title={marks.map((mark) => mark.path).join(", ")}
+      className="flex max-w-[60%] min-w-0 shrink-0 items-center gap-1"
+    >
+      <Badge
+        variant="secondary"
+        className={cn(chip, "hidden max-w-24 min-w-14 shrink @min-[10rem]:inline-flex")}
+      >
+        <span dir="auto" translate="no" className="truncate">
+          {marks[0].name}
+        </span>
+      </Badge>
+      {most === 2 && marks.length > 1 && (
+        <Badge
+          variant="secondary"
+          className={cn(chip, "hidden max-w-24 min-w-14 shrink @min-[16.25rem]:inline-flex")}
+        >
+          <span dir="auto" translate="no" className="truncate">
+            {marks[1].name}
+          </span>
+        </Badge>
+      )}
+      {most === 2 && marks.length > 2 && (
+        <Badge
+          variant="secondary"
+          className={cn(chip, "hidden tabular-nums @min-[16.25rem]:inline-flex")}
+        >
+          {moreMarks(marks.length - 2)}
+        </Badge>
+      )}
+      {marks.length > 1 && (
+        <Badge
+          variant="secondary"
+          className={cn(
+            chip,
+            "hidden tabular-nums",
+            most === 2 ? "@min-[10rem]:@max-[16.25rem]:inline-flex" : "@min-[10rem]:inline-flex",
+          )}
+        >
+          {moreMarks(marks.length - 1)}
+        </Badge>
+      )}
+    </span>
+  );
+}
 
 // PickBox is a row's leading 36 px, in a list that picks: children, its
 // avatar, or its

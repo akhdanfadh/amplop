@@ -17,9 +17,12 @@ import { useLayout } from "@/hooks/use-layout";
 import { isCurrent, runAction, type ActionMail } from "./actions";
 import { currentMail } from "./conversations";
 import { requestRowFocus } from "./focus-request";
-import { perform } from "./perform";
+import { LabelChips } from "./label-chips";
+import { labelWords } from "./words";
+import { useLabelsIn } from "./labels";
+import { perform, type Performed } from "./perform";
 import type { AppHref, Place } from "./places";
-import { leavesList, staysInList, type Action } from "./rules";
+import { leavesList, staysInList } from "./rules";
 import { ConversationToolbar } from "./toolbar";
 import {
   accountsUnreadable,
@@ -91,6 +94,7 @@ export function Reader({
 
   const detail = read.data?.data;
   const mail = currentMail(client);
+  const labels = useLabelsIn(mail);
   // The conversation's row in the mail collection, which an action
   // anywhere changes at once: the list's, or loaded by ID (ADR031). Read
   // here rather than as the query's placeholder, which the query drops
@@ -139,14 +143,14 @@ export function Reader({
   // itself after Mark unread; a refusal then says why on the list. One the
   // provider no longer has goes back too, its row gone, while the address
   // is still the one it was run at.
-  const onAction = (action: Action) => {
+  const onAction = (act: Performed) => {
     if (!row || !actionMail || left.current === row.id) return;
-    const leaves = leavesList(row, action, places, listAccount);
+    const leaves = leavesList(row, act, places, listAccount);
     // The address, not the pane's drawn conversation: a row chosen since
     // moves the address at once, while the pane draws this conversation
     // until the next one's page has loaded.
     const at = router.state.location.href;
-    void perform({ mail: actionMail, conversations: [row], action, onUnauthorized: signOut }).then(
+    void perform({ mail: actionMail, conversations: [row], act, onUnauthorized: signOut }).then(
       (outcomes) => {
         const gone = outcomes.get(row.id) === "gone";
         if (gone && !leaves && router.state.location.href === at) goBack();
@@ -157,7 +161,7 @@ export function Reader({
     requestRowFocus(list.key, {
       id: row.id,
       dateMs: row.dateMs,
-      stays: staysInList(row, action, places, listAccount),
+      stays: staysInList(row, act, places, listAccount),
     });
     goBack();
   };
@@ -205,6 +209,22 @@ export function Reader({
         placeholder={status}
         startAt={startAt}
         onUnauthorized={signOut}
+        marks={
+          row && (
+            <LabelChips
+              conversation={row}
+              labels={labels}
+              listAccount={listAccount}
+              onArchive={() => onAction("archive")}
+              onRemove={(label) =>
+                onAction({
+                  changes: [{ ids: [row.id], remove: [label.place] }],
+                  words: labelWords([], [label.path]),
+                })
+              }
+            />
+          )
+        }
         actions={
           row && (
             <ConversationToolbar
@@ -213,6 +233,14 @@ export function Reader({
               // a search of several follows the conversation, as All mail.
               list={places.length === 1 ? places[0] : "all"}
               providerUrl={detail?.providerUrl}
+              // Labels under their account's name where the list shows
+              // several accounts' mail, as picking's menus show them.
+              headings={listAccount === undefined && (accounts.data?.data.accounts.length ?? 0) > 1}
+              labels={labels}
+              accountName={(id) => {
+                const owner = accounts.data?.data.accounts.find((a) => a.id === id);
+                return owner ? accountName(owner) : "";
+              }}
               onAction={onAction}
             />
           )

@@ -252,6 +252,34 @@ describe("search", () => {
     expect(marks).toEqual(["Invoice"]);
   });
 
+  it("marks one place at most on a result, then how many more, so the snippet keeps its room", async () => {
+    const travel = "22222222-2222-4222-8222-222222222222";
+    await page.viewport(1440, 900);
+    api = mailApi(
+      [conversation(1, { subject: "Invoice from Shop", labelIds: [label, travel] })],
+      [listedAccount(1, "ana@example.com")],
+    );
+    api.places = [
+      { accountId: 1, name: "Receipts", parent: null, place: label, unread: 0 },
+      { accountId: 1, name: "Travel", parent: null, place: travel, unread: 0 },
+    ];
+    const router = await appRouter("/mail/search?q=invoice", memberSession, (url, init) =>
+      new URL(url, location.href).pathname === "/api/v0/sessions/current"
+        ? undefined
+        : api.fetch(url, init),
+    );
+    await render(<RouterProvider router={router} />);
+    current = router;
+    const row = results().getByRole("row", { name: /Invoice from Shop/ });
+    await expect.element(row).toHaveAccessibleName(/Labels Receipts and Travel$/);
+
+    const marks = row.element().querySelector("[aria-hidden=true][title]");
+    const shown = [...(marks?.children ?? [])]
+      .filter((mark) => mark.checkVisibility())
+      .map((mark) => mark.textContent);
+    expect(shown).toEqual(["Inbox", "+2"]);
+  });
+
   it("keeps a result's avatar on hover: results are not picked", async () => {
     await open("/mail/search?q=invoice");
     const row = results().getByRole("row", { name: /Invoice from Shop/ });

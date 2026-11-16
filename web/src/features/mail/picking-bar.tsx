@@ -1,7 +1,7 @@
 import {
-  useEffect,
   useMemo,
   useRef,
+  useState,
   type KeyboardEvent,
   type ReactElement,
   type RefObject,
@@ -20,7 +20,9 @@ import { clearAccountCache } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
 import { mailData, type Conversation } from "./conversations";
 import { listKey, requestRowFocus } from "./focus-request";
-import { perform } from "./perform";
+import { LabelMenuItems, LabelPicker, type Picker } from "./label-menu";
+import { useLabels } from "./labels";
+import { perform, type Performed } from "./perform";
 import type { Picking } from "./picking";
 import type { Place } from "./places";
 import { actionsFor, staysInList, targetsOf, type Action } from "./rules";
@@ -54,8 +56,9 @@ const inMore: Action = "spam";
 // all once all are; then how many are picked, "All N" once the list has
 // reached its end (complete); then the actions picked offers in place
 // (actionsFor): each slot shows its usual action while any picked row
-// needs it, and More holds the pair's other action when the rows are
-// mixed, and Report spam. An action goes to the picked rows it changes;
+// needs it, and More holds Move to… and Labels… (LabelPicker), the pair's
+// other action when the rows are mixed, and Report spam. An action goes to
+// the picked rows it changes;
 // rows it takes out of the list stay picked until it is answered, so a
 // refused one comes back picked, and focus goes to the list's next row
 // when none is left. heading keeps the place's name for screen readers,
@@ -86,6 +89,7 @@ export function PickingBar({
   // The list read them already: the bar's arrival needs no read of its own.
   const accounts = useListConnectedAccounts({ query: { refetchOnMount: false } });
   const accountList = accounts.data?.data.accounts;
+  const labels = useLabels();
   const names = useMemo(
     () => new Map(accountList?.map((a) => [a.id, accountName(a)])),
     [accountList],
@@ -104,20 +108,21 @@ export function PickingBar({
   }
   if (offered.includes(inMore)) more.push(inMore);
 
-  const run = (action: Action) => {
-    const targets = targetsOf(picked, action, place);
+  const run = (action: Action) => act(action, targetsOf(picked, action, place));
+  // act runs performed on targets, the picked rows it changes.
+  const act = (performed: Performed, targets: readonly Conversation[]) => {
     if (targets.length === 0) return;
     const ids = targets.map((c) => c.id);
     const changing = new Set(ids);
     const { conversations, placeCounts } = mailData(client);
     const emptied = picked.every(
-      (row) => changing.has(row.id) && !staysInList(row, action, [place], account),
+      (row) => changing.has(row.id) && !staysInList(row, performed, [place], account),
     );
     const release = picking.hold(ids);
     void perform({
       mail: { client, conversations, placeCounts },
       conversations: targets,
-      action,
+      act: performed,
       from: "picked",
       accountName: (id) => names.get(id) ?? "",
       onUnauthorized: () => {
@@ -143,23 +148,9 @@ export function PickingBar({
 
   const all = picked.length === loaded.length;
 
-  // An action from More that leaves More empty takes the button React Aria
-  // would give focus back to: focus goes to the bar's last button instead
-  // of the page.
-  const toolbar = useRef<HTMLDivElement>(null);
-  const moreShown = more.length > 0;
-  const hadMore = useRef(moreShown);
-  useEffect(() => {
-    const lostMore = hadMore.current && !moreShown;
-    hadMore.current = moreShown;
-    if (!lostMore) return undefined;
-    const frame = requestAnimationFrame(() => {
-      if (document.activeElement !== document.body) return;
-      const controls = toolbar.current?.querySelectorAll<HTMLElement>("button");
-      controls?.[controls.length - 1]?.focus();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [moreShown]);
+  // The label picker More opened, under More's button.
+  const [picker, setPicker] = useState<Picker | null>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
   const pickAll = () => picking.pick(all ? new Set() : new Set(loaded.map((row) => row.id)));
   return (
     <>
@@ -185,7 +176,6 @@ export function PickingBar({
         }}
       >
         <Toolbar
-          ref={toolbar}
           aria-label={pickedBarName}
           data-slot="picking-bar"
           // Wraps only when the actions do not fit beside the count, e.g.
@@ -258,27 +248,39 @@ export function PickingBar({
                 </TooltipTrigger>
               );
             })}
-            {more.length > 0 && (
-              <DropdownMenuTrigger>
-                <TooltipTrigger>
-                  <Button variant="ghost" size="icon-sm" aria-label={moreName}>
-                    <EllipsisVerticalIcon aria-hidden="true" />
-                  </Button>
-                  <Tooltip>{moreName}</Tooltip>
-                </TooltipTrigger>
-                <DropdownMenu placement="bottom end" className="w-auto">
-                  {more.map((action) => {
-                    const { label, icon: Icon } = actionWords[action];
-                    return (
-                      <DropdownMenuItem key={action} onAction={() => run(action)}>
-                        <Icon aria-hidden="true" />
-                        {label}
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </DropdownMenu>
-              </DropdownMenuTrigger>
-            )}
+            <DropdownMenuTrigger>
+              <TooltipTrigger>
+                <Button ref={moreButton} variant="ghost" size="icon-sm" aria-label={moreName}>
+                  <EllipsisVerticalIcon aria-hidden="true" />
+                </Button>
+                <Tooltip>{moreName}</Tooltip>
+              </TooltipTrigger>
+              <DropdownMenu placement="bottom end" className="w-auto">
+                <LabelMenuItems conversations={picked} list={place} onOpen={setPicker} />
+                {more.map((action) => {
+                  const { label, icon: Icon } = actionWords[action];
+                  return (
+                    <DropdownMenuItem key={action} onAction={() => run(action)}>
+                      <Icon aria-hidden="true" />
+                      {label}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenu>
+            </DropdownMenuTrigger>
+            <LabelPicker
+              picker={picker}
+              triggerRef={moreButton}
+              onClose={() => setPicker(null)}
+              conversations={picked}
+              list={place}
+              // Under their account's name where the list shows several
+              // accounts' mail, even once one account's picks are left.
+              headings={account === undefined && (accountList?.length ?? 0) > 1}
+              labels={labels}
+              accountName={(id) => names.get(id) ?? ""}
+              onAct={act}
+            />
           </span>
         </Toolbar>
       </div>

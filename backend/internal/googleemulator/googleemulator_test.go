@@ -37,6 +37,7 @@ func startTestEmulator(t *testing.T) (*Emulator, *oauth2.Config) {
 			{Email: "unverified@example.com", Name: "Unverified", Unverified: true},
 		},
 		Clients: []Client{{ID: testClientID, Secret: testSecret, RedirectURIs: []string{testRedirect}}},
+		Labels:  []Label{{ID: "Label_work", Mailbox: "alex@example.com", Name: "Work"}},
 		Messages: []Message{
 			{ID: "m1", Mailbox: "alex@example.com", From: "blair@example.com", Subject: "Hello", Body: "Hi."},
 		},
@@ -167,9 +168,10 @@ func TestEmulatorProfile(t *testing.T) {
 	assert.NotZero(t, profile.HistoryId)
 }
 
-// Label changes and Trash answer as Gmail does, which inbok's patch makes
-// so (observed on inbok's test account, 2026-11-15): without history IDs,
-// Trash takes SPAM off too, and untrash puts nothing back, INBOX included.
+// Label changes, a member's own label's too, and Trash answer as Gmail
+// does, which inbok's patch makes so (observed on inbok's test account,
+// 2026-11-15): without history IDs, Trash takes SPAM off too, and untrash
+// puts nothing back, INBOX included.
 func TestEmulatorActions(t *testing.T) {
 	e, cfg := startTestEmulator(t)
 	token := connect(t, e, cfg, "alex@example.com")
@@ -202,6 +204,15 @@ func TestEmulatorActions(t *testing.T) {
 	untrashed, err := threads.Untrash("me", m1.ThreadId).Context(t.Context()).Do()
 	require.NoError(t, err)
 	assert.Equal(t, [][]string{{}}, answered("untrash", untrashed.Messages))
+
+	// A member's own label goes on and comes off as a system one does, as
+	// Move to and Labels send it.
+	labelled, err := threads.Modify("me", m1.ThreadId, &gmail.ModifyThreadRequest{AddLabelIds: []string{"Label_work"}}).Context(t.Context()).Do()
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{{"Label_work"}}, answered("label", labelled.Messages))
+	unlabelled, err := threads.Modify("me", m1.ThreadId, &gmail.ModifyThreadRequest{RemoveLabelIds: []string{"Label_work"}}).Context(t.Context()).Do()
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{{}}, answered("unlabel", unlabelled.Messages))
 
 	starred, err := service.Users.Messages.Modify("me", "m1", &gmail.ModifyMessageRequest{AddLabelIds: []string{"STARRED"}}).Context(t.Context()).Do()
 	require.NoError(t, err)

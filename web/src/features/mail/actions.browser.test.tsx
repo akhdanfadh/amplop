@@ -156,8 +156,10 @@ describe("runAction", () => {
   });
 
   it("puts a conversation back where it was by the answer's undo, though Move to Inbox would not", async () => {
-    // Archived, so not in the Inbox list: an All mail list holds it.
-    const row = conversation(1, { inbox: false, labelIds: ["work"] });
+    // Archived, so not in the Inbox list: an All mail list holds it. A
+    // label's id is a UUID, as a change names it (ChangePlace).
+    const work = "00000000-0000-4000-8000-0000000000a1";
+    const row = conversation(1, { inbox: false, labelIds: [work] });
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
     const mail = await openInbox(api);
     await mail.conversations.utils.writeUpsert(toConversation(row));
@@ -169,7 +171,7 @@ describe("runAction", () => {
     expect(mail.conversations.get(row.id)).toMatchObject({
       trash: false,
       inbox: false,
-      labelIds: ["work"],
+      labelIds: [work],
     });
     await undone;
 
@@ -178,7 +180,7 @@ describe("runAction", () => {
       trash: false,
       inbox: false,
       allMail: true,
-      labelIds: ["work"],
+      labelIds: [work],
     });
   });
 

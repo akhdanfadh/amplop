@@ -123,6 +123,23 @@
         ],
         "type": "object"
       },
+      "ChangePlace": {
+        "anyOf": [
+          {
+            "enum": [
+              "inbox",
+              "spam",
+              "trash"
+            ],
+            "type": "string"
+          },
+          {
+            "format": "uuid",
+            "type": "string"
+          }
+        ],
+        "description": "A place a change can add a conversation to or take it out of: a view, inbox, spam, or trash, or the id of one of the member's labels from List Places. The other views follow: Sent from what a conversation's account sent, All mail from Spam and Trash, Starred from the star."
+      },
       "ChangedMember": {
         "additionalProperties": false,
         "properties": {
@@ -317,7 +334,7 @@
           "add": {
             "description": "The places to add each conversation's messages to: inbox, spam, trash, or one of the member's labels in its account, by id.",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/ChangePlace"
             },
             "maxItems": 100,
             "type": "array",
@@ -337,7 +354,7 @@
           "remove": {
             "description": "The places to take each conversation's messages out of, named as in add.",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/ChangePlace"
             },
             "maxItems": 100,
             "type": "array",

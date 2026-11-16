@@ -78,7 +78,8 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // between pages would, and each page in searchDropped empty, as when
 // PostgreSQL no longer holds its hits, or answers failSearch's status,
 // with Retry-After when it is 429 or 503. requests records every path and
-// search it was asked; actions every action body.
+// search it was asked; actions every action body, and changes every
+// change body's changes.
 export type MailApi = {
   conversations: ConversationRow[];
   accounts: ListedAccount[];
@@ -86,6 +87,7 @@ export type MailApi = {
   placesAfter: PlaceCount[] | undefined;
   requests: string[];
   actions: { action: string; ids: string[] }[];
+  changes: ConversationChange[][];
   failNext: number | undefined;
   failOlder: number | undefined;
   failAction: number | undefined;
@@ -109,6 +111,7 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     placesAfter: undefined,
     requests: [],
     actions: [],
+    changes: [],
     failNext: undefined,
     failOlder: undefined,
     failAction: undefined,
@@ -151,6 +154,7 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
           JSON.parse(typeof init?.body === "string" ? init.body : "{}"),
         );
         api.actions.push({ action: "changes", ids: changes.flatMap((c) => c.ids) });
+        api.changes.push(changes);
         if (api.failAction !== undefined) {
           const status = api.failAction;
           api.failAction = undefined;

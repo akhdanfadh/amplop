@@ -54,7 +54,8 @@ export const inboxChip = "Inbox";
 // rowName returns what a screen reader calls a list row: whether it is
 // unread, who, how many messages when more than one, its subject and date,
 // whether its list marks it in the Inbox (inbox) and whether it is
-// starred, and its account when the list mixes accounts.
+// starred, its account when the list mixes accounts, and its labels by
+// their paths, last, as there may be many.
 export function rowName(row: {
   who: string;
   count: number | undefined;
@@ -62,6 +63,7 @@ export function rowName(row: {
   date: string;
   unread: boolean;
   inbox: boolean;
+  labels: readonly string[];
   starred: boolean;
   account: string | undefined;
 }): string {
@@ -74,6 +76,7 @@ export function rowName(row: {
     row.inbox && `In ${inboxChip}`,
     row.starred && "Starred",
     row.account,
+    row.labels.length > 0 && `${marksName} ${names.format(row.labels)}`,
   ]
     .filter(Boolean)
     .join(", ");
@@ -520,3 +523,52 @@ export const searchSpamTrashToo = "Search Spam and Trash too";
 export const searchBusy = "Search isn't answering right now. Try again in a moment.";
 export const searchOffline = "Couldn't search. Check your connection, then try again.";
 export const searchFailed = "Couldn't search your mail.";
+
+// Labels' and Move to's menus (DESIGN.md "Reading pane").
+export const moveMenuName = "Move to";
+export const labelsMenuName = "Labels";
+export const filterLabels = "Filter labels";
+export const clearFilter = "Clear filter";
+export const noLabelMatches = "No labels match.";
+export const noLabelsInThese =
+  "These accounts have no labels yet. Labels you make in Gmail show here.";
+export const onSome = "on some of them";
+
+// noLabelsYetIn says the accounts named have no labels to offer yet,
+// beside others that do.
+export function noLabelsYetIn(accounts: readonly string[]): string {
+  return `No labels in ${names.format(accounts)} yet. Labels you make in Gmail show here.`;
+}
+export const applyLabels = "Apply";
+
+// opensPicker names a menu item that opens a picker rather than acting,
+// e.g. "Labels…", as menus mark one that asks for more.
+export function opensPicker(label: string): string {
+  return `${label}\u2026`;
+}
+
+// labelsLimit says Apply waits for at most most labels added and most
+// removed, the contract's limit for one change.
+export function labelsLimit(most: number): string {
+  return `Add or remove up to ${most} at once.`;
+}
+
+// noLabelsIn says the account named has no labels to offer yet.
+export function noLabelsIn(account: string): string {
+  return `No labels in ${account} yet. Labels you make in Gmail show here.`;
+}
+
+// The reading pane's chips of where a conversation is (LabelChips).
+export const marksName = "Labels";
+
+// twinName names a label on a row when another of its account has the
+// same own name, name, by name and then its parent's path, parent, e.g.
+// "Acme · Clients".
+export function twinName(name: string, parent: string): string {
+  return `${name} · ${parent}`;
+}
+
+// moreMarks counts the marks a row has beyond those it shows, e.g. "+3".
+export function moreMarks(count: number): string {
+  return `+${formatCount(count)}`;
+}

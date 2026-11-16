@@ -520,7 +520,9 @@ describe("the Inbox chip", () => {
     await userEvent.unhover(row);
     await userEvent.hover(row);
     await expect.element(row).toHaveAttribute("data-hovered", "true");
-    expect(getComputedStyle(chip.element()).backgroundColor).not.toBe(
+    // The chip, around its name.
+    const badge = chip.element().closest("[data-slot=badge]")!;
+    expect(getComputedStyle(badge).backgroundColor).not.toBe(
       getComputedStyle(row.element()).backgroundColor,
     );
   });

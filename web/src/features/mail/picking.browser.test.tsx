@@ -459,26 +459,6 @@ describe("picking", () => {
     await expect.element(count(1)).toBeVisible();
   });
 
-  it("puts focus on the bar's last button when an action from More empties More", async () => {
-    // In Spam, More holds no Report spam: only the star pair's other action.
-    const spam = { inbox: false, allMail: false, spam: true };
-    await open([conversation(5, { ...spam, starred: true }), conversation(4, spam)], {
-      address: "/mail/spam",
-    });
-    await pickBox("Subject 5");
-    await pickBox("Subject 4");
-    bar().getByRole("button", { name: "More actions" }).element().focus();
-    await userEvent.keyboard("{Enter}");
-    await expect.element(page.getByRole("menuitem", { name: "Remove star" })).toBeVisible();
-
-    await userEvent.keyboard("{Enter}");
-
-    await expect
-      .element(bar().getByRole("button", { name: "More actions" }))
-      .not.toBeInTheDocument();
-    await expect.element(bar().getByRole("button", { name: "Star" })).toHaveFocus();
-  });
-
   it("is the top bar on a phone, after an arrow that stops picking", async () => {
     await open([conversation(5), conversation(4)], { width: 390 });
     await pickBox("Subject 5");

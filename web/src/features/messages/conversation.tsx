@@ -85,8 +85,9 @@ const shownAddresses = 10;
 //
 // The slots hold what other features build: back, the way back to the
 // list at the toolbar's start, where one pane shows at a time; actions,
-// the conversation's actions at its end; and messageActions, a message's
-// other actions in its header, after Reply.
+// the conversation's actions at its end; marks, where the conversation is,
+// under the account line; and messageActions, a message's other actions
+// in its header, after Reply.
 export function ConversationView(props: ConversationProps): ReactElement {
   return (
     <ReplyProvider onUnauthorized={props.onUnauthorized}>
@@ -103,6 +104,7 @@ type ConversationProps = {
   onUnauthorized: () => void;
   back?: ReactNode;
   actions?: ReactNode;
+  marks?: ReactNode;
   messageActions?: (message: ConversationMessage) => ReactNode;
   startAt?: string;
 };
@@ -117,6 +119,7 @@ function Conversation({
   onUnauthorized,
   back,
   actions,
+  marks,
   messageActions,
   startAt,
 }: ConversationProps): ReactElement {
@@ -224,6 +227,7 @@ function Conversation({
               </>
             )}
           </p>
+          {marks}
         </header>
         {messages ? (
           <Thread
