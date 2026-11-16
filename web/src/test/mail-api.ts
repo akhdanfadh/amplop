@@ -74,8 +74,9 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // It searches conversations by their subjects, each word anywhere in it,
 // as Search Conversations answers, a page at a time, each page after the
 // first starting searchShift results early, as a ranking a sync shifted
-// between pages would, or answers failSearch's status, with Retry-After
-// when it is 429 or 503. requests records every path and
+// between pages would, and each page in searchDropped empty, as when
+// PostgreSQL no longer holds its hits, or answers failSearch's status,
+// with Retry-After when it is 429 or 503. requests records every path and
 // search it was asked; actions every action body.
 export type MailApi = {
   conversations: ConversationRow[];
@@ -94,6 +95,7 @@ export type MailApi = {
   refuseSync: Record<number, { status: number; type: string }>;
   failSearch: number | undefined;
   searchShift: number;
+  searchDropped: number[];
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 };
 
@@ -116,6 +118,7 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     refuseSync: {},
     failSearch: undefined,
     searchShift: 0,
+    searchDropped: [],
     fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.href);
       api.requests.push(url.pathname + url.search);
@@ -170,7 +173,9 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         if (api.failSearch !== undefined) {
           return problem(api.failSearch, "about:blank", { "Retry-After": "1" });
         }
-        return Response.json({ data: searched(api.conversations, search, api.searchShift) });
+        return Response.json({
+          data: searched(api.conversations, search, api.searchShift, api.searchDropped),
+        });
       }
       if (path.startsWith("/api/v0/conversations/")) {
         const found = api.conversations.find((c) => path.endsWith(c.id));
@@ -333,7 +338,12 @@ function viewsOf(row: ConversationRow): string[] {
 // whose subject holds every word of search's q, anywhere, ignoring case,
 // in the places it names (none: All mail): each with its subject as the
 // match, the words marked where they first appear, newest first.
-function searched(conversations: ConversationRow[], search: URLSearchParams, shift: number) {
+function searched(
+  conversations: ConversationRow[],
+  search: URLSearchParams,
+  shift: number,
+  dropped: readonly number[],
+) {
   const words = (search.get("q") ?? "").toLowerCase().split(/\s+/).filter(Boolean);
   const places = search.getAll("place");
   const account = search.get("account");
@@ -361,7 +371,8 @@ function searched(conversations: ConversationRow[], search: URLSearchParams, shi
   const page = Number(search.get("page") ?? "1");
   const limit = Number(search.get("limit") ?? "50");
   const start = Math.max(0, (page - 1) * limit - (page > 1 ? shift : 0));
-  return { results: results.slice(start, start + limit), total: results.length };
+  const found = dropped.includes(page) ? [] : results.slice(start, start + limit);
+  return { results: found, total: results.length };
 }
 
 // inPlace returns the conversations in search's place and account.

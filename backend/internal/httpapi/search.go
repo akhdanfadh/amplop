@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"unicode/utf16"
 	"uuid"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -285,15 +286,15 @@ func textMatchesOf(text string, spans []search.Span) []textMatch {
 	return out
 }
 
-// utf16Length returns how many UTF-16 code units text takes: two for a
-// character past U+FFFF, e.g. most emoji, and one for any other.
+// utf16Length returns how many UTF-16 code units text takes, as
+// JavaScript counts a string: two for a character past U+FFFF, e.g. most
+// emoji, and one for any other.
 func utf16Length(text string) int {
 	n := 0
+	// Ranging over a string reads a byte that is not UTF-8 as U+FFFD, as
+	// encoding/json writes it, so RuneLen never returns -1 here.
 	for _, r := range text {
-		n++
-		if r > 0xFFFF {
-			n++
-		}
+		n += utf16.RuneLen(r)
 	}
 	return n
 }

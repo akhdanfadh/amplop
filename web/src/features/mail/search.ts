@@ -8,7 +8,7 @@ import {
   searchConversationsParamsLimitMax,
   searchConversationsParamsPlaceMax,
   searchConversationsParamsQMax,
-  type SearchConversationsParams,
+  SearchConversationsParams,
 } from "@/api/generated/model/searchConversationsParams.zod";
 import { conversationSearchPageTotalMax } from "@/api/generated/model/conversationSearchPage.zod";
 import { retryAfterDelay } from "@/api/retry-after";
@@ -39,7 +39,8 @@ export const searchFilters = z.object({
   date: z.enum(["7d", "30d", "1y", "older"]).optional().catch(undefined),
   since: z.iso.date().optional().catch(undefined),
   before: z.iso.date().optional().catch(undefined),
-  has: z.enum(["attachment"]).optional().catch(undefined),
+  // The contract's choices, so the address offers only what the API takes.
+  has: SearchConversationsParams.shape.has.catch(undefined),
 });
 
 // mailSearch reads a place's address's search: its account, and on
@@ -198,12 +199,10 @@ export function useSearchResults(params: SearchConversationsParams, enabled: boo
     queryFn: ({ pageParam, signal }) =>
       searchConversations({ ...params, page: pageParam, limit: pageSize }, { signal }),
     initialPageParam: 1,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((n, page) => n + page.data.results.length, 0);
-      return loaded < last.data.total && last.data.results.length > 0
-        ? pages.length + 1
-        : undefined;
-    },
+    // A page can hold fewer than it asked for and still not be the last
+    // (the contract's Results), so pages count, not the rows they held.
+    getNextPageParam: (last, pages) =>
+      pages.length * pageSize < last.data.total ? pages.length + 1 : undefined,
     enabled,
     placeholderData: keepPreviousData,
     gcTime: 0,

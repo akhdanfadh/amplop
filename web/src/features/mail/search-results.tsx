@@ -260,12 +260,13 @@ export function SearchResults({
   } else if (!search.data || expired) {
     body = <Placeholder loading={resultsLoading} />;
   } else if (total === 0 || (rows.length === 0 && !search.hasNextPage)) {
-    const name = copying.length === 1 ? accountName(copying[0]) : undefined;
     body = (
       <Empty className="px-4">
         {/* The words as typed, which can hold a long unbroken word. */}
         <EmptyTitle className="wrap-anywhere">{noMatches(words(filters.q))}</EmptyTitle>
-        {copying.length > 0 && <EmptyDescription>{stillCopying(name)}</EmptyDescription>}
+        {copying.length > 0 && (
+          <EmptyDescription>{stillCopying(copying.map(accountName))}</EmptyDescription>
+        )}
         {(filtered(filters) || spamTrash) && (
           <EmptyContent>
             {filtered(filters) ? (

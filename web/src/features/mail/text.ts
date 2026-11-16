@@ -415,12 +415,12 @@ export const searchPrompt = "Type 2 or more characters, or choose a filter.";
 export function noMatches(words: string | undefined): string {
   return words === undefined ? "Nothing matches these filters" : `Nothing matches "${words}"`;
 }
-// stillCopying says why a search may find more later: account, or some
-// account when undefined, is still copying its mail.
-export function stillCopying(account: string | undefined): string {
-  return account === undefined
-    ? "Some accounts are still syncing, so some of their mail can't be found yet."
-    : `${account} is still syncing, so some of its mail can't be found yet.`;
+// stillCopying says why a search may find more later: the accounts named
+// in accounts, one or more, are still copying their mail.
+export function stillCopying(accounts: readonly string[]): string {
+  return accounts.length === 1
+    ? `${accounts[0]} is still syncing, so some of its mail can't be found yet.`
+    : `${names.format(accounts)} are still syncing, so some of their mail can't be found yet.`;
 }
 export const clearFilters = "Clear filters";
 export const searchSpamTrashToo = "Search Spam and Trash too";

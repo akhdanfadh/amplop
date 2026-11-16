@@ -49,11 +49,17 @@ async function open(address: string, width = 1440, more: PlaceCount[] = []) {
   return router;
 }
 
-// openOver renders the app at address over conversations, one account's,
-// with each later search page starting shift results early.
-async function openOver(address: string, conversations: ConversationRow[], shift = 0) {
+// openOver renders the app at address over conversations, of accounts
+// (one when left out), with each later search page starting shift results
+// early.
+async function openOver(
+  address: string,
+  conversations: ConversationRow[],
+  shift = 0,
+  accounts = [listedAccount(1, "ana@example.com")],
+) {
   await page.viewport(1440, 900);
-  api = mailApi(conversations, [listedAccount(1, "ana@example.com")]);
+  api = mailApi(conversations, accounts);
   api.searchShift = shift;
   const router = await appRouter(address, memberSession, (url, init) =>
     new URL(url, location.href).pathname === "/api/v0/sessions/current"
@@ -223,6 +229,21 @@ describe("search", () => {
     expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key/i);
   });
 
+  it("pages on past a page whose hits are gone, to the total's last page", async () => {
+    const many = Array.from({ length: 120 }, (_, n) =>
+      conversation(n + 1, { subject: `Invoice ${n + 1}` }),
+    );
+    await openOver("/mail/search?q=invoice", many);
+    api.searchDropped = [2];
+    await expect.element(results().getByRole("row", { name: /Invoice 1\b/ })).toBeVisible();
+    const grid = results().element();
+    // Page 2 came back empty; page 3 still holds 20 of the 120.
+    await expect.poll(() => rowsAtEnd(grid)).toBe("70");
+    await expect.element(page.getByText("That's every match.")).toBeInTheDocument();
+    // Three pages of 50 cover 120: no fourth is asked for.
+    expect(searches().filter((request) => request.includes("page=4"))).toEqual([]);
+  });
+
   it("marks the matched words where the API placed them", async () => {
     await open("/mail/search?q=invoice");
     const row = results().getByRole("row", { name: /Invoice from Shop/ });
@@ -339,6 +360,21 @@ describe("search", () => {
       .toBeVisible();
     await userEvent.click(page.getByRole("button", { name: "Clear filters" }));
     await expect.poll(() => router.state.location.search).toEqual({ q: "parcel" });
+  });
+
+  it("names every account still syncing when it found nothing", async () => {
+    const work = listedAccount(1, "ana@example.com");
+    work.sync.status = "running";
+    const home = listedAccount(2, "ana@home.example", 2);
+    home.sync.status = "waiting";
+    await openOver("/mail/search?q=parcel", [], 0, [work, home]);
+    await expect
+      .element(
+        page.getByText(
+          "ana@example.com and ana@home.example are still syncing, so some of their mail can't be found yet.",
+        ),
+      )
+      .toBeVisible();
   });
 
   it("offers Spam and Trash when it found nothing without filters", async () => {
