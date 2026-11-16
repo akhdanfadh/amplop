@@ -118,7 +118,12 @@ function OpenWindow({ message }: { message: ComposeMessage }): ReactElement {
     if (!phone || pushed.current) return;
     pushed.current = true;
     const { location } = router.history;
-    router.history.push(location.href, { ...location.state, composeWindow: message.window });
+    // Its own step, past any page's leave warning: it keeps the address.
+    router.history.push(
+      location.href,
+      { ...location.state, composeWindow: message.window },
+      { ignoreBlocker: true },
+    );
   }, [phone, router, message.window]);
   useEffect(() => {
     if (!phone) return;
@@ -167,7 +172,8 @@ function OpenWindow({ message }: { message: ComposeMessage }): ReactElement {
         return;
       }
       closing.current = true;
-      router.history.back();
+      // Back to the same address: no page's leave warning has to ask.
+      router.history.back({ ignoreBlocker: true });
     },
     [finish, router],
   );

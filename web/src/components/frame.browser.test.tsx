@@ -175,6 +175,22 @@ describe("Frame", () => {
     await expect.element(page.getByRole("dialog", { name: "Member menu" })).toBeVisible();
   });
 
+  it("asks nothing for a step that keeps the page's address", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () => signedIn()),
+    );
+    await page.viewport(1440, 900);
+    const router = app();
+    await render(<RouterProvider router={router} />);
+    await expect.element(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
+
+    // As the compose window's entry on a phone: the same address, new state.
+    router.history.push(router.history.location.href, { composeWindow: "one" });
+    await expect.poll(() => router.history.location.state.composeWindow).toBe("one");
+    expect(page.getByRole("alertdialog").query()).toBeNull();
+  });
+
   it("signs out to sign-in past the page's leave warning, so nothing stays on screen", async () => {
     const fetch = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
       async (_input, init) =>

@@ -858,7 +858,9 @@ returns focus to Reply. Leaving the page asks first (`LeaveWarning`,
 `components/leave-warning.tsx`, on TanStack Router's `useBlocker`): a
 link, Back, or Forward opens a dialog, and closing or reloading the tab
 gets the browser's own question; while sending, or after a try whose
-answer was lost, it says what it means for the reply. An
+answer was lost, it says what it means for the reply. A step that keeps
+the address asks nothing, e.g. the compose window's history entry on a
+phone, which steps past every page's warning (`ignoreBlocker`). An
 address typed but not yet a chip counts as typed. The editor keeps the
 message it answers until it closes, so a newer message synced meanwhile
 never changes what is being written. After Send the editor gives way to the reply's status, read again

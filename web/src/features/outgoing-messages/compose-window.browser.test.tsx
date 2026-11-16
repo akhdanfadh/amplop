@@ -12,11 +12,13 @@ import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
+import { LeaveWarning } from "@/components/leave-warning";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter, memberSession } from "@/test/app-router";
 import { ComposeProvider, ComposeStore, useCompose } from "./compose-store";
 import { ComposeWindow } from "./compose-window";
 import { MessageStatus } from "./status";
+import { leaveText } from "./text";
 
 const ok = 200;
 const created = 201;
@@ -104,9 +106,10 @@ const refused: OutgoingMessage = {
 };
 
 // show renders a page with Compose and the compose window, as the signed-in
-// layout draws them, inside a router with a second page, /elsewhere. It
-// returns the store and the router.
-async function show() {
+// layout draws them, inside a router with a second page, /elsewhere. The
+// page warns before it is left when leaving is "warns", e.g. with a reply
+// being typed. It returns the store and the router.
+async function show(leaving: "quiet" | "warns" = "quiet") {
   const store = new ComposeStore();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRootRoute({
@@ -124,6 +127,7 @@ async function show() {
       <main>
         <h1 tabIndex={-1}>Inbox</h1>
         <OpenButton />
+        <LeaveWarning active={leaving === "warns"} text={leaveText("typed")} />
         <MessageStatus
           message={refused}
           current={refused.from}
@@ -467,6 +471,19 @@ describe("ComposeWindow", () => {
       await userEvent.click(page.getByRole("button", { name: "Close", exact: true }));
       await expect.element(page.getByRole("dialog", { name: "Refused" })).not.toBeInTheDocument();
       await expect.poll(() => router.history.location.state.composeWindow).toBeUndefined();
+    });
+
+    it("takes its history entry and closes past a page that warns before it is left", async () => {
+      const { router } = await show("warns");
+      await userEvent.click(page.getByRole("button", { name: "Compose" }));
+      await expect.poll(() => router.history.location.state.composeWindow).toBeDefined();
+
+      await userEvent.click(page.getByRole("button", { name: "Close", exact: true }));
+      await expect
+        .element(page.getByRole("dialog", { name: "New message" }))
+        .not.toBeInTheDocument();
+      await expect.poll(() => router.history.location.state.composeWindow).toBeUndefined();
+      expect(page.getByRole("alertdialog").query()).toBeNull();
     });
 
     it("steps back through history when closed", async () => {
