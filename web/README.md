@@ -134,8 +134,9 @@ Put shared code in the folder for its responsibility:
   page's wording, including each way a connection can end and where each
   sync stands.
 - `src/features/messages`: the conversation view (`ConversationView`),
-  the message view, its HTML and plain-text bodies, sizing the body's
-  frame, plain-text links, and the header's wording.
+  the reading pane's frame (`ReadingPane`) and an open message
+  (`OpenMessage`), the message view, its HTML and plain-text bodies,
+  sizing the body's frame, plain-text links, and the header's wording.
 - `src/features/outgoing-messages`: the compose window, the store that
   owns it (`compose-store.ts`), its form and schema, the reply editor
   with its defaults and schema, the parts both editors share
@@ -1023,7 +1024,14 @@ them.
 ## Conversation view
 
 `ConversationView` (`src/features/messages/conversation.tsx`) shows one
-conversation as DESIGN.md "Reading pane" describes it. Its props:
+conversation as DESIGN.md "Reading pane" describes it. Its frame, the
+pinned toolbar, the title, the line under it, and any marks under that,
+is `ReadingPane`
+(`reading-pane.tsx`), and each open message is `OpenMessage`
+(`open-message.tsx`): its header, details, and content, which the
+conversation loads and passes in, with folding, the message it answers,
+and its actions; a sender's name shows inside `<bdi>`, so a direction
+override in a name cannot reorder the address after it. Its props:
 
 - `subject` and `account` (ID, name, address, colour) for its title, and
   `messages`, oldest first, as Get Conversation sends them: each
@@ -1037,6 +1045,8 @@ conversation as DESIGN.md "Reading pane" describes it. Its props:
 - `onUnauthorized`: runs when a read finds the session gone.
 - `back`: the way back to the list at the toolbar's start, where one pane
   shows at a time; `actions`: the conversation's actions at its end.
+- `marks`: where the conversation is, e.g. its label chips
+  (`mail/label-chips.tsx`), under the account line.
 - `messageActions(message)`: a message's other actions in its header,
   after Reply; shown only while the message is open.
 
