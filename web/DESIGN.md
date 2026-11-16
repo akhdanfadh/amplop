@@ -11,8 +11,7 @@ Status: decided 2026-11-11. `feat/design-system` builds the foundation
 pages, messages, leave warnings, and banners; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
-work to this file, not to the old code. Not built yet: the actions on a
-hovered row and the row menu (ADR031, "Mitigations and follow-up").
+work to this file, not to the old code.
 
 ## Principles
 
@@ -240,7 +239,6 @@ text colour of their role.
 | List beside the reading pane             | none: the list has a fluid width ("Panes and widths")                                       |
 | Member menu with the theme choice        | `popover` holding a `toggle-group`                                                          |
 | More menus                               | `dropdown-menu`                                                                             |
-| Right-click row menu                     | `context-menu`                                                                              |
 | Icon button names, and shortcuts         | `tooltip`, but none on an in-row toggle whose icon and state are its meaning, e.g. the star |
 | Error toasts                             | `toast.tsx` on React Aria's Toast (see below)                                               |
 | An action's Undo                         | the Undo bar, `features/mail/undo.tsx` ("Feedback")                                         |
@@ -277,7 +275,7 @@ React Aria's [GridList](https://react-aria.adobe.com/GridList) inside its
 `selectionMode="multiple"`, `selectionBehavior="toggle"`, and
 `disallowTypeAhead`. Rows navigate through `href` and React Aria's
 `RouterProvider` wired to TanStack Router (click opens, Ctrl/Cmd-click
-opens a new tab). Right-click opens inbok's row menu. The list scrolls its
+opens a new tab). The list scrolls its
 own box on every screen size. It is the only GridList; search results use
 the same component.
 
@@ -466,7 +464,7 @@ last two redirect into settings, so settings can move without the server.
   show on hover, screen readers hear every label in the row's name, last
   ("…, Labels Clients/Acme and Hiring"), and the reading pane shows them
   whole; then the star button, on every row as in Gmail's
-  list and app, outlined until starred (→ reaches it from the row);
+  list and app, outlined until starred (← reaches it from the row);
   pressing it stars or unstars at once. A 36 px initials
   avatar ringed in the account colour leads (initials of the newest
   message's sender), its top on the first line's, 16 px from the list's edge
@@ -480,6 +478,33 @@ last two redirect into settings, so settings can move without the server.
   current state is its `selection` fill. Markers: an attachment clip, a star filled in the
   text colour, the Inbox chip; a screen reader hears "In Inbox" and
   "Starred" in the row's name.
+- **Actions on a hovered row:** the reading pane toolbar's slots but the
+  star, which the row has, and More (Report spam stays there): the
+  state's move (Archive, Move to Inbox, or Not spam), Delete (none in
+  Trash), and Mark read or unread, as `actionsFor` offers them in the
+  list's place, a search's results in each result's own ("all" across
+  places), laid out by the toolbar's and the picking bar's slots
+  (`features/mail/slots.ts`). They take the date's place on the first
+  line, as in Gmail's list: the list header's 32 px buttons, 4 px apart,
+  their icons `muted-foreground`, lit to `foreground` on hover as the
+  star is, with no fill of their own, named by tooltips, on the row's own
+  fill (`accent` hovered, `selection` open) with a 16 px fade where they
+  start, so they cover the date and about 104 px of the line. They show
+  only while the row is hovered or one of them has keyboard focus, never
+  while the list is picking, and only in a row at least 16rem wide, so a
+  narrow list at a large text size keeps its first line and checkbox (a
+  container query, in rem); a touch screen never shows them (long press
+  and the picking bar act there). Where a row has room for them, they are
+  always in its arrow-key path, so → from
+  a row reaches the first, then the star, and ← the star; focus moving
+  from row to row leaves the dates in place. An action runs as the
+  toolbar's (see Feedback): on the open row it is the toolbar's, going
+  back to the list when the conversation leaves it or is marked unread;
+  on another row, a row it takes out of the list gives focus to the row
+  that took its place. The next row slides under a still pointer and
+  shows its buttons, so pressing on at a steady pace acts row after row;
+  for 500 ms after an action (a double click's time) the list takes no
+  press, by pointer, Enter, or Space, so a double press acts once.
 - **Dates:** today the time (the browser's 12 or 24 hour clock),
   "Yesterday", the weekday within 7 days, "2 Nov" this year, "2 Nov 2025"
   in another year, a later day too; the full date and time on hover.
@@ -593,7 +618,7 @@ last two redirect into settings, so settings can move without the server.
 - **Labels** (ADR031, "Labels as built"): More's "Move to…" and
   "Labels…" close More and open a picker in its place, under More's
   button, at every width (a submenu beside More ran off a 320 px screen
-  and large text); one picker for both and later the row menu
+  and large text); one picker for both
   (`features/mail/label-menu.tsx`): its title, "Move to" or "Labels",
   which names the dialog, as the two read alike once More closes; a
   filter field under it (React Aria's `Autocomplete`, focused as it
@@ -1483,9 +1508,12 @@ Before a web checkpoint is done:
 
 ## Not now
 
-Recorded for later, not built: the search's filter sentence scrolling
-away with its results, which at 200% text fills most of a short list
-pane before the first result (the results' own box scrolls, so the
+Recorded for later, not built: a row menu on right-click or a long
+press (`context-menu`), deferred as the keyboard reaches a row's actions
+without it, which leaves a screen reader on a touch screen no announced
+way to start picking (ADR031, `feat/row-actions`); the search's filter
+sentence scrolling away with its results, which at 200% text fills
+most of a short list pane before the first result (the results' own box scrolls, so the
 sentence would have to move inside it); a result's mark past where its
 subject or snippet is cut short, which shows only once the row is
 opened, as in Gmail's list; app keyboard shortcuts, a command palette,

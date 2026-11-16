@@ -1218,7 +1218,14 @@ through history when a row of it opened the conversation (the row's
 link sets `fromList` in its history state, or keeps the flag of the
 open conversation's entry it replaces), else to the list in its place, and asks the list, through `mail/focus-request.ts`, to focus the
 row that took its place, or the conversation's own row after Mark
-unread.
+unread. That rule is `useAct` (`mail/act.ts`), which the list and a
+search's results run too for a hovered row's actions (`RowActions` in
+`mail/row.tsx`): the open row's as the toolbar's, another row's taking
+focus to the row that took its place at once. The toolbar, the picking
+bar, and the row lay out their buttons by one slots module
+(`mail/slots.ts`), and a list drops its presses for a double click's
+time after a row's action (`mail/press-guard.ts`), so a double press
+acts once.
 
 ## Checks and tests
 

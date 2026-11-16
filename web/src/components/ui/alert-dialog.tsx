@@ -14,10 +14,7 @@ import {
 } from "react-aria-components";
 
 import { Button, type ButtonProps } from "@/components/ui/button";
-
-// The longest double-click a pointer press may belong to, in milliseconds:
-// Windows' default double-click time, which macOS's default does not exceed.
-const doubleClickTime = 500;
+import { doubleClickTime } from "@/lib/double-click";
 
 // When the open dialog appeared, as performance.now(); read by its action.
 const OpenedAtContext = React.createContext<React.RefObject<number> | null>(null);

@@ -35,6 +35,7 @@ import {
   restartMail,
   type Conversation,
 } from "./conversations";
+import { useAct } from "./act";
 import { useToday } from "./dates";
 import { listKey, nextRow, takeRowFocus, useRowFocusRequest } from "./focus-request";
 import { useKeepPlace, useRestIntent, useRowSize } from "./list-state";
@@ -43,7 +44,8 @@ import { RowLabelsContext, rowLabelsOf, useLabels } from "./labels";
 import { isViewPlace, type Place } from "./places";
 import { ConversationRow, PickingContext, createOpenStore, type RowAccount } from "./row";
 import { perform } from "./perform";
-import { placeWhere } from "./rules";
+import { usePressGuard } from "./press-guard";
+import { placeWhere, type Action } from "./rules";
 import {
   connectGmail,
   emptyTitle,
@@ -169,6 +171,26 @@ export function ConversationList({
   const press = useRef<{ mouse: boolean; text: boolean; id: string | undefined }>(undefined);
   const focusKey = listKey(place, account);
   const focusRequest = useRowFocusRequest(focusKey);
+  // A row's action runs as the reading pane's toolbar runs it, the open
+  // row's too, and drops the list's presses for a moment, as a double
+  // press's second would land on the row that slid into its place
+  // (usePressGuard).
+  const guard = usePressGuard();
+  const { act } = useAct(
+    { client, conversations, placeCounts },
+    {
+      places: [place],
+      account,
+      key: focusKey,
+      back: linkOptions({ to: "/mail/$place", params: { place }, search: { account } }),
+    },
+    openId,
+  );
+  const rowAction = (conversation: Conversation, action: Action) => {
+    guard.hold();
+    act(conversation, action);
+  };
+
   // Not while the first page loads, which would leave no row to focus.
   const drawn = !list.isLoading && !list.isIdle;
   useEffect(() => {
@@ -312,6 +334,7 @@ export function ConversationList({
   // "Message list"). React Aria picks on any press once a row is picked,
   // so the list notes where each press began.
   const onPointerDownCapture = (event: PointerEvent) => {
+    if (guard.onPointerDownCapture(event)) return;
     const target = event.target instanceof Element ? event.target : null;
     const plain = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
     press.current = {
@@ -321,6 +344,7 @@ export function ConversationList({
     };
   };
   const onKeyDownCapture = (event: KeyboardEvent) => {
+    if (guard.onKeyDownCapture(event)) return;
     press.current = undefined;
     const plain = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
     const id =
@@ -353,13 +377,14 @@ export function ConversationList({
   };
 
   return (
-    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- notes where a press began; the rows are what act.
+    // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- notes where a press began, or drops it just after a row's action; the rows are what act.
     <div
       ref={listBox}
       className="flex min-h-0 flex-1 flex-col"
       onFocus={onFocus}
       onBlur={readAhead.leave}
       onPointerDownCapture={onPointerDownCapture}
+      onClickCapture={guard.onClickCapture}
       onKeyDownCapture={onKeyDownCapture}
     >
       {/* 1 rem square, so the rows follow the browser's text size. */}
@@ -422,6 +447,8 @@ export function ConversationList({
                     onRest={() => readAhead.rest(conversation.id)}
                     onLeave={readAhead.leave}
                     onStar={(starred) => star(conversation, starred)}
+                    list={place}
+                    onAction={(action) => rowAction(conversation, action)}
                   />
                 )}
               </Collection>

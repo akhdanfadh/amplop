@@ -21,16 +21,18 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { GridList, GridListEnd, GridListLoadMore } from "@/components/ui/grid-list";
 import { Spinner } from "@/components/ui/spinner";
+import { offeredIn, useAct } from "./act";
 import { holdFound, mailData, toConversation, type Conversation } from "./conversations";
 import { useToday } from "./dates";
 import { takeRowFocus, useRowFocusRequest } from "./focus-request";
 import { Placeholder, rowAccount, syncing } from "./list";
 import { useRestIntent, useRowSize } from "./list-state";
 import { perform } from "./perform";
+import { usePressGuard } from "./press-guard";
 import { RowLabelsContext, rowLabelsOf, useLabels } from "./labels";
 import { isViewPlace, searchPlace } from "./places";
 import { ConversationRow, createOpenStore } from "./row";
-import { inList } from "./rules";
+import { inList, type Action } from "./rules";
 import {
   filtered,
   mostResults,
@@ -179,6 +181,26 @@ export function SearchResults({
   });
   const listBox = useRef<HTMLDivElement>(null);
   useFocusRequest({ focusKey, openId, order: ids, rows, rowSize, listBox, heading });
+  // A row's action runs as a place's list runs it (ConversationList).
+  const guard = usePressGuard();
+  const { act } = useAct(
+    { client, conversations, placeCounts },
+    {
+      places,
+      account,
+      key: focusKey,
+      back: linkOptions({
+        to: "/mail/$place",
+        params: { place: searchPlace },
+        search: { ...filters, account },
+      }),
+    },
+    openId,
+  );
+  const rowAction = (conversation: Conversation, action: Action) => {
+    guard.hold();
+    act(conversation, action);
+  };
 
   const error = search.error instanceof ApiError ? search.error : undefined;
   // An ended session, which the session-end rule answers: the results
@@ -299,11 +321,15 @@ export function SearchResults({
     const ringed = account === undefined && (accounts?.length ?? 0) > 1;
     const olderFailed = search.isFetchNextPageError;
     body = (
+      // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- drops a press just after a row's action; the rows are what act.
       <div
         ref={listBox}
         className="flex min-h-0 flex-1 flex-col"
         onFocus={onFocus}
         onBlur={readAhead.leave}
+        onPointerDownCapture={guard.onPointerDownCapture}
+        onClickCapture={guard.onClickCapture}
+        onKeyDownCapture={guard.onKeyDownCapture}
       >
         {/* 1 rem square, so the rows follow the browser's text size. */}
         <span
@@ -327,6 +353,8 @@ export function SearchResults({
                   onRest={() => readAhead.rest(row.id)}
                   onLeave={readAhead.leave}
                   onStar={(starred) => star(row, starred)}
+                  list={offeredIn(places)}
+                  onAction={(action) => rowAction(row, action)}
                 />
               )}
             </Collection>
@@ -374,9 +402,9 @@ function failureText(error: ApiError | undefined): string {
   return searchFailed;
 }
 
-// useFocusRequest carries out the reading pane's request to focus a row
-// after an action took its conversation out of the results, or kept it,
-// e.g. Mark unread: that row while it stays, else the one after it in
+// useFocusRequest carries out the reading pane's or a row's request to
+// focus a row after an action took its conversation out of the results,
+// or kept it, e.g. Mark unread: that row while it stays, else the one after it in
 // order, the search's, which still holds a row an action took out, else
 // the one before; with none left, heading. Rows on screen only are drawn,
 // so the row scrolls into view first.
@@ -399,7 +427,7 @@ function useFocusRequest({
 }): void {
   const request = useRowFocusRequest(focusKey);
   useEffect(() => {
-    if (!request || openId !== undefined) return;
+    if (!request || (openId !== undefined && !request.now)) return;
     takeRowFocus(focusKey);
     const shown = new Set(rows.map((row) => row.id));
     const at = order.indexOf(request.id);

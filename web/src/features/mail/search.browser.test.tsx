@@ -390,6 +390,21 @@ describe("search", () => {
     await expect.poll(() => api.actions).toEqual([{ action: "star", ids: [rows[1].id] }]);
   });
 
+  it("offers each result its own actions on hover, as its reading pane would", async () => {
+    await open("/mail/search?q=invoice");
+    const archived = results().getByRole("row", { name: /Your invoice/ });
+    await userEvent.hover(archived);
+    const names = [...archived.element().querySelectorAll("button")].map((b) => b.ariaLabel);
+    expect(names).toEqual(["Move to Inbox", "Delete", "Mark unread", "Star"]);
+
+    const inInbox = results().getByRole("row", { name: /Invoice from Shop/ });
+    await userEvent.hover(inInbox);
+    await userEvent.click(inInbox.getByRole("button", { name: "Archive" }));
+    await expect.poll(() => api.actions).toEqual([{ action: "archive", ids: [rows[0].id] }]);
+    // Still in All mail, which the search looks in.
+    await expect.element(inInbox.getByRole("button", { name: "Move to Inbox" })).toBeVisible();
+  });
+
   it("says what found nothing, with a way to clear the filters", async () => {
     const router = await open("/mail/search?q=parcel&has=attachment");
     await expect
