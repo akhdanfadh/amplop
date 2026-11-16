@@ -17,9 +17,9 @@ export const changeConversationsBodyChangesMax = 25;
 
 export const ChangeConversationsBody = zod.object({
   "changes": zod.array(zod.object({
-  "add": zod.array(zod.string()).max(changeConversationsBodyChangesItemAddMax).optional().describe('The places to add each conversation\'s messages to: inbox, spam, trash, or one of the member\'s labels in its account, by id.'),
+  "add": zod.array(zod.union([zod.enum(['inbox', 'spam', 'trash']),zod.uuid()]).describe('A place a change can add a conversation to or take it out of: a view, inbox, spam, or trash, or the id of one of the member\'s labels from List Places. The other views follow: Sent from what a conversation\'s account sent, All mail from Spam and Trash, Starred from the star.')).max(changeConversationsBodyChangesItemAddMax).optional().describe('The places to add each conversation\'s messages to: inbox, spam, trash, or one of the member\'s labels in its account, by id.'),
   "ids": zod.array(zod.uuid()).min(1).max(changeConversationsBodyChangesItemIdsMax).describe('The conversations to change, by id from a list.'),
-  "remove": zod.array(zod.string()).max(changeConversationsBodyChangesItemRemoveMax).optional().describe('The places to take each conversation\'s messages out of, named as in add.'),
+  "remove": zod.array(zod.union([zod.enum(['inbox', 'spam', 'trash']),zod.uuid()]).describe('A place a change can add a conversation to or take it out of: a view, inbox, spam, or trash, or the id of one of the member\'s labels from List Places. The other views follow: Sent from what a conversation\'s account sent, All mail from Spam and Trash, Starred from the star.')).max(changeConversationsBodyChangesItemRemoveMax).optional().describe('The places to take each conversation\'s messages out of, named as in add.'),
   "starred": zod.boolean().optional().describe('true stars each conversation\'s newest message, the newest it did not send when it has one, as star does; false unstars every message. Left out, the star stays as it is.'),
   "unread": zod.boolean().optional().describe('true marks each conversation\'s newest message unread, as unread does; false marks every message read. Left out, it stays as it is.')
 })).min(1).max(changeConversationsBodyChangesMax).describe('The changes, each to its own conversations; together they name at most 25, each once.')

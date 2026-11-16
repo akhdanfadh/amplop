@@ -85,9 +85,9 @@ func (c Change) reach() Reach {
 	return reach
 }
 
-// changeViews are the views a [Change] can add to or take out of; the
-// others follow from them and the marks.
-var changeViews = []View{ViewInbox, ViewSpam, ViewTrash}
+// ChangeViews are the views a [Change] can add to or take out of, in a
+// fixed order; the others follow from them and the marks.
+var ChangeViews = []View{ViewInbox, ViewSpam, ViewTrash}
 
 // Errors of [ActionService.ApplyChanges] a caller shows the member.
 var (
@@ -129,7 +129,7 @@ func ValidateChange(change Change) error {
 	}
 	places := slices.Concat(change.Add, change.Remove)
 	for i, place := range places {
-		if place.View != "" && !slices.Contains(changeViews, place.View) {
+		if place.View != "" && !slices.Contains(ChangeViews, place.View) {
 			return ErrUnchangeablePlace
 		}
 		if slices.Contains(places[:i], place) {
@@ -286,12 +286,12 @@ func inverse(before, after Conversation, reach Reach) (Change, bool) {
 }
 
 // changePlaces returns the places of c a [Change] reaches: its views in
-// [changeViews]' order, then its labels in theirs, so two conversations'
+// [ChangeViews]' order, then its labels in theirs, so two conversations'
 // alike changes compare equal.
 func changePlaces(c Conversation) []Place {
 	in := map[View]bool{ViewInbox: c.InInbox, ViewSpam: c.InSpam, ViewTrash: c.InTrash}
 	var places []Place
-	for _, view := range changeViews {
+	for _, view := range ChangeViews {
 		if in[view] {
 			places = append(places, Place{View: view})
 		}

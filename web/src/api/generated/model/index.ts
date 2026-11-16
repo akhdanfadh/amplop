@@ -12,6 +12,7 @@ export * from './applyConversationActionBody.zod';
 export * from './authorization.zod';
 export * from './backupCodesToken.zod';
 export * from './changeConversationsBody.zod';
+export * from './changePlace.zod';
 export * from './changedMember.zod';
 export * from './checkTOTPEnrollmentCodeBody.zod';
 export * from './connectOutcome.zod';

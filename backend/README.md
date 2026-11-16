@@ -2945,8 +2945,12 @@ none of Gmail's rules, an action's `undo` among them: each adds its
 conversations to places and takes them out of others (the inbox, Spam,
 Trash, or the member's labels), stars or unstars them, or marks them
 unread or read, as the actions do, up to 25 conversations, each in one
-change. It runs as an action does, with the same answer, its own `undo`
-included, which reaches what each change names. The service turns each place into the conversation's
+change. The contract names those places once, as `ChangePlace`: one of
+`conversation.ChangeViews` (`inbox`, `spam`, `trash`) or a label's ID, so
+a client learns from it which views a change can name, e.g. that a move
+can leave the Inbox, a label, Spam, or Trash, and never Sent, All mail,
+or Starred. It runs as an action does, with the same answer, its own
+`undo` included, which reaches what each change names. The service turns each place into the conversation's
 account's mailbox (`ListPlaceMailboxes`), and refuses the whole request
 with 404 `place-not-found` for a label that is not in it, e.g. deleted
 since. `google.Client.ModifyThread` makes one `threads.modify` for the

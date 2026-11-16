@@ -463,6 +463,21 @@ func TestChangeConversations(t *testing.T) {
 	}, actions.changes)
 }
 
+// The contract names the places a change takes, so a client learns which
+// views a change can name, e.g. which lists a move can leave, from it.
+func TestChangePlaceSchema(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+
+	place := doc.Components.Schemas.Map()[changePlaceSchemaName]
+	add := doc.Components.Schemas.Map()["ConversationChange"].Properties["add"]
+
+	require.NotNil(t, place)
+	require.Len(t, place.AnyOf, 2)
+	assert.Equal(t, []any{"inbox", "spam", "trash"}, place.AnyOf[0].Enum)
+	assert.Equal(t, "uuid", place.AnyOf[1].Format)
+	assert.Equal(t, "#/components/schemas/"+changePlaceSchemaName, add.Items.Ref)
+}
+
 // A change that is none, names a place twice or one it cannot reach, or
 // repeats a conversation is refused with the field it is in, before the
 // service runs.
