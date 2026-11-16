@@ -128,9 +128,11 @@ Put shared code in the folder for its responsibility:
   the `/register` and `/register/complete` forms, and their wording.
 - `src/features/password-reset`: the `/forgot-password` and
   `/reset-password` forms, the reset form's schema, and their wording.
-- `src/features/connected-accounts`: the Connected accounts list with its
-  connect, reconnect, sync, and disconnect actions, and the page's wording,
-  including each way a connection can end and where each sync stands.
+- `src/features/connected-accounts`: the Connected accounts section with
+  its connect, rename, check, reconnect, and disconnect actions, the
+  banner every signed-in page shows while syncing has stopped, and the
+  page's wording, including each way a connection can end and where each
+  sync stands.
 - `src/features/messages`: the conversation view (`ConversationView`),
   the message view, its HTML and plain-text bodies, sizing the body's
   frame, plain-text links, and the header's wording.
@@ -149,8 +151,7 @@ Put shared code in the folder for its responsibility:
   Undo bar (`undo.tsx`), how a row shows its date and people, and the
   address Back to mail returns to.
 - `src/features/settings`: the settings sidebar and the settings page
-  layout (`SettingsPage`, `SettingsSection`) every settings page uses but
-  Connected accounts, which `feat/connected-accounts` moves onto it.
+  layout (`SettingsPage`, `SettingsSection`) every settings page uses.
 - `src/components`: shared components, such as the shell around every page
   (`AppShell`), the password input, the request error under a form, the
   status badge, the link styles, the signed-in frame and its member menu,
@@ -251,7 +252,9 @@ reason. Test routers that load such pages set the same two router options.
 A page whose data it cannot draw without, e.g. System email, Registration,
 or Members, reads it in its route's loader, made by `signedInLoader`
 (`src/features/auth/session-end.ts`) over `loadSignedIn`, so the router's
-loading and failure views below cover it; mail's loaders check that the
+loading and failure views below cover it; a page with two reads, e.g.
+Connected accounts, writes its loader from the same pieces, the reads
+side by side inside one `loadSignedIn`; mail's loaders check that the
 address names a label or account the member has. The page's own query
 counts what the loader read in the last 5 s as fresh (`loadedFreshMs`), so
 it does not read it again as it opens, and rereads older data then. A 401
@@ -635,66 +638,96 @@ again. A lost answer says trying again is safe: repeating either action
 changes nothing the second time.
 
 Settings' Connected accounts (`/settings/connected-accounts`) is where
-members connect Gmail accounts. The page lists the member's accounts,
-oldest first, with the date each was connected, each by its mark and the
-name the member chose for it, else its address. Each has a Name field
-(`features/connected-accounts/name-form.tsx`) that saves through Rename
-Account and puts the server's answer in the accounts list, so the
-sidebar and every From list follow; an empty name goes back to the
-address. Connect Gmail asks the API
-for Google's consent page and sends the tab there; Google returns the
-browser to the API, which redirects to this page with `?outcome=`. The
-page validates it against the generated `ConnectOutcome`, ignores any
-other value, removes it from the address, so a reload or Back does not
-repeat it, and then shows its message. An account Google stopped accepting
-is marked "Needs reconnecting", with the date, and so is one whose saved
-access inbok can't open, e.g. after a server key was lost, which the
-server checks at each read. Only these have Reconnect, which runs the same
-consent flow for that account, where the member must choose the same
-Google account. Disconnect asks first and says inbok removes the account
-with everything it saved for it and asks Google to end its access; for an
-account whose saved access inbok can't open, it says inbok can't ask
-Google, and that the member can remove inbok in their Google Account. The
-dialog leaves out that inbok does not ask when another member here
-connected the same Google account, whose access stays. The row goes as
-soon as the server confirms. When the server has no Google client, the
-page says to ask an administrator instead of offering Connect Gmail or
-Reconnect. A 401 from any read or write opens sign-in. A refused start
-rereads what it shows has changed: the providers on a 409, the list on
-a 404. A lost answer to a start just asks for another try, since an unused
-start expires; a lost answer to a disconnect asks the member to check the
-list, which rereads after every outcome. A failed reread keeps the list
-with "Could not reload connected accounts, so the list may be out of
-date." and Try again. A start goes to Google only while the page is still
-open. The browser's back-forward cache can restore the page locked as it
-left for Google, so a restored page unlocks its buttons and rereads the
-list.
+members connect Gmail accounts. Its loader reads the accounts and the
+offered providers side by side, each through `cachedRead`, and the page
+then refreshes both in place. It lists the member's accounts, oldest
+first, each by its colour dot and the name the member chose for it, else
+its address, wrapping at the address's seams (`Address`), with the
+address under a chosen name, and one line on where it stands. Each row
+offers what its `allowedActions` from the server include, never the
+page's own copy of the rule: Check now (`sync`) for an account inbok can
+use whose sync is not already moving, Reconnect for one it can't, and
+Disconnect. The pencil beside the name (Rename) opens the name form
+(`features/connected-accounts/name-form.tsx`, on the form kit) in its
+place, under the account's dot and address, so the row still says whose
+name it is, with focus in the field: Save sends Rename Account and puts the
+server's answer in the accounts list, so the sidebar and every From list
+follow; an empty name goes back to the address; Save, Cancel, or Escape
+closes it and gives the pencil focus back. Connect Gmail asks the API for
+Google's consent page and sends the tab there; Google returns the browser
+to the API, which redirects to this page with `?outcome=`. The page
+validates it against the generated `ConnectOutcome`, ignores any other
+value, removes it from the address, so a reload or Back does not repeat
+it, and then shows it in the page's notice under the lead: green when
+connected, grey when nothing changed (cancelled, already connected),
+red, as an alert, when the member has something to fix. The notice holds
+the last action's result until the next action starts.
 
-Each account inbok can use (`status` `usable`) also says where its sync
-stands, under the line about its connection: `sync.ts` picks the first
-that applies, and `text.ts` words it, in
-the member's terms of getting their mail rather than "sync": "Getting
-ready to copy your mail."; "Copying your last 90 days of mail into inbok:
-N messages so far. New mail shows up in the meantime."; on a failure,
-"Couldn't get mail from Gmail at" a time, then "inbok will try again.", or
-"within an hour" after a failed full sync, or "Couldn't get mail at" a
-time "because of a problem on inbok's side. Ask your administrator.", and
-on an account that was complete, "Your mail here is up to date as of" a
-time; else "Up to date, checked at" a time. A time shows its date only
-when it is not today. A complete account has Check now, and a failed one
-Try again, which start its sync at once. The notice says "Checking ...
-for new mail.", and the list is read every 2 seconds for the next 30, so
-the new checked time and any new mail show; the page does not track when
-that check ends (ADR001, "Polling"). A 429 reads "inbok started checking
-... moments ago. See its status below.", since a check already started
-and there is nothing to retry; a 409 asks to reconnect the account first;
-both reread the list. When syncing has stopped on the instance, a status banner says
-"inbok has stopped getting new mail for every account. Ask your
-administrator."; the buttons stay, since a worker may still run the
-member's sync. The list is read again every 2 seconds while a sync is
-waiting or copying, or after a Check now as above, and otherwise every
-minute, so the checked time stays current; an account inbok cannot use
-waits for its member, so it does not count.
+An account Google stopped accepting is marked "Needs reconnecting", with
+the date, and so is one whose saved access inbok can't open, e.g. after a
+server key was lost, which the server checks at each read. Reconnect runs
+the same consent flow for that account, where the member must choose the
+same Google account. Disconnect asks first in a `ConfirmDialog` ("Disconnect
+Work"), which holds the request until the server answers: it says inbok
+removes the account with everything it saved for it and asks Google to
+end its access; for an account whose saved access inbok can't open, it
+says inbok can't ask Google, and that the member can remove inbok in
+their Google Account. The dialog leaves out that inbok does not ask when
+another member here connected the same Google account, whose access
+stays. Once the server confirms, the row goes, the notice says "Work is
+disconnected.", and focus moves to the next row's pencil, else the
+previous row's, else Connect Gmail. An account already gone (the API's 404) closes the dialog with "Work was already disconnected."; a failure
+or a lost answer shows inside it, where pressing again retries. While
+Gmail isn't offered, i.e. the server has no Google client, a sentence
+where Connect Gmail would be says so by who can fix it: a member is told
+their administrator hasn't set Gmail up and to ask them, an
+administrator to add a Google client as the self-hosting guide's
+"Connecting Gmail" explains; the server's `allowedActions` hold neither
+Check now nor Reconnect. With no account, the section says "Connect your
+first account" with Connect Gmail, or "Gmail can't be connected yet"
+with only the next step under it ("Ask your administrator to set up
+Gmail on this inbok.", or for an administrator, to add a Google client):
+the title says what can't happen, so a member doesn't take it for their
+own Gmail. A 401 from any read or write opens sign-in, which returns here. A
+refused start rereads what it shows has changed: the providers on a 409,
+the list on a 404. A lost answer to a start just asks for another try,
+since an unused start expires. A failed refresh keeps the list with
+"Couldn't refresh this page, so it may be out of date." and Try again,
+which rereads whichever of the two reads failed. A
+start goes to Google only while the page is still open. The browser's
+back-forward cache can restore the page locked as it left for Google, so
+a restored page unlocks its buttons and rereads the list.
+
+Each account inbok can use (`status` `usable`) says where its sync
+stands on its one line: `sync.ts` picks the first that applies, and
+`text.ts` words it, in the member's terms of getting their mail rather
+than "sync": "Getting ready to copy your mail."; "Copying your last 90
+days of mail into inbok: N messages so far. New mail shows up in the
+meantime."; on a failure, "Couldn't get mail from Gmail at" a time, then
+"inbok will try again.", or "within an hour" after a failed full sync, or
+"Couldn't get mail at" a time "because of a problem on inbok's side. Ask
+your administrator.", and on an account that was complete, "Your mail
+here is up to date as of" a time; else "Up to date, checked at" a time. A
+time shows its date only when it is not today. Check now, or Try again on
+a failed account, starts its sync at once; once the server accepts, the
+button keeps turning ("Checking...") until the list shows a check or
+failure newer than before, or a full sync, while the list is read every 2
+seconds for 30, which also ends the wait (`checkLanded`; ADR001,
+"Polling"). When the outcome lands, a hidden polite region in the row
+says the account's name and its line once; the 30 s ending without one
+says nothing. A 429 says "Work was checked moments ago. Check again in a
+few seconds." in grey: the limit is 15 seconds, so DESIGN.md's clock time
+rounded up to the minute would overstate it. A 409 asks to reconnect the
+account first; every outcome rereads the list. The list is read again
+every 2 seconds while a sync is waiting or copying, or after a Check now
+as above, and otherwise every minute, so the checked time stays current;
+an account inbok cannot use waits for its member, so it does not count.
+When syncing has stopped on the instance, every signed-in page shows a
+warning banner under the offline one (`SyncStopped`), which reads the
+list again every minute on any page, so it follows a stop and a recovery:
+members are asked
+to tell their administrator, an administrator to check that the worker
+is running.
 
 Sign out, in the member menu, deletes the current session, then
 `clearAccountCache` clears account caches, closes any toasts, and sends
@@ -1651,9 +1684,7 @@ const form = useAppForm({
   `fieldComponents` in `app-form.ts`. Its browser test joins
   `app-form.browser.test.tsx`.
 
-Forms not yet on the kit still wire shadcn's `Field` components
-themselves, with `blurKeepingSubmitErrors`
-(`src/lib/blur-keeping-submit-errors.ts`) and `useFocusAfterError`: the
-connected account's name, which `feat/connected-accounts` moves onto the
-kit, and the probe demo (ADR031). The change that moves the last of them
-deletes both.
+The one form not yet on the kit, the probe demo (ADR031), still wires
+shadcn's `Field` components itself, with `blurKeepingSubmitErrors`
+(`src/lib/blur-keeping-submit-errors.ts`) and `useFocusAfterError`. The
+change that moves it deletes both.

@@ -33,7 +33,9 @@ export async function loadSignedIn<T>(
 // a session that ended after the page loaded: it clears the account cache
 // and opens sign-in, which returns to this page afterwards, without asking
 // to leave unsaved typing, which can no longer be saved. It returns whether
-// err ended the page; any other error is the caller's to show.
+// err ended the page; any other error is the caller's to show. Called again
+// once sign-in is open, e.g. by a banner that saw the same 401 as the page,
+// it changes nothing, so sign-in still returns to the page.
 export function useSessionEnd(): (err: ApiError | null | undefined) => boolean {
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -42,6 +44,9 @@ export function useSessionEnd(): (err: ApiError | null | undefined) => boolean {
   return useCallback(
     (err) => {
       if (!isSessionEnded(err)) return false;
+      // The first call already moved the router's location to sign-in; a
+      // second would make sign-in return to itself.
+      if (router.latestLocation.pathname === "/sign-in") return true;
       clearAccountCache(client);
       void navigate({
         to: "/sign-in",

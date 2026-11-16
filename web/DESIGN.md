@@ -11,11 +11,10 @@ Status: decided 2026-11-11. `feat/design-system` builds the foundation
 pages, messages, leave warnings, and banners; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
-work to this file, not to the old code. Not built yet: Connected accounts
-on the settings layout (`feat/connected-accounts`), one rule for a session
-that ends on an open page (`feat/session-end`), the row menu and picking
-several conversations (`feat/list-actions`), and the Outbox in the mail
-list (`feat/outbox-list`; ADR031, "Mitigations and follow-up").
+work to this file, not to the old code. Not built yet: one rule for a
+session that ends on an open page (`feat/session-end`), the row menu and
+picking several conversations (`feat/list-actions`), and the Outbox in the
+mail list (`feat/outbox-list`; ADR031, "Mitigations and follow-up").
 
 ## Principles
 
@@ -799,11 +798,21 @@ pull-to-refresh, which would reload the app, never starts.
   while the form is open. A form with several groups titles each in the
   right column (`FieldSet` and `FieldLegend`), e.g. Connection, Sign-in,
   Sender.
-- Connected accounts gives each account a Name field ("Name (optional)",
-  one explanation for all of them under the heading): a name only the
-  member sees, never sent to recipients, unlike Gmail's sender name; it
-  shows in mail instead of the address, and an empty one goes back to the
-  address. Saving keeps focus in the field and says "Saved".
+- Connected accounts lists each account in a row: on the left its name,
+  whole, wrapping (an address at its seams), a pencil beside it (a ghost
+  icon button, tooltip "Rename"), its badge, its address under a chosen
+  name, and one line on where it stands; on the right its buttons, which
+  wrap under the text on a narrow page. The pencil opens the name form in
+  place of the name, under the dot and the address, which say whose name
+  it is ("Name (optional)", explained in the field: a name
+  only the member sees, never sent to recipients, unlike Gmail's sender
+  name; it shows in mail instead of the address, and an empty one goes
+  back to the address), with Save and Cancel; Escape cancels, and focus
+  returns to the pencil. Check now keeps turning ("Checking...") until
+  the list shows that check's outcome, at most 30 s, rather than
+  announcing a start: the row's own line then says it, and a screen
+  reader hears that line once, politely ("Personal: Up to date, checked
+  at 8:09 am."), since the button only reads its own name again.
 - A setting with one change at a time, e.g. Registration, states what it is
   in a sentence (and a badge beside the title) and offers one button for
   the change that fits, e.g. Open registration or Close registration. A
@@ -886,7 +895,10 @@ pull-to-refresh, which would reload the app, never starts.
   would not. Accepted: a wait under a minute reads as the next minute
   (only scripts reach the per-browser limit), and the text never turns
   into "You can try again now" (people meet only limits of 15 minutes or
-  more). Times are English with the browser's 12 or 24 hour clock.
+  more). Times are English with the browser's 12 or 24 hour clock. A limit
+  under a minute, e.g. Check now's 15 s, says it in words instead ("Work
+  was checked moments ago. Check again in a few seconds."), in a grey
+  notice: a clock time rounded up would overstate the wait.
 - A page warns before leaving (`LeaveWarning`) only when leaving loses what
   can't be redone in moments: a long text (a reply), settings being edited
   (System email), backup codes that won't show again. The compose window
@@ -973,10 +985,11 @@ outcome.
   happening ("Deactivating..."), Cancel and Escape wait, it closes on
   success, and a failure or a lost answer shows inside it, where pressing
   again retries. Focus then returns to the button that opened it, or, when
-  the change removed that button, to what took its place. Members and
-  Registration do this; Disconnect on Connected accounts, the sign-outs on
-  Security, Send again, and cancelling two-factor setup still close at once
-  and report on the page (Not now). One that already asks for a code
+  the change removed that button, to what took its place, e.g. the next
+  account's pencil after a disconnect. Members, Registration, and
+  Disconnect on Connected accounts do this; the sign-outs on Security,
+  Send again, and cancelling two-factor setup still close at once and
+  report on the page (Not now). One that already asks for a code
   or a password, e.g. turning off two-factor authentication, confirms with
   it on the page instead: the red button opens the field, the consequence
   sits above it, the submit is red (`SubmitButton variant="destructive"`),
@@ -991,7 +1004,10 @@ outcome.
   at 35% under it so stacked banners stay apart; the line only separates,
   so it needs no contrast check): an account problem above that account's
   mail; at the top of the content of every signed-in page, stacked, offline
-  (`warning`), then each setup step the member owes (`info`): system email
+  (`warning`), syncing stopped on this inbok (`warning`: "inbok has stopped
+  getting new mail for every account.", then "Ask your administrator.", or
+  for an administrator "Check that its worker is running."), then each
+  setup step the member owes (`info`): system email
   for an administrator (nothing saved: "Finish setting up system email:
   until it works, members can't reset a password or verify their
   address."; no passing test: "Finish setting up system email: until a
@@ -1002,7 +1018,10 @@ outcome.
   until its step is done; on the page where it is done it keeps its
   sentence and drops its link, which would lead to itself. The setup
   banners sit in a "Setup reminders" landmark: they come before the heading
-  a page focuses, so a screen reader finds them there. The system
+  a page focuses, so a screen reader finds them there. For the same
+  reason offline and syncing stopped are each a landmark of their own
+  ("Offline", "Mail sync stopped") while they show, as well as announced
+  as they appear. The system
   email step reflects the last test, not whether mail sent since arrives:
   the server records only tests (Not now). Signed-out pages show only
   offline.
@@ -1029,7 +1048,10 @@ outcome.
   row preloads its conversation, and the reading pane starts from the list
   row's data.
 - **Empty:** words only, the cause and one next step: "Connect your first
-  account" with Connect Gmail; "Nothing in Inbox", also under an account
+  account" with Connect Gmail, or, with no Google client, "Gmail can't be
+  connected yet" with a next step for whoever reads it (a member asks
+  their administrator; an administrator adds the client); "Nothing in
+  Inbox", also under an account
   filter, whose header already names the account; "Nothing in Projects",
   a label by its own name, its parents in the header; "Studio is still
   syncing. Its mail appears here as it is copied."; "No spam"; "Trash is

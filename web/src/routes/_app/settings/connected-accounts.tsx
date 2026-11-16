@@ -1,152 +1,140 @@
-import { useEffect, useRef, useState, type ReactElement } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState, type ReactElement } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import type { QueryClient } from "@tanstack/react-query";
 import {
-  useGetCurrentSession,
+  getListAccountProvidersQueryOptions,
+  getListConnectedAccountsQueryOptions,
   useListAccountProviders,
   useListConnectedAccounts,
 } from "@/api/generated/inbok";
-import type { ConnectOutcome } from "@/api/generated/model";
+import { cachedRead } from "@/api/cached-read";
 import { userMessage } from "@/api/problem";
-import { clearAccountCache } from "@/features/auth/session-cache";
+import { ReadError } from "@/components/read-error";
+import { isSessionEnded } from "@/features/auth/guard";
+import { loadedFreshMs, loadSignedIn, useSessionEnd } from "@/features/auth/session-end";
 import { AccountList } from "@/features/connected-accounts/list";
 import { connectSearch } from "@/features/connected-accounts/search";
 import { refreshInterval, syncNowRefresh } from "@/features/connected-accounts/sync";
-import { outcomeNotice } from "@/features/connected-accounts/text";
-import { Button } from "@/components/ui/button";
+import {
+  listReadFailed,
+  outcomeNotice,
+  pageLead,
+  type PageNotice,
+} from "@/features/connected-accounts/text";
+import { SettingsPage } from "@/features/settings/page";
+import { pageName } from "@/features/settings/text";
 
 const unauthorized = 401;
-const buttonClass = "w-fit";
+
+// connectedAccountsLoader reads what the page shows before it draws: the
+// accounts and the providers they can be connected with, side by side.
+//
+// DESIGN: both reads finish before either failure counts, and an ended
+// session wins: Promise.all would report only the first failure, so a 401
+// answered after the other read's fault would show the failure view
+// instead of sign-in.
+export function connectedAccountsLoader({
+  context,
+  location,
+}: {
+  context: { queryClient: QueryClient };
+  location: { href: string };
+}) {
+  const client = context.queryClient;
+  return loadSignedIn(client, location.href, async () => {
+    const [list, providers] = await Promise.allSettled([
+      cachedRead(client, getListConnectedAccountsQueryOptions()),
+      cachedRead(client, getListAccountProvidersQueryOptions()),
+    ]);
+    if (list.status === "fulfilled" && providers.status === "fulfilled")
+      return [list.value, providers.value] as const;
+    const failures = [list, providers].flatMap((read) =>
+      read.status === "rejected" ? [read.reason as unknown] : [],
+    );
+    throw failures.find(isSessionEnded) ?? failures[0];
+  });
+}
 
 export const Route = createFileRoute("/_app/settings/connected-accounts")({
   validateSearch: connectSearch,
+  loader: connectedAccountsLoader,
   component: ConnectedAccounts,
   head: () => ({ meta: [{ title: "Connected accounts - inbok" }] }),
 });
 
+// ConnectedAccounts lists the member's Gmail accounts, connects one through
+// Google, and renames, checks, reconnects, and disconnects each. Google's
+// return lands here with how it ended, which the notice says.
 function ConnectedAccounts(): ReactElement {
-  const client = useQueryClient();
   const navigate = useNavigate();
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const sessionEnd = useSessionEnd();
+  const { session } = Route.useRouteContext();
   const { outcome } = Route.useSearch();
-  // The outcome Google's return landed with, kept after the address loses it.
-  const [landed, setLanded] = useState<ConnectOutcome>();
-  const [writeExpired, setWriteExpired] = useState(false);
-  const current = useGetCurrentSession();
+  const [loadedList, loadedProviders] = Route.useLoaderData();
+  // What happened last, under the lead, until the next action.
+  const [notice, setNotice] = useState<PageNotice>();
   // When the fast reads after the last Check now end, in milliseconds since
   // the epoch.
   const [fastUntil, setFastUntil] = useState(0);
   const list = useListConnectedAccounts({
     query: {
+      staleTime: loadedFreshMs,
       refetchInterval: (query) => refreshInterval(query.state.data?.data, Date.now(), fastUntil),
     },
   });
-  const providers = useListAccountProviders();
-  const expired =
-    writeExpired ||
-    [current.error, list.error, providers.error].some((err) => err?.status === unauthorized);
-  const accounts = list.data?.data.accounts;
-  const offered = providers.data?.data.offered;
-  const notice = landed && outcomeNotice(landed);
+  const providers = useListAccountProviders({ query: { staleTime: loadedFreshMs } });
+  const accounts = (list.data ?? loadedList).data.accounts;
+  // A failed refresh of either read, a 401 aside, which opens sign-in.
+  const refreshFailed = [list.error, providers.error].find(
+    (err) => err && err.status !== unauthorized,
+  );
+  const offered = (providers.data ?? loadedProviders).data.offered.includes("gmail");
 
   useEffect(() => {
-    headingRef.current?.focus();
-  }, []);
+    if (!sessionEnd(list.error)) sessionEnd(providers.error);
+  }, [list.error, providers.error, sessionEnd]);
+
   useEffect(() => {
     if (!outcome) return;
     // 1. Remove the outcome from the address: reloading, or coming back with
     // Back, would otherwise report an old connection as if it had just ended.
-    // 2. Then show it, after the first render: a live region that appears
-    // with its text is often not announced.
+    // 2. Then show it: the page fills its notice a frame after it draws, so
+    // a screen reader announces it.
     void navigate({ to: "/settings/connected-accounts", search: {}, replace: true }).then(() =>
-      setLanded(outcome),
+      setNotice(outcomeNotice(outcome)),
     );
   }, [outcome, navigate]);
-  useEffect(() => {
-    if (!expired) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true });
-  }, [expired, client, navigate]);
-
-  // A failed read without data hides the list; a failed refetch keeps it.
-  // The session is read only to notice it ended, so its failure hides nothing.
-  const readError = expired
-    ? null
-    : (!list.data && list.error) || (!providers.data && providers.error) || null;
-  // A kept list may be older than a change, so say it could not be reread.
-  const staleError = !expired && list.data && list.error;
 
   return (
-    <main className="mx-auto flex w-full max-w-lg flex-col gap-8 px-5 py-8 wrap-anywhere sm:px-8 sm:py-12">
-      <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
-        Connected accounts
-      </h1>
-
-      {notice?.kind === "alert" && <p role="alert">{notice.text}</p>}
-      {/* Stay mounted so screen readers announce changed text. */}
-      <output className={notice?.kind === "notice" ? undefined : "sr-only"}>
-        {notice?.kind === "notice" ? notice.text : ""}
-      </output>
-
-      {(list.isPending || providers.isPending) && !readError && !expired && (
-        <output>Loading connected accounts...</output>
-      )}
-      {expired && <output>Opening sign-in...</output>}
-
-      {readError && (
-        <div className="flex flex-col gap-3" role="alert">
-          <p>Could not load connected accounts. {userMessage(readError)}</p>
-          {readError.requestId && (
-            <p className="text-sm text-muted-foreground">
-              Request reference: <code className="break-all">{readError.requestId}</code>
-            </p>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            className={buttonClass}
-            isDisabled={list.isFetching || providers.isFetching}
-            onPress={() => {
-              // Only a read that has nothing to show is tried again.
-              if (!list.data) void list.refetch();
-              if (!providers.data) void providers.refetch();
+    <SettingsPage
+      title={pageName.connectedAccounts}
+      lead={pageLead}
+      notice={notice?.text}
+      noticeTone={notice?.tone}
+    >
+      {/* A failed refresh keeps the page and says why (DESIGN.md
+          "States"); a 401 opens sign-in instead. Try again rereads what
+          failed. */}
+      {refreshFailed && (
+        <div className="py-6 text-sm">
+          <ReadError
+            message={`${listReadFailed} ${userMessage(refreshFailed)}`}
+            error={refreshFailed}
+            retrying={list.isFetching || providers.isFetching}
+            onRetry={() => {
+              if (list.error) void list.refetch();
+              if (providers.error) void providers.refetch();
             }}
-          >
-            Try again
-          </Button>
+          />
         </div>
       )}
-      {staleError && (
-        <div className="flex flex-col gap-3" role="alert">
-          <p>
-            Could not reload connected accounts, so the list may be out of date.{" "}
-            {userMessage(staleError)}
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            className={buttonClass}
-            isDisabled={list.isFetching}
-            onPress={() => void list.refetch()}
-          >
-            Try again
-          </Button>
-        </div>
-      )}
-
-      {accounts && offered && !expired && (
-        <AccountList
-          accounts={accounts}
-          gmailOffered={offered.includes("gmail")}
-          syncStopped={list.data?.data.syncStopped ?? false}
-          // A refused start rereads the providers, which can remove the
-          // button that had focus.
-          fetching={list.isFetching || providers.isFetching}
-          onWriteStart={() => setLanded(undefined)}
-          onSyncStarted={() => setFastUntil(Date.now() + syncNowRefresh)}
-          onUnauthorized={() => setWriteExpired(true)}
-        />
-      )}
-    </main>
+      <AccountList
+        accounts={accounts}
+        offered={offered}
+        admin={session.role === "admin"}
+        onNotice={setNotice}
+        onSyncStarted={() => setFastUntil(Date.now() + syncNowRefresh)}
+      />
+    </SettingsPage>
   );
 }

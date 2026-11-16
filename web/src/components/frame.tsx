@@ -15,6 +15,7 @@ import { useLandmark } from "react-aria/useLandmark";
 import { cn } from "@/lib/cn";
 import { MemberMenu } from "@/components/member-menu";
 import { OfflineBanner } from "@/components/offline-banner";
+import { SyncStopped } from "@/features/connected-accounts/sync-stopped";
 import { SetupReminder } from "@/features/setup-reminder/reminder";
 import {
   Sidebar,
@@ -118,8 +119,10 @@ export function Frame({
       </Sidebar>
       <SidebarInset className="h-svh">
         <TopBar slotRef={setSlot} />
-        {/* Stacked, the condition of the moment above the setup still owed. */}
+        {/* Stacked, the conditions of the moment above the setup still
+            owed. */}
         <OfflineBanner />
+        <SyncStopped />
         <SetupReminder />
         {/* Relative, so what is placed absolutely in a page, e.g. a
             screen-reader-only label, is placed in this box and scrolls
