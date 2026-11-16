@@ -55,9 +55,12 @@ async function app(api: MailApi, id: string, opened: "from-list" | "from-link" =
     component: () => (
       <Reader
         conversationId={id}
-        place="inbox"
-        account={undefined}
-        back={{ to: "/mail/$place", params: { place: "inbox" } }}
+        list={{
+          places: ["inbox"],
+          account: undefined,
+          key: "inbox ",
+          back: { to: "/mail/$place", params: { place: "inbox" } },
+        }}
       />
     ),
   });

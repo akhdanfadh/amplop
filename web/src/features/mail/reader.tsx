@@ -16,7 +16,7 @@ import { ConversationView } from "@/features/messages/conversation";
 import { useLayout } from "@/hooks/use-layout";
 import { isCurrent, runAction, type ActionMail } from "./actions";
 import { currentMail } from "./conversations";
-import { listKey, requestRowFocus } from "./focus-request";
+import { requestRowFocus } from "./focus-request";
 import { perform } from "./perform";
 import type { AppHref, Place } from "./places";
 import { leavesList, staysInList, type Action } from "./rules";
@@ -32,30 +32,38 @@ import {
 const unauthorized = 401;
 const notFoundStatus = 404;
 
+// ReaderList is the list a conversation was opened from: one place's, or
+// a search's, which keeps a conversation in any of its places, of account
+// alone when given; key names it for its focus requests (listKey), and
+// back is its address.
+export type ReaderList = {
+  places: readonly Place[];
+  account: number | undefined;
+  key: string;
+  back: AppHref;
+};
+
 // Reader is the reading pane's conversation, shown by the conversation
 // view (features/messages). It draws the subject and account from the
 // conversation's row at once, keeps them when a read fails, and names the
 // tab after the subject. Opening an unread conversation marks it read. Its
-// toolbar's actions follow its state in place's list, of account alone
-// when given (ConversationToolbar).
+// toolbar's actions follow its state in list, the list it was opened from
+// (ConversationToolbar).
 //
-// back is that list, which a phone, showing one pane at a time, returns
-// to with Back in the view's toolbar, as does an action that takes the
-// conversation out of the list. A conversation that does not exist,
+// list.back is that list, which a phone, showing one pane at a time,
+// returns to with Back in the view's toolbar, as does an action that takes
+// the conversation out of the list. A conversation that does not exist,
 // e.g. deleted since the list drew it, is Page not found unless it is
 // already shown, so a reply being typed stays; an ended session opens
 // sign-in.
 export function Reader({
   conversationId,
-  place,
-  account: listAccount,
-  back,
+  list,
 }: {
   conversationId: string;
-  place: Place;
-  account: number | undefined;
-  back: AppHref;
+  list: ReaderList;
 }): ReactElement {
+  const { places, account: listAccount, back } = list;
   const client = useQueryClient();
   const navigate = useNavigate();
   const router = useRouter();
@@ -130,7 +138,7 @@ export function Reader({
   // is still the one it was run at.
   const onAction = (action: Action) => {
     if (!row || !actionMail || left.current === row.id) return;
-    const leaves = leavesList(row, action, place, listAccount);
+    const leaves = leavesList(row, action, places, listAccount);
     // The address, not the pane's drawn conversation: a row chosen since
     // moves the address at once, while the pane draws this conversation
     // until the next one's page has loaded.
@@ -142,10 +150,10 @@ export function Reader({
     );
     if (!leaves) return;
     left.current = row.id;
-    requestRowFocus(listKey(place, listAccount), {
+    requestRowFocus(list.key, {
       id: row.id,
       dateMs: row.dateMs,
-      stays: staysInList(row, action, place, listAccount),
+      stays: staysInList(row, action, places, listAccount),
     });
     goBack();
   };
@@ -196,7 +204,9 @@ export function Reader({
           row && (
             <ConversationToolbar
               conversation={row}
-              list={place}
+              // One place's actions, e.g. Spam's, where the list has one;
+              // a search of several follows the conversation, as All mail.
+              list={places.length === 1 ? places[0] : "all"}
               providerUrl={detail?.providerUrl}
               onAction={onAction}
             />

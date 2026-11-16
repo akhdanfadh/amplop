@@ -5,6 +5,7 @@ import { ApiError } from "@/api/transport";
 import { conversationIdSchema } from "@/features/mail/address";
 import { isSessionEnded, sessionEnded } from "@/features/auth/guard";
 import { currentMail } from "@/features/mail/conversations";
+import { listKey } from "@/features/mail/focus-request";
 import { Reader } from "@/features/mail/reader";
 
 const notFoundStatus = 404;
@@ -50,9 +51,12 @@ function Conversation(): ReactElement {
   return (
     <Reader
       conversationId={conversationId}
-      place={place}
-      account={account}
-      back={linkOptions({ to: "/mail/$place", params: { place }, search: { account } })}
+      list={{
+        places: [place],
+        account,
+        key: listKey(place, account),
+        back: linkOptions({ to: "/mail/$place", params: { place }, search: { account } }),
+      }}
     />
   );
 }

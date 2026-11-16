@@ -196,16 +196,21 @@ describe("leavesList", () => {
   const inbox = toConversation(conversation(1, { labelIds: ["work"] }));
 
   it("is true when the action takes it out of the list's place", () => {
-    expect(leavesList(inbox, "archive", "inbox", undefined)).toBe(true);
-    expect(leavesList(inbox, "trash", "work", 1)).toBe(true);
+    expect(leavesList(inbox, "archive", ["inbox"], undefined)).toBe(true);
+    expect(leavesList(inbox, "trash", ["work"], 1)).toBe(true);
   });
 
   it("is false when it stays in the list, e.g. archived in a label", () => {
-    expect(leavesList(inbox, "archive", "work", undefined)).toBe(false);
-    expect(leavesList(inbox, "star", "inbox", undefined)).toBe(false);
+    expect(leavesList(inbox, "archive", ["work"], undefined)).toBe(false);
+    expect(leavesList(inbox, "star", ["inbox"], undefined)).toBe(false);
+  });
+
+  it("is false while another of a search's places keeps it", () => {
+    expect(leavesList(inbox, "archive", ["inbox", "work"], undefined)).toBe(false);
+    expect(leavesList(inbox, "trash", ["inbox", "work"], undefined)).toBe(true);
   });
 
   it("is always true for Mark unread", () => {
-    expect(leavesList(inbox, "unread", "inbox", undefined)).toBe(true);
+    expect(leavesList(inbox, "unread", ["inbox"], undefined)).toBe(true);
   });
 });

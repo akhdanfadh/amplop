@@ -172,35 +172,43 @@ export function actionsFor(conversation: Conversation, list: Place): Action[] {
 }
 
 // leavesList reports whether action takes conversation out of the list it
-// was opened from, place and account (undefined for every account's), as
-// its guess shows it; Mark unread always does, so the member comes back to
-// it unread.
+// was opened from, which keeps conversations in any of places, of account
+// alone (undefined for every account's), as its guess shows it; Mark
+// unread always does, so the member comes back to it unread. A place's
+// list has one place; a search's, those it searches.
 export function leavesList(
   conversation: Conversation,
   action: Action,
-  place: Place,
+  places: readonly Place[],
   account: number | undefined,
 ): boolean {
   if (action === "unread") return true;
-  return inList(conversation, place, account) && !staysInList(conversation, action, place, account);
+  return (
+    inList(conversation, places, account) && !staysInList(conversation, action, places, account)
+  );
 }
 
-// staysInList reports whether conversation is in place's list, of account
-// alone when given, once action's guess shows.
+// staysInList reports whether conversation is in the list of places, of
+// account alone when given, once action's guess shows.
 export function staysInList(
   conversation: Conversation,
   action: Action,
-  place: Place,
+  places: readonly Place[],
   account: number | undefined,
 ): boolean {
-  return inList(guess(conversation, { action, ids: [conversation.id] }), place, account);
+  return inList(guess(conversation, { action, ids: [conversation.id] }), places, account);
 }
 
-// inList reports whether conversation is in place's list, of account alone
-// when given.
-function inList(conversation: Conversation, place: Place, account: number | undefined): boolean {
+// inList reports whether conversation is in any of places, and of account
+// alone when given.
+function inList(
+  conversation: Conversation,
+  places: readonly Place[],
+  account: number | undefined,
+): boolean {
+  const own = placesOf(conversation);
   return (
-    placesOf(conversation).includes(place) &&
+    places.some((place) => own.includes(place)) &&
     (account === undefined || conversation.accountId === account)
   );
 }
