@@ -49,6 +49,13 @@ var (
 	// ErrNotSendableAgain means the message is waiting, sending, or sent, so
 	// sending it again could send it twice.
 	ErrNotSendableAgain = errors.New("only a failed or unknown message can be sent again")
+	// ErrSentAgainOtherwise means the message was already sent again with
+	// other content than a request's edits, so the edits would make a
+	// second copy.
+	ErrSentAgainOtherwise = errors.New("message already sent again with other content")
+	// ErrReplySubject means edits to a reply change its subject, which
+	// threads it with the message it answers.
+	ErrReplySubject = errors.New("a reply's subject cannot change")
 )
 
 // Action is what a member can ask of one of their messages.
@@ -223,6 +230,14 @@ type Sender struct {
 	// Credential is the account's sealed refresh token, only to check that a
 	// key still opens it.
 	Credential connectedaccount.Credential
+}
+
+// Reply reports whether m answers another message: it carries threading
+// headers. A reply to a message with no Message-ID inbok may write has none,
+// and threads only by Gmail's thread ID, when sent from the answered
+// message's account.
+func (m Message) Reply() bool {
+	return m.InReplyTo != "" || len(m.References) > 0
 }
 
 // Threading is what threads a reply with the message it answers: its
@@ -474,36 +489,73 @@ func (s *Service) repeated(ctx context.Context, userID int64, request Request, c
 
 // SendAgain saves a copy of userID's failed or unknown message messageID,
 // waiting to be sent from the same account with a new ID and Message-ID, and
-// returns it. Sending a message again a second time returns the same copy.
+// returns it. edits, when not nil, is the copy's content, checked as a new
+// message's; nil copies the original's. A reply's copy keeps its threading
+// and subject. Sending a message again a second time returns the same copy.
 //
 // It returns [ErrNotFound] when userID has no such message,
 // [ErrNotSendableAgain] when it did not end failed or unknown,
+// [ErrSentAgainOtherwise] when it was sent again with other content than
+// edits, [ErrReplySubject] when edits change a reply's subject,
 // [ErrNeedsReconnect] when its account needs a reconnect,
 // [ErrTokenUnreadable] when no key opens its token, [ErrDeactivated],
-// or an [*attemptlimit.Error] wrapping [ErrThrottled].
-func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
+// an [*attemptlimit.Error] wrapping [ErrThrottled], and the content errors
+// of [Content]'s rules for edits.
+//
+// DESIGN: Edit and send is Send again with edits, so one operation links
+// a failed message to whatever replaced it, and its page and the Outbox
+// count follow that link (ADR006, "Sending again").
+func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UUID, edits *Content) (Message, error) {
+	// 1. Refuse content that cannot be sent before any storage.
+	if edits != nil {
+		parsed, err := parseContent(*edits)
+		if err != nil {
+			return Message{}, err
+		}
+		edits = &parsed
+	}
+
+	// 2. With the member, account, and message held, refuse what would
+	// only fail or go over the limit, and save.
 	attempt := s.attempt(userID)
 	copied, err := s.storage.InsertOutgoingMessageCopy(ctx, attempt, messageID, func(state CopyState) (NewMessage, error) {
-		if !sendableAgain(state.Original.Status) {
+		original := state.Original
+		if !sendableAgain(original.Status) {
 			return NewMessage{}, ErrNotSendableAgain
+		}
+		content := original.Content
+		if edits != nil {
+			// The subject threads a reply as its headers do: Gmail adds a
+			// message to a thread only when the subjects match.
+			if original.Reply() && edits.Subject != original.Subject {
+				return NewMessage{}, ErrReplySubject
+			}
+			content = *edits
 		}
 		if err := s.checkSender(userID, state.Sender); err != nil {
 			return NewMessage{}, err
 		}
 		// The account's address now, which a send that failed
 		// sender-changed has saved.
-		next, err := newMessage(state.Sender, state.Attempts, attempt.At, state.Original.Content)
+		next, err := newMessage(state.Sender, state.Attempts, attempt.At, content)
 		if err != nil {
 			return NewMessage{}, err
 		}
 		// A reply's copy answers the same message, in the same thread: the
 		// account is the original's.
-		next.Threading = state.Original.Threading
-		next.ProviderThreadID = state.Original.ProviderThreadID
+		next.Threading = original.Threading
+		next.ProviderThreadID = original.ProviderThreadID
 		return next, nil
 	})
 	if err != nil {
 		return Message{}, err
+	}
+
+	// 3. A copy saved earlier is returned for a repeat of the request that
+	// saved it, e.g. one whose answer was lost; edits it doesn't hold
+	// would be lost.
+	if edits != nil && !sameContent(copied.Content, *edits) {
+		return Message{}, ErrSentAgainOtherwise
 	}
 	return s.withAccount(ctx, userID, copied)
 }

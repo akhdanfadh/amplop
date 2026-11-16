@@ -2591,12 +2591,15 @@ then `sent`, `failed` with a reason (`refused`, `sending-limit`,
 or check says whether.
 
 `Service.SendAgain` copies a `failed` or `unknown` message
-(`InsertOutgoingMessageCopy`): the same content from the same account, with
-the account's address now and a new ID and Message-ID, waiting with its own
+(`InsertOutgoingMessageCopy`): the same content, or the member's edits
+checked as a new message's content, from the same account and with a
+reply's threading and subject, with the account's address now and a new ID
+and Message-ID, waiting with its own
 job and counted as an attempt. No request named the copy, so it has no key.
 The original's `sent_again_as` names the copy, so sending it again a second
 time returns that copy, and the member never sends one message twice by
-clicking twice. The transaction locks the member, then the account, then
+clicking twice; edits other than that copy's content are refused
+(`ErrSentAgainOtherwise`), as they would make a second copy. The transaction locks the member, then the account, then
 the message, the order the send job and a disconnect use. `Service.List`
 returns the member's newest 50, without bodies, so a `failed` or `unknown`
 message, which synchronized mail may never show, can be found and sent

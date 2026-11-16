@@ -365,12 +365,36 @@ func TestSendAgainReply(t *testing.T) {
 	require.NoError(t, err)
 	storage.messages[0].Status = StatusUnknown
 
-	copied, err := service.SendAgain(t.Context(), 3, original.ID)
+	copied, err := service.SendAgain(t.Context(), 3, original.ID, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, original.Content, copied.Content)
 	assert.Equal(t, original.Threading, copied.Threading)
 	assert.Equal(t, "t-1", copied.ProviderThreadID)
+}
+
+// A reply sent again with edits keeps its threading, and its subject:
+// edits that change it are refused.
+func TestSendAgainReplyWithEdits(t *testing.T) {
+	storage, service := replyTest(t, testAnswered())
+	original, err := service.Reply(t.Context(), 3, testReply())
+	require.NoError(t, err)
+	storage.messages[0].Status = StatusFailed
+	storage.messages[0].Failure = FailureRefused
+	edits := Content{To: []string{"bob@example.com"}, Cc: []string{}, Bcc: []string{}, Subject: original.Subject, Body: "Fixed."}
+
+	renamed := edits
+	renamed.Subject = "Another subject"
+	_, err = service.SendAgain(t.Context(), 3, original.ID, &renamed)
+	require.ErrorIs(t, err, ErrReplySubject)
+	assert.Len(t, storage.messages, 1)
+
+	copied, err := service.SendAgain(t.Context(), 3, original.ID, &edits)
+	require.NoError(t, err)
+	assert.Equal(t, edits, copied.Content)
+	assert.Equal(t, original.Threading, copied.Threading)
+	assert.Equal(t, "t-1", copied.ProviderThreadID)
+	assert.True(t, copied.Reply())
 }
 
 // A new message has no threading.

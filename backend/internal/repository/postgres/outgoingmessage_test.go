@@ -758,9 +758,9 @@ func TestOutgoingMessageCopy(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
 	original := o.failedMessage(t)
 
-	copied, err := o.messages.SendAgain(t.Context(), o.member, original.ID)
+	copied, err := o.messages.SendAgain(t.Context(), o.member, original.ID, nil)
 	require.NoError(t, err)
-	again, err := o.messages.SendAgain(t.Context(), o.member, original.ID)
+	again, err := o.messages.SendAgain(t.Context(), o.member, original.ID, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, copied.ID, again.ID)
@@ -772,6 +772,39 @@ func TestOutgoingMessageCopy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, &copied.ID, read.SentAgainAs)
 	assert.Equal(t, outgoingmessage.StatusFailed, read.Status)
+}
+
+// Two requests sending a message again with different edits, e.g. from two
+// tabs, make one copy with one attempt and job: the member's lock makes
+// the second find the first's copy, whose content its edits don't match.
+func TestOutgoingMessageCopyEditsRace(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	original := o.failedMessage(t)
+	edits := func(body string) *outgoingmessage.Content {
+		return &outgoingmessage.Content{To: []string{"ann@example.com"}, Cc: []string{}, Bcc: []string{}, Subject: "Lunch on Friday", Body: body}
+	}
+	results := make(chan error, 2)
+
+	for _, body := range []string{"Friday?", "Saturday?"} {
+		go func() {
+			_, err := o.messages.SendAgain(context.WithoutCancel(t.Context()), o.member, original.ID, edits(body))
+			results <- err
+		}()
+	}
+
+	errs := []error{<-results, <-results}
+	succeeded := 0
+	for _, err := range errs {
+		if err == nil {
+			succeeded++
+			continue
+		}
+		require.ErrorIs(t, err, outgoingmessage.ErrSentAgainOtherwise)
+	}
+	assert.Equal(t, 1, succeeded, "one request makes the copy")
+	assert.Equal(t, int64(2), o.countOutgoingMessages(t), "the original and one copy")
+	assert.Len(t, o.sendJobs(t), 2, "the original's and the copy's")
+	assert.Equal(t, int64(2), o.countSendAttempts(t), "the create and one copy")
 }
 
 // Build gets the original as saved and its account as it is now.
@@ -801,10 +834,10 @@ func TestOutgoingCopyNotFound(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
 	original := o.failedMessage(t)
 
-	_, err := o.messages.SendAgain(t.Context(), o.otherMember, original.ID)
+	_, err := o.messages.SendAgain(t.Context(), o.otherMember, original.ID, nil)
 	require.ErrorIs(t, err, outgoingmessage.ErrNotFound)
 
-	_, err = o.messages.SendAgain(t.Context(), o.member, uuid.New())
+	_, err = o.messages.SendAgain(t.Context(), o.member, uuid.New(), nil)
 	require.ErrorIs(t, err, outgoingmessage.ErrNotFound)
 }
 
@@ -997,7 +1030,7 @@ func TestOutgoingReplyThreadKept(t *testing.T) {
 		assert.Equal(t, "thread-m1", saved.ProviderThreadID, string(next.Status))
 	}
 
-	copied, err := o.messages.SendAgain(t.Context(), o.member, created.ID)
+	copied, err := o.messages.SendAgain(t.Context(), o.member, created.ID, nil)
 	require.NoError(t, err)
 	assert.Equal(t, created.Threading, copied.Threading)
 	assert.Equal(t, "thread-m1", copied.ProviderThreadID)

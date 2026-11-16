@@ -72,6 +72,7 @@ function saved(
     createdAt: "2026-11-13T08:00:00Z",
     sentAt: status === "sent" ? "2026-11-13T08:00:05Z" : null,
     sentAgainAs: null,
+    reply: false,
     allowedActions:
       (status === "failed" || status === "unknown") && failure !== "needs-reconnect"
         ? ["send-again"]

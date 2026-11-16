@@ -58,6 +58,7 @@ const saved: OutgoingMessage = {
   createdAt: "2026-11-16T08:00:00Z",
   sentAt: "2026-11-16T08:00:01Z",
   sentAgainAs: null,
+  reply: false,
   allowedActions: [],
 };
 

@@ -37,6 +37,7 @@ function message(
     sentAgainAs,
     sentAt: status === "sent" ? "2026-11-13T08:00:05Z" : null,
     subject: "Lunch",
+    reply: false,
     allowedActions: status === "failed" || status === "unknown" ? ["send-again"] : [],
   };
 }

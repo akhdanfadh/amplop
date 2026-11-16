@@ -31,6 +31,7 @@ type fakeOutgoingMessages struct {
 	draft     outgoingmessage.Draft
 	reply     outgoingmessage.Reply
 	messageID uuid.UUID
+	edits     *outgoingmessage.Content
 	calls     int
 }
 
@@ -46,9 +47,9 @@ func (f *fakeOutgoingMessages) Create(_ context.Context, userID int64, draft out
 	return f.message, f.err
 }
 
-func (f *fakeOutgoingMessages) SendAgain(_ context.Context, userID int64, messageID uuid.UUID) (outgoingmessage.Message, error) {
+func (f *fakeOutgoingMessages) SendAgain(_ context.Context, userID int64, messageID uuid.UUID, edits *outgoingmessage.Content) (outgoingmessage.Message, error) {
 	f.calls++
-	f.userID, f.messageID = userID, messageID
+	f.userID, f.messageID, f.edits = userID, messageID, edits
 	return f.message, f.err
 }
 
@@ -83,7 +84,7 @@ var (
 
 const lunchSummaryJSON = `"id":"0a1b2c3d-0000-4000-8000-000000000001","connectedAccountId":3,"from":"alex@example.com",` +
 	`"to":["Ann@example.com"],"cc":[],"bcc":["cat@example.com"],"subject":"Lunch","status":"waiting",` +
-	`"failure":null,"sentAgainAs":null,"createdAt":"2026-11-09T10:30:00Z","sentAt":null,"allowedActions":[]`
+	`"failure":null,"sentAgainAs":null,"reply":false,"createdAt":"2026-11-09T10:30:00Z","sentAt":null,"allowedActions":[]`
 
 const lunchRequest = `{"connectedAccountId":3,"to":["Ann@example.com"],"cc":[],"bcc":["cat@example.com"],"subject":"Lunch","body":"Are you free?"}`
 
@@ -334,6 +335,45 @@ func TestSendMessageAgain(t *testing.T) {
 	assert.Equal(t, lunchCopyID.String(), decodeJSON(t, response.Body.Bytes())["data"].(map[string]any)["id"])
 	assert.Equal(t, lunchID, messages.messageID)
 	assert.Equal(t, int64(42), messages.userID)
+	assert.Nil(t, messages.edits, "no body copies the message's content")
+}
+
+// A body is the copy's content: the message edited and sent.
+func TestSendMessageAgainWithEdits(t *testing.T) {
+	copied := lunch
+	copied.ID = lunchCopyID
+	messages := &fakeOutgoingMessages{message: copied}
+	api := newOutgoingMessagesAPI(messages)
+
+	response := requestAuthenticated(api, http.MethodPost, "/outgoing-messages/"+lunchID.String()+"/send-again",
+		`{"to":["ann@example.com"],"cc":[],"bcc":["cat@example.com"],"subject":"Lunch","body":"Friday?"}`)
+
+	require.Equal(t, http.StatusCreated, response.Code, response.Body.String())
+	assert.Equal(t, &outgoingmessage.Content{To: []string{"ann@example.com"}, Cc: []string{}, Bcc: []string{"cat@example.com"}, Subject: "Lunch", Body: "Friday?"}, messages.edits)
+}
+
+// Refused edits name the field, as a new message's do.
+func TestSendMessageAgainInvalidEdits(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		err      error
+		location string
+	}{
+		{"no recipients", outgoingmessage.ErrNoRecipients, "body.to"},
+		{"reply's subject", outgoingmessage.ErrReplySubject, "body.subject"},
+		{"recipient", &outgoingmessage.RecipientError{Field: outgoingmessage.FieldCc, Index: 1}, "body.cc[1]"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			api := newOutgoingMessagesAPI(&fakeOutgoingMessages{err: c.err})
+
+			response := requestAuthenticated(api, http.MethodPost, "/outgoing-messages/"+lunchID.String()+"/send-again",
+				`{"to":[],"cc":[],"bcc":[],"subject":"Lunch","body":"Friday?"}`)
+
+			require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+			errs := decodeJSON(t, response.Body.Bytes())["errors"].([]any)
+			assert.Equal(t, c.location, errs[0].(map[string]any)["location"])
+		})
+	}
 }
 
 func TestSendMessageAgainRefused(t *testing.T) {
@@ -346,6 +386,7 @@ func TestSendMessageAgainRefused(t *testing.T) {
 		retryAfter string
 	}{
 		{"not failed", outgoingmessage.ErrNotSendableAgain, http.StatusConflict, notSendableAgainType, ""},
+		{"sent again otherwise", outgoingmessage.ErrSentAgainOtherwise, http.StatusConflict, sentAgainOtherwiseType, ""},
 		{"needs reconnect", outgoingmessage.ErrNeedsReconnect, http.StatusConflict, sendingAccountNeedsReconnectType, ""},
 		{"token unreadable", outgoingmessage.ErrTokenUnreadable, http.StatusConflict, sendingAccountNeedsReconnectType, ""},
 		{"not found", outgoingmessage.ErrNotFound, http.StatusNotFound, outgoingMessageNotFoundType, ""},
@@ -501,7 +542,7 @@ func TestOutgoingMessagesOpenAPI(t *testing.T) {
 		{doc.Paths[outgoingMessagesPath].Post, "sendMessage", []int{http.StatusCreated, http.StatusUnauthorized, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests}},
 		{doc.Paths[outgoingMessagesPath].Get, "listOutgoingMessages", []int{http.StatusOK, http.StatusUnauthorized}},
 		{doc.Paths[outgoingMessagesPath+"/{id}"].Get, "getOutgoingMessage", []int{http.StatusOK, http.StatusUnauthorized, http.StatusNotFound}},
-		{doc.Paths[outgoingMessagesPath+"/{id}/send-again"].Post, "sendMessageAgain", []int{http.StatusCreated, http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusTooManyRequests}},
+		{doc.Paths[outgoingMessagesPath+"/{id}/send-again"].Post, "sendMessageAgain", []int{http.StatusCreated, http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests}},
 		{doc.Paths[messagesPath+"/{id}/replies"].Post, "replyToMessage", []int{http.StatusCreated, http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests}},
 	} {
 		op := c.operation
@@ -526,4 +567,14 @@ func TestOutgoingMessagesOpenAPI(t *testing.T) {
 	for _, typ := range []string{outgoingMessageNotFoundType, sendingAccountNeedsReconnectType, gmailNotConfiguredType, notSendableAgainType, idempotencyKeyReusedType, sendThrottledType, messageNotFoundType} {
 		assert.Contains(t, types, typ)
 	}
+}
+
+// reply says whether a message carries threading headers, which keep its
+// subject when it is sent again with edits.
+func TestOutgoingMessageReply(t *testing.T) {
+	reply := lunch
+	reply.Threading = outgoingmessage.Threading{InReplyTo: "<a@example.com>", References: []string{"<a@example.com>"}}
+
+	assert.True(t, outgoingMessageSummaryOf(reply, true).Reply)
+	assert.False(t, outgoingMessageSummaryOf(lunch, true).Reply)
 }

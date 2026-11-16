@@ -531,7 +531,7 @@ func TestSendAgain(t *testing.T) {
 			account.sender.Email = "renamed@gmail.com"
 			storage.accounts[5] = account
 
-			copied, err := service.SendAgain(t.Context(), 3, original.ID)
+			copied, err := service.SendAgain(t.Context(), 3, original.ID, nil)
 
 			require.NoError(t, err)
 			assert.NotEqual(t, original.ID, copied.ID)
@@ -551,10 +551,10 @@ func TestSendAgain(t *testing.T) {
 // Sending a message again twice returns the one copy, counting one attempt.
 func TestSendAgainTwice(t *testing.T) {
 	storage, service, original := sendAgainTest(t, StatusUnknown)
-	first, err := service.SendAgain(t.Context(), 3, original.ID)
+	first, err := service.SendAgain(t.Context(), 3, original.ID, nil)
 	require.NoError(t, err)
 
-	second, err := service.SendAgain(t.Context(), 3, original.ID)
+	second, err := service.SendAgain(t.Context(), 3, original.ID, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, first, second)
@@ -562,12 +562,62 @@ func TestSendAgainTwice(t *testing.T) {
 	assert.Len(t, storage.attempts[3], 2, "the create and one copy")
 }
 
+// Edits are the copy's content, parsed as a new message's; the original
+// then names the copy, as without edits.
+func TestSendAgainWithEdits(t *testing.T) {
+	storage, service, original := sendAgainTest(t, StatusFailed)
+	edits := Content{To: []string{"ann@example.com"}, Cc: []string{}, Bcc: []string{}, Subject: "Lunch, fixed", Body: "Friday?"}
+
+	copied, err := service.SendAgain(t.Context(), 3, original.ID, &edits)
+
+	require.NoError(t, err)
+	assert.Equal(t, edits, copied.Content)
+	assert.Equal(t, int64(5), copied.ConnectedAccountID)
+	assert.Equal(t, &copied.ID, storage.messages[0].SentAgainAs)
+}
+
+// Edits that break a new message's rules are refused before anything is
+// read or saved.
+func TestSendAgainInvalidEdits(t *testing.T) {
+	storage, service, original := sendAgainTest(t, StatusFailed)
+	edits := Content{To: []string{}, Cc: []string{}, Bcc: []string{}, Subject: "Lunch", Body: "Friday?"}
+
+	_, err := service.SendAgain(t.Context(), 3, original.ID, &edits)
+
+	require.ErrorIs(t, err, ErrNoRecipients)
+	assert.Len(t, storage.messages, 1)
+	assert.Len(t, storage.attempts[3], 1, "the create only")
+}
+
+// A repeat of an edited send again returns its copy; other edits, which
+// that copy doesn't hold, are refused, and no edits return the copy.
+func TestSendAgainWithEditsTwice(t *testing.T) {
+	storage, service, original := sendAgainTest(t, StatusFailed)
+	edits := Content{To: []string{"ann@example.com"}, Cc: []string{}, Bcc: []string{}, Subject: "Lunch", Body: "Friday?"}
+	first, err := service.SendAgain(t.Context(), 3, original.ID, &edits)
+	require.NoError(t, err)
+
+	repeat, err := service.SendAgain(t.Context(), 3, original.ID, &edits)
+	require.NoError(t, err)
+	assert.Equal(t, first, repeat)
+
+	other := edits
+	other.Body = "Saturday?"
+	_, err = service.SendAgain(t.Context(), 3, original.ID, &other)
+	require.ErrorIs(t, err, ErrSentAgainOtherwise)
+
+	plain, err := service.SendAgain(t.Context(), 3, original.ID, nil)
+	require.NoError(t, err)
+	assert.Equal(t, first, plain)
+	assert.Len(t, storage.messages, 2)
+}
+
 func TestSendAgainRefused(t *testing.T) {
 	for _, status := range []Status{StatusWaiting, StatusSending, StatusSent} {
 		t.Run(string(status), func(t *testing.T) {
 			storage, service, original := sendAgainTest(t, status)
 
-			_, err := service.SendAgain(t.Context(), 3, original.ID)
+			_, err := service.SendAgain(t.Context(), 3, original.ID, nil)
 
 			require.ErrorIs(t, err, ErrNotSendableAgain)
 			assert.Len(t, storage.messages, 1)
@@ -581,7 +631,7 @@ func TestSendAgainNeedsReconnect(t *testing.T) {
 	account.sender.NeedsReconnect = true
 	storage.accounts[5] = account
 
-	_, err := service.SendAgain(t.Context(), 3, original.ID)
+	_, err := service.SendAgain(t.Context(), 3, original.ID, nil)
 
 	require.ErrorIs(t, err, ErrNeedsReconnect)
 }
@@ -592,7 +642,7 @@ func TestSendAgainTokenUnreadable(t *testing.T) {
 	account.sender.Credential = connectedaccount.Credential{KeyID: lostKeyID}
 	storage.accounts[5] = account
 
-	_, err := service.SendAgain(t.Context(), 3, original.ID)
+	_, err := service.SendAgain(t.Context(), 3, original.ID, nil)
 
 	require.ErrorIs(t, err, ErrTokenUnreadable)
 	assert.Nil(t, storage.messages[0].SentAgainAs)
@@ -602,7 +652,7 @@ func TestSendAgainThrottled(t *testing.T) {
 	storage, service, original := sendAgainTest(t, StatusFailed)
 	fillAttempts(storage, 3, createNow, shortSendLimit.Max)
 
-	_, err := service.SendAgain(t.Context(), 3, original.ID)
+	_, err := service.SendAgain(t.Context(), 3, original.ID, nil)
 
 	require.ErrorIs(t, err, ErrThrottled)
 	assert.Nil(t, storage.messages[0].SentAgainAs)
@@ -611,7 +661,7 @@ func TestSendAgainThrottled(t *testing.T) {
 func TestSendAgainOtherMembers(t *testing.T) {
 	_, service, original := sendAgainTest(t, StatusFailed)
 
-	_, err := service.SendAgain(t.Context(), 4, original.ID)
+	_, err := service.SendAgain(t.Context(), 4, original.ID, nil)
 
 	require.ErrorIs(t, err, ErrNotFound)
 }
@@ -666,7 +716,7 @@ func TestAllowedActionsMatchSendAgain(t *testing.T) {
 				read, err := service.Get(t.Context(), 3, original.ID)
 				require.NoError(t, err)
 
-				_, err = service.SendAgain(t.Context(), 3, original.ID)
+				_, err = service.SendAgain(t.Context(), 3, original.ID, nil)
 
 				listed := slices.Contains(read.AllowedActions(true), ActionSendAgain)
 				assert.Equal(t, listed, err == nil, "listed %t, Send again: %v", listed, err)
@@ -679,7 +729,7 @@ func TestAllowedActionsMatchSendAgain(t *testing.T) {
 // as Send again still returns its copy.
 func TestAllowedActionsSentAgainNeedsReconnect(t *testing.T) {
 	storage, service, original := sendAgainTest(t, StatusFailed)
-	copied, err := service.SendAgain(t.Context(), 3, original.ID)
+	copied, err := service.SendAgain(t.Context(), 3, original.ID, nil)
 	require.NoError(t, err)
 	account := storage.accounts[5]
 	account.sender.NeedsReconnect = true
@@ -687,7 +737,7 @@ func TestAllowedActionsSentAgainNeedsReconnect(t *testing.T) {
 	read, err := service.Get(t.Context(), 3, original.ID)
 	require.NoError(t, err)
 
-	again, err := service.SendAgain(t.Context(), 3, original.ID)
+	again, err := service.SendAgain(t.Context(), 3, original.ID, nil)
 
 	assert.Equal(t, []Action{ActionSendAgain}, read.AllowedActions(true))
 	require.NoError(t, err)
@@ -731,7 +781,7 @@ func TestWriteRetriedAfterAccountsFail(t *testing.T) {
 			return service.Reply(t.Context(), 3, reply)
 		},
 		"send again": func(service *Service, original Message) (Message, error) {
-			return service.SendAgain(t.Context(), 3, original.ID)
+			return service.SendAgain(t.Context(), 3, original.ID, nil)
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
