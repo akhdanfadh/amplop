@@ -15,7 +15,14 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { isAddress } from "./compose-schema";
-import { keyReused, mayHaveSaved, needsReconnect, sendTooltip, type LeaveState } from "./text";
+import {
+  editNote,
+  keyReused,
+  mayHaveSaved,
+  needsReconnect,
+  sendTooltip,
+  type LeaveState,
+} from "./text";
 
 const unauthorized = 401;
 
@@ -82,6 +89,14 @@ export function useEditorSend(onUnauthorized: () => void): EditorSend {
     leaveState: (sending) => (sending ? "sending" : unconfirmed ? "unconfirmed" : "typed"),
     unconfirmed,
   };
+}
+
+// EditNote heads an editor that sends a refused message again with the
+// member's edits: why it failed, and that sending replaces it.
+export function EditNote(): ReactElement {
+  return (
+    <p className="border-b px-4 py-2 text-sm wrap-anywhere text-muted-foreground">{editNote}</p>
+  );
 }
 
 // EditorCard is the message editor (DESIGN.md "Compose and reply"): one

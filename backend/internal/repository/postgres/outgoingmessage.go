@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
 	"uuid"
 
 	"github.com/jackc/pgerrcode"
@@ -301,6 +302,48 @@ func (db *DB) saveOutgoingMessage(ctx context.Context, tx pgx.Tx, attempt outgoi
 	}, nil
 }
 
+// DismissOutgoingMessage locks userID's message messageID, calls dismiss
+// with it, and when dismiss returns true saves it dismissed at at, in one
+// transaction. It returns the message as saved, or
+// [outgoingmessage.ErrNotFound] when userID has no such message.
+func (db *DB) DismissOutgoingMessage(ctx context.Context, userID int64, messageID uuid.UUID, at time.Time, dismiss func(outgoingmessage.Message) (bool, error)) (outgoingmessage.Message, error) {
+	var saved outgoingmessage.Message
+	err := pgx.BeginTxFunc(ctx, db.pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+		queries := sqlc.New(tx)
+
+		// 1. Lock the message, so a Send again waits until it is saved,
+		// and dismiss decides on what is saved.
+		row, err := queries.LockMemberOutgoingMessage(ctx, sqlc.LockMemberOutgoingMessageParams{ID: messageID, UserID: userID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return outgoingmessage.ErrNotFound
+		}
+		if err != nil {
+			return fmt.Errorf("lock outgoing message: %w", err)
+		}
+		message, err := outgoingMessageFromRow(row)
+		if err != nil {
+			return err
+		}
+
+		// 2. Let dismiss decide, and save.
+		ok, err := dismiss(message)
+		if err != nil || !ok {
+			saved = message
+			return err
+		}
+		row, err = queries.SetOutgoingMessageDismissed(ctx, sqlc.SetOutgoingMessageDismissedParams{ID: messageID, DismissedAt: &at})
+		if err != nil {
+			return fmt.Errorf("dismiss outgoing message: %w", err)
+		}
+		saved, err = outgoingMessageFromRow(row)
+		return err
+	})
+	if err != nil {
+		return outgoingmessage.Message{}, err
+	}
+	return saved, nil
+}
+
 // ReadOutgoingMessage returns userID's message messageID, or
 // [outgoingmessage.ErrNotFound] when userID has no such message.
 func (db *DB) ReadOutgoingMessage(ctx context.Context, userID int64, messageID uuid.UUID) (outgoingmessage.Message, error) {
@@ -493,6 +536,7 @@ func outgoingMessageFromRow(row sqlc.OutgoingMessage) (outgoingmessage.Message, 
 		CreatedAt:      row.CreatedAt,
 		SentAt:         row.SentAt,
 		SentAgainAs:    row.SentAgainAs,
+		DismissedAt:    row.DismissedAt,
 	}
 	if row.InReplyTo != nil {
 		message.InReplyTo = *row.InReplyTo

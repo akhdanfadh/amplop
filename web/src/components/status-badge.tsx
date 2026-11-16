@@ -63,3 +63,35 @@ export function StatusMark({ tone, icon: Icon }: { tone: Tone; icon: StatusIcon 
     </span>
   );
 }
+
+// The text colour of each tone's word; each holds 4.5:1 or more on a
+// list's surfaces in both themes, hovered and selected (DESIGN.md "Status
+// badges").
+const wordColors: Record<Tone, string> = {
+  neutral: "text-muted-foreground",
+  info: "text-info",
+  success: "text-success",
+  warning: "text-warning",
+  destructive: "text-destructive",
+};
+
+// StatusWord shows a status inline, as an icon and a word in its tone's
+// colour without the badge's pill, for a line of text that has no room
+// for one, e.g. a list row's (DESIGN.md "Status badges"). icon is hidden
+// from screen readers, and children is the word they read.
+export function StatusWord({
+  tone,
+  icon: Icon,
+  children,
+}: {
+  tone: Tone;
+  icon: StatusIcon;
+  children: string;
+}): ReactElement {
+  return (
+    <span className={cn("inline-flex shrink-0 items-center gap-1 font-medium", wordColors[tone])}>
+      <Icon aria-hidden="true" className="size-3.5 shrink-0" />
+      {children}
+    </span>
+  );
+}

@@ -1,17 +1,20 @@
 import type { OutgoingMessage } from "@/api/generated/model";
-import type { Address } from "@/features/messages/text";
-import type { MessageContent, MessageHeader } from "@/features/messages/view";
+import type { OpenMessageHead } from "@/features/messages/open-message";
+import type { MessageContent } from "@/features/messages/view";
+import type { MailAddress } from "./reply-defaults";
 
-// messageHeader returns the header fields of message as the message view
-// shows them, dated when Gmail accepted it, or else when it was saved.
-export function messageHeader(message: OutgoingMessage): MessageHeader {
+// messageHead returns the header of message as an open message shows it:
+// from its account's address, sent, and dated when Gmail accepted it, or
+// else when it was saved.
+export function messageHead(message: OutgoingMessage): OpenMessageHead {
   return {
-    from: [{ email: message.from }],
+    from: addresses([message.from]),
+    replyTo: [],
     to: addresses(message.to),
     cc: addresses(message.cc),
     bcc: addresses(message.bcc),
-    subject: message.subject,
-    receivedAt: message.sentAt ?? message.createdAt,
+    date: message.sentAt ?? message.createdAt,
+    sent: true,
   };
 }
 
@@ -27,6 +30,6 @@ export function messageContent(message: OutgoingMessage): MessageContent {
 }
 
 // addresses returns emails as header addresses, which have no display names.
-function addresses(emails: string[]): Address[] {
-  return emails.map((email) => ({ email }));
+function addresses(emails: readonly string[]): MailAddress[] {
+  return emails.map((address) => ({ name: "", address }));
 }

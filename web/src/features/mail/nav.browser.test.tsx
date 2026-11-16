@@ -35,8 +35,13 @@ function message(
     failure: status === "failed" ? "gave-up" : null,
     from: "ana@example.com",
     sentAgainAs,
+    dismissedAt: null,
     sentAt: status === "sent" ? "2026-11-13T08:00:05Z" : null,
     subject: "Lunch",
+    // As the API says it: until it is sent, or sent again.
+    outstanding: status !== "sent" && sentAgainAs === null,
+    reply: false,
+    allowedActions: status === "failed" || status === "unknown" ? ["send-again"] : [],
   };
 }
 
@@ -102,6 +107,21 @@ describe("MailNav", () => {
     await expect
       .element(page.getByRole("link", { name: "Outbox 3 not sent" }))
       .toHaveAttribute("href", "/mail/outbox");
+  });
+
+  // Beside Sent, where its messages go, and above the accounts' labels,
+  // so its count stays in sight.
+  it("lists the Outbox among the views, after Sent", async () => {
+    await page.viewport(1440, 900);
+    await render(<RouterProvider router={app([]).router} />);
+    await expect.element(page.getByRole("link", { name: /^Outbox/ })).toBeVisible();
+
+    const names = page
+      .getByRole("link")
+      .elements()
+      .map((link) => link.textContent);
+    const sent = names.indexOf("Sent");
+    expect(names.slice(sent, sent + 3)).toEqual(["Sent", "Outbox", "All mail"]);
   });
 
   it("shows the Outbox without a count when every message is sent", async () => {

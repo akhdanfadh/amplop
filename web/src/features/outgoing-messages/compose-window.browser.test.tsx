@@ -18,7 +18,7 @@ import { appRouter, memberSession } from "@/test/app-router";
 import { ComposeProvider, ComposeStore, useCompose } from "./compose-store";
 import { ComposeWindow } from "./compose-window";
 import { MessageStatus } from "./status";
-import { leaveText } from "./text";
+import { editNote, leaveText } from "./text";
 
 const ok = 200;
 const created = 201;
@@ -58,21 +58,30 @@ const saved: OutgoingMessage = {
   createdAt: "2026-11-16T08:00:00Z",
   sentAt: "2026-11-16T08:00:01Z",
   sentAgainAs: null,
+  dismissedAt: null,
+  outstanding: false,
+  reply: false,
+  allowedActions: [],
 };
 
 // The API as serve stubs it: accounts answers the accounts list; sent is
-// what Send Message saves; read answers a read of it.
+// what Send Message saves, which a read of it answers; again is the copy
+// Send Message Again saves, which a read of it answers; outbox answers a
+// read of the Outbox, which gives their status.
 type Api = {
   accounts: () => ListedAccount[];
   sent: OutgoingMessage;
-  read: () => Response;
+  again: OutgoingMessage;
+  outbox: () => Response;
 };
 
 // serve stubs the API with api's answers, by default the member's one
-// account, and Send Message saving saved, which reads back as saved.
+// account, and Send Message saving saved, which reads back as saved and
+// is the Outbox's one message.
 function serve(api: Partial<Api> = {}): void {
   const { accounts = () => [studio], sent = saved } = api;
-  const read = api.read ?? (() => Response.json({ data: sent }, { status: ok }));
+  const outbox =
+    api.outbox ?? (() => Response.json({ data: { messages: [sent] } }, { status: ok }));
   vi.stubGlobal(
     "fetch",
     vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url, init = {}) => {
@@ -84,8 +93,17 @@ function serve(api: Partial<Api> = {}): void {
         );
       if (method === "POST" && url === "/api/v0/outgoing-messages")
         return Response.json({ data: sent }, { status: created });
-      if (url === `/api/v0/outgoing-messages/${sent.id}`) return read();
-      if (url === "/api/v0/outgoing-messages") return Response.json({}, { status: ok });
+      if (url === `/api/v0/outgoing-messages/${sent.id}`)
+        return Response.json({ data: sent }, { status: ok });
+      if (
+        api.again &&
+        method === "POST" &&
+        url === `/api/v0/outgoing-messages/${sent.id}/send-again`
+      )
+        return Response.json({ data: api.again }, { status: created });
+      if (api.again && url === `/api/v0/outgoing-messages/${api.again.id}`)
+        return Response.json({ data: api.again }, { status: ok });
+      if (url === "/api/v0/outgoing-messages") return outbox();
       return Response.json({}, { status: notFound });
     }),
   );
@@ -102,15 +120,24 @@ const refused: OutgoingMessage = {
   ...saved,
   status: "failed",
   failure: "refused",
+  allowedActions: ["send-again", "dismiss"],
   sentAt: null,
   subject: "Refused",
 };
+
+// sendAgainCalls returns the page's calls to Send Message Again for
+// refused, as fetch received them.
+function sendAgainCalls() {
+  return vi
+    .mocked(fetch)
+    .mock.calls.filter(([url]) => url === `/api/v0/outgoing-messages/${refused.id}/send-again`);
+}
 
 // show renders a page with Compose and the compose window, as the signed-in
 // layout draws them, inside a router with a second page, /elsewhere. The
 // page warns before it is left when leaving is "warns", e.g. with a reply
 // being typed. It returns the store and the router.
-async function show(leaving: "quiet" | "warns" = "quiet") {
+async function show(leaving: "quiet" | "warns" = "quiet", status: OutgoingMessage = refused) {
   const store = new ComposeStore();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRootRoute({
@@ -130,10 +157,11 @@ async function show(leaving: "quiet" | "warns" = "quiet") {
         <OpenButton />
         <LeaveWarning active={leaving === "warns"} text={leaveText("typed")} />
         <MessageStatus
-          message={refused}
-          current={refused.from}
+          message={status}
+          accounts={[studio]}
           onSentAgain={() => {}}
           onUnauthorized={() => {}}
+          look="pane"
         />
       </main>
     ),
@@ -273,11 +301,23 @@ describe("ComposeWindow", () => {
     await userEvent.click(page.getByRole("button", { name: "Compose" }));
     await userEvent.type(page.getByRole("textbox", { name: "Subject" }), "Mine");
 
-    store.open({ ...saved, status: "failed", failure: "refused", subject: "Refused" });
+    store.open({
+      ...saved,
+      status: "failed",
+      failure: "refused",
+      subject: "Refused",
+      allowedActions: ["send-again", "dismiss"],
+    });
     await press("Keep writing");
     await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Mine");
 
-    store.open({ ...saved, status: "failed", failure: "refused", subject: "Refused" });
+    store.open({
+      ...saved,
+      status: "failed",
+      failure: "refused",
+      subject: "Refused",
+      allowedActions: ["send-again", "dismiss"],
+    });
     await press("Replace");
     await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Refused");
   });
@@ -305,15 +345,79 @@ describe("ComposeWindow", () => {
     await expect.element(page.getByRole("button", { name: "Compose" })).toHaveFocus();
   });
 
-  it("opens from a status's Edit and send with that message's content", async () => {
+  it("opens from a status's Edit and send with that message's content, from its account", async () => {
     await show();
     await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
 
-    await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Refused");
+    const window = page.getByRole("region", { name: "Refused" });
+    await expect.element(window.getByRole("textbox", { name: "Subject" })).toHaveValue("Refused");
+    await expect.element(window).toMatchTextContent(editNote);
+    // The copy goes from the same account: From is text, not a choice.
+    await expect.element(window).toMatchTextContent(/From\s*studio@example\.com/);
+    await expect.element(window.getByRole("button", { name: /From/ })).not.toBeInTheDocument();
+    await expect.element(window.getByRole("textbox", { name: "Message" })).toHaveFocus();
+  });
+
+  it("sends Edit and send's edits through Send again, with no key, then shows the copy", async () => {
+    const copy: OutgoingMessage = {
+      ...saved,
+      id: "019a0000-0000-7000-8000-0000000000dd",
+      subject: "Refused, fixed",
+    };
+    serve({ again: copy });
+    await show();
+    await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
+    await userEvent.fill(page.getByRole("textbox", { name: "Subject" }), "Refused, fixed");
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+
+    await expect.poll(() => sendAgainCalls()).toHaveLength(1);
+    const [, init] = sendAgainCalls()[0];
+    expect(typeof init?.body === "string" ? JSON.parse(init.body) : undefined).toEqual({
+      to: ["ana@example.com"],
+      cc: [],
+      bcc: [],
+      subject: "Refused, fixed",
+      body: "Noon?",
+    });
+    expect(new Headers(init?.headers).has("Idempotency-Key")).toBe(false);
+    await expect.element(page.getByRole("textbox", { name: "Message" })).not.toBeInTheDocument();
     await expect
-      .element(page.getByRole("region", { name: "Refused" }))
-      .toMatchTextContent("the one Gmail refused");
-    await expect.element(page.getByRole("textbox", { name: "Message" })).toHaveFocus();
+      .element(page.getByRole("region", { name: "Refused, fixed" }))
+      .toMatchTextContent("Sent to ana@example.com");
+  });
+
+  it("keeps a refused reply's subject, which the API keeps", async () => {
+    await show("quiet", { ...refused, reply: true, subject: "Re: Lunch" });
+    await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
+
+    const window = page.getByRole("region", { name: "Re: Lunch" });
+    await expect.element(window).toMatchTextContent(/Subject\s*Re: Lunch/);
+    await expect.element(window.getByRole("textbox", { name: "Subject" })).not.toBeInTheDocument();
+    // Two lines hold it whole, so nothing to unfold.
+    await expect.element(window.getByRole("button", { name: "Show all" })).not.toBeInTheDocument();
+  });
+
+  // A reply's subject runs to 500 characters; 2 lines show, then Show all
+  // unfolds the rest, which takes focus, as a message's details do.
+  it("cuts a long fixed subject to 2 lines, with Show all to read it whole", async () => {
+    const subject =
+      `Re: ${"Quarterly review of the warehouse leases and the revised floor plans, ".repeat(6)}`.slice(
+        0,
+        500,
+      );
+    await show("quiet", { ...refused, reply: true, subject });
+    await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
+
+    const showAll = page.getByRole("button", { name: "Show all" });
+    // The window's title shows it too, first; the row's is the last.
+    const text = page.getByText(subject, { exact: true }).last();
+    await expect.element(showAll).toBeVisible();
+    expect(text.element().scrollHeight).toBeGreaterThan(text.element().clientHeight);
+    await userEvent.click(showAll);
+
+    await expect.element(showAll).not.toBeInTheDocument();
+    await expect.element(text).toHaveFocus();
+    expect(text.element().scrollHeight).toBe(text.element().clientHeight);
   });
 
   it("opens from /compose over the Inbox, which history keeps in its place", async () => {
@@ -378,10 +482,10 @@ describe("ComposeWindow", () => {
     expect(after.snapshot().message?.window).not.toBe(before.snapshot().message?.window);
   });
 
-  it("says the session ended when a read of the sent message gets a 401", async () => {
+  it("says the session ended when a read of its status gets a 401", async () => {
     serve({
       sent: { ...saved, status: "sending", sentAt: null },
-      read: () =>
+      outbox: () =>
         Response.json(
           { type: "/api/v0/problems/unauthenticated", status: 401, title: "", detail: "" },
           { status: 401, headers: { "Content-Type": "application/problem+json" } },
@@ -399,10 +503,56 @@ describe("ComposeWindow", () => {
       .toMatchTextContent("You're signed out");
   });
 
+  it("follows the copy Send again saves, reading the Outbox again", async () => {
+    const failed: OutgoingMessage = {
+      ...saved,
+      status: "failed",
+      failure: "gave-up",
+      sentAt: null,
+      allowedActions: ["send-again", "dismiss"],
+    };
+    // Its own read says sending; only the Outbox's says it went out.
+    const copy: OutgoingMessage = {
+      ...saved,
+      id: "019a0000-0000-7000-8000-0000000000dd",
+      status: "sending",
+      sentAt: null,
+    };
+    let tried = false;
+    serve({
+      sent: failed,
+      again: copy,
+      outbox: () => {
+        const messages = tried
+          ? [
+              { ...copy, status: "sent", sentAt: saved.sentAt },
+              { ...failed, sentAgainAs: copy.id },
+            ]
+          : [failed];
+        return Response.json({ data: { messages } }, { status: ok });
+      },
+    });
+    await show();
+    await userEvent.click(page.getByRole("button", { name: "Compose" }));
+    await userEvent.click(page.getByRole("button", { name: /From/ }));
+    await userEvent.click(page.getByRole("option", { name: "studio@example.com Studio" }));
+    await userEvent.type(page.getByRole("textbox", { name: "To" }), "ana@example.com,");
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+
+    const window = page.getByRole("region", { name: "Lunch" });
+    await expect.element(window.getByRole("button", { name: "Send again" })).toBeVisible();
+    tried = true;
+    await userEvent.click(window.getByRole("button", { name: "Send again" }));
+
+    await expect
+      .element(window.getByText("Sent to ana@example.com"), { timeout: 5_000 })
+      .toBeVisible();
+  });
+
   it("keeps the status, saying it may be out of date, when a reread fails", async () => {
     serve({
       sent: { ...saved, status: "sending", sentAt: null },
-      read: () =>
+      outbox: () =>
         Response.json(
           { type: "/api/v0/problems/internal-error", status: 500, title: "", detail: "" },
           { status: 500, headers: { "Content-Type": "application/problem+json" } },

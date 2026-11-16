@@ -14,12 +14,8 @@ import { Link, useBlocker, useRouter, useRouterState } from "@tanstack/react-rou
 import { FocusScope } from "react-aria/FocusScope";
 import { useLandmark } from "react-aria/useLandmark";
 import { Maximize2Icon, Minimize2Icon, MinusIcon, XIcon } from "lucide-react";
-import {
-  getGetOutgoingMessageQueryKey,
-  useGetOutgoingMessage,
-  useListConnectedAccounts,
-} from "@/api/generated/inbok";
-import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
+import { getGetOutgoingMessageQueryKey, useListConnectedAccounts } from "@/api/generated/inbok";
+import type { ListedAccount } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { textLink } from "@/components/link-style";
@@ -32,14 +28,12 @@ import { cn } from "@/lib/cn";
 import { ComposeForm } from "./compose-form";
 import { composeValues } from "./compose-schema";
 import { useCompose, type ComposeMessage } from "./compose-store";
-import { pollWhile, sendPollMs } from "./poll";
+import { useOutgoingMessage } from "./outbox";
 import { MessageStatus } from "./status";
 import { MessageStatusMark } from "./status-badge";
 import {
   composeAccountsUnreadable,
   closeText,
-  editNoteText,
-  inProgress,
   messageStatusStale,
   newMessageTitle,
   noAccountText,
@@ -366,17 +360,11 @@ function MessageContent({
   const [sentId, setSentId] = useState<string | null>(null);
   const accounts = useListConnectedAccounts();
   const list = accounts.data?.data.accounts;
-  const sent = useGetOutgoingMessage(sentId ?? "", {
-    query: {
-      enabled: sentId !== null,
-      refetchInterval: pollWhile(sendPollMs, (data) => inProgress(data.data.status)),
-    },
-  });
-  const sentMessage = sent.data?.data;
+  const sent = useOutgoingMessage(sentId ?? "", { enabled: sentId !== null });
+  const sentMessage = sent.message;
   // A 401 on the window's own reads or writes: the session ended, and the
   // window keeps what it holds to copy (ADR031).
-  const expired =
-    writeExpired || accounts.error?.status === unauthorized || sent.error?.status === unauthorized;
+  const expired = writeExpired || accounts.error?.status === unauthorized || sent.expired;
   const senders = list?.filter((account) => account.allowedActions.includes("send")) ?? [];
   // Once shown, the editor stays, whatever a later read of the accounts
   // says, so typed text is never dropped; its From then marks an account
@@ -421,14 +409,13 @@ function MessageContent({
   const dockedHeight = look === "window" && size === "docked" && "h-[min(36rem,calc(100dvh-4rem))]";
 
   if (sentId !== null) {
-    const account = list?.find((one) => one.id === sentMessage?.connectedAccountId);
     return (
       <>
         {header({
           title: sentMessage?.subject || newMessageTitle,
           send: null,
           sizes: "no-full-screen",
-          mark: sentMessage && <MessageStatusMark status={sentMessage.status} />,
+          mark: sentMessage && <MessageStatusMark message={sentMessage} />,
         })}
         {signedOut}
         <div hidden={minimised} className="min-h-0 overflow-y-auto">
@@ -436,8 +423,7 @@ function MessageContent({
             <MessageStatus
               look="window"
               message={sentMessage}
-              current={account?.email}
-              color={account?.color}
+              accounts={list}
               onSentAgain={(copy) => setSentId(copy.id)}
               onUnauthorized={() => setWriteExpired(true)}
               onEdit={() => store.open(sentMessage)}
@@ -446,7 +432,7 @@ function MessageContent({
           {/* A failed reread keeps the status, saying it may have moved on, as
               the reply's does; polling stops on a failure, and Try again
               restarts it. */}
-          {sent.error && sent.error.status !== unauthorized && (
+          {sent.error && !sent.expired && (
             <div className="px-4 pb-4">
               <ReadError
                 message={
@@ -455,8 +441,8 @@ function MessageContent({
                     : readErrorMessage(sent.error)
                 }
                 error={sent.error}
-                retrying={sent.isFetching}
-                onRetry={() => void sent.refetch()}
+                retrying={sent.retrying}
+                onRetry={sent.retry}
               />
             </div>
           )}
@@ -470,16 +456,9 @@ function MessageContent({
       <div className={cn("flex min-h-0 flex-col", dockedHeight || "flex-1")}>
         <ComposeForm
           accounts={list}
-          initial={composeValues(
-            senders.map((account) => account.id),
-            message.edit,
-          )}
-          note={
-            <>
-              {signedOut}
-              {message.edit && <EditNote message={message.edit} senders={senders} />}
-            </>
-          }
+          edit={message.edit}
+          initial={composeValues(message.edit)}
+          note={signedOut}
           look={look}
           header={({ title, send }) => header({ title, send, sizes: "all" })}
           collapsed={minimised}
@@ -659,33 +638,6 @@ function WindowState({
       <Link to="/settings/connected-accounts" className={textLink}>
         Open Connected accounts
       </Link>
-    </p>
-  );
-}
-
-// EditNote says that the window starts with message's content as a new
-// message, leaving message as it is, and asks for another account when
-// message's own, not among senders, can't send now.
-function EditNote({
-  message,
-  senders,
-}: {
-  message: OutgoingMessage;
-  senders: ListedAccount[];
-}): ReactElement {
-  const own = senders.some((account) => account.id === message.connectedAccountId);
-  return (
-    <p className="border-b px-4 py-2 text-sm wrap-anywhere text-muted-foreground">
-      {editNoteText(
-        message.status === "failed" && message.failure === "refused" ? "refused" : "opened",
-      )}
-      {!own && (
-        <>
-          {" "}
-          Its account <span translate="no">{message.from}</span> can&apos;t send now, so choose
-          another in From.
-        </>
-      )}
     </p>
   );
 }

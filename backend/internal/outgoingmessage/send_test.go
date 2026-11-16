@@ -118,7 +118,7 @@ func newSendTest(t *testing.T) *sendTest {
 	t.Helper()
 	storage := newMemoryStorage()
 	storage.answered[answeredID] = testAnswered()
-	message, err := NewService(storage, keyTokens{}, func() time.Time { return sendNow }).Create(t.Context(), 3, testDraft())
+	message, err := NewService(storage, memoryAccounts{storage}, func() time.Time { return sendNow }).Create(t.Context(), 3, testDraft())
 	require.NoError(t, err)
 	tokens := &fakeTokens{}
 	provider := &fakeProvider{
@@ -490,7 +490,7 @@ func TestGiveUp(t *testing.T) {
 // A reply goes into the thread it was saved for; a new message into none.
 func TestSendThread(t *testing.T) {
 	s := newSendTest(t)
-	reply, err := NewService(s.storage, keyTokens{}, func() time.Time { return sendNow }).Reply(t.Context(), 3, testReply())
+	reply, err := NewService(s.storage, memoryAccounts{s.storage}, func() time.Time { return sendNow }).Reply(t.Context(), 3, testReply())
 	require.NoError(t, err)
 
 	_, err = s.sending.Send(t.Context(), s.message.ID)

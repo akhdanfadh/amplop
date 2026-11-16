@@ -2,7 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 // The app's words for Zod's own checks, e.g. a length limit, as the form shows them.
 import "@/zod-config";
 import type { OutgoingMessage } from "@/api/generated/model";
-import { ComposeSchema, composeRequest, composeValues, type ComposeValues } from "./compose-schema";
+import {
+  ComposeSchema,
+  composeRequest,
+  composeValues,
+  editRequest,
+  type ComposeValues,
+} from "./compose-schema";
 
 const valid: ComposeValues = {
   connectedAccountId: 7,
@@ -116,10 +122,14 @@ describe("composeValues", () => {
     createdAt: "2026-11-10T10:00:00Z",
     sentAt: null,
     sentAgainAs: null,
+    dismissedAt: null,
+    outstanding: true,
+    reply: false,
+    allowedActions: ["send-again"],
   };
 
   it("starts empty, with no account chosen", () => {
-    expect(composeValues([4, 9])).toEqual({
+    expect(composeValues()).toEqual({
       connectedAccountId: 0,
       to: [],
       cc: [],
@@ -127,11 +137,10 @@ describe("composeValues", () => {
       subject: "",
       body: "",
     });
-    expect(composeValues([]).connectedAccountId).toBe(0);
   });
 
-  it("copies a message, from its own account while it can send", () => {
-    expect(composeValues([4, 9], message)).toEqual({
+  it("starts edits with a message's content, from its own account", () => {
+    expect(composeValues(message)).toEqual({
       connectedAccountId: 9,
       to: ["ana@example.com", "bo@example.com"],
       cc: [],
@@ -139,6 +148,27 @@ describe("composeValues", () => {
       subject: "Lunch",
       body: "Noon?",
     });
-    expect(composeValues([4], message).connectedAccountId).toBe(0);
+  });
+});
+
+describe("editRequest", () => {
+  const values = {
+    to: ["ana@example.com"],
+    cc: [],
+    bcc: [],
+    subject: "Lunch, fixed",
+    body: "Noon?",
+  };
+
+  it("sends the edited content", () => {
+    expect(editRequest({ reply: false, subject: "Lunch" }, values)).toEqual(values);
+  });
+
+  // The API keeps a reply's subject, which threads it.
+  it("keeps a reply's own subject", () => {
+    expect(editRequest({ reply: true, subject: "Re: Lunch" }, values).subject).toBe("Re: Lunch");
+    expect(
+      editRequest({ reply: true, subject: "Re: Lunch" }, { ...values, subject: undefined }).subject,
+    ).toBe("Re: Lunch");
   });
 });

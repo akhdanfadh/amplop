@@ -134,15 +134,18 @@ Put shared code in the folder for its responsibility:
   page's wording, including each way a connection can end and where each
   sync stands.
 - `src/features/messages`: the conversation view (`ConversationView`),
-  the message view, its HTML and plain-text bodies, sizing the body's
-  frame, plain-text links, and the header's wording.
+  the reading pane's frame (`ReadingPane`) and an open message
+  (`OpenMessage`), which the Outbox shares, a message's content, its HTML
+  and plain-text bodies, sizing the body's frame, plain-text links, and
+  the header's wording.
 - `src/features/outgoing-messages`: the compose window, the store that
   owns it (`compose-store.ts`), its form and schema, the reply editor
   with its defaults and schema, the parts both editors share
   (`editor.tsx`: the card, the recipient rows, the send's key), the
-  Outbox list, one
+  Outbox page, its rows and reading pane, the one read every status
+  comes from (`outbox.ts`), one
   message's status with Send again and Edit and send, their wording, and
-  when their pages read again (`pollWhile`).
+  when the Outbox reads again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
   names, the conversation list and its rows, the reading pane and its
   toolbar, mail's TanStack DB collections (`conversations.ts`), what
@@ -331,10 +334,15 @@ sidebar is a drawer, a place's heading, account, and Check for new mail
 sit in the top bar instead of above the list: `Frame` gives its top bar
 a box (`useTopBarSlot`), and the place page puts its header there with a
 React portal, so the heading keeps its focus and the list's `main` keeps
-its name. The mail sidebar's Outbox shows how many of its messages are
-not sent yet, from the Outbox page's own read: one being sent, or one
-whose page still offers to send it (`unfinished`), so a message sent
-again stops counting. The member menu at the bottom of the sidebar opens
+its name. The mail sidebar's Outbox, among the views after Sent and
+outside the account filter (DESIGN.md "Sidebar"), shows how many of its messages are
+not sent yet, from the Outbox's one read: those the API marks
+`outstanding` (waiting or being sent, or failed or unconfirmed and
+neither sent again nor dismissed), so a message sent again or dismissed
+stops counting. The client keeps no
+copy of that rule; it follows the message's facts, not what its page
+offers now, so it holds still while accounts load or while an account
+can't send. The member menu at the bottom of the sidebar opens
 Settings, the theme choice, and Sign out. Both frames and the signed-out
 layout show `OfflineBanner` at the top of the content while the browser
 reports no connection, read from TanStack Query's `onlineManager`. Under
@@ -758,8 +766,8 @@ the member moves between mail and settings. One `ComposeStore` per router
 open, what it holds, what closing it would lose, and what opened it, for
 focus to go back to. It closes whenever one member's data ends
 (`onAccountCacheClear`), e.g. on sign-out, so the next member to sign in
-in the tab never sees it. The sidebar's Compose and the Outbox's New message
-call its `open()`, which brings back a window holding typed text instead
+in the tab never sees it. The sidebar's Compose calls its `open()`,
+which brings back a window holding typed text instead
 of replacing it; Edit and send calls `open(message)`, which asks before
 replacing typed text. `/compose` is no page: its `beforeLoad` opens the
 window and redirects to the Inbox, replacing itself in history.
@@ -791,8 +799,7 @@ question while it holds typed text, is sending, or may have saved.
 
 The form (`ComposeForm`) sends from one of the member's connected
 accounts, chosen in From and shown by its address. From starts with none
-chosen, so the member picks the address recipients see; Edit and send
-keeps the opened message's account while it can send. An account can send
+chosen, so the member picks the address recipients see. An account can send
 when its `allowedActions` from the server include `send`, never by the
 page's own copy of the rule; one that can't is listed but can't be chosen
 (marked when it needs reconnecting), and a member with none that can
@@ -821,9 +828,18 @@ the chips are one Tab stop with Delete to remove one. An address the
 contract refuses stays a chip, marked and named "not an email address",
 and its field's error names it. At most 100 per list, with at least one
 recipient in all; the form's values are the lists themselves.
-Edit and send starts the form with that message's content as a new
-message, saying the opened one stays as it is and asking for another
-account when the message's own can't send.
+Edit and send starts the form with a refused message's content
+(`ComposeForm`'s `edit`) and sends it through Send Message Again with a
+body, the edits (`editRequest`), instead of Send Message: one operation
+links a failed message to whatever replaced it, so the refused one reads
+Tried again and leaves the Outbox count. From is then a fixed row
+(`FixedRow`, the kit's), as is a reply's subject (`reply`), which the
+API keeps; a note above says what Send does (`EditNote`). The reply
+editor does the same from a refused reply's status in its conversation;
+either way the copy stays in the reply's thread. Both editors run both
+send hooks, as hooks must, and the edit picks one; Send again takes no
+Idempotency-Key, as the message is its own: a repeat returns its copy,
+and other edits after it are refused (`sent-again-otherwise`).
 
 Send saves the message, which the server sends in the background, and
 the window then holds its status (`MessageStatus look="window"`): a mark,
@@ -847,25 +863,63 @@ it in a new tab so the edits stay, and the next Send uses a new key, as a
 new message. A refusal because the account needs
 reconnecting rereads the accounts and links Connected accounts.
 
-The Outbox lists the member's newest 50 messages from inbok, newest first,
-with each status, and reads the list again every 5 seconds while one is
-waiting or sending; its New message button opens the compose window. Each
-opens its own page at `/mail/outbox/$id`, which reads only an ID that is a
-UUID, since the client puts it in the API's path as is. The page shows the
-status above the message, read again every 2 seconds until the send ends,
-and announces it, first after the page has rendered. On both pages a
-failed reread stops the polling and says what is shown may be out of
-date, with Try again, which starts it again. A
+The Outbox (`outbox-page.tsx`) lists at most 50 of the member's messages
+from inbok, beside the reading pane, as a mail place (DESIGN.md
+"Outbox"), in two `GridListSection`s in the API's order: "Not sent yet",
+the `outstanding` ones, which the API lists first so newer finished ones
+never push one out, then "Done"; an empty one is left out. Each opens with a
+`GridListSectionHeader`, as tall as `headingHeight`. The Outbox reads
+the list again every 2 seconds while one is waiting or sending
+(`useOutbox`), and a message changes section with the read that gives
+its new status, keeping its key, so the open one stays open and focus
+stays on its row. Its rows (`row.tsx`) are mail's list
+pieces: `GridList`, `SenderAvatar`, mail's rules for names and dates, and
+mail's open store and history state, so a row opens its message in the
+reading pane and Back on a phone returns through history as a
+conversation's does. That one read gives every status the app shows:
+the sidebar's count, the Outbox, the reading pane, the compose window's
+status after Send, and a sent reply's (`useOutgoingMessage`), so no two
+of them disagree and only one request polls. A message's own read, Get
+Outgoing Message, gives its content once; its status counts only for a
+message the list doesn't hold, one outside the 50 listed or saved after
+the list was read, which that read then follows until its send ends; a
+message that leaves the list, past 50 newer ones, is read again then.
+Each write that changes a status, Send, Send again, and Dismiss, reads
+the list again. A message opens in the reading pane at `/mail/outbox/$id`
+(`OutgoingReader`, `reader.tsx`), which reads only an ID that is a UUID,
+since the client puts it in the API's path as is. The pane is a
+conversation's frame (`ReadingPane`): the subject and the sending
+account, then the status in a card (`MessageStatus look="pane"`), which
+it announces, first after the pane has rendered, then the message as an
+open message (`OpenMessage`). A failed reread, of the list or of the
+message, says what is shown may be out of date, with Try again, which
+reads again what failed; a failed read stops its own polling until
+then. A
 failed message says why and what to do, and an `unknown` one says to check
 the account's Sent folder in Gmail. Send again copies a failed or unknown
 message into a new one from the same account and opens it; for an
-`unknown` message it asks first, since the first may have gone out. A
-message is sent again at most once, so its page then says so and links the
-copy, and drops the reason's advice and every action, which would send it
-twice. A message Gmail refused offers Edit and send instead, which opens
-the compose window filled with its content, as a new message. One function,
-`nextSteps` (`src/features/outgoing-messages/text.ts`), works out both what
-a message's page says and what it offers, so the two cannot disagree.
+`unknown` message it asks first, since the first may have gone out. It is
+offered only while the message lists `send-again` in its
+`allowedActions`, which the server words from the account's own `send`
+and from Gmail being set up. A message is sent again at most once, so its
+page then says so and links the copy, and drops the reason's advice and
+every action, which would send it twice. A message Gmail refused offers
+Edit and send instead, while it lists `send-again`, as Gmail would refuse
+it again unchanged: it opens the compose window on its content and sends
+it again with the member's edits ("Compose window"). Open Connected
+accounts shows
+while the sending account's status is one a reconnect fixes, whatever
+the message failed for. Dismiss, outlined after them, shows while the
+message lists `dismiss` in its `allowedActions`: the API's Dismiss
+Outgoing Message, which moves it to Done, as no longer `outstanding`.
+A dismissed message reads Dismissed (`dismissedAt`), keeps its reason
+and its ways on, since it can still be sent again, and its status rises
+anew; focus moves from the gone button to the status, unless the member
+moved it elsewhere meanwhile. Its write waits for the list's reread, so
+the button stays pending, reading "Dismissing...", until the message
+shows dismissed; a lost answer the reread shows done says nothing. One function, `nextSteps`
+(`src/features/outgoing-messages/text.ts`), works out both what a
+message's page says and what it offers, so the two cannot disagree.
 
 ### Reply
 
@@ -922,23 +976,23 @@ the address asks nothing, e.g. the compose window's history entry on a
 phone, which steps past every page's warning (`ignoreBlocker`). An
 address typed but not yet a chip counts as typed. The editor keeps the
 message it answers until it closes, so a newer message synced meanwhile
-never changes what is being written. After Send the editor gives way to the reply's status, read again
-every 2 seconds until the send ends; a failed reread keeps the status,
+never changes what is being written. After Send the editor gives way to the reply's status, from the
+Outbox's read, drawn as the compose window's (`MessageStatus` look
+"window") in the reply's bordered card; a failed reread keeps the status,
 says it may be out of date, and offers Try again. It has Send again and a
 link to its Outbox page. A refused reply's Edit and send opens the editor
-again with its content, as a new reply to the same message, so it keeps
-its threading.
+again with its content and sends the reply again with the member's edits,
+from its own account, so the copy keeps its threading and the refused one
+reads Tried again. The editor keeps its hidden subject, which the copy
+keeps too.
 
 ## Message view
 
-`MessageView` (`src/features/messages/view.tsx`) shows one message: its
-subject, From, To, Cc, Bcc for a message the member sent, and when it
-arrived, then its bodies one after another, then its attachments. An
-outgoing message's page shows it with its plain-text body; the inbox
-will show synchronized messages, with the message from the API. Its
-props:
+`MessageContentView` (`src/features/messages/view.tsx`) shows a message's
+content: its bodies one after another, then its attachments, under the
+header an open message draws (`OpenMessage`, "Conversation view"). Its
+prop:
 
-- `header`: the header fields, which show while the body loads.
 - `content`: `pending` while the server fetches a body it has not
   stored, `error` with a retry, or `success` with the bodies, whether
   the server blocked remote images in them, and the attachments. A
@@ -947,9 +1001,7 @@ props:
 
 Give it a `key` per message, so the next message starts afresh. Remote
 images stay blocked for another message's bodies even without one: the
-view remembers the URLs the member allowed, not a switch. Sender names
-show inside `<bdi>`, so a direction override in a name cannot reorder
-the address after it.
+view remembers the URLs the member allowed, not a switch.
 
 An HTML body is an iframe whose `src` is the body's URL on inbok's
 origin. The server sends it sanitized, with a Content-Security-Policy of
@@ -1005,7 +1057,15 @@ them.
 ## Conversation view
 
 `ConversationView` (`src/features/messages/conversation.tsx`) shows one
-conversation as DESIGN.md "Reading pane" describes it. Its props:
+conversation as DESIGN.md "Reading pane" describes it. Its frame, the
+pinned toolbar, the title, the line under it, and any marks under that,
+is `ReadingPane`
+(`reading-pane.tsx`), and each open message is `OpenMessage`
+(`open-message.tsx`): its header, details, and content, with folding,
+the message it answers, and its actions as optional props. The Outbox's
+reading pane uses both, so an outgoing message reads as a conversation's
+does; a sender's name shows inside `<bdi>`, so a direction override in a
+name cannot reorder the address after it. Its props:
 
 - `subject` and `account` (ID, name, address, colour) for its title, and
   `messages`, oldest first, as Get Conversation sends them: each
@@ -1019,6 +1079,8 @@ conversation as DESIGN.md "Reading pane" describes it. Its props:
 - `onUnauthorized`: runs when a read finds the session gone.
 - `back`: the way back to the list at the toolbar's start, where one pane
   shows at a time; `actions`: the conversation's actions at its end.
+- `marks`: where the conversation is, e.g. its label chips
+  (`mail/label-chips.tsx`), under the account line.
 - `messageActions(message)`: a message's other actions in its header,
   after Reply; shown only while the message is open.
 

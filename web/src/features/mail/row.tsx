@@ -49,6 +49,13 @@ export function rowHeight(): number {
   return 4.75 * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
 }
 
+// headingHeight returns a list section heading's height in pixels: 2 rem,
+// 32 px at the browser's usual 16 px text, a nav row's (DESIGN.md "List
+// sections"); in rem as rowHeight is.
+export function headingHeight(): number {
+  return 2 * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+}
+
 // ConversationRow is one conversation in a list (DESIGN.md "Message
 // list"): its senders, count, and date; its subject; its preview, an
 // Inbox chip while it is in the Inbox and markInbox is set, e.g. in All

@@ -8,6 +8,7 @@ package outgoingmessage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 	"uuid"
@@ -48,7 +49,30 @@ var (
 	// ErrNotSendableAgain means the message is waiting, sending, or sent, so
 	// sending it again could send it twice.
 	ErrNotSendableAgain = errors.New("only a failed or unknown message can be sent again")
+	// ErrSentAgainOtherwise means the message was already sent again with
+	// other content than a request's edits, so the edits would make a
+	// second copy.
+	ErrSentAgainOtherwise = errors.New("message already sent again with other content")
+	// ErrReplySubject means edits to a reply change its subject, which
+	// threads it with the message it answers.
+	ErrReplySubject = errors.New("a reply's subject cannot change")
+	// ErrNotDismissible means the message is waiting, sending, or sent, so
+	// it never waited on the member to give it up.
+	ErrNotDismissible = errors.New("only a failed or unknown message can be dismissed")
 )
+
+// Action is what a member can ask of one of their messages.
+type Action string
+
+const (
+	// ActionSendAgain is [Service.SendAgain].
+	ActionSendAgain Action = "send-again"
+	// ActionDismiss is [Service.Dismiss].
+	ActionDismiss Action = "dismiss"
+)
+
+// Actions are every [Action], in the order the API lists them.
+var Actions = []Action{ActionSendAgain, ActionDismiss}
 
 // ErrKeyExists is what [Storage] returns when the member already saved a
 // message with the idempotency key; [Service] reads it to compare.
@@ -71,8 +95,8 @@ var (
 	longSendLimit  = attemptlimit.Limit{Window: 24 * time.Hour, Max: 200}
 )
 
-// maxListed bounds [Service.List]: the newest messages, enough to find the
-// ones that ended without being sent.
+// maxListed bounds [Service.List]: the outstanding messages, which it lists
+// first, then the newest of the rest.
 const maxListed = 50
 
 // Status is how far sending a message has got.
@@ -173,6 +197,50 @@ type Message struct {
 	// SentAgainAs is the copy the member sent again of this failed or
 	// unknown message; nil until then.
 	SentAgainAs *uuid.UUID
+	// DismissedAt is when the member dismissed this failed or unknown
+	// message, so it no longer waits on them; nil until then.
+	DismissedAt *time.Time
+	// Account is the sending account as [Service] read it with the message,
+	// never saved with it; the zero value once a disconnect deleted it.
+	Account connectedaccount.Account
+}
+
+// AllowedActions returns the actions accepted for m now; offered says
+// whether its provider's client is set up, which every send needs. Sending
+// it again needs it failed or unknown, and its account's
+// [connectedaccount.ActionSend], unless it was already sent again: that
+// returns the same copy before the account is read. Dismissing it needs it
+// [Message.Outstanding] and ended, and nothing of its account or provider,
+// as it sends nothing.
+//
+// DESIGN: the member's send limit and deactivation are left to the
+// refusal: both are the member's, not the message's, and the limit lifts
+// with time, which the refusal's wait says.
+func (m Message) AllowedActions(offered bool) []Action {
+	var actions []Action
+	if m.sendableAgainNow(offered) {
+		actions = append(actions, ActionSendAgain)
+	}
+	if sendableAgain(m.Status) && m.Outstanding() {
+		actions = append(actions, ActionDismiss)
+	}
+	return actions
+}
+
+// sendableAgainNow reports whether [Service.SendAgain] accepts m now, as
+// [Message.AllowedActions] describes.
+func (m Message) sendableAgainNow(offered bool) bool {
+	if !offered || !sendableAgain(m.Status) {
+		return false
+	}
+	return m.SentAgainAs != nil || slices.Contains(m.Account.AllowedActions(offered), connectedaccount.ActionSend)
+}
+
+// sendableAgain reports whether a message in status can be sent again:
+// waiting or sending would make two sends of one message, and a sent
+// message reached its recipients.
+func sendableAgain(status Status) bool {
+	return status == StatusFailed || status == StatusUnknown
 }
 
 // Sender is the account a message is sent from, as storage reads it.
@@ -184,6 +252,30 @@ type Sender struct {
 	// Credential is the account's sealed refresh token, only to check that a
 	// key still opens it.
 	Credential connectedaccount.Credential
+}
+
+// Reply reports whether m answers another message: it carries threading
+// headers. A reply to a message with no Message-ID inbok may write has none,
+// and threads only by Gmail's thread ID, when sent from the answered
+// message's account.
+func (m Message) Reply() bool {
+	return m.InReplyTo != "" || len(m.References) > 0
+}
+
+// Outstanding reports whether m still needs its member: waiting or being
+// sent, or ended failed or unknown and neither sent again nor dismissed.
+// ListOutgoingMessages in repository/postgres's queries orders by the
+// same rule, so no client needs its own copy (AGENTS.md, "API contract").
+func (m Message) Outstanding() bool {
+	switch m.Status {
+	case StatusWaiting, StatusSending:
+		return true
+	case StatusFailed, StatusUnknown:
+		return m.SentAgainAs == nil && m.DismissedAt == nil
+	case StatusSent:
+		return false
+	}
+	return false
 }
 
 // Threading is what threads a reply with the message it answers: its
@@ -308,6 +400,15 @@ type Storage interface {
 	// unchanged.
 	InsertOutgoingMessageCopy(ctx context.Context, attempt Attempt, messageID uuid.UUID, build func(CopyState) (NewMessage, error)) (Message, error)
 
+	// DismissOutgoingMessage, in one transaction:
+	//  1. locks userID's message messageID, or returns [ErrNotFound];
+	//  2. calls dismiss with it;
+	//  3. when dismiss returns true, saves the message dismissed at at.
+	//
+	// It returns the message as saved. An error from dismiss rolls back and
+	// is returned unchanged.
+	DismissOutgoingMessage(ctx context.Context, userID int64, messageID uuid.UUID, at time.Time, dismiss func(Message) (bool, error)) (Message, error)
+
 	// ReadOutgoingMessage returns userID's message messageID, or
 	// [ErrNotFound] when userID has no such message.
 	ReadOutgoingMessage(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error)
@@ -316,31 +417,34 @@ type Storage interface {
 	// the request that saved it, or [ErrNotFound] when userID has none.
 	ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (Message, Request, error)
 
-	// ListOutgoingMessages returns userID's newest messages, at most limit,
+	// ListOutgoingMessages returns userID's messages, at most limit: the
+	// outstanding ones ([Message.Outstanding]) first, then the rest, each
 	// newest first, each with an empty [Content.Body].
 	ListOutgoingMessages(ctx context.Context, userID int64, limit int) ([]Message, error)
 }
 
-// tokenChecker tells whether a configured key opens an account's saved
-// refresh token; [connectedaccount.Service] does.
-type tokenChecker interface {
+// sendingAccounts reads the accounts messages are sent from;
+// [connectedaccount.Service] does.
+type sendingAccounts interface {
 	// CheckToken returns an error wrapping
 	// [connectedaccount.ErrTokenUnreadable] when no key opens credential,
 	// the token of userID's account accountID.
 	CheckToken(userID, accountID int64, credential connectedaccount.Credential) error
+	// List returns userID's accounts, each with its status now.
+	List(ctx context.Context, userID int64) ([]connectedaccount.Account, error)
 }
 
 // Service applies the rules for outgoing messages.
 type Service struct {
-	storage Storage
-	tokens  tokenChecker
-	now     func() time.Time
+	storage  Storage
+	accounts sendingAccounts
+	now      func() time.Time
 }
 
-// NewService supplies storage, what checks a sending account's token, and
-// the clock the send limit counts by.
-func NewService(storage Storage, tokens tokenChecker, now func() time.Time) *Service {
-	return &Service{storage: storage, tokens: tokens, now: now}
+// NewService supplies storage, what reads the sending accounts, and the
+// clock the send limit counts by.
+func NewService(storage Storage, accounts sendingAccounts, now func() time.Time) *Service {
+	return &Service{storage: storage, accounts: accounts, now: now}
 }
 
 // Create saves draft as userID's message, waiting to be sent, and returns it.
@@ -356,7 +460,11 @@ func NewService(storage Storage, tokens tokenChecker, now func() time.Time) *Ser
 // [*RecipientError], [ErrSubjectInvalid], or [ErrBodyInvalid].
 func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Message, error) {
 	request := Request{AccountID: draft.ConnectedAccountID, Key: draft.IdempotencyKey}
-	return s.create(ctx, userID, request, draft.Content)
+	message, err := s.create(ctx, userID, request, draft.Content)
+	if err != nil {
+		return Message{}, err
+	}
+	return s.withAccount(ctx, userID, message)
 }
 
 // create saves content as userID's message for request, as [Service.Create]
@@ -429,48 +537,149 @@ func (s *Service) repeated(ctx context.Context, userID int64, request Request, c
 
 // SendAgain saves a copy of userID's failed or unknown message messageID,
 // waiting to be sent from the same account with a new ID and Message-ID, and
-// returns it. Sending a message again a second time returns the same copy.
+// returns it. edits, when not nil, is the copy's content, checked as a new
+// message's; nil copies the original's. A reply's copy keeps its threading
+// and subject. Sending a message again a second time returns the same copy.
 //
 // It returns [ErrNotFound] when userID has no such message,
 // [ErrNotSendableAgain] when it did not end failed or unknown,
+// [ErrSentAgainOtherwise] when it was sent again with other content than
+// edits, [ErrReplySubject] when edits change a reply's subject,
 // [ErrNeedsReconnect] when its account needs a reconnect,
 // [ErrTokenUnreadable] when no key opens its token, [ErrDeactivated],
-// or an [*attemptlimit.Error] wrapping [ErrThrottled].
-func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
+// an [*attemptlimit.Error] wrapping [ErrThrottled], and the content errors
+// of [Content]'s rules for edits.
+//
+// DESIGN: Edit and send is Send again with edits, so one operation links
+// a failed message to whatever replaced it, and its page and the Outbox
+// count follow that link (ADR006, "Sending again").
+func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UUID, edits *Content) (Message, error) {
+	// 1. Refuse content that cannot be sent before any storage.
+	if edits != nil {
+		parsed, err := parseContent(*edits)
+		if err != nil {
+			return Message{}, err
+		}
+		edits = &parsed
+	}
+
+	// 2. With the member, account, and message held, refuse what would
+	// only fail or go over the limit, and save.
 	attempt := s.attempt(userID)
-	return s.storage.InsertOutgoingMessageCopy(ctx, attempt, messageID, func(state CopyState) (NewMessage, error) {
-		// Waiting or sending would make two sends of one message, and a sent
-		// message reached its recipients.
-		if state.Original.Status != StatusFailed && state.Original.Status != StatusUnknown {
+	copied, err := s.storage.InsertOutgoingMessageCopy(ctx, attempt, messageID, func(state CopyState) (NewMessage, error) {
+		original := state.Original
+		if !sendableAgain(original.Status) {
 			return NewMessage{}, ErrNotSendableAgain
+		}
+		content := original.Content
+		if edits != nil {
+			// The subject threads a reply as its headers do: Gmail adds a
+			// message to a thread only when the subjects match.
+			if original.Reply() && edits.Subject != original.Subject {
+				return NewMessage{}, ErrReplySubject
+			}
+			content = *edits
 		}
 		if err := s.checkSender(userID, state.Sender); err != nil {
 			return NewMessage{}, err
 		}
 		// The account's address now, which a send that failed
 		// sender-changed has saved.
-		next, err := newMessage(state.Sender, state.Attempts, attempt.At, state.Original.Content)
+		next, err := newMessage(state.Sender, state.Attempts, attempt.At, content)
 		if err != nil {
 			return NewMessage{}, err
 		}
 		// A reply's copy answers the same message, in the same thread: the
 		// account is the original's.
-		next.Threading = state.Original.Threading
-		next.ProviderThreadID = state.Original.ProviderThreadID
+		next.Threading = original.Threading
+		next.ProviderThreadID = original.ProviderThreadID
 		return next, nil
 	})
+	if err != nil {
+		return Message{}, err
+	}
+
+	// 3. A copy saved earlier is returned for a repeat of the request that
+	// saved it, e.g. one whose answer was lost; edits it doesn't hold
+	// would be lost.
+	if edits != nil && !sameContent(copied.Content, *edits) {
+		return Message{}, ErrSentAgainOtherwise
+	}
+	return s.withAccount(ctx, userID, copied)
+}
+
+// Dismiss marks userID's failed or unknown message messageID dismissed, so
+// it no longer waits on the member ([Message.Outstanding]), and returns it.
+// The message keeps its status and can still be sent again. Dismissing a
+// message already dismissed or sent again returns it unchanged: it already
+// waits on no one.
+//
+// It returns [ErrNotFound] when userID has no such message, and
+// [ErrNotDismissible] when it is waiting, sending, or sent.
+func (s *Service) Dismiss(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
+	message, err := s.storage.DismissOutgoingMessage(ctx, userID, messageID, s.now().UTC(), func(message Message) (bool, error) {
+		if !sendableAgain(message.Status) {
+			return false, ErrNotDismissible
+		}
+		return message.Outstanding(), nil
+	})
+	if err != nil {
+		return Message{}, err
+	}
+	return s.withAccount(ctx, userID, message)
 }
 
 // Get returns userID's message messageID, or [ErrNotFound] when userID has
 // no such message.
 func (s *Service) Get(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
-	return s.storage.ReadOutgoingMessage(ctx, userID, messageID)
+	message, err := s.storage.ReadOutgoingMessage(ctx, userID, messageID)
+	if err != nil {
+		return Message{}, err
+	}
+	return s.withAccount(ctx, userID, message)
 }
 
-// List returns userID's newest 50 messages, newest first, each with an empty
-// [Content.Body].
+// List returns at most 50 of userID's messages, each with an empty
+// [Content.Body]: the outstanding ones ([Message.Outstanding]) first, so
+// newer finished ones never push one out, then the rest, each newest
+// first. Past 50 outstanding, the oldest of those are left out.
 func (s *Service) List(ctx context.Context, userID int64) ([]Message, error) {
-	return s.storage.ListOutgoingMessages(ctx, userID, maxListed)
+	messages, err := s.storage.ListOutgoingMessages(ctx, userID, maxListed)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.withAccounts(ctx, userID, messages); err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+// withAccount returns userID's message with its [Message.Account] read now,
+// or the error of reading it.
+func (s *Service) withAccount(ctx context.Context, userID int64, message Message) (Message, error) {
+	messages := []Message{message}
+	if err := s.withAccounts(ctx, userID, messages); err != nil {
+		return Message{}, err
+	}
+	return messages[0], nil
+}
+
+// withAccounts sets each of userID's messages' [Message.Account] to the
+// account as read now, in one read of userID's accounts, or returns the
+// error of that read.
+func (s *Service) withAccounts(ctx context.Context, userID int64, messages []Message) error {
+	accounts, err := s.accounts.List(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("read sending accounts: %w", err)
+	}
+	for i := range messages {
+		for _, account := range accounts {
+			if account.ID == messages[i].ConnectedAccountID {
+				messages[i].Account = account
+			}
+		}
+	}
+	return nil
 }
 
 // attempt returns userID's attempt to send now.
@@ -490,7 +699,7 @@ func (s *Service) checkSender(userID int64, sender Sender) error {
 	if sender.NeedsReconnect {
 		return ErrNeedsReconnect
 	}
-	if err := s.tokens.CheckToken(userID, sender.ConnectedAccountID, sender.Credential); err != nil {
+	if err := s.accounts.CheckToken(userID, sender.ConnectedAccountID, sender.Credential); err != nil {
 		if errors.Is(err, connectedaccount.ErrTokenUnreadable) {
 			return ErrTokenUnreadable
 		}

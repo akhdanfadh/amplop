@@ -12,9 +12,8 @@ pages, messages, leave warnings, and banners; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
 work to this file, not to the old code. Not built yet: one rule for a
-session that ends on an open page (`feat/session-end`), the actions on a
-hovered row and the row menu (ADR031, "Mitigations and follow-up"), and
-the Outbox in the mail list (`feat/outbox-list`; the same).
+session that ends on an open page (`feat/session-end`), and the actions
+on a hovered row and the row menu (ADR031, "Mitigations and follow-up").
 
 ## Principles
 
@@ -328,8 +327,14 @@ last two redirect into settings, so settings can move without the server.
 ### Sidebar
 
 - Compose (the one blue button).
-- Views: Inbox, Starred, Sent, All mail (everything but Spam and Trash),
-  Spam, Trash.
+- Views: Inbox, Starred, Sent, Outbox, All mail (everything but Spam and
+  Trash), Spam, Trash. The Outbox follows Sent, what is on its way there,
+  always, with how many of its messages are not sent yet (waiting,
+  sending, or failed or unknown and not sent again): the sidebar stays
+  still, and the count, above the accounts' labels however many are
+  unfolded, is what tells the member a send needs them. It is inbok's
+  record of what it sent, not Gmail's mail, so the account filter doesn't
+  reach it: it lists every account's messages and marks no account.
 - Accounts: All accounts, then each account (its mark, its member-chosen
   name or address, its inbox unread count), filtering every view; the
   filter stays as the member moves between views. Choosing an account
@@ -376,10 +381,6 @@ last two redirect into settings, so settings can move without the server.
   status in the tooltip; labels show only open. The open place's item is
   the current page; the filtering account's is marked as current too, but
   not as a page.
-- Outbox, always, with how many of its messages are not sent yet
-  (waiting, sending, or failed or unknown and not sent again): the
-  sidebar stays still, and the count is what tells the member a send
-  needs them.
 - The member at the bottom, opening the member menu: Settings, Theme
   (Light, Dark, System, side by side, as icons named by tooltips; the
   chosen one has the `selection` background and an `input` outline, as
@@ -767,14 +768,45 @@ last two redirect into settings, so settings can move without the server.
   without saved drafts, a full-screen reply would make checking an
   earlier message cost the text; inline, it is a scroll away, and leaving
   the page with typed text asks first.
-- **After Send**, a reply waits in place as a card with its status until
-  synced mail replaces it. The compose window holds the new message's
-  status instead of the editor, shrunk to it: a 32 px circle in the
+- **Edit and send** sends a message Gmail refused again with the
+  member's edits: in the compose window from the Outbox or the window's
+  own status, inline below the answered message from a reply's status in
+  its conversation. One muted line heads the rows: "Gmail refused this
+  message. Check its recipients and content, then send: it replaces the
+  refused one in the Outbox." From, and in the compose window a reply's
+  subject, are fixed rows: the label, then the value as text, with no
+  control; the inline reply editor keeps its hidden subject, as every
+  reply there does. From's address and name run as one line of text, so
+  a long pair wraps between them before the address breaks; the subject
+  shows at most 2 lines, as a reply's can run to 500 characters, then
+  Show all when it is cut: a link-style button, as a message's details
+  have for a long address list, which unfolds it and moves focus to it.
+  The copy goes from the same account, and a reply keeps the subject
+  that threads it; the recipients and the message stay editable. Once
+  sent, the refused message reads Tried again, linking its copy, and
+  leaves the Outbox count. While the compose window holds typed text,
+  Edit and send asks before replacing it.
+- **After Send**, a reply waits in place until synced mail replaces it,
+  as a bordered `card` holding the same status as the compose window
+  below, with Open in Outbox, so one status reads the same in the window,
+  under a reply, and in the Outbox's pane. The compose window holds the
+  new message's status instead of the editor, shrunk to it: a 32 px circle in the
   status's tone with its icon, one line ("Sending to ana@example.com...",
   then "Sent to ana@example.com"), and under it in muted text the sending
   account's mark, its address, and the time; Open in Outbox below. A
   failure names its status in that line, says why under it, and puts its
-  actions in a bar (Edit and send or Send again, then Open in Outbox).
+  actions in a bar (Edit and send or Send again, then Dismiss, then Open
+  in Outbox). **Dismiss** shows while the API lists it, outlined: the way
+  out that sends nothing, beside the way that sends. It needs no dialog
+  and no Undo, as the message can still be sent again: it reads
+  Dismissed, keeps its reason followed by "You dismissed it, so the
+  Outbox no longer counts it.", keeps its other actions, moves to Done,
+  and focus moves to the status, which rises anew, unless the member
+  moved it meanwhile; while it waits, the button reads "Dismissing...". A
+  message sent again reads Tried again, neutral, its bar holding "See how
+  the new try went": a link drawn as a primary button, as an outcome's
+  ways on are ("Outcome screens"), since opening the copy is its one next
+  step. Links in a status take its 14 px, as its buttons do.
   The window closes 3 s after Gmail takes the message, waiting while the
   pointer is on it or focus on one of its controls; minimised, its strip
   shows the status's mark before the title.
@@ -782,6 +814,70 @@ last two redirect into settings, so settings can move without the server.
   discard, and sign-out; its conversation row shows "Draft" in `primary`.
   Not built yet: until then a reply's text lives only in its open editor,
   and leaving the page with typed text asks first.
+
+### Outbox
+
+The member's messages from inbok, as a mail place: the list beside the
+reading pane, one shown at a time on a phone ("Panes and widths"). Its
+heading, Outbox, heads the list, or sits in the top bar on a phone. No
+search box, no picking, and no row actions: search finds mail, which
+these messages are not until Gmail has them, and nothing acts on several
+messages at once. Statuses read again every 2 s while one is waiting or
+sending (web/README.md, "Routes").
+
+- **List:** two sections, each newest first by when each was saved: "Not
+  sent yet", the messages the API calls outstanding (waiting, sending, or
+  failed or unconfirmed and neither sent again nor dismissed: what the
+  sidebar counts), then "Done", the rest, Sent, Tried again, and
+  Dismissed. A section with no messages
+  is left out, heading and all. A message changes section as soon as a
+  read gives its new status, with no animation, as mail lists' rows come
+  and go; the open one stays open, and keyboard focus stays on its row.
+  The API keeps at most 50, outstanding ones first, so newer done
+  messages never push out one that needs the member; the list's end says
+  "inbok keeps up to 50 messages here, dropping the oldest done ones
+  first. What you send from Gmail itself is in Sent, not here."
+- **Section heading** (`GridListSectionHeader`): a 32 px band (2 rem, so
+  it grows with the text) in `muted`, the sidebar's surface, a step off
+  the page in both themes; its name in 12 px `foreground`, weight 500,
+  from the rows' 16 px edge. React Aria's `GridListSection` names its rows
+  by it for a screen reader; arrow keys pass it by. A list that ever
+  needs sections uses this one.
+- **Row, three lines,** a conversation's row's size: "To" in
+  `muted-foreground`, then the recipients by mail's rules for names (To,
+  Cc, then Bcc; "no one" for none), and the date it was saved / subject /
+  the status as its icon and word in its tone's colour, without a pill
+  (`StatusWord`, "Status badges"), then "·" and a short reason in muted
+  text: why it failed, what an unconfirmed one asks, "You sent it
+  again as a new message.", or, once dismissed, "It wasn't sent." or
+  "It may have been sent."; nothing after Waiting, Sending, or Sent,
+  which say it alone. One recipient shows as its address, left to right
+  whatever its letters; several each keep their own direction, as a
+  conversation's senders do. A 36 px initials avatar of the first
+  recipient leads, ringed in
+  the sending account's colour where accounts mix. No unread weight and
+  no checkbox: the member wrote each message. A message sent again reads
+  Tried again, neutral: its copy carries the status that matters. A
+  dismissed one reads Dismissed, neutral, its bell off (`BellOff`): the
+  member chose to leave it; sent again after, it reads Tried again.
+- **States:** placeholder rows while the list loads; a `ReadError` with
+  Try again when it can't; a failed reread keeps the rows under a
+  `ReadError` saying they may be out of date; an empty Outbox says
+  "Nothing sent from inbok yet", what will show, and to write one with
+  Compose.
+- **Reading pane:** a conversation's frame ("Reading pane"): the pinned
+  toolbar, with Back on a phone and later the message's own actions; the
+  subject; the sending account's mark, or its address once the account
+  is gone. Then the status in a `card`, the compose window's summary
+  ("Compose and reply") without Open in Outbox: a mark, one line, the
+  reason or the account and time, and the actions in a bar (Send again
+  or Edit and send, then Dismiss, then Open Connected accounts; or See
+  how the new try went);
+  the status shows in place as
+  a message opens and rises only when it changes while open. Then the
+  message, open, as in
+  a conversation, without folding, its details naming the account as
+  "Sent from". With nothing open, "No message open."
 
 ### Search
 
@@ -1197,13 +1293,13 @@ One `badge`, a soft tint, always an icon and a word: `StatusBadge`
 (`src/components/status-badge.tsx`) takes the tone, the icon, and the word.
 The tone says what the status asks of the member:
 
-| Tone        | Asks         | Used for                                                                                                 |
-| ----------- | ------------ | -------------------------------------------------------------------------------------------------------- |
-| Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser, Open, Closed |
-| Info        | To wait      | Sending, Syncing (spinner)                                                                               |
-| Success     | Nothing more | Sent, Up to date, Verified, Two-factor on, Tested                                                        |
-| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect, Not set up, Paused                                         |
-| Destructive | A fix        | Not sent, Sync failed                                                                                    |
+| Tone        | Asks         | Used for                                                                                                            |
+| ----------- | ------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Neutral     | Nothing      | Waiting, Tried again, Dismissed, Waiting to sync, Not verified, Admin, You, Deactivated, This browser, Open, Closed |
+| Info        | To wait      | Sending, Syncing (spinner)                                                                                          |
+| Success     | Nothing more | Sent, Up to date, Verified, Two-factor on, Tested                                                                   |
+| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect, Not set up, Paused                                                    |
+| Destructive | A fix        | Not sent, Sync failed                                                                                               |
 
 Deactivated, Open, and Closed are an admin's choice, not a fault, so
 neutral; Paused (registration opened, but system email untested) asks for
@@ -1218,6 +1314,11 @@ Registration need. The sidebar shows an account's Syncing, Reconnect, or
 Sync failed as the icon alone, in its tone, the words read to screen
 readers and shown on hover, and with the icon on a line under the name
 for a touch.
+
+A line of text with no room for a pill, e.g. an Outbox row's third line,
+shows the status inline: `StatusWord`, its 14 px icon and its word in
+500 weight in the tone's colour (`muted-foreground` for neutral), which
+holds 4.5:1 on a row's surface, hovered and selected, in both themes.
 
 ## Data for mail
 

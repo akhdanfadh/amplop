@@ -22,6 +22,8 @@ const (
 	outgoingMessageNotFoundType      = problemPrefix + "outgoing-message-not-found"
 	sendingAccountNeedsReconnectType = problemPrefix + "sending-account-needs-reconnect"
 	notSendableAgainType             = problemPrefix + "not-sendable-again"
+	sentAgainOtherwiseType           = problemPrefix + "sent-again-otherwise"
+	notDismissibleType               = problemPrefix + "not-dismissible"
 	idempotencyKeyReusedType         = problemPrefix + "idempotency-key-reused"
 	sendThrottledType                = problemPrefix + "send-throttled"
 )
@@ -33,7 +35,8 @@ const sendLimitDescription = "Sending counts toward the signed-in account's limi
 type outgoingMessageService interface {
 	Create(ctx context.Context, userID int64, draft outgoingmessage.Draft) (outgoingmessage.Message, error)
 	Reply(ctx context.Context, userID int64, reply outgoingmessage.Reply) (outgoingmessage.Message, error)
-	SendAgain(ctx context.Context, userID int64, messageID uuid.UUID) (outgoingmessage.Message, error)
+	SendAgain(ctx context.Context, userID int64, messageID uuid.UUID, edits *outgoingmessage.Content) (outgoingmessage.Message, error)
+	Dismiss(ctx context.Context, userID int64, messageID uuid.UUID) (outgoingmessage.Message, error)
 	Get(ctx context.Context, userID int64, messageID uuid.UUID) (outgoingmessage.Message, error)
 	List(ctx context.Context, userID int64) ([]outgoingmessage.Message, error)
 }
@@ -51,6 +54,7 @@ func registerOutgoingMessages(api huma.API, service outgoingMessageService, prov
 	registerOutgoingMessageList(api, handler)
 	registerOutgoingMessageRead(api, handler)
 	registerSendAgain(api, handler)
+	registerOutgoingMessageDismissal(api, handler)
 }
 
 // outgoingMessageSummary is an outgoing message without its body, as the
@@ -64,15 +68,21 @@ type outgoingMessageSummary struct {
 	Bcc                []string                 `json:"bcc" nullable:"false"`
 	Subject            string                   `json:"subject"`
 	Status             outgoingmessage.Status   `json:"status" enum:"waiting,sending,sent,failed,unknown" doc:"waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and inbok cannot tell; check the account's Sent folder before sending it again."`
-	Failure            *outgoingmessage.Failure `json:"failure" nullable:"true" enum:"refused,sending-limit,needs-reconnect,token-unreadable,deactivated,sender-changed,gave-up" doc:"Why the message failed; null unless status is failed. refused: Gmail refused the message; edit it into a new one. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached."`
-	SentAgainAs        *uuid.UUID               `json:"sentAgainAs" nullable:"true" format:"uuid" doc:"The copy this failed or unknown message was sent again as; null until then."`
+	Failure            *outgoingmessage.Failure `json:"failure" nullable:"true" enum:"refused,sending-limit,needs-reconnect,token-unreadable,deactivated,sender-changed,gave-up" doc:"Why the message failed; null unless status is failed. refused: Gmail refused the message; send it again with edits. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached."`
+	SentAgainAs        *uuid.UUID               `json:"sentAgainAs" nullable:"true" format:"uuid" doc:"The copy this failed or unknown message was sent again as, with or without edits; null until then."`
+	DismissedAt        *time.Time               `json:"dismissedAt" nullable:"true" doc:"When the member dismissed this failed or unknown message (Dismiss Outgoing Message); null until then."`
+	Outstanding        bool                     `json:"outstanding" doc:"Whether the message still needs the member: waiting or sending, or failed or unknown and neither sent again nor dismissed. List Outgoing Messages lists these first."`
+	Reply              bool                     `json:"reply" doc:"Whether the message answers another, carrying the In-Reply-To and References headers that thread it. A reply sent again keeps its subject, so edits to it keep the subject too."`
 	CreatedAt          time.Time                `json:"createdAt"`
 	SentAt             *time.Time               `json:"sentAt" nullable:"true" doc:"When Gmail took the message: Gmail's own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent."`
+	// Listed here, so every client offers only what the service accepts
+	// instead of restating its rule (AGENTS.md, "API contract").
+	AllowedActions []outgoingmessage.Action `json:"allowedActions" nullable:"false" doc:"What the member can ask of this message now: send-again (Send Message Again) while it is failed or unknown and its sending account lists send in its own allowedActions. A message already sent again keeps send-again whatever its account's state, as it returns the same copy, while Gmail is set up. dismiss (Dismiss Outgoing Message) while it is outstanding and failed or unknown, whatever its account's state. A listed action can still be refused when the message or its account changed since this read, when the member was deactivated, or when they sent too many messages recently. Clients ignore values they don't know."`
 }
 
-// TransformSchema lets failure be null.
+// TransformSchema lets failure be null and lists allowedActions' values.
 func (outgoingMessageSummary) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
-	return withNullEnum(s, "failure")
+	return withActionEnum(withNullEnum(s, "failure"))
 }
 
 // OutgoingMessageSummary names outgoingMessageSummary for embedding.
@@ -88,9 +98,20 @@ type outgoingMessage struct {
 	Body string `json:"body" doc:"Plain text."`
 }
 
-// TransformSchema lets failure be null.
+// TransformSchema lets failure be null and lists allowedActions' values.
 func (outgoingMessage) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
-	return withNullEnum(s, "failure")
+	return withActionEnum(withNullEnum(s, "failure"))
+}
+
+// withActionEnum lists the values of s's allowedActions from
+// [outgoingmessage.Actions].
+func withActionEnum(s *huma.Schema) *huma.Schema {
+	values := make([]any, 0, len(outgoingmessage.Actions))
+	for _, action := range outgoingmessage.Actions {
+		values = append(values, string(action))
+	}
+	s.Properties["allowedActions"].Items.Enum = values
+	return s
 }
 
 // withNullEnum adds null to the enum of s's nullable property name.
@@ -105,7 +126,9 @@ func withNullEnum(s *huma.Schema, name string) *huma.Schema {
 	return s
 }
 
-func outgoingMessageSummaryOf(message outgoingmessage.Message) outgoingMessageSummary {
+// outgoingMessageSummaryOf returns message as the list shows it; offered
+// says whether Gmail's client is set up, which its actions need.
+func outgoingMessageSummaryOf(message outgoingmessage.Message, offered bool) outgoingMessageSummary {
 	summary := outgoingMessageSummary{
 		ID:                 message.ID,
 		ConnectedAccountID: message.ConnectedAccountID,
@@ -116,8 +139,13 @@ func outgoingMessageSummaryOf(message outgoingmessage.Message) outgoingMessageSu
 		Subject:            message.Subject,
 		Status:             message.Status,
 		SentAgainAs:        message.SentAgainAs,
+		DismissedAt:        message.DismissedAt,
+		Outstanding:        message.Outstanding(),
+		Reply:              message.Reply(),
 		CreatedAt:          message.CreatedAt,
 		SentAt:             message.SentAt,
+		// Empty, not nil: the contract promises a list, never null.
+		AllowedActions: append(make([]outgoingmessage.Action, 0, len(outgoingmessage.Actions)), message.AllowedActions(offered)...),
 	}
 	if message.Failure != "" {
 		summary.Failure = &message.Failure
@@ -125,8 +153,10 @@ func outgoingMessageSummaryOf(message outgoingmessage.Message) outgoingMessageSu
 	return summary
 }
 
-func outgoingMessageOf(message outgoingmessage.Message) outgoingMessage {
-	return outgoingMessage{OutgoingMessageSummary: outgoingMessageSummaryOf(message), Body: message.Body}
+// outgoingMessageOf returns message with its body, offered as
+// [outgoingMessageSummaryOf] takes it.
+func outgoingMessageOf(message outgoingmessage.Message, offered bool) outgoingMessage {
+	return outgoingMessage{OutgoingMessageSummary: outgoingMessageSummaryOf(message, offered), Body: message.Body}
 }
 
 // outgoingMessageProblem maps the errors the operations share.
@@ -177,15 +207,20 @@ func sendResponses(responses map[string]*huma.Response) {
 	throttled.Content[problemContentType].Example = outgoingMessageProblem(outgoingmessage.ErrThrottled)
 }
 
+// offered reports whether the sending accounts' provider's client is set
+// up. Gmail is the only provider, so the sending account is Gmail's.
+func (h outgoingMessageHandler) offered() bool {
+	return h.providers.offered(connectedaccount.ProviderGmail)
+}
+
 // refuseUnoffered returns the refusal of a send when no client for the
 // sending account's provider is set up, and nil otherwise.
 //
 // DESIGN: refused before the message is saved: without the client no
 // worker sends Gmail, so a saved message would wait forever (ADR001,
-// "Polling"). Gmail is the only provider, so the sending account is
-// Gmail's.
+// "Polling").
 func (h outgoingMessageHandler) refuseUnoffered() error {
-	if !h.providers.offered(connectedaccount.ProviderGmail) {
+	if !h.offered() {
 		return outgoingMessageProblem(errGmailNotConfigured)
 	}
 	return nil
@@ -274,7 +309,7 @@ func (h outgoingMessageHandler) handleSendMessage(ctx context.Context, in *outgo
 	if err != nil {
 		return nil, outgoingMessageSendProblem(err)
 	}
-	return respondData(outgoingMessageOf(message)), nil
+	return respondData(outgoingMessageOf(message, h.offered())), nil
 }
 
 // parseIdempotencyKey returns the UUID in an Idempotency-Key header value:
@@ -411,7 +446,7 @@ func (h outgoingMessageHandler) handleReplyToMessage(ctx context.Context, in *re
 	if err != nil {
 		return nil, replyProblem(err)
 	}
-	return respondData(outgoingMessageOf(message)), nil
+	return respondData(outgoingMessageOf(message, h.offered())), nil
 }
 
 func replyResponses(api huma.API) map[string]*huma.Response {
@@ -456,7 +491,7 @@ func registerOutgoingMessageList(api huma.API, handler outgoingMessageHandler) {
 		Path:        outgoingMessagesPath,
 		Summary:     "List Outgoing Messages",
 		Tags:        []string{tagOutgoingMessages},
-		Description: "Lists the messages the signed-in account sent from inbok, newest first, without their bodies, including those that failed or whose outcome is unknown.",
+		Description: "Lists at most 50 messages the signed-in account sent from inbok, without their bodies, including those that failed or whose outcome is unknown: the outstanding ones first, so newer finished ones never push one out, then the rest, each newest first; past 50 outstanding, the oldest of those are left out.",
 		Metadata:    map[string]any{accessKey: session.AccessMember},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   memberResponses(api),
@@ -471,7 +506,7 @@ func (h outgoingMessageHandler) handleListOutgoingMessages(ctx context.Context, 
 	}
 	listed := outgoingMessages{Messages: make([]outgoingMessageSummary, 0, len(messages))}
 	for _, message := range messages {
-		listed.Messages = append(listed.Messages, outgoingMessageSummaryOf(message))
+		listed.Messages = append(listed.Messages, outgoingMessageSummaryOf(message, h.offered()))
 	}
 	return respondData(listed), nil
 }
@@ -504,12 +539,27 @@ func (h outgoingMessageHandler) handleGetOutgoingMessage(ctx context.Context, in
 	if err != nil {
 		return nil, outgoingMessageProblem(err)
 	}
-	return respondData(outgoingMessageOf(message)), nil
+	return respondData(outgoingMessageOf(message, h.offered())), nil
 }
 
 // ========================
 // Send message again
 // ========================
+
+type sendAgainInput struct {
+	ID   uuid.UUID `path:"id" format:"uuid" doc:"Outgoing message ID."`
+	Body *messageEdits
+}
+
+// messageEdits is the content of a copy sent again with edits; the limits
+// are a new message's ([newOutgoingMessage]).
+type messageEdits struct {
+	To      []string `json:"to" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254" doc:"To, Cc, and Bcc together need at least one address."`
+	Cc      []string `json:"cc" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254"`
+	Bcc     []string `json:"bcc" nullable:"false" maxItems:"100" format:"idn-email" maxLength:"254"`
+	Subject string   `json:"subject" maxLength:"500" doc:"May be empty. No line breaks or other control characters. A reply's must be its own (reply in Get Outgoing Message)."`
+	Body    string   `json:"body" maxLength:"100000" doc:"Plain text."`
+}
 
 func registerSendAgain(api huma.API, handler outgoingMessageHandler) {
 	huma.Register(api, huma.Operation{
@@ -519,7 +569,8 @@ func registerSendAgain(api huma.API, handler outgoingMessageHandler) {
 		Summary:     "Send Message Again",
 		Tags:        []string{tagOutgoingMessages},
 		Description: "Saves a copy of a failed or unknown message, waiting to be sent from the same account's current address, and returns the copy. " +
-			"The message then names the copy in sentAgainAs, and sending it again returns the same copy, so it is sent again at most once. " +
+			"With a body, the copy has the body's recipients, subject, and text instead of the message's, checked as a new message's; this is how a message Gmail refused is edited and sent. A reply's copy keeps its threading and subject either way. " +
+			"The message then names the copy in sentAgainAs, and sending it again returns the same copy, so it is sent again at most once; with a body other than the copy's content, that is refused. " +
 			sendLimitDescription,
 		Metadata:      map[string]any{accessKey: session.AccessMember},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
@@ -528,36 +579,104 @@ func registerSendAgain(api huma.API, handler outgoingMessageHandler) {
 	}, handler.handleSendMessageAgain)
 }
 
-func (h outgoingMessageHandler) handleSendMessageAgain(ctx context.Context, in *outgoingMessageInput) (*output[outgoingMessage], error) {
+func (h outgoingMessageHandler) handleSendMessageAgain(ctx context.Context, in *sendAgainInput) (*output[outgoingMessage], error) {
 	// 1. Refuse before the copy is saved (refuseUnoffered).
 	if err := h.refuseUnoffered(); err != nil {
 		return nil, err
 	}
 
 	// 2. Save the copy, which a background job sends.
+	var edits *outgoingmessage.Content
+	if in.Body != nil {
+		edits = &outgoingmessage.Content{To: in.Body.To, Cc: in.Body.Cc, Bcc: in.Body.Bcc, Subject: in.Body.Subject, Body: in.Body.Body}
+	}
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
-	message, err := h.service.SendAgain(ctx, user.ID, in.ID)
+	message, err := h.service.SendAgain(ctx, user.ID, in.ID, edits)
 	if err != nil {
 		return nil, sendAgainProblem(err)
 	}
-	return respondData(outgoingMessageOf(message)), nil
+	return respondData(outgoingMessageOf(message, h.offered())), nil
 }
 
 func sendAgainResponses(api huma.API) map[string]*huma.Response {
-	responses := outgoingMessageResponses(api, http.StatusConflict, http.StatusTooManyRequests)
+	responses := outgoingMessageResponses(api, http.StatusConflict, http.StatusUnprocessableEntity, http.StatusTooManyRequests)
 	sendResponses(responses)
 
-	// A second 409 meaning, with its own type.
+	// Two more 409 meanings, each with its own type.
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
-	conflict.Description += " Or the message is waiting, sending, or sent, so only a failed or unknown one is sent again."
+	conflict.Description += " Or the message is waiting, sending, or sent, so only a failed or unknown one is sent again. " +
+		"Or it was already sent again with other content than the body's; sentAgainAs names that copy."
 	conflict.Content[problemContentType].Examples["notSendableAgain"] = &huma.Example{Value: sendAgainProblem(outgoingmessage.ErrNotSendableAgain)}
+	conflict.Content[problemContentType].Examples["sentAgainOtherwise"] = &huma.Example{Value: sendAgainProblem(outgoingmessage.ErrSentAgainOtherwise)}
+
+	invalid := responses[strconv.Itoa(http.StatusUnprocessableEntity)]
+	invalid.Description = "The body's inputs are invalid, or change a reply's subject."
+	invalid.Content[problemContentType].Examples = map[string]*huma.Example{
+		"noRecipients":     {Value: sendAgainProblem(outgoingmessage.ErrNoRecipients)},
+		"replySubject":     {Value: sendAgainProblem(outgoingmessage.ErrReplySubject)},
+		"invalidInput":     {Value: requestProblem(http.StatusUnprocessableEntity)},
+		"invalidRecipient": {Value: sendAgainProblem(&outgoingmessage.RecipientError{Field: outgoingmessage.FieldTo, Index: 0})},
+	}
 	return responses
 }
 
-// sendAgainProblem maps the errors of sending a message again.
+// sendAgainProblem maps the errors of sending a message again, with or
+// without edits.
 func sendAgainProblem(err error) error {
-	if errors.Is(err, outgoingmessage.ErrNotSendableAgain) {
+	switch {
+	case errors.Is(err, outgoingmessage.ErrNotSendableAgain):
 		return newProblem(http.StatusConflict, notSendableAgainType, "Message not sendable again", "Only a failed message, or one whose outcome is unknown, can be sent again.")
+	case errors.Is(err, outgoingmessage.ErrSentAgainOtherwise):
+		return newProblem(http.StatusConflict, sentAgainOtherwiseType, "Message sent again otherwise", "This message was already sent again with other content. Its sentAgainAs names that copy.")
+	case errors.Is(err, outgoingmessage.ErrReplySubject):
+		invalid := requestProblem(http.StatusUnprocessableEntity)
+		invalid.Errors = []inputError{{Location: "body.subject", Message: "A reply keeps the subject of the message it answers."}}
+		return invalid
+	default:
+		return outgoingMessageSendProblem(err)
+	}
+}
+
+// ========================
+// Dismiss outgoing message
+// ========================
+
+func registerOutgoingMessageDismissal(api huma.API, handler outgoingMessageHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "dismissOutgoingMessage",
+		Method:      http.MethodPost,
+		Path:        outgoingMessagesPath + "/{id}/dismiss",
+		Summary:     "Dismiss Outgoing Message",
+		Tags:        []string{tagOutgoingMessages},
+		Description: "Marks a failed or unknown message dismissed, so it is no longer outstanding: the member gave up on it, or found it in the account's Sent folder. " +
+			"It keeps its status and can still be sent again. Dismissing a message already dismissed or sent again returns it unchanged, as it already needs nothing more. Nothing is sent, so Gmail need not be set up.",
+		Metadata:  map[string]any{accessKey: session.AccessMember},
+		Security:  []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses: dismissResponses(api),
+	}, handler.handleDismissOutgoingMessage)
+}
+
+func (h outgoingMessageHandler) handleDismissOutgoingMessage(ctx context.Context, in *outgoingMessageInput) (*output[outgoingMessage], error) {
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	message, err := h.service.Dismiss(ctx, user.ID, in.ID)
+	if err != nil {
+		return nil, dismissProblem(err)
+	}
+	return respondData(outgoingMessageOf(message, h.offered())), nil
+}
+
+func dismissResponses(api huma.API) map[string]*huma.Response {
+	responses := outgoingMessageResponses(api, http.StatusConflict)
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "The message is waiting, sending, or sent, so it never needed dismissing."
+	conflict.Content[problemContentType].Example = dismissProblem(outgoingmessage.ErrNotDismissible)
+	return responses
+}
+
+// dismissProblem maps the errors of dismissing a message.
+func dismissProblem(err error) error {
+	if errors.Is(err, outgoingmessage.ErrNotDismissible) {
+		return newProblem(http.StatusConflict, notDismissibleType, "Message not dismissible", "Only a failed message, or one whose outcome is unknown, can be dismissed.")
 	}
 	return outgoingMessageProblem(err)
 }

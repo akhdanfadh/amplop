@@ -13,12 +13,18 @@ const unprocessable = 422;
 const keyReusedType: ProblemType = "/api/v0/problems/idempotency-key-reused";
 const needsReconnectType: ProblemType = "/api/v0/problems/sending-account-needs-reconnect";
 const notSendableAgainType: ProblemType = "/api/v0/problems/not-sendable-again";
+const sentAgainOtherwiseType: ProblemType = "/api/v0/problems/sent-again-otherwise";
+const notDismissibleType: ProblemType = "/api/v0/problems/not-dismissible";
 const messageNotFoundType: ProblemType = "/api/v0/problems/outgoing-message-not-found";
 const answeredNotFoundType: ProblemType = "/api/v0/problems/message-not-found";
 export const messageGone = "This message isn't in your Outbox. It may have been removed.";
 
 // The badge of a message sent again as a copy.
 export const sentAgainLabel = "Tried again";
+
+// The badge of a message the member dismissed, and its button.
+export const dismissedLabel = "Dismissed";
+export const dismissLabel = "Dismiss";
 
 // The short name of each status, e.g. for a badge.
 const statusLabels: Record<Status, string> = {
@@ -39,7 +45,7 @@ export function statusLabel(status: Status): string {
 // Send again uses, when known.
 const failures: Record<Failure, (from: string, current: string | undefined) => string> = {
   refused: () =>
-    "Gmail refused this message. Check its recipients and content, then edit it and send it as a new message.",
+    "Gmail refused this message. Check its recipients and content, then edit and send it.",
   "sending-limit": (from) =>
     `${from} reached Gmail's daily sending limit, which lifts within 24 hours. Send it again then.`,
   "needs-reconnect": (from) =>
@@ -56,11 +62,22 @@ const failures: Record<Failure, (from: string, current: string | undefined) => s
     "Google didn't take this message after several tries, so inbok stopped. Send it again.",
 };
 
-// MessageState is what a status page needs of a message to word it.
+// MessageState is what a status page needs of a message to word it and
+// to know what it offers.
 export type MessageState = Pick<
   OutgoingMessageSummary,
-  "status" | "failure" | "from" | "sentAt" | "sentAgainAs"
+  | "status"
+  | "failure"
+  | "from"
+  | "sentAt"
+  | "sentAgainAs"
+  | "dismissedAt"
+  | "allowedActions"
+  | "connectedAccountId"
 >;
+
+// SendingAccount is what nextSteps needs of each of the member's accounts.
+export type SendingAccount = Pick<ListedAccount, "id" | "email" | "status" | "allowedActions">;
 
 // What a message in each status other than failed says.
 const statusTexts: Record<Exclude<Status, "failed">, (from: string) => string> = {
@@ -83,10 +100,13 @@ export type NextSteps = { text: string; offers: Offer[] };
 export const notSentPrefix = "Not sent. ";
 
 // sentSummary words message's status in one line, for the compose window
-// after Send: who it is going or went to, or the status's name.
+// after Send: who it is going or went to, or the status's name, Tried
+// again once it was sent again, Dismissed once dismissed.
 export function sentSummary(
   message: MessageState & Pick<OutgoingMessageSummary, "to" | "cc" | "bcc">,
 ): string {
+  if (message.sentAgainAs !== null) return sentAgainLabel;
+  if (message.dismissedAt !== null) return dismissedLabel;
   if (inProgress(message.status)) return `Sending to ${recipientSummary(message)}...`;
   if (message.status === "sent") return `Sent to ${recipientSummary(message)}`;
   return statusLabel(message.status);
@@ -100,41 +120,61 @@ const sentAgainTexts: Partial<Record<Status, string>> = {
     "inbok couldn't confirm whether Gmail sent this message. You already tried sending it again.",
 };
 
+// What a dismissed message's text ends with: why it left the count, and
+// that its ways on stay.
+const dismissedText = "You dismissed it, so the Outbox no longer counts it.";
+
 // nextSteps says what happened to message and what the member can do
-// next. current is the sending account's address now, when known.
-export function nextSteps(message: MessageState, current?: string): NextSteps {
+// next. accounts are the member's connected accounts, undefined until they
+// load; the sending account's address now names where Send again sends
+// from. A dismissed message keeps its reason and offers, and says it was
+// dismissed.
+export function nextSteps(message: MessageState, accounts?: readonly SendingAccount[]): NextSteps {
   const again = message.sentAgainAs === null ? undefined : sentAgainTexts[message.status];
   if (again !== undefined) return { text: again, offers: [] };
-  if (message.status === "unknown")
-    return { text: statusTexts.unknown(message.from), offers: ["send-again"] };
-  if (message.status !== "failed")
-    return { text: statusTexts[message.status](message.from), offers: [] };
-  const failure = message.failure && failures[message.failure];
-  const text = failure ? `${notSentPrefix}${failure(message.from, current)}` : "Not sent.";
-  return { text, offers: failureOffers(message.failure) };
+  const steps = endedSteps(message, accounts);
+  if (message.dismissedAt === null) return steps;
+  return { ...steps, text: `${steps.text} ${dismissedText}` };
 }
 
-// failureOffers returns what a message failed for failure offers. Gmail
-// would refuse a refused message again, so it is edited instead; a
-// reconnect fixes an account Google stopped accepting or whose saved
-// access inbok cannot open.
-function failureOffers(failure: Failure | null): Offer[] {
-  if (failure === "refused") return ["edit"];
-  if (failure === "needs-reconnect" || failure === "token-unreadable")
-    return ["send-again", "reconnect"];
-  return ["send-again"];
+// endedSteps is nextSteps for a message not sent again.
+function endedSteps(message: MessageState, accounts?: readonly SendingAccount[]): NextSteps {
+  const offers = endedOffers(message, accounts);
+  if (message.status === "unknown") return { text: statusTexts.unknown(message.from), offers };
+  if (message.status !== "failed")
+    return { text: statusTexts[message.status](message.from), offers: [] };
+  const current = sendingAccount(message, accounts)?.email;
+  const failure = message.failure && failures[message.failure];
+  const text = failure ? `${notSentPrefix}${failure(message.from, current)}` : "Not sent.";
+  return { text, offers };
+}
+
+// endedOffers returns what a failed or unknown message, not yet sent
+// again, offers while the API allows sending it again: Send again, or for
+// a refused one, which Gmail would refuse again unchanged, Edit and send,
+// which sends it again with the member's edits; and the Connected accounts
+// page while the sending account is one a reconnect fixes.
+function endedOffers(message: MessageState, accounts?: readonly SendingAccount[]): Offer[] {
+  const offers: Offer[] = [];
+  if (message.allowedActions.includes("send-again"))
+    offers.push(message.failure === "refused" ? "edit" : "send-again");
+  const account = sendingAccount(message, accounts);
+  if (account !== undefined && account.status !== "usable") offers.push("reconnect");
+  return offers;
+}
+
+// sendingAccount returns message's account among accounts, or undefined
+// while they load or once it was disconnected.
+function sendingAccount(
+  message: Pick<MessageState, "connectedAccountId">,
+  accounts?: readonly SendingAccount[],
+): SendingAccount | undefined {
+  return accounts?.find((account) => account.id === message.connectedAccountId);
 }
 
 // inProgress reports whether status can still change by itself.
 export function inProgress(status: Status): boolean {
   return status === "waiting" || status === "sending";
-}
-
-// unfinished reports whether message has not ended for its member: it is
-// still being sent, or its page still offers a way to send it, as
-// nextSteps works out. A message sent again has ended; its copy goes on.
-export function unfinished(message: MessageState): boolean {
-  return inProgress(message.status) || nextSteps(message).offers.length > 0;
 }
 
 // keyReused reports whether err is the API's refusal of an Idempotency-Key
@@ -228,13 +268,13 @@ export function noAccountText(accounts: readonly Pick<ListedAccount, "status">[]
 export const signedOutText =
   "You're signed out, so this message can't be sent. Copy what you typed, then";
 
-// editNoteText says that the window starts with the content of a message
-// Gmail refused or one the member opened, which stays as it is.
-export function editNoteText(from: "refused" | "opened"): string {
-  return from === "refused"
-    ? "This is a new message with the content of the one Gmail refused, which stays in the Outbox as it is."
-    : "This is a new message with the content of the one you opened, which stays in the Outbox as it is.";
-}
+// What unfolds a refused reply's subject, cut to 2 lines in the editor.
+export const showAllSubject = "Show all";
+
+// What heads an editor sending a refused message again with the member's
+// edits, which then replaces it in the Outbox.
+export const editNote =
+  "Gmail refused this message. Check its recipients and content, then send: it replaces the refused one in the Outbox.";
 
 // What Edit and send asks while the compose window holds another message.
 export const replaceText: LeaveWarningText = {
@@ -276,11 +316,28 @@ export function sendTooltip(): string {
 // What the reply editor's buttons say: each opens the editor for one mode.
 export const replyLabels = { reply: "Reply", "reply-all": "Reply all" } as const;
 
+// dismissErrorMessage words a Dismiss Outgoing Message that failed.
+export function dismissErrorMessage(err: ApiError): string {
+  // Only the API's own problems say why; a missing route says nothing.
+  if (err.status === conflict && err.problem?.type === notDismissibleType)
+    return "This message can't be dismissed: its status has changed.";
+  if (err.status === notFound && err.problem?.type === messageNotFoundType) return messageGone;
+  // A repeat changes nothing, so trying again is safe.
+  if (uncertainOutcome(err))
+    return uncertainMessage(
+      err,
+      "We couldn't confirm whether it was dismissed. Trying again is safe.",
+    );
+  return userMessage(err);
+}
+
 // sendAgainErrorMessage words a Send Message Again that failed.
 export function sendAgainErrorMessage(err: ApiError): string {
   // Only the API's own problems say why; a missing route says nothing.
   if (err.status === conflict && err.problem?.type === notSendableAgainType)
     return "This message can't be sent again: its status has changed.";
+  if (err.status === conflict && err.problem?.type === sentAgainOtherwiseType)
+    return "This message was already sent again with other content. Open it in the Outbox to see that copy.";
   if (err.status === notFound && err.problem?.type === messageNotFoundType) return messageGone;
   if (uncertainOutcome(err))
     // A repeat returns the copy the first saved.
@@ -404,6 +461,24 @@ const discardReply: LeaveWarningText = {
   title: "Discard this reply?",
 };
 
+// What Discard asks in the reply editor after a try that may have saved
+// the reply: Discard then only drops the editor, not the reply.
+const discardReplyUnconfirmed: LeaveWarningText = {
+  title: "Discard this reply?",
+  description:
+    "An earlier try may have saved this reply, and it may be sent. What you typed here won't be kept.",
+  stay: "Keep editing",
+  leave: "Discard",
+  leaveVariant: "default",
+};
+
+// discardReplyText returns what the reply editor's Discard asks: whether
+// an earlier try may have saved the reply (unconfirmed), or only that
+// typed text will be lost.
+export function discardReplyText(unconfirmed: boolean): LeaveWarningText {
+  return unconfirmed ? discardReplyUnconfirmed : discardReply;
+}
+
 // replyLeaveText returns what leaving the reply editor asks in state.
 export function replyLeaveText(state: LeaveState): LeaveWarningText {
   return state === "typed" ? discardReply : leaveText(state);
@@ -415,3 +490,72 @@ export function leaveText(state: LeaveState): LeaveWarningText {
   if (state === "unconfirmed") return leaveUnconfirmed;
   return leaveTyped;
 }
+
+// What a row says after the status of a message in each failure, short
+// for a line; the message's page keeps the whole sentence (nextSteps).
+const shortFailures: Record<Failure, string> = {
+  refused: "Gmail refused it. Edit and send it again.",
+  "sending-limit": "Its account hit Gmail's daily limit. Send it again later.",
+  "needs-reconnect": "Reconnect the account, then send it again.",
+  "token-unreadable": "Reconnect the account, then send it again.",
+  deactivated: "Your account was deactivated. Send it again.",
+  "sender-changed": "The account's address changed. Send it again.",
+  "gave-up": "Google didn't take it. Send it again.",
+};
+
+// rowReason returns what an Outbox row says after message's status: why
+// it failed, what an unconfirmed one asks, that it was sent again, or,
+// once dismissed, whether it went; empty while it waits, sends, or once
+// it was sent, which the status says alone.
+export function rowReason(message: MessageState): string {
+  if (message.sentAgainAs !== null) return "You sent it again as a new message.";
+  if (message.dismissedAt !== null)
+    return message.status === "unknown" ? "It may have been sent." : "It wasn't sent.";
+  if (message.status === "unknown") return "Check Sent in Gmail before sending again.";
+  if (message.status !== "failed") return "";
+  return message.failure ? shortFailures[message.failure] : "";
+}
+
+// outboxRowName returns what a screen reader calls an Outbox row: its
+// recipients, subject, status, and date, and its account when the list
+// mixes accounts.
+export function outboxRowName(row: {
+  to: string;
+  subject: string;
+  status: string;
+  date: string;
+  account: string | undefined;
+}): string {
+  return [`${rowTo} ${row.to}`, row.subject, row.status, row.date, row.account]
+    .filter(Boolean)
+    .join(", ");
+}
+
+// What an Outbox row's recipients follow.
+export const rowTo = "To";
+
+// The Outbox's heading, and its list's name for a screen reader.
+export const outboxName = "Outbox";
+export const outboxListName = "Messages sent from inbok";
+// What the Outbox's reading pane says with no message open.
+export const noMessageOpen = "No message open.";
+// The Outbox list's sections: the messages that still need the member
+// (the API's outstanding), the sidebar count's words, then the rest.
+export const outboxSections = { outstanding: "Not sent yet", done: "Done" } as const;
+// What ends the Outbox's list: what it holds, and what it doesn't.
+export const outboxEnd =
+  "inbok keeps up to 50 messages here, dropping the oldest done ones first. What you send from Gmail itself is in Sent, not here.";
+// What an empty Outbox says.
+export const outboxEmptyTitle = "Nothing sent from inbok yet";
+export const outboxEmptyText =
+  "Messages you send from inbok show here, with whether Gmail took each one. Write one with Compose.";
+// What the Outbox says while its list loads, for a screen reader.
+export const outboxLoading = "Loading messages...";
+// What the Outbox says when its list can't be read, before the reason,
+// and when a reread failed, so the list may be out of date.
+export const outboxFailed = "Could not load your messages.";
+export const outboxStale = "Could not reload your messages, so the list may be out of date.";
+// The account line of an open outgoing message's details.
+export const sentFrom = "Sent from";
+// What a message's reading pane says while it loads.
+export const messageLoading = "Loading message...";

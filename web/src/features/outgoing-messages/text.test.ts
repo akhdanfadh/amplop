@@ -14,13 +14,17 @@ import {
   replyErrorMessage,
   sendAgainErrorMessage,
   sendErrorMessage,
-  unfinished,
+  dismissErrorMessage,
+  sentSummary,
   type MessageState,
   type Offer,
+  type SendingAccount,
   invalidAddressMessage,
   noAccountText,
   cannotSendNote,
+  rowReason,
 } from "./text";
+import { messageLook } from "./status-badge";
 
 type Failure = NonNullable<OutgoingMessageSummary["failure"]>;
 
@@ -31,12 +35,22 @@ const waiting: MessageState = {
   from,
   sentAt: null,
   sentAgainAs: null,
+  dismissedAt: null,
+  allowedActions: [],
+  connectedAccountId: 1,
 };
 
-// failed returns a message that failed for failure.
+// failed returns a message that failed for failure, which the API allows
+// to be sent again.
 function failed(failure: Failure): MessageState {
-  return { ...waiting, status: "failed", failure };
+  return { ...waiting, status: "failed", failure, allowedActions: ["send-again"] };
 }
+
+// The sending account, usable, and another of the member's accounts.
+const own: SendingAccount = { id: 1, email: from, status: "usable", allowedActions: ["send"] };
+const other: SendingAccount = { ...own, id: 2, email: "other@example.com" };
+// The sending account once Google stopped accepting its access.
+const stale: SendingAccount = { ...own, status: "needs-reconnect", allowedActions: [] };
 
 // problem returns a received error answer of status with the problem type.
 function problem(status: number, type: ProblemType): ApiError {
@@ -73,26 +87,69 @@ describe("nextSteps", () => {
   });
 
   it("names the address Send again uses after a sender change, when known", () => {
-    expect(nextSteps(failed("sender-changed"), "new@example.com").text).toContain(
-      "sends it from new@example.com.",
-    );
+    expect(
+      nextSteps(failed("sender-changed"), [{ ...own, email: "new@example.com" }]).text,
+    ).toContain("sends it from new@example.com.");
     expect(nextSteps(failed("sender-changed")).text).toContain("sends it from the new address.");
   });
 
-  it.each<[string, MessageState, Offer[]]>([
-    ["waiting", waiting, []],
-    ["sending", { ...waiting, status: "sending" }, []],
-    ["sent", { ...waiting, status: "sent" }, []],
-    ["unknown", { ...waiting, status: "unknown" }, ["send-again"]],
-    ["refused", failed("refused"), ["edit"]],
-    ["sending-limit", failed("sending-limit"), ["send-again"]],
-    ["needs-reconnect", failed("needs-reconnect"), ["send-again", "reconnect"]],
-    ["token-unreadable", failed("token-unreadable"), ["send-again", "reconnect"]],
-    ["deactivated", failed("deactivated"), ["send-again"]],
-    ["sender-changed", failed("sender-changed"), ["send-again"]],
-    ["gave-up", failed("gave-up"), ["send-again"]],
-  ])("offers what a %s message allows", (_, message, offers) => {
-    expect(nextSteps(message).offers).toEqual(offers);
+  const unknown: MessageState = { ...waiting, status: "unknown", allowedActions: ["send-again"] };
+
+  it.each<[string, MessageState, SendingAccount[] | undefined, Offer[]]>([
+    ["waiting", waiting, [own], []],
+    ["sending", { ...waiting, status: "sending" }, [own], []],
+    ["sent", { ...waiting, status: "sent" }, [own], []],
+    ["unknown", unknown, [own], ["send-again"]],
+    ["sending-limit", failed("sending-limit"), [own], ["send-again"]],
+    ["deactivated", failed("deactivated"), [own], ["send-again"]],
+    ["sender-changed", failed("sender-changed"), [own], ["send-again"]],
+    ["gave-up", failed("gave-up"), [own], ["send-again"]],
+    // The API decides Send again, e.g. not while Gmail isn't set up.
+    ["gave-up, not allowed", { ...failed("gave-up"), allowedActions: [] }, [own], []],
+    ["unknown, not allowed", { ...unknown, allowedActions: [] }, [own], []],
+    // Allowed whatever the accounts' read says.
+    ["gave-up, accounts loading", failed("gave-up"), undefined, ["send-again"]],
+    // Gmail would refuse it again unchanged, so it is sent again with
+    // edits, as the API allows: Send again with a body.
+    ["refused", failed("refused"), [own], ["edit"]],
+    ["refused, accounts loading", failed("refused"), undefined, ["edit"]],
+    ["refused, not allowed", { ...failed("refused"), allowedActions: [] }, [own], []],
+    [
+      "refused, its account stale",
+      { ...failed("refused"), allowedActions: [] },
+      [stale, other],
+      ["reconnect"],
+    ],
+    // The account's state now, not the failure's, decides the reconnect.
+    [
+      "needs-reconnect, still",
+      { ...failed("needs-reconnect"), allowedActions: [] },
+      [stale],
+      ["reconnect"],
+    ],
+    ["needs-reconnect, reconnected", failed("needs-reconnect"), [own], ["send-again"]],
+    [
+      "token-unreadable, still",
+      { ...failed("token-unreadable"), allowedActions: [] },
+      [{ ...stale, status: "token-unreadable" }],
+      ["reconnect"],
+    ],
+    [
+      "gave-up, account stale since",
+      { ...failed("gave-up"), allowedActions: [] },
+      [stale],
+      ["reconnect"],
+    ],
+    ["unknown, account stale since", { ...unknown, allowedActions: [] }, [stale], ["reconnect"]],
+    // A disconnected account can't be reconnected from its old messages.
+    [
+      "needs-reconnect, disconnected",
+      { ...failed("needs-reconnect"), allowedActions: [] },
+      [other],
+      [],
+    ],
+  ])("offers what a %s message allows", (_, message, accounts, offers) => {
+    expect(nextSteps(message, accounts).offers).toEqual(offers);
   });
 
   // Each reason's own text says to send it again or reconnect; once a copy
@@ -109,7 +166,54 @@ describe("nextSteps", () => {
       "inbok couldn't confirm whether Gmail sent this message. You already tried sending it again.",
     ],
   ])("offers nothing more for a %s message already sent again", (_, message, text) => {
-    expect(nextSteps(message)).toEqual({ text, offers: [] });
+    // The API still allows it, as it returns the same copy.
+    expect(nextSteps({ ...message, allowedActions: ["send-again"] }, [stale])).toEqual({
+      text,
+      offers: [],
+    });
+  });
+
+  // Dismissed, it says so after its reason, and its ways on stay: it can
+  // still be sent again.
+  it.each<[string, MessageState, string, Offer[]]>([
+    [
+      "refused",
+      failed("refused"),
+      "Not sent. Gmail refused this message. Check its recipients and content, then edit and send it. You dismissed it, so the Outbox no longer counts it.",
+      ["edit"],
+    ],
+    [
+      "unknown",
+      { ...waiting, status: "unknown", allowedActions: ["send-again"] },
+      `inbok couldn't confirm whether Gmail sent this message. Check the Sent folder of ${from} in Gmail before sending it again. You dismissed it, so the Outbox no longer counts it.`,
+      ["send-again"],
+    ],
+  ])("keeps a dismissed %s message's reason and offers", (_, message, text, offers) => {
+    expect(nextSteps({ ...message, dismissedAt: "2026-11-17T09:00:00Z" }, [own])).toEqual({
+      text,
+      offers,
+    });
+  });
+
+  it("words a dismissed message sent again as sent again", () => {
+    const message: MessageState = {
+      ...failed("refused"),
+      sentAgainAs: copy,
+      dismissedAt: "2026-11-17T09:00:00Z",
+    };
+    expect(nextSteps(message, [own]).text).toBe("Not sent. You already tried sending it again.");
+  });
+});
+
+describe("sentSummary", () => {
+  const to = { to: ["ana@example.com"], cc: [], bcc: [] };
+
+  it("names Dismissed once dismissed, and Tried again once sent again too", () => {
+    const dismissedAt = "2026-11-17T09:00:00Z";
+    expect(sentSummary({ ...failed("refused"), ...to, dismissedAt })).toBe("Dismissed");
+    expect(sentSummary({ ...failed("refused"), ...to, dismissedAt, sentAgainAs: "copy-id" })).toBe(
+      "Tried again",
+    );
   });
 });
 
@@ -190,6 +294,29 @@ describe("sendAgainErrorMessage", () => {
   });
 });
 
+describe("dismissErrorMessage", () => {
+  it("says the status changed on 409 not-dismissible", () => {
+    expect(dismissErrorMessage(problem(409, "/api/v0/problems/not-dismissible"))).toBe(
+      "This message can't be dismissed: its status has changed.",
+    );
+  });
+
+  it("says the message is gone on its own 404 only", () => {
+    expect(
+      dismissErrorMessage(problem(404, "/api/v0/problems/outgoing-message-not-found")),
+    ).toContain("isn't in your Outbox");
+    expect(dismissErrorMessage(problem(404, "/api/v0/problems/not-found"))).toBe(
+      "The server's detail.",
+    );
+  });
+
+  it("says trying again is safe after a lost answer", () => {
+    expect(dismissErrorMessage(new ApiError("timeout", { method: "POST" }))).toContain(
+      "Trying again is safe",
+    );
+  });
+});
+
 describe("readErrorMessage", () => {
   it("says a missing message is gone", () => {
     const err = new ApiError("http", {
@@ -212,18 +339,6 @@ describe("status helpers", () => {
     expect(inProgress("sending")).toBe(true);
     expect(inProgress("unknown")).toBe(false);
     expect(inProgress("sent")).toBe(false);
-  });
-
-  it("counts a message unfinished until it is sent, or sent again", () => {
-    const copy = "0b9f3a52-5f1d-4a8e-9a43-5f0c2b6b1c11";
-    expect(unfinished(waiting)).toBe(true);
-    expect(unfinished({ ...waiting, status: "sending" })).toBe(true);
-    expect(unfinished(failed("gave-up"))).toBe(true);
-    expect(unfinished({ ...waiting, status: "unknown" })).toBe(true);
-    expect(unfinished({ ...waiting, status: "sent", sentAt: "2026-11-13T08:00:05Z" })).toBe(false);
-    // Its copy carries on; the copy's own status counts instead.
-    expect(unfinished({ ...failed("gave-up"), sentAgainAs: copy })).toBe(false);
-    expect(unfinished({ ...waiting, status: "unknown", sentAgainAs: copy })).toBe(false);
   });
 
   it("tells problems apart by status and type together", () => {
@@ -322,5 +437,111 @@ describe("why no account can send", () => {
     expect(cannotSendNote({ email: "studio@example.com", status: "usable" })).toBe(
       "Your Gmail accounts can't send yet. The Connected accounts page says why.",
     );
+  });
+});
+
+describe("an Outbox row's status", () => {
+  const copy = "0b9f3a52-5f1d-4a8e-9a43-5f0c2b6b1c11";
+
+  it.each<[string, MessageState, string, string, string]>([
+    ["waiting", waiting, "Waiting", "neutral", ""],
+    ["sending", { ...waiting, status: "sending" }, "Sending", "info", ""],
+    ["sent", { ...waiting, status: "sent" }, "Sent", "success", ""],
+    [
+      "unknown",
+      { ...waiting, status: "unknown" },
+      "Not confirmed",
+      "warning",
+      "Check Sent in Gmail before sending again.",
+    ],
+    [
+      "refused",
+      failed("refused"),
+      "Not sent",
+      "destructive",
+      "Gmail refused it. Edit and send it again.",
+    ],
+    [
+      "sending-limit",
+      failed("sending-limit"),
+      "Not sent",
+      "destructive",
+      "Its account hit Gmail's daily limit. Send it again later.",
+    ],
+    [
+      "needs-reconnect",
+      failed("needs-reconnect"),
+      "Not sent",
+      "destructive",
+      "Reconnect the account, then send it again.",
+    ],
+    [
+      "token-unreadable",
+      failed("token-unreadable"),
+      "Not sent",
+      "destructive",
+      "Reconnect the account, then send it again.",
+    ],
+    [
+      "deactivated",
+      failed("deactivated"),
+      "Not sent",
+      "destructive",
+      "Your account was deactivated. Send it again.",
+    ],
+    [
+      "sender-changed",
+      failed("sender-changed"),
+      "Not sent",
+      "destructive",
+      "The account's address changed. Send it again.",
+    ],
+    [
+      "gave-up",
+      failed("gave-up"),
+      "Not sent",
+      "destructive",
+      "Google didn't take it. Send it again.",
+    ],
+    // Sent again, whatever it failed for or how, it asks nothing more.
+    [
+      "failed, sent again",
+      { ...failed("needs-reconnect"), sentAgainAs: copy },
+      "Tried again",
+      "neutral",
+      "You sent it again as a new message.",
+    ],
+    [
+      "unknown, sent again",
+      { ...waiting, status: "unknown", sentAgainAs: copy },
+      "Tried again",
+      "neutral",
+      "You sent it again as a new message.",
+    ],
+    // Dismissed, it says whether it went; sent again after, its copy matters more.
+    [
+      "failed, dismissed",
+      { ...failed("refused"), dismissedAt: "2026-11-17T09:00:00Z" },
+      "Dismissed",
+      "neutral",
+      "It wasn't sent.",
+    ],
+    [
+      "unknown, dismissed",
+      { ...waiting, status: "unknown", dismissedAt: "2026-11-17T09:00:00Z" },
+      "Dismissed",
+      "neutral",
+      "It may have been sent.",
+    ],
+    [
+      "dismissed, then sent again",
+      { ...failed("refused"), dismissedAt: "2026-11-17T09:00:00Z", sentAgainAs: copy },
+      "Tried again",
+      "neutral",
+      "You sent it again as a new message.",
+    ],
+  ])("words a %s message", (_, message, label, tone, reason) => {
+    expect(messageLook(message)).toMatchObject({ label, tone });
+    expect(rowReason(message)).toBe(reason);
   });
 });

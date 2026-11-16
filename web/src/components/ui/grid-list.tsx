@@ -2,7 +2,9 @@ import { useMemo } from "react";
 import { cn } from "@/lib/cn";
 import {
   GridList as AriaGridList,
+  GridListHeader as AriaGridListHeader,
   GridListItem as AriaGridListItem,
+  GridListSection,
   GridListLoadMoreItem as AriaGridListLoadMoreItem,
   ListLayout,
   Virtualizer,
@@ -13,7 +15,8 @@ import {
 
 // GridList is the message list (DESIGN.md "Components"): React Aria's
 // GridList inside its Virtualizer, so only the rows on screen are drawn,
-// each rowSize pixels tall, in its own scrolling box. Rows navigate
+// each rowSize pixels tall, in its own scrolling box; a section's heading,
+// if the list has sections, is headingSize pixels tall. Rows navigate
 // through their href. Props go to React Aria's GridList.
 //
 // DESIGN: type-to-find is off: a row's text is a whole conversation, and
@@ -22,15 +25,20 @@ import {
 // (https://react-aria.adobe.com/selection#selection-behavior).
 function GridList<T extends object>({
   rowSize,
+  headingSize,
   className,
   ...props
 }: Omit<AriaGridListProps<T>, "className" | "disallowTypeAhead" | "selectionBehavior"> & {
   rowSize: number;
+  headingSize?: number;
   className?: string;
 }) {
-  // One object while rowSize stays: a new one has the Virtualizer lay the
+  // One object while the sizes stay: a new one has the Virtualizer lay the
   // list out again.
-  const layoutOptions = useMemo(() => ({ rowSize, loaderSize: rowSize }), [rowSize]);
+  const layoutOptions = useMemo(
+    () => ({ rowSize, loaderSize: rowSize, headingSize }),
+    [rowSize, headingSize],
+  );
   return (
     <Virtualizer layout={ListLayout} layoutOptions={layoutOptions}>
       <AriaGridList
@@ -94,6 +102,22 @@ function GridListLoadMore({ className, ...props }: GridListLoadMoreItemProps) {
   );
 }
 
+// GridListSectionHeader names the rows of the GridListSection it opens
+// (DESIGN.md "List sections"): a muted band, the sidebar's surface, with
+// the name in small text from the rows' edge, as tall as the list's
+// headingSize. React Aria names the section by it, and arrow keys pass it
+// by, from row to row.
+function GridListSectionHeader({ children }: { children: string }) {
+  return (
+    <AriaGridListHeader
+      data-slot="grid-list-section-header"
+      className="flex h-full items-center bg-muted px-4 text-xs font-medium"
+    >
+      {children}
+    </AriaGridListHeader>
+  );
+}
+
 // GridListEnd closes a list that has nothing more to load with children,
 // e.g. where the copied mail ends, 12 px under the last row.
 //
@@ -114,4 +138,11 @@ function GridListEnd({ className, children }: { className?: string; children: st
   );
 }
 
-export { GridList, GridListEnd, GridListItem, GridListLoadMore };
+export {
+  GridList,
+  GridListEnd,
+  GridListItem,
+  GridListLoadMore,
+  GridListSection,
+  GridListSectionHeader,
+};

@@ -10,17 +10,15 @@ import {
   type ReactNode,
 } from "react";
 import { ReplyAllIcon, ReplyIcon } from "lucide-react";
-import { Link } from "@tanstack/react-router";
 import * as z from "zod";
-import { useGetOutgoingMessage, useListConnectedAccounts } from "@/api/generated/inbok";
+import { useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
-import { lineLink } from "@/components/link-style";
 import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
-import { pollWhile, sendPollMs } from "./poll";
+import { useOutgoingMessage } from "./outbox";
 import {
   othersReceived,
   replyDefaults,
@@ -32,7 +30,6 @@ import { ReplyEditor } from "./reply-editor";
 import { MessageStatus } from "./status";
 import {
   accountsUnreadable,
-  inProgress,
   notAnswerable,
   readErrorMessage,
   replyLabels,
@@ -46,7 +43,8 @@ const notFound = 404;
 const messageId = z.uuid();
 
 // An open editor: its mode, what it starts with, the message it answers,
-// and a number that gives each editor its own form and Idempotency-Key.
+// a number that gives each editor its own form and Idempotency-Key, and
+// for Edit and send, the refused reply it sends again with edits.
 //
 // DESIGN: the message is fixed when it opens: a newer last message, synced
 // while the member types, must not turn the reply into an answer to
@@ -56,6 +54,7 @@ type Editor = {
   initial: ReplyValues;
   answered: AnsweredMessage;
   serial: number;
+  edit?: OutgoingMessage;
 };
 
 // A Reply button: the message it answers, its mode, and whether it is in
@@ -158,8 +157,14 @@ export function ReplyProvider({
   const { error: readError, isFetching: retrying, refetch } = read;
   const value = useMemo<Reply>(() => {
     // open shows the editor in mode answering answered, starting with
-    // initial, or with the defaults for that message.
-    function open(answered: AnsweredMessage, mode: ReplyMode, initial?: ReplyValues): void {
+    // initial, or with the defaults for that message; with refused, it
+    // sends that reply again with the member's edits.
+    function open(
+      answered: AnsweredMessage,
+      mode: ReplyMode,
+      initial?: ReplyValues,
+      refused?: OutgoingMessage,
+    ): void {
       if (!accounts) return;
       const button = document.activeElement;
       const place = button instanceof HTMLElement ? button.dataset.replyPlace : undefined;
@@ -171,24 +176,26 @@ export function ReplyProvider({
         initial: initial ?? replyDefaults(answered, mode, accounts),
         answered,
         serial: serial.current,
+        edit: refused,
       });
     }
 
     // edit opens an editor with the content of reply, a refused one that
-    // answered answered: a new reply to that same message, from reply's
-    // account while it can send.
+    // answered answered, which sends it again with the member's edits, from
+    // its own account.
     function edit(reply: OutgoingMessage, answered: AnsweredMessage): void {
-      const sends = accounts?.some(
-        (account) =>
-          account.id === reply.connectedAccountId && account.allowedActions.includes("send"),
+      open(
+        answered,
+        "reply",
+        {
+          connectedAccountId: reply.connectedAccountId,
+          to: reply.to,
+          cc: reply.cc,
+          bcc: reply.bcc,
+          body: reply.body,
+        },
+        reply,
       );
-      open(answered, "reply", {
-        connectedAccountId: sends ? reply.connectedAccountId : 0,
-        to: reply.to,
-        cc: reply.cc,
-        bcc: reply.bcc,
-        body: reply.body,
-      });
     }
 
     return {
@@ -318,6 +325,7 @@ function EditorForm({ reply, editor }: { reply: Reply; editor: Editor }): ReactE
       accounts={reply.accounts}
       receiving={reply.accounts.find((account) => account.id === editor.answered.accountId)}
       initial={editor.initial}
+      edit={editor.edit}
       onSent={(sent) => reply.setSent({ id: sent.id, answered: editor.answered })}
       onDiscard={reply.discard}
       onUnauthorized={reply.onUnauthorized}
@@ -390,10 +398,10 @@ export function ConversationReply({ message }: { message: AnsweredMessage }): Re
   );
 }
 
-// ReplyStatus shows how the send of the reply id goes, reading it again
-// while it is being sent, with what the member can do next. onEdit receives
-// a refused reply to edit into a new one; onSentAgain receives the copy a
-// Send again saved; onUnauthorized runs on a 401.
+// ReplyStatus shows how the send of the reply id goes, its status from the
+// Outbox's read (useOutgoingMessage), with what the member can do next.
+// onEdit receives a refused reply to edit into a new one; onSentAgain
+// receives the copy a Send again saved; onUnauthorized runs on a 401.
 function ReplyStatus({
   id,
   onEdit,
@@ -406,60 +414,55 @@ function ReplyStatus({
   onUnauthorized: () => void;
 }): ReactElement {
   const ref = useRef<HTMLElement>(null);
-  const read = useGetOutgoingMessage(id, {
-    query: { refetchInterval: pollWhile(sendPollMs, (data) => inProgress(data.data.status)) },
-  });
+  const read = useOutgoingMessage(id);
   const accounts = useListConnectedAccounts();
-  const reply = read.data?.data;
+  const reply = read.message;
   const gone = read.error?.status === notFound;
-  const current = accounts.data?.data.accounts.find(
-    (account) => account.id === reply?.connectedAccountId,
-  )?.email;
 
   useEffect(() => {
     // The editor that held focus is gone; its status takes it.
     ref.current?.focus();
   }, []);
   useEffect(() => {
-    if (read.error?.status === unauthorized) onUnauthorized();
-  }, [read.error, onUnauthorized]);
+    if (read.expired) onUnauthorized();
+  }, [read.expired, onUnauthorized]);
 
   return (
     <section
       ref={ref}
       tabIndex={-1}
       aria-label="Your reply"
-      className="flex flex-col gap-3 rounded-lg border p-4 outline-none"
+      className="flex flex-col rounded-lg border bg-card outline-none"
     >
       {reply && !gone && (
+        // The compose window's summary, in the card the Outbox's pane draws
+        // it in, so one status reads the same wherever it shows.
         <MessageStatus
           message={reply}
-          current={current}
+          accounts={accounts.data?.data.accounts}
           onSentAgain={onSentAgain}
           onUnauthorized={onUnauthorized}
           onEdit={() => onEdit(reply)}
+          look="window"
         />
       )}
       {/* A failed read without data, or a gone reply, replaces the status;
           a failed reread keeps it, saying it may have moved on, as the
           Outbox's page does. Polling stops on a failure; Try again restarts it. */}
-      {read.error && read.error.status !== unauthorized && (
-        <ReadError
-          message={
-            reply && !gone
-              ? `${replyStatusStale} ${userMessage(read.error)}`
-              : readErrorMessage(read.error)
-          }
-          error={read.error}
-          retrying={read.isFetching}
-          onRetry={() => void read.refetch()}
-        />
+      {read.error && !read.expired && (
+        <div className="p-4">
+          <ReadError
+            message={
+              reply && !gone
+                ? `${replyStatusStale} ${userMessage(read.error)}`
+                : readErrorMessage(read.error)
+            }
+            error={read.error}
+            retrying={read.retrying}
+            onRetry={read.retry}
+          />
+        </div>
       )}
-      <p>
-        <Link to="/mail/outbox/$id" params={{ id }} className={lineLink}>
-          Open in Outbox
-        </Link>
-      </p>
     </section>
   );
 }

@@ -1,18 +1,16 @@
 import {
-  Fragment,
   useEffect,
   useId,
   useRef,
   useState,
+  type ComponentProps,
   type ReactElement,
   type ReactNode,
 } from "react";
-import { ChevronDownIcon, ChevronUpIcon, PaperclipIcon, ReplyIcon } from "lucide-react";
-import { Toolbar } from "react-aria-components";
+import { PaperclipIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { ConversationMessageOutput } from "@/api/generated/model";
-import { AccountMark, type AccountColor } from "@/components/account-mark";
-import { Button } from "@/components/ui/button";
+import { AccountMark } from "@/components/account-mark";
 import {
   ConversationReply,
   MessageReplyActions,
@@ -20,34 +18,23 @@ import {
   ReplyProvider,
   useAnsweredId,
 } from "@/features/outgoing-messages/reply";
-import type { AnsweredMessage, MailAddress } from "@/features/outgoing-messages/reply-defaults";
+import type { AnsweredMessage } from "@/features/outgoing-messages/reply-defaults";
 import { listDate, useToday } from "@/features/mail/dates";
-import { fullNames, repliesElsewhere } from "@/features/mail/people";
+import { fullNames } from "@/features/mail/people";
 import { SenderAvatar } from "@/features/mail/sender-avatar";
 import { subjectText, unknownSender } from "@/features/mail/text";
 import { useMessageContent } from "./content";
 import { foldRows, initiallyOpen, type Folding } from "./folding";
 import {
   conversationActions,
-  detailsLabel,
   answeredDeleted,
-  fieldLabels,
-  foldLabel,
   formatReceived,
   hasAttachments,
-  answersLead,
-  answersOn,
   messageTotal,
   moreMessages,
-  noRecipients,
-  notSendersDomain,
-  notTheSender,
-  receivedBy,
-  repliesGoTo,
-  sentTo,
-  showAllAddresses,
 } from "./text";
-import { MessageContentView } from "./view";
+import { OpenMessage, type MessageAccount } from "./open-message";
+import { ReadingPane } from "./reading-pane";
 
 // ConversationMessage is one message of a conversation, as Get
 // Conversation gives it: its header fields, a plain-text preview for its
@@ -57,15 +44,7 @@ export type ConversationMessage = ConversationMessageOutput;
 
 // ConversationAccount is the connected account a conversation belongs to:
 // its ID, its name as the app shows it, its address, and its colour.
-export type ConversationAccount = {
-  id: number;
-  name: string;
-  email: string;
-  color: AccountColor;
-};
-
-// How many addresses a details field lists before "Show all".
-const shownAddresses = 10;
+export type ConversationAccount = MessageAccount & { id: number };
 
 // ConversationView shows a conversation (DESIGN.md "Reading pane"): a
 // toolbar pinned to the top, which shows the subject once the title has
@@ -109,8 +88,8 @@ type ConversationProps = {
   startAt?: string;
 };
 
-// Conversation is the view inside its reply editor's provider: the toolbar
-// and title, then the messages' thread once they are read.
+// Conversation is the view inside its reply editor's provider: the
+// reading pane, then the messages' thread once they are read.
 function Conversation({
   subject,
   account,
@@ -123,125 +102,37 @@ function Conversation({
   messageActions,
   startAt,
 }: ConversationProps): ReactElement {
-  const id = useId();
-  const title = subjectText(subject);
-  const scroller = useRef<HTMLDivElement>(null);
-  const toolbar = useRef<HTMLDivElement>(null);
-  const heading = useRef<HTMLHeadingElement>(null);
-  const [titleHidden, setTitleHidden] = useState(false);
-
-  useEffect(() => {
-    // The view opens scrolled to its top, so focus moves the eye nowhere.
-    heading.current?.focus({ preventScroll: true });
-  }, []);
-
-  useEffect(() => {
-    const bar = toolbar.current;
-    const pane = scroller.current;
-    if (!bar || !pane) return undefined;
-    // Whatever scrolls into view, by focus or by a link, stops below the
-    // pinned toolbar (WCAG 2.4.11); once it no longer pins, nothing covers.
-    const observer = new ResizeObserver(() => {
-      const pinned = getComputedStyle(bar).position === "sticky";
-      pane.style.scrollPaddingTop = pinned ? `${bar.offsetHeight}px` : "";
-    });
-    observer.observe(bar);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const target = heading.current;
-    if (!target) return undefined;
-    // The title counts as gone once it is under the pinned toolbar.
-    const observer = new IntersectionObserver(([entry]) => setTitleHidden(!entry.isIntersecting), {
-      root: scroller.current,
-      rootMargin: `-${toolbar.current?.offsetHeight ?? 0}px 0px 0px 0px`,
-    });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, []);
-
   return (
-    // scroll-pb: what scrolls into view stops above a toast (toast.tsx).
-    <div
-      ref={scroller}
-      className="@container h-full scroll-pb-(--toast-space) overflow-y-auto bg-background"
-    >
-      <div
-        ref={toolbar}
-        data-raised={titleHidden || undefined}
-        // Wraps only when large text leaves no room; DESIGN.md keeps five
-        // buttons and More.
-        // Pinned while its buttons fit one row: under 20em, as large text
-        // makes a phone's pane (six 44 px buttons and the gutters), it
-        // would take a third of the screen, so it scrolls away instead.
-        // The query counts in em, so it follows the text size, not pixels.
-        className="sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 border-b border-transparent bg-background px-4 data-raised:border-border @max-[20em]:static"
-      >
-        {back}
-        <p
-          // The title says it already, for anyone reading in order; and as
-          // a copy, faded out until then, it takes no pointer or selection.
-          aria-hidden="true"
-          // A subject's direction from its first letter, as the list's.
-          dir="auto"
-          // Under a 512 px pane it may shrink, so the toolbar keeps one
-          // row (ADR031, "Mail actions as built", checkpoint 7c); under
-          // 28em, e.g. a phone, it would be a few letters between Back and
-          // the actions, so it hides. In em, so it follows the text size.
-          className={cn(
-            "pointer-events-none min-w-0 flex-1 truncate px-2 text-sm font-semibold transition-opacity duration-150 select-none @max-[28em]:hidden @lg:min-w-24",
-            titleHidden ? "opacity-100" : "opacity-0",
+    <ReadingPane
+      title={subjectText(subject)}
+      byline={
+        <>
+          <AccountMark color={account.color} name={account.name} />
+          {messages && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="shrink-0">{messageTotal(messages.length)}</span>
+            </>
           )}
-        >
-          {title}
-        </p>
-        {actions && (
-          // React Aria's toolbar: Tab reaches it once, arrow keys move
-          // between its buttons.
-          <Toolbar
-            aria-label={conversationActions}
-            className="ml-auto flex flex-wrap items-center gap-0.5"
-          >
-            {actions}
-          </Toolbar>
-        )}
-      </div>
-      <article aria-labelledby={`${id}-title`} className="flex flex-col px-4 pb-6 @lg:px-6">
-        <header className="flex flex-col gap-1 pt-2 pb-4">
-          <h2
-            ref={heading}
-            id={`${id}-title`}
-            tabIndex={-1}
-            dir="auto"
-            className="text-subject font-semibold wrap-break-word outline-none"
-          >
-            {title}
-          </h2>
-          <p className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-            <AccountMark color={account.color} name={account.name} />
-            {messages && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span className="shrink-0">{messageTotal(messages.length)}</span>
-              </>
-            )}
-          </p>
-          {marks}
-        </header>
-        {messages ? (
-          <Thread
-            account={account}
-            messages={messages}
-            onUnauthorized={onUnauthorized}
-            messageActions={messageActions}
-            startAt={startAt}
-          />
-        ) : (
-          placeholder
-        )}
-      </article>
-    </div>
+        </>
+      }
+      marks={marks}
+      back={back}
+      actions={actions}
+      actionsLabel={conversationActions}
+    >
+      {messages ? (
+        <Thread
+          account={account}
+          messages={messages}
+          onUnauthorized={onUnauthorized}
+          messageActions={messageActions}
+          startAt={startAt}
+        />
+      ) : (
+        placeholder
+      )}
+    </ReadingPane>
   );
 }
 
@@ -428,11 +319,10 @@ function Thread({
                 }}
               >
                 {open.has(row.message.id) ? (
-                  <OpenMessage
+                  <LoadedMessage
                     message={row.message}
                     account={account}
-                    foldId={foldId(row.message.id)}
-                    onFold={() => foldMessage(row.message.id)}
+                    fold={{ id: foldId(row.message.id), onFold: () => foldMessage(row.message.id) }}
                     id={articleId(row.message.id)}
                     answers={answersLine(row.message, messageAbove(i))}
                     actions={
@@ -544,322 +434,17 @@ function FoldedMessage({
   );
 }
 
-// OpenMessage is a message shown whole: its header, then its content,
-// which it loads. Its avatar folds it, as does a click on its header's
-// empty space.
-function OpenMessage({
+// LoadedMessage is a conversation's message shown whole (OpenMessage),
+// loading its content, which onUnauthorized hears a 401 of. The other
+// props go to OpenMessage.
+function LoadedMessage({
   message,
-  account,
-  id,
-  foldId,
-  onFold,
-  answers,
-  actions,
-  today,
   onUnauthorized,
-}: {
+  ...props
+}: Omit<ComponentProps<typeof OpenMessage>, "head" | "content"> & {
   message: ConversationMessage;
-  account: ConversationAccount;
-  id: string;
-  foldId: string;
-  onFold: () => void;
-  answers: { sender: string; date: string; onShow: () => void } | undefined;
-  actions: ReactNode;
-  today: Date;
   onUnauthorized: () => void;
 }): ReactElement {
-  const detailsId = useId();
-  const [details, setDetails] = useState(false);
   const content = useMessageContent(message.id, onUnauthorized);
-  const when = formatReceived(message.date);
-  const sender = message.from[0];
-  const senderName = message.from.length > 0 ? fullNames(message.from, undefined) : unknownSender;
-  const recipients = fullNames([...message.to, ...message.cc], account.email);
-
-  return (
-    <article
-      id={id}
-      // Focused when a link shows it; the flash marks it, and the keyboard
-      // gets the ring.
-      tabIndex={-1}
-      aria-label={`${senderName}, ${when.short}`}
-      className="flex flex-col gap-3 px-2 py-3 outline-none focus-visible:focus-ring-inset"
-    >
-      {/* A click on the header's empty space folds the message, as in
-          Gmail; the avatar does the same for the keyboard. */}
-      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a pointer shortcut; the avatar is the keyboard's button. */}
-      <div
-        className="flex cursor-pointer gap-3"
-        onClick={(event) => {
-          if (event.target instanceof Element && event.target.closest("button, a")) return;
-          // Selecting the address to copy it is not a click on the header.
-          if (window.getSelection()?.toString()) return;
-          onFold();
-        }}
-      >
-        <button
-          type="button"
-          id={foldId}
-          aria-expanded={true}
-          aria-label={foldLabel(senderName)}
-          onClick={onFold}
-          // ::before grows its 36 px to 44 px for touch (DESIGN.md
-          // "Control height") without moving it.
-          className="relative shrink-0 self-start rounded-full outline-none focus-visible:focus-ring pointer-coarse:before:absolute pointer-coarse:before:-inset-1"
-        >
-          <SenderAvatar sender={sender} />
-        </button>
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
-          <div className="flex items-start gap-2">
-            {/* Name and address share a line while both fit; the address
-                then moves to the next line whole, never cut, as its domain
-                tells real mail from fake. */}
-            {/* Every sender shows: the Reply-To call-out compares with
-                each one's domain, so none may hide. */}
-            <p className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1.5">
-              {message.from.length > 0 ? (
-                message.from.map((entry, i) => (
-                  // oxlint-disable-next-line react/no-array-index-key -- a sender listed twice is the sender's doing; the list never reorders.
-                  <Fragment key={`${i} ${entry.address}`}>
-                    <AddressText
-                      entry={entry}
-                      nameClass="max-w-full font-semibold wrap-break-word"
-                      suffix={i < message.from.length - 1 ? "," : ""}
-                    />
-                  </Fragment>
-                ))
-              ) : (
-                <span className="font-semibold text-muted-foreground">{unknownSender}</span>
-              )}
-            </p>
-            {/* In a narrow pane the date moves to the "to" line, leaving
-                this one to the sender and the actions. */}
-            <time
-              dateTime={message.date}
-              title={when.full}
-              className="hidden shrink-0 pt-0.5 text-xs text-muted-foreground tabular-nums @lg:block"
-            >
-              {when.short}
-            </time>
-            {/* The actions end the sender's line at every width, so they
-                never move between messages. On touch, 12 px apart, so each
-                one's 44 px target (reply.tsx) has its own room. */}
-            {actions && (
-              <div className="flex shrink-0 items-center pointer-coarse:gap-3">{actions}</div>
-            )}
-          </div>
-          {/* The date, in a narrow pane, and the details button follow the
-              recipients, which shrink first. */}
-          <div className="flex min-w-0 items-center gap-1 text-muted-foreground">
-            <span dir="auto" className="min-w-0 truncate">
-              {sentTo(recipients || noRecipients)}
-            </span>
-            <time
-              dateTime={message.date}
-              title={when.full}
-              className="shrink-0 tabular-nums @lg:hidden"
-            >
-              · {listDate(new Date(message.date), today)}
-            </time>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={detailsLabel}
-              aria-expanded={details}
-              aria-controls={detailsId}
-              onPress={() => setDetails((shown) => !shown)}
-              // A 20 px box around a 14 px chevron; ::before grows its
-              // target to 24 px (WCAG 2.5.8), 44 px for touch.
-              className="relative size-5 rounded-md before:absolute before:-inset-0.5 pointer-coarse:z-10 pointer-coarse:size-5 pointer-coarse:before:-inset-3"
-            >
-              {/* 1 px down: lowercase text sits below its line's middle,
-                    so a chevron centred on the box looks high beside it. */}
-              {details ? (
-                <ChevronUpIcon className="size-3.5 translate-y-px" />
-              ) : (
-                <ChevronDownIcon className="size-3.5 translate-y-px" />
-              )}
-            </Button>
-          </div>
-          {answers && (
-            <p>
-              <Button
-                variant="link"
-                size="sm"
-                onPress={answers.onShow}
-                // Text-sized, as a link in a line; on touch ::before grows
-                // its target to 44 px (DESIGN.md "Control height") without
-                // growing the line, reaching up into the "to" line, whose
-                // details button stays on top where their targets meet. It
-                // wraps, breaking a long address anywhere, rather than run
-                // past the pane.
-                className="relative min-h-0 max-w-full shrink justify-start p-0 text-left font-normal wrap-anywhere whitespace-normal text-muted-foreground pointer-coarse:min-h-0 pointer-coarse:before:absolute pointer-coarse:before:inset-x-0 pointer-coarse:before:-inset-y-3"
-              >
-                {/* One run of text, so its underline is one line; bdi: a
-                    right-to-left name keeps "on" and the date after it,
-                    whatever the date starts with. */}
-                <span>
-                  {answersLead} <bdi>{answers.sender}</bdi> {answersOn} {answers.date}
-                </span>
-              </Button>
-            </p>
-          )}
-          {/* A message the account sent is answered to its To, so the
-              line would name the wrong place (reply-defaults.ts). */}
-          {repliesElsewhere(message.replyTo, message.from) && !message.sent && (
-            <p className="flex items-start gap-1.5 text-muted-foreground">
-              <ReplyIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-              <span className="min-w-0 wrap-break-word">
-                {repliesGoTo}{" "}
-                <bdi className="text-foreground">
-                  {message.replyTo.map((entry) => entry.address).join(", ")}
-                </bdi>
-                {notTheSender}
-              </span>
-            </p>
-          )}
-        </div>
-      </div>
-      {details && (
-        <div id={detailsId} className="rounded-lg bg-muted/50 p-3 @lg:ml-12">
-          <Details message={message} account={account} when={when.full} />
-        </div>
-      )}
-      <MessageContentView content={content} />
-    </article>
-  );
-}
-
-// Details lists a message's header in full: From, Reply-To, To, Cc, the
-// date, and the account that received it. Labels sit beside their values
-// from 512 px of pane, above them below.
-function Details({
-  message,
-  account,
-  when,
-}: {
-  message: ConversationMessage;
-  account: ConversationAccount;
-  when: string;
-}): ReactElement {
-  const elsewhere = repliesElsewhere(message.replyTo, message.from);
-  return (
-    <dl className="grid grid-cols-1 gap-x-3 text-sm @lg:grid-cols-[auto_minmax(0,1fr)] @lg:gap-y-1 [&>dd]:mb-2 @lg:[&>dd]:mb-0">
-      <AddressField label={fieldLabels.from} entries={message.from} />
-      <AddressField label={fieldLabels.replyTo} entries={message.replyTo} strong={elsewhere} />
-      <AddressField label={fieldLabels.to} entries={message.to} />
-      <AddressField label={fieldLabels.cc} entries={message.cc} />
-      <dt className="text-muted-foreground">{fieldLabels.date}</dt>
-      <dd>{when}</dd>
-      <dt className="text-muted-foreground">{receivedBy}</dt>
-      <dd className="min-w-0">
-        <AccountMark color={account.color} name={`${account.name} (${account.email})`} />
-      </dd>
-    </dl>
-  );
-}
-
-// AddressField is one field of addresses in the details, left out when it
-// has none. It lists the first shownAddresses, then a link to show all;
-// strong marks a Reply-To at another domain.
-function AddressField({
-  label,
-  entries,
-  strong = false,
-}: {
-  label: string;
-  entries: readonly MailAddress[];
-  strong?: boolean;
-}): ReactElement | null {
-  const [all, setAll] = useState(false);
-  // The first address "Show all" reveals takes focus from the button,
-  // which goes away.
-  const firstRevealed = useRef<HTMLSpanElement>(null);
-  const revealed = useRef(false);
-  useEffect(() => {
-    if (!all || !revealed.current) return;
-    revealed.current = false;
-    firstRevealed.current?.focus();
-  }, [all]);
-  if (entries.length === 0) return null;
-  const shown = all ? entries : entries.slice(0, shownAddresses);
-  return (
-    <>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={cn("wrap-break-word", strong && "font-semibold")}>
-        {shown.map((entry, i) => (
-          <span
-            // oxlint-disable-next-line react/no-array-index-key -- an address listed twice is the sender's doing; the index keeps the keys apart, and the list never reorders.
-            key={`${i} ${entry.address}`}
-            ref={i === shownAddresses ? firstRevealed : undefined}
-            tabIndex={i === shownAddresses ? -1 : undefined}
-            className="rounded-sm outline-none focus-visible:focus-ring"
-          >
-            <AddressText entry={entry} suffix={i < shown.length - 1 ? "," : ""} />{" "}
-          </span>
-        ))}
-        {!all && entries.length > shownAddresses && (
-          <Button
-            variant="link"
-            size="sm"
-            // Text-sized, as a link in a line; ::before gives touch its
-            // 44 px (DESIGN.md "Control height").
-            className="relative min-h-0 p-0 align-baseline pointer-coarse:min-h-0 pointer-coarse:before:absolute pointer-coarse:before:inset-x-0 pointer-coarse:before:-inset-y-3"
-            onPress={() => {
-              revealed.current = true;
-              setAll(true);
-            }}
-          >
-            {showAllAddresses(entries.length)}
-          </Button>
-        )}
-        {strong && (
-          <span className="block text-xs font-normal text-muted-foreground">
-            {notSendersDomain}
-          </span>
-        )}
-      </dd>
-    </>
-  );
-}
-
-// AddressText shows entry by its name and address: the address alone when
-// it has no name or the name is the address; the name alone when it has
-// no address, e.g. "Undisclosed recipients". suffix, e.g. a list's comma,
-// stays on the line of the address it follows.
-function AddressText({
-  entry,
-  nameClass,
-  suffix = "",
-}: {
-  entry: MailAddress;
-  nameClass?: string;
-  suffix?: string;
-}): ReactElement {
-  const name = entry.name.trim();
-  if (!entry.address)
-    return (
-      <>
-        <bdi className={nameClass}>{name}</bdi>
-        {suffix}
-      </>
-    );
-  if (!name || name.toLowerCase() === entry.address.toLowerCase())
-    return (
-      <>
-        <bdi className={nameClass}>{entry.address}</bdi>
-        {suffix}
-      </>
-    );
-  return (
-    <>
-      {/* The name is the sender's text, so bdi keeps a direction override
-          in it from reordering the address after it. */}
-      <bdi className={nameClass}>{name}</bdi>{" "}
-      {/* Left to right with its brackets, whatever the page's direction. */}
-      <bdi dir="ltr" className="inline-block max-w-full wrap-break-word text-muted-foreground">
-        &lt;{entry.address}&gt;{suffix}
-      </bdi>
-    </>
-  );
+  return <OpenMessage head={message} content={content} {...props} />;
 }

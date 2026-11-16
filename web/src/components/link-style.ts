@@ -14,5 +14,11 @@ export const lineLink = `inline-flex min-h-11 w-fit items-center ${textLink}`;
 // in a sentence (2.5.8, Target Size (Minimum)).
 export const smallTarget = "min-h-6 w-fit text-sm pointer-coarse:min-h-6";
 
+// inlineLinkButton sizes a `Button variant="link"` to its text inside a
+// line, e.g. "Show all" after a list cut short; ::before gives touch its
+// 44 px (DESIGN.md "Control height").
+export const inlineLinkButton =
+  "relative min-h-0 p-0 align-baseline pointer-coarse:min-h-0 pointer-coarse:before:absolute pointer-coarse:before:inset-x-0 pointer-coarse:before:-inset-y-3";
+
 // smallLink is a link in small text beside a label, e.g. "Forgot password?".
 export const smallLink = `inline-flex items-center ${smallTarget} ${textLink}`;

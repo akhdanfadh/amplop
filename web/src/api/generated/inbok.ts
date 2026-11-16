@@ -71,6 +71,7 @@ import type {
   CountNewConversationsParams,
   EmailVerificationSecret,
   ListConversationsParams,
+  MessageEdits,
   NewCodeSession,
   NewMember,
   NewOutgoingMessage,
@@ -2062,7 +2063,7 @@ export const getListOutgoingMessagesUrl = () => {
 }
 
 /**
- * Lists the messages the signed-in account sent from inbok, newest first, without their bodies, including those that failed or whose outcome is unknown.
+ * Lists at most 50 messages the signed-in account sent from inbok, without their bodies, including those that failed or whose outcome is unknown: the outstanding ones first, so newer finished ones never push one out, then the rest, each newest first; past 50 outstanding, the oldest of those are left out.
  * @summary List Outgoing Messages
  */
 export const listOutgoingMessages = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessages> => {
@@ -2349,6 +2350,82 @@ export function useGetOutgoingMessage<TData = Awaited<ReturnType<typeof getOutgo
 
 
 
+export const getDismissOutgoingMessageUrl = (id: string,) => {
+
+
+
+
+  return `/api/v0/outgoing-messages/${id}/dismiss`
+}
+
+/**
+ * Marks a failed or unknown message dismissed, so it is no longer outstanding: the member gave up on it, or found it in the account's Sent folder. It keeps its status and can still be sent again. Dismissing a message already dismissed or sent again returns it unchanged, as it already needs nothing more. Nothing is sent, so Gmail need not be set up.
+ * @summary Dismiss Outgoing Message
+ */
+export const dismissOutgoingMessage = async (id: string, options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessage> => {
+
+  return transport<ResponseOutgoingMessage>(getDismissOutgoingMessageUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+    ,
+    schema: ResponseOutgoingMessage
+  }
+);}
+
+
+
+
+
+export const getDismissOutgoingMessageMutationKey = () => ['dismissOutgoingMessage'] as const;
+
+export const getDismissOutgoingMessageMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissOutgoingMessage>>, TError,DismissOutgoingMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissOutgoingMessage>>, TError,DismissOutgoingMessageMutationVariables, TContext> => {
+
+const mutationKey = getDismissOutgoingMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissOutgoingMessage>>, DismissOutgoingMessageMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  dismissOutgoingMessage(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissOutgoingMessageMutationResult = NonNullable<Awaited<ReturnType<typeof dismissOutgoingMessage>>>
+
+    export type DismissOutgoingMessageMutationError = ErrorType<Problem>
+    export type DismissOutgoingMessageMutationVariables = {id: string}
+
+    /**
+ * @summary Dismiss Outgoing Message
+ */
+export const useDismissOutgoingMessage = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissOutgoingMessage>>, TError,DismissOutgoingMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof dismissOutgoingMessage>>,
+        TError,
+        DismissOutgoingMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDismissOutgoingMessageMutationOptions(options), queryClient);
+    }
+
 export const getSendMessageAgainUrl = (id: string,) => {
 
 
@@ -2358,17 +2435,32 @@ export const getSendMessageAgainUrl = (id: string,) => {
 }
 
 /**
- * Saves a copy of a failed or unknown message, waiting to be sent from the same account's current address, and returns the copy. The message then names the copy in sentAgainAs, and sending it again returns the same copy, so it is sent again at most once. Sending counts toward the signed-in account's limit of 30 messages per 15 minutes and 200 per 24 hours, from all its connected accounts.
+ * Saves a copy of a failed or unknown message, waiting to be sent from the same account's current address, and returns the copy. With a body, the copy has the body's recipients, subject, and text instead of the message's, checked as a new message's; this is how a message Gmail refused is edited and sent. A reply's copy keeps its threading and subject either way. The message then names the copy in sentAgainAs, and sending it again returns the same copy, so it is sent again at most once; with a body other than the copy's content, that is refused. Sending counts toward the signed-in account's limit of 30 messages per 15 minutes and 200 per 24 hours, from all its connected accounts.
  * @summary Send Message Again
  */
-export const sendMessageAgain = async (id: string, options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessage> => {
+export const sendMessageAgain = async (id: string,
+    messageEdits?: MessageEdits, options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessage> => {
 
-  return transport<ResponseOutgoingMessage>(getSendMessageAgainUrl(id),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return transport<ResponseOutgoingMessage>(getSendMessageAgainUrl(id),
   {
     ...options,
-    method: 'POST'
-
-    ,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(messageEdits),
     schema: ResponseOutgoingMessage
   }
 );}
@@ -2394,9 +2486,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendMessageAgain>>, SendMessageAgainMutationVariables> = (props) => {
-          const {id} = props ?? {};
+          const {id,data} = props ?? {};
 
-          return  sendMessageAgain(id,requestOptions)
+          return  sendMessageAgain(id,data,requestOptions)
         }
 
 
@@ -2407,9 +2499,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type SendMessageAgainMutationResult = NonNullable<Awaited<ReturnType<typeof sendMessageAgain>>>
-
+    export type SendMessageAgainMutationBody = MessageEdits | undefined
     export type SendMessageAgainMutationError = ErrorType<Problem>
-    export type SendMessageAgainMutationVariables = {id: string}
+    export type SendMessageAgainMutationVariables = {id: string;data?: MessageEdits}
 
     /**
  * @summary Send Message Again

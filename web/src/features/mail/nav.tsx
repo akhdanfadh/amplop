@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactElement, type RefObject } from "react";
+import { Fragment, useEffect, useRef, type ReactElement, type RefObject } from "react";
 import { linkOptions, useLocation, useMatch } from "@tanstack/react-router";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/lib/count";
@@ -46,7 +46,6 @@ import { useOverflow } from "@/hooks/use-overflow";
 import { labelTree, unreadIn, usePlaceCounts, type LabelNode } from "./place-counts";
 import type { PlaceCount } from "./conversations";
 import { useOutbox } from "@/features/outgoing-messages/outbox";
-import { unfinished } from "@/features/outgoing-messages/text";
 import { useCompose } from "@/features/outgoing-messages/compose-store";
 import {
   accountFoldName,
@@ -71,16 +70,16 @@ const placeIcon: Record<ViewPlace, LucideIcon> = {
 };
 
 // MailNav is the mail sidebar's content (DESIGN.md "Sidebar"): Compose;
-// the views, the Inbox with its unread count; the accounts, each filtering
-// every view, with its inbox's unread count, its status, and its labels;
-// and the Outbox with how many of its messages are not sent yet. The items
-// of the open place and account filter are marked.
+// the views, the Inbox with its unread count, and after Sent the Outbox
+// with how many of its messages are not sent yet; then the accounts, each
+// filtering every view, with its inbox's unread count, its status, and its
+// labels. The items of the open place and account filter are marked.
 export function MailNav(): ReactElement {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { dismiss: closeDrawer } = useSidebar();
   const outbox = useOutbox();
   // What still asks for the member, so a message sent again stops counting.
-  const notSent = outbox.data?.data.messages.filter(unfinished).length ?? 0;
+  const notSent = outbox.data?.data.messages.filter((message) => message.outstanding).length ?? 0;
   const open = useMatch({ from: "/_app/_mail/mail/$place", shouldThrow: false });
   const filter = open?.search.account;
   const counts = usePlaceCounts();
@@ -107,24 +106,39 @@ export function MailNav(): ReactElement {
       <SidebarGroup>
         <SidebarMenu>
           {viewPlaces.map((place) => (
-            <NavItem
-              key={place}
-              // The account filter stays as the member moves between views.
-              href={linkOptions({
-                to: "/mail/$place",
-                params: { place },
-                search: { account: filter },
-              })}
-              name={placeName[place]}
-              icon={placeIcon[place]}
-              isActive={within(pathname, `/mail/${place}`)}
-              onPress={closeDrawer}
-              count={
-                place === "inbox"
-                  ? { value: unreadIn(counts, "inbox", filter), label: unreadLabel, unread: true }
-                  : undefined
-              }
-            />
+            <Fragment key={place}>
+              <NavItem
+                // The account filter stays as the member moves between views.
+                href={linkOptions({
+                  to: "/mail/$place",
+                  params: { place },
+                  search: { account: filter },
+                })}
+                name={placeName[place]}
+                icon={placeIcon[place]}
+                isActive={within(pathname, `/mail/${place}`)}
+                onPress={closeDrawer}
+                count={
+                  place === "inbox"
+                    ? { value: unreadIn(counts, "inbox", filter), label: unreadLabel, unread: true }
+                    : undefined
+                }
+              />
+              {/* What is on its way to Sent, beside it and above the
+                  accounts' labels, so its count stays in sight. It is
+                  inbok's record, not Gmail's mail: every account's, so
+                  the account filter doesn't reach it. */}
+              {place === "sent" && (
+                <NavItem
+                  href={linkOptions({ to: "/mail/outbox" })}
+                  name={outboxName}
+                  icon={UploadIcon}
+                  count={{ value: notSent, label: notSentLabel }}
+                  isActive={within(pathname, "/mail/outbox")}
+                  onPress={closeDrawer}
+                />
+              )}
+            </Fragment>
           ))}
         </SidebarMenu>
       </SidebarGroup>
@@ -140,18 +154,6 @@ export function MailNav(): ReactElement {
         pathname={pathname}
         onPress={closeDrawer}
       />
-      <SidebarGroup>
-        <SidebarMenu>
-          <NavItem
-            href={linkOptions({ to: "/mail/outbox" })}
-            name={outboxName}
-            icon={UploadIcon}
-            count={{ value: notSent, label: notSentLabel }}
-            isActive={within(pathname, "/mail/outbox")}
-            onPress={closeDrawer}
-          />
-        </SidebarMenu>
-      </SidebarGroup>
     </div>
   );
 }

@@ -5,15 +5,7 @@ import { ApiError } from "@/api/transport";
 import { messagePath } from "@/test/message-server";
 import { Attachments, type Attachment } from "./attachments";
 import { HtmlBody } from "./html-body";
-import { MessageView, type MessageContent, type MessageHeader } from "./view";
-
-const header: MessageHeader = {
-  from: [{ name: "Ana Lima", email: "ana@example.com" }],
-  to: [{ email: "me@example.com" }],
-  cc: [],
-  subject: "Spring newsletter",
-  receivedAt: "2026-11-09T07:05:00Z",
-};
+import { MessageContentView, type MessageContent } from "./view";
 
 // loaded is content that has loaded with the bodies and attachments given.
 function loaded(content: Partial<Extract<MessageContent, { status: "success" }>>): MessageContent {
@@ -29,11 +21,10 @@ afterEach(async () => {
   await page.viewport(414, 896);
 });
 
-describe("MessageView", () => {
+describe("MessageContentView", () => {
   it("shows images from the web only once the member asks", async () => {
     await render(
-      <MessageView
-        header={header}
+      <MessageContentView
         content={loaded({
           remote: "blocked",
           bodies: [
@@ -63,8 +54,7 @@ describe("MessageView", () => {
 
   it("offers attachments as downloads with their names and sizes", async () => {
     await render(
-      <MessageView
-        header={header}
+      <MessageContentView
         content={loaded({
           attachments: [
             {
@@ -97,8 +87,7 @@ describe("MessageView", () => {
 
   it("offers the whole of a long text body as a download", async () => {
     await render(
-      <MessageView
-        header={header}
+      <MessageContentView
         content={loaded({
           bodies: [{ partId: "0", type: "text", text: "The start", wholeUrl: "/whole" }],
         })}
@@ -114,8 +103,7 @@ describe("MessageView", () => {
   it("says when content failed to load, and tries again", async () => {
     const onRetry = vi.fn<() => void>();
     await render(
-      <MessageView
-        header={header}
+      <MessageContentView
         content={{
           status: "error",
           error: new ApiError("http", { method: "GET", status: 502 }),
@@ -135,16 +123,7 @@ describe("MessageView", () => {
   it("fits a phone's width without scrolling the page sideways", async () => {
     await page.viewport(375, 812);
     await render(
-      <MessageView
-        header={{
-          ...header,
-          from: [
-            {
-              name: "A sender with a very long name indeed",
-              email: `${"x".repeat(60)}@example.com`,
-            },
-          ],
-        }}
+      <MessageContentView
         content={loaded({
           bodies: [
             {
@@ -303,8 +282,7 @@ describe("Attachments at their limits", () => {
 describe("Bodies", () => {
   it("lays a text body out in its own direction", async () => {
     await render(
-      <MessageView
-        header={header}
+      <MessageContentView
         content={loaded({
           bodies: [{ partId: "0", type: "text", text: "مرحبا، هذا تقرير الربع الثالث." }],
         })}
@@ -318,8 +296,7 @@ describe("Bodies", () => {
 
   it("says when a message has no text", async () => {
     await render(
-      <MessageView
-        header={header}
+      <MessageContentView
         content={loaded({ bodies: [{ partId: "0", type: "text", text: "  \n" }] })}
       />,
     );

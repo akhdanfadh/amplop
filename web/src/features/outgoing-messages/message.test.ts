@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { OutgoingMessage } from "@/api/generated/model";
-import { messageContent, messageHeader } from "./message";
+import { messageContent, messageHead } from "./message";
 
 const message: OutgoingMessage = {
   id: "0b9f3a52-5f1d-4a8e-9a43-5f0c2b6b1c11",
@@ -16,23 +16,28 @@ const message: OutgoingMessage = {
   createdAt: "2026-11-10T10:00:00Z",
   sentAt: null,
   sentAgainAs: null,
+  dismissedAt: null,
+  outstanding: true,
+  reply: false,
+  allowedActions: [],
 };
 
-describe("messageHeader", () => {
-  it("shows every list, Bcc included, dated when the message was saved", () => {
-    expect(messageHeader(message)).toEqual({
-      from: [{ email: "me@example.com" }],
-      to: [{ email: "ana@example.com" }],
-      cc: [{ email: "bo@example.com" }],
-      bcc: [{ email: "cy@example.com" }],
-      subject: "Lunch",
-      receivedAt: "2026-11-10T10:00:00Z",
+describe("messageHead", () => {
+  it("shows every list, Bcc included, sent, dated when the message was saved", () => {
+    expect(messageHead(message)).toEqual({
+      from: [{ name: "", address: "me@example.com" }],
+      replyTo: [],
+      to: [{ name: "", address: "ana@example.com" }],
+      cc: [{ name: "", address: "bo@example.com" }],
+      bcc: [{ name: "", address: "cy@example.com" }],
+      date: "2026-11-10T10:00:00Z",
+      sent: true,
     });
   });
 
   it("dates a sent message when Gmail took it", () => {
     const sent = { ...message, status: "sent" as const, sentAt: "2026-11-10T10:00:05Z" };
-    expect(messageHeader(sent).receivedAt).toBe("2026-11-10T10:00:05Z");
+    expect(messageHead(sent).date).toBe("2026-11-10T10:00:05Z");
   });
 });
 
