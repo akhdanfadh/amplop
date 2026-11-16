@@ -8,6 +8,7 @@ import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter, memberSession } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { refreshMail } from "./conversations";
 
 // Labels' ids, as List Places gives them.
 const clients = "00000000-0000-4000-8000-0000000000d1";
@@ -156,6 +157,54 @@ describe("New label in the sidebar", () => {
 
     await expect.element(nav().getByRole("link", { name: "Work" })).toBeVisible();
     expect(nav().getByRole("button", { name: "New label" }).elements()).toHaveLength(0);
+  });
+});
+
+describe("the open label", () => {
+  it("follows a rename a sync finds", async () => {
+    const router = await open(`/mail/${hiring}?account=1`);
+    await expect.element(page.getByRole("heading", { name: "Hiring", level: 1 })).toBeVisible();
+
+    api.places = api.places.map((p) => (p.place === hiring ? { ...p, name: "Recruiting" } : p));
+    await refreshMail(router.options.context.queryClient);
+
+    await expect.element(page.getByRole("heading", { name: "Recruiting", level: 1 })).toBeVisible();
+  });
+});
+
+describe("a label gone", () => {
+  it("says so at an old link, and Page not found stays for an address that is no place", async () => {
+    await open("/mail/00000000-0000-4000-8000-0000000000ff?account=1");
+    await expect
+      .element(page.getByRole("heading", { name: "This label doesn't exist" }))
+      .toBeVisible();
+    await expect
+      .element(page.getByRole("link", { name: "Open Inbox" }))
+      .toHaveAttribute("href", "/mail/inbox");
+  });
+
+  it("says so once a sync finds the open label deleted in Gmail", async () => {
+    const router = await open(`/mail/${hiring}?account=1`);
+    await expect.element(page.getByRole("heading", { name: "Hiring", level: 1 })).toBeVisible();
+
+    api.places = api.places.filter((p) => p.place !== hiring);
+    await refreshMail(router.options.context.queryClient);
+
+    await expect
+      .element(page.getByRole("heading", { name: "This label doesn't exist" }))
+      .toBeVisible();
+  });
+
+  it("says so once the last account goes, leaving no places at all", async () => {
+    const router = await open(`/mail/${hiring}?account=1`);
+    await expect.element(page.getByRole("heading", { name: "Hiring", level: 1 })).toBeVisible();
+
+    api.places = [];
+    await refreshMail(router.options.context.queryClient);
+
+    await expect
+      .element(page.getByRole("heading", { name: "This label doesn't exist" }))
+      .toBeVisible();
   });
 });
 

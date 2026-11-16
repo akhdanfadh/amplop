@@ -1,5 +1,13 @@
-import { useMemo, type ReactElement } from "react";
-import { Outlet, createFileRoute, notFound, redirect, useMatch } from "@tanstack/react-router";
+import { useEffect, useMemo, type ReactElement } from "react";
+import {
+  Outlet,
+  createFileRoute,
+  notFound,
+  redirect,
+  useMatch,
+  useRouter,
+  type NotFoundRouteProps,
+} from "@tanstack/react-router";
 import { cachedRead } from "@/api/cached-read";
 import {
   getListConnectedAccountsQueryOptions,
@@ -7,15 +15,25 @@ import {
   useListConnectedAccounts,
 } from "@/api/generated/inbok";
 import { isPlace } from "@/features/mail/address";
+import { LabelGone } from "@/features/mail/label-gone";
 import { PlacePage } from "@/features/mail/place-page";
 import { labelPath } from "@/features/mail/place-counts";
+import { mailData } from "@/features/mail/conversations";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLiveQuery } from "@tanstack/react-db";
 import { isViewPlace, searchPlace } from "@/features/mail/places";
 import { mailSearch } from "@/features/mail/search";
 import { placeName, resultsHeading } from "@/features/mail/text";
+import { NotFound } from "@/components/route-states";
+
+// What a label's address that names no label of the member's throws, so
+// its page says the label is gone rather than that the address is wrong.
+const labelGone = "label-gone";
 
 // A place's mail, /mail/<place>, a view or a label's ID, of one account
 // with ?account=<id>: its conversation list beside the reading pane, which
-// holds the open conversation or nothing. /mail/search is a search's
+// holds the open conversation or nothing. A label the member doesn't have,
+// e.g. deleted in Gmail or by an old link, says so (LabelGone). /mail/search is a search's
 // results in place of a list, the search in the address's search
 // parameters (mailSearch).
 //
@@ -31,7 +49,7 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
   },
   validateSearch: mailSearch,
   loaderDeps: ({ search }) => ({ account: search.account }),
-  // A label the member doesn't have is Page not found; one they have opens
+  // A label the member doesn't have is gone (LabelGone); one they have opens
   // in its account. A read already cached serves unless a write marked it
   // out of date (cachedRead); the page reads again as it mounts. A failure,
   // an ended session's 401 included, goes to the route's error view.
@@ -61,7 +79,7 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
       return { name, ownName: name };
     }
     const label = places?.data.places.find((p) => p.place === place && p.name !== null);
-    if (!label?.name) throw notFound();
+    if (!label?.name) throw notFound({ data: labelGone });
     // A label is one account's and opens in it, so the sidebar marks that
     // account: without its filter, e.g. an old link, or with another's,
     // the address takes the label's account (DESIGN.md "Sidebar").
@@ -74,6 +92,7 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
     return { name: labelPath(places?.data.places ?? [], place).join("/"), ownName: label.name };
   },
   component: Place,
+  notFoundComponent: PlaceNotFound,
   // head also runs for an address that is no place, which shows Page not
   // found and names itself.
   head: ({ loaderData }) => (loaderData ? { meta: [{ title: `${loaderData.name} - inbok` }] } : {}),
@@ -98,6 +117,7 @@ function Place(): ReactElement {
     [q, places, from, date, since, before, has],
   );
   const { name, ownName } = Route.useLoaderData();
+  useFollowLabel(place, name);
   const accounts = useListConnectedAccounts();
   const account = accounts.data?.data.accounts.find((a) => a.id === accountId);
   // The reading pane's index shows when no conversation is open.
@@ -116,4 +136,29 @@ function Place(): ReactElement {
       search={place === searchPlace ? filters : undefined}
     />
   );
+}
+
+// PlaceNotFound is a place's page that names nothing the member has: a
+// label gone, or an address that is no place.
+function PlaceNotFound({ data }: NotFoundRouteProps): ReactElement {
+  return data === labelGone ? <LabelGone /> : <NotFound />;
+}
+
+// useFollowLabel keeps the open label's page, place's, named name by its
+// loader, as the member's labels now are: once a rename or move changes
+// its name with its parents', or it leaves them, e.g. deleted in Gmail, the
+// loader runs again, renaming the page, or saying the label is gone. A
+// view's or a search's page has no label to follow.
+function useFollowLabel(place: string, name: string): void {
+  const router = useRouter();
+  const client = useQueryClient();
+  const { data: counts, isReady } = useLiveQuery(mailData(client).placeCounts);
+  const label = place !== searchPlace && !isViewPlace(place);
+  // Not before the places are read; once read, none at all, e.g. the last
+  // account disconnected, is the label gone too.
+  const now = label && isReady ? labelPath(counts, place).join("/") : name;
+  useEffect(() => {
+    if (now === name) return;
+    void router.invalidate({ filter: (match) => match.routeId === Route.id });
+  }, [now, name, router]);
 }

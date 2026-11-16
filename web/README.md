@@ -158,8 +158,8 @@ Put shared code in the folder for its responsibility:
   member's labels in the sidebar's order and where a move can leave
   (`labels.ts`), More's Move to and Labels pickers (`label-menu.tsx`), the
   reading pane's label chips (`label-chips.tsx`), the New label dialog
-  (`label-dialog.tsx`), how a row shows its date and people, and the
-  address Back to mail returns to.
+  (`label-dialog.tsx`), the page of a label gone (`label-gone.tsx`), how a
+  row shows its date and people, and the address Back to mail returns to.
 - `src/features/settings`: the settings sidebar and the settings page
   layout (`SettingsPage`, `SettingsSection`) every settings page uses.
 - `src/components`: shared components, such as the shell around every page
@@ -433,7 +433,12 @@ the page where its step is done it drops its link.
 A place in mail, `/mail/<place>`, is a view (`inbox`, `starred`, `sent`,
 `all`, `spam`, `trash`) or a label's ID from the API's places, and
 `?account=<id>` shows one account's mail. A label the member doesn't
-have is Page not found. On a view `?account=` only filters, so an
+have says the label is gone (its loader throws `notFound` with data the
+route's `notFoundComponent` tells from an address that is no place,
+which stays Page not found). The open label's page follows the member's
+labels as List Places reads them: once its name with its parents' changes,
+or it leaves them, its loader runs again (`useFollowLabel`), renaming the
+page or saying it is gone. On a view `?account=` only filters, so an
 account the member doesn't have shows every account's mail, and one that
 is no ID is dropped; a label opens in its own account, so any other
 `?account=`, or none, becomes the label's. `/mail/<place>/<conversation

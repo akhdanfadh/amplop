@@ -607,3 +607,9 @@ export function noLabelsYetToMake(accounts: readonly string[]): string {
 export function newLabelNamed(typed: string): string {
   return opensPicker(`New label "${typed}"`);
 }
+
+// The page of a label the member doesn't have (LabelGone).
+export const labelGoneTitle = "This label doesn't exist";
+export const labelGoneBody =
+  "It may have been deleted, in inbok or in Gmail, or its account disconnected.";
+export const openInbox = "Open Inbox";

@@ -1310,6 +1310,12 @@ outcome.
   a label by its own name, its parents in the header; "Studio is still
   syncing. Its mail appears here as it is copied."; "No spam"; "Trash is
   empty".
+- **A label gone:** a label's address that names none of the member's
+  labels, an old link or one deleted in inbok or in Gmail, says "This
+  label doesn't exist", "It may have been deleted, in inbok or in Gmail,
+  or its account disconnected.", and Open Inbox; an open label that a
+  sync finds gone turns to it. An address that is no place stays Page
+  not found.
 - **Failure:** what failed, that nothing was lost, Try again, a reference
   for faults. A failed refresh keeps the list and adds a banner ("Couldn't
   refresh. inbok isn't answering; showing mail from 10:42."). A failed
