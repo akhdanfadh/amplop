@@ -205,7 +205,7 @@ describe("OutboxPage", () => {
       .element(list.getByRole("row", { name: /Weekly update, Tried again/ }))
       .toBeVisible();
     await expect.element(list.getByText("· You sent it again as a new message.")).toBeVisible();
-    await expect.element(list.getByText(/inbok keeps your newest 50 messages here/)).toBeVisible();
+    await expect.element(list.getByText(/inbok keeps up to 50 messages here/)).toBeVisible();
   });
 
   it("keeps an address left to right, and each of several recipients in its own direction", async () => {
@@ -257,6 +257,109 @@ describe("OutboxPage", () => {
     await expect
       .element(page.getByText("to budi@example.com, citra@example.com, dewi@example.com"))
       .toBeVisible();
+  });
+
+  it("lists the messages not sent yet first, under their heading, then the done ones", async () => {
+    // In the API's order: outstanding first.
+    serve({ messages: [refused, sent, tried] });
+    await show();
+
+    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    const notSent = list.getByRole("rowgroup", { name: "Not sent yet" });
+    const done = list.getByRole("rowgroup", { name: "Done" });
+    await expect.element(notSent.getByRole("row", { name: /Q4 deck, Not sent/ })).toBeVisible();
+    await expect.element(done.getByRole("row", { name: /Lunch, Sent/ })).toBeVisible();
+    await expect
+      .element(done.getByRole("row", { name: /Weekly update, Tried again/ }))
+      .toBeVisible();
+    expect(
+      notSent
+        .getByRole("row")
+        .elements()
+        .some((row) => /Lunch/.test(row.textContent)),
+    ).toBe(false);
+    expect(list.getByRole("rowgroup").elements()).toEqual([notSent.element(), done.element()]);
+    await expect
+      .element(
+        list.getByText(
+          "inbok keeps up to 50 messages here, dropping the oldest done ones first. What you send from Gmail itself is in Sent, not here.",
+        ),
+      )
+      .toBeVisible();
+  });
+
+  it("leaves out a section with no messages, heading and all", async () => {
+    serve({ messages: [sent, tried] });
+    await show();
+
+    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    // A section's own element has no box: the list places its rows.
+    await expect.element(list.getByRole("rowgroup", { name: "Done" })).toBeInTheDocument();
+    expect(list.getByRole("rowgroup", { name: "Not sent yet" }).elements()).toHaveLength(0);
+    expect(list.getByText("Not sent yet").elements()).toHaveLength(0);
+  });
+
+  it("moves a message to Done once it is sent, keeping it open", async () => {
+    const sending: OutgoingMessage = {
+      ...sent,
+      status: "sending",
+      sentAt: null,
+      outstanding: true,
+    };
+    serve({ messages: [sending], later: [[sending], [sent]] });
+    await show();
+    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    await userEvent.click(
+      list.getByRole("rowgroup", { name: "Not sent yet" }).getByRole("row", { name: /Lunch/ }),
+    );
+
+    await expect
+      .element(
+        list.getByRole("rowgroup", { name: "Done" }).getByRole("row", { name: /Lunch, Sent/ }),
+        {
+          timeout: 10_000,
+        },
+      )
+      .toBeVisible();
+    expect(list.getByRole("rowgroup", { name: "Not sent yet" }).elements()).toHaveLength(0);
+    await expect
+      .element(page.getByRole("region", { name: "Status" }).getByText("Sent to ana@example.com"))
+      .toBeVisible();
+  });
+
+  it("keeps keyboard focus on a row as it moves to Done", async () => {
+    const sending: OutgoingMessage = {
+      ...sent,
+      status: "sending",
+      sentAt: null,
+      outstanding: true,
+    };
+    serve({
+      messages: [sending, tried],
+      later: [
+        [sending, tried],
+        [sending, tried],
+        [sent, tried],
+      ],
+    });
+    await show();
+    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    await expect
+      .element(
+        list.getByRole("rowgroup", { name: "Not sent yet" }).getByRole("row", { name: /Lunch/ }),
+      )
+      .toBeVisible();
+    await userEvent.tab();
+    await expect.element(list.getByRole("row", { name: /Lunch/ })).toHaveFocus();
+
+    await expect
+      .element(
+        list.getByRole("rowgroup", { name: "Done" }).getByRole("row", { name: /Lunch, Sent/ }),
+        {
+          timeout: 10_000,
+        },
+      )
+      .toHaveFocus();
   });
 
   it("shows a message's status in place as it opens, and raises it only once it changes", async () => {

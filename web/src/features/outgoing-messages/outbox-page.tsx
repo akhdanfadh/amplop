@@ -9,13 +9,18 @@ import { userMessage } from "@/api/problem";
 import { useTopBarSlot } from "@/components/frame";
 import { ReadError } from "@/components/read-error";
 import { Empty, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
-import { GridList, GridListEnd } from "@/components/ui/grid-list";
+import {
+  GridList,
+  GridListEnd,
+  GridListSection,
+  GridListSectionHeader,
+} from "@/components/ui/grid-list";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { useToday } from "@/features/mail/dates";
 import { Placeholder } from "@/features/mail/list";
 import { useRowSize } from "@/features/mail/list-state";
 import { MailPanes } from "@/features/mail/panes";
-import { createOpenStore } from "@/features/mail/row";
+import { createOpenStore, headingHeight } from "@/features/mail/row";
 import { useFocusOnOpen } from "@/hooks/use-focus-on-open";
 import { useLayout } from "@/hooks/use-layout";
 import { useOutbox } from "./outbox";
@@ -28,6 +33,7 @@ import {
   outboxListName,
   outboxLoading,
   outboxName,
+  outboxSections,
   outboxStale,
 } from "./text";
 
@@ -96,9 +102,10 @@ export function OutboxPage({
   );
 }
 
-// OutboxList lists the member's newest 50 messages from inbok, newest
-// first, each opening in the reading pane (DESIGN.md "Outbox"). openId is
-// the message the pane shows.
+// OutboxList lists the member's messages from inbok in two sections, those
+// not sent yet (the API's outstanding) and those done, in the order the API
+// lists them, each opening in the reading pane (DESIGN.md "Outbox"). An
+// empty section is left out. openId is the message the pane shows.
 //
 // DESIGN: the list has no aria-busy: it is read again every 2 s while a
 // message is being sent, and marking each read busy would make screen
@@ -161,6 +168,20 @@ function OutboxList({ openId }: { openId: string | undefined }): ReactElement {
       </>
     );
 
+  // The API lists outstanding messages first; each section keeps its order.
+  const sections = [
+    {
+      id: "outstanding",
+      name: outboxSections.outstanding,
+      messages: messages.filter((message) => message.outstanding),
+    },
+    {
+      id: "done",
+      name: outboxSections.done,
+      messages: messages.filter((message) => !message.outstanding),
+    },
+  ].filter((section) => section.messages.length > 0);
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {/* 1 rem square, so the rows follow the browser's text size. */}
@@ -170,23 +191,33 @@ function OutboxList({ openId }: { openId: string | undefined }): ReactElement {
         className="pointer-events-none invisible absolute size-4"
       />
       {stale}
-      <GridList aria-label={outboxListName} rowSize={rowSize} className="min-h-0 flex-1">
-        <Collection items={messages} dependencies={[now, accountsById, ringed]}>
-          {(message) => {
-            const account = accountsById.get(message.connectedAccountId);
-            return (
-              <OutboxRow
-                message={message}
-                account={
-                  account && { color: account.color, email: account.email, name: account.name }
-                }
-                ringed={ringed}
-                openStore={openStore}
-                now={now}
-              />
-            );
-          }}
-        </Collection>
+      <GridList
+        aria-label={outboxListName}
+        rowSize={rowSize}
+        headingSize={headingHeight()}
+        className="min-h-0 flex-1"
+      >
+        {sections.map((section) => (
+          <GridListSection key={section.id} id={section.id}>
+            <GridListSectionHeader>{section.name}</GridListSectionHeader>
+            <Collection items={section.messages} dependencies={[now, accountsById, ringed]}>
+              {(message) => {
+                const account = accountsById.get(message.connectedAccountId);
+                return (
+                  <OutboxRow
+                    message={message}
+                    account={
+                      account && { color: account.color, email: account.email, name: account.name }
+                    }
+                    ringed={ringed}
+                    openStore={openStore}
+                    now={now}
+                  />
+                );
+              }}
+            </Collection>
+          </GridListSection>
+        ))}
         <GridListEnd>{outboxEnd}</GridListEnd>
       </GridList>
     </div>

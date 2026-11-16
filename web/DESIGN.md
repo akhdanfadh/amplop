@@ -816,9 +816,23 @@ these messages are not until Gmail has them, and nothing acts on several
 messages at once. Statuses read again every 2 s while one is waiting or
 sending (web/README.md, "Routes").
 
-- **List:** the newest 50, newest first, by when each was saved; then, as
-  the list's end, "inbok keeps your newest 50 messages here, not the ones
-  you send from Gmail itself."
+- **List:** two sections, each newest first by when each was saved: "Not
+  sent yet", the messages the API calls outstanding (waiting, sending, or
+  failed or unconfirmed and not sent again: what the sidebar counts),
+  then "Done", the rest, Sent and Tried again. A section with no messages
+  is left out, heading and all. A message changes section as soon as a
+  read gives its new status, with no animation, as mail lists' rows come
+  and go; the open one stays open, and keyboard focus stays on its row.
+  The API keeps at most 50, outstanding ones first, so newer done
+  messages never push out one that needs the member; the list's end says
+  "inbok keeps up to 50 messages here, dropping the oldest done ones
+  first. What you send from Gmail itself is in Sent, not here."
+- **Section heading** (`GridListSectionHeader`): a 32 px band (2 rem, so
+  it grows with the text) in `muted`, the sidebar's surface, a step off
+  the page in both themes; its name in 12 px `foreground`, weight 500,
+  from the rows' 16 px edge. React Aria's `GridListSection` names its rows
+  by it for a screen reader; arrow keys pass it by. A list that ever
+  needs sections uses this one.
 - **Row, three lines,** a conversation's row's size: "To" in
   `muted-foreground`, then the recipients by mail's rules for names (To,
   Cc, then Bcc; "no one" for none), and the date it was saved / subject /

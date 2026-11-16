@@ -46,7 +46,6 @@ import { useOverflow } from "@/hooks/use-overflow";
 import { labelTree, unreadIn, usePlaceCounts, type LabelNode } from "./place-counts";
 import type { PlaceCount } from "./conversations";
 import { useOutbox } from "@/features/outgoing-messages/outbox";
-import { unfinished } from "@/features/outgoing-messages/text";
 import { useCompose } from "@/features/outgoing-messages/compose-store";
 import {
   accountFoldName,
@@ -80,7 +79,7 @@ export function MailNav(): ReactElement {
   const { dismiss: closeDrawer } = useSidebar();
   const outbox = useOutbox();
   // What still asks for the member, so a message sent again stops counting.
-  const notSent = outbox.data?.data.messages.filter(unfinished).length ?? 0;
+  const notSent = outbox.data?.data.messages.filter((message) => message.outstanding).length ?? 0;
   const open = useMatch({ from: "/_app/_mail/mail/$place", shouldThrow: false });
   const filter = open?.search.account;
   const counts = usePlaceCounts();

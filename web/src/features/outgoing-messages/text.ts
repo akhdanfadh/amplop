@@ -152,20 +152,6 @@ export function inProgress(status: Status): boolean {
   return status === "waiting" || status === "sending";
 }
 
-// unfinished reports whether message has not ended for its member: it is
-// still being sent, or it failed or its outcome is unknown and it was not
-// sent again. A message sent again has ended; its copy goes on.
-//
-// DESIGN: it counts these facts, not what the message's page offers now,
-// so the count doesn't change while the member's accounts load or when an
-// account can't send for a while; such a message still waits for them.
-export function unfinished(message: MessageState): boolean {
-  if (inProgress(message.status)) return true;
-  return (
-    (message.status === "failed" || message.status === "unknown") && message.sentAgainAs === null
-  );
-}
-
 // keyReused reports whether err is the API's refusal of an Idempotency-Key
 // that saved another message: an earlier try's, before the member's edits.
 export function keyReused(err: ApiError | null): boolean {
@@ -511,9 +497,12 @@ export const outboxName = "Outbox";
 export const outboxListName = "Messages sent from inbok";
 // What the Outbox's reading pane says with no message open.
 export const noMessageOpen = "No message open.";
+// The Outbox list's sections: the messages that still need the member
+// (the API's outstanding), the sidebar count's words, then the rest.
+export const outboxSections = { outstanding: "Not sent yet", done: "Done" } as const;
 // What ends the Outbox's list: what it holds, and what it doesn't.
 export const outboxEnd =
-  "inbok keeps your newest 50 messages here, not the ones you send from Gmail itself.";
+  "inbok keeps up to 50 messages here, dropping the oldest done ones first. What you send from Gmail itself is in Sent, not here.";
 // What an empty Outbox says.
 export const outboxEmptyTitle = "Nothing sent from inbok yet";
 export const outboxEmptyText =

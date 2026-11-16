@@ -336,11 +336,12 @@ a box (`useTopBarSlot`), and the place page puts its header there with a
 React portal, so the heading keeps its focus and the list's `main` keeps
 its name. The mail sidebar's Outbox, among the views after Sent and
 outside the account filter (DESIGN.md "Sidebar"), shows how many of its messages are
-not sent yet, from the Outbox's one read: one waiting or being sent, or
-one failed or unconfirmed and not sent again (`unfinished`), so a
-message sent again stops counting. The count follows these facts, not
-what a message's page offers now, so it holds still while accounts load
-or while an account can't send. The member menu at the bottom of the sidebar opens
+not sent yet, from the Outbox's one read: those the API marks
+`outstanding` (waiting or being sent, or failed or unconfirmed and not
+sent again), so a message sent again stops counting. The client keeps no
+copy of that rule; it follows the message's facts, not what its page
+offers now, so it holds still while accounts load or while an account
+can't send. The member menu at the bottom of the sidebar opens
 Settings, the theme choice, and Sign out. Both frames and the signed-out
 layout show `OfflineBanner` at the top of the content while the browser
 reports no connection, read from TanStack Query's `onlineManager`. Under
@@ -861,10 +862,16 @@ it in a new tab so the edits stay, and the next Send uses a new key, as a
 new message. A refusal because the account needs
 reconnecting rereads the accounts and links Connected accounts.
 
-The Outbox (`outbox-page.tsx`) lists the member's newest 50 messages from
-inbok, newest first, beside the reading pane, as a mail place
-(DESIGN.md "Outbox"), and reads the list again every 2 seconds while one
-is waiting or sending (`useOutbox`). Its rows (`row.tsx`) are mail's list
+The Outbox (`outbox-page.tsx`) lists at most 50 of the member's messages
+from inbok, beside the reading pane, as a mail place (DESIGN.md
+"Outbox"), in two `GridListSection`s in the API's order: "Not sent yet",
+the `outstanding` ones, which the API lists first so newer finished ones
+never push one out, then "Done"; an empty one is left out. Each opens with a
+`GridListSectionHeader`, as tall as `headingHeight`. The Outbox reads
+the list again every 2 seconds while one is waiting or sending
+(`useOutbox`), and a message changes section with the read that gives
+its new status, keeping its key, so the open one stays open and focus
+stays on its row. Its rows (`row.tsx`) are mail's list
 pieces: `GridList`, `SenderAvatar`, mail's rules for names and dates, and
 mail's open store and history state, so a row opens its message in the
 reading pane and Back on a phone returns through history as a
@@ -873,7 +880,7 @@ the sidebar's count, the Outbox, the reading pane, the compose window's
 status after Send, and a sent reply's (`useOutgoingMessage`), so no two
 of them disagree and only one request polls. A message's own read, Get
 Outgoing Message, gives its content once; its status counts only for a
-message the list doesn't hold, one outside the newest 50 or saved after
+message the list doesn't hold, one outside the 50 listed or saved after
 the list was read, which that read then follows until its send ends; a
 message that leaves the list, past 50 newer ones, is read again then.
 Each write that changes a status, Send and Send again, reads the list
