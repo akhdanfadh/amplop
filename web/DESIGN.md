@@ -117,17 +117,17 @@ IBM Plex Sans Variable (`@fontsource-variable/ibm-plex-sans`), one family,
 bundled with the app (ADR026 allows no font service). It tells `I`, `l`,
 `1`, `O`, and `0` apart, which sender addresses and codes need.
 
-| Use                                                                    | Size / line height | Weight                       |
-| ---------------------------------------------------------------------- | ------------------ | ---------------------------- |
-| Meta: dates, counts, field help                                        | 12 / 16            | 400                          |
-| Snippets, secondary text                                               | 13 / 20            | 400                          |
-| Interface body: rows, nav, forms, buttons, settings leads and sections | 14 / 20            | 400; 500 for buttons and nav |
-| Unread sender, subject, date                                           | 14 / 20            | 600; 650 in dark             |
-| Plain-text message body                                                | 15 / 24            | 400                          |
-| Settings section headings                                              | 16 / 24            | 600                          |
-| Pane and dialog titles                                                 | 18 / 24            | 600                          |
-| Message subject in the reading pane                                    | 22 / 28            | 600                          |
-| Page titles                                                            | 24 / 32            | 600                          |
+| Use                                                                    | Size / line height | Weight                                          |
+| ---------------------------------------------------------------------- | ------------------ | ----------------------------------------------- |
+| Meta: dates, counts, field help                                        | 12 / 16            | 400                                             |
+| Snippets, secondary text                                               | 13 / 20            | 400                                             |
+| Interface body: rows, nav, forms, buttons, settings leads and sections | 14 / 20            | 400; 500 for buttons, nav, and a picker's title |
+| Unread sender, subject, date                                           | 14 / 20            | 600; 650 in dark                                |
+| Plain-text message body                                                | 15 / 24            | 400                                             |
+| Settings section headings                                              | 16 / 24            | 600                                             |
+| Pane and dialog titles                                                 | 18 / 24            | 600                                             |
+| Message subject in the reading pane                                    | 22 / 28            | 600                                             |
+| Page titles                                                            | 24 / 32            | 600                                             |
 
 Sentence case everywhere; no uppercase or letter-spaced labels; no negative
 letter spacing below 16 px; `tabular-nums` on every number that lines up;
@@ -470,7 +470,8 @@ last two redirect into settings, so settings can move without the server.
   (Archive while any is in the Inbox, Mark read while any is unread,
   Star while any is unstarred, as `actionsFor` over the rows offers
   them); the pair's other action goes into More when the rows are mixed,
-  with Report spam; the star is a plain Star or Remove star. An action
+  with Move to… and Labels… (see Reading pane, Labels) and Report spam;
+  the star is a plain Star or Remove star. An action
   goes only to the picked rows it changes, every guess showing at once,
   and always gets an Undo (see Feedback). Picking all picks the loaded
   rows, as fixed IDs; acting on a whole place is Not now. When an action
@@ -500,9 +501,10 @@ last two redirect into settings, so settings can move without the server.
 - A pinned conversation toolbar of icon buttons, each named by its
   tooltip: where one pane shows at a time, an arrow Back first, named
   "Back to list"; then the conversation's state's first action, Delete,
-  Mark read or unread, Star (a toggle), and More with Report spam and
-  Open in Gmail, which opens Gmail's own page for the conversation in a
-  new tab, an address Google does not document; More hides when empty.
+  Mark read or unread, Star (a toggle), and More with Move to… and
+  Labels… (see Labels below), Report spam, and Open in Gmail, which opens
+  Gmail's own page for the conversation in a new tab, an address Google
+  does not document.
   The actions follow the conversation, not the address, except in Spam
   and Trash (`actionsFor` in `features/mail/rules.ts`): in a Spam list,
   Not spam, Delete, Mark read or unread, Star; in a Trash list, Move to
@@ -538,6 +540,48 @@ last two redirect into settings, so settings can move without the server.
   drop at once. A read the server refuses or that fails puts both back
   silently and is not tried again; arrow keys in the list only move
   focus, never open.
+- **Labels** (ADR031, "Labels as built"): More's "Move to…" and
+  "Labels…" close More and open a picker in its place, under More's
+  button, at every width (a submenu beside More ran off a 320 px screen
+  and large text); one picker for both and later the row menu
+  (`features/mail/label-menu.tsx`): its title, "Move to" or "Labels",
+  which names the dialog, as the two read alike once More closes; a
+  filter field under it (React Aria's `Autocomplete`, focused as it
+  opens, but not from a touch, where the keyboard would cover the list),
+  then the labels as the sidebar's tree, each under its parent with the
+  sidebar's thin line per level, by its own name; while filtering, each
+  match by its path, the parents muted. 240 px wide, at most 28rem tall,
+  the list scrolling under the field. One section per account, headed by
+  its name wherever the list shows several accounts' mail, even when one
+  account's conversations are left. An account with none says so in
+  words ("No labels in Work yet. Labels you make in Gmail show
+  here."); beside accounts that have some, a note under the list names
+  it ("No labels in Work yet. ..."), as React Aria drops a section with
+  no items. Names you choose from wrap, never cut: a long name or path
+  takes more lines, and one without spaces, e.g. an address, breaks at
+  the edge, so two long labels alike at the start can still be told
+  apart on a phone, where no tooltip shows. Enter ticks a label, as a
+  press does, and Tab reaches Apply; Escape clears the filter, then
+  closes, focus back on More, and the field's × clears it on a phone,
+  which has no Escape. It opens in More's place with no entrance, as
+  More closes there.
+  - **Move to** files the conversation away: it adds the chosen label
+    and takes the conversation out of the list's place, the Inbox, a
+    label, Spam, or Trash, as Gmail does; offered only in lists whose
+    place a change can name (the contract's `ChangePlace`), so not in
+    All mail, Starred, Sent, or a search across places. The label moved
+    from is left out. Choosing sends at once, for that account's
+    conversations only.
+  - **Labels** tags without moving, offered for conversations with a
+    message outside Spam and Trash (a row wholly there lists no labels,
+    a workaround recorded in ADR031 and DEBT.md): a checkbox per label,
+    ticked from what the conversations have, a dash for one some of them
+    have (pressing it goes to all, none, then back to some), and
+    **Apply** under the list, disabled until something changed, which
+    sends every change as one request, focus back on More; Escape or a
+    click outside sends nothing. It waits, saying so, while the ticks
+    add or remove more than the contract's limit for one change ("Add or
+    remove up to 100 at once.").
 - Title (22 px), the account mark, the message count. The title and
   account draw from the list's row at once; "Loading messages..." stands
   under them until the messages come, and the view takes focus, so a
@@ -988,8 +1032,9 @@ outcome.
 
 - **Reversible actions** (archive, delete to Trash, read, star, and bulk
   versions) happen at once, with the unread counts; an action that moves
-  a conversation to another place, and any action on several, shows the
-  **Undo bar** at once, docked
+  a conversation to another place, any action on several, and every
+  label change (rows don't show labels, so its result is out of view)
+  shows the **Undo bar** at once, docked
   at the bottom of the list, under the row the action took away, and on
   a phone, one pane at a time, under whichever pane shows, as an action
   can keep the conversation open there: what happened,
@@ -1028,8 +1073,8 @@ outcome.
   counted), and Show details, a disclosure listing the conversations by
   reason, with their accounts when they span several. A newer answer
   that changed again what failed on every conversation an older
-  failure's toast named closes that toast: one label's change working
-  leaves another's failure said, and a move, e.g. Move to Inbox, covers
+  failure's toast named closes that toast: Hiring's removal working
+  leaves Acme's failure said, and a move, e.g. Move to Inbox, covers
   every place. Several conversations go in requests of at most 25 (the
   contract's limit, what Gmail changes within the server's budget), one
   after another, every guess showing at once.

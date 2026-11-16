@@ -1,12 +1,14 @@
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  FolderInputIcon,
   InboxIcon,
   MailIcon,
   MailOpenIcon,
   OctagonAlertIcon,
   StarIcon,
   StarOffIcon,
+  TagIcon,
   Trash2Icon,
   type LucideIcon,
 } from "lucide-react";
@@ -119,3 +121,39 @@ export const actionWords: Record<Action, ActionWords> = {
     done: "Star removed",
   },
 };
+
+// moveTo names Move to, which opens the labels to move to.
+export const moveTo = { label: "Move to", icon: FolderInputIcon };
+
+// labelsName names Labels, which opens the labels to tick.
+export const labelsName = { label: "Labels", icon: TagIcon };
+
+// moveWords returns the words of moving conversations to the label of
+// path, its name with its parents'.
+export function moveWords(path: string): ActionWords {
+  return {
+    ...moveTo,
+    failed: (count) => `Couldn't move ${them(count)} to ${path}`,
+    done: `Moved to ${path}`,
+    where: path,
+  };
+}
+
+// labelWords returns the words of adding conversations to the labels of
+// added and taking them out of removed's, each named by its path: one
+// label's change by its name, any other as labels changed. Always with an
+// Undo, as rows don't show labels.
+export function labelWords(added: readonly string[], removed: readonly string[]): ActionWords {
+  const done =
+    added.length === 1 && removed.length === 0
+      ? `Added to ${added[0]}`
+      : added.length === 0 && removed.length === 1
+        ? `Removed from ${removed[0]}`
+        : "Labels changed";
+  return {
+    ...labelsName,
+    failed: (count) => `Couldn't change labels on ${them(count)}`,
+    done,
+    alwaysUndo: true,
+  };
+}

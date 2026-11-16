@@ -17,6 +17,7 @@ import { useLayout } from "@/hooks/use-layout";
 import { isCurrent, runAction, type ActionMail } from "./actions";
 import { currentMail } from "./conversations";
 import { requestRowFocus } from "./focus-request";
+import { useLabelsIn } from "./labels";
 import { perform, type Performed } from "./perform";
 import type { AppHref, Place } from "./places";
 import { leavesList, staysInList } from "./rules";
@@ -91,6 +92,7 @@ export function Reader({
 
   const detail = read.data?.data;
   const mail = currentMail(client);
+  const labels = useLabelsIn(mail);
   // The conversation's row in the mail collection, which an action
   // anywhere changes at once: the list's, or loaded by ID (ADR031). Read
   // here rather than as the query's placeholder, which the query drops
@@ -213,6 +215,14 @@ export function Reader({
               // a search of several follows the conversation, as All mail.
               list={places.length === 1 ? places[0] : "all"}
               providerUrl={detail?.providerUrl}
+              // Labels under their account's name where the list shows
+              // several accounts' mail, as picking's menus show them.
+              headings={listAccount === undefined && (accounts.data?.data.accounts.length ?? 0) > 1}
+              labels={labels}
+              accountName={(id) => {
+                const owner = accounts.data?.data.accounts.find((a) => a.id === id);
+                return owner ? accountName(owner) : "";
+              }}
               onAction={onAction}
             />
           )

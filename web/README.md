@@ -149,9 +149,11 @@ Put shared code in the folder for its responsibility:
   actions guess and which places a conversation is in (`rules.ts`), each
   action's words (`words.ts`), running an action on one conversation or
   many (`perform.ts`) and its Undo bar (`undo.tsx`), picking rows
-  (`picking.ts`) and the bar that acts on them (`picking-bar.tsx`), how a
-  row shows its date and people, and the address Back to mail returns
-  to.
+  (`picking.ts`) and the bar that acts on them (`picking-bar.tsx`), the
+  member's labels in the sidebar's order and where a move can leave
+  (`labels.ts`), More's Move to and Labels pickers (`label-menu.tsx`),
+  how a row shows its date and people, and the address Back to mail
+  returns to.
 - `src/features/settings`: the settings sidebar and the settings page
   layout (`SettingsPage`, `SettingsSection`) every settings page uses.
 - `src/components`: shared components, such as the shell around every page
@@ -1069,10 +1071,14 @@ an ended session. It reads the conversation's row by ID from the mail
 collection, so an action anywhere shows at once, and marks an unread
 conversation read once its messages are read and the tab shows. Its
 toolbar (`mail/toolbar.tsx`) offers what `actionsFor` (`mail/rules.ts`)
-gives for the conversation in the list it was opened from, each action
-run by `perform` (`mail/perform.ts`), which takes an action or changes
-as they are, shows its Undo in the Undo bar (`mail/undo.tsx`), and says
-why a refused one failed. An action that
+gives for the conversation in the list it was opened from, and More's
+Move to and Labels, which open their picker under More
+(`mail/label-menu.tsx`), each run by `perform` (`mail/perform.ts`),
+which takes an action or changes as they are, e.g. a move to a label
+with its words, shows its Undo in the Undo bar (`mail/undo.tsx`), and
+says why a refused one failed. The labels the pane reads come from the
+mail it already holds (`useLabelsIn`), so a pane that outlives the
+member's mail, e.g. as sign-in opens, starts no reads. An action that
 takes the conversation out of that list (`leavesList`) goes back to it,
 through history when a row of it opened the conversation (the row's
 link sets `fromList` in its history state, or keeps the flag of the

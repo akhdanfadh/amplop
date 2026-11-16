@@ -520,3 +520,37 @@ export const searchSpamTrashToo = "Search Spam and Trash too";
 export const searchBusy = "Search isn't answering right now. Try again in a moment.";
 export const searchOffline = "Couldn't search. Check your connection, then try again.";
 export const searchFailed = "Couldn't search your mail.";
+
+// Labels' and Move to's menus (DESIGN.md "Reading pane").
+export const moveMenuName = "Move to";
+export const labelsMenuName = "Labels";
+export const filterLabels = "Filter labels";
+export const clearFilter = "Clear filter";
+export const noLabelMatches = "No labels match.";
+export const noLabelsInThese =
+  "These accounts have no labels yet. Labels you make in Gmail show here.";
+export const onSome = "on some of them";
+
+// noLabelsYetIn says the accounts named have no labels to offer yet,
+// beside others that do.
+export function noLabelsYetIn(accounts: readonly string[]): string {
+  return `No labels in ${names.format(accounts)} yet. Labels you make in Gmail show here.`;
+}
+export const applyLabels = "Apply";
+
+// opensPicker names a menu item that opens a picker rather than acting,
+// e.g. "Labels…", as menus mark one that asks for more.
+export function opensPicker(label: string): string {
+  return `${label}\u2026`;
+}
+
+// labelsLimit says Apply waits for at most most labels added and most
+// removed, the contract's limit for one change.
+export function labelsLimit(most: number): string {
+  return `Add or remove up to ${most} at once.`;
+}
+
+// noLabelsIn says the account named has no labels to offer yet.
+export function noLabelsIn(account: string): string {
+  return `No labels in ${account} yet. Labels you make in Gmail show here.`;
+}

@@ -281,13 +281,18 @@ describe("the reading pane's actions", () => {
     await expect.poll(() => api.conversations[0].unread).toBe(true);
   });
 
-  it("offers a Trash list's actions, and More with Report spam only elsewhere", async () => {
+  it("offers a Trash list's actions, and More with Move to but no Labels or Report spam", async () => {
     await open([conversation(1, { trash: true, inbox: false, allMail: false })], 0, "trash");
 
     await expect.element(toolbar().getByRole("button", { name: "Move to Inbox" })).toBeVisible();
     expect(toolbar().getByRole("button", { name: "Delete" }).elements()).toHaveLength(0);
-    // No provider link from the fake API, and nothing else for More.
-    expect(toolbar().getByRole("button", { name: "More actions" }).elements()).toHaveLength(0);
+    // More holds Move to…, Trash being a place to move out of, but not
+    // Labels…, as a row only in Trash lists no labels; no Report spam,
+    // and no provider link from the fake API.
+    await userEvent.click(toolbar().getByRole("button", { name: "More actions" }));
+    await expect.element(page.getByRole("menuitem", { name: "Move to…" })).toBeVisible();
+    expect(page.getByRole("menuitem", { name: "Labels…" }).elements()).toHaveLength(0);
+    expect(page.getByRole("menuitem", { name: "Report spam" }).elements()).toHaveLength(0);
   });
 
   it("keeps Report spam in More", async () => {
