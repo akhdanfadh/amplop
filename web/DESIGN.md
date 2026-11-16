@@ -161,7 +161,7 @@ which brings 400 and 600 close. Unread rows also take 650 there.
   so they sit level with the nav rows beside them.
 - **Radius:** `--radius: 0.5rem`: controls 8, menu items 6, menus about
   10, cards and the message sheet 12, dialogs 14. Pills only for status
-  badges, account chips, and recipient chips.
+  badges and recipient chips.
 - **Elevation:** no shadow on page, panes, list, or sheet. Menus and
   popovers share the card's surface and may open over a card, so an edge
   and a shadow set them apart: `0 4px 16px` at 12% black and the `border`
