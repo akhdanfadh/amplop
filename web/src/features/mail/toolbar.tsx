@@ -11,26 +11,9 @@ import type { Label } from "./labels";
 import type { Performed } from "./perform";
 import type { Place } from "./places";
 import { actionsFor, type Action } from "./rules";
+import { laidOut } from "./slots";
 import { moreName, openInGmail, opensInNewTab } from "./text";
 import { actionWords } from "./words";
-
-// The action a toolbar keeps in More, chosen by hand (DESIGN.md "Reading
-// pane"): reported less often, and a wrong press sends the conversation
-// out of sight.
-const inMore: Action = "spam";
-
-// The toolbar's slot of each action that trades places with another as the
-// conversation changes, e.g. Archive with Move to Inbox: one slot, one
-// button, so focus stays on it as its action changes. The others are
-// their own slot.
-const slots: Partial<Record<Action, string>> = {
-  archive: "move",
-  unarchive: "move",
-  untrash: "move",
-  unspam: "move",
-  read: "mark",
-  unread: "mark",
-};
 
 // ConversationToolbar is a conversation's actions in the reading pane's
 // toolbar (DESIGN.md "Reading pane"), as its state in list offers them:
@@ -59,27 +42,22 @@ export function ConversationToolbar({
   canChange: (accountId: number) => boolean;
   onAction: (act: Performed) => void;
 }): ReactElement {
-  const actions = actionsFor([conversation], list);
-  const more = actions.filter((action) => action === inMore);
+  // Each button keeps its slot as its key, so focus stays on it as its
+  // action changes, e.g. Archive to Move to Inbox.
+  const { buttons, more } = laidOut(actionsFor([conversation], list));
   const gmail = providerUrl && isHttps(providerUrl) ? providerUrl : undefined;
   // The label picker More opened, under More's button.
   const [picker, setPicker] = useState<Picker | null>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
   return (
     <>
-      {actions
-        .filter((action) => action !== inMore)
-        .map((action) =>
-          action === "star" || action === "unstar" ? (
-            <StarToggle
-              key="star"
-              starred={conversation.starred}
-              onPress={() => onAction(action)}
-            />
-          ) : (
-            <ActionButton key={slots[action] ?? action} action={action} onAction={onAction} />
-          ),
-        )}
+      {buttons.map(({ slot, action }) =>
+        slot === "star" ? (
+          <StarToggle key={slot} starred={conversation.starred} onPress={() => onAction(action)} />
+        ) : (
+          <ActionButton key={slot} action={action} onAction={onAction} />
+        ),
+      )}
       <DropdownMenuTrigger>
         <TooltipTrigger>
           <Button ref={moreButton} variant="ghost" size="icon" aria-label={moreName}>

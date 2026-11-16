@@ -24,6 +24,7 @@ import { perform, type Performed } from "./perform";
 import type { Picking } from "./picking";
 import type { Place } from "./places";
 import { actionsFor, staysInList, targetsOf, type Action } from "./rules";
+import { laidOut } from "./slots";
 import {
   moreName,
   pickAllName,
@@ -35,17 +36,6 @@ import {
   stopPicking,
 } from "./text";
 import { actionWords } from "./words";
-
-// The bar's slots, in order, each the actions that take turns in it, the
-// usual one first, as the toolbar's buttons; Report spam is kept in More,
-// as the toolbar keeps it (toolbar.tsx).
-const slots: readonly (readonly Action[])[] = [
-  ["archive", "unarchive", "unspam", "untrash"],
-  ["trash"],
-  ["read", "unread"],
-  ["star", "unstar"],
-];
-const inMore: Action = "spam";
 
 // PickingBar takes the list header's place while conversations are picked
 // (DESIGN.md "Message list"), and the top bar's on a phone (inTopBar),
@@ -92,18 +82,9 @@ export function PickingBar({
     [accountList],
   );
 
-  const offered = actionsFor(picked, place);
   // Each button keeps its slot as its key, so focus stays on it as its
   // action changes, e.g. Star to Remove star, as the toolbar's do.
-  const buttons: { slot: number; action: Action }[] = [];
-  const more: Action[] = [];
-  for (const [slot, actions] of slots.entries()) {
-    const here = actions.filter((action) => offered.includes(action));
-    if (here.length === 0) continue;
-    buttons.push({ slot, action: here[0] });
-    more.push(...here.slice(1));
-  }
-  if (offered.includes(inMore)) more.push(inMore);
+  const { buttons, more } = laidOut(actionsFor(picked, place));
 
   const run = (action: Action) => act(action, targetsOf(picked, action, place));
   // act runs performed on targets, the picked rows it changes.
