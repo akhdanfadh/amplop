@@ -140,8 +140,10 @@ func newAPI(logger *slog.Logger, services Services, timeout time.Duration) *API 
 	registerMembers(api, services.Members)
 	registerRegistration(api, services.Registration, services.RegistrationRequests, services.RegistrationCompletion)
 	registerPasswordReset(api, services.PasswordResetRequests, services.PasswordResetCompletion)
-	registerConnectedAccounts(api, logger, services.ConnectedAccounts, services.Connections, services.Syncs, services.Session)
-	registerOutgoingMessages(api, services.OutgoingMessages)
+	// Gmail's client is set up exactly when Gmail connections are.
+	providers := offeredProviders{gmail: services.Connections != nil}
+	registerConnectedAccounts(api, logger, services.ConnectedAccounts, services.Connections, providers, services.Syncs, services.Session)
+	registerOutgoingMessages(api, services.OutgoingMessages, providers)
 	registerMessageContent(api, services.MessageContent)
 	registerConversations(api, logger, services.Conversations, services.ConversationActions)
 	registerSearch(api, logger, services.Search)

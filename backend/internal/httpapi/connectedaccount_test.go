@@ -115,7 +115,7 @@ func TestListConnectedAccounts(t *testing.T) {
 	unreadable.Status = connectedaccount.StatusTokenUnreadable
 	const (
 		waitingJSON = `"sync":{"status":"waiting","messagesSoFar":null,"lastSyncedAt":null,"failure":null,"failedAt":null}`
-		allJSON     = `"allowedActions":["sync","reconnect","rename","disconnect"]`
+		allJSON     = `"allowedActions":["sync","send","reconnect","rename","disconnect"]`
 	)
 	for _, c := range []struct {
 		name        string
@@ -133,7 +133,8 @@ func TestListConnectedAccounts(t *testing.T) {
 				`,"allowedActions":["reconnect","rename","disconnect"]}],"syncStopped":false}}`},
 		{"token unreadable", []connectedaccount.Account{unreadable}, &fakeConnections{}, false,
 			`{"data":{"accounts":[{"id":3,"provider":"gmail","email":"alex@example.com",` +
-				`"needsReconnectSince":null,"status":"token-unreadable","createdAt":"2026-11-05T09:00:00Z","name":null,"color":2,` + waitingJSON + `,` + allJSON + `}],"syncStopped":false}}`},
+				`"needsReconnectSince":null,"status":"token-unreadable","createdAt":"2026-11-05T09:00:00Z","name":null,"color":2,` + waitingJSON +
+				`,"allowedActions":["sync","reconnect","rename","disconnect"]}],"syncStopped":false}}`},
 		{"Gmail not offered", []connectedaccount.Account{alexAccount}, nil, false,
 			`{"data":{"accounts":[` + alexJSON[:len(alexJSON)-1] + `,` + waitingJSON + `,"allowedActions":["rename","disconnect"]}],"syncStopped":false}}`},
 		{"syncing stopped", []connectedaccount.Account{}, &fakeConnections{}, true, `{"data":{"accounts":[],"syncStopped":true}}`},

@@ -360,7 +360,8 @@ func TestCheckToken(t *testing.T) {
 }
 
 // The actions offered are the ones the services accept: an unreadable token
-// still syncs, and a provider without a client refuses sync and reconnect.
+// still syncs but can't send, and a provider without a client refuses
+// sync, send, and reconnect.
 func TestAccountAllowedActions(t *testing.T) {
 	refused := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
 	for _, c := range []struct {
@@ -369,7 +370,7 @@ func TestAccountAllowedActions(t *testing.T) {
 		offered bool
 		want    []Action
 	}{
-		{"usable", Account{Status: StatusUsable}, true, []Action{ActionSync, ActionReconnect, ActionRename, ActionDisconnect}},
+		{"usable", Account{Status: StatusUsable}, true, []Action{ActionSync, ActionSend, ActionReconnect, ActionRename, ActionDisconnect}},
 		{"token unreadable", Account{Status: StatusTokenUnreadable}, true, []Action{ActionSync, ActionReconnect, ActionRename, ActionDisconnect}},
 		{"needs reconnect", Account{Status: StatusNeedsReconnect, NeedsReconnectSince: &refused}, true, []Action{ActionReconnect, ActionRename, ActionDisconnect}},
 		{"provider not offered", Account{Status: StatusUsable}, false, []Action{ActionRename, ActionDisconnect}},

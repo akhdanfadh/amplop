@@ -95,7 +95,7 @@ func (h connectedAccountHandler) handleSyncAccount(ctx context.Context, in *conn
 	// 1. Refuse before the request is saved: without the client no worker
 	// syncs Gmail, so an accepted request would wait forever (ADR001,
 	// "Polling"). Gmail is the only provider, so the account is Gmail's.
-	if !h.offered(connectedaccount.ProviderGmail) {
+	if !h.providers.offered(connectedaccount.ProviderGmail) {
 		return nil, accountSyncProblem(errGmailNotConfigured)
 	}
 

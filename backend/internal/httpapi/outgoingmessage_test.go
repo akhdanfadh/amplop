@@ -101,7 +101,7 @@ func requestSend(api *API, key, body string) *httptest.ResponseRecorder {
 }
 
 func newOutgoingMessagesAPI(messages *fakeOutgoingMessages) *API {
-	return New(discard, Services{OutgoingMessages: messages, Session: memberSessions(account.RoleMember)})
+	return New(discard, Services{OutgoingMessages: messages, Connections: &fakeConnections{}, Session: memberSessions(account.RoleMember)})
 }
 
 // ========================
@@ -442,6 +442,32 @@ func TestReplyToMessageRefused(t *testing.T) {
 	}
 }
 
+// Without a Google client no worker sends Gmail, so every send is refused
+// before anything is saved, rather than waiting forever.
+func TestSendRefusedWithoutGoogleClient(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		send func(api *API) *httptest.ResponseRecorder
+	}{
+		{"send", func(api *API) *httptest.ResponseRecorder { return requestSend(api, lunchKey.String(), lunchRequest) }},
+		{"reply", func(api *API) *httptest.ResponseRecorder { return requestReply(api, lunchKey.String(), replyRequest) }},
+		{"send again", func(api *API) *httptest.ResponseRecorder {
+			return requestAuthenticated(api, http.MethodPost, "/outgoing-messages/"+lunchID.String()+"/send-again", "")
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			messages := &fakeOutgoingMessages{message: lunch}
+			api := New(discard, Services{OutgoingMessages: messages, Session: memberSessions(account.RoleMember)})
+
+			response := c.send(api)
+
+			require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+			assert.Equal(t, gmailNotConfiguredType, decodeJSON(t, response.Body.Bytes())["type"])
+			assert.Zero(t, messages.calls)
+		})
+	}
+}
+
 // Every outgoing message operation is member level, and the documented
 // problems carry the types the web compares.
 func TestOutgoingMessagesOpenAPI(t *testing.T) {
@@ -468,7 +494,7 @@ func TestOutgoingMessagesOpenAPI(t *testing.T) {
 	}
 
 	types := problemTypes(doc)
-	for _, typ := range []string{outgoingMessageNotFoundType, sendingAccountNeedsReconnectType, notSendableAgainType, idempotencyKeyReusedType, sendThrottledType, messageNotFoundType} {
+	for _, typ := range []string{outgoingMessageNotFoundType, sendingAccountNeedsReconnectType, gmailNotConfiguredType, notSendableAgainType, idempotencyKeyReusedType, sendThrottledType, messageNotFoundType} {
 		assert.Contains(t, types, typ)
 	}
 }

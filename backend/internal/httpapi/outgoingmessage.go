@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"inbok/internal/connectedaccount"
 	"inbok/internal/outgoingmessage"
 	"inbok/internal/session"
 )
@@ -38,11 +39,12 @@ type outgoingMessageService interface {
 }
 
 type outgoingMessageHandler struct {
-	service outgoingMessageService
+	service   outgoingMessageService
+	providers offeredProviders
 }
 
-func registerOutgoingMessages(api huma.API, service outgoingMessageService) {
-	handler := outgoingMessageHandler{service: service}
+func registerOutgoingMessages(api huma.API, service outgoingMessageService, providers offeredProviders) {
+	handler := outgoingMessageHandler{service: service, providers: providers}
 
 	registerOutgoingMessageSend(api, handler)
 	registerReplyToMessage(api, handler)
@@ -137,6 +139,8 @@ func outgoingMessageProblem(err error) error {
 	// The same type: either way the member reconnects the account.
 	case errors.Is(err, outgoingmessage.ErrTokenUnreadable):
 		return newProblem(http.StatusConflict, sendingAccountNeedsReconnectType, "Account needs reconnecting", "inbok can't open the permission it saved for the sending account. Reconnect it to send.")
+	case errors.Is(err, errGmailNotConfigured):
+		return newProblem(http.StatusConflict, gmailNotConfiguredType, "Gmail not configured", "Gmail accounts can't send until an administrator sets up a Google client.")
 	case errors.Is(err, outgoingmessage.ErrThrottled):
 		return retryAfterProblem(newProblem(http.StatusTooManyRequests, sendThrottledType, "Too many messages", "Too many messages were sent recently."), err)
 	// The member was deactivated after the session was checked.
@@ -160,15 +164,31 @@ func outgoingMessageResponses(api huma.API, statuses ...int) map[string]*huma.Re
 // sendResponses adds the failures every send shares to responses.
 func sendResponses(responses map[string]*huma.Response) {
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
-	conflict.Description = "The sending account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Nothing is sent from it until its permission is usable again."
+	conflict.Description = "The sending account needs reconnecting: Google stopped accepting its permission, or no key inbok has opens the permission it saved. Nothing is sent from it until its permission is usable again. " +
+		"Or no Google client is configured, so Gmail is not offered and nothing is saved. The account's allowedActions in List Connected Accounts says whether it can send now."
 	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
-		"needsReconnect":  {Value: outgoingMessageProblem(outgoingmessage.ErrNeedsReconnect)},
-		"tokenUnreadable": {Value: outgoingMessageProblem(outgoingmessage.ErrTokenUnreadable)},
+		"needsReconnect":     {Value: outgoingMessageProblem(outgoingmessage.ErrNeedsReconnect)},
+		"tokenUnreadable":    {Value: outgoingMessageProblem(outgoingmessage.ErrTokenUnreadable)},
+		"gmailNotConfigured": {Value: outgoingMessageProblem(errGmailNotConfigured)},
 	}
 
 	throttled := responses[strconv.Itoa(http.StatusTooManyRequests)]
 	throttled.Description = "Too many messages were sent recently."
 	throttled.Content[problemContentType].Example = outgoingMessageProblem(outgoingmessage.ErrThrottled)
+}
+
+// refuseUnoffered returns the refusal of a send when no client for the
+// sending account's provider is set up, and nil otherwise.
+//
+// DESIGN: refused before the message is saved: without the client no
+// worker sends Gmail, so a saved message would wait forever (ADR001,
+// "Polling"). Gmail is the only provider, so the sending account is
+// Gmail's.
+func (h outgoingMessageHandler) refuseUnoffered() error {
+	if !h.providers.offered(connectedaccount.ProviderGmail) {
+		return outgoingMessageProblem(errGmailNotConfigured)
+	}
+	return nil
 }
 
 // ========================
@@ -233,6 +253,12 @@ func (h outgoingMessageHandler) handleSendMessage(ctx context.Context, in *outgo
 	if err != nil {
 		return nil, err
 	}
+	// 1. Refuse before the message is saved (refuseUnoffered).
+	if err := h.refuseUnoffered(); err != nil {
+		return nil, err
+	}
+
+	// 2. Save the message, which a background job sends.
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
 	message, err := h.service.Create(ctx, user.ID, outgoingmessage.Draft{
 		ConnectedAccountID: in.Body.ConnectedAccountID,
@@ -366,6 +392,12 @@ func (h outgoingMessageHandler) handleReplyToMessage(ctx context.Context, in *re
 	if err != nil {
 		return nil, err
 	}
+	// 1. Refuse before the reply is saved (refuseUnoffered).
+	if err := h.refuseUnoffered(); err != nil {
+		return nil, err
+	}
+
+	// 2. Save the reply, which a background job sends.
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
 	message, err := h.service.Reply(ctx, user.ID, outgoingmessage.Reply{
 		ConnectedAccountID: in.Body.ConnectedAccountID,
@@ -497,6 +529,12 @@ func registerSendAgain(api huma.API, handler outgoingMessageHandler) {
 }
 
 func (h outgoingMessageHandler) handleSendMessageAgain(ctx context.Context, in *outgoingMessageInput) (*output[outgoingMessage], error) {
+	// 1. Refuse before the copy is saved (refuseUnoffered).
+	if err := h.refuseUnoffered(); err != nil {
+		return nil, err
+	}
+
+	// 2. Save the copy, which a background job sends.
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
 	message, err := h.service.SendAgain(ctx, user.ID, in.ID)
 	if err != nil {

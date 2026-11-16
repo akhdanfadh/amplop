@@ -12,7 +12,7 @@ export const responseConnectedAccountsDataAccountsItemColorMax = 8;
 export const ResponseConnectedAccounts = zod.object({
   "data": zod.object({
   "accounts": zod.array(zod.object({
-  "allowedActions": zod.array(zod.enum(['sync', 'reconnect', 'rename', 'disconnect'])).describe('What the member can ask of this account now: sync (Sync Account Now), reconnect (Reconnect Account), rename (Rename Account), and disconnect (Disconnect Account). sync is missing while the account needs reconnecting, and sync and reconnect while its provider is not offered (see List Account Providers). A listed action can still be refused when the account or the instance\'s settings changed since this read. Clients ignore values they don\'t know.'),
+  "allowedActions": zod.array(zod.enum(['sync', 'send', 'reconnect', 'rename', 'disconnect'])).describe('What the member can ask of this account now: sync (Sync Account Now), send (Send Message, Reply to Message, and Send Message Again from it), reconnect (Reconnect Account), rename (Rename Account), and disconnect (Disconnect Account). sync is missing while the account needs reconnecting, send while its status is not usable, and sync, send, and reconnect while its provider is not offered (see List Account Providers). A listed action can still be refused when the account or the instance\'s settings changed since this read. Clients ignore values they don\'t know.'),
   "color": zod.int().min(1).max(responseConnectedAccountsDataAccountsItemColorMax).describe('The account\'s colour, one of eight the web app defines, given at connect: the lowest the member\'s other accounts use least.'),
   "createdAt": zod.iso.datetime({"offset":true}),
   "email": zod.string(),
