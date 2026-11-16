@@ -4,7 +4,7 @@ import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { Button } from "./button";
 import { Sheet, SheetTitle } from "./sheet";
-import { closeToasts, showError, Toaster } from "./toast";
+import { closeAbout, closeToasts, showError, Toaster } from "./toast";
 
 // Counts the toasts on screen now, without waiting.
 function toasts(): number {
@@ -147,6 +147,39 @@ describe("Toaster", () => {
     await userEvent.click(page.getByRole("button", { name: "Close" }).last());
     showError("Couldn't archive the conversation", "Check your connection, then try again.");
     await expect.poll(toasts).toBe(3);
+  });
+
+  it("shows the same words about other things once, closing only when all of it changed", async () => {
+    await render(<Toaster />);
+    const failed = "Couldn't archive 2 conversations";
+    const why = "Gmail didn't answer for 2 conversations. Try again.";
+    showError(failed, why, { about: ["a", "b"] });
+    showError(failed, why, { about: ["c", "d"] });
+    await expect.element(page.getByText(failed)).toBeVisible();
+    expect(toasts()).toBe(1);
+
+    // A newer action changed a and b, not c and d: the failure still stands.
+    closeAbout(["a", "b"]);
+    await new Promise((done) => requestAnimationFrame(done));
+    expect(toasts()).toBe(1);
+    closeAbout(["c", "d"]);
+
+    await expect.poll(toasts).toBe(0);
+  });
+
+  it("keeps Show details out of the alert, its lists named by their reasons", async () => {
+    await render(<Toaster />);
+    showError("Couldn't archive 2 conversations", "1 conversation is no longer in Gmail.", {
+      details: [{ heading: "No longer in Gmail", items: ["Plans · ana@example.com"] }],
+    });
+    const alert = page.getByRole("alert");
+    await expect.element(alert).toBeVisible();
+    expect(alert.element().textContent).toContain("Couldn't archive 2 conversations");
+    expect(alert.element().textContent).not.toContain("Show details");
+
+    await userEvent.click(page.getByRole("button", { name: "Show details" }));
+
+    await expect.element(page.getByRole("list", { name: "No longer in Gmail" })).toBeVisible();
   });
 
   it("shows every toast, newest first, with the dark theme's focus ring", async () => {
