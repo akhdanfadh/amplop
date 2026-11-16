@@ -2,9 +2,14 @@ import { useState, type ReactElement } from "react";
 import { revalidateLogic, useSelector } from "@tanstack/react-form";
 import { Trash2Icon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetOutgoingMessageQueryKey, useReplyToMessage } from "@/api/generated/inbok";
+import {
+  getGetOutgoingMessageQueryKey,
+  useReplyToMessage,
+  useSendMessageAgain,
+} from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { useAppForm } from "@/components/form/app-form";
+import { FixedRow } from "@/components/form/fields";
 import { useFormRequest } from "@/components/form/request";
 import { LeaveWarning } from "@/components/leave-warning";
 import {
@@ -18,7 +23,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
-import { EditorCard, RecipientRows, SendFailure, recipientLists, useEditorSend } from "./editor";
+import { EditedFrom } from "./compose-form";
+import { editRequest } from "./compose-schema";
+import {
+  EditNote,
+  EditorCard,
+  RecipientRows,
+  SendFailure,
+  recipientLists,
+  useEditorSend,
+} from "./editor";
 import type { ReplyMode, ReplyValues } from "./reply-defaults";
 import { ReplySchema, replyFields, replyRequest } from "./reply-schema";
 import {
@@ -26,6 +40,7 @@ import {
   otherAccountNote,
   replyErrorMessage,
   replyLabels,
+  sendAgainErrorMessage,
   replyLeaveText,
 } from "./text";
 
@@ -33,8 +48,10 @@ import {
 // from one of accounts, the member's connected accounts; one whose
 // allowedActions lack send can't be chosen. mode names the editor;
 // initial is what it starts with; receiving is the account that holds the
-// answered message, named when it can't send. onSent receives the saved
-// reply, whose send goes on in the background; onDiscard runs when the
+// answered message, named when it can't send. With edit, a reply Gmail
+// refused, it sends that reply again with the member's edits, from its own
+// account, a fixed row. onSent receives the saved reply, whose send goes
+// on in the background; onDiscard runs when the
 // member discards it; onUnauthorized runs on a 401.
 export function ReplyEditor({
   answeredId,
@@ -45,7 +62,9 @@ export function ReplyEditor({
   onSent,
   onDiscard,
   onUnauthorized,
+  edit,
 }: {
+  edit?: OutgoingMessage;
   answeredId: string;
   mode: ReplyMode;
   accounts: ListedAccount[];
@@ -58,17 +77,22 @@ export function ReplyEditor({
   const client = useQueryClient();
   const [discarding, setDiscarding] = useState(false);
   const editor = useEditorSend(onUnauthorized);
-  const send = useReplyToMessage(editor.options);
-  const request = useFormRequest(send, replyFields);
+  // Both hooks run, as hooks must; edit, fixed for the form's life, picks
+  // the one that sends. Send again needs no key: the reply is its own.
+  const create = useReplyToMessage(editor.options);
+  const again = useSendMessageAgain({ mutation: editor.options.mutation });
+  const createRequest = useFormRequest(create, replyFields);
+  const againRequest = useFormRequest(again, replyFields);
+  const send = edit ? again : create;
+  const request = edit ? againRequest : createRequest;
   const form = useAppForm({
     defaultValues: initial,
     validationLogic: revalidateLogic(),
     validators: { onDynamic: request.check(ReplySchema) },
     onSubmit: async ({ value, formApi }) => {
-      const sent = await request.send(formApi, value, {
-        id: answeredId,
-        data: replyRequest(value),
-      });
+      const sent = edit
+        ? await againRequest.send(formApi, value, { id: edit.id, data: editRequest(edit, value) })
+        : await createRequest.send(formApi, value, { id: answeredId, data: replyRequest(value) });
       if (sent.outcome === "refused") editor.refused(sent.error);
       if (sent.outcome !== "done") return;
       // The status shows at once, without waiting for a read.
@@ -124,9 +148,20 @@ export function ReplyEditor({
             </TooltipTrigger>
           }
         >
-          <form.AppField name="connectedAccountId">
-            {(field) => <field.FromField label="From" accounts={accounts} description={fromNote} />}
-          </form.AppField>
+          {edit ? (
+            <>
+              <EditNote />
+              <FixedRow label="From">
+                <EditedFrom message={edit} accounts={accounts} />
+              </FixedRow>
+            </>
+          ) : (
+            <form.AppField name="connectedAccountId">
+              {(field) => (
+                <field.FromField label="From" accounts={accounts} description={fromNote} />
+              )}
+            </form.AppField>
+          )}
           <RecipientRows form={form} fields={recipientLists} onTyping={setTypingIn} />
           <form.AppField name="body">
             {/* The recipients are filled in; the member writes the message. */}
@@ -134,7 +169,7 @@ export function ReplyEditor({
           </form.AppField>
         </EditorCard>
         <SendFailure
-          errors={request.summary(replyErrorMessage)}
+          errors={request.summary(edit ? sendAgainErrorMessage : replyErrorMessage)}
           requestId={request.reference}
           error={send.error}
         />

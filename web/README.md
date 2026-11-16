@@ -796,8 +796,7 @@ question while it holds typed text, is sending, or may have saved.
 
 The form (`ComposeForm`) sends from one of the member's connected
 accounts, chosen in From and shown by its address. From starts with none
-chosen, so the member picks the address recipients see; Edit and send
-keeps the opened message's account while it can send. An account can send
+chosen, so the member picks the address recipients see. An account can send
 when its `allowedActions` from the server include `send`, never by the
 page's own copy of the rule; one that can't is listed but can't be chosen
 (marked when it needs reconnecting), and a member with none that can
@@ -826,9 +825,18 @@ the chips are one Tab stop with Delete to remove one. An address the
 contract refuses stays a chip, marked and named "not an email address",
 and its field's error names it. At most 100 per list, with at least one
 recipient in all; the form's values are the lists themselves.
-Edit and send starts the form with that message's content as a new
-message, saying the opened one stays as it is and asking for another
-account when the message's own can't send.
+Edit and send starts the form with a refused message's content
+(`ComposeForm`'s `edit`) and sends it through Send Message Again with a
+body, the edits (`editRequest`), instead of Send Message: one operation
+links a failed message to whatever replaced it, so the refused one reads
+Tried again and leaves the Outbox count. From is then a fixed row
+(`FixedRow`, the kit's), as is a reply's subject (`reply`), which the
+API keeps; a note above says what Send does (`EditNote`). The reply
+editor does the same from a refused reply's status in its conversation;
+either way the copy stays in the reply's thread. Both editors run both
+send hooks, as hooks must, and the edit picks one; Send again takes no
+Idempotency-Key, as the message is its own: a repeat returns its copy,
+and other edits after it are refused (`sent-again-otherwise`).
 
 Send saves the message, which the server sends in the background, and
 the window then holds its status (`MessageStatus look="window"`): a mark,
@@ -887,9 +895,10 @@ offered only while the message lists `send-again` in its
 and from Gmail being set up. A message is sent again at most once, so its
 page then says so and links the copy, and drops the reason's advice and
 every action, which would send it twice. A message Gmail refused offers
-Edit and send instead, while any of the member's accounts lists `send`,
-since the new message may go from another; it opens the compose window
-filled with its content, as a new message. Open Connected accounts shows
+Edit and send instead, while it lists `send-again`, as Gmail would refuse
+it again unchanged: it opens the compose window on its content and sends
+it again with the member's edits ("Compose window"). Open Connected
+accounts shows
 while the sending account's status is one a reconnect fixes, whatever
 the message failed for. One function, `nextSteps`
 (`src/features/outgoing-messages/text.ts`), works out both what a
@@ -954,8 +963,10 @@ never changes what is being written. After Send the editor gives way to the repl
 Outbox's read; a failed reread keeps the status,
 says it may be out of date, and offers Try again. It has Send again and a
 link to its Outbox page. A refused reply's Edit and send opens the editor
-again with its content, as a new reply to the same message, so it keeps
-its threading.
+again with its content and sends the reply again with the member's edits,
+from its own account, so the copy keeps its threading and the refused one
+reads Tried again. The editor keeps its hidden subject, which the copy
+keeps too.
 
 ## Message view
 

@@ -6,7 +6,8 @@ import type { LeaveState } from "./text";
 // One new message the compose window holds: id is new for each message,
 // so its editor starts afresh; window is the window's, kept while one
 // message replaces another in it, e.g. by Edit and send, so its layout and
-// history entry stay; edit is the sent message it starts from.
+// history entry stay; edit is the refused message it sends again with the
+// member's edits.
 //
 // DESIGN: window is a UUID, unique beyond this page load: a phone's
 // history entry keeps it through a reload, e.g. when another tab signs a

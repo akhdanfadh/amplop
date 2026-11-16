@@ -766,6 +766,24 @@ last two redirect into settings, so settings can move without the server.
   without saved drafts, a full-screen reply would make checking an
   earlier message cost the text; inline, it is a scroll away, and leaving
   the page with typed text asks first.
+- **Edit and send** sends a message Gmail refused again with the
+  member's edits: in the compose window from the Outbox or the window's
+  own status, inline below the answered message from a reply's status in
+  its conversation. One muted line heads the rows: "Gmail refused this
+  message. Check its recipients and content, then send: it replaces the
+  refused one in the Outbox." From, and in the compose window a reply's
+  subject, are fixed rows: the label, then the value as text, with no
+  control; the inline reply editor keeps its hidden subject, as every
+  reply there does. From's address and name run as one line of text, so
+  a long pair wraps between them before the address breaks; the subject
+  shows at most 2 lines, as a reply's can run to 500 characters, then
+  Show all when it is cut: a link-style button, as a message's details
+  have for a long address list, which unfolds it and moves focus to it.
+  The copy goes from the same account, and a reply keeps the subject
+  that threads it; the recipients and the message stay editable. Once
+  sent, the refused message reads Tried again, linking its copy, and
+  leaves the Outbox count. While the compose window holds typed text,
+  Edit and send asks before replacing it.
 - **After Send**, a reply waits in place as a card with its status until
   synced mail replaces it. The compose window holds the new message's
   status instead of the editor, shrunk to it: a 32 px circle in the

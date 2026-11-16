@@ -10,6 +10,7 @@ import {
 import { ChevronDownIcon, ChevronUpIcon, ReplyIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { AccountMark, type AccountColor } from "@/components/account-mark";
+import { inlineLinkButton } from "@/components/link-style";
 import { Button } from "@/components/ui/button";
 import type { MailAddress } from "@/features/outgoing-messages/reply-defaults";
 import { listDate } from "@/features/mail/dates";
@@ -337,9 +338,7 @@ function AddressField({
           <Button
             variant="link"
             size="sm"
-            // Text-sized, as a link in a line; ::before gives touch its
-            // 44 px (DESIGN.md "Control height").
-            className="relative min-h-0 p-0 align-baseline pointer-coarse:min-h-0 pointer-coarse:before:absolute pointer-coarse:before:inset-x-0 pointer-coarse:before:-inset-y-3"
+            className={inlineLinkButton}
             onPress={() => {
               revealed.current = true;
               setAll(true);

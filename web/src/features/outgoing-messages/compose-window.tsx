@@ -15,7 +15,7 @@ import { FocusScope } from "react-aria/FocusScope";
 import { useLandmark } from "react-aria/useLandmark";
 import { Maximize2Icon, Minimize2Icon, MinusIcon, XIcon } from "lucide-react";
 import { getGetOutgoingMessageQueryKey, useListConnectedAccounts } from "@/api/generated/inbok";
-import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
+import type { ListedAccount } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { textLink } from "@/components/link-style";
@@ -34,7 +34,6 @@ import { MessageStatusMark } from "./status-badge";
 import {
   composeAccountsUnreadable,
   closeText,
-  editNoteText,
   messageStatusStale,
   newMessageTitle,
   noAccountText,
@@ -457,16 +456,9 @@ function MessageContent({
       <div className={cn("flex min-h-0 flex-col", dockedHeight || "flex-1")}>
         <ComposeForm
           accounts={list}
-          initial={composeValues(
-            senders.map((account) => account.id),
-            message.edit,
-          )}
-          note={
-            <>
-              {signedOut}
-              {message.edit && <EditNote message={message.edit} senders={senders} />}
-            </>
-          }
+          edit={message.edit}
+          initial={composeValues(message.edit)}
+          note={signedOut}
           look={look}
           header={({ title, send }) => header({ title, send, sizes: "all" })}
           collapsed={minimised}
@@ -646,33 +638,6 @@ function WindowState({
       <Link to="/settings/connected-accounts" className={textLink}>
         Open Connected accounts
       </Link>
-    </p>
-  );
-}
-
-// EditNote says that the window starts with message's content as a new
-// message, leaving message as it is, and asks for another account when
-// message's own, not among senders, can't send now.
-function EditNote({
-  message,
-  senders,
-}: {
-  message: OutgoingMessage;
-  senders: ListedAccount[];
-}): ReactElement {
-  const own = senders.some((account) => account.id === message.connectedAccountId);
-  return (
-    <p className="border-b px-4 py-2 text-sm wrap-anywhere text-muted-foreground">
-      {editNoteText(
-        message.status === "failed" && message.failure === "refused" ? "refused" : "opened",
-      )}
-      {!own && (
-        <>
-          {" "}
-          Its account <span translate="no">{message.from}</span> can&apos;t send now, so choose
-          another in From.
-        </>
-      )}
     </p>
   );
 }

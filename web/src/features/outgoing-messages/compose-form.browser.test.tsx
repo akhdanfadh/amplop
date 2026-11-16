@@ -86,7 +86,7 @@ function serve(
 // it reported, what closing would lose as it last reported, the query
 // client, the router, and the rendered screen.
 async function show(
-  initial: ComposeValues = composeValues([]),
+  initial: ComposeValues = composeValues(),
   accounts: ListedAccount[] = [studio, stale],
 ) {
   const sent: OutgoingMessage[] = [];
@@ -194,7 +194,7 @@ describe("ComposeForm", () => {
 
   it("shows the Cc and Bcc an edited message starts with", async () => {
     serve();
-    await show(composeValues([studio.id], { ...message, cc: ["ben@example.com"] }));
+    await show(composeValues({ ...message, cc: ["ben@example.com"] }));
 
     await expect
       .element(page.getByRole("grid", { name: "Cc" }).getByRole("row"))
@@ -215,7 +215,7 @@ describe("ComposeForm", () => {
   it("offers a usable account the server doesn't list able to send, but not to choose", async () => {
     serve();
     // As when no Google client is set up: usable, yet without send.
-    await show(composeValues([]), [{ ...studio, allowedActions: ["rename", "disconnect"] }]);
+    await show(composeValues(), [{ ...studio, allowedActions: ["rename", "disconnect"] }]);
 
     await userEvent.click(page.getByRole("button", { name: /From/ }));
     await expect
@@ -336,7 +336,7 @@ describe("ComposeForm", () => {
 
   it("reports that a lost send may have saved, with nothing edited and after a later refusal", async () => {
     serve([lost, () => problem(409, "/api/v0/problems/sending-account-needs-reconnect")]);
-    const { loses } = await show(composeValues([studio.id], message));
+    const { loses } = await show(composeValues(message));
     expect(loses.last).toBe(null);
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));
@@ -367,12 +367,12 @@ describe("ComposeForm", () => {
 
   it("gives a new form a new key", async () => {
     const calls = serve();
-    const first = await show(composeValues([studio.id], message));
+    const first = await show(composeValues(message));
     await userEvent.click(page.getByRole("button", { name: "Send" }));
     await expect.poll(() => posts(calls)).toHaveLength(1);
     await first.screen.unmount();
 
-    await show(composeValues([studio.id], message));
+    await show(composeValues(message));
     await userEvent.click(page.getByRole("button", { name: "Send" }));
 
     await expect.poll(() => posts(calls)).toHaveLength(2);
@@ -392,7 +392,7 @@ describe("ComposeForm", () => {
           }),
       ),
     );
-    const { sent, client, router } = await show(composeValues([studio.id], message));
+    const { sent, client, router } = await show(composeValues(message));
     const reread = vi.spyOn(client, "invalidateQueries");
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));
@@ -409,7 +409,7 @@ describe("ComposeForm", () => {
 
   it("reports a 401 to the page", async () => {
     serve([() => problem(401, "/api/v0/problems/unauthenticated")]);
-    const { unauthorized } = await show(composeValues([studio.id], message));
+    const { unauthorized } = await show(composeValues(message));
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));
 
@@ -418,7 +418,7 @@ describe("ComposeForm", () => {
 
   it("rereads the accounts when the server says the account needs reconnecting", async () => {
     serve([() => problem(409, "/api/v0/problems/sending-account-needs-reconnect")]);
-    const { client } = await show(composeValues([studio.id], message));
+    const { client } = await show(composeValues(message));
     const reread = vi.spyOn(client, "invalidateQueries");
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));

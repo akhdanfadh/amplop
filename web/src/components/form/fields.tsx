@@ -416,6 +416,34 @@ export function FromField({
   );
 }
 
+// FixedRow is a message editor's row whose value can't change, e.g. From
+// while a refused message is sent again with edits: label, then children
+// as text, where a field's value would be, top-aligned with the label as
+// it wraps.
+export function FixedRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}): ReactElement {
+  return (
+    <div className="@container border-b">
+      <div className={rowLine}>
+        <span className={cn(rowLabel, "flex items-center text-sm")}>{label}</span>
+        <span
+          className={cn(
+            "flex min-h-8 min-w-0 flex-1 items-start gap-2 px-1 py-1.5 text-sm wrap-anywhere pointer-coarse:min-h-9 pointer-coarse:py-2",
+            narrowValue,
+          )}
+        >
+          {children}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // RecipientsField is the current field as a message editor's row of
 // recipient chips, e.g. To. isAddress is the contract's rule for one
 // address, which marks a chip that isn't one. after sits at the row's end,

@@ -194,7 +194,7 @@ describe("OutboxPage", () => {
       .element(list.getByRole("row", { name: /^To budi, citra, dewi, Q4 deck, Not sent/ }))
       .toBeVisible();
     await expect
-      .element(list.getByText("· Gmail refused it. Edit it and send it as new."))
+      .element(list.getByText("· Gmail refused it. Edit and send it again."))
       .toBeVisible();
     // A message sent again asks nothing more, whatever its own status.
     await expect

@@ -18,7 +18,7 @@ import { appRouter, memberSession } from "@/test/app-router";
 import { ComposeProvider, ComposeStore, useCompose } from "./compose-store";
 import { ComposeWindow } from "./compose-window";
 import { MessageStatus } from "./status";
-import { leaveText } from "./text";
+import { editNote, leaveText } from "./text";
 
 const ok = 200;
 const created = 201;
@@ -123,11 +123,19 @@ const refused: OutgoingMessage = {
   subject: "Refused",
 };
 
+// sendAgainCalls returns the page's calls to Send Message Again for
+// refused, as fetch received them.
+function sendAgainCalls() {
+  return vi
+    .mocked(fetch)
+    .mock.calls.filter(([url]) => url === `/api/v0/outgoing-messages/${refused.id}/send-again`);
+}
+
 // show renders a page with Compose and the compose window, as the signed-in
 // layout draws them, inside a router with a second page, /elsewhere. The
 // page warns before it is left when leaving is "warns", e.g. with a reply
 // being typed. It returns the store and the router.
-async function show(leaving: "quiet" | "warns" = "quiet") {
+async function show(leaving: "quiet" | "warns" = "quiet", status: OutgoingMessage = refused) {
   const store = new ComposeStore();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRootRoute({
@@ -147,7 +155,7 @@ async function show(leaving: "quiet" | "warns" = "quiet") {
         <OpenButton />
         <LeaveWarning active={leaving === "warns"} text={leaveText("typed")} />
         <MessageStatus
-          message={refused}
+          message={status}
           accounts={[studio]}
           onSentAgain={() => {}}
           onUnauthorized={() => {}}
@@ -334,15 +342,79 @@ describe("ComposeWindow", () => {
     await expect.element(page.getByRole("button", { name: "Compose" })).toHaveFocus();
   });
 
-  it("opens from a status's Edit and send with that message's content", async () => {
+  it("opens from a status's Edit and send with that message's content, from its account", async () => {
     await show();
     await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
 
-    await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Refused");
+    const window = page.getByRole("region", { name: "Refused" });
+    await expect.element(window.getByRole("textbox", { name: "Subject" })).toHaveValue("Refused");
+    await expect.element(window).toMatchTextContent(editNote);
+    // The copy goes from the same account: From is text, not a choice.
+    await expect.element(window).toMatchTextContent(/From\s*studio@example\.com/);
+    await expect.element(window.getByRole("button", { name: /From/ })).not.toBeInTheDocument();
+    await expect.element(window.getByRole("textbox", { name: "Message" })).toHaveFocus();
+  });
+
+  it("sends Edit and send's edits through Send again, with no key, then shows the copy", async () => {
+    const copy: OutgoingMessage = {
+      ...saved,
+      id: "019a0000-0000-7000-8000-0000000000dd",
+      subject: "Refused, fixed",
+    };
+    serve({ again: copy });
+    await show();
+    await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
+    await userEvent.fill(page.getByRole("textbox", { name: "Subject" }), "Refused, fixed");
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+
+    await expect.poll(() => sendAgainCalls()).toHaveLength(1);
+    const [, init] = sendAgainCalls()[0];
+    expect(typeof init?.body === "string" ? JSON.parse(init.body) : undefined).toEqual({
+      to: ["ana@example.com"],
+      cc: [],
+      bcc: [],
+      subject: "Refused, fixed",
+      body: "Noon?",
+    });
+    expect(new Headers(init?.headers).has("Idempotency-Key")).toBe(false);
+    await expect.element(page.getByRole("textbox", { name: "Message" })).not.toBeInTheDocument();
     await expect
-      .element(page.getByRole("region", { name: "Refused" }))
-      .toMatchTextContent("the one Gmail refused");
-    await expect.element(page.getByRole("textbox", { name: "Message" })).toHaveFocus();
+      .element(page.getByRole("region", { name: "Refused, fixed" }))
+      .toMatchTextContent("Sent to ana@example.com");
+  });
+
+  it("keeps a refused reply's subject, which the API keeps", async () => {
+    await show("quiet", { ...refused, reply: true, subject: "Re: Lunch" });
+    await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
+
+    const window = page.getByRole("region", { name: "Re: Lunch" });
+    await expect.element(window).toMatchTextContent(/Subject\s*Re: Lunch/);
+    await expect.element(window.getByRole("textbox", { name: "Subject" })).not.toBeInTheDocument();
+    // Two lines hold it whole, so nothing to unfold.
+    await expect.element(window.getByRole("button", { name: "Show all" })).not.toBeInTheDocument();
+  });
+
+  // A reply's subject runs to 500 characters; 2 lines show, then Show all
+  // unfolds the rest, which takes focus, as a message's details do.
+  it("cuts a long fixed subject to 2 lines, with Show all to read it whole", async () => {
+    const subject =
+      `Re: ${"Quarterly review of the warehouse leases and the revised floor plans, ".repeat(6)}`.slice(
+        0,
+        500,
+      );
+    await show("quiet", { ...refused, reply: true, subject });
+    await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
+
+    const showAll = page.getByRole("button", { name: "Show all" });
+    // The window's title shows it too, first; the row's is the last.
+    const text = page.getByText(subject, { exact: true }).last();
+    await expect.element(showAll).toBeVisible();
+    expect(text.element().scrollHeight).toBeGreaterThan(text.element().clientHeight);
+    await userEvent.click(showAll);
+
+    await expect.element(showAll).not.toBeInTheDocument();
+    await expect.element(text).toHaveFocus();
+    expect(text.element().scrollHeight).toBe(text.element().clientHeight);
   });
 
   it("opens from /compose over the Inbox, which history keeps in its place", async () => {

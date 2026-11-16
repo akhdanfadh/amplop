@@ -4,6 +4,7 @@ import {
   newOutgoingMessageBccMax,
   newOutgoingMessageCcMax,
   newOutgoingMessageToMax,
+  type MessageEdits,
   type OutgoingMessage,
 } from "@/api/generated/model";
 import { emailAddress } from "@/api/validation";
@@ -101,24 +102,35 @@ export function composeRequest(values: ComposeValues): NewOutgoingMessage {
   };
 }
 
-// composeValues returns the form's values for a new message with the
-// content of message, from message's own account while it is one of
-// accountIds, the member's usable accounts. Otherwise no account is chosen,
-// and without message, the lists, subject, and body start empty too.
+// composeValues returns the form's values for a new message, empty, or
+// for edits to message, a refused one: its content, from its own account,
+// which sending it again keeps.
 //
-// DESIGN: the member chooses the sender, since recipients see it; a default
-// would send from an account they never looked at.
-export function composeValues(
-  accountIds: readonly number[],
-  message?: OutgoingMessage,
-): ComposeValues {
-  const own = message && accountIds.includes(message.connectedAccountId);
+// DESIGN: the member chooses a new message's sender, since recipients see
+// it; a default would send from an account they never looked at.
+export function composeValues(message?: OutgoingMessage): ComposeValues {
   return {
-    connectedAccountId: own ? message.connectedAccountId : 0,
+    connectedAccountId: message?.connectedAccountId ?? 0,
     to: message?.to ?? [],
     cc: message?.cc ?? [],
     bcc: message?.bcc ?? [],
     subject: message?.subject ?? "",
     body: message?.body ?? "",
+  };
+}
+
+// editRequest returns the Send Message Again body that sends message again
+// with values' content: a reply's own subject, which the API keeps, and
+// otherwise values'.
+export function editRequest(
+  message: Pick<OutgoingMessage, "reply" | "subject">,
+  values: Pick<ComposeValues, "to" | "cc" | "bcc" | "body"> & { subject?: string },
+): MessageEdits {
+  return {
+    to: values.to,
+    cc: values.cc,
+    bcc: values.bcc,
+    subject: message.reply ? message.subject : (values.subject ?? message.subject),
+    body: values.body,
   };
 }

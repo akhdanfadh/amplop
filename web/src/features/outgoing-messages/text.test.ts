@@ -107,11 +107,17 @@ describe("nextSteps", () => {
     ["unknown, not allowed", { ...unknown, allowedActions: [] }, [own], []],
     // Allowed whatever the accounts' read says.
     ["gave-up, accounts loading", failed("gave-up"), undefined, ["send-again"]],
-    // Gmail would refuse it again, so it is edited, from any account that sends.
+    // Gmail would refuse it again unchanged, so it is sent again with
+    // edits, as the API allows: Send again with a body.
     ["refused", failed("refused"), [own], ["edit"]],
-    ["refused, accounts loading", failed("refused"), undefined, []],
-    ["refused, no account sends", failed("refused"), [{ ...own, allowedActions: [] }], []],
-    ["refused, its account stale", failed("refused"), [stale, other], ["edit", "reconnect"]],
+    ["refused, accounts loading", failed("refused"), undefined, ["edit"]],
+    ["refused, not allowed", { ...failed("refused"), allowedActions: [] }, [own], []],
+    [
+      "refused, its account stale",
+      { ...failed("refused"), allowedActions: [] },
+      [stale, other],
+      ["reconnect"],
+    ],
     // The account's state now, not the failure's, decides the reconnect.
     [
       "needs-reconnect, still",
@@ -400,7 +406,7 @@ describe("an Outbox row's status", () => {
       failed("refused"),
       "Not sent",
       "destructive",
-      "Gmail refused it. Edit it and send it as new.",
+      "Gmail refused it. Edit and send it again.",
     ],
     [
       "sending-limit",

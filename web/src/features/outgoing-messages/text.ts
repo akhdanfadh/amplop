@@ -13,6 +13,7 @@ const unprocessable = 422;
 const keyReusedType: ProblemType = "/api/v0/problems/idempotency-key-reused";
 const needsReconnectType: ProblemType = "/api/v0/problems/sending-account-needs-reconnect";
 const notSendableAgainType: ProblemType = "/api/v0/problems/not-sendable-again";
+const sentAgainOtherwiseType: ProblemType = "/api/v0/problems/sent-again-otherwise";
 const messageNotFoundType: ProblemType = "/api/v0/problems/outgoing-message-not-found";
 const answeredNotFoundType: ProblemType = "/api/v0/problems/message-not-found";
 export const messageGone = "This message isn't in your Outbox. It may have been removed.";
@@ -39,7 +40,7 @@ export function statusLabel(status: Status): string {
 // Send again uses, when known.
 const failures: Record<Failure, (from: string, current: string | undefined) => string> = {
   refused: () =>
-    "Gmail refused this message. Check its recipients and content, then edit it and send it as a new message.",
+    "Gmail refused this message. Check its recipients and content, then edit and send it.",
   "sending-limit": (from) =>
     `${from} reached Gmail's daily sending limit, which lifts within 24 hours. Send it again then.`,
   "needs-reconnect": (from) =>
@@ -124,18 +125,14 @@ export function nextSteps(message: MessageState, accounts?: readonly SendingAcco
 }
 
 // endedOffers returns what a failed or unknown message, not yet sent
-// again, offers: Send again when the API allows it; for a refused one,
-// which Gmail would refuse again, Edit and send instead, while any of
-// accounts can send, as the new message may go from another; and the
-// Connected accounts page while the sending account is one a reconnect
-// fixes.
+// again, offers while the API allows sending it again: Send again, or for
+// a refused one, which Gmail would refuse again unchanged, Edit and send,
+// which sends it again with the member's edits; and the Connected accounts
+// page while the sending account is one a reconnect fixes.
 function endedOffers(message: MessageState, accounts?: readonly SendingAccount[]): Offer[] {
   const offers: Offer[] = [];
-  if (message.failure === "refused") {
-    if (accounts?.some((account) => account.allowedActions.includes("send"))) offers.push("edit");
-  } else if (message.allowedActions.includes("send-again")) {
-    offers.push("send-again");
-  }
+  if (message.allowedActions.includes("send-again"))
+    offers.push(message.failure === "refused" ? "edit" : "send-again");
   const account = sendingAccount(message, accounts);
   if (account !== undefined && account.status !== "usable") offers.push("reconnect");
   return offers;
@@ -260,13 +257,13 @@ export function noAccountText(accounts: readonly Pick<ListedAccount, "status">[]
 export const signedOutText =
   "You're signed out, so this message can't be sent. Copy what you typed, then";
 
-// editNoteText says that the window starts with the content of a message
-// Gmail refused or one the member opened, which stays as it is.
-export function editNoteText(from: "refused" | "opened"): string {
-  return from === "refused"
-    ? "This is a new message with the content of the one Gmail refused, which stays in the Outbox as it is."
-    : "This is a new message with the content of the one you opened, which stays in the Outbox as it is.";
-}
+// What unfolds a refused reply's subject, cut to 2 lines in the editor.
+export const showAllSubject = "Show all";
+
+// What heads an editor sending a refused message again with the member's
+// edits, which then replaces it in the Outbox.
+export const editNote =
+  "Gmail refused this message. Check its recipients and content, then send: it replaces the refused one in the Outbox.";
 
 // What Edit and send asks while the compose window holds another message.
 export const replaceText: LeaveWarningText = {
@@ -313,6 +310,8 @@ export function sendAgainErrorMessage(err: ApiError): string {
   // Only the API's own problems say why; a missing route says nothing.
   if (err.status === conflict && err.problem?.type === notSendableAgainType)
     return "This message can't be sent again: its status has changed.";
+  if (err.status === conflict && err.problem?.type === sentAgainOtherwiseType)
+    return "This message was already sent again with other content. Open it in the Outbox to see that copy.";
   if (err.status === notFound && err.problem?.type === messageNotFoundType) return messageGone;
   if (uncertainOutcome(err))
     // A repeat returns the copy the first saved.
@@ -451,7 +450,7 @@ export function leaveText(state: LeaveState): LeaveWarningText {
 // What a row says after the status of a message in each failure, short
 // for a line; the message's page keeps the whole sentence (nextSteps).
 const shortFailures: Record<Failure, string> = {
-  refused: "Gmail refused it. Edit it and send it as new.",
+  refused: "Gmail refused it. Edit and send it again.",
   "sending-limit": "Its account hit Gmail's daily limit. Send it again later.",
   "needs-reconnect": "Reconnect the account, then send it again.",
   "token-unreadable": "Reconnect the account, then send it again.",
