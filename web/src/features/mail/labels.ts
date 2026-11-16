@@ -5,7 +5,7 @@ import type { MailData, PlaceCount } from "./conversations";
 import { labelTree, usePlaceCounts, type LabelNode } from "./place-counts";
 import { isViewPlace, type Place } from "./places";
 
-// Label is one of the member's labels as the menus show it: its
+// Label is one of the member's labels as the menus and marks show it: its
 // place (its id), its account, its own name, its name with its parents'
 // ("Work/Projects"), and how deep it sits under them, 0 at the top.
 export type Label = {

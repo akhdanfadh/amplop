@@ -582,6 +582,17 @@ last two redirect into settings, so settings can move without the server.
     click outside sends nothing. It waits, saying so, while the ticks
     add or remove more than the contract's limit for one change ("Add or
     remove up to 100 at once.").
+  - **Label chips** under the account line: the Inbox while the
+    conversation is in it, then each of its labels by path, in the
+    sidebar's order, as the list's Inbox chip (the `secondary` badge,
+    rounded rather than a pill, so a long path wraps inside it; the
+    recipient chips' sizes to touch, 36 px with a 44 px × target),
+    on React Aria's `TagGroup`. Each opens its list and has an × that
+    sends at once: the Inbox's runs Archive, a label's takes that label
+    off. One Tab stop reaches them; arrow keys move between them, Delete
+    or Backspace removes one; with the last gone, focus goes to the
+    title. No chip for Spam or Trash, whose toolbar already says where
+    the conversation is.
 - Title (22 px), the account mark, the message count. The title and
   account draw from the list's row at once; "Loading messages..." stands
   under them until the messages come, and the view takes focus, so a

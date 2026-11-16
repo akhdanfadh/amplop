@@ -17,6 +17,8 @@ import { useLayout } from "@/hooks/use-layout";
 import { isCurrent, runAction, type ActionMail } from "./actions";
 import { currentMail } from "./conversations";
 import { requestRowFocus } from "./focus-request";
+import { LabelChips } from "./label-chips";
+import { labelWords } from "./words";
 import { useLabelsIn } from "./labels";
 import { perform, type Performed } from "./perform";
 import type { AppHref, Place } from "./places";
@@ -207,6 +209,22 @@ export function Reader({
         placeholder={status}
         startAt={startAt}
         onUnauthorized={signOut}
+        marks={
+          row && (
+            <LabelChips
+              conversation={row}
+              labels={labels}
+              listAccount={listAccount}
+              onArchive={() => onAction("archive")}
+              onRemove={(label) =>
+                onAction({
+                  changes: [{ ids: [row.id], remove: [label.place] }],
+                  words: labelWords([], [label.path]),
+                })
+              }
+            />
+          )
+        }
         actions={
           row && (
             <ConversationToolbar

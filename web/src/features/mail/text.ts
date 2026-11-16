@@ -554,3 +554,6 @@ export function labelsLimit(most: number): string {
 export function noLabelsIn(account: string): string {
   return `No labels in ${account} yet. Labels you make in Gmail show here.`;
 }
+
+// The reading pane's chips of where a conversation is (LabelChips).
+export const marksName = "Labels";

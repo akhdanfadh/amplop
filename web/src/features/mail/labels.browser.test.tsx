@@ -253,6 +253,39 @@ describe("Labels from the keyboard", () => {
   });
 });
 
+describe("label chips", () => {
+  it("marks the Inbox and the conversation's labels, and takes a label off at once", async () => {
+    const row = conversation(1, { accountId: 1, labelIds: [acme] });
+    await open([row], `/mail/inbox/${row.id}`);
+    const chips = page.getByRole("grid", { name: "Labels" });
+    await expect.element(chips.getByRole("row", { name: "Inbox" })).toBeVisible();
+    const chip = chips.getByRole("row", { name: "Clients/Acme" });
+    await expect.element(chip).toBeVisible();
+
+    await userEvent.click(chip.getByRole("button"));
+
+    await expect.poll(() => api.changes).toEqual([[{ ids: [row.id], remove: [acme] }]]);
+    await expect
+      .element(page.getByText("Removed from Clients/Acme", { exact: true }))
+      .toBeVisible();
+    await expect.element(chip).not.toBeInTheDocument();
+  });
+
+  it("archives from the Inbox's chip, as Archive does", async () => {
+    const row = conversation(1, { accountId: 1 });
+    await open([row], `/mail/all/${row.id}`);
+
+    await userEvent.click(
+      page
+        .getByRole("grid", { name: "Labels" })
+        .getByRole("row", { name: "Inbox" })
+        .getByRole("button"),
+    );
+
+    await expect.poll(() => api.actions).toEqual([{ action: "archive", ids: [row.id] }]);
+  });
+});
+
 describe("picked conversations of several accounts", () => {
   it("offers each account's labels under its name, says when one has none, and moves one account's", async () => {
     const work = conversation(3, { accountId: 1, subject: "Contract renewal" });
@@ -295,5 +328,55 @@ describe("picked conversations of several accounts", () => {
     await expect
       .poll(() => api.changes)
       .toEqual([[{ ids: [work.id], add: [acme], remove: ["inbox"] }]]);
+  });
+});
+
+describe("a label change's failure", () => {
+  it("stays said when another label's change on the conversation works", async () => {
+    const row = conversation(1, { accountId: 1, labelIds: [acme, hiring] });
+    await open([row], `/mail/all/${row.id}`);
+    const chips = page.getByRole("grid", { name: "Labels" });
+    api.refuse[row.id] = "failed";
+    await userEvent.click(chips.getByRole("row", { name: "Clients/Acme" }).getByRole("button"));
+    const error = page.getByText("Couldn't change labels on the conversation");
+    await expect.element(error).toBeVisible();
+    await expect.element(chips.getByRole("row", { name: "Clients/Acme" })).toBeVisible();
+
+    delete api.refuse[row.id];
+    await userEvent.click(chips.getByRole("row", { name: "Hiring" }).getByRole("button"));
+
+    await expect.element(page.getByText("Removed from Hiring", { exact: true })).toBeVisible();
+    await expect.element(error).toBeVisible();
+  });
+
+  it("closes once that label changed again, though the change named another account's too", async () => {
+    const work = conversation(2, { accountId: 1, subject: "Contract renewal", labelIds: [acme] });
+    const home = conversation(1, { accountId: 2, subject: "Internet bill", labelIds: [family] });
+    await open([work, home], `/mail/all/${work.id}`);
+    await pick("Contract renewal");
+    await pick("Internet bill");
+    api.refuse[work.id] = "failed";
+    await userEvent.click(
+      page.getByRole("toolbar", { name: "Picked conversations" }).getByRole("button", {
+        name: "More actions",
+      }),
+    );
+    await userEvent.click(page.getByRole("menuitem", { name: "Labels…" }));
+    await userEvent.click(page.getByRole("menuitemcheckbox", { name: "Clients/Acme" }));
+    await userEvent.click(page.getByRole("menuitemcheckbox", { name: "Family" }));
+    await userEvent.click(page.getByRole("button", { name: "Apply" }));
+    const error = page.getByText("Couldn't change labels on 1 conversation");
+    await expect.element(error).toBeVisible();
+
+    delete api.refuse[work.id];
+    const chip = page.getByRole("grid", { name: "Labels" }).getByRole("row", {
+      name: "Clients/Acme",
+    });
+    await userEvent.click(chip.getByRole("button"));
+
+    await expect
+      .element(page.getByText("Removed from Clients/Acme", { exact: true }))
+      .toBeVisible();
+    await expect.element(error).not.toBeInTheDocument();
   });
 });

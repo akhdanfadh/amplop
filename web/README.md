@@ -151,9 +151,9 @@ Put shared code in the folder for its responsibility:
   many (`perform.ts`) and its Undo bar (`undo.tsx`), picking rows
   (`picking.ts`) and the bar that acts on them (`picking-bar.tsx`), the
   member's labels in the sidebar's order and where a move can leave
-  (`labels.ts`), More's Move to and Labels pickers (`label-menu.tsx`),
-  how a row shows its date and people, and the address Back to mail
-  returns to.
+  (`labels.ts`), More's Move to and Labels pickers (`label-menu.tsx`), the
+  reading pane's label chips (`label-chips.tsx`), how a row shows its
+  date and people, and the address Back to mail returns to.
 - `src/features/settings`: the settings sidebar and the settings page
   layout (`SettingsPage`, `SettingsSection`) every settings page uses.
 - `src/components`: shared components, such as the shell around every page
@@ -1076,7 +1076,9 @@ Move to and Labels, which open their picker under More
 (`mail/label-menu.tsx`), each run by `perform` (`mail/perform.ts`),
 which takes an action or changes as they are, e.g. a move to a label
 with its words, shows its Undo in the Undo bar (`mail/undo.tsx`), and
-says why a refused one failed. The labels the pane reads come from the
+says why a refused one failed. Under the title, the label chips
+(`mail/label-chips.tsx`) run Archive from the Inbox's and take a label
+off from a label's. The labels the pane reads come from the
 mail it already holds (`useLabelsIn`), so a pane that outlives the
 member's mail, e.g. as sign-in opens, starts no reads. An action that
 takes the conversation out of that list (`leavesList`) goes back to it,
