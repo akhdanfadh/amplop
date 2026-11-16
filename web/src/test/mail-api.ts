@@ -71,8 +71,12 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // refuseSync names a status and problem type for that account;
 // failAccounts makes every accounts read answer that status; it renames
 // an account as Rename Account does, offers Gmail, and says setup is done.
-// requests records every path and search it was asked; actions every
-// action body.
+// It searches conversations by their subjects, each word anywhere in it,
+// as Search Conversations answers, a page at a time, each page after the
+// first starting searchShift results early, as a ranking a sync shifted
+// between pages would, or answers failSearch's status, with Retry-After
+// when it is 429 or 503. requests records every path and
+// search it was asked; actions every action body.
 export type MailApi = {
   conversations: ConversationRow[];
   accounts: ListedAccount[];
@@ -88,6 +92,8 @@ export type MailApi = {
   syncs: number[];
   failAccounts: number | undefined;
   refuseSync: Record<number, { status: number; type: string }>;
+  failSearch: number | undefined;
+  searchShift: number;
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 };
 
@@ -108,6 +114,8 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     syncs: [],
     failAccounts: undefined,
     refuseSync: {},
+    failSearch: undefined,
+    searchShift: 0,
     fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.href);
       api.requests.push(url.pathname + url.search);
@@ -157,6 +165,12 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
         const after = Date.parse(search.get("after") ?? "");
         const count = inPlace(api.conversations, search).filter((c) => Date.parse(c.date) > after);
         return Response.json({ data: { count: count.length } });
+      }
+      if (path === "/api/v0/conversations/search") {
+        if (api.failSearch !== undefined) {
+          return problem(api.failSearch, "about:blank", { "Retry-After": "1" });
+        }
+        return Response.json({ data: searched(api.conversations, search, api.searchShift) });
       }
       if (path.startsWith("/api/v0/conversations/")) {
         const found = api.conversations.find((c) => path.endsWith(c.id));
@@ -290,11 +304,64 @@ function answerChanges(
 }
 
 // problem returns an error response with status, and type.
-function problem(status: number, type = "about:blank"): Response {
+function problem(
+  status: number,
+  type = "about:blank",
+  headers: Record<string, string> = {},
+): Response {
   return Response.json(
     { type, status, title: "Failed", detail: "It failed." },
-    { status, headers: { "Content-Type": "application/problem+json" } },
+    { status, headers: { "Content-Type": "application/problem+json", ...headers } },
   );
+}
+
+// viewsOf returns the places row is in, as the lists filter: its views,
+// then its labels.
+function viewsOf(row: ConversationRow): string[] {
+  const views: [string, boolean][] = [
+    ["inbox", row.inbox],
+    ["starred", row.starred && row.allMail],
+    ["sent", row.sent],
+    ["all", row.allMail],
+    ["spam", row.spam],
+    ["trash", row.trash],
+  ];
+  return [...views.filter(([, inIt]) => inIt).map(([view]) => view), ...row.labelIds];
+}
+
+// searched answers a search as Search Conversations does, of conversations
+// whose subject holds every word of search's q, anywhere, ignoring case,
+// in the places it names (none: All mail): each with its subject as the
+// match, the words marked where they first appear, newest first.
+function searched(conversations: ConversationRow[], search: URLSearchParams, shift: number) {
+  const words = (search.get("q") ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+  const places = search.getAll("place");
+  const account = search.get("account");
+  const results = conversations
+    .filter((c) => words.every((word) => c.subject.toLowerCase().includes(word)))
+    .filter((c) => account === null || c.accountId === Number(account))
+    .filter((c) =>
+      (places.length > 0 ? places : ["all"]).some((place) => viewsOf(c).includes(place)),
+    )
+    .map((c) => ({
+      conversation: c,
+      match: {
+        messageId: c.id.replace("00000000-0000-4000-8000", "11111111-1111-4111-8111"),
+        date: c.date,
+        from: c.latestFrom,
+        subject: c.subject,
+        subjectMatches: words.flatMap((word) => {
+          const start = c.subject.toLowerCase().indexOf(word);
+          return start === -1 ? [] : [{ start, length: word.length }];
+        }),
+        preview: c.preview,
+        previewMatches: [],
+      },
+    }));
+  const page = Number(search.get("page") ?? "1");
+  const limit = Number(search.get("limit") ?? "50");
+  const start = Math.max(0, (page - 1) * limit - (page > 1 ? shift : 0));
+  return { results: results.slice(start, start + limit), total: results.length };
 }
 
 // inPlace returns the conversations in search's place and account.

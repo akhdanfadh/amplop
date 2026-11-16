@@ -385,11 +385,11 @@ export function ConversationList({
 
 // Placeholder stands for a list whose first page is loading: rows shaped
 // like real ones, shown only after 300 ms so a quick load shows nothing
-// (DESIGN.md "States").
-function Placeholder(): ReactElement {
+// (DESIGN.md "States"); loading is what a screen reader hears meanwhile.
+export function Placeholder({ loading = listLoading }: { loading?: string }): ReactElement {
   return (
     <div className="flex min-h-0 flex-1 pending-delay flex-col overflow-hidden">
-      <output className="sr-only">{listLoading}</output>
+      <output className="sr-only">{loading}</output>
       {Array.from({ length: placeholderRows }, (_, index) => (
         <div key={index} aria-hidden="true" className="flex h-19 shrink-0 gap-3 border-b px-4 py-2">
           <Skeleton className="size-9 rounded-full" />
@@ -446,12 +446,12 @@ function EmptyList({
 
 // syncing reports whether account's first copy of its mail is still
 // under way.
-function syncing(account: ListedAccountOutput): boolean {
+export function syncing(account: ListedAccountOutput): boolean {
   return account.sync.status === "waiting" || account.sync.status === "running";
 }
 
 // rowAccount returns what a row shows of account, if the list knows it.
-function rowAccount(account: ListedAccountOutput | undefined): RowAccount | undefined {
+export function rowAccount(account: ListedAccountOutput | undefined): RowAccount | undefined {
   return account && { color: account.color, email: account.email, name: account.name };
 }
 

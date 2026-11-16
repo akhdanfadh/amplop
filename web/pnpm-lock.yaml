@@ -194,6 +194,9 @@ importers:
       '@hyperjump/uri':
         specifier: 1.3.9
         version: 1.3.9
+      '@internationalized/date':
+        specifier: ^3.12.4
+        version: 3.12.4
       '@tanstack/db':
         specifier: 1.0.0-rc.1.4
         version: 1.0.0-rc.1.4(patch_hash=a8f07ae19a57c9f40f913e513ea00e3ed9b9f527a76d5cbba261c6782b173f90)(typescript@7.0.2)

@@ -17,6 +17,11 @@ export type ViewPlace = (typeof viewPlaces)[number];
 // name it: a view, or a label's ID.
 export type Place = ViewPlace | (string & {});
 
+// The address's place for a search's results, /mail/search: they have no
+// place of their own; the places searched are in the address's search
+// parameters (searchFilters).
+export const searchPlace = "search";
+
 // isViewPlace reports whether place, from the address, names a view.
 export function isViewPlace(place: string): place is ViewPlace {
   return (viewPlaces as readonly string[]).includes(place);

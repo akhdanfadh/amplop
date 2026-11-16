@@ -281,3 +281,65 @@ export function syncingDetail(messagesSoFar: number): string {
   const messages = messagesSoFar === 1 ? "message" : "messages";
   return `Copying the last 90 days: ${messageCount(messagesSoFar)} ${messages} so far.`;
 }
+
+// Search (DESIGN.md "Search").
+
+// The search box's name, and what it says while empty: the places it
+// searches, e.g. "Search Receipts", or mail for every place but Spam and
+// Trash.
+export const searchName = "Search mail";
+export function searchPlaceholder(place: string | undefined): string {
+  return place === undefined ? searchName : `Search ${place}`;
+}
+export const clearSearch = "Clear search";
+// The top bar's button that turns it into the box, and the one that
+// leaves the search again.
+export const openSearch = "Search";
+export const closeSearch = "Close search";
+// The results page's heading, which screen readers hear.
+export const resultsHeading = "Search results";
+// The results list's name for a screen reader.
+export const resultsName = "Results";
+
+// What Spam and Trash searches leave out, and the way to add them.
+export const spamTrashLeftOut = "Spam and Trash are not searched.";
+export const searchThemToo = "Search them too";
+
+// resultsCount says how many conversations a search found, as the API
+// counts up to most: "1 conversation", "1,000 or more conversations".
+export function resultsCount(total: number, most: number): string {
+  if (total >= most) return `${messageCount(most)} or more conversations`;
+  return total === 1 ? "1 conversation" : `${messageCount(total)} conversations`;
+}
+export const resultsEnd = "That's every match.";
+export const resultsLoading = "Searching...";
+export const resultsLoadingMore = "Loading more results...";
+export const olderResultsFailed = "Couldn't load more results.";
+
+// wordsTooLong says a search's words are longer than the API takes.
+export function wordsTooLong(most: number): string {
+  return `Search with ${messageCount(most)} characters or fewer.`;
+}
+
+// What the results page says before there is anything to search.
+export const searchPrompt = "Type 2 or more characters.";
+
+// noMatches is the title of a search that found nothing: its words, or
+// its filters when it has none.
+export function noMatches(words: string | undefined): string {
+  return words === undefined ? "Nothing matches these filters" : `Nothing matches "${words}"`;
+}
+// stillCopying says why a search may find more later: account, or some
+// account when undefined, is still copying its mail.
+export function stillCopying(account: string | undefined): string {
+  return account === undefined
+    ? "Some accounts are still syncing, so some of their mail can't be found yet."
+    : `${account} is still syncing, so some of its mail can't be found yet.`;
+}
+export const clearFilters = "Clear filters";
+export const searchSpamTrashToo = "Search Spam and Trash too";
+
+// Why a search failed.
+export const searchBusy = "Search isn't answering right now. Try again in a moment.";
+export const searchOffline = "Couldn't search. Check your connection, then try again.";
+export const searchFailed = "Couldn't search your mail.";

@@ -48,7 +48,8 @@ export type ReaderList = {
 // conversation's row at once, keeps them when a read fails, and names the
 // tab after the subject. Opening an unread conversation marks it read. Its
 // toolbar's actions follow its state in list, the list it was opened from
-// (ConversationToolbar).
+// (ConversationToolbar); startAt, a message of it, e.g. the one a search
+// matched, starts open, scrolled to.
 //
 // list.back is that list, which a phone, showing one pane at a time,
 // returns to with Back in the view's toolbar, as does an action that takes
@@ -59,9 +60,11 @@ export type ReaderList = {
 export function Reader({
   conversationId,
   list,
+  startAt,
 }: {
   conversationId: string;
   list: ReaderList;
+  startAt?: string;
 }): ReactElement {
   const { places, account: listAccount, back } = list;
   const client = useQueryClient();
@@ -199,6 +202,7 @@ export function Reader({
         }}
         messages={detail?.messages}
         placeholder={status}
+        startAt={startAt}
         onUnauthorized={signOut}
         actions={
           row && (

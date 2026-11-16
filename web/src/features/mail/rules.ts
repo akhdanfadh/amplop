@@ -201,7 +201,7 @@ export function staysInList(
 
 // inList reports whether conversation is in any of places, and of account
 // alone when given.
-function inList(
+export function inList(
   conversation: Conversation,
   places: readonly Place[],
   account: number | undefined,

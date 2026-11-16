@@ -280,6 +280,54 @@ export function idOf(options: LoadSubsetOptions): string | undefined {
   return id ?? undefined;
 }
 
+// idsOf returns the conversation IDs a load asks for together, as a
+// search's results write them (inArray(c.id, ids)), or undefined for any
+// other load.
+export function idsOf(options: LoadSubsetOptions): string[] | undefined {
+  if (options.cursor) return undefined;
+  const ids = parseWhereExpression<string[] | null>(options.where, {
+    handlers: {
+      in: (field: unknown, values: unknown) =>
+        Array.isArray(field) &&
+        field.join(".") === "id" &&
+        Array.isArray(values) &&
+        values.every((value) => typeof value === "string")
+          ? values
+          : null,
+    },
+    onUnknownOperator: () => null,
+  });
+  return ids ?? undefined;
+}
+
+// Each collection's rows a search found, by ID, for its results' load.
+const foundRows = new WeakMap<Conversations, Map<string, Conversation>>();
+
+// holdFound keeps rows, the conversations the open search found, for the
+// load of its results from conversations (idsOf), which reads no API: the
+// search already did. They replace an earlier search's.
+export function holdFound(conversations: Conversations, rows: readonly Conversation[]): void {
+  foundRows.set(conversations, new Map(rows.map((row) => [row.id, row])));
+}
+
+// loadFound returns the rows of ids, each the collection's confirmed row,
+// held, when it has one, e.g. a list's or as an action's answer left it,
+// else as the search found it (holdFound).
+//
+// DESIGN: a search's results join the collection as the reading pane's row
+// does, a load the results' live query owns, so an action, Mark read
+// included, shows on them at once and every list agrees; the load ends
+// with the results, and rows no list holds leave with it. A direct write
+// would stay after the results end, unowned, and a list reaching it later
+// would keep it even once the server no longer listed it there.
+function loadFound(
+  ids: readonly string[],
+  found: Map<string, Conversation> | undefined,
+  held: ((id: string) => Conversation | undefined) | undefined,
+): Conversation[] {
+  return ids.flatMap((id) => held?.(id) ?? found?.get(id) ?? []);
+}
+
 // loadOne returns conversation id as Get Conversation reads it through
 // client's cache, so the reading pane's own read of its messages serves;
 // none once the API says it is gone, and held, the collection's confirmed
@@ -347,8 +395,12 @@ export function placeKey(accountId: number, place: string): string {
 // open list's newest page (ADR031, TanStack DB gate, rule 2).
 function createConversations(client: QueryClient, id: string) {
   const ties = new Map<string, Ties>();
-  // Reads the collection's confirmed row by ID, once it exists.
-  const rows: { held?: (id: string) => Conversation | undefined } = {};
+  // Reads the collection's confirmed row by ID, and the rows searches
+  // found, once it exists.
+  const rows: {
+    held?: (id: string) => Conversation | undefined;
+    found?: () => Map<string, Conversation> | undefined;
+  } = {};
   const conversations = createCollection(
     queryCollectionOptions<Conversation>({
       id,
@@ -371,6 +423,9 @@ function createConversations(client: QueryClient, id: string) {
         if (conversationId !== undefined) {
           return loadOne(client, conversationId, rows.held?.(conversationId));
         }
+        // A search's results, which the search read.
+        const ids = idsOf(options);
+        if (ids !== undefined) return loadFound(ids, rows.found?.(), rows.held);
         return loadConversations(options, ties, signal);
       },
     }),
@@ -379,6 +434,7 @@ function createConversations(client: QueryClient, id: string) {
   // subset's row would become synced, and the action's refusal could not
   // put the row back.
   rows.held = (key) => conversations.base.get(key);
+  rows.found = () => foundRows.get(conversations);
   conversations.createIndex((conversation) => conversation.dateMs);
   return conversations;
 }

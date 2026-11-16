@@ -126,17 +126,21 @@ afterEach(async () => {
 });
 
 // Harness holds the view in a box width pixels wide and 600 high, the
-// pane, with a button that removes the first message, as a sync would.
+// pane, with a button that removes the first message, as a sync would,
+// and one that starts the view at nextStart, as a new address would.
 function Harness({
   messages: initial,
   width,
   slots,
+  nextStart,
 }: {
   messages: ConversationMessage[];
   width: number;
   slots: Partial<Parameters<typeof ConversationView>[0]>;
+  nextStart?: string;
 }) {
   const [messages, setMessages] = useState(initial);
+  const [startAt, setStartAt] = useState(slots.startAt);
   return (
     <>
       <div data-pane style={{ width, height: 600 }}>
@@ -146,10 +150,14 @@ function Harness({
           messages={messages}
           onUnauthorized={() => {}}
           {...slots}
+          startAt={startAt}
         />
       </div>
       <button type="button" onClick={() => setMessages((was) => was.slice(1))}>
         Sync removes the first message
+      </button>
+      <button type="button" onClick={() => setStartAt(nextStart)}>
+        Start at another message
       </button>
     </>
   );
@@ -161,6 +169,7 @@ async function show(
   messages: ConversationMessage[],
   width = 700,
   slots: Partial<Parameters<typeof ConversationView>[0]> = {},
+  nextStart?: string,
 ) {
   await page.viewport(width + 100, 800);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -170,7 +179,7 @@ async function show(
     path: "/",
     component: () => (
       <QueryClientProvider client={client}>
-        <Harness messages={messages} width={width} slots={slots} />
+        <Harness messages={messages} width={width} slots={slots} nextStart={nextStart} />
       </QueryClientProvider>
     ),
   });
@@ -210,6 +219,20 @@ describe("ConversationView", () => {
     expect(page.getByRole("button", { name: /Preview/ }).all()).toHaveLength(3);
     // Only open messages load their content.
     expect(new Set(read)).toEqual(new Set([messages[5].id, messages[11].id]));
+  });
+
+  it("opens the message it starts at, and another it is told to start at", async () => {
+    const messages = thread(12);
+    await show(messages, 700, { startAt: messages[4].id }, messages[5].id);
+    await expect.element(page.getByText(`Body of ${messages[4].id}`)).toBeVisible();
+    await expect.element(page.getByText(`Body of ${messages[5].id}`)).not.toBeInTheDocument();
+
+    // The conversation stays open; the address names another message.
+    await userEvent.click(page.getByRole("button", { name: "Start at another message" }));
+
+    await expect.element(page.getByText(`Body of ${messages[5].id}`)).toBeVisible();
+    // The first stays open too.
+    await expect.element(page.getByText(`Body of ${messages[4].id}`)).toBeVisible();
   });
 
   it("shows the folded messages and moves focus to the first of them", async () => {
