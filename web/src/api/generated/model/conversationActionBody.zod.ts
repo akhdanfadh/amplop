@@ -6,7 +6,7 @@
  */
 import * as zod from 'zod';
 
-export const conversationActionBodyIdsMax = 100;
+export const conversationActionBodyIdsMax = 25;
 
 
 export const ConversationActionBody = zod.object({

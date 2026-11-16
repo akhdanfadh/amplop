@@ -2891,8 +2891,9 @@ conversations over three accounts (PostgreSQL 18, 2026-11-11) a page
 reads in about 3 ms, deep pages included, and every unread count in
 about 11 ms.
 
-`POST /conversations/actions {action, ids}` changes up to 100 of the
-member's conversations, by Gmail's own rules: `read` and `unread`,
+`POST /conversations/actions {action, ids}` changes up to 25 of the
+member's conversations (`MaxActionIDs`, what Gmail changes within the
+action's budget), by Gmail's own rules: `read` and `unread`,
 `archive` and `unarchive`, `trash` and `untrash`, `star` and `unstar`,
 `spam` and `unspam`. `star` and `unread` change a conversation's
 newest message (`Action.OnNewest`): the newest message its row is made
@@ -2943,7 +2944,7 @@ as built"):
 none of Gmail's rules, an action's `undo` among them: each adds its
 conversations to places and takes them out of others (the inbox, Spam,
 Trash, or the member's labels), stars or unstars them, or marks them
-unread or read, as the actions do, up to 100 conversations, each in one
+unread or read, as the actions do, up to 25 conversations, each in one
 change. It runs as an action does, with the same answer, its own `undo`
 included, which reaches what each change names. The service turns each place into the conversation's
 account's mailbox (`ListPlaceMailboxes`), and refuses the whole request
