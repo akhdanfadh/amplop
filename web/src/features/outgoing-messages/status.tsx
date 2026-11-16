@@ -18,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { accountDot } from "@/components/account-mark";
 import { stepEnter } from "@/components/step-change";
 import { formatReceived } from "@/features/messages/text";
@@ -36,6 +36,8 @@ import { lineLink } from "@/components/link-style";
 
 const unauthorized = 401;
 const buttonClass = "w-fit whitespace-normal";
+// A link in the status, at the 14 px of its text and buttons.
+const statusLink = cn(lineLink, "text-sm");
 
 // MessageStatus shows what happened to message and what the member can do
 // next, as nextSteps works out from accounts, the member's connected
@@ -153,21 +155,27 @@ export function MessageStatus({
           Edit and send
         </Button>
       )}
+      {message.sentAgainAs !== null && (
+        // The way on from a message sent again, so drawn as its button
+        // though it leads elsewhere, as an outcome's ways on are (DESIGN.md
+        // "Outcome screens").
+        <Link
+          to="/mail/outbox/$id"
+          params={{ id: message.sentAgainAs }}
+          className={cn(buttonVariants(), buttonClass)}
+        >
+          See how the new try went
+        </Link>
+      )}
       {reconnect && (
-        <Link to="/settings/connected-accounts" className={lineLink}>
+        <Link to="/settings/connected-accounts" className={statusLink}>
           Open Connected accounts
         </Link>
       )}
     </>
   );
-  const offersAny = sendable || steps.offers.includes("edit") || reconnect;
-  const sentAgainLink = message.sentAgainAs !== null && (
-    <p>
-      <Link to="/mail/outbox/$id" params={{ id: message.sentAgainAs }} className={lineLink}>
-        See how the new try went
-      </Link>
-    </p>
-  );
+  const offersAny =
+    sendable || steps.offers.includes("edit") || reconnect || message.sentAgainAs !== null;
 
   return (
     <section
@@ -226,10 +234,9 @@ export function MessageStatus({
             )}
           </output>
           <div className="flex flex-col gap-3 px-4 pb-4 pl-15 empty:hidden">
-            {sentAgainLink}
             {!offersAny && outboxLink && (
               <p>
-                <Link to="/mail/outbox/$id" params={{ id: message.id }} className={lineLink}>
+                <Link to="/mail/outbox/$id" params={{ id: message.id }} className={statusLink}>
                   Open in Outbox
                 </Link>
               </p>
@@ -239,7 +246,7 @@ export function MessageStatus({
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-3 py-2">
               {actions}
               {outboxLink && (
-                <Link to="/mail/outbox/$id" params={{ id: message.id }} className={lineLink}>
+                <Link to="/mail/outbox/$id" params={{ id: message.id }} className={statusLink}>
                   Open in Outbox
                 </Link>
               )}
@@ -265,7 +272,6 @@ export function MessageStatus({
               )}
             </output>
           </div>
-          {sentAgainLink}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">{actions}</div>
         </>
       )}

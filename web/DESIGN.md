@@ -792,7 +792,10 @@ last two redirect into settings, so settings can move without the server.
   account's mark, its address, and the time; Open in Outbox below. A
   failure names its status in that line, says why under it, and puts its
   actions in a bar (Edit and send or Send again, then Open in Outbox). A
-  message sent again reads Tried again, neutral, with a link to its copy.
+  message sent again reads Tried again, neutral, its bar holding "See how
+  the new try went": a link drawn as a primary button, as an outcome's
+  ways on are ("Outcome screens"), since opening the copy is its one next
+  step. Links in a status take its 14 px, as its buttons do.
   The window closes 3 s after Gmail takes the message, waiting while the
   pointer is on it or focus on one of its controls; minimised, its strip
   shows the status's mark before the title.
@@ -839,7 +842,8 @@ sending (web/README.md, "Routes").
   is gone. Then the status in a `card`, the compose window's summary
   ("Compose and reply") without Open in Outbox: a mark, one line, the
   reason or the account and time, and the actions in a bar (Send again,
-  Edit and send, Open Connected accounts); the status shows in place as
+  Edit and send, Open Connected accounts, or See how the new try went);
+  the status shows in place as
   a message opens and rises only when it changes while open. Then the
   message, open, as in
   a conversation, without folding, its details naming the account as
