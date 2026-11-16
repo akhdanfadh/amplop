@@ -435,6 +435,24 @@ const discardReply: LeaveWarningText = {
   title: "Discard this reply?",
 };
 
+// What Discard asks in the reply editor after a try that may have saved
+// the reply: Discard then only drops the editor, not the reply.
+const discardReplyUnconfirmed: LeaveWarningText = {
+  title: "Discard this reply?",
+  description:
+    "An earlier try may have saved this reply, and it may be sent. What you typed here won't be kept.",
+  stay: "Keep editing",
+  leave: "Discard",
+  leaveVariant: "default",
+};
+
+// discardReplyText returns what the reply editor's Discard asks: whether
+// an earlier try may have saved the reply (unconfirmed), or only that
+// typed text will be lost.
+export function discardReplyText(unconfirmed: boolean): LeaveWarningText {
+  return unconfirmed ? discardReplyUnconfirmed : discardReply;
+}
+
 // replyLeaveText returns what leaving the reply editor asks in state.
 export function replyLeaveText(state: LeaveState): LeaveWarningText {
   return state === "typed" ? discardReply : leaveText(state);

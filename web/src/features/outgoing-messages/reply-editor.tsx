@@ -37,6 +37,7 @@ import type { ReplyMode, ReplyValues } from "./reply-defaults";
 import { ReplySchema, replyFields, replyRequest } from "./reply-schema";
 import {
   cannotSendNote,
+  discardReplyText,
   otherAccountNote,
   replyErrorMessage,
   replyLabels,
@@ -123,9 +124,12 @@ export function ReplyEditor({
       : undefined;
 
   function discard(): void {
-    if (edited) setDiscarding(true);
+    // A try that may have saved the reply asks too, typed or not: Discard
+    // then drops only the editor, and the member should know.
+    if (edited || editor.unconfirmed) setDiscarding(true);
     else onDiscard();
   }
+  const discardText = discardReplyText(editor.unconfirmed);
 
   return (
     <form.AppForm>
@@ -175,13 +179,13 @@ export function ReplyEditor({
         />
         <AlertDialog isOpen={discarding} onOpenChange={setDiscarding}>
           <AlertDialogHeader>
-            <AlertDialogTitle>{replyLeaveText("typed").title}</AlertDialogTitle>
-            <AlertDialogDescription>{replyLeaveText("typed").description}</AlertDialogDescription>
+            <AlertDialogTitle>{discardText.title}</AlertDialogTitle>
+            <AlertDialogDescription>{discardText.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{replyLeaveText("typed").stay}</AlertDialogCancel>
-            <AlertDialogAction type="button" variant="destructive" onPress={onDiscard}>
-              {replyLeaveText("typed").leave}
+            <AlertDialogCancel>{discardText.stay}</AlertDialogCancel>
+            <AlertDialogAction type="button" variant={discardText.leaveVariant} onPress={onDiscard}>
+              {discardText.leave}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialog>

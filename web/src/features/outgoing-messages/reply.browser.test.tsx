@@ -95,7 +95,8 @@ function problem(status: number, type: string, extra: object = {}): Response {
 // Message, at any answered message, answers with reply, a response; each
 // read of the Outbox, which gives the saved message's status, lists its
 // next status in statuses, the last one repeating, or answers a 503 once
-// failReadsFrom reads have passed; and a read of the message itself
+// failReadsFrom reads have passed; Send Message Again answers with again,
+// by default the message as last listed; and a read of the message itself
 // answers with the status the Outbox last listed. It returns the calls the
 // page made.
 function serve({
@@ -103,7 +104,9 @@ function serve({
   reply = () => Response.json({ data: saved("waiting") }, { status: created }),
   statuses = [saved("waiting")],
   failReadsFrom = Infinity,
+  again,
 }: {
+  again?: () => Response;
   accounts?: ListedAccount[];
   reply?: () => Response;
   statuses?: OutgoingMessage[];
@@ -120,6 +123,7 @@ function serve({
       if (url === "/api/v0/connected-accounts")
         return Response.json({ data: { accounts, syncStopped: false } }, { status: ok });
       if (method === "POST" && /^\/api\/v0\/messages\/[^/]+\/replies$/.test(url)) return reply();
+      if (again && method === "POST" && url.endsWith("/send-again")) return again();
       if (url === "/api/v0/outgoing-messages") {
         const status = statuses[Math.min(reads, statuses.length - 1)];
         reads++;
@@ -309,6 +313,32 @@ describe("ConversationReply", () => {
 
     await expect.element(page.getByRole("form")).not.toBeInTheDocument();
     await expect.element(page.getByRole("button", { name: "Reply", exact: true })).toHaveFocus();
+  });
+
+  // Discard then drops only the editor: the reply may already be on its
+  // way, which the member should know before the editor goes.
+  it("asks before discarding a reply an unanswered send may have saved, even unedited", async () => {
+    await page.viewport(1440, 900);
+    serve({
+      reply: () => Response.json({ data: saved("failed", "refused") }, { status: created }),
+      statuses: [saved("failed", "refused")],
+      again: () => problem(500, "/api/v0/problems/internal-error"),
+    });
+    await show();
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.");
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+    await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
+
+    // Nothing edited: the editor starts with the refused reply's content.
+    const editor = page.getByRole("form", { name: "Reply" });
+    await userEvent.click(editor.getByRole("button", { name: "Send" }));
+    await expect.element(editor.getByRole("alert")).toBeVisible();
+    await userEvent.click(editor.getByRole("button", { name: "Discard" }));
+
+    await expect
+      .element(page.getByRole("alertdialog", { name: "Discard this reply?" }))
+      .toMatchTextContent("An earlier try may have saved this reply");
   });
 
   it("returns focus to the bottom's Reply all after Discard", async () => {
