@@ -807,7 +807,7 @@ conversation view passes a message in as it is. `replyDefaults`
 The editor is DESIGN.md's message editor card: rows for From (a quiet
 React Aria `select`, each account by its mark, its address, and the name
 the member chose), To, and the Cc and Bcc that are filled or added from
-the To row's buttons, each a `RecipientInput`; then Message, and a bar with Send
+the To row's buttons, each a `RecipientsField`; then Message, and a bar with Send
 and Discard. There is no subject: the server sets it. A line under From
 says when the chosen account didn't receive the message, since the reply
 then starts a new conversation in that account's Gmail. Focus starts in
@@ -1594,5 +1594,5 @@ Forms not yet on the kit still wire shadcn's `Field` components
 themselves, with `blurKeepingSubmitErrors`
 (`src/lib/blur-keeping-submit-errors.ts`) and `useFocusAfterError`: the
 connected account's name, which `feat/connected-accounts` moves onto the
-kit; the reply editor, which follows compose onto it; and the probe demo
-(ADR031).
+kit, and the probe demo (ADR031). The change that moves the last of them
+deletes both.

@@ -592,10 +592,11 @@ last two redirect into settings, so settings can move without the server.
 ### Compose and reply
 
 - **Reply** opens inline below the message answered (the newest, from the
-  labelled Reply, Reply all, Forward buttons after it; an older one, from
-  its header's Reply); one editor per conversation; From is
-  the receiving account, changeable and always visible; a hidden "Re:"
-  subject; the quote folded; Ctrl/Cmd+Enter sends.
+  labelled Reply and Reply all buttons after it; an older one, from its
+  header's Reply); one editor per conversation; From is the receiving
+  account, changeable and always visible; a hidden "Re:" subject;
+  Ctrl/Cmd+Enter sends. Not built yet: Forward beside them, and the
+  answered message quoted and folded below the reply.
 - **The editor** is one `card`: a row each for From, To, and the Cc and
   Bcc that are filled or asked for, a muted label on the left and its
   value on the right, divided by hairlines; then the message, with no box

@@ -22,9 +22,9 @@ const separatorKeys = new Set([",", ";"]);
 // onChange receives the next one; onBlur runs when focus leaves the input,
 // after its text became chips. invalid marks the field; describedBy names
 // its description and error. readOnly locks it, e.g. while sending: no
-// typing, paste, or removal changes the list. onKeyDown sees every key the
-// input does not take, e.g. a send shortcut, after typed text became chips.
-// onTyping reports whether the input holds text not yet a chip
+// typing, paste, or removal changes the list. A send shortcut, Ctrl+Enter
+// or Cmd+Enter, first keeps typed text as chips, so it is part of what is
+// sent. onTyping reports whether the input holds text not yet a chip
 // ("typing") or none ("idle"); a form counts typing as an edit, e.g.
 // before discarding.
 //
@@ -42,7 +42,6 @@ export function RecipientInput({
   invalid = false,
   describedBy,
   readOnly = false,
-  onKeyDown,
   onTyping,
   className,
 }: {
@@ -55,7 +54,6 @@ export function RecipientInput({
   invalid?: boolean;
   describedBy?: string;
   readOnly?: boolean;
-  onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
   onTyping?: (state: Typing) => void;
   className?: string;
 }): ReactElement {
@@ -81,7 +79,6 @@ export function RecipientInput({
     // it is part of what the shortcut acts on.
     if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
       keep(text);
-      onKeyDown?.(event);
       return;
     }
     if (separatorKeys.has(event.key) || (event.key === "Enter" && text.trim() !== "")) {
@@ -92,9 +89,7 @@ export function RecipientInput({
     if (event.key === "Backspace" && text === "" && value.length > 0 && !readOnly) {
       event.preventDefault();
       onChange(value.slice(0, -1));
-      return;
     }
-    onKeyDown?.(event);
   }
 
   return (
@@ -149,22 +144,6 @@ export function RecipientInput({
       />
     </div>
   );
-}
-
-// withTyping returns lists, the names of the recipient lists holding text
-// not yet a chip, with name added while state is "typing" and removed
-// otherwise.
-export function withTyping(
-  lists: ReadonlySet<string>,
-  name: string,
-  state: Typing,
-): ReadonlySet<string> {
-  const typing = state === "typing";
-  if (lists.has(name) === typing) return lists;
-  const next = new Set(lists);
-  if (typing) next.add(name);
-  else next.delete(name);
-  return next;
 }
 
 // chipKeys returns a key for each address in value: the address and how
