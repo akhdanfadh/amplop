@@ -19,7 +19,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useSessionEnd } from "@/features/auth/session-end";
-import { Address, columns, features } from "./columns";
+import { Address } from "@/components/address";
+import { columns, features } from "./columns";
 import {
   actionWords,
   listTitle,
