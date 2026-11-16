@@ -206,7 +206,8 @@ const pending = new WeakMap<Conversations, Map<string, Promise<unknown>>>();
 
 // runAction applies request, an action or changes, to its conversations in
 // mail: every list and unread count shows it at once, and the API's answer
-// settles it. It returns the answer, whose refused rows are back as they
+// settles it, sent once after, when given, has settled, e.g. the batch
+// before it. It returns the answer, whose refused rows are back as they
 // were, and throws, every row back, when the request fails. Once it
 // settles, an open conversation's messages are read again, for their own
 // flags, while mail is current. A request still waiting when mail ends is
@@ -216,7 +217,11 @@ const pending = new WeakMap<Conversations, Map<string, Promise<unknown>>>();
 // once the one before is answered, so a quick star and unstar end as the
 // member left them, and an Undo pressed at once waits for the answer it
 // undoes; each guess still shows at once.
-export async function runAction(mail: ActionMail, request: Request): Promise<ActionResult> {
+export async function runAction(
+  mail: ActionMail,
+  request: Request,
+  after: Promise<unknown> = Promise.resolve(),
+): Promise<ActionResult> {
   const { client, conversations } = mail;
   const ids = idsOf(request);
   let queue = pending.get(conversations);
@@ -224,7 +229,10 @@ export async function runAction(mail: ActionMail, request: Request): Promise<Act
     queue = new Map();
     pending.set(conversations, queue);
   }
-  const before = Promise.allSettled(ids.map((id) => queue.get(id) ?? Promise.resolve()));
+  const before = Promise.allSettled([
+    after,
+    ...ids.map((id) => queue.get(id) ?? Promise.resolve()),
+  ]);
   const run = runAfter(mail, request, before);
   for (const id of ids) queue.set(id, run);
   try {

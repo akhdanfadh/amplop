@@ -949,11 +949,13 @@ outcome.
 
 - **Reversible actions** (archive, delete to Trash, read, star, and bulk
   versions) happen at once, with the unread counts; an action that moves
-  a conversation to another place shows the **Undo bar** at once, docked
+  a conversation to another place, and any action on several, shows the
+  **Undo bar** at once, docked
   at the bottom of the list, under the row the action took away, and on
   a phone, one pane at a time, under whichever pane shows, as an action
   can keep the conversation open there: what happened,
-  the conversation's subject, Undo in the primary blue, and Close. It is
+  the conversation's subject, or how many ("12 conversations"), Undo in
+  the primary blue, and Close. It is
   part of the layout, so it covers nothing, and Tab reaches it from the
   list; it is a landmark named "Undo", which F6 reaches, and Ctrl or
   Cmd+Z runs its Undo from anywhere but a text field or an open menu or
@@ -977,9 +979,19 @@ outcome.
   Gmail first. They restore the row, not each message: a message deleted
   on its own before a Delete comes back out of Trash with the rest, and
   undoing a Delete puts the member's own replies in the Inbox too
-  (DEBT.md, "Undo per message"). A result that stays in view,
-  e.g. a star or Mark read, gets no Undo. A bulk action Gmail refuses for
-  some conversations rolls back only those, and says how many failed.
+  (DEBT.md, "Undo per message"). One conversation's result that stays in
+  view, e.g. a star or Mark read, gets no Undo; several conversations'
+  do, as which of them it changed is no longer in view. A bulk action
+  Gmail refuses for some conversations rolls back only those, the Undo
+  bar's count lowered to what changed (closed when nothing did), and one
+  error toast says why: "Couldn't archive 3 conversations", a sentence
+  per reason (the accounts to reconnect named, the gone and failed
+  counted), and Show details, a disclosure listing the conversations by
+  reason, with their accounts when they span several. A newer answer
+  that changed every conversation an older failure's toast named closes
+  that toast. Several conversations go in requests of at most 25 (the
+  contract's limit, what Gmail changes within the server's budget), one
+  after another, every guess showing at once.
 - **Irreversible actions** (disconnect, deactivate, discard typed text)
   ask first in an `AlertDialog`: the title asks, the body states the
   consequence and what is kept, the buttons name the actions ("Disconnect
@@ -998,7 +1010,8 @@ outcome.
   sits above it, the submit is red (`SubmitButton variant="destructive"`),
   and a way back keeps things as they are.
 - **A failed action** rolls back and shows an error toast that stays until
-  dismissed, with the fix.
+  dismissed, with the fix: a reconnect sends the member to Connected
+  accounts.
 - **Toasts** report failures, and stay until closed; an action's Undo is
   the Undo bar's, not a toast's. Form
   results stay inline. Nothing important lives only in a toast.

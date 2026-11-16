@@ -146,9 +146,10 @@ export function Reader({
     // moves the address at once, while the pane draws this conversation
     // until the next one's page has loaded.
     const at = router.state.location.href;
-    void perform({ mail: actionMail, conversation: row, action, onUnauthorized: signOut }).then(
-      (outcome) => {
-        if (outcome === "gone" && !leaves && router.state.location.href === at) goBack();
+    void perform({ mail: actionMail, conversations: [row], action, onUnauthorized: signOut }).then(
+      (outcomes) => {
+        const gone = outcomes.get(row.id) === "gone";
+        if (gone && !leaves && router.state.location.href === at) goBack();
       },
     );
     if (!leaves) return;

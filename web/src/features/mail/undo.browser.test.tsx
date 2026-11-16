@@ -56,7 +56,13 @@ function outside(): HTMLButtonElement {
 
 // undo shows an Undo of an archived conversation, running onUndo.
 function undo(onUndo = () => {}) {
-  return showUndo({ title: "Archived", subject: "Venue options", where: "All mail", onUndo });
+  return showUndo({
+    title: "Archived",
+    subject: "Venue options",
+    count: 1,
+    where: "All mail",
+    onUndo,
+  });
 }
 
 describe("UndoBar", () => {
@@ -177,7 +183,13 @@ describe("UndoBar", () => {
     undo();
     await expect.element(page.getByRole("button", { name: "Undo" })).toBeVisible();
     const first = countdown();
-    showUndo({ title: "Moved to Trash", subject: "Plans", where: "Trash", onUndo: () => {} });
+    showUndo({
+      title: "Moved to Trash",
+      subject: "Plans",
+      count: 1,
+      where: "Trash",
+      onUndo: () => {},
+    });
 
     await expect.element(page.getByText("Moved to Trash", { exact: true })).toBeVisible();
     expect(page.getByText("Archived").elements()).toHaveLength(0);

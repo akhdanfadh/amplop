@@ -147,8 +147,8 @@ Put shared code in the folder for its responsibility:
   names, the conversation list and its rows, the reading pane and its
   toolbar, mail's TanStack DB collections (`conversations.ts`), what
   actions guess and which places a conversation is in (`rules.ts`), each
-  action's words (`words.ts`), running an action (`perform.ts`) and its
-  Undo bar (`undo.tsx`), how a row shows its date and people, and the
+  action's words (`words.ts`), running an action on one conversation or
+  many (`perform.ts`) and its Undo bar (`undo.tsx`), how a row shows its date and people, and the
   address Back to mail returns to.
 - `src/features/settings`: the settings sidebar and the settings page
   layout (`SettingsPage`, `SettingsSection`) every settings page uses.
@@ -1496,12 +1496,17 @@ router's loaded pages. `clearAccountCache` tells the browser's other
 inbok tabs over a `BroadcastChannel`, and a signed-in frame that hears
 it loads again, so a tab never shows one member's mail beside another's.
 Mail actions, e.g. the row's star, go through `perform`
-(`features/mail/perform.ts`), which runs `runAction`
-(`features/mail/actions.ts`) instead of a mutation hook: it changes the
-rows and their unread counts at once, sends the action, and keeps the
-rows and counts the API answers with; a conversation the API refuses, or
-every one when the request fails, goes back as it was, and `perform`
-says why. Actions in flight at once keep none of their answers' counts,
+(`features/mail/perform.ts`), which leaves feedback about a conversation
+to the latest action that changed the same thing on it (its place, read
+state, or star), sends several conversations in requests of at most the
+contract's limit, one after another (`runAction`'s `after`), and runs
+`runAction` (`features/mail/actions.ts`) instead of a mutation hook: it
+changes the rows and their unread counts at once, sends the action, and
+keeps the rows and counts the API answers with; a conversation the API
+refuses, or every one when the request fails, goes back as it was, and
+`perform` says why, in one toast for many, whose details (`showError`'s
+`details`) list them by reason; a later answer that changed every
+conversation a toast names closes it (`closeAbout`). Actions in flight at once keep none of their answers' counts,
 which each hold the whole of List Places at their own moment; the last
 to settle reads them again. The reading pane reads its row from the same
 collection by ID, loaded from Get Conversation when no list holds it, so

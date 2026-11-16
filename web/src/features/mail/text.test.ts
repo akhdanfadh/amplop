@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ProblemType } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
-import { checkFailures, checkRefusal, subjectText, syncingDetail } from "./text";
+import { checkFailures, checkRefusal, refusalSentences, subjectText, syncingDetail } from "./text";
+import { actionWords } from "./words";
 
 // refused returns an error the API sent with status and type.
 function refused(status: number, type: ProblemType): ApiError {
@@ -82,5 +83,38 @@ describe("subjectText", () => {
   it("says when a message has no subject", () => {
     expect(subjectText("Lunch?")).toBe("Lunch?");
     expect(subjectText("  ")).toBe("(no subject)");
+  });
+});
+
+describe("refusalSentences", () => {
+  it("says one sentence per reason, naming each account to reconnect", () => {
+    expect(
+      refusalSentences({
+        reconnect: ["Work", "Home"],
+        gone: 2,
+        failed: 1,
+        errors: ["inbok isn't answering.", "inbok isn't answering."],
+      }),
+    ).toBe(
+      "Reconnect 2 accounts in Connected accounts, then try again: Work and Home. " +
+        "2 conversations are no longer in Gmail. " +
+        "Gmail didn't answer for 1 conversation. Try again. " +
+        "inbok isn't answering.",
+    );
+  });
+
+  it("names one account to reconnect in its sentence", () => {
+    expect(refusalSentences({ reconnect: ["Work"], gone: 1, failed: 0, errors: [] })).toBe(
+      "Reconnect Work in Connected accounts, then try again. 1 conversation is no longer in Gmail.",
+    );
+  });
+});
+
+describe("actionWords.failed", () => {
+  it("names the conversation acted on, or how many of several failed", () => {
+    expect(actionWords.archive.failed()).toBe("Couldn't archive the conversation");
+    expect(actionWords.archive.failed(1)).toBe("Couldn't archive 1 conversation");
+    expect(actionWords.unstar.failed()).toBe("Couldn't remove the star");
+    expect(actionWords.unstar.failed(3)).toBe("Couldn't remove the stars from 3 conversations");
   });
 });
