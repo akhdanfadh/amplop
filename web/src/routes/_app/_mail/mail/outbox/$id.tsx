@@ -43,14 +43,13 @@ function OutgoingMessagePage(): ReactElement {
       refetchInterval: pollWhile(sendPollMs, (data) => inProgress(data.data.status)),
     },
   });
-  // The sending account's address now, which Send again sends from.
+  // What the message offers depends on its member's accounts.
   const accounts = useListConnectedAccounts();
   const [writeExpired, setWriteExpired] = useState(false);
   const expired =
     writeExpired ||
     [current.error, read.error, accounts.error].some((err) => err?.status === unauthorized);
   const message = read.data?.data;
-  const account = accounts.data?.data.accounts.find((a) => a.id === message?.connectedAccountId);
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -102,7 +101,7 @@ function OutgoingMessagePage(): ReactElement {
             // The next message starts with no earlier Send again's result.
             key={`status-${message.id}`}
             message={message}
-            current={account?.email}
+            accounts={accounts.data?.data.accounts}
             onSentAgain={(copy) =>
               void navigate({ to: "/mail/outbox/$id", params: { id: copy.id } })
             }

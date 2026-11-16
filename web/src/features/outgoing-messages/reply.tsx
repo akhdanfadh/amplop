@@ -412,9 +412,6 @@ function ReplyStatus({
   const accounts = useListConnectedAccounts();
   const reply = read.data?.data;
   const gone = read.error?.status === notFound;
-  const current = accounts.data?.data.accounts.find(
-    (account) => account.id === reply?.connectedAccountId,
-  )?.email;
 
   useEffect(() => {
     // The editor that held focus is gone; its status takes it.
@@ -434,7 +431,7 @@ function ReplyStatus({
       {reply && !gone && (
         <MessageStatus
           message={reply}
-          current={current}
+          accounts={accounts.data?.data.accounts}
           onSentAgain={onSentAgain}
           onUnauthorized={onUnauthorized}
           onEdit={() => onEdit(reply)}

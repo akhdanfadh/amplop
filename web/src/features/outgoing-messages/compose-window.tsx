@@ -421,7 +421,6 @@ function MessageContent({
   const dockedHeight = look === "window" && size === "docked" && "h-[min(36rem,calc(100dvh-4rem))]";
 
   if (sentId !== null) {
-    const account = list?.find((one) => one.id === sentMessage?.connectedAccountId);
     return (
       <>
         {header({
@@ -436,8 +435,7 @@ function MessageContent({
             <MessageStatus
               look="window"
               message={sentMessage}
-              current={account?.email}
-              color={account?.color}
+              accounts={list}
               onSentAgain={(copy) => setSentId(copy.id)}
               onUnauthorized={() => setWriteExpired(true)}
               onEdit={() => store.open(sentMessage)}

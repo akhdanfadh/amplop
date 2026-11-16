@@ -133,7 +133,7 @@ async function show(leaving: "quiet" | "warns" = "quiet") {
         <LeaveWarning active={leaving === "warns"} text={leaveText("typed")} />
         <MessageStatus
           message={refused}
-          current={refused.from}
+          accounts={[studio]}
           onSentAgain={() => {}}
           onUnauthorized={() => {}}
         />

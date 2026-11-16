@@ -6,7 +6,7 @@ import {
   getListOutgoingMessagesQueryKey,
   useSendMessageAgain,
 } from "@/api/generated/inbok";
-import type { OutgoingMessage } from "@/api/generated/model";
+import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { repeatableWriteRetry } from "@/api/retry";
 import { RequestError } from "@/components/request-error";
 import {
@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { accountDot, type AccountColor } from "@/components/account-mark";
+import { accountDot } from "@/components/account-mark";
 import { stepEnter } from "@/components/step-change";
 import { formatReceived } from "@/features/messages/text";
 import { cn } from "@/lib/cn";
@@ -38,31 +38,30 @@ const unauthorized = 401;
 const buttonClass = "w-fit whitespace-normal";
 
 // MessageStatus shows what happened to message and what the member can do
-// next: send it again, edit it into a new message, or open the copy it was
-// sent again as. current is the sending account's address now, when known.
+// next, as nextSteps works out from accounts, the member's connected
+// accounts (undefined until they load): send it again, edit it into a new
+// message, reconnect its account, or open the copy it was sent again as.
 // onSentAgain receives the copy a Send again saved; onUnauthorized runs on
 // a 401. onEdit, when given, runs on Edit and send instead of opening the
 // compose window with message's content, e.g. so a reply is edited into a
 // new reply. look "page" names the status in a badge above its text;
 // "window" is the compose window's summary after Send (DESIGN.md "Compose
-// and reply"): a mark, one line, and the sending account, coloured, when
-// color is given, with the actions in a bar when there are any.
+// and reply"): a mark, one line, and the sending account in its colour,
+// with the actions in a bar when there are any.
 export function MessageStatus({
   message,
-  current,
+  accounts,
   onSentAgain,
   onUnauthorized,
   onEdit,
   look = "page",
-  color,
 }: {
   message: OutgoingMessage;
-  current: string | undefined;
+  accounts: ListedAccount[] | undefined;
   onSentAgain: (copy: OutgoingMessage) => void;
   onUnauthorized: () => void;
   onEdit?: () => void;
   look?: "page" | "window";
-  color?: AccountColor;
 }): ReactElement {
   const client = useQueryClient();
   const compose = useCompose().store;
@@ -89,7 +88,8 @@ export function MessageStatus({
     },
   });
   const sent = message.sentAt === null ? undefined : formatReceived(message.sentAt);
-  const steps = nextSteps(message, current);
+  const steps = nextSteps(message, accounts);
+  const color = accounts?.find((account) => account.id === message.connectedAccountId)?.color;
   const reconnect = steps.offers.includes("reconnect") || needsReconnect(again.error);
 
   useEffect(() => {

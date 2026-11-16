@@ -332,9 +332,11 @@ sit in the top bar instead of above the list: `Frame` gives its top bar
 a box (`useTopBarSlot`), and the place page puts its header there with a
 React portal, so the heading keeps its focus and the list's `main` keeps
 its name. The mail sidebar's Outbox shows how many of its messages are
-not sent yet, from the Outbox page's own read: one being sent, or one
-whose page still offers to send it (`unfinished`), so a message sent
-again stops counting. The member menu at the bottom of the sidebar opens
+not sent yet, from the Outbox page's own read: one waiting or being
+sent, or one failed or unconfirmed and not sent again (`unfinished`), so
+a message sent again stops counting. The count follows these facts, not
+what a message's page offers now, so it holds still while accounts load
+or while an account can't send. The member menu at the bottom of the sidebar opens
 Settings, the theme choice, and Sign out. Both frames and the signed-out
 layout show `OfflineBanner` at the top of the content while the browser
 reports no connection, read from TanStack Query's `onlineManager`. Under
@@ -859,11 +861,17 @@ date, with Try again, which starts it again. A
 failed message says why and what to do, and an `unknown` one says to check
 the account's Sent folder in Gmail. Send again copies a failed or unknown
 message into a new one from the same account and opens it; for an
-`unknown` message it asks first, since the first may have gone out. A
-message is sent again at most once, so its page then says so and links the
-copy, and drops the reason's advice and every action, which would send it
-twice. A message Gmail refused offers Edit and send instead, which opens
-the compose window filled with its content, as a new message. One function,
+`unknown` message it asks first, since the first may have gone out. It is
+offered only while the message lists `send-again` in its
+`allowedActions`, which the server words from the account's own `send`
+and from Gmail being set up. A message is sent again at most once, so its
+page then says so and links the copy, and drops the reason's advice and
+every action, which would send it twice. A message Gmail refused offers
+Edit and send instead, while any of the member's accounts lists `send`,
+since the new message may go from another; it opens the compose window
+filled with its content, as a new message. Open Connected accounts shows
+while the sending account's status is one a reconnect fixes, whatever
+the message failed for. One function,
 `nextSteps` (`src/features/outgoing-messages/text.ts`), works out both what
 a message's page says and what it offers, so the two cannot disagree.
 
