@@ -334,7 +334,8 @@ sidebar is a drawer, a place's heading, account, and Check for new mail
 sit in the top bar instead of above the list: `Frame` gives its top bar
 a box (`useTopBarSlot`), and the place page puts its header there with a
 React portal, so the heading keeps its focus and the list's `main` keeps
-its name. The mail sidebar's Outbox shows how many of its messages are
+its name. The mail sidebar's Outbox, among the views after Sent and
+outside the account filter (DESIGN.md "Sidebar"), shows how many of its messages are
 not sent yet, from the Outbox's one read: one waiting or being sent, or
 one failed or unconfirmed and not sent again (`unfinished`), so a
 message sent again stops counting. The count follows these facts, not

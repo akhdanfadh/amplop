@@ -106,6 +106,21 @@ describe("MailNav", () => {
       .toHaveAttribute("href", "/mail/outbox");
   });
 
+  // Beside Sent, where its messages go, and above the accounts' labels,
+  // so its count stays in sight.
+  it("lists the Outbox among the views, after Sent", async () => {
+    await page.viewport(1440, 900);
+    await render(<RouterProvider router={app([]).router} />);
+    await expect.element(page.getByRole("link", { name: /^Outbox/ })).toBeVisible();
+
+    const names = page
+      .getByRole("link")
+      .elements()
+      .map((link) => link.textContent);
+    const sent = names.indexOf("Sent");
+    expect(names.slice(sent, sent + 3)).toEqual(["Sent", "Outbox", "All mail"]);
+  });
+
   it("shows the Outbox without a count when every message is sent", async () => {
     await page.viewport(1440, 900);
     const { router, client } = app([message("sent", "0193c8a0-0000-7000-8000-000000000001")]);

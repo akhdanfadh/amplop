@@ -327,8 +327,14 @@ last two redirect into settings, so settings can move without the server.
 ### Sidebar
 
 - Compose (the one blue button).
-- Views: Inbox, Starred, Sent, All mail (everything but Spam and Trash),
-  Spam, Trash.
+- Views: Inbox, Starred, Sent, Outbox, All mail (everything but Spam and
+  Trash), Spam, Trash. The Outbox follows Sent, what is on its way there,
+  always, with how many of its messages are not sent yet (waiting,
+  sending, or failed or unknown and not sent again): the sidebar stays
+  still, and the count, above the accounts' labels however many are
+  unfolded, is what tells the member a send needs them. It is inbok's
+  record of what it sent, not Gmail's mail, so the account filter doesn't
+  reach it: it lists every account's messages and marks no account.
 - Accounts: All accounts, then each account (its mark, its member-chosen
   name or address, its inbox unread count), filtering every view; the
   filter stays as the member moves between views. Choosing an account
@@ -375,10 +381,6 @@ last two redirect into settings, so settings can move without the server.
   status in the tooltip; labels show only open. The open place's item is
   the current page; the filtering account's is marked as current too, but
   not as a page.
-- Outbox, always, with how many of its messages are not sent yet
-  (waiting, sending, or failed or unknown and not sent again): the
-  sidebar stays still, and the count is what tells the member a send
-  needs them.
 - The member at the bottom, opening the member menu: Settings, Theme
   (Light, Dark, System, side by side, as icons named by tooltips; the
   chosen one has the `selection` background and an `input` outline, as
