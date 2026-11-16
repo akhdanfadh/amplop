@@ -158,6 +158,7 @@ type OutgoingMessage struct {
 	CreatedAt          time.Time
 	SentAt             *time.Time
 	SentAgainAs        *uuid.UUID
+	DismissedAt        *time.Time
 }
 
 type OutgoingMessageKey struct {

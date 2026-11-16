@@ -28,6 +28,7 @@ const waiting: OutgoingMessage = {
   createdAt: "2026-11-16T08:00:00Z",
   sentAt: null,
   sentAgainAs: null,
+  dismissedAt: null,
   outstanding: true,
   reply: false,
   allowedActions: [],

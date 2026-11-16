@@ -35,6 +35,7 @@ function message(
     failure: status === "failed" ? "gave-up" : null,
     from: "ana@example.com",
     sentAgainAs,
+    dismissedAt: null,
     sentAt: status === "sent" ? "2026-11-13T08:00:05Z" : null,
     subject: "Lunch",
     // As the API says it: until it is sent, or sent again.

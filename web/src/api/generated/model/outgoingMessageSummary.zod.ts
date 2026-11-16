@@ -7,15 +7,16 @@
 import * as zod from 'zod';
 
 export const OutgoingMessageSummary = zod.object({
-  "allowedActions": zod.array(zod.enum(['send-again'])).describe('What the member can ask of this message now: send-again (Send Message Again) while it is failed or unknown and its sending account lists send in its own allowedActions. A message already sent again keeps send-again whatever its account\'s state, as it returns the same copy, while Gmail is set up. A listed action can still be refused when the message or its account changed since this read, when the member was deactivated, or when they sent too many messages recently. Clients ignore values they don\'t know.'),
+  "allowedActions": zod.array(zod.enum(['send-again', 'dismiss'])).describe('What the member can ask of this message now: send-again (Send Message Again) while it is failed or unknown and its sending account lists send in its own allowedActions. A message already sent again keeps send-again whatever its account\'s state, as it returns the same copy, while Gmail is set up. dismiss (Dismiss Outgoing Message) while it is outstanding and failed or unknown, whatever its account\'s state. A listed action can still be refused when the message or its account changed since this read, when the member was deactivated, or when they sent too many messages recently. Clients ignore values they don\'t know.'),
   "bcc": zod.array(zod.string()),
   "cc": zod.array(zod.string()),
   "connectedAccountId": zod.int().describe('The sending account. Disconnecting it deletes the message.'),
   "createdAt": zod.iso.datetime({"offset":true}),
+  "dismissedAt": zod.iso.datetime({"offset":true}).nullable().describe('When the member dismissed this failed or unknown message (Dismiss Outgoing Message); null until then.'),
   "failure": zod.union([zod.literal('refused'),zod.literal('sending-limit'),zod.literal('needs-reconnect'),zod.literal('token-unreadable'),zod.literal('deactivated'),zod.literal('sender-changed'),zod.literal('gave-up'),zod.literal(null)]).nullable().describe('Why the message failed; null unless status is failed. refused: Gmail refused the message; send it again with edits. sending-limit: Gmail\'s daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account\'s member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached.'),
   "from": zod.string().describe('The sending account\'s address when the message was saved.'),
   "id": zod.uuid(),
-  "outstanding": zod.boolean().describe('Whether the message still needs the member: waiting or sending, or failed or unknown and not sent again. List Outgoing Messages lists these first.'),
+  "outstanding": zod.boolean().describe('Whether the message still needs the member: waiting or sending, or failed or unknown and neither sent again nor dismissed. List Outgoing Messages lists these first.'),
   "reply": zod.boolean().describe('Whether the message answers another, carrying the In-Reply-To and References headers that thread it. A reply sent again keeps its subject, so edits to it keep the subject too.'),
   "sentAgainAs": zod.uuid().nullable().describe('The copy this failed or unknown message was sent again as, with or without edits; null until then.'),
   "sentAt": zod.iso.datetime({"offset":true}).nullable().describe('When Gmail took the message: Gmail\'s own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent.'),

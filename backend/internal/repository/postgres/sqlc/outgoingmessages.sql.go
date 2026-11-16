@@ -117,12 +117,13 @@ SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, ''::text AS body,
     om.inbok_message_id, om.in_reply_to, om.internet_references, om.status, om.failure,
     om.provider_message_id, om.provider_thread_id, om.created_at, om.sent_at,
-    om.sent_again_as
+    om.sent_again_as, om.dismissed_at
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE ca.user_id = $1
 ORDER BY (om.status IN ('waiting', 'sending')
-        OR (om.status IN ('failed', 'unknown') AND om.sent_again_as IS NULL)) DESC,
+        OR (om.status IN ('failed', 'unknown') AND om.sent_again_as IS NULL
+            AND om.dismissed_at IS NULL)) DESC,
     om.created_at DESC, om.id DESC
 LIMIT $2
 `
@@ -151,13 +152,14 @@ type ListOutgoingMessagesRow struct {
 	CreatedAt          time.Time
 	SentAt             *time.Time
 	SentAgainAs        *uuid.UUID
+	DismissedAt        *time.Time
 }
 
 // The member's messages, without their bodies, which a list does not show
 // and which may be 100,000 characters each: the outstanding ones first,
-// waiting, sending, or failed or unknown and not sent again (the rule of
-// outgoingmessage's Message.Outstanding), so newer finished ones never
-// push one out, then the rest, each newest first.
+// waiting, sending, or failed or unknown and neither sent again nor
+// dismissed (the rule of outgoingmessage's Message.Outstanding), so newer
+// finished ones never push one out, then the rest, each newest first.
 func (q *Queries) ListOutgoingMessages(ctx context.Context, arg ListOutgoingMessagesParams) ([]ListOutgoingMessagesRow, error) {
 	rows, err := q.db.Query(ctx, listOutgoingMessages, arg.UserID, arg.MaxCount)
 	if err != nil {
@@ -186,6 +188,7 @@ func (q *Queries) ListOutgoingMessages(ctx context.Context, arg ListOutgoingMess
 			&i.CreatedAt,
 			&i.SentAt,
 			&i.SentAgainAs,
+			&i.DismissedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -227,11 +230,58 @@ func (q *Queries) ListSendAttemptTimes(ctx context.Context, arg ListSendAttemptT
 	return items, nil
 }
 
+const lockMemberOutgoingMessage = `-- name: LockMemberOutgoingMessage :one
+SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
+    om.cc_addresses, om.bcc_addresses, om.subject, om.body,
+    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status,
+    om.failure, om.provider_message_id,
+    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as,
+    om.dismissed_at
+FROM outgoing_messages om
+JOIN connected_accounts ca ON ca.id = om.connected_account_id
+WHERE om.id = $1 AND ca.user_id = $2
+FOR NO KEY UPDATE OF om
+`
+
+type LockMemberOutgoingMessageParams struct {
+	ID     uuid.UUID
+	UserID int64
+}
+
+// A message belongs to its account's owner. No key column changes, so
+// foreign key checks on the row need not wait.
+func (q *Queries) LockMemberOutgoingMessage(ctx context.Context, arg LockMemberOutgoingMessageParams) (OutgoingMessage, error) {
+	row := q.db.QueryRow(ctx, lockMemberOutgoingMessage, arg.ID, arg.UserID)
+	var i OutgoingMessage
+	err := row.Scan(
+		&i.ID,
+		&i.ConnectedAccountID,
+		&i.FromAddress,
+		&i.ToAddresses,
+		&i.CcAddresses,
+		&i.BccAddresses,
+		&i.Subject,
+		&i.Body,
+		&i.InbokMessageID,
+		&i.InReplyTo,
+		&i.InternetReferences,
+		&i.Status,
+		&i.Failure,
+		&i.ProviderMessageID,
+		&i.ProviderThreadID,
+		&i.CreatedAt,
+		&i.SentAt,
+		&i.SentAgainAs,
+		&i.DismissedAt,
+	)
+	return i, err
+}
+
 const lockOutgoingMessage = `-- name: LockOutgoingMessage :one
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
     bcc_addresses, subject, body, inbok_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
-    provider_thread_id, created_at, sent_at, sent_again_as
+    provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 FROM outgoing_messages WHERE id = $1 FOR NO KEY UPDATE
 `
 
@@ -258,6 +308,7 @@ func (q *Queries) LockOutgoingMessage(ctx context.Context, id uuid.UUID) (Outgoi
 		&i.CreatedAt,
 		&i.SentAt,
 		&i.SentAgainAs,
+		&i.DismissedAt,
 	)
 	return i, err
 }
@@ -412,7 +463,8 @@ SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, om.body,
     om.inbok_message_id, om.in_reply_to, om.internet_references, om.status,
     om.failure, om.provider_message_id,
-    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as
+    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as,
+    om.dismissed_at
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE om.id = $1 AND ca.user_id = $2
@@ -446,6 +498,7 @@ func (q *Queries) ReadOutgoingMessage(ctx context.Context, arg ReadOutgoingMessa
 		&i.CreatedAt,
 		&i.SentAt,
 		&i.SentAgainAs,
+		&i.DismissedAt,
 	)
 	return i, err
 }
@@ -478,7 +531,7 @@ const readOutgoingMessageToSend = `-- name: ReadOutgoingMessageToSend :one
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
     bcc_addresses, subject, body, inbok_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
-    provider_thread_id, created_at, sent_at, sent_again_as
+    provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 FROM outgoing_messages WHERE id = $1
 `
 
@@ -504,6 +557,47 @@ func (q *Queries) ReadOutgoingMessageToSend(ctx context.Context, id uuid.UUID) (
 		&i.CreatedAt,
 		&i.SentAt,
 		&i.SentAgainAs,
+		&i.DismissedAt,
+	)
+	return i, err
+}
+
+const setOutgoingMessageDismissed = `-- name: SetOutgoingMessageDismissed :one
+UPDATE outgoing_messages SET dismissed_at = $1 WHERE id = $2
+RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
+    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    internet_references, status, failure, provider_message_id,
+    provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
+`
+
+type SetOutgoingMessageDismissedParams struct {
+	DismissedAt *time.Time
+	ID          uuid.UUID
+}
+
+func (q *Queries) SetOutgoingMessageDismissed(ctx context.Context, arg SetOutgoingMessageDismissedParams) (OutgoingMessage, error) {
+	row := q.db.QueryRow(ctx, setOutgoingMessageDismissed, arg.DismissedAt, arg.ID)
+	var i OutgoingMessage
+	err := row.Scan(
+		&i.ID,
+		&i.ConnectedAccountID,
+		&i.FromAddress,
+		&i.ToAddresses,
+		&i.CcAddresses,
+		&i.BccAddresses,
+		&i.Subject,
+		&i.Body,
+		&i.InbokMessageID,
+		&i.InReplyTo,
+		&i.InternetReferences,
+		&i.Status,
+		&i.Failure,
+		&i.ProviderMessageID,
+		&i.ProviderThreadID,
+		&i.CreatedAt,
+		&i.SentAt,
+		&i.SentAgainAs,
+		&i.DismissedAt,
 	)
 	return i, err
 }
@@ -549,7 +643,7 @@ WHERE id = $6
 RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
     bcc_addresses, subject, body, inbok_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
-    provider_thread_id, created_at, sent_at, sent_again_as
+    provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 `
 
 type UpdateOutgoingMessageStatusParams struct {
@@ -590,6 +684,7 @@ func (q *Queries) UpdateOutgoingMessageStatus(ctx context.Context, arg UpdateOut
 		&i.CreatedAt,
 		&i.SentAt,
 		&i.SentAgainAs,
+		&i.DismissedAt,
 	)
 	return i, err
 }

@@ -122,6 +122,7 @@ describe("composeValues", () => {
     createdAt: "2026-11-10T10:00:00Z",
     sentAt: null,
     sentAgainAs: null,
+    dismissedAt: null,
     outstanding: true,
     reply: false,
     allowedActions: ["send-again"],

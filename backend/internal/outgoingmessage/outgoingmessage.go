@@ -56,16 +56,23 @@ var (
 	// ErrReplySubject means edits to a reply change its subject, which
 	// threads it with the message it answers.
 	ErrReplySubject = errors.New("a reply's subject cannot change")
+	// ErrNotDismissible means the message is waiting, sending, or sent, so
+	// it never waited on the member to give it up.
+	ErrNotDismissible = errors.New("only a failed or unknown message can be dismissed")
 )
 
 // Action is what a member can ask of one of their messages.
 type Action string
 
-// ActionSendAgain is [Service.SendAgain].
-const ActionSendAgain Action = "send-again"
+const (
+	// ActionSendAgain is [Service.SendAgain].
+	ActionSendAgain Action = "send-again"
+	// ActionDismiss is [Service.Dismiss].
+	ActionDismiss Action = "dismiss"
+)
 
 // Actions are every [Action], in the order the API lists them.
-var Actions = []Action{ActionSendAgain}
+var Actions = []Action{ActionSendAgain, ActionDismiss}
 
 // ErrKeyExists is what [Storage] returns when the member already saved a
 // message with the idempotency key; [Service] reads it to compare.
@@ -190,6 +197,9 @@ type Message struct {
 	// SentAgainAs is the copy the member sent again of this failed or
 	// unknown message; nil until then.
 	SentAgainAs *uuid.UUID
+	// DismissedAt is when the member dismissed this failed or unknown
+	// message, so it no longer waits on them; nil until then.
+	DismissedAt *time.Time
 	// Account is the sending account as [Service] read it with the message,
 	// never saved with it; the zero value once a disconnect deleted it.
 	Account connectedaccount.Account
@@ -199,19 +209,31 @@ type Message struct {
 // whether its provider's client is set up, which every send needs. Sending
 // it again needs it failed or unknown, and its account's
 // [connectedaccount.ActionSend], unless it was already sent again: that
-// returns the same copy before the account is read.
+// returns the same copy before the account is read. Dismissing it needs it
+// [Message.Outstanding] and ended, and nothing of its account or provider,
+// as it sends nothing.
 //
 // DESIGN: the member's send limit and deactivation are left to the
 // refusal: both are the member's, not the message's, and the limit lifts
 // with time, which the refusal's wait says.
 func (m Message) AllowedActions(offered bool) []Action {
+	var actions []Action
+	if m.sendableAgainNow(offered) {
+		actions = append(actions, ActionSendAgain)
+	}
+	if sendableAgain(m.Status) && m.Outstanding() {
+		actions = append(actions, ActionDismiss)
+	}
+	return actions
+}
+
+// sendableAgainNow reports whether [Service.SendAgain] accepts m now, as
+// [Message.AllowedActions] describes.
+func (m Message) sendableAgainNow(offered bool) bool {
 	if !offered || !sendableAgain(m.Status) {
-		return nil
+		return false
 	}
-	if m.SentAgainAs == nil && !slices.Contains(m.Account.AllowedActions(offered), connectedaccount.ActionSend) {
-		return nil
-	}
-	return []Action{ActionSendAgain}
+	return m.SentAgainAs != nil || slices.Contains(m.Account.AllowedActions(offered), connectedaccount.ActionSend)
 }
 
 // sendableAgain reports whether a message in status can be sent again:
@@ -241,7 +263,7 @@ func (m Message) Reply() bool {
 }
 
 // Outstanding reports whether m still needs its member: waiting or being
-// sent, or ended failed or unknown and not sent again.
+// sent, or ended failed or unknown and neither sent again nor dismissed.
 // ListOutgoingMessages in repository/postgres's queries orders by the
 // same rule, so no client needs its own copy (AGENTS.md, "API contract").
 func (m Message) Outstanding() bool {
@@ -249,7 +271,7 @@ func (m Message) Outstanding() bool {
 	case StatusWaiting, StatusSending:
 		return true
 	case StatusFailed, StatusUnknown:
-		return m.SentAgainAs == nil
+		return m.SentAgainAs == nil && m.DismissedAt == nil
 	case StatusSent:
 		return false
 	}
@@ -377,6 +399,15 @@ type Storage interface {
 	// It returns the copy. An error from build rolls back and is returned
 	// unchanged.
 	InsertOutgoingMessageCopy(ctx context.Context, attempt Attempt, messageID uuid.UUID, build func(CopyState) (NewMessage, error)) (Message, error)
+
+	// DismissOutgoingMessage, in one transaction:
+	//  1. locks userID's message messageID, or returns [ErrNotFound];
+	//  2. calls dismiss with it;
+	//  3. when dismiss returns true, saves the message dismissed at at.
+	//
+	// It returns the message as saved. An error from dismiss rolls back and
+	// is returned unchanged.
+	DismissOutgoingMessage(ctx context.Context, userID int64, messageID uuid.UUID, at time.Time, dismiss func(Message) (bool, error)) (Message, error)
 
 	// ReadOutgoingMessage returns userID's message messageID, or
 	// [ErrNotFound] when userID has no such message.
@@ -575,6 +606,27 @@ func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UU
 		return Message{}, ErrSentAgainOtherwise
 	}
 	return s.withAccount(ctx, userID, copied)
+}
+
+// Dismiss marks userID's failed or unknown message messageID dismissed, so
+// it no longer waits on the member ([Message.Outstanding]), and returns it.
+// The message keeps its status and can still be sent again. Dismissing a
+// message already dismissed or sent again returns it unchanged: it already
+// waits on no one.
+//
+// It returns [ErrNotFound] when userID has no such message, and
+// [ErrNotDismissible] when it is waiting, sending, or sent.
+func (s *Service) Dismiss(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
+	message, err := s.storage.DismissOutgoingMessage(ctx, userID, messageID, s.now().UTC(), func(message Message) (bool, error) {
+		if !sendableAgain(message.Status) {
+			return false, ErrNotDismissible
+		}
+		return message.Outstanding(), nil
+	})
+	if err != nil {
+		return Message{}, err
+	}
+	return s.withAccount(ctx, userID, message)
 }
 
 // Get returns userID's message messageID, or [ErrNotFound] when userID has

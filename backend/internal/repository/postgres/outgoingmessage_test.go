@@ -856,6 +856,156 @@ func TestOutgoingMessageCopyCheck(t *testing.T) {
 	assert.Equal(t, "23514", pgErr.Code, "check violation")
 }
 
+// Dismissing saves when on the member's own failed message, once, and the
+// message can still be sent again.
+func TestOutgoingMessageDismiss(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	original := o.failedMessage(t)
+	at := time.Date(2026, 11, 17, 9, 0, 0, 0, time.UTC)
+
+	dismissed, err := o.db.DismissOutgoingMessage(t.Context(), o.member, original.ID, at, func(message outgoingmessage.Message) (bool, error) {
+		assert.Nil(t, message.DismissedAt)
+		return true, nil
+	})
+	require.NoError(t, err)
+	again, err := o.db.DismissOutgoingMessage(t.Context(), o.member, original.ID, at.Add(time.Hour), func(message outgoingmessage.Message) (bool, error) {
+		return message.Outstanding(), nil
+	})
+	require.NoError(t, err)
+	read, err := o.db.ReadOutgoingMessage(t.Context(), o.member, original.ID)
+	require.NoError(t, err)
+	copied, err := o.messages.SendAgain(t.Context(), o.member, original.ID, nil)
+	require.NoError(t, err)
+	listed, err := o.db.ListOutgoingMessages(t.Context(), o.member, 10)
+	require.NoError(t, err)
+
+	require.NotNil(t, dismissed.DismissedAt)
+	assert.True(t, at.Equal(*dismissed.DismissedAt))
+	assert.Equal(t, dismissed.DismissedAt, again.DismissedAt, "the first time stays")
+	assert.Equal(t, dismissed, read)
+	assert.Equal(t, outgoingmessage.StatusFailed, read.Status)
+	require.Len(t, listed, 2)
+	assert.Equal(t, copied.ID, listed[0].ID)
+	assert.Equal(t, &copied.ID, listed[1].SentAgainAs)
+	assert.Equal(t, dismissed.DismissedAt, listed[1].DismissedAt)
+}
+
+// holdDismissal starts dismissing the member's message original and holds
+// its transaction, the row locked, until the returned finish runs, or ctx
+// ends, e.g. when a failed test returns; finish returns what it saved.
+func (o outgoingMessagesTest) holdDismissal(t *testing.T, ctx context.Context, original uuid.UUID, at time.Time) func() (outgoingmessage.Message, error) {
+	t.Helper()
+	holding, release := make(chan struct{}), make(chan struct{})
+	type result struct {
+		message outgoingmessage.Message
+		err     error
+	}
+	done := make(chan result, 1)
+	go func() {
+		message, err := o.db.DismissOutgoingMessage(ctx, o.member, original, at, func(outgoingmessage.Message) (bool, error) {
+			close(holding)
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			return true, nil
+		})
+		done <- result{message, err}
+	}()
+	<-holding
+	return func() (outgoingmessage.Message, error) {
+		close(release)
+		r := <-done
+		return r.message, r.err
+	}
+}
+
+// A second Dismiss waits for the first and keeps its time.
+func TestOutgoingMessageDismissSerializes(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	original := o.failedMessage(t)
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+	at := time.Date(2026, 11, 17, 9, 0, 0, 0, time.UTC)
+
+	finish := o.holdDismissal(t, ctx, original.ID, at)
+	second := make(chan outgoingmessage.Message, 1)
+	go func() {
+		message, err := o.messages.Dismiss(ctx, o.member, original.ID)
+		assert.NoError(t, err)
+		second <- message
+	}()
+	waitForLock(t, ctx, o.db, "the second Dismiss waits for the first")
+	first, err := finish()
+	require.NoError(t, err)
+
+	again := <-second
+	require.NotNil(t, again.DismissedAt)
+	assert.True(t, at.Equal(*again.DismissedAt), "the first time stays")
+	assert.Equal(t, first.DismissedAt, again.DismissedAt)
+}
+
+// A Send again waits for a Dismiss in progress, then makes its copy: the
+// message is both dismissed and sent again.
+func TestOutgoingMessageDismissThenSendAgain(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	original := o.failedMessage(t)
+	ctx, cancel := context.WithTimeout(t.Context(), setupTestTimeout)
+	defer cancel()
+
+	finish := o.holdDismissal(t, ctx, original.ID, time.Now())
+	copied := make(chan outgoingmessage.Message, 1)
+	go func() {
+		message, err := o.messages.SendAgain(ctx, o.member, original.ID, nil)
+		assert.NoError(t, err)
+		copied <- message
+	}()
+	waitForLock(t, ctx, o.db, "Send again waits for the Dismiss")
+	_, err := finish()
+	require.NoError(t, err)
+	madeCopy := <-copied
+
+	read, err := o.db.ReadOutgoingMessage(t.Context(), o.member, original.ID)
+	require.NoError(t, err)
+	assert.NotNil(t, read.DismissedAt)
+	assert.Equal(t, &madeCopy.ID, read.SentAgainAs)
+}
+
+// Another member's message, or none, is not found; an error from dismiss
+// saves nothing.
+func TestOutgoingMessageDismissRefused(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	original := o.failedMessage(t)
+	dismiss := func(outgoingmessage.Message) (bool, error) { return true, nil }
+	refused := errors.New("refused")
+
+	_, otherErr := o.db.DismissOutgoingMessage(t.Context(), o.otherMember, original.ID, time.Now(), dismiss)
+	_, missingErr := o.db.DismissOutgoingMessage(t.Context(), o.member, uuid.New(), time.Now(), dismiss)
+	_, refusedErr := o.db.DismissOutgoingMessage(t.Context(), o.member, original.ID, time.Now(), func(outgoingmessage.Message) (bool, error) {
+		return true, refused
+	})
+	read, err := o.db.ReadOutgoingMessage(t.Context(), o.member, original.ID)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, otherErr, outgoingmessage.ErrNotFound)
+	require.ErrorIs(t, missingErr, outgoingmessage.ErrNotFound)
+	require.ErrorIs(t, refusedErr, refused)
+	assert.Nil(t, read.DismissedAt)
+}
+
+// Only a failed or unknown message is dismissed.
+func TestOutgoingMessageDismissCheck(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+
+	_, err = o.conn.Exec(t.Context(), "UPDATE outgoing_messages SET dismissed_at = now() WHERE id = $1", created.ID)
+
+	var pgErr *pgconn.PgError
+	require.ErrorAs(t, err, &pgErr)
+	assert.Equal(t, "23514", pgErr.Code, "check violation")
+}
+
 // The list is the member's newest messages first, without bodies.
 func TestOutgoingMessageList(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
@@ -883,10 +1033,10 @@ func TestOutgoingMessageList(t *testing.T) {
 
 // The list puts outstanding messages first, as [outgoingmessage.Message.Outstanding]
 // says, so an old one needing the member stays listed past newer ones: for
-// every status, sent again or not.
+// every status, sent again or dismissed or not.
 func TestOutgoingMessageListOutstandingFirst(t *testing.T) {
 	o := newOutgoingMessagesTest(t)
-	create := func(status, failure string, sentAgainAs *uuid.UUID) uuid.UUID {
+	create := func(status, failure string, sentAgainAs *uuid.UUID, dismissedAt *time.Time) uuid.UUID {
 		t.Helper()
 		created, err := o.messages.Create(t.Context(), o.member, o.draft())
 		require.NoError(t, err)
@@ -894,15 +1044,16 @@ func TestOutgoingMessageListOutstandingFirst(t *testing.T) {
 			sent_at = CASE WHEN $1 = 'sent' THEN now() END,
 			provider_message_id = CASE WHEN $1 = 'sent' THEN 'gmail-' || id END,
 			provider_thread_id = CASE WHEN $1 = 'sent' THEN 'thread-1' END,
-			sent_again_as = $3 WHERE id = $4`,
-			status, failure, sentAgainAs, created.ID)
+			sent_again_as = $3, dismissed_at = $5 WHERE id = $4`,
+			status, failure, sentAgainAs, created.ID, dismissedAt)
 		require.NoError(t, err)
 		return created.ID
 	}
 	// In the order they are saved, oldest first; each copy is sent.
-	failedOld := create("failed", "gave-up", nil)
-	unknownCopy := create("sent", "", nil)
-	failedCopy := create("sent", "", nil)
+	failedOld := create("failed", "gave-up", nil, nil)
+	unknownCopy := create("sent", "", nil, nil)
+	failedCopy := create("sent", "", nil, nil)
+	dismissedAt := time.Now()
 	created := map[uuid.UUID]string{
 		failedOld:   "failed",
 		unknownCopy: "sent, a copy",
@@ -911,15 +1062,18 @@ func TestOutgoingMessageListOutstandingFirst(t *testing.T) {
 	for _, c := range []struct {
 		status, failure, name string
 		sentAgainAs           *uuid.UUID
+		dismissedAt           *time.Time
 	}{
-		{"unknown", "", "unknown, sent again", &unknownCopy},
-		{"failed", "refused", "failed, sent again", &failedCopy},
-		{"waiting", "", "waiting", nil},
-		{"sending", "", "sending", nil},
-		{"unknown", "", "unknown", nil},
-		{"sent", "", "sent", nil},
+		{"unknown", "", "unknown, sent again", &unknownCopy, nil},
+		{"failed", "refused", "failed, sent again", &failedCopy, nil},
+		{"waiting", "", "waiting", nil, nil},
+		{"sending", "", "sending", nil, nil},
+		{"unknown", "", "unknown", nil, nil},
+		{"sent", "", "sent", nil, nil},
+		{"failed", "refused", "failed, dismissed", nil, &dismissedAt},
+		{"unknown", "", "unknown, dismissed", nil, &dismissedAt},
 	} {
-		created[create(c.status, c.failure, c.sentAgainAs)] = c.name
+		created[create(c.status, c.failure, c.sentAgainAs, c.dismissedAt)] = c.name
 	}
 
 	listed, err := o.db.ListOutgoingMessages(t.Context(), o.member, len(created))
@@ -933,6 +1087,7 @@ func TestOutgoingMessageListOutstandingFirst(t *testing.T) {
 	}
 	assert.Equal(t, []string{
 		"unknown", "sending", "waiting", "failed",
+		"unknown, dismissed", "failed, dismissed",
 		"sent", "failed, sent again", "unknown, sent again", "sent, another copy", "sent, a copy",
 	}, order)
 	for i, message := range listed {

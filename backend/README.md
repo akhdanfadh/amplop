@@ -2603,13 +2603,24 @@ clicking twice; edits other than that copy's content are refused
 the message, the order the send job and a disconnect use. `Service.List`
 returns at most 50 of the member's messages, without bodies: the
 outstanding ones first (`Message.Outstanding`: waiting, sending, or
-`failed` or `unknown` and not sent again), then the rest, each newest
+`failed` or `unknown` and neither sent again nor dismissed), then the
+rest, each newest
 first. A message that still needs its member, which synchronized mail may
 never show, so never leaves the list for newer finished ones (past 50
 outstanding, the oldest of those do); the query orders by the same rule,
 and a storage test checks the two agree. Each listed
 message says whether it is `outstanding`, so a client groups or counts
 them without its own copy of the rule.
+
+`Service.Dismiss` marks a `failed` or `unknown` message dismissed
+(`dismissed_at`), for one the member gives up on or finds in Gmail's Sent,
+so it is no longer outstanding; its status and failure stay, and it can
+still be sent again. `DismissOutgoingMessage` locks the member's row and
+lets the service decide on what is saved, so a Send again waits for it
+or it for the Send again: dismissing a message already dismissed or sent
+again returns it unchanged, as it needs nothing more, and one that is
+`waiting`, `sending`, or `sent` is `ErrNotDismissible`. A CHECK keeps
+`dismissed_at` to `failed` and `unknown` rows.
 
 `Service.Reply` saves a reply to one of the member's synchronized
 messages, from any of their accounts, through the same steps; the request
@@ -2638,8 +2649,11 @@ The HTTP operations, tag Outgoing Messages, are Send Message
 UUID, quoted as the IETF draft's Structured Field string or bare), Reply
 to Message (`POST /messages/{id}/replies`, the same header and body
 without `subject`; a message the member does not have answers 404
-`message-not-found`), List Outgoing Messages, Get Outgoing Message, and
-Send Message Again (`POST /outgoing-messages/{id}/send-again`). A refused account, missing
+`message-not-found`), List Outgoing Messages, Get Outgoing Message,
+Send Message Again (`POST /outgoing-messages/{id}/send-again`), and
+Dismiss Outgoing Message (`POST /outgoing-messages/{id}/dismiss`, no
+body, 200 with the message; 409 `not-dismissible` for one that is
+`waiting`, `sending`, or `sent`). A refused account, missing
 recipients, and a refused address answer 422 on their field, e.g.
 `body.cc[2]`; a reused key answers 422 `idempotency-key-reused`. Over the
 send limit answers 429 `send-throttled` with `Retry-After`. Another
@@ -2657,7 +2671,10 @@ account's rule is the one rule. A message already sent again keeps
 `send-again` whatever its account's state, as Send Message Again returns
 its copy before reading the account. A deactivated member and the send
 limit are left to the refusal: both are the member's, and the limit lifts
-with time, which its 429 says.
+with time, which its 429 says. `dismiss` is listed while the message is
+outstanding and `failed` or `unknown`, whatever its account's state or
+Gmail's setup, as dismissing sends nothing; each message reports
+`dismissedAt`.
 
 The send builds the MIME message from the saved row with go-message:
 `From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the

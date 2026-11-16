@@ -23,6 +23,7 @@ const (
 	sendingAccountNeedsReconnectType = problemPrefix + "sending-account-needs-reconnect"
 	notSendableAgainType             = problemPrefix + "not-sendable-again"
 	sentAgainOtherwiseType           = problemPrefix + "sent-again-otherwise"
+	notDismissibleType               = problemPrefix + "not-dismissible"
 	idempotencyKeyReusedType         = problemPrefix + "idempotency-key-reused"
 	sendThrottledType                = problemPrefix + "send-throttled"
 )
@@ -35,6 +36,7 @@ type outgoingMessageService interface {
 	Create(ctx context.Context, userID int64, draft outgoingmessage.Draft) (outgoingmessage.Message, error)
 	Reply(ctx context.Context, userID int64, reply outgoingmessage.Reply) (outgoingmessage.Message, error)
 	SendAgain(ctx context.Context, userID int64, messageID uuid.UUID, edits *outgoingmessage.Content) (outgoingmessage.Message, error)
+	Dismiss(ctx context.Context, userID int64, messageID uuid.UUID) (outgoingmessage.Message, error)
 	Get(ctx context.Context, userID int64, messageID uuid.UUID) (outgoingmessage.Message, error)
 	List(ctx context.Context, userID int64) ([]outgoingmessage.Message, error)
 }
@@ -52,6 +54,7 @@ func registerOutgoingMessages(api huma.API, service outgoingMessageService, prov
 	registerOutgoingMessageList(api, handler)
 	registerOutgoingMessageRead(api, handler)
 	registerSendAgain(api, handler)
+	registerOutgoingMessageDismissal(api, handler)
 }
 
 // outgoingMessageSummary is an outgoing message without its body, as the
@@ -67,13 +70,14 @@ type outgoingMessageSummary struct {
 	Status             outgoingmessage.Status   `json:"status" enum:"waiting,sending,sent,failed,unknown" doc:"waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and inbok cannot tell; check the account's Sent folder before sending it again."`
 	Failure            *outgoingmessage.Failure `json:"failure" nullable:"true" enum:"refused,sending-limit,needs-reconnect,token-unreadable,deactivated,sender-changed,gave-up" doc:"Why the message failed; null unless status is failed. refused: Gmail refused the message; send it again with edits. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached."`
 	SentAgainAs        *uuid.UUID               `json:"sentAgainAs" nullable:"true" format:"uuid" doc:"The copy this failed or unknown message was sent again as, with or without edits; null until then."`
-	Outstanding        bool                     `json:"outstanding" doc:"Whether the message still needs the member: waiting or sending, or failed or unknown and not sent again. List Outgoing Messages lists these first."`
+	DismissedAt        *time.Time               `json:"dismissedAt" nullable:"true" doc:"When the member dismissed this failed or unknown message (Dismiss Outgoing Message); null until then."`
+	Outstanding        bool                     `json:"outstanding" doc:"Whether the message still needs the member: waiting or sending, or failed or unknown and neither sent again nor dismissed. List Outgoing Messages lists these first."`
 	Reply              bool                     `json:"reply" doc:"Whether the message answers another, carrying the In-Reply-To and References headers that thread it. A reply sent again keeps its subject, so edits to it keep the subject too."`
 	CreatedAt          time.Time                `json:"createdAt"`
 	SentAt             *time.Time               `json:"sentAt" nullable:"true" doc:"When Gmail took the message: Gmail's own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent."`
 	// Listed here, so every client offers only what the service accepts
 	// instead of restating its rule (AGENTS.md, "API contract").
-	AllowedActions []outgoingmessage.Action `json:"allowedActions" nullable:"false" doc:"What the member can ask of this message now: send-again (Send Message Again) while it is failed or unknown and its sending account lists send in its own allowedActions. A message already sent again keeps send-again whatever its account's state, as it returns the same copy, while Gmail is set up. A listed action can still be refused when the message or its account changed since this read, when the member was deactivated, or when they sent too many messages recently. Clients ignore values they don't know."`
+	AllowedActions []outgoingmessage.Action `json:"allowedActions" nullable:"false" doc:"What the member can ask of this message now: send-again (Send Message Again) while it is failed or unknown and its sending account lists send in its own allowedActions. A message already sent again keeps send-again whatever its account's state, as it returns the same copy, while Gmail is set up. dismiss (Dismiss Outgoing Message) while it is outstanding and failed or unknown, whatever its account's state. A listed action can still be refused when the message or its account changed since this read, when the member was deactivated, or when they sent too many messages recently. Clients ignore values they don't know."`
 }
 
 // TransformSchema lets failure be null and lists allowedActions' values.
@@ -135,6 +139,7 @@ func outgoingMessageSummaryOf(message outgoingmessage.Message, offered bool) out
 		Subject:            message.Subject,
 		Status:             message.Status,
 		SentAgainAs:        message.SentAgainAs,
+		DismissedAt:        message.DismissedAt,
 		Outstanding:        message.Outstanding(),
 		Reply:              message.Reply(),
 		CreatedAt:          message.CreatedAt,
@@ -630,4 +635,48 @@ func sendAgainProblem(err error) error {
 	default:
 		return outgoingMessageSendProblem(err)
 	}
+}
+
+// ========================
+// Dismiss outgoing message
+// ========================
+
+func registerOutgoingMessageDismissal(api huma.API, handler outgoingMessageHandler) {
+	huma.Register(api, huma.Operation{
+		OperationID: "dismissOutgoingMessage",
+		Method:      http.MethodPost,
+		Path:        outgoingMessagesPath + "/{id}/dismiss",
+		Summary:     "Dismiss Outgoing Message",
+		Tags:        []string{tagOutgoingMessages},
+		Description: "Marks a failed or unknown message dismissed, so it is no longer outstanding: the member gave up on it, or found it in the account's Sent folder. " +
+			"It keeps its status and can still be sent again. Dismissing a message already dismissed or sent again returns it unchanged, as it already needs nothing more. Nothing is sent, so Gmail need not be set up.",
+		Metadata:  map[string]any{accessKey: session.AccessMember},
+		Security:  []map[string][]string{{sessionSecuritySchemeName: {}}},
+		Responses: dismissResponses(api),
+	}, handler.handleDismissOutgoingMessage)
+}
+
+func (h outgoingMessageHandler) handleDismissOutgoingMessage(ctx context.Context, in *outgoingMessageInput) (*output[outgoingMessage], error) {
+	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
+	message, err := h.service.Dismiss(ctx, user.ID, in.ID)
+	if err != nil {
+		return nil, dismissProblem(err)
+	}
+	return respondData(outgoingMessageOf(message, h.offered())), nil
+}
+
+func dismissResponses(api huma.API) map[string]*huma.Response {
+	responses := outgoingMessageResponses(api, http.StatusConflict)
+	conflict := responses[strconv.Itoa(http.StatusConflict)]
+	conflict.Description = "The message is waiting, sending, or sent, so it never needed dismissing."
+	conflict.Content[problemContentType].Example = dismissProblem(outgoingmessage.ErrNotDismissible)
+	return responses
+}
+
+// dismissProblem maps the errors of dismissing a message.
+func dismissProblem(err error) error {
+	if errors.Is(err, outgoingmessage.ErrNotDismissible) {
+		return newProblem(http.StatusConflict, notDismissibleType, "Message not dismissible", "Only a failed message, or one whose outcome is unknown, can be dismissed.")
+	}
+	return outgoingMessageProblem(err)
 }

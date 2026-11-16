@@ -2350,6 +2350,82 @@ export function useGetOutgoingMessage<TData = Awaited<ReturnType<typeof getOutgo
 
 
 
+export const getDismissOutgoingMessageUrl = (id: string,) => {
+
+
+
+
+  return `/api/v0/outgoing-messages/${id}/dismiss`
+}
+
+/**
+ * Marks a failed or unknown message dismissed, so it is no longer outstanding: the member gave up on it, or found it in the account's Sent folder. It keeps its status and can still be sent again. Dismissing a message already dismissed or sent again returns it unchanged, as it already needs nothing more. Nothing is sent, so Gmail need not be set up.
+ * @summary Dismiss Outgoing Message
+ */
+export const dismissOutgoingMessage = async (id: string, options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessage> => {
+
+  return transport<ResponseOutgoingMessage>(getDismissOutgoingMessageUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+    ,
+    schema: ResponseOutgoingMessage
+  }
+);}
+
+
+
+
+
+export const getDismissOutgoingMessageMutationKey = () => ['dismissOutgoingMessage'] as const;
+
+export const getDismissOutgoingMessageMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissOutgoingMessage>>, TError,DismissOutgoingMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissOutgoingMessage>>, TError,DismissOutgoingMessageMutationVariables, TContext> => {
+
+const mutationKey = getDismissOutgoingMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissOutgoingMessage>>, DismissOutgoingMessageMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  dismissOutgoingMessage(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissOutgoingMessageMutationResult = NonNullable<Awaited<ReturnType<typeof dismissOutgoingMessage>>>
+
+    export type DismissOutgoingMessageMutationError = ErrorType<Problem>
+    export type DismissOutgoingMessageMutationVariables = {id: string}
+
+    /**
+ * @summary Dismiss Outgoing Message
+ */
+export const useDismissOutgoingMessage = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissOutgoingMessage>>, TError,DismissOutgoingMessageMutationVariables, TContext>, request?: SecondParameter<typeof transport>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof dismissOutgoingMessage>>,
+        TError,
+        DismissOutgoingMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDismissOutgoingMessageMutationOptions(options), queryClient);
+    }
+
 export const getSendMessageAgainUrl = (id: string,) => {
 
 

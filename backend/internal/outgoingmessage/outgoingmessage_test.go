@@ -155,6 +155,24 @@ func (m *memoryStorage) save(attempt Attempt, accountID int64, next NewMessage) 
 	return saved
 }
 
+func (m *memoryStorage) DismissOutgoingMessage(ctx context.Context, userID int64, messageID uuid.UUID, at time.Time, dismiss func(Message) (bool, error)) (Message, error) {
+	message, err := m.ReadOutgoingMessage(ctx, userID, messageID)
+	if err != nil {
+		return Message{}, err
+	}
+	ok, err := dismiss(message)
+	if err != nil || !ok {
+		return message, err
+	}
+	for i := range m.messages {
+		if m.messages[i].ID == messageID {
+			m.messages[i].DismissedAt = &at
+			message = m.messages[i]
+		}
+	}
+	return message, nil
+}
+
 func (m *memoryStorage) ReadOutgoingMessage(_ context.Context, userID int64, messageID uuid.UUID) (Message, error) {
 	for _, message := range m.messages {
 		if message.ID == messageID && m.accounts[message.ConnectedAccountID].userID == userID {
@@ -682,9 +700,10 @@ func TestSendAgainOtherMembers(t *testing.T) {
 }
 
 // A message is outstanding while it is being sent, and once it ended
-// unsent until it is sent again.
+// unsent until it is sent again or dismissed.
 func TestOutstanding(t *testing.T) {
 	copyID := uuid.New()
+	dismissed := createNow
 	tests := []struct {
 		name    string
 		message Message
@@ -697,6 +716,9 @@ func TestOutstanding(t *testing.T) {
 		{"unknown", Message{Status: StatusUnknown}, true},
 		{"failed, sent again", Message{Status: StatusFailed, Failure: FailureRefused, SentAgainAs: &copyID}, false},
 		{"unknown, sent again", Message{Status: StatusUnknown, SentAgainAs: &copyID}, false},
+		{"failed, dismissed", Message{Status: StatusFailed, Failure: FailureRefused, DismissedAt: &dismissed}, false},
+		{"unknown, dismissed", Message{Status: StatusUnknown, DismissedAt: &dismissed}, false},
+		{"dismissed, then sent again", Message{Status: StatusFailed, Failure: FailureRefused, DismissedAt: &dismissed, SentAgainAs: &copyID}, false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -707,6 +729,7 @@ func TestOutstanding(t *testing.T) {
 
 func TestAllowedActions(t *testing.T) {
 	copyID := uuid.New()
+	dismissed := createNow
 	usable := connectedaccount.Account{Status: connectedaccount.StatusUsable}
 	stale := connectedaccount.Account{Status: connectedaccount.StatusNeedsReconnect}
 	unreadable := connectedaccount.Account{Status: connectedaccount.StatusTokenUnreadable}
@@ -719,15 +742,17 @@ func TestAllowedActions(t *testing.T) {
 		{"waiting", Message{Status: StatusWaiting, Account: usable}, true, nil},
 		{"sending", Message{Status: StatusSending, Account: usable}, true, nil},
 		{"sent", Message{Status: StatusSent, Account: usable}, true, nil},
-		{"failed", Message{Status: StatusFailed, Failure: FailureRefused, Account: usable}, true, []Action{ActionSendAgain}},
-		{"unknown", Message{Status: StatusUnknown, Account: usable}, true, []Action{ActionSendAgain}},
-		{"Gmail not set up", Message{Status: StatusFailed, Failure: FailureGaveUp, Account: usable}, false, nil},
-		{"account needs reconnecting", Message{Status: StatusFailed, Failure: FailureNeedsReconnect, Account: stale}, true, nil},
-		{"account's token unreadable", Message{Status: StatusFailed, Failure: FailureTokenUnreadable, Account: unreadable}, true, nil},
-		{"account disconnected", Message{Status: StatusUnknown}, true, nil},
+		{"failed", Message{Status: StatusFailed, Failure: FailureRefused, Account: usable}, true, []Action{ActionSendAgain, ActionDismiss}},
+		{"unknown", Message{Status: StatusUnknown, Account: usable}, true, []Action{ActionSendAgain, ActionDismiss}},
+		{"Gmail not set up", Message{Status: StatusFailed, Failure: FailureGaveUp, Account: usable}, false, []Action{ActionDismiss}},
+		{"account needs reconnecting", Message{Status: StatusFailed, Failure: FailureNeedsReconnect, Account: stale}, true, []Action{ActionDismiss}},
+		{"account's token unreadable", Message{Status: StatusFailed, Failure: FailureTokenUnreadable, Account: unreadable}, true, []Action{ActionDismiss}},
+		{"account disconnected", Message{Status: StatusUnknown}, true, []Action{ActionDismiss}},
 		{"sent again", Message{Status: StatusUnknown, SentAgainAs: &copyID, Account: usable}, true, []Action{ActionSendAgain}},
 		{"sent again, account needs reconnecting", Message{Status: StatusFailed, SentAgainAs: &copyID, Account: stale}, true, []Action{ActionSendAgain}},
 		{"sent again, Gmail not set up", Message{Status: StatusFailed, SentAgainAs: &copyID, Account: usable}, false, nil},
+		{"dismissed", Message{Status: StatusFailed, Failure: FailureRefused, DismissedAt: &dismissed, Account: usable}, true, []Action{ActionSendAgain}},
+		{"dismissed, Gmail not set up", Message{Status: StatusUnknown, DismissedAt: &dismissed, Account: usable}, false, nil},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -781,6 +806,124 @@ func TestAllowedActionsSentAgainNeedsReconnect(t *testing.T) {
 	assert.Equal(t, []Action{ActionSendAgain}, read.AllowedActions(true))
 	require.NoError(t, err)
 	assert.Equal(t, copied.ID, again.ID)
+}
+
+// Dismissing a failed or unknown message saves when, so it is no longer
+// outstanding, and keeps its status and failure.
+func TestDismiss(t *testing.T) {
+	for _, status := range []Status{StatusFailed, StatusUnknown} {
+		t.Run(string(status), func(t *testing.T) {
+			_, service, original := sendAgainTest(t, status)
+
+			dismissed, err := service.Dismiss(t.Context(), 3, original.ID)
+
+			require.NoError(t, err)
+			require.NotNil(t, dismissed.DismissedAt)
+			assert.Equal(t, createNow, *dismissed.DismissedAt)
+			assert.Equal(t, original.Status, dismissed.Status)
+			assert.Equal(t, original.Failure, dismissed.Failure)
+			assert.False(t, dismissed.Outstanding())
+			assert.Equal(t, int64(5), dismissed.Account.ID, "carries its account")
+			read, err := service.Get(t.Context(), 3, original.ID)
+			require.NoError(t, err)
+			assert.Equal(t, dismissed.DismissedAt, read.DismissedAt)
+		})
+	}
+}
+
+// Dismissing a message again returns it unchanged, keeping when it was
+// first dismissed.
+func TestDismissTwice(t *testing.T) {
+	_, service, original := sendAgainTest(t, StatusFailed)
+	now := createNow
+	service.now = func() time.Time { return now }
+	first, err := service.Dismiss(t.Context(), 3, original.ID)
+	require.NoError(t, err)
+	now = now.Add(time.Hour)
+
+	again, err := service.Dismiss(t.Context(), 3, original.ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, first.DismissedAt, again.DismissedAt)
+}
+
+// A message sent again already needs nothing more, so dismissing it, e.g.
+// from a page read before the Send again, returns it unchanged.
+func TestDismissSentAgain(t *testing.T) {
+	_, service, original := sendAgainTest(t, StatusUnknown)
+	copied, err := service.SendAgain(t.Context(), 3, original.ID, nil)
+	require.NoError(t, err)
+
+	dismissed, err := service.Dismiss(t.Context(), 3, original.ID)
+
+	require.NoError(t, err)
+	assert.Nil(t, dismissed.DismissedAt)
+	assert.Equal(t, &copied.ID, dismissed.SentAgainAs)
+}
+
+// A message that is waiting, sending, or sent never waited on the member to
+// give it up.
+func TestDismissNotDismissible(t *testing.T) {
+	for _, status := range []Status{StatusWaiting, StatusSending, StatusSent} {
+		t.Run(string(status), func(t *testing.T) {
+			storage, service, original := sendAgainTest(t, status)
+
+			_, err := service.Dismiss(t.Context(), 3, original.ID)
+
+			require.ErrorIs(t, err, ErrNotDismissible)
+			assert.Nil(t, storage.messages[0].DismissedAt)
+		})
+	}
+}
+
+func TestDismissOtherMembers(t *testing.T) {
+	_, service, original := sendAgainTest(t, StatusFailed)
+
+	_, err := service.Dismiss(t.Context(), 4, original.ID)
+
+	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// A dismissed message can still be sent again.
+func TestSendAgainDismissed(t *testing.T) {
+	_, service, original := sendAgainTest(t, StatusFailed)
+	_, err := service.Dismiss(t.Context(), 3, original.ID)
+	require.NoError(t, err)
+
+	copied, err := service.SendAgain(t.Context(), 3, original.ID, nil)
+
+	require.NoError(t, err)
+	read, err := service.Get(t.Context(), 3, original.ID)
+	require.NoError(t, err)
+	assert.Equal(t, &copied.ID, read.SentAgainAs)
+}
+
+// What a read lists is what Dismiss changes: for every status, sent again
+// or not, and dismissed or not.
+func TestAllowedActionsMatchDismiss(t *testing.T) {
+	for _, status := range []Status{StatusWaiting, StatusSending, StatusSent, StatusFailed, StatusUnknown} {
+		for _, before := range []string{"", "sent again", "dismissed"} {
+			t.Run(fmt.Sprintf("%s %s", status, before), func(t *testing.T) {
+				storage, service, original := sendAgainTest(t, status)
+				switch before {
+				case "sent again":
+					copyID := uuid.New()
+					storage.messages[0].SentAgainAs = &copyID
+				case "dismissed":
+					at := createNow.Add(-time.Hour)
+					storage.messages[0].DismissedAt = &at
+				}
+				read, err := service.Get(t.Context(), 3, original.ID)
+				require.NoError(t, err)
+
+				dismissed, err := service.Dismiss(t.Context(), 3, original.ID)
+
+				listed := slices.Contains(read.AllowedActions(true), ActionDismiss)
+				changed := err == nil && read.DismissedAt == nil && dismissed.DismissedAt != nil
+				assert.Equal(t, listed, changed, "listed %t, Dismiss: %v", listed, err)
+			})
+		}
+	}
 }
 
 // Every message the service returns carries its sending account as read

@@ -73,6 +73,7 @@ function saved(
     createdAt: "2026-11-13T08:00:00Z",
     sentAt: status === "sent" ? "2026-11-13T08:00:05Z" : null,
     sentAgainAs: null,
+    dismissedAt: null,
     outstanding: status !== "sent",
     reply: false,
     allowedActions:

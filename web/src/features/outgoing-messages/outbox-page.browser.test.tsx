@@ -49,6 +49,7 @@ const sent: OutgoingMessage = {
   createdAt: "2026-11-16T08:00:00Z",
   sentAt: "2026-11-16T08:00:05Z",
   sentAgainAs: null,
+  dismissedAt: null,
   outstanding: false,
   reply: false,
   allowedActions: [],

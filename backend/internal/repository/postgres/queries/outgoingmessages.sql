@@ -61,7 +61,8 @@ SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, om.body,
     om.inbok_message_id, om.in_reply_to, om.internet_references, om.status,
     om.failure, om.provider_message_id,
-    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as
+    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as,
+    om.dismissed_at
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE om.id = @id AND ca.user_id = @user_id;
@@ -75,19 +76,20 @@ WHERE user_id = @user_id AND idempotency_key = @idempotency_key;
 -- name: ListOutgoingMessages :many
 -- The member's messages, without their bodies, which a list does not show
 -- and which may be 100,000 characters each: the outstanding ones first,
--- waiting, sending, or failed or unknown and not sent again (the rule of
--- outgoingmessage's Message.Outstanding), so newer finished ones never
--- push one out, then the rest, each newest first.
+-- waiting, sending, or failed or unknown and neither sent again nor
+-- dismissed (the rule of outgoingmessage's Message.Outstanding), so newer
+-- finished ones never push one out, then the rest, each newest first.
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, ''::text AS body,
     om.inbok_message_id, om.in_reply_to, om.internet_references, om.status, om.failure,
     om.provider_message_id, om.provider_thread_id, om.created_at, om.sent_at,
-    om.sent_again_as
+    om.sent_again_as, om.dismissed_at
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE ca.user_id = @user_id
 ORDER BY (om.status IN ('waiting', 'sending')
-        OR (om.status IN ('failed', 'unknown') AND om.sent_again_as IS NULL)) DESC,
+        OR (om.status IN ('failed', 'unknown') AND om.sent_again_as IS NULL
+            AND om.dismissed_at IS NULL)) DESC,
     om.created_at DESC, om.id DESC
 LIMIT @max_count;
 
@@ -98,7 +100,7 @@ UPDATE outgoing_messages SET sent_again_as = @sent_again_as WHERE id = @id;
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
     bcc_addresses, subject, body, inbok_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
-    provider_thread_id, created_at, sent_at, sent_again_as
+    provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 FROM outgoing_messages WHERE id = @id;
 
 -- name: LockOutgoingMessage :one
@@ -106,7 +108,7 @@ FROM outgoing_messages WHERE id = @id;
 SELECT id, connected_account_id, from_address, to_addresses, cc_addresses,
     bcc_addresses, subject, body, inbok_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
-    provider_thread_id, created_at, sent_at, sent_again_as
+    provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at
 FROM outgoing_messages WHERE id = @id FOR NO KEY UPDATE;
 
 -- name: UpdateOutgoingMessageStatus :one
@@ -121,7 +123,7 @@ WHERE id = @id
 RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
     bcc_addresses, subject, body, inbok_message_id, in_reply_to,
     internet_references, status, failure, provider_message_id,
-    provider_thread_id, created_at, sent_at, sent_again_as;
+    provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at;
 
 -- name: UpdateConnectedAccountEmail :exec
 -- Gmail's address for the account, which a send found changed.
@@ -147,3 +149,24 @@ JOIN connected_accounts ca ON ca.id = om.connected_account_id
 JOIN users u ON u.id = ca.user_id
 WHERE om.id = @id
 FOR SHARE OF u;
+
+-- name: LockMemberOutgoingMessage :one
+-- A message belongs to its account's owner. No key column changes, so
+-- foreign key checks on the row need not wait.
+SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
+    om.cc_addresses, om.bcc_addresses, om.subject, om.body,
+    om.inbok_message_id, om.in_reply_to, om.internet_references, om.status,
+    om.failure, om.provider_message_id,
+    om.provider_thread_id, om.created_at, om.sent_at, om.sent_again_as,
+    om.dismissed_at
+FROM outgoing_messages om
+JOIN connected_accounts ca ON ca.id = om.connected_account_id
+WHERE om.id = @id AND ca.user_id = @user_id
+FOR NO KEY UPDATE OF om;
+
+-- name: SetOutgoingMessageDismissed :one
+UPDATE outgoing_messages SET dismissed_at = @dismissed_at WHERE id = @id
+RETURNING id, connected_account_id, from_address, to_addresses, cc_addresses,
+    bcc_addresses, subject, body, inbok_message_id, in_reply_to,
+    internet_references, status, failure, provider_message_id,
+    provider_thread_id, created_at, sent_at, sent_again_as, dismissed_at;
