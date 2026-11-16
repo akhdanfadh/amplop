@@ -2922,7 +2922,7 @@ IDs it found, in one read-only snapshot:
   Gmail's undocumented address from the account's address and the
   thread, in Spam or Trash when the conversation is only there.
 
-A label of another member answers 404 `place-not-found`, an account
+A label of another member answers 404 `label-not-found`, an account
 filter of another member 404 `connected-account-not-found`, and another
 member's conversation 404 `conversation-not-found`. On 20,000 synthetic
 conversations over three accounts (PostgreSQL 18, 2026-11-11) a page
@@ -2992,7 +2992,7 @@ changes here (ADR031, "Labels as built"). It runs as an action does,
 with the same answer, its own `undo` included, which reaches what each
 change names. The service turns each place into the conversation's
 account's mailbox (`ListPlaceMailboxes`), and refuses the whole request
-with 404 `place-not-found` for a label that is not in it, e.g. deleted
+with 404 `label-not-found` for a label that is not in it, e.g. deleted
 since. `google.Client.ModifyThread` makes one `threads.modify` for the
 labels and the marks it clears, then one `messages.modify` for the
 newest message's marks it sets; when that second call fails, the first
@@ -3177,7 +3177,7 @@ All mail, Spam, and Trash together search everywhere.
 
 1. A search of one account checks it is the member's, and one of a
    label checks it is the member's, so a search of either they no longer
-   have answers 404, `connected-account-not-found` or `place-not-found`
+   have answers 404, `connected-account-not-found` or `label-not-found`
    as for a list, rather than finding nothing.
 2. It looks up the member's mailboxes by role and makes each place a
    scope: Inbox and Sent by their role's mailboxes, a label by its own,

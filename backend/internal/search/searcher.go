@@ -125,7 +125,7 @@ func NewSearcher(index Index, storage SearchStorage) *Searcher {
 // through a message in neither Spam, Trash, nor drafts, or for Spam and
 // Trash any message but a draft. It returns [ErrNoOwner], [ErrBadPage], or
 // [ErrBadRange] before reading anything, [ErrAccountNotFound] for an
-// account owner does not have, [conversation.ErrPlaceNotFound] for a label
+// account owner does not have, [conversation.ErrLabelNotFound] for a label
 // owner does not have, and an error wrapping [ErrUnavailable] when the
 // index does not answer.
 //
@@ -210,7 +210,7 @@ func (s *Searcher) Search(ctx context.Context, owner int64, request Request) (Pa
 	return page, nil
 }
 
-// checkLabels returns [conversation.ErrPlaceNotFound] when a place among
+// checkLabels returns [conversation.ErrLabelNotFound] when a place among
 // places is a label owner does not have.
 func (s *Searcher) checkLabels(ctx context.Context, owner int64, places []conversation.Place) error {
 	var wanted []uuid.UUID
@@ -228,7 +228,7 @@ func (s *Searcher) checkLabels(ctx context.Context, owner int64, places []conver
 	}
 	for _, id := range wanted {
 		if !slices.Contains(labels, id) {
-			return conversation.ErrPlaceNotFound
+			return conversation.ErrLabelNotFound
 		}
 	}
 	return nil

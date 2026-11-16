@@ -16,9 +16,9 @@ var (
 	// ErrNotFound means the member has no conversation with that ID,
 	// including one of another member's accounts.
 	ErrNotFound = errors.New("conversation not found")
-	// ErrPlaceNotFound means the member has no label with the place's ID:
+	// ErrLabelNotFound means the member has no label with the place's ID:
 	// a mailbox of theirs with no role that they made.
-	ErrPlaceNotFound = errors.New("place not found")
+	ErrLabelNotFound = errors.New("label not found")
 	// ErrAccountNotFound means the member has no connected account with the
 	// filter's ID.
 	ErrAccountNotFound = errors.New("connected account not found")
@@ -206,7 +206,7 @@ type Storage interface {
 	// ListConversations returns up to query.Limit of userID's
 	// conversations in query.Place, newest first, then by ID descending,
 	// each older than query.Before. It returns [ErrAccountNotFound] when
-	// userID has no account query.Account, and [ErrPlaceNotFound] when
+	// userID has no account query.Account, and [ErrLabelNotFound] when
 	// userID has no label query.Place.Mailbox. A label of an account other
 	// than query.Account lists nothing.
 	ListConversations(ctx context.Context, userID int64, query Query) ([]Conversation, error)

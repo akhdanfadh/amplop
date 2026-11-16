@@ -21,7 +21,7 @@ import (
 const (
 	conversationsPath = "/conversations"
 
-	placeNotFoundType = problemPrefix + "place-not-found"
+	labelNotFoundType = problemPrefix + "label-not-found"
 )
 
 // conversationService reads the member's conversations.
@@ -139,8 +139,8 @@ func placeOf(text string) (conversation.Place, error) {
 // placeProblem maps the errors of reading a place's conversations.
 func placeProblem(err error) error {
 	switch {
-	case errors.Is(err, conversation.ErrPlaceNotFound):
-		return newProblem(http.StatusNotFound, placeNotFoundType, "Label not found", "The label does not exist. It may have been deleted.")
+	case errors.Is(err, conversation.ErrLabelNotFound):
+		return newProblem(http.StatusNotFound, labelNotFoundType, "Label not found", "The label does not exist. It may have been deleted.")
 	case errors.Is(err, conversation.ErrAccountNotFound):
 		return connectedAccountProblem(connectedaccount.ErrNotFound)
 	default:
@@ -157,7 +157,7 @@ func placeResponses(api huma.API, statuses ...int) map[string]*huma.Response {
 	// OpenAPI allows example or examples, not both (3.1, Media Type Object).
 	notFound.Content[problemContentType].Example = nil
 	notFound.Content[problemContentType].Examples = map[string]*huma.Example{
-		"label":   {Value: placeProblem(conversation.ErrPlaceNotFound)},
+		"label":   {Value: placeProblem(conversation.ErrLabelNotFound)},
 		"account": {Value: placeProblem(conversation.ErrAccountNotFound)},
 	}
 	return responses
@@ -702,7 +702,7 @@ func parseChanges(body conversationChangesBody) ([]conversation.Change, error) {
 
 // conversationChangesProblem maps the errors of applying changes.
 func conversationChangesProblem(err error) error {
-	if errors.Is(err, conversation.ErrPlaceNotFound) {
+	if errors.Is(err, conversation.ErrLabelNotFound) {
 		return placeProblem(err)
 	}
 	return conversationActionProblem(err)
@@ -715,7 +715,7 @@ func registerConversationChanges(api huma.API, handler conversationHandler) {
 	conflict.Content[problemContentType].Example = conversationActionProblem(errGmailNotConfigured)
 	notFound := responses[strconv.Itoa(http.StatusNotFound)]
 	notFound.Description = "A label is not one of the member's in a conversation's account, e.g. deleted since."
-	notFound.Content[problemContentType].Example = placeProblem(conversation.ErrPlaceNotFound)
+	notFound.Content[problemContentType].Example = placeProblem(conversation.ErrLabelNotFound)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "changeConversations",

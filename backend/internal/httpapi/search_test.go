@@ -359,7 +359,7 @@ func TestSearchConversationsProblems(t *testing.T) {
 		retryAfter string
 	}{
 		"account": {search.ErrAccountNotFound, http.StatusNotFound, connectedAccountNotFoundType, ""},
-		"label":   {conversation.ErrPlaceNotFound, http.StatusNotFound, placeNotFoundType, ""},
+		"label":   {conversation.ErrLabelNotFound, http.StatusNotFound, labelNotFoundType, ""},
 		"index":   {fmt.Errorf("search: %w", search.ErrUnavailable), http.StatusServiceUnavailable, searchUnavailableType, "15"},
 		"range":   {search.ErrBadRange, http.StatusUnprocessableEntity, "validation-error", ""},
 		"other":   {errors.New("database down"), http.StatusInternalServerError, "", ""},

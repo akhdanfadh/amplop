@@ -236,11 +236,11 @@ func TestListConversationsRefused(t *testing.T) {
 		query conversation.Query
 		want  error
 	}{
-		"another member's label":   {conversation.Query{Place: mailbox(c.strangerAccount, "Label_1")}, conversation.ErrPlaceNotFound},
-		"no such label":            {conversation.Query{Place: conversation.Place{Mailbox: uuid.New()}}, conversation.ErrPlaceNotFound},
-		"gmail's own label":        {conversation.Query{Place: mailbox(c.account, "CATEGORY_SOCIAL")}, conversation.ErrPlaceNotFound},
-		"the inbox by its ID":      {conversation.Query{Place: mailbox(c.account, "INBOX")}, conversation.ErrPlaceNotFound},
-		"the drafts by their ID":   {conversation.Query{Place: mailbox(c.account, "DRAFT")}, conversation.ErrPlaceNotFound},
+		"another member's label":   {conversation.Query{Place: mailbox(c.strangerAccount, "Label_1")}, conversation.ErrLabelNotFound},
+		"no such label":            {conversation.Query{Place: conversation.Place{Mailbox: uuid.New()}}, conversation.ErrLabelNotFound},
+		"gmail's own label":        {conversation.Query{Place: mailbox(c.account, "CATEGORY_SOCIAL")}, conversation.ErrLabelNotFound},
+		"the inbox by its ID":      {conversation.Query{Place: mailbox(c.account, "INBOX")}, conversation.ErrLabelNotFound},
+		"the drafts by their ID":   {conversation.Query{Place: mailbox(c.account, "DRAFT")}, conversation.ErrLabelNotFound},
 		"another member's account": {conversation.Query{Place: inbox, Account: c.strangerAccount}, conversation.ErrAccountNotFound},
 	}
 	for name, tc := range cases {

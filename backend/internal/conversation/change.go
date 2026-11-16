@@ -143,7 +143,7 @@ func ValidateChange(change Change) error {
 // providers, as [ActionService.Apply] applies an action, each conversation
 // its own change. It returns [ErrInvalidIDs] when the changes name no
 // conversation, more than [MaxActionIDs], or one twice; the errors of
-// [ValidateChange]; and [ErrPlaceNotFound] when a place is not in a
+// [ValidateChange]; and [ErrLabelNotFound] when a place is not in a
 // conversation's account, e.g. a label of another account or one deleted
 // since.
 func (a *ActionService) ApplyChanges(ctx context.Context, userID int64, changes []Change) (Applied, error) {
@@ -192,7 +192,7 @@ func (a *ActionService) ApplyChanges(ctx context.Context, userID int64, changes 
 }
 
 // modificationOf returns change as accountID's provider names it, from
-// mailboxes, or [ErrPlaceNotFound] for a place accountID does not have.
+// mailboxes, or [ErrLabelNotFound] for a place accountID does not have.
 func modificationOf(change Change, accountID int64, mailboxes []PlaceMailbox) (Modification, error) {
 	providerIDs := func(places []Place) ([]string, error) {
 		ids := make([]string, 0, len(places))
@@ -201,7 +201,7 @@ func modificationOf(change Change, accountID int64, mailboxes []PlaceMailbox) (M
 				return m.AccountID == accountID && m.Place == place
 			})
 			if i < 0 {
-				return nil, ErrPlaceNotFound
+				return nil, ErrLabelNotFound
 			}
 			ids = append(ids, mailboxes[i].ProviderID)
 		}
