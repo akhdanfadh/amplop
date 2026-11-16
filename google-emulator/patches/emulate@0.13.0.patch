@@ -1,5 +1,5 @@
 diff --git a/dist/dist-EESUF62H.js b/dist/dist-EESUF62H.js
-index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf1c0dd3d5 100644
+index 6eacbd77fe56aeeaa681400b8806320060ad6206..fc6055984c9411f21988ddaef5d937c84f35c967 100644
 --- a/dist/dist-EESUF62H.js
 +++ b/dist/dist-EESUF62H.js
 @@ -89,7 +89,10 @@ function generateDraftId() {
@@ -14,7 +14,28 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
    let next = BigInt(`${Date.now()}${entropy}`);
    if (next <= lastGeneratedHistoryId) {
      next = lastGeneratedHistoryId + 1n;
-@@ -615,7 +618,10 @@ function getThreadMessages(gs, userEmail, threadId, options) {
+@@ -202,6 +205,20 @@ function isSystemLabelId(labelId) {
+ function findLabelById(gs, userEmail, labelId) {
+   return gs.labels.findBy("user_email", userEmail).find((label) => label.gmail_id === labelId);
+ }
++var GMAIL_RESERVED_LABEL_NAMES = /* @__PURE__ */ new Set(["inbox", "sent", "starred", "important", "chats", "spam", "trash", "drafts", "unread", "scheduled", "all mail"]);
++function cleanLabelName(value) {
++  return value?.replace(/\s+/g, " ").trim();
++}
++function labelNameRefusal(c, gs, userEmail, name, selfId) {
++  if (!name || [...name].length > 225 || GMAIL_RESERVED_LABEL_NAMES.has(name.toLowerCase())) {
++    return googleApiError(c, 400, "Invalid label name", "invalidArgument", "INVALID_ARGUMENT");
++  }
++  const conflicting = findLabelByName(gs, userEmail, name);
++  if (conflicting && conflicting.gmail_id !== selfId) {
++    return googleApiError(c, 409, "Label name exists or conflicts", "aborted", "ABORTED");
++  }
++  return null;
++}
+ function findLabelByName(gs, userEmail, name) {
+   const normalized = name.trim().toLowerCase();
+   return gs.labels.findBy("user_email", userEmail).find((label) => label.name.trim().toLowerCase() === normalized);
+@@ -615,7 +632,10 @@ function getThreadMessages(gs, userEmail, threadId, options) {
  }
  function formatMessageResource(gs, message, format, metadataHeaders = []) {
    const headers = buildHeaders(message);
@@ -26,7 +47,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
    const base = {
      id: message.gmail_id,
      threadId: message.thread_id,
-@@ -702,16 +708,19 @@ function trashLabelIds(labelIds) {
+@@ -702,16 +722,19 @@ function trashLabelIds(labelIds) {
    const next = new Set(labelIds);
    next.add("TRASH");
    next.delete("INBOX");
@@ -49,7 +70,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
  function buildMessageQueryMatcher(gs, userEmail, query) {
    const terms = query.match(/"[^"]+"|\S+/g) ?? [];
    const predicates = terms.flatMap((term) => buildQueryPredicates(gs, userEmail, term));
-@@ -1048,7 +1057,32 @@ function buildHeaders(message) {
+@@ -1048,7 +1071,32 @@ function buildHeaders(message) {
      { name: "References", value: message.references },
      { name: "In-Reply-To", value: message.in_reply_to }
    ];
@@ -83,7 +104,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
  }
  function buildPayload(gs, message, headers, format) {
    const textBody = message.body_text ?? null;
-@@ -2619,6 +2653,20 @@ function driveRoutes({ app, store }) {
+@@ -2619,6 +2667,20 @@ function driveRoutes({ app, store }) {
  var WATCH_STATE_KEY = "google.gmail.watchStates";
  function historyRoutes({ app, store }) {
    const gs = getGoogleStore(store);
@@ -104,7 +125,43 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
    app.get("/gmail/v1/users/:userId/history", (c) => {
      const authEmail = requireGmailUser(c);
      if (authEmail instanceof Response) return authEmail;
-@@ -2940,7 +2988,7 @@ function messageRoutes({ app, store }) {
+@@ -2702,13 +2764,9 @@ function labelRoutes({ app, store }) {
+     const authEmail = requireGmailUser(c);
+     if (authEmail instanceof Response) return authEmail;
+     const body = await parseGoogleBody(c);
+-    const name = getString(body, "name")?.trim();
+-    if (!name) {
+-      return googleApiError(c, 400, "Invalid label name", "invalidArgument", "INVALID_ARGUMENT");
+-    }
+-    if (findLabelByName(gs, authEmail, name)) {
+-      return googleApiError(c, 400, "Label name exists or conflicts", "failedPrecondition", "FAILED_PRECONDITION");
+-    }
++    const name = cleanLabelName(getString(body, "name"));
++    const refusal = labelNameRefusal(c, gs, authEmail, name, null);
++    if (refusal) return refusal;
+     const color = body.color && typeof body.color === "object" && !Array.isArray(body.color) ? body.color : void 0;
+     const label = createLabelRecord(gs, {
+       user_email: authEmail,
+@@ -2760,13 +2818,12 @@ async function saveLabel(c, gs, replaceMissingFields) {
+     return googleApiError(c, 400, "System labels cannot be modified.", "invalidArgument", "INVALID_ARGUMENT");
+   }
+   const body = await parseGoogleBody(c);
+-  const name = getString(body, "name")?.trim();
++  const rawName = getString(body, "name");
++  const name = cleanLabelName(rawName);
+   const color = body.color && typeof body.color === "object" && !Array.isArray(body.color) ? body.color : void 0;
+-  if (name) {
+-    const conflicting = findLabelByName(gs, authEmail, name);
+-    if (conflicting && conflicting.gmail_id !== label.gmail_id) {
+-      return googleApiError(c, 400, "Label name exists or conflicts", "failedPrecondition", "FAILED_PRECONDITION");
+-    }
++  if (rawName !== void 0) {
++    const refusal = labelNameRefusal(c, gs, authEmail, name, label.gmail_id);
++    if (refusal) return refusal;
+   }
+   const updated = updateLabelRecord(gs, label, {
+     name: name ?? (replaceMissingFields ? label.name : void 0),
+@@ -2940,7 +2997,7 @@ function messageRoutes({ app, store }) {
        message,
        applyLabelMutation(message.label_ids, addLabelIds, removeLabelIds)
      );
@@ -113,7 +170,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
    });
    app.post("/gmail/v1/users/:userId/messages/:id/trash", (c) => {
      const authEmail = requireGmailUser(c);
-@@ -3636,6 +3684,12 @@ function oauthRoutes({ app, store, baseUrl, tokenMap }) {
+@@ -3636,6 +3693,12 @@ function oauthRoutes({ app, store, baseUrl, tokenMap }) {
        pendingMap.delete(code);
        return c.json({ error: "invalid_grant", error_description: "The code is incorrect or expired." }, 400);
      }
@@ -126,7 +183,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
      if (pending.codeChallenge != null) {
        if (code_verifier === void 0) {
          return c.json({ error: "invalid_grant", error_description: "PKCE verification failed." }, 400);
-@@ -3878,7 +3932,7 @@ function threadRoutes({ app, store }) {
+@@ -3878,7 +3941,7 @@ function threadRoutes({ app, store }) {
      const updated = messages.map(
        (message) => markMessageModified(gs, message, applyLabelMutation(message.label_ids, addLabelIds, removeLabelIds))
      );
@@ -135,7 +192,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
    });
    app.post("/gmail/v1/users/:userId/threads/:id/trash", (c) => {
      const authEmail = requireGmailUser(c);
-@@ -3888,7 +3942,7 @@ function threadRoutes({ app, store }) {
+@@ -3888,7 +3951,7 @@ function threadRoutes({ app, store }) {
        return googleApiError(c, 404, "Requested entity was not found.", "notFound", "NOT_FOUND");
      }
      const updated = messages.map((message) => markMessageModified(gs, message, trashLabelIds(message.label_ids)));
@@ -144,7 +201,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
    });
    app.post("/gmail/v1/users/:userId/threads/:id/untrash", (c) => {
      const authEmail = requireGmailUser(c);
-@@ -3898,7 +3952,7 @@ function threadRoutes({ app, store }) {
+@@ -3898,7 +3961,7 @@ function threadRoutes({ app, store }) {
        return googleApiError(c, 404, "Requested entity was not found.", "notFound", "NOT_FOUND");
      }
      const updated = messages.map((message) => markMessageModified(gs, message, untrashLabelIds(message.label_ids)));
@@ -153,7 +210,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
    });
    app.delete("/gmail/v1/users/:userId/threads/:id", (c) => {
      const authEmail = requireGmailUser(c);
-@@ -3989,6 +4043,9 @@ var routeScopes = {
+@@ -3989,6 +4052,9 @@ var routeScopes = {
    "PATCH /gmail/v1/users/:userId/labels/:id": gmailLabels,
    "DELETE /gmail/v1/users/:userId/labels/:id": gmailLabels,
    "GET /gmail/v1/users/:userId/history": gmailRead,
@@ -163,7 +220,7 @@ index 6eacbd77fe56aeeaa681400b8806320060ad6206..668d2151d282f6619140e80bc6a39ebf
    "POST /gmail/v1/users/:userId/watch": gmailRead,
    "POST /gmail/v1/users/:userId/stop": gmailRead,
    "GET /gmail/v1/users/:userId/settings/filters": gmailSettingsRead,
-@@ -4200,7 +4257,10 @@ function seedFromConfig(store, _baseUrl, config) {
+@@ -4200,7 +4266,10 @@ function seedFromConfig(store, _baseUrl, config) {
        if (!existing) {
          const nameParts = (user.name ?? "").split(/\s+/).filter(Boolean);
          gs.users.insert({

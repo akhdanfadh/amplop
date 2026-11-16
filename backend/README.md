@@ -1294,7 +1294,10 @@ changes emulate where inbok needs Gmail's behavior: it adds
 as the Go client decodes them, lets a seed fix an account's `sub`,
 refuses a code exchanged by another client or with another redirect URI
 than its authorization request's, returns a sent message's other headers,
-e.g. `X-Inbok-Message-Id`, and matches `metadataHeaders` in any case. The
+e.g. `X-Inbok-Message-Id`, matches `metadataHeaders` in any case, and
+refuses a label name as Gmail does: a taken one, in any case, with 409,
+and one Gmail keeps or longer than 225 characters with 400 "Invalid
+label name", after collapsing its white space. The
 install fails if the patch no longer applies, e.g. after a version change;
 `google-emulator/pnpm-workspace.yaml` says how to change it. Unpatched,
 emulate puts a sent message in the `threadId` it is given, and without one
