@@ -272,6 +272,35 @@ describe("picking", () => {
     await expect.element(bar().getByRole("checkbox")).toHaveFocus();
   });
 
+  it("reads the accounts again after a refusal to reconnect, and offers that account nothing", async () => {
+    const rows = [conversation(5)];
+    await open(rows);
+    api.refuse[rows[0].id] = "needs-reconnect";
+    // Google stops accepting the account as the action reaches the server,
+    // after every read the page made before it.
+    const fetch = api.fetch;
+    api.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url, location.href).pathname === "/api/v0/conversations/actions") {
+        api.accounts = [
+          {
+            ...listedAccount(1, "ana@example.com"),
+            status: "needs-reconnect",
+            allowedActions: ["reconnect", "rename", "disconnect"],
+          },
+        ];
+      }
+      return fetch(input, init);
+    };
+    await pickBox("Subject 5");
+
+    await userEvent.click(bar().getByRole("button", { name: "Archive" }));
+
+    await expect.element(row("Subject 5")).toHaveAttribute("aria-selected", "true");
+    await expect.element(bar().getByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    expect(row("Subject 5").getByRole("button", { name: "Star" }).query()).toBeNull();
+  });
+
   it("keeps a refused row picked and says why in one toast, with details", async () => {
     const rows = [conversation(5), conversation(4), conversation(3)];
     await open(rows);

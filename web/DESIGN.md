@@ -620,7 +620,10 @@ last two redirect into settings, so settings can move without the server.
   error toast; one the provider no longer has also removes the row.
 - Opening an unread conversation marks it read, once: when its messages
   have come (they decide which start open) and the tab shows, and not for
-  an account that takes no actions. Its row un-bolds and the counts
+  an account that takes no actions. An action refused because the
+  account needs reconnecting reads the accounts again, so that account's
+  conversations offer none from then on and the sidebar says Reconnect.
+  Its row un-bolds and the counts
   drop at once. A read the server refuses or that fails puts both back
   silently and is not tried again; arrow keys in the list only move
   focus, never open.

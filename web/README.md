@@ -1233,7 +1233,10 @@ never by the page's own copy of the rule. `actionsFor` and `targetsOf`
 leave the others out, so the toolbar, the picking bar, a hovered row,
 Move to, and Labels follow from them, as does marking read on open; the
 label chips drop their ×, a row's star becomes a plain mark, and More
-shows only while it holds something.
+shows only while it holds something. A conversation refused as
+`needs-reconnect` reads the accounts again (`send` in `mail/actions.ts`),
+so an account that broke while the page was open loses its actions and
+the sidebar offers Reconnect.
 
 ## Checks and tests
 
