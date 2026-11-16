@@ -37,7 +37,7 @@ describe("ComposeSchema", () => {
 
   it("names the first address that isn't one", () => {
     expect(issues({ ...valid, cc: ["bo@example.com", "bo@", "cy"] })).toEqual({
-      cc: ['"bo@" isn\'t an email address. Fix it or remove it.'],
+      cc: ["This isn't an email address, so fix it or remove it: bo@"],
     });
   });
 

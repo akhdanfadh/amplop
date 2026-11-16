@@ -195,8 +195,10 @@ export const replyStatusStale =
   "Could not read this reply's status again, so it may be out of date.";
 
 // invalidAddressMessage says value, in a recipient list, isn't an address.
+// The value ends the message, unquoted, so quotes of its own, e.g. in
+// "Lopez, Ana", read as typed.
 export function invalidAddressMessage(value: string): string {
-  return `"${value}" isn't an email address. Fix it or remove it.`;
+  return `This isn't an email address, so fix it or remove it: ${value}`;
 }
 
 // needsReconnectNote says the account that received the message, email,

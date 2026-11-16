@@ -604,7 +604,11 @@ last two redirect into settings, so settings can move without the server.
   the sidebar's does ("Send (Ctrl+Enter)", Cmd on a Mac), and Discard (a
   trash icon with its tooltip). Empty Cc and Bcc wait behind buttons at
   the end of the To row. Labels and values share one 32 px
-  line, so a wrapped list keeps its label level with the first line.
+  line, so a wrapped list keeps its label level with the first line. On
+  a card narrower than 24rem, e.g. a phone or text at 200%, each label
+  sits on its own line above its value, which then has the whole width.
+  The message grows with its text up to 60% of the window, then
+  scrolls.
 - **From** is a quiet `select`: no outline at rest, `accent` on hover and
   while its list is open, its chevron and label marking it. Each account
   shows its mark, its address, which recipients see, and the name the

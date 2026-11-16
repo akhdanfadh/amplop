@@ -686,4 +686,22 @@ describe("message editor rows", () => {
     request.resolve();
     await expect.element(page.getByRole("textbox", { name: "Message" })).toBeEnabled();
   });
+
+  it("show long values whole: an account in the open list and a row's error", async () => {
+    await render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MessageTestForm send={async () => {}} />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.click(page.getByRole("button", { name: /From/ }));
+    const address = page.getByRole("option").getByText("studio@example.com").element();
+    expect(getComputedStyle(address).whiteSpace).toBe("normal");
+    expect(getComputedStyle(address).overflowWrap).toBe("anywhere");
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+    const error = page.getByText("Add a recipient.").element().closest("div");
+    expect(error && getComputedStyle(error).overflowWrap).toBe("anywhere");
+  });
 });

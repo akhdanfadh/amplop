@@ -17,6 +17,7 @@ import {
   unfinished,
   type MessageState,
   type Offer,
+  invalidAddressMessage,
 } from "./text";
 
 type Failure = NonNullable<OutgoingMessageSummary["failure"]>;
@@ -285,5 +286,13 @@ describe("readErrorMessage for other failures", () => {
   it("keeps the general explanation", () => {
     const err = new ApiError("http", { method: "GET", status: 503 });
     expect(readErrorMessage(err)).toMatch(/^Could not load this message\. /);
+  });
+});
+
+describe("invalidAddressMessage", () => {
+  it("ends with the value as typed, so its own quotes read as typed", () => {
+    expect(invalidAddressMessage('"Lopez, Ana"')).toBe(
+      'This isn\'t an email address, so fix it or remove it: "Lopez, Ana"',
+    );
   });
 });

@@ -300,12 +300,23 @@ export function CodeField({
 // a row each for From, the recipient lists, and the subject, a muted label
 // on the left and the value on the right, divided by hairlines, then the
 // message. The label column is as wide as "Subject", the longest label.
-const rowLabel = "h-8 w-14 shrink-0 font-normal text-muted-foreground pointer-coarse:h-9";
+// Each row is a size container: narrower than 24rem, e.g. on a phone or
+// with text at 200%, the label sits above the value, which then has the
+// row's whole width.
+const rowLabel =
+  "h-8 w-14 shrink-0 font-normal text-muted-foreground pointer-coarse:h-9 @max-[24rem]:h-6 @max-[24rem]:w-auto @max-[24rem]:flex-1";
 // A row's line: the label, the value, and anything after it.
-const rowLine = "flex items-start gap-3 px-4 py-1.5";
+const rowLine = "flex items-start gap-3 px-4 py-1.5 @max-[24rem]:flex-wrap @max-[24rem]:gap-y-0";
+// The value of a row whose label sits above it.
+const narrowValue = "@max-[24rem]:order-last @max-[24rem]:basis-full";
 // Lines under a row's value, e.g. its error, start where the value does:
 // the row's padding, the label, and the gap.
-const underValue = "px-4 pb-2 pl-21";
+const underValue = "px-4 pb-2 pl-21 @max-[24rem]:pl-4";
+
+// An account's address or name in From: cut short in the button, whole in
+// the list.
+const accountText =
+  "min-w-0 truncate in-data-[slot=select-item]:whitespace-normal in-data-[slot=select-item]:wrap-anywhere";
 
 // What an account option that can't send says after its address.
 const needsReconnectMark = "(needs reconnecting)";
@@ -331,7 +342,7 @@ export function FromField({
         <Select
           id={control.id}
           name={control.name}
-          className="flex w-full items-center gap-3 px-4 py-1.5"
+          className="flex w-full items-center gap-3 px-4 py-1.5 @max-[24rem]:flex-wrap @max-[24rem]:gap-y-0"
           placeholder="Choose an account"
           value={control.value === 0 ? null : control.value}
           onChange={(value) => change(value === null ? 0 : Number(value))}
@@ -344,14 +355,25 @@ export function FromField({
           aria-describedby={control["aria-describedby"]}
           onBlur={control.onBlur}
         >
-          <Label className={cn(rowLabel, "flex items-center")}>{label}</Label>
+          {/* Narrow, the label takes its own line and the button keeps its
+              width, its text in line with the label. */}
+          <Label className={cn(rowLabel, "flex items-center @max-[24rem]:basis-full")}>
+            {label}
+          </Label>
           {/* Quiet until pointed at: no outline at rest, a hover tint, then
               the list; its chevron and label mark it. */}
           <SelectTrigger
             size="sm"
-            className="w-auto max-w-full min-w-0 border-transparent bg-transparent px-2 hover:bg-accent data-pressed:bg-accent dark:bg-transparent dark:hover:bg-accent"
+            className={cn(
+              "w-auto max-w-full min-w-0 border-transparent bg-transparent px-2 hover:bg-accent data-pressed:bg-accent dark:bg-transparent dark:hover:bg-accent",
+              "@max-[24rem]:-ml-2",
+              // 14 px at every width, as the labels and chips are. Inputs
+              // keep 16 px on phones so Safari doesn't zoom in on focus;
+              // a button never zooms.
+              "text-sm",
+            )}
           >
-            <SelectValue />
+            <SelectValue className="min-w-0" />
           </SelectTrigger>
           <SelectContent className="min-w-64">
             {accounts.map((account) => (
@@ -374,9 +396,14 @@ export function FromField({
                     accountDot(account.color),
                   )}
                 />
-                <span translate="no">{account.email}</span>
+                {/* In the button both shrink and end with "..." when the row
+                    is too narrow; in the open list they wrap, so every
+                    account reads in full. */}
+                <span translate="no" className={accountText}>
+                  {account.email}
+                </span>
                 {account.name !== null && (
-                  <span className="text-muted-foreground">{account.name}</span>
+                  <span className={cn(accountText, "text-muted-foreground")}>{account.name}</span>
                 )}
                 {account.status !== "usable" && ` ${needsReconnectMark}`}
               </SelectItem>
@@ -423,7 +450,7 @@ export function RecipientsField({
             // Read-only, not disabled: the chips keep their one Tab stop.
             readOnly={control.disabled}
             onTyping={onTyping}
-            className="min-h-8 pointer-coarse:min-h-9"
+            className={cn("min-h-8 pointer-coarse:min-h-9", narrowValue)}
           />
           {after}
         </div>
@@ -447,7 +474,10 @@ export function SubjectField({ label }: { label: string }): ReactElement {
             onChange={(event) => change(event.target.value)}
             type="text"
             autoComplete="off"
-            className="h-8 min-w-0 flex-1 bg-transparent px-1 text-base outline-none md:text-sm pointer-coarse:h-9"
+            className={cn(
+              "h-8 min-w-0 flex-1 bg-transparent px-1 text-base outline-none md:text-sm pointer-coarse:h-9",
+              narrowValue,
+            )}
           />
         </div>
       )}
@@ -473,7 +503,8 @@ export function MessageField({ label, focus }: { label: string; focus?: "mount" 
           ref={ref}
           aria-label={label}
           onChange={(event) => change(event.target.value)}
-          className="block min-h-44 w-full resize-y bg-transparent px-4 py-3 text-message outline-none"
+          // It grows with its text up to 60% of the window, then scrolls.
+          className="block field-sizing-content max-h-[60svh] min-h-44 w-full resize-y bg-transparent px-4 py-3 text-message outline-none"
         />
       )}
     </RowFrame>
@@ -505,7 +536,7 @@ function RowFrame<T>({
   const describedBy = [description && descriptionId, invalid && errorId].filter(Boolean).join(" ");
 
   return (
-    <div data-invalid={invalid} className={cn(divider === "below" && "border-b")}>
+    <div data-invalid={invalid} className={cn("@container", divider === "below" && "border-b")}>
       {children(
         {
           id,
@@ -519,12 +550,19 @@ function RowFrame<T>({
         field.handleChange,
       )}
       {description && (
-        <p id={descriptionId} className={cn(underValue, "text-snippet text-muted-foreground")}>
+        // An address in the note, e.g. one that needs reconnecting, breaks
+        // anywhere rather than run past the card.
+        <p
+          id={descriptionId}
+          className={cn(underValue, "text-snippet wrap-anywhere text-muted-foreground")}
+        >
           {description}
         </p>
       )}
       {invalid && (
-        <div className={underValue}>
+        // An error naming a long value, e.g. an address, breaks anywhere
+        // rather than run past the card.
+        <div className={cn(underValue, "min-w-0 wrap-anywhere")}>
           <ErrorLine id={errorId} errors={errors} />
         </div>
       )}
