@@ -572,3 +572,18 @@ export function twinName(name: string, parent: string): string {
 export function moreMarks(count: number): string {
   return `+${formatCount(count)}`;
 }
+
+// Making labels (DESIGN.md "Sidebar").
+export const newLabelName = "New label";
+export const createText = "Create";
+export const creatingText = "Creating...";
+export const cancelLabelText = "Cancel";
+export const labelNameLabel = "Name";
+export const nestUnderLabel = "Nest under";
+export const atTheTop = "Nothing, at the top";
+export const labelAccountLabel = "Account";
+
+// newLabelIn titles New label for one account, named.
+export function newLabelIn(account: string): string {
+  return `New label in ${account}`;
+}

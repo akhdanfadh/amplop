@@ -697,3 +697,51 @@ describe("message editor rows", () => {
     expect(error && getComputedStyle(error).overflowWrap).toBe("anywhere");
   });
 });
+
+// FolderForm is a form with one select field, Folder, over options that
+// nest, sending what was chosen to send.
+function FolderForm({ send }: { send: (folder: string) => void }) {
+  const form = useAppForm({
+    defaultValues: { folder: "top" },
+    onSubmit: ({ value }) => send(value.folder),
+  });
+  return (
+    <form.AppForm>
+      <form.Form label="Folder test">
+        <form.AppField name="folder">
+          {(field) => (
+            <field.SelectField
+              label="Folder"
+              description="Where it goes."
+              optional
+              options={[
+                { value: "top", label: "Nothing, at the top" },
+                { value: "work", label: "Archive", whole: "Work/Archive", depth: 1 },
+                { value: "home", label: "Archive", whole: "Home/Archive", depth: 1 },
+              ]}
+            />
+          )}
+        </form.AppField>
+        <form.SubmitButton working="Saving...">Save</form.SubmitButton>
+      </form.Form>
+    </form.AppForm>
+  );
+}
+
+describe("the select kind", () => {
+  it("names each option by its whole name, shows the choice so, and sends its value", async () => {
+    const send = vi.fn<(folder: string) => void>();
+    await render(<FolderForm send={send} />);
+
+    const folder = page.getByRole("button", { name: /Folder/ });
+    await expect.element(folder).toHaveAccessibleDescription("Where it goes.");
+    await userEvent.click(folder);
+    // Two options share a name in the list; each is heard by its whole one.
+    await expect.element(page.getByRole("option", { name: "Work/Archive" })).toBeVisible();
+    await userEvent.click(page.getByRole("option", { name: "Home/Archive" }));
+    await expect.element(folder).toHaveTextContent("Home/Archive");
+    await userEvent.click(page.getByRole("button", { name: "Save" }));
+
+    expect(send).toHaveBeenCalledWith("home");
+  });
+});

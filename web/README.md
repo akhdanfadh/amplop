@@ -157,8 +157,9 @@ Put shared code in the folder for its responsibility:
   (`picking.ts`) and the bar that acts on them (`picking-bar.tsx`), the
   member's labels in the sidebar's order and where a move can leave
   (`labels.ts`), More's Move to and Labels pickers (`label-menu.tsx`), the
-  reading pane's label chips (`label-chips.tsx`), how a row shows its
-  date and people, and the address Back to mail returns to.
+  reading pane's label chips (`label-chips.tsx`), the New label dialog
+  (`label-dialog.tsx`), how a row shows its date and people, and the
+  address Back to mail returns to.
 - `src/features/settings`: the settings sidebar and the settings page
   layout (`SettingsPage`, `SettingsSection`) every settings page uses.
 - `src/components`: shared components, such as the shell around every page
@@ -1800,11 +1801,13 @@ const form = useAppForm({
   (a 5xx or a lost answer), so a refusal, e.g. a wrong password, shows
   none.
 - **Field kinds** are `TextField`, `EmailField`, `PasswordField`,
-  `ChoiceField`, radios with a line about each, and `CodeField`, a
-  one-time code in boxes. Each takes a `label` and an optional
-  `description` shown before the control; all but `ChoiceField` also take
-  `optional` and `labelAction`, a link or button beside the label, e.g.
-  "Forgot password?". `TextField` takes `text="literal"` for a value typed
+  `ChoiceField`, radios with a line about each, `SelectField`, one choice
+  from a list that opens under it, each option stepped in by its
+  `depth`, and `CodeField`, a one-time code in boxes. Each takes a
+  `label` and an optional `description` shown before the control; all
+  but `ChoiceField` also take `optional`, and all but `ChoiceField` and
+  `SelectField` also take `labelAction`, a link or button beside the
+  label, e.g. "Forgot password?". `TextField` takes `text="literal"` for a value typed
   exactly, e.g. a host name, and `inputMode="numeric"` with
   `width="short"` for a number that names something, e.g. a port; the
   form keeps it as typed and the schema turns it into the number the API
@@ -1827,7 +1830,9 @@ const form = useAppForm({
   `withFieldGroup` over the fields each form names.
 - **A new field kind** goes in `src/components/form/fields.tsx` with its
   first form: render the control through `FieldFrame` for a stacked field,
-  or `RowFrame` for a message editor's row; each reads the
+  or `RowFrame` for a message editor's row (a React Aria control that
+  holds its own label, as `ChoiceField`'s radio group and `SelectField`'s
+  select do, builds the same parts in its own `Field`); each reads the
   field from `useFieldContext` and gives the control its id, name, value,
   lock, `aria-invalid`, and `aria-describedby`, and a function that sets
   the value; then add it to

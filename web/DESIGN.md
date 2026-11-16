@@ -254,6 +254,7 @@ text colour of their role.
 | Status                                   | `badge` with tones neutral, info, success, warning, destructive                             |
 | Initials avatars                         | `avatar`, plus the account ring                                                             |
 | Confirmations                            | `alert-dialog`                                                                              |
+| A short form over the page               | `dialog`, e.g. New label: the alert dialog's surface; Escape closes it, a press outside not |
 
 **Toasts** use React Aria's own
 [Toast](https://react-aria.adobe.com/Toast), wrapped in inbok's
@@ -380,6 +381,16 @@ last two redirect into settings, so settings can move without the server.
   status in the tooltip; labels show only open. The open place's item is
   the current page; the filtering account's is marked as current too, but
   not as a page.
+- **New label** follows the accounts, a plus and the words, while any
+  account's mail can change (its `allowedActions` has `change-mail`); the
+  rail shows no labels, so it shows none either. It opens the New label
+  dialog: Account (only with several such accounts; the filtering
+  account, else the first), Name, and Nest under (optional, "Nothing, at
+  the top", then that account's labels as the sidebar's tree, each by its
+  own name and heard by its path, which the closed field shows), and
+  Create; while it sends, Escape and Cancel wait. The label made shows at once, its way unfolded. A name the
+  server refuses, e.g. one with "/", one Gmail keeps (Inbox), or one the
+  account has, is said under Name.
 - The member at the bottom, opening the member menu: Settings, Theme
   (Light, Dark, System, side by side, as icons named by tooltips; the
   chosen one has the `selection` background and an `input` outline, as

@@ -7,6 +7,7 @@ import {
   MessageField,
   PasswordField,
   RecipientsField,
+  SelectField,
   SubjectField,
   TextField,
 } from "./fields";
@@ -15,7 +16,8 @@ import { fieldContext, formContext } from "./form-context";
 
 // useAppForm is TanStack Form's useForm with the app's shared parts: each
 // field renders as a field kind, e.g. field.TextField, field.EmailField,
-// field.PasswordField, field.ChoiceField, or field.CodeField, or a message
+// field.PasswordField, field.ChoiceField, field.SelectField, or
+// field.CodeField, or a message
 // editor's row, field.FromField, field.RecipientsField, field.SubjectField,
 // or field.MessageField, inside
 // form.AppField, and the form as form.Form with a
@@ -33,6 +35,7 @@ export const { useAppForm, withFieldGroup } = createFormHook({
     MessageField,
     PasswordField,
     RecipientsField,
+    SelectField,
     SubjectField,
     TextField,
   },

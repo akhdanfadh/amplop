@@ -1,4 +1,12 @@
-import { Fragment, useEffect, useRef, type ReactElement, type RefObject } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type RefObject,
+} from "react";
 import { linkOptions, useLocation, useMatch } from "@tanstack/react-router";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/lib/count";
@@ -10,6 +18,7 @@ import {
   InboxIcon,
   LayersIcon,
   PencilIcon,
+  PlusIcon,
   SendIcon,
   ShieldAlertIcon,
   StarIcon,
@@ -44,6 +53,8 @@ import { accountDetail, accountStatus } from "./account-status";
 import { accountFold, labelFold, setUnfolded, unfold, useUnfolded, type FoldKey } from "./folds";
 import { useOverflow } from "@/hooks/use-overflow";
 import { labelTree, unreadIn, usePlaceCounts, type LabelNode } from "./place-counts";
+import { labelsOf, type Label } from "./labels";
+import { LabelDialog } from "./label-dialog";
 import type { PlaceCount } from "./conversations";
 import { useOutbox } from "@/features/outgoing-messages/outbox";
 import { useCompose } from "@/features/outgoing-messages/compose-store";
@@ -54,6 +65,7 @@ import {
   allAccountsName,
   composeName,
   labelFoldName,
+  newLabelName,
   notSentLabel,
   outboxName,
   placeName,
@@ -73,7 +85,8 @@ const placeIcon: Record<ViewPlace, LucideIcon> = {
 // the views, the Inbox with its unread count, and after Sent the Outbox
 // with how many of its messages are not sent yet; then the accounts, each
 // filtering every view, with its inbox's unread count, its status, and its
-// labels. The items of the open place and account filter are marked.
+// labels, and New label, which opens its dialog over the page. The items
+// of the open place and account filter are marked.
 export function MailNav(): ReactElement {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { dismiss: closeDrawer } = useSidebar();
@@ -95,6 +108,11 @@ export function MailNav(): ReactElement {
       refetchInterval: (query) => refreshInterval(query.state.data?.data, Date.now(), 0),
     },
   });
+  const listed = accounts.data?.data.accounts ?? [];
+  const labels = useMemo(() => labelsOf(counts), [counts]);
+  const [making, setMaking] = useState(false);
+  // The accounts whose labels the member can change, as the server says.
+  const changeable = listed.filter((a) => a.allowedActions.includes("change-mail"));
 
   return (
     // Its groups are the sidebar content's own, as if this box were not
@@ -143,7 +161,7 @@ export function MailNav(): ReactElement {
         </SidebarMenu>
       </SidebarGroup>
       <AccountsGroup
-        accounts={accounts.data?.data.accounts ?? []}
+        accounts={listed}
         // A failed first read says so; a failed later one keeps the list.
         failed={!accounts.data && accounts.isError}
         retrying={accounts.isFetching}
@@ -153,9 +171,38 @@ export function MailNav(): ReactElement {
         filter={filter}
         pathname={pathname}
         onPress={closeDrawer}
+        onNewLabel={changeable.length > 0 ? () => setMaking(true) : undefined}
+      />
+      <LabelDialog
+        isOpen={making}
+        onOpenChange={setMaking}
+        labels={labels}
+        accountIds={changeable.map((a) => a.id)}
+        start={{
+          // The account the sidebar shows, when it can take one.
+          accountId: changeable.some((a) => a.id === filter)
+            ? (filter ?? 0)
+            : (changeable[0]?.id ?? 0),
+          name: "",
+          parent: null,
+        }}
+        onDone={(label) => unfold(foldsTo(label, labels))}
       />
     </div>
   );
+}
+
+// foldsTo returns the folds to open so label shows in the sidebar: its
+// account's, and each of its parents', found among labels by path.
+function foldsTo(label: Label, labels: readonly Label[]): FoldKey[] {
+  const keys: FoldKey[] = [accountFold(label.accountId)];
+  const names = label.path.split("/");
+  for (let end = 1; end < names.length; end++) {
+    const path = names.slice(0, end).join("/");
+    const parent = labels.find((l) => l.accountId === label.accountId && l.path === path);
+    if (parent) keys.push(labelFold(parent.place));
+  }
+  return keys;
 }
 
 // ComposeButton is the one blue button: it opens the compose window on a
@@ -204,7 +251,8 @@ const toneText: Record<Tone, string> = {
 // label of another becomes the Inbox, as does All accounts on a label,
 // which opens only in its own account. failed says the accounts could not
 // be read, which it says with Try again, onRetry, pending while retrying;
-// the rail says it with one icon, which tries again.
+// the rail says it with one icon, which tries again. New label follows the
+// accounts when onNewLabel is given, which it runs.
 function AccountsGroup({
   accounts,
   failed,
@@ -215,6 +263,7 @@ function AccountsGroup({
   filter,
   pathname,
   onPress,
+  onNewLabel,
 }: {
   accounts: readonly ListedAccount[];
   failed: boolean;
@@ -225,6 +274,7 @@ function AccountsGroup({
   filter: number | undefined;
   pathname: string;
   onPress: () => void;
+  onNewLabel: (() => void) | undefined;
 }): ReactElement | null {
   if (failed) {
     return (
@@ -304,6 +354,15 @@ function AccountsGroup({
             onPress={onPress}
           />
         ))}
+        {/* The rail shows no labels, so it shows no New label either. */}
+        {onNewLabel && (
+          <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
+            <SidebarMenuButton onPress={onNewLabel}>
+              <PlusIcon aria-hidden="true" />
+              <span>{newLabelName}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
       </SidebarMenu>
     </SidebarGroup>
   );
