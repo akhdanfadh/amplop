@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import { Collection } from "react-aria-components";
 import { useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccount } from "@/api/generated/model";
@@ -15,7 +13,7 @@ import {
   GridListSection,
   GridListSectionHeader,
 } from "@/components/ui/grid-list";
-import { clearAccountCache } from "@/features/auth/session-cache";
+import { useKeptSignedOut } from "@/features/auth/session-end";
 import { useToday } from "@/features/mail/dates";
 import { Placeholder } from "@/features/mail/list";
 import { useRowSize } from "@/features/mail/list-state";
@@ -36,8 +34,6 @@ import {
   outboxSections,
   outboxStale,
 } from "./text";
-
-const unauthorized = 401;
 
 // OutboxPage is the Outbox (DESIGN.md "Outbox"): its list of the member's
 // messages beside reader, the reading pane, as a place's mail. openId is
@@ -111,8 +107,6 @@ export function OutboxPage({
 // message is being sent, and marking each read busy would make screen
 // readers hold back or restart it.
 function OutboxList({ openId }: { openId: string | undefined }): ReactElement {
-  const client = useQueryClient();
-  const navigate = useNavigate();
   const list = useOutbox();
   const accounts = useListConnectedAccounts();
   const now = useToday();
@@ -125,15 +119,13 @@ function OutboxList({ openId }: { openId: string | undefined }): ReactElement {
     [accountList],
   );
   const ringed = (accountList?.length ?? 0) > 1;
-  const expired = [list.error, accounts.error].some((err) => err?.status === unauthorized);
-  useEffect(() => {
-    if (!expired) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true });
-  }, [expired, client, navigate]);
+  // A page kept signed out to copy from (watchSessionEnd): its banner says
+  // why nothing refreshes, so the list keeps what it read and says nothing
+  // more (web/README.md "Routes").
+  const keptSignedOut = useKeptSignedOut();
 
   const messages = list.data?.data.messages;
-  if (!messages && list.error && !expired)
+  if (!messages && list.error)
     return (
       <div className="p-4">
         <ReadError
@@ -144,10 +136,10 @@ function OutboxList({ openId }: { openId: string | undefined }): ReactElement {
         />
       </div>
     );
-  if (!messages || expired) return <Placeholder loading={outboxLoading} />;
+  if (!messages) return <Placeholder loading={outboxLoading} />;
   // A failed reread keeps what was read, even an empty list, saying it may
   // be out of date.
-  const stale = list.error && (
+  const stale = list.error && !keptSignedOut && (
     <div className="border-b p-4">
       <ReadError
         message={`${outboxStale} ${userMessage(list.error)}`}

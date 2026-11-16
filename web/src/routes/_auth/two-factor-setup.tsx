@@ -72,13 +72,11 @@ function TwoFactorSetup(): ReactElement {
   }, [navigate]);
 
   // A 401 from any request here: the session ended, e.g. its 15 minutes
-  // ran out or another browser signed it out.
-  const onError = useCallback(
-    (err: ApiError) => {
-      if (err.status === unauthorized) toSignIn();
-    },
-    [toSignIn],
-  );
+  // ran out or another browser signed it out. The session-end rule opens
+  // sign-in, which returns here; the card goes nowhere else.
+  const onError = useCallback((err: ApiError) => {
+    if (err.status === unauthorized) exit.current = "left";
+  }, []);
   // The callbacks sit on the hook, not on mutate(), so they run even if
   // the card has gone when the answer comes.
   const signOut = useDeleteCurrentSession({

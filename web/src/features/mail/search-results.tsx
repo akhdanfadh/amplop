@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -9,10 +8,11 @@ import {
   type RefObject,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { linkOptions, useNavigate, useRouter } from "@tanstack/react-router";
+import { linkOptions, useRouter } from "@tanstack/react-router";
 import { inArray, useLiveQuery } from "@tanstack/react-db";
 import { Collection, Button as AriaButton } from "react-aria-components";
 import { useListConnectedAccounts } from "@/api/generated/inbok";
+import { isSessionEnded } from "@/features/auth/guard";
 import type { ListedAccountOutput } from "@/api/generated/model/listedAccount.zod";
 import { ApiError } from "@/api/transport";
 import { accountName } from "@/components/account-mark";
@@ -21,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { GridList, GridListEnd, GridListLoadMore } from "@/components/ui/grid-list";
 import { Spinner } from "@/components/ui/spinner";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { holdFound, mailData, toConversation, type Conversation } from "./conversations";
 import { useToday } from "./dates";
 import { takeRowFocus, useRowFocusRequest } from "./focus-request";
@@ -69,7 +68,6 @@ import {
   wordsTooLong,
 } from "./text";
 
-const unauthorized = 401;
 const unavailable = 503;
 
 // How many frames a row to focus has to appear in, about half a second.
@@ -99,7 +97,6 @@ export function SearchResults({
   heading: RefObject<HTMLElement | null>;
 }): ReactElement {
   const client = useQueryClient();
-  const navigate = useNavigate();
   const router = useRouter();
   const [{ conversations, placeCounts }] = useState(() => mailData(client));
   const accounts = useListConnectedAccounts().data?.data.accounts;
@@ -183,23 +180,16 @@ export function SearchResults({
   const listBox = useRef<HTMLDivElement>(null);
   useFocusRequest({ focusKey, openId, order: ids, rows, rowSize, listBox, heading });
 
-  const signOut = () => {
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true });
-  };
   const error = search.error instanceof ApiError ? search.error : undefined;
-  const expired = error?.status === unauthorized;
-  const endSession = useEffectEvent(signOut);
-  useEffect(() => {
-    if (expired) endSession();
-  }, [expired]);
+  // An ended session, which the session-end rule answers: the results
+  // shown stay, to copy from while a reply is kept.
+  const expired = isSessionEnded(error);
 
   const star = (conversation: Conversation, starred: boolean) => {
     void perform({
       mail: { client, conversations, placeCounts },
       conversations: [conversation],
       act: starred ? "star" : "unstar",
-      onUnauthorized: signOut,
     });
   };
   const onFocus = (event: FocusEvent) => {
@@ -268,7 +258,7 @@ export function SearchResults({
         />
       </div>
     );
-  } else if (!search.data || expired) {
+  } else if (!search.data) {
     body = <Placeholder loading={resultsLoading} />;
   } else if (total === 0 || (rows.length === 0 && !search.hasNextPage)) {
     body = (

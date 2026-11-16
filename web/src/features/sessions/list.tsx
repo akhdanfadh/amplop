@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MonitorIcon } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getListSessionsQueryKey,
@@ -10,7 +9,6 @@ import {
 } from "@/api/generated/inbok";
 import type { ListedSession } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,7 +54,6 @@ export function SessionList({
   children?: ReactNode;
 }) {
   const client = useQueryClient();
-  const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const restoreFocus = useRef(false);
   const [endedName, setEndedName] = useState("");
@@ -69,9 +66,6 @@ export function SessionList({
   const list = useListSessions({
     query: { enabled: !paused && !pending, networkMode: "always" },
   });
-  const expired = [list.error, end.error, endOthers.error].some(
-    (error) => error?.status === unauthorized,
-  );
   const sessions = list.data?.data.sessions;
   const others = sessions?.filter((session) => !session.current).length ?? 0;
   const notice = end.isSuccess
@@ -79,12 +73,6 @@ export function SessionList({
     : endOthers.isSuccess
       ? endedOthersMessage(endOthers.data.data.ended)
       : "";
-
-  useEffect(() => {
-    if (!expired) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true, ignoreBlocker: true });
-  }, [expired, client, navigate]);
 
   useEffect(() => {
     // An ended row or the end-all button can leave the page with nothing focused.

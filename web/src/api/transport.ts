@@ -16,6 +16,22 @@ export const cookieReplacingPaths: readonly string[] = ["/api/v0/totp/enrollment
 // The settling of the cookie-replacing request now running, if any.
 let replacing: Promise<void> | undefined;
 
+const unauthorized = 401;
+
+// Who hears of every 401 (onUnauthorized).
+const unauthorizedListeners = new Set<() => void>();
+
+// onUnauthorized has heard run whenever a request gets a 401, before its
+// caller sees the failure, and returns the function that stops it.
+//
+// DESIGN: a signed-in operation answers 401 only when no session is left
+// (AGENTS.md "API contract"), so this is where the app learns that a
+// session ended, for every request alike.
+export function onUnauthorized(heard: () => void): () => void {
+  unauthorizedListeners.add(heard);
+  return () => unauthorizedListeners.delete(heard);
+}
+
 // ===============================================
 // Request failures
 // ===============================================
@@ -156,6 +172,7 @@ async function send(url: string, init: RequestInit & { schema?: ZodType }): Prom
       const result = ReceivedProblem.safeParse(body);
       if (result.success) facts.problem = result.data;
     }
+    if (res.status === unauthorized) for (const heard of unauthorizedListeners) heard();
     throw new ApiError("http", facts);
   }
 

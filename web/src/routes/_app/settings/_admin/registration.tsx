@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement } from "react";
+import type { ReactElement } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   getGetRegistrationSettingsQueryOptions,
@@ -6,7 +6,7 @@ import {
 } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
-import { loadedFreshMs, signedInLoader, useSessionEnd } from "@/features/auth/session-end";
+import { cachedLoader, loadedFreshMs } from "@/api/cached-read";
 import { RegistrationBadge, RegistrationSection } from "@/features/registration/section";
 import { readFailed, registrationLead } from "@/features/registration/text";
 import { SettingsPage } from "@/features/settings/page";
@@ -15,7 +15,7 @@ import { pageName } from "@/features/settings/text";
 const unauthorized = 401;
 
 // registrationLoader reads what the page shows before it draws.
-export const registrationLoader = signedInLoader(getGetRegistrationSettingsQueryOptions);
+export const registrationLoader = cachedLoader(getGetRegistrationSettingsQueryOptions);
 
 export const Route = createFileRoute("/_app/settings/_admin/registration")({
   loader: registrationLoader,
@@ -27,12 +27,7 @@ export const Route = createFileRoute("/_app/settings/_admin/registration")({
 function Registration(): ReactElement {
   const loaded = Route.useLoaderData();
   const read = useGetRegistrationSettings({ query: { staleTime: loadedFreshMs } });
-  const sessionEnd = useSessionEnd();
   const settings = (read.data ?? loaded).data;
-
-  useEffect(() => {
-    sessionEnd(read.error);
-  }, [read.error, sessionEnd]);
 
   return (
     <SettingsPage
@@ -41,7 +36,7 @@ function Registration(): ReactElement {
       lead={registrationLead}
     >
       {/* A failed refresh keeps the section and says why (DESIGN.md
-          "States"); a 401 opens sign-in instead. */}
+          "States"); a 401 is the session-end rule's. */}
       {read.error && read.error.status !== unauthorized && (
         <div className="py-6 text-sm">
           <ReadError

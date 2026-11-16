@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactElement } from "react";
 import { MailXIcon } from "lucide-react";
 import { useGetCurrentSession, useListConnectedAccounts } from "@/api/generated/inbok";
 import { Banner } from "@/components/banner";
-import { loadedFreshMs, useSessionEnd } from "@/features/auth/session-end";
+import { loadedFreshMs } from "@/api/cached-read";
 import { idleRefresh } from "./sync";
 import { syncStoppedText } from "./text";
 
@@ -14,7 +14,6 @@ import { syncStoppedText } from "./text";
 // follows a stop or a recovery on any page. Only an administrator can fix
 // it, so the words differ by role.
 export function SyncStopped(): ReactElement {
-  const sessionEnd = useSessionEnd();
   // The frame's own session read, so this adds no request.
   const session = useGetCurrentSession({
     query: { refetchOnMount: false, refetchOnReconnect: false },
@@ -34,10 +33,6 @@ export function SyncStopped(): ReactElement {
     const frame = requestAnimationFrame(() => setListening(true));
     return () => cancelAnimationFrame(frame);
   }, []);
-
-  useEffect(() => {
-    sessionEnd(list.error);
-  }, [list.error, sessionEnd]);
 
   return (
     <output className="contents">

@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { ChevronLeftIcon } from "lucide-react";
 import { useGetCurrentSession, useGetTOTPStatus } from "@/api/generated/inbok";
 import type { ApiError } from "@/api/transport";
 import { cn } from "@/lib/cn";
 import { lineLink } from "@/components/link-style";
 import { stepEnter } from "@/components/step-change";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { SettingsPage } from "@/features/settings/page";
 import { pageName } from "@/features/settings/text";
 import { BackupCodesSection, TurnOffSection, type OpenSection } from "@/features/totp/manage";
@@ -34,7 +32,6 @@ export const Route = createFileRoute("/_app/settings/security/two-factor")({
 // growing inside Security (DESIGN.md "Settings and signed-out pages").
 function TwoFactor(): ReactElement {
   const { session } = Route.useRouteContext();
-  const client = useQueryClient();
   const navigate = useNavigate();
   const status = useGetTOTPStatus({ query: { networkMode: "always" } });
   // The live role: a refused turn-off rereads it, e.g. for a member made an
@@ -52,7 +49,8 @@ function TwoFactor(): ReactElement {
   // whose answer was lost, or one from another tab, means it was turned off.
   const turnedOff = shownOn && current !== undefined && !on;
   // A 401 from any request on this page: the session ended, e.g. from
-  // another browser, after the guard ran.
+  // another browser, after the guard ran, and the session-end rule opens
+  // sign-in; the page then goes nowhere else.
   const [ended, setEnded] = useState(false);
   const signedOut =
     ended || status.error?.status === unauthorized || reader.error?.status === unauthorized;
@@ -78,12 +76,6 @@ function TwoFactor(): ReactElement {
       ignoreBlocker: true,
     });
   }
-
-  useEffect(() => {
-    if (!signedOut) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true, ignoreBlocker: true });
-  }, [signedOut, client, navigate]);
 
   useEffect(() => {
     if (!turnedOff || signedOut) return;

@@ -23,6 +23,9 @@ import { ReadError } from "@/components/read-error";
 import { ChoiceDialog } from "@/components/choice-dialog";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
+import { isSessionEnded } from "@/features/auth/guard";
+import { useHeldWork } from "@/features/auth/session-end";
+import { SessionEndedBanner } from "@/features/auth/session-ended-banner";
 import { useLayout } from "@/hooks/use-layout";
 import { cn } from "@/lib/cn";
 import { ComposeForm } from "./compose-form";
@@ -39,10 +42,8 @@ import {
   noAccountText,
   readErrorMessage,
   replaceText,
-  signedOutText,
 } from "./text";
 
-const unauthorized = 401;
 // How long a sent message's status stays before the window closes itself.
 const closesAfterSentMs = 3_000;
 
@@ -128,10 +129,16 @@ function OpenWindow({ message }: { message: ComposeMessage }): ReactElement {
   }, [phone, entry, message.window, finish]);
 
   const loses = state.loses;
+  // A message being written is kept when the session ends, to copy.
+  useHeldWork(loses !== null);
   const blocker = useBlocker({
     // The store's state now, not this render's: a Back right after typing
-    // comes before the blocker is set again with the render's.
-    shouldBlockFn: () => arrived.current && !closing.current && store.snapshot().loses !== null,
+    // comes before the blocker is set again with the render's. Leaving the
+    // signed-in pages for sign-in, e.g. from the signed-out banner, would
+    // close the window, so it asks too.
+    shouldBlockFn: ({ next }) =>
+      store.snapshot().loses !== null &&
+      ((arrived.current && !closing.current) || next.pathname === "/sign-in"),
     // Closing or reloading the tab asks with the browser's own words.
     enableBeforeUnload: () => store.snapshot().loses !== null,
     withResolver: true,
@@ -356,15 +363,14 @@ function MessageContent({
   const client = useQueryClient();
   const { store } = useCompose();
   const minimised = look === "window" && size === "minimised";
-  const [writeExpired, setWriteExpired] = useState(false);
   const [sentId, setSentId] = useState<string | null>(null);
   const accounts = useListConnectedAccounts();
   const list = accounts.data?.data.accounts;
   const sent = useOutgoingMessage(sentId ?? "", { enabled: sentId !== null });
   const sentMessage = sent.message;
-  // A 401 on the window's own reads or writes: the session ended, and the
-  // window keeps what it holds to copy (ADR031).
-  const expired = writeExpired || accounts.error?.status === unauthorized || sent.expired;
+  // The session ended before the accounts were read: nothing to show, and
+  // the session-end rule opens sign-in.
+  const accountsEnded = isSessionEnded(accounts.error);
   const senders = list?.filter((account) => account.allowedActions.includes("send")) ?? [];
   // Once shown, the editor stays, whatever a later read of the accounts
   // says, so typed text is never dropped; its From then marks an account
@@ -396,15 +402,9 @@ function MessageContent({
     section.current?.querySelector<HTMLElement>('[aria-label="Status"]')?.focus();
   }, [statusShown, section]);
 
-  const signedOut = expired && (
-    <p role="alert" className="border-b px-4 py-2 text-sm">
-      {signedOutText}{" "}
-      <Link to="/sign-in" className={textLink}>
-        sign in
-      </Link>
-      .
-    </p>
-  );
+  // Where the frame's signed-out banner is hidden, under the window
+  // covering the page.
+  const signedOut = <SessionEndedBanner place="window" />;
   // The editor's height while docked, which the status, shorter, doesn't take.
   const dockedHeight = look === "window" && size === "docked" && "h-[min(36rem,calc(100dvh-4rem))]";
 
@@ -425,14 +425,13 @@ function MessageContent({
               message={sentMessage}
               accounts={list}
               onSentAgain={(copy) => setSentId(copy.id)}
-              onUnauthorized={() => setWriteExpired(true)}
               onEdit={() => store.open(sentMessage)}
             />
           )}
           {/* A failed reread keeps the status, saying it may have moved on, as
               the reply's does; polling stops on a failure, and Try again
               restarts it. */}
-          {sent.error && !sent.expired && (
+          {sent.error && !isSessionEnded(sent.error) && (
             <div className="px-4 pb-4">
               <ReadError
                 message={
@@ -471,7 +470,6 @@ function MessageContent({
           }}
           onDiscard={onDiscard}
           onLoses={store.setLoses}
-          onUnauthorized={() => setWriteExpired(true)}
         />
       </div>
     );
@@ -480,7 +478,7 @@ function MessageContent({
     <>
       {header({ title: newMessageTitle, send: null, sizes: "all" })}
       {signedOut}
-      {!(expired && !list) && (
+      {!(accountsEnded && !list) && (
         <div hidden={minimised} className="p-4">
           <WindowState
             accounts={list}

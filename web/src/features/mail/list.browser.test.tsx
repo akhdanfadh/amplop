@@ -566,29 +566,19 @@ describe("the list's failures", () => {
     await expect.element(page.getByRole("row", { name: /Subject 299,/ })).toBeVisible();
   });
 
-  it("opens sign-in, its mail gone, when the session has ended", async () => {
+  it("keeps its rows when a refresh finds the session ended", async () => {
     const api = mailApi([conversation(1)], one);
-    api.signedOut = true;
-    const { router } = await app(api);
-    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"), {
-      timeout: 10_000,
-    });
-    const reads = api.requests.filter((r) => r.startsWith("/api/v0/conversations?"));
-    // One read, not a loop of them once the mail is dropped.
-    expect(reads.length).toBeLessThanOrEqual(2);
-  });
-
-  it("opens sign-in when a star finds the session ended", async () => {
-    const api = mailApi([conversation(1)], one);
-    const { router } = await app(api);
+    const { client } = await app(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     api.signedOut = true;
-    await userEvent.hover(row);
-    await userEvent.click(starOf(/Subject 1,/));
-    await vi.waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"), {
-      timeout: 10_000,
-    });
+
+    await refreshNewest(client);
+
+    // The session-end rule answers, e.g. with a banner over a page kept to
+    // copy from: the rows stay to copy from too.
+    await new Promise((done) => setTimeout(done, 300));
+    await expect.element(row).toBeVisible();
   });
 
   it("keeps its rows and says since when after a refresh fails", async () => {

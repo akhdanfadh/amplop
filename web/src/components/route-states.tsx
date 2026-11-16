@@ -19,9 +19,11 @@ import { cn } from "@/lib/cn";
 import { sentence, userMessage } from "@/api/problem";
 import { ApiError } from "@/api/transport";
 import { ReadError } from "@/components/read-error";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { textLink } from "@/components/link-style";
+import { isSessionEnded } from "@/features/auth/guard";
+import { SignInAgain } from "@/features/auth/session-ended-banner";
 
 // StateRegion says where a route state shows: "page" in place of a whole
 // page, or "pane" in a pane of a page that holds its own main and h1, e.g.
@@ -149,9 +151,10 @@ export function FailedRead({
 }
 
 // RouteError replaces a page that failed: a read it needs (an ApiError),
-// with Try again, which runs the page's checks again; an address whose
-// search parameters its route refuses, as Page not found; or its own code,
-// with Reload. A route that refuses a name in its path throws notFound()
+// with Try again, which runs the page's checks again, or Sign in when the
+// read found the session ended (a 401); an address whose search
+// parameters its route refuses, as Page not found; or its own code, with
+// Reload. A route that refuses a name in its path throws notFound()
 // from its beforeLoad or loader, which shows Page not found; thrown while
 // the page draws, it is a crash.
 export function RouteError({ error }: ErrorComponentProps): ReactElement {
@@ -161,6 +164,9 @@ export function RouteError({ error }: ErrorComponentProps): ReactElement {
   // would load the same address and fail again.
   if (error instanceof SearchParamError) {
     return <NotFound />;
+  }
+  if (isSessionEnded(error)) {
+    return <SignedOut />;
   }
   if (error instanceof ApiError) {
     return <FailedRead error={error} onRetry={() => void router.invalidate()} />;
@@ -190,6 +196,21 @@ export function CrashScreen(): ReactElement {
         </a>
         .
       </p>
+    </StatePage>
+  );
+}
+
+// SignedOut replaces a page that could not load because the session ended
+// while another part of the app, e.g. the compose window, kept work to
+// copy: Try again would fail the same way, so it offers sign-in, which
+// returns here.
+function SignedOut(): ReactElement {
+  return (
+    <StatePage title="You're signed out">
+      <p>This page can&apos;t load until you sign in again.</p>
+      <SignInAgain className={cn(buttonVariants({ variant: "outline" }), "w-fit")}>
+        Sign in
+      </SignInAgain>
     </StatePage>
   );
 }

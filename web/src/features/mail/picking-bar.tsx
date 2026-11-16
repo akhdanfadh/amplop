@@ -7,7 +7,6 @@ import {
   type RefObject,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
 import { Toolbar } from "react-aria-components";
 import { ArrowLeftIcon, EllipsisVerticalIcon } from "lucide-react";
 import { useListConnectedAccounts } from "@/api/generated/inbok";
@@ -16,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
 import { mailData, type Conversation } from "./conversations";
 import { listKey, requestRowFocus } from "./focus-request";
@@ -85,7 +83,6 @@ export function PickingBar({
   inTopBar: boolean;
 }): ReactElement {
   const client = useQueryClient();
-  const navigate = useNavigate();
   // The list read them already: the bar's arrival needs no read of its own.
   const accounts = useListConnectedAccounts({ query: { refetchOnMount: false } });
   const accountList = accounts.data?.data.accounts;
@@ -125,10 +122,6 @@ export function PickingBar({
       act: performed,
       from: "picked",
       accountName: (id) => names.get(id) ?? "",
-      onUnauthorized: () => {
-        clearAccountCache(client);
-        void navigate({ to: "/sign-in", replace: true });
-      },
     }).then((outcomes) => {
       // A refused or failed row is back in the list, or about to be.
       release(ids.filter((id) => outcomes.get(id) === "refused" || outcomes.get(id) === "failed"));

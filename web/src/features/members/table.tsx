@@ -8,7 +8,6 @@ import {
   useReactivateMember,
 } from "@/api/generated/inbok";
 import type { Member, ResponseChangedMember, ResponseListedMembers } from "@/api/generated/model";
-import type { ApiError } from "@/api/transport";
 import { ConfirmDialog, type Failure } from "@/components/confirm-dialog";
 import {
   Table,
@@ -18,7 +17,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useSessionEnd } from "@/features/auth/session-end";
 import { Address } from "@/components/address";
 import { columns, features } from "./columns";
 import {
@@ -50,7 +48,6 @@ export function MemberTable({
   yourEmail: string;
 }): ReactElement {
   const client = useQueryClient();
-  const sessionEnd = useSessionEnd();
   // The change the dialog asks about, kept while it closes so its words stay.
   const [asked, setAsked] = useState<{ action: MemberAction; member: Member }>();
   const [open, setOpen] = useState(false);
@@ -64,7 +61,6 @@ export function MemberTable({
       // A list read that started before the write could land after it.
       onMutate: () => client.cancelQueries({ queryKey: getListMembersQueryKey(), exact: true }),
       onSuccess: showChanged,
-      onError: (err: ApiError) => sessionEnd(err),
       // Every outcome, a lost answer included, is settled by the server's list.
       onSettled: () => void client.invalidateQueries({ queryKey: getListMembersQueryKey() }),
     },

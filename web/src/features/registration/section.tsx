@@ -11,7 +11,6 @@ import type { RegistrationSettings } from "@/api/generated/model";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { useSessionEnd } from "@/features/auth/session-end";
 import { SettingsSection } from "@/features/settings/page";
 import {
   actionWords,
@@ -39,7 +38,6 @@ export function RegistrationSection({
   settings: RegistrationSettings;
 }): ReactElement {
   const client = useQueryClient();
-  const sessionEnd = useSessionEnd();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const actionsRef = useRef<HTMLDivElement>(null);
   // The change the dialog asks about, kept while it closes so its words stay.
@@ -54,7 +52,6 @@ export function RegistrationSection({
       onMutate: () =>
         client.cancelQueries({ queryKey: getGetRegistrationSettingsQueryKey(), exact: true }),
       onSuccess: (result) => client.setQueryData(getGetRegistrationSettingsQueryKey(), result),
-      onError: (err) => sessionEnd(err),
       // Every outcome, a lost answer included, is settled by the server's
       // settings; a refusal also means this page was out of date, e.g.
       // system email changed in another tab.

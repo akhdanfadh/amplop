@@ -16,6 +16,7 @@ import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { ReadError } from "@/components/read-error";
+import { isSessionEnded } from "@/features/auth/guard";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { useOutgoingMessage } from "./outbox";
@@ -36,7 +37,6 @@ import {
   replyStatusStale,
 } from "./text";
 
-const unauthorized = 401;
 const notFound = 404;
 
 // A message's ID, which the client puts in the API's path as is.
@@ -83,7 +83,6 @@ type Reply = {
   // The bottom's Reply, which takes focus back when the button that opened
   // the editor is gone.
   bottomReplyId: string;
-  onUnauthorized: () => void;
 };
 
 const ReplyContext = createContext<Reply | null>(null);
@@ -105,19 +104,13 @@ export function useAnsweredId(): string | null {
 // "Reading pane"): which message it answers, in which mode, and the last
 // reply sent, for the pieces the conversation places: MessageReplyActions
 // in each message's header, ReplyEditorSlot under each message, and
-// ConversationReply after the last. onUnauthorized runs on a 401.
+// ConversationReply after the last.
 //
 // DESIGN: one editor per conversation. While it is open every Reply
 // button hides, as the bottom's always did, so a second Reply never
 // replaces typed text; the editor never moves once open, which would
 // remount it and lose its text and Idempotency-Key.
-export function ReplyProvider({
-  onUnauthorized,
-  children,
-}: {
-  onUnauthorized: () => void;
-  children: ReactNode;
-}): ReactElement {
+export function ReplyProvider({ children }: { children: ReactNode }): ReactElement {
   const read = useListConnectedAccounts();
   const accounts = read.data?.data.accounts;
   const serial = useRef(0);
@@ -128,11 +121,8 @@ export function ReplyProvider({
   const returnFocus = useRef(false);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [sent, setSent] = useState<Sent | null>(null);
-  const expired = read.error?.status === unauthorized;
-
-  useEffect(() => {
-    if (expired) onUnauthorized();
-  }, [expired, onUnauthorized]);
+  // An ended session, which the session-end rule answers (watchSessionEnd).
+  const expired = isSessionEnded(read.error);
   useEffect(() => {
     if (!returnFocus.current || editor) return;
     returnFocus.current = false;
@@ -216,19 +206,8 @@ export function ReplyProvider({
         setEditor(null);
       },
       bottomReplyId,
-      onUnauthorized,
     };
-  }, [
-    accounts,
-    expired,
-    readError,
-    retrying,
-    refetch,
-    editor,
-    sent,
-    bottomReplyId,
-    onUnauthorized,
-  ]);
+  }, [accounts, expired, readError, retrying, refetch, editor, sent, bottomReplyId]);
   return <ReplyContext value={value}>{children}</ReplyContext>;
 }
 
@@ -328,7 +307,6 @@ function EditorForm({ reply, editor }: { reply: Reply; editor: Editor }): ReactE
       edit={editor.edit}
       onSent={(sent) => reply.setSent({ id: sent.id, answered: editor.answered })}
       onDiscard={reply.discard}
-      onUnauthorized={reply.onUnauthorized}
     />
   );
 }
@@ -366,7 +344,6 @@ export function ConversationReply({ message }: { message: AnsweredMessage }): Re
           id={sent.id}
           onEdit={(outgoing) => reply.edit(outgoing, sent.answered)}
           onSentAgain={(copy) => reply.setSent({ id: copy.id, answered: sent.answered })}
-          onUnauthorized={reply.onUnauthorized}
         />
       )}
       {!editor && (
@@ -401,17 +378,15 @@ export function ConversationReply({ message }: { message: AnsweredMessage }): Re
 // ReplyStatus shows how the send of the reply id goes, its status from the
 // Outbox's read (useOutgoingMessage), with what the member can do next.
 // onEdit receives a refused reply to edit into a new one; onSentAgain
-// receives the copy a Send again saved; onUnauthorized runs on a 401.
+// receives the copy a Send again saved.
 function ReplyStatus({
   id,
   onEdit,
   onSentAgain,
-  onUnauthorized,
 }: {
   id: string;
   onEdit: (reply: OutgoingMessage) => void;
   onSentAgain: (copy: OutgoingMessage) => void;
-  onUnauthorized: () => void;
 }): ReactElement {
   const ref = useRef<HTMLElement>(null);
   const read = useOutgoingMessage(id);
@@ -423,9 +398,6 @@ function ReplyStatus({
     // The editor that held focus is gone; its status takes it.
     ref.current?.focus();
   }, []);
-  useEffect(() => {
-    if (read.expired) onUnauthorized();
-  }, [read.expired, onUnauthorized]);
 
   return (
     <section
@@ -441,7 +413,6 @@ function ReplyStatus({
           message={reply}
           accounts={accounts.data?.data.accounts}
           onSentAgain={onSentAgain}
-          onUnauthorized={onUnauthorized}
           onEdit={() => onEdit(reply)}
           look="window"
         />
@@ -449,7 +420,7 @@ function ReplyStatus({
       {/* A failed read without data, or a gone reply, replaces the status;
           a failed reread keeps it, saying it may have moved on, as the
           Outbox's page does. Polling stops on a failure; Try again restarts it. */}
-      {read.error && !read.expired && (
+      {read.error && !isSessionEnded(read.error) && (
         <div className="p-4">
           <ReadError
             message={

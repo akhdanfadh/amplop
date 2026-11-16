@@ -11,9 +11,8 @@ Status: decided 2026-11-11. `feat/design-system` builds the foundation
 pages, messages, leave warnings, and banners; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
-work to this file, not to the old code. Not built yet: one rule for a
-session that ends on an open page (`feat/session-end`), and the actions
-on a hovered row and the row menu (ADR031, "Mitigations and follow-up").
+work to this file, not to the old code. Not built yet: the actions on a
+hovered row and the row menu (ADR031, "Mitigations and follow-up").
 
 ## Principles
 
@@ -1110,7 +1109,12 @@ pull-to-refresh, which would reload the app, never starts.
   can't be redone in moments: a long text (a reply), settings being edited
   (System email), backup codes that won't show again. The compose window
   comes along between pages, so it asks only as it closes, as the page
-  unloads, and on a phone as its history entry is left. Sign-in, the code
+  unloads, as it leaves for sign-in, and on a phone as its history entry
+  is left. When the session ends, a reply, System email's edits, and the
+  compose window's message keep the page, signed out, to copy; backup
+  codes don't, since they work only once a signed-in Finish makes them
+  active: sign-in returns to the setup, which shows them again, and a
+  replacement left unfinished keeps the old codes working. Sign-in, the code
   forms, setup, and the pages emailed links open don't: what they hold is
   quick to type again, and an emailed link still works from the email. In
   app the warning is a dialog; closing the tab gets the browser's
@@ -1139,7 +1143,8 @@ outcome.
   a line of its own under the title, in the text colour (`AddressLine`):
   set inside a sentence, a long address wraps at its own hyphens and reads
   like hyphenated words. The sign-in notice after an account or password
-  change shows it the same way.
+  change shows it the same way. After a session ended on an open page, the
+  notice says "Your session ended. Sign in to continue." with no address.
 - The ways on are full-width buttons (`OutcomeLinks`): the most useful
   primary, any other outlined. A button that only brings the form back,
   e.g. "Use a different email address" under "Check your email", stays
@@ -1227,8 +1232,13 @@ outcome.
   where something fixes it, a link to it, tinted, with a line in its tone
   at 35% under it so stacked banners stay apart; the line only separates,
   so it needs no contrast check): an account problem above that account's
-  mail; at the top of the content of every signed-in page, stacked, offline
-  (`warning`), syncing stopped on this inbok (`warning`: "inbok has stopped
+  mail; at the top of the content of every signed-in page, stacked: first
+  an ended session while the page keeps work to copy (`warning`: "You're
+  signed out, so changes here can't be saved. Copy what you need, then
+  sign in.", its link to sign-in, which returns to the page; under the
+  compose window's title bar instead while the window covers the page, so
+  it is never hidden), then offline (`warning`), syncing stopped on this
+  inbok (`warning`: "inbok has stopped
   getting new mail for every account.", then "Ask your administrator.", or
   for an administrator "Check that its worker is running."), then each
   setup step the member owes (`info`): system email
@@ -1243,9 +1253,9 @@ outcome.
   sentence and drops its link, which would lead to itself. The setup
   banners sit in a "Setup reminders" landmark: they come before the heading
   a page focuses, so a screen reader finds them there. For the same
-  reason offline and syncing stopped are each a landmark of their own
-  ("Offline", "Mail sync stopped") while they show, as well as announced
-  as they appear. The system
+  reason signed out, offline, and syncing stopped are each a landmark of
+  their own ("Signed out", "Offline", "Mail sync stopped") while they
+  show, as well as announced as they appear. The system
   email step reflects the last test, not whether mail sent since arrives:
   the server records only tests (Not now). Signed-out pages show only
   offline.
@@ -1285,7 +1295,13 @@ outcome.
   refresh. inbok isn't answering; showing mail from 10:42."). A failed
   older page keeps the rows shown and stops loading, with "Couldn't load
   older conversations." and Try again under the list. A real "Page
-  not found" and a crash screen with Reload live in the shell.
+  not found" and a crash screen with Reload live in the shell, and so does
+  "You're signed out" ("This page can't load until you sign in again.",
+  with Sign in), for a page that can't load once the session ended while
+  another part of the app keeps work to copy; Try again would only fail
+  again. On such a kept page, background reads say nothing more than the
+  signed-out banner, and a write the member pressed says why it failed,
+  as any failure does.
 
 ### Status badges
 

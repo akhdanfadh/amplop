@@ -56,8 +56,7 @@ export type ConversationAccount = MessageAccount & { id: number };
 // the last message, Reply answers the newest, and a sent reply shows its
 // status. The view takes focus when it opens, so a screen reader starts at
 // its subject. It scrolls itself, so give it a height, and a key per
-// conversation, so the next starts afresh. onUnauthorized runs when a read
-// finds the session gone.
+// conversation, so the next starts afresh.
 //
 // messages is undefined until they are read; placeholder shows in their
 // place meanwhile, e.g. that they are loading or could not be read.
@@ -69,7 +68,7 @@ export type ConversationAccount = MessageAccount & { id: number };
 // in its header, after Reply.
 export function ConversationView(props: ConversationProps): ReactElement {
   return (
-    <ReplyProvider onUnauthorized={props.onUnauthorized}>
+    <ReplyProvider>
       <Conversation {...props} />
     </ReplyProvider>
   );
@@ -80,7 +79,6 @@ type ConversationProps = {
   account: ConversationAccount;
   messages: readonly ConversationMessage[] | undefined;
   placeholder?: ReactNode;
-  onUnauthorized: () => void;
   back?: ReactNode;
   actions?: ReactNode;
   marks?: ReactNode;
@@ -95,7 +93,6 @@ function Conversation({
   account,
   messages,
   placeholder,
-  onUnauthorized,
   back,
   actions,
   marks,
@@ -125,7 +122,6 @@ function Conversation({
         <Thread
           account={account}
           messages={messages}
-          onUnauthorized={onUnauthorized}
           messageActions={messageActions}
           startAt={startAt}
         />
@@ -144,13 +140,11 @@ function Conversation({
 function Thread({
   account,
   messages,
-  onUnauthorized,
   messageActions,
   startAt,
 }: {
   account: ConversationAccount;
   messages: readonly ConversationMessage[];
-  onUnauthorized: () => void;
   messageActions?: (message: ConversationMessage) => ReactNode;
   startAt?: string;
 }): ReactElement {
@@ -332,7 +326,6 @@ function Thread({
                       </>
                     }
                     today={today}
-                    onUnauthorized={onUnauthorized}
                   />
                 ) : (
                   <FoldedMessage
@@ -435,16 +428,13 @@ function FoldedMessage({
 }
 
 // LoadedMessage is a conversation's message shown whole (OpenMessage),
-// loading its content, which onUnauthorized hears a 401 of. The other
-// props go to OpenMessage.
+// loading its content. The other props go to OpenMessage.
 function LoadedMessage({
   message,
-  onUnauthorized,
   ...props
 }: Omit<ComponentProps<typeof OpenMessage>, "head" | "content"> & {
   message: ConversationMessage;
-  onUnauthorized: () => void;
 }): ReactElement {
-  const content = useMessageContent(message.id, onUnauthorized);
+  const content = useMessageContent(message.id);
   return <OpenMessage head={message} content={content} {...props} />;
 }

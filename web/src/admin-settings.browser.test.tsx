@@ -28,6 +28,7 @@ import {
   systemEmailLoader,
 } from "@/routes/_app/settings/_admin/system-email";
 import { ComposeStore } from "@/features/outgoing-messages/compose-store";
+import { watchSessionEnd } from "@/features/auth/session-end";
 
 const ok = 200;
 const unauthorized = 401;
@@ -243,6 +244,8 @@ async function open(server: Server, path: string, width = 360) {
     defaultPreloadStaleTime: 0,
     context: { queryClient, compose: new ComposeStore() },
   });
+  // As the app's router does (router.tsx).
+  watchSessionEnd(queryClient, router);
   await render(
     <QueryClientProvider client={queryClient}>
       {/* As the app's frame holds a page: a column that scrolls when its

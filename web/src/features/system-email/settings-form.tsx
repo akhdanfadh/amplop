@@ -17,7 +17,7 @@ import { LeaveWarning } from "@/components/leave-warning";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { FieldDescription, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
-import { useSessionEnd } from "@/features/auth/session-end";
+import { isSessionEnded } from "@/features/auth/guard";
 import { followedPort, settingsSchema, settingsValues, usualPort } from "./settings-schema";
 import {
   fieldText,
@@ -66,7 +66,6 @@ export function SettingsForm({
   onCancel?: () => void;
 }): ReactElement {
   const client = useQueryClient();
-  const sessionEnd = useSessionEnd();
   const ref = useRef<HTMLDivElement>(null);
   // The port Security last moved the field to, which it says while the
   // field still holds it.
@@ -86,7 +85,7 @@ export function SettingsForm({
         onWrite();
       },
       onError: (err) => {
-        if (sessionEnd(err) || !uncertainOutcome(err)) return;
+        if (isSessionEnded(err) || !uncertainOutcome(err)) return;
         // The settings may have been replaced: read what is saved now.
         onWrite();
         void client.invalidateQueries({ queryKey: getGetSystemEmailQueryKey() });
@@ -127,7 +126,7 @@ export function SettingsForm({
 
   return (
     <div ref={ref} className="w-full">
-      <LeaveWarning active={changed} text={leaveText} />
+      <LeaveWarning active={changed} text={leaveText} onSessionEnd="stay" />
       <form.AppForm>
         <form.Form label="System email settings">
           <FieldGroup className="gap-8">

@@ -31,6 +31,8 @@ function SignIn(): ReactElement {
   // Set by /register/complete and /reset-password, which create no session.
   const registeredEmail = useLocation({ select: (location) => location.state.registeredEmail });
   const resetEmail = useLocation({ select: (location) => location.state.passwordResetEmail });
+  // Set by a signed-in page whose session ended (watchSessionEnd).
+  const sessionEnded = useLocation({ select: (location) => location.state.sessionEnded });
   // A failed read hides the link: sign-in matters more than registering.
   const registration = useGetRegistration();
   const canRegister = step === "password" && registration.data?.data.open;
@@ -43,6 +45,7 @@ function SignIn(): ReactElement {
         : resetEmail
           ? { address: resetEmail, done: "Your password is changed." }
           : undefined;
+  const saysEnded = step === "password" && !notice && sessionEnded === true;
 
   function restart(): void {
     setEnded(undefined);
@@ -75,7 +78,7 @@ function SignIn(): ReactElement {
       lead={step === "code" ? undefined : "Use your email address and password."}
       step={step}
       // The title takes focus, so it reads the notice too.
-      describedBy={notice ? noticeId : undefined}
+      describedBy={notice || saysEnded ? noticeId : undefined}
       after={
         canRegister && (
           <p className="text-center text-sm text-muted-foreground">
@@ -88,6 +91,7 @@ function SignIn(): ReactElement {
       }
     >
       <SetupDoneNotice />
+      {saysEnded && <p id={noticeId}>Your session ended. Sign in to continue.</p>}
       {notice && (
         <p id={noticeId}>
           {/* The address the page before changed, on a line of its own. */}

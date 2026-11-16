@@ -264,10 +264,6 @@ export function noAccountText(accounts: readonly Pick<ListedAccount, "status">[]
   return "Each of your Gmail accounts needs reconnecting before it can send.";
 }
 
-// What the compose window says after a 401, before the link to sign in.
-export const signedOutText =
-  "You're signed out, so this message can't be sent. Copy what you typed, then";
-
 // What unfolds a refused reply's subject, cut to 2 lines in the editor.
 export const showAllSubject = "Show all";
 

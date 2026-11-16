@@ -107,7 +107,9 @@ Put shared code in the folder for its responsibility:
 
 - `src/features/setup`: first-admin form, validation, and installation gate.
 - `src/features/auth`: sign-in form, validation, session messages, the code
-  step's rule for when a sign-in has ended, and account cache cleanup.
+  step's rule for when a sign-in has ended, account cache cleanup, and the
+  one rule for a session that ends on an open page (`watchSessionEnd`,
+  `useHeldWork`, `SessionEndedBanner`, `SignInAgain`).
 - `src/features/probe`: the probe demo form.
 - `src/features/totp`: two-factor setup (`useSetupFlow`), backup-code
   replacement, turning it off, and Security's two-factor section.
@@ -172,8 +174,9 @@ Put shared code in the folder for its responsibility:
   `useFormRequest`, which sends a form's values and whose check plugs into
   it; "Forms" below says how to use it.
 - `src/api`: generated client and schemas, transport, shared validation and
-  error messages, retry handling, and the cached read every loader uses
-  (`cachedRead`).
+  error messages, retry handling, the cached read every loader uses
+  (`cachedRead`, `cachedLoader`), and the report of every 401
+  (`onUnauthorized`).
 - `src/lib`: code that knows no feature and no React, such as keeping the
   secret of an emailed link, keeping a server's field error through a
   blur, splitting typed recipients into addresses (`recipients.ts`), or
@@ -226,10 +229,11 @@ other entry addresses, `/security` (the recovery notice) and
 `/connected-accounts` (where Google's return lands, with `?outcome=`),
 are routes that only redirect into settings, so the server never follows
 the settings' layout; `src/entry-paths.browser.test.tsx` lists every
-entry address and fails when one stops being a page. A page still reads
-the session itself and opens sign-in on a 401, since a session can end
-after the guard ran, e.g. from another tab. The query client counts a
-session read in the last 5 s as fresh (`sessionFreshMs`), so a page that opens
+entry address and fails when one stops being a page. A session can end
+after the guard ran, e.g. signed out from another device, so the
+session-end rule below answers a 401 wherever it comes from. The query
+client counts a session read in the last 5 s as fresh (`sessionFreshMs`),
+so a page that opens
 just after a guard read it does not read it again.
 
 Every guard and loader reads through `cachedRead`
@@ -257,21 +261,78 @@ opens from its row at once, its messages refreshing in place (DESIGN.md
 reason. Test routers that load such pages set the same two router options.
 
 A page whose data it cannot draw without, e.g. System email, Registration,
-or Members, reads it in its route's loader, made by `signedInLoader`
-(`src/features/auth/session-end.ts`) over `loadSignedIn`, so the router's
-loading and failure views below cover it; a page with two reads, e.g.
-Connected accounts, writes its loader from the same pieces, the reads
-side by side inside one `loadSignedIn`; mail's loaders check that the
-address names a label or account the member has. The page's own query
-counts what the loader read in the last 5 s as fresh (`loadedFreshMs`), so
-it does not read it again as it opens, and rereads older data then. A 401
-there clears the account cache and opens sign-in, which returns to the
-page afterwards; once the page has drawn, `useSessionEnd` does the same
-for a read or a write that gets one, without asking to leave unsaved
-typing, which can no longer be saved. A 403 on such a page is an ordinary
+or Members, reads it in its route's loader, made by `cachedLoader`
+(`src/api/cached-read.ts`), so the router's loading and failure views
+below cover it; a page with two reads, e.g. Connected accounts, reads
+them side by side with `cachedRead` and throws a 401 before any other
+failure; mail's loaders check that the address names a label or account
+the member has. The page's own query counts what the loader read in the
+last 5 s as fresh (`loadedFreshMs`), so it does not read it again as it
+opens, and rereads older data then. A 403 on such a page is an ordinary
 failure: no administrator loses the role while signed in today, and a
 feature that adds a way to, e.g. a role change, decides what an open page
 does then.
+
+**When a session ends on an open page.** One rule, in one place
+(`watchSessionEnd`, `src/features/auth/session-end.ts`), which the router
+starts (`src/router.tsx`). Every request goes through `transport`
+(`src/api/transport.ts`), which tells it of each 401 before the caller
+sees the failure (`onUnauthorized`): reads, writes, mail's actions, mail's
+collections, and loaders alike. It acts only while the router shows a
+page that needs a session (`_app`'s pages and `/two-factor-setup`): on a
+signed-out page a 401 is that page's own answer, e.g. a wrong password,
+and before the first page draws it is the guard's, for a visitor who
+never had a session, whom sign-in tells nothing; a page's own read that
+finds the session ended then shows `RouteError`'s signed-out view. A signed-in operation answers 401 only
+when no session is left (AGENTS.md, "API contract").
+
+- **Nothing to lose:** it clears the member's data (`clearAccountCache`)
+  and opens sign-in with `redirect`, the page's address, and history
+  state `sessionEnded`, so sign-in says "Your session ended. Sign in to
+  continue." and returns to the page afterwards.
+- **Something to lose:** a `LeaveWarning` whose `onSessionEnd` is
+  `"stay"` is active, e.g. a typed reply or System email being edited, or
+  the compose window holds a message (`useHeldWork`). The page stays,
+  with its data, and `SessionEndedBanner` says "You're signed out, so
+  changes here can't be saved. Copy what you need, then sign in." with a
+  Sign in link back to the page, which the leave warning, or the compose
+  window, asks about. The banner sits in the frame, above the others, or
+  under the compose window's title bar while the window covers the page,
+  so exactly one shows. Once nothing is held, e.g. the reply discarded,
+  sign-in opens as above. A loader's 401 then shows `RouteError`'s
+  signed-out view, "You're signed out", with Sign in, since Try again would
+  fail the same way.
+- **Backup codes are not held** (`onSessionEnd="leave"`): they work only
+  once a signed-in Finish makes them active, so copying them after the
+  session ended would keep codes that never work. Sign-in returns to the
+  setup, which shows the same codes again within its 15 minutes; a
+  replacement's old codes still work.
+- A Sign out the member pressed is not a session end: it asks first while
+  the compose window holds a message, and opens sign-in without the
+  message or the way back.
+
+Pages no longer handle a 401 themselves. A read's 401 is left out of what
+a page shows, e.g. its failure alert, the mail list's refresh and
+older-page notices, and the Outbox's "may be out of date" line; a write
+the member pressed says why it failed, at the button or in an action's
+error toast, in the server's words ("Sign in to continue."), as any
+failure does. Accepted: sign-in does not say the
+session ended after a reload, or when another tab's sign-out reloads this
+one, since only the open page sees it end (DEBT.md has the server type
+that would); while a page is kept signed out, pages the tab already read
+still open from memory, under the banner: a revocation stops new data,
+not what this tab holds, and closing the tab ends it (every API answer
+is `no-store`, so nothing stays on disk); a tab that ends with nothing
+held clears the data every tab shares, which closes another tab's
+compose message, and a tab that keeps its page tells no other tab, which
+each finds out from its own next read; the listener runs inside the
+failing request, before its caller, which is harmless while sign-in's
+navigation supersedes the failed load; typing System email's saved values back counts as no change, so
+the page moves to sign-in; a slow request from a member who just signed
+out could end a new member's page, within the 15 s timeout, which
+signing in again takes longer than; and when the session ends just as
+the member moves between pages, the guard and the rule may both open
+sign-in, and the message shows only if the rule's is last.
 
 Every page gets the same states from the router (`src/router.tsx`):
 `RoutePending`, a spinner with "Loading...", when the page's checks take
@@ -361,8 +422,8 @@ banner never pushes a drawn page down; it never waits for the connection,
 a failure only leaves system email out, and after that first try, answered
 or not, it waits for nothing. Accepted: a first read that hangs holds the
 first draw until the request times out (15 s), as a page's own read does.
-The reminder's reads end the page on a 401 (`useSessionEnd`), since its
-focus reread can be the first to find the session gone. Unlike the frame's
+The reminder's focus reread can be the first to find the session gone,
+which the session-end rule answers. Unlike the frame's
 other session readers, the reminder rereads the session when the window
 regains focus, since an address is often verified from the email in
 another tab. A banner shows on every page; on
@@ -381,8 +442,7 @@ from a link, waits for its read; one that no longer exists is Page not
 found either way. Its route splits its loader off
 (`codeSplitGroupings`), since it reads mail's TanStack DB collection,
 which must stay out of the app's first download. A loader whose read
-finds the session ended clears the member's data and opens sign-in
-(`sessionEnded` in `features/auth/guard.ts`). Rows are React Aria links,
+finds the session ended is the session-end rule's (above). Rows are React Aria links,
 which never preload, so resting the pointer or focus on a row for 100 ms
 calls `router.preloadRoute`, which reads the conversation ahead;
 sweeping over rows reads none. On a phone the reading pane is the page,
@@ -432,7 +492,8 @@ An administrator without confirmed TOTP gets a session the server lets only
 set it up, for 15 minutes, so `_app` sends them to `/two-factor-setup`, a
 signed-out card with the setup and "Not now? Sign out" under it; `/setup`
 signs the first administrator in and leads there too. A 401 there, e.g.
-when the 15 minutes run out, opens sign-in, which leads back to the card.
+when the 15 minutes run out, opens sign-in through the session-end rule,
+which says the session ended and leads back to the card.
 Members reach two-factor through Security.
 
 Security (`/settings/security`) is a settings page with three sections:
@@ -448,7 +509,8 @@ history entry, so Back or a reload does not repeat it, and drops a notice
 its own status read contradicts. Once the page has shown two-factor on, any
 status read that finds it off returns to Security the same way, e.g. after a
 turn-off whose answer was lost, or one from another tab. A 401 from any read
-or write on the page clears the account cache and opens sign-in.
+or write on the page is the session-end rule's, which returns here after
+sign-in.
 
 Setup (`useSetupFlow`, the same steps on the page and on the card) follows
 the server's status, so a reload or another tab lands on the right step;
@@ -600,8 +662,8 @@ Administrators with confirmed TOTP see "This inbok" in the settings
 sidebar: Members, Registration, and System email (`/settings/members`,
 `/settings/registration`, `/settings/system-email`). An administrator
 without it never reaches settings: `_app` sends them to
-`/two-factor-setup`. A 401 on these pages opens sign-in, which comes back;
-a 403 is an ordinary failure (above).
+`/two-factor-setup`. A 401 on these pages is the session-end rule's
+(above); a 403 is an ordinary failure.
 
 System email configures the server inbok sends its own mail through. It
 shows the saved settings as a summary with "Edit settings"; the form opens
@@ -700,7 +762,7 @@ first account" with Connect Gmail, or "Gmail can't be connected yet"
 with only the next step under it ("Ask your administrator to set up
 Gmail on this inbok.", or for an administrator, to add a Google client):
 the title says what can't happen, so a member doesn't take it for their
-own Gmail. A 401 from any read or write opens sign-in, which returns here. A
+own Gmail. A 401 from any read or write is the session-end rule's. A
 refused start rereads what it shows has changed: the providers on a 409,
 the list on a 404. A lost answer to a start just asks for another try,
 since an unused start expires. A failed refresh keeps the list with
@@ -809,8 +871,10 @@ inbok ("Your Gmail accounts can't send yet."), which that page words by
 role. Focus starts in the
 first field to fill in: From, To, or, for Edit and send, the start of the
 message, which fills the window's height (`MessageField size="fill"`). A
-401 on any of the window's own reads or writes keeps what it holds, with
-an alert to copy what was typed and sign in.
+401 anywhere, while the window holds a message, keeps it to copy
+(session-end rule, above): while the window covers the page, the
+signed-out banner shows under its title bar, and leaving for sign-in asks
+first.
 The form is the message editor, the same rows as Reply's card
 (`EditorCard`, `editor.tsx`, whose look "window" lets the window be its
 edge): rows for From, To, the Cc and Bcc that are filled or added
@@ -1076,7 +1140,6 @@ name cannot reorder the address after it. Its props:
   `messages` is undefined until they are read, and `placeholder` shows in
   their place, under the title; the messages' `Thread` mounts once they
   come, so which messages start open is decided from them.
-- `onUnauthorized`: runs when a read finds the session gone.
 - `back`: the way back to the list at the toolbar's start, where one pane
   shows at a time; `actions`: the conversation's actions at its end.
 - `marks`: where the conversation is, e.g. its label chips
@@ -1103,7 +1166,7 @@ scrolled to sits under it. Each open message loads its content through
 `useMessageContent` (`content.ts`), so folded messages cost no request;
 content never goes
 stale, as a message's never changes, so it is not read again in the
-background, and a 401 runs `onUnauthorized`; the content shows in
+background; the content shows in
 `MessageContentView`, the message view's part below its header.
 `toContent` keeps only bodies and files at the API's own addresses.
 
@@ -1128,8 +1191,7 @@ as the query's placeholder, which the query drops once a read fails, so
 the frame stays while the messages load or a read fails, with Try again
 under the title. It names the tab, shows Page not found only while
 nothing is shown (a 404 on a later read leaves a reply being typed in
-place), says when the accounts could not be read, and opens sign-in for
-an ended session. It reads the conversation's row by ID from the mail
+place), and says when the accounts could not be read. It reads the conversation's row by ID from the mail
 collection, so an action anywhere shows at once, and marks an unread
 conversation read once its messages are read and the tab shows. Its
 toolbar (`mail/toolbar.tsx`) offers what `actionsFor` (`mail/rules.ts`)

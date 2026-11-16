@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { vi } from "vite-plus/test";
 import { AppShell } from "@/components/app-shell";
+import { RouteError } from "@/components/route-states";
+import { watchSessionEnd } from "@/features/auth/session-end";
 import { ComposeStore } from "@/features/outgoing-messages/compose-store";
 import { routeTree } from "@/routeTree.gen";
 
@@ -68,10 +70,15 @@ export async function appRouter(
     // waits for a read marked out of date.
     defaultStaleReloadMode: "blocking",
     defaultPreloadStaleTime: 0,
+    // As the app's router does (router.tsx): a failed read shows the
+    // router's failure view, an ended session's 401 its signed-out view.
+    defaultErrorComponent: RouteError,
     // As the app's router does (router.tsx), so a rendered page reaches the
     // query client.
     Wrap: ({ children }) => createElement(QueryClientProvider, { client: queryClient }, children),
   });
+  // As the app's router does (router.tsx).
+  watchSessionEnd(queryClient, router);
   await router.load();
   return router;
 }

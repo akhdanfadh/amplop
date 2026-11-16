@@ -155,14 +155,8 @@ async function show(leaving: "quiet" | "warns" = "quiet", status: OutgoingMessag
       <main>
         <h1 tabIndex={-1}>Inbox</h1>
         <OpenButton />
-        <LeaveWarning active={leaving === "warns"} text={leaveText("typed")} />
-        <MessageStatus
-          message={status}
-          accounts={[studio]}
-          onSentAgain={() => {}}
-          onUnauthorized={() => {}}
-          look="pane"
-        />
+        <LeaveWarning active={leaving === "warns"} text={leaveText("typed")} onSessionEnd="stay" />
+        <MessageStatus message={status} accounts={[studio]} onSentAgain={() => {}} look="pane" />
       </main>
     ),
   });
@@ -480,27 +474,6 @@ describe("ComposeWindow", () => {
     before.open();
     after.open();
     expect(after.snapshot().message?.window).not.toBe(before.snapshot().message?.window);
-  });
-
-  it("says the session ended when a read of its status gets a 401", async () => {
-    serve({
-      sent: { ...saved, status: "sending", sentAt: null },
-      outbox: () =>
-        Response.json(
-          { type: "/api/v0/problems/unauthenticated", status: 401, title: "", detail: "" },
-          { status: 401, headers: { "Content-Type": "application/problem+json" } },
-        ),
-    });
-    await show();
-    await userEvent.click(page.getByRole("button", { name: "Compose" }));
-    await userEvent.click(page.getByRole("button", { name: /From/ }));
-    await userEvent.click(page.getByRole("option", { name: "studio@example.com Studio" }));
-    await userEvent.type(page.getByRole("textbox", { name: "To" }), "ana@example.com,");
-    await userEvent.click(page.getByRole("button", { name: "Send" }));
-
-    await expect
-      .element(page.getByRole("alert"), { timeout: 5_000 })
-      .toMatchTextContent("You're signed out");
   });
 
   it("follows the copy Send again saves, reading the Outbox again", async () => {

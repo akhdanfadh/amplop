@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi, type MockInstance } from "vite-plu
 import { createProbeEvent, getFinishTOTPEnrollmentUrl } from "./generated/inbok";
 import { ResponseHealthStatus } from "./generated/model";
 import { userMessage } from "./problem";
-import { ApiError, cookieReplacingPaths, transport } from "./transport";
+import { ApiError, cookieReplacingPaths, onUnauthorized, transport } from "./transport";
 
 const url = "/api/v0/health";
 const init = { schema: ResponseHealthStatus };
@@ -202,6 +202,32 @@ describe("transport", () => {
       problem,
       requestId: "sign-out-reference",
     });
+  });
+});
+
+describe("onUnauthorized", () => {
+  it("hears a 401, before its caller sees the failure, and nothing else", async () => {
+    const heard: string[] = [];
+    const stop = onUnauthorized(() => heard.push("401"));
+    try {
+      answer("", httpStatus.conflict, "text/plain");
+      await failure();
+      expect(heard).toEqual([]);
+
+      answer("", httpStatus.unauthorized, "text/plain");
+      const err = await transport(url, init).catch((e: unknown) => {
+        heard.push("caller");
+        return e;
+      });
+      expect(err).toBeInstanceOf(ApiError);
+      expect(heard).toEqual(["401", "caller"]);
+    } finally {
+      stop();
+    }
+
+    answer("", httpStatus.unauthorized, "text/plain");
+    await failure();
+    expect(heard).toEqual(["401", "caller"]);
   });
 });
 

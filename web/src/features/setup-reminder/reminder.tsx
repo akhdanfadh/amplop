@@ -1,10 +1,10 @@
-import { useEffect, type ReactElement } from "react";
+import type { ReactElement } from "react";
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import { MailWarningIcon, ShieldAlertIcon, type LucideIcon } from "lucide-react";
 import { useGetCurrentSession, useGetSystemEmail } from "@/api/generated/inbok";
 import { Banner } from "@/components/banner";
 import { textLink } from "@/components/link-style";
-import { loadedFreshMs, useSessionEnd } from "@/features/auth/session-end";
+import { loadedFreshMs } from "@/api/cached-read";
 import { systemEmailState } from "@/features/system-email/state";
 import { reminderText, remindersLabel } from "./text";
 
@@ -30,7 +30,6 @@ const steps = {
 // for another; what a step cannot do yet, e.g. a verification link while
 // nothing is saved, the server refuses and says why.
 export function SetupReminder(): ReactElement | null {
-  const sessionEnd = useSessionEnd();
   // Reread when the window regains focus, unlike the frame's other session
   // readers: the address is often verified from the email in another tab.
   const sessionRead = useGetCurrentSession({
@@ -41,12 +40,6 @@ export function SetupReminder(): ReactElement | null {
   // The System email page's own read: its saves and tests mark it out of
   // date, so the reminder follows them.
   const systemEmail = useGetSystemEmail({ query: { enabled: admin, staleTime: loadedFreshMs } });
-
-  // Either read can find the session ended, e.g. the focus reread on a page
-  // whose own reads are still fresh.
-  useEffect(() => {
-    if (!sessionEnd(sessionRead.error)) sessionEnd(systemEmail.error);
-  }, [sessionRead.error, systemEmail.error, sessionEnd]);
 
   if (!session) return null;
 

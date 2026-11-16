@@ -1,5 +1,4 @@
-import { useEffect, useState, type ReactElement } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
 import { useListConnectedAccounts } from "@/api/generated/inbok";
@@ -9,7 +8,6 @@ import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { useToday } from "@/features/mail/dates";
 import { backToList, subjectText } from "@/features/mail/text";
 import { OpenMessage } from "@/features/messages/open-message";
@@ -26,7 +24,6 @@ import {
   sentFrom,
 } from "./text";
 
-const unauthorized = 401;
 const notFound = 404;
 
 // OutgoingReader is the Outbox's reading pane for the message id
@@ -35,7 +32,6 @@ const notFound = 404;
 // with what the member can do next, then the message, open. valid false
 // means id is no message's ID, which is never read.
 export function OutgoingReader({ id, valid }: { id: string; valid: boolean }): ReactElement {
-  const client = useQueryClient();
   const navigate = useNavigate();
   const router = useRouter();
   const phone = useLayout() === "phone";
@@ -43,17 +39,9 @@ export function OutgoingReader({ id, valid }: { id: string; valid: boolean }): R
   const read = useOutgoingMessage(id, { enabled: valid });
   // What the message offers depends on its member's accounts.
   const accounts = useListConnectedAccounts();
-  const [writeExpired, setWriteExpired] = useState(false);
-  const expired = writeExpired || read.expired || accounts.error?.status === unauthorized;
   const message = read.message;
   const accountList = accounts.data?.data.accounts;
   const account = accountList?.find((a) => a.id === message?.connectedAccountId);
-
-  useEffect(() => {
-    if (!expired) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true });
-  }, [expired, client, navigate]);
 
   // Back returns to the list the member came from, as the phone's own back
   // does, when a row of it opened the message; one opened another way,
@@ -82,17 +70,17 @@ export function OutgoingReader({ id, valid }: { id: string; valid: boolean }): R
   // A phone's gutter is 16 px, a wider pane's 24 (DESIGN.md "Panes and
   // widths").
   const gutter = phone ? "p-4" : "p-6";
-  // A failed read without data replaces the message; a failed reread keeps
-  // it, unless the message is gone.
+  // A failed read without data replaces the message, saying why, an ended
+  // session too; a failed reread keeps it, unless the message is gone.
   const gone = read.error?.status === notFound;
-  if (!valid || expired || !message || gone)
+  if (!valid || !message || gone)
     return (
       <>
         {back && <div className="flex min-h-12 items-center px-4">{back}</div>}
         <div className={gutter}>
           {!valid ? (
             <p role="alert">{messageGone}</p>
-          ) : read.error && !expired ? (
+          ) : read.error ? (
             <ReadError
               message={readErrorMessage(read.error)}
               error={read.error}
@@ -153,7 +141,6 @@ export function OutgoingReader({ id, valid }: { id: string; valid: boolean }): R
                 state: (left) => ({ fromList: left.fromList }),
               })
             }
-            onUnauthorized={() => setWriteExpired(true)}
           />
           <OpenMessage
             head={messageHead(message)}

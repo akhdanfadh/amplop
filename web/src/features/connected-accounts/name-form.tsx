@@ -9,7 +9,6 @@ import { useAppForm } from "@/components/form/app-form";
 import { useFormRequest } from "@/components/form/request";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
-import { useSessionEnd } from "@/features/auth/session-end";
 import { cancelText, nameDescription, nameLabel, saveText, savingText } from "./text";
 
 const nameFields = ["name"] as const;
@@ -27,7 +26,6 @@ export function NameForm({
   onClose: () => void;
 }): ReactElement {
   const client = useQueryClient();
-  const sessionEnd = useSessionEnd();
   const ref = useRef<HTMLDivElement>(null);
   const rename = useRenameConnectedAccount({
     mutation: {
@@ -51,9 +49,6 @@ export function NameForm({
               }
             : list,
         );
-      },
-      onError: (err) => {
-        sessionEnd(err);
       },
     },
   });

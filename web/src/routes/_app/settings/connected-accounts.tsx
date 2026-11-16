@@ -7,11 +7,10 @@ import {
   useListAccountProviders,
   useListConnectedAccounts,
 } from "@/api/generated/inbok";
-import { cachedRead } from "@/api/cached-read";
+import { cachedRead, loadedFreshMs } from "@/api/cached-read";
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
 import { isSessionEnded } from "@/features/auth/guard";
-import { loadedFreshMs, loadSignedIn, useSessionEnd } from "@/features/auth/session-end";
 import { AccountList } from "@/features/connected-accounts/list";
 import { connectSearch } from "@/features/connected-accounts/search";
 import { refreshInterval, syncNowRefresh } from "@/features/connected-accounts/sync";
@@ -32,27 +31,23 @@ const unauthorized = 401;
 // DESIGN: both reads finish before either failure counts, and an ended
 // session wins: Promise.all would report only the first failure, so a 401
 // answered after the other read's fault would show the failure view
-// instead of sign-in.
-export function connectedAccountsLoader({
+// instead of the signed-out one.
+export async function connectedAccountsLoader({
   context,
-  location,
 }: {
   context: { queryClient: QueryClient };
-  location: { href: string };
 }) {
   const client = context.queryClient;
-  return loadSignedIn(client, location.href, async () => {
-    const [list, providers] = await Promise.allSettled([
-      cachedRead(client, getListConnectedAccountsQueryOptions()),
-      cachedRead(client, getListAccountProvidersQueryOptions()),
-    ]);
-    if (list.status === "fulfilled" && providers.status === "fulfilled")
-      return [list.value, providers.value] as const;
-    const failures = [list, providers].flatMap((read) =>
-      read.status === "rejected" ? [read.reason as unknown] : [],
-    );
-    throw failures.find(isSessionEnded) ?? failures[0];
-  });
+  const [list, providers] = await Promise.allSettled([
+    cachedRead(client, getListConnectedAccountsQueryOptions()),
+    cachedRead(client, getListAccountProvidersQueryOptions()),
+  ]);
+  if (list.status === "fulfilled" && providers.status === "fulfilled")
+    return [list.value, providers.value] as const;
+  const failures = [list, providers].flatMap((read) =>
+    read.status === "rejected" ? [read.reason as unknown] : [],
+  );
+  throw failures.find(isSessionEnded) ?? failures[0];
 }
 
 export const Route = createFileRoute("/_app/settings/connected-accounts")({
@@ -67,7 +62,6 @@ export const Route = createFileRoute("/_app/settings/connected-accounts")({
 // return lands here with how it ended, which the notice says.
 function ConnectedAccounts(): ReactElement {
   const navigate = useNavigate();
-  const sessionEnd = useSessionEnd();
   const { session } = Route.useRouteContext();
   const { outcome } = Route.useSearch();
   const [loadedList, loadedProviders] = Route.useLoaderData();
@@ -84,15 +78,12 @@ function ConnectedAccounts(): ReactElement {
   });
   const providers = useListAccountProviders({ query: { staleTime: loadedFreshMs } });
   const accounts = (list.data ?? loadedList).data.accounts;
-  // A failed refresh of either read, a 401 aside, which opens sign-in.
+  // A failed refresh of either read, a 401 aside, which the session-end
+  // rule answers (watchSessionEnd).
   const refreshFailed = [list.error, providers.error].find(
     (err) => err && err.status !== unauthorized,
   );
   const offered = (providers.data ?? loadedProviders).data.offered.includes("gmail");
-
-  useEffect(() => {
-    if (!sessionEnd(list.error)) sessionEnd(providers.error);
-  }, [list.error, providers.error, sessionEnd]);
 
   useEffect(() => {
     if (!outcome) return;
@@ -113,7 +104,7 @@ function ConnectedAccounts(): ReactElement {
       noticeTone={notice?.tone}
     >
       {/* A failed refresh keeps the page and says why (DESIGN.md
-          "States"); a 401 opens sign-in instead. Try again rereads what
+          "States"); a 401 is the session-end rule's. Try again rereads what
           failed. */}
       {refreshFailed && (
         <div className="py-6 text-sm">

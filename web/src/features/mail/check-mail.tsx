@@ -1,15 +1,14 @@
 import { useState, type ReactElement } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { onlineManager, useQueryClient } from "@tanstack/react-query";
 import { RefreshCwIcon } from "lucide-react";
 import { useListConnectedAccounts, useSyncConnectedAccount } from "@/api/generated/inbok";
+import { isSessionEnded } from "@/features/auth/guard";
 import { ApiError } from "@/api/transport";
 import { accountName } from "@/components/account-mark";
 import { Button } from "@/components/ui/button";
 import { showError } from "@/components/ui/toast";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { currentMail, mailData } from "./conversations";
 import {
   accountsNotRead,
@@ -21,7 +20,6 @@ import {
   offlineCheck,
 } from "./text";
 
-const unauthorized = 401;
 // One turn of the icon, Tailwind's animate-spin: the icon turns whole
 // turns, so it never snaps back part way.
 const turnMs = 1000;
@@ -31,10 +29,9 @@ const turnMs = 1000;
 // for new mail now instead of at the next minute, skipping an account
 // whose allowedActions lack sync, then reads the mail pages often while
 // those checks run. A refusal shows in an error toast; the list stays as
-// it is. An ended session opens sign-in.
+// it is. An ended session is the session-end rule's (watchSessionEnd).
 export function CheckMail({ accountId }: { accountId: number | undefined }): ReactElement {
   const client = useQueryClient();
-  const navigate = useNavigate();
   const accounts = useListConnectedAccounts();
   const sync = useSyncConnectedAccount({ mutation: { gcTime: 0 } });
   const [checking, setChecking] = useState(false);
@@ -85,11 +82,8 @@ export function CheckMail({ accountId }: { accountId: number | undefined }): Rea
     const errors = outcomes.flatMap((outcome) =>
       outcome.status === "rejected" ? [asApiError(outcome.reason)] : [],
     );
-    if (errors.some((err) => err.status === unauthorized)) {
-      clearAccountCache(client);
-      void navigate({ to: "/sign-in", replace: true });
-      return;
-    }
+    // The session-end rule answers an ended session.
+    if (errors.some(isSessionEnded)) return;
     const refused = outcomes.flatMap((outcome, i) => {
       if (outcome.status !== "rejected") return [];
       const refusal = checkRefusal(asApiError(outcome.reason));

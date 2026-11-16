@@ -80,7 +80,6 @@ function remove(
       words: labelWords([], names),
     },
     from: "picked",
-    onUnauthorized: () => {},
   });
 }
 

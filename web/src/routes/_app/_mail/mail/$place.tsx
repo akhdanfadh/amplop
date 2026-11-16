@@ -6,7 +6,6 @@ import {
   getListPlacesQueryOptions,
   useListConnectedAccounts,
 } from "@/api/generated/inbok";
-import { isSessionEnded, sessionEnded } from "@/features/auth/guard";
 import { isPlace } from "@/features/mail/address";
 import { PlacePage } from "@/features/mail/place-page";
 import { labelPath } from "@/features/mail/place-counts";
@@ -34,8 +33,8 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
   loaderDeps: ({ search }) => ({ account: search.account }),
   // A label the member doesn't have is Page not found; one they have opens
   // in its account. A read already cached serves unless a write marked it
-  // out of date (cachedRead); the page reads again as it mounts. An ended
-  // session opens sign-in.
+  // out of date (cachedRead); the page reads again as it mounts. A failure,
+  // an ended session's 401 included, goes to the route's error view.
   loader: async ({ context: { queryClient }, params: { place }, deps: { account }, location }) => {
     const search = place === searchPlace;
     const view = isViewPlace(place);
@@ -46,9 +45,7 @@ export const Route = createFileRoute("/_app/_mail/mail/$place")({
       (!view && !search) || account === undefined
         ? undefined
         : cachedRead(queryClient, getListConnectedAccountsQueryOptions()),
-    ]).catch((err: unknown) => {
-      throw isSessionEnded(err) ? sessionEnded(queryClient, location.href) : err;
-    });
+    ]);
     if (view || search) {
       // An account the member no longer has, e.g. in an old link, only
       // filtered: the view, or the search, covers every account's mail

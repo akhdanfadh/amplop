@@ -24,8 +24,6 @@ import {
   type LeaveState,
 } from "./text";
 
-const unauthorized = 401;
-
 // The options a generated send hook takes, e.g. useSendMessage's.
 type SendOptions = {
   mutation: typeof repeatableWriteRetry & {
@@ -50,8 +48,8 @@ type EditorSend = {
 // useEditorSend returns how a message editor sends one message, new or a
 // reply: one Idempotency-Key per message the member means to send, so a
 // repeated request, automatic or by hand, returns what the first saved;
-// whether a try may have saved it; and onUnauthorized, run on a 401.
-export function useEditorSend(onUnauthorized: () => void): EditorSend {
+// whether a try may have saved it.
+export function useEditorSend(): EditorSend {
   const client = useQueryClient();
   // crypto.randomUUID needs a secure context, which signing in already
   // does: the session cookie is Secure.
@@ -66,7 +64,6 @@ export function useEditorSend(onUnauthorized: () => void): EditorSend {
       mutation: {
         ...repeatableWriteRetry,
         onError: (err) => {
-          if (err.status === unauthorized) onUnauthorized();
           // The account's status has changed since the list was read.
           if (needsReconnect(err))
             void client.invalidateQueries({ queryKey: getListConnectedAccountsQueryKey() });

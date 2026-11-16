@@ -4,7 +4,7 @@ import { getGetSystemEmailQueryOptions, useGetSystemEmail } from "@/api/generate
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
-import { loadedFreshMs, signedInLoader, useSessionEnd } from "@/features/auth/session-end";
+import { cachedLoader, loadedFreshMs } from "@/api/cached-read";
 import { SettingsPage, SettingsSection } from "@/features/settings/page";
 import { pageName } from "@/features/settings/text";
 import { SettingsForm } from "@/features/system-email/settings-form";
@@ -24,7 +24,7 @@ import {
 const unauthorized = 401;
 
 // systemEmailLoader reads what the page shows before it draws.
-export const systemEmailLoader = signedInLoader(getGetSystemEmailQueryOptions);
+export const systemEmailLoader = cachedLoader(getGetSystemEmailQueryOptions);
 
 export const Route = createFileRoute("/_app/settings/_admin/system-email")({
   loader: systemEmailLoader,
@@ -38,7 +38,6 @@ function SystemEmail(): ReactElement {
   const { session } = Route.useRouteContext();
   const loaded = Route.useLoaderData();
   const systemEmail = useGetSystemEmail({ query: { staleTime: loadedFreshMs } });
-  const sessionEnd = useSessionEnd();
   const settings = (systemEmail.data ?? loaded).data.settings;
   // Nothing saved yet opens the form, with no summary to go back to.
   const [editing, setEditing] = useState(!settings);
@@ -54,10 +53,6 @@ function SystemEmail(): ReactElement {
   // takes focus, since the button that had it is gone. With a test, the
   // test form takes it.
   const refocus = useRef(false);
-
-  useEffect(() => {
-    sessionEnd(systemEmail.error);
-  }, [systemEmail.error, sessionEnd]);
 
   useEffect(() => {
     if (!refocus.current || editing) return;
@@ -79,7 +74,7 @@ function SystemEmail(): ReactElement {
       lead={systemEmailLead}
     >
       {/* A failed refresh keeps the sections and says why (DESIGN.md
-          "States"); a 401 opens sign-in instead. */}
+          "States"); a 401 is the session-end rule's. */}
       {systemEmail.error && systemEmail.error.status !== unauthorized && (
         <div className="py-6 text-sm">
           <ReadError

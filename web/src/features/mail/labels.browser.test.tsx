@@ -134,6 +134,25 @@ describe("Move to", () => {
   });
 });
 
+describe("Move to after the session ended", () => {
+  it("rolls back and says why while the compose window keeps its message", async () => {
+    const row = conversation(1, { accountId: 1 });
+    await open([row], `/mail/inbox/${row.id}`);
+    await userEvent.click(page.getByRole("button", { name: "Compose" }).first());
+    await userEvent.type(page.getByRole("textbox", { name: "Subject" }), "Lunch");
+    api.signedOut = true;
+
+    await more("Move to");
+    await userEvent.click(page.getByRole("menuitem", { name: "Clients/Acme" }));
+
+    // The session-end rule keeps the page for the message; the move, like
+    // any failed action, rolls back and says why (web/README.md "Routes").
+    await expect.element(page.getByRole("region", { name: "Signed out" })).toBeVisible();
+    await expect.element(page.getByText(/Couldn't move/)).toBeVisible();
+    await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Lunch");
+  });
+});
+
 describe("Labels", () => {
   it("sends the ticked and unticked labels together on Apply, and keeps the conversation", async () => {
     const row = conversation(1, { accountId: 1, labelIds: [clients] });

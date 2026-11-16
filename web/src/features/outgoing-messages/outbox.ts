@@ -14,8 +14,6 @@ import type { ApiError } from "@/api/transport";
 import { pollWhile, sendPollMs } from "./poll";
 import { inProgress } from "./text";
 
-const unauthorized = 401;
-
 // useOutbox reads the member's Outbox list, again every 2 s while a message
 // in it is waiting or sending. It is the one source of every message's
 // status: the sidebar's count, the Outbox, and each status a page shows
@@ -39,13 +37,11 @@ export function useOutbox<T = ResponseOutgoingMessages>({
 
 // OutgoingMessageRead is one message as a page shows it. message is
 // undefined until its content loads. error is the failure of its read, or
-// else of the list that gives its status; expired is true once either got
-// a 401, which the other's failure may hide from error. retry reads both
+// else of the list that gives its status. retry reads both
 // again where they failed, and retrying is true while either reads.
 export type OutgoingMessageRead = {
   message: OutgoingMessage | undefined;
   error: ApiError | null;
-  expired: boolean;
   retrying: boolean;
   retry: () => void;
 };
@@ -106,7 +102,6 @@ export function useOutgoingMessage(
   return {
     message,
     error,
-    expired: [read.error, listed.error].some((err) => err?.status === unauthorized),
     // Read only with an error to retry: reading isFetching would render
     // every status reader again at each poll of the list.
     retrying: error !== null && (read.isFetching || listed.isFetching),

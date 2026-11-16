@@ -18,8 +18,6 @@ import {
 import { sayUndone, showUndo, type UndoHandle } from "./undo";
 import { actionWords, type ActionWords } from "./words";
 
-const unauthorized = 401;
-
 // Outcome is how an action ended for one conversation: applied; refused,
 // back as it was; gone, refused as not found and removed; or failed, the
 // request with it.
@@ -107,23 +105,20 @@ type Run = { batch: readonly Conversation[]; answer: Promise<ActionResult> };
 // toast closes once newer answers changed again what failed on each
 // conversation it names, e.g. that label (closeAbout). Feedback about a
 // conversation a later action reached is left to that action. A refusal
-// as not found also removes the row; an ended session calls
-// onUnauthorized. Nothing shows once the member's mail has ended, e.g.
-// after sign-out.
+// as not found also removes the row. Nothing shows once the member's mail
+// has ended, e.g. after sign-out.
 export async function perform({
   mail,
   conversations,
   act,
   from = "one",
   accountName,
-  onUnauthorized,
 }: {
   mail: ActionMail;
   conversations: readonly Conversation[];
   act: Performed;
   from?: From;
   accountName?: (accountId: number) => string;
-  onUnauthorized: () => void;
 }): Promise<Map<string, Outcome>> {
   const words = typeof act === "string" ? actionWords[act] : act.words;
   const current = () => isCurrent(mail);
@@ -168,21 +163,18 @@ export async function perform({
       subject: subjectOf(conversations),
       count: conversations.length,
       where: words.where,
-      onUndo: () =>
-        void undo({ mail, runs, named: () => named, accountName, current, onUnauthorized }),
+      onUndo: () => void undo({ mail, runs, named: () => named, accountName, current }),
     });
   }
 
   const outcomes = new Map<string, Outcome>();
   const failures: Failure[] = [];
-  let ended = false;
   // Each answer as it is: the requests already go one after another.
   const answers = await Promise.allSettled(runs.map((run) => run.answer));
   for (const [i, { batch }] of runs.entries()) {
     const answer = answers[i];
     if (answer.status === "rejected") {
       const err: unknown = answer.reason;
-      if (err instanceof ApiError && err.status === unauthorized) ended = true;
       const message = err instanceof ApiError ? userMessage(err) : undefined;
       for (const conversation of batch) {
         outcomes.set(conversation.id, "failed");
@@ -223,10 +215,6 @@ export async function perform({
     }
   }
   if (!current()) return outcomes;
-  if (ended) {
-    onUnauthorized();
-    return outcomes;
-  }
   closeAbout(closes);
   if (ours.length > 0) {
     showError(
@@ -248,23 +236,20 @@ export async function perform({
 // their own conversations, once each has answered, in requests that go
 // one after another, and tells screen readers it did, naming the
 // conversations named returns; it does nothing when nothing changed, and
-// says so when the undo fails, as perform does. An ended session calls
-// onUnauthorized. Nothing shows once current says the member's mail has
-// ended, e.g. after sign-out.
+// says so when the undo fails, as perform does. Nothing shows once current
+// says the member's mail has ended, e.g. after sign-out.
 async function undo({
   mail,
   runs,
   named,
   accountName,
   current,
-  onUnauthorized,
 }: {
   mail: ActionMail;
   runs: readonly Run[];
   named: () => readonly Conversation[];
   accountName: ((accountId: number) => string) | undefined;
   current: () => boolean;
-  onUnauthorized: () => void;
 }): Promise<void> {
   // Each answer's undo, for its own conversations only: an answer may group
   // others with them. One request each: an answer names at most as many
@@ -291,7 +276,6 @@ async function undo({
   });
   const settled = await Promise.allSettled(answers);
   const failures: Failure[] = [];
-  let ended = false;
   for (const [i, { batch, changes }] of requests.entries()) {
     const changed = new Set(changes.flatMap((change) => change.ids));
     const reached = batch.filter((c) => changed.has(c.id));
@@ -305,13 +289,11 @@ async function undo({
       continue;
     }
     const err: unknown = answer.reason;
-    if (err instanceof ApiError && err.status === unauthorized) ended = true;
     const message = err instanceof ApiError ? userMessage(err) : undefined;
     for (const conversation of reached) failures.push({ conversation, reason: "error", message });
   }
   if (!current()) return;
-  if (ended) onUnauthorized();
-  else if (failures.length > 0)
+  if (failures.length > 0)
     showError(
       undoFailed,
       ...said(failures, shown.length > 1, accountName, ({ id }) =>

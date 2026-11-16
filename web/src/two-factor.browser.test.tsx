@@ -22,6 +22,7 @@ import { Route as App } from "@/routes/_app";
 import { Route as Auth } from "@/routes/_auth";
 import { Route as TwoFactorCard } from "@/routes/_auth/two-factor-setup";
 import { ComposeStore } from "@/features/outgoing-messages/compose-store";
+import { watchSessionEnd } from "@/features/auth/session-end";
 
 const noContent = 204;
 const unauthorized = 401;
@@ -277,6 +278,8 @@ async function openCard(server: Server, stale: "stale-session" | "no-cache" = "n
     history: createMemoryHistory({ initialEntries: ["/two-factor-setup"] }),
     context: { queryClient, compose: new ComposeStore() },
   });
+  // As the app's router does (router.tsx).
+  watchSessionEnd(queryClient, router);
   await render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -332,6 +335,8 @@ async function open(
   });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   opened = queryClient;
+  // As the app's router does (router.tsx).
+  watchSessionEnd(queryClient, router);
   await render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />

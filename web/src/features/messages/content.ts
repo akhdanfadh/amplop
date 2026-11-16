@@ -1,28 +1,20 @@
-import { useEffect } from "react";
 import { useGetMessageContent } from "@/api/generated/inbok";
 import type { MessageContentOutput } from "@/api/generated/model/messageContent.zod";
 import type { Attachment } from "./attachments";
 import type { MessageBody, MessageContent } from "./view";
-
-const unauthorized = 401;
 
 // The API's own addresses, the only ones the message view links or frames.
 const apiPrefix = "/api/";
 
 // useMessageContent loads the content of the message with id, the API's
 // message ID, and returns it as the message view shows it. Try again
-// reads it once more; onUnauthorized runs when the read finds the session
-// gone.
-export function useMessageContent(id: string, onUnauthorized: () => void): MessageContent {
+// reads it once more.
+export function useMessageContent(id: string): MessageContent {
   // A message's content never changes, so it is never read again in the
   // background, e.g. when the window regains focus: each read would cost a
   // request, and for content not stored yet, a call to the provider. A
   // deleted message leaves through the conversation's own data.
   const read = useGetMessageContent(id, { query: { staleTime: Infinity } });
-  const expired = read.error?.status === unauthorized;
-  useEffect(() => {
-    if (expired) onUnauthorized();
-  }, [expired, onUnauthorized]);
   if (read.data) return toContent(read.data.data);
   if (read.error)
     return {

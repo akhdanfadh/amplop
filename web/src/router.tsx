@@ -6,6 +6,7 @@ import { getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
 import { retryOptions } from "@/api/retry";
 import { NotFound, RouteError, RoutePending, pendingAfterMs } from "@/components/route-states";
 import { sessionFreshMs } from "@/features/auth/session";
+import { watchSessionEnd } from "@/features/auth/session-end";
 import { ComposeStore } from "@/features/outgoing-messages/compose-store";
 import { verifyEmailPath } from "@/features/email-verification/path";
 import { resetPath } from "@/features/password-reset/path";
@@ -60,6 +61,9 @@ export function getRouter(): Router<typeof routeTree> {
     ),
   });
 
+  // One rule for every 401 a signed-in page gets, for the app's life.
+  watchSessionEnd(queryClient, router);
+
   // After the first load, a slow page keeps its view at least 500 ms.
   const unsubscribe = router.subscribe("onResolved", () => {
     unsubscribe();
@@ -72,6 +76,9 @@ declare module "@tanstack/react-router" {
   // HistoryState is what one page hands the next without putting it in the
   // address, where it would reach history, copied links, and server logs.
   interface HistoryState {
+    // Set as an open page opens sign-in because its session ended, for
+    // sign-in to say so.
+    sessionEnded?: boolean;
     // The email of an account just created, for sign-in to fill in.
     registeredEmail?: string;
     // The email of an account whose password was just reset, for sign-in

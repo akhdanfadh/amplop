@@ -5,7 +5,6 @@ import { cachedRead } from "@/api/cached-read";
 import { getGetConversationQueryOptions } from "@/api/generated/inbok";
 import { ApiError } from "@/api/transport";
 import { conversationIdSchema } from "@/features/mail/address";
-import { isSessionEnded, sessionEnded } from "@/features/auth/guard";
 import { currentMail } from "@/features/mail/conversations";
 import { listKey } from "@/features/mail/focus-request";
 import { searchPlace } from "@/features/mail/places";
@@ -40,7 +39,7 @@ export const Route = createFileRoute("/_app/_mail/mail/$place/$conversationId")(
   // as the reading pane keeps its own fresh. TanStack still runs the
   // loader for another conversation, which is a new match.
   shouldReload: false,
-  loader: async ({ context: { queryClient }, params: { conversationId }, location }) => {
+  loader: async ({ context: { queryClient }, params: { conversationId } }) => {
     const options = getGetConversationQueryOptions(conversationId);
     if (currentMail(queryClient)?.conversations.has(conversationId)) {
       // Not cachedRead, and not awaited: this read only refreshes the
@@ -53,7 +52,6 @@ export const Route = createFileRoute("/_app/_mail/mail/$place/$conversationId")(
       await cachedRead(queryClient, options);
     } catch (err) {
       if (err instanceof ApiError && err.status === notFoundStatus) throw notFound();
-      if (isSessionEnded(err)) throw sessionEnded(queryClient, location.href);
       throw err;
     }
   },

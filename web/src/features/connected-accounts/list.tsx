@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
-import { useSessionEnd } from "@/features/auth/session-end";
+import { isSessionEnded } from "@/features/auth/guard";
 import { SettingsSection } from "@/features/settings/page";
 import { cn } from "@/lib/cn";
 import { NameForm } from "./name-form";
@@ -90,7 +90,6 @@ export function AccountList({
   onSyncStarted: () => void;
 }): ReactElement {
   const client = useQueryClient();
-  const sessionEnd = useSessionEnd();
   const headingRef = useRef<HTMLHeadingElement>(null);
   // The account the dialog asks about, kept while it closes so its words
   // stay.
@@ -156,10 +155,10 @@ export function AccountList({
     return () => window.removeEventListener("pageshow", unlock);
   }, [resetConnect, resetReconnect, client]);
 
-  // startFailed ends the page on a 401, says why a start failed, and
+  // startFailed leaves a 401 to the session-end rule, says why a start failed, and
   // rereads what a refusal shows has changed.
   function startFailed(err: ApiError): void {
-    if (sessionEnd(err)) return;
+    if (isSessionEnded(err)) return;
     onNotice({ tone: "problem", text: startErrorMessage(err) });
     // Gmail was offered when the page loaded; an administrator has removed
     // it since, which takes Connect and Reconnect away.
@@ -210,7 +209,7 @@ export function AccountList({
           setDialogOpen(false);
         },
         onError: (err) => {
-          if (sessionEnd(err) || !isAccountGone(err)) return;
+          if (isSessionEnded(err) || !isAccountGone(err)) return;
           onNotice(alreadyDisconnectedNotice(accountName(account)));
           setDialogOpen(false);
         },
@@ -351,7 +350,6 @@ function AccountRow({
   onDisconnect: () => void;
 }): ReactElement {
   const client = useQueryClient();
-  const sessionEnd = useSessionEnd();
   const [editing, setEditing] = useState(false);
   // Whether Check now has focus, so focus has a place when it goes, e.g. as
   // a full sync starts.
@@ -437,7 +435,7 @@ function AccountRow({
           }, syncNowRefresh);
         },
         onError: (err) => {
-          if (!sessionEnd(err)) onNotice(syncNotice(err, name));
+          if (!isSessionEnded(err)) onNotice(syncNotice(err, name));
         },
       },
     );

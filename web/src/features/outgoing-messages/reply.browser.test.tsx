@@ -162,7 +162,7 @@ function Conversation({ message }: { message: AnsweredMessage }) {
   return (
     <>
       <h1>Lunch</h1>
-      <ReplyProvider onUnauthorized={() => {}}>
+      <ReplyProvider>
         <ReplyEditorSlot messageId={message.id} />
         <ReplyEditorSlot messageId={newer.id} />
         <ConversationReply message={last} />

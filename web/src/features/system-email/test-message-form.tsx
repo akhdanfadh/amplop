@@ -12,7 +12,6 @@ import { emailAddress } from "@/api/validation";
 import { useAppForm } from "@/components/form/app-form";
 import { useFormRequest } from "@/components/form/request";
 import { RequestError } from "@/components/request-error";
-import { useSessionEnd } from "@/features/auth/session-end";
 import { testErrorMessage, testResultMessage } from "./test-result";
 import { testText } from "./text";
 import { dayAndTime } from "@/lib/datetime";
@@ -43,11 +42,9 @@ export function TestMessageForm({
   sendRequests: number;
 }): ReactElement {
   const client = useQueryClient();
-  const sessionEnd = useSessionEnd();
   const ref = useRef<HTMLDivElement>(null);
   const send = useSendSystemEmailTestMessage({
     mutation: {
-      onError: (err) => void sessionEnd(err),
       // A pass records the tested time and a failure clears it; a lost
       // response may have done either. Either resumes or pauses an open
       // registration, so Registration reads its status again too.

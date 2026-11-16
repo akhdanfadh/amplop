@@ -1,9 +1,7 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { CircleCheckIcon, CircleDashedIcon } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetCurrentSessionQueryKey, useRequestEmailVerification } from "@/api/generated/inbok";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { StatusBadge } from "@/components/status-badge";
 import { SettingsSection } from "@/features/settings/page";
 import { Button } from "@/components/ui/button";
@@ -26,7 +24,6 @@ export function EmailVerificationSection({
   onWritingChange: (pending: boolean) => void;
 }): ReactElement {
   const client = useQueryClient();
-  const navigate = useNavigate();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   // Set when a send starts; once it ends, focus that fell to the page goes
@@ -51,12 +48,6 @@ export function EmailVerificationSection({
       : send.error && alreadyVerified(send.error) && verified
         ? "Your email address is already verified."
         : "";
-
-  useEffect(() => {
-    if (!expired) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true, ignoreBlocker: true });
-  }, [expired, client, navigate]);
 
   // The button keeps focus while it sends. Focus falls to the page when a
   // lock disables it meanwhile, or a verified address removes it: give it

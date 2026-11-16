@@ -84,15 +84,13 @@ function serve(
 
 // show renders the compose form starting with initial, sending from one of
 // accounts, as the docked window draws it, inside a router with a second page, /elsewhere, to
-// leave for. It returns the messages the form reported sent, how many 401s
-// it reported, what closing would lose as it last reported, the query
+// leave for. It returns the messages the form reported sent, what closing would lose as it last reported, the query
 // client, the router, and the rendered screen.
 async function show(
   initial: ComposeValues = composeValues(),
   accounts: ListedAccount[] = [studio, stale],
 ) {
   const sent: OutgoingMessage[] = [];
-  const unauthorized = { count: 0 };
   const loses: { last: LeaveState | null } = { last: null };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRootRoute();
@@ -111,7 +109,6 @@ async function show(
         onLoses={(state) => {
           loses.last = state;
         }}
-        onUnauthorized={() => unauthorized.count++}
       />
     ),
   });
@@ -129,7 +126,7 @@ async function show(
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  return { sent, unauthorized, loses, client, router, screen };
+  return { sent, loses, client, router, screen };
 }
 
 // write chooses Studio in From and fills To, Subject, and Message.
@@ -407,15 +404,6 @@ describe("ComposeForm", () => {
       .poll(() => reread.mock.calls.map(([filters]) => filters?.queryKey))
       .toContainEqual(getListOutgoingMessagesQueryKey());
     expect(sent).toEqual([]);
-  });
-
-  it("reports a 401 to the page", async () => {
-    serve([() => problem(401, "/api/v0/problems/unauthenticated")]);
-    const { unauthorized } = await show(composeValues(message));
-
-    await userEvent.click(page.getByRole("button", { name: "Send" }));
-
-    await expect.poll(() => unauthorized.count).toBe(1);
   });
 
   it("rereads the accounts when the server says the account needs reconnecting", async () => {

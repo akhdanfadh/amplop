@@ -278,15 +278,6 @@ describe("Reader", () => {
     expect(page.getByRole("heading", { name: "Page not found" }).elements()).toHaveLength(0);
   });
 
-  it("opens sign-in when the read finds the session ended", async () => {
-    const row = conversation(1);
-    const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
-    answer(api, row.id, () => problem(401, "unauthenticated"));
-    const router = await app(api, row.id, "from-list");
-
-    await expect.poll(() => router.state.location.pathname).toBe("/sign-in");
-  });
-
   it("says when the accounts can't be read, with Try again", async () => {
     const row = conversation(1);
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);

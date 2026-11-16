@@ -52,8 +52,7 @@ import {
 // answered message, named when it can't send. With edit, a reply Gmail
 // refused, it sends that reply again with the member's edits, from its own
 // account, a fixed row. onSent receives the saved reply, whose send goes
-// on in the background; onDiscard runs when the
-// member discards it; onUnauthorized runs on a 401.
+// on in the background; onDiscard runs when the member discards it.
 export function ReplyEditor({
   answeredId,
   mode,
@@ -62,7 +61,6 @@ export function ReplyEditor({
   initial,
   onSent,
   onDiscard,
-  onUnauthorized,
   edit,
 }: {
   edit?: OutgoingMessage;
@@ -73,11 +71,10 @@ export function ReplyEditor({
   initial: ReplyValues;
   onSent: (reply: OutgoingMessage) => void;
   onDiscard: () => void;
-  onUnauthorized: () => void;
 }): ReactElement {
   const client = useQueryClient();
   const [discarding, setDiscarding] = useState(false);
-  const editor = useEditorSend(onUnauthorized);
+  const editor = useEditorSend();
   // Both hooks run, as hooks must; edit, fixed for the form's life, picks
   // the one that sends. Send again needs no key: the reply is its own.
   const create = useReplyToMessage(editor.options);
@@ -192,6 +189,7 @@ export function ReplyEditor({
         <LeaveWarning
           active={edited || sending || editor.unconfirmed}
           text={replyLeaveText(editor.leaveState(sending))}
+          onSessionEnd="stay"
         />
       </form.Form>
     </form.AppForm>

@@ -1,6 +1,5 @@
-import { useEffect, type ReactElement } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import type { ReactElement } from "react";
+import { Link } from "@tanstack/react-router";
 import { ShieldCheckIcon } from "lucide-react";
 import { useGetTOTPStatus } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
@@ -8,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { ReadError } from "@/components/read-error";
 import { StatusBadge } from "@/components/status-badge";
 import { buttonVariants } from "@/components/ui/button";
-import { clearAccountCache } from "@/features/auth/session-cache";
+import { isSessionEnded } from "@/features/auth/guard";
 import { SettingsSection } from "@/features/settings/page";
 import {
   checkingStatus,
@@ -21,8 +20,6 @@ import {
   twoFactorAbout,
   twoFactorTitle,
 } from "./text";
-
-const unauthorized = 401;
 
 // TwoFactorBadge is the status badge for two-factor authentication on.
 export function TwoFactorBadge(): ReactElement {
@@ -38,18 +35,11 @@ export function TwoFactorBadge(): ReactElement {
 // unfinished setup counts as off: setting up continues it. The setup and
 // the changes happen on the two-factor page.
 export function TwoFactorSection(): ReactElement {
-  const client = useQueryClient();
-  const navigate = useNavigate();
   const status = useGetTOTPStatus({ query: { networkMode: "always" } });
   const current = status.data?.data;
   const on = current?.status === "on";
-  const ended = status.error?.status === unauthorized;
-
-  useEffect(() => {
-    if (!ended) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true });
-  }, [ended, client, navigate]);
+  // An ended session, which the session-end rule answers (watchSessionEnd).
+  const ended = isSessionEnded(status.error);
 
   return (
     <SettingsSection

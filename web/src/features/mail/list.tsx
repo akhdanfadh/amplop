@@ -26,7 +26,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/
 import { GridList, GridListEnd, GridListLoadMore } from "@/components/ui/grid-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { clearAccountCache } from "@/features/auth/session-cache";
+import { useKeptSignedOut } from "@/features/auth/session-end";
 import { cn } from "@/lib/cn";
 import {
   WholePlaceRefused,
@@ -61,8 +61,6 @@ import {
   stillSyncing,
 } from "./text";
 import { clockTime } from "@/lib/datetime";
-
-const unauthorized = 401;
 
 // Rows per page: the API's default page.
 const pageSize = 50;
@@ -233,16 +231,14 @@ export function ConversationList({
   });
 
   const error = firstError(list.health);
-  const expired = error instanceof ApiError && error.status === unauthorized;
   // A load for older rows failed, e.g. the place's next page; the rows
   // already shown stay.
   const olderFailed = list.health?.error != null && list.data.length > 0;
-  const refreshing = list.isSyncError && !olderFailed;
-  useEffect(() => {
-    if (!expired) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true });
-  }, [expired, client, navigate]);
+  // A page kept signed out to copy from (watchSessionEnd): its banner says
+  // why nothing loads; inbok is answering, and Try again could only empty
+  // the rows kept to copy from.
+  const keptSignedOut = useKeptSignedOut();
+  const refreshing = list.isSyncError && !olderFailed && !keptSignedOut;
 
   const retry = () => {
     restartMail(client);
@@ -250,10 +246,11 @@ export function ConversationList({
   };
   // A list that could not read its rows in order, e.g. as TanStack DB asked
   // for the whole place, which inbok refuses, says so, never that the place
-  // is empty (ADR031, TanStack DB gate, rule 9).
+  // is empty (ADR031, TanStack DB gate, rule 9); so does one whose first
+  // page met an ended session on a page kept to copy from.
   const unordered = error instanceof WholePlaceRefused;
   const firstPageFailed = list.isLoadingError && error instanceof ApiError;
-  if ((firstPageFailed || unordered) && list.data.length === 0 && !expired) {
+  if ((firstPageFailed || unordered) && list.data.length === 0) {
     return (
       <div className="p-4">
         <ReadError
@@ -265,7 +262,7 @@ export function ConversationList({
       </div>
     );
   }
-  if (list.isLoading || list.isIdle || list.isCleanedUp || expired) return <Placeholder />;
+  if (list.isLoading || list.isIdle || list.isCleanedUp) return <Placeholder />;
   if (rows.length === 0 && !list.hasNextPage) {
     return (
       <EmptyList
@@ -294,10 +291,6 @@ export function ConversationList({
       mail: { client, conversations, placeCounts },
       conversations: [conversation],
       act: starred ? "star" : "unstar",
-      onUnauthorized: () => {
-        clearAccountCache(client);
-        void navigate({ to: "/sign-in", replace: true });
-      },
     });
   };
 
@@ -452,7 +445,7 @@ export function ConversationList({
           </PickingContext>
         </RowLabelsContext>
       </div>
-      {olderFailed && (
+      {olderFailed && !keptSignedOut && (
         <div role="alert" className="flex items-center gap-3 border-t px-4 py-2 text-sm">
           <p className="flex-1">{olderFailedText}</p>
           <Button variant="outline" size="sm" onPress={retry}>

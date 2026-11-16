@@ -1,20 +1,19 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore, type ReactElement } from "react";
+import { useEffect, useRef, useSyncExternalStore, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { ArrowLeftIcon } from "lucide-react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { getGetConversationQueryOptions, useListConnectedAccounts } from "@/api/generated/inbok";
-import { ApiError } from "@/api/transport";
 import { accountName } from "@/components/account-mark";
 import { ReadError } from "@/components/read-error";
 import { NotFound } from "@/components/route-states";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { Spinner } from "@/components/ui/spinner";
-import { clearAccountCache } from "@/features/auth/session-cache";
 import { ConversationView } from "@/features/messages/conversation";
+import { isSessionEnded } from "@/features/auth/guard";
 import { useLayout } from "@/hooks/use-layout";
-import { isCurrent, runAction, type ActionMail } from "./actions";
+import { runAction, type ActionMail } from "./actions";
 import { currentMail } from "./conversations";
 import { requestRowFocus } from "./focus-request";
 import { LabelChips } from "./label-chips";
@@ -32,7 +31,6 @@ import {
   subjectText,
 } from "./text";
 
-const unauthorized = 401;
 const notFoundStatus = 404;
 
 // ReaderList is the list a conversation was opened from: one place's, or
@@ -81,17 +79,7 @@ export function Reader({
     ...getGetConversationQueryOptions(conversationId),
     refetchOnWindowFocus: false,
   });
-  const expired = read.error?.status === unauthorized;
-  // signOut opens sign-in once a read finds the session gone.
-  const signOut = useCallback(() => {
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true });
-  }, [client, navigate]);
-
-  useEffect(() => {
-    if (expired) signOut();
-  }, [expired, signOut]);
-
+  const expired = isSessionEnded(read.error);
   const detail = read.data?.data;
   const mail = currentMail(client);
   const labels = useLabelsIn(mail);
@@ -120,7 +108,6 @@ export function Reader({
     actionMail,
     conversation,
     detail?.messages !== undefined && account?.status === "usable",
-    signOut,
   );
   // Back returns to the list the member came from, as the phone's own back
   // does, so it adds no history, when a row of it opened the conversation;
@@ -150,12 +137,10 @@ export function Reader({
     // moves the address at once, while the pane draws this conversation
     // until the next one's page has loaded.
     const at = router.state.location.href;
-    void perform({ mail: actionMail, conversations: [row], act, onUnauthorized: signOut }).then(
-      (outcomes) => {
-        const gone = outcomes.get(row.id) === "gone";
-        if (gone && !leaves && router.state.location.href === at) goBack();
-      },
-    );
+    void perform({ mail: actionMail, conversations: [row], act }).then((outcomes) => {
+      const gone = outcomes.get(row.id) === "gone";
+      if (gone && !leaves && router.state.location.href === at) goBack();
+    });
     if (!leaves) return;
     left.current = row.id;
     requestRowFocus(list.key, {
@@ -208,7 +193,6 @@ export function Reader({
         messages={detail?.messages}
         placeholder={status}
         startAt={startAt}
-        onUnauthorized={signOut}
         marks={
           row && (
             <LabelChips
@@ -272,13 +256,11 @@ export function Reader({
 // ready and the tab shows, only while it is unread then. ready says its
 // messages are read, which decided the ones that start open, and its
 // account is usable. A refused or failed read puts the row back unsaid
-// and is not tried again; one that finds the session ended runs
-// onUnauthorized.
+// and is not tried again.
 function useReadOnOpen(
   mail: ActionMail | undefined,
   conversation: { id: string; unread: boolean } | undefined,
   ready: boolean,
-  onUnauthorized: () => void,
 ): void {
   const visible = useTabVisible();
   // The conversation this opening already decided for.
@@ -288,11 +270,10 @@ function useReadOnOpen(
     if (decided.current === conversation.id) return;
     decided.current = conversation.id;
     if (!conversation.unread) return;
-    runAction(mail, { action: "read", ids: [conversation.id] }).catch((err: unknown) => {
-      if (err instanceof ApiError && err.status === unauthorized && isCurrent(mail))
-        onUnauthorized();
-    });
-  }, [mail, conversation, ready, visible, onUnauthorized]);
+    // A failure has nothing to say: an ended session is the session-end
+    // rule's.
+    runAction(mail, { action: "read", ids: [conversation.id] }).catch(() => undefined);
+  }, [mail, conversation, ready, visible]);
 }
 
 // useTabVisible reports whether the page's tab shows.

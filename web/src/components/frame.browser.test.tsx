@@ -34,6 +34,7 @@ function Inbox() {
       <h1>Inbox</h1>
       <LeaveWarning
         active
+        onSessionEnd="stay"
         text={{
           title: "Leave without sending?",
           description: "Your message will be lost.",

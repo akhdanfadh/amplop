@@ -114,6 +114,9 @@ The web app reads these from the contract; keep them stable:
 - Every operation lists one tag from `httpapi/tags.go` and a summary
   that is a Title Case title of at most five words, e.g. "Sign In with
   Code"; what it does in detail goes in `Description`.
+- A signed-in operation answers 401 only when no session is left: the
+  web reads every 401 on a signed-in page as an ended session
+  (`watchSessionEnd`). A wrong password or code there is a 403 or 422.
 - A 204 response needs transport work first: `web/src/api/transport.ts`
   requires a response schema.
 - The server links only these web addresses, in emails and redirects:
@@ -129,6 +132,12 @@ The web app reads these from the contract; keep them stable:
   actions are the exception: `runAction` (`web/src/features/mail/actions.ts`)
   writes through the mail's TanStack DB collection, so every list shows
   the change at once and a refusal puts it back (ADR031).
+- A page never handles a 401 itself: `transport` tells the one
+  session-end rule (`watchSessionEnd`, web/README.md "Routes"). A read's
+  401 is left out of what the page shows; a write the member pressed
+  says why it failed, as any failure does. A `LeaveWarning` says with
+  `onSessionEnd` whether its work stays on screen, to copy, when the
+  session ends.
 - A request failure lives in the mutation (`create.error`); field
   problems live in the form's errors. A request failure in the form's
   error map blocks a retry until the next edit.

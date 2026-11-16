@@ -23,3 +23,18 @@ export function cachedRead<T>(
     staleTime: onlineManager.isOnline() ? Infinity : "static",
   });
 }
+
+// loadedFreshMs is how long a page counts what its loader just read as
+// fresh, so it does not send the same read again as it opens; anything
+// older it reads again then.
+export const loadedFreshMs = 5_000;
+
+// cachedLoader returns the loader of a page that cannot draw without the
+// read options describe (web/README.md "Routes"): it reads through
+// cachedRead before the page draws, and throws a failure, a 401 included,
+// for the route's error view.
+export function cachedLoader<T>(
+  options: () => QueryExecuteOptions<T, ApiError>,
+): (match: { context: { queryClient: QueryClient } }) => Promise<T> {
+  return ({ context }) => cachedRead(context.queryClient, options());
+}

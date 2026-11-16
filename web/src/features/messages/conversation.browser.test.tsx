@@ -80,12 +80,9 @@ function thread(count: number): ConversationMessage[] {
 
 // The message IDs whose content the view asked for.
 let read: string[] = [];
-// Whether content reads answer that the session is gone.
-let expired = false;
 
 beforeEach(() => {
   read = [];
-  expired = false;
   vi.stubGlobal(
     "fetch",
     vi.fn<(input: string) => Promise<Response>>(async (input) => {
@@ -93,11 +90,6 @@ beforeEach(() => {
         return Response.json({ data: { accounts: [listed], syncStopped: false } }, { status: ok });
       const id = /\/messages\/([^/]+)\/content/.exec(input)?.[1] ?? "";
       read.push(id);
-      if (expired)
-        return Response.json(
-          { type: "/api/v0/problems/unauthenticated", status: 401, title: "", detail: "" },
-          { status: 401, headers: { "Content-Type": "application/problem+json" } },
-        );
       return Response.json(
         {
           data: {
@@ -149,7 +141,6 @@ function Harness({
           subject="Spring plan"
           account={account}
           messages={messages}
-          onUnauthorized={() => {}}
           {...slots}
           startAt={startAt}
         />
@@ -657,14 +648,6 @@ describe("ConversationView", () => {
 
     await expect.element(page.getByText("<payroll@company.example>,")).toBeVisible();
     await expect.element(page.getByText("helper@evil.example", { exact: true })).toBeVisible();
-  });
-
-  it("reports a session gone while content loads", async () => {
-    expired = true;
-    const onUnauthorized = vi.fn<() => void>();
-    await show([message(1)], 700, { onUnauthorized });
-
-    await expect.poll(() => onUnauthorized.mock.calls.length).toBeGreaterThan(0);
   });
 
   it("moves focus to the first address Show all reveals", async () => {

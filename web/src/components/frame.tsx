@@ -15,6 +15,7 @@ import { useLandmark } from "react-aria/useLandmark";
 import { cn } from "@/lib/cn";
 import { MemberMenu } from "@/components/member-menu";
 import { OfflineBanner } from "@/components/offline-banner";
+import { SessionEndedBanner } from "@/features/auth/session-ended-banner";
 import { SyncStopped } from "@/features/connected-accounts/sync-stopped";
 import { SetupReminder } from "@/features/setup-reminder/reminder";
 import {
@@ -120,7 +121,8 @@ export function Frame({
       <SidebarInset className="h-svh">
         <TopBar slotRef={setSlot} />
         {/* Stacked, the conditions of the moment above the setup still
-            owed. */}
+            owed, an ended session first: nothing here can be saved. */}
+        <SessionEndedBanner place="frame" />
         <OfflineBanner />
         <SyncStopped />
         <SetupReminder />

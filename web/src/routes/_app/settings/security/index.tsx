@@ -74,12 +74,6 @@ function Security(): ReactElement {
     });
   }, [handedOver, navigate]);
 
-  useEffect(() => {
-    if (current.error?.status !== unauthorized) return;
-    clearAccountCache(client);
-    void navigate({ to: "/sign-in", replace: true, ignoreBlocker: true });
-  }, [current.error, client, navigate]);
-
   return (
     <SettingsPage title={pageName.security} lead={securityLead} notice={notice}>
       {/* Only a first check says so: DESIGN.md has background re-reads

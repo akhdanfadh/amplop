@@ -79,6 +79,10 @@ export function CodesStep({
       <LeaveWarning
         active={leaveWarning}
         text={kind === "setup" ? setupLeaveText : replaceLeaveText}
+        // The codes work only once a signed-in Finish makes them active: after
+        // sign-in, setup shows the same ones again, and a replacement's old
+        // codes still work (the API's Finish operations).
+        onSessionEnd="leave"
       />
       <Heading ref={headingRef} tabIndex={-1} className="font-medium outline-none">
         {kind === "setup" ? codesText.setupHeading : codesText.replaceHeading}

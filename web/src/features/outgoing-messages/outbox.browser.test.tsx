@@ -8,8 +8,6 @@ import { useOutgoingMessage } from "./outbox";
 import { sendPollMs } from "./poll";
 
 const ok = 200;
-const unauthorized = 401;
-const notFound = 404;
 const internalError = 500;
 const serviceUnavailable = 503;
 
@@ -233,13 +231,5 @@ describe("useOutgoingMessage", () => {
     await expect.poll(() => result.current.message?.status).toBe("sent");
     expect(result.current.error).toBeNull();
     expect(reads).toEqual({ outbox: 2, message: 2 });
-  });
-
-  it("says the session ended though the message's own failure shows", async () => {
-    serve({ outbox: [[sending], unauthorized], message: [notFound] });
-    const { result } = await read();
-
-    await expect.poll(() => result.current.expired, { timeout: 4_000 }).toBe(true);
-    expect(result.current.error?.status).toBe(notFound);
   });
 });

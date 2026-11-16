@@ -328,17 +328,6 @@ describe("SetupReminder", () => {
     client.clear();
   });
 
-  it("opens sign-in when the focus reread finds the session ended", async () => {
-    await open({ role: "member", emailVerified: false });
-    await expect.element(page.getByRole("link", { name: "Verify it in Security" })).toBeVisible();
-
-    ended = true;
-    focusManager.setFocused(false);
-    focusManager.setFocused(true);
-
-    await expect.element(page.getByRole("heading", { name: "/sign-in" })).toBeVisible();
-  });
-
   it("sits under the offline banner in the frame, which is still announced", async () => {
     onlineManager.setOnline(false);
     await open({ role: "member", emailVerified: false }, { around: "frame" });

@@ -37,7 +37,6 @@ import {
 } from "./text";
 import { lineLink } from "@/components/link-style";
 
-const unauthorized = 401;
 const buttonClass = "w-fit whitespace-normal";
 // A link in the status, at the 14 px of its text and buttons.
 const statusLink = cn(lineLink, "text-sm");
@@ -47,8 +46,7 @@ const statusLink = cn(lineLink, "text-sm");
 // accounts (undefined until they load): send it again, edit it into a new
 // message, reconnect its account, or open the copy it was sent again as;
 // and, while the API allows it, dismiss it.
-// onSentAgain receives the copy a Send again saved; onUnauthorized runs on
-// a 401. onEdit, when given, runs on Edit and send instead of opening the
+// onSentAgain receives the copy a Send again saved. onEdit, when given, runs on Edit and send instead of opening the
 // compose window with message's content, e.g. so a reply is edited into a
 // new reply. look "window" is the compose window's summary after Send (DESIGN.md "Compose
 // and reply"): a mark, one line, and the sending account in its colour,
@@ -59,14 +57,12 @@ export function MessageStatus({
   message,
   accounts,
   onSentAgain,
-  onUnauthorized,
   onEdit,
   look,
 }: {
   message: OutgoingMessage;
   accounts: ListedAccount[] | undefined;
   onSentAgain: (copy: OutgoingMessage) => void;
-  onUnauthorized: () => void;
   onEdit?: () => void;
   look: "window" | "pane";
 }): ReactElement {
@@ -90,9 +86,6 @@ export function MessageStatus({
     mutation: {
       // A repeat returns the copy the first saved.
       ...repeatableWriteRetry,
-      onError: (err) => {
-        if (err.status === unauthorized) onUnauthorized();
-      },
       // A refusal can mean the status changed; any outcome may have saved a copy.
       onSettled: () => {
         void client.invalidateQueries({ queryKey: getGetOutgoingMessageQueryKey(message.id) });
@@ -104,9 +97,6 @@ export function MessageStatus({
     mutation: {
       // A repeat returns the message unchanged.
       ...repeatableWriteRetry,
-      onError: (err) => {
-        if (err.status === unauthorized) onUnauthorized();
-      },
       // Returned, so the button stays pending until the reads show the
       // message dismissed; a refusal can mean the status changed.
       onSettled: () =>

@@ -544,7 +544,14 @@ describe("the reading pane's actions", () => {
     const router = await open(rows, 0);
     await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
     await expect.poll(() => api.actions).toHaveLength(1);
-    api.signedOut = true;
+    // The session ends as the Undo is sent: any request before it would
+    // open sign-in first.
+    const answer = api.fetch;
+    api.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes("/conversations/changes")) api.signedOut = true;
+      return answer(input, init);
+    };
 
     await userEvent.click(bar().getByRole("button", { name: "Undo" }));
 

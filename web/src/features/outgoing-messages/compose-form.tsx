@@ -52,13 +52,13 @@ export type ComposeHeader = { title: string; send: ReactNode };
 // it sends that message again with the member's edits, from its own
 // account and, for a reply, with its own subject, both then fixed rows.
 // initial is what the form starts with; note, shown above the rows, e.g.
-// says the member is signed out. look is the compose
+// the signed-out banner while the window covers the page. look is the compose
 // window's: "window" puts Send in the bar under the message, "full-screen"
 // in header, the window's top bar, which the form draws first. collapsed
 // hides all but header while the window is minimised, keeping what is
 // typed. onSent receives the saved message, whose send goes on in the
 // background; onDiscard runs on Discard; onLoses receives what closing the
-// window would lose, whenever that changes; onUnauthorized runs on a 401.
+// window would lose, whenever that changes.
 export function ComposeForm({
   accounts,
   initial,
@@ -69,7 +69,6 @@ export function ComposeForm({
   onSent,
   onDiscard,
   onLoses,
-  onUnauthorized,
   edit,
 }: {
   edit?: OutgoingMessage;
@@ -82,10 +81,9 @@ export function ComposeForm({
   onSent: (message: OutgoingMessage) => void;
   onDiscard: () => void;
   onLoses: (loses: LeaveState | null) => void;
-  onUnauthorized: () => void;
 }): ReactElement {
   const rowsRef = useRef<HTMLDivElement>(null);
-  const editor = useEditorSend(onUnauthorized);
+  const editor = useEditorSend();
   // Both hooks run, as hooks must; edit, fixed for the form's life, picks
   // the one that sends. Send again needs no key: the message is its own.
   const create = useSendMessage(editor.options);

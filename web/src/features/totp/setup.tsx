@@ -78,7 +78,7 @@ type Shown =
 // onFinished runs once two-factor is on here, after the session cookie it
 // replaced is cleared from the cache; onCanceled once the setup is
 // canceled; onError receives every request's failure, the status reads'
-// included, e.g. for the page to sign out on a 401. Pass a stable onError,
+// included, e.g. for the page to stop on a 401. Pass a stable onError,
 // e.g. from useCallback: a failed read is reported again when it changes.
 export function useSetupFlow({
   email,

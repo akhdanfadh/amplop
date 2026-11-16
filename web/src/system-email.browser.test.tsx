@@ -18,6 +18,9 @@ import {
   systemEmailLoader,
 } from "@/routes/_app/settings/_admin/system-email";
 import { ComposeStore } from "@/features/outgoing-messages/compose-store";
+import { watchSessionEnd } from "@/features/auth/session-end";
+import { SessionEndedBanner } from "@/features/auth/session-ended-banner";
+import { RouteError } from "@/components/route-states";
 
 const ok = 200;
 const unauthorized = 401;
@@ -138,7 +141,17 @@ async function open(server: Server) {
     component: Outlet,
     beforeLoad: App.options.beforeLoad,
   });
-  const settings = createRoute({ getParentRoute: () => app, path: "settings", component: Outlet });
+  // The settings frame's signed-out banner, without the rest of the frame.
+  const settings = createRoute({
+    getParentRoute: () => app,
+    path: "settings",
+    component: () => (
+      <>
+        <SessionEndedBanner place="frame" />
+        <Outlet />
+      </>
+    ),
+  });
   // The administrator guard has its own tests; this page's are about the
   // page.
   const admin = createRoute({ getParentRoute: () => settings, id: "_admin", component: Outlet });
@@ -168,8 +181,13 @@ async function open(server: Server) {
     // waits for a read marked out of date.
     defaultStaleReloadMode: "blocking",
     defaultPreloadStaleTime: 0,
+    // As the app's router does (router.tsx): a failed read shows the
+    // router's failure view, an ended session's 401 its signed-out view.
+    defaultErrorComponent: RouteError,
     context: { queryClient, compose: new ComposeStore() },
   });
+  // As the app's router does (router.tsx).
+  watchSessionEnd(queryClient, router);
   await render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
@@ -383,7 +401,7 @@ describe("System email", () => {
     await expect.element(page.getByText("Security", { exact: true })).toBeVisible();
   });
 
-  it("opens sign-in when the session ends on a save, and comes back here after", async () => {
+  it("keeps typed settings when the session ends on a save, and signs in back here", async () => {
     const server: Server = { settings: saved, sent: [], bodies: [] };
     const router = await open(server);
     await userEvent.click(button("Edit settings"));
@@ -392,18 +410,35 @@ describe("System email", () => {
     server.ended = true;
     await userEvent.click(button("Save only"));
 
+    const banner = page.getByRole("region", { name: "Signed out" });
+    await expect.element(banner).toBeVisible();
+    expect(banner.element().textContent).toContain("Copy what you need, then sign in.");
+    await expect.element(field("From name")).toHaveValue("inbok team");
+    expect(router.state.location.pathname).toBe("/settings/system-email");
+
+    // The leave warning asks, since the typed settings go with the page.
+    await userEvent.click(banner.getByRole("link", { name: "sign in" }));
+    await expect.element(button("Discard changes")).toBeVisible();
+    // The dialog ignores a press within a double-click of opening.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await userEvent.click(button("Discard changes"));
+
     await expect.element(page.getByText("Sign in", { exact: true })).toBeVisible();
-    expect(router.state.location.pathname).toBe("/sign-in");
     expect(router.state.location.search).toEqual({ redirect: "/settings/system-email" });
+    expect(router.state.location.state.sessionEnded).toBe(true);
   });
 
-  it("opens sign-in when the session ended before the page loaded", async () => {
+  it("says it can't load when the session ended before the page first drew", async () => {
     // The guard's session read passes; the settings read finds it ended,
-    // as when another tab signed out between the two.
-    const router = await open({ settings: saved, readsEnded: true, sent: [], bodies: [] });
+    // as when another tab signed out between the two. No page has drawn,
+    // so the rule leaves the 401 to the router's view, whose link signs in
+    // back to this page.
+    await open({ settings: saved, readsEnded: true, sent: [], bodies: [] });
 
-    await expect.element(page.getByText("Sign in", { exact: true })).toBeVisible();
-    expect(router.state.location.search).toEqual({ redirect: "/settings/system-email" });
+    await expect.element(page.getByRole("heading", { name: "You're signed out" })).toBeVisible();
+    await expect
+      .element(page.getByRole("link", { name: "Sign in" }))
+      .toHaveAttribute("href", "/sign-in?redirect=%2Fsettings%2Fsystem-email");
   });
 
   it("opens sign-in when the session ends on a test message", async () => {

@@ -21,6 +21,7 @@ import {
   connectedAccountsLoader,
 } from "@/routes/_app/settings/connected-accounts";
 import { listedAccount } from "@/test/mail-api";
+import { watchSessionEnd } from "@/features/auth/session-end";
 
 const ok = 200;
 const accepted = 202;
@@ -209,6 +210,8 @@ async function open(server: Server, path = "/settings/connected-accounts", loade
     defaultPreloadStaleTime: 0,
     context: { queryClient, compose: new ComposeStore() },
   });
+  // As the app's router does (router.tsx).
+  watchSessionEnd(queryClient, router);
   await render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
