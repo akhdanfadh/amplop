@@ -1653,8 +1653,20 @@ refuses, or every one when the request fails, goes back as it was, and
 `details`) list them by reason; a later answer that changed again what
 failed on every conversation a toast names closes it (`closeAbout`):
 a toast is about keys of a conversation and what failed on it, e.g.
-`<id> place <label>`, and a named action's `<id> place` covers each
-place under it. Actions in flight
+`<id> place <label>`; Archive's and `unarchive`'s (Move to Inbox of an
+archived conversation) key is `<id> place inbox`, as they change the
+Inbox alone, and the other named actions', `untrash` (Move to Inbox from
+Trash) among them, is `<id> place`, which covers each place under it
+(`covers`). Each action, an Undo included, takes its turn in one order
+as its requests are queued: it is the latest for its own keys and the
+earlier keys they cover, so an older action's late failure is said only
+while nothing later changed the same thing: after Archive then Move to,
+or Move to then Delete, the first one's failure stays unsaid, while a
+label added after Archive leaves "Couldn't archive" to be said. A
+success closes only failures an older action said (`closeOlder`), each
+by its exact key, so a long action's late second request never closes a
+newer failure on a conversation its first request already changed.
+Actions in flight
 at once keep none of their answers' counts, which each hold the whole of
 List Places at their own moment; the last to settle reads them again. The reading pane reads its row from the same
 collection by ID, loaded from Get Conversation when no list holds it, so
