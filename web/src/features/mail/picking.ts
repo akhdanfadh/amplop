@@ -21,12 +21,15 @@ import type { Picks } from "./row";
 // hold holds some, e.g. an action's, whose guess took them out of the
 // list until it answers, and returns release, which lets them go: each
 // one out of the list is unpicked, but those kept, e.g. the refused,
-// which the list is drawing again.
+// which the list is drawing again; end stops picking and resolves once
+// its history entry is gone, so a navigation after it, e.g. a new search,
+// starts from the page's own entry.
 export type Picking = {
   ids: ReadonlySet<Key>;
   pick: (ids: ReadonlySet<Key>) => void;
   follow: (rows: readonly { id: string }[]) => void;
   hold: (ids: readonly string[]) => (kept: Iterable<string>) => void;
+  end: () => Promise<void>;
 };
 
 const none: ReadonlySet<Key> = new Set();
@@ -170,7 +173,29 @@ export function usePicking(key: string): Picking {
     },
     [keep],
   );
-  return useMemo(() => ({ ids, pick, follow, hold }), [ids, pick, follow, hold]);
+  // The wait for picking's entry to be taken back, while Back is under way.
+  const leaving = useRef<Promise<void> | undefined>(undefined);
+  const end = useCallback(() => {
+    // Only the entry picking added and still current goes back; any other
+    // case has nothing to wait for, but a Back already under way, which
+    // every caller waits for, as a move made before it lands would be the
+    // one it takes back.
+    const current = entry.current !== undefined && entryKey(router) === entry.current;
+    if (current && leaving.current === undefined) {
+      leaving.current = new Promise<void>((done) => {
+        // The Back itself: a push or replace meanwhile is not it.
+        const stop = router.history.subscribe(({ action }) => {
+          if (action.type === "PUSH" || action.type === "REPLACE") return;
+          stop();
+          leaving.current = undefined;
+          done();
+        });
+      });
+    }
+    pick(new Set());
+    return leaving.current ?? Promise.resolve();
+  }, [pick, router]);
+  return useMemo(() => ({ ids, pick, follow, hold, end }), [ids, pick, follow, hold, end]);
 }
 
 // PickingGrid is what a list that picks spreads on its grid (gridProps),

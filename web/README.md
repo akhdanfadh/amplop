@@ -153,8 +153,10 @@ Put shared code in the folder for its responsibility:
   toolbar, mail's TanStack DB collections (`conversations.ts`), what
   actions guess and which places a conversation is in (`rules.ts`), each
   action's words (`words.ts`), running an action on one conversation or
-  many (`perform.ts`) and its Undo bar (`undo.tsx`), picking rows
-  (`picking.ts`) and the bar that acts on them (`picking-bar.tsx`), the
+  many (`perform.ts`) and its Undo bar (`undo.tsx`), picking rows, in a
+  place's list and a search's results alike (`picking.ts`, whose
+  `usePickingGrid` both lists use), and the bar that acts on them
+  (`picking-bar.tsx`), the
   member's labels in the sidebar's order and where a move can leave
   (`labels.ts`), More's Move to and Labels pickers (`label-menu.tsx`), the
   reading pane's label chips (`label-chips.tsx`), the New label and Edit

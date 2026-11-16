@@ -115,6 +115,20 @@ function results() {
   return page.getByRole("grid", { name: "Results" });
 }
 
+// pickedBar returns the picking bar.
+function pickedBar() {
+  return page.getByRole("toolbar", { name: "Picked conversations" });
+}
+
+// pickResult picks the result named like name by its box.
+async function pickResult(name: RegExp): Promise<void> {
+  const row = results().getByRole("row", { name });
+  await userEvent.hover(row);
+  const pick = row.element().querySelector("[data-slot=pick-box]");
+  if (!(pick instanceof HTMLElement)) throw new Error("the result has no box");
+  await userEvent.click(pick);
+}
+
 // searches returns the searches api was asked, as path and search.
 function searches(): string[] {
   return api.requests.filter((request) => request.startsWith("/api/v0/conversations/search"));
@@ -280,13 +294,152 @@ describe("search", () => {
     expect(shown).toEqual(["Inbox", "+2"]);
   });
 
-  it("keeps a result's avatar on hover: results are not picked", async () => {
+  it("picks results, the bar taking the sentence's place, and acts on the ones it changes", async () => {
     await open("/mail/search?q=invoice");
-    const row = results().getByRole("row", { name: /Invoice from Shop/ });
-    await userEvent.hover(row);
+    await pickResult(/Invoice from Shop/);
+    await pickResult(/Your invoice/);
 
-    await expect.element(row).toHaveAttribute("data-hovered", "true");
-    expect(row.element().querySelector("[data-slot=pick-box]")).toBeNull();
+    // The box keeps the words; the sentence and its count wait.
+    await expect.element(pickedBar()).toBeVisible();
+    await expect.element(pickedBar().getByText("All 2", { exact: true })).toBeVisible();
+    await expect.element(box()).toHaveValue("invoice");
+    expect(page.getByText(/^Searching/).query()).toBeNull();
+
+    // One is in the Inbox, the other archived: Archive takes only the first,
+    // and both stay, as the search looks in All mail.
+    await userEvent.click(pickedBar().getByRole("button", { name: "Archive" }));
+    await expect.poll(() => api.actions).toEqual([{ action: "archive", ids: [rows[0].id] }]);
+    await expect
+      .element(results().getByRole("row", { name: /Invoice from Shop/ }))
+      .toHaveAttribute("aria-selected", "true");
+
+    await userEvent.keyboard("{Escape}");
+    await expect.element(pickedBar()).not.toBeInTheDocument();
+    await expect.element(page.getByText(/^Searching/)).toBeVisible();
+  });
+
+  it("puts the bar in a phone's top bar, the box coming back when picking stops", async () => {
+    await open("/mail/search?q=invoice", 390);
+    await pickResult(/Invoice from Shop/);
+
+    await expect.element(pickedBar()).toBeVisible();
+    expect(box().query()).toBeNull();
+    expect(page.getByText(/^Searching/).query()).toBeNull();
+
+    await userEvent.click(pickedBar().getByRole("button", { name: "Stop picking" }));
+    await expect.element(box()).toHaveValue("invoice");
+    await expect.element(page.getByText(/^Searching/)).toBeVisible();
+    // Focus goes back to the results, as in a place's list: the box coming
+    // back doesn't take it.
+    await expect.poll(() => results().element().contains(document.activeElement)).toBe(true);
+    await expect.element(box()).not.toHaveFocus();
+  });
+
+  it("keeps the sentence while every picked result an action took waits for its answer", async () => {
+    await open("/mail/search?q=invoice");
+    await pickResult(/Invoice from Shop/);
+    // The action's answer waits until let go.
+    const fetch = api.fetch;
+    const waiting: (() => void)[] = [];
+    api.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url, location.href).pathname === "/api/v0/conversations/actions") {
+        await new Promise<void>((done) => waiting.push(done));
+      }
+      return fetch(input, init);
+    };
+
+    await userEvent.click(pickedBar().getByRole("button", { name: "Delete" }));
+    await expect
+      .element(results().getByRole("row", { name: /Invoice from Shop/ }))
+      .not.toBeInTheDocument();
+    // No bar with nothing in it, and one heading: the place page's.
+    await expect.element(pickedBar()).not.toBeInTheDocument();
+    await expect.element(page.getByText(/^Searching/)).toBeVisible();
+    expect(document.querySelectorAll("#place-heading")).toHaveLength(1);
+    for (const done of waiting) done();
+    await expect.poll(() => api.actions).toEqual([{ action: "trash", ids: [rows[0].id] }]);
+  });
+
+  it("searches the latest words submitted while picking's Back is still under way", async () => {
+    const router = await open("/mail/inbox");
+    await userEvent.fill(box(), "invoice");
+    await expect.element(results().getByRole("row", { name: /Invoice from Shop/ })).toBeVisible();
+    await pickResult(/Invoice from Shop/);
+    await expect.element(pickedBar()).toBeVisible();
+    // A browser's Back lands a moment later; this one, later still.
+    const back = router.history.back.bind(router.history);
+    router.history.back = () => {
+      setTimeout(back, 300);
+    };
+
+    await userEvent.fill(box(), "invoice shop");
+    await userEvent.keyboard("{Enter}");
+    await userEvent.fill(box(), "your invoice");
+    await userEvent.keyboard("{Enter}");
+
+    await expect.poll(() => router.state.location.search).toMatchObject({ q: "your invoice" });
+    await new Promise((done) => setTimeout(done, 500));
+    expect(router.state.location.search).toMatchObject({ q: "your invoice" });
+    router.history.back = back;
+    router.history.back();
+    await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");
+  });
+
+  it("ends picking before new words search, so Back leaves the search", async () => {
+    const router = await open("/mail/inbox");
+    await userEvent.fill(box(), "invoice");
+    await expect.element(results().getByRole("row", { name: /Invoice from Shop/ })).toBeVisible();
+    await pickResult(/Invoice from Shop/);
+    await expect.element(pickedBar()).toBeVisible();
+
+    // The result matches the new words too, but they are a new search.
+    await userEvent.fill(box(), "invoice shop");
+    await expect.poll(() => router.state.location.search).toMatchObject({ q: "invoice shop" });
+    await expect.element(pickedBar()).not.toBeInTheDocument();
+    await expect
+      .element(results().getByRole("row", { name: /Invoice from Shop/ }))
+      .not.toHaveAttribute("aria-selected", "true");
+
+    router.history.back();
+    await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");
+  });
+
+  it("takes a deleted result out, focus going to the one after it", async () => {
+    await open("/mail/search?q=invoice");
+    await pickResult(/Invoice from Shop/);
+
+    await userEvent.click(pickedBar().getByRole("button", { name: "Delete" }));
+    await expect
+      .element(results().getByRole("row", { name: /Invoice from Shop/ }))
+      .not.toBeInTheDocument();
+    await expect.element(results().getByRole("row", { name: /Your invoice/ })).toHaveFocus();
+  });
+
+  it("opens a result from its text while picking, as a place's list does", async () => {
+    const router = await open("/mail/search?q=invoice");
+    await pickResult(/Invoice from Shop/);
+
+    await userEvent.click(
+      results()
+        .getByRole("row", { name: /Your invoice/ })
+        .getByText("Your invoice"),
+    );
+    await expect.poll(() => router.state.location.pathname).toBe(`/mail/search/${rows[2].id}`);
+    // At the message that matched, the search kept.
+    expect(router.state.location.search).toMatchObject({
+      q: "invoice",
+      message: rows[2].id.replace("00000000-0000-4000-8000", "11111111-1111-4111-8111"),
+    });
+    await expect
+      .element(results().getByRole("row", { name: /Invoice from Shop/ }))
+      .toHaveAttribute("aria-selected", "true");
+    // Back returns to the results still picking; the next Back stops it.
+    router.history.back();
+    await expect.poll(() => router.state.location.pathname).toBe("/mail/search");
+    await expect.element(pickedBar()).toBeVisible();
+    router.history.back();
+    await expect.element(pickedBar()).not.toBeInTheDocument();
   });
 
   it("searches the label it starts in, and names it in the box", async () => {

@@ -18,7 +18,8 @@ import { DropdownMenu, DropdownMenuItem, DropdownMenuTrigger } from "@/component
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { mailData, type Conversation } from "./conversations";
-import { listKey, requestRowFocus } from "./focus-request";
+import { offeredIn } from "./act";
+import { requestRowFocus } from "./focus-request";
 import { LabelMenuItems, LabelPicker, pickersFor, type Picker } from "./label-menu";
 import { useLabels } from "./labels";
 import { perform, type Performed } from "./perform";
@@ -39,22 +40,25 @@ import {
 import { actionWords } from "./words";
 
 // PickingBar takes the list header's place while conversations are picked
-// (DESIGN.md "Message list"), and the top bar's on a phone (inTopBar),
+// (DESIGN.md "Message list"), or a search's filter sentence's, and the top
+// bar's on a phone (inTopBar),
 // after an arrow that stops picking. It leads with a checkbox, mixed while
 // some of the loaded rows are picked, that picks all loaded, or unpicks
 // all once all are; then how many are picked, "All N" once the list has
-// reached its end (complete); then the actions picked offers in place
-// (actionsFor): each slot shows its usual action while any picked row
+// reached its end (complete); then the actions picked offers in the list
+// of places, of account alone when given, as its reading pane offers them
+// (actionsFor, offeredIn): each slot shows its usual action while any picked row
 // needs it, and More holds Move to… and Labels… (LabelPicker), the pair's
 // other action when the rows are mixed, and Report spam, shown while it
 // holds any. An action goes to the picked rows it changes, of accounts
 // that take actions (changersOf), the others keeping their pick;
 // rows it takes out of the list stay picked until it is answered, so a
 // refused one comes back picked, and focus goes to the list's next row
-// when none is left. heading keeps the place's name for screen readers,
-// headingRef the page's focus target.
+// (focusKey's) when none is left. heading keeps the place's name for
+// screen readers, headingRef the page's focus target.
 export function PickingBar({
-  place,
+  places,
+  focusKey,
   account,
   name,
   headingRef,
@@ -64,7 +68,8 @@ export function PickingBar({
   picking,
   inTopBar,
 }: {
-  place: Place;
+  places: readonly Place[];
+  focusKey: string;
   account: number | undefined;
   name: string;
   headingRef: RefObject<HTMLHeadingElement | null>;
@@ -87,6 +92,8 @@ export function PickingBar({
   const changers = useMemo(() => changersOf(accountList), [accountList]);
   // Each button keeps its slot as its key, so focus stays on it as its
   // action changes, e.g. Star to Remove star, as the toolbar's do.
+  // The list whose actions picked rows offer: a place's own, or a search's.
+  const place = offeredIn(places);
   const { buttons, more } = laidOut(actionsFor(picked, place, changers));
   // The picked rows whose accounts take actions, which Move to and Labels
   // change; the others keep their pick.
@@ -117,7 +124,7 @@ export function PickingBar({
     const changing = new Set(ids);
     const { conversations, placeCounts } = mailData(client);
     const emptied = picked.every(
-      (row) => changing.has(row.id) && !staysInList(row, performed, [place], account),
+      (row) => changing.has(row.id) && !staysInList(row, performed, places, account),
     );
     const release = picking.hold(ids);
     void perform({
@@ -134,7 +141,7 @@ export function PickingBar({
     // that took the first one's place.
     if (emptied) {
       const [first] = picked;
-      requestRowFocus(listKey(place, account), {
+      requestRowFocus(focusKey, {
         id: first.id,
         dateMs: first.dateMs,
         stays: false,

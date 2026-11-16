@@ -530,9 +530,8 @@ last two redirect into settings, so settings can move without the server.
   history entry, which Back takes, at every width. Picks follow
   the rows: a row the list no longer shows is unpicked, except one an
   action took out until it answers, so a refused row comes back picked;
-  Undo brings rows back unpicked. A place's list picks; a search's
-  results, which span places, keep their avatars (ADR031, "Mitigations
-  and follow-up").
+  Undo brings rows back unpicked. A place's list and a search's results
+  pick alike (see Search).
 - **Picking bar:** it takes the list header's place (the top bar's on a
   phone, see Phones): a tri-state checkbox over the rows' boxes, mixed
   while some loaded rows are picked, which picks every loaded row
@@ -1016,7 +1015,18 @@ sending (web/README.md, "Routes").
   browser; a match only in the sender or recipients marks nothing. A row
   stars, and its conversation's actions show, at once, as in every list;
   one an action takes out of the places searched leaves the results.
-  Under the sentence: how many conversations ("1,000 or more" at the
+  Results pick as a place's rows do ("Picking"): the bar takes the
+  sentence's place, the box staying with the words, and on a phone the
+  top bar, the sentence waiting too, so a filter can't change the results
+  mid-pick; it offers what the picked results offer where each one is, as
+  their reading pane does, a search of one place that place's actions,
+  else each conversation's own, so a search of several places offers no
+  Move to; it picks the loaded results, "All 6 picked" once they have
+  all loaded, the count of matches waiting in the sentence. New words, or
+  leaving the search, end picking first, so the new results start
+  unpicked and Back leaves the search; picking that stops on a phone
+  gives focus back to the results, not to the box. Under the
+  sentence: how many conversations ("1,000 or more" at the
   API's limit), then, unless Spam or Trash is searched, "Spam and Trash
   are not searched." with "Search them too", which adds both, offered
   only while both fit the API's limit of places. The end reads "That's
