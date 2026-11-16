@@ -140,7 +140,7 @@ func placeOf(text string) (conversation.Place, error) {
 func placeProblem(err error) error {
 	switch {
 	case errors.Is(err, conversation.ErrLabelNotFound):
-		return newProblem(http.StatusNotFound, labelNotFoundType, "Label not found", "The label does not exist. It may have been deleted.")
+		return labelNotFoundProblem()
 	case errors.Is(err, conversation.ErrAccountNotFound):
 		return connectedAccountProblem(connectedaccount.ErrNotFound)
 	default:
