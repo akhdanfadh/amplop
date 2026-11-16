@@ -780,7 +780,11 @@ pull-to-refresh, which would reload the app, never starts.
   then sections divided by hairlines, heading and explanation on the left,
   controls on the right, stacked below 512 px of page; content caps at
   720 px; no cards around everything. A result to report, e.g. "Two-factor
-  authentication is on.", sits under the lead.
+  authentication is on.", sits under the lead, with an icon in its tone:
+  green for a change that worked, grey for news that changed nothing
+  ("Connecting was cancelled on Google's page, so nothing changed."), red
+  for a problem the member can fix, which is an alert. It stays until the
+  next action.
 - A task of several steps, e.g. setting up two-factor authentication, gets
   its own page under its settings page (`/settings/security/two-factor`),
   with "‹ Security" above the title; the settings page keeps one row with
