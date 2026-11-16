@@ -795,7 +795,14 @@ last two redirect into settings, so settings can move without the server.
   then "Sent to ana@example.com"), and under it in muted text the sending
   account's mark, its address, and the time; Open in Outbox below. A
   failure names its status in that line, says why under it, and puts its
-  actions in a bar (Edit and send or Send again, then Open in Outbox). A
+  actions in a bar (Edit and send or Send again, then Dismiss, then Open
+  in Outbox). **Dismiss** shows while the API lists it, outlined: the way
+  out that sends nothing, beside the way that sends. It needs no dialog
+  and no Undo, as the message can still be sent again: it reads
+  Dismissed, keeps its reason followed by "You dismissed it, so the
+  Outbox no longer counts it.", keeps its other actions, moves to Done,
+  and focus moves to the status, which rises anew, unless the member
+  moved it meanwhile; while it waits, the button reads "Dismissing...". A
   message sent again reads Tried again, neutral, its bar holding "See how
   the new try went": a link drawn as a primary button, as an outcome's
   ways on are ("Outcome screens"), since opening the copy is its one next
@@ -820,8 +827,9 @@ sending (web/README.md, "Routes").
 
 - **List:** two sections, each newest first by when each was saved: "Not
   sent yet", the messages the API calls outstanding (waiting, sending, or
-  failed or unconfirmed and not sent again: what the sidebar counts),
-  then "Done", the rest, Sent and Tried again. A section with no messages
+  failed or unconfirmed and neither sent again nor dismissed: what the
+  sidebar counts), then "Done", the rest, Sent, Tried again, and
+  Dismissed. A section with no messages
   is left out, heading and all. A message changes section as soon as a
   read gives its new status, with no animation, as mail lists' rows come
   and go; the open one stays open, and keyboard focus stays on its row.
@@ -840,15 +848,18 @@ sending (web/README.md, "Routes").
   Cc, then Bcc; "no one" for none), and the date it was saved / subject /
   the status as its icon and word in its tone's colour, without a pill
   (`StatusWord`, "Status badges"), then "·" and a short reason in muted
-  text: why it failed, what an unconfirmed one asks, or "You sent it
-  again as a new message."; nothing after Waiting, Sending, or Sent,
+  text: why it failed, what an unconfirmed one asks, "You sent it
+  again as a new message.", or, once dismissed, "It wasn't sent." or
+  "It may have been sent."; nothing after Waiting, Sending, or Sent,
   which say it alone. One recipient shows as its address, left to right
   whatever its letters; several each keep their own direction, as a
   conversation's senders do. A 36 px initials avatar of the first
   recipient leads, ringed in
   the sending account's colour where accounts mix. No unread weight and
   no checkbox: the member wrote each message. A message sent again reads
-  Tried again, neutral: its copy carries the status that matters.
+  Tried again, neutral: its copy carries the status that matters. A
+  dismissed one reads Dismissed, neutral, its bell off (`BellOff`): the
+  member chose to leave it; sent again after, it reads Tried again.
 - **States:** placeholder rows while the list loads; a `ReadError` with
   Try again when it can't; a failed reread keeps the rows under a
   `ReadError` saying they may be out of date; an empty Outbox says
@@ -859,8 +870,9 @@ sending (web/README.md, "Routes").
   subject; the sending account's mark, or its address once the account
   is gone. Then the status in a `card`, the compose window's summary
   ("Compose and reply") without Open in Outbox: a mark, one line, the
-  reason or the account and time, and the actions in a bar (Send again,
-  Edit and send, Open Connected accounts, or See how the new try went);
+  reason or the account and time, and the actions in a bar (Send again
+  or Edit and send, then Dismiss, then Open Connected accounts; or See
+  how the new try went);
   the status shows in place as
   a message opens and rises only when it changes while open. Then the
   message, open, as in
@@ -1281,13 +1293,13 @@ One `badge`, a soft tint, always an icon and a word: `StatusBadge`
 (`src/components/status-badge.tsx`) takes the tone, the icon, and the word.
 The tone says what the status asks of the member:
 
-| Tone        | Asks         | Used for                                                                                                 |
-| ----------- | ------------ | -------------------------------------------------------------------------------------------------------- |
-| Neutral     | Nothing      | Waiting, Tried again, Waiting to sync, Not verified, Admin, You, Deactivated, This browser, Open, Closed |
-| Info        | To wait      | Sending, Syncing (spinner)                                                                               |
-| Success     | Nothing more | Sent, Up to date, Verified, Two-factor on, Tested                                                        |
-| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect, Not set up, Paused                                         |
-| Destructive | A fix        | Not sent, Sync failed                                                                                    |
+| Tone        | Asks         | Used for                                                                                                            |
+| ----------- | ------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Neutral     | Nothing      | Waiting, Tried again, Dismissed, Waiting to sync, Not verified, Admin, You, Deactivated, This browser, Open, Closed |
+| Info        | To wait      | Sending, Syncing (spinner)                                                                                          |
+| Success     | Nothing more | Sent, Up to date, Verified, Two-factor on, Tested                                                                   |
+| Warning     | A look       | Not confirmed, Needs reconnecting, Reconnect, Not set up, Paused                                                    |
+| Destructive | A fix        | Not sent, Sync failed                                                                                               |
 
 Deactivated, Open, and Closed are an admin's choice, not a fault, so
 neutral; Paused (registration opened, but system email untested) asks for

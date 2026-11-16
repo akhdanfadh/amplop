@@ -120,7 +120,7 @@ const refused: OutgoingMessage = {
   ...saved,
   status: "failed",
   failure: "refused",
-  allowedActions: ["send-again"],
+  allowedActions: ["send-again", "dismiss"],
   sentAt: null,
   subject: "Refused",
 };
@@ -306,7 +306,7 @@ describe("ComposeWindow", () => {
       status: "failed",
       failure: "refused",
       subject: "Refused",
-      allowedActions: ["send-again"],
+      allowedActions: ["send-again", "dismiss"],
     });
     await press("Keep writing");
     await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Mine");
@@ -316,7 +316,7 @@ describe("ComposeWindow", () => {
       status: "failed",
       failure: "refused",
       subject: "Refused",
-      allowedActions: ["send-again"],
+      allowedActions: ["send-again", "dismiss"],
     });
     await press("Replace");
     await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Refused");
@@ -509,7 +509,7 @@ describe("ComposeWindow", () => {
       status: "failed",
       failure: "gave-up",
       sentAt: null,
-      allowedActions: ["send-again"],
+      allowedActions: ["send-again", "dismiss"],
     };
     // Its own read says sending; only the Outbox's says it went out.
     const copy: OutgoingMessage = {

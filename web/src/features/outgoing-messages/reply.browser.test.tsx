@@ -76,9 +76,13 @@ function saved(
     dismissedAt: null,
     outstanding: status !== "sent",
     reply: false,
+    // As the API lists them: Send again needs an account that can send;
+    // Dismiss needs nothing of it.
     allowedActions:
-      (status === "failed" || status === "unknown") && failure !== "needs-reconnect"
-        ? ["send-again"]
+      status === "failed" || status === "unknown"
+        ? failure === "needs-reconnect"
+          ? ["dismiss"]
+          : ["send-again", "dismiss"]
         : [],
   };
 }
@@ -486,6 +490,12 @@ describe("ConversationReply", () => {
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
     await userEvent.keyboard("Noon works.");
     await userEvent.click(page.getByRole("button", { name: "Send" }));
+    // The reply's card offers what the Outbox does, Dismiss too.
+    await expect
+      .element(
+        page.getByRole("region", { name: "Status" }).getByRole("button", { name: "Dismiss" }),
+      )
+      .toBeVisible();
     await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
 
     const editor = page.getByRole("form", { name: "Reply" });
@@ -516,7 +526,7 @@ describe("ConversationReply", () => {
     expect(again()[0].headers.has("Idempotency-Key")).toBe(false);
   });
 
-  it("offers no Edit and send for a refused reply the API won't send again", async () => {
+  it("offers no Edit and send or Dismiss for a refused reply the API allows neither", async () => {
     await page.viewport(1440, 900);
     const refused: OutgoingMessage = { ...saved("failed", "refused"), allowedActions: [] };
     serve({
@@ -532,6 +542,7 @@ describe("ConversationReply", () => {
     await expect
       .element(page.getByRole("button", { name: "Edit and send" }))
       .not.toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
   });
 
   it("keeps the reply when the window crosses the phone width, both ways", async () => {

@@ -14,6 +14,8 @@ import {
   replyErrorMessage,
   sendAgainErrorMessage,
   sendErrorMessage,
+  dismissErrorMessage,
+  sentSummary,
   type MessageState,
   type Offer,
   type SendingAccount,
@@ -33,6 +35,7 @@ const waiting: MessageState = {
   from,
   sentAt: null,
   sentAgainAs: null,
+  dismissedAt: null,
   allowedActions: [],
   connectedAccountId: 1,
 };
@@ -169,6 +172,49 @@ describe("nextSteps", () => {
       offers: [],
     });
   });
+
+  // Dismissed, it says so after its reason, and its ways on stay: it can
+  // still be sent again.
+  it.each<[string, MessageState, string, Offer[]]>([
+    [
+      "refused",
+      failed("refused"),
+      "Not sent. Gmail refused this message. Check its recipients and content, then edit and send it. You dismissed it, so the Outbox no longer counts it.",
+      ["edit"],
+    ],
+    [
+      "unknown",
+      { ...waiting, status: "unknown", allowedActions: ["send-again"] },
+      `inbok couldn't confirm whether Gmail sent this message. Check the Sent folder of ${from} in Gmail before sending it again. You dismissed it, so the Outbox no longer counts it.`,
+      ["send-again"],
+    ],
+  ])("keeps a dismissed %s message's reason and offers", (_, message, text, offers) => {
+    expect(nextSteps({ ...message, dismissedAt: "2026-11-17T09:00:00Z" }, [own])).toEqual({
+      text,
+      offers,
+    });
+  });
+
+  it("words a dismissed message sent again as sent again", () => {
+    const message: MessageState = {
+      ...failed("refused"),
+      sentAgainAs: copy,
+      dismissedAt: "2026-11-17T09:00:00Z",
+    };
+    expect(nextSteps(message, [own]).text).toBe("Not sent. You already tried sending it again.");
+  });
+});
+
+describe("sentSummary", () => {
+  const to = { to: ["ana@example.com"], cc: [], bcc: [] };
+
+  it("names Dismissed once dismissed, and Tried again once sent again too", () => {
+    const dismissedAt = "2026-11-17T09:00:00Z";
+    expect(sentSummary({ ...failed("refused"), ...to, dismissedAt })).toBe("Dismissed");
+    expect(sentSummary({ ...failed("refused"), ...to, dismissedAt, sentAgainAs: "copy-id" })).toBe(
+      "Tried again",
+    );
+  });
 });
 
 describe("recipientSummary", () => {
@@ -243,6 +289,29 @@ describe("sendAgainErrorMessage", () => {
 
   it("says trying again is safe after a lost answer", () => {
     expect(sendAgainErrorMessage(new ApiError("timeout", { method: "POST" }))).toContain(
+      "Trying again is safe",
+    );
+  });
+});
+
+describe("dismissErrorMessage", () => {
+  it("says the status changed on 409 not-dismissible", () => {
+    expect(dismissErrorMessage(problem(409, "/api/v0/problems/not-dismissible"))).toBe(
+      "This message can't be dismissed: its status has changed.",
+    );
+  });
+
+  it("says the message is gone on its own 404 only", () => {
+    expect(
+      dismissErrorMessage(problem(404, "/api/v0/problems/outgoing-message-not-found")),
+    ).toContain("isn't in your Outbox");
+    expect(dismissErrorMessage(problem(404, "/api/v0/problems/not-found"))).toBe(
+      "The server's detail.",
+    );
+  });
+
+  it("says trying again is safe after a lost answer", () => {
+    expect(dismissErrorMessage(new ApiError("timeout", { method: "POST" }))).toContain(
       "Trying again is safe",
     );
   });
@@ -445,6 +514,28 @@ describe("an Outbox row's status", () => {
     [
       "unknown, sent again",
       { ...waiting, status: "unknown", sentAgainAs: copy },
+      "Tried again",
+      "neutral",
+      "You sent it again as a new message.",
+    ],
+    // Dismissed, it says whether it went; sent again after, its copy matters more.
+    [
+      "failed, dismissed",
+      { ...failed("refused"), dismissedAt: "2026-11-17T09:00:00Z" },
+      "Dismissed",
+      "neutral",
+      "It wasn't sent.",
+    ],
+    [
+      "unknown, dismissed",
+      { ...waiting, status: "unknown", dismissedAt: "2026-11-17T09:00:00Z" },
+      "Dismissed",
+      "neutral",
+      "It may have been sent.",
+    ],
+    [
+      "dismissed, then sent again",
+      { ...failed("refused"), dismissedAt: "2026-11-17T09:00:00Z", sentAgainAs: copy },
       "Tried again",
       "neutral",
       "You sent it again as a new message.",

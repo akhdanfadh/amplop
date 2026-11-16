@@ -12,6 +12,7 @@ import { noMessageOpen } from "./text";
 const ok = 200;
 const created = 201;
 const notFound = 404;
+const conflict = 409;
 const internalError = 500;
 
 const studio: ListedAccount = {
@@ -84,8 +85,11 @@ const tried: OutgoingMessage = {
 
 // The Outbox's API as serve sets it: the lists its reads answer in turn,
 // the last one repeating, or failing with outbox's status from the read
-// failFrom names (counting from 0); the member's accounts; and the copy
-// Send Message Again saves for the message again names.
+// failFrom names (counting from 0); the member's accounts; the copy
+// Send Message Again saves for the message again names; and whether
+// Dismiss Outgoing Message dismisses the message dismiss names, or is
+// refused because it changed meanwhile, or dismisses it but loses the
+// answer, or answers only once hold settles.
 type OutboxApi = {
   lists: OutgoingMessage[][];
   reads: number;
@@ -93,13 +97,16 @@ type OutboxApi = {
   outbox: number;
   accounts: ListedAccount[];
   again?: { id: string; copy: OutgoingMessage };
+  dismiss?: OutboxDismiss;
 };
+type OutboxDismiss = { id: string; refused?: boolean; lost?: boolean; hold?: Promise<void> };
 let api: OutboxApi;
 
 // serve sets the Outbox's API: its list holds messages, then each of later
 // in turn; it fails with outbox from the read failFrom names (from the
 // first by default, when outbox is a failure); the member has accounts;
-// and again, when given, is what sending a message again saves.
+// again, when given, is what sending a message again saves; and dismiss,
+// when given, the message Dismiss dismisses or refuses.
 function serve({
   messages = [sent, refused, tried],
   later = [],
@@ -107,6 +114,7 @@ function serve({
   outbox = ok,
   failFrom = 0,
   again,
+  dismiss,
 }: {
   messages?: OutgoingMessage[];
   later?: OutgoingMessage[][];
@@ -114,8 +122,9 @@ function serve({
   outbox?: number;
   failFrom?: number;
   again?: { id: string; copy: OutgoingMessage };
+  dismiss?: OutboxDismiss;
 } = {}): void {
-  api = { lists: [messages, ...later], reads: 0, failFrom, outbox, accounts, again };
+  api = { lists: [messages, ...later], reads: 0, failFrom, outbox, accounts, again, dismiss };
 }
 
 // problem returns an API problem answer of status.
@@ -130,6 +139,17 @@ function problem(status: number): Response {
 // outstanding, as the API then says.
 function sentAgainAs(message: OutgoingMessage, copy: OutgoingMessage): OutgoingMessage {
   return { ...message, sentAgainAs: copy.id, outstanding: false };
+}
+
+// dismissed returns message once dismissed, no longer outstanding or
+// dismissible, as the API then says.
+function dismissed(message: OutgoingMessage): OutgoingMessage {
+  return {
+    ...message,
+    dismissedAt: "2026-11-17T09:00:00Z",
+    outstanding: false,
+    allowedActions: message.allowedActions.filter((action) => action !== "dismiss"),
+  };
 }
 
 // answer answers the Outbox's requests from api, and nothing else.
@@ -150,6 +170,30 @@ function answer(url: string, init?: RequestInit): Promise<Response> | undefined 
     api.lists = [[again.copy, ...after]];
     api.reads = 0;
     return Promise.resolve(Response.json({ data: again.copy }, { status: created }));
+  }
+  const dismiss = api.dismiss;
+  if (dismiss && method === "POST" && path === `/api/v0/outgoing-messages/${dismiss.id}/dismiss`) {
+    if (dismiss.refused)
+      return Promise.resolve(
+        Response.json(
+          {
+            type: "/api/v0/problems/not-dismissible",
+            status: conflict,
+            title: "Message not dismissible",
+            detail: "",
+          },
+          { status: conflict, headers: { "Content-Type": "application/problem+json" } },
+        ),
+      );
+    const before = api.lists[Math.min(api.reads, api.lists.length - 1)];
+    api.lists = [before.map((one) => (one.id === dismiss.id ? dismissed(one) : one))];
+    api.reads = 0;
+    // Saved, but the answer never arrives whole.
+    if (dismiss.lost) return Promise.resolve(problem(internalError));
+    const one = api.lists[0].find((message) => message.id === dismiss.id);
+    return (dismiss.hold ?? Promise.resolve()).then(() =>
+      Response.json({ data: one }, { status: ok }),
+    );
   }
   if (path.startsWith("/api/v0/outgoing-messages/") && method === "GET") {
     const known = [...api.lists.flat(), ...(again ? [again.copy] : [])];
@@ -414,6 +458,96 @@ describe("OutboxPage", () => {
     router.history.back();
     await expect.element(page.getByText(noMessageOpen)).toBeVisible();
     expect(router.state.location.pathname).toBe("/mail/outbox");
+  });
+
+  it("dismisses a message: Done holds it as Dismissed, its ways on stay, focus goes to its status", async () => {
+    const dismissible: OutgoingMessage = { ...refused, allowedActions: ["send-again", "dismiss"] };
+    serve({ messages: [sent, dismissible], dismiss: { id: dismissible.id } });
+    await show();
+    const list = page.getByRole("grid", { name: "Messages sent from inbok" });
+    await userEvent.click(list.getByRole("row", { name: /Q4 deck/ }));
+    const status = page.getByRole("region", { name: "Status" });
+
+    await userEvent.click(status.getByRole("button", { name: "Dismiss" }));
+
+    await expect
+      .element(
+        list
+          .getByRole("rowgroup", { name: "Done" })
+          .getByRole("row", { name: /Q4 deck, Dismissed/ }),
+      )
+      .toBeVisible();
+    await expect.element(list.getByText("· It wasn't sent.")).toBeVisible();
+    expect(list.getByRole("rowgroup", { name: "Not sent yet" }).elements()).toHaveLength(0);
+    await expect.element(status).toHaveFocus();
+    await expect.element(status.getByText("Dismissed", { exact: true })).toBeVisible();
+    await expect
+      .element(status.getByText(/You dismissed it, so the Outbox no longer counts it\.$/))
+      .toBeVisible();
+    // It can still be edited and sent; it can't be dismissed twice.
+    await expect.element(status.getByRole("button", { name: "Edit and send" })).toBeVisible();
+    await expect.element(status.getByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
+  });
+
+  it("offers Dismiss only where the API lists it", async () => {
+    serve({ messages: [sent, refused] });
+    await show();
+
+    await userEvent.click(page.getByRole("row", { name: /Q4 deck/ }));
+
+    const status = page.getByRole("region", { name: "Status" });
+    await expect.element(status.getByRole("button", { name: "Edit and send" })).toBeVisible();
+    await expect.element(status.getByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
+  });
+
+  it("says why Dismiss was refused", async () => {
+    const dismissible: OutgoingMessage = { ...refused, allowedActions: ["send-again", "dismiss"] };
+    serve({ messages: [dismissible], dismiss: { id: dismissible.id, refused: true } });
+    await show();
+    await userEvent.click(page.getByRole("row", { name: /Q4 deck/ }));
+
+    await userEvent.click(
+      page.getByRole("region", { name: "Status" }).getByRole("button", { name: "Dismiss" }),
+    );
+
+    await expect
+      .element(page.getByRole("alert"))
+      .toHaveTextContent("This message can't be dismissed: its status has changed.");
+  });
+
+  it("says nothing of a lost Dismiss answer once the reread shows it dismissed", async () => {
+    const dismissible: OutgoingMessage = { ...refused, allowedActions: ["send-again", "dismiss"] };
+    serve({ messages: [dismissible], dismiss: { id: dismissible.id, lost: true } });
+    await show();
+    await userEvent.click(page.getByRole("row", { name: /Q4 deck/ }));
+    const status = page.getByRole("region", { name: "Status" });
+
+    await userEvent.click(status.getByRole("button", { name: "Dismiss" }));
+
+    await expect.element(status.getByText("Dismissed", { exact: true })).toBeVisible();
+    await expect.element(page.getByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says Dismiss is working, and leaves focus where the member moved it meanwhile", async () => {
+    const dismissible: OutgoingMessage = { ...refused, allowedActions: ["send-again", "dismiss"] };
+    const gate: { open?: () => void } = {};
+    const hold = new Promise<void>((resolve) => (gate.open = resolve));
+    serve({ messages: [sent, dismissible], dismiss: { id: dismissible.id, hold } });
+    await show();
+    const row = page.getByRole("row", { name: /Q4 deck/ });
+    await userEvent.click(row);
+    const status = page.getByRole("region", { name: "Status" });
+
+    await userEvent.click(status.getByRole("button", { name: "Dismiss" }));
+    await expect.element(status.getByRole("button", { name: "Dismissing..." })).toBeInTheDocument();
+    // Back to Edit and send while Dismiss waits.
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    const edit = status.getByRole("button", { name: "Edit and send" });
+    await expect.element(edit).toHaveFocus();
+    gate.open?.();
+
+    await expect.element(status.getByText("Dismissed", { exact: true })).toBeVisible();
+    await expect.element(edit).toHaveFocus();
   });
 
   it("says a reread failed above an empty Outbox too", async () => {

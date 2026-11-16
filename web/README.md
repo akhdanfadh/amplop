@@ -337,8 +337,9 @@ React portal, so the heading keeps its focus and the list's `main` keeps
 its name. The mail sidebar's Outbox, among the views after Sent and
 outside the account filter (DESIGN.md "Sidebar"), shows how many of its messages are
 not sent yet, from the Outbox's one read: those the API marks
-`outstanding` (waiting or being sent, or failed or unconfirmed and not
-sent again), so a message sent again stops counting. The client keeps no
+`outstanding` (waiting or being sent, or failed or unconfirmed and
+neither sent again nor dismissed), so a message sent again or dismissed
+stops counting. The client keeps no
 copy of that rule; it follows the message's facts, not what its page
 offers now, so it holds still while accounts load or while an account
 can't send. The member menu at the bottom of the sidebar opens
@@ -883,8 +884,8 @@ Outgoing Message, gives its content once; its status counts only for a
 message the list doesn't hold, one outside the 50 listed or saved after
 the list was read, which that read then follows until its send ends; a
 message that leaves the list, past 50 newer ones, is read again then.
-Each write that changes a status, Send and Send again, reads the list
-again. A message opens in the reading pane at `/mail/outbox/$id`
+Each write that changes a status, Send, Send again, and Dismiss, reads
+the list again. A message opens in the reading pane at `/mail/outbox/$id`
 (`OutgoingReader`, `reader.tsx`), which reads only an ID that is a UUID,
 since the client puts it in the API's path as is. The pane is a
 conversation's frame (`ReadingPane`): the subject and the sending
@@ -908,7 +909,15 @@ it again unchanged: it opens the compose window on its content and sends
 it again with the member's edits ("Compose window"). Open Connected
 accounts shows
 while the sending account's status is one a reconnect fixes, whatever
-the message failed for. One function, `nextSteps`
+the message failed for. Dismiss, outlined after them, shows while the
+message lists `dismiss` in its `allowedActions`: the API's Dismiss
+Outgoing Message, which moves it to Done, as no longer `outstanding`.
+A dismissed message reads Dismissed (`dismissedAt`), keeps its reason
+and its ways on, since it can still be sent again, and its status rises
+anew; focus moves from the gone button to the status, unless the member
+moved it elsewhere meanwhile. Its write waits for the list's reread, so
+the button stays pending, reading "Dismissing...", until the message
+shows dismissed; a lost answer the reread shows done says nothing. One function, `nextSteps`
 (`src/features/outgoing-messages/text.ts`), works out both what a
 message's page says and what it offers, so the two cannot disagree.
 

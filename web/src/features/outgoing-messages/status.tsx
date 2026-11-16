@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import {
   getGetOutgoingMessageQueryKey,
   getListOutgoingMessagesQueryKey,
+  useDismissOutgoingMessage,
   useSendMessageAgain,
 } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
@@ -26,6 +27,8 @@ import { cn } from "@/lib/cn";
 import { useCompose } from "./compose-store";
 import { MessageStatusMark } from "./status-badge";
 import {
+  dismissErrorMessage,
+  dismissLabel,
   needsReconnect,
   nextSteps,
   notSentPrefix,
@@ -42,7 +45,8 @@ const statusLink = cn(lineLink, "text-sm");
 // MessageStatus shows what happened to message and what the member can do
 // next, as nextSteps works out from accounts, the member's connected
 // accounts (undefined until they load): send it again, edit it into a new
-// message, reconnect its account, or open the copy it was sent again as.
+// message, reconnect its account, or open the copy it was sent again as;
+// and, while the API allows it, dismiss it.
 // onSentAgain receives the copy a Send again saved; onUnauthorized runs on
 // a 401. onEdit, when given, runs on Edit and send instead of opening the
 // compose window with message's content, e.g. so a reply is edited into a
@@ -70,6 +74,7 @@ export function MessageStatus({
   const compose = useCompose().store;
   const sectionRef = useRef<HTMLElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const dismissRef = useRef<HTMLButtonElement>(null);
   // The status is put in the live region after the first render: one that
   // appears with its text is often not announced.
   const [announced, setAnnounced] = useState(false);
@@ -79,6 +84,8 @@ export function MessageStatus({
   // The status the pane opened on, which shows in place: the member opens
   // messages often, and by keyboard, so only a change while open rises.
   const [opened] = useState(message.status);
+  const dismissed = message.dismissedAt !== null;
+  const [openedDismissed] = useState(dismissed);
   const again = useSendMessageAgain({
     mutation: {
       // A repeat returns the copy the first saved.
@@ -91,6 +98,22 @@ export function MessageStatus({
         void client.invalidateQueries({ queryKey: getGetOutgoingMessageQueryKey(message.id) });
         void client.invalidateQueries({ queryKey: getListOutgoingMessagesQueryKey() });
       },
+    },
+  });
+  const dismiss = useDismissOutgoingMessage({
+    mutation: {
+      // A repeat returns the message unchanged.
+      ...repeatableWriteRetry,
+      onError: (err) => {
+        if (err.status === unauthorized) onUnauthorized();
+      },
+      // Returned, so the button stays pending until the reads show the
+      // message dismissed; a refusal can mean the status changed.
+      onSettled: () =>
+        Promise.all([
+          client.invalidateQueries({ queryKey: getGetOutgoingMessageQueryKey(message.id) }),
+          client.invalidateQueries({ queryKey: getListOutgoingMessagesQueryKey() }),
+        ]),
     },
   });
   const sent = message.sentAt === null ? undefined : formatReceived(message.sentAt);
@@ -117,6 +140,17 @@ export function MessageStatus({
     // remove the button; focus then falls to the page, so catch it.
     if (document.activeElement === document.body) sectionRef.current?.focus();
   }, [again.error, again.isPending, sendable]);
+  const dismissible = message.allowedActions.includes("dismiss");
+  // A Dismiss whose answer was lost but which the reread shows done needs
+  // no word: its advice, to try again, has no button left.
+  const dismissFailure = dismissed ? null : dismiss.error;
+  useEffect(() => {
+    // Dismiss refused because the message changed: the reread can remove
+    // the button, and focus falls to the page; catch it, so the error
+    // after is read next.
+    if (dismiss.error && !dismissible && document.activeElement === document.body)
+      sectionRef.current?.focus();
+  }, [dismiss.error, dismissible]);
 
   function sendAgain(): void {
     if (again.isPending) return;
@@ -152,6 +186,35 @@ export function MessageStatus({
           Edit and send
         </Button>
       )}
+      {dismissible && (
+        // Outlined: the way out that sends nothing, beside the way that
+        // sends.
+        <Button
+          ref={dismissRef}
+          type="button"
+          variant="outline"
+          className={buttonClass}
+          isPending={dismiss.isPending}
+          onPress={() => {
+            if (dismiss.isPending) return;
+            dismiss.mutate(
+              { id: message.id },
+              {
+                onSuccess: () => {
+                  // The button goes once dismissed; focus moves to the
+                  // status, which says so, unless the member moved on
+                  // while it waited.
+                  const active = document.activeElement;
+                  if (active === document.body || active === dismissRef.current)
+                    sectionRef.current?.focus();
+                },
+              },
+            );
+          }}
+        >
+          {dismiss.isPending ? "Dismissing..." : dismissLabel}
+        </Button>
+      )}
       {message.sentAgainAs !== null && (
         // The way on from a message sent again, so drawn as its button
         // though it leads elsewhere, as an outcome's ways on are (DESIGN.md
@@ -172,7 +235,11 @@ export function MessageStatus({
     </>
   );
   const offersAny =
-    sendable || steps.offers.includes("edit") || reconnect || message.sentAgainAs !== null;
+    sendable ||
+    steps.offers.includes("edit") ||
+    dismissible ||
+    reconnect ||
+    message.sentAgainAs !== null;
 
   return (
     <section
@@ -186,10 +253,11 @@ export function MessageStatus({
         {announced && (
           // A new status rises into place, as a step does (DESIGN.md "Motion").
           <span
-            key={message.status}
+            key={`${message.status}-${dismissed}`}
             className={cn(
               "flex items-start gap-3 p-4",
-              (look !== "pane" || message.status !== opened) && stepEnter,
+              (look !== "pane" || message.status !== opened || dismissed !== openedDismissed) &&
+                stepEnter,
             )}
           >
             <MessageStatusMark message={message} />
@@ -246,8 +314,11 @@ export function MessageStatus({
 
       <div className="px-4 pb-4 empty:hidden">
         <RequestError
-          errors={again.error ? [{ message: sendAgainErrorMessage(again.error) }] : []}
-          requestId={again.error?.requestId}
+          errors={[
+            ...(again.error ? [{ message: sendAgainErrorMessage(again.error) }] : []),
+            ...(dismissFailure ? [{ message: dismissErrorMessage(dismissFailure) }] : []),
+          ]}
+          requestId={again.error?.requestId ?? dismissFailure?.requestId}
         />
       </div>
 

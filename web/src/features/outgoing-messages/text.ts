@@ -14,12 +14,17 @@ const keyReusedType: ProblemType = "/api/v0/problems/idempotency-key-reused";
 const needsReconnectType: ProblemType = "/api/v0/problems/sending-account-needs-reconnect";
 const notSendableAgainType: ProblemType = "/api/v0/problems/not-sendable-again";
 const sentAgainOtherwiseType: ProblemType = "/api/v0/problems/sent-again-otherwise";
+const notDismissibleType: ProblemType = "/api/v0/problems/not-dismissible";
 const messageNotFoundType: ProblemType = "/api/v0/problems/outgoing-message-not-found";
 const answeredNotFoundType: ProblemType = "/api/v0/problems/message-not-found";
 export const messageGone = "This message isn't in your Outbox. It may have been removed.";
 
 // The badge of a message sent again as a copy.
 export const sentAgainLabel = "Tried again";
+
+// The badge of a message the member dismissed, and its button.
+export const dismissedLabel = "Dismissed";
+export const dismissLabel = "Dismiss";
 
 // The short name of each status, e.g. for a badge.
 const statusLabels: Record<Status, string> = {
@@ -61,7 +66,14 @@ const failures: Record<Failure, (from: string, current: string | undefined) => s
 // to know what it offers.
 export type MessageState = Pick<
   OutgoingMessageSummary,
-  "status" | "failure" | "from" | "sentAt" | "sentAgainAs" | "allowedActions" | "connectedAccountId"
+  | "status"
+  | "failure"
+  | "from"
+  | "sentAt"
+  | "sentAgainAs"
+  | "dismissedAt"
+  | "allowedActions"
+  | "connectedAccountId"
 >;
 
 // SendingAccount is what nextSteps needs of each of the member's accounts.
@@ -89,11 +101,12 @@ export const notSentPrefix = "Not sent. ";
 
 // sentSummary words message's status in one line, for the compose window
 // after Send: who it is going or went to, or the status's name, Tried
-// again once it was sent again.
+// again once it was sent again, Dismissed once dismissed.
 export function sentSummary(
   message: MessageState & Pick<OutgoingMessageSummary, "to" | "cc" | "bcc">,
 ): string {
   if (message.sentAgainAs !== null) return sentAgainLabel;
+  if (message.dismissedAt !== null) return dismissedLabel;
   if (inProgress(message.status)) return `Sending to ${recipientSummary(message)}...`;
   if (message.status === "sent") return `Sent to ${recipientSummary(message)}`;
   return statusLabel(message.status);
@@ -107,13 +120,25 @@ const sentAgainTexts: Partial<Record<Status, string>> = {
     "inbok couldn't confirm whether Gmail sent this message. You already tried sending it again.",
 };
 
+// What a dismissed message's text ends with: why it left the count, and
+// that its ways on stay.
+const dismissedText = "You dismissed it, so the Outbox no longer counts it.";
+
 // nextSteps says what happened to message and what the member can do
 // next. accounts are the member's connected accounts, undefined until they
 // load; the sending account's address now names where Send again sends
-// from.
+// from. A dismissed message keeps its reason and offers, and says it was
+// dismissed.
 export function nextSteps(message: MessageState, accounts?: readonly SendingAccount[]): NextSteps {
   const again = message.sentAgainAs === null ? undefined : sentAgainTexts[message.status];
   if (again !== undefined) return { text: again, offers: [] };
+  const steps = endedSteps(message, accounts);
+  if (message.dismissedAt === null) return steps;
+  return { ...steps, text: `${steps.text} ${dismissedText}` };
+}
+
+// endedSteps is nextSteps for a message not sent again.
+function endedSteps(message: MessageState, accounts?: readonly SendingAccount[]): NextSteps {
   const offers = endedOffers(message, accounts);
   if (message.status === "unknown") return { text: statusTexts.unknown(message.from), offers };
   if (message.status !== "failed")
@@ -291,6 +316,21 @@ export function sendTooltip(): string {
 // What the reply editor's buttons say: each opens the editor for one mode.
 export const replyLabels = { reply: "Reply", "reply-all": "Reply all" } as const;
 
+// dismissErrorMessage words a Dismiss Outgoing Message that failed.
+export function dismissErrorMessage(err: ApiError): string {
+  // Only the API's own problems say why; a missing route says nothing.
+  if (err.status === conflict && err.problem?.type === notDismissibleType)
+    return "This message can't be dismissed: its status has changed.";
+  if (err.status === notFound && err.problem?.type === messageNotFoundType) return messageGone;
+  // A repeat changes nothing, so trying again is safe.
+  if (uncertainOutcome(err))
+    return uncertainMessage(
+      err,
+      "We couldn't confirm whether it was dismissed. Trying again is safe.",
+    );
+  return userMessage(err);
+}
+
 // sendAgainErrorMessage words a Send Message Again that failed.
 export function sendAgainErrorMessage(err: ApiError): string {
   // Only the API's own problems say why; a missing route says nothing.
@@ -464,11 +504,13 @@ const shortFailures: Record<Failure, string> = {
 };
 
 // rowReason returns what an Outbox row says after message's status: why
-// it failed, what an unconfirmed one asks, or that it was sent again;
-// empty while it waits, sends, or once it was sent, which the status says
-// alone.
+// it failed, what an unconfirmed one asks, that it was sent again, or,
+// once dismissed, whether it went; empty while it waits, sends, or once
+// it was sent, which the status says alone.
 export function rowReason(message: MessageState): string {
   if (message.sentAgainAs !== null) return "You sent it again as a new message.";
+  if (message.dismissedAt !== null)
+    return message.status === "unknown" ? "It may have been sent." : "It wasn't sent.";
   if (message.status === "unknown") return "Check Sent in Gmail before sending again.";
   if (message.status !== "failed") return "";
   return message.failure ? shortFailures[message.failure] : "";
