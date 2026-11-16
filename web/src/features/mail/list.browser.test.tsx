@@ -921,6 +921,30 @@ describe("the list's order and refreshes", () => {
     await expect.element(page.getByRole("row", { name: /Subject 100,/ })).toHaveFocus();
   });
 
+  it("marks the star without a button, and shows no actions, on an account that takes none", async () => {
+    // Usable, as when no Google client is set up: only allowedActions says.
+    const api = mailApi(
+      [conversation(1, { starred: true }), conversation(2, { accountId: 2 })],
+      [
+        { ...listedAccount(1, "ana@example.com"), allowedActions: ["rename", "disconnect"] },
+        listedAccount(2, "ana@work.example"),
+      ],
+    );
+    await app(api);
+    const starred = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(starred).toBeVisible();
+    // The row's name still says it is starred.
+    await expect.element(starred).toHaveAccessibleName(/Starred/);
+    expect(starred.getByRole("button", { name: "Star" }).query()).toBeNull();
+    await expect.element(starOf(/Subject 2,/)).toBeInTheDocument();
+    // Hovered, it offers nothing; its neighbour of the other account does.
+    await userEvent.unhover(starred);
+    await userEvent.hover(starred);
+    await expect.element(starred).toHaveAttribute("data-hovered", "true");
+    expect(starred.element().querySelector("[data-slot=row-actions]")).toBeNull();
+    expect(rowActions(/Subject 2,/)).not.toBeNull();
+  });
+
   it("sends a quick star and unstar one after the other", async () => {
     const api = mailApi([conversation(1)], one);
     await app(api);

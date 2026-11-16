@@ -25,7 +25,7 @@ import { Marked } from "./marks";
 import { senders } from "./people";
 import { SenderAvatar } from "./sender-avatar";
 import { RowLabelsContext, type RowLabel } from "./labels";
-import { actionsFor, type Action } from "./rules";
+import { actionsFor, type Action, type Changers } from "./rules";
 import { laidOut } from "./slots";
 import { inboxChip, messageCount, moreMarks, rowName, subjectText, unknownSender } from "./text";
 import { actionWords } from "./words";
@@ -73,7 +73,9 @@ export function headingHeight(): number {
 // pane shows; now is the day its date is shown at; onRest and onLeave run as
 // the pointer comes to rest on it and leaves, to read it ahead; onStar
 // stars or unstars it. Its actions in list, actionsFor's, show over its
-// date while it is hovered (RowActions), and onAction runs one. match,
+// date while it is hovered (RowActions), and onAction runs one. While its
+// account takes no actions (changers), it has none, and its star is a
+// mark. match,
 // for a search's result, is the message that
 // matched best, whose sender, date, subject, and text around the match the
 // row shows in place of the conversation's, with the matched words marked
@@ -91,6 +93,7 @@ export function ConversationRow({
   onLeave,
   onStar,
   list,
+  changers,
   onAction,
 }: {
   conversation: Conversation;
@@ -105,8 +108,10 @@ export function ConversationRow({
   onLeave: () => void;
   onStar: (starred: boolean) => void;
   list: Place;
+  changers: Changers;
   onAction: (action: Action) => void;
 }): ReactElement {
+  const changes = changers.has(conversation.accountId);
   const open = useIsOpen(openStore, conversation.id);
   // Opening a conversation while another is open replaces that one in the
   // history: choosing in the reading pane is not a new page, so Back, the
@@ -197,7 +202,12 @@ export function ConversationRow({
               ring={ringed && account ? account.color : undefined}
             />
           </PickBox>
-          <RowActions conversation={conversation} list={list} onAction={onAction} />
+          <RowActions
+            conversation={conversation}
+            list={list}
+            changers={changers}
+            onAction={onAction}
+          />
           <RowText
             conversation={conversation}
             match={match}
@@ -210,7 +220,7 @@ export function ConversationRow({
             subject={subject}
             inInbox={inInbox}
             labels={labels}
-            onStar={onStar}
+            onStar={changes ? onStar : undefined}
           />
         </>
       )}
@@ -219,7 +229,8 @@ export function ConversationRow({
 }
 
 // RowText is a row's three lines: who, count, and date; subject; and
-// preview, the Inbox chip while inInbox, and the star, which onStar sets;
+// preview, the Inbox chip while inInbox, and the star, which onStar sets,
+// or a mark of it without onStar;
 // match's own, words marked, for a search's result.
 // Memoized: React Aria draws a row again at each selection, focus, or
 // press change, while its text stays.
@@ -248,7 +259,7 @@ const RowText = memo(function RowText({
   subject: string;
   inInbox: boolean;
   labels: readonly RowLabel[];
-  onStar: (starred: boolean) => void;
+  onStar: ((starred: boolean) => void) | undefined;
 }): ReactElement {
   return (
     <div
@@ -316,7 +327,11 @@ const RowText = memo(function RowText({
           )}
         </p>
         <RowMarks inbox={inInbox} labels={labels} />
-        <StarButton starred={conversation.starred} onStar={onStar} />
+        {onStar ? (
+          <StarButton starred={conversation.starred} onStar={onStar} />
+        ) : (
+          <StarMark starred={conversation.starred} />
+        )}
       </div>
     </div>
   );
@@ -501,7 +516,8 @@ function PickBox({
 // the list header's 32 px buttons, named by tooltips, over the date's place
 // on the first line, on the row's own fill with a 16 px fade at their
 // start. onAction runs one. None while the list is picking, when the
-// picking bar acts, nor in a row under 16rem, e.g. a 300 px list at twice
+// picking bar acts, nor while its account takes no actions (changers), nor
+// in a row under 16rem, e.g. a 300 px list at twice
 // the usual text size, where they would cover the whole first line and the
 // checkbox; the reading pane's toolbar and the picking bar still act.
 //
@@ -514,15 +530,17 @@ function PickBox({
 function RowActions({
   conversation,
   list,
+  changers,
   onAction,
 }: {
   conversation: Conversation;
   list: Place;
+  changers: Changers;
   onAction: (action: Action) => void;
 }): ReactElement | null {
   const picks = useContext(PickingContext);
-  if (picks === "picking") return null;
-  const { buttons } = laidOut(actionsFor([conversation], list));
+  const { buttons } = laidOut(actionsFor([conversation], list, changers));
+  if (picks === "picking" || buttons.length === 0) return null;
   return (
     <div
       data-slot="row-actions"
@@ -594,6 +612,21 @@ function StarButton({
     >
       <StarIcon aria-hidden="true" className={cn("size-4", starred && "fill-current")} />
     </ToggleButton>
+  );
+}
+
+// StarMark is StarButton's place on a row whose account takes no actions:
+// the filled star while starred, else nothing, in the same 24 px, so the
+// marks before it line up with other rows'. Hidden from screen readers,
+// which hear "Starred" in the row's name.
+function StarMark({ starred }: { starred: boolean }): ReactElement {
+  return (
+    <span
+      aria-hidden="true"
+      className="-my-0.5 -mr-1 flex size-6 shrink-0 items-center justify-center text-foreground"
+    >
+      {starred && <StarIcon className="size-4 fill-current" />}
+    </span>
   );
 }
 

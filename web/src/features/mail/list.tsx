@@ -45,7 +45,7 @@ import { isViewPlace, type Place } from "./places";
 import { ConversationRow, PickingContext, createOpenStore, type RowAccount } from "./row";
 import { perform } from "./perform";
 import { usePressGuard } from "./press-guard";
-import { placeWhere, type Action } from "./rules";
+import { changersOf, placeWhere, type Action } from "./rules";
 import {
   connectGmail,
   emptyTitle,
@@ -117,6 +117,8 @@ export function ConversationList({
     () => new Map<number, ListedAccountOutput>(accountList?.map((a) => [a.id, a])),
     [accountList],
   );
+  // The accounts whose conversations take actions, as the API says.
+  const changers = useMemo(() => changersOf(accountList), [accountList]);
   // The labels rows mark, a label's own list leaving it out.
   const labels = useLabels();
   const rowLabels = useMemo(
@@ -432,7 +434,7 @@ export function ConversationList({
               onScroll={onScroll}
               className="min-h-0 flex-1"
             >
-              <Collection items={rows} dependencies={[now, accountsById, ringed]}>
+              <Collection items={rows} dependencies={[now, accountsById, ringed, changers]}>
                 {(conversation) => (
                   <ConversationRow
                     conversation={conversation}
@@ -448,6 +450,7 @@ export function ConversationList({
                     onLeave={readAhead.leave}
                     onStar={(starred) => star(conversation, starred)}
                     list={place}
+                    changers={changers}
                     onAction={(action) => rowAction(conversation, action)}
                   />
                 )}

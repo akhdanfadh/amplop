@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { ArrowLeftIcon } from "lucide-react";
@@ -19,6 +19,7 @@ import { LabelChips } from "./label-chips";
 import { labelWords } from "./words";
 import { useLabelsIn } from "./labels";
 import type { Performed } from "./perform";
+import { changersOf } from "./rules";
 import { ConversationToolbar } from "./toolbar";
 import {
   accountsUnreadable,
@@ -82,17 +83,17 @@ export function Reader({
         : undefined,
   });
   const conversation = row ?? detail?.conversation;
-  const account = accounts.data?.data.accounts.find((a) => a.id === conversation?.accountId);
+  const accountList = accounts.data?.data.accounts;
+  const account = accountList?.find((a) => a.id === conversation?.accountId);
+  const changers = useMemo(() => changersOf(accountList), [accountList]);
+  // Whether the conversation's account takes actions, as the API says.
+  const changes = conversation !== undefined && changers.has(conversation.accountId);
   const actionMail = mail && {
     client,
     conversations: mail.conversations,
     placeCounts: mail.placeCounts,
   };
-  useReadOnOpen(
-    actionMail,
-    conversation,
-    detail?.messages !== undefined && account?.status === "usable",
-  );
+  useReadOnOpen(actionMail, conversation, detail?.messages !== undefined && changes);
   // The toolbar's actions run as the open row's do (useAct).
   const { act, goBack } = useAct(actionMail, list, conversationId);
   const onAction = (performed: Performed) => {
@@ -147,6 +148,7 @@ export function Reader({
               conversation={row}
               labels={labels}
               listAccount={listAccount}
+              removable={changes}
               onArchive={() => onAction("archive")}
               onRemove={(label) =>
                 onAction({
@@ -167,17 +169,13 @@ export function Reader({
               providerUrl={detail?.providerUrl}
               // Labels under their account's name where the list shows
               // several accounts' mail, as picking's menus show them.
-              headings={listAccount === undefined && (accounts.data?.data.accounts.length ?? 0) > 1}
+              headings={listAccount === undefined && (accountList?.length ?? 0) > 1}
               labels={labels}
               accountName={(id) => {
-                const owner = accounts.data?.data.accounts.find((a) => a.id === id);
+                const owner = accountList?.find((a) => a.id === id);
                 return owner ? accountName(owner) : "";
               }}
-              canChange={(id) =>
-                accounts.data?.data.accounts.some(
-                  (a) => a.id === id && a.allowedActions.includes("change-mail"),
-                ) ?? false
-              }
+              changers={changers}
               onAction={onAction}
             />
           )
@@ -208,7 +206,7 @@ export function Reader({
 // useReadOnOpen marks conversation read in mail as it opens, once: when
 // ready and the tab shows, only while it is unread then. ready says its
 // messages are read, which decided the ones that start open, and its
-// account is usable. A refused or failed read puts the row back unsaid
+// account takes actions (changersOf). A refused or failed read puts the row back unsaid
 // and is not tried again.
 function useReadOnOpen(
   mail: ActionMail | undefined,

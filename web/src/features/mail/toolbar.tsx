@@ -6,11 +6,11 @@ import { DropdownMenu, DropdownMenuItem, DropdownMenuTrigger } from "@/component
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import type { Conversation } from "./conversations";
-import { LabelMenuItems, LabelPicker, type Picker } from "./label-menu";
+import { LabelMenuItems, LabelPicker, pickersFor, type Picker } from "./label-menu";
 import type { Label } from "./labels";
 import type { Performed } from "./perform";
 import type { Place } from "./places";
-import { actionsFor, type Action } from "./rules";
+import { actionsFor, changeable, type Action, type Changers } from "./rules";
 import { laidOut } from "./slots";
 import { moreName, openInGmail, opensInNewTab } from "./text";
 import { actionWords } from "./words";
@@ -20,9 +20,10 @@ import { actionWords } from "./words";
 // the state's first action, Delete, Mark read or unread, Star, then More
 // with Move to… and Labels…, which open their picker under More
 // (LabelPicker, of labels, under their account's name when headings is
-// set), Report spam, and Open in Gmail, providerUrl, in a new tab.
-// onAction runs an action or a change; accountName names an account, and
-// canChange reports whether its labels can change (LabelPicker).
+// set), Report spam, and Open in Gmail, providerUrl, in a new tab. Only
+// Open in Gmail while its account takes no actions (changers), and no
+// More while that is gone too. onAction runs an action or a change;
+// accountName names an account.
 export function ConversationToolbar({
   conversation,
   list,
@@ -30,7 +31,7 @@ export function ConversationToolbar({
   headings,
   labels,
   accountName,
-  canChange,
+  changers,
   onAction,
 }: {
   conversation: Conversation;
@@ -39,13 +40,15 @@ export function ConversationToolbar({
   headings: boolean;
   labels: readonly Label[];
   accountName: (accountId: number) => string;
-  canChange: (accountId: number) => boolean;
+  changers: Changers;
   onAction: (act: Performed) => void;
 }): ReactElement {
   // Each button keeps its slot as its key, so focus stays on it as its
   // action changes, e.g. Archive to Move to Inbox.
-  const { buttons, more } = laidOut(actionsFor([conversation], list));
+  const { buttons, more } = laidOut(actionsFor([conversation], list, changers));
+  const own = changeable([conversation], changers);
   const gmail = providerUrl && isHttps(providerUrl) ? providerUrl : undefined;
+  const offersMore = pickersFor(own, list).length > 0 || more.length > 0 || gmail !== undefined;
   // The label picker More opened, under More's button.
   const [picker, setPicker] = useState<Picker | null>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
@@ -58,38 +61,40 @@ export function ConversationToolbar({
           <ActionButton key={slot} action={action} onAction={onAction} />
         ),
       )}
-      <DropdownMenuTrigger>
-        <TooltipTrigger>
-          <Button ref={moreButton} variant="ghost" size="icon" aria-label={moreName}>
-            <EllipsisVerticalIcon aria-hidden="true" />
-          </Button>
-          <Tooltip>{moreName}</Tooltip>
-        </TooltipTrigger>
-        <DropdownMenu placement="bottom end" className="w-auto">
-          <LabelMenuItems conversations={[conversation]} list={list} onOpen={setPicker} />
-          {more.map((action) => {
-            const { label, icon: Icon } = actionWords[action];
-            return (
-              <DropdownMenuItem key={action} onAction={() => onAction(action)}>
-                <Icon aria-hidden="true" />
-                {label}
+      {offersMore && (
+        <DropdownMenuTrigger>
+          <TooltipTrigger>
+            <Button ref={moreButton} variant="ghost" size="icon" aria-label={moreName}>
+              <EllipsisVerticalIcon aria-hidden="true" />
+            </Button>
+            <Tooltip>{moreName}</Tooltip>
+          </TooltipTrigger>
+          <DropdownMenu placement="bottom end" className="w-auto">
+            <LabelMenuItems conversations={own} list={list} onOpen={setPicker} />
+            {more.map((action) => {
+              const { label, icon: Icon } = actionWords[action];
+              return (
+                <DropdownMenuItem key={action} onAction={() => onAction(action)}>
+                  <Icon aria-hidden="true" />
+                  {label}
+                </DropdownMenuItem>
+              );
+            })}
+            {gmail && (
+              <DropdownMenuItem
+                href={gmail}
+                target="_blank"
+                rel="noopener noreferrer"
+                textValue={`${openInGmail} ${opensInNewTab}`}
+              >
+                <ExternalLinkIcon aria-hidden="true" />
+                {openInGmail}
+                <span className="sr-only">{opensInNewTab}</span>
               </DropdownMenuItem>
-            );
-          })}
-          {gmail && (
-            <DropdownMenuItem
-              href={gmail}
-              target="_blank"
-              rel="noopener noreferrer"
-              textValue={`${openInGmail} ${opensInNewTab}`}
-            >
-              <ExternalLinkIcon aria-hidden="true" />
-              {openInGmail}
-              <span className="sr-only">{opensInNewTab}</span>
-            </DropdownMenuItem>
-          )}
-        </DropdownMenu>
-      </DropdownMenuTrigger>
+            )}
+          </DropdownMenu>
+        </DropdownMenuTrigger>
+      )}
       <LabelPicker
         picker={picker}
         triggerRef={moreButton}
@@ -99,7 +104,7 @@ export function ConversationToolbar({
         headings={headings}
         labels={labels}
         accountName={accountName}
-        canChange={canChange}
+        canChange={(id) => changers.has(id)}
         onAct={(act) => onAction(act)}
       />
     </>

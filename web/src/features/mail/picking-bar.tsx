@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -18,12 +19,12 @@ import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { mailData, type Conversation } from "./conversations";
 import { listKey, requestRowFocus } from "./focus-request";
-import { LabelMenuItems, LabelPicker, type Picker } from "./label-menu";
+import { LabelMenuItems, LabelPicker, pickersFor, type Picker } from "./label-menu";
 import { useLabels } from "./labels";
 import { perform, type Performed } from "./perform";
 import type { Picking } from "./picking";
 import type { Place } from "./places";
-import { actionsFor, staysInList, targetsOf, type Action } from "./rules";
+import { actionsFor, changeable, changersOf, staysInList, targetsOf, type Action } from "./rules";
 import { laidOut } from "./slots";
 import {
   moreName,
@@ -45,8 +46,9 @@ import { actionWords } from "./words";
 // reached its end (complete); then the actions picked offers in place
 // (actionsFor): each slot shows its usual action while any picked row
 // needs it, and More holds Move to… and Labels… (LabelPicker), the pair's
-// other action when the rows are mixed, and Report spam. An action goes to
-// the picked rows it changes;
+// other action when the rows are mixed, and Report spam, shown while it
+// holds any. An action goes to the picked rows it changes, of accounts
+// that take actions (changersOf), the others keeping their pick;
 // rows it takes out of the list stay picked until it is answered, so a
 // refused one comes back picked, and focus goes to the list's next row
 // when none is left. heading keeps the place's name for screen readers,
@@ -82,11 +84,32 @@ export function PickingBar({
     [accountList],
   );
 
+  const changers = useMemo(() => changersOf(accountList), [accountList]);
   // Each button keeps its slot as its key, so focus stays on it as its
   // action changes, e.g. Star to Remove star, as the toolbar's do.
-  const { buttons, more } = laidOut(actionsFor(picked, place));
+  const { buttons, more } = laidOut(actionsFor(picked, place, changers));
+  // The picked rows whose accounts take actions, which Move to and Labels
+  // change; the others keep their pick.
+  const own = changeable(picked, changers);
+  // No More while it would open empty: no picked row's account takes
+  // actions.
+  const offersMore = pickersFor(own, place).length > 0 || more.length > 0;
+  // Whether focus was last on one of the actions, and the pick-all box,
+  // which takes it when none is left, e.g. after Archive took the picked
+  // rows of accounts that take actions and left only others: a focused
+  // button that goes leaves focus on the page. The browser tells no one
+  // as the button goes, so this is noted as focus moves.
+  const onAction = useRef(false);
+  const pickAllBox = useRef<HTMLSpanElement>(null);
+  const offersNothing = buttons.length === 0 && !offersMore;
+  useEffect(() => {
+    if (!offersNothing || !onAction.current) return;
+    onAction.current = false;
+    if (document.activeElement !== document.body) return;
+    pickAllBox.current?.querySelector("input")?.focus();
+  }, [offersNothing]);
 
-  const run = (action: Action) => act(action, targetsOf(picked, action, place));
+  const run = (action: Action) => act(action, targetsOf(picked, action, place, changers));
   // act runs performed on targets, the picked rows it changes.
   const act = (performed: Performed, targets: readonly Conversation[]) => {
     if (targets.length === 0) return;
@@ -174,7 +197,7 @@ export function PickingBar({
           )}
           {/* Over the rows' avatars beside the list, so its box sits on
             their checkboxes' line. */}
-          <span className={cn("flex shrink-0 justify-center", !inTopBar && "w-9")}>
+          <span ref={pickAllBox} className={cn("flex shrink-0 justify-center", !inTopBar && "w-9")}>
             <TooltipTrigger>
               <Checkbox
                 // As its tooltip says, so a voice command by what it shows
@@ -205,7 +228,15 @@ export function PickingBar({
             Never wider than the bar: where they do not fit beside the
             count, the actions take a row of their own and wrap in it, at
             its end, so none runs off the screen. */}
-          <span className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end">
+          <span
+            className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end"
+            onFocus={() => {
+              onAction.current = true;
+            }}
+            onBlur={() => {
+              onAction.current = false;
+            }}
+          >
             {buttons.map(({ slot, action }) => {
               const { label, icon: Icon } = actionWords[action];
               return (
@@ -222,41 +253,40 @@ export function PickingBar({
                 </TooltipTrigger>
               );
             })}
-            <DropdownMenuTrigger>
-              <TooltipTrigger>
-                <Button ref={moreButton} variant="ghost" size="icon-sm" aria-label={moreName}>
-                  <EllipsisVerticalIcon aria-hidden="true" />
-                </Button>
-                <Tooltip>{moreName}</Tooltip>
-              </TooltipTrigger>
-              <DropdownMenu placement="bottom end" className="w-auto">
-                <LabelMenuItems conversations={picked} list={place} onOpen={setPicker} />
-                {more.map((action) => {
-                  const { label, icon: Icon } = actionWords[action];
-                  return (
-                    <DropdownMenuItem key={action} onAction={() => run(action)}>
-                      <Icon aria-hidden="true" />
-                      {label}
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenu>
-            </DropdownMenuTrigger>
+            {offersMore && (
+              <DropdownMenuTrigger>
+                <TooltipTrigger>
+                  <Button ref={moreButton} variant="ghost" size="icon-sm" aria-label={moreName}>
+                    <EllipsisVerticalIcon aria-hidden="true" />
+                  </Button>
+                  <Tooltip>{moreName}</Tooltip>
+                </TooltipTrigger>
+                <DropdownMenu placement="bottom end" className="w-auto">
+                  <LabelMenuItems conversations={own} list={place} onOpen={setPicker} />
+                  {more.map((action) => {
+                    const { label, icon: Icon } = actionWords[action];
+                    return (
+                      <DropdownMenuItem key={action} onAction={() => run(action)}>
+                        <Icon aria-hidden="true" />
+                        {label}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenu>
+              </DropdownMenuTrigger>
+            )}
             <LabelPicker
               picker={picker}
               triggerRef={moreButton}
               onClose={() => setPicker(null)}
-              conversations={picked}
+              conversations={own}
               list={place}
               // Under their account's name where the list shows several
               // accounts' mail, even once one account's picks are left.
               headings={account === undefined && (accountList?.length ?? 0) > 1}
               labels={labels}
               accountName={(id) => names.get(id) ?? ""}
-              canChange={(id) =>
-                accountList?.some((a) => a.id === id && a.allowedActions.includes("change-mail")) ??
-                false
-              }
+              canChange={(id) => changers.has(id)}
               onAct={act}
             />
           </span>

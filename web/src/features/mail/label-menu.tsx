@@ -74,10 +74,20 @@ export function labelable(conversations: readonly Conversation[]): Conversation[
   return conversations.filter((c) => c.allMail);
 }
 
+// pickersFor returns the pickers a More menu offers for conversations in
+// list: Move to while there are any and they can leave list, the place of
+// the list they are in (canMoveFrom); Labels while any of them is
+// labelable.
+export function pickersFor(conversations: readonly Conversation[], list: Place): Picker[] {
+  return [
+    ...(conversations.length > 0 && canMoveFrom(list) ? (["move"] as const) : []),
+    ...(labelable(conversations).length > 0 ? (["labels"] as const) : []),
+  ];
+}
+
 // LabelMenuItems are a More menu's Move to… and Labels… (DESIGN.md
-// "Reading pane") for conversations, each opening its picker (onOpen):
-// Move to while they can leave list, the place of the list they are in
-// (canMoveFrom); Labels while any of them is labelable.
+// "Reading pane") for conversations, as pickersFor offers them, each
+// opening its picker (onOpen).
 export function LabelMenuItems({
   conversations,
   list,
@@ -87,15 +97,16 @@ export function LabelMenuItems({
   list: Place;
   onOpen: (picker: Picker) => void;
 }): ReactElement {
+  const pickers = pickersFor(conversations, list);
   return (
     <>
-      {canMoveFrom(list) && (
+      {pickers.includes("move") && (
         <DropdownMenuItem textValue={moveTo.label} onAction={() => onOpen("move")}>
           <moveTo.icon aria-hidden="true" />
           {opensPicker(moveTo.label)}
         </DropdownMenuItem>
       )}
-      {labelable(conversations).length > 0 && (
+      {pickers.includes("labels") && (
         <DropdownMenuItem textValue={labelsName.label} onAction={() => onOpen("labels")}>
           <labelsName.icon aria-hidden="true" />
           {opensPicker(labelsName.label)}

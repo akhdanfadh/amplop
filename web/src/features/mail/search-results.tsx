@@ -32,7 +32,7 @@ import { usePressGuard } from "./press-guard";
 import { RowLabelsContext, rowLabelsOf, useLabels } from "./labels";
 import { isViewPlace, searchPlace } from "./places";
 import { ConversationRow, createOpenStore } from "./row";
-import { inList, type Action } from "./rules";
+import { changersOf, inList, type Action } from "./rules";
 import {
   filtered,
   mostResults,
@@ -106,6 +106,8 @@ export function SearchResults({
     () => new Map<number, ListedAccountOutput>(accounts?.map((a) => [a.id, a])),
     [accounts],
   );
+  // The accounts whose conversations take actions, as the API says.
+  const changers = useMemo(() => changersOf(accounts), [accounts]);
   // The labels rows mark, one at most, so the snippet keeps its room to
   // show the match; a search of one label leaves it out, as its list
   // does.
@@ -339,7 +341,7 @@ export function SearchResults({
         />
         <RowLabelsContext value={rowLabels}>
           <GridList aria-label={resultsName} rowSize={rowSize} className="min-h-0 flex-1">
-            <Collection items={rows} dependencies={[now, accountsById, ringed]}>
+            <Collection items={rows} dependencies={[now, accountsById, ringed, changers]}>
               {(row) => (
                 <ConversationRow
                   conversation={row}
@@ -354,6 +356,7 @@ export function SearchResults({
                   onLeave={readAhead.leave}
                   onStar={(starred) => star(row, starred)}
                   list={offeredIn(places)}
+                  changers={changers}
                   onAction={(action) => rowAction(row, action)}
                 />
               )}

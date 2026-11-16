@@ -1227,6 +1227,14 @@ bar, and the row lay out their buttons by one slots module
 time after a row's action (`mail/press-guard.ts`), so a double press
 acts once.
 
+A conversation takes actions only while its account's `allowedActions`
+from the server include `change-mail` (`changersOf` in `mail/rules.ts`),
+never by the page's own copy of the rule. `actionsFor` and `targetsOf`
+leave the others out, so the toolbar, the picking bar, a hovered row,
+Move to, and Labels follow from them, as does marking read on open; the
+label chips drop their ×, a row's star becomes a plain mark, and More
+shows only while it holds something.
+
 ## Checks and tests
 
 From `web`, check formatting, lint rules, and types in one command, or

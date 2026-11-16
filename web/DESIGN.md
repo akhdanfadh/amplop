@@ -465,7 +465,9 @@ last two redirect into settings, so settings can move without the server.
   ("…, Labels Clients/Acme and Hiring"), and the reading pane shows them
   whole; then the star button, on every row as in Gmail's
   list and app, outlined until starred (← reaches it from the row);
-  pressing it stars or unstars at once. A 36 px initials
+  pressing it stars or unstars at once. On an account that takes no
+  actions it is a plain mark in the same place, filled while starred. A
+  36 px initials
   avatar ringed in the account colour leads (initials of the newest
   message's sender), its top on the first line's, 16 px from the list's edge
   (the heading's inset) and 12 px from the text, closer than the edge so it
@@ -491,10 +493,11 @@ last two redirect into settings, so settings can move without the server.
   fill (`accent` hovered, `selection` open) with a 16 px fade where they
   start, so they cover the date and about 104 px of the line. They show
   only while the row is hovered or one of them has keyboard focus, never
-  while the list is picking, and only in a row at least 16rem wide, so a
-  narrow list at a large text size keeps its first line and checkbox (a
-  container query, in rem); a touch screen never shows them (long press
-  and the picking bar act there). Where a row has room for them, they are
+  while the list is picking or on an account that takes no actions, and
+  only in a row at least 16rem wide, so a narrow list at a large text
+  size keeps its first line and checkbox (a container query, in rem); a
+  touch screen never shows them (long press and the picking bar act
+  there). Where a row has room for them, they are
   always in its arrow-key path, so → from
   a row reaches the first, then the star, and ← the star; focus moving
   from row to row leaves the dates in place. An action runs as the
@@ -547,7 +550,8 @@ last two redirect into settings, so settings can move without the server.
   them); the pair's other action goes into More when the rows are mixed,
   with Move to… and Labels… (see Reading pane, Labels) and Report spam;
   the star is a plain Star or Remove star. An action
-  goes only to the picked rows it changes, every guess showing at once,
+  goes only to the picked rows it changes, of accounts that take
+  actions, the others keeping their pick, every guess showing at once,
   and always gets an Undo (see Feedback). Picking all picks the loaded
   rows, as fixed IDs; acting on a whole place is Not now. When an action
   leaves no picked row, focus goes to the row that took the first one's
@@ -586,7 +590,12 @@ last two redirect into settings, so settings can move without the server.
   Inbox, Mark read or unread, Star; elsewhere in the inbox, Archive,
   Delete, Report spam, Mark read or unread, Star; archived, Move to
   Inbox in place of Archive; only in Spam or only in Trash, as in those
-  lists. No Delete forever. At most five buttons, then More: a sixth
+  lists. No Delete forever. A conversation whose account takes no
+  actions, as the server lists it (`allowedActions` without
+  `change-mail`: it needs reconnecting, or Gmail isn't set up), has More
+  with Open in Gmail alone: the sidebar's Reconnect says why. More shows
+  only while it holds something, here and in the picking bar, so it
+  never opens empty. At most five buttons, then More: a sixth
   action goes in More, chosen by hand, never moved there by width; the
   same buttons at every width. The faded subject may shrink under a
   512 px pane, so the bar keeps one 48 px row, and hides under a 28em
@@ -611,7 +620,7 @@ last two redirect into settings, so settings can move without the server.
   error toast; one the provider no longer has also removes the row.
 - Opening an unread conversation marks it read, once: when its messages
   have come (they decide which start open) and the tab shows, and not for
-  an account that needs reconnecting. Its row un-bolds and the counts
+  an account that takes no actions. Its row un-bolds and the counts
   drop at once. A read the server refuses or that fails puts both back
   silently and is not tried again; arrow keys in the list only move
   focus, never open.
@@ -675,8 +684,9 @@ last two redirect into settings, so settings can move without the server.
     sends at once: the Inbox's runs Archive, a label's takes that label
     off. One Tab stop reaches them; arrow keys move between them, Delete
     or Backspace removes one; with the last gone, focus goes to the
-    title. No chip for Spam or Trash, whose toolbar already says where
-    the conversation is.
+    title. An account that takes no actions has chips without ×. No chip
+    for Spam or Trash, whose toolbar already says where the conversation
+    is.
 - Title (22 px), the account mark, the message count. The title and
   account draw from the list's row at once; "Loading messages..." stands
   under them until the messages come, and the view takes focus, so a

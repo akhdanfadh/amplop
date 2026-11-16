@@ -232,6 +232,46 @@ describe("picking", () => {
     await expect.element(bar().getByRole("button", { name: "Mark unread" })).toBeVisible();
   });
 
+  it("sends an action only to picked rows whose account takes actions, the others staying picked", async () => {
+    const rows = [conversation(5), conversation(4, { accountId: 2 })];
+    await open(rows, {
+      accounts: [
+        listedAccount(1, "ana@example.com"),
+        // Usable, as when no Google client is set up: only allowedActions says.
+        { ...listedAccount(2, "bo@example.com"), allowedActions: ["rename", "disconnect"] },
+      ],
+    });
+    await pickBox("Subject 5");
+    await pickBox("Subject 4");
+
+    await userEvent.click(bar().getByRole("button", { name: "Archive" }));
+
+    expect(api.actions).toEqual([{ action: "archive", ids: [rows[0].id] }]);
+    await expect.element(row("Subject 5")).not.toBeInTheDocument();
+    await expect.element(row("Subject 4")).toHaveAttribute("aria-selected", "true");
+    // Nothing is left that the bar can act on, so no More opens empty.
+    await expect.element(bar().getByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    expect(bar().getByRole("button", { name: "More actions" }).query()).toBeNull();
+  });
+
+  it("gives focus to the pick-all box when an action leaves the bar nothing to offer", async () => {
+    const rows = [conversation(5), conversation(4, { accountId: 2 })];
+    await open(rows, {
+      accounts: [
+        listedAccount(1, "ana@example.com"),
+        { ...listedAccount(2, "bo@example.com"), allowedActions: ["rename", "disconnect"] },
+      ],
+    });
+    await pickBox("Subject 5");
+    await pickBox("Subject 4");
+
+    bar().getByRole("button", { name: "Archive" }).element().focus();
+    await userEvent.keyboard("{Enter}");
+
+    await expect.element(row("Subject 5")).not.toBeInTheDocument();
+    await expect.element(bar().getByRole("checkbox")).toHaveFocus();
+  });
+
   it("keeps a refused row picked and says why in one toast, with details", async () => {
     const rows = [conversation(5), conversation(4), conversation(3)];
     await open(rows);

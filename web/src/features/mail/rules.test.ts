@@ -4,6 +4,7 @@ import { toConversation } from "./conversations";
 import type { ConversationRow } from "@/api/generated/model";
 import {
   actionsFor,
+  changersOf,
   targetsOf,
   countChanges,
   guess,
@@ -149,6 +150,9 @@ function rowWith(changes: Partial<ConversationRow>) {
   return toConversation(conversation(1, changes));
 }
 
+// The test conversations' account, which takes actions.
+const changers = new Set([1]);
+
 describe("actionsFor", () => {
   const cases: [string, Partial<ConversationRow>, string, Action[]][] = [
     ["an Inbox conversation", {}, "inbox", ["archive", "trash", "spam", "unread", "star"]],
@@ -190,7 +194,7 @@ describe("actionsFor", () => {
     ],
   ];
   it.each(cases)("offers %s its state's actions", (_, changes, list, actions) => {
-    expect(actionsFor([rowWith(changes)], list)).toEqual(actions);
+    expect(actionsFor([rowWith(changes)], list, changers)).toEqual(actions);
   });
 
   it("offers mixed conversations every action any of them offers, in order", () => {
@@ -198,7 +202,7 @@ describe("actionsFor", () => {
       rowWith({ unread: true }),
       toConversation(conversation(2, { inbox: false, starred: true })),
     ];
-    expect(actionsFor(rows, "all")).toEqual([
+    expect(actionsFor(rows, "all", changers)).toEqual([
       "archive",
       "unarchive",
       "trash",
@@ -211,7 +215,37 @@ describe("actionsFor", () => {
   });
 
   it("offers nothing for no conversations", () => {
-    expect(actionsFor([], "inbox")).toEqual([]);
+    expect(actionsFor([], "inbox", changers)).toEqual([]);
+  });
+
+  it("offers nothing for a conversation whose account takes no actions", () => {
+    expect(actionsFor([rowWith({})], "inbox", new Set())).toEqual([]);
+  });
+
+  it("offers only what the conversations of accounts that take actions offer", () => {
+    const other = toConversation(conversation(2, { accountId: 2, unread: true }));
+    expect(actionsFor([rowWith({}), other], "inbox", changers)).toEqual([
+      "archive",
+      "trash",
+      "spam",
+      "unread",
+      "star",
+    ]);
+  });
+});
+
+describe("changersOf", () => {
+  it("returns the accounts whose allowedActions list change-mail", () => {
+    expect(
+      changersOf([
+        { id: 1, allowedActions: ["sync", "send", "change-mail", "reconnect"] },
+        { id: 2, allowedActions: ["sync", "reconnect", "rename", "disconnect"] },
+      ]),
+    ).toEqual(new Set([1]));
+  });
+
+  it("returns none until the accounts are read", () => {
+    expect(changersOf(undefined)).toEqual(new Set());
   });
 });
 
@@ -220,9 +254,14 @@ describe("targetsOf", () => {
   const archived = toConversation(conversation(2, { inbox: false }));
 
   it("returns the conversations an action changes, in their order", () => {
-    expect(targetsOf([unread, archived], "archive", "all")).toEqual([unread]);
-    expect(targetsOf([unread, archived], "unread", "all")).toEqual([archived]);
-    expect(targetsOf([unread, archived], "trash", "all")).toEqual([unread, archived]);
+    expect(targetsOf([unread, archived], "archive", "all", changers)).toEqual([unread]);
+    expect(targetsOf([unread, archived], "unread", "all", changers)).toEqual([archived]);
+    expect(targetsOf([unread, archived], "trash", "all", changers)).toEqual([unread, archived]);
+  });
+
+  it("leaves out the conversations of accounts that take no actions", () => {
+    const other = toConversation(conversation(3, { accountId: 2 }));
+    expect(targetsOf([unread, other], "trash", "all", changers)).toEqual([unread]);
   });
 });
 
