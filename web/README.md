@@ -199,6 +199,10 @@ which uses the cached session when a page has read it:
 | `_auth`                | Signed-out pages                            | None; the wordmark over one column                                                                                                                    |
 | `_auth/_signed-out`    | Sign-in, Forgot password, Register          | A signed-in member goes to `/`; a failed check shows the page                                                                                         |
 
+`/mail/search` is the place route's page with "search" as its place: a
+search's results in the list's place, the search in its search
+parameters, so the search box, drawn by the place's page, stays the same
+box, focused, as typing moves the address from a place to its results.
 `/` opens `/mail/inbox`. `/two-factor-setup` sits in `_auth` with its own
 guard: no session goes to sign-in, a session with two-factor on to `/`.
 Pages emailed links open (`/verify-email`,
@@ -1393,8 +1397,17 @@ to settle reads them again. The reading pane reads its row from the same
 collection by ID, loaded from Get Conversation when no list holds it, so
 an action anywhere shows there at once; a failed read of it keeps the
 row as last confirmed, without an action's guess, and only a 404 lets it
-go. Opening an unread conversation runs `read`. The package ships agent
-guides for its installed version in `node_modules/@tanstack/db/skills`.
+go. Opening an unread conversation runs `read`. A search's results
+(`features/mail/search.ts`, `search-results.tsx`) are a TanStack Query
+infinite read of Search Conversations, 50 a page, whose conversations join
+the same collection as a load of their IDs (`idsOf`), which takes the
+rows the search just read (`holdFound`) rather than asking again; so an
+action, Mark read included, shows on a result at once and every list
+agrees, and the rows leave with the results, as the reading pane's do.
+The search keeps no cache once its page closes (`gcTime: 0`): a search
+opened again reads again, rather than show rows from before an action.
+The package ships agent guides for its installed version in
+`node_modules/@tanstack/db/skills`.
 
 Under `pnpm dev`, a page sends each read twice and cancels the first:
 React's development mode mounts every component twice to expose bugs.

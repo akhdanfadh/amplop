@@ -5,6 +5,7 @@ import { cleanup, render } from "vitest-browser-react";
 import type { ConversationRow } from "@/api/generated/model";
 import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
+import { shortcutModifier } from "@/lib/shortcut";
 import { appRouter, memberSession } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
@@ -631,8 +632,7 @@ describe("the Undo bar's keys", () => {
     await open(rows, 0);
     await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
     await expect.element(list().getByRole("row", { name: /Subject 1/ })).toHaveFocus();
-    // Apple keyboards say Cmd.
-    const key = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "Cmd" : "Ctrl";
+    const key = shortcutModifier();
 
     await userEvent.keyboard("{Tab}");
 

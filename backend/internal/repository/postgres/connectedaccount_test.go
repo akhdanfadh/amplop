@@ -34,9 +34,10 @@ type connectedAccountsTest struct {
 // test_account_content_jobs, and each sync job as a row of
 // test_sync_jobs, in the caller's transaction, or fails with
 // removalErr, contentErr, or syncErr. A second sync job of one account is
-// not saved, as DBOS's deduplication refuses it.
+// not saved, as DBOS's deduplication refuses it. Search jobs are saved as
+// [searchWorkflows] does.
 type accountWorkflows struct {
-	Workflows
+	searchWorkflows
 	removalErr error
 	contentErr error
 	syncErr    error
@@ -125,6 +126,7 @@ func newConnectedAccountsTest(t *testing.T) connectedAccountsTest {
 	t.Helper()
 	db, conn := setupStorage(t)
 	createJobTables(t, conn)
+	createSearchJobTables(t, conn)
 	db = db.WithWorkflows(accountWorkflows{})
 	ring, err := encryption.New("1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
 	require.NoError(t, err)

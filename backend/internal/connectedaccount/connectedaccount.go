@@ -164,7 +164,8 @@ type Storage interface {
 	RenameConnectedAccount(ctx context.Context, userID, accountID int64, name string) (StoredAccount, error)
 
 	// DeleteConnectedAccount deletes userID's account accountID, keeps its
-	// credential as a removal, and saves the job that revokes it, in one
+	// credential as a removal, and saves the jobs that revoke it, delete its
+	// stored content, and remove its messages from the search index, in one
 	// transaction. It returns the deleted account with its credential, or
 	// [ErrNotFound] when userID has no such account.
 	DeleteConnectedAccount(ctx context.Context, userID, accountID int64) (StoredAccount, error)

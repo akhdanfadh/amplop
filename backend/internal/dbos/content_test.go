@@ -226,6 +226,7 @@ func TestClientContentDeletion(t *testing.T) {
 // it, and keeps the message.
 func TestClientContentRollback(t *testing.T) {
 	s := newContentStack(t)
+	indexing := runs(t, s.conn, searchIndexingWorkflow)
 	_, err := s.conn.Exec(t.Context(), `CREATE FUNCTION reject_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'delete rejected'; END $$`)
 	require.NoError(t, err)
 	_, err = s.conn.Exec(t.Context(), "CREATE CONSTRAINT TRIGGER reject_delete AFTER DELETE ON messages DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_delete()")
@@ -238,6 +239,7 @@ func TestClientContentRollback(t *testing.T) {
 
 	require.ErrorContains(t, err, "delete rejected")
 	assert.Empty(t, contentDeletions(t, s.conn))
+	assert.Equal(t, indexing, runs(t, s.conn, searchIndexingWorkflow), "no search run for the delete")
 	var messages int
 	require.NoError(t, s.conn.QueryRow(t.Context(), "SELECT count(*) FROM messages").Scan(&messages))
 	assert.Equal(t, 1, messages)

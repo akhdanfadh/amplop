@@ -2,6 +2,7 @@ package meilisearch
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -13,22 +14,29 @@ import (
 )
 
 // Documents are stored under ADR005's field names, IDs as decimal
-// strings, and the date as Unix seconds.
+// strings, the date as Unix milliseconds, and the conversation as the
+// account and the thread.
 func TestUpsertFields(t *testing.T) {
 	index := newIndex(t)
+	inbox, label := uuid.New(), uuid.New()
 	d := search.Document{
 		ID:                 uuid.New(),
 		OwnerUserID:        owner,
 		ConnectedAccountID: account,
-		InternalDate:       time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC),
+		ThreadID:           "19a0c3f2e1d4b5a6",
+		InternalDate:       time.Date(2026, 11, 7, 9, 0, 0, 250_000_000, time.UTC),
 		Subject:            "Invoice",
 		From:               "Asha K <asha.k@example.co.id>",
 		To:                 []string{"Budi <budi@example.com>"},
 		CC:                 []string{"Citra <citra@example.com>"},
 		BodyText:           "Please pay",
-		LabelIDs:           []string{"INBOX"},
-		FromAddress:        "asha.k@example.co.id",
-		HasAttachments:     true,
+		AltText:            "Pay now",
+		FromAddresses:      []string{"asha.k@example.co.id", "Office@Example.co.id"},
+		HasAttachment:      true,
+		MailboxIDs:         []uuid.UUID{inbox},
+
+		ConversationMailboxIDs: []uuid.UUID{inbox, label},
+		ConversationFlagged:    true,
 	}
 
 	require.NoError(t, index.Upsert(t.Context(), []search.Document{d}))
@@ -39,15 +47,20 @@ func TestUpsertFields(t *testing.T) {
 		"id":                   d.ID.String(),
 		"owner_user_id":        "1",
 		"connected_account_id": "11",
-		"internal_date":        float64(1794042000),
+		"conversation":         "11/19a0c3f2e1d4b5a6",
+		"internal_date":        float64(1794042000250),
 		"subject":              "Invoice",
 		"from":                 "Asha K <asha.k@example.co.id>",
 		"to":                   []any{"Budi <budi@example.com>"},
 		"cc":                   []any{"Citra <citra@example.com>"},
 		"body_text":            "Please pay",
-		"label_ids":            []any{"INBOX"},
-		"from_address":         "asha.k@example.co.id",
-		"has_attachments":      true,
+		"alt_text":             "Pay now",
+		"from_addresses":       []any{"asha.k@example.co.id", "Office@Example.co.id"},
+		"has_attachment":       true,
+		"mailbox_ids":          []any{inbox.String()},
+
+		"conversation_mailbox_ids": []any{inbox.String(), label.String()},
+		"conversation_flagged":     true,
 	}, stored)
 }
 
@@ -77,31 +90,20 @@ func TestUpsertCreates(t *testing.T) {
 	assertSettings(t, index, owner)
 }
 
-// An index deleted just before an upsert's documents reach it, e.g. by a
-// rebuild, comes back with its settings, so its searches still work.
-func TestUpsertAfterDelete(t *testing.T) {
-	// Given a member's index that a proxy deletes as the next documents
-	// arrive.
+// An upsert applies the settings before it adds the documents, so a
+// member's first documents never sit in an index without them, where
+// every search, which filters on the owner, would be refused.
+func TestUpsertSettingsFirst(t *testing.T) {
 	index := newIndex(t)
-	require.NoError(t, index.Upsert(t.Context(), []search.Document{message("Before")}))
-	direct := index.client
-	documents := "/indexes/" + index.uid(owner) + "/documents"
+	member := "/indexes/" + index.uid(owner)
+	var asked []string
 	index.client = proxied(t, func(r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != documents {
-			return
+		if strings.HasPrefix(r.URL.Path, member+"/") && r.Method != http.MethodGet {
+			asked = append(asked, r.Method+" "+strings.TrimPrefix(r.URL.Path, member))
 		}
-		task, err := direct.DeleteIndexWithContext(r.Context(), index.uid(owner))
-		assert.NoError(t, index.wait(r.Context(), "delete", task, err))
 	})
 
-	// When the next message is upserted.
-	after := message("After")
-	require.NoError(t, index.Upsert(t.Context(), []search.Document{after}))
-	index.client = direct
-	result, err := index.Search(t.Context(), owner, search.Query{Text: "after", Page: 1, PageSize: 10})
+	require.NoError(t, index.Upsert(t.Context(), []search.Document{message("Invoice")}))
 
-	// Then the index has its settings and the message.
-	require.NoError(t, err)
-	assert.Equal(t, []uuid.UUID{after.ID}, result.IDs)
-	assertSettings(t, index, owner)
+	assert.Equal(t, []string{"PATCH /settings", "POST /documents"}, asked)
 }

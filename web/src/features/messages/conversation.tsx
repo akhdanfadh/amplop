@@ -104,6 +104,7 @@ type ConversationProps = {
   back?: ReactNode;
   actions?: ReactNode;
   messageActions?: (message: ConversationMessage) => ReactNode;
+  startAt?: string;
 };
 
 // Conversation is the view inside its reply editor's provider: the toolbar
@@ -117,6 +118,7 @@ function Conversation({
   back,
   actions,
   messageActions,
+  startAt,
 }: ConversationProps): ReactElement {
   const id = useId();
   const title = subjectText(subject);
@@ -229,6 +231,7 @@ function Conversation({
             messages={messages}
             onUnauthorized={onUnauthorized}
             messageActions={messageActions}
+            startAt={startAt}
           />
         ) : (
           placeholder
@@ -248,21 +251,35 @@ function Thread({
   messages,
   onUnauthorized,
   messageActions,
+  startAt,
 }: {
   account: ConversationAccount;
   messages: readonly ConversationMessage[];
   onUnauthorized: () => void;
   messageActions?: (message: ConversationMessage) => ReactNode;
+  startAt?: string;
 }): ReactElement {
   const id = useId();
   // The message the open editor answers keeps its row out of "N more
   // messages", so the editor below it stays in sight, folded or not.
   const answeredId = useAnsweredId();
   const newest = messages.at(-1);
-  const [open, setOpen] = useState(() => initiallyOpen(messages));
+  // The message to start at, e.g. the one a search matched, if it is here.
+  const [start, setStart] = useState(() =>
+    startAt !== undefined && messages.some((message) => message.id === startAt)
+      ? startAt
+      : undefined,
+  );
+  const [open, setOpen] = useState(() => {
+    const first = initiallyOpen(messages);
+    return start === undefined ? first : new Set(first).add(start);
+  });
   // The messages the member opened or folded keep their own rows: one
-  // folded again never disappears back into "N more messages".
-  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
+  // folded again never disappears back into "N more messages", nor does
+  // the one started at.
+  const [touched, setTouched] = useState<ReadonlySet<string>>(
+    () => new Set(start === undefined ? [] : [start]),
+  );
   const [folding, setFolding] = useState<Folding>("grouped");
   const today = useToday();
   // The control to focus once the rows change: a message's row or its
@@ -272,7 +289,21 @@ function Thread({
   // Whether that message also scrolls to the pane's top.
   const scrollNext = useRef(false);
   // The message a link just showed, which flashes so the eye finds it.
-  const [flashed, setFlashed] = useState<string | null>(null);
+  // The message started at flashes too, as it opens.
+  const [flashed, setFlashed] = useState<string | null>(() => start ?? null);
+  // Another message to start at while the conversation stays open, e.g.
+  // Back to a search that matched another of its messages, opens, scrolls
+  // to, and flashes as the first did: state adjusted as the prop changes.
+  const [startedFor, setStartedFor] = useState(startAt);
+  if (startAt !== startedFor) {
+    setStartedFor(startAt);
+    if (startAt !== undefined && messages.some((message) => message.id === startAt)) {
+      setStart(startAt);
+      setOpen((was) => new Set(was).add(startAt));
+      setTouched((was) => new Set(was).add(startAt));
+      setFlashed(startAt);
+    }
+  }
 
   useEffect(() => {
     if (focusNext.current === null) return;
@@ -284,6 +315,15 @@ function Thread({
     focusNext.current = null;
     scrollNext.current = false;
   });
+
+  // The message started at shows at the pane's top, under the toolbar,
+  // as one a link shows; focus stays on the title, where a screen reader
+  // starts.
+  useEffect(() => {
+    if (start === undefined) return;
+    const target = document.getElementById(`${id}-message-${start}`);
+    target?.closest("li")?.scrollIntoView({ block: "start" });
+  }, [id, start]);
 
   // Open, touched, or answered: each keeps its own row.
   const shown = new Set([...open, ...touched]);

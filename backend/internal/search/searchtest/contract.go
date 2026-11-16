@@ -23,12 +23,23 @@ const (
 	budiAccount int64 = 21
 )
 
+// Mailboxes of Asha's work account, by inbok's IDs.
+var (
+	inboxBox   = uuid.MustParse("019a0000-0000-7000-8000-0000000000a1")
+	spamBox    = uuid.MustParse("019a0000-0000-7000-8000-0000000000a2")
+	trashBox   = uuid.MustParse("019a0000-0000-7000-8000-0000000000a3")
+	clientsBox = uuid.MustParse("019a0000-0000-7000-8000-0000000000a4")
+)
+
 // firstPage is a page large enough for every search in the contract.
 var firstPage = search.Query{Page: 1, PageSize: 20}
 
 // RunContract tests the behaviour every [search.Index] shares: owners, account
-// and label filters, which fields a search matches, replacing, deleting within
-// one owner's documents, paging, cancellation, and refused calls. open returns
+// filters, scopes by mailbox and conversation, sender, date, and attachment filters, which fields a
+// search matches, every word of a query, one message per conversation, the
+// order with no words, where it matched, replacing, deleting within
+// one owner's documents, listing and deleting owners and their document IDs,
+// paging, cancellation, and refused calls. open returns
 // a new, prepared index for one test. Text matching beyond whole words, e.g.
 // typos, is the real index's own and tested there.
 func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
@@ -46,10 +57,10 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		foreign.Accounts = []int64{ashaWork, budiAccount}
 		mixed := find(t, index, asha, foreign)
 
-		assert.Equal(t, search.Result{IDs: []uuid.UUID{mine.ID}, Total: 1}, plain)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{mine.ID}, Total: 1}, plain)
 		assert.Empty(t, named.IDs)
 		assert.Equal(t, 0, named.Total)
-		assert.Equal(t, search.Result{IDs: []uuid.UUID{mine.ID}, Total: 1}, mixed)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{mine.ID}, Total: 1}, mixed)
 	})
 
 	t.Run("large IDs", func(t *testing.T) {
@@ -65,8 +76,8 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		require.NoError(t, index.DeleteAccount(t.Context(), second, second))
 		kept := find(t, index, first, query("invoice"))
 
-		assert.Equal(t, search.Result{IDs: []uuid.UUID{mine.ID}, Total: 1}, found)
-		assert.Equal(t, search.Result{IDs: []uuid.UUID{mine.ID}, Total: 1}, kept)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{mine.ID}, Total: 1}, found)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{mine.ID}, Total: 1}, kept)
 	})
 
 	t.Run("accounts", func(t *testing.T) {
@@ -82,38 +93,271 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		assert.Equal(t, []uuid.UUID{home.ID}, result.IDs)
 	})
 
-	t.Run("exclude labels", func(t *testing.T) {
+	t.Run("scope excludes mailboxes", func(t *testing.T) {
 		index := open(t)
 		inbox := document(asha, ashaWork, "invoice")
-		inbox.LabelIDs = []string{"INBOX"}
+		inbox.MailboxIDs = []uuid.UUID{inboxBox, clientsBox}
+		// In the inbox and Spam at once: one excluded mailbox leaves it out.
 		spam := document(asha, ashaWork, "invoice")
-		spam.LabelIDs = []string{"INBOX", "SPAM"}
+		spam.MailboxIDs = []uuid.UUID{inboxBox, spamBox}
 		trash := document(asha, ashaWork, "invoice")
-		trash.LabelIDs = []string{"TRASH"}
-		// A label ID with the characters a filter must escape.
-		odd := document(asha, ashaWork, "invoice")
-		odd.LabelIDs = []string{`a"b\c`}
+		trash.MailboxIDs = []uuid.UUID{trashBox}
+		// In no mailbox, e.g. archived in Gmail.
 		none := document(asha, ashaWork, "invoice")
-		upsert(t, index, inbox, spam, trash, odd, none)
+		upsert(t, index, inbox, spam, trash, none)
 
 		q := query("invoice")
-		q.ExcludeLabels = []string{"SPAM", "TRASH", `a"b\c`}
+		q.Scopes = excluding(spamBox, trashBox)
 		result := find(t, index, asha, q)
 
 		assert.ElementsMatch(t, []uuid.UUID{inbox.ID, none.ID}, result.IDs)
 	})
 
-	t.Run("labels ignore case", func(t *testing.T) {
+	t.Run("scope by conversation", func(t *testing.T) {
 		index := open(t)
-		spam := document(asha, ashaWork, "invoice")
-		spam.LabelIDs = []string{"SPAM"}
-		upsert(t, index, spam)
+		// The message is in no mailbox itself; its conversation is in
+		// Clients and the inbox, e.g. through a reply.
+		clients := document(asha, ashaWork, "invoice")
+		clients.ConversationMailboxIDs = []uuid.UUID{clientsBox, inboxBox}
+		inbox := document(asha, ashaWork, "invoice")
+		inbox.ConversationMailboxIDs = []uuid.UUID{inboxBox}
+		upsert(t, index, clients, inbox, document(asha, ashaWork, "invoice"))
 
 		q := query("invoice")
-		q.ExcludeLabels = []string{"spam"}
+		q.Scopes = []search.Scope{{InConversation: []uuid.UUID{clientsBox, spamBox}}}
 		result := find(t, index, asha, q)
 
-		assert.Empty(t, result.IDs)
+		assert.Equal(t, []uuid.UUID{clients.ID}, result.IDs)
+	})
+
+	t.Run("scope flagged", func(t *testing.T) {
+		index := open(t)
+		starred := document(asha, ashaWork, "invoice")
+		starred.ConversationFlagged = true
+		upsert(t, index, starred, document(asha, ashaWork, "invoice"))
+
+		q := query("invoice")
+		q.Scopes = []search.Scope{{Flagged: true}}
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, []uuid.UUID{starred.ID}, result.IDs)
+	})
+
+	t.Run("scope holds every part", func(t *testing.T) {
+		index := open(t)
+		kept := document(asha, ashaWork, "invoice")
+		kept.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		kept.ConversationFlagged = true
+		// Its conversation is in Clients and starred, but it is in Trash.
+		trashed := document(asha, ashaWork, "invoice")
+		trashed.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		trashed.ConversationFlagged = true
+		trashed.MailboxIDs = []uuid.UUID{trashBox}
+		unstarred := document(asha, ashaWork, "invoice")
+		unstarred.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		upsert(t, index, kept, trashed, unstarred)
+
+		q := query("invoice")
+		q.Scopes = []search.Scope{{InConversation: []uuid.UUID{clientsBox}, Flagged: true, Exclude: []uuid.UUID{trashBox}}}
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, []uuid.UUID{kept.ID}, result.IDs)
+	})
+
+	t.Run("any of the scopes", func(t *testing.T) {
+		index := open(t)
+		clients := document(asha, ashaWork, "invoice")
+		clients.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		spam := document(asha, ashaWork, "invoice")
+		spam.ConversationMailboxIDs = []uuid.UUID{spamBox}
+		spam.MailboxIDs = []uuid.UUID{spamBox}
+		// In Clients too, but in Spam, which the Clients scope leaves out
+		// and the Spam scope does not reach.
+		both := document(asha, ashaWork, "invoice")
+		both.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		both.MailboxIDs = []uuid.UUID{spamBox}
+		upsert(t, index, clients, spam, both, document(asha, ashaWork, "invoice"))
+
+		q := query("invoice")
+		q.Scopes = []search.Scope{
+			{InConversation: []uuid.UUID{clientsBox}, Exclude: []uuid.UUID{spamBox}},
+			{InConversation: []uuid.UUID{spamBox}},
+		}
+		result := find(t, index, asha, q)
+
+		assert.ElementsMatch(t, []uuid.UUID{clients.ID, spam.ID}, result.IDs)
+		assert.Equal(t, 2, result.Total)
+	})
+
+	t.Run("scope copies", func(t *testing.T) {
+		index := open(t)
+		clients := document(asha, ashaWork, "invoice")
+		clients.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		upsert(t, index, clients)
+
+		// The caller reuses its slice after the upsert.
+		clients.ConversationMailboxIDs[0] = inboxBox
+		q := query("invoice")
+		q.Scopes = []search.Scope{{InConversation: []uuid.UUID{clientsBox}}}
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, []uuid.UUID{clients.ID}, result.IDs)
+	})
+
+	t.Run("from", func(t *testing.T) {
+		index := open(t)
+		fajar := document(asha, ashaWork, "invoice")
+		// Two senders, one written in capitals.
+		both := document(asha, ashaWork, "invoice")
+		both.FromAddresses = []string{"ani@example.com", "Citra@Example.com"}
+		umlaut := document(asha, ashaWork, "invoice")
+		umlaut.FromAddresses = []string{"Ümit@example.com"}
+		theirs := document(budi, budiAccount, "invoice")
+		theirs.FromAddresses = []string{"citra@example.com"}
+		upsert(t, index, fajar, both, umlaut, theirs)
+
+		sentBy := func(from ...string) []uuid.UUID {
+			q := query("invoice")
+			q.From = from
+			return find(t, index, asha, q).IDs
+		}
+
+		assert.Equal(t, []uuid.UUID{both.ID}, sentBy("CITRA@example.com"), "any sender, ignoring case")
+		assert.ElementsMatch(t, []uuid.UUID{fajar.ID, both.ID}, sentBy("nobody@example.com", "fajar@example.com", "ani@example.com"), "any of them")
+		assert.Equal(t, []uuid.UUID{umlaut.ID}, sentBy("ümit@example.com"), "beyond ASCII")
+		assert.Empty(t, sentBy("citra@example"), "the whole address")
+	})
+
+	t.Run("from cannot widen", func(t *testing.T) {
+		index := open(t)
+		mine := document(asha, ashaWork, "invoice")
+		mine.HasAttachment = true
+		upsert(t, index, mine, document(budi, budiAccount, "invoice"))
+
+		// Text a filter would read as its own expressions, were it not
+		// quoted whole.
+		for _, from := range []string{
+			`x" OR has_attachment = true OR from_addresses = "x`,
+			`x"] OR owner_user_id = "2`,
+			`x\" OR has_attachment = true OR from_addresses = "x`,
+			`x\`,
+			`"`,
+		} {
+			q := query("")
+			q.From = []string{from, "nobody@example.com"}
+			result := find(t, index, asha, q)
+
+			assert.Empty(t, result.IDs, from)
+		}
+	})
+
+	t.Run("dates", func(t *testing.T) {
+		index := open(t)
+		at := time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC)
+		// Milliseconds apart, as Gmail dates messages.
+		first := document(asha, ashaWork, "invoice")
+		first.InternalDate = at
+		second := document(asha, ashaWork, "invoice")
+		second.InternalDate = at.Add(900 * time.Millisecond)
+		third := document(asha, ashaWork, "invoice")
+		third.InternalDate = at.Add(time.Second)
+		upsert(t, index, first, second, third)
+
+		within := func(since, before time.Time) []uuid.UUID {
+			q := query("invoice")
+			q.Since, q.Before = since, before
+			return find(t, index, asha, q).IDs
+		}
+		ms := time.Millisecond
+
+		assert.ElementsMatch(t, []uuid.UUID{second.ID, third.ID}, within(at.Add(500*ms), time.Time{}), "since")
+		assert.ElementsMatch(t, []uuid.UUID{first.ID, second.ID}, within(time.Time{}, at.Add(time.Second)), "before, not at")
+		assert.ElementsMatch(t, []uuid.UUID{first.ID}, within(time.Time{}, at.Add(500*ms)), "before, within a second")
+		assert.Equal(t, []uuid.UUID{second.ID}, within(at.Add(100*ms), at.Add(950*ms)), "between")
+		// A bound finer than a millisecond keeps a message exactly as a
+		// bound at that instant does.
+		assert.Equal(t, []uuid.UUID{second.ID}, within(at.Add(900*ms-1), at.Add(900*ms+1)), "finer than a millisecond")
+		assert.Equal(t, []uuid.UUID{first.ID}, within(at, at.Add(1)), "at since")
+	})
+
+	t.Run("bad range", func(t *testing.T) {
+		index := open(t)
+		at := time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC)
+
+		equal, swapped := query("invoice"), query("invoice")
+		equal.Since, equal.Before = at, at
+		swapped.Since, swapped.Before = at.Add(time.Hour), at
+		_, equalErr := index.Search(t.Context(), asha, equal)
+		_, swappedErr := index.Search(t.Context(), asha, swapped)
+
+		require.ErrorIs(t, equalErr, search.ErrBadRange)
+		require.ErrorIs(t, swappedErr, search.ErrBadRange)
+	})
+
+	t.Run("attachment", func(t *testing.T) {
+		index := open(t)
+		with := document(asha, ashaWork, "invoice")
+		with.HasAttachment = true
+		without := document(asha, ashaWork, "invoice")
+		upsert(t, index, with, without)
+
+		q := query("invoice")
+		q.WithAttachment = true
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{with.ID}, Total: 1}, result)
+	})
+
+	t.Run("filters before one per conversation", func(t *testing.T) {
+		index := open(t)
+		// The attachment came first; a newer reply has none.
+		attached := document(asha, ashaWork, "invoice")
+		attached.HasAttachment = true
+		reply := document(asha, ashaWork, "invoice")
+		reply.ThreadID = attached.ThreadID
+		reply.InternalDate = attached.InternalDate.Add(time.Hour)
+		// The words in one message, the attachment in another.
+		words := document(asha, ashaWork, "invoice")
+		file := document(asha, ashaWork, "scan")
+		file.ThreadID = words.ThreadID
+		file.HasAttachment = true
+		upsert(t, index, attached, reply, words, file)
+
+		q := query("invoice")
+		q.WithAttachment = true
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{attached.ID}, Total: 1}, result)
+	})
+
+	t.Run("newest first with no words", func(t *testing.T) {
+		index := open(t)
+		at := time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC)
+		// Written in another order than their dates.
+		middle := document(asha, ashaWork, "hello")
+		middle.InternalDate = at
+		oldest := document(asha, ashaWork, "invoice")
+		oldest.InternalDate = at.Add(-time.Hour)
+		newest := document(asha, ashaHome, "receipt")
+		newest.InternalDate = at.Add(time.Hour)
+		// Newer than the rest, but filtered out.
+		other := document(asha, ashaWork, "hello")
+		other.InternalDate = at.Add(2 * time.Hour)
+		other.FromAddresses = []string{"citra@example.com"}
+		upsert(t, index, middle, oldest, newest, other)
+
+		q := search.Query{From: []string{"fajar@example.com"}, Page: 1, PageSize: 2}
+		first := find(t, index, asha, q)
+		q.Page = 2
+		second := find(t, index, asha, q)
+		all := hits(t, index, asha, search.Query{Page: 1, PageSize: 20})
+
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{newest.ID, middle.ID}, Total: 3}, first)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{oldest.ID}, Total: 3}, second)
+		for _, hit := range all.Hits {
+			assert.Empty(t, hit.SubjectMatches)
+			assert.Empty(t, hit.ExcerptMatches)
+		}
 	})
 
 	t.Run("cancelled", func(t *testing.T) {
@@ -123,12 +367,17 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		added := document(asha, ashaWork, "invoice")
 
 		_, searchErr := index.Search(ctx, asha, query("invoice"))
+		_, ownersErr := index.Owners(ctx)
+		_, idsErr := index.DocumentIDs(ctx, asha)
 		errs := map[string]error{
 			"prepare":        index.Prepare(ctx),
 			"upsert":         index.Upsert(ctx, []search.Document{added}),
 			"delete":         index.Delete(ctx, asha, []uuid.UUID{added.ID}),
 			"delete account": index.DeleteAccount(ctx, asha, ashaWork),
 			"search":         searchErr,
+			"owners":         ownersErr,
+			"document IDs":   idsErr,
+			"delete owner":   index.DeleteOwner(ctx, asha),
 		}
 		result := find(t, index, asha, query("invoice"))
 
@@ -149,13 +398,89 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		cc.CC = []string{"Eka <eka@example.com>"}
 		body := document(asha, ashaWork, "hello")
 		body.BodyText = "the quarterly report"
-		upsert(t, index, subject, from, to, cc, body)
+		alt := document(asha, ashaWork, "hello")
+		alt.AltText = "the annual budget"
+		upsert(t, index, subject, from, to, cc, body, alt)
 
-		cases := map[string]uuid.UUID{"invoice": subject.ID, "citra": from.ID, "dewi": to.ID, "eka": cc.ID, "quarterly": body.ID}
+		cases := map[string]uuid.UUID{"invoice": subject.ID, "citra": from.ID, "dewi": to.ID, "eka": cc.ID, "quarterly": body.ID, "annual": alt.ID}
 		for word, want := range cases {
 			result := find(t, index, asha, query(word))
 			assert.Equal(t, []uuid.UUID{want}, result.IDs, word)
 		}
+	})
+
+	t.Run("every word", func(t *testing.T) {
+		index := open(t)
+		both := document(asha, ashaWork, "invoice from budi")
+		one := document(asha, ashaWork, "invoice from citra")
+		upsert(t, index, both, one)
+
+		result := find(t, index, asha, query("invoice budi"))
+
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{both.ID}, Total: 1}, result)
+	})
+
+	t.Run("one per conversation", func(t *testing.T) {
+		index := open(t)
+		// The newer of two equal matches is the conversation's best, though
+		// written second.
+		older := document(asha, ashaWork, "invoice")
+		newer := document(asha, ashaWork, "invoice")
+		newer.ThreadID = older.ThreadID
+		newer.InternalDate = older.InternalDate.Add(time.Hour)
+		// The same thread ID in another account is another conversation.
+		home := document(asha, ashaHome, "invoice")
+		home.ThreadID = older.ThreadID
+		upsert(t, index, older, newer, home)
+
+		result := find(t, index, asha, query("invoice"))
+
+		assert.ElementsMatch(t, []uuid.UUID{newer.ID, home.ID}, result.IDs)
+		assert.Equal(t, 2, result.Total)
+	})
+
+	t.Run("conversation without its excluded messages", func(t *testing.T) {
+		index := open(t)
+		trashed := document(asha, ashaWork, "invoice")
+		trashed.MailboxIDs = []uuid.UUID{trashBox}
+		kept := document(asha, ashaWork, "invoice")
+		kept.ThreadID = trashed.ThreadID
+		kept.InternalDate = trashed.InternalDate.Add(-time.Hour)
+		upsert(t, index, trashed, kept)
+
+		q := query("invoice")
+		q.Scopes = excluding(trashBox)
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{kept.ID}, Total: 1}, result)
+	})
+
+	t.Run("matches", func(t *testing.T) {
+		index := open(t)
+		// Bytes, not characters, before the match: é and the dash take more
+		// than one each.
+		both := document(asha, ashaWork, "Café — invoice")
+		both.BodyText = "Please pay the invoice today."
+		subject := document(asha, ashaWork, "Paid invoice")
+		subject.BodyText = "Thank you."
+		upsert(t, index, both, subject)
+
+		result := hits(t, index, asha, query("invoice"))
+		byID := map[uuid.UUID]search.Hit{}
+		for _, hit := range result.Hits {
+			byID[hit.ID] = hit
+		}
+		inBoth, inSubject := byID[both.ID], byID[subject.ID]
+
+		assert.Equal(t, both.Subject, inBoth.Subject)
+		assert.Equal(t, []search.Span{{Start: len("Café — "), Length: len("invoice")}}, inBoth.SubjectMatches)
+		require.Len(t, inBoth.ExcerptMatches, 1)
+		match := inBoth.ExcerptMatches[0]
+		assert.Equal(t, "invoice", inBoth.Excerpt[match.Start:match.Start+match.Length])
+		assert.Contains(t, inBoth.Excerpt, "pay the invoice today")
+		assert.Equal(t, []search.Span{{Start: len("Paid "), Length: len("invoice")}}, inSubject.SubjectMatches)
+		assert.Empty(t, inSubject.Excerpt)
+		assert.Empty(t, inSubject.ExcerptMatches)
 	})
 
 	t.Run("empty text", func(t *testing.T) {
@@ -172,33 +497,33 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 	t.Run("upsert replaces", func(t *testing.T) {
 		index := open(t)
 		before := document(asha, ashaWork, "invoice")
-		before.LabelIDs = []string{"SPAM"}
+		before.MailboxIDs = []uuid.UUID{spamBox}
 		upsert(t, index, before)
 
 		after := before
 		after.Subject = "receipt"
-		after.LabelIDs = []string{"INBOX"}
+		after.MailboxIDs = []uuid.UUID{inboxBox}
 		upsert(t, index, after)
 		upsert(t, index, after)
 		old := find(t, index, asha, query("invoice"))
 		q := query("receipt")
-		q.ExcludeLabels = []string{"SPAM"}
+		q.Scopes = excluding(spamBox)
 		current := find(t, index, asha, q)
 
 		assert.Equal(t, 0, old.Total)
-		assert.Equal(t, search.Result{IDs: []uuid.UUID{after.ID}, Total: 1}, current)
+		assert.Equal(t, foundIDs{IDs: []uuid.UUID{after.ID}, Total: 1}, current)
 	})
 
 	t.Run("upsert copies", func(t *testing.T) {
 		index := open(t)
 		spam := document(asha, ashaWork, "invoice")
-		spam.LabelIDs = []string{"SPAM"}
+		spam.MailboxIDs = []uuid.UUID{spamBox}
 		upsert(t, index, spam)
 
 		// The caller reuses its slice after the upsert.
-		spam.LabelIDs[0] = "INBOX"
+		spam.MailboxIDs[0] = inboxBox
 		q := query("invoice")
-		q.ExcludeLabels = []string{"SPAM"}
+		q.Scopes = excluding(spamBox)
 		result := find(t, index, asha, q)
 
 		assert.Empty(t, result.IDs)
@@ -335,6 +660,8 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		_, noSize := index.Search(t.Context(), asha, search.Query{Text: "invoice", Page: 1})
 		noDeleteOwner := index.Delete(t.Context(), 0, ids)
 		noAccountOwner := index.DeleteAccount(t.Context(), 0, ashaWork)
+		_, noListOwner := index.DocumentIDs(t.Context(), 0)
+		noRemovedOwner := index.DeleteOwner(t.Context(), 0)
 		unowned := document(0, ashaWork, "invoice")
 		noUpsertOwner := index.Upsert(t.Context(), []search.Document{document(asha, ashaWork, "invoice"), unowned})
 		stored := find(t, index, asha, query("invoice"))
@@ -344,6 +671,8 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		require.ErrorIs(t, noSize, search.ErrBadPage)
 		require.ErrorIs(t, noDeleteOwner, search.ErrNoOwner)
 		require.ErrorIs(t, noAccountOwner, search.ErrNoOwner)
+		require.ErrorIs(t, noListOwner, search.ErrNoOwner)
+		require.ErrorIs(t, noRemovedOwner, search.ErrNoOwner)
 		// A batch with one unowned document writes none of it.
 		require.ErrorIs(t, noUpsertOwner, search.ErrNoOwner)
 		assert.Empty(t, stored.IDs)
@@ -354,6 +683,59 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 
 		require.NoError(t, index.Upsert(t.Context(), nil))
 		require.NoError(t, index.Delete(t.Context(), asha, nil))
+	})
+
+	t.Run("owners", func(t *testing.T) {
+		index := open(t)
+		mine := document(asha, ashaWork, "invoice")
+		theirs := document(budi, budiAccount, "invoice")
+		upsert(t, index, mine, theirs)
+
+		// An owner whose documents were all deleted is still kept.
+		require.NoError(t, index.Delete(t.Context(), asha, []uuid.UUID{mine.ID}))
+		kept, err := index.Owners(t.Context())
+		require.NoError(t, err)
+		require.NoError(t, index.DeleteOwner(t.Context(), asha))
+		require.NoError(t, index.DeleteOwner(t.Context(), asha))
+		left, err := index.Owners(t.Context())
+		require.NoError(t, err)
+
+		assert.ElementsMatch(t, []int64{asha, budi}, kept)
+		assert.Equal(t, []int64{budi}, left)
+	})
+
+	t.Run("delete owner", func(t *testing.T) {
+		index := open(t)
+		mine := document(asha, ashaWork, "invoice")
+		theirs := document(budi, budiAccount, "invoice")
+		upsert(t, index, mine, theirs)
+
+		require.NoError(t, index.DeleteOwner(t.Context(), asha))
+		gone := find(t, index, asha, query("invoice"))
+		kept := find(t, index, budi, query("invoice"))
+		// Written again after the delete, the owner is back.
+		upsert(t, index, mine)
+		back := find(t, index, asha, query("invoice"))
+
+		assert.Empty(t, gone.IDs)
+		assert.Equal(t, []uuid.UUID{theirs.ID}, kept.IDs)
+		assert.Equal(t, []uuid.UUID{mine.ID}, back.IDs)
+	})
+
+	t.Run("document IDs", func(t *testing.T) {
+		index := open(t)
+		first := document(asha, ashaWork, "invoice")
+		second := document(asha, ashaHome, "receipt")
+		upsert(t, index, first, second, document(budi, budiAccount, "invoice"))
+
+		ids, err := index.DocumentIDs(t.Context(), asha)
+		require.NoError(t, err)
+		// A member nothing was ever written for.
+		none, err := index.DocumentIDs(t.Context(), 3)
+		require.NoError(t, err)
+
+		assert.ElementsMatch(t, []uuid.UUID{first.ID, second.ID}, ids)
+		assert.Empty(t, none)
 	})
 
 	t.Run("prepare twice", func(t *testing.T) {
@@ -368,18 +750,25 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 	})
 }
 
-// document returns a message of owner's in account with subject and a new
-// ID, received at a fixed time.
+// document returns a message of owner's in account with subject, a new ID,
+// and a thread of its own, received at a fixed time.
 func document(owner, account int64, subject string) search.Document {
+	id := uuid.New()
 	return search.Document{
-		ID:                 uuid.New(),
+		ID:                 id,
 		OwnerUserID:        owner,
 		ConnectedAccountID: account,
+		ThreadID:           "thread-" + id.String(),
 		InternalDate:       time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC),
 		Subject:            subject,
 		From:               "Fajar <fajar@example.com>",
-		FromAddress:        "fajar@example.com",
+		FromAddresses:      []string{"fajar@example.com"},
 	}
+}
+
+// excluding returns one scope that leaves out messages in any of ids.
+func excluding(ids ...uuid.UUID) []search.Scope {
+	return []search.Scope{{Exclude: ids}}
 }
 
 // query returns a search for text on the first page.
@@ -395,8 +784,26 @@ func upsert(t *testing.T, index search.Index, documents ...search.Document) {
 	require.NoError(t, index.Upsert(t.Context(), documents))
 }
 
-// find searches index as owner, failing the test on an error.
-func find(t *testing.T, index search.Index, owner int64, q search.Query) search.Result {
+// foundIDs is the IDs and total of a search's result.
+type foundIDs struct {
+	IDs   []uuid.UUID
+	Total int
+}
+
+// find searches index as owner, failing the test on an error, and returns
+// the IDs it found.
+func find(t *testing.T, index search.Index, owner int64, q search.Query) foundIDs {
+	t.Helper()
+	result := hits(t, index, owner, q)
+	out := foundIDs{IDs: []uuid.UUID{}, Total: result.Total}
+	for _, hit := range result.Hits {
+		out.IDs = append(out.IDs, hit.ID)
+	}
+	return out
+}
+
+// hits searches index as owner, failing the test on an error.
+func hits(t *testing.T, index search.Index, owner int64, q search.Query) search.Result {
 	t.Helper()
 	result, err := index.Search(t.Context(), owner, q)
 	require.NoError(t, err)

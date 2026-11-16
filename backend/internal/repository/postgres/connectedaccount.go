@@ -137,8 +137,9 @@ func (db *DB) ListConnectedAccounts(ctx context.Context, userID int64) ([]connec
 }
 
 // DeleteConnectedAccount deletes userID's account accountID, moves its
-// credential to an account removal, and saves the jobs that revoke it and
-// that delete the account's stored content, in one transaction. It returns
+// credential to an account removal, and saves the jobs that revoke it,
+// that delete the account's stored content, and that remove its messages
+// from the search index, in one transaction. It returns
 // the deleted account, or [connectedaccount.ErrNotFound] when userID has
 // no such account.
 func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int64) (connectedaccount.StoredAccount, error) {
@@ -170,9 +171,10 @@ func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int6
 		}
 
 		// 3. Save the jobs in this transaction, so they commit or roll back
-		// with the disconnect: one revokes the token at Google, the other
-		// deletes the account's content from the store, so neither waits
-		// on the other's service.
+		// with the disconnect: one revokes the token at Google, one deletes
+		// the account's content from the store, and one removes its
+		// messages from the search index, so none waits on another's
+		// service.
 		if db.workflows == nil {
 			return errNoWorkflows
 		}
@@ -181,6 +183,9 @@ func (db *DB) DeleteConnectedAccount(ctx context.Context, userID, accountID int6
 		}
 		if err := db.workflows.EnqueueAccountContentDeletion(ctx, tx, row.ID); err != nil {
 			return fmt.Errorf("save account content deletion: %w", err)
+		}
+		if err := db.workflows.EnqueueSearchAccountRemoval(ctx, tx, row.UserID, row.ID); err != nil {
+			return fmt.Errorf("save search account removal: %w", err)
 		}
 		deleted = storedAccountFromRow(sqlc.ListConnectedAccountsRow(row))
 		return nil

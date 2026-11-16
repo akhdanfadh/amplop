@@ -144,8 +144,8 @@ it.
 work survives a restart. It reaches PostgreSQL, the [search
 index](#the-search-index), SeaweedFS, and, to send inbok's email, mail
 servers on the internet; it needs `INBOK_ENCRYPTION_KEYS`,
-`INBOK_PUBLIC_URL`, and the SeaweedFS keys like the server,
-`INBOK_MEILISEARCH_KEY`, and the same `INBOK_GOOGLE_CLIENT_ID` and
+`INBOK_PUBLIC_URL`, the SeaweedFS keys, and `INBOK_MEILISEARCH_KEY`
+like the server, and the same `INBOK_GOOGLE_CLIENT_ID` and
 `INBOK_GOOGLE_CLIENT_SECRET`, which `compose.yaml` passes to both, for
 synchronizing members' Gmail accounts every minute and for the job that
 asks Google to end inbok's permission for a Gmail account a member
@@ -163,9 +163,9 @@ one ID and run some work twice. One worker runs many jobs at once.
 ## The search index
 
 `meilisearch` runs [Meilisearch](https://www.meilisearch.com) Community
-Edition, the search index: once search arrives, it holds a copy of
-members' messages for it. Search itself, with the command that rebuilds
-the index, is not part of this release yet. It has no published port and
+Edition, the search index: it holds a copy of members' messages for
+search, which the worker keeps in step with their mail and inbok
+searches when a member does. It has no published port and
 sits on the internal network with PostgreSQL, so the internet and Caddy
 cannot reach it. Apart from its health check, it answers only requests
 with a valid key: `INBOK_MEILISEARCH_KEY`, its master key, or a key made
@@ -173,13 +173,39 @@ from it. Meilisearch's anonymous usage reports are turned off.
 
 The worker applies the index's settings each time it starts, and stops
 with an error, which `docker compose logs worker` shows, if Meilisearch
-does not accept them within a minute. The server does not need
-Meilisearch to start.
+does not accept them within a minute. The server needs its address and
+key but not Meilisearch itself to start: while it is down, searching
+answers that search is unavailable and the rest of inbok works.
 
-Everything in it comes from the database, so its volume needs no
-[backup](#backups). The index is rebuilt instead, which an operator runs:
-after an upgrade that brings a new Meilisearch, after going back to an
-earlier one, and after a restore.
+Everything in it comes from the database and the stored text of
+messages, so its volume needs no [backup](#backups). The index is
+rebuilt from them instead: each member's messages are written again,
+and documents of messages the database no longer has are removed. The
+rebuild changes nothing in members' Gmail and fetches nothing from it,
+and search keeps working while it runs, though it may miss mail until
+it ends. A rebuild runs:
+
+- after every upgrade, from `upgrade.sh`, so the index holds what the new
+  release writes, including after an upgrade that brings a new, empty
+  Meilisearch, or a return to an earlier commit;
+- every night at 03:00 UTC, from the worker, which tries to repair what
+  the worker could not keep in step, e.g. while Meilisearch was down for
+  more than about an hour; a night the worker was not running is not
+  made up, and a rebuild that fails leaves the repair to a later one;
+- when you run it: after a [restore](#backups), as its steps show, or
+  whenever search seems to miss mail.
+
+```sh
+docker compose exec worker inbok search rebuild
+```
+
+The command asks the worker to rebuild every member's index, waits until
+it has, and prints what it did. It exits with an error naming the
+members whose rebuild failed, and `docker compose logs worker` shows
+why; or after waiting two hours, while the rebuild goes on in the
+worker. Running it again is safe, and queues another rebuild. A
+member's new mail reaches search
+once their own rebuild ends.
 
 ## Upgrades
 
@@ -191,10 +217,15 @@ git pull
 ```
 
 `upgrade.sh` builds a candidate image, runs the new migrations with it
-while the old server keeps serving, and only then switches the image and
-restarts the server and the worker. The site is unavailable for about two
-seconds while the server restarts; the new worker resumes the work the
-old one left unfinished. The script exits with an error if anything fails:
+while the old server keeps serving, and only then switches the image. It
+replaces the worker first and waits until it is healthy, which it is
+once it has applied the search index's settings, then the server: so the
+new server never searches an index set up for the old one. Background
+work pauses while the worker restarts, and the new worker resumes what
+the old one left unfinished. The site is unavailable for about two
+seconds while the server restarts. Last, it [rebuilds the search
+index](#the-search-index) with the new release. The script exits with an
+error if anything fails:
 
 - If the build or a migration fails, the old server keeps running on the
   old image. Fix the cause, or check out the previous commit, and run
@@ -204,33 +235,62 @@ old one left unfinished. The script exits with an error if anything fails:
   and the old server keeps running: the previous image would not repair
   it. The script starts all of them first, except Caddy, which waits for
   the server. `docker compose logs <service>` shows why one failed.
-- If the new server or worker does not become healthy, the script starts
-  the previous image again, on the migrated database. `docker compose logs
-  inbok` or `worker` shows why the new one failed.
+- If the new worker does not become healthy, the script starts the
+  previous image's worker again, and the old server, never replaced,
+  keeps serving. If the new server does not, the script starts the
+  previous image again for both, on the migrated database, the server
+  first: the previous worker applies its own search settings, which the
+  new server could not search with. If the previous server fails too,
+  the new worker stays. `docker
+  compose logs worker` or `inbok` shows why the new one failed. A worker
+  that applies new search settings needs them done within a minute to
+  start; Meilisearch reindexes a member's mail for a new filter, which
+  takes seconds for thousands of messages. Messages the new worker
+  indexed before it was replaced keep its way of indexing them until the
+  nightly rebuild, or until you run the rebuild.
+- If the rebuild fails, the new release keeps running: the previous image
+  would not undo it. Fix the cause, then run the rebuild again.
+
+It takes the same arguments as `docker compose`, e.g. `./upgrade.sh
+--env-file .env.trial`, but refuses Compose's `--dry-run`: deleting old
+search volumes and switching the image happen outside Compose, so a dry
+run would still do them.
+
+`make check-deploy`, part of `make check`, runs the script against a fake
+`docker` (`upgrade.bats`, `testdata/fake-docker`) that records each call,
+answers only the questions the script should ask, and fails the ones a
+test names, so a change that breaks the order, a rollback, or a safety
+check fails there; what Docker does with each call is a trial stack's to
+check.
 
 Avoid two commands that look like shortcuts:
 
 - `docker compose up -d --build` removes the old server before migrating,
-  so a failing migration takes the site down until it is fixed.
+  so a failing migration takes the site down until it is fixed, and it
+  does not rebuild the search index.
 - `docker compose restart` restarts every service at once, so migrate can
   start before PostgreSQL and fail. Use `docker compose up -d` to restart.
 
 A Meilisearch version cannot open the data another version wrote, so
 each version keeps its index in its own volume, named after it, e.g.
 `inbok-deploy_meilisearch-1.56.1`. When an upgrade brings a new
-Meilisearch, it starts on a new, empty volume, where the
-[index is rebuilt](#the-search-index). Going back to an earlier commit
-also goes back to its Meilisearch and its old volume, whose index missed
-every change since, so it is rebuilt then too. Once the upgrade works,
-delete the old volume, which still holds a copy of members' mail:
-`docker volume ls` lists it, and `docker volume rm` deletes it.
+Meilisearch, it starts on a new, empty volume, where `upgrade.sh`
+[rebuilds the index](#the-search-index). Once the new Meilisearch is
+healthy, `upgrade.sh` deletes the volumes of other versions: each holds
+a copy of members' mail from an earlier state of the database, which,
+after a restore gave its user IDs to new members, would let one member's
+search count another's old mail until the rebuild ended. Going back to an
+earlier commit therefore starts its Meilisearch on an empty volume too,
+which `upgrade.sh` rebuilds as it does after an upgrade.
 
 After a migration, the old server and worker can run on the new schema:
 during an upgrade, and after the rollback above. Every migration must
 therefore keep the previous release working: add tables and columns, and
-remove old ones only in a later release. Background work a release left
-unfinished resumes in the next one, so it must keep working across
-releases too.
+remove old ones only in a later release. The old server also runs
+beside the new worker's search settings, so those too only add what the
+new release needs, and remove nothing the previous one uses. Background
+work a release left unfinished resumes in the next one, so it must keep
+working across releases too.
 
 ## Backups
 
@@ -251,25 +311,33 @@ reveals none of them, and a restore needs every key its rows use. Store
 them elsewhere, e.g. in a password manager, and update that copy when you
 rotate keys.
 
-To restore, stop the services that use the database, load the dump, and
-start them again. `--single-transaction` makes the restore all or
-nothing: on any error it stops and leaves the database as it was. The dump
-holds background work as it stood when it was taken: work unfinished then
-runs again after the restore, including steps that had finished since.
+To restore, stop the services that use the database, load the dump,
+start the worker alone to [rebuild the search index](#the-search-index)
+from the restored database, and only then start the rest.
+`--single-transaction` makes the restore all or nothing: on any error it
+stops and leaves the database as it was. The dump holds background work
+as it stood when it was taken: work unfinished then runs again after the
+restore, including steps that had finished since.
 
 ```sh
 docker compose stop inbok worker caddy
 docker compose exec -T postgres pg_restore -U inbok -d inbok --clean --if-exists --no-owner --single-transaction < ~/inbok-backups/inbok-2026-11-01.dump
+docker compose up -d --wait worker
+docker compose exec -T worker inbok search rebuild
 docker compose up -d
 ```
 
+The index still holds what changed after the dump was made, including
+the index of anyone who registered since. The restored database gives
+their user ID to the next person who registers, so the site stays closed
+until the rebuild has removed it. If the rebuild fails, fix the cause and
+run it again before `docker compose up -d`.
+
 On a new server, run `docker compose up -d --wait postgres` first, which
-creates the empty database, then the restore and `docker compose up -d`.
+creates the empty database, then the steps above from the restore on.
 Use the same `INBOK_ENCRYPTION_KEYS` as when the dump was made. The
 `caddy-data` volume needs no backup: Caddy requests new certificates if
-it is empty. Nor does Meilisearch's: after a restore, rebuild the
-[search index](#the-search-index) from the restored database, since the
-index still holds what changed after the dump was made.
+it is empty. Nor does Meilisearch's: the rebuild above refills it.
 
 The `seaweedfs` volume needs no backup either: it holds
 [message content](#message-content), a cache of what Gmail has. After a
@@ -279,8 +347,9 @@ refers to any more. Mail Gmail has deleted since cannot be fetched again.
 
 `docker compose down -v` deletes the volumes, including the only copy of
 the database. Plain `docker compose down` keeps them. Neither deletes the
-Meilisearch volumes of earlier versions, which `compose.yaml` no longer
-names; `docker volume rm` does.
+Meilisearch volume of an earlier version that `compose.yaml` no longer
+names, e.g. one an interrupted upgrade left; the next `upgrade.sh`
+deletes it, or `docker volume rm` does.
 
 ## Message content
 

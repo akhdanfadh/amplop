@@ -15,22 +15,35 @@ const (
 
 	// listLimit is how many indexes [Index.Prepare] asks for at a time.
 	listLimit = 100
+
+	// documentPage is how many document IDs [Index.DocumentIDs] asks for at
+	// a time: IDs alone, so a page stays small.
+	documentPage = 1000
 )
 
 // The index's fields, named as in ADR005.
 const (
-	fieldID             = "id"
-	fieldOwner          = "owner_user_id"
-	fieldAccount        = "connected_account_id"
-	fieldDate           = "internal_date"
-	fieldSubject        = "subject"
-	fieldFrom           = "from"
-	fieldTo             = "to"
-	fieldCC             = "cc"
-	fieldBodyText       = "body_text"
-	fieldLabels         = "label_ids"
-	fieldFromAddress    = "from_address"
-	fieldHasAttachments = "has_attachments"
+	fieldID        = "id"
+	fieldOwner     = "owner_user_id"
+	fieldAccount   = "connected_account_id"
+	fieldSubject   = "subject"
+	fieldFrom      = "from"
+	fieldTo        = "to"
+	fieldCC        = "cc"
+	fieldBodyText  = "body_text"
+	fieldAltText   = "alt_text"
+	fieldMailboxes = "mailbox_ids"
+	// The message's conversation: its account and the provider's thread
+	// ID, which a search returns one message of.
+	fieldConversation = "conversation"
+	fieldDate         = "internal_date"
+	// Every address of the message's From, as storage holds it.
+	fieldFromAddresses = "from_addresses"
+	fieldAttachment    = "has_attachment"
+	// The mailboxes of the message's conversation, and whether it is
+	// starred: where lists place the conversation.
+	fieldConversationMailboxes = "conversation_mailbox_ids"
+	fieldConversationFlagged   = "conversation_flagged"
 )
 
 // Index is the message index on one Meilisearch server: one Meilisearch
@@ -42,14 +55,15 @@ const (
 // exist. It cannot catch a caller that names another member as owner:
 // that member's index answers, so the caller passes the signed-in member.
 // The cost is settings applied to every member's index: at startup, and
-// after every upsert, which may have created the index bare. Searches and
+// before every upsert, which may create the index. Searches and
 // account deletes also filter on the owner inside each index, as a second
 // guard, should a document ever reach the wrong one.
 type Index struct {
-	client    meili.ServiceManager
-	prefix    string
-	listLimit int64
-	settings  meili.Settings
+	client       meili.ServiceManager
+	prefix       string
+	listLimit    int64
+	documentPage int64
+	settings     meili.Settings
 }
 
 // New returns the index on the Meilisearch server at url, e.g.
@@ -66,7 +80,7 @@ func New(url, key string) *Index {
 	// back on with a release that has both. Until then, every method is
 	// safe to repeat, so a caller that wants a retry calls it again.
 	client := meili.New(url, meili.WithAPIKey(key), meili.DisableRetries())
-	return &Index{client: client, prefix: indexPrefix, listLimit: listLimit, settings: indexSettings()}
+	return &Index{client: client, prefix: indexPrefix, listLimit: listLimit, documentPage: documentPage, settings: indexSettings()}
 }
 
 // uid returns the name of owner's index.

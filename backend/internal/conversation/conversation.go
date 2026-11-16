@@ -120,6 +120,28 @@ type Conversation struct {
 	LabelIDs []uuid.UUID
 }
 
+// In reports whether a list of place shows c: a view by c's places, Starred
+// when c is starred and in All mail, and a label when c is in it.
+func (c Conversation) In(place Place) bool {
+	switch place.View {
+	case ViewInbox:
+		return c.InInbox
+	case ViewStarred:
+		return c.Flagged && c.InAllMail
+	case ViewSent:
+		return c.InSent
+	case ViewAll:
+		return c.InAllMail
+	case ViewSpam:
+		return c.InSpam
+	case ViewTrash:
+		return c.InTrash
+	case "":
+		return slices.Contains(c.LabelIDs, place.Mailbox)
+	}
+	return false
+}
+
 // Source is where a conversation comes from: its account's provider and
 // address, and its thread there.
 type Source struct {

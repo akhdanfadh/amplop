@@ -75,6 +75,12 @@ type Services struct {
 	// MessageBodies fetches messages' bodies in the background, for the
 	// accounts the minute's body schedule finds them due.
 	MessageBodies bodyFetches
+	// SearchIndex keeps members' search indexes in step with their mail.
+	SearchIndex searchIndex
+	// SearchRebuild rebuilds members' search indexes, when asked and
+	// nightly. Each member's rebuild runs on the search queue, which a
+	// worker takes runs from only with [Services.SearchIndex] set too.
+	SearchRebuild searchRebuild
 }
 
 // Worker runs inbok's workflows and schedules.
@@ -137,10 +143,16 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	if err := w.registerMessageBodiesSchedule(services.MessageBodies); err != nil {
 		return nil, errors.Join(fmt.Errorf("schedule message bodies: %w", err), w.Shutdown())
 	}
-	for _, queue := range []string{emailQueue, googleQueue, googleSendQueue, contentQueue} {
+	if err := w.registerSearchRebuild(services.SearchRebuild); err != nil {
+		return nil, errors.Join(fmt.Errorf("schedule search rebuild: %w", err), w.Shutdown())
+	}
+	for _, queue := range []string{emailQueue, googleQueue, googleSendQueue, contentQueue, searchRebuildQueue} {
 		if err := w.registerQueue(queue); err != nil {
 			return nil, errors.Join(fmt.Errorf("register queue %s: %w", queue, err), w.Shutdown())
 		}
+	}
+	if err := w.registerSearchQueue(); err != nil {
+		return nil, errors.Join(fmt.Errorf("register queue %s: %w", searchQueue, err), w.Shutdown())
 	}
 	w.registerRecoveryNotice(services.RecoveryNotices)
 	w.registerPasswordResetLink(services.PasswordResetLinks)
@@ -151,6 +163,7 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 	w.registerOutgoingMessage(services.OutgoingMessages)
 	w.registerSync(services.FullSyncs, services.Polls)
 	w.registerMessageBodies(services.MessageBodies)
+	w.registerSearch(services.SearchIndex)
 
 	// 5. Listen only to the queues whose workflows this worker runs. DBOS
 	// listens to every queue by default and claims a run before finding its
@@ -161,8 +174,8 @@ func NewWorker(url, id string, services Services, logger *slog.Logger) (*Worker,
 }
 
 // listenedQueues returns the queues a worker calling services takes runs
-// from: each Google queue, and the content queue, only when it runs that
-// queue's workflows.
+// from: each Google queue, the content queue, and the search queues, only
+// when it runs that queue's workflows.
 func listenedQueues(services Services) []string {
 	queues := []string{emailQueue}
 	if services.AccountRemovals != nil || services.FullSyncs != nil || services.Polls != nil || services.MessageBodies != nil {
@@ -173,6 +186,12 @@ func listenedQueues(services Services) []string {
 	}
 	if services.MessageContent != nil {
 		queues = append(queues, contentQueue)
+	}
+	if services.SearchIndex != nil {
+		queues = append(queues, searchQueue)
+	}
+	if services.SearchRebuild != nil {
+		queues = append(queues, searchRebuildQueue)
 	}
 	return queues
 }

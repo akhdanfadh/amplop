@@ -27,6 +27,7 @@ const emailFormat = "idn-email"
 // Required fields also carry a private marker for the missing field name.
 func configureValidation() {
 	inputMessages[validation.MsgExpectedInteger] = "Enter a whole number."
+	inputMessages[msgExpectedPlace] = placeMessage
 	original := huma.ErrorFormatter
 	huma.ErrorFormatter = func(format string, args ...any) string {
 		if len(args) != 1 {
@@ -161,9 +162,14 @@ func rangeCorrection(schema *huma.Schema) string {
 // Schema lookup
 // ========================
 
-// inputSchema follows ordinary body field paths, including nested array indexes.
-// Unsupported paths keep the existing correction instead of guessing a range.
+// inputSchema follows ordinary body field paths, including nested array
+// indexes, and query parameters, a repeated one's with its index, e.g.
+// "query.from[1]". Unsupported paths keep the existing correction instead
+// of guessing a range.
 func inputSchema(api huma.API, op *huma.Operation, location string) *huma.Schema {
+	if name, query := strings.CutPrefix(location, "query."); query {
+		return querySchema(api, op, name)
+	}
 	path, bodyField := strings.CutPrefix(location, "body.")
 	if !bodyField || op.RequestBody == nil || op.RequestBody.Content["application/json"] == nil {
 		return nil
@@ -193,6 +199,29 @@ func inputSchema(api huma.API, op *huma.Operation, location string) *huma.Schema
 		schema = schema.Properties[part]
 	}
 	return plainSchema(api, schema)
+}
+
+// querySchema returns the schema of op's query parameter at path, its name,
+// or a repeated parameter's name and index, e.g. "from[1]" for an item.
+func querySchema(api huma.API, op *huma.Operation, path string) *huma.Schema {
+	name, index, item := strings.Cut(path, "[")
+	for _, param := range op.Parameters {
+		if param.In != "query" || param.Name != name {
+			continue
+		}
+		schema := plainSchema(api, param.Schema)
+		if !item {
+			return schema
+		}
+		if schema == nil || schema.Type != huma.TypeArray || !strings.HasSuffix(index, "]") {
+			return nil
+		}
+		if n, err := strconv.Atoi(strings.TrimSuffix(index, "]")); err != nil || n < 0 {
+			return nil
+		}
+		return plainSchema(api, schema.Items)
+	}
+	return nil
 }
 
 // plainSchema resolves a generated reference and excludes combined schemas.

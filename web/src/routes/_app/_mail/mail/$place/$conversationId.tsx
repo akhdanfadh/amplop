@@ -1,15 +1,21 @@
 import type { ReactElement } from "react";
 import { createFileRoute, linkOptions, notFound } from "@tanstack/react-router";
+import * as z from "zod";
 import { getGetConversationQueryOptions } from "@/api/generated/inbok";
 import { ApiError } from "@/api/transport";
 import { conversationIdSchema } from "@/features/mail/address";
 import { isSessionEnded, sessionEnded } from "@/features/auth/guard";
 import { currentMail } from "@/features/mail/conversations";
+import { listKey } from "@/features/mail/focus-request";
+import { searchPlace } from "@/features/mail/places";
 import { Reader } from "@/features/mail/reader";
+import { searchPlaces } from "@/features/mail/search";
 
 const notFoundStatus = 404;
 
-// A conversation open in the reading pane, /mail/<place>/<conversation id>.
+// A conversation open in the reading pane, /mail/<place>/<conversation id>;
+// from a search, /mail/search/<conversation id>?message=<message id>, at
+// the message the search matched.
 export const Route = createFileRoute("/_app/_mail/mail/$place/$conversationId")({
   params: {
     parse: ({ conversationId }) => {
@@ -17,6 +23,9 @@ export const Route = createFileRoute("/_app/_mail/mail/$place/$conversationId")(
       return { conversationId };
     },
   },
+  // A message that is no ID, e.g. from an edited link, is dropped: the
+  // conversation opens as usual.
+  validateSearch: z.object({ message: z.uuid().optional().catch(undefined) }),
   // NOTE: TanStack keeps a route's loader in the app's first download
   // unless it is split off, and this one reads mail's TanStack DB
   // collection, which must load only with mail's pages.
@@ -46,13 +55,25 @@ export const Route = createFileRoute("/_app/_mail/mail/$place/$conversationId")(
 
 function Conversation(): ReactElement {
   const { place, conversationId } = Route.useParams();
-  const { account } = Route.useSearch();
+  const { message, ...search } = Route.useSearch();
+  const { account } = search;
+  // A search's list keeps a conversation in any of the places it searches,
+  // and its Back returns to the whole search.
+  const searched = place === searchPlace;
   return (
     <Reader
       conversationId={conversationId}
-      place={place}
-      account={account}
-      back={linkOptions({ to: "/mail/$place", params: { place }, search: { account } })}
+      list={{
+        places: searched ? searchPlaces(search) : [place],
+        account,
+        key: listKey(place, account),
+        back: linkOptions({
+          to: "/mail/$place",
+          params: { place },
+          search: searched ? search : { account },
+        }),
+      }}
+      startAt={message}
     />
   );
 }

@@ -70,6 +70,26 @@ func newTestService(storage Storage) *Service {
 	return NewService(storage, fakeLinker{})
 }
 
+// A conversation is in each place its list shows it in: Starred only
+// when it is in All mail too.
+func TestConversationIn(t *testing.T) {
+	clients, family := uuid.New(), uuid.New()
+	c := Conversation{InInbox: true, InSpam: true, InAllMail: true, Flagged: true, LabelIDs: []uuid.UUID{clients}}
+	spamOnly := Conversation{InSpam: true, Flagged: true}
+
+	in := map[Place]bool{}
+	for _, place := range []Place{{View: ViewInbox}, {View: ViewStarred}, {View: ViewSent}, {View: ViewAll}, {View: ViewSpam}, {View: ViewTrash}, {Mailbox: clients}, {Mailbox: family}} {
+		in[place] = c.In(place)
+	}
+
+	assert.Equal(t, map[Place]bool{
+		{View: ViewInbox}: true, {View: ViewStarred}: true, {View: ViewSent}: false, {View: ViewAll}: true,
+		{View: ViewSpam}: true, {View: ViewTrash}: false, {Mailbox: clients}: true, {Mailbox: family}: false,
+	}, in)
+	assert.False(t, spamOnly.In(Place{View: ViewStarred}))
+	assert.True(t, spamOnly.In(Place{View: ViewSpam}))
+}
+
 func TestListLimit(t *testing.T) {
 	storage := &fakeStorage{rows: []Conversation{{ID: uuid.New()}}}
 	service := newTestService(storage)

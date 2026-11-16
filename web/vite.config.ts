@@ -114,8 +114,10 @@ export default defineConfig({
         { paths: [{ name: "cn", message: 'Import cn from "@/lib/cn", which knows the theme.' }] },
       ],
     },
-    // Orval's generated code breaks two rules by design: it casts its own types
-    // and defines a header helper inside each write function. Only these rules
+    // Orval's generated code breaks three rules by design: it casts its own
+    // types, defines a header helper inside each write function, and turns
+    // each value of a repeated query parameter, e.g. Search Conversations'
+    // from, into a string with String() whatever its type. Only these rules
     // are off there; every other rule and the type check still apply.
     overrides: [
       {
@@ -123,6 +125,7 @@ export default defineConfig({
         rules: {
           "typescript/no-unsafe-type-assertion": "off",
           "unicorn/consistent-function-scoping": "off",
+          "typescript/no-unnecessary-type-conversion": "off",
         },
       },
       // cn build's tables cast typed arrays it already typed; only that

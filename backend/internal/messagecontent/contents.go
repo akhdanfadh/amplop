@@ -29,7 +29,9 @@ type Storage interface {
 	// message. In one transaction, it 1. locks the account's sync state, as
 	// every write to the account's mail does first, so it never deadlocks
 	// one; 2. checks that the message exists and has no parts; 3. inserts
-	// the parts.
+	// the parts; 4. saves the job that indexes the message's body for
+	// search, also when 2 found parts, as their content may just have been
+	// stored again.
 	SaveMessageParts(ctx context.Context, accountID int64, messageID uuid.UUID, root Part) (bool, error)
 	// MessageParts returns the part tree of account accountID's message
 	// messageID, and false when it has none, or no such message.
@@ -42,7 +44,9 @@ type Storage interface {
 	// returns [ErrMessageNotFound] when the account is gone, and
 	// [ErrPartNotFound] when its message has no part there. In one
 	// transaction, it 1. locks the account's sync state, as every write to
-	// the account's mail does first; 2. names the blob.
+	// the account's mail does first; 2. names the blob; 3. when it named the
+	// content of a text part, saves the job that indexes the message's body
+	// for search.
 	SavePartBlob(ctx context.Context, accountID int64, messageID uuid.UUID, path []int, blobID uuid.UUID) (uuid.UUID, error)
 }
 

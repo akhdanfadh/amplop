@@ -281,3 +281,151 @@ export function syncingDetail(messagesSoFar: number): string {
   const messages = messagesSoFar === 1 ? "message" : "messages";
   return `Copying the last 90 days: ${messageCount(messagesSoFar)} ${messages} so far.`;
 }
+
+// Search (DESIGN.md "Search").
+
+// The search box's name, and what it says while empty: the places it
+// searches, e.g. "Search Receipts", or mail for every place but Spam and
+// Trash.
+export const searchName = "Search mail";
+export function searchPlaceholder(place: string | undefined): string {
+  return place === undefined ? searchName : `Search ${place}`;
+}
+export const clearSearch = "Clear search";
+// The top bar's button that turns it into the box, and the one that
+// leaves the search again.
+export const openSearch = "Search";
+export const closeSearch = "Close search";
+// The results page's heading, which screen readers hear.
+export const resultsHeading = "Search results";
+// The results list's name for a screen reader.
+export const resultsName = "Results";
+
+// The filters as one sentence: "Searching all mail in every account, from
+// anyone, any time, with or without attachments."
+export const searchingWord = "Searching";
+export const inWord = "in";
+export const fromWord = "from";
+export const allMailPhrase = "all mail";
+export const everyAccount = "every account";
+export const fromAnyone = "anyone";
+export const anyTime = "any time";
+export const anyAttachment = "with or without attachments";
+export const withAttachment = "with an attachment";
+
+// The menus the sentence's words open.
+export const placesMenuName = "Search in";
+export const viewsGroupName = "Views";
+export const accountMenuName = "Account";
+export const attachmentMenuName = "Attachments";
+export const dateMenuName = "Date";
+export const fromName = "From";
+export const sendersName = "Senders";
+export function fromHelp(most: number): string {
+  return `Type an address and press Enter. Any of them matches, up to ${most}.`;
+}
+export const doneName = "Done";
+export const clearName = "Clear";
+
+// placesPhrase names places in the sentence: up to three, then how many
+// more.
+export function placesPhrase(places: readonly string[]): string {
+  if (places.length === 0) return allMailPhrase;
+  if (places.length === 1) return places[0];
+  if (places.length <= 3) return `${places.slice(0, -1).join(", ")} and ${places.at(-1)}`;
+  return `${places.slice(0, 2).join(", ")} and ${messageCount(places.length - 2)} more`;
+}
+
+// fromPhrase names the senders in the sentence: the first, then how many
+// more.
+export function fromPhrase(from: readonly string[]): string {
+  if (from.length === 0) return fromAnyone;
+  if (from.length === 1) return from[0];
+  return `${from[0]} and ${messageCount(from.length - 1)} more`;
+}
+
+// The date choices relative to today, as the date menu lists them and as
+// the sentence says them.
+export const datePresetNames = {
+  "7d": "Past 7 days",
+  "30d": "Past 30 days",
+  "1y": "Past year",
+  older: "Older than a year",
+} as const;
+export const anyTimeName = "Any time";
+export const datePresetPhrases = {
+  "7d": "in the past 7 days",
+  "30d": "in the past 30 days",
+  "1y": "in the past year",
+  older: "older than a year",
+} as const;
+
+// rangePhrase says a chosen range in the sentence, as days inbok writes:
+// "since 2 Nov 2026 and before 14 Nov 2026".
+export function rangePhrase(since: string | undefined, before: string | undefined): string {
+  if (since && before) return `since ${since} and before ${before}`;
+  if (since) return `since ${since}`;
+  return before ? `before ${before}` : anyTime;
+}
+
+// The date chooser's own words.
+export const sinceName = "Since";
+export const beforeName = "Before";
+export const rangeHelp = "Before is not included. Leave either empty.";
+export const rangeBackwards = "Before must come after Since.";
+export const rangeFuture = "Pick days up to today.";
+export const rangePartly = "Finish typing the day, or clear it.";
+// placesLimit says why the places menu takes no more.
+export function placesLimit(most: number): string {
+  return `Search up to ${messageCount(most)} places at once.`;
+}
+export const applyName = "Apply";
+export function pickDayName(field: string): string {
+  return `Pick the ${field} day`;
+}
+export function clearFieldName(field: string): string {
+  return `Clear ${field}`;
+}
+
+// What Spam and Trash searches leave out, and the way to add them.
+export const spamTrashLeftOut = "Spam and Trash are not searched.";
+export const searchThemToo = "Search them too";
+
+// resultsCount says how many conversations a search found, as the API
+// counts up to most: "1 conversation", "1,000 or more conversations".
+export function resultsCount(total: number, most: number): string {
+  if (total >= most) return `${messageCount(most)} or more conversations`;
+  return total === 1 ? "1 conversation" : `${messageCount(total)} conversations`;
+}
+export const resultsEnd = "That's every match.";
+export const resultsLoading = "Searching...";
+export const resultsLoadingMore = "Loading more results...";
+export const olderResultsFailed = "Couldn't load more results.";
+
+// wordsTooLong says a search's words are longer than the API takes.
+export function wordsTooLong(most: number): string {
+  return `Search with ${messageCount(most)} characters or fewer.`;
+}
+
+// What the results page says before there is anything to search.
+export const searchPrompt = "Type 2 or more characters, or choose a filter.";
+
+// noMatches is the title of a search that found nothing: its words, or
+// its filters when it has none.
+export function noMatches(words: string | undefined): string {
+  return words === undefined ? "Nothing matches these filters" : `Nothing matches "${words}"`;
+}
+// stillCopying says why a search may find more later: the accounts named
+// in accounts, one or more, are still copying their mail.
+export function stillCopying(accounts: readonly string[]): string {
+  return accounts.length === 1
+    ? `${accounts[0]} is still syncing, so some of its mail can't be found yet.`
+    : `${names.format(accounts)} are still syncing, so some of their mail can't be found yet.`;
+}
+export const clearFilters = "Clear filters";
+export const searchSpamTrashToo = "Search Spam and Trash too";
+
+// Why a search failed.
+export const searchBusy = "Search isn't answering right now. Try again in a moment.";
+export const searchOffline = "Couldn't search. Check your connection, then try again.";
+export const searchFailed = "Couldn't search your mail.";

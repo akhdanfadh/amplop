@@ -36,7 +36,7 @@ func TestExport(t *testing.T) {
 }
 
 func TestRunUsage(t *testing.T) {
-	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"migrate", "extra"}, {"health", "extra"}, {"worker", "extra"}, {"export"}, {"export", "a", "b"}}
+	cases := [][]string{nil, {"unknown"}, {"serve", "extra"}, {"migrate", "extra"}, {"health", "extra"}, {"worker", "extra"}, {"export"}, {"export", "a", "b"}, {"search"}, {"search", "other"}, {"search", "rebuild", "extra"}}
 	for _, args := range cases {
 		err := run(context.Background(), args, discard)
 		require.ErrorIs(t, err, errUsage, "run(%q)", args)
@@ -49,6 +49,15 @@ func TestMigrateNoURL(t *testing.T) {
 	t.Setenv("INBOK_DATABASE_URL", "")
 
 	err := run(context.Background(), []string{"migrate"}, discard)
+
+	require.ErrorContains(t, err, "INBOK_DATABASE_URL")
+}
+
+// search rebuild names the missing setting instead of guessing a database.
+func TestSearchRebuildNoURL(t *testing.T) {
+	t.Setenv("INBOK_DATABASE_URL", "")
+
+	err := run(context.Background(), []string{"search", "rebuild"}, discard)
 
 	require.ErrorContains(t, err, "INBOK_DATABASE_URL")
 }
@@ -67,6 +76,24 @@ func TestServeNoURL(t *testing.T) {
 	err := run(context.Background(), []string{"serve"}, discard)
 
 	require.ErrorContains(t, err, "INBOK_DATABASE_URL")
+}
+
+// serve names a missing search index setting before touching a database
+// or a port.
+func TestServeNoSearchURL(t *testing.T) {
+	t.Setenv("INBOK_ENCRYPTION_KEYS", "1:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=")
+	t.Setenv("INBOK_PUBLIC_URL", "https://mail.example.com")
+	t.Setenv("INBOK_S3_ENDPOINT", "http://127.0.0.1:1")
+	t.Setenv("INBOK_S3_ACCESS_KEY_ID", "test-key-id")
+	t.Setenv("INBOK_S3_SECRET_ACCESS_KEY", "test-secret-access-key")
+	t.Setenv("INBOK_DATABASE_URL", "postgres://inbok@127.0.0.1:1/inbok")
+	t.Setenv("INBOK_MEILISEARCH_URL", "")
+	t.Setenv("INBOK_SETUP_TOKEN", "")
+	t.Setenv("INBOK_TRUSTED_PROXIES", "")
+
+	err := run(context.Background(), []string{"serve"}, discard)
+
+	require.ErrorContains(t, err, "INBOK_MEILISEARCH_URL")
 }
 
 // Bad proxy settings stop serve before opening a database or listener.

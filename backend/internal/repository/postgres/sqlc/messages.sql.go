@@ -23,7 +23,7 @@ WITH deleted AS (
     )
     RETURNING m.id, m.provider_thread_id
 )
-SELECT (SELECT count(*) FROM deleted)::bigint AS deleted,
+SELECT coalesce((SELECT array_agg(d.id) FROM deleted d), '{}')::uuid[] AS message_ids,
     coalesce((
         SELECT array_agg(d.provider_thread_id) FROM deleted d
     ), '{}')::text[] AS thread_ids,
@@ -42,18 +42,18 @@ type DeleteEarlierMessagesParams struct {
 }
 
 type DeleteEarlierMessagesRow struct {
-	Deleted   int64
-	ThreadIds []string
-	BlobIds   []uuid.UUID
+	MessageIds []uuid.UUID
+	ThreadIds  []string
+	BlobIds    []uuid.UUID
 }
 
 // Deletes up to @max_deleted of the messages no step of the account's
-// current generation saved. Returns how many, and their threads and the
+// current generation saved. Returns their IDs, their threads, and the
 // blob IDs their parts named, as DeleteMessages does.
 func (q *Queries) DeleteEarlierMessages(ctx context.Context, arg DeleteEarlierMessagesParams) (DeleteEarlierMessagesRow, error) {
 	row := q.db.QueryRow(ctx, deleteEarlierMessages, arg.ConnectedAccountID, arg.SyncGeneration, arg.MaxDeleted)
 	var i DeleteEarlierMessagesRow
-	err := row.Scan(&i.Deleted, &i.ThreadIds, &i.BlobIds)
+	err := row.Scan(&i.MessageIds, &i.ThreadIds, &i.BlobIds)
 	return i, err
 }
 
@@ -73,7 +73,8 @@ WITH deleted AS (
         AND m.provider_message_id = ANY ($2::text[])
     RETURNING m.id, m.provider_thread_id
 )
-SELECT coalesce((
+SELECT coalesce((SELECT array_agg(d.id) FROM deleted d), '{}')::uuid[] AS message_ids,
+    coalesce((
         SELECT array_agg(d.provider_thread_id) FROM deleted d
     ), '{}')::text[] AS thread_ids,
     coalesce((
@@ -90,18 +91,19 @@ type DeleteMessagesParams struct {
 }
 
 type DeleteMessagesRow struct {
-	ThreadIds []string
-	BlobIds   []uuid.UUID
+	MessageIds []uuid.UUID
+	ThreadIds  []string
+	BlobIds    []uuid.UUID
 }
 
-// Returns each deleted message's thread, whose conversation changes, and
-// the blob IDs their parts named. Every part of the statement reads the
-// rows as they were before it, so the select sees the parts the delete
-// cascades to.
+// Returns the deleted messages' IDs, each one's thread, whose conversation
+// changes, and the blob IDs their parts named. Every part of the statement
+// reads the rows as they were before it, so the select sees the parts the
+// delete cascades to.
 func (q *Queries) DeleteMessages(ctx context.Context, arg DeleteMessagesParams) (DeleteMessagesRow, error) {
 	row := q.db.QueryRow(ctx, deleteMessages, arg.ConnectedAccountID, arg.ProviderMessageIds)
 	var i DeleteMessagesRow
-	err := row.Scan(&i.ThreadIds, &i.BlobIds)
+	err := row.Scan(&i.MessageIds, &i.ThreadIds, &i.BlobIds)
 	return i, err
 }
 

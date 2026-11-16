@@ -159,7 +159,7 @@ func (q *Queries) MessageHasParts(ctx context.Context, arg MessageHasPartsParams
 const setMessagePartBlob = `-- name: SetMessagePartBlob :one
 UPDATE message_parts SET blob_id = coalesce(blob_id, $1::uuid)
 WHERE connected_account_id = $2 AND message_id = $3 AND path = $4
-RETURNING blob_id
+RETURNING blob_id, kind
 `
 
 type SetMessagePartBlobParams struct {
@@ -169,16 +169,21 @@ type SetMessagePartBlobParams struct {
 	Path               []int32
 }
 
+type SetMessagePartBlobRow struct {
+	BlobID *uuid.UUID
+	Kind   string
+}
+
 // Names @blob_id as the part's content unless the part names one already,
-// and returns the blob the part names.
-func (q *Queries) SetMessagePartBlob(ctx context.Context, arg SetMessagePartBlobParams) (*uuid.UUID, error) {
+// and returns the blob the part names, with the part's kind.
+func (q *Queries) SetMessagePartBlob(ctx context.Context, arg SetMessagePartBlobParams) (SetMessagePartBlobRow, error) {
 	row := q.db.QueryRow(ctx, setMessagePartBlob,
 		arg.BlobID,
 		arg.ConnectedAccountID,
 		arg.MessageID,
 		arg.Path,
 	)
-	var blob_id *uuid.UUID
-	err := row.Scan(&blob_id)
-	return blob_id, err
+	var i SetMessagePartBlobRow
+	err := row.Scan(&i.BlobID, &i.Kind)
+	return i, err
 }

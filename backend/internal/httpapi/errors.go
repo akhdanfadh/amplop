@@ -66,13 +66,21 @@ func configureErrors() {
 		// Huma builds a handler's unexpected error here, with the request,
 		// and sends the status of what this returns.
 		huma.NewErrorWithContext = func(ctx huma.Context, status int, message string, errs ...error) huma.StatusError {
-			if status != http.StatusInternalServerError || !requestTimedOut(ctx.Context(), errs) {
+			if status != http.StatusInternalServerError {
 				return huma.NewError(status, message, errs...)
 			}
-			busy := serviceBusyProblem()
-			busy.timedOut = true
-			busy.raw = &huma.ErrorModel{Status: status, Detail: message, Errors: errorDetails(errs)}
-			return busy
+			raw := &huma.ErrorModel{Status: status, Detail: message, Errors: errorDetails(errs)}
+			switch {
+			case requestTimedOut(ctx.Context(), errs):
+				busy := serviceBusyProblem()
+				busy.timedOut, busy.raw = true, raw
+				return busy
+			case clientClosed(ctx.Context(), errs):
+				closed := clientClosedProblem()
+				closed.clientGone, closed.raw = true, raw
+				return closed
+			}
+			return huma.NewError(status, message, errs...)
 		}
 	})
 }
@@ -99,8 +107,9 @@ func errorDetails(errs []error) []*huma.ErrorDetail {
 
 // normalizeError applies our safety policy before Huma serializes a response.
 // It keeps mapped problems, sanitizes others, and passes success bodies through.
-// An unauthenticated problem also clears the session cookie, and a request
-// that timed out answers [serviceBusyProblem] with Retry-After.
+// An unauthenticated problem also clears the session cookie, a request
+// that timed out answers [serviceBusyProblem] with Retry-After, and one
+// whose client left is logged as such, not as an unexpected error.
 func normalizeError(logger *slog.Logger, api huma.API, ctx huma.Context, value any, timeout time.Duration) any {
 	p, ok := value.(*problem)
 	if !ok {
@@ -122,6 +131,10 @@ func normalizeError(logger *slog.Logger, api huma.API, ctx huma.Context, value a
 	if p.timedOut {
 		logCause(ctx, logger, p.raw, slog.LevelWarn, "request timed out")
 		ctx.SetHeader(retryAfterHeader, retryAfterSeconds(timeout))
+		return p
+	}
+	if p.clientGone {
+		logCause(ctx, logger, p.raw, slog.LevelInfo, "client closed request")
 		return p
 	}
 	if p.mapped {

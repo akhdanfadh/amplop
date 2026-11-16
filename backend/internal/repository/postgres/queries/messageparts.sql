@@ -33,10 +33,10 @@ WHERE connected_account_id = @connected_account_id AND id = @id;
 
 -- name: SetMessagePartBlob :one
 -- Names @blob_id as the part's content unless the part names one already,
--- and returns the blob the part names.
+-- and returns the blob the part names, with the part's kind.
 UPDATE message_parts SET blob_id = coalesce(blob_id, @blob_id::uuid)
 WHERE connected_account_id = @connected_account_id AND message_id = @message_id AND path = @path
-RETURNING blob_id;
+RETURNING blob_id, kind;
 
 -- name: GetUserMessageAccount :one
 -- The connected account of the user's message; no row when none of the

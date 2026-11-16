@@ -20,17 +20,13 @@ func TestBodyText(t *testing.T) {
 			[]TextPart{{FormatPlain, "Hello Asha,\n\nThe invoice is attached.\n"}},
 			"Hello Asha, The invoice is attached.",
 		},
-		// multipart/alternative holds the same text twice; the plain part
-		// is the one the sender meant as text.
-		"plain over HTML": {
-			[]TextPart{{FormatHTML, "<p>Hello <b>Asha</b></p>"}, {FormatPlain, "Hello Asha"}},
-			"Hello Asha",
+		// The caller passes what a view shows, e.g. HTML and then a plain
+		// footer in multipart/mixed: each counts, in order.
+		"every part in order": {
+			[]TextPart{{FormatPlain, "First part."}, {FormatHTML, "<p>Second</p>"}, {FormatPlain, "Footer."}},
+			"First part. Second Footer.",
 		},
-		"every plain part": {
-			[]TextPart{{FormatPlain, "First part."}, {FormatHTML, "<p>Ignored</p>"}, {FormatPlain, "Footer."}},
-			"First part. Footer.",
-		},
-		"HTML when the plain part is blank": {
+		"a blank part adds nothing": {
 			[]TextPart{{FormatPlain, " \r\n\t"}, {FormatHTML, "<p>Hello</p>"}},
 			"Hello",
 		},

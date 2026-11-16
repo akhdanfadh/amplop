@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
+import { shortcutModifier } from "@/lib/shortcut";
 import { ConversationReply, ReplyEditorSlot, ReplyProvider } from "./reply";
 import type { AnsweredMessage } from "./reply-defaults";
 
@@ -247,8 +248,10 @@ describe("ConversationReply", () => {
 
     const send = page.getByRole("button", { name: "Send", exact: true });
     await expect.element(send).toHaveFocus();
-    await expect.element(page.getByRole("tooltip")).toHaveTextContent("Send (Ctrl+Enter)");
-    await expect.element(send).toHaveAccessibleDescription("Send (Ctrl+Enter)");
+    // shortcut.test.ts covers which key each platform names.
+    const tooltip = `Send (${shortcutModifier()}+Enter)`;
+    await expect.element(page.getByRole("tooltip")).toHaveTextContent(tooltip);
+    await expect.element(send).toHaveAccessibleDescription(tooltip);
   });
 
   it("keeps the typed text when the answered message was deleted", async () => {

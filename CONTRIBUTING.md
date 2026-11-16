@@ -9,7 +9,10 @@ The `Makefile` runs every command in these files from the repository
 root. Run `make` to list them, e.g. `make services-start`,
 `make db-migrate`, then `make dev` for the Go server, its background
 worker, and the web app together. `make check` runs what a commit must
-pass; `make check-backend` and `make check-web` run one half.
+pass; `make check-backend` and `make check-web` run one half, and
+`make check-deploy` tests `deploy/upgrade.sh`'s order and rollbacks with
+[bats](https://github.com/bats-core/bats-core), which `npx` fetches on
+a machine's first run.
 It also fails when generated code, e.g. `api/generated/openapi.json`, is
 out of date with its source, and names the command that updates it.
 Commands that need `.env` copy it from `.env.example` when it is missing.
@@ -77,9 +80,11 @@ Meilisearch holds the search index on `127.0.0.1:7700`
 (`INBOK_MEILISEARCH_PORT`). Its web dashboard at `http://localhost:7700`
 asks for `INBOK_MEILISEARCH_KEY` and shows what the index holds, one
 Meilisearch index per member, e.g. `messages_1`. The
-index is rebuilt from PostgreSQL rather than kept, so losing its volume
-costs nothing but the rebuild; the command that rebuilds it comes with
-search itself. Each Meilisearch version gets a new volume,
+index is rebuilt from PostgreSQL and stored message text rather than
+kept, so losing its volume costs nothing but the rebuild: with the
+worker running, `go -C backend run ./cmd/inbok search rebuild` rebuilds
+it, and the worker does so itself every night ([Rebuilding the
+index](backend/README.md#rebuilding-the-index)). Each Meilisearch version gets a new volume,
 since a version refuses to open another's data, so after
 `compose.yaml` moves to a new version the old volume stays behind;
 `docker volume ls` lists it, e.g. `inbok_meilisearch-1.56.1`, and

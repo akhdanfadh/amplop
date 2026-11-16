@@ -28,10 +28,20 @@ export function isShortcut(
   return !overlay || (ownDialog !== undefined && overlay.closest(ownDialog) !== null);
 }
 
-// shortcutName returns the words for Ctrl with letter, e.g. "Ctrl+B", or
-// Cmd on an Apple keyboard: words, not the Command symbol, which no
+// The key a shortcut holds down with a letter or Enter, as the platform's
+// keyboard writes it.
+export type ShortcutModifier = "Cmd" | "Ctrl";
+
+// shortcutModifier returns the modifier key that shortcuts name on the
+// platform userAgent describes, the browser's own by default: Cmd on Apple
+// keyboards, Ctrl on the rest. Words, not the Command symbol, which no
 // keyboard types (DESIGN.md "Wording").
+export function shortcutModifier(userAgent: string = navigator.userAgent): ShortcutModifier {
+  return /Mac|iPhone|iPad/.test(userAgent) ? "Cmd" : "Ctrl";
+}
+
+// shortcutName returns the words for the platform's modifier with letter,
+// e.g. "Ctrl+B", or "Cmd+B" on an Apple keyboard.
 export function shortcutName(letter: string): string {
-  const key = letter.toUpperCase();
-  return /Mac|iPhone|iPad/.test(navigator.userAgent) ? `Cmd+${key}` : `Ctrl+${key}`;
+  return `${shortcutModifier()}+${letter.toUpperCase()}`;
 }

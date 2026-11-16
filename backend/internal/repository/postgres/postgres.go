@@ -26,6 +26,18 @@ type Workflows interface {
 	OutgoingMessageWorkflows
 	SyncWorkflows
 	MessageContentWorkflows
+	SearchWorkflows
+}
+
+// SearchWorkflows saves the jobs of the search index.
+type SearchWorkflows interface {
+	// EnqueueSearchIndexing saves, in tx, the workflow that makes member
+	// owner's messages with ids in the search index what PostgreSQL holds
+	// when it runs.
+	EnqueueSearchIndexing(ctx context.Context, tx pgx.Tx, owner int64, ids []uuid.UUID) error
+	// EnqueueSearchAccountRemoval saves, in tx, the workflow that removes
+	// member owner's disconnected account accountID from the search index.
+	EnqueueSearchAccountRemoval(ctx context.Context, tx pgx.Tx, owner, accountID int64) error
 }
 
 // MessageContentWorkflows saves the jobs of message content.

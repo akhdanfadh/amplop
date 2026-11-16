@@ -1,7 +1,7 @@
 # inbok backend
 
 The Go server: the `inbok` command (`serve`, `worker`, `migrate`,
-`health`, `export`, `recover-admin`), its HTTP API, the built web app it
+`health`, `export`, `recover-admin`, `search rebuild`), its HTTP API, the built web app it
 serves, its background work, and its database code. Running `make` in the repository root lists a
 shortcut for most commands here.
 
@@ -82,7 +82,7 @@ The worker reads these environment variables:
 | `INBOK_ENCRYPTION_KEYS` | none, required | As for `serve`: they decrypt the saved system email password and the refresh tokens of Gmail accounts, connected or removed. |
 | `INBOK_GOOGLE_CLIENT_ID`, `INBOK_GOOGLE_CLIENT_SECRET` | empty | As for `serve`: the client the [account removal](#account-removal) job revokes tokens with, the [send](#sending-a-message) job sends with, and the [syncs](#synchronization) read Gmail with. Empty: the worker runs none of them and leaves them queued. |
 | `INBOK_GOOGLE_BASE_URL` | empty, Google itself | As for `serve`: points that client at the [Google emulator](#google-emulator). |
-| `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. The worker applies the [search index](#search-index)'s settings when it starts. |
+| `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers: `http` or `https`, a host, and an optional port, e.g. `http://127.0.0.1:7700`. Serve [searches](#searching) it; the worker applies the [search index](#search-index)'s settings when it starts and keeps the index in step. |
 | `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, which signs every request. |
 
 DBOS's own `DBOS__APPVERSION` and `DBOS__VMID` would replace the version
@@ -921,7 +921,12 @@ text and a stable type. This includes expected 5xx failures: an explicitly
 mapped 503 can explain maintenance. Unclassified errors are returned as is,
 become a fixed 500 `internal-error`, and log their technical cause with the
 request ID. One that the request's own deadline caused becomes a 503
-`service-busy` instead (see [Timeouts and shutdown](#timeouts-and-shutdown)).
+`service-busy` instead (see [Timeouts and shutdown](#timeouts-and-shutdown)),
+and one that is the cancellation of a request whose client left is
+logged at info level as "client closed request", status 499, nginx's
+code, which a client rarely receives, e.g. one that closed only its
+sending side. The error must be that cancellation alone: joined with
+another failure, it stays a 500.
 Huma status helpers alone do not declare text safe for display.
 
 The contract lists problem types in the `ProblemType` schema:
@@ -991,7 +996,11 @@ the cause as a warning, "request timed out". The request's own log line is a
 warning too, as for every 503; other 5xx lines are errors. A deadline error
 from inside a call while the request still has time stays an unexpected 500. A
 write may have committed before the deadline, so the 503 does not say it was
-not.
+not. A client that leaves cancels its request's context; serve's shutdown
+never does, as it waits for requests instead. Returning that cancellation
+logs "client closed request" at info level, and the request's line shows
+status 499, as a client leaving is no failure of inbok's; any other error
+while the client leaves stays an unexpected 500.
 
 Stop the server with Ctrl+C or SIGTERM. It stops accepting connections and gives
 in-flight requests up to 5 seconds to finish. The password reset link and
@@ -1017,6 +1026,8 @@ its request.
 | `INBOK_S3_ENDPOINT` | none, required | The S3 service that holds message content, e.g. `http://127.0.0.1:8333`; see Message content store below. |
 | `INBOK_S3_ACCESS_KEY_ID` | none, required | The key ID inbok signs in to it with. |
 | `INBOK_S3_SECRET_ACCESS_KEY` | none, required | The secret for that key ID. |
+| `INBOK_MEILISEARCH_URL` | none, required | Where Meilisearch answers, as the worker reads it; serve [searches](#searching) it. Serve starts without asking it, and a search answers 503 while it is down. |
+| `INBOK_MEILISEARCH_KEY` | none, required | Meilisearch's master key, as the worker reads it. |
 | `GIN_MODE` | `debug`; the image sets `release` | Read by Gin itself. Use `release` for a deployed server; `debug` prints routes at startup. |
 
 `export` reads none of them, so the committed document is the same on every
@@ -2706,7 +2717,8 @@ mailbox the account does not have, e.g. a Gmail label made since the
 labels were listed, writes nothing and returns
 `mailsync.ErrUnknownMailbox`; so does any other error, e.g. a generation
 or count past the `integer` columns. A feature that must act on the same
-writes, e.g. indexing them for search, adds its job to that transaction.
+writes adds its job to that transaction, as the deletion of deleted
+messages' content and the [search index](#search-index)'s job do.
 Each full sync starts a sync generation, and each message records the
 generation that last saved it, so a full sync that finishes can delete
 the messages it did not see, a batch per change, without comparing
@@ -2953,14 +2965,74 @@ access tokens itself, as the worker does.
 ## Search index
 
 Search finds a member's messages through Meilisearch, a derived index: a
-searchable copy of message data that returns only message IDs, while the
-messages themselves load from PostgreSQL with the usual ownership check.
-ADR005 in the project's decision records explains the choices. So far
-only the index exists; nothing writes to it or searches it yet.
+searchable copy of message data that returns message IDs, with where the
+query matched and an excerpt of the body around it, while the messages
+themselves load from PostgreSQL with the usual ownership check.
+ADR005 in the project's decision records explains the choices. Jobs
+keep the index in step with synchronized mail, and Search Conversations
+[searches](#searching) it.
+
+The index holds every message inbok keeps, Spam and Trash included, and
+a query decides which mailboxes it leaves out. Each write to a member's
+mail saves, in its own transaction, a job naming the messages it
+changed, so the job commits with the change and a rollback drops it:
+
+| Write | Job |
+|-|-|
+| `UpdateSyncedMail`: messages saved, updated (labels and flags), or deleted, by a sync or a member's action | `inbok.search-indexing` for those messages and every message of their threads |
+| `SaveMessageParts`: a body stored | `inbok.search-indexing` for the message |
+| `SavePartBlob`: a text body the provider sends apart, e.g. Gmail's long HTML | `inbok.search-indexing` for the message |
+| `DeleteConnectedAccount`: an account disconnected | `inbok.search-account-removal` for the account |
+
+A job's input is the member and the message IDs, never mail. When it
+runs, `search.Indexer` reads those messages as PostgreSQL holds them
+then, upserts the ones it finds, and deletes the ones it does not, e.g.
+deleted since. Both jobs run on the queue `inbok.search`, partitioned by
+member with one run at a time in each partition
+(`dbos.WithPartitionConcurrency(1)`), so a member's runs never overlap
+while different members' run side by side. Together these keep the
+index right whatever order runs take: Meilisearch applies writes in the
+order they reach it, but a retried job could send an older state after a
+newer delete; instead the run that comes last reads, and writes, the
+latest state, so an older job retried after a newer delete deletes again
+rather than bringing the message back, and a rebuild, below, runs in the
+member's partition too. That limit is what keeps the index correct, not a load setting, so every worker start
+restores it, unlike the other queues' limits.
+
+A run works through its messages 100 at a time (`search.BatchSize`),
+one DBOS step each, and each step retries for about an hour (1, 2, 4,
+8, then 15 minutes three times; a worker restarted meanwhile starts the
+count again) while the member's later runs wait behind it. A run that still fails is logged and dropped: its messages
+stay as they were in the index until they change again or the index is
+[rebuilt](#rebuilding-the-index), e.g. by the next nightly rebuild. A message's document holds its subject, sender, recipients,
+date, account, the inbok IDs of its mailboxes, its conversation's
+places, and, once its body is stored, its text in two fields: `body_text`, the text of the bodies a
+view of it shows, and `alt_text`, the text of its other text parts,
+e.g. the plain-text alternative of HTML a view shows. A word in either
+finds the message, and one in `body_text` ranks it higher. Until its
+body is stored, a message is found by its headers. The document's
+`conversation` field, the account's ID and the provider's thread ID,
+names the conversation a search keeps one message of. Its conversation's
+places are `conversation_mailbox_ids`, the mailboxes the conversation is
+in as lists place it (`conversation_mailboxes`), and
+`conversation_flagged`, whether it is starred: a reply in the inbox puts
+its whole conversation in the inbox, so the derive step of
+`UpdateSyncedMail` returns every message of each thread it derives, and
+the write's job indexes them all. A long thread's new reply so indexes
+its older messages again, which ADR005 accepts. Three more fields serve
+filters: `from_addresses`, every address of its From as PostgreSQL holds
+it, without empty ones, e.g. a group's name; `internal_date`, when the
+provider received it, in Unix milliseconds, Gmail's own precision; and,
+once its body is stored, `has_attachment`, whether a view offers any of
+its parts as a download, as `messagecontent.Choose` picks them from the
+stored part tree. Every message changed is read again, so marking one
+read re-reads its stored body text too.
 
 - `search` declares the `Index` interface: `Prepare`, `Upsert`, `Delete`,
-  `DeleteAccount`, and `Search`, with its `Document`, `Query`, and
-  `Result` types. Each method may be called again with the same input,
+  `DeleteAccount`, `Search`, and, for a rebuild, `Owners`,
+  `DocumentIDs`, and `DeleteOwner`, with its `Document`, `Query`, and
+  `Result` types; a result's `Hit`s carry where the query matched, in
+  bytes. Each method may be called again with the same input,
   e.g. by a job that retries, and returns once Meilisearch has applied
   the change, so the next search sees it.
 - `Search`, `Delete`, and `DeleteAccount` take the owner as an argument
@@ -2968,33 +3040,67 @@ only the index exists; nothing writes to it or searches it yet.
   member's documents, whatever IDs it is given: no search returns
   another member's message, even for another member's account ID. The
   caller passes the signed-in member, since no index can tell a wrong
-  member from the right one. A query is structured: accounts, labels to
-  leave out, and a page; callers never write Meilisearch's filters.
+  member from the right one. A query is structured: words, accounts,
+  scopes, senders, a received-date range, whether it has an attachment,
+  and a page; callers never write Meilisearch's filters. A scope is one
+  place as the index tells places apart: the mailboxes the conversation
+  must be in, whether it must be starred, and the mailboxes the message
+  itself must be outside of; a message in any scope matches. The adapter
+  quotes each value whole inside its own expression, and puts each scope,
+  the only expressions joined with OR, in parentheses.
 - `meilisearch` implements `Index` with the official Go client,
   `meilisearch-go`, with one Meilisearch index per member, named after
   the member's user ID, e.g. `messages_42`. Every upsert applies the
-  settings after its documents, so a member's index has them however it
-  came to exist; until a member's first upsert, their searches find
-  nothing and their deletes do nothing. Searches and account deletes
-  also filter on the owner inside the member's index. Its errors carry
-  Meilisearch's error code, never the text of its reply, which can quote
-  a message. An error from a call cut short by its context wraps the
-  context's error, so a request's deadline still becomes a 503.
+  settings before its documents, so a member's index has them however it
+  came to exist, and their first documents never sit in an index without
+  them, which would refuse every search's owner filter; until a member's
+  first upsert, their searches find nothing and their deletes do nothing.
+  Searches and account deletes also filter on the owner inside the
+  member's index. Its errors carry Meilisearch's error code, never the
+  text of its reply, which can quote a message. An error from a call cut
+  short by its context wraps the context's error, so a request's
+  deadline still becomes a 503.
 - `Prepare` applies the settings to every member's index, and every
   upsert to its member's: which fields a search matches, in order of
-  weight, and which it filters and sorts on, including the ones later
-  filters need, since changing that list reindexes every message.
-  Settings left out keep Meilisearch's defaults, e.g. its typo
-  tolerance. Applying the same settings again, or from two processes at
+  weight, and which it filters on, only those today's searches use: a
+  filter added later adds its field, and Meilisearch reindexes from the
+  documents it holds. The ranking rules are Meilisearch's defaults and
+  then the date, newest first, so equal matches keep one order however
+  the index was written; typo tolerance is the default but for numbers,
+  so order 4471829 never finds 4471828. An update leaves the settings it
+  omits as the index has them, which on a new index are Meilisearch's
+  defaults. Applying the same settings again, or from two processes at
   once, changes nothing. The worker calls `Prepare` when it starts,
-  before any job runs.
-- `search.BodyText` turns a message's text parts, as content storage
-  keeps them, into a document's `BodyText`: every plain-text part when
-  one has text, else the text of every HTML part that a reader sees, as
-  the HTML Standard's default rendering decides it, read token by token
-  and never parsed into a tree with `html.Parse` (ADR005 says why). It
-  reads at most 1 MiB of a message's text parts of each format and cuts
-  the text at a word to at most 64 KiB.
+  before any job runs and before it reports healthy. Since every write
+  applies its worker's settings too, an old worker still running would
+  undo a new release's, so `deploy/upgrade.sh` replaces the worker before
+  the server, and a rollback the server before the worker: no server
+  filters on a field the index does not allow.
+- `messagecontent.Texts` reads a message's stored text parts from
+  content storage, apart by whether a view shows them: the bodies
+  `messagecontent.Choose` picks, in that order, and every other text
+  part in the message's order, e.g. the alternatives a view does not
+  pick. It reads at most 64 parts and 1 MiB over both, the shown ones
+  first. It also says whether a view offers any part as a download, from
+  the whole part tree, whatever those limits leave: a PDF or a photo a
+  phone sends beside the text counts, a logo the HTML shows does not. An
+  image in the HTML's `multipart/related` that the HTML never refers to,
+  which the reading pane also offers, does not count: telling it apart
+  takes the sanitized HTML.
+- `search.BodyText` turns each group into a field's text: plain text as
+  it is, and the text of HTML that a reader sees, as the HTML Standard's
+  default rendering decides it, read token by token and never parsed into
+  a tree with `html.Parse` (ADR005 says why), in order, cut at a word to
+  at most 64 KiB. The shown text becomes `BodyText`, the rest `AltText`,
+  so a stub such as "View in browser" never stands in for HTML a reader
+  sees, and the words of an HTML message that is only images are still
+  found in its plain-text alternative.
+- `search.Indexer` is what the jobs call: `Index` brings a member's
+  messages up to date from `IndexStorage`, which `repository/postgres`
+  implements, and `RemoveAccount` removes a disconnected account.
+- `search.Rebuild` is what a rebuild calls, below: `Owners` lists whom it
+  covers from `RebuildStorage`, which `repository/postgres` implements,
+  and the index, and `Owner` rebuilds one member through `Indexer`.
 - `searchtest` holds `Fake`, an `Index` in memory for tests of code
   that uses one, and `RunContract`, the tests both `Fake` and
   `meilisearch` pass, so the fake behaves as Meilisearch does apart from
@@ -3004,6 +3110,173 @@ only the index exists; nothing writes to it or searches it yet.
   test pass while mail leaked between members. `meilisearch`'s tests run
   against the image the Compose files use, through Testcontainers, like
   the PostgreSQL tests.
+
+### Searching
+
+Search Conversations (`GET /api/v0/conversations/search`) calls
+`search.Searcher`, which reads through `SearchStorage`, which
+`repository/postgres` implements. It searches the places `place` names,
+repeated for up to 20, each a view or a label as List Conversations reads
+it; a conversation in any of them matches, and none searches All mail. A
+place holds the conversations its list shows, found through their
+messages in neither Spam, Trash, nor drafts, as Gmail leaves those out;
+Spam and Trash through any message but a draft, which no view shows. So
+All mail, Spam, and Trash together search everywhere.
+
+1. A search of one account checks it is the member's, and one of a
+   label checks it is the member's, so a search of either they no longer
+   have answers 404, `connected-account-not-found` or `place-not-found`
+   as for a list, rather than finding nothing.
+2. It looks up the member's mailboxes by role and makes each place a
+   scope: Inbox and Sent by their role's mailboxes, a label by its own,
+   Starred by the star, All mail by neither, Spam and Trash by theirs,
+   each leaving out the messages in junk, trash, and drafts, or for Spam
+   and Trash in drafts only. A view whose role no mailbox has, e.g. Spam
+   before any account is connected, holds nothing, and a search of only
+   such views asks the index nothing.
+3. It reads the messages found from PostgreSQL by their IDs, with the
+   roles of their mailboxes and their conversations as lists show them,
+   in one snapshot, keeping the index's order and dropping those no place
+   shows now (`conversation.Conversation.In`), deleted, without a
+   conversation, or another member's. The index may lag behind, so
+   PostgreSQL decides what is shown: at worst a page holds fewer results
+   than its limit, and the total is off, until the index catches up.
+
+Each result is the conversation as List Conversations shows it, and its
+best-matching message: its ID, date, sender, subject, and preview, with
+where the query matched them.
+
+The index returns one message per conversation, its best match
+(Meilisearch's search-time `distinct` on `conversation`), so the total
+and the pages count conversations. Every word of the query must match
+(`matchingStrategy: all`), as in Gmail, so adding a word narrows a
+search; Meilisearch reads only a query's first 10 words. Each hit
+carries its subject and an excerpt of its body text around the best
+match, which Meilisearch crops to about 20 words, both with every match
+marked by STX and ETX, two control characters `search.BodyText` drops
+from body text, so they never stand for its text (a subject holding one
+loses its marks); the adapter takes the
+marks out and keeps where they were, in UTF-8 bytes. It never asks for
+Meilisearch's `_matchesPosition`, which lists every match in both body
+texts: a crafted mailbox made one page of 100 results decode to about
+500 MB. Meilisearch matches a query's last word as a prefix too and
+marks as many of its characters as the query word has, so the adapter
+completes a mark to its word's end when at most two letters are left,
+Meilisearch's most typos per word: a typo, `anggran`, marks the whole
+of "Anggaran", while a prefix, `inv`, stays as typed in "Invoice". The
+searcher keeps a subject's matches only when the index's subject is
+PostgreSQL's, drops any match that leaves its text or splits a
+character, and starts an excerpt at most three words before its first
+match, so the match shows on a phone's one line. A message whose body
+text did not match shows the provider's preview, with nothing marked.
+The handler turns byte positions into UTF-16 code units, which is what
+a JavaScript string counts. A Meilisearch that does not answer, or
+answers that it failed, is a 503 `search-unavailable` with
+`Retry-After: 15`.
+
+Filters narrow a search, each a structured parameter the web builds,
+never syntax parsed out of `q`: `from`, repeated for up to 10 email
+addresses (`idn-email`, as every address field is), keeps a message whose
+From holds any of them, compared as Meilisearch's filters compare text,
+ignoring case (so `BUDI@x.com` finds `budi@x.com`);
+`since` and `before` keep what the provider received at or after one
+instant and before another, each rounded up to the index's millisecond,
+which is exact, and a `since` not before `before` is a 422 on
+`query.before`, checked before the search takes a running place;
+`has=attachment` keeps a message with `has_attachment`. A `from` that is
+no address anywhere in the list, and an instant given that equals Go's
+zero time,
+are 422s too: Huma decides whether a parameter is there from its first
+value alone, so the input's `Resolve` refuses a list whose first sender
+is empty, which Huma would skip with all its checks.
+Meilisearch applies filters before it keeps one message per
+conversation, so each filter holds for the message a row shows: a
+conversation whose words are in one message and whose file is in another
+is not found, as in Gmail. Without `q`, every message the filters keep
+matches, newest first by the date ranking rule, each conversation
+through its newest such message, and the adapter asks for IDs alone,
+since there is nothing to mark. `has=attachment` only finds messages
+whose content inbok has fetched: not those of an account connected
+moments ago, while the body fetch catches up; unopened ones in Spam or
+Trash, which it skips; one whose fetch failed for good; nor one that
+reaches inbok older than 90 days, e.g. imported, or ages past 90 days
+before its turn, which the body fetch never takes unless it is opened.
+
+Cutting excerpts is most of a search's cost in Meilisearch, and it grows
+with each result's body text: on 100 crafted 64 KiB messages, a page of
+100 took 0.76 s against 4 ms for IDs alone. So a page holds at most 50
+results, and a member may have two searches running at once
+(`runningSearches`, counted in serve's memory); a third answers 429
+`searches-running` with `Retry-After: 1` before it reaches
+Meilisearch. A search runs apart from its request and gives its place
+back only when it ends, within 15 seconds, so a client that gives up and
+asks again cannot run more; Meilisearch may go on past that, but serve
+stops waiting. Each serve process counts on its own.
+
+### Rebuilding the index
+
+Jobs change only the messages that change, so a copy that was lost or
+went wrong stays so without a rebuild: a new, empty Meilisearch after
+an upgrade, documents an earlier release wrote, e.g. before a field or
+the body-text cap changed, a database restored from a backup, or the
+runs of a job that gave up. A rebuild
+makes each member's index what PostgreSQL and stored text hold, in
+place:
+
+1. `Rebuild.Owners` lists every member in PostgreSQL, with mail or not,
+   and every owner Meilisearch keeps an index for.
+2. For each, in the member's partition of `inbok.search`, so live jobs
+   wait while it runs, `Rebuild.Owner` deletes the whole index of a
+   member PostgreSQL no longer has. Otherwise it lists the IDs the
+   index holds, writes each of the member's messages 100 at a time with
+   `Indexer.Index`, then passes the listed IDs it did not write to
+   `Indexer.Index` too, which deletes them, or writes one that came back.
+
+It never empties an index first, so searches keep finding what the index
+held while it runs. A member's rebuild is one DBOS step, not one per
+batch: DBOS skips a recorded step when a run resumes, though the index
+it wrote to may have been replaced since, e.g. by a new, empty
+Meilisearch. An interrupted step is not recorded, so a resumed run
+repeats the member whole; an index replaced after a member's step
+finished needs a new rebuild, which `upgrade.sh` and the restore steps
+run. A rebuild of every member, `inbok.search-rebuild`, enqueues
+the members' runs, `inbok.search-member-rebuild`, and waits for them;
+it runs outside every member's partition, since it waits on them. It
+runs nightly at 03:00 UTC, when the worker is running then (DBOS does
+not make up a missed night), as `inbok.search-rebuild-schedule`
+from the schedule `inbok.search-rebuild.nightly`, and when the command
+asks for it, from the queue `inbok.search-rebuild`:
+
+```sh
+set -a; . ./.env; set +a
+go -C backend run ./cmd/inbok search rebuild
+```
+
+The command needs only `INBOK_DATABASE_URL` and a running worker, which
+does the work; it waits up to two hours and prints what the rebuild did.
+`deploy/upgrade.sh` runs it after every upgrade, and the deploy README's
+restore steps run it before the site opens again. A database that held
+mail before search was indexed needs one run.
+
+Remove a field from documents in two releases, as with a column: first
+stop searching, filtering, and sorting on it, then stop writing it. An
+upgrade that fails and goes back to the previous image then never runs
+code that needs a field the new worker's documents lack; until the
+nightly rebuild, those documents are only found less well.
+
+A field added to documents, or a rule that changes one, e.g. which parts
+count as attachments, reaches documents written before it only at the
+next successful rebuild: `upgrade.sh` runs one, but keeps the new
+release when it fails, and the nightly rebuild then tries again. Until
+then a filter on a new field misses the documents that lack it, minutes
+for a rebuild that succeeds. When that gap matters, ship the field and
+its filterable setting one release before the filter that uses it.
+Changing what a field holds is worse: when `internal_date` went from
+seconds to milliseconds, old documents fell inside every `before` and
+outside every `since` until the rebuild. Until the first release, such a
+change, or a removal such as `from_address`'s, goes in one release with
+a rebuild or wiped data; after it, add a field under a new name
+instead.
 
 To see what the index holds during development, open Meilisearch's
 dashboard at `http://localhost:7700`, give it `INBOK_MEILISEARCH_KEY`,
@@ -3201,7 +3474,9 @@ httpapi --> mailsync <-- repository/postgres
 httpapi --> conversation <-- repository/postgres
                          <-- google
             conversation --> mailsync, connectedaccount
-            search <-- meilisearch
+httpapi --> search <-- meilisearch
+                   <-- repository/postgres
+            search --> conversation, mailsync, messagecontent
 httpapi --> messagecontent <-- s3
                            <-- google
                            <-- repository/postgres

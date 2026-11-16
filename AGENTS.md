@@ -37,7 +37,8 @@ the area you change before editing it:
   choosing status, type, and safe text. An explicitly mapped 5xx keeps that
   text. Unexpected errors are returned as is and become a logged, fixed 500;
   one caused by the request's own deadline becomes a 503 `service-busy`
-  with `Retry-After`, in one place for every operation. Public error text
+  with `Retry-After`, and the cancellation of a request whose client left
+  is logged at info as 499, in one place for every operation. Public error text
   and input messages contain no rejected values or causes.
 - A throttle's refusal is an `*attemptlimit.Error` carrying its wait; map
   it with `retryAfterProblem`, which adds `Retry-After`.

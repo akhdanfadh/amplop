@@ -35,7 +35,7 @@ func apiTags() []*huma.Tag {
 		{Name: tagMembers, Description: "List, deactivate, and reactivate accounts. Administrators only."},
 		{Name: tagSystemEmail, Description: "The instance's own sender of links and notices. Administrators only."},
 		{Name: tagConnectedAccounts, Description: "Connect, list, reconnect, and disconnect the signed-in account's Gmail accounts."},
-		{Name: tagConversations, Description: "List the signed-in account's conversations by place, across its connected accounts or one of them, count them, and read one."},
+		{Name: tagConversations, Description: "List and search the signed-in account's conversations by place, across its connected accounts or one of them, count them, and read one."},
 		{Name: tagMessages, Description: "Read the signed-in account's messages: their bodies, images, and attachments."},
 		{Name: tagOutgoingMessages, Description: "Send messages from the signed-in account's connected accounts, follow their status, and send a failed one again."},
 		{Name: tagRedirects, Description: "Addresses another site sends the browser to, e.g. Google after its consent page. Clients never call them; the web app's generated client leaves them out."},

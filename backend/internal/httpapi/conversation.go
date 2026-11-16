@@ -116,13 +116,21 @@ func conversationRowOf(c conversation.Conversation) conversationRow {
 	}
 }
 
+// placeMessage is the input message of a place that is neither a view nor
+// a mailbox ID, and msgExpectedPlace the Huma message an input's own check
+// gives for one, which [publicInputError] words as placeMessage.
+const (
+	placeMessage     = "Choose a view or one of your labels."
+	msgExpectedPlace = "expected a view or a label id"
+)
+
 // placeOf parses text as a place, or returns a 422 naming the place
 // parameter.
 func placeOf(text string) (conversation.Place, error) {
 	place, err := conversation.ParsePlace(text)
 	if err != nil {
 		invalid := requestProblem(http.StatusUnprocessableEntity)
-		invalid.Errors = []inputError{{Location: "query.place", Message: "Choose a view or one of your labels."}}
+		invalid.Errors = []inputError{{Location: "query.place", Message: placeMessage}}
 		return conversation.Place{}, invalid
 	}
 	return place, nil
@@ -140,9 +148,10 @@ func placeProblem(err error) error {
 	}
 }
 
-// placeResponses documents the failures of an operation on a place.
-func placeResponses(api huma.API) map[string]*huma.Response {
-	responses := memberResponses(api, http.StatusNotFound)
+// placeResponses documents the failures of an operation on places, and
+// those of more statuses.
+func placeResponses(api huma.API, statuses ...int) map[string]*huma.Response {
+	responses := memberResponses(api, append([]int{http.StatusNotFound}, statuses...)...)
 	notFound := responses[strconv.Itoa(http.StatusNotFound)]
 	notFound.Description = "The signed-in account has no label with the place's id, or no connected account with the account filter's id."
 	// OpenAPI allows example or examples, not both (3.1, Media Type Object).

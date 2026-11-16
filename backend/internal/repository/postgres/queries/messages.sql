@@ -43,17 +43,18 @@ JOIN mailboxes mb ON mb.connected_account_id = @connected_account_id
     AND mb.provider_mailbox_id = pair.provider_mailbox_id;
 
 -- name: DeleteMessages :one
--- Returns each deleted message's thread, whose conversation changes, and
--- the blob IDs their parts named. Every part of the statement reads the
--- rows as they were before it, so the select sees the parts the delete
--- cascades to.
+-- Returns the deleted messages' IDs, each one's thread, whose conversation
+-- changes, and the blob IDs their parts named. Every part of the statement
+-- reads the rows as they were before it, so the select sees the parts the
+-- delete cascades to.
 WITH deleted AS (
     DELETE FROM messages m
     WHERE m.connected_account_id = @connected_account_id
         AND m.provider_message_id = ANY (@provider_message_ids::text[])
     RETURNING m.id, m.provider_thread_id
 )
-SELECT coalesce((
+SELECT coalesce((SELECT array_agg(d.id) FROM deleted d), '{}')::uuid[] AS message_ids,
+    coalesce((
         SELECT array_agg(d.provider_thread_id) FROM deleted d
     ), '{}')::text[] AS thread_ids,
     coalesce((
@@ -65,7 +66,7 @@ SELECT coalesce((
 
 -- name: DeleteEarlierMessages :one
 -- Deletes up to @max_deleted of the messages no step of the account's
--- current generation saved. Returns how many, and their threads and the
+-- current generation saved. Returns their IDs, their threads, and the
 -- blob IDs their parts named, as DeleteMessages does.
 WITH deleted AS (
     DELETE FROM messages m
@@ -77,7 +78,7 @@ WITH deleted AS (
     )
     RETURNING m.id, m.provider_thread_id
 )
-SELECT (SELECT count(*) FROM deleted)::bigint AS deleted,
+SELECT coalesce((SELECT array_agg(d.id) FROM deleted d), '{}')::uuid[] AS message_ids,
     coalesce((
         SELECT array_agg(d.provider_thread_id) FROM deleted d
     ), '{}')::text[] AS thread_ids,

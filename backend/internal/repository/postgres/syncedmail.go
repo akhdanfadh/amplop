@@ -38,8 +38,9 @@ func storedVersion(version uint64) (int64, error) {
 // writes the change update returns, in one transaction: the mailboxes, the
 // deletes, the saves with their mailboxes, the updates, the earlier
 // generations' deletes, the conversations of every thread these touched,
-// the job deleting the deleted messages' content,
-// and the state. It returns what it wrote,
+// the job deleting the deleted messages' content, the job bringing every
+// message it changed up to date in the search index, and the state. It
+// returns what it wrote,
 // [mailsync.ErrNotFound] when the account has no sync state, and
 // [mailsync.ErrUnknownMailbox] when a saved or updated message names a
 // mailbox the account does not have.
@@ -94,7 +95,7 @@ func (db *DB) updateSyncedMail(ctx context.Context, accountID int64, update func
 			return saved[providerID]
 		})
 		var threads []string
-		var deletedBlobs []uuid.UUID
+		var deletedBlobs, changed []uuid.UUID
 		if len(deletes) > 0 {
 			params := sqlc.DeleteMessagesParams{ConnectedAccountID: accountID, ProviderMessageIds: deletes}
 			deleted, err := queries.DeleteMessages(ctx, params)
@@ -103,22 +104,26 @@ func (db *DB) updateSyncedMail(ctx context.Context, accountID int64, update func
 			}
 			threads = append(threads, deleted.ThreadIds...)
 			deletedBlobs = deleted.BlobIds
+			changed = append(changed, deleted.MessageIds...)
 		}
-		if err := saveMessages(ctx, tx, accountID, state.SyncGeneration, saves); err != nil {
-			return err
-		}
-		for _, message := range saves {
-			threads = append(threads, message.ThreadID)
-		}
-		updated, err := updateMessages(ctx, tx, accountID, change.Updated)
+		ids, err := saveMessages(ctx, tx, accountID, state.SyncGeneration, saves)
 		if err != nil {
 			return err
 		}
+		changed = append(changed, ids...)
+		for _, message := range saves {
+			threads = append(threads, message.ThreadID)
+		}
+		ids, updated, err := updateMessages(ctx, tx, accountID, change.Updated)
+		if err != nil {
+			return err
+		}
+		changed = append(changed, ids...)
 		threads = append(threads, updated...)
 
 		// 5. Delete what earlier generations saved only after this one's
 		// saves, which keep the messages they name.
-		var earlierDeleted int64
+		var earlierDeleted int
 		if change.DeleteEarlier > 0 {
 			params := sqlc.DeleteEarlierMessagesParams{
 				ConnectedAccountID: accountID,
@@ -129,16 +134,21 @@ func (db *DB) updateSyncedMail(ctx context.Context, accountID int64, update func
 			if err != nil {
 				return fmt.Errorf("delete earlier messages: %w", err)
 			}
-			earlierDeleted = earlier.Deleted
+			earlierDeleted = len(earlier.MessageIds)
 			threads = append(threads, earlier.ThreadIds...)
 			deletedBlobs = append(deletedBlobs, earlier.BlobIds...)
+			changed = append(changed, earlier.MessageIds...)
 		}
 
 		// 6. Derive the touched threads' conversations from the messages
-		// they have now, which every step above has written.
-		if err := deriveConversations(ctx, tx, accountID, uniqueStrings(threads)); err != nil {
+		// they have now, which every step above has written. Every message
+		// of those threads is changed: its document holds its
+		// conversation's places.
+		threadMessages, err := deriveConversations(ctx, tx, accountID, uniqueStrings(threads))
+		if err != nil {
 			return err
 		}
+		changed = append(changed, threadMessages...)
 
 		// 7. Save the job that deletes the deleted messages' blobs. A worker
 		// sees it only once this commits, and a rollback drops it, so no
@@ -147,12 +157,20 @@ func (db *DB) updateSyncedMail(ctx context.Context, accountID int64, update func
 			return err
 		}
 
+		// 8. Save the job that brings the changed messages up to date in the
+		// search index, deleted ones included. It reads them when it runs,
+		// so it commits with them, and a rollback drops it (ADR005).
+		slices.SortFunc(changed, uuid.UUID.Compare)
+		if err := db.indexAfter(ctx, tx, accountID, slices.Compact(changed)); err != nil {
+			return err
+		}
+
 		if err := queries.UpdateSyncState(ctx, state); err != nil {
 			return fmt.Errorf("update sync state: %w", err)
 		}
 		written.State = change.State
 		written.State.AccountID = accountID
-		written.EarlierDeleted = int(earlierDeleted)
+		written.EarlierDeleted = earlierDeleted
 		return nil
 	})
 	if err != nil {
@@ -223,11 +241,11 @@ func lastSaves(saved []mailsync.Message) ([]mailsync.Message, map[string]bool) {
 
 // saveMessages adds or updates accountID's messages in tx as saved by
 // generation, and replaces their mailboxes. Each ProviderID appears once.
-// It returns [mailsync.ErrUnknownMailbox] when one names a mailbox the
-// account does not have.
-func saveMessages(ctx context.Context, tx pgx.Tx, accountID int64, generation int32, messages []mailsync.Message) error {
+// It returns their IDs, new or kept, and [mailsync.ErrUnknownMailbox] when
+// one names a mailbox the account does not have.
+func saveMessages(ctx context.Context, tx pgx.Tx, accountID int64, generation int32, messages []mailsync.Message) ([]uuid.UUID, error) {
 	if len(messages) == 0 {
-		return nil
+		return nil, nil
 	}
 	queries := sqlc.New(tx)
 
@@ -236,7 +254,7 @@ func saveMessages(ctx context.Context, tx pgx.Tx, accountID int64, generation in
 	for _, message := range messages {
 		p, err := messageParams(accountID, generation, message)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		params = append(params, p)
 	}
@@ -247,7 +265,7 @@ func saveMessages(ctx context.Context, tx pgx.Tx, accountID int64, generation in
 		batchErr = errors.Join(batchErr, err)
 	})
 	if batchErr != nil {
-		return fmt.Errorf("save messages: %w", batchErr)
+		return nil, fmt.Errorf("save messages: %w", batchErr)
 	}
 
 	// 2. Replace their mailboxes with the ones each names now.
@@ -255,19 +273,19 @@ func saveMessages(ctx context.Context, tx pgx.Tx, accountID int64, generation in
 	for i, message := range messages {
 		mailboxes[i] = message.MailboxProviderIDs
 	}
-	return replaceMailboxes(ctx, tx, accountID, ids, mailboxes)
+	return ids, replaceMailboxes(ctx, tx, accountID, ids, mailboxes)
 }
 
 // updateMessages sets the flags, version, and mailboxes of accountID's
 // messages that updates name, in tx, skipping those it does not have and
 // those it holds at a newer version; when one ProviderID appears more than
-// once, the last wins. It returns the threads of the messages it updated,
-// [errVersionRange] for an update without a version, and
+// once, the last wins. It returns the IDs and the threads of the messages
+// it updated, [errVersionRange] for an update without a version, and
 // [mailsync.ErrUnknownMailbox] when one names a mailbox the account does
 // not have.
-func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []mailsync.MessageUpdate) ([]string, error) {
+func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []mailsync.MessageUpdate) ([]uuid.UUID, []string, error) {
 	if len(updates) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	queries := sqlc.New(tx)
 
@@ -284,7 +302,7 @@ func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []m
 	for _, providerID := range params.ProviderMessageIds {
 		version, err := storedVersion(last[providerID].Version)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		params.Seen = append(params.Seen, last[providerID].Seen)
 		params.Flagged = append(params.Flagged, last[providerID].Flagged)
@@ -292,7 +310,7 @@ func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []m
 	}
 	rows, err := queries.UpdateMessageFlags(ctx, params)
 	if err != nil {
-		return nil, fmt.Errorf("update message flags: %w", err)
+		return nil, nil, fmt.Errorf("update message flags: %w", err)
 	}
 
 	// 2. Replace the mailboxes of those it has.
@@ -304,7 +322,7 @@ func updateMessages(ctx context.Context, tx pgx.Tx, accountID int64, updates []m
 		mailboxes[i] = last[row.ProviderMessageID].MailboxProviderIDs
 		threads[i] = row.ProviderThreadID
 	}
-	return threads, replaceMailboxes(ctx, tx, accountID, ids, mailboxes)
+	return ids, threads, replaceMailboxes(ctx, tx, accountID, ids, mailboxes)
 }
 
 // replaceMailboxes makes mailboxes[i] the mailboxes of accountID's message

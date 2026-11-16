@@ -173,20 +173,98 @@ func TestTimeoutOtherError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
 }
 
-// A request whose client left keeps its answer: the cancellation is not a
-// timeout.
+// A request whose client left, failing with that cancellation, is logged
+// as a closed request, 499 at info level, not as an unexpected error: its
+// cancellation is neither a timeout nor a failure of inbok's.
 func TestTimeoutClientGone(t *testing.T) {
-	a, _ := timeoutAPI(t, time.Minute, func(ctx context.Context) error {
+	a, out := timeoutAPI(t, time.Minute, func(ctx context.Context) error {
 		<-ctx.Done()
-		return ctx.Err()
+		// Wrapped, as a database driver returns it.
+		return fmt.Errorf("query: %w", ctx.Err())
 	})
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	response := getWait(ctx, a)
+	lines := logLines(t, out)
+
+	assert.Equal(t, clientClosedStatus, response.Code)
+	assert.Empty(t, response.Header().Get(retryAfterHeader))
+	require.Len(t, lines, 2)
+	for _, line := range lines {
+		assert.Equal(t, "INFO", line["level"], "%v", line)
+	}
+	assert.Equal(t, "client closed request", lines[0]["msg"])
+}
+
+// A failure of inbok's own while the client leaves stays an unexpected
+// 500, logged as an error.
+func TestTimeoutClientGoneOtherError(t *testing.T) {
+	a, out := timeoutAPI(t, time.Minute, func(ctx context.Context) error {
+		<-ctx.Done()
+		return errors.New("disk full")
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	response := getWait(ctx, a)
+	lines := logLines(t, out)
 
 	assert.Equal(t, http.StatusInternalServerError, response.Code)
-	assert.Empty(t, response.Header().Get(retryAfterHeader))
+	require.NotEmpty(t, lines)
+	assert.Equal(t, "ERROR", lines[0]["level"])
+	assert.Equal(t, "unexpected error", lines[0]["msg"])
+}
+
+// A failure of inbok's own joined with the cancellation, as some clients
+// return both, stays an unexpected 500 when the client leaves.
+func TestTimeoutClientGoneJoined(t *testing.T) {
+	a, out := timeoutAPI(t, time.Minute, func(ctx context.Context) error {
+		<-ctx.Done()
+		return errors.Join(errors.New("database connection failed"), fmt.Errorf("wait: %w", ctx.Err()))
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	response := getWait(ctx, a)
+	lines := logLines(t, out)
+
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
+	require.NotEmpty(t, lines)
+	assert.Equal(t, "ERROR", lines[0]["level"])
+}
+
+// Only the cancellation itself, wrapped or joined with itself, is one.
+func TestOnlyCanceled(t *testing.T) {
+	cases := map[string]struct {
+		err  error
+		want bool
+	}{
+		"bare":            {context.Canceled, true},
+		"wrapped":         {fmt.Errorf("query: %w", context.Canceled), true},
+		"joined, alone":   {errors.Join(context.Canceled, fmt.Errorf("a: %w", context.Canceled)), true},
+		"joined, failure": {errors.Join(context.Canceled, errors.New("disk full")), false},
+		"deadline":        {context.DeadlineExceeded, false},
+		"other":           {errors.New("disk full"), false},
+		"nil":             {nil, false},
+	}
+	for name, c := range cases {
+		assert.Equal(t, c.want, onlyCanceled(c.err), name)
+	}
+}
+
+// A cancellation from inside a call, e.g. a context the handler made,
+// while the client is still there, stays an unexpected 500.
+func TestTimeoutOwnCancel(t *testing.T) {
+	a, _ := timeoutAPI(t, time.Minute, func(ctx context.Context) error {
+		inner, cancel := context.WithCancel(ctx)
+		cancel()
+		return inner.Err()
+	})
+
+	response := getWait(t.Context(), a)
+
+	assert.Equal(t, http.StatusInternalServerError, response.Code)
 }
 
 // A problem the handler mapped keeps its status after the time ran out.

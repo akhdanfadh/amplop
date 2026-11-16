@@ -9,25 +9,52 @@ import (
 	"inbok/internal/search"
 )
 
-// indexSettings returns the settings every member's index gets. Settings
-// it leaves out keep Meilisearch's defaults, e.g. typo tolerance and
-// ranking.
+// indexSettings returns the settings every member's index gets. An update
+// leaves the settings it omits as the index has them, which on a new index
+// are Meilisearch's defaults, e.g. typo tolerance and ranking.
 func indexSettings() meili.Settings {
 	return meili.Settings{
 		// In ADR005's priority: Meilisearch ranks a match in an earlier
 		// field higher.
-		SearchableAttributes: []string{fieldSubject, fieldFrom, fieldTo, fieldCC, fieldBodyText},
-		// Includes the fields later filters need, since changing this list
-		// rebuilds every member's index.
-		FilterableAttributes: []string{fieldOwner, fieldAccount, fieldDate, fieldLabels, fieldFromAddress, fieldHasAttachments},
-		SortableAttributes:   []string{fieldDate},
-		Pagination:           &meili.Pagination{MaxTotalHits: search.MaxTotal},
+		SearchableAttributes: []string{fieldSubject, fieldFrom, fieldTo, fieldCC, fieldBodyText, fieldAltText},
+		// Only the fields today's searches filter on, and the conversation,
+		// which a search keeps one match of: Meilisearch takes only a
+		// filterable field for that. A filter added later adds its field
+		// here, and Meilisearch reindexes from the documents it holds.
+		FilterableAttributes: []string{
+			fieldOwner, fieldAccount, fieldMailboxes, fieldConversation, fieldFromAddresses, fieldDate, fieldAttachment,
+			fieldConversationMailboxes, fieldConversationFlagged,
+		},
+		Pagination: &meili.Pagination{MaxTotalHits: search.MaxTotal},
+		// A list of ranking rules replaces Meilisearch's whole list,
+		// so it repeats v1.56.1's default rules, in their order. The date,
+		// last, only orders matches the others leave equal, newest first:
+		// otherwise they come in the order they were written, which a
+		// rebuild shuffles.
+		RankingRules: []string{"words", "typo", "proximity", "attributeRank", "sort", "wordPosition", "exactness", fieldDate + ":desc"},
+		// NOTE: the client sends every typo setting, as none is omitempty,
+		// so this repeats Meilisearch's defaults but for numbers: a number
+		// a typo away, e.g. order 4471828 for 4471829, is another number,
+		// not a misspelling.
+		TypoTolerance: &meili.TypoTolerance{
+			Enabled:             true,
+			MinWordSizeForTypos: meili.MinWordSizeForTypos{OneTypo: oneTypoWordSize, TwoTypos: twoTyposWordSize},
+			DisableOnWords:      []string{},
+			DisableOnAttributes: []string{},
+			DisableOnNumbers:    true,
+		},
 	}
 }
 
+// Meilisearch's default shortest words that may hold one typo and two.
+const (
+	oneTypoWordSize  = 5
+	twoTyposWordSize = 9
+)
+
 // Prepare applies the settings to every member's index and waits until
 // Meilisearch has applied them. An index a member gets later receives them
-// from [Index.Upsert].
+// from [Index.Upsert], before its first documents.
 //
 // DESIGN: it sends every setting each time rather than reading them first
 // to compare. Meilisearch runs an update that changes nothing in a few

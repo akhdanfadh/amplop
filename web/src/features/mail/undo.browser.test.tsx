@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { cdp, page, userEvent } from "vite-plus/test/browser/context";
 import { useRef, type ReactElement } from "react";
 import { render } from "vitest-browser-react";
+import { shortcutModifier } from "@/lib/shortcut";
 import { applyTheme } from "@/lib/theme";
 import { pointAway, pointTo } from "@/test/pointer";
 import { closeUndo, sayUndone, showUndo, UndoBar } from "./undo";
@@ -261,7 +262,7 @@ describe("UndoBar", () => {
   it("names its conversation in Undo's description", async () => {
     await render(<Bar />);
     undo();
-    const key = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "Cmd" : "Ctrl";
+    const key = shortcutModifier();
 
     await expect
       .element(page.getByRole("button", { name: "Undo" }))

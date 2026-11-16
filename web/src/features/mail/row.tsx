@@ -5,9 +5,11 @@ import { StarIcon } from "lucide-react";
 import { accountName, type AccountColor } from "@/components/account-mark";
 import { Badge } from "@/components/ui/badge";
 import { GridListItem } from "@/components/ui/grid-list";
+import type { SearchMatchOutput } from "@/api/generated/model/searchMatch.zod";
 import type { AppHref } from "./places";
 import type { Conversation } from "./conversations";
 import { fullDate, listDate } from "./dates";
+import { Marked } from "./marks";
 import { senders } from "./people";
 import { SenderAvatar } from "./sender-avatar";
 import { inboxChip, messageCount, rowName, subjectText, unknownSender } from "./text";
@@ -34,9 +36,13 @@ export function rowHeight(): number {
 // pane's Back needs it; openStore says which conversation the reading
 // pane shows; now is the day its date is shown at; onRest and onLeave run as
 // the pointer comes to rest on it and leaves, to read it ahead; onStar
-// stars or unstars it.
+// stars or unstars it. match, for a search's result, is the message that
+// matched best, whose sender, date, subject, and text around the match the
+// row shows in place of the conversation's, with the matched words marked
+// (DESIGN.md "Message list").
 export function ConversationRow({
   conversation,
+  match,
   account,
   ringed,
   markInbox,
@@ -48,6 +54,7 @@ export function ConversationRow({
   onStar,
 }: {
   conversation: Conversation;
+  match?: SearchMatchOutput;
   account: RowAccount | undefined;
   ringed: boolean;
   markInbox: boolean;
@@ -66,11 +73,12 @@ export function ConversationRow({
   // keeps it, so a value set then would be stale (the reason for
   // openStore).
   const replaces = () => openStore.get() !== undefined;
-  const names = senders(conversation.participants, account?.email);
+  const names = senders(match ? match.from : conversation.participants, account?.email);
   const who = names.join(", ") || unknownSender;
-  const date = new Date(conversation.dateMs);
+  const dateText = match ? match.date : conversation.date;
+  const date = match ? new Date(match.date) : new Date(conversation.dateMs);
   const shownDate = listDate(date, now);
-  const subject = subjectText(conversation.subject);
+  const subject = subjectText(match ? match.subject : conversation.subject);
   const count = conversation.messageCount > 1 ? conversation.messageCount : undefined;
   const inInbox = markInbox && conversation.inbox;
 
@@ -126,7 +134,7 @@ export function ConversationRow({
           heading's (16 px); 12 px to the text, less than the edge, so it
           reads with its text. The ring is drawn inside its edge. */}
       <SenderAvatar
-        sender={conversation.latestFrom[0]}
+        sender={(match ? match.from : conversation.latestFrom)[0]}
         ring={ringed && account ? account.color : undefined}
       />
       <div
@@ -162,7 +170,7 @@ export function ConversationRow({
             </span>
           )}
           <time
-            dateTime={conversation.date}
+            dateTime={dateText}
             title={fullDate(date)}
             className={cn(
               "ml-auto shrink-0 text-xs leading-5 tabular-nums",
@@ -173,7 +181,11 @@ export function ConversationRow({
           </time>
         </div>
         <span dir="auto" className="truncate">
-          {subject}
+          {match && match.subject.trim() !== "" ? (
+            <Marked text={match.subject} spans={match.subjectMatches} />
+          ) : (
+            subject
+          )}
         </span>
         {/* The chip and the star end the preview's line, the row's marks
             beside its date, so the text above starts where it does. */}
@@ -182,7 +194,11 @@ export function ConversationRow({
             dir="auto"
             className="min-w-0 flex-1 truncate text-snippet font-normal text-muted-foreground"
           >
-            {conversation.preview}
+            {match ? (
+              <Marked text={match.preview} spans={match.previewMatches} />
+            ) : (
+              conversation.preview
+            )}
           </p>
           {inInbox && (
             // 16 px, the meta text's line and the star's icon, so 2 px

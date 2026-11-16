@@ -100,21 +100,38 @@ func assertSettings(t *testing.T, index *Index, owner int64) {
 	settings, err := member(index, owner).GetSettingsWithContext(t.Context())
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"subject", "from", "to", "cc", "body_text"}, settings.SearchableAttributes)
-	assert.ElementsMatch(t, []string{"owner_user_id", "connected_account_id", "internal_date", "label_ids", "from_address", "has_attachments"}, settings.FilterableAttributes)
-	assert.Equal(t, []string{"internal_date"}, settings.SortableAttributes)
+	assert.Equal(t, []string{"subject", "from", "to", "cc", "body_text", "alt_text"}, settings.SearchableAttributes)
+	assert.ElementsMatch(t, []string{
+		"owner_user_id", "connected_account_id", "mailbox_ids", "conversation", "from_addresses", "internal_date", "has_attachment",
+		"conversation_mailbox_ids", "conversation_flagged",
+	}, settings.FilterableAttributes)
+	assert.Empty(t, settings.SortableAttributes)
 	assert.Equal(t, &meili.Pagination{MaxTotalHits: search.MaxTotal}, settings.Pagination)
+	assert.Equal(t, []string{"words", "typo", "proximity", "attributeRank", "sort", "wordPosition", "exactness", "internal_date:desc"}, settings.RankingRules)
 	assert.True(t, settings.TypoTolerance.Enabled)
+	assert.True(t, settings.TypoTolerance.DisableOnNumbers)
+	assert.Equal(t, meili.MinWordSizeForTypos{OneTypo: 5, TwoTypos: 9}, settings.TypoTolerance.MinWordSizeForTypos)
 }
 
-// message returns a document of owner's in account with subject and a new
-// ID.
+// message returns a document of owner's in account with subject, a new
+// ID, and a thread of its own.
 func message(subject string) search.Document {
+	id := uuid.New()
 	return search.Document{
-		ID:                 uuid.New(),
+		ID:                 id,
+		ThreadID:           "thread-" + id.String(),
 		OwnerUserID:        owner,
 		ConnectedAccountID: account,
 		InternalDate:       time.Date(2026, 11, 7, 9, 0, 0, 0, time.UTC),
 		Subject:            subject,
 	}
+}
+
+// ids returns the IDs of result's hits, in order.
+func ids(result search.Result) []uuid.UUID {
+	out := []uuid.UUID{}
+	for _, hit := range result.Hits {
+		out = append(out, hit.ID)
+	}
+	return out
 }
