@@ -49,14 +49,23 @@ type Document struct {
 	ConversationFlagged bool
 }
 
+// Scope is one place a search looks in, as the index tells places apart.
+// A message is in it when its conversation is in any of InConversation, or
+// any conversation when that is empty; is starred, when Flagged; and is
+// itself in none of Exclude.
+type Scope struct {
+	InConversation []uuid.UUID
+	Flagged        bool
+	Exclude        []uuid.UUID
+}
+
 // Query is what a member searches for. The owner is not part of it: every
 // [Index.Search] takes the owner as its own argument.
 type Query struct {
 	Text     string  // the member's words; empty matches every message
 	Accounts []int64 // connected accounts to search; empty: all of the owner's
-	// Mailboxes whose messages to leave out, e.g. the owner's Spam and
-	// Trash: a message in any of them is left out.
-	ExcludeMailboxes []uuid.UUID
+	// Scopes keeps messages in any of them; empty: every message.
+	Scopes []Scope
 	// From keeps messages whose From holds any of these addresses,
 	// ignoring case as the index compares text; empty: any sender.
 	From []string

@@ -3041,9 +3041,13 @@ read re-reads its stored body text too.
   another member's message, even for another member's account ID. The
   caller passes the signed-in member, since no index can tell a wrong
   member from the right one. A query is structured: words, accounts,
-  mailboxes to leave out, senders, a received-date range, whether it has
-  an attachment, and a page; callers never write Meilisearch's filters.
-  The adapter quotes each value whole inside its own expression.
+  scopes, senders, a received-date range, whether it has an attachment,
+  and a page; callers never write Meilisearch's filters. A scope is one
+  place as the index tells places apart: the mailboxes the conversation
+  must be in, whether it must be starred, and the mailboxes the message
+  itself must be outside of; a message in any scope matches. The adapter
+  quotes each value whole inside its own expression, and puts each scope,
+  the only expressions joined with OR, in parentheses.
 - `meilisearch` implements `Index` with the official Go client,
   `meilisearch-go`, with one Meilisearch index per member, named after
   the member's user ID, e.g. `messages_42`. Every upsert applies the

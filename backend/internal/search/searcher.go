@@ -149,7 +149,7 @@ func (s *Searcher) Search(ctx context.Context, owner int64, request Request) (Pa
 	if err != nil {
 		return Page{}, fmt.Errorf("list hidden mailboxes: %w", err)
 	}
-	query.ExcludeMailboxes = hidden
+	query.Scopes = []Scope{{Exclude: hidden}}
 	result, err := s.index.Search(ctx, owner, query)
 	if err != nil {
 		return Page{}, err

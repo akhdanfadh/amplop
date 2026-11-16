@@ -242,7 +242,7 @@ func (f *Fake) find(owner int64, id uuid.UUID) int {
 }
 
 // matchesFilters reports whether document is owner's, in one of query's
-// accounts when it names any, in none of its excluded mailboxes, and
+// accounts when it names any, in one of its scopes when it names any, and
 // passes its sender, date, and attachment filters.
 func matchesFilters(document search.Document, owner int64, query search.Query) bool {
 	if document.OwnerUserID != owner {
@@ -251,9 +251,7 @@ func matchesFilters(document search.Document, owner int64, query search.Query) b
 	if len(query.Accounts) > 0 && !slices.Contains(query.Accounts, document.ConnectedAccountID) {
 		return false
 	}
-	if slices.ContainsFunc(document.MailboxIDs, func(id uuid.UUID) bool {
-		return slices.Contains(query.ExcludeMailboxes, id)
-	}) {
+	if len(query.Scopes) > 0 && !slices.ContainsFunc(query.Scopes, func(scope search.Scope) bool { return inScope(document, scope) }) {
 		return false
 	}
 	if len(query.From) > 0 && !slices.ContainsFunc(document.FromAddresses, func(address string) bool {
@@ -268,6 +266,19 @@ func matchesFilters(document search.Document, owner int64, query search.Query) b
 		return false
 	}
 	return !query.WithAttachment || document.HasAttachment
+}
+
+// inScope reports whether document is in scope.
+func inScope(document search.Document, scope search.Scope) bool {
+	if len(scope.InConversation) > 0 && !slices.ContainsFunc(document.ConversationMailboxIDs, func(id uuid.UUID) bool {
+		return slices.Contains(scope.InConversation, id)
+	}) {
+		return false
+	}
+	if scope.Flagged && !document.ConversationFlagged {
+		return false
+	}
+	return !slices.ContainsFunc(document.MailboxIDs, func(id uuid.UUID) bool { return slices.Contains(scope.Exclude, id) })
 }
 
 // matchesText reports whether each word of text appears, ignoring case, in

@@ -211,10 +211,10 @@ func pageWithin(query search.Query) (page, size int64) {
 }
 
 // filter returns a search's filter, a list whose every expression must
-// hold: always the owner first, then the accounts, mailboxes, senders,
-// dates, and attachment query names. Each value from the member is quoted
-// whole inside its own expression, never joined to another with OR
-// outside a list.
+// hold: always the owner first, then the accounts, scopes, senders,
+// dates, and attachment query names. Each value is quoted whole inside its
+// own expression, and the scopes, the only expressions joined with OR,
+// each sit in parentheses, so no value or scope widens another.
 func filter(owner int64, query search.Query) []string {
 	// The owner too, although the index is already the member's own: a
 	// second guard, should a document ever reach the wrong index.
@@ -226,13 +226,8 @@ func filter(owner int64, query search.Query) []string {
 		}
 		expressions = append(expressions, fieldAccount+" IN ["+strings.Join(ids, ", ")+"]")
 	}
-	if len(query.ExcludeMailboxes) > 0 {
-		ids := make([]string, len(query.ExcludeMailboxes))
-		for n, id := range query.ExcludeMailboxes {
-			ids[n] = quote(id.String())
-		}
-		// On a list field, IN holds when any of its values is listed.
-		expressions = append(expressions, fieldMailboxes+" NOT IN ["+strings.Join(ids, ", ")+"]")
+	if scopes := scopesFilter(query.Scopes); scopes != "" {
+		expressions = append(expressions, scopes)
 	}
 	if len(query.From) > 0 {
 		addresses := make([]string, len(query.From))
@@ -253,6 +248,40 @@ func filter(owner int64, query search.Query) []string {
 		expressions = append(expressions, fieldAttachment+" = true")
 	}
 	return expressions
+}
+
+// scopesFilter returns an expression that holds for a message in any of
+// scopes, or empty when it would hold for every message: no scopes, or one
+// that keeps every message.
+func scopesFilter(scopes []search.Scope) string {
+	clauses := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		var parts []string
+		// On a list field, IN holds when any of its values is listed.
+		if len(scope.InConversation) > 0 {
+			parts = append(parts, fieldConversationMailboxes+" IN "+idList(scope.InConversation))
+		}
+		if scope.Flagged {
+			parts = append(parts, fieldConversationFlagged+" = true")
+		}
+		if len(scope.Exclude) > 0 {
+			parts = append(parts, fieldMailboxes+" NOT IN "+idList(scope.Exclude))
+		}
+		if len(parts) == 0 {
+			return ""
+		}
+		clauses = append(clauses, "("+strings.Join(parts, " AND ")+")")
+	}
+	return strings.Join(clauses, " OR ")
+}
+
+// idList returns ids as a filter's list of quoted values.
+func idList(ids []uuid.UUID) string {
+	quoted := make([]string, len(ids))
+	for n, id := range ids {
+		quoted[n] = quote(id.String())
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
 // milliUp returns t in Unix milliseconds, the index's dates, rounded up.

@@ -35,7 +35,7 @@ var (
 var firstPage = search.Query{Page: 1, PageSize: 20}
 
 // RunContract tests the behaviour every [search.Index] shares: owners, account
-// and mailbox filters, sender, date, and attachment filters, which fields a
+// filters, scopes by mailbox and conversation, sender, date, and attachment filters, which fields a
 // search matches, every word of a query, one message per conversation, the
 // order with no words, where it matched, replacing, deleting within
 // one owner's documents, listing and deleting owners and their document IDs,
@@ -93,7 +93,7 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		assert.Equal(t, []uuid.UUID{home.ID}, result.IDs)
 	})
 
-	t.Run("exclude mailboxes", func(t *testing.T) {
+	t.Run("scope excludes mailboxes", func(t *testing.T) {
 		index := open(t)
 		inbox := document(asha, ashaWork, "invoice")
 		inbox.MailboxIDs = []uuid.UUID{inboxBox, clientsBox}
@@ -107,10 +107,101 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		upsert(t, index, inbox, spam, trash, none)
 
 		q := query("invoice")
-		q.ExcludeMailboxes = []uuid.UUID{spamBox, trashBox}
+		q.Scopes = excluding(spamBox, trashBox)
 		result := find(t, index, asha, q)
 
 		assert.ElementsMatch(t, []uuid.UUID{inbox.ID, none.ID}, result.IDs)
+	})
+
+	t.Run("scope by conversation", func(t *testing.T) {
+		index := open(t)
+		// The message is in no mailbox itself; its conversation is in
+		// Clients and the inbox, e.g. through a reply.
+		clients := document(asha, ashaWork, "invoice")
+		clients.ConversationMailboxIDs = []uuid.UUID{clientsBox, inboxBox}
+		inbox := document(asha, ashaWork, "invoice")
+		inbox.ConversationMailboxIDs = []uuid.UUID{inboxBox}
+		upsert(t, index, clients, inbox, document(asha, ashaWork, "invoice"))
+
+		q := query("invoice")
+		q.Scopes = []search.Scope{{InConversation: []uuid.UUID{clientsBox, spamBox}}}
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, []uuid.UUID{clients.ID}, result.IDs)
+	})
+
+	t.Run("scope flagged", func(t *testing.T) {
+		index := open(t)
+		starred := document(asha, ashaWork, "invoice")
+		starred.ConversationFlagged = true
+		upsert(t, index, starred, document(asha, ashaWork, "invoice"))
+
+		q := query("invoice")
+		q.Scopes = []search.Scope{{Flagged: true}}
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, []uuid.UUID{starred.ID}, result.IDs)
+	})
+
+	t.Run("scope holds every part", func(t *testing.T) {
+		index := open(t)
+		kept := document(asha, ashaWork, "invoice")
+		kept.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		kept.ConversationFlagged = true
+		// Its conversation is in Clients and starred, but it is in Trash.
+		trashed := document(asha, ashaWork, "invoice")
+		trashed.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		trashed.ConversationFlagged = true
+		trashed.MailboxIDs = []uuid.UUID{trashBox}
+		unstarred := document(asha, ashaWork, "invoice")
+		unstarred.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		upsert(t, index, kept, trashed, unstarred)
+
+		q := query("invoice")
+		q.Scopes = []search.Scope{{InConversation: []uuid.UUID{clientsBox}, Flagged: true, Exclude: []uuid.UUID{trashBox}}}
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, []uuid.UUID{kept.ID}, result.IDs)
+	})
+
+	t.Run("any of the scopes", func(t *testing.T) {
+		index := open(t)
+		clients := document(asha, ashaWork, "invoice")
+		clients.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		spam := document(asha, ashaWork, "invoice")
+		spam.ConversationMailboxIDs = []uuid.UUID{spamBox}
+		spam.MailboxIDs = []uuid.UUID{spamBox}
+		// In Clients too, but in Spam, which the Clients scope leaves out
+		// and the Spam scope does not reach.
+		both := document(asha, ashaWork, "invoice")
+		both.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		both.MailboxIDs = []uuid.UUID{spamBox}
+		upsert(t, index, clients, spam, both, document(asha, ashaWork, "invoice"))
+
+		q := query("invoice")
+		q.Scopes = []search.Scope{
+			{InConversation: []uuid.UUID{clientsBox}, Exclude: []uuid.UUID{spamBox}},
+			{InConversation: []uuid.UUID{spamBox}},
+		}
+		result := find(t, index, asha, q)
+
+		assert.ElementsMatch(t, []uuid.UUID{clients.ID, spam.ID}, result.IDs)
+		assert.Equal(t, 2, result.Total)
+	})
+
+	t.Run("scope copies", func(t *testing.T) {
+		index := open(t)
+		clients := document(asha, ashaWork, "invoice")
+		clients.ConversationMailboxIDs = []uuid.UUID{clientsBox}
+		upsert(t, index, clients)
+
+		// The caller reuses its slice after the upsert.
+		clients.ConversationMailboxIDs[0] = inboxBox
+		q := query("invoice")
+		q.Scopes = []search.Scope{{InConversation: []uuid.UUID{clientsBox}}}
+		result := find(t, index, asha, q)
+
+		assert.Equal(t, []uuid.UUID{clients.ID}, result.IDs)
 	})
 
 	t.Run("from", func(t *testing.T) {
@@ -358,7 +449,7 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		upsert(t, index, trashed, kept)
 
 		q := query("invoice")
-		q.ExcludeMailboxes = []uuid.UUID{trashBox}
+		q.Scopes = excluding(trashBox)
 		result := find(t, index, asha, q)
 
 		assert.Equal(t, foundIDs{IDs: []uuid.UUID{kept.ID}, Total: 1}, result)
@@ -416,7 +507,7 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		upsert(t, index, after)
 		old := find(t, index, asha, query("invoice"))
 		q := query("receipt")
-		q.ExcludeMailboxes = []uuid.UUID{spamBox}
+		q.Scopes = excluding(spamBox)
 		current := find(t, index, asha, q)
 
 		assert.Equal(t, 0, old.Total)
@@ -432,7 +523,7 @@ func RunContract(t *testing.T, open func(t *testing.T) search.Index) {
 		// The caller reuses its slice after the upsert.
 		spam.MailboxIDs[0] = inboxBox
 		q := query("invoice")
-		q.ExcludeMailboxes = []uuid.UUID{spamBox}
+		q.Scopes = excluding(spamBox)
 		result := find(t, index, asha, q)
 
 		assert.Empty(t, result.IDs)
@@ -673,6 +764,11 @@ func document(owner, account int64, subject string) search.Document {
 		From:               "Fajar <fajar@example.com>",
 		FromAddresses:      []string{"fajar@example.com"},
 	}
+}
+
+// excluding returns one scope that leaves out messages in any of ids.
+func excluding(ids ...uuid.UUID) []search.Scope {
+	return []search.Scope{{Exclude: ids}}
 }
 
 // query returns a search for text on the first page.

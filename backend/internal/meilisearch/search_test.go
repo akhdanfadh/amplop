@@ -86,6 +86,59 @@ func TestOwnerFilter(t *testing.T) {
 	require.NoError(t, keptErr)
 }
 
+// Scopes joined with OR stay inside the other filters: a stray document
+// of another owner's that every scope matches is not found, and the
+// account, sender, and date filters still hold for each scope, in the
+// hits and in the total.
+func TestScopesFilterStray(t *testing.T) {
+	// Given the owner's labelled message and starred one, one of each in
+	// another account, from another sender, and on another day, and a
+	// stray document of another owner's in both places.
+	index := newIndex(t)
+	label, spam := uuid.New(), uuid.New()
+	labelled := message("Invoice")
+	labelled.ConversationMailboxIDs = []uuid.UUID{label}
+	labelled.FromAddresses = []string{"fajar@example.com"}
+	starred := message("Invoice")
+	starred.ConversationFlagged = true
+	starred.FromAddresses = labelled.FromAddresses
+	otherAccount := starred
+	otherAccount.ID, otherAccount.ThreadID, otherAccount.ConnectedAccountID = uuid.New(), "thread-a", account+1
+	otherSender := labelled
+	otherSender.ID, otherSender.ThreadID, otherSender.FromAddresses = uuid.New(), "thread-s", []string{"budi@example.com"}
+	otherDay := starred
+	otherDay.ID, otherDay.ThreadID, otherDay.InternalDate = uuid.New(), "thread-d", starred.InternalDate.AddDate(0, 0, -2)
+	labelled.ThreadID, starred.ThreadID = "thread-l", "thread-f"
+	require.NoError(t, index.Upsert(t.Context(), []search.Document{labelled, starred, otherAccount, otherSender, otherDay}))
+	stray := map[string]any{
+		"id": uuid.New().String(), "owner_user_id": "2", "connected_account_id": decimal(account), "subject": "Invoice",
+		"conversation": "stray", "conversation_mailbox_ids": []string{label.String()}, "conversation_flagged": true,
+		"mailbox_ids": []string{}, "from_addresses": labelled.FromAddresses, "internal_date": labelled.InternalDate.UnixMilli(),
+	}
+	seed(t, index, owner, stray)
+
+	// When the owner searches both places, in one account, from one
+	// sender, on one day.
+	found, err := index.Search(t.Context(), owner, search.Query{
+		Text:     "invoice",
+		Accounts: []int64{account},
+		Scopes: []search.Scope{
+			{InConversation: []uuid.UUID{label}, Exclude: []uuid.UUID{spam}},
+			{Flagged: true, Exclude: []uuid.UUID{spam}},
+		},
+		From:     labelled.FromAddresses,
+		Since:    labelled.InternalDate.Add(-time.Hour),
+		Before:   labelled.InternalDate.Add(time.Hour),
+		Page:     1,
+		PageSize: 10,
+	})
+	require.NoError(t, err)
+
+	// Then only the two that pass every filter are found and counted.
+	assert.ElementsMatch(t, []uuid.UUID{labelled.ID, starred.ID}, ids(found))
+	assert.Equal(t, 2, found.Total)
+}
+
 // A sender the member types stays one value of its list, however it is
 // written: it neither reaches a stray document of another owner's in the
 // index, nor turns into expressions of its own.
