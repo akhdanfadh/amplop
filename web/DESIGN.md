@@ -252,6 +252,7 @@ text colour of their role.
 | From picker in compose and reply         | `select` (shows the account mark)                                                           |
 | Recipient chips                          | React Aria's `TagGroup` in the field; `combobox` once contacts suggest addresses            |
 | Search box                               | `input-group` holding a search input; no dropdown ("Search")                                |
+| A day, and a range of days               | `calendar` (month and year menus), React Aria's `DateField` for typed days                  |
 | Placeholder rows, spinners, empty states | `skeleton`, `spinner`, `empty`                                                              |
 | Settings rows                            | `item`                                                                                      |
 | Status                                   | `badge` with tones neutral, info, success, warning, destructive                             |
@@ -639,9 +640,9 @@ last two redirect into settings, so settings can move without the server.
 - **The box** heads the list ("Search mail", a search input in an
   `input-group`), from 1024 px; below that the top bar's search icon
   turns the bar into the box, with a Back arrow ("Phones"). It holds
-  words only. Empty, it names what it searches: "Search Receipts" in a
-  label or a view but the Inbox and All mail, which search all mail;
-  "Search mail" otherwise.
+  words only: every filter is in the sentence under it. Empty, it names
+  what it searches: "Search Receipts" in a label or a view but the Inbox
+  and All mail, which search all mail; "Search mail" otherwise.
 - **Live results, no dropdown.** From 2 characters, once typing rests
   200 ms, or at Enter, the results take the list's place at
   `/mail/search`, the box still focused. Started in a place, the search
@@ -654,6 +655,32 @@ last two redirect into settings, so settings can move without the server.
   stay on screen, a spinner in the box, until the next arrive. The
   server lets a member run two searches at once; refused (429 with
   Retry-After), the box waits that long and asks again without a word.
+- **The filters read as one sentence** under the box: "Searching all
+  mail in every account, from anyone, any time, with or without
+  attachments." Each underlined phrase (a dotted line, solid on hover)
+  opens its menu, and a change applies at once: where (any of the views,
+  All mail among them, and the account's labels, up to the API's limit,
+  past which only a ticked place can change and the menu says the limit;
+  it stays open while the member ticks; named in the menu's order, three
+  then "and N more", a label by its own name, its path in the menu),
+  which account, from whom (addresses as recipient chips, any of them,
+  up to the API's limit), when, and attachments. A label is one
+  account's, so choosing another account drops it. A phrase keeps to one
+  line, cut with an ellipsis when too long for it, e.g. a long sender
+  address, and shows whole in a tooltip on hover and focus.
+- **Dates:** a popover with the choices relative to today (Any time,
+  Past 7 days, Past 30 days, Past year, Older than a year), which apply
+  at once, beside a range: Since and Before as typed days (14/11/2026,
+  inbok's British order) over one calendar with month and year menus, so
+  mail from years back is two choices away. The field last focused takes
+  a day picked; filling one moves to the other while it is empty;
+  typing a day moves the calendar to it. Since is filled, the days
+  between shaded, and Before outlined, as the range stops short of it
+  ("Before is not included. Leave either empty."); no day after today
+  ("Pick days up to today."), and none typed only in part ("Finish typing
+  the day, or clear it."), Apply waiting meanwhile; Apply sets it. The
+  sentence says "in the past 7 days" or "since 2 Nov 2026 and before 14
+  Nov 2026".
 - **Results** are conversations in the list's GridList and row, most
   relevant first, 50 at a time: each shows its best-matching message's
   sender, date, subject, and the text around the match, the rest (unread,
@@ -663,9 +690,9 @@ last two redirect into settings, so settings can move without the server.
   browser; a match only in the sender or recipients marks nothing. A row
   stars, and its conversation's actions show, at once, as in every list;
   one an action takes out of the places searched leaves the results.
-  Under the box: how many conversations ("1,000 or more" at the API's
-  limit), then, unless Spam or Trash is searched, "Spam and Trash are
-  not searched." with "Search them too", which adds both, offered
+  Under the sentence: how many conversations ("1,000 or more" at the
+  API's limit), then, unless Spam or Trash is searched, "Spam and Trash
+  are not searched." with "Search them too", which adds both, offered
   only while both fit the API's limit of places. The end reads "That's
   every match.".
 - **Opening a result** goes to `/mail/search/<conversation id>` with the
@@ -673,13 +700,13 @@ last two redirect into settings, so settings can move without the server.
   message, open, scrolled to the pane's top, and flashed as a message a
   link shows; its toolbar follows the conversation, and Back returns to
   the results.
-- **States:** before anything to search, "Type 2 or more characters.";
-  words longer than the API takes (its `maxLength`, in characters) are
-  not sent: "Search with 200 characters or fewer."; the first load shows
-  placeholder rows after 300 ms; no match names the words ("Nothing
-  matches "invoice""), says which accounts are still syncing, and offers
-  one next step: Clear filters when any is set, else Search Spam and
-  Trash too. A failure says why
+- **States:** before anything to search, "Type 2 or more characters, or
+  choose a filter."; words longer than the API takes (its `maxLength`, in
+  characters) are not sent: "Search with 200 characters or fewer."; the
+  first load shows placeholder rows after 300 ms; no match names the
+  words ("Nothing matches "invoice""), says which accounts are still
+  syncing, and offers one next step: Clear filters when any is set, else
+  Search Spam and Trash too. A failure says why
   (search not answering, no connection, or another failure) with Try
   again; a failed later page keeps the rows, with Try again under them.
 
@@ -691,7 +718,8 @@ the menu, then the place's heading (a label's own name, its path read to
 screen readers), the account it is filtered to, and Check for new mail,
 then search, whose icon turns the bar into the box (a Back arrow, then
 the box) until the member leaves the search; no unread count, as in
-phone mail apps: the list's bold rows show what is unread, and the drawer has the counts. It stays in
+phone mail apps: the list's bold rows show what is unread, and the
+drawer has the counts. It stays in
 place, and an open conversation leaves it to the wordmark. From 780 px
 to 1023 px, where the sidebar is also a drawer, the same bar holds them.
 Compose is a labelled floating button. A conversation has Back and its
@@ -1090,7 +1118,10 @@ Before a web checkpoint is done:
 
 ## Not now
 
-Recorded for later, not built: a result's mark past where its
+Recorded for later, not built: the search's filter sentence scrolling
+away with its results, which at 200% text fills most of a short list
+pane before the first result (the results' own box scrolls, so the
+sentence would have to move inside it); a result's mark past where its
 subject or snippet is cut short, which shows only once the row is
 opened, as in Gmail's list; app keyboard shortcuts, a command palette,
 a multi-account filter, a single-message view option, list density and

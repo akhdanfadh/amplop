@@ -46,6 +46,7 @@ import {
   type Found,
   type SearchFilters,
 } from "./search";
+import { SearchSentence } from "./search-filters";
 import {
   clearFilters,
   noMatches,
@@ -74,7 +75,8 @@ const unavailable = 503;
 const maxFocusFrames = 30;
 
 // SearchResults is a search's results in place of a list (DESIGN.md
-// "Search"): how many conversations matched, then the conversations, most relevant first, each shown through its
+// "Search"): the filters as a sentence, how many conversations matched,
+// then the conversations, most relevant first, each shown through its
 // best-matching message with the matched words marked, 50 at a time as
 // the member scrolls. filters and account are the search; onChange
 // changes them; openId is the conversation the reading pane shows;
@@ -203,28 +205,31 @@ export function SearchResults({
   const spamTrash = leavesOutSpamTrash ? withSpamAndTrash(filters.place) : undefined;
   const searchSpamTrash = () => onChange({ place: spamTrash });
 
-  const header = asks && search.data && (
-    <div className="shrink-0 border-b px-4 py-2">
-      <p className="text-xs leading-5 text-muted-foreground">
-        <output>{resultsCount(total, mostResults)}</output>
-        {leavesOutSpamTrash && (
-          <>
-            {" · "}
-            {spamTrashLeftOut}
-            {spamTrash && (
-              <>
-                {" "}
-                <AriaButton
-                  onPress={searchSpamTrash}
-                  className="cursor-default rounded-xs font-medium text-foreground underline underline-offset-2 outline-none data-focus-visible:focus-ring pointer-coarse:py-3"
-                >
-                  {searchThemToo}
-                </AriaButton>
-              </>
-            )}
-          </>
-        )}
-      </p>
+  const header = (
+    <div className="flex shrink-0 flex-col gap-0.5 border-b px-4 py-2">
+      <SearchSentence filters={filters} account={account} onChange={onChange} />
+      {asks && search.data && (
+        <p className="text-xs leading-5 text-muted-foreground">
+          <output>{resultsCount(total, mostResults)}</output>
+          {leavesOutSpamTrash && (
+            <>
+              {" · "}
+              {spamTrashLeftOut}
+              {spamTrash && (
+                <>
+                  {" "}
+                  <AriaButton
+                    onPress={searchSpamTrash}
+                    className="cursor-default rounded-xs font-medium text-foreground underline underline-offset-2 outline-none data-focus-visible:focus-ring pointer-coarse:py-3"
+                  >
+                    {searchThemToo}
+                  </AriaButton>
+                </>
+              )}
+            </>
+          )}
+        </p>
+      )}
     </div>
   );
 

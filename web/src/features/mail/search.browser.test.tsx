@@ -174,6 +174,18 @@ describe("search", () => {
       .not.toBeInTheDocument();
   });
 
+  it("takes no more places in the menu at the API's limit, saying so", async () => {
+    await openWithManyPlaces();
+    await userEvent.click(page.getByRole("button", { name: /Inbox, Starred and 18 more/ }));
+    await expect.element(page.getByText("Search up to 20 places at once.")).toBeVisible();
+    await expect
+      .element(page.getByRole("menuitemcheckbox", { name: "Label 17" }))
+      .toHaveAttribute("aria-disabled", "true");
+    await expect
+      .element(page.getByRole("menuitemcheckbox", { name: "Label 01" }))
+      .not.toHaveAttribute("aria-disabled");
+  });
+
   it("keeps the list drawn and scrolled as the next page arrives", async () => {
     const many = Array.from({ length: 120 }, (_, n) =>
       conversation(n + 1, { subject: `Invoice ${n + 1}` }),
@@ -251,6 +263,47 @@ describe("search", () => {
     await expect.element(box()).toHaveFocus();
   });
 
+  it("refuses a typed day after today, saying why", async () => {
+    const router = await open("/mail/search?q=invoice");
+    await userEvent.click(page.getByRole("button", { name: "any time" }));
+    await userEvent.click(page.getByRole("spinbutton", { name: /^day, Since/ }));
+    await userEvent.keyboard("20112099");
+    await expect.element(page.getByText("Pick days up to today.")).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(router.state.location.search).toEqual({ q: "invoice" });
+  });
+
+  it("waits for a day typed only in part, the year still empty", async () => {
+    const router = await open("/mail/search?q=invoice");
+    await userEvent.click(page.getByRole("button", { name: "any time" }));
+    await userEvent.click(page.getByRole("spinbutton", { name: /^day, Since/ }));
+    await userEvent.keyboard("0211");
+    await expect.element(page.getByText("Finish typing the day, or clear it.")).toBeVisible();
+    await expect.element(page.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(router.state.location.search).toEqual({ q: "invoice" });
+  });
+
+  it("waits for a year deleted to be typed again", async () => {
+    await open("/mail/search?q=invoice&since=2025-11-02");
+    await userEvent.click(page.getByRole("button", { name: /^since 2 Nov 2025/ }));
+    await userEvent.click(page.getByRole("spinbutton", { name: /^year, Since/ }));
+    await userEvent.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
+    await expect.element(page.getByRole("button", { name: "Apply" })).toBeDisabled();
+  });
+
+  it("rings the From field while its input has keyboard focus", async () => {
+    await open("/mail/search?q=invoice");
+    await userEvent.click(page.getByRole("button", { name: "anyone" }));
+    const input = page.getByRole("dialog", { name: "From" }).getByRole("textbox");
+    await expect.element(input).toHaveFocus();
+    // To Done and back, by keyboard.
+    await userEvent.tab();
+    await userEvent.tab({ shift: true });
+    await expect.element(input).toHaveFocus();
+    const field = input.element().closest(".rounded-lg");
+    expect(field && getComputedStyle(field).outlineStyle).toBe("solid");
+  });
+
   it("opens a result at the message that matched", async () => {
     const router = await open("/mail/search?q=lunch");
     await userEvent.click(results().getByRole("row", { name: /Lunch on Friday/ }));
@@ -309,6 +362,45 @@ describe("search", () => {
     await expect.element(results().getByRole("row", { name: /Lunch/ })).toBeVisible();
   });
 
+  it("changes the places from the sentence's menu", async () => {
+    const router = await open("/mail/search?q=invoice");
+    await userEvent.click(page.getByRole("button", { name: "all mail" }));
+    await userEvent.click(page.getByRole("menuitemcheckbox", { name: "Receipts" }));
+    await userEvent.click(page.getByRole("menuitemcheckbox", { name: "Inbox" }));
+    // In the menu's order, whatever order they were picked in.
+    await expect
+      .poll(() => router.state.location.search)
+      .toEqual({ q: "invoice", place: ["inbox", label] });
+    await userEvent.keyboard("{Escape}");
+    await expect.element(page.getByRole("button", { name: "Inbox and Receipts" })).toBeVisible();
+  });
+
+  it("picks a date relative to today", async () => {
+    const router = await open("/mail/search?q=invoice");
+    await userEvent.click(page.getByRole("button", { name: "any time" }));
+    await userEvent.click(page.getByRole("button", { name: "Past 7 days" }));
+    await expect.poll(() => router.state.location.search).toEqual({ q: "invoice", date: "7d" });
+    await expect.element(page.getByRole("button", { name: "in the past 7 days" })).toBeVisible();
+    expect(searches().at(-1)).toContain("since=");
+  });
+
+  it("takes a range typed as days, Before left out", async () => {
+    const router = await open("/mail/search?q=invoice");
+    await userEvent.click(page.getByRole("button", { name: "any time" }));
+    // The Since field is the first focused; days are British, day first.
+    await userEvent.click(page.getByRole("spinbutton", { name: /^day, Since/ }));
+    await userEvent.keyboard("02112025");
+    await userEvent.click(page.getByRole("spinbutton", { name: /^day, Before/ }));
+    await userEvent.keyboard("10112025");
+    await userEvent.click(page.getByRole("button", { name: "Apply" }));
+    await expect
+      .poll(() => router.state.location.search)
+      .toEqual({ q: "invoice", since: "2025-11-02", before: "2025-11-10" });
+    await expect
+      .element(page.getByRole("button", { name: "since 2 Nov 2025 and before 10 Nov 2025" }))
+      .toBeVisible();
+  });
+
   it("keeps a long unbroken search word inside the empty title", async () => {
     const word = "Rechnungsbenachrichtigungseinstellungsänderungsbestätigung".repeat(2);
     await open(`/mail/search?q=${word}`, 320);
@@ -316,6 +408,30 @@ describe("search", () => {
     await expect.element(title).toBeVisible();
     const heading = title.element();
     expect(heading.scrollWidth).toBeLessThanOrEqual(heading.clientWidth);
+  });
+
+  it("scrolls the date chooser on a short phone, so Apply stays in reach", async () => {
+    const router = await open("/mail/search?q=invoice", 320);
+    await page.viewport(320, 568);
+    await userEvent.click(page.getByRole("button", { name: "any time" }));
+    const apply = page.getByRole("button", { name: "Apply" });
+    apply.element().scrollIntoView({ block: "nearest" });
+    const { bottom } = apply.element().getBoundingClientRect();
+    expect(bottom).toBeLessThanOrEqual(window.innerHeight);
+    await userEvent.click(page.getByRole("spinbutton", { name: /^day, Since/ }));
+    await userEvent.keyboard("02112025");
+    await userEvent.click(apply);
+    await expect.poll(() => router.state.location.search).toMatchObject({ since: "2025-11-02" });
+  });
+
+  it("cuts a long sender address in the sentence, whole in its tooltip", async () => {
+    const address = "bartholomew.fitzgerald@northwind-industries-holdings.example.com";
+    await open(`/mail/search?q=invoice&from=${encodeURIComponent(JSON.stringify([address]))}`, 390);
+    const phrase = page.getByRole("button", { name: address });
+    await expect.element(phrase).toBeVisible();
+    expect(phrase.element().getBoundingClientRect().width).toBeLessThanOrEqual(390);
+    await userEvent.hover(phrase);
+    await expect.element(page.getByRole("tooltip")).toHaveTextContent(address);
   });
 
   it("opens from the phone's top bar and gives focus back on leaving", async () => {

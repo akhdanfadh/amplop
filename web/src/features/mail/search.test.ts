@@ -1,7 +1,7 @@
 import { parseDate } from "@internationalized/date";
 import { describe, expect, it } from "vite-plus/test";
 import { searchFilters, searchParams, searches, words } from "./search";
-import { resultsCount } from "./text";
+import { placesPhrase, rangePhrase, resultsCount } from "./text";
 
 const today = parseDate("2026-11-16");
 
@@ -69,6 +69,17 @@ describe("searches", () => {
 });
 
 describe("search wording", () => {
+  it("names up to three places, then how many more", () => {
+    expect(placesPhrase([])).toBe("all mail");
+    expect(placesPhrase(["Inbox", "Spam"])).toBe("Inbox and Spam");
+    expect(placesPhrase(["Inbox", "Spam", "Trash", "Receipts"])).toBe("Inbox, Spam and 2 more");
+  });
+
+  it("says a range with either end open", () => {
+    expect(rangePhrase("2 Nov 2026", undefined)).toBe("since 2 Nov 2026");
+    expect(rangePhrase(undefined, "2 Nov 2026")).toBe("before 2 Nov 2026");
+  });
+
   it("counts up to the API's most", () => {
     expect(resultsCount(1, 1000)).toBe("1 conversation");
     expect(resultsCount(1000, 1000)).toBe("1,000 or more conversations");
