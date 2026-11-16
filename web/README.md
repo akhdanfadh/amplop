@@ -135,13 +135,15 @@ Put shared code in the folder for its responsibility:
   sync stands.
 - `src/features/messages`: the conversation view (`ConversationView`),
   the reading pane's frame (`ReadingPane`) and an open message
-  (`OpenMessage`), the message view, its HTML and plain-text bodies,
-  sizing the body's frame, plain-text links, and the header's wording.
+  (`OpenMessage`), which the Outbox shares, a message's content, its HTML
+  and plain-text bodies, sizing the body's frame, plain-text links, and
+  the header's wording.
 - `src/features/outgoing-messages`: the compose window, the store that
   owns it (`compose-store.ts`), its form and schema, the reply editor
   with its defaults and schema, the parts both editors share
   (`editor.tsx`: the card, the recipient rows, the send's key), the
-  Outbox list and the one read every status comes from (`outbox.ts`), one
+  Outbox page, its rows and reading pane, the one read every status
+  comes from (`outbox.ts`), one
   message's status with Send again and Edit and send, their wording, and
   when the Outbox reads again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
@@ -761,8 +763,8 @@ the member moves between mail and settings. One `ComposeStore` per router
 open, what it holds, what closing it would lose, and what opened it, for
 focus to go back to. It closes whenever one member's data ends
 (`onAccountCacheClear`), e.g. on sign-out, so the next member to sign in
-in the tab never sees it. The sidebar's Compose and the Outbox's New message
-call its `open()`, which brings back a window holding typed text instead
+in the tab never sees it. The sidebar's Compose calls its `open()`,
+which brings back a window holding typed text instead
 of replacing it; Edit and send calls `open(message)`, which asks before
 replacing typed text. `/compose` is no page: its `beforeLoad` opens the
 window and redirects to the Inbox, replacing itself in history.
@@ -850,11 +852,15 @@ it in a new tab so the edits stay, and the next Send uses a new key, as a
 new message. A refusal because the account needs
 reconnecting rereads the accounts and links Connected accounts.
 
-The Outbox lists the member's newest 50 messages from inbok, newest first,
-with each status, and reads the list again every 2 seconds while one is
-waiting or sending (`useOutbox`); its New message button opens the
-compose window. That one read gives every status the app shows: the
-sidebar's count, the Outbox, a message's page, the compose window's
+The Outbox (`outbox-page.tsx`) lists the member's newest 50 messages from
+inbok, newest first, beside the reading pane, as a mail place
+(DESIGN.md "Outbox"), and reads the list again every 2 seconds while one
+is waiting or sending (`useOutbox`). Its rows (`row.tsx`) are mail's list
+pieces: `GridList`, `SenderAvatar`, mail's rules for names and dates, and
+mail's open store and history state, so a row opens its message in the
+reading pane and Back on a phone returns through history as a
+conversation's does. That one read gives every status the app shows:
+the sidebar's count, the Outbox, the reading pane, the compose window's
 status after Send, and a sent reply's (`useOutgoingMessage`), so no two
 of them disagree and only one request polls. A message's own read, Get
 Outgoing Message, gives its content once; its status counts only for a
@@ -862,10 +868,13 @@ message the list doesn't hold, one outside the newest 50 or saved after
 the list was read, which that read then follows until its send ends; a
 message that leaves the list, past 50 newer ones, is read again then.
 Each write that changes a status, Send and Send again, reads the list
-again. Each message opens its own page at `/mail/outbox/$id`, which reads
-only an ID that is a UUID, since the client puts it in the API's path as
-is. The page shows the status above the message and announces it, first
-after the page has rendered. A failed reread, of the list or of the
+again. A message opens in the reading pane at `/mail/outbox/$id`
+(`OutgoingReader`, `reader.tsx`), which reads only an ID that is a UUID,
+since the client puts it in the API's path as is. The pane is a
+conversation's frame (`ReadingPane`): the subject and the sending
+account, then the status in a card (`MessageStatus look="pane"`), which
+it announces, first after the pane has rendered, then the message as an
+open message (`OpenMessage`). A failed reread, of the list or of the
 message, says what is shown may be out of date, with Try again, which
 reads again what failed; a failed read stops its own polling until
 then. A
@@ -950,14 +959,11 @@ its threading.
 
 ## Message view
 
-`MessageView` (`src/features/messages/view.tsx`) shows one message: its
-subject, From, To, Cc, Bcc for a message the member sent, and when it
-arrived, then its bodies one after another, then its attachments. An
-outgoing message's page shows it with its plain-text body; the inbox
-will show synchronized messages, with the message from the API. Its
-props:
+`MessageContentView` (`src/features/messages/view.tsx`) shows a message's
+content: its bodies one after another, then its attachments, under the
+header an open message draws (`OpenMessage`, "Conversation view"). Its
+prop:
 
-- `header`: the header fields, which show while the body loads.
 - `content`: `pending` while the server fetches a body it has not
   stored, `error` with a retry, or `success` with the bodies, whether
   the server blocked remote images in them, and the attachments. A
@@ -966,9 +972,7 @@ props:
 
 Give it a `key` per message, so the next message starts afresh. Remote
 images stay blocked for another message's bodies even without one: the
-view remembers the URLs the member allowed, not a switch. Sender names
-show inside `<bdi>`, so a direction override in a name cannot reorder
-the address after it.
+view remembers the URLs the member allowed, not a switch.
 
 An HTML body is an iframe whose `src` is the body's URL on inbok's
 origin. The server sends it sanitized, with a Content-Security-Policy of
@@ -1028,10 +1032,11 @@ conversation as DESIGN.md "Reading pane" describes it. Its frame, the
 pinned toolbar, the title, the line under it, and any marks under that,
 is `ReadingPane`
 (`reading-pane.tsx`), and each open message is `OpenMessage`
-(`open-message.tsx`): its header, details, and content, which the
-conversation loads and passes in, with folding, the message it answers,
-and its actions; a sender's name shows inside `<bdi>`, so a direction
-override in a name cannot reorder the address after it. Its props:
+(`open-message.tsx`): its header, details, and content, with folding,
+the message it answers, and its actions as optional props. The Outbox's
+reading pane uses both, so an outgoing message reads as a conversation's
+does; a sender's name shows inside `<bdi>`, so a direction override in a
+name cannot reorder the address after it. Its props:
 
 - `subject` and `account` (ID, name, address, colour) for its title, and
   `messages`, oldest first, as Get Conversation sends them: each

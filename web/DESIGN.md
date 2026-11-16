@@ -12,9 +12,8 @@ pages, messages, leave warnings, and banners; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
 work to this file, not to the old code. Not built yet: one rule for a
-session that ends on an open page (`feat/session-end`), the actions on a
-hovered row and the row menu (ADR031, "Mitigations and follow-up"), and
-the Outbox in the mail list (`feat/outbox-list`; the same).
+session that ends on an open page (`feat/session-end`), and the actions
+on a hovered row and the row menu (ADR031, "Mitigations and follow-up").
 
 ## Principles
 
@@ -774,7 +773,8 @@ last two redirect into settings, so settings can move without the server.
   then "Sent to ana@example.com"), and under it in muted text the sending
   account's mark, its address, and the time; Open in Outbox below. A
   failure names its status in that line, says why under it, and puts its
-  actions in a bar (Edit and send or Send again, then Open in Outbox).
+  actions in a bar (Edit and send or Send again, then Open in Outbox). A
+  message sent again reads Tried again, neutral, with a link to its copy.
   The window closes 3 s after Gmail takes the message, waiting while the
   pointer is on it or focus on one of its controls; minimised, its strip
   shows the status's mark before the title.
@@ -782,6 +782,50 @@ last two redirect into settings, so settings can move without the server.
   discard, and sign-out; its conversation row shows "Draft" in `primary`.
   Not built yet: until then a reply's text lives only in its open editor,
   and leaving the page with typed text asks first.
+
+### Outbox
+
+The member's messages from inbok, as a mail place: the list beside the
+reading pane, one shown at a time on a phone ("Panes and widths"). Its
+heading, Outbox, heads the list, or sits in the top bar on a phone. No
+search box, no picking, and no row actions: search finds mail, which
+these messages are not until Gmail has them, and nothing acts on several
+messages at once. Statuses read again every 2 s while one is waiting or
+sending (web/README.md, "Routes").
+
+- **List:** the newest 50, newest first, by when each was saved; then, as
+  the list's end, "inbok keeps your newest 50 messages here, not the ones
+  you send from Gmail itself."
+- **Row, three lines,** a conversation's row's size: "To" in
+  `muted-foreground`, then the recipients by mail's rules for names (To,
+  Cc, then Bcc; "no one" for none), and the date it was saved / subject /
+  the status as its icon and word in its tone's colour, without a pill
+  (`StatusWord`, "Status badges"), then "·" and a short reason in muted
+  text: why it failed, what an unconfirmed one asks, or "You sent it
+  again as a new message."; nothing after Waiting, Sending, or Sent,
+  which say it alone. One recipient shows as its address, left to right
+  whatever its letters; several each keep their own direction, as a
+  conversation's senders do. A 36 px initials avatar of the first
+  recipient leads, ringed in
+  the sending account's colour where accounts mix. No unread weight and
+  no checkbox: the member wrote each message. A message sent again reads
+  Tried again, neutral: its copy carries the status that matters.
+- **States:** placeholder rows while the list loads; a `ReadError` with
+  Try again when it can't; a failed reread keeps the rows under a
+  `ReadError` saying they may be out of date; an empty Outbox says
+  "Nothing sent from inbok yet", what will show, and to write one with
+  Compose.
+- **Reading pane:** a conversation's frame ("Reading pane"): the pinned
+  toolbar, with Back on a phone and later the message's own actions; the
+  subject; the sending account's mark, or its address once the account
+  is gone. Then the status in a `card`, the compose window's summary
+  ("Compose and reply") without Open in Outbox: a mark, one line, the
+  reason or the account and time, and the actions in a bar (Send again,
+  Edit and send, Open Connected accounts); the status shows in place as
+  a message opens and rises only when it changes while open. Then the
+  message, open, as in
+  a conversation, without folding, its details naming the account as
+  "Sent from". With nothing open, "No message open."
 
 ### Search
 
@@ -1218,6 +1262,11 @@ Registration need. The sidebar shows an account's Syncing, Reconnect, or
 Sync failed as the icon alone, in its tone, the words read to screen
 readers and shown on hover, and with the icon on a line under the name
 for a touch.
+
+A line of text with no room for a pill, e.g. an Outbox row's third line,
+shows the status inline: `StatusWord`, its 14 px icon and its word in
+500 weight in the tone's colour (`muted-foreground` for neutral), which
+holds 4.5:1 on a row's surface, hovered and selected, in both themes.
 
 ## Data for mail
 

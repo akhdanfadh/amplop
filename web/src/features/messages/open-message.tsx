@@ -41,26 +41,30 @@ const shownAddresses = 10;
 export type MessageAccount = { name: string; email: string; color: AccountColor };
 
 // OpenMessageHead is what an open message shows of its header: its
-// senders, Reply-To, recipients, when it was received, and whether its
-// account sent it.
+// senders, Reply-To, recipients, when it was received or sent, and
+// whether its account sent it.
 export type OpenMessageHead = {
   from: readonly MailAddress[];
   replyTo: readonly MailAddress[];
   to: readonly MailAddress[];
   cc: readonly MailAddress[];
+  bcc?: readonly MailAddress[];
   date: string;
   sent: boolean;
 };
 
 // OpenMessage is a message shown whole (DESIGN.md "Reading pane"): head,
-// the header of a message in account, then content. id names the article,
-// e.g. for a link to it; today is the day its narrow date is shown at.
-// fold folds it from its avatar, a button named fold.id, and from a click
-// on its header's empty space. answers, when given, names the message it
-// answers; actions end the sender's line.
+// the header of a message in account, then content. accountLabel names
+// the account in the details ("Received by" by default), which leave it
+// out when account is undefined, e.g. one disconnected since. id names the
+// article, e.g. for a link to it; today is the day its narrow date is
+// shown at. fold, when given, folds it from its avatar, a button named
+// fold.id, and from a click on its header's empty space. answers, when
+// given, names the message it answers; actions end the sender's line.
 export function OpenMessage({
   head,
   account,
+  accountLabel = receivedBy,
   id,
   fold,
   answers,
@@ -69,9 +73,10 @@ export function OpenMessage({
   content,
 }: {
   head: OpenMessageHead;
-  account: MessageAccount;
+  account: MessageAccount | undefined;
+  accountLabel?: string;
   id?: string;
-  fold: { id: string; onFold: () => void };
+  fold?: { id: string; onFold: () => void };
   answers?: { sender: string; date: string; onShow: () => void };
   actions?: ReactNode;
   today: Date;
@@ -83,7 +88,11 @@ export function OpenMessage({
   const when = formatReceived(message.date);
   const sender = message.from[0];
   const senderName = message.from.length > 0 ? fullNames(message.from, undefined) : unknownSender;
-  const recipients = fullNames([...message.to, ...message.cc], account.email);
+  const recipients = fullNames(
+    [...message.to, ...message.cc, ...(message.bcc ?? [])],
+    account?.email,
+  );
+  const avatar = <SenderAvatar sender={sender} />;
 
   return (
     <article
@@ -98,26 +107,31 @@ export function OpenMessage({
           Gmail; the avatar does the same for the keyboard. */}
       {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a pointer shortcut; the avatar is the keyboard's button. */}
       <div
-        className="flex cursor-pointer gap-3"
+        className={cn("flex gap-3", fold && "cursor-pointer")}
         onClick={(event) => {
+          if (!fold) return;
           if (event.target instanceof Element && event.target.closest("button, a")) return;
           // Selecting the address to copy it is not a click on the header.
           if (window.getSelection()?.toString()) return;
           fold.onFold();
         }}
       >
-        <button
-          type="button"
-          id={fold.id}
-          aria-expanded={true}
-          aria-label={foldLabel(senderName)}
-          onClick={fold.onFold}
-          // ::before grows its 36 px to 44 px for touch (DESIGN.md
-          // "Control height") without moving it.
-          className="relative shrink-0 self-start rounded-full outline-none focus-visible:focus-ring pointer-coarse:before:absolute pointer-coarse:before:-inset-1"
-        >
-          <SenderAvatar sender={sender} />
-        </button>
+        {fold ? (
+          <button
+            type="button"
+            id={fold.id}
+            aria-expanded={true}
+            aria-label={foldLabel(senderName)}
+            onClick={fold.onFold}
+            // ::before grows its 36 px to 44 px for touch (DESIGN.md
+            // "Control height") without moving it.
+            className="relative shrink-0 self-start rounded-full outline-none focus-visible:focus-ring pointer-coarse:before:absolute pointer-coarse:before:-inset-1"
+          >
+            {avatar}
+          </button>
+        ) : (
+          <span className="shrink-0 self-start">{avatar}</span>
+        )}
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
           <div className="flex items-start gap-2">
             {/* Name and address share a line while both fit; the address
@@ -231,7 +245,12 @@ export function OpenMessage({
       </div>
       {details && (
         <div id={detailsId} className="rounded-lg bg-muted/50 p-3 @lg:ml-12">
-          <Details message={message} account={account} when={when.full} />
+          <Details
+            message={message}
+            account={account}
+            accountLabel={accountLabel}
+            when={when.full}
+          />
         </div>
       )}
       <MessageContentView content={content} />
@@ -245,10 +264,12 @@ export function OpenMessage({
 function Details({
   message,
   account,
+  accountLabel,
   when,
 }: {
   message: OpenMessageHead;
-  account: MessageAccount;
+  account: MessageAccount | undefined;
+  accountLabel: string;
   when: string;
 }): ReactElement {
   const elsewhere = repliesElsewhere(message.replyTo, message.from);
@@ -258,12 +279,17 @@ function Details({
       <AddressField label={fieldLabels.replyTo} entries={message.replyTo} strong={elsewhere} />
       <AddressField label={fieldLabels.to} entries={message.to} />
       <AddressField label={fieldLabels.cc} entries={message.cc} />
+      <AddressField label={fieldLabels.bcc} entries={message.bcc ?? []} />
       <dt className="text-muted-foreground">{fieldLabels.date}</dt>
       <dd>{when}</dd>
-      <dt className="text-muted-foreground">{receivedBy}</dt>
-      <dd className="min-w-0">
-        <AccountMark color={account.color} name={`${account.name} (${account.email})`} />
-      </dd>
+      {account && (
+        <>
+          <dt className="text-muted-foreground">{accountLabel}</dt>
+          <dd className="min-w-0">
+            <AccountMark color={account.color} name={`${account.name} (${account.email})`} />
+          </dd>
+        </>
+      )}
     </dl>
   );
 }

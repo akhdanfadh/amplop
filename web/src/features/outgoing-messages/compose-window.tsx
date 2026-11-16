@@ -416,7 +416,7 @@ function MessageContent({
           title: sentMessage?.subject || newMessageTitle,
           send: null,
           sizes: "no-full-screen",
-          mark: sentMessage && <MessageStatusMark status={sentMessage.status} />,
+          mark: sentMessage && <MessageStatusMark message={sentMessage} />,
         })}
         {signedOut}
         <div hidden={minimised} className="min-h-0 overflow-y-auto">

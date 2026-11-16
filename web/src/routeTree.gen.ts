@@ -31,6 +31,7 @@ import { Route as AuthSignedOutSignInRouteImport } from './routes/_auth/_signed-
 import { Route as AuthRegisterCompleteRouteImport } from './routes/_auth/register/complete'
 import { Route as AppMailMailIndexRouteImport } from './routes/_app/_mail/mail/index'
 import { Route as AppMailMailPlaceRouteImport } from './routes/_app/_mail/mail/$place'
+import { Route as AppMailMailOutboxRouteImport } from './routes/_app/_mail/mail/outbox'
 import { Route as AppSettingsAdminMembersRouteImport } from './routes/_app/settings/_admin/members'
 import { Route as AppSettingsAdminRegistrationRouteImport } from './routes/_app/settings/_admin/registration'
 import { Route as AppSettingsAdminSystemEmailRouteImport } from './routes/_app/settings/_admin/system-email'
@@ -149,6 +150,11 @@ const AppMailMailPlaceRoute = AppMailMailPlaceRouteImport.update({
   path: '/mail/$place',
   getParentRoute: () => AppMailRoute,
 } as any)
+const AppMailMailOutboxRoute = AppMailMailOutboxRouteImport.update({
+  id: '/mail/outbox',
+  path: '/mail/outbox',
+  getParentRoute: () => AppMailRoute,
+} as any)
 const AppSettingsAdminMembersRoute = AppSettingsAdminMembersRouteImport.update({
   id: '/members',
   path: '/members',
@@ -196,14 +202,14 @@ const AppMailMailPlaceConversationIdRoute =
     getParentRoute: () => AppMailMailPlaceRoute,
   } as any)
 const AppMailMailOutboxIndexRoute = AppMailMailOutboxIndexRouteImport.update({
-  id: '/mail/outbox/',
-  path: '/mail/outbox/',
-  getParentRoute: () => AppMailRoute,
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppMailMailOutboxRoute,
 } as any)
 const AppMailMailOutboxIdRoute = AppMailMailOutboxIdRouteImport.update({
-  id: '/mail/outbox/$id',
-  path: '/mail/outbox/$id',
-  getParentRoute: () => AppMailRoute,
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppMailMailOutboxRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -223,6 +229,7 @@ export interface FileRoutesByFullPath {
   '/register/complete': typeof AuthRegisterCompleteRoute
   '/settings/': typeof AppSettingsIndexRoute
   '/mail/$place': typeof AppMailMailPlaceRouteWithChildren
+  '/mail/outbox': typeof AppMailMailOutboxRouteWithChildren
   '/settings/members': typeof AppSettingsAdminMembersRoute
   '/settings/registration': typeof AppSettingsAdminRegistrationRoute
   '/settings/system-email': typeof AppSettingsAdminSystemEmailRoute
@@ -285,6 +292,7 @@ export interface FileRoutesById {
   '/_auth/register/complete': typeof AuthRegisterCompleteRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/_mail/mail/$place': typeof AppMailMailPlaceRouteWithChildren
+  '/_app/_mail/mail/outbox': typeof AppMailMailOutboxRouteWithChildren
   '/_app/settings/_admin/members': typeof AppSettingsAdminMembersRoute
   '/_app/settings/_admin/registration': typeof AppSettingsAdminRegistrationRoute
   '/_app/settings/_admin/system-email': typeof AppSettingsAdminSystemEmailRoute
@@ -316,6 +324,7 @@ export interface FileRouteTypes {
     | '/register/complete'
     | '/settings/'
     | '/mail/$place'
+    | '/mail/outbox'
     | '/settings/members'
     | '/settings/registration'
     | '/settings/system-email'
@@ -377,6 +386,7 @@ export interface FileRouteTypes {
     | '/_auth/register/complete'
     | '/_app/settings/'
     | '/_app/_mail/mail/$place'
+    | '/_app/_mail/mail/outbox'
     | '/_app/settings/_admin/members'
     | '/_app/settings/_admin/registration'
     | '/_app/settings/_admin/system-email'
@@ -554,6 +564,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppMailMailPlaceRouteImport
       parentRoute: typeof AppMailRoute
     }
+    '/_app/_mail/mail/outbox': {
+      id: '/_app/_mail/mail/outbox'
+      path: '/mail/outbox'
+      fullPath: '/mail/outbox'
+      preLoaderRoute: typeof AppMailMailOutboxRouteImport
+      parentRoute: typeof AppMailRoute
+    }
     '/_app/settings/_admin/members': {
       id: '/_app/settings/_admin/members'
       path: '/members'
@@ -612,17 +629,17 @@ declare module '@tanstack/react-router' {
     }
     '/_app/_mail/mail/outbox/': {
       id: '/_app/_mail/mail/outbox/'
-      path: '/mail/outbox'
+      path: '/'
       fullPath: '/mail/outbox/'
       preLoaderRoute: typeof AppMailMailOutboxIndexRouteImport
-      parentRoute: typeof AppMailRoute
+      parentRoute: typeof AppMailMailOutboxRoute
     }
     '/_app/_mail/mail/outbox/$id': {
       id: '/_app/_mail/mail/outbox/$id'
-      path: '/mail/outbox/$id'
+      path: '/$id'
       fullPath: '/mail/outbox/$id'
       preLoaderRoute: typeof AppMailMailOutboxIdRouteImport
-      parentRoute: typeof AppMailRoute
+      parentRoute: typeof AppMailMailOutboxRoute
     }
   }
 }
@@ -640,20 +657,31 @@ const AppMailMailPlaceRouteChildren: AppMailMailPlaceRouteChildren = {
 const AppMailMailPlaceRouteWithChildren =
   AppMailMailPlaceRoute._addFileChildren(AppMailMailPlaceRouteChildren)
 
+interface AppMailMailOutboxRouteChildren {
+  AppMailMailOutboxIdRoute: typeof AppMailMailOutboxIdRoute
+  AppMailMailOutboxIndexRoute: typeof AppMailMailOutboxIndexRoute
+}
+
+const AppMailMailOutboxRouteChildren: AppMailMailOutboxRouteChildren = {
+  AppMailMailOutboxIdRoute: AppMailMailOutboxIdRoute,
+  AppMailMailOutboxIndexRoute: AppMailMailOutboxIndexRoute,
+}
+
+const AppMailMailOutboxRouteWithChildren =
+  AppMailMailOutboxRoute._addFileChildren(AppMailMailOutboxRouteChildren)
+
 interface AppMailRouteChildren {
   AppMailComposeRoute: typeof AppMailComposeRoute
   AppMailMailPlaceRoute: typeof AppMailMailPlaceRouteWithChildren
+  AppMailMailOutboxRoute: typeof AppMailMailOutboxRouteWithChildren
   AppMailMailIndexRoute: typeof AppMailMailIndexRoute
-  AppMailMailOutboxIdRoute: typeof AppMailMailOutboxIdRoute
-  AppMailMailOutboxIndexRoute: typeof AppMailMailOutboxIndexRoute
 }
 
 const AppMailRouteChildren: AppMailRouteChildren = {
   AppMailComposeRoute: AppMailComposeRoute,
   AppMailMailPlaceRoute: AppMailMailPlaceRouteWithChildren,
+  AppMailMailOutboxRoute: AppMailMailOutboxRouteWithChildren,
   AppMailMailIndexRoute: AppMailMailIndexRoute,
-  AppMailMailOutboxIdRoute: AppMailMailOutboxIdRoute,
-  AppMailMailOutboxIndexRoute: AppMailMailOutboxIndexRoute,
 }
 
 const AppMailRouteWithChildren =

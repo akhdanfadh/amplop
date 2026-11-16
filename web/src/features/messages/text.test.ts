@@ -1,15 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import { addressName, formatReceived, formatSize, splitName } from "./text";
+import { formatReceived, formatSize, splitName } from "./text";
 
 describe("message header", () => {
-  it("names an address by its display name when it has one", () => {
-    expect(addressName({ name: " Ana Lima ", email: "ana@example.com" })).toBe("Ana Lima");
-    expect(addressName({ email: "ana@example.com" })).toBeUndefined();
-    expect(addressName({ name: " ", email: "ana@example.com" })).toBeUndefined();
-    // A name that only repeats the address says nothing more.
-    expect(addressName({ name: "ana@example.com", email: "ana@example.com" })).toBeUndefined();
-  });
-
   it("shows the time short, and in full for its tooltip", () => {
     const received = formatReceived("2026-11-09T07:05:00Z");
 

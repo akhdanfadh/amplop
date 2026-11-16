@@ -87,10 +87,12 @@ export type NextSteps = { text: string; offers: Offer[] };
 export const notSentPrefix = "Not sent. ";
 
 // sentSummary words message's status in one line, for the compose window
-// after Send: who it is going or went to, or the status's name.
+// after Send: who it is going or went to, or the status's name, Tried
+// again once it was sent again.
 export function sentSummary(
   message: MessageState & Pick<OutgoingMessageSummary, "to" | "cc" | "bcc">,
 ): string {
+  if (message.sentAgainAs !== null) return sentAgainLabel;
   if (inProgress(message.status)) return `Sending to ${recipientSummary(message)}...`;
   if (message.status === "sent") return `Sent to ${recipientSummary(message)}`;
   return statusLabel(message.status);
@@ -445,3 +447,67 @@ export function leaveText(state: LeaveState): LeaveWarningText {
   if (state === "unconfirmed") return leaveUnconfirmed;
   return leaveTyped;
 }
+
+// What a row says after the status of a message in each failure, short
+// for a line; the message's page keeps the whole sentence (nextSteps).
+const shortFailures: Record<Failure, string> = {
+  refused: "Gmail refused it. Edit it and send it as new.",
+  "sending-limit": "Its account hit Gmail's daily limit. Send it again later.",
+  "needs-reconnect": "Reconnect the account, then send it again.",
+  "token-unreadable": "Reconnect the account, then send it again.",
+  deactivated: "Your account was deactivated. Send it again.",
+  "sender-changed": "The account's address changed. Send it again.",
+  "gave-up": "Google didn't take it. Send it again.",
+};
+
+// rowReason returns what an Outbox row says after message's status: why
+// it failed, what an unconfirmed one asks, or that it was sent again;
+// empty while it waits, sends, or once it was sent, which the status says
+// alone.
+export function rowReason(message: MessageState): string {
+  if (message.sentAgainAs !== null) return "You sent it again as a new message.";
+  if (message.status === "unknown") return "Check Sent in Gmail before sending again.";
+  if (message.status !== "failed") return "";
+  return message.failure ? shortFailures[message.failure] : "";
+}
+
+// outboxRowName returns what a screen reader calls an Outbox row: its
+// recipients, subject, status, and date, and its account when the list
+// mixes accounts.
+export function outboxRowName(row: {
+  to: string;
+  subject: string;
+  status: string;
+  date: string;
+  account: string | undefined;
+}): string {
+  return [`${rowTo} ${row.to}`, row.subject, row.status, row.date, row.account]
+    .filter(Boolean)
+    .join(", ");
+}
+
+// What an Outbox row's recipients follow.
+export const rowTo = "To";
+
+// The Outbox's heading, and its list's name for a screen reader.
+export const outboxName = "Outbox";
+export const outboxListName = "Messages sent from inbok";
+// What the Outbox's reading pane says with no message open.
+export const noMessageOpen = "No message open.";
+// What ends the Outbox's list: what it holds, and what it doesn't.
+export const outboxEnd =
+  "inbok keeps your newest 50 messages here, not the ones you send from Gmail itself.";
+// What an empty Outbox says.
+export const outboxEmptyTitle = "Nothing sent from inbok yet";
+export const outboxEmptyText =
+  "Messages you send from inbok show here, with whether Gmail took each one. Write one with Compose.";
+// What the Outbox says while its list loads, for a screen reader.
+export const outboxLoading = "Loading messages...";
+// What the Outbox says when its list can't be read, before the reason,
+// and when a reread failed, so the list may be out of date.
+export const outboxFailed = "Could not load your messages.";
+export const outboxStale = "Could not reload your messages, so the list may be out of date.";
+// The account line of an open outgoing message's details.
+export const sentFrom = "Sent from";
+// What a message's reading pane says while it loads.
+export const messageLoading = "Loading message...";

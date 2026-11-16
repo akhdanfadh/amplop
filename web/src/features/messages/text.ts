@@ -1,17 +1,5 @@
 import { fullDate, headerDate } from "@/features/mail/dates";
 
-// An address in a message's header: the display name the sender gave, if
-// any, and the email address.
-export type Address = { name?: string; email: string };
-
-// addressName returns the display name to show for address, or undefined
-// when it has none or the name only repeats the email.
-export function addressName(address: Address): string | undefined {
-  const name = address.name?.trim();
-  if (!name || name === address.email) return undefined;
-  return name;
-}
-
 // formatReceived shows a timestamp in the browser's time zone, short for
 // the header and in full for its tooltip, in the words and clock the list
 // uses (headerDate, fullDate), so a header and its tooltip agree. A value
@@ -62,6 +50,7 @@ export const fieldLabels = {
   replyTo: "Reply-To",
   to: "To",
   cc: "Cc",
+  bcc: "Bcc",
   date: "Date",
 } as const;
 

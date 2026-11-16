@@ -47,7 +47,9 @@ const buttonClass = "w-fit whitespace-normal";
 // new reply. look "page" names the status in a badge above its text;
 // "window" is the compose window's summary after Send (DESIGN.md "Compose
 // and reply"): a mark, one line, and the sending account in its colour,
-// with the actions in a bar when there are any.
+// with the actions in a bar when there are any, and Open in Outbox;
+// "pane" is that summary in a card, for the Outbox's reading pane, which
+// leaves out Open in Outbox (DESIGN.md "Outbox").
 export function MessageStatus({
   message,
   accounts,
@@ -61,7 +63,7 @@ export function MessageStatus({
   onSentAgain: (copy: OutgoingMessage) => void;
   onUnauthorized: () => void;
   onEdit?: () => void;
-  look?: "page" | "window";
+  look?: "page" | "window" | "pane";
 }): ReactElement {
   const client = useQueryClient();
   const compose = useCompose().store;
@@ -73,6 +75,9 @@ export function MessageStatus({
   // The Send again error focus last moved for.
   const focusedFor = useRef<unknown>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  // The status the pane opened on, which shows in place: the member opens
+  // messages often, and by keyboard, so only a change while open rises.
+  const [opened] = useState(message.status);
   const again = useSendMessageAgain({
     mutation: {
       // A repeat returns the copy the first saved.
@@ -117,7 +122,9 @@ export function MessageStatus({
     again.mutate({ id: message.id }, { onSuccess: (result) => onSentAgain(result.data) });
   }
 
-  const window = look === "window";
+  // The window's summary, in the window or in the pane's card.
+  const window = look !== "page";
+  const outboxLink = look === "window";
   const actions = (
     <>
       {sendable && (
@@ -166,7 +173,11 @@ export function MessageStatus({
     <section
       ref={sectionRef}
       tabIndex={-1}
-      className={cn("flex flex-col outline-none", !window && "gap-4")}
+      className={cn(
+        "flex flex-col outline-none",
+        !window && "gap-4",
+        look === "pane" && "rounded-lg border bg-card",
+      )}
       aria-label="Status"
     >
       {window ? (
@@ -175,8 +186,14 @@ export function MessageStatus({
           <output aria-atomic="true" className="block">
             {announced && (
               // A new status rises into place, as a step does (DESIGN.md "Motion").
-              <span key={message.status} className={cn("flex items-start gap-3 p-4", stepEnter)}>
-                <MessageStatusMark status={message.status} />
+              <span
+                key={message.status}
+                className={cn(
+                  "flex items-start gap-3 p-4",
+                  (look !== "pane" || message.status !== opened) && stepEnter,
+                )}
+              >
+                <MessageStatusMark message={message} />
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5 pt-1">
                   <span className="font-medium wrap-anywhere">{sentSummary(message)}</span>
                   <span className="text-sm text-muted-foreground">
@@ -210,7 +227,7 @@ export function MessageStatus({
           </output>
           <div className="flex flex-col gap-3 px-4 pb-4 pl-15 empty:hidden">
             {sentAgainLink}
-            {!offersAny && (
+            {!offersAny && outboxLink && (
               <p>
                 <Link to="/mail/outbox/$id" params={{ id: message.id }} className={lineLink}>
                   Open in Outbox
@@ -221,9 +238,11 @@ export function MessageStatus({
           {offersAny && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-3 py-2">
               {actions}
-              <Link to="/mail/outbox/$id" params={{ id: message.id }} className={lineLink}>
-                Open in Outbox
-              </Link>
+              {outboxLink && (
+                <Link to="/mail/outbox/$id" params={{ id: message.id }} className={lineLink}>
+                  Open in Outbox
+                </Link>
+              )}
             </div>
           )}
         </>

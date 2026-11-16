@@ -21,7 +21,9 @@ import {
   invalidAddressMessage,
   noAccountText,
   cannotSendNote,
+  rowReason,
 } from "./text";
+import { messageLook } from "./status-badge";
 
 type Failure = NonNullable<OutgoingMessageSummary["failure"]>;
 
@@ -376,5 +378,89 @@ describe("why no account can send", () => {
     expect(cannotSendNote({ email: "studio@example.com", status: "usable" })).toBe(
       "Your Gmail accounts can't send yet. The Connected accounts page says why.",
     );
+  });
+});
+
+describe("an Outbox row's status", () => {
+  const copy = "0b9f3a52-5f1d-4a8e-9a43-5f0c2b6b1c11";
+
+  it.each<[string, MessageState, string, string, string]>([
+    ["waiting", waiting, "Waiting", "neutral", ""],
+    ["sending", { ...waiting, status: "sending" }, "Sending", "info", ""],
+    ["sent", { ...waiting, status: "sent" }, "Sent", "success", ""],
+    [
+      "unknown",
+      { ...waiting, status: "unknown" },
+      "Not confirmed",
+      "warning",
+      "Check Sent in Gmail before sending again.",
+    ],
+    [
+      "refused",
+      failed("refused"),
+      "Not sent",
+      "destructive",
+      "Gmail refused it. Edit it and send it as new.",
+    ],
+    [
+      "sending-limit",
+      failed("sending-limit"),
+      "Not sent",
+      "destructive",
+      "Its account hit Gmail's daily limit. Send it again later.",
+    ],
+    [
+      "needs-reconnect",
+      failed("needs-reconnect"),
+      "Not sent",
+      "destructive",
+      "Reconnect the account, then send it again.",
+    ],
+    [
+      "token-unreadable",
+      failed("token-unreadable"),
+      "Not sent",
+      "destructive",
+      "Reconnect the account, then send it again.",
+    ],
+    [
+      "deactivated",
+      failed("deactivated"),
+      "Not sent",
+      "destructive",
+      "Your account was deactivated. Send it again.",
+    ],
+    [
+      "sender-changed",
+      failed("sender-changed"),
+      "Not sent",
+      "destructive",
+      "The account's address changed. Send it again.",
+    ],
+    [
+      "gave-up",
+      failed("gave-up"),
+      "Not sent",
+      "destructive",
+      "Google didn't take it. Send it again.",
+    ],
+    // Sent again, whatever it failed for or how, it asks nothing more.
+    [
+      "failed, sent again",
+      { ...failed("needs-reconnect"), sentAgainAs: copy },
+      "Tried again",
+      "neutral",
+      "You sent it again as a new message.",
+    ],
+    [
+      "unknown, sent again",
+      { ...waiting, status: "unknown", sentAgainAs: copy },
+      "Tried again",
+      "neutral",
+      "You sent it again as a new message.",
+    ],
+  ])("words a %s message", (_, message, label, tone, reason) => {
+    expect(messageLook(message)).toMatchObject({ label, tone });
+    expect(rowReason(message)).toBe(reason);
   });
 });
