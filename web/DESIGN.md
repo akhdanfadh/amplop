@@ -12,11 +12,10 @@ pages, messages, leave warnings, and banners; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
 work to this file, not to the old code. Not built yet: Connected accounts
-on the settings layout (`feat/connected-accounts`), the docked compose
-window (`feat/docked-compose`), one rule for a session that ends on an
-open page (`feat/session-end`), the row menu and picking several
-conversations (`feat/list-actions`), and the Outbox in the mail list
-(`feat/outbox-list`; ADR031, "Mitigations and follow-up").
+on the settings layout (`feat/connected-accounts`), one rule for a session
+that ends on an open page (`feat/session-end`), the row menu and picking
+several conversations (`feat/list-actions`), and the Outbox in the mail
+list (`feat/outbox-list`; ADR031, "Mitigations and follow-up").
 
 ## Principles
 
@@ -314,7 +313,7 @@ resizing is in ADR031's backlog.
 | Search            | `/mail/search?q=...&account=...&place=...&from=...&date=...&since=...&before=...&has=attachment`; a result: `/mail/search/<conversation id>?<the search>&message=<message id>` |
 | Settings          | `/settings/<page>`                                                                                                                                                             |
 | Outbox            | `/mail/outbox`, a message `/mail/outbox/<message id>`                                                                                                                          |
-| A new message     | `/compose`, an entry point only (`?edit=<message id>` starts from a sent one)                                                                                                  |
+| A new message     | `/compose`, an entry point only: it opens the compose window over the Inbox                                                                                                    |
 
 The URL holds where the member is, never passing state (picked rows,
 unsent text, the compose window). Clicking a conversation adds a history
@@ -592,10 +591,11 @@ last two redirect into settings, so settings can move without the server.
 ### Compose and reply
 
 - **Reply** opens inline below the message answered (the newest, from the
-  labelled Reply, Reply all, Forward buttons after it; an older one, from
-  its header's Reply); one editor per conversation; From is
-  the receiving account, changeable and always visible; a hidden "Re:"
-  subject; the quote folded; Ctrl/Cmd+Enter sends.
+  labelled Reply and Reply all buttons after it; an older one, from its
+  header's Reply); one editor per conversation; From is the receiving
+  account, changeable and always visible; a hidden "Re:" subject;
+  Ctrl/Cmd+Enter sends. Not built yet: Forward beside them, and the
+  answered message quoted and folded below the reply.
 - **The editor** is one `card`: a row each for From, To, and the Cc and
   Bcc that are filled or asked for, a muted label on the left and its
   value on the right, divided by hairlines; then the message, with no box
@@ -603,12 +603,15 @@ last two redirect into settings, so settings can move without the server.
   the sidebar's does ("Send (Ctrl+Enter)", Cmd on a Mac), and Discard (a
   trash icon with its tooltip). Empty Cc and Bcc wait behind buttons at
   the end of the To row. Labels and values share one 32 px
-  line, so a wrapped list keeps its label level with the first line.
+  line, so a wrapped list keeps its label level with the first line. On
+  a card narrower than 24rem, e.g. a phone or text at 200%, each label
+  sits on its own line above its value, which then has the whole width.
+  The message grows with its text up to 60% of the window, then
+  scrolls.
 - **From** is a quiet `select`: no outline at rest, `accent` on hover and
   while its list is open, its chevron and label marking it. Each account
   shows its mark, its address, which recipients see, and the name the
-  member chose for it, which only the member does; the compose form's
-  native list holds words only, so it reads "address (name)". A line under
+  member chose for it, which only the member does. A line under
   it says when the chosen account didn't receive the message (the reply
   then starts a new conversation in that account's Gmail), or which
   account needs reconnecting when none could be chosen.
@@ -620,16 +623,54 @@ last two redirect into settings, so settings can move without the server.
   removes one; the remove buttons stay out of the Tab order. An address
   that isn't one stays a chip in `destructive` on its tint, named "not an
   email address", and the field's error says which.
-- **A new message** opens in a 560 px window docked bottom right that stays
-  while the member moves around; minimise, full screen, close. On phones
-  a new message is a full-screen editor, which keeps its layout until it
-  closes, so turning a phone or resizing the window never moves what is
-  being written. A reply stays inline on phones too: without saved
-  drafts, a full-screen reply would make checking an earlier message
-  cost the text; inline, it is a scroll away, and leaving the page with
-  typed text asks first.
-- **After Send**, the message waits in place as a card with its status
-  until synced mail replaces it.
+- **A new message** opens in the compose window, which holds the same
+  editor rows with a Subject row after the recipients, and stays while
+  the member moves between mail and settings. Docked: 560 px wide,
+  bottom right on the window's bottom edge, `card` with the dialog
+  shadow and the `border` hairline (`foreground` 20% in dark), its top
+  corners 12 px; a 40 px `muted` strip (44 px for a coarse pointer) holds its title (the subject, else
+  "New message") and Minimise, Full screen, and Close, 32 px icon buttons
+  with tooltips; pressing the title minimises and restores it too.
+  Minimised, only the strip shows, 288 px wide. Never wider than the
+  screen: a window narrowed after it opened stays docked. Full screen: a 960 px
+  window, 88% of the height, over the page dimmed by `scrim`, the dialog
+  radius 14 px; Escape or pressing the dimmed page docks it again. Send
+  and Discard sit in the editor's bar; the message fills the height left.
+  It rises 16 px and fades in over 250 ms as it opens; minimising,
+  restoring, and full screen change at once. Close and Discard ask first
+  with typed text; Escape never closes it.
+- **The compose window and the keyboard:** docked or minimised, it is a
+  landmark named by its title, beside a page that stays in use; F6 moves
+  between it and the page, which is a landmark too ("Mail page",
+  "Settings page"). Full screen, and on phones, it is a modal dialog: the
+  page behind it inert, Tab going round its own controls. Its edge turns
+  `input` while focus is inside, as the reply's card does. Focus starts in
+  the first field to fill in (From, else To, else the start of the
+  message); minimising moves it to the strip's title,
+  restoring back to the field it left; Send moves it to the status;
+  closing gives it back to what opened the window, else the page's
+  heading. Compose, while the window holds a message, brings it back
+  instead of starting another.
+- **On phones** a new message is a full-screen editor: Close, the title,
+  and Send in a 56 px top bar, where the keyboard can't cover Send, and
+  Discard in the bar under the message. The layout when it opens holds
+  until it closes, so turning a phone or resizing never moves what is
+  being written. It is a history entry: Back closes it, asking first with
+  typed text, and Close steps back. A reply stays inline on phones too:
+  without saved drafts, a full-screen reply would make checking an
+  earlier message cost the text; inline, it is a scroll away, and leaving
+  the page with typed text asks first.
+- **After Send**, a reply waits in place as a card with its status until
+  synced mail replaces it. The compose window holds the new message's
+  status instead of the editor, shrunk to it: a 32 px circle in the
+  status's tone with its icon, one line ("Sending to ana@example.com...",
+  then "Sent to ana@example.com"), and under it in muted text the sending
+  account's mark, its address, and the time; Open in Outbox below. A
+  failure names its status in that line, says why under it, and puts its
+  actions in a bar (Edit and send or Send again, then Open in Outbox).
+  The window closes 3 s after Gmail takes the message, waiting while the
+  pointer is on it or focus on one of its controls; minimised, its strip
+  shows the status's mark before the title.
 - **Unsent text** lives in the tab's session storage, cleared on send,
   discard, and sign-out; its conversation row shows "Draft" in `primary`.
   Not built yet: until then a reply's text lives only in its open editor,
@@ -843,8 +884,10 @@ pull-to-refresh, which would reload the app, never starts.
   into "You can try again now" (people meet only limits of 15 minutes or
   more). Times are English with the browser's 12 or 24 hour clock.
 - A page warns before leaving (`LeaveWarning`) only when leaving loses what
-  can't be redone in moments: a long text (compose), settings being edited
-  (System email), backup codes that won't show again. Sign-in, the code
+  can't be redone in moments: a long text (a reply), settings being edited
+  (System email), backup codes that won't show again. The compose window
+  comes along between pages, so it asks only as it closes, as the page
+  unloads, and on a phone as its history entry is left. Sign-in, the code
   forms, setup, and the pages emailed links open don't: what they hold is
   quick to type again, and an emailed link still works from the email. In
   app the warning is a dialog; closing the tab gets the browser's

@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactElement, type RefObject } from "react";
 import { linkOptions, useLocation, useMatch } from "@tanstack/react-router";
 import { cn } from "@/lib/cn";
 import { formatCount } from "@/lib/count";
-import { Disclosure, DisclosurePanel, Link } from "react-aria-components";
+import { Disclosure, DisclosurePanel } from "react-aria-components";
 import {
   ArchiveIcon,
   ChevronRightIcon,
@@ -22,7 +22,7 @@ import type { ListedAccount } from "@/api/generated/model";
 import { accountDot, accountName } from "@/components/account-mark";
 import { NavItem, within } from "@/components/nav-item";
 import type { Tone } from "@/components/status-badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -47,6 +47,7 @@ import { labelTree, unreadIn, usePlaceCounts, type LabelNode } from "./place-cou
 import type { PlaceCount } from "./conversations";
 import { useOutbox } from "@/features/outgoing-messages/outbox";
 import { unfinished } from "@/features/outgoing-messages/text";
+import { useCompose } from "@/features/outgoing-messages/compose-store";
 import {
   accountFoldName,
   accountsName,
@@ -101,7 +102,7 @@ export function MailNav(): ReactElement {
     // there; it is only what useScrollToOpenPlace searches.
     <div ref={box} className="contents">
       <SidebarGroup>
-        <ComposeLink onPress={closeDrawer} />
+        <ComposeButton onPress={closeDrawer} />
       </SidebarGroup>
       <SidebarGroup>
         <SidebarMenu>
@@ -155,27 +156,31 @@ export function MailNav(): ReactElement {
   );
 }
 
-// ComposeLink is the one blue button: it opens a new message.
-function ComposeLink({ onPress }: { onPress: () => void }): ReactElement {
+// ComposeButton is the one blue button: it opens the compose window on a
+// new message, or brings back the one being written. onPress runs too,
+// e.g. to close the drawer.
+function ComposeButton({ onPress }: { onPress: () => void }): ReactElement {
   const { rail } = useSidebar();
+  const compose = useCompose().store;
 
   return (
     <TooltipTrigger isDisabled={!rail}>
-      <Link
-        href={linkOptions({ to: "/compose" })}
-        onPress={onPress}
+      <Button
+        onPress={() => {
+          onPress();
+          compose.open();
+        }}
         aria-label={rail ? composeName : undefined}
         // The pencil keeps its place open or as a rail, in line with the
         // icons below; the button keeps its height, so they don't move.
         className={cn(
-          buttonVariants(),
           "w-full justify-start border-0 pl-2 pointer-coarse:pl-3.5",
           rail && "h-9 w-8 justify-center p-0 pointer-coarse:size-11 pointer-coarse:p-0",
         )}
       >
         <PencilIcon aria-hidden="true" />
         {!rail && composeName}
-      </Link>
+      </Button>
       <Tooltip placement="right">{composeName}</Tooltip>
     </TooltipTrigger>
   );

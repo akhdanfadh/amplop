@@ -3,7 +3,13 @@ import { linkOptions } from "@tanstack/react-router";
 import { expect, it } from "vite-plus/test";
 import { getGetSetupStatusQueryKey, getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
 import { mailHref, rememberMailHref } from "@/features/mail/places";
-import { clearAccountCache, onAccountCacheClear, onAccountEndedElsewhere } from "./session-cache";
+import {
+  clearAccountCache,
+  clearTabAccountData,
+  endTabAccount,
+  onAccountCacheClear,
+  onAccountEndedElsewhere,
+} from "./session-cache";
 
 it("clears account data and credentials while retaining public setup status", async () => {
   const client = new QueryClient();
@@ -84,4 +90,41 @@ it("tells this browser's other tabs, and hears theirs", async () => {
   } finally {
     otherTab.close();
   }
+});
+
+it("clears this tab alone for another tab's end, telling no tab back", async () => {
+  const otherTab = new BroadcastChannel("inbok-account");
+  try {
+    const told: unknown[] = [];
+    otherTab.addEventListener("message", (event) => told.push(event.data));
+    const client = new QueryClient();
+    client.setQueryData(["account-data"], 1);
+    const cleared: QueryClient[] = [];
+    const stop = onAccountCacheClear((cleared_) => cleared.push(cleared_));
+
+    clearTabAccountData(client);
+    stop();
+    expect(client.getQueryData(["account-data"])).toBeUndefined();
+    expect(cleared).toEqual([client]);
+    // A message would have arrived by the next task.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(told).toEqual([]);
+  } finally {
+    otherTab.close();
+  }
+});
+
+it("clears this tab before reloading it for another tab's end", () => {
+  const client = new QueryClient();
+  client.setQueryData(["account-data"], 1);
+  const seen: string[] = [];
+  const stop = onAccountCacheClear(() => seen.push("cleared"));
+
+  // The reload is the page's own; what matters is that clearing comes first,
+  // so a leave warning that cancels the reload keeps nothing.
+  endTabAccount(client, () => {
+    seen.push(client.getQueryData(["account-data"]) === undefined ? "reload, cleared" : "reload");
+  });
+  stop();
+  expect(seen).toEqual(["cleared", "reload, cleared"]);
 });

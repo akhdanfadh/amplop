@@ -1,31 +1,23 @@
-import { useRef, type ReactElement } from "react";
+import type { ReactElement } from "react";
 import { useBlocker } from "@tanstack/react-router";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ChoiceDialog, type ChoiceText } from "@/components/choice-dialog";
 
-// The words of one leave warning: the dialog's title and description, its
-// buttons for staying and for leaving, and whether leaving loses something,
-// which marks its button destructive.
-export type LeaveWarningText = {
-  title: string;
-  description: string;
-  stay: string;
-  leave: string;
-  leaveVariant: "destructive" | "default";
-};
+// The words of one leave warning, as a ChoiceDialog asks them.
+export type LeaveWarningText = ChoiceText;
+
+// A place in the app as a blocker sees it: its path and its search.
+type Address = { pathname: string; search: unknown };
+
+// sameAddress reports whether a and b are the same address.
+function sameAddress(a: Address, b: Address): boolean {
+  return a.pathname === b.pathname && JSON.stringify(a.search) === JSON.stringify(b.search);
+}
 
 // LeaveWarning asks before the member leaves the page while active, e.g.
 // while a form holds typed input: a link, Back, or Forward opens a dialog
 // with text, and closing or reloading the tab asks with the browser's own
-// words. Navigate with ignoreBlocker to leave without asking, e.g. after a
-// save.
+// words; a step to the same address asks nothing. Navigate with
+// ignoreBlocker to leave without asking, e.g. after a save.
 export function LeaveWarning({
   active,
   text,
@@ -34,46 +26,22 @@ export function LeaveWarning({
   text: LeaveWarningText;
 }): ReactElement {
   const blocker = useBlocker({
-    shouldBlockFn: () => active,
+    // Only leaving the page's address leaves it: a step that keeps it, e.g.
+    // the history entry the compose window adds on a phone, keeps the page.
+    shouldBlockFn: ({ current, next }) => active && !sameAddress(current, next),
     // Browsers show only their own text before unloading a page.
     enableBeforeUnload: active,
     withResolver: true,
   });
-  // Set by the leave button, which also closes the dialog: that close must
-  // not cancel the navigation it just let through.
-  const leaving = useRef(false);
 
   return (
-    <AlertDialog
+    <ChoiceDialog
       isOpen={blocker.status === "blocked"}
+      text={text}
       // Cancel or Escape: stay on the page. An alert dialog does not close
       // on a click outside it.
-      onOpenChange={(open) => {
-        if (open) return;
-        if (leaving.current) {
-          leaving.current = false;
-          return;
-        }
-        blocker.reset?.();
-      }}
-    >
-      <AlertDialogHeader>
-        <AlertDialogTitle>{text.title}</AlertDialogTitle>
-        <AlertDialogDescription>{text.description}</AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel>{text.stay}</AlertDialogCancel>
-        <AlertDialogAction
-          type="button"
-          variant={text.leaveVariant}
-          onPress={() => {
-            leaving.current = true;
-            blocker.proceed?.();
-          }}
-        >
-          {text.leave}
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialog>
+      onStay={() => blocker.reset?.()}
+      onLeave={() => blocker.proceed?.()}
+    />
   );
 }

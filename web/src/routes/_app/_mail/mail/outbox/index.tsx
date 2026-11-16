@@ -1,9 +1,10 @@
 import { useEffect, useRef, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useGetCurrentSession } from "@/api/generated/inbok";
 import { userMessage } from "@/api/problem";
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
+import { useCompose } from "@/features/outgoing-messages/compose-store";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { OutgoingMessageList } from "@/features/outgoing-messages/list";
 import { ReadError } from "@/components/read-error";
@@ -22,6 +23,7 @@ function Outbox(): ReactElement {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const current = useGetCurrentSession();
   const list = useOutbox();
+  const compose = useCompose().store;
   const expired = [current.error, list.error].some((err) => err?.status === unauthorized);
   const messages = list.data?.data.messages;
 
@@ -44,9 +46,9 @@ function Outbox(): ReactElement {
         <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold tracking-tight">
           Outbox
         </h1>
-        <Link to="/compose" className={buttonVariants({ className: "whitespace-normal" })}>
+        <Button className="whitespace-normal" onPress={() => compose.open()}>
           New message
-        </Link>
+        </Button>
       </div>
       <p>
         The newest 50 messages you sent from inbok, with whether each one was sent. Messages sent

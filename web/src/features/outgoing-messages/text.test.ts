@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 import type { OutgoingMessageSummary, ProblemType } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
 import {
-  fromOption,
   inProgress,
   keyReused,
   leaveText,
@@ -18,6 +17,7 @@ import {
   unfinished,
   type MessageState,
   type Offer,
+  invalidAddressMessage,
 } from "./text";
 
 type Failure = NonNullable<OutgoingMessageSummary["failure"]>;
@@ -289,9 +289,10 @@ describe("readErrorMessage for other failures", () => {
   });
 });
 
-describe("fromOption", () => {
-  it("names an account by its address, then the name only the member sees", () => {
-    expect(fromOption({ email: "ana@work.example", name: null })).toBe("ana@work.example");
-    expect(fromOption({ email: "ana@work.example", name: "Work" })).toBe("ana@work.example (Work)");
+describe("invalidAddressMessage", () => {
+  it("ends with the value as typed, so its own quotes read as typed", () => {
+    expect(invalidAddressMessage('"Lopez, Ana"')).toBe(
+      'This isn\'t an email address, so fix it or remove it: "Lopez, Ana"',
+    );
   });
 });

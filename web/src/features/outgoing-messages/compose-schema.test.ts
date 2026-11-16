@@ -2,13 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 // The app's words for Zod's own checks, e.g. a length limit, as the form shows them.
 import "@/zod-config";
 import type { OutgoingMessage } from "@/api/generated/model";
-import {
-  ComposeSchema,
-  composeRequest,
-  composeValues,
-  parseRecipients,
-  type ComposeValues,
-} from "./compose-schema";
+import { ComposeSchema, composeRequest, composeValues, type ComposeValues } from "./compose-schema";
 
 const valid: ComposeValues = {
   connectedAccountId: 7,
@@ -31,30 +25,6 @@ function issues(values: ComposeValues): Record<string, string[]> {
   return byField;
 }
 
-describe("parseRecipients", () => {
-  it.each([
-    ["", []],
-    ["  ", []],
-    ["ana@example.com", ["ana@example.com"]],
-    ["ana@example.com, bo@example.com", ["ana@example.com", "bo@example.com"]],
-    ["ana@example.com;bo@example.com", ["ana@example.com", "bo@example.com"]],
-    [" ana@example.com  bo@example.com ,, ", ["ana@example.com", "bo@example.com"]],
-    ["ana@example.com,\nbo@example.com", ["ana@example.com", "bo@example.com"]],
-    ["Ana Lopez <ana@example.com>, bo@example.com", ["ana@example.com", "bo@example.com"]],
-    ['"Lopez, Ana" <ana@example.com>', ["ana@example.com"]],
-    [
-      '"Lopez, Ana" <ana@example.com>; "Bo" <bo@example.com>',
-      ["ana@example.com", "bo@example.com"],
-    ],
-    // Quoted text with no <address> is kept, to show as not an address.
-    ['"copy@example.com"', ['"copy@example.com"']],
-    ['"copy@example.com", bo@example.com', ['"copy@example.com"', "bo@example.com"]],
-    ['"Lopez, Ana"', ['"Lopez, Ana"']],
-  ])("splits %j", (text, addresses) => {
-    expect(parseRecipients(text)).toEqual(addresses);
-  });
-});
-
 describe("ComposeSchema", () => {
   it("accepts a message with one recipient in any list", () => {
     expect(issues(valid)).toEqual({});
@@ -67,7 +37,7 @@ describe("ComposeSchema", () => {
 
   it("names the first address that isn't one", () => {
     expect(issues({ ...valid, cc: ["bo@example.com", "bo@", "cy"] })).toEqual({
-      cc: ['"bo@" isn\'t an email address. Fix it or remove it.'],
+      cc: ["This isn't an email address, so fix it or remove it: bo@"],
     });
   });
 

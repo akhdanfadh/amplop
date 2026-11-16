@@ -39,7 +39,7 @@ describe("ReplySchema", () => {
 
   it("checks addresses and the body's limit as Send Message does", () => {
     expect(issues({ ...valid, cc: ["bo@"], body: "x".repeat(newReplyBodyMax + 1) })).toEqual({
-      cc: ['"bo@" isn\'t an email address. Fix it or remove it.'],
+      cc: ["This isn't an email address, so fix it or remove it: bo@"],
       body: [`Must be at most ${newReplyBodyMax} characters.`],
     });
   });

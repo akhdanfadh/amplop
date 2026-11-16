@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import { CheckIcon, CircleHelpIcon, CircleXIcon, ClockIcon, RotateCwIcon } from "lucide-react";
 import type { OutgoingMessageSummary } from "@/api/generated/model";
-import { StatusBadge, type StatusIcon, type Tone } from "@/components/status-badge";
+import { StatusBadge, StatusMark, type StatusIcon, type Tone } from "@/components/status-badge";
 import { Spinner } from "@/components/ui/spinner";
 import { sentAgainLabel, statusLabel } from "./text";
 
@@ -34,4 +34,11 @@ export function SentAgainBadge(): ReactElement {
       {sentAgainLabel}
     </StatusBadge>
   );
+}
+
+// MessageStatusMark shows status as a tinted circle with its icon, beside
+// words that name it.
+export function MessageStatusMark({ status }: { status: Status }): ReactElement {
+  const { tone, icon } = looks[status];
+  return <StatusMark tone={tone} icon={icon} />;
 }

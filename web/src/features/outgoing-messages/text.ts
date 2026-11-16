@@ -78,10 +78,24 @@ export type Offer = "send-again" | "edit" | "reconnect";
 // NextSteps is what a message's page says happened and what it offers.
 export type NextSteps = { text: string; offers: Offer[] };
 
+// What a failed message's text starts with, which a summary that names
+// the status beside it leaves out.
+export const notSentPrefix = "Not sent. ";
+
+// sentSummary words message's status in one line, for the compose window
+// after Send: who it is going or went to, or the status's name.
+export function sentSummary(
+  message: MessageState & Pick<OutgoingMessageSummary, "to" | "cc" | "bcc">,
+): string {
+  if (inProgress(message.status)) return `Sending to ${recipientSummary(message)}...`;
+  if (message.status === "sent") return `Sent to ${recipientSummary(message)}`;
+  return statusLabel(message.status);
+}
+
 // A message sent again already has a copy: it offers nothing more, so no
 // text sends the member to send it twice.
 const sentAgainTexts: Partial<Record<Status, string>> = {
-  failed: "Not sent. You already tried sending it again.",
+  failed: `${notSentPrefix}You already tried sending it again.`,
   unknown:
     "inbok couldn't confirm whether Gmail sent this message. You already tried sending it again.",
 };
@@ -96,7 +110,7 @@ export function nextSteps(message: MessageState, current?: string): NextSteps {
   if (message.status !== "failed")
     return { text: statusTexts[message.status](message.from), offers: [] };
   const failure = message.failure && failures[message.failure];
-  const text = failure ? `Not sent. ${failure(message.from, current)}` : "Not sent.";
+  const text = failure ? `${notSentPrefix}${failure(message.from, current)}` : "Not sent.";
   return { text, offers: failureOffers(message.failure) };
 }
 
@@ -181,16 +195,6 @@ export function replyErrorMessage(err: ApiError): string {
 export const otherAccountNote =
   "This account didn't receive the message, so the reply starts a new conversation in its Gmail.";
 
-// What an account option that can't send says after its address.
-export const needsReconnectMark = "(needs reconnecting)";
-
-// fromOption returns how a From list names account as words alone: its
-// address, which recipients see, then the name the member chose for it,
-// which only the member sees.
-export function fromOption(account: { email: string; name: string | null }): string {
-  return account.name === null ? account.email : `${account.email} (${account.name})`;
-}
-
 // What the reply part of a conversation says when the member's accounts
 // could not be read, before the reason.
 export const accountsUnreadable = "Could not load your connected accounts, so you can't reply yet.";
@@ -199,17 +203,54 @@ export const accountsUnreadable = "Could not load your connected accounts, so yo
 // put in the API's path.
 export const notAnswerable = "This message can't be answered here.";
 
+// What the compose window's status says, before the reason, when reading
+// the sent message again failed: the status shown may have moved on.
+export const messageStatusStale =
+  "Could not read this message's status again, so it may be out of date.";
+
+// What the compose window says when the connected accounts can't be read,
+// before the reason.
+export const composeAccountsUnreadable = "Could not load your connected accounts.";
+
+// noAccountText says why the compose window has no editor: no connected
+// account, or none of count able to send.
+export function noAccountText(count: number): string {
+  return count === 0
+    ? "Connect a Gmail account to send messages from it."
+    : "Each of your Gmail accounts needs reconnecting before it can send.";
+}
+
+// What the compose window says after a 401, before the link to sign in.
+export const signedOutText =
+  "You're signed out, so this message can't be sent. Copy what you typed, then";
+
+// editNoteText says that the window starts with the content of a message
+// Gmail refused or one the member opened, which stays as it is.
+export function editNoteText(from: "refused" | "opened"): string {
+  return from === "refused"
+    ? "This is a new message with the content of the one Gmail refused, which stays in the Outbox as it is."
+    : "This is a new message with the content of the one you opened, which stays in the Outbox as it is.";
+}
+
+// What Edit and send asks while the compose window holds another message.
+export const replaceText: LeaveWarningText = {
+  title: "Replace the message you're writing?",
+  description: "What you typed in it hasn't been sent, and it will be lost.",
+  stay: "Keep writing",
+  leave: "Replace",
+  leaveVariant: "destructive",
+};
+
 // What a reply's status says, before the reason, when reading it again
 // failed: the status shown may have moved on.
 export const replyStatusStale =
   "Could not read this reply's status again, so it may be out of date.";
 
-// What a recipient chip adds after a value that isn't an address.
-export const notAnAddress = "not an email address";
-
 // invalidAddressMessage says value, in a recipient list, isn't an address.
+// The value ends the message, unquoted, so quotes of its own, e.g. in
+// "Lopez, Ana", read as typed.
 export function invalidAddressMessage(value: string): string {
-  return `"${value}" isn't an email address. Fix it or remove it.`;
+  return `This isn't an email address, so fix it or remove it: ${value}`;
 }
 
 // needsReconnectNote says the account that received the message, email,
@@ -248,8 +289,69 @@ export function readErrorMessage(err: ApiError): string {
   return `Could not load this message. ${userMessage(err)}`;
 }
 
-// What leaving the compose form asks: while it saves; after a try that may
-// have saved the message; or with typed input that was surely not sent.
+// The compose window's name until its message has a subject.
+export const newMessageTitle = "New message";
+
+// closeText returns what closing the compose window asks in state, from
+// its Close or Discard, or from Back on a phone.
+export function closeText(state: LeaveState): LeaveWarningText {
+  if (state === "sending") return closeSending;
+  if (state === "unconfirmed") return closeUnconfirmed;
+  return leaveTyped;
+}
+
+const closeSending: LeaveWarningText = {
+  title: "Close while sending?",
+  description:
+    "Your message is still being saved. If you close it, check the Outbox to see whether it was.",
+  stay: "Keep open",
+  leave: "Close",
+  leaveVariant: "default",
+};
+const closeUnconfirmed: LeaveWarningText = {
+  title: "Close this message?",
+  description:
+    "An earlier try may have saved this message, and it may be sent. What you typed won't be kept.",
+  stay: "Keep open",
+  leave: "Close",
+  leaveVariant: "default",
+};
+
+// signOutText returns what signing out asks while the compose window would
+// lose something in state.
+export function signOutText(state: LeaveState): LeaveWarningText {
+  if (state === "sending") return signOutSending;
+  if (state === "unconfirmed") return signOutUnconfirmed;
+  return signOutTyped;
+}
+
+const signOutTyped: LeaveWarningText = {
+  title: "Sign out and discard your message?",
+  description: "The message you're writing hasn't been sent, and it will be lost.",
+  stay: "Keep writing",
+  leave: "Sign out",
+  leaveVariant: "destructive",
+};
+const signOutSending: LeaveWarningText = {
+  title: "Sign out while sending?",
+  description:
+    "Your message is still being saved. If you sign out, check the Outbox after signing in to see whether it was.",
+  stay: "Stay",
+  leave: "Sign out",
+  leaveVariant: "default",
+};
+const signOutUnconfirmed: LeaveWarningText = {
+  title: "Sign out and close your message?",
+  description:
+    "An earlier try may have saved this message, and it may be sent. What you typed won't be kept.",
+  stay: "Stay",
+  leave: "Sign out",
+  leaveVariant: "default",
+};
+
+// What leaving a message editor's page asks, e.g. the reply's: while it
+// saves; after a try that may have saved the message; or with typed input
+// that was surely not sent.
 const leaveSending: LeaveWarningText = {
   title: "Leave while sending?",
   description:
@@ -282,7 +384,7 @@ export function mayHaveSaved(err: ApiError): boolean {
   return uncertainOutcome(err) || keyReused(err);
 }
 
-// The state of the compose form that decides what leaving it asks: a send
+// The state of a message editor that decides what leaving it asks: a send
 // running; an earlier try that may have saved the message; or typed input
 // that surely was not sent.
 export type LeaveState = "sending" | "unconfirmed" | "typed";
@@ -299,7 +401,7 @@ export function replyLeaveText(state: LeaveState): LeaveWarningText {
   return state === "typed" ? discardReply : leaveText(state);
 }
 
-// leaveText returns what leaving the compose form asks in state.
+// leaveText returns what leaving a message editor's page asks in state.
 export function leaveText(state: LeaveState): LeaveWarningText {
   if (state === "sending") return leaveSending;
   if (state === "unconfirmed") return leaveUnconfirmed;

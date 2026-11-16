@@ -1,10 +1,21 @@
-import { Fragment, useId, type ReactElement, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, type ReactElement, type ReactNode } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { cn } from "@/lib/cn";
 import { CircleAlertIcon } from "lucide-react";
+import type { ConnectedAccount } from "@/api/generated/model";
+import { accountDot } from "@/components/account-mark";
 import { PasswordInput } from "@/components/password-input";
+import { RecipientInput, type Typing } from "@/components/recipient-input";
 import { Field, FieldDescription, FieldError, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   InputOTP,
@@ -285,10 +296,312 @@ export function CodeField({
   );
 }
 
+// The message editor's rows (DESIGN.md "Compose and reply"): one card with
+// a row each for From, the recipient lists, and the subject, a muted label
+// on the left and the value on the right, divided by hairlines, then the
+// message. The label column is as wide as "Subject", the longest label.
+// Each row is a size container: narrower than 24rem, e.g. on a phone or
+// with text at 200%, the label sits above the value, which then has the
+// row's whole width.
+const rowLabel =
+  "h-8 w-14 shrink-0 font-normal text-muted-foreground pointer-coarse:h-9 @max-[24rem]:h-6 @max-[24rem]:w-auto @max-[24rem]:flex-1";
+// A row's line: the label, the value, and anything after it.
+const rowLine = "flex items-start gap-3 px-4 py-1.5 @max-[24rem]:flex-wrap @max-[24rem]:gap-y-0";
+// The value of a row whose label sits above it.
+const narrowValue = "@max-[24rem]:order-last @max-[24rem]:basis-full";
+// Lines under a row's value, e.g. its error, start where the value does:
+// the row's padding, the label, and the gap.
+const underValue = "px-4 pb-2 pl-21 @max-[24rem]:pl-4";
+
+// An account's address or name in From: cut short in the button, whole in
+// the list.
+const accountText =
+  "min-w-0 truncate in-data-[slot=select-item]:whitespace-normal in-data-[slot=select-item]:wrap-anywhere";
+
+// What an account option that can't send says after its address.
+const needsReconnectMark = "(needs reconnecting)";
+
+// FromField is the current field as the message editor's From row: the
+// account a message goes from, by its id, 0 while none is chosen. accounts
+// are the member's connected accounts; one the server doesn't report as
+// usable needs reconnecting and can't be chosen. description says
+// something about the choice under the row, e.g. that the chosen account
+// didn't receive the message answered.
+export function FromField({
+  label,
+  accounts,
+  description,
+}: {
+  label: string;
+  accounts: readonly ConnectedAccount[];
+  description?: string;
+}): ReactElement {
+  return (
+    <RowFrame<number> description={description}>
+      {(control, change) => (
+        <Select
+          id={control.id}
+          name={control.name}
+          className="flex w-full items-center gap-3 px-4 py-1.5 @max-[24rem]:flex-wrap @max-[24rem]:gap-y-0"
+          placeholder="Choose an account"
+          value={control.value === 0 ? null : control.value}
+          onChange={(value) => change(value === null ? 0 : Number(value))}
+          // Its send could only fail; the server refuses it too.
+          disabledKeys={accounts
+            .filter((account) => account.status !== "usable")
+            .map((account) => account.id)}
+          isDisabled={control.disabled}
+          isInvalid={control["aria-invalid"]}
+          aria-describedby={control["aria-describedby"]}
+          onBlur={control.onBlur}
+        >
+          {/* Narrow, the label takes its own line and the button keeps its
+              width, its text in line with the label. */}
+          <Label className={cn(rowLabel, "flex items-center @max-[24rem]:basis-full")}>
+            {label}
+          </Label>
+          {/* Quiet until pointed at: no outline at rest, a hover tint, then
+              the list; its chevron and label mark it. */}
+          <SelectTrigger
+            size="sm"
+            className={cn(
+              "w-auto max-w-full min-w-0 border-transparent bg-transparent px-2 hover:bg-accent data-pressed:bg-accent dark:bg-transparent dark:hover:bg-accent",
+              "@max-[24rem]:-ml-2",
+              // 14 px at every width, as the labels and chips are. Inputs
+              // keep 16 px on phones so Safari doesn't zoom in on focus;
+              // a button never zooms.
+              "text-sm",
+            )}
+          >
+            <SelectValue className="min-w-0" />
+          </SelectTrigger>
+          <SelectContent className="min-w-64">
+            {accounts.map((account) => (
+              <SelectItem
+                key={account.id}
+                id={account.id}
+                // Typing an option's start selects it, so its words are
+                // what the member sees: address, then name.
+                textValue={
+                  account.name === null ? account.email : `${account.email} ${account.name}`
+                }
+              >
+                {/* The account's mark, as everywhere it is named (DESIGN.md
+                    "Colour"), then its address, which recipients see, and
+                    its name, which only the member does. */}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-2 shrink-0 self-center rounded-full",
+                    accountDot(account.color),
+                  )}
+                />
+                {/* In the button both shrink and end with "..." when the row
+                    is too narrow; in the open list they wrap, so every
+                    account reads in full. */}
+                <span translate="no" className={accountText}>
+                  {account.email}
+                </span>
+                {account.name !== null && (
+                  <span className={cn(accountText, "text-muted-foreground")}>{account.name}</span>
+                )}
+                {account.status !== "usable" && ` ${needsReconnectMark}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+    </RowFrame>
+  );
+}
+
+// RecipientsField is the current field as a message editor's row of
+// recipient chips, e.g. To. isAddress is the contract's rule for one
+// address, which marks a chip that isn't one. after sits at the row's end,
+// e.g. the buttons that add Cc and Bcc. onTyping reports whether the row
+// holds typed text not yet a chip, which a form counts as an edit.
+export function RecipientsField({
+  label,
+  isAddress,
+  after,
+  onTyping,
+}: {
+  label: string;
+  isAddress: (value: string) => boolean;
+  after?: ReactNode;
+  onTyping?: (state: Typing) => void;
+}): ReactElement {
+  return (
+    <RowFrame<string[]>>
+      {(control, change) => (
+        <div className={rowLine}>
+          <Label htmlFor={control.id} className={rowLabel}>
+            {label}
+          </Label>
+          <RecipientInput
+            id={control.id}
+            label={label}
+            isAddress={isAddress}
+            value={control.value}
+            onChange={change}
+            onBlur={control.onBlur}
+            invalid={control["aria-invalid"]}
+            describedBy={control["aria-describedby"]}
+            // Read-only, not disabled: the chips keep their one Tab stop.
+            readOnly={control.disabled}
+            onTyping={onTyping}
+            className={cn("min-h-8 pointer-coarse:min-h-9", narrowValue)}
+          />
+          {after}
+        </div>
+      )}
+    </RowFrame>
+  );
+}
+
+// SubjectField is the current field as a message editor's one-line text
+// row, e.g. Subject, without a box of its own.
+export function SubjectField({ label }: { label: string }): ReactElement {
+  return (
+    <RowFrame<string>>
+      {(control, change) => (
+        <div className={rowLine}>
+          <Label htmlFor={control.id} className={cn(rowLabel, "flex items-center")}>
+            {label}
+          </Label>
+          <input
+            {...control}
+            onChange={(event) => change(event.target.value)}
+            type="text"
+            autoComplete="off"
+            className={cn(
+              "h-8 min-w-0 flex-1 bg-transparent px-1 text-base outline-none md:text-sm pointer-coarse:h-9",
+              narrowValue,
+            )}
+          />
+        </div>
+      )}
+    </RowFrame>
+  );
+}
+
+// MessageField is the current field as a message editor's message: a text
+// area without a box of its own, named label for assistive technology.
+// focus "mount" moves focus into it when it appears, e.g. a reply's, whose
+// recipients are already filled in. size "grow" grows it with its text;
+// "fill" fills the height its editor gives it, e.g. the compose window's.
+export function MessageField({
+  label,
+  focus,
+  size = "grow",
+}: {
+  label: string;
+  focus?: "mount";
+  size?: "grow" | "fill";
+}): ReactElement {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (focus === "mount") ref.current?.focus();
+  }, [focus]);
+
+  return (
+    <RowFrame<string> divider="none" height={size === "fill" ? "fill" : "content"}>
+      {(control, change) => (
+        <textarea
+          {...control}
+          ref={ref}
+          aria-label={label}
+          onChange={(event) => change(event.target.value)}
+          className={cn(
+            "block min-h-44 w-full bg-transparent px-4 py-3 text-message outline-none",
+            size === "grow"
+              ? // It grows with its text up to 60% of the window, then scrolls.
+                "field-sizing-content max-h-[60svh] resize-y"
+              : "flex-1 resize-none",
+          )}
+        />
+      )}
+    </RowFrame>
+  );
+}
+
+// RowFrame renders the current field as one row of the message editor: the
+// row children returns from the field's control props and a function that
+// sets its value, then description and the field's errors under the value.
+// divider "none" leaves out the hairline under the row, e.g. for the
+// message, which the editor's bar edges. height "fill" makes the row take
+// the height its editor has left, e.g. the message in the compose window.
+function RowFrame<T>({
+  description,
+  divider = "below",
+  height = "content",
+  children,
+}: {
+  description?: string;
+  divider?: "below" | "none";
+  height?: "content" | "fill";
+  children: (control: RowControlProps<T>, change: (value: T) => void) => ReactNode;
+}): ReactElement {
+  const field = useFieldContext<T>();
+  const form = useFormContext();
+  const sending = useSelector(form.store, (state) => state.isSubmitting);
+  const id = useId();
+  const descriptionId = `${id}-description`;
+  const errorId = `${id}-error`;
+  const errors = messages(field.state.meta.errors);
+  const invalid = errors.length > 0;
+  const describedBy = [description && descriptionId, invalid && errorId].filter(Boolean).join(" ");
+
+  return (
+    <div
+      data-invalid={invalid}
+      className={cn(
+        "@container",
+        divider === "below" && "border-b",
+        height === "fill" && "flex min-h-0 flex-1 flex-col",
+      )}
+    >
+      {children(
+        {
+          id,
+          name: field.name,
+          value: field.state.value,
+          disabled: sending,
+          "aria-invalid": invalid,
+          "aria-describedby": describedBy || undefined,
+          onBlur: field.handleBlur,
+        },
+        field.handleChange,
+      )}
+      {description && (
+        // An address in the note, e.g. one that needs reconnecting, breaks
+        // anywhere rather than run past the card.
+        <p
+          id={descriptionId}
+          className={cn(underValue, "text-snippet wrap-anywhere text-muted-foreground")}
+        >
+          {description}
+        </p>
+      )}
+      {invalid && (
+        // An error naming a long value, e.g. an address, breaks anywhere
+        // rather than run past the card.
+        <div className={cn(underValue, "min-w-0 wrap-anywhere")}>
+          <ErrorLine id={errorId} errors={errors} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The props of a message editor row's control, as ControlProps with a
+// value of the field's own type.
+type RowControlProps<T> = Omit<ControlProps, "value"> & { value: T };
+
 // FieldFrame renders the current field's label, description, the control
 // children returns from its props and a function that sets the field's
-// value, and the field's errors under it. Every field kind in this file
-// renders through it.
+// value, and the field's errors under it. Every stacked field kind renders
+// through it; a message editor's rows render through RowFrame.
 function FieldFrame({
   label,
   description,

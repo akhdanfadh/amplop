@@ -4,11 +4,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useLandmark } from "react-aria/useLandmark";
 import { cn } from "@/lib/cn";
 import { MemberMenu } from "@/components/member-menu";
 import { OfflineBanner } from "@/components/offline-banner";
@@ -23,7 +26,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { onAccountEndedElsewhere } from "@/features/auth/session-cache";
+import { endTabAccount, onAccountEndedElsewhere } from "@/features/auth/session-cache";
 import { localStore } from "@/lib/local-store";
 
 // The localStorage key that holds whether the sidebar is open, "true" or
@@ -83,12 +86,21 @@ export function Frame({
   // Another tab signed out, or another member signed in there: this tab's
   // member data may belong to no one now, so the page loads again, and its
   // guard reads whose session the browser holds.
-  useEffect(() => onAccountEndedElsewhere(() => window.location.reload()), []);
+  const client = useQueryClient();
+  useEffect(
+    () => onAccountEndedElsewhere(() => endTabAccount(client, () => window.location.reload())),
+    [client],
+  );
   const store = useCallback((value: boolean) => {
     setOpen(value);
     localStore.setItem(openKey, String(value));
   }, []);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  // The page is a landmark React Aria knows, so F6 goes from it to the
+  // compose window, the Undo bar, or a toast, and back (DESIGN.md
+  // "Compose and reply"): React Aria moves only between landmarks it knows.
+  const pageRef = useRef<HTMLDivElement>(null);
+  const { landmarkProps } = useLandmark({ role: "region", "aria-label": `${label} page` }, pageRef);
 
   return (
     <SidebarProvider open={open} onOpenChange={store}>
@@ -112,7 +124,11 @@ export function Frame({
         {/* Relative, so what is placed absolutely in a page, e.g. a
             screen-reader-only label, is placed in this box and scrolls
             with it, instead of stretching the whole page. */}
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-auto">
+        <div
+          ref={pageRef}
+          {...landmarkProps}
+          className="relative flex min-h-0 flex-1 flex-col overflow-auto outline-none focus-visible:focus-ring-inset"
+        >
           <ProvideTopBarSlot box={slot}>{children}</ProvideTopBarSlot>
         </div>
       </SidebarInset>

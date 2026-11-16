@@ -26,6 +26,7 @@ import type { CurrentSession } from "@/api/generated/model";
 import { retryOptions } from "@/api/retry";
 import { Frame } from "@/components/frame";
 import { SetupReminder } from "./reminder";
+import { ComposeStore } from "@/features/outgoing-messages/compose-store";
 
 const fault = 500;
 const settings = {
@@ -364,7 +365,7 @@ async function loadApp(client: QueryClient) {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: ["/settings/security"] }),
-    context: { queryClient: client },
+    context: { queryClient: client, compose: new ComposeStore() },
   });
   await router.load();
   return { fetch, router };

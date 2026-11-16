@@ -1,325 +1,137 @@
-import { useRef, useState, type ReactElement } from "react";
-import { useForm, useSelector } from "@tanstack/react-form";
-import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import {
-  getListConnectedAccountsQueryKey,
-  getListOutgoingMessagesQueryKey,
-  useSendMessage,
-} from "@/api/generated/inbok";
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { revalidateLogic, useSelector } from "@tanstack/react-form";
+import { Trash2Icon } from "lucide-react";
+import { useSendMessage } from "@/api/generated/inbok";
 import type { ConnectedAccount, OutgoingMessage } from "@/api/generated/model";
-import { formErrors, formSummary } from "@/api/problem";
-import { repeatableWriteRetry } from "@/api/retry";
-import { LeaveWarning } from "@/components/leave-warning";
-import { RequestError } from "@/components/request-error";
+import { useAppForm } from "@/components/form/app-form";
+import { useFormRequest } from "@/components/form/request";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { describedBy, shownErrors, type Submission } from "./field-errors";
-import { RecipientField, withTyping } from "./recipient-field";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Textarea } from "@/components/ui/textarea";
-import { useFocusAfterError } from "@/hooks/use-focus-after-error";
-import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
+import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { ComposeSchema, composeFields, composeRequest, type ComposeValues } from "./compose-schema";
-import {
-  keyReused,
-  leaveText,
-  mayHaveSaved,
-  needsReconnect,
-  fromOption,
-  needsReconnectMark,
-  sendErrorMessage,
-} from "./text";
-import { lineLink } from "@/components/link-style";
+import { EditorCard, RecipientRows, SendFailure, recipientLists, useEditorSend } from "./editor";
+import { newMessageTitle, sendErrorMessage, type LeaveState } from "./text";
 
-const unauthorized = 401;
-
-// The recipient lists, each one field of chips.
-const recipientFields = [
-  { name: "to", label: "To" },
-  { name: "cc", label: "Cc" },
-  { name: "bcc", label: "Bcc" },
-] as const;
+// The parts of the compose window's top bar that the form owns: title, the
+// window's name, which follows the subject; and send, the Send button when
+// the look puts it in the top bar, else null.
+export type ComposeHeader = { title: string; send: ReactNode };
 
 // ComposeForm writes a new message and sends it from one of accounts, the
 // member's connected accounts, oldest first; one that isn't usable needs
-// reconnecting and can't be chosen. initial is what the form starts with.
-// onSent receives the saved message, whose send goes on in the background;
-// onUnauthorized runs on a 401.
+// reconnecting and can't be chosen. initial is what the form starts with;
+// note, shown above the rows, says where it came from. look is the compose
+// window's: "window" puts Send in the bar under the message, "full-screen"
+// in header, the window's top bar, which the form draws first. collapsed
+// hides all but header while the window is minimised, keeping what is
+// typed. onSent receives the saved message, whose send goes on in the
+// background; onDiscard runs on Discard; onLoses receives what closing the
+// window would lose, whenever that changes; onUnauthorized runs on a 401.
 export function ComposeForm({
   accounts,
   initial,
+  note,
+  look,
+  header,
+  collapsed,
   onSent,
+  onDiscard,
+  onLoses,
   onUnauthorized,
 }: {
   accounts: ConnectedAccount[];
   initial: ComposeValues;
+  note?: ReactNode;
+  look: "window" | "full-screen";
+  header: (parts: ComposeHeader) => ReactNode;
+  collapsed: boolean;
   onSent: (message: OutgoingMessage) => void;
+  onDiscard: () => void;
+  onLoses: (loses: LeaveState | null) => void;
   onUnauthorized: () => void;
 }): ReactElement {
-  const client = useQueryClient();
-  const formRef = useRef<HTMLFormElement>(null);
-  const submitRef = useRef<HTMLButtonElement>(null);
-  // One key per message the member means to send, so a repeated request,
-  // automatic or by hand, returns the message the first one saved.
-  // crypto.randomUUID needs a secure context, which signing in already
-  // does: the session cookie is Secure.
-  const [key, setKey] = useState(() => crypto.randomUUID());
-  // Set once a try may have saved the message, and kept through later
-  // edits and sends, which reset the request's error: only the Outbox can
-  // tell whether it was saved.
-  const [unconfirmed, setUnconfirmed] = useState(false);
-  const send = useSendMessage({
-    mutation: {
-      ...repeatableWriteRetry,
-      onError: (err) => {
-        if (err.status === unauthorized) onUnauthorized();
-        // The account's status has changed since the list was read.
-        if (needsReconnect(err))
-          void client.invalidateQueries({ queryKey: getListConnectedAccountsQueryKey() });
-      },
-      // Here, not with each call, so the Outbox learns of a message saved
-      // after the member left the page.
-      onSettled: () => client.invalidateQueries({ queryKey: getListOutgoingMessagesQueryKey() }),
-    },
-    // Each attempt reads the key of the latest render, so the key changes
-    // only after a send has settled, below; never while one is pending.
-    // A quoted string, as the IETF Idempotency-Key draft's Structured Field.
-    request: { headers: { "Idempotency-Key": `"${key}"` } },
-  });
-
-  const form = useForm({
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const editor = useEditorSend(onUnauthorized);
+  const send = useSendMessage(editor.options);
+  const request = useFormRequest(send, composeFields);
+  const form = useAppForm({
     defaultValues: initial,
-    validators: { onChange: ComposeSchema },
-    onSubmitInvalid: ({ formApi }) => {
-      const name = composeFields.find((field) => formApi.getFieldMeta(field)?.errors.length);
-      if (name) document.getElementById(fieldId(name))?.focus();
-    },
-    onSubmit: ({ value, formApi }) => {
-      if (send.isPending) return;
-      send.mutate(
-        { data: composeRequest(value) },
-        {
-          // Here rather than on the hook, whose callbacks still run after
-          // the page has closed and would take the member back to it.
-          onSuccess: (result) => onSent(result.data),
-          onError: (err) => {
-            // The key saved another message, an earlier try's before the
-            // member edited this one: what is sent next is a new message.
-            if (keyReused(err)) setKey(crypto.randomUUID());
-            if (mayHaveSaved(err)) setUnconfirmed(true);
-            const { fields } = formErrors(err, composeFields);
-            if (Object.keys(fields).length > 0) formApi.setErrorMap({ onSubmit: { fields } });
-          },
-        },
-      );
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: request.check(ComposeSchema) },
+    onSubmit: async ({ value, formApi }) => {
+      const sent = await request.send(formApi, value, { data: composeRequest(value) });
+      if (sent.outcome === "refused") editor.refused(sent.error);
+      if (sent.outcome === "done") onSent(sent.data.data);
     },
     // After an edit, the last request's message no longer describes the form.
-    listeners: {
-      onChange: () => {
-        if (!send.isIdle) send.reset();
-      },
-    },
+    listeners: { onChange: () => send.reset() },
   });
-  const submission = useSelector(form.store, (state): Submission =>
-    state.submissionAttempts > 0 ? "tried" : "untried",
-  );
+  const sending = useSelector(form.store, (state) => state.isSubmitting);
   const formEdited = useSelector(form.store, (state) => !state.isDefaultValue);
+  const subject = useSelector(form.store, (state) => state.values.subject.trim());
   // A recipient list holding text not yet a chip counts as an edit.
   const [typingIn, setTypingIn] = useState<ReadonlySet<string>>(() => new Set());
   const edited = formEdited || typingIn.size > 0;
-  const summary = send.error
-    ? formSummary(sendErrorMessage(send.error), formErrors(send.error, composeFields))
-    : [];
-  const reconnect = needsReconnect(send.error);
+  const loses = edited || sending || editor.unconfirmed ? editor.leaveState(sending) : null;
 
-  useFocusAfterError(send.error, send.isPending, formRef, submitRef);
+  // What the form started with, for where focus starts.
+  const [start] = useState(initial);
+
+  useEffect(() => onLoses(loses), [loses, onLoses]);
+  useEffect(() => {
+    // Focus starts in the first field still to fill in: From, To, then the
+    // start of the message, e.g. for Edit and send.
+    const rows = rowsRef.current;
+    if (!rows) return;
+    if (start.connectedAccountId === 0)
+      rows.querySelector<HTMLElement>('[data-slot="select-trigger"]')?.focus();
+    else if (start.to.length === 0) rows.querySelector("input")?.focus();
+    else {
+      const message = rows.querySelector("textarea");
+      message?.focus();
+      message?.setSelectionRange(0, 0);
+    }
+  }, [start]);
+
+  const sendButton = <form.SubmitButton working="Sending...">Send</form.SubmitButton>;
+  const discard = (
+    <TooltipTrigger>
+      <Button type="button" variant="ghost" size="icon" aria-label="Discard" onPress={onDiscard}>
+        <Trash2Icon aria-hidden="true" />
+      </Button>
+      <Tooltip>Discard</Tooltip>
+    </TooltipTrigger>
+  );
 
   return (
-    <form
-      ref={formRef}
-      className="flex flex-col gap-6"
-      noValidate
-      aria-label="New message"
-      aria-busy={send.isPending}
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
-      {/* Inputs are read-only, not disabled, while sending, so focus stays
-          and the message stays readable. */}
-      <FieldGroup>
-        <form.Field name="connectedAccountId">
-          {(field) => {
-            const errors = shownErrors(field.state.meta, submission);
-            const id = fieldId(field.name);
-            return (
-              <Field data-invalid={errors.length > 0}>
-                <FieldLabel htmlFor={id}>From</FieldLabel>
-                <NativeSelect
-                  id={id}
-                  name={field.name}
-                  // A select cannot be read-only; a change while sending
-                  // would not reach the request anyway.
-                  disabled={send.isPending}
-                  aria-invalid={errors.length > 0}
-                  aria-describedby={describedBy(id, errors, `${id}-description`)}
-                  value={field.state.value}
-                  onBlur={() => blurKeepingSubmitErrors(field)}
-                  onChange={(event) => field.handleChange(Number(event.target.value))}
-                >
-                  {/* Shown until the member chooses: no account is preselected. */}
-                  {field.state.value === 0 && (
-                    <NativeSelectOption value={0} disabled>
-                      Choose an account
-                    </NativeSelectOption>
-                  )}
-                  {accounts.map((account) => (
-                    <NativeSelectOption
-                      key={account.id}
-                      value={account.id}
-                      // Its send could only fail; the server refuses it too.
-                      disabled={account.status !== "usable"}
-                    >
-                      {fromOption(account)}
-                      {account.status !== "usable" && ` ${needsReconnectMark}`}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                <FieldDescription id={`${id}-description`}>
-                  Recipients see this address. It sends through Gmail.
-                </FieldDescription>
-                <FieldError id={`${id}-error`} errors={errors} />
-              </Field>
-            );
-          }}
-        </form.Field>
-
-        {recipientFields.map(({ name, label }) => (
-          <form.Field key={name} name={name}>
-            {(field) => {
-              const errors = shownErrors(field.state.meta, submission);
-              const id = fieldId(field.name);
-              return (
-                <Field data-invalid={errors.length > 0}>
-                  <FieldLabel htmlFor={id}>{label}</FieldLabel>
-                  {/* Outlined as Input is, around the chips and the input. */}
-                  <div className="flex min-h-9 items-center rounded-lg border border-input bg-card px-1.5 py-1 has-[input:focus]:focus-ring has-[input[aria-invalid=true]]:border-destructive dark:bg-input/10 pointer-coarse:min-h-11">
-                    <RecipientField
-                      id={id}
-                      label={label}
-                      value={field.state.value}
-                      onChange={(value) => field.handleChange(value)}
-                      onBlur={() => blurKeepingSubmitErrors(field)}
-                      invalid={errors.length > 0}
-                      describedBy={describedBy(
-                        id,
-                        errors,
-                        name === "to" ? `${id}-description` : undefined,
-                      )}
-                      readOnly={send.isPending}
-                      onTyping={(state) => setTypingIn((lists) => withTyping(lists, name, state))}
-                    />
-                  </div>
-                  {name === "to" && (
-                    <FieldDescription id={`${id}-description`}>
-                      Email addresses only, e.g. ana@example.com. A comma or Enter ends each one.
-                    </FieldDescription>
-                  )}
-                  <FieldError id={`${id}-error`} errors={errors} />
-                </Field>
-              );
-            }}
-          </form.Field>
-        ))}
-
-        <form.Field name="subject">
-          {(field) => {
-            const errors = shownErrors(field.state.meta, submission);
-            const id = fieldId(field.name);
-            return (
-              <Field data-invalid={errors.length > 0}>
-                <FieldLabel htmlFor={id}>Subject</FieldLabel>
-                <Input
-                  id={id}
-                  name={field.name}
-                  readOnly={send.isPending}
-                  aria-invalid={errors.length > 0}
-                  aria-describedby={describedBy(id, errors)}
-                  value={field.state.value}
-                  onBlur={() => blurKeepingSubmitErrors(field)}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                <FieldError id={`${id}-error`} errors={errors} />
-              </Field>
-            );
-          }}
-        </form.Field>
-
-        <form.Field name="body">
-          {(field) => {
-            const errors = shownErrors(field.state.meta, submission);
-            const id = fieldId(field.name);
-            return (
-              <Field data-invalid={errors.length > 0}>
-                <FieldLabel htmlFor={id}>Message</FieldLabel>
-                <Textarea
-                  id={id}
-                  name={field.name}
-                  className="min-h-60"
-                  readOnly={send.isPending}
-                  aria-invalid={errors.length > 0}
-                  aria-describedby={describedBy(id, errors, `${id}-description`)}
-                  value={field.state.value}
-                  onBlur={() => blurKeepingSubmitErrors(field)}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                <FieldDescription id={`${id}-description`}>Sent as plain text.</FieldDescription>
-                <FieldError id={`${id}-error`} errors={errors} />
-              </Field>
-            );
-          }}
-        </form.Field>
-      </FieldGroup>
-
-      {/* Disabled while sending, so a second click or Enter sends nothing. */}
-      <Button
-        ref={submitRef}
-        type="submit"
-        className="w-fit whitespace-normal"
-        isDisabled={send.isPending}
-      >
-        {send.isPending ? "Sending..." : "Send"}
-      </Button>
-
-      <RequestError errors={summary} requestId={send.error?.requestId}>
-        {/* A new tab lets the member check without losing the edits here. */}
-        {keyReused(send.error) && (
-          <p>
-            <Link to="/mail/outbox" target="_blank" className={lineLink}>
-              Open the Outbox in a new tab
-            </Link>
-          </p>
-        )}
-        {reconnect && (
-          <p>
-            <Link to="/settings/connected-accounts" className={lineLink}>
-              Open Connected accounts
-            </Link>
-          </p>
-        )}
-      </RequestError>
-      <LeaveWarning
-        active={edited || send.isPending || unconfirmed}
-        text={leaveText(send.isPending ? "sending" : unconfirmed ? "unconfirmed" : "typed")}
-      />
-    </form>
+    <form.AppForm>
+      <form.Form label={subject || newMessageTitle} className="min-h-0 flex-1 gap-0">
+        {header({
+          title: subject || newMessageTitle,
+          send: look === "full-screen" ? sendButton : null,
+        })}
+        <div ref={rowsRef} hidden={collapsed} className="flex min-h-0 flex-1 flex-col">
+          <EditorCard look={look} send={look === "window" ? sendButton : null} after={discard}>
+            {note}
+            <form.AppField name="connectedAccountId">
+              {(field) => <field.FromField label="From" accounts={accounts} />}
+            </form.AppField>
+            <RecipientRows form={form} fields={recipientLists} onTyping={setTypingIn} />
+            <form.AppField name="subject">
+              {(field) => <field.SubjectField label="Subject" />}
+            </form.AppField>
+            <form.AppField name="body">
+              {(field) => <field.MessageField label="Message" size="fill" />}
+            </form.AppField>
+            <div className="px-4 empty:hidden">
+              <SendFailure
+                errors={request.summary(sendErrorMessage)}
+                requestId={request.reference}
+                error={send.error}
+              />
+            </div>
+          </EditorCard>
+        </div>
+      </form.Form>
+    </form.AppForm>
   );
-}
-
-// fieldId returns the id of the input for the form field name.
-function fieldId(name: string): string {
-  return `compose-${name}`;
 }

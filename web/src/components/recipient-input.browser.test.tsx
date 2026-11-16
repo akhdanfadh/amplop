@@ -2,9 +2,17 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
-import { RecipientField } from "./recipient-field";
+import * as z from "zod";
+import { emailAddress } from "@/api/validation";
+import { RecipientInput } from "./recipient-input";
 
 const none: string[] = [];
+const address = emailAddress(z.string());
+
+// isAddress is the contract's rule for one address, as a form passes it.
+function isAddress(value: string): boolean {
+  return address.safeParse(value).success;
+}
 function ignore(): void {}
 
 // Field renders a To field that starts with initial and reports each list
@@ -24,9 +32,10 @@ function Field({
   return (
     <>
       <label htmlFor="to">To</label>
-      <RecipientField
+      <RecipientInput
         id="to"
         label="To"
+        isAddress={isAddress}
         value={value}
         onChange={(next) => {
           setValue(next);
@@ -43,7 +52,7 @@ function Field({
 const input = () => page.getByRole("textbox", { name: "To" });
 const chips = () => page.getByRole("row");
 
-describe("RecipientField", () => {
+describe("RecipientInput", () => {
   it("turns an address into a chip on comma, semicolon, Enter, and leaving", async () => {
     const onChange = vi.fn<(value: string[]) => void>();
     await render(<Field onChange={onChange} />);

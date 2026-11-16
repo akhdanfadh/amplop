@@ -27,6 +27,7 @@ import {
   Route as SystemEmail,
   systemEmailLoader,
 } from "@/routes/_app/settings/_admin/system-email";
+import { ComposeStore } from "@/features/outgoing-messages/compose-store";
 
 const ok = 200;
 const unauthorized = 401;
@@ -189,7 +190,9 @@ async function open(server: Server, path: string, width = 360) {
   );
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   opened = queryClient;
-  const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({ component: Outlet });
+  const root = createRootRouteWithContext<{ queryClient: QueryClient; compose: ComposeStore }>()({
+    component: Outlet,
+  });
   // The routes' ids match the app's, as the pages' own hooks name them.
   const app = createRoute({
     getParentRoute: () => root,
@@ -234,7 +237,7 @@ async function open(server: Server, path: string, width = 360) {
     ]),
     history: createMemoryHistory({ initialEntries: [path] }),
     defaultErrorComponent: RouteError,
-    context: { queryClient },
+    context: { queryClient, compose: new ComposeStore() },
   });
   await render(
     <QueryClientProvider client={queryClient}>

@@ -49,14 +49,33 @@ export function onAccountEndedElsewhere(ended: () => void): () => void {
   return () => tabs.removeEventListener("message", ended);
 }
 
-// clearAccountCache ends what the app holds for one member: it removes
-// account data and mutation variables, keeping the public setup status,
-// closes every toast, sends Back to mail to the Inbox, and runs what
-// onAccountCacheClear registered; it tells the browser's other inbok tabs.
+// clearAccountCache ends what the app holds for one member, as
+// clearTabAccountData does, and tells the browser's other inbok tabs.
 // Every sign-in, sign-out, and ended session calls it.
 export function clearAccountCache(client: QueryClient): void {
   // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel takes no origin; it reaches this site's tabs only.
   otherTabs()?.postMessage("ended");
+  clearTabAccountData(client);
+}
+
+// endTabAccount runs when another tab ended its member's session: it clears
+// what this tab holds for the member, as clearTabAccountData does, then
+// reload loads the page again, whose guard reads whose session the
+// browser holds.
+export function endTabAccount(client: QueryClient, reload: () => void): void {
+  // 1. Clear it first: a page holding typed text, e.g. a reply being
+  // written, asks before the reload, and staying must keep nothing of the
+  // member's.
+  clearTabAccountData(client);
+  reload();
+}
+
+// clearTabAccountData ends what this tab holds for one member, without
+// telling other tabs, e.g. when another tab ended it: it removes account
+// data and mutation variables, keeping the public setup status, closes
+// every toast, sends Back to mail to the Inbox, and runs what
+// onAccountCacheClear registered.
+export function clearTabAccountData(client: QueryClient): void {
   closeToasts();
   forgetMailHref();
   for (const clear of clearers) clear(client);
