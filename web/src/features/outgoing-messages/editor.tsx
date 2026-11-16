@@ -13,6 +13,7 @@ import type { Typing } from "@/components/recipient-input";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/cn";
 import { isAddress } from "./compose-schema";
 import { keyReused, mayHaveSaved, needsReconnect, sendTooltip, type LeaveState } from "./text";
 
@@ -86,12 +87,17 @@ export function useEditorSend(onUnauthorized: () => void): EditorSend {
 // EditorCard is the message editor (DESIGN.md "Compose and reply"): one
 // card holding children, the editor's rows, then a bar with Send, its
 // tooltip naming the shortcut, and after, e.g. Discard. Ctrl+Enter, or
-// Cmd+Enter on a Mac, sends from any of its fields.
+// Cmd+Enter on a Mac, sends from any of its fields. look "card" draws its
+// edge; "window" fills the compose window, which is the edge, its message
+// taking the height left; "full-screen" also leaves Send to the window's
+// top bar (send null), where a phone's keyboard can't cover it.
 export function EditorCard({
+  look = "card",
   send,
   after,
   children,
 }: {
+  look?: "card" | "window" | "full-screen";
   send: ReactNode;
   after?: ReactNode;
   children: ReactNode;
@@ -105,20 +111,39 @@ export function EditorCard({
     // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- keys from the fields bubble here; the fields are the controls.
     <div
       onKeyDown={sendOnShortcut}
-      className="overflow-hidden rounded-xl border bg-card transition-colors focus-within:border-input"
+      data-look={look}
+      className={cn(
+        look === "card"
+          ? "overflow-hidden rounded-xl border bg-card transition-colors focus-within:border-input"
+          : "flex min-h-0 flex-1 flex-col",
+      )}
     >
-      {children}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t px-3 py-2">
-        {/* NOTE: React Aria's Button drops aria-keyshortcuts, so the
-            tooltip, its description, is what tells assistive technology
-            the shortcut. */}
-        <TooltipTrigger>
-          {send}
-          <Tooltip>{sendTooltip()}</Tooltip>
-        </TooltipTrigger>
-        {after}
-      </div>
+      {look === "card" ? (
+        children
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</div>
+      )}
+      {(send || after) && (
+        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t px-3 py-2">
+          {/* NOTE: React Aria's Button drops aria-keyshortcuts, so the
+              tooltip, its description, is what tells assistive technology
+              the shortcut. */}
+          {send && <SendTooltip>{send}</SendTooltip>}
+          {after}
+        </div>
+      )}
     </div>
+  );
+}
+
+// SendTooltip gives send, the editor's Send button, its tooltip naming the
+// shortcut.
+export function SendTooltip({ children }: { children: ReactNode }): ReactElement {
+  return (
+    <TooltipTrigger>
+      {children}
+      <Tooltip>{sendTooltip()}</Tooltip>
+    </TooltipTrigger>
   );
 }
 

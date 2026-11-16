@@ -21,6 +21,7 @@ import { getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
 import { Route as App } from "@/routes/_app";
 import { Route as Auth } from "@/routes/_auth";
 import { Route as TwoFactorCard } from "@/routes/_auth/two-factor-setup";
+import { ComposeStore } from "@/features/outgoing-messages/compose-store";
 
 const noContent = 204;
 const unauthorized = 401;
@@ -227,7 +228,7 @@ async function openCard(server: Server, stale: "stale-session" | "no-cache" = "n
       data: { email: "ana@example.com", emailVerified: true, role: "admin", totpRequired: true },
     });
   // The setup notice reads the setup gate, which sits at the root.
-  const root = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  const root = createRootRouteWithContext<{ queryClient: QueryClient; compose: ComposeStore }>()({
     component: () => (
       <SetupGate>
         <Outlet />
@@ -274,7 +275,7 @@ async function openCard(server: Server, stale: "stale-session" | "no-cache" = "n
       createRoute({ getParentRoute: () => root, path: "/sign-in", component: () => "Sign in" }),
     ]),
     history: createMemoryHistory({ initialEntries: ["/two-factor-setup"] }),
-    context: { queryClient },
+    context: { queryClient, compose: new ComposeStore() },
   });
   await render(
     <QueryClientProvider client={queryClient}>

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { vi } from "vite-plus/test";
 import { AppShell } from "@/components/app-shell";
+import { ComposeStore } from "@/features/outgoing-messages/compose-store";
 import { routeTree } from "@/routeTree.gen";
 
 // NOTE: a test mounts the app in a <div> inside <body>, not on the
@@ -62,7 +63,7 @@ export async function appRouter(
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [address] }),
-    context: { queryClient },
+    context: { queryClient, compose: new ComposeStore() },
     // As the app's router does (router.tsx), so a rendered page reaches the
     // query client.
     Wrap: ({ children }) => createElement(QueryClientProvider, { client: queryClient }, children),

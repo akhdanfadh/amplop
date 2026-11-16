@@ -16,6 +16,7 @@ import {
 import type { ConnectedAccount, OutgoingMessage } from "@/api/generated/model";
 import { ComposeForm } from "./compose-form";
 import { composeValues, type ComposeValues } from "./compose-schema";
+import type { LeaveState } from "./text";
 
 const ok = 200;
 const created = 201;
@@ -84,13 +85,15 @@ function serve(
   return calls;
 }
 
-// show renders the compose form starting with initial, inside a router
-// with a second page, /elsewhere, to leave for. It returns the messages the
-// form reported sent, how many 401s it reported, the query client, the
-// router, and the rendered screen.
+// show renders the compose form starting with initial, as the docked
+// window draws it, inside a router with a second page, /elsewhere, to
+// leave for. It returns the messages the form reported sent, how many 401s
+// it reported, what closing would lose as it last reported, the query
+// client, the router, and the rendered screen.
 async function show(initial: ComposeValues = composeValues([])) {
   const sent: OutgoingMessage[] = [];
   const unauthorized = { count: 0 };
+  const loses: { last: LeaveState | null } = { last: null };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRootRoute();
   const compose = createRoute({
@@ -100,7 +103,14 @@ async function show(initial: ComposeValues = composeValues([])) {
       <ComposeForm
         accounts={[studio, stale]}
         initial={initial}
+        look="window"
+        header={({ title }) => <h2>{title}</h2>}
+        collapsed={false}
         onSent={(saved) => sent.push(saved)}
+        onDiscard={() => {}}
+        onLoses={(state) => {
+          loses.last = state;
+        }}
         onUnauthorized={() => unauthorized.count++}
       />
     ),
@@ -119,7 +129,7 @@ async function show(initial: ComposeValues = composeValues([])) {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  return { sent, unauthorized, client, router, screen };
+  return { sent, unauthorized, loses, client, router, screen };
 }
 
 // write chooses Studio in From and fills To, Subject, and Message.
@@ -315,21 +325,35 @@ describe("ComposeForm", () => {
     expect(second.body).toMatchObject({ subject: "Lunch today" });
   });
 
-  it("warns that a lost send may have saved, with nothing edited and after a later refusal", async () => {
+  it("reports that a lost send may have saved, with nothing edited and after a later refusal", async () => {
     serve([lost, () => problem(409, "/api/v0/problems/sending-account-needs-reconnect")]);
-    const { router } = await show(composeValues([studio.id], message));
+    const { loses } = await show(composeValues([studio.id], message));
+    expect(loses.last).toBe(null);
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));
     await expect.element(page.getByRole("alert")).toMatchTextContent("Sending again is safe");
-    void router.navigate({ href: "/elsewhere" });
-    const dialog = page.getByRole("alertdialog", { name: "Leave this page?" });
-    await expect.element(dialog).toMatchTextContent("may have saved this message");
-    await userEvent.click(dialog.getByRole("button", { name: "Stay" }));
+    expect(loses.last).toBe("unconfirmed");
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));
     await expect.element(page.getByRole("link", { name: "Open Connected accounts" })).toBeVisible();
-    void router.navigate({ href: "/elsewhere" });
-    await expect.element(page.getByRole("alertdialog", { name: "Leave this page?" })).toBeVisible();
+    expect(loses.last).toBe("unconfirmed");
+  });
+
+  it("reports typed text, and a send running, as what closing would lose", async () => {
+    // The send waits until the test answers it.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<() => Promise<Response>>(() => new Promise(() => {})),
+    );
+    const { loses } = await show();
+
+    await userEvent.type(page.getByRole("textbox", { name: "Subject" }), "Lunch");
+    await expect.poll(() => loses.last).toBe("typed");
+    await userEvent.click(page.getByRole("button", { name: /From/ }));
+    await userEvent.click(page.getByRole("option", { name: "studio@example.com Studio" }));
+    await userEvent.type(page.getByRole("textbox", { name: "To" }), "ana@example.com,");
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+    await expect.poll(() => loses.last).toBe("sending");
   });
 
   it("gives a new form a new key", async () => {
@@ -363,14 +387,8 @@ describe("ComposeForm", () => {
     const reread = vi.spyOn(client, "invalidateQueries");
 
     await userEvent.click(page.getByRole("button", { name: "Send" }));
+    // The window closed while sending, after asking (compose-window's tests).
     void router.navigate({ href: "/elsewhere" });
-    const leave = page
-      .getByRole("alertdialog", { name: "Leave while sending?" })
-      .getByRole("button", { name: "Leave" });
-    await expect.element(leave).toBeVisible();
-    // The dialog ignores a press within a double-click of opening.
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    await userEvent.click(leave);
     await expect.element(page.getByRole("heading", { name: "Elsewhere" })).toBeVisible();
     answer.resolve?.(Response.json({ data: message }, { status: created }));
 

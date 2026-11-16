@@ -16,6 +16,7 @@ import inputOtpCss from "../components/ui/input-otp.css?url";
 import { AppShell } from "@/components/app-shell";
 import { Toaster } from "@/components/ui/toast";
 import { onAccountCacheClear } from "@/features/auth/session-cache";
+import type { ComposeStore } from "@/features/outgoing-messages/compose-store";
 import { themeScript } from "@/lib/theme";
 
 // A link to something that is not a page of the app, written as the
@@ -56,6 +57,8 @@ type RouterOptions = NonNullable<LinkProps["routerOptions"]>;
 type RouterContext = {
   // The app's query cache, which route guards read the session from.
   queryClient: QueryClient;
+  // The compose window's owner, which /compose opens before redirecting.
+  compose: ComposeStore;
 };
 
 export const Route = createRootRouteWithContext<RouterContext>()({

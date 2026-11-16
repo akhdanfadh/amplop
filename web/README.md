@@ -134,9 +134,10 @@ Put shared code in the folder for its responsibility:
 - `src/features/messages`: the conversation view (`ConversationView`),
   the message view, its HTML and plain-text bodies, sizing the body's
   frame, plain-text links, and the header's wording.
-- `src/features/outgoing-messages`: the compose form and its schema, the
-  reply editor with its defaults and schema, the parts both editors
-  share (`editor.tsx`: the card, the recipient rows, the send's key), the
+- `src/features/outgoing-messages`: the compose window, the store that
+  owns it (`compose-store.ts`), its form and schema, the reply editor
+  with its defaults and schema, the parts both editors share
+  (`editor.tsx`: the card, the recipient rows, the send's key), the
   Outbox list, one
   message's status with Send again and Edit and send, their wording, and
   when their pages read again (`pollWhile`).
@@ -197,7 +198,7 @@ which uses the cached session when a page has read it:
 | Layout route           | Pages                                       | Guard                                                                                                                                                 |
 | ---------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `_app`                 | Everything signed in                        | No session: `/sign-in?redirect=<address>`, which returns there after sign-in; an administrator without two-factor authentication: `/two-factor-setup` |
-| `_app/_mail`           | `/mail/<place>`, `/mail/outbox`, `/compose` | None; the mail frame                                                                                                                                  |
+| `_app/_mail`           | `/mail/<place>`, `/mail/outbox`, `/compose` | None; the mail frame (`/compose` opens the compose window and redirects to the Inbox)                                                                 |
 | `_app/settings`        | `/settings/<page>`                          | None; the settings frame                                                                                                                              |
 | `_app/settings/_admin` | Members, Registration, System email         | A member gets Page not found                                                                                                                          |
 | `_auth`                | Signed-out pages                            | None; the wordmark over one column                                                                                                                    |
@@ -682,7 +683,8 @@ waits for its member, so it does not count.
 Sign out, in the member menu, deletes the current session, then
 `clearAccountCache` clears account caches, closes any toasts, and sends
 Back to mail to the Inbox, and sign-in opens without the page's leave
-warning: text typed in Compose is dropped (a `DEBT.md` entry). Every
+warning: a message in the compose window is dropped (a `DEBT.md` entry).
+Every
 sign-in, sign-out, and ended session calls `clearAccountCache`, so
 whatever else holds a member's data clears there too. A 401 also completes
 sign-out because that session is already absent or expired. Other failures
@@ -695,19 +697,55 @@ immediately despite the browser's offline indicator; editing or leaving the
 form invalidates their result. The original health
 and probe demo remains available at `/probe`.
 
-The mail sidebar's Compose opens `/compose` and its Outbox `/mail/outbox`,
-both in the mail frame, until compose moves into a docked window. The
-compose form sends from one of the member's connected accounts, chosen in
-From and shown by its address. From starts with none chosen, so the member
-picks the address recipients see; Edit and send keeps the opened message's
-account while it can send. One that needs reconnecting is listed but can't
-be chosen, and a member with no usable account gets a link to Connected
-accounts instead. Once shown, the form stays, even if a later read finds
-no usable account, so typed input is never dropped; a 401 then, e.g. a
-session ended from another tab, keeps the form too, with an alert to copy
-what was typed and sign in, and the leave warning still asks before going.
-The form is the message editor, the same card as Reply's (`EditorCard`,
-`editor.tsx`): rows for From, To, the Cc and Bcc that are filled or added
+A new message is written in the compose window (DESIGN.md "Compose and
+reply"), which `_app`'s layout draws after the page, so it stays while
+the member moves between mail and settings. One `ComposeStore` per router
+(`compose-store.ts`, in the router's context) owns it: whether it is
+open, what it holds, what closing it would lose, and what opened it, for
+focus to go back to. It closes whenever one member's data ends
+(`onAccountCacheClear`), e.g. on sign-out, so the next member to sign in
+in the tab never sees it. The sidebar's Compose and the Outbox's New message
+call its `open()`, which brings back a window holding typed text instead
+of replacing it; Edit and send calls `open(message)`, which asks before
+replacing typed text. `/compose` is no page: its `beforeLoad` opens the
+window and redirects to the Inbox, replacing itself in history.
+
+The width when the window opens picks its form until it closes. Wide, it
+is docked bottom right, a landmark region named by its title (the
+subject, else "New message"; React Aria's `useLandmark`), with Minimise, Full screen, and Close in a muted strip;
+its title also minimises and restores it, and restoring returns focus to
+the field it left. Full screen is a modal dialog over the dimmed page,
+which turns `inert`, with focus kept inside (React Aria's `FocusScope`); Escape or pressing the dimmed page docks it again,
+never closing it, and Escape does nothing while docked. On a phone it is a
+full-screen dialog with Close, the title, and Send at the top, where the
+keyboard can't cover Send, and it adds one history entry
+(`HistoryState.composeWindow`), so Back closes it and Close steps back.
+Leaving that entry, by Back or a link, asks first while it would lose
+something, through `useBlocker`, which reads the store at the moment it
+is asked; Back, a link, and Close all give focus back the same way. A
+window opened wide and then narrowed stays docked, never wider than the
+screen. A message replacing another, e.g. by Edit and send, keeps the
+window, its layout, and its history entry (`ComposeMessage.window`, a
+UUID, so an entry kept through a reload never matches a new window).
+Once shown, the editor stays even if a later read finds no account able
+to send, as the server will refuse it. Close and Discard ask first with typed text
+(`closeText`); closing gives focus back to what opened it, else the
+page's heading. Closing or reloading the tab gets the browser's own
+question while it holds typed text, is sending, or may have saved.
+
+The form (`ComposeForm`) sends from one of the member's connected
+accounts, chosen in From and shown by its address. From starts with none
+chosen, so the member picks the address recipients see; Edit and send
+keeps the opened message's account while it can send. One that needs
+reconnecting is listed but can't be chosen, and a member with no usable
+account gets a link to Connected accounts instead. Focus starts in the
+first field to fill in: From, To, or, for Edit and send, the start of the
+message, which fills the window's height (`MessageField size="fill"`). A
+401 on any of the window's own reads or writes keeps what it holds, with
+an alert to copy what was typed and sign in.
+The form is the message editor, the same rows as Reply's card
+(`EditorCard`, `editor.tsx`, whose look "window" lets the window be its
+edge): rows for From, To, the Cc and Bcc that are filled or added
 from the To row's buttons, and Subject, then Message and a bar with Send,
 which Ctrl+Enter, or Cmd+Enter on a Mac, presses from any field. It is on
 the form kit, so its errors show after the first Send and focus moves to
@@ -722,23 +760,20 @@ the chips are one Tab stop with Delete to remove one. An address the
 contract refuses stays a chip, marked and named "not an email address",
 and its field's error names it. At most 100 per list, with at least one
 recipient in all; the form's values are the lists themselves.
-`/compose?edit=<id>` starts the form with that message's content as a new
+Edit and send starts the form with that message's content as a new
 message, saying the opened one stays as it is and asking for another
-account when the message's own can't send; `composeSearch` drops an
-`edit` that is not a UUID, so the form starts empty. Each `edit`, or none,
-gets a form of its own.
+account when the message's own can't send.
 
-Leaving the form asks first: a link, Back, or Forward opens a dialog
-(`LeaveWarning`, `components/leave-warning.tsx`, on TanStack Router's
-`useBlocker`), and closing or reloading the tab gets the browser's own
-question, the only one a page may show there. With typed input it offers
-"Keep editing" and "Discard"; while the message is being saved, it says to
-check the Outbox; after a try whose answer was lost, from then on, even
-after edits and with nothing typed, it says an earlier try may have saved
-the message and that what was typed won't be kept, without assuming where
-the member goes, who may be going to check.
 Send saves the message, which the server sends in the background, and
-opens its page.
+the window then holds its status (`MessageStatus look="window"`): a mark,
+"Sending to …" then "Sent to …", the sending account, and Open in Outbox;
+a failure names the status, says why, and offers its actions in a bar; a
+failed reread keeps the status, says it may be out of date, and offers
+Try again.
+Focus moves to the status. The window closes 3 s after Gmail takes the
+message, waiting while the pointer is on it or focus on one of its
+controls, and gives focus back only if focus was inside; it stays open on
+a failure. Minimised, its strip shows the status's mark.
 
 Each message the form sends carries an `Idempotency-Key`: a UUID made when
 the form opens, sent as a quoted string, and kept for every try of that
@@ -753,7 +788,7 @@ reconnecting rereads the accounts and links Connected accounts.
 
 The Outbox lists the member's newest 50 messages from inbok, newest first,
 with each status, and reads the list again every 5 seconds while one is
-waiting or sending; its New message button opens the compose form. Each
+waiting or sending; its New message button opens the compose window. Each
 opens its own page at `/mail/outbox/$id`, which reads only an ID that is a
 UUID, since the client puts it in the API's path as is. The page shows the
 status above the message, read again every 2 seconds until the send ends,
@@ -767,7 +802,7 @@ message into a new one from the same account and opens it; for an
 message is sent again at most once, so its page then says so and links the
 copy, and drops the reason's advice and every action, which would send it
 twice. A message Gmail refused offers Edit and send instead, which opens
-the compose form filled with its content, as a new message. One function,
+the compose window filled with its content, as a new message. One function,
 `nextSteps` (`src/features/outgoing-messages/text.ts`), works out both what
 a message's page says and what it offers, so the two cannot disagree.
 
@@ -816,7 +851,11 @@ Send's tooltip says. It checks, keys, retries, and words its errors as the
 compose form does, plus a deleted answered message (404
 `message-not-found`), which keeps the text to copy. Discard closes an
 untouched editor at once and asks first once something was typed, then
-returns focus to Reply; leaving the page asks as the compose form does. An
+returns focus to Reply. Leaving the page asks first (`LeaveWarning`,
+`components/leave-warning.tsx`, on TanStack Router's `useBlocker`): a
+link, Back, or Forward opens a dialog, and closing or reloading the tab
+gets the browser's own question; while sending, or after a try whose
+answer was lost, it says what it means for the reply. An
 address typed but not yet a chip counts as typed. The editor keeps the
 message it answers until it closes, so a newer message synced meanwhile
 never changes what is being written. After Send the editor gives way to the reply's status, read again

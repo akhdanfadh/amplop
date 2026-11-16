@@ -1,12 +1,16 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import type { ReactElement } from "react";
+import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { getGetSystemEmailQueryOptions } from "@/api/generated/inbok";
 import { readSession } from "@/features/auth/guard";
+import { ComposeWindow } from "@/features/outgoing-messages/compose-window";
+import { ComposeProvider, useCompose } from "@/features/outgoing-messages/compose-store";
 
 // The signed-in part of inbok: mail and settings. Before any of it draws,
 // a visitor without a session goes to sign-in, which brings them back
 // here afterwards, and an administrator without two-factor authentication,
 // whose session the server lets do nothing else, goes to set it up.
 export const Route = createFileRoute("/_app")({
+  component: SignedIn,
   beforeLoad: async ({ context, location }) => {
     const session = await readSession(context.queryClient);
     if (!session)
@@ -35,3 +39,26 @@ export const Route = createFileRoute("/_app")({
       .catch(() => undefined);
   },
 });
+
+// SignedIn draws the signed-in page, then the compose window, which stays
+// while the member moves between pages (DESIGN.md "Compose and reply").
+function SignedIn(): ReactElement {
+  const { compose } = Route.useRouteContext();
+  return (
+    <ComposeProvider value={compose}>
+      <PageBehindWindow />
+      <ComposeWindow />
+    </ComposeProvider>
+  );
+}
+
+// PageBehindWindow is the page, inert while the compose window covers it,
+// full screen, so neither focus nor a screen reader reaches what is hidden.
+function PageBehindWindow(): ReactElement {
+  const { state } = useCompose();
+  return (
+    <div inert={state.covering} className="contents">
+      <Outlet />
+    </div>
+  );
+}

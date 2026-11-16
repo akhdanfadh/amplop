@@ -488,23 +488,37 @@ export function SubjectField({ label }: { label: string }): ReactElement {
 // MessageField is the current field as a message editor's message: a text
 // area without a box of its own, named label for assistive technology.
 // focus "mount" moves focus into it when it appears, e.g. a reply's, whose
-// recipients are already filled in.
-export function MessageField({ label, focus }: { label: string; focus?: "mount" }): ReactElement {
+// recipients are already filled in. size "grow" grows it with its text;
+// "fill" fills the height its editor gives it, e.g. the compose window's.
+export function MessageField({
+  label,
+  focus,
+  size = "grow",
+}: {
+  label: string;
+  focus?: "mount";
+  size?: "grow" | "fill";
+}): ReactElement {
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (focus === "mount") ref.current?.focus();
   }, [focus]);
 
   return (
-    <RowFrame<string> divider="none">
+    <RowFrame<string> divider="none" height={size === "fill" ? "fill" : "content"}>
       {(control, change) => (
         <textarea
           {...control}
           ref={ref}
           aria-label={label}
           onChange={(event) => change(event.target.value)}
-          // It grows with its text up to 60% of the window, then scrolls.
-          className="block field-sizing-content max-h-[60svh] min-h-44 w-full resize-y bg-transparent px-4 py-3 text-message outline-none"
+          className={cn(
+            "block min-h-44 w-full bg-transparent px-4 py-3 text-message outline-none",
+            size === "grow"
+              ? // It grows with its text up to 60% of the window, then scrolls.
+                "field-sizing-content max-h-[60svh] resize-y"
+              : "flex-1 resize-none",
+          )}
         />
       )}
     </RowFrame>
@@ -515,14 +529,17 @@ export function MessageField({ label, focus }: { label: string; focus?: "mount" 
 // row children returns from the field's control props and a function that
 // sets its value, then description and the field's errors under the value.
 // divider "none" leaves out the hairline under the row, e.g. for the
-// message, which the editor's bar edges.
+// message, which the editor's bar edges. height "fill" makes the row take
+// the height its editor has left, e.g. the message in the compose window.
 function RowFrame<T>({
   description,
   divider = "below",
+  height = "content",
   children,
 }: {
   description?: string;
   divider?: "below" | "none";
+  height?: "content" | "fill";
   children: (control: RowControlProps<T>, change: (value: T) => void) => ReactNode;
 }): ReactElement {
   const field = useFieldContext<T>();
@@ -536,7 +553,14 @@ function RowFrame<T>({
   const describedBy = [description && descriptionId, invalid && errorId].filter(Boolean).join(" ");
 
   return (
-    <div data-invalid={invalid} className={cn("@container", divider === "below" && "border-b")}>
+    <div
+      data-invalid={invalid}
+      className={cn(
+        "@container",
+        divider === "below" && "border-b",
+        height === "fill" && "flex min-h-0 flex-1 flex-col",
+      )}
+    >
       {children(
         {
           id,

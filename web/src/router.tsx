@@ -6,6 +6,7 @@ import { getGetCurrentSessionQueryKey } from "@/api/generated/inbok";
 import { retryOptions } from "@/api/retry";
 import { NotFound, RouteError, RoutePending, pendingAfterMs } from "@/components/route-states";
 import { sessionFreshMs } from "@/features/auth/session";
+import { ComposeStore } from "@/features/outgoing-messages/compose-store";
 import { verifyEmailPath } from "@/features/email-verification/path";
 import { resetPath } from "@/features/password-reset/path";
 import { completePath } from "@/features/registration/path";
@@ -32,7 +33,7 @@ export function getRouter(): Router<typeof routeTree> {
 
   const router = createRouter({
     routeTree,
-    context: { queryClient },
+    context: { queryClient, compose: new ComposeStore() },
     defaultPendingMs: pendingAfterMs,
     // NOTE: on the first load TanStack shows a pending page's view at once,
     // without defaultPendingMs, and holds it defaultPendingMinMs from then
@@ -71,5 +72,8 @@ declare module "@tanstack/react-router" {
     fromList?: boolean;
     // What the two-factor page just changed, for Security to report.
     twoFactorChange?: "on" | "off" | "canceled";
+    // The entry the compose window added on a phone, by its message's id,
+    // so Back closes the window (DESIGN.md "Compose and reply").
+    composeWindow?: string;
   }
 }
