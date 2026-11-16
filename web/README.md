@@ -683,8 +683,9 @@ waits for its member, so it does not count.
 Sign out, in the member menu, deletes the current session, then
 `clearAccountCache` clears account caches, closes any toasts, and sends
 Back to mail to the Inbox, and sign-in opens without the page's leave
-warning: a message in the compose window is dropped (a `DEBT.md` entry).
-Every
+warning. While the compose window would lose something, Sign out asks
+first, in words for typed text, a send running, or a try that may have
+saved (`signOutText`). Every
 sign-in, sign-out, and ended session calls `clearAccountCache`, so
 whatever else holds a member's data clears there too. A 401 also completes
 sign-out because that session is already absent or expired. Other failures

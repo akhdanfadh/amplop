@@ -10,6 +10,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
+import { ComposeProvider, ComposeStore } from "@/features/outgoing-messages/compose-store";
 import { Frame } from "./frame";
 import { LeaveWarning } from "./leave-warning";
 
@@ -45,15 +46,17 @@ function Inbox() {
 }
 
 // app returns the frame named Mail, with a link in its nav, around Inbox,
-// with a sign-in page to leave for.
-function app() {
+// with a sign-in page to leave for. compose is the compose window's store.
+function app(compose = new ComposeStore()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRootRoute({
     component: () => (
       <QueryClientProvider client={client}>
-        <Frame label="Mail" nav={<a href="#inbox">Inbox</a>}>
-          <Outlet />
-        </Frame>
+        <ComposeProvider value={compose}>
+          <Frame label="Mail" nav={<a href="#inbox">Inbox</a>}>
+            <Outlet />
+          </Frame>
+        </ComposeProvider>
       </QueryClientProvider>
     ),
   });
@@ -67,6 +70,23 @@ function app() {
     routeTree: root.addChildren([home, signIn]),
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
+}
+
+// signOut presses the member menu's Sign out.
+async function signOut(): Promise<void> {
+  await userEvent.click(page.getByRole("button", { name: /ada@example.org/ }));
+  await userEvent.click(page.getByRole("button", { name: "Sign out" }));
+}
+
+// pressSignOutChoice presses name in the question Sign out asks.
+async function pressSignOutChoice(name: string): Promise<void> {
+  const button = page
+    .getByRole("alertdialog", { name: "Sign out and discard your message?" })
+    .getByRole("button", { name });
+  await expect.element(button).toBeVisible();
+  // The dialog ignores a press within a double-click of opening.
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await userEvent.click(button);
 }
 
 // frame lets React render what a native event changed.
@@ -169,5 +189,43 @@ describe("Frame", () => {
     await expect.element(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
     expect(router.state.location.pathname).toBe("/sign-in");
     expect(page.getByRole("alertdialog").query()).toBeNull();
+  });
+
+  it("asks before signing out while the compose window holds a message", async () => {
+    const fetch = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      async (_input, init) =>
+        init?.method === "DELETE" ? new Response(null, { status: noContent }) : signedIn(),
+    );
+    vi.stubGlobal("fetch", fetch);
+    await page.viewport(1440, 900);
+    const compose = new ComposeStore();
+    compose.open();
+    compose.setLoses("typed");
+    const router = app(compose);
+    await render(<RouterProvider router={router} />);
+    await signOut();
+    await pressSignOutChoice("Keep writing");
+    expect(fetch.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+
+    await signOut();
+    await pressSignOutChoice("Sign out");
+    await expect.element(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  });
+
+  it("says what signing out while sending means, without claiming it wasn't sent", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () => signedIn()),
+    );
+    await page.viewport(1440, 900);
+    const compose = new ComposeStore();
+    compose.open();
+    compose.setLoses("sending");
+    await render(<RouterProvider router={app(compose)} />);
+
+    await signOut();
+    await expect
+      .element(page.getByRole("alertdialog", { name: "Sign out while sending?" }))
+      .toMatchTextContent("check the Outbox");
   });
 });

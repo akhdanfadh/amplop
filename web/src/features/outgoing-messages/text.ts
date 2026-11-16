@@ -317,6 +317,38 @@ const closeUnconfirmed: LeaveWarningText = {
   leaveVariant: "default",
 };
 
+// signOutText returns what signing out asks while the compose window would
+// lose something in state.
+export function signOutText(state: LeaveState): LeaveWarningText {
+  if (state === "sending") return signOutSending;
+  if (state === "unconfirmed") return signOutUnconfirmed;
+  return signOutTyped;
+}
+
+const signOutTyped: LeaveWarningText = {
+  title: "Sign out and discard your message?",
+  description: "The message you're writing hasn't been sent, and it will be lost.",
+  stay: "Keep writing",
+  leave: "Sign out",
+  leaveVariant: "destructive",
+};
+const signOutSending: LeaveWarningText = {
+  title: "Sign out while sending?",
+  description:
+    "Your message is still being saved. If you sign out, check the Outbox after signing in to see whether it was.",
+  stay: "Stay",
+  leave: "Sign out",
+  leaveVariant: "default",
+};
+const signOutUnconfirmed: LeaveWarningText = {
+  title: "Sign out and close your message?",
+  description:
+    "An earlier try may have saved this message, and it may be sent. What you typed won't be kept.",
+  stay: "Stay",
+  leave: "Sign out",
+  leaveVariant: "default",
+};
+
 // What leaving a message editor's page asks, e.g. the reply's: while it
 // saves; after a try that may have saved the message; or with typed input
 // that was surely not sent.
