@@ -90,10 +90,12 @@ function problem(status: number, type: string, extra: object = {}): Response {
 }
 
 // serve stubs the API: the accounts read answers with accounts; Reply to
-// Message, at any answered message, answers with reply, a response; and
-// each read of the saved message with its next status in statuses, the
-// last one repeating, or with a 503 once failReadsFrom reads have passed.
-// It returns the calls the page made.
+// Message, at any answered message, answers with reply, a response; each
+// read of the Outbox, which gives the saved message's status, lists its
+// next status in statuses, the last one repeating, or answers a 503 once
+// failReadsFrom reads have passed; and a read of the message itself
+// answers with the status the Outbox last listed. It returns the calls the
+// page made.
 function serve({
   accounts = [studio, personal],
   reply = () => Response.json({ data: saved("waiting") }, { status: created }),
@@ -116,10 +118,14 @@ function serve({
       if (url === "/api/v0/connected-accounts")
         return Response.json({ data: { accounts, syncStopped: false } }, { status: ok });
       if (method === "POST" && /^\/api\/v0\/messages\/[^/]+\/replies$/.test(url)) return reply();
-      if (url.startsWith("/api/v0/outgoing-messages/")) {
+      if (url === "/api/v0/outgoing-messages") {
         const status = statuses[Math.min(reads, statuses.length - 1)];
         reads++;
         if (reads > failReadsFrom) return problem(503, "/api/v0/problems/service-busy");
+        return Response.json({ data: { messages: [status] } }, { status: ok });
+      }
+      if (url.startsWith("/api/v0/outgoing-messages/")) {
+        const status = statuses[Math.min(Math.max(reads - 1, 0), statuses.length - 1)];
         return Response.json({ data: status }, { status: ok });
       }
       return Response.json({}, { status: notFound });

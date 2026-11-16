@@ -62,18 +62,23 @@ const saved: OutgoingMessage = {
 };
 
 // The API as serve stubs it: accounts answers the accounts list; sent is
-// what Send Message saves; read answers a read of it.
+// what Send Message saves, which a read of it answers; again is the copy
+// Send Message Again saves, which a read of it answers; outbox answers a
+// read of the Outbox, which gives their status.
 type Api = {
   accounts: () => ListedAccount[];
   sent: OutgoingMessage;
-  read: () => Response;
+  again: OutgoingMessage;
+  outbox: () => Response;
 };
 
 // serve stubs the API with api's answers, by default the member's one
-// account, and Send Message saving saved, which reads back as saved.
+// account, and Send Message saving saved, which reads back as saved and
+// is the Outbox's one message.
 function serve(api: Partial<Api> = {}): void {
   const { accounts = () => [studio], sent = saved } = api;
-  const read = api.read ?? (() => Response.json({ data: sent }, { status: ok }));
+  const outbox =
+    api.outbox ?? (() => Response.json({ data: { messages: [sent] } }, { status: ok }));
   vi.stubGlobal(
     "fetch",
     vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url, init = {}) => {
@@ -85,8 +90,17 @@ function serve(api: Partial<Api> = {}): void {
         );
       if (method === "POST" && url === "/api/v0/outgoing-messages")
         return Response.json({ data: sent }, { status: created });
-      if (url === `/api/v0/outgoing-messages/${sent.id}`) return read();
-      if (url === "/api/v0/outgoing-messages") return Response.json({}, { status: ok });
+      if (url === `/api/v0/outgoing-messages/${sent.id}`)
+        return Response.json({ data: sent }, { status: ok });
+      if (
+        api.again &&
+        method === "POST" &&
+        url === `/api/v0/outgoing-messages/${sent.id}/send-again`
+      )
+        return Response.json({ data: api.again }, { status: created });
+      if (api.again && url === `/api/v0/outgoing-messages/${api.again.id}`)
+        return Response.json({ data: api.again }, { status: ok });
+      if (url === "/api/v0/outgoing-messages") return outbox();
       return Response.json({}, { status: notFound });
     }),
   );
@@ -392,10 +406,10 @@ describe("ComposeWindow", () => {
     expect(after.snapshot().message?.window).not.toBe(before.snapshot().message?.window);
   });
 
-  it("says the session ended when a read of the sent message gets a 401", async () => {
+  it("says the session ended when a read of its status gets a 401", async () => {
     serve({
       sent: { ...saved, status: "sending", sentAt: null },
-      read: () =>
+      outbox: () =>
         Response.json(
           { type: "/api/v0/problems/unauthenticated", status: 401, title: "", detail: "" },
           { status: 401, headers: { "Content-Type": "application/problem+json" } },
@@ -413,10 +427,56 @@ describe("ComposeWindow", () => {
       .toMatchTextContent("You're signed out");
   });
 
+  it("follows the copy Send again saves, reading the Outbox again", async () => {
+    const failed: OutgoingMessage = {
+      ...saved,
+      status: "failed",
+      failure: "gave-up",
+      sentAt: null,
+      allowedActions: ["send-again"],
+    };
+    // Its own read says sending; only the Outbox's says it went out.
+    const copy: OutgoingMessage = {
+      ...saved,
+      id: "019a0000-0000-7000-8000-0000000000dd",
+      status: "sending",
+      sentAt: null,
+    };
+    let tried = false;
+    serve({
+      sent: failed,
+      again: copy,
+      outbox: () => {
+        const messages = tried
+          ? [
+              { ...copy, status: "sent", sentAt: saved.sentAt },
+              { ...failed, sentAgainAs: copy.id },
+            ]
+          : [failed];
+        return Response.json({ data: { messages } }, { status: ok });
+      },
+    });
+    await show();
+    await userEvent.click(page.getByRole("button", { name: "Compose" }));
+    await userEvent.click(page.getByRole("button", { name: /From/ }));
+    await userEvent.click(page.getByRole("option", { name: "studio@example.com Studio" }));
+    await userEvent.type(page.getByRole("textbox", { name: "To" }), "ana@example.com,");
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+
+    const window = page.getByRole("region", { name: "Lunch" });
+    await expect.element(window.getByRole("button", { name: "Send again" })).toBeVisible();
+    tried = true;
+    await userEvent.click(window.getByRole("button", { name: "Send again" }));
+
+    await expect
+      .element(window.getByText("Sent to ana@example.com"), { timeout: 5_000 })
+      .toBeVisible();
+  });
+
   it("keeps the status, saying it may be out of date, when a reread fails", async () => {
     serve({
       sent: { ...saved, status: "sending", sentAt: null },
-      read: () =>
+      outbox: () =>
         Response.json(
           { type: "/api/v0/problems/internal-error", status: 500, title: "", detail: "" },
           { status: 500, headers: { "Content-Type": "application/problem+json" } },

@@ -14,11 +14,7 @@ import { Link, useBlocker, useRouter, useRouterState } from "@tanstack/react-rou
 import { FocusScope } from "react-aria/FocusScope";
 import { useLandmark } from "react-aria/useLandmark";
 import { Maximize2Icon, Minimize2Icon, MinusIcon, XIcon } from "lucide-react";
-import {
-  getGetOutgoingMessageQueryKey,
-  useGetOutgoingMessage,
-  useListConnectedAccounts,
-} from "@/api/generated/inbok";
+import { getGetOutgoingMessageQueryKey, useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
@@ -32,14 +28,13 @@ import { cn } from "@/lib/cn";
 import { ComposeForm } from "./compose-form";
 import { composeValues } from "./compose-schema";
 import { useCompose, type ComposeMessage } from "./compose-store";
-import { pollWhile, sendPollMs } from "./poll";
+import { useOutgoingMessage } from "./outbox";
 import { MessageStatus } from "./status";
 import { MessageStatusMark } from "./status-badge";
 import {
   composeAccountsUnreadable,
   closeText,
   editNoteText,
-  inProgress,
   messageStatusStale,
   newMessageTitle,
   noAccountText,
@@ -366,17 +361,11 @@ function MessageContent({
   const [sentId, setSentId] = useState<string | null>(null);
   const accounts = useListConnectedAccounts();
   const list = accounts.data?.data.accounts;
-  const sent = useGetOutgoingMessage(sentId ?? "", {
-    query: {
-      enabled: sentId !== null,
-      refetchInterval: pollWhile(sendPollMs, (data) => inProgress(data.data.status)),
-    },
-  });
-  const sentMessage = sent.data?.data;
+  const sent = useOutgoingMessage(sentId ?? "", { enabled: sentId !== null });
+  const sentMessage = sent.message;
   // A 401 on the window's own reads or writes: the session ended, and the
   // window keeps what it holds to copy (ADR031).
-  const expired =
-    writeExpired || accounts.error?.status === unauthorized || sent.error?.status === unauthorized;
+  const expired = writeExpired || accounts.error?.status === unauthorized || sent.expired;
   const senders = list?.filter((account) => account.allowedActions.includes("send")) ?? [];
   // Once shown, the editor stays, whatever a later read of the accounts
   // says, so typed text is never dropped; its From then marks an account
@@ -444,7 +433,7 @@ function MessageContent({
           {/* A failed reread keeps the status, saying it may have moved on, as
               the reply's does; polling stops on a failure, and Try again
               restarts it. */}
-          {sent.error && sent.error.status !== unauthorized && (
+          {sent.error && !sent.expired && (
             <div className="px-4 pb-4">
               <ReadError
                 message={
@@ -453,8 +442,8 @@ function MessageContent({
                     : readErrorMessage(sent.error)
                 }
                 error={sent.error}
-                retrying={sent.isFetching}
-                onRetry={() => void sent.refetch()}
+                retrying={sent.retrying}
+                onRetry={sent.retry}
               />
             </div>
           )}

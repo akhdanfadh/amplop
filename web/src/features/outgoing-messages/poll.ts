@@ -1,5 +1,5 @@
-// How often a message is read again while it is still being sent: most
-// sends end within seconds.
+// How often the Outbox is read again while a message in it is still being
+// sent: most sends end within seconds.
 export const sendPollMs = 2_000;
 
 // What pollWhile reads of a query: TanStack Query passes the whole query to

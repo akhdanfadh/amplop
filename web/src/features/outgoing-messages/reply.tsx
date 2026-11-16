@@ -12,7 +12,7 @@ import {
 import { ReplyAllIcon, ReplyIcon } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import * as z from "zod";
-import { useGetOutgoingMessage, useListConnectedAccounts } from "@/api/generated/inbok";
+import { useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
@@ -20,7 +20,7 @@ import { lineLink } from "@/components/link-style";
 import { ReadError } from "@/components/read-error";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
-import { pollWhile, sendPollMs } from "./poll";
+import { useOutgoingMessage } from "./outbox";
 import {
   othersReceived,
   replyDefaults,
@@ -32,7 +32,6 @@ import { ReplyEditor } from "./reply-editor";
 import { MessageStatus } from "./status";
 import {
   accountsUnreadable,
-  inProgress,
   notAnswerable,
   readErrorMessage,
   replyLabels,
@@ -390,10 +389,10 @@ export function ConversationReply({ message }: { message: AnsweredMessage }): Re
   );
 }
 
-// ReplyStatus shows how the send of the reply id goes, reading it again
-// while it is being sent, with what the member can do next. onEdit receives
-// a refused reply to edit into a new one; onSentAgain receives the copy a
-// Send again saved; onUnauthorized runs on a 401.
+// ReplyStatus shows how the send of the reply id goes, its status from the
+// Outbox's read (useOutgoingMessage), with what the member can do next.
+// onEdit receives a refused reply to edit into a new one; onSentAgain
+// receives the copy a Send again saved; onUnauthorized runs on a 401.
 function ReplyStatus({
   id,
   onEdit,
@@ -406,11 +405,9 @@ function ReplyStatus({
   onUnauthorized: () => void;
 }): ReactElement {
   const ref = useRef<HTMLElement>(null);
-  const read = useGetOutgoingMessage(id, {
-    query: { refetchInterval: pollWhile(sendPollMs, (data) => inProgress(data.data.status)) },
-  });
+  const read = useOutgoingMessage(id);
   const accounts = useListConnectedAccounts();
-  const reply = read.data?.data;
+  const reply = read.message;
   const gone = read.error?.status === notFound;
 
   useEffect(() => {
@@ -418,8 +415,8 @@ function ReplyStatus({
     ref.current?.focus();
   }, []);
   useEffect(() => {
-    if (read.error?.status === unauthorized) onUnauthorized();
-  }, [read.error, onUnauthorized]);
+    if (read.expired) onUnauthorized();
+  }, [read.expired, onUnauthorized]);
 
   return (
     <section
@@ -440,7 +437,7 @@ function ReplyStatus({
       {/* A failed read without data, or a gone reply, replaces the status;
           a failed reread keeps it, saying it may have moved on, as the
           Outbox's page does. Polling stops on a failure; Try again restarts it. */}
-      {read.error && read.error.status !== unauthorized && (
+      {read.error && !read.expired && (
         <ReadError
           message={
             reply && !gone
@@ -448,8 +445,8 @@ function ReplyStatus({
               : readErrorMessage(read.error)
           }
           error={read.error}
-          retrying={read.isFetching}
-          onRetry={() => void read.refetch()}
+          retrying={read.retrying}
+          onRetry={read.retry}
         />
       )}
       <p>

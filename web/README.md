@@ -140,9 +140,9 @@ Put shared code in the folder for its responsibility:
   owns it (`compose-store.ts`), its form and schema, the reply editor
   with its defaults and schema, the parts both editors share
   (`editor.tsx`: the card, the recipient rows, the send's key), the
-  Outbox list, one
+  Outbox list and the one read every status comes from (`outbox.ts`), one
   message's status with Send again and Edit and send, their wording, and
-  when their pages read again (`pollWhile`).
+  when the Outbox reads again (`pollWhile`).
 - `src/features/mail`: the mail frame's sidebar, its places and their
   names, the conversation list and its rows, the reading pane and its
   toolbar, mail's TanStack DB collections (`conversations.ts`), what
@@ -332,9 +332,9 @@ sit in the top bar instead of above the list: `Frame` gives its top bar
 a box (`useTopBarSlot`), and the place page puts its header there with a
 React portal, so the heading keeps its focus and the list's `main` keeps
 its name. The mail sidebar's Outbox shows how many of its messages are
-not sent yet, from the Outbox page's own read: one waiting or being
-sent, or one failed or unconfirmed and not sent again (`unfinished`), so
-a message sent again stops counting. The count follows these facts, not
+not sent yet, from the Outbox's one read: one waiting or being sent, or
+one failed or unconfirmed and not sent again (`unfinished`), so a
+message sent again stops counting. The count follows these facts, not
 what a message's page offers now, so it holds still while accounts load
 or while an account can't send. The member menu at the bottom of the sidebar opens
 Settings, the theme choice, and Sign out. Both frames and the signed-out
@@ -850,14 +850,24 @@ new message. A refusal because the account needs
 reconnecting rereads the accounts and links Connected accounts.
 
 The Outbox lists the member's newest 50 messages from inbok, newest first,
-with each status, and reads the list again every 5 seconds while one is
-waiting or sending; its New message button opens the compose window. Each
-opens its own page at `/mail/outbox/$id`, which reads only an ID that is a
-UUID, since the client puts it in the API's path as is. The page shows the
-status above the message, read again every 2 seconds until the send ends,
-and announces it, first after the page has rendered. On both pages a
-failed reread stops the polling and says what is shown may be out of
-date, with Try again, which starts it again. A
+with each status, and reads the list again every 2 seconds while one is
+waiting or sending (`useOutbox`); its New message button opens the
+compose window. That one read gives every status the app shows: the
+sidebar's count, the Outbox, a message's page, the compose window's
+status after Send, and a sent reply's (`useOutgoingMessage`), so no two
+of them disagree and only one request polls. A message's own read, Get
+Outgoing Message, gives its content once; its status counts only for a
+message the list doesn't hold, one outside the newest 50 or saved after
+the list was read, which that read then follows until its send ends; a
+message that leaves the list, past 50 newer ones, is read again then.
+Each write that changes a status, Send and Send again, reads the list
+again. Each message opens its own page at `/mail/outbox/$id`, which reads
+only an ID that is a UUID, since the client puts it in the API's path as
+is. The page shows the status above the message and announces it, first
+after the page has rendered. A failed reread, of the list or of the
+message, says what is shown may be out of date, with Try again, which
+reads again what failed; a failed read stops its own polling until
+then. A
 failed message says why and what to do, and an `unknown` one says to check
 the account's Sent folder in Gmail. Send again copies a failed or unknown
 message into a new one from the same account and opens it; for an
@@ -871,9 +881,9 @@ Edit and send instead, while any of the member's accounts lists `send`,
 since the new message may go from another; it opens the compose window
 filled with its content, as a new message. Open Connected accounts shows
 while the sending account's status is one a reconnect fixes, whatever
-the message failed for. One function,
-`nextSteps` (`src/features/outgoing-messages/text.ts`), works out both what
-a message's page says and what it offers, so the two cannot disagree.
+the message failed for. One function, `nextSteps`
+(`src/features/outgoing-messages/text.ts`), works out both what a
+message's page says and what it offers, so the two cannot disagree.
 
 ### Reply
 
@@ -930,8 +940,8 @@ the address asks nothing, e.g. the compose window's history entry on a
 phone, which steps past every page's warning (`ignoreBlocker`). An
 address typed but not yet a chip counts as typed. The editor keeps the
 message it answers until it closes, so a newer message synced meanwhile
-never changes what is being written. After Send the editor gives way to the reply's status, read again
-every 2 seconds until the send ends; a failed reread keeps the status,
+never changes what is being written. After Send the editor gives way to the reply's status, from the
+Outbox's read; a failed reread keeps the status,
 says it may be out of date, and offers Try again. It has Send again and a
 link to its Outbox page. A refused reply's Edit and send opens the editor
 again with its content, as a new reply to the same message, so it keeps

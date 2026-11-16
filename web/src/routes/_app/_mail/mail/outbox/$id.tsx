@@ -1,20 +1,16 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-  useGetCurrentSession,
-  useGetOutgoingMessage,
-  useListConnectedAccounts,
-} from "@/api/generated/inbok";
+import { useGetCurrentSession, useListConnectedAccounts } from "@/api/generated/inbok";
 import * as z from "zod";
 import { userMessage } from "@/api/problem";
 import { ReadError } from "@/components/read-error";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { MessageView } from "@/features/messages/view";
 import { messageContent, messageHeader } from "@/features/outgoing-messages/message";
-import { pollWhile, sendPollMs } from "@/features/outgoing-messages/poll";
+import { useOutgoingMessage } from "@/features/outgoing-messages/outbox";
 import { MessageStatus } from "@/features/outgoing-messages/status";
-import { inProgress, messageGone, readErrorMessage } from "@/features/outgoing-messages/text";
+import { messageGone, readErrorMessage } from "@/features/outgoing-messages/text";
 import { lineLink } from "@/components/link-style";
 
 const unauthorized = 401;
@@ -37,19 +33,15 @@ function OutgoingMessagePage(): ReactElement {
   // path of the API, so it is never read.
   const valid = messageId.safeParse(id).success;
   const current = useGetCurrentSession();
-  const read = useGetOutgoingMessage(id, {
-    query: {
-      enabled: valid,
-      refetchInterval: pollWhile(sendPollMs, (data) => inProgress(data.data.status)),
-    },
-  });
+  const read = useOutgoingMessage(id, { enabled: valid });
   // What the message offers depends on its member's accounts.
   const accounts = useListConnectedAccounts();
   const [writeExpired, setWriteExpired] = useState(false);
   const expired =
     writeExpired ||
-    [current.error, read.error, accounts.error].some((err) => err?.status === unauthorized);
-  const message = read.data?.data;
+    read.expired ||
+    [current.error, accounts.error].some((err) => err?.status === unauthorized);
+  const message = read.message;
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -77,22 +69,22 @@ function OutgoingMessagePage(): ReactElement {
       </h1>
 
       {!valid && <p role="alert">{messageGone}</p>}
-      {valid && read.isPending && !expired && <output>Loading message...</output>}
+      {valid && !message && !read.error && !expired && <output>Loading message...</output>}
       {expired && <output>Opening sign-in...</output>}
       {readError && (
         <ReadError
           message={readErrorMessage(readError)}
           error={readError}
-          retrying={read.isFetching}
-          onRetry={() => void read.refetch()}
+          retrying={read.retrying}
+          onRetry={read.retry}
         />
       )}
       {staleError && (
         <ReadError
           message={`Could not reload this message, so its status may be out of date. ${userMessage(staleError)}`}
           error={staleError}
-          retrying={read.isFetching}
-          onRetry={() => void read.refetch()}
+          retrying={read.retrying}
+          onRetry={read.retry}
         />
       )}
       {message && !readError && !expired && (
