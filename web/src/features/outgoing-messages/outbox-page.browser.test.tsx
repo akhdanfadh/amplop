@@ -49,6 +49,7 @@ const sent: OutgoingMessage = {
   createdAt: "2026-11-16T08:00:00Z",
   sentAt: "2026-11-16T08:00:05Z",
   sentAgainAs: null,
+  outstanding: false,
   reply: false,
   allowedActions: [],
 };
@@ -63,6 +64,7 @@ const refused: OutgoingMessage = {
   status: "failed",
   failure: "refused",
   sentAt: null,
+  outstanding: true,
   allowedActions: ["send-again"],
 };
 // A message that failed and was sent again, from the member's other account.
@@ -76,6 +78,7 @@ const tried: OutgoingMessage = {
   subject: "Weekly update",
   failure: "gave-up",
   sentAgainAs: sent.id,
+  outstanding: false,
 };
 
 // The Outbox's API as serve sets it: the lists its reads answer in turn,
@@ -122,9 +125,10 @@ function problem(status: number): Response {
   );
 }
 
-// sentAgainAs returns message once sent again as copy.
+// sentAgainAs returns message once sent again as copy, no longer
+// outstanding, as the API then says.
 function sentAgainAs(message: OutgoingMessage, copy: OutgoingMessage): OutgoingMessage {
-  return { ...message, sentAgainAs: copy.id };
+  return { ...message, sentAgainAs: copy.id, outstanding: false };
 }
 
 // answer answers the Outbox's requests from api, and nothing else.
@@ -256,7 +260,12 @@ describe("OutboxPage", () => {
   });
 
   it("shows a message's status in place as it opens, and raises it only once it changes", async () => {
-    const sending: OutgoingMessage = { ...sent, status: "sending", sentAt: null };
+    const sending: OutgoingMessage = {
+      ...sent,
+      status: "sending",
+      sentAt: null,
+      outstanding: true,
+    };
     serve({ messages: [sending], later: [[sending], [sent]] });
     await show();
     await userEvent.click(page.getByRole("row", { name: /Lunch/ }));

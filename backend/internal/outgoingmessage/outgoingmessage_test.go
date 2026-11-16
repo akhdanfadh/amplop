@@ -1,6 +1,7 @@
 package outgoingmessage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -175,15 +176,29 @@ func (m *memoryStorage) ReadOutgoingMessageByKey(ctx context.Context, userID int
 	return message, keyed.request, err
 }
 
+// ListOutgoingMessages orders as the query does: outstanding first, then
+// newest first, ties by the larger ID.
 func (m *memoryStorage) ListOutgoingMessages(_ context.Context, userID int64, limit int) ([]Message, error) {
 	var listed []Message
-	for _, message := range slices.Backward(m.messages) {
-		if m.accounts[message.ConnectedAccountID].userID == userID && len(listed) < limit {
+	for _, message := range m.messages {
+		if m.accounts[message.ConnectedAccountID].userID == userID {
 			message.Body = ""
 			listed = append(listed, message)
 		}
 	}
-	return listed, nil
+	slices.SortFunc(listed, func(a, b Message) int {
+		if a.Outstanding() != b.Outstanding() {
+			if a.Outstanding() {
+				return -1
+			}
+			return 1
+		}
+		if order := b.CreatedAt.Compare(a.CreatedAt); order != 0 {
+			return order
+		}
+		return bytes.Compare(b.ID[:], a.ID[:])
+	})
+	return listed[:min(limit, len(listed))], nil
 }
 
 // createNow is the clock of every create test.
@@ -664,6 +679,30 @@ func TestSendAgainOtherMembers(t *testing.T) {
 	_, err := service.SendAgain(t.Context(), 4, original.ID, nil)
 
 	require.ErrorIs(t, err, ErrNotFound)
+}
+
+// A message is outstanding while it is being sent, and once it ended
+// unsent until it is sent again.
+func TestOutstanding(t *testing.T) {
+	copyID := uuid.New()
+	tests := []struct {
+		name    string
+		message Message
+		want    bool
+	}{
+		{"waiting", Message{Status: StatusWaiting}, true},
+		{"sending", Message{Status: StatusSending}, true},
+		{"sent", Message{Status: StatusSent}, false},
+		{"failed", Message{Status: StatusFailed, Failure: FailureRefused}, true},
+		{"unknown", Message{Status: StatusUnknown}, true},
+		{"failed, sent again", Message{Status: StatusFailed, Failure: FailureRefused, SentAgainAs: &copyID}, false},
+		{"unknown, sent again", Message{Status: StatusUnknown, SentAgainAs: &copyID}, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, test.message.Outstanding())
+		})
+	}
 }
 
 func TestAllowedActions(t *testing.T) {

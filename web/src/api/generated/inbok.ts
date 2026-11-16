@@ -2063,7 +2063,7 @@ export const getListOutgoingMessagesUrl = () => {
 }
 
 /**
- * Lists the messages the signed-in account sent from inbok, newest first, without their bodies, including those that failed or whose outcome is unknown.
+ * Lists at most 50 messages the signed-in account sent from inbok, without their bodies, including those that failed or whose outcome is unknown: the outstanding ones first, so newer finished ones never push one out, then the rest, each newest first; past 50 outstanding, the oldest of those are left out.
  * @summary List Outgoing Messages
  */
 export const listOutgoingMessages = async ( options?: Parameters<typeof transport>[1]): Promise<ResponseOutgoingMessages> => {

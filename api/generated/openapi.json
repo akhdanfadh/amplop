@@ -1616,6 +1616,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "outstanding": {
+            "description": "Whether the message still needs the member: waiting or sending, or failed or unknown and not sent again. List Outgoing Messages lists these first.",
+            "type": "boolean"
+          },
           "reply": {
             "description": "Whether the message answers another, carrying the In-Reply-To and References headers that thread it. A reply sent again keeps its subject, so edits to it keep the subject too.",
             "type": "boolean"
@@ -1669,6 +1673,7 @@
           "status",
           "failure",
           "sentAgainAs",
+          "outstanding",
           "reply",
           "createdAt",
           "sentAt",
@@ -1735,6 +1740,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "outstanding": {
+            "description": "Whether the message still needs the member: waiting or sending, or failed or unknown and not sent again. List Outgoing Messages lists these first.",
+            "type": "boolean"
+          },
           "reply": {
             "description": "Whether the message answers another, carrying the In-Reply-To and References headers that thread it. A reply sent again keeps its subject, so edits to it keep the subject too.",
             "type": "boolean"
@@ -1787,6 +1796,7 @@
           "status",
           "failure",
           "sentAgainAs",
+          "outstanding",
           "reply",
           "createdAt",
           "sentAt",
@@ -6254,7 +6264,7 @@
     },
     "/outgoing-messages": {
       "get": {
-        "description": "Lists the messages the signed-in account sent from inbok, newest first, without their bodies, including those that failed or whose outcome is unknown.",
+        "description": "Lists at most 50 messages the signed-in account sent from inbok, without their bodies, including those that failed or whose outcome is unknown: the outstanding ones first, so newer finished ones never push one out, then the rest, each newest first; past 50 outstanding, the oldest of those are left out.",
         "operationId": "listOutgoingMessages",
         "responses": {
           "200": {

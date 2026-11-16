@@ -2601,9 +2601,15 @@ time returns that copy, and the member never sends one message twice by
 clicking twice; edits other than that copy's content are refused
 (`ErrSentAgainOtherwise`), as they would make a second copy. The transaction locks the member, then the account, then
 the message, the order the send job and a disconnect use. `Service.List`
-returns the member's newest 50, without bodies, so a `failed` or `unknown`
-message, which synchronized mail may never show, can be found and sent
-again.
+returns at most 50 of the member's messages, without bodies: the
+outstanding ones first (`Message.Outstanding`: waiting, sending, or
+`failed` or `unknown` and not sent again), then the rest, each newest
+first. A message that still needs its member, which synchronized mail may
+never show, so never leaves the list for newer finished ones (past 50
+outstanding, the oldest of those do); the query orders by the same rule,
+and a storage test checks the two agree. Each listed
+message says whether it is `outstanding`, so a client groups or counts
+them without its own copy of the rule.
 
 `Service.Reply` saves a reply to one of the member's synchronized
 messages, from any of their accounts, through the same steps; the request

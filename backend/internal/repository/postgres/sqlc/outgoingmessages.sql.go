@@ -121,7 +121,9 @@ SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE ca.user_id = $1
-ORDER BY om.created_at DESC, om.id DESC
+ORDER BY (om.status IN ('waiting', 'sending')
+        OR (om.status IN ('failed', 'unknown') AND om.sent_again_as IS NULL)) DESC,
+    om.created_at DESC, om.id DESC
 LIMIT $2
 `
 
@@ -151,8 +153,11 @@ type ListOutgoingMessagesRow struct {
 	SentAgainAs        *uuid.UUID
 }
 
-// The member's newest messages, without their bodies, which a list does not
-// show and which may be 100,000 characters each.
+// The member's messages, without their bodies, which a list does not show
+// and which may be 100,000 characters each: the outstanding ones first,
+// waiting, sending, or failed or unknown and not sent again (the rule of
+// outgoingmessage's Message.Outstanding), so newer finished ones never
+// push one out, then the rest, each newest first.
 func (q *Queries) ListOutgoingMessages(ctx context.Context, arg ListOutgoingMessagesParams) ([]ListOutgoingMessagesRow, error) {
 	rows, err := q.db.Query(ctx, listOutgoingMessages, arg.UserID, arg.MaxCount)
 	if err != nil {

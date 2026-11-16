@@ -88,8 +88,8 @@ var (
 	longSendLimit  = attemptlimit.Limit{Window: 24 * time.Hour, Max: 200}
 )
 
-// maxListed bounds [Service.List]: the newest messages, enough to find the
-// ones that ended without being sent.
+// maxListed bounds [Service.List]: the outstanding messages, which it lists
+// first, then the newest of the rest.
 const maxListed = 50
 
 // Status is how far sending a message has got.
@@ -240,6 +240,22 @@ func (m Message) Reply() bool {
 	return m.InReplyTo != "" || len(m.References) > 0
 }
 
+// Outstanding reports whether m still needs its member: waiting or being
+// sent, or ended failed or unknown and not sent again.
+// ListOutgoingMessages in repository/postgres's queries orders by the
+// same rule, so no client needs its own copy (AGENTS.md, "API contract").
+func (m Message) Outstanding() bool {
+	switch m.Status {
+	case StatusWaiting, StatusSending:
+		return true
+	case StatusFailed, StatusUnknown:
+		return m.SentAgainAs == nil
+	case StatusSent:
+		return false
+	}
+	return false
+}
+
 // Threading is what threads a reply with the message it answers: its
 // In-Reply-To and References headers (RFC 5322 section 3.6.4), each msg-id
 // with its angle brackets and [msgid.Writable]. A new message has neither.
@@ -370,7 +386,8 @@ type Storage interface {
 	// the request that saved it, or [ErrNotFound] when userID has none.
 	ReadOutgoingMessageByKey(ctx context.Context, userID int64, key uuid.UUID) (Message, Request, error)
 
-	// ListOutgoingMessages returns userID's newest messages, at most limit,
+	// ListOutgoingMessages returns userID's messages, at most limit: the
+	// outstanding ones ([Message.Outstanding]) first, then the rest, each
 	// newest first, each with an empty [Content.Body].
 	ListOutgoingMessages(ctx context.Context, userID int64, limit int) ([]Message, error)
 }
@@ -570,8 +587,10 @@ func (s *Service) Get(ctx context.Context, userID int64, messageID uuid.UUID) (M
 	return s.withAccount(ctx, userID, message)
 }
 
-// List returns userID's newest 50 messages, newest first, each with an empty
-// [Content.Body].
+// List returns at most 50 of userID's messages, each with an empty
+// [Content.Body]: the outstanding ones ([Message.Outstanding]) first, so
+// newer finished ones never push one out, then the rest, each newest
+// first. Past 50 outstanding, the oldest of those are left out.
 func (s *Service) List(ctx context.Context, userID int64) ([]Message, error) {
 	messages, err := s.storage.ListOutgoingMessages(ctx, userID, maxListed)
 	if err != nil {

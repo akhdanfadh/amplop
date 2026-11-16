@@ -67,6 +67,7 @@ type outgoingMessageSummary struct {
 	Status             outgoingmessage.Status   `json:"status" enum:"waiting,sending,sent,failed,unknown" doc:"waiting: saved, not started. sending: in progress. sent: Gmail accepted it. failed: not sent, for failure's reason. unknown: it may have reached Gmail, and inbok cannot tell; check the account's Sent folder before sending it again."`
 	Failure            *outgoingmessage.Failure `json:"failure" nullable:"true" enum:"refused,sending-limit,needs-reconnect,token-unreadable,deactivated,sender-changed,gave-up" doc:"Why the message failed; null unless status is failed. refused: Gmail refused the message; send it again with edits. sending-limit: Gmail's daily sending limit for the account. needs-reconnect and token-unreadable: reconnect the account. deactivated: the account's member was deactivated. sender-changed: Gmail names the account by another address, which inbok has now saved. gave-up: Google did not take the message after several tries, e.g. it could not be reached."`
 	SentAgainAs        *uuid.UUID               `json:"sentAgainAs" nullable:"true" format:"uuid" doc:"The copy this failed or unknown message was sent again as, with or without edits; null until then."`
+	Outstanding        bool                     `json:"outstanding" doc:"Whether the message still needs the member: waiting or sending, or failed or unknown and not sent again. List Outgoing Messages lists these first."`
 	Reply              bool                     `json:"reply" doc:"Whether the message answers another, carrying the In-Reply-To and References headers that thread it. A reply sent again keeps its subject, so edits to it keep the subject too."`
 	CreatedAt          time.Time                `json:"createdAt"`
 	SentAt             *time.Time               `json:"sentAt" nullable:"true" doc:"When Gmail took the message: Gmail's own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent."`
@@ -134,6 +135,7 @@ func outgoingMessageSummaryOf(message outgoingmessage.Message, offered bool) out
 		Subject:            message.Subject,
 		Status:             message.Status,
 		SentAgainAs:        message.SentAgainAs,
+		Outstanding:        message.Outstanding(),
 		Reply:              message.Reply(),
 		CreatedAt:          message.CreatedAt,
 		SentAt:             message.SentAt,
@@ -484,7 +486,7 @@ func registerOutgoingMessageList(api huma.API, handler outgoingMessageHandler) {
 		Path:        outgoingMessagesPath,
 		Summary:     "List Outgoing Messages",
 		Tags:        []string{tagOutgoingMessages},
-		Description: "Lists the messages the signed-in account sent from inbok, newest first, without their bodies, including those that failed or whose outcome is unknown.",
+		Description: "Lists at most 50 messages the signed-in account sent from inbok, without their bodies, including those that failed or whose outcome is unknown: the outstanding ones first, so newer finished ones never push one out, then the rest, each newest first; past 50 outstanding, the oldest of those are left out.",
 		Metadata:    map[string]any{accessKey: session.AccessMember},
 		Security:    []map[string][]string{{sessionSecuritySchemeName: {}}},
 		Responses:   memberResponses(api),

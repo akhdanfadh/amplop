@@ -73,8 +73,11 @@ FROM outgoing_message_keys
 WHERE user_id = @user_id AND idempotency_key = @idempotency_key;
 
 -- name: ListOutgoingMessages :many
--- The member's newest messages, without their bodies, which a list does not
--- show and which may be 100,000 characters each.
+-- The member's messages, without their bodies, which a list does not show
+-- and which may be 100,000 characters each: the outstanding ones first,
+-- waiting, sending, or failed or unknown and not sent again (the rule of
+-- outgoingmessage's Message.Outstanding), so newer finished ones never
+-- push one out, then the rest, each newest first.
 SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
     om.cc_addresses, om.bcc_addresses, om.subject, ''::text AS body,
     om.inbok_message_id, om.in_reply_to, om.internet_references, om.status, om.failure,
@@ -83,7 +86,9 @@ SELECT om.id, om.connected_account_id, om.from_address, om.to_addresses,
 FROM outgoing_messages om
 JOIN connected_accounts ca ON ca.id = om.connected_account_id
 WHERE ca.user_id = @user_id
-ORDER BY om.created_at DESC, om.id DESC
+ORDER BY (om.status IN ('waiting', 'sending')
+        OR (om.status IN ('failed', 'unknown') AND om.sent_again_as IS NULL)) DESC,
+    om.created_at DESC, om.id DESC
 LIMIT @max_count;
 
 -- name: SetOutgoingMessageSentAgain :exec

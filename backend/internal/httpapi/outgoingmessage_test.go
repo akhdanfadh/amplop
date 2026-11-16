@@ -84,7 +84,7 @@ var (
 
 const lunchSummaryJSON = `"id":"0a1b2c3d-0000-4000-8000-000000000001","connectedAccountId":3,"from":"alex@example.com",` +
 	`"to":["Ann@example.com"],"cc":[],"bcc":["cat@example.com"],"subject":"Lunch","status":"waiting",` +
-	`"failure":null,"sentAgainAs":null,"reply":false,"createdAt":"2026-11-09T10:30:00Z","sentAt":null,"allowedActions":[]`
+	`"failure":null,"sentAgainAs":null,"outstanding":true,"reply":false,"createdAt":"2026-11-09T10:30:00Z","sentAt":null,"allowedActions":[]`
 
 const lunchRequest = `{"connectedAccountId":3,"to":["Ann@example.com"],"cc":[],"bcc":["cat@example.com"],"subject":"Lunch","body":"Are you free?"}`
 
@@ -260,7 +260,7 @@ func TestListOutgoingMessages(t *testing.T) {
 		{"one", []outgoingmessage.Message{lunch}, `{"data":{"messages":[{` + lunchSummaryJSON + `}]}}`},
 		{"failed and sent again", []outgoingmessage.Message{failed}, `{"data":{"messages":[{` +
 			strings.NewReplacer(`"status":"waiting"`, `"status":"failed"`, `"failure":null`, `"failure":"gave-up"`,
-				`"sentAgainAs":null`, `"sentAgainAs":"`+lunchCopyID.String()+`"`,
+				`"sentAgainAs":null`, `"sentAgainAs":"`+lunchCopyID.String()+`"`, `"outstanding":true`, `"outstanding":false`,
 				`"allowedActions":[]`, `"allowedActions":["send-again"]`).Replace(lunchSummaryJSON) + `}]}}`},
 		{"failed, its account needs reconnecting", []outgoingmessage.Message{stale}, `{"data":{"messages":[{` +
 			strings.NewReplacer(`"status":"waiting"`, `"status":"failed"`, `"failure":null`, `"failure":"needs-reconnect"`).Replace(lunchSummaryJSON) + `}]}}`},
@@ -305,7 +305,8 @@ func TestGetOutgoingMessage(t *testing.T) {
 	response := requestAuthenticated(api, http.MethodGet, "/outgoing-messages/"+lunchID.String(), "")
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	want := strings.NewReplacer(`"status":"waiting"`, `"status":"sent"`, `"sentAt":null`, `"sentAt":"2026-11-09T10:31:00Z"`).Replace(lunchSummaryJSON)
+	want := strings.NewReplacer(`"status":"waiting"`, `"status":"sent"`, `"sentAt":null`, `"sentAt":"2026-11-09T10:31:00Z"`,
+		`"outstanding":true`, `"outstanding":false`).Replace(lunchSummaryJSON)
 	assert.JSONEq(t, `{"data":{`+want+`,"body":"Are you free?"}}`, response.Body.String())
 	assert.Equal(t, lunchID, messages.messageID)
 }
@@ -567,6 +568,15 @@ func TestOutgoingMessagesOpenAPI(t *testing.T) {
 	for _, typ := range []string{outgoingMessageNotFoundType, sendingAccountNeedsReconnectType, gmailNotConfiguredType, notSendableAgainType, idempotencyKeyReusedType, sendThrottledType, messageNotFoundType} {
 		assert.Contains(t, types, typ)
 	}
+}
+
+// A message is outstanding until it is sent or sent again.
+func TestOutgoingMessageOutstanding(t *testing.T) {
+	sent := lunch
+	sent.Status = outgoingmessage.StatusSent
+
+	assert.True(t, outgoingMessageSummaryOf(lunch, true).Outstanding)
+	assert.False(t, outgoingMessageSummaryOf(sent, true).Outstanding)
 }
 
 // reply says whether a message carries threading headers, which keep its

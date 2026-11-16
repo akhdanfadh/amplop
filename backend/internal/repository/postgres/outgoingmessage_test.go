@@ -881,6 +881,67 @@ func TestOutgoingMessageList(t *testing.T) {
 	assert.Equal(t, created[2].To, listed[0].To)
 }
 
+// The list puts outstanding messages first, as [outgoingmessage.Message.Outstanding]
+// says, so an old one needing the member stays listed past newer ones: for
+// every status, sent again or not.
+func TestOutgoingMessageListOutstandingFirst(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	create := func(status, failure string, sentAgainAs *uuid.UUID) uuid.UUID {
+		t.Helper()
+		created, err := o.messages.Create(t.Context(), o.member, o.draft())
+		require.NoError(t, err)
+		_, err = o.conn.Exec(t.Context(), `UPDATE outgoing_messages SET status = $1, failure = NULLIF($2, ''),
+			sent_at = CASE WHEN $1 = 'sent' THEN now() END,
+			provider_message_id = CASE WHEN $1 = 'sent' THEN 'gmail-' || id END,
+			provider_thread_id = CASE WHEN $1 = 'sent' THEN 'thread-1' END,
+			sent_again_as = $3 WHERE id = $4`,
+			status, failure, sentAgainAs, created.ID)
+		require.NoError(t, err)
+		return created.ID
+	}
+	// In the order they are saved, oldest first; each copy is sent.
+	failedOld := create("failed", "gave-up", nil)
+	unknownCopy := create("sent", "", nil)
+	failedCopy := create("sent", "", nil)
+	created := map[uuid.UUID]string{
+		failedOld:   "failed",
+		unknownCopy: "sent, a copy",
+		failedCopy:  "sent, another copy",
+	}
+	for _, c := range []struct {
+		status, failure, name string
+		sentAgainAs           *uuid.UUID
+	}{
+		{"unknown", "", "unknown, sent again", &unknownCopy},
+		{"failed", "refused", "failed, sent again", &failedCopy},
+		{"waiting", "", "waiting", nil},
+		{"sending", "", "sending", nil},
+		{"unknown", "", "unknown", nil},
+		{"sent", "", "sent", nil},
+	} {
+		created[create(c.status, c.failure, c.sentAgainAs)] = c.name
+	}
+
+	listed, err := o.db.ListOutgoingMessages(t.Context(), o.member, len(created))
+	require.NoError(t, err)
+	shortList, err := o.db.ListOutgoingMessages(t.Context(), o.member, 4)
+	require.NoError(t, err)
+
+	var order []string
+	for _, message := range listed {
+		order = append(order, created[message.ID])
+	}
+	assert.Equal(t, []string{
+		"unknown", "sending", "waiting", "failed",
+		"sent", "failed, sent again", "unknown, sent again", "sent, another copy", "sent, a copy",
+	}, order)
+	for i, message := range listed {
+		assert.Equal(t, i < 4, message.Outstanding(), created[message.ID])
+	}
+	require.Len(t, shortList, 4)
+	assert.Equal(t, failedOld, shortList[3].ID, "the oldest outstanding message outlasts newer sent ones")
+}
+
 // A read and the list carry the sending account as connected accounts read
 // it now, which decides whether the message can be sent again.
 func TestOutgoingMessageAccount(t *testing.T) {
