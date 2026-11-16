@@ -22,9 +22,9 @@ export type ToastDetail = { heading: string; items: readonly string[] };
 // ToastMessage is what one toast says: title, what failed, e.g. "Couldn't
 // archive the conversation"; description, an optional sentence, the fix;
 // details, groups of items behind Show details, e.g. which conversations
-// failed and why; and about, the keys of what it is about, e.g.
-// conversation IDs, which closeAbout closes it by. An action's Undo is not
-// a toast: it has its own bar (DESIGN.md "Feedback").
+// failed and why; and about, the keys of what it is about, e.g. a label
+// on a conversation, which closeAbout closes it by. An action's Undo is
+// not a toast: it has its own bar (DESIGN.md "Feedback").
 type ToastMessage = {
   title: string;
   description?: string;
@@ -63,15 +63,19 @@ export function showError(
   queue.add({ title, description, details, about: about && [...about] });
 }
 
-// closeAbout marks keys as no longer failing, e.g. the conversations a
-// newer action changed: each toast about them is then about the rest only,
-// and closes once nothing it was about is left.
+// closeAbout marks keys as no longer failing, e.g. what a newer action
+// changed again: each toast about them is then about the rest only, and
+// closes once nothing it was about is left. A key covers itself and the
+// keys under it, those it starts with a space after, e.g. "c1 place"
+// covers "c1 place inbox".
 export function closeAbout(keys: Iterable<string>): void {
-  const covered = new Set(keys);
+  const covered = [...keys];
+  const isCovered = (key: string) =>
+    covered.some((cover) => key === cover || key.startsWith(`${cover} `));
   for (const toast of queue.visibleToasts) {
     const about = toast.content.about;
     if (!about || about.length === 0) continue;
-    const left = about.filter((key) => !covered.has(key));
+    const left = about.filter((key) => !isCovered(key));
     if (left.length === 0) queue.close(toast.key);
     else toast.content.about = left;
   }

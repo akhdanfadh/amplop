@@ -242,6 +242,22 @@ describe("the reading pane's actions", () => {
     await expect.element(list().getByRole("row", { name: /Subject 1, .*In Inbox/ })).toBeVisible();
   });
 
+  it("closes an Undo's failure once Move to Inbox puts the conversation back", async () => {
+    const rows = [conversation(1)];
+    await open(rows, 0, "all");
+    await userEvent.click(toolbar().getByRole("button", { name: "Archive" }));
+    await expect.poll(() => api.actions).toHaveLength(1);
+    api.refuse[rows[0].id] = "failed";
+    await userEvent.click(bar().getByRole("button", { name: "Undo" }));
+    const error = page.getByText("Couldn't undo");
+    await expect.element(error).toBeVisible();
+
+    delete api.refuse[rows[0].id];
+    await userEvent.click(toolbar().getByRole("button", { name: "Move to Inbox" }));
+
+    await expect.element(error).not.toBeInTheDocument();
+  });
+
   it("stars in place, with no Undo, the star pressed", async () => {
     const rows = [conversation(1)];
     const router = await open(rows, 0);

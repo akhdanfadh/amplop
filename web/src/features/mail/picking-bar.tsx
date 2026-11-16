@@ -20,7 +20,7 @@ import { clearAccountCache } from "@/features/auth/session-cache";
 import { cn } from "@/lib/cn";
 import { mailData, type Conversation } from "./conversations";
 import { listKey, requestRowFocus } from "./focus-request";
-import { perform } from "./perform";
+import { perform, type Performed } from "./perform";
 import type { Picking } from "./picking";
 import type { Place } from "./places";
 import { actionsFor, staysInList, targetsOf, type Action } from "./rules";
@@ -104,20 +104,21 @@ export function PickingBar({
   }
   if (offered.includes(inMore)) more.push(inMore);
 
-  const run = (action: Action) => {
-    const targets = targetsOf(picked, action, place);
+  const run = (action: Action) => act(action, targetsOf(picked, action, place));
+  // act runs performed on targets, the picked rows it changes.
+  const act = (performed: Performed, targets: readonly Conversation[]) => {
     if (targets.length === 0) return;
     const ids = targets.map((c) => c.id);
     const changing = new Set(ids);
     const { conversations, placeCounts } = mailData(client);
     const emptied = picked.every(
-      (row) => changing.has(row.id) && !staysInList(row, action, [place], account),
+      (row) => changing.has(row.id) && !staysInList(row, performed, [place], account),
     );
     const release = picking.hold(ids);
     void perform({
       mail: { client, conversations, placeCounts },
       conversations: targets,
-      action,
+      act: performed,
       from: "picked",
       accountName: (id) => names.get(id) ?? "",
       onUnauthorized: () => {

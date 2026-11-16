@@ -187,7 +187,7 @@ export function SearchResults({
     void perform({
       mail: { client, conversations, placeCounts },
       conversations: [conversation],
-      action: starred ? "star" : "unstar",
+      act: starred ? "star" : "unstar",
       onUnauthorized: signOut,
     });
   };

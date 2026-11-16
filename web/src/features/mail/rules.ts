@@ -16,6 +16,21 @@ export type ConversationChange = ConversationChangeOutput;
 // changes, each to its own.
 export type Request = { action: Action; ids: string[] } | { changes: ConversationChange[] };
 
+// Act is what the web app does to conversations: an action, by their
+// provider's rules, or changes as they are, e.g. a move to a label.
+export type Act = Action | { changes: readonly ConversationChange[] };
+
+// requestOf returns the request of act for ids: the action on them, or
+// act's changes cut to them, each change that names none left out.
+export function requestOf(act: Act, ids: readonly string[]): Request {
+  if (typeof act === "string") return { action: act, ids: [...ids] };
+  const named = new Set(ids);
+  const changes = act.changes
+    .map((change) => ({ ...change, ids: change.ids.filter((id) => named.has(id)) }))
+    .filter((change) => change.ids.length > 0);
+  return { changes };
+}
+
 // idsOf returns the conversations request reaches, each once.
 export function idsOf(request: Request): string[] {
   return "action" in request ? request.ids : request.changes.flatMap((change) => change.ids);
@@ -99,19 +114,24 @@ function changed(conversation: Conversation, change: ConversationChange): Conver
     !remove.includes(view) && (add.includes(view) || conversation[view]);
   const [inbox, spam, trash] = [has("inbox"), has("spam"), has("trash")];
   const labels = add.filter((place) => !isViewPlace(place));
+  const allMail =
+    spam !== conversation.spam || trash !== conversation.trash
+      ? !spam && !trash
+      : conversation.allMail;
   return {
     ...conversation,
     inbox,
     spam,
     trash,
-    allMail:
-      spam !== conversation.spam || trash !== conversation.trash
-        ? !spam && !trash
-        : conversation.allMail,
-    labelIds: [
-      ...conversation.labelIds.filter((label) => !remove.includes(label)),
-      ...labels.filter((label) => !conversation.labelIds.includes(label)),
-    ],
+    allMail,
+    // A row wholly in Spam or Trash lists no labels, as the server's rows
+    // and the Delete and Report spam guesses show it.
+    labelIds: allMail
+      ? [
+          ...conversation.labelIds.filter((label) => !remove.includes(label)),
+          ...labels.filter((label) => !conversation.labelIds.includes(label)),
+        ]
+      : [],
     starred: change.starred ?? conversation.starred,
     unread: change.unread ?? conversation.unread,
   };
@@ -205,32 +225,30 @@ function actionsOf(conversation: Conversation, list: Place): Action[] {
   return ["unarchive", "trash", "spam", mark, star];
 }
 
-// leavesList reports whether action takes conversation out of the list it
+// leavesList reports whether act takes conversation out of the list it
 // was opened from, which keeps conversations in any of places, of account
 // alone (undefined for every account's), as its guess shows it; Mark
 // unread always does, so the member comes back to it unread. A place's
 // list has one place; a search's, those it searches.
 export function leavesList(
   conversation: Conversation,
-  action: Action,
+  act: Act,
   places: readonly Place[],
   account: number | undefined,
 ): boolean {
-  if (action === "unread") return true;
-  return (
-    inList(conversation, places, account) && !staysInList(conversation, action, places, account)
-  );
+  if (act === "unread") return true;
+  return inList(conversation, places, account) && !staysInList(conversation, act, places, account);
 }
 
 // staysInList reports whether conversation is in the list of places, of
-// account alone when given, once action's guess shows.
+// account alone when given, once act's guess shows.
 export function staysInList(
   conversation: Conversation,
-  action: Action,
+  act: Act,
   places: readonly Place[],
   account: number | undefined,
 ): boolean {
-  return inList(guess(conversation, { action, ids: [conversation.id] }), places, account);
+  return inList(guess(conversation, requestOf(act, [conversation.id])), places, account);
 }
 
 // inList reports whether conversation is in any of places, and of account

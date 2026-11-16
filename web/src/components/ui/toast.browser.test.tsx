@@ -167,6 +167,20 @@ describe("Toaster", () => {
     await expect.poll(toasts).toBe(0);
   });
 
+  it("closes for a key that covers what it is about, the keys under it", async () => {
+    await render(<Toaster />);
+    showError("Couldn't undo", undefined, { about: ["c1 place inbox"] });
+    await expect.element(page.getByText("Couldn't undo")).toBeVisible();
+
+    // A key that only starts the same way covers nothing.
+    closeAbout(["c1 place in"]);
+    await new Promise((done) => requestAnimationFrame(done));
+    expect(toasts()).toBe(1);
+    closeAbout(["c1 place"]);
+
+    await expect.poll(toasts).toBe(0);
+  });
+
   it("keeps Show details out of the alert, its lists named by their reasons", async () => {
     await render(<Toaster />);
     showError("Couldn't archive 2 conversations", "1 conversation is no longer in Gmail.", {

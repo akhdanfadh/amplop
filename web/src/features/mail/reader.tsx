@@ -17,9 +17,9 @@ import { useLayout } from "@/hooks/use-layout";
 import { isCurrent, runAction, type ActionMail } from "./actions";
 import { currentMail } from "./conversations";
 import { requestRowFocus } from "./focus-request";
-import { perform } from "./perform";
+import { perform, type Performed } from "./perform";
 import type { AppHref, Place } from "./places";
-import { leavesList, staysInList, type Action } from "./rules";
+import { leavesList, staysInList } from "./rules";
 import { ConversationToolbar } from "./toolbar";
 import {
   accountsUnreadable,
@@ -139,14 +139,14 @@ export function Reader({
   // itself after Mark unread; a refusal then says why on the list. One the
   // provider no longer has goes back too, its row gone, while the address
   // is still the one it was run at.
-  const onAction = (action: Action) => {
+  const onAction = (act: Performed) => {
     if (!row || !actionMail || left.current === row.id) return;
-    const leaves = leavesList(row, action, places, listAccount);
+    const leaves = leavesList(row, act, places, listAccount);
     // The address, not the pane's drawn conversation: a row chosen since
     // moves the address at once, while the pane draws this conversation
     // until the next one's page has loaded.
     const at = router.state.location.href;
-    void perform({ mail: actionMail, conversations: [row], action, onUnauthorized: signOut }).then(
+    void perform({ mail: actionMail, conversations: [row], act, onUnauthorized: signOut }).then(
       (outcomes) => {
         const gone = outcomes.get(row.id) === "gone";
         if (gone && !leaves && router.state.location.href === at) goBack();
@@ -157,7 +157,7 @@ export function Reader({
     requestRowFocus(list.key, {
       id: row.id,
       dateMs: row.dateMs,
-      stays: staysInList(row, action, places, listAccount),
+      stays: staysInList(row, act, places, listAccount),
     });
     goBack();
   };

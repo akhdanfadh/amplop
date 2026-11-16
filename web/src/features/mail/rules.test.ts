@@ -10,6 +10,7 @@ import {
   guessChanges,
   leavesList,
   placesOf,
+  requestOf,
   type Action,
   type Request,
 } from "./rules";
@@ -245,5 +246,46 @@ describe("leavesList", () => {
 
   it("is always true for Mark unread", () => {
     expect(leavesList(inbox, "unread", ["inbox"], undefined)).toBe(true);
+  });
+
+  it("follows a change: a move leaves the place it names, a label added keeps it", () => {
+    const move = { changes: [{ ids: [inbox.id], add: ["home"], remove: ["work"] }] };
+    expect(leavesList(inbox, move, ["work"], undefined)).toBe(true);
+    expect(leavesList(inbox, move, ["inbox"], undefined)).toBe(false);
+    const label = { changes: [{ ids: [inbox.id], add: ["home"] }] };
+    expect(leavesList(inbox, label, ["work"], undefined)).toBe(false);
+  });
+
+  it("is false for a change that names other conversations", () => {
+    const move = { changes: [{ ids: ["other"], remove: ["work"] }] };
+    expect(leavesList(inbox, move, ["work"], undefined)).toBe(false);
+  });
+});
+
+describe("guess of a change", () => {
+  it("lists no labels on a row it leaves wholly in Spam or Trash, as the server's rows", () => {
+    const row = toConversation(conversation(1, { labelIds: ["work"] }));
+    const trashed = guess(row, {
+      changes: [{ ids: [row.id], add: ["trash", "home"], remove: ["inbox"] }],
+    });
+    expect(trashed).toMatchObject({ trash: true, allMail: false, labelIds: [] });
+    const out = guess(
+      { ...row, inbox: false, trash: true, allMail: false, labelIds: [] },
+      {
+        changes: [{ ids: [row.id], add: ["home"], remove: ["trash"] }],
+      },
+    );
+    expect(out).toMatchObject({ trash: false, allMail: true, labelIds: ["home"] });
+  });
+});
+
+describe("requestOf", () => {
+  it("cuts changes to the conversations asked for, leaving out changes that name none", () => {
+    const changes = [
+      { ids: ["a", "b"], add: ["work"] },
+      { ids: ["c"], remove: ["inbox"] },
+    ];
+    expect(requestOf({ changes }, ["b"])).toEqual({ changes: [{ ids: ["b"], add: ["work"] }] });
+    expect(requestOf("archive", ["a"])).toEqual({ action: "archive", ids: ["a"] });
   });
 });

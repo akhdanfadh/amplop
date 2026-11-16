@@ -20,13 +20,17 @@ import { conversationCount } from "./text";
 // action that moves a conversation to another place, where, the place it
 // went, which screen readers hear with it. One conversation's action
 // without where gets no Undo: its result stays in view; several
-// conversations' always do, as which of them it changed does not.
+// conversations' always do, as which of them it changed does not. One
+// whose result can be out of view without moving the conversation,
+// e.g. a label added, which a row may not show, has an Undo always
+// (alwaysUndo).
 export type ActionWords = {
   label: string;
   icon: LucideIcon;
   failed: (count?: number) => string;
   done: string;
   where?: string;
+  alwaysUndo?: true;
 };
 
 // them names the conversations an action's words take: "the

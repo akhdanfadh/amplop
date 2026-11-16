@@ -4,7 +4,7 @@ import { ApiError } from "@/api/transport";
 import { closeAbout, showError, type ToastDetail } from "@/components/ui/toast";
 import { isCurrent, runAction, type ActionMail, type ActionResult } from "./actions";
 import type { Conversation } from "./conversations";
-import type { Action, ConversationChange } from "./rules";
+import { requestOf, type Action, type ConversationChange } from "./rules";
 import {
   conversationCount,
   detailItem,
@@ -16,7 +16,7 @@ import {
   type Refusal,
 } from "./text";
 import { sayUndone, showUndo, type UndoHandle } from "./undo";
-import { actionWords } from "./words";
+import { actionWords, type ActionWords } from "./words";
 
 const unauthorized = 401;
 
@@ -45,7 +45,11 @@ let actions = 0;
 const latestAction = new Map<string, number>();
 
 // What each action changes on a conversation: where it is, whether it is
-// read, or its star.
+// read, or its star. Changes name what they change: each place they add
+// or remove, a label among them, and each mark they set, so a second
+// label's change leaves the first one's failure to be said. An action's
+// "place" covers each one place, e.g. "place inbox" (closeAbout): Move to
+// Inbox working closes an Undo's failure to put it back there.
 const actionKind: Record<Action, "place" | "read" | "star"> = {
   archive: "place",
   unarchive: "place",
@@ -59,54 +63,98 @@ const actionKind: Record<Action, "place" | "read" | "star"> = {
   unstar: "star",
 };
 
+// Performed is what perform runs: an action, by the provider's rules, or
+// changes as they are, e.g. a move to a label, with the words that name
+// them. Changes change where conversations are.
+export type Performed = Action | { changes: readonly ConversationChange[]; words: ActionWords };
+
+// kindsOf returns what changes change on a conversation: each place they
+// add or remove, and each mark they set or clear.
+function kindsOf(changes: readonly ConversationChange[]): string[] {
+  const kinds = new Set<string>();
+  for (const change of changes) {
+    for (const place of [...(change.add ?? []), ...(change.remove ?? [])])
+      kinds.add(`place ${place}`);
+    if (change.starred !== undefined) kinds.add("star");
+    if (change.unread !== undefined) kinds.add("read");
+  }
+  return [...kinds];
+}
+
+// slotsFor returns the keys of kinds on the conversation id: what an
+// action is the latest to change on it, and what an error toast about it
+// is about, so a newer answer closes only the failures it changed again.
+function slotsFor(id: string, kinds: readonly string[]): string[] {
+  return kinds.map((kind) => `${id} ${kind}`);
+}
+
 // Run is one request of an action: the conversations it names and its
 // answer.
 type Run = { batch: readonly Conversation[]; answer: Promise<ActionResult> };
 
-// perform runs action on conversations in mail, and returns how it ended
+// perform runs act on conversations in mail, and returns how it ended
 // for each, by ID. Every guess shows at once; the requests name at most
 // the contract's limit each and go one after another, so an account's
 // provider calls stay within the server's own limit. An action that moves
 // conversations, or acts on several, shows its Undo in the Undo bar at
-// once (UndoBar), as does every action from the picking bar (from); its
-// Undo waits for the answers and sends their undo, putting back what
+// once (UndoBar), as does every action from the picking bar (from) and
+// one whose words ask for it always (alwaysUndo); its Undo waits for the
+// answers and sends their undo, putting back what
 // changed. A refusal or failure lowers that Undo's count, closing it when
 // nothing changed, and one error toast says why: for several, one
 // sentence per reason and the conversations by reason under Show
-// details, each with its account's name from accountName. The
-// conversations an answer changed no longer keep an older error toast
-// open (closeAbout). Feedback about a conversation a later action reached
-// is left to that action. A refusal as not found also removes the row;
-// an ended session calls onUnauthorized. Nothing shows once the member's
-// mail has ended, e.g. after sign-out.
+// details, each with its account's name from accountName. An older error
+// toast closes once newer answers changed again what failed on each
+// conversation it names, e.g. that label (closeAbout). Feedback about a
+// conversation a later action reached is left to that action. A refusal
+// as not found also removes the row; an ended session calls
+// onUnauthorized. Nothing shows once the member's mail has ended, e.g.
+// after sign-out.
 export async function perform({
   mail,
   conversations,
-  action,
+  act,
   from = "one",
   accountName,
   onUnauthorized,
 }: {
   mail: ActionMail;
   conversations: readonly Conversation[];
-  action: Action;
+  act: Performed;
   from?: From;
   accountName?: (accountId: number) => string;
   onUnauthorized: () => void;
 }): Promise<Map<string, Outcome>> {
-  const words = actionWords[action];
+  const words = typeof act === "string" ? actionWords[act] : act.words;
   const current = () => isCurrent(mail);
   const many = from === "picked" || conversations.length > 1;
   actions++;
   const self = actions;
-  const slot = (id: string) => `${id} ${actionKind[action]}`;
-  for (const conversation of conversations) latestAction.set(slot(conversation.id), self);
-  const latest = (id: string) => latestAction.get(slot(id)) === self;
-
+  // What act changes on each conversation, by the changes naming it: one
+  // account's labels are not another's.
+  const slotsOf = new Map(
+    conversations.map(({ id }) => [
+      id,
+      slotsFor(
+        id,
+        typeof act === "string"
+          ? [actionKind[act]]
+          : kindsOf(act.changes.filter((change) => change.ids.includes(id))),
+      ),
+    ]),
+  );
+  const slots = (id: string) => slotsOf.get(id) ?? [];
+  for (const conversation of conversations) {
+    for (const slot of slots(conversation.id)) latestAction.set(slot, self);
+  }
   const runs: Run[] = [];
   let before: Promise<unknown> = Promise.resolve();
   for (const batch of chunks(conversations, conversationActionBodyIdsMax)) {
-    const answer = runAction(mail, { action, ids: batch.map((c) => c.id) }, before);
+    const request = requestOf(
+      act,
+      batch.map((c) => c.id),
+    );
+    const answer = runAction(mail, request, before);
     runs.push({ batch, answer });
     before = answer;
   }
@@ -114,7 +162,7 @@ export async function perform({
   // What the Undo bar names, lowered as refusals come in.
   let named = conversations;
   let bar: UndoHandle | undefined;
-  if (words.where !== undefined || many) {
+  if (words.where !== undefined || many || words.alwaysUndo) {
     bar = showUndo({
       title: words.done,
       subject: subjectOf(conversations),
@@ -158,10 +206,21 @@ export async function perform({
   named = applied;
   if (applied.length === 0) bar?.close();
   else if (applied.length < conversations.length) bar?.change(subjectOf(applied), applied.length);
-  const ours = failures.filter((f) => latest(f.conversation.id));
-  const closes = applied.filter((c) => latest(c.id)).map((c) => c.id);
+  // What this answer still speaks for on each conversation: a later
+  // action's answer speaks for what it changed again.
+  const own = new Map(
+    conversations.map(({ id }) => [
+      id,
+      slots(id).filter((slot) => latestAction.get(slot) === self),
+    ]),
+  );
+  const ownOf = (c: Conversation) => own.get(c.id) ?? [];
+  const ours = failures.filter((f) => ownOf(f.conversation).length > 0);
+  const closes = applied.flatMap(ownOf);
   for (const conversation of conversations) {
-    if (latest(conversation.id)) latestAction.delete(slot(conversation.id));
+    for (const slot of slots(conversation.id)) {
+      if (latestAction.get(slot) === self) latestAction.delete(slot);
+    }
   }
   if (!current()) return outcomes;
   if (ended) {
@@ -170,7 +229,10 @@ export async function perform({
   }
   closeAbout(closes);
   if (ours.length > 0) {
-    showError(words.failed(many ? ours.length : undefined), ...said(ours, many, accountName));
+    showError(
+      words.failed(many ? ours.length : undefined),
+      ...said(ours, many, accountName, ownOf),
+    );
   }
   if (failures.length === 0) return outcomes;
 
@@ -250,7 +312,15 @@ async function undo({
   if (!current()) return;
   if (ended) onUnauthorized();
   else if (failures.length > 0)
-    showError(undoFailed, ...said(failures, shown.length > 1, accountName));
+    showError(
+      undoFailed,
+      ...said(failures, shown.length > 1, accountName, ({ id }) =>
+        slotsFor(
+          id,
+          kindsOf(requests.flatMap((r) => r.changes).filter((change) => change.ids.includes(id))),
+        ),
+      ),
+    );
   else sayUndone(subjectOf(shown));
 }
 
@@ -258,13 +328,14 @@ async function undo({
 // one conversation, its refusal's fix or its request's failure; for many,
 // one sentence per reason, and the conversations by reason, each with its
 // account's name from accountName when they span several accounts; the
-// toast is about the conversations.
+// toast is about what failed on each conversation, by aboutOf.
 function said(
   failures: readonly Failure[],
   many: boolean,
   accountName: ((accountId: number) => string) | undefined,
+  aboutOf: (conversation: Conversation) => readonly string[],
 ): [string | undefined, { details?: ToastDetail[]; about: string[] }] {
-  const about = failures.map((f) => f.conversation.id);
+  const about = failures.flatMap((f) => aboutOf(f.conversation));
   if (!many) {
     const [failure] = failures;
     const description = failure.reason === "error" ? failure.message : refusedText[failure.reason];

@@ -1027,8 +1027,10 @@ outcome.
   per reason (the accounts to reconnect named, the gone and failed
   counted), and Show details, a disclosure listing the conversations by
   reason, with their accounts when they span several. A newer answer
-  that changed every conversation an older failure's toast named closes
-  that toast. Several conversations go in requests of at most 25 (the
+  that changed again what failed on every conversation an older
+  failure's toast named closes that toast: one label's change working
+  leaves another's failure said, and a move, e.g. Move to Inbox, covers
+  every place. Several conversations go in requests of at most 25 (the
   contract's limit, what Gmail changes within the server's budget), one
   after another, every guess showing at once.
 - **Irreversible actions** (disconnect, deactivate, discard typed text)

@@ -286,7 +286,7 @@ export function ConversationList({
     void perform({
       mail: { client, conversations, placeCounts },
       conversations: [conversation],
-      action: starred ? "star" : "unstar",
+      act: starred ? "star" : "unstar",
       onUnauthorized: () => {
         clearAccountCache(client);
         void navigate({ to: "/sign-in", replace: true });

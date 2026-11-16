@@ -1070,8 +1070,9 @@ collection, so an action anywhere shows at once, and marks an unread
 conversation read once its messages are read and the tab shows. Its
 toolbar (`mail/toolbar.tsx`) offers what `actionsFor` (`mail/rules.ts`)
 gives for the conversation in the list it was opened from, each action
-run by `perform` (`mail/perform.ts`), which shows its Undo in the Undo
-bar (`mail/undo.tsx`) and says why a refused one failed. An action that
+run by `perform` (`mail/perform.ts`), which takes an action or changes
+as they are, shows its Undo in the Undo bar (`mail/undo.tsx`), and says
+why a refused one failed. An action that
 takes the conversation out of that list (`leavesList`) goes back to it,
 through history when a row of it opened the conversation (the row's
 link sets `fromList` in its history state, or keeps the flag of the
@@ -1508,8 +1509,11 @@ changes the rows and their unread counts at once, sends the action, and
 keeps the rows and counts the API answers with; a conversation the API
 refuses, or every one when the request fails, goes back as it was, and
 `perform` says why, in one toast for many, whose details (`showError`'s
-`details`) list them by reason; a later answer that changed every
-conversation a toast names closes it (`closeAbout`). Actions in flight
+`details`) list them by reason; a later answer that changed again what
+failed on every conversation a toast names closes it (`closeAbout`):
+a toast is about keys of a conversation and what failed on it, e.g.
+`<id> place <label>`, and a named action's `<id> place` covers each
+place under it. Actions in flight
 at once keep none of their answers' counts, which each hold the whole of
 List Places at their own moment; the last to settle reads them again. The reading pane reads its row from the same
 collection by ID, loaded from Get Conversation when no list holds it, so
