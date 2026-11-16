@@ -713,7 +713,9 @@ window and redirects to the Inbox, replacing itself in history.
 
 The width when the window opens picks its form until it closes. Wide, it
 is docked bottom right, a landmark region named by its title (the
-subject, else "New message"; React Aria's `useLandmark`), with Minimise, Full screen, and Close in a muted strip;
+subject, else "New message") that F6 reaches (React Aria's
+`useLandmark`; the frame registers the page as one too, so F6 goes back),
+with Minimise, Full screen, and Close in a muted strip;
 its title also minimises and restores it, and restoring returns focus to
 the field it left. Full screen is a modal dialog over the dimmed page,
 which turns `inert`, with focus kept inside (React Aria's `FocusScope`); Escape or pressing the dimmed page docks it again,

@@ -640,11 +640,13 @@ last two redirect into settings, so settings can move without the server.
   restoring, and full screen change at once. Close and Discard ask first
   with typed text; Escape never closes it.
 - **The compose window and the keyboard:** docked or minimised, it is a
-  landmark named by its title, beside a page that stays in use. Full
-  screen, and on phones, it is a modal dialog: the page behind it inert,
-  Tab going round its own controls. Its edge turns `input` while focus is
-  inside, as the reply's card does. Focus starts in the first field to
-  fill in (From, else To, else the start of the message); minimising moves it to the strip's title,
+  landmark named by its title, beside a page that stays in use; F6 moves
+  between it and the page, which is a landmark too ("Mail page",
+  "Settings page"). Full screen, and on phones, it is a modal dialog: the
+  page behind it inert, Tab going round its own controls. Its edge turns
+  `input` while focus is inside, as the reply's card does. Focus starts in
+  the first field to fill in (From, else To, else the start of the
+  message); minimising moves it to the strip's title,
   restoring back to the field it left; Send moves it to the status;
   closing gives it back to what opened the window, else the page's
   heading. Compose, while the window holds a message, brings it back

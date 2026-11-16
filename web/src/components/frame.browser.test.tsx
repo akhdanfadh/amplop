@@ -11,6 +11,7 @@ import {
   createRouter,
 } from "@tanstack/react-router";
 import { ComposeProvider, ComposeStore } from "@/features/outgoing-messages/compose-store";
+import { ComposeWindow } from "@/features/outgoing-messages/compose-window";
 import { Frame } from "./frame";
 import { LeaveWarning } from "./leave-warning";
 
@@ -227,5 +228,43 @@ describe("Frame", () => {
     await expect
       .element(page.getByRole("alertdialog", { name: "Sign out while sending?" }))
       .toMatchTextContent("check the Outbox");
+  });
+
+  it("lets F6 move between the page and the compose window", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () => signedIn()),
+    );
+    await page.viewport(1440, 900);
+    const compose = new ComposeStore();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const root = createRootRoute({
+      component: () => (
+        <QueryClientProvider client={client}>
+          <ComposeProvider value={compose}>
+            <Frame label="Mail" nav={<a href="#inbox">Inbox</a>}>
+              <h1 tabIndex={-1}>Inbox</h1>
+              <button type="button">Archive</button>
+            </Frame>
+            <ComposeWindow />
+          </ComposeProvider>
+        </QueryClientProvider>
+      ),
+    });
+    const router = createRouter({
+      routeTree: root,
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+    });
+    await render(<RouterProvider router={router} />);
+    await userEvent.click(page.getByRole("button", { name: "Archive" }));
+    compose.open();
+    const window = page.getByRole("region", { name: "New message" });
+    await expect.element(window).toBeVisible();
+    await userEvent.click(page.getByRole("button", { name: "Archive" }));
+
+    await userEvent.keyboard("{F6}");
+    await expect.poll(() => window.element().contains(document.activeElement)).toBe(true);
+    await userEvent.keyboard("{F6}");
+    await expect.element(page.getByRole("button", { name: "Archive" })).toHaveFocus();
   });
 });
