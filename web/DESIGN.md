@@ -580,9 +580,18 @@ last two redirect into settings, so settings can move without the server.
   its name wherever the list shows several accounts' mail, even when one
   account's conversations are left. An account with none says so in
   words ("No labels in Work yet. Labels you make in Gmail show
-  here."); beside accounts that have some, a note under the list names
-  it ("No labels in Work yet. ..."), as React Aria drops a section with
-  no items. Names you choose from wrap, never cut: a long name or path
+  here.", or, where labels can be made, "No labels in Work yet. Type a
+  name to make one."); beside accounts that have some, a note under the
+  list names it ("No labels in Work yet. ..."), as React Aria drops a
+  section with no items. Where a label can be made (an account whose
+  `allowedActions` has `change-mail`), typing a name no label shown has,
+  in any case, adds `New label "Clients/Initech"…` last, which opens the
+  New label dialog over the picker (beside it in the page, so Escape
+  closes only the dialog), filled from the name typed split at the
+  longest label path it starts with: Initech under Clients. From Labels,
+  the label made comes back ticked, waiting for Apply; from Move to, the
+  dialog's button reads "Create and move": it makes the label, then moves
+  there, with Move to's Undo, which keeps the label. Names you choose from wrap, never cut: a long name or path
   takes more lines, and one without spaces, e.g. an address, breaks at
   the edge, so two long labels alike at the start can still be told
   apart on a phone, where no tooltip shows. Enter ticks a label, as a

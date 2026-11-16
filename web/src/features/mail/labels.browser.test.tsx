@@ -209,7 +209,8 @@ describe("Labels", () => {
     await more("Labels");
     const filter = page.getByRole("searchbox", { name: "Filter labels" });
     await userEvent.type(filter, "zzq");
-    await expect.element(page.getByText("No labels match.")).toBeVisible();
+    // No label matches; the account's labels can change, so it offers one.
+    await expect.element(page.getByRole("menuitem", { name: 'New label "zzq"…' })).toBeVisible();
     await userEvent.click(page.getByRole("button", { name: "Clear filter" }));
 
     await expect.element(filter).toHaveValue("");
@@ -340,9 +341,7 @@ describe("picked conversations of several accounts", () => {
     const menu = page.getByRole("menu", { name: "Move to" });
     await expect.element(menu.getByText("ana@home.example")).toBeVisible();
     await expect
-      .element(
-        page.getByText("No labels in ana@spare.example yet. Labels you make in Gmail show here."),
-      )
+      .element(page.getByText("No labels in ana@spare.example yet. Type a name to make one."))
       .toBeVisible();
     await userEvent.click(page.getByRole("menuitem", { name: "Clients/Acme" }));
 

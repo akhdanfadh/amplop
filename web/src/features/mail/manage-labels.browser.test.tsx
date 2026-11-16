@@ -7,7 +7,7 @@ import type { ConversationRow, ListedAccount, PlaceCount } from "@/api/generated
 import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter, memberSession } from "@/test/app-router";
-import { listedAccount, mailApi, type MailApi } from "@/test/mail-api";
+import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
 
 // Labels' ids, as List Places gives them.
 const clients = "00000000-0000-4000-8000-0000000000d1";
@@ -66,6 +66,22 @@ async function open(address: string, rows: ConversationRow[] = [], listed = acco
 // nav returns the mail sidebar.
 function nav() {
   return page.getByRole("navigation", { name: "Mail" });
+}
+
+// placeOf returns the id of the label of account named name.
+function placeOf(accountId: number, name: string): string | undefined {
+  return api.places.find((p) => p.accountId === accountId && p.name === name)?.place;
+}
+
+// toolbar returns the reading pane's toolbar.
+function toolbar() {
+  return page.getByRole("toolbar", { name: "Conversation actions" });
+}
+
+// picker opens the toolbar's More and the picker named name in it.
+async function picker(name: string) {
+  await userEvent.click(toolbar().getByRole("button", { name: "More actions" }));
+  await userEvent.click(page.getByRole("menuitem", { name: `${name}…` }));
 }
 
 describe("New label in the sidebar", () => {
@@ -140,5 +156,88 @@ describe("New label in the sidebar", () => {
 
     await expect.element(nav().getByRole("link", { name: "Work" })).toBeVisible();
     expect(nav().getByRole("button", { name: "New label" }).elements()).toHaveLength(0);
+  });
+});
+
+describe("New label in a picker", () => {
+  it("in Labels, opens the dialog split at the label typed, and brings the label back ticked", async () => {
+    const row = conversation(1, { accountId: 1 });
+    await open(`/mail/inbox/${row.id}`, [row]);
+    await expect.element(toolbar()).toBeVisible();
+
+    await picker("Labels");
+    await userEvent.fill(page.getByRole("searchbox", { name: "Filter labels" }), "clients/Initech");
+    await userEvent.click(page.getByRole("menuitem", { name: 'New label "clients/Initech"…' }));
+    const dialog = page.getByRole("dialog", { name: "New label in Work" });
+    await expect.element(dialog.getByRole("textbox", { name: "Name" })).toHaveValue("Initech");
+    await expect
+      .element(dialog.getByRole("button", { name: /Nest under/ }))
+      .toHaveTextContent("Clients");
+    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
+    await expect.element(dialog).not.toBeInTheDocument();
+
+    const initech = placeOf(1, "Initech");
+    await expect
+      .element(page.getByRole("menuitemcheckbox", { name: "Clients/Initech" }))
+      .toBeChecked();
+    // Under its parent, in name order, as the sidebar's tree has it.
+    await userEvent.click(page.getByRole("button", { name: "Clear filter" }));
+    await expect
+      .poll(() =>
+        page
+          .getByRole("menuitemcheckbox")
+          .elements()
+          .map((item) => item.getAttribute("aria-label")),
+      )
+      .toEqual(["Clients", "Clients/Acme", "Clients/Initech", "Hiring"]);
+    await userEvent.click(page.getByRole("button", { name: "Apply" }));
+    await expect.poll(() => api.changes).toEqual([[{ ids: [row.id], add: [initech], remove: [] }]]);
+  });
+
+  it("in Move to, makes the label and moves there, and Escape closes only the dialog", async () => {
+    const row = conversation(1, { accountId: 1 });
+    await open(`/mail/inbox/${row.id}`, [row]);
+    await expect.element(toolbar()).toBeVisible();
+
+    await picker("Move to");
+    await userEvent.fill(page.getByRole("searchbox", { name: "Filter labels" }), "Taxes");
+    await userEvent.click(page.getByRole("menuitem", { name: 'New label "Taxes"…' }));
+    const dialog = page.getByRole("dialog", { name: "New label in Work" });
+    await userEvent.keyboard("{Escape}");
+    await expect.element(dialog).not.toBeInTheDocument();
+    await expect.element(page.getByRole("dialog", { name: "Move to" })).toBeVisible();
+
+    await userEvent.click(page.getByRole("menuitem", { name: 'New label "Taxes"…' }));
+    await userEvent.click(dialog.getByRole("button", { name: "Create and move" }));
+
+    const taxes = placeOf(1, "Taxes");
+    await expect
+      .poll(() => api.changes)
+      .toEqual([[{ ids: [row.id], add: [taxes], remove: ["inbox"] }]]);
+    await expect.element(page.getByText("Moved to Taxes", { exact: true })).toBeVisible();
+  });
+
+  it("isn't offered where the account's labels can't change, which says no label matches", async () => {
+    const row = conversation(1, { accountId: 1 });
+    const [work] = accounts();
+    work.allowedActions = work.allowedActions.filter((action) => action !== "change-mail");
+    await open(`/mail/inbox/${row.id}`, [row], [work]);
+    await expect.element(toolbar()).toBeVisible();
+
+    await picker("Labels");
+    await userEvent.fill(page.getByRole("searchbox", { name: "Filter labels" }), "zzq");
+    await expect.element(page.getByText("No labels match.")).toBeVisible();
+    expect(page.getByRole("menuitem", { name: /New label/ }).elements()).toHaveLength(0);
+  });
+
+  it("isn't offered for a name a label shown has, in any case", async () => {
+    const row = conversation(1, { accountId: 1 });
+    await open(`/mail/inbox/${row.id}`, [row]);
+    await expect.element(toolbar()).toBeVisible();
+
+    await picker("Labels");
+    await userEvent.fill(page.getByRole("searchbox", { name: "Filter labels" }), "hiring");
+    await expect.element(page.getByRole("menuitemcheckbox", { name: "Hiring" })).toBeVisible();
+    expect(page.getByRole("menuitem", { name: /New label/ }).elements()).toHaveLength(0);
   });
 });

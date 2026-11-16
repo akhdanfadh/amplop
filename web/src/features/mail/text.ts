@@ -576,6 +576,7 @@ export function moreMarks(count: number): string {
 // Making labels (DESIGN.md "Sidebar").
 export const newLabelName = "New label";
 export const createText = "Create";
+export const createAndMoveText = "Create and move";
 export const creatingText = "Creating...";
 export const cancelLabelText = "Cancel";
 export const labelNameLabel = "Name";
@@ -586,4 +587,23 @@ export const labelAccountLabel = "Account";
 // newLabelIn titles New label for one account, named.
 export function newLabelIn(account: string): string {
   return `New label in ${account}`;
+}
+
+// noLabelsToMake says the account named has no labels yet, where the
+// member can make one by typing its name.
+export function noLabelsToMake(account: string): string {
+  return `No labels in ${account} yet. Type a name to make one.`;
+}
+export const noLabelsInTheseToMake = "These accounts have no labels yet. Type a name to make one.";
+
+// noLabelsYetToMake says the accounts named have no labels yet, beside
+// others that do, where the member can make one by typing its name.
+export function noLabelsYetToMake(accounts: readonly string[]): string {
+  return `No labels in ${names.format(accounts)} yet. Type a name to make one.`;
+}
+
+// newLabelNamed names a picker's item that opens New label for the name
+// typed.
+export function newLabelNamed(typed: string): string {
+  return opensPicker(`New label "${typed}"`);
 }

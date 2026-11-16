@@ -272,6 +272,10 @@ export function PickingBar({
               headings={account === undefined && (accountList?.length ?? 0) > 1}
               labels={labels}
               accountName={(id) => names.get(id) ?? ""}
+              canChange={(id) =>
+                accountList?.some((a) => a.id === id && a.allowedActions.includes("change-mail")) ??
+                false
+              }
               onAct={act}
             />
           </span>

@@ -22,6 +22,7 @@ import type { Label } from "./labels";
 import {
   atTheTop,
   cancelLabelText,
+  createAndMoveText,
   createText,
   creatingText,
   labelAccountLabel,
@@ -46,16 +47,20 @@ const labelValues = LabelCreateInputBody.pick({ name: true }).extend({
 });
 
 // LabelStart is what a new label's form starts with: its account, name,
-// and parent.
+// and parent, e.g. what the member typed in a picker, split at the label
+// it names (splitTyped).
 export type LabelStart = { accountId: number; name: string; parent: string | null };
 
-// LabelDialog is New label (DESIGN.md "Sidebar"), over the page while
+// LabelDialog is New label (DESIGN.md "Sidebar", "Reading pane"), over
+// the page while
 // isOpen; onOpenChange closes it, as Cancel and Escape do, which send
 // nothing. It makes a label in one of accountIds, the accounts whose mail
 // can change, starting from start; its Account field shows only with
 // several, named and marked as the sidebar names them. labels are the
-// member's, for the parents offered: those of the chosen account. onDone
-// gets the label made, once the member's labels have been read again, so
+// member's, for the parents offered: those of the chosen account. action
+// "create-and-move" names the button for a picker's Move to, which moves
+// the conversation once the label is made. onDone gets the label made,
+// once the member's labels have been read again, so
 // every list shows it. While it sends, Escape and Cancel wait: a sent
 // change can't be called back.
 export function LabelDialog({
@@ -68,6 +73,7 @@ export function LabelDialog({
   labels: readonly Label[];
   accountIds: readonly number[];
   start?: LabelStart;
+  action?: "create" | "create-and-move";
   onDone: (label: Label) => void;
 }): ReactElement {
   const [sending, setSending] = useState(false);
@@ -85,6 +91,7 @@ function LabelForm({
   labels,
   accountIds,
   start,
+  action = "create",
   onDone,
   onSending,
   onClose,
@@ -92,6 +99,7 @@ function LabelForm({
   labels: readonly Label[];
   accountIds: readonly number[];
   start?: LabelStart;
+  action?: "create" | "create-and-move";
   onDone: (label: Label) => void;
   onSending: (sending: boolean) => void;
   onClose: () => void;
@@ -206,7 +214,9 @@ function LabelForm({
             <Button type="button" variant="outline" isDisabled={sending} onPress={onClose}>
               {cancelLabelText}
             </Button>
-            <form.SubmitButton working={creatingText}>{createText}</form.SubmitButton>
+            <form.SubmitButton working={creatingText}>
+              {action === "create-and-move" ? createAndMoveText : createText}
+            </form.SubmitButton>
           </DialogFooter>
         </form.Form>
       </form.AppForm>
@@ -237,4 +247,32 @@ function labelOf(saved: LabelResource, labels: readonly Label[]): Label {
     path: parent ? `${parent.path}/${saved.name}` : saved.name,
     depth: parent ? parent.depth + 1 : 0,
   };
+}
+
+// splitTyped reads typed, a path typed in a picker, as the picker shows
+// paths: the longest path of accountId's labels that starts it, before a
+// "/", is the parent, and the rest the name, e.g. "Clients/Initech" is
+// Initech under Clients. Without one, the whole is the name.
+export function splitTyped(
+  typed: string,
+  labels: readonly Label[],
+  accountId: number,
+): Omit<LabelStart, "accountId"> {
+  let parent: Label | undefined;
+  for (const label of labels) {
+    if (label.accountId !== accountId) continue;
+    if (!sameText(typed.slice(0, label.path.length + 1), `${label.path}/`)) continue;
+    if (!parent || label.path.length > parent.path.length) parent = label;
+  }
+  return parent
+    ? { name: typed.slice(parent.path.length + 1), parent: parent.place }
+    : { name: typed, parent: null };
+}
+
+// Paths compare as Gmail compares names: ignoring case, not accents.
+const collator = new Intl.Collator(undefined, { sensitivity: "accent" });
+
+// sameText reports whether a and b are the same text, ignoring case.
+export function sameText(a: string, b: string): boolean {
+  return collator.compare(a, b) === 0;
 }
