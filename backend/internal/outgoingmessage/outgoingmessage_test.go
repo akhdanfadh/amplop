@@ -189,23 +189,57 @@ func (m *memoryStorage) ListOutgoingMessages(_ context.Context, userID int64, li
 // createNow is the clock of every create test.
 var createNow = time.Date(2026, 11, 9, 10, 30, 0, 0, time.UTC)
 
-// lostKeyID is the ID of a key [keyTokens] no longer has.
+// lostKeyID is the ID of a key [memoryAccounts] no longer has.
 const lostKeyID = "lost"
 
-// keyTokens opens every token except one sealed with [lostKeyID], as a key
-// list without that key would.
-type keyTokens struct{}
+// memoryAccounts reads storage's accounts as [connectedaccount.Service]
+// does: it opens every token except one sealed with [lostKeyID], as a key
+// list without that key would, and gives each account its status.
+type memoryAccounts struct {
+	storage *memoryStorage
+}
 
-func (keyTokens) CheckToken(_, _ int64, credential connectedaccount.Credential) error {
+func (memoryAccounts) CheckToken(_, _ int64, credential connectedaccount.Credential) error {
 	if credential.KeyID == lostKeyID {
 		return fmt.Errorf("%w: no key %s", connectedaccount.ErrTokenUnreadable, lostKeyID)
 	}
 	return nil
 }
 
+func (a memoryAccounts) List(_ context.Context, userID int64) ([]connectedaccount.Account, error) {
+	var accounts []connectedaccount.Account
+	for id, account := range a.storage.accounts {
+		if account.userID != userID {
+			continue
+		}
+		status := connectedaccount.StatusUsable
+		switch {
+		case account.sender.NeedsReconnect:
+			status = connectedaccount.StatusNeedsReconnect
+		case account.sender.Credential.KeyID == lostKeyID:
+			status = connectedaccount.StatusTokenUnreadable
+		}
+		accounts = append(accounts, connectedaccount.Account{ID: id, UserID: userID, Email: account.sender.Email, Status: status})
+	}
+	return accounts, nil
+}
+
+// failingAccounts is [memoryAccounts] whose List fails while *fail is set.
+type failingAccounts struct {
+	memoryAccounts
+	fail *bool
+}
+
+func (a failingAccounts) List(ctx context.Context, userID int64) ([]connectedaccount.Account, error) {
+	if *a.fail {
+		return nil, errors.New("accounts unavailable")
+	}
+	return a.memoryAccounts.List(ctx, userID)
+}
+
 // newTestService returns a service over storage whose clock reads *now.
 func newTestService(storage *memoryStorage, now *time.Time) *Service {
-	return NewService(storage, keyTokens{}, func() time.Time { return *now })
+	return NewService(storage, memoryAccounts{storage}, func() time.Time { return *now })
 }
 
 // testDraft returns a draft from account 5 with a new key.
@@ -299,7 +333,8 @@ func TestCreateRepeatedTokenUnreadable(t *testing.T) {
 	again, err := service.Create(t.Context(), 3, draft)
 
 	require.NoError(t, err)
-	assert.Equal(t, first, again)
+	assert.Equal(t, first.ID, again.ID)
+	assert.Equal(t, connectedaccount.StatusTokenUnreadable, again.Account.Status, "the account as read now")
 	assert.Len(t, storage.messages, 1)
 }
 
@@ -580,6 +615,153 @@ func TestSendAgainOtherMembers(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrNotFound)
 }
+
+func TestAllowedActions(t *testing.T) {
+	copyID := uuid.New()
+	usable := connectedaccount.Account{Status: connectedaccount.StatusUsable}
+	stale := connectedaccount.Account{Status: connectedaccount.StatusNeedsReconnect}
+	unreadable := connectedaccount.Account{Status: connectedaccount.StatusTokenUnreadable}
+	tests := []struct {
+		name    string
+		message Message
+		offered bool
+		want    []Action
+	}{
+		{"waiting", Message{Status: StatusWaiting, Account: usable}, true, nil},
+		{"sending", Message{Status: StatusSending, Account: usable}, true, nil},
+		{"sent", Message{Status: StatusSent, Account: usable}, true, nil},
+		{"failed", Message{Status: StatusFailed, Failure: FailureRefused, Account: usable}, true, []Action{ActionSendAgain}},
+		{"unknown", Message{Status: StatusUnknown, Account: usable}, true, []Action{ActionSendAgain}},
+		{"Gmail not set up", Message{Status: StatusFailed, Failure: FailureGaveUp, Account: usable}, false, nil},
+		{"account needs reconnecting", Message{Status: StatusFailed, Failure: FailureNeedsReconnect, Account: stale}, true, nil},
+		{"account's token unreadable", Message{Status: StatusFailed, Failure: FailureTokenUnreadable, Account: unreadable}, true, nil},
+		{"account disconnected", Message{Status: StatusUnknown}, true, nil},
+		{"sent again", Message{Status: StatusUnknown, SentAgainAs: &copyID, Account: usable}, true, []Action{ActionSendAgain}},
+		{"sent again, account needs reconnecting", Message{Status: StatusFailed, SentAgainAs: &copyID, Account: stale}, true, []Action{ActionSendAgain}},
+		{"sent again, Gmail not set up", Message{Status: StatusFailed, SentAgainAs: &copyID, Account: usable}, false, nil},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, test.message.AllowedActions(test.offered))
+		})
+	}
+}
+
+// What a read lists is what Send again accepts with Gmail set up: for
+// every status, with the account usable, needing reconnecting, or holding a
+// token no key opens.
+func TestAllowedActionsMatchSendAgain(t *testing.T) {
+	accounts := map[string]func(*Sender){
+		"usable":           func(*Sender) {},
+		"needs reconnect":  func(sender *Sender) { sender.NeedsReconnect = true },
+		"token unreadable": func(sender *Sender) { sender.Credential = connectedaccount.Credential{KeyID: lostKeyID} },
+	}
+	for _, status := range []Status{StatusWaiting, StatusSending, StatusSent, StatusFailed, StatusUnknown} {
+		for name, change := range accounts {
+			t.Run(fmt.Sprintf("%s, account %s", status, name), func(t *testing.T) {
+				storage, service, original := sendAgainTest(t, status)
+				account := storage.accounts[5]
+				change(&account.sender)
+				storage.accounts[5] = account
+				read, err := service.Get(t.Context(), 3, original.ID)
+				require.NoError(t, err)
+
+				_, err = service.SendAgain(t.Context(), 3, original.ID)
+
+				listed := slices.Contains(read.AllowedActions(true), ActionSendAgain)
+				assert.Equal(t, listed, err == nil, "listed %t, Send again: %v", listed, err)
+			})
+		}
+	}
+}
+
+// A message sent again lists Send again after its account stops working,
+// as Send again still returns its copy.
+func TestAllowedActionsSentAgainNeedsReconnect(t *testing.T) {
+	storage, service, original := sendAgainTest(t, StatusFailed)
+	copied, err := service.SendAgain(t.Context(), 3, original.ID)
+	require.NoError(t, err)
+	account := storage.accounts[5]
+	account.sender.NeedsReconnect = true
+	storage.accounts[5] = account
+	read, err := service.Get(t.Context(), 3, original.ID)
+	require.NoError(t, err)
+
+	again, err := service.SendAgain(t.Context(), 3, original.ID)
+
+	assert.Equal(t, []Action{ActionSendAgain}, read.AllowedActions(true))
+	require.NoError(t, err)
+	assert.Equal(t, copied.ID, again.ID)
+}
+
+// Every message the service returns carries its sending account as read
+// now, which its allowed actions need.
+func TestMessagesCarryTheirAccount(t *testing.T) {
+	storage := newMemoryStorage()
+	now := createNow
+	service := newTestService(storage, &now)
+
+	created, err := service.Create(t.Context(), 3, testDraft())
+	require.NoError(t, err)
+	account := storage.accounts[5]
+	account.sender.NeedsReconnect = true
+	storage.accounts[5] = account
+	read, err := service.Get(t.Context(), 3, created.ID)
+	require.NoError(t, err)
+	listed, err := service.List(t.Context(), 3)
+	require.NoError(t, err)
+
+	assert.Equal(t, connectedaccount.StatusUsable, created.Account.Status)
+	assert.Equal(t, connectedaccount.StatusNeedsReconnect, read.Account.Status)
+	require.Len(t, listed, 1)
+	assert.Equal(t, connectedaccount.StatusNeedsReconnect, listed[0].Account.Status)
+}
+
+// A write whose account read fails after saving answers the error, and its
+// retry returns what the first saved, saving nothing more: Create and Reply
+// by their key, Send again by the original's link to its copy.
+func TestWriteRetriedAfterAccountsFail(t *testing.T) {
+	for name, write := range map[string]func(*Service, Message) (Message, error){
+		"create": func(service *Service, _ Message) (Message, error) {
+			return service.Create(t.Context(), 3, Draft{ConnectedAccountID: 5, IdempotencyKey: lunchKey, Content: testContent()})
+		},
+		"reply": func(service *Service, _ Message) (Message, error) {
+			reply := testReply()
+			reply.IdempotencyKey = lunchKey
+			return service.Reply(t.Context(), 3, reply)
+		},
+		"send again": func(service *Service, original Message) (Message, error) {
+			return service.SendAgain(t.Context(), 3, original.ID)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			storage := newMemoryStorage()
+			storage.answered[answeredID] = testAnswered()
+			fail := false
+			service := NewService(storage, failingAccounts{memoryAccounts{storage}, &fail}, func() time.Time { return createNow })
+			original, err := service.Create(t.Context(), 3, testDraft())
+			require.NoError(t, err)
+			storage.messages[0].Status = StatusFailed
+			saved := len(storage.messages)
+			fail = true
+
+			_, err = write(service, original)
+			require.Error(t, err)
+			require.Len(t, storage.messages, saved+1, "the failed try saved")
+			fail = false
+			again, err := write(service, original)
+
+			require.NoError(t, err)
+			assert.Len(t, storage.messages, saved+1, "saved once")
+			assert.Equal(t, storage.messages[saved].ID, again.ID)
+			assert.Len(t, storage.attempts[3], saved+1, "one attempt per message")
+			assert.Equal(t, connectedaccount.StatusUsable, again.Account.Status)
+		})
+	}
+}
+
+// lunchKey is the idempotency key a retried write repeats.
+var lunchKey = uuid.MustParse("0a1b2c3d-0000-4000-8000-0000000000aa")
 
 // The list holds the member's newest messages only.
 func TestList(t *testing.T) {

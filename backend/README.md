@@ -2636,7 +2636,19 @@ recipients, and a refused address answer 422 on their field, e.g.
 send limit answers 429 `send-throttled` with `Retry-After`. Another
 member's message, or a missing one, answers 404
 `outgoing-message-not-found`, and sending again a message that is
-`waiting`, `sending`, or `sent` answers 409 `not-sendable-again`.
+`waiting`, `sending`, or `sent` answers 409 `not-sendable-again`. Each
+message, listed or read alone, lists in `allowedActions` what the member
+can ask of it now: `send-again` while Gmail is set up, it is `failed` or
+`unknown`, and its sending account lists `send` among its own
+`allowedActions` (`outgoingmessage.Message.AllowedActions`), the checks
+Send Message Again makes, so a client never restates them. The service
+reads the member's accounts through `connectedaccount.Service` once per
+call and gives each message its account (`Message.Account`), so the
+account's rule is the one rule. A message already sent again keeps
+`send-again` whatever its account's state, as Send Message Again returns
+its copy before reading the account. A deactivated member and the send
+limit are left to the refusal: both are the member's, and the limit lifts
+with time, which its 429 says.
 
 The send builds the MIME message from the saved row with go-message:
 `From` the saved address, `To`, `Cc`, `Bcc`, an RFC 2047 `Subject`, the

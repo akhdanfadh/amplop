@@ -116,6 +116,7 @@ describe("composeValues", () => {
     createdAt: "2026-11-10T10:00:00Z",
     sentAt: null,
     sentAgainAs: null,
+    allowedActions: ["send-again"],
   };
 
   it("starts empty, with no account chosen", () => {

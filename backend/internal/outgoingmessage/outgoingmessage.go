@@ -8,6 +8,7 @@ package outgoingmessage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"time"
 	"uuid"
@@ -49,6 +50,15 @@ var (
 	// sending it again could send it twice.
 	ErrNotSendableAgain = errors.New("only a failed or unknown message can be sent again")
 )
+
+// Action is what a member can ask of one of their messages.
+type Action string
+
+// ActionSendAgain is [Service.SendAgain].
+const ActionSendAgain Action = "send-again"
+
+// Actions are every [Action], in the order the API lists them.
+var Actions = []Action{ActionSendAgain}
 
 // ErrKeyExists is what [Storage] returns when the member already saved a
 // message with the idempotency key; [Service] reads it to compare.
@@ -173,6 +183,35 @@ type Message struct {
 	// SentAgainAs is the copy the member sent again of this failed or
 	// unknown message; nil until then.
 	SentAgainAs *uuid.UUID
+	// Account is the sending account as [Service] read it with the message,
+	// never saved with it; the zero value once a disconnect deleted it.
+	Account connectedaccount.Account
+}
+
+// AllowedActions returns the actions accepted for m now; offered says
+// whether its provider's client is set up, which every send needs. Sending
+// it again needs it failed or unknown, and its account's
+// [connectedaccount.ActionSend], unless it was already sent again: that
+// returns the same copy before the account is read.
+//
+// DESIGN: the member's send limit and deactivation are left to the
+// refusal: both are the member's, not the message's, and the limit lifts
+// with time, which the refusal's wait says.
+func (m Message) AllowedActions(offered bool) []Action {
+	if !offered || !sendableAgain(m.Status) {
+		return nil
+	}
+	if m.SentAgainAs == nil && !slices.Contains(m.Account.AllowedActions(offered), connectedaccount.ActionSend) {
+		return nil
+	}
+	return []Action{ActionSendAgain}
+}
+
+// sendableAgain reports whether a message in status can be sent again:
+// waiting or sending would make two sends of one message, and a sent
+// message reached its recipients.
+func sendableAgain(status Status) bool {
+	return status == StatusFailed || status == StatusUnknown
 }
 
 // Sender is the account a message is sent from, as storage reads it.
@@ -321,26 +360,28 @@ type Storage interface {
 	ListOutgoingMessages(ctx context.Context, userID int64, limit int) ([]Message, error)
 }
 
-// tokenChecker tells whether a configured key opens an account's saved
-// refresh token; [connectedaccount.Service] does.
-type tokenChecker interface {
+// sendingAccounts reads the accounts messages are sent from;
+// [connectedaccount.Service] does.
+type sendingAccounts interface {
 	// CheckToken returns an error wrapping
 	// [connectedaccount.ErrTokenUnreadable] when no key opens credential,
 	// the token of userID's account accountID.
 	CheckToken(userID, accountID int64, credential connectedaccount.Credential) error
+	// List returns userID's accounts, each with its status now.
+	List(ctx context.Context, userID int64) ([]connectedaccount.Account, error)
 }
 
 // Service applies the rules for outgoing messages.
 type Service struct {
-	storage Storage
-	tokens  tokenChecker
-	now     func() time.Time
+	storage  Storage
+	accounts sendingAccounts
+	now      func() time.Time
 }
 
-// NewService supplies storage, what checks a sending account's token, and
-// the clock the send limit counts by.
-func NewService(storage Storage, tokens tokenChecker, now func() time.Time) *Service {
-	return &Service{storage: storage, tokens: tokens, now: now}
+// NewService supplies storage, what reads the sending accounts, and the
+// clock the send limit counts by.
+func NewService(storage Storage, accounts sendingAccounts, now func() time.Time) *Service {
+	return &Service{storage: storage, accounts: accounts, now: now}
 }
 
 // Create saves draft as userID's message, waiting to be sent, and returns it.
@@ -356,7 +397,11 @@ func NewService(storage Storage, tokens tokenChecker, now func() time.Time) *Ser
 // [*RecipientError], [ErrSubjectInvalid], or [ErrBodyInvalid].
 func (s *Service) Create(ctx context.Context, userID int64, draft Draft) (Message, error) {
 	request := Request{AccountID: draft.ConnectedAccountID, Key: draft.IdempotencyKey}
-	return s.create(ctx, userID, request, draft.Content)
+	message, err := s.create(ctx, userID, request, draft.Content)
+	if err != nil {
+		return Message{}, err
+	}
+	return s.withAccount(ctx, userID, message)
 }
 
 // create saves content as userID's message for request, as [Service.Create]
@@ -438,10 +483,8 @@ func (s *Service) repeated(ctx context.Context, userID int64, request Request, c
 // or an [*attemptlimit.Error] wrapping [ErrThrottled].
 func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
 	attempt := s.attempt(userID)
-	return s.storage.InsertOutgoingMessageCopy(ctx, attempt, messageID, func(state CopyState) (NewMessage, error) {
-		// Waiting or sending would make two sends of one message, and a sent
-		// message reached its recipients.
-		if state.Original.Status != StatusFailed && state.Original.Status != StatusUnknown {
+	copied, err := s.storage.InsertOutgoingMessageCopy(ctx, attempt, messageID, func(state CopyState) (NewMessage, error) {
+		if !sendableAgain(state.Original.Status) {
 			return NewMessage{}, ErrNotSendableAgain
 		}
 		if err := s.checkSender(userID, state.Sender); err != nil {
@@ -459,18 +502,61 @@ func (s *Service) SendAgain(ctx context.Context, userID int64, messageID uuid.UU
 		next.ProviderThreadID = state.Original.ProviderThreadID
 		return next, nil
 	})
+	if err != nil {
+		return Message{}, err
+	}
+	return s.withAccount(ctx, userID, copied)
 }
 
 // Get returns userID's message messageID, or [ErrNotFound] when userID has
 // no such message.
 func (s *Service) Get(ctx context.Context, userID int64, messageID uuid.UUID) (Message, error) {
-	return s.storage.ReadOutgoingMessage(ctx, userID, messageID)
+	message, err := s.storage.ReadOutgoingMessage(ctx, userID, messageID)
+	if err != nil {
+		return Message{}, err
+	}
+	return s.withAccount(ctx, userID, message)
 }
 
 // List returns userID's newest 50 messages, newest first, each with an empty
 // [Content.Body].
 func (s *Service) List(ctx context.Context, userID int64) ([]Message, error) {
-	return s.storage.ListOutgoingMessages(ctx, userID, maxListed)
+	messages, err := s.storage.ListOutgoingMessages(ctx, userID, maxListed)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.withAccounts(ctx, userID, messages); err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+// withAccount returns userID's message with its [Message.Account] read now,
+// or the error of reading it.
+func (s *Service) withAccount(ctx context.Context, userID int64, message Message) (Message, error) {
+	messages := []Message{message}
+	if err := s.withAccounts(ctx, userID, messages); err != nil {
+		return Message{}, err
+	}
+	return messages[0], nil
+}
+
+// withAccounts sets each of userID's messages' [Message.Account] to the
+// account as read now, in one read of userID's accounts, or returns the
+// error of that read.
+func (s *Service) withAccounts(ctx context.Context, userID int64, messages []Message) error {
+	accounts, err := s.accounts.List(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("read sending accounts: %w", err)
+	}
+	for i := range messages {
+		for _, account := range accounts {
+			if account.ID == messages[i].ConnectedAccountID {
+				messages[i].Account = account
+			}
+		}
+	}
+	return nil
 }
 
 // attempt returns userID's attempt to send now.
@@ -490,7 +576,7 @@ func (s *Service) checkSender(userID int64, sender Sender) error {
 	if sender.NeedsReconnect {
 		return ErrNeedsReconnect
 	}
-	if err := s.tokens.CheckToken(userID, sender.ConnectedAccountID, sender.Credential); err != nil {
+	if err := s.accounts.CheckToken(userID, sender.ConnectedAccountID, sender.Credential); err != nil {
 		if errors.Is(err, connectedaccount.ErrTokenUnreadable) {
 			return ErrTokenUnreadable
 		}

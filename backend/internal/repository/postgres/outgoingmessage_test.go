@@ -77,6 +77,13 @@ func (o outgoingMessagesTest) draft() outgoingmessage.Draft {
 	}
 }
 
+// stored returns message as storage keeps it: without the account the
+// service reads with it.
+func stored(message outgoingmessage.Message) outgoingmessage.Message {
+	message.Account = connectedaccount.Account{}
+	return message
+}
+
 // countOutgoingMessages returns how many messages are saved for anyone.
 func (o outgoingMessagesTest) countOutgoingMessages(t *testing.T) int64 {
 	t.Helper()
@@ -305,7 +312,7 @@ func TestOutgoingMessageToSend(t *testing.T) {
 
 	read, err := o.db.ReadOutgoingMessageToSend(t.Context(), created.ID)
 	require.NoError(t, err)
-	assert.Equal(t, created, read)
+	assert.Equal(t, stored(created), read)
 
 	_, err = o.db.ReadOutgoingMessageToSend(t.Context(), uuid.New())
 	require.ErrorIs(t, err, outgoingmessage.ErrNotFound)
@@ -330,7 +337,7 @@ func TestOutgoingMessageUpdate(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, created, seen)
+	assert.Equal(t, stored(created), seen)
 	assert.Equal(t, outgoingmessage.StatusSent, saved.Status)
 	assert.Equal(t, "gm-1", saved.ProviderMessageID)
 	assert.Equal(t, "th-1", saved.ProviderThreadID)
@@ -338,7 +345,7 @@ func TestOutgoingMessageUpdate(t *testing.T) {
 	assert.True(t, sentAt.Equal(*saved.SentAt))
 	read, err := o.messages.Get(t.Context(), o.member, created.ID)
 	require.NoError(t, err)
-	assert.Equal(t, saved, read)
+	assert.Equal(t, saved, stored(read))
 }
 
 // Each failure reason the service gives is one the table takes.
@@ -400,7 +407,7 @@ func TestOutgoingUpdateError(t *testing.T) {
 	require.ErrorIs(t, err, refused)
 	read, err := o.db.ReadOutgoingMessageToSend(t.Context(), created.ID)
 	require.NoError(t, err)
-	assert.Equal(t, created, read)
+	assert.Equal(t, stored(created), read)
 }
 
 // A message that went, e.g. with its account, cannot change.
@@ -839,6 +846,27 @@ func TestOutgoingMessageList(t *testing.T) {
 	assert.Empty(t, listed[0].Body)
 	assert.Equal(t, created[2].Subject, listed[0].Subject)
 	assert.Equal(t, created[2].To, listed[0].To)
+}
+
+// A read and the list carry the sending account as connected accounts read
+// it now, which decides whether the message can be sent again.
+func TestOutgoingMessageAccount(t *testing.T) {
+	o := newOutgoingMessagesTest(t)
+	created, err := o.messages.Create(t.Context(), o.member, o.draft())
+	require.NoError(t, err)
+	_, err = o.conn.Exec(t.Context(), "UPDATE connected_accounts SET needs_reconnect_since = now() WHERE id = $1", o.account)
+	require.NoError(t, err)
+
+	read, err := o.messages.Get(t.Context(), o.member, created.ID)
+	require.NoError(t, err)
+	listed, err := o.messages.List(t.Context(), o.member)
+	require.NoError(t, err)
+
+	assert.Equal(t, connectedaccount.StatusUsable, created.Account.Status)
+	assert.Equal(t, connectedaccount.StatusNeedsReconnect, read.Account.Status)
+	require.Len(t, listed, 1)
+	assert.Equal(t, o.account, listed[0].Account.ID)
+	assert.Equal(t, connectedaccount.StatusNeedsReconnect, listed[0].Account.Status)
 }
 
 // answered saves a synchronized message, providerID, in accountID, and

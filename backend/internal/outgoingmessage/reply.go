@@ -47,7 +47,11 @@ type Reply struct {
 func (s *Service) Reply(ctx context.Context, userID int64, reply Reply) (Message, error) {
 	answered := reply.AnsweredMessageID
 	request := Request{AccountID: reply.ConnectedAccountID, Key: reply.IdempotencyKey, AnsweredID: &answered}
-	return s.create(ctx, userID, request, Content{To: reply.To, Cc: reply.Cc, Bcc: reply.Bcc, Body: reply.Body})
+	message, err := s.create(ctx, userID, request, Content{To: reply.To, Cc: reply.Cc, Bcc: reply.Bcc, Body: reply.Body})
+	if err != nil {
+		return Message{}, err
+	}
+	return s.withAccount(ctx, userID, message)
 }
 
 // replyTo returns next, a message from sender, as a reply to answered: with

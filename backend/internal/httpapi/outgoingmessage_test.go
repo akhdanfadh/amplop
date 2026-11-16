@@ -17,6 +17,7 @@ import (
 
 	"inbok/internal/account"
 	"inbok/internal/attemptlimit"
+	"inbok/internal/connectedaccount"
 	"inbok/internal/outgoingmessage"
 	"inbok/internal/session"
 )
@@ -76,12 +77,13 @@ var (
 		},
 		InbokMessageID: "<abc@example.com>", Status: outgoingmessage.StatusWaiting,
 		ProviderMessageID: "gmail-secret-id", CreatedAt: lunchCreated,
+		Account: connectedaccount.Account{ID: 3, Status: connectedaccount.StatusUsable},
 	}
 )
 
 const lunchSummaryJSON = `"id":"0a1b2c3d-0000-4000-8000-000000000001","connectedAccountId":3,"from":"alex@example.com",` +
 	`"to":["Ann@example.com"],"cc":[],"bcc":["cat@example.com"],"subject":"Lunch","status":"waiting",` +
-	`"failure":null,"sentAgainAs":null,"createdAt":"2026-11-09T10:30:00Z","sentAt":null`
+	`"failure":null,"sentAgainAs":null,"createdAt":"2026-11-09T10:30:00Z","sentAt":null,"allowedActions":[]`
 
 const lunchRequest = `{"connectedAccountId":3,"to":["Ann@example.com"],"cc":[],"bcc":["cat@example.com"],"subject":"Lunch","body":"Are you free?"}`
 
@@ -245,6 +247,9 @@ func TestSendMessageRefused(t *testing.T) {
 func TestListOutgoingMessages(t *testing.T) {
 	failed := lunch
 	failed.Status, failed.Failure, failed.SentAgainAs = outgoingmessage.StatusFailed, outgoingmessage.FailureGaveUp, &lunchCopyID
+	stale := lunch
+	stale.Status, stale.Failure = outgoingmessage.StatusFailed, outgoingmessage.FailureNeedsReconnect
+	stale.Account.Status = connectedaccount.StatusNeedsReconnect
 	for _, c := range []struct {
 		name     string
 		messages []outgoingmessage.Message
@@ -254,7 +259,10 @@ func TestListOutgoingMessages(t *testing.T) {
 		{"one", []outgoingmessage.Message{lunch}, `{"data":{"messages":[{` + lunchSummaryJSON + `}]}}`},
 		{"failed and sent again", []outgoingmessage.Message{failed}, `{"data":{"messages":[{` +
 			strings.NewReplacer(`"status":"waiting"`, `"status":"failed"`, `"failure":null`, `"failure":"gave-up"`,
-				`"sentAgainAs":null`, `"sentAgainAs":"`+lunchCopyID.String()+`"`).Replace(lunchSummaryJSON) + `}]}}`},
+				`"sentAgainAs":null`, `"sentAgainAs":"`+lunchCopyID.String()+`"`,
+				`"allowedActions":[]`, `"allowedActions":["send-again"]`).Replace(lunchSummaryJSON) + `}]}}`},
+		{"failed, its account needs reconnecting", []outgoingmessage.Message{stale}, `{"data":{"messages":[{` +
+			strings.NewReplacer(`"status":"waiting"`, `"status":"failed"`, `"failure":null`, `"failure":"needs-reconnect"`).Replace(lunchSummaryJSON) + `}]}}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			messages := &fakeOutgoingMessages{messages: c.messages}
@@ -267,6 +275,19 @@ func TestListOutgoingMessages(t *testing.T) {
 			assert.Equal(t, int64(42), messages.userID)
 		})
 	}
+}
+
+// Without Gmail set up nothing can be sent again, as Send Message Again
+// refuses it.
+func TestListOutgoingMessagesWithoutGmail(t *testing.T) {
+	failed := lunch
+	failed.Status, failed.Failure = outgoingmessage.StatusFailed, outgoingmessage.FailureGaveUp
+	api := New(discard, Services{OutgoingMessages: &fakeOutgoingMessages{messages: []outgoingmessage.Message{failed}}, Session: memberSessions(account.RoleMember)})
+
+	response := requestAuthenticated(api, http.MethodGet, "/outgoing-messages", "")
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), `"allowedActions":[]`)
 }
 
 // ========================
@@ -491,6 +512,14 @@ func TestOutgoingMessagesOpenAPI(t *testing.T) {
 		for _, status := range c.statuses {
 			assert.Contains(t, op.Responses, strconv.Itoa(status), c.id)
 		}
+	}
+
+	// A client draws one control per value, so the contract names them all.
+	for _, name := range []string{"OutgoingMessageSummary", "OutgoingMessage"} {
+		schema := doc.Components.Schemas.Map()[name]
+		require.NotNil(t, schema, name)
+		assert.Contains(t, schema.Required, "allowedActions", name)
+		assert.Equal(t, []any{"send-again"}, schema.Properties["allowedActions"].Items.Enum, name)
 	}
 
 	types := problemTypes(doc)

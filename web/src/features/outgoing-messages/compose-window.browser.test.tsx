@@ -58,6 +58,7 @@ const saved: OutgoingMessage = {
   createdAt: "2026-11-16T08:00:00Z",
   sentAt: "2026-11-16T08:00:01Z",
   sentAgainAs: null,
+  allowedActions: [],
 };
 
 // The API as serve stubs it: accounts answers the accounts list; sent is
@@ -102,6 +103,7 @@ const refused: OutgoingMessage = {
   ...saved,
   status: "failed",
   failure: "refused",
+  allowedActions: ["send-again"],
   sentAt: null,
   subject: "Refused",
 };
@@ -273,11 +275,23 @@ describe("ComposeWindow", () => {
     await userEvent.click(page.getByRole("button", { name: "Compose" }));
     await userEvent.type(page.getByRole("textbox", { name: "Subject" }), "Mine");
 
-    store.open({ ...saved, status: "failed", failure: "refused", subject: "Refused" });
+    store.open({
+      ...saved,
+      status: "failed",
+      failure: "refused",
+      subject: "Refused",
+      allowedActions: ["send-again"],
+    });
     await press("Keep writing");
     await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Mine");
 
-    store.open({ ...saved, status: "failed", failure: "refused", subject: "Refused" });
+    store.open({
+      ...saved,
+      status: "failed",
+      failure: "refused",
+      subject: "Refused",
+      allowedActions: ["send-again"],
+    });
     await press("Replace");
     await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Refused");
   });

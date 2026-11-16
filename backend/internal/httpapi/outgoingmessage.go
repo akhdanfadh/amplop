@@ -68,11 +68,14 @@ type outgoingMessageSummary struct {
 	SentAgainAs        *uuid.UUID               `json:"sentAgainAs" nullable:"true" format:"uuid" doc:"The copy this failed or unknown message was sent again as; null until then."`
 	CreatedAt          time.Time                `json:"createdAt"`
 	SentAt             *time.Time               `json:"sentAt" nullable:"true" doc:"When Gmail took the message: Gmail's own time for it when inbok found it in Sent after an unanswered send, otherwise when Gmail answered the send. Null unless status is sent."`
+	// Listed here, so every client offers only what the service accepts
+	// instead of restating its rule (AGENTS.md, "API contract").
+	AllowedActions []outgoingmessage.Action `json:"allowedActions" nullable:"false" doc:"What the member can ask of this message now: send-again (Send Message Again) while it is failed or unknown and its sending account lists send in its own allowedActions. A message already sent again keeps send-again whatever its account's state, as it returns the same copy, while Gmail is set up. A listed action can still be refused when the message or its account changed since this read, when the member was deactivated, or when they sent too many messages recently. Clients ignore values they don't know."`
 }
 
-// TransformSchema lets failure be null.
+// TransformSchema lets failure be null and lists allowedActions' values.
 func (outgoingMessageSummary) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
-	return withNullEnum(s, "failure")
+	return withActionEnum(withNullEnum(s, "failure"))
 }
 
 // OutgoingMessageSummary names outgoingMessageSummary for embedding.
@@ -88,9 +91,20 @@ type outgoingMessage struct {
 	Body string `json:"body" doc:"Plain text."`
 }
 
-// TransformSchema lets failure be null.
+// TransformSchema lets failure be null and lists allowedActions' values.
 func (outgoingMessage) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
-	return withNullEnum(s, "failure")
+	return withActionEnum(withNullEnum(s, "failure"))
+}
+
+// withActionEnum lists the values of s's allowedActions from
+// [outgoingmessage.Actions].
+func withActionEnum(s *huma.Schema) *huma.Schema {
+	values := make([]any, 0, len(outgoingmessage.Actions))
+	for _, action := range outgoingmessage.Actions {
+		values = append(values, string(action))
+	}
+	s.Properties["allowedActions"].Items.Enum = values
+	return s
 }
 
 // withNullEnum adds null to the enum of s's nullable property name.
@@ -105,7 +119,9 @@ func withNullEnum(s *huma.Schema, name string) *huma.Schema {
 	return s
 }
 
-func outgoingMessageSummaryOf(message outgoingmessage.Message) outgoingMessageSummary {
+// outgoingMessageSummaryOf returns message as the list shows it; offered
+// says whether Gmail's client is set up, which its actions need.
+func outgoingMessageSummaryOf(message outgoingmessage.Message, offered bool) outgoingMessageSummary {
 	summary := outgoingMessageSummary{
 		ID:                 message.ID,
 		ConnectedAccountID: message.ConnectedAccountID,
@@ -118,6 +134,8 @@ func outgoingMessageSummaryOf(message outgoingmessage.Message) outgoingMessageSu
 		SentAgainAs:        message.SentAgainAs,
 		CreatedAt:          message.CreatedAt,
 		SentAt:             message.SentAt,
+		// Empty, not nil: the contract promises a list, never null.
+		AllowedActions: append(make([]outgoingmessage.Action, 0, len(outgoingmessage.Actions)), message.AllowedActions(offered)...),
 	}
 	if message.Failure != "" {
 		summary.Failure = &message.Failure
@@ -125,8 +143,10 @@ func outgoingMessageSummaryOf(message outgoingmessage.Message) outgoingMessageSu
 	return summary
 }
 
-func outgoingMessageOf(message outgoingmessage.Message) outgoingMessage {
-	return outgoingMessage{OutgoingMessageSummary: outgoingMessageSummaryOf(message), Body: message.Body}
+// outgoingMessageOf returns message with its body, offered as
+// [outgoingMessageSummaryOf] takes it.
+func outgoingMessageOf(message outgoingmessage.Message, offered bool) outgoingMessage {
+	return outgoingMessage{OutgoingMessageSummary: outgoingMessageSummaryOf(message, offered), Body: message.Body}
 }
 
 // outgoingMessageProblem maps the errors the operations share.
@@ -177,15 +197,20 @@ func sendResponses(responses map[string]*huma.Response) {
 	throttled.Content[problemContentType].Example = outgoingMessageProblem(outgoingmessage.ErrThrottled)
 }
 
+// offered reports whether the sending accounts' provider's client is set
+// up. Gmail is the only provider, so the sending account is Gmail's.
+func (h outgoingMessageHandler) offered() bool {
+	return h.providers.offered(connectedaccount.ProviderGmail)
+}
+
 // refuseUnoffered returns the refusal of a send when no client for the
 // sending account's provider is set up, and nil otherwise.
 //
 // DESIGN: refused before the message is saved: without the client no
 // worker sends Gmail, so a saved message would wait forever (ADR001,
-// "Polling"). Gmail is the only provider, so the sending account is
-// Gmail's.
+// "Polling").
 func (h outgoingMessageHandler) refuseUnoffered() error {
-	if !h.providers.offered(connectedaccount.ProviderGmail) {
+	if !h.offered() {
 		return outgoingMessageProblem(errGmailNotConfigured)
 	}
 	return nil
@@ -274,7 +299,7 @@ func (h outgoingMessageHandler) handleSendMessage(ctx context.Context, in *outgo
 	if err != nil {
 		return nil, outgoingMessageSendProblem(err)
 	}
-	return respondData(outgoingMessageOf(message)), nil
+	return respondData(outgoingMessageOf(message, h.offered())), nil
 }
 
 // parseIdempotencyKey returns the UUID in an Idempotency-Key header value:
@@ -411,7 +436,7 @@ func (h outgoingMessageHandler) handleReplyToMessage(ctx context.Context, in *re
 	if err != nil {
 		return nil, replyProblem(err)
 	}
-	return respondData(outgoingMessageOf(message)), nil
+	return respondData(outgoingMessageOf(message, h.offered())), nil
 }
 
 func replyResponses(api huma.API) map[string]*huma.Response {
@@ -471,7 +496,7 @@ func (h outgoingMessageHandler) handleListOutgoingMessages(ctx context.Context, 
 	}
 	listed := outgoingMessages{Messages: make([]outgoingMessageSummary, 0, len(messages))}
 	for _, message := range messages {
-		listed.Messages = append(listed.Messages, outgoingMessageSummaryOf(message))
+		listed.Messages = append(listed.Messages, outgoingMessageSummaryOf(message, h.offered()))
 	}
 	return respondData(listed), nil
 }
@@ -504,7 +529,7 @@ func (h outgoingMessageHandler) handleGetOutgoingMessage(ctx context.Context, in
 	if err != nil {
 		return nil, outgoingMessageProblem(err)
 	}
-	return respondData(outgoingMessageOf(message)), nil
+	return respondData(outgoingMessageOf(message, h.offered())), nil
 }
 
 // ========================
@@ -540,7 +565,7 @@ func (h outgoingMessageHandler) handleSendMessageAgain(ctx context.Context, in *
 	if err != nil {
 		return nil, sendAgainProblem(err)
 	}
-	return respondData(outgoingMessageOf(message)), nil
+	return respondData(outgoingMessageOf(message, h.offered())), nil
 }
 
 func sendAgainResponses(api huma.API) map[string]*huma.Response {

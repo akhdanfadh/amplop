@@ -8,6 +8,7 @@ import * as zod from 'zod';
 
 export const OutgoingMessages = zod.object({
   "messages": zod.array(zod.object({
+  "allowedActions": zod.array(zod.enum(['send-again'])).describe('What the member can ask of this message now: send-again (Send Message Again) while it is failed or unknown and its sending account lists send in its own allowedActions. A message already sent again keeps send-again whatever its account\'s state, as it returns the same copy, while Gmail is set up. A listed action can still be refused when the message or its account changed since this read, when the member was deactivated, or when they sent too many messages recently. Clients ignore values they don\'t know.'),
   "bcc": zod.array(zod.string()),
   "cc": zod.array(zod.string()),
   "connectedAccountId": zod.int().describe('The sending account. Disconnecting it deletes the message.'),
