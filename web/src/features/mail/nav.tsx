@@ -55,6 +55,7 @@ import { useOverflow } from "@/hooks/use-overflow";
 import { labelTree, unreadIn, usePlaceCounts, type LabelNode } from "./place-counts";
 import { labelsOf, type Label } from "./labels";
 import { LabelDialog } from "./label-dialog";
+import { DeleteLabelDialog, LabelActionsMenu, type LabelAsk } from "./label-actions";
 import type { PlaceCount } from "./conversations";
 import { useOutbox } from "@/features/outgoing-messages/outbox";
 import { useCompose } from "@/features/outgoing-messages/compose-store";
@@ -85,8 +86,9 @@ const placeIcon: Record<ViewPlace, LucideIcon> = {
 // the views, the Inbox with its unread count, and after Sent the Outbox
 // with how many of its messages are not sent yet; then the accounts, each
 // filtering every view, with its inbox's unread count, its status, and its
-// labels, and New label, which opens its dialog over the page. The items
-// of the open place and account filter are marked.
+// labels, and New label. The items of the open place and account filter
+// are marked. New label, and a label's Edit and Delete, open their dialog
+// over the page.
 export function MailNav(): ReactElement {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { dismiss: closeDrawer } = useSidebar();
@@ -110,7 +112,23 @@ export function MailNav(): ReactElement {
   });
   const listed = accounts.data?.data.accounts ?? [];
   const labels = useMemo(() => labelsOf(counts), [counts]);
-  const [making, setMaking] = useState(false);
+  // What the member asked to do to their labels, whose dialog shows while
+  // tasking; kept while it closes, so it keeps its words as it fades.
+  const [task, setTask] = useState<LabelTask | null>(null);
+  const [tasking, setTasking] = useState(false);
+  // accountRow returns accountId's row, where focus goes once the row that
+  // opened a label's dialog went, e.g. with the label it deleted or moved.
+  const accountRow = (accountId: number | undefined) =>
+    accountId === undefined
+      ? null
+      : (box.current?.querySelector<HTMLElement>(`[data-account-row="${accountId}"]`) ?? null);
+  const startTask = (ask: LabelAsk | "new") => {
+    const label = ask === "new" ? undefined : labels.find((l) => l.place === ask.place);
+    if (ask === "new") setTask({ kind: "new" });
+    else if (label) setTask({ kind: ask.kind, label });
+    else return;
+    setTasking(true);
+  };
   // The accounts whose labels the member can change, as the server says.
   const changeable = listed.filter((a) => a.allowedActions.includes("change-mail"));
 
@@ -171,26 +189,43 @@ export function MailNav(): ReactElement {
         filter={filter}
         pathname={pathname}
         onPress={closeDrawer}
-        onNewLabel={changeable.length > 0 ? () => setMaking(true) : undefined}
+        onTask={startTask}
       />
       <LabelDialog
-        isOpen={making}
-        onOpenChange={setMaking}
+        isOpen={tasking && task?.kind !== "delete"}
+        onOpenChange={setTasking}
         labels={labels}
         accountIds={changeable.map((a) => a.id)}
-        start={{
-          // The account the sidebar shows, when it can take one.
-          accountId: changeable.some((a) => a.id === filter)
-            ? (filter ?? 0)
-            : (changeable[0]?.id ?? 0),
-          name: "",
-          parent: null,
-        }}
+        start={
+          task?.kind === "new"
+            ? {
+                // The account the sidebar shows, when it can take one.
+                accountId: changeable.some((a) => a.id === filter)
+                  ? (filter ?? 0)
+                  : (changeable[0]?.id ?? 0),
+                name: "",
+                parent: null,
+              }
+            : undefined
+        }
+        editing={task?.kind === "edit" ? task.label : undefined}
+        fallbackFocus={() => accountRow(task?.kind === "new" ? undefined : task?.label.accountId)}
         onDone={(label) => unfold(foldsTo(label, labels))}
+      />
+      <DeleteLabelDialog
+        isOpen={tasking && task?.kind === "delete"}
+        label={task?.kind === "delete" ? task.label : undefined}
+        labels={labels}
+        onClose={() => setTasking(false)}
+        fallbackFocus={() => accountRow(task?.kind === "delete" ? task.label.accountId : undefined)}
       />
     </div>
   );
 }
+
+// LabelTask is what the member asked to do to their labels from the
+// sidebar: make one, or edit or delete one, as it was when asked.
+type LabelTask = { kind: "new" } | { kind: "edit" | "delete"; label: Label };
 
 // foldsTo returns the folds to open so label shows in the sidebar: its
 // account's, and each of its parents', found among labels by path.
@@ -252,7 +287,8 @@ const toneText: Record<Tone, string> = {
 // which opens only in its own account. failed says the accounts could not
 // be read, which it says with Try again, onRetry, pending while retrying;
 // the rail says it with one icon, which tries again. New label follows the
-// accounts when onNewLabel is given, which it runs.
+// accounts while any account's labels can change, and each such account's
+// labels have a menu; both ask for what the member chose through onTask.
 function AccountsGroup({
   accounts,
   failed,
@@ -263,7 +299,7 @@ function AccountsGroup({
   filter,
   pathname,
   onPress,
-  onNewLabel,
+  onTask,
 }: {
   accounts: readonly ListedAccount[];
   failed: boolean;
@@ -274,7 +310,7 @@ function AccountsGroup({
   filter: number | undefined;
   pathname: string;
   onPress: () => void;
-  onNewLabel: (() => void) | undefined;
+  onTask: (ask: LabelAsk | "new") => void;
 }): ReactElement | null {
   if (failed) {
     return (
@@ -352,12 +388,14 @@ function AccountsGroup({
             isActive={filter === account.id}
             pathname={pathname}
             onPress={onPress}
+            onTask={account.allowedActions.includes("change-mail") ? onTask : undefined}
           />
         ))}
-        {/* The rail shows no labels, so it shows no New label either. */}
-        {onNewLabel && (
+        {/* Only where some account's labels can change; the rail shows
+            no labels, so it shows none either. */}
+        {accounts.some((a) => a.allowedActions.includes("change-mail")) && (
           <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
-            <SidebarMenuButton onPress={onNewLabel}>
+            <SidebarMenuButton onPress={() => onTask("new")}>
               <PlusIcon aria-hidden="true" />
               <span>{newLabelName}</span>
             </SidebarMenuButton>
@@ -370,8 +408,9 @@ function AccountsGroup({
 
 // AccountItem is one account: its mark, name, status, and inbox's unread
 // count, filtering every view to it, with its labels under it, folded
-// behind the chevron at the row's end. A name cut short is said in full
-// on hover or focus, before the status's details.
+// behind the chevron at the row's end, each with its menu when onTask is
+// given. A name cut short is said in full on hover or focus, before the
+// status's details.
 function AccountItem({
   account,
   unread,
@@ -380,6 +419,7 @@ function AccountItem({
   isActive,
   pathname,
   onPress,
+  onTask,
 }: {
   account: ListedAccount;
   unread: number;
@@ -388,6 +428,7 @@ function AccountItem({
   isActive: boolean;
   pathname: string;
   onPress: () => void;
+  onTask: ((ask: LabelAsk) => void) | undefined;
 }): ReactElement {
   const name = accountName(account);
   const status = accountStatus(account);
@@ -406,6 +447,8 @@ function AccountItem({
       isActive={isActive}
       // A filter of the page, not a page: the place's own item is that.
       current="true"
+      // Where focus goes once a label's delete took the row that had it.
+      data-account-row={account.id}
       tooltip={said.join(", ")}
       detail={detail || undefined}
       onPress={onPress}
@@ -477,6 +520,7 @@ function AccountItem({
               accountId={account.id}
               pathname={pathname}
               onPress={onPress}
+              onTask={onTask}
             />
           </DisclosurePanel>
         </Disclosure>
@@ -512,18 +556,21 @@ function FoldButton({
 
 // LabelList lists labels, each with its unread count and its own labels
 // under it, nested is true for a list under a label. A label opens in its
-// account, accountId, its filter (DESIGN.md "Sidebar").
+// account, accountId, its filter (DESIGN.md "Sidebar"); onTask, when given,
+// gives each its menu.
 function LabelList({
   labels,
   accountId,
   pathname,
   onPress,
+  onTask,
   nested = false,
 }: {
   labels: LabelNode[];
   accountId: number;
   pathname: string;
   onPress: () => void;
+  onTask: ((ask: LabelAsk) => void) | undefined;
   nested?: boolean;
 }): ReactElement {
   return (
@@ -539,6 +586,7 @@ function LabelList({
           accountId={accountId}
           pathname={pathname}
           onPress={onPress}
+          onTask={onTask}
         />
       ))}
     </SidebarMenuSub>
@@ -546,7 +594,8 @@ function LabelList({
 }
 
 // LabelItem is one label: its name and unread count, opening it, with the
-// labels under it folded behind the chevron at the row's end. A name cut
+// labels under it folded behind the chevron at the row's end, and its menu
+// of Edit and Delete when onTask is given (LabelActionsMenu). A name cut
 // short is said in full, with its parents', on hover or focus.
 //
 // DESIGN: no tag icon: every label would show the same one, and its place
@@ -556,11 +605,13 @@ function LabelItem({
   accountId,
   pathname,
   onPress,
+  onTask,
 }: {
   label: LabelNode;
   accountId: number;
   pathname: string;
   onPress: () => void;
+  onTask: ((ask: LabelAsk) => void) | undefined;
 }): ReactElement {
   const [nameRef, nameCut] = useOverflow(label.name);
   const unfolded = useUnfolded();
@@ -576,17 +627,40 @@ function LabelItem({
       isActive={within(pathname, `/mail/${label.place}`)}
       detail={nameCut ? label.path : undefined}
       onPress={onPress}
-      // Every row keeps the chevron's column, as an account's does.
-      className={cn("pr-8", label.unread > 0 && "font-semibold text-foreground")}
+      // Every row keeps the chevron's column, as an account's does; the
+      // menu's too while its ⋮ shows, so a long name ends before it, and
+      // always on a touch, where the ⋮ always shows (LabelActionsMenu).
+      className={cn(
+        "pr-8",
+        onTask &&
+          "group-has-aria-expanded/label-row:pr-14 group-has-data-focus-visible/label-row:pr-14 pointer-coarse:pr-14 pointer-fine:group-hover/label-row:pr-14",
+        label.unread > 0 && "font-semibold text-foreground",
+      )}
     >
       <span ref={nameRef}>{label.name}</span>
       {label.unread > 0 && (
-        <SidebarMenuBadge>
+        <SidebarMenuBadge
+          // The menu's ⋮ takes its place while it shows (LabelActionsMenu).
+          className={cn(
+            onTask &&
+              "pointer-fine:group-hover/label-row:invisible pointer-fine:group-has-aria-expanded/label-row:invisible pointer-fine:group-has-data-focus-visible/label-row:invisible",
+          )}
+        >
           {formatCount(label.unread)}
           <span className="sr-only"> {unreadLabel}</span>
         </SidebarMenuBadge>
       )}
     </SidebarMenuSubButton>
+  );
+  // The row and its menu, apart from the labels under it, so pointing at
+  // one of those shows only its own menu.
+  const withMenu = onTask ? (
+    <div className="group/label-row relative">
+      {row}
+      <LabelActionsMenu path={label.path} place={label.place} onTask={onTask} />
+    </div>
+  ) : (
+    row
   );
 
   return (
@@ -596,12 +670,15 @@ function LabelItem({
           isExpanded={unfolded.has(fold)}
           onExpandedChange={(open) => setUnfolded(fold, open)}
         >
-          {row}
+          {withMenu}
           <FoldButton
             name={labelFoldName(label.path)}
             isExpanded={unfolded.has(fold)}
-            // Back by the 1 px the labels' list shifts, in the accounts'.
-            className="-translate-x-px"
+            // Back by the 1 px the labels' list shifts, in the accounts'. On
+            // a touch, its target stops 1 px past its edge (2 px, less that
+            // shift), where the ⋮'s begins, so a tap between them opens
+            // what it lands nearest.
+            className={cn("-translate-x-px", onTask && "pointer-coarse:after:-left-px")}
           />
           <DisclosurePanel>
             <LabelList
@@ -609,12 +686,13 @@ function LabelItem({
               accountId={accountId}
               pathname={pathname}
               onPress={onPress}
+              onTask={onTask}
               nested
             />
           </DisclosurePanel>
         </Disclosure>
       ) : (
-        row
+        withMenu
       )}
     </SidebarMenuSubItem>
   );

@@ -74,6 +74,20 @@ function placeOf(accountId: number, name: string): string | undefined {
   return api.places.find((p) => p.accountId === accountId && p.name === name)?.place;
 }
 
+// labelAction opens the sidebar label at path's menu and chooses item.
+async function labelAction(path: string, item: string) {
+  await userEvent.click(nav().getByRole("button", { name: `Actions for ${path}` }));
+  await userEvent.click(page.getByRole("menuitem", { name: item }));
+}
+
+// confirm presses the button named name in dialog from the keyboard: a
+// pointer's press just after the dialog opens is taken for a double
+// click's second, which the dialog ignores (AlertDialogAction).
+async function confirm(dialog: ReturnType<typeof page.getByRole>, name: string) {
+  dialog.getByRole("button", { name }).element().focus();
+  await userEvent.keyboard("{Enter}");
+}
+
 // toolbar returns the reading pane's toolbar.
 function toolbar() {
   return page.getByRole("toolbar", { name: "Conversation actions" });
@@ -141,6 +155,11 @@ describe("New label in the sidebar", () => {
     };
     await open("/mail/inbox", [], [work, home]);
 
+    await userEvent.click(nav().getByRole("button", { name: "Labels of Home" }));
+    await expect.element(nav().getByRole("link", { name: "Family" })).toBeVisible();
+    expect(nav().getByRole("button", { name: "Actions for Family" }).elements()).toHaveLength(0);
+    await userEvent.click(nav().getByRole("button", { name: "Labels of Work" }));
+    await expect.element(nav().getByRole("button", { name: "Actions for Hiring" })).toBeVisible();
     // Only Work takes a new one, so the dialog names it, with no Account.
     await userEvent.click(nav().getByRole("button", { name: "New label" }));
     const dialog = page.getByRole("dialog", { name: "New label in Work" });
@@ -157,6 +176,109 @@ describe("New label in the sidebar", () => {
 
     await expect.element(nav().getByRole("link", { name: "Work" })).toBeVisible();
     expect(nav().getByRole("button", { name: "New label" }).elements()).toHaveLength(0);
+  });
+});
+
+describe("a sidebar label's Edit", () => {
+  it("renames the open label, and its page follows", async () => {
+    await open(`/mail/${clients}?account=1`);
+    await expect.element(page.getByRole("heading", { name: "Clients", level: 1 })).toBeVisible();
+
+    await labelAction("Clients", "Edit…");
+    const dialog = page.getByRole("dialog", { name: "Edit label" });
+    const name = dialog.getByRole("textbox", { name: "Name" });
+    await expect.element(name).toHaveValue("Clients");
+    await expect.element(name).toHaveFocus();
+    // It can't nest in itself or a label inside it.
+    await userEvent.click(dialog.getByRole("button", { name: /Nest under/ }));
+    await expect.element(page.getByRole("option", { name: "Hiring" })).toBeVisible();
+    expect(page.getByRole("option", { name: "Clients/Acme" }).elements()).toHaveLength(0);
+    await userEvent.keyboard("{Escape}");
+    await userEvent.fill(name, "Customers");
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+
+    await expect.element(dialog).not.toBeInTheDocument();
+    expect(api.labelWrites).toEqual([`PATCH /api/v0/labels/${clients}`]);
+    await expect.element(page.getByRole("heading", { name: "Customers", level: 1 })).toBeVisible();
+    await expect.element(nav().getByRole("link", { name: "Customers" })).toBeVisible();
+  });
+});
+
+describe("a sidebar label's Delete", () => {
+  it("asks, listing the labels inside, then leaves the open label for its account's Inbox", async () => {
+    const row = conversation(1, { accountId: 1, labelIds: [acme] });
+    const router = await open(`/mail/${acme}?account=1`, [row]);
+
+    await labelAction("Clients", "Delete label…");
+    const dialog = page.getByRole("alertdialog", { name: "Delete Clients?" });
+    await expect
+      .element(dialog)
+      .toHaveAccessibleDescription(
+        "Clients and the label inside it are deleted in Gmail too, and this can't be undone. Your mail stays: their conversations keep their other labels and stay in All mail.",
+      );
+    await expect
+      .element(dialog.getByRole("list", { name: "Also deleted" }))
+      .toHaveTextContent("Acme");
+    await confirm(dialog, "Delete Clients");
+
+    await expect.element(dialog).not.toBeInTheDocument();
+    expect(api.labelWrites).toEqual([`DELETE /api/v0/labels/${clients}`]);
+    expect(router.state.location.href).toBe("/mail/inbox?account=1");
+    expect(nav().getByRole("link", { name: "Clients" }).elements()).toHaveLength(0);
+    // Screen readers hear it, from the Undo bar's live region.
+    await expect.element(page.getByText("Clients deleted.", { exact: true })).toBeInTheDocument();
+  });
+
+  it("leaves the open label once a delete that then failed took it", async () => {
+    const router = await open(`/mail/${acme}?account=1`);
+    api.deleteOnly = 1;
+
+    await labelAction("Clients", "Delete label…");
+    const dialog = page.getByRole("alertdialog", { name: "Delete Clients?" });
+    await confirm(dialog, "Delete Clients");
+
+    // Acme went before Gmail stopped: its page gives way to the Inbox.
+    await expect
+      .element(dialog.getByRole("alert"))
+      .toHaveTextContent("Some labels weren't deleted. Delete again to finish.");
+    expect(router.state.location.href).toBe("/mail/inbox?account=1");
+  });
+
+  it("says a delete stopped part way, and finishes it when pressed again", async () => {
+    await open("/mail/inbox?account=1");
+    api.deleteOnly = 1;
+
+    // Work's labels show, as the filter's account's do.
+    await labelAction("Clients", "Delete label…");
+    const dialog = page.getByRole("alertdialog", { name: "Delete Clients?" });
+    await confirm(dialog, "Delete Clients");
+
+    await expect
+      .element(dialog.getByRole("alert"))
+      .toHaveTextContent("Some labels weren't deleted. Delete again to finish.");
+    // Acme went: the list and the words say what is left.
+    expect(dialog.getByRole("list", { name: "Also deleted" }).elements()).toHaveLength(0);
+    await confirm(dialog, "Delete Clients");
+    await expect.element(dialog).not.toBeInTheDocument();
+    expect(placeOf(1, "Clients")).toBeUndefined();
+  });
+});
+
+describe("a refused edit", () => {
+  it("still reads the labels again, as Gmail may have renamed some", async () => {
+    await open(`/mail/inbox?account=1`);
+    // Gmail renamed Clients, then failed on a label inside it.
+    api.refuseLabel = 503;
+    const renamed = api.places.map((p) => (p.place === clients ? { ...p, name: "Customers" } : p));
+
+    await labelAction("Clients", "Edit…");
+    const dialog = page.getByRole("dialog", { name: "Edit label" });
+    await userEvent.fill(dialog.getByRole("textbox", { name: "Name" }), "Customers");
+    api.places = renamed;
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+
+    await expect.element(dialog.getByRole("alert")).toBeVisible();
+    await expect.element(nav().getByRole("link", { name: "Customers" })).toBeVisible();
   });
 });
 

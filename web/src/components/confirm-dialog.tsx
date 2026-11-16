@@ -19,7 +19,8 @@ export type Failure = { message: string; requestId?: string };
 // ConfirmDialog asks before a change, then holds it until the server answers
 // (DESIGN.md "Feedback"): action names the confirming button, working
 // its label while pending, and tone "destructive" colours it for a change
-// that takes something away. onConfirm starts the change; the caller closes
+// that takes something away. children follow the description, e.g. a list
+// of what else the change takes. onConfirm starts the change; the caller closes
 // the dialog through onOpenChange once it is saved, or passes failure, shown
 // inside, where pressing again retries. While pending, Cancel and Escape
 // wait. fallbackFocus returns where focus goes when the dialog has closed and
@@ -37,6 +38,7 @@ export function ConfirmDialog({
   failure,
   onConfirm,
   fallbackFocus,
+  children,
 }: {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
@@ -49,6 +51,7 @@ export function ConfirmDialog({
   failure: Failure | undefined;
   onConfirm: () => void;
   fallbackFocus?: () => HTMLElement | null;
+  children?: ReactNode;
 }): ReactElement {
   return (
     <AlertDialog
@@ -64,8 +67,10 @@ export function ConfirmDialog({
       <FocusFallback target={fallbackFocus} />
       <AlertDialogHeader>
         <AlertDialogTitle className="wrap-anywhere">{title}</AlertDialogTitle>
-        <AlertDialogDescription>{description}</AlertDialogDescription>
+        {/* It can name what it acts on, e.g. a label, which wraps. */}
+        <AlertDialogDescription className="wrap-anywhere">{description}</AlertDialogDescription>
       </AlertDialogHeader>
+      {children}
       <RequestError
         errors={failure ? [{ message: failure.message }] : []}
         requestId={failure?.requestId}
@@ -106,7 +111,7 @@ export function ConfirmDialog({
 // gone, when focus went with it: React Aria returns focus to the element
 // that had it before the dialog opened, and to nothing when that element
 // was removed meanwhile (FocusScope, restoreFocus).
-function FocusFallback({ target }: { target?: () => HTMLElement | null }): null {
+export function FocusFallback({ target }: { target?: () => HTMLElement | null }): null {
   const latest = useRef(target);
 
   useEffect(() => {

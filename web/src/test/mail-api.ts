@@ -82,7 +82,9 @@ export function conversation(n: number, changes: Partial<ConversationRow> = {}):
 // search it was asked; actions every action body, and changes every
 // change body's changes. Label writes change places as Gmail would, and
 // labelWrites records each, method and path; refuseLabel, while set,
-// refuses the next as a 422 at body.name, or with a status alone.
+// refuses the next as a 422 at body.name, or with a status alone, and
+// deleteOnly, while set, deletes that many labels of a delete before it
+// fails, as a delete Gmail stopped part way does.
 export type MailApi = {
   conversations: ConversationRow[];
   accounts: ListedAccount[];
@@ -104,6 +106,7 @@ export type MailApi = {
   searchDropped: number[];
   labelWrites: string[];
   refuseLabel: string | number | undefined;
+  deleteOnly: number | undefined;
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 };
 
@@ -130,6 +133,7 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
     searchDropped: [],
     labelWrites: [],
     refuseLabel: undefined,
+    deleteOnly: undefined,
     fetch: async (input, init) => {
       const url = new URL(input instanceof Request ? input.url : String(input), location.href);
       api.requests.push(url.pathname + url.search);
@@ -248,7 +252,7 @@ export function mailApi(conversations: ConversationRow[], accounts: ListedAccoun
 }
 
 // answerLabel answers a label write, method at path with body, on api's
-// places, as the server and Gmail would: Create Label.
+// places and conversations, as the server and Gmail would.
 function answerLabel(api: MailApi, method: string, path: string, body: unknown): Response {
   api.labelWrites.push(`${method} ${path}`);
   const refusal = api.refuseLabel;
@@ -266,17 +270,41 @@ function answerLabel(api: MailApi, method: string, path: string, body: unknown):
       { status: 422, headers: { "Content-Type": "application/problem+json" } },
     );
   }
-  if (method !== "POST") return problem(notFound);
   const sent = LabelWrite.parse(JSON.parse(typeof body === "string" ? body : "{}"));
-  const made = {
-    accountId: sent.accountId ?? 0,
-    place: crypto.randomUUID(),
-    name: sent.name ?? "",
-    parent: sent.parent ?? null,
-    unread: 0,
-  };
-  api.places = [...api.places, made];
-  return Response.json({ data: labelResource(made) }, { status: 201 });
+  const id = path.slice("/api/v0/labels/".length);
+  const found = api.places.find((p) => p.place === id && p.name !== null);
+  if (method === "POST") {
+    const made = {
+      accountId: sent.accountId ?? 0,
+      place: crypto.randomUUID(),
+      name: sent.name ?? "",
+      parent: sent.parent ?? null,
+      unread: 0,
+    };
+    api.places = [...api.places, made];
+    return Response.json({ data: labelResource(made) }, { status: 201 });
+  }
+  if (!found) return problem(notFound, "/api/v0/problems/label-not-found");
+  if (method === "PATCH") {
+    const edited = { ...found, name: sent.name ?? found.name, parent: sent.parent ?? null };
+    api.places = api.places.map((p) => (p === found ? edited : p));
+    return Response.json({ data: labelResource(edited) });
+  }
+  // Deepest first, the label itself last, as Gmail's code deletes.
+  const tree = [found.place];
+  for (let i = 0; i < tree.length; i++) {
+    for (const p of api.places) if (p.parent === tree[i] && p.name !== null) tree.push(p.place);
+  }
+  const deepestFirst: string[] = [];
+  for (let i = tree.length - 1; i >= 0; i--) deepestFirst.push(tree[i]);
+  const deleted = deepestFirst.slice(0, api.deleteOnly ?? tree.length);
+  api.places = api.places.filter((p) => !deleted.includes(p.place));
+  for (const c of api.conversations) c.labelIds = c.labelIds.filter((l) => !deleted.includes(l));
+  if (api.deleteOnly !== undefined) {
+    api.deleteOnly = undefined;
+    return problem(503, "/api/v0/problems/mail-provider-busy", { "Retry-After": "30" });
+  }
+  return Response.json({ data: { deleted } });
 }
 
 // What a label write may send, as the contract has it.

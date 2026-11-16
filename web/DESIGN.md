@@ -391,6 +391,31 @@ last two redirect into settings, so settings can move without the server.
   Create; while it sends, Escape and Cancel wait. The label made shows at once, its way unfolded. A name the
   server refuses, e.g. one with "/", one Gmail keeps (Inbox), or one the
   account has, is said under Name.
+- **A label's menu**: on each label of an account whose mail can change,
+  a ⋮ (`EllipsisVerticalIcon`, as the toolbar's More), named "Actions for
+  <path>", in the count's place: shown on hover, while keyboard focus is
+  in the row, and while its menu is open, the count hidden meanwhile (WCAG
+  1.4.13 asks only that content shown on hover stay; this hides the
+  count, a grey area we accept, as the label's page shows it too); on a
+  touch, always, after the count, 24 px as the chevron, their touch
+  targets meeting between them, never overlapping. While it shows, a
+  long name ends before it, never under it. Its menu: "Edit…", the New label form
+  as Edit label, its Name and Nest under filled, never offering the label
+  or one inside it; and "Delete label…".
+- **Delete** asks first (`ConfirmDialog`): "Delete Clients?"; "Clients
+  and the 3 labels inside it are deleted in Gmail too, and this can't be
+  undone. Your mail stays: their conversations keep their other labels
+  and stay in All mail." (with none inside: "The label is deleted in
+  Gmail too, ...: its conversations ..."); an "Also deleted" list of the
+  labels inside by their paths under it, five, then "and N more"; and
+  "Delete Clients", "Deleting..." while it runs. A delete that stopped
+  part way says "Some labels weren't deleted. Delete again to finish.",
+  the list showing what is left; one already gone counts as done.
+  Once the open label is gone, it or one it is inside deleted, even by a
+  delete that then failed, its account's Inbox opens in its place, the
+  conversation closed; screen readers hear "Clients
+  deleted." from the Undo bar's live region. A rename or move of the open
+  label renames its page.
 - The member at the bottom, opening the member menu: Settings, Theme
   (Light, Dark, System, side by side, as icons named by tooltips; the
   chosen one has the `selection` background and an `input` outline, as

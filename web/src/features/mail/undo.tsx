@@ -93,8 +93,15 @@ export function closeUndo(key?: number): void {
 // or the conversations it counts, back, until the next action's Undo
 // shows.
 export function sayUndone(subject: string): void {
+  say(undone(subject));
+}
+
+// say tells screen readers text through the Undo bar's live region, e.g.
+// that a label was deleted, which has no Undo, until the next action's
+// Undo shows.
+export function say(text: string): void {
   keys++;
-  set({ pending: state.pending, said: { key: keys, text: undone(subject) } });
+  set({ pending: state.pending, said: { key: keys, text } });
 }
 
 // One member's Undo ends with their session (session-cache.ts).

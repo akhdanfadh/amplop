@@ -157,9 +157,11 @@ Put shared code in the folder for its responsibility:
   (`picking.ts`) and the bar that acts on them (`picking-bar.tsx`), the
   member's labels in the sidebar's order and where a move can leave
   (`labels.ts`), More's Move to and Labels pickers (`label-menu.tsx`), the
-  reading pane's label chips (`label-chips.tsx`), the New label dialog
-  (`label-dialog.tsx`), the page of a label gone (`label-gone.tsx`), how a
-  row shows its date and people, and the address Back to mail returns to.
+  reading pane's label chips (`label-chips.tsx`), the New label and Edit
+  label dialog (`label-dialog.tsx`), a sidebar label's menu and its
+  delete (`label-actions.tsx`), the page of a label gone
+  (`label-gone.tsx`), how a row shows its date and people, and the
+  address Back to mail returns to.
 - `src/features/settings`: the settings sidebar and the settings page
   layout (`SettingsPage`, `SettingsSection`) every settings page uses.
 - `src/components`: shared components, such as the shell around every page
@@ -1425,7 +1427,8 @@ closing to the page: `ConfirmDialog` (`src/components/confirm-dialog.tsx`)
 keeps the dialog open while its request runs, with Cancel and Escape
 waiting, closes it on success, and shows a failure inside it, where
 pressing again retries. When the change removed the button that opened
-the dialog, `fallbackFocus` says where focus goes.
+the dialog, `fallbackFocus` says where focus goes. Its children follow
+the description, e.g. a delete's list of what else it takes.
 
 The theme is light, dark, or the system's, kept per browser in
 `localStorage` by `src/lib/theme.ts`; `useTheme` from `src/hooks` reads

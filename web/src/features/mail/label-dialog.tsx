@@ -5,14 +5,20 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getListPlacesQueryKey,
   useCreateLabel,
+  useEditLabel,
   useListConnectedAccounts,
 } from "@/api/generated/inbok";
-import type { LabelCreateInputBody as LabelCreateBody, LabelResource } from "@/api/generated/model";
+import type {
+  LabelCreateInputBody as LabelCreateBody,
+  LabelEditInputBody,
+  LabelResource,
+} from "@/api/generated/model";
 import { LabelCreateInputBody } from "@/api/generated/model/labelCreateInputBody.zod";
 import { userMessage } from "@/api/problem";
 import { useAppForm } from "@/components/form/app-form";
 import type { SelectOption } from "@/components/form/fields";
 import { useFormRequest } from "@/components/form/request";
+import { FocusFallback } from "@/components/confirm-dialog";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
 import { accountDot, accountName } from "@/components/account-mark";
@@ -25,11 +31,14 @@ import {
   createAndMoveText,
   createText,
   creatingText,
+  editLabelName,
   labelAccountLabel,
   labelNameLabel,
   nestUnderLabel,
   newLabelIn,
   newLabelName,
+  saveLabelText,
+  savingLabelText,
 } from "./text";
 
 // The fields a refusal can name; the account's goes in the summary.
@@ -46,39 +55,50 @@ const labelValues = LabelCreateInputBody.pick({ name: true }).extend({
   parent: z.string(),
 });
 
+// LabelSave is what the form sends: a new label, or an edit of one.
+type LabelSave =
+  | { kind: "create"; data: LabelCreateBody }
+  | { kind: "edit"; id: string; data: LabelEditInputBody };
+
 // LabelStart is what a new label's form starts with: its account, name,
 // and parent, e.g. what the member typed in a picker, split at the label
 // it names (splitTyped).
 export type LabelStart = { accountId: number; name: string; parent: string | null };
 
-// LabelDialog is New label (DESIGN.md "Sidebar", "Reading pane"), over
-// the page while
-// isOpen; onOpenChange closes it, as Cancel and Escape do, which send
-// nothing. It makes a label in one of accountIds, the accounts whose mail
-// can change, starting from start; its Account field shows only with
-// several, named and marked as the sidebar names them. labels are the
-// member's, for the parents offered: those of the chosen account. action
-// "create-and-move" names the button for a picker's Move to, which moves
-// the conversation once the label is made. onDone gets the label made,
-// once the member's labels have been read again, so
-// every list shows it. While it sends, Escape and Cancel wait: a sent
-// change can't be called back.
+// LabelDialog is New label or Edit label (DESIGN.md "Sidebar", "Reading
+// pane"), over the page while isOpen; onOpenChange closes it, as Cancel and
+// Escape do, which send nothing. New label makes a label in one of
+// accountIds, the accounts whose mail can change, starting from start; its
+// Account field shows only with several, named and marked as the sidebar
+// names them. Edit label renames editing, or moves it under another label:
+// its own name and parent. labels are the member's, for the parents
+// offered: those of the label's account, never editing or one inside it.
+// action "create-and-move" names the button for a picker's Move to, which
+// moves the conversation once the label is made. onDone gets the label
+// saved, once the member's labels have been read again, so every list
+// shows it. While it sends, Escape and Cancel wait: a sent change can't be
+// called back. fallbackFocus is where focus goes once it has closed, when
+// what opened it went, e.g. a label's ⋮ the label's move took away.
 export function LabelDialog({
   isOpen,
   onOpenChange,
+  fallbackFocus,
   ...form
 }: {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  fallbackFocus?: () => HTMLElement | null;
   labels: readonly Label[];
   accountIds: readonly number[];
   start?: LabelStart;
+  editing?: Label;
   action?: "create" | "create-and-move";
   onDone: (label: Label) => void;
 }): ReactElement {
   const [sending, setSending] = useState(false);
   return (
     <Dialog isOpen={isOpen} onOpenChange={onOpenChange} isKeyboardDismissDisabled={sending}>
+      <FocusFallback target={fallbackFocus} />
       {/* Mounted while open, so each opening starts from its own values. */}
       <LabelForm {...form} onSending={setSending} onClose={() => onOpenChange(false)} />
     </Dialog>
@@ -91,6 +111,7 @@ function LabelForm({
   labels,
   accountIds,
   start,
+  editing,
   action = "create",
   onDone,
   onSending,
@@ -99,6 +120,7 @@ function LabelForm({
   labels: readonly Label[];
   accountIds: readonly number[];
   start?: LabelStart;
+  editing?: Label;
   action?: "create" | "create-and-move";
   onDone: (label: Label) => void;
   onSending: (sending: boolean) => void;
@@ -110,42 +132,53 @@ function LabelForm({
   const ref = useRef<HTMLDivElement>(null);
   // Here, not in the form, so the lists read the change even if the form
   // closed, after a refusal too: Gmail may have made the label before
-  // failing. Returned, so the form waits for the read: once it closes, the
-  // label shows wherever labels do.
-  const create = useCreateLabel({
-    mutation: {
-      gcTime: 0,
-      onSettled: () => client.invalidateQueries({ queryKey: getListPlacesQueryKey() }),
-    },
-  });
-  const request = useFormRequest(
+  // failing, or renamed some labels before refusing an edit. Returned, so the form waits for the read: once it
+  // closes, the label shows wherever labels do.
+  const reread = {
+    onSettled: () => client.invalidateQueries({ queryKey: getListPlacesQueryKey() }),
+  };
+  const create = useCreateLabel({ mutation: { gcTime: 0, ...reread } });
+  const edit = useEditLabel({ mutation: { gcTime: 0, ...reread } });
+  const mutation = editing ? edit : create;
+  const request = useFormRequest<LabelResource, LabelSave>(
     {
-      mutateAsync: async (data: LabelCreateBody) => (await create.mutateAsync({ data })).data,
-      error: create.error,
+      mutateAsync: async (save) =>
+        (save.kind === "edit"
+          ? await edit.mutateAsync({ id: save.id, data: save.data })
+          : await create.mutateAsync({ data: save.data })
+        ).data,
+      error: mutation.error,
     },
     labelFields,
   );
+  const first = editing?.accountId ?? start?.accountId ?? accountIds[0] ?? 0;
   const form = useAppForm({
     defaultValues: {
-      account: String(start?.accountId ?? accountIds[0] ?? 0),
-      name: start?.name ?? "",
-      parent: start?.parent ?? atTop,
+      account: String(first),
+      name: editing?.name ?? start?.name ?? "",
+      parent: parentOf(editing, labels) ?? start?.parent ?? atTop,
     },
     validationLogic: revalidateLogic(),
     validators: { onDynamic: request.check(labelValues) },
     onSubmit: async ({ value, formApi }) => {
-      const sent = await request.send(formApi, value, {
-        accountId: Number(value.account),
-        name: value.name,
-        parent: value.parent === atTop ? null : value.parent,
-      });
+      const parent = value.parent === atTop ? null : value.parent;
+      const sent = await request.send(
+        formApi,
+        value,
+        editing
+          ? { kind: "edit", id: editing.place, data: { name: value.name, parent } }
+          : {
+              kind: "create",
+              data: { accountId: Number(value.account), name: value.name, parent },
+            },
+      );
       if (sent.outcome !== "done") return;
       onClose();
       onDone(labelOf(sent.data, labels));
     },
     listeners: {
       onChange: ({ fieldApi }) => {
-        if (create.error) create.reset();
+        if (mutation.error) mutation.reset();
         // Another account's labels are no parents for this one.
         if (fieldApi.name === "account") fieldApi.form.setFieldValue("parent", atTop);
       },
@@ -159,10 +192,25 @@ function LabelForm({
   const accountId = Number(useSelector(form.store, (state) => state.values.account));
 
   useEffect(() => {
-    ref.current?.querySelector<HTMLInputElement>("input[name=name]")?.focus();
-  }, []);
+    const input = ref.current?.querySelector<HTMLInputElement>("input[name=name]");
+    // select() alone need not focus the field (MDN, "HTMLInputElement:
+    // select() method"); an edited name is selected, to type over.
+    input?.focus();
+    if (editing) input?.select();
+  }, [editing]);
 
-  const title = accounts.length === 1 ? newLabelIn(accountName(accounts[0])) : newLabelName;
+  const title = editing
+    ? editLabelName
+    : accounts.length === 1
+      ? newLabelIn(accountName(accounts[0]))
+      : newLabelName;
+  const button =
+    editing === undefined
+      ? {
+          label: action === "create-and-move" ? createAndMoveText : createText,
+          working: creatingText,
+        }
+      : { label: saveLabelText, working: savingLabelText };
 
   return (
     <div ref={ref} className="contents">
@@ -171,7 +219,7 @@ function LabelForm({
       </DialogHeader>
       <form.AppForm>
         <form.Form label={title} className="gap-6">
-          {accounts.length > 1 && (
+          {!editing && accounts.length > 1 && (
             <form.AppField name="account">
               {(field) => (
                 <field.SelectField
@@ -203,7 +251,7 @@ function LabelForm({
               <field.SelectField
                 label={nestUnderLabel}
                 optional
-                options={parentOptions(labels, accountId)}
+                options={parentOptions(labels, accountId, editing)}
               />
             )}
           </form.AppField>
@@ -214,9 +262,7 @@ function LabelForm({
             <Button type="button" variant="outline" isDisabled={sending} onPress={onClose}>
               {cancelLabelText}
             </Button>
-            <form.SubmitButton working={creatingText}>
-              {action === "create-and-move" ? createAndMoveText : createText}
-            </form.SubmitButton>
+            <form.SubmitButton working={button.working}>{button.label}</form.SubmitButton>
           </DialogFooter>
         </form.Form>
       </form.AppForm>
@@ -224,14 +270,31 @@ function LabelForm({
   );
 }
 
+// parentOf returns the place of label's parent among labels, atTop for a
+// label at the top, or undefined without a label.
+function parentOf(label: Label | undefined, labels: readonly Label[]): string | undefined {
+  if (!label) return undefined;
+  const parentPath = label.path.slice(0, -label.name.length - 1);
+  if (!parentPath) return atTop;
+  return (
+    labels.find((l) => l.accountId === label.accountId && l.path === parentPath)?.place ?? atTop
+  );
+}
+
 // parentOptions returns Nest under's choices: the top, then accountId's
-// labels in the sidebar's order, each stepped in by its depth and named
-// whole by its path.
-function parentOptions(labels: readonly Label[], accountId: number): SelectOption[] {
+// labels in the sidebar's order, each stepped in by its depth, but not
+// editing or a label inside it, which can't hold it.
+function parentOptions(
+  labels: readonly Label[],
+  accountId: number,
+  editing: Label | undefined,
+): SelectOption[] {
+  const inside = (l: Label) =>
+    editing !== undefined && (l.place === editing.place || l.path.startsWith(`${editing.path}/`));
   return [
     { value: atTop, label: atTheTop },
     ...labels
-      .filter((l) => l.accountId === accountId)
+      .filter((l) => l.accountId === accountId && !inside(l))
       .map((l) => ({ value: l.place, label: l.name, whole: l.path, depth: l.depth })),
   ];
 }
