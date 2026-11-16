@@ -54,7 +54,8 @@ export const inboxChip = "Inbox";
 // rowName returns what a screen reader calls a list row: whether it is
 // unread, who, how many messages when more than one, its subject and date,
 // whether its list marks it in the Inbox (inbox) and whether it is
-// starred, and its account when the list mixes accounts.
+// starred, its account when the list mixes accounts, and its labels by
+// their paths, last, as there may be many.
 export function rowName(row: {
   who: string;
   count: number | undefined;
@@ -62,6 +63,7 @@ export function rowName(row: {
   date: string;
   unread: boolean;
   inbox: boolean;
+  labels: readonly string[];
   starred: boolean;
   account: string | undefined;
 }): string {
@@ -74,6 +76,7 @@ export function rowName(row: {
     row.inbox && `In ${inboxChip}`,
     row.starred && "Starred",
     row.account,
+    row.labels.length > 0 && `${marksName} ${names.format(row.labels)}`,
   ]
     .filter(Boolean)
     .join(", ");
@@ -557,3 +560,15 @@ export function noLabelsIn(account: string): string {
 
 // The reading pane's chips of where a conversation is (LabelChips).
 export const marksName = "Labels";
+
+// twinName names a label on a row when another of its account has the
+// same own name, name, by name and then its parent's path, parent, e.g.
+// "Acme · Clients".
+export function twinName(name: string, parent: string): string {
+  return `${name} · ${parent}`;
+}
+
+// moreMarks counts the marks a row has beyond those it shows, e.g. "+3".
+export function moreMarks(count: number): string {
+  return `+${formatCount(count)}`;
+}

@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { createContext, useMemo } from "react";
 import { useLiveQuery } from "@tanstack/react-db";
 import { ChangePlace } from "@/api/generated/model/changePlace.zod";
 import type { MailData, PlaceCount } from "./conversations";
 import { labelTree, usePlaceCounts, type LabelNode } from "./place-counts";
 import { isViewPlace, type Place } from "./places";
+import { twinName } from "./text";
 
 // Label is one of the member's labels as the menus and marks show it: its
 // place (its id), its account, its own name, its name with its parents'
@@ -61,3 +62,42 @@ const changeViews: readonly string[] = ChangePlace.options[0].options;
 export function canMoveFrom(place: Place): boolean {
   return isViewPlace(place) ? changeViews.includes(place) : true;
 }
+
+// RowLabel is a label as a list's row marks it: the name its chip shows,
+// its path, and its place in the sidebar's order.
+export type RowLabel = { name: string; path: string; order: number };
+
+// rowLabelsOf returns labels by place as rows mark them (DESIGN.md
+// "Message list"): by their own name, a row having no room for the
+// sidebar's nesting, and then their parent's path when another label of
+// the account has the same own name, e.g. "Acme · Clients" beside "Acme ·
+// Vendors": a row cuts a chip at its end, so the own name goes first.
+export function rowLabelsOf(labels: readonly Label[]): Map<string, RowLabel> {
+  const twins = new Map<string, number>();
+  for (const label of labels) {
+    const key = `${label.accountId} ${label.name}`;
+    twins.set(key, (twins.get(key) ?? 0) + 1);
+  }
+  return new Map(
+    labels.map((label, order) => [
+      label.place,
+      {
+        name:
+          (twins.get(`${label.accountId} ${label.name}`) ?? 0) > 1 && label.depth > 0
+            ? twinName(label.name, label.path.slice(0, -label.name.length - 1))
+            : label.name,
+        path: label.path,
+        order,
+      },
+    ]),
+  );
+}
+
+// RowLabelsContext gives a list's rows the labels they mark, by place
+// (rowLabelsOf), the list's own label, which its rows leave out, and the
+// most marks a row shows before "+N", two unless said.
+export const RowLabelsContext = createContext<{
+  labels: ReadonlyMap<string, RowLabel>;
+  leaveOut?: string;
+  most?: 1 | 2;
+}>({ labels: new Map() });

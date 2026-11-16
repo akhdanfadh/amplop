@@ -13,6 +13,8 @@ const clients = "00000000-0000-4000-8000-0000000000c1";
 const acme = "00000000-0000-4000-8000-0000000000c2";
 const hiring = "00000000-0000-4000-8000-0000000000c3";
 const family = "00000000-0000-4000-8000-0000000000c4";
+const reviews = "00000000-0000-4000-8000-0000000000c5";
+const vendors = "00000000-0000-4000-8000-0000000000c6";
 
 // label returns account's label place, named name under parent.
 function label(accountId: number, place: string, name: string, parent: string | null = null) {
@@ -36,12 +38,12 @@ afterEach(async () => {
 });
 
 // open renders the app at address over rows, of two accounts, Work's and
-// Home's, with their labels, and returns its router once the reading pane
-// shows.
-async function open(rows: ConversationRow[], address: string) {
+// Home's, with their labels, Work's places when given, and returns its
+// router once the reading pane shows.
+async function open(rows: ConversationRow[], address: string, places = workLabels) {
   await page.viewport(1440, 900);
   api = mailApi(rows, [listedAccount(1, "ana@work.example"), listedAccount(2, "ana@home.example")]);
-  api.places = [...workLabels, label(2, family, "Family")];
+  api.places = [...places, label(2, family, "Family")];
   const router = await appRouter(address, memberSession, (url, init) => api.fetch(url, init));
   await render(<RouterProvider router={router} />);
   current = router;
@@ -378,5 +380,82 @@ describe("a label change's failure", () => {
       .element(page.getByText("Removed from Clients/Acme", { exact: true }))
       .toBeVisible();
     await expect.element(error).not.toBeInTheDocument();
+  });
+});
+
+// shownMarks returns the marks the list's first row shows, by their text,
+// and whether each ends inside the row's line and is no narrower than a
+// chip's floor (3.5rem).
+function shownMarks() {
+  const row = page.getByRole("grid", { name: "Conversations" }).getByRole("row").first().element();
+  const marks = row.querySelector("[aria-hidden=true][title]");
+  if (!marks?.parentElement) return { names: [], fit: true };
+  const end = marks.parentElement.getBoundingClientRect().right;
+  const floor = 3.5 * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+  const shown = [...marks.children].filter((mark) => mark.checkVisibility());
+  return {
+    names: shown.map((mark) => mark.textContent),
+    fit: shown.every((mark) => {
+      const box = mark.getBoundingClientRect();
+      const chip = !mark.textContent.startsWith("+");
+      return box.right <= end + 0.5 && (!chip || box.width >= floor - 0.5);
+    }),
+  };
+}
+
+describe("row marks", () => {
+  afterEach(() => {
+    document.documentElement.style.fontSize = "";
+  });
+
+  it("end the preview with the Inbox and the first label, then how many more, all named for screen readers", async () => {
+    const row = conversation(1, { accountId: 1, labelIds: [hiring, acme, clients] });
+    await open([row], `/mail/all/${row.id}`);
+
+    // The sidebar's order, two marks in all, the Inbox one of them.
+    await expect.poll(() => shownMarks().names).toEqual(["Inbox", "Clients", "+2"]);
+    await expect
+      .element(page.getByRole("grid", { name: "Conversations" }).getByRole("row").first())
+      .toHaveAccessibleName(
+        expect.stringMatching(/In Inbox, .*Labels Clients, Clients\/Acme, and Hiring$/),
+      );
+  });
+
+  it("show two, one, then none as the row narrows, each cut to fit, never past the line", async () => {
+    const row = conversation(1, {
+      accountId: 1,
+      inbox: false,
+      labelIds: [reviews, vendors, clients, acme, hiring],
+    });
+    await open([row], `/mail/all/${row.id}`, [
+      ...workLabels,
+      label(1, reviews, "Annual business reviews and planning"),
+      label(1, vendors, "Board meetings and vendor contracts"),
+    ]);
+
+    await expect
+      .poll(() => shownMarks())
+      .toEqual({
+        names: [
+          "Annual business reviews and planning",
+          "Board meetings and vendor contracts",
+          "+3",
+        ],
+        fit: true,
+      });
+    await page.viewport(1024, 900);
+    await expect
+      .poll(() => shownMarks())
+      .toEqual({ names: ["Annual business reviews and planning", "+4"], fit: true });
+    // Text at 200%, as a member may set it: the line is too narrow for one.
+    document.documentElement.style.fontSize = "200%";
+    await expect.poll(() => shownMarks()).toEqual({ names: [], fit: true });
+  });
+
+  it("leave out the label whose list they are in", async () => {
+    const row = conversation(1, { accountId: 1, labelIds: [clients, hiring] });
+    await open([row], `/mail/${clients}/${row.id}?account=1`);
+
+    await expect.poll(() => shownMarks().names).toEqual(["Inbox", "Hiring"]);
   });
 });

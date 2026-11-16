@@ -159,7 +159,7 @@ which brings 400 and 600 close. Unread rows also take 650 there.
   so they sit level with the nav rows beside them.
 - **Radius:** `--radius: 0.5rem`: controls 8, menu items 6, menus about
   10, cards and the message sheet 12, dialogs 14. Pills only for status
-  badges and recipient chips.
+  badges, a list row's marks, and recipient chips.
 - **Elevation:** no shadow on page, panes, list, or sheet. Menus and
   popovers share the card's surface and may open over a card, so an edge
   and a shadow set them apart: `0 4px 16px` at 12% black and the `border`
@@ -415,7 +415,21 @@ last two redirect into settings, so settings can move without the server.
   snippet, ended by the row's marks: an "Inbox" chip (the `secondary`
   badge, 16 px) outside the Inbox while the conversation is in it, so All
   mail, Starred, Sent, and labels tell it from an archived one, as
-  Gmail's list does; then the star button, on every row as in Gmail's
+  Gmail's list does; then its labels, in the sidebar's order, the list's
+  own left out, two chips in all, then "+N" (`RowMarks`): a label by its
+  own name, then its parent's path when another of the account's has
+  the same own name ("Acme · Clients"), so a cut keeps the own name;
+  each chip cut at 6rem, as a row is one line (the pane's chips and the
+  pickers wrap); the preview gives way first, the chips taking up to 60%
+  of the line, shorter to fit down to 3.5rem, never a stub. A line too
+  narrow for two at that floor (under 16.25rem) shows one chip and "+N",
+  and one too narrow for one (under 10rem, e.g. a phone at 200% text)
+  none, by a container query on the line, in rem so it follows the text
+  size. Search results show one chip at most, then "+N": a result's
+  snippet shows why it matched, so it keeps the room. The full paths
+  show on hover, screen readers hear every label in the row's name, last
+  ("…, Labels Clients/Acme and Hiring"), and the reading pane shows them
+  whole; then the star button, on every row as in Gmail's
   list and app, outlined until starred (→ reaches it from the row);
   pressing it stars or unstars at once. A 36 px initials
   avatar ringed in the account colour leads (initials of the newest
@@ -1044,7 +1058,8 @@ outcome.
 - **Reversible actions** (archive, delete to Trash, read, star, and bulk
   versions) happen at once, with the unread counts; an action that moves
   a conversation to another place, any action on several, and every
-  label change (rows don't show labels, so its result is out of view)
+  label change (a row shows at most two labels, so its result can be
+  out of view)
   shows the **Undo bar** at once, docked
   at the bottom of the list, under the row the action took away, and on
   a phone, one pane at a time, under whichever pane shows, as an action

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { PlaceCount } from "./conversations";
-import { canMoveFrom, labelsOf } from "./labels";
+import { canMoveFrom, labelsOf, rowLabelsOf } from "./labels";
 import { labelWords, moveWords } from "./words";
 
 // label returns account's label place, named name under parent.
@@ -59,5 +59,29 @@ describe("label words", () => {
     expect(labelWords(["Hiring", "Q4"], []).done).toBe("Labels changed");
     expect(labelWords(["Hiring"], []).alwaysUndo).toBe(true);
     expect(labelWords([], ["Finance"]).failed()).toBe("Couldn't change labels on the conversation");
+  });
+});
+
+describe("rowLabelsOf", () => {
+  it("names a label by its own name, and then its parent's path when another of the account's shares it", () => {
+    const labels = labelsOf([
+      label(1, "c", "Clients"),
+      label(1, "ca", "Acme", "c"),
+      label(1, "v", "Vendors"),
+      label(1, "va", "Acme", "v"),
+      label(1, "t", "Travel"),
+      label(1, "tj", "2026 Jakarta", "t"),
+      label(2, "a", "Acme"),
+    ]);
+
+    const rows = rowLabelsOf(labels);
+
+    expect(rows.get("ca")?.name).toBe("Acme · Clients");
+    expect(rows.get("va")?.name).toBe("Acme · Vendors");
+    expect(rows.get("ca")?.path).toBe("Clients/Acme");
+    expect(rows.get("tj")?.name).toBe("2026 Jakarta");
+    // Another account's Acme is its own.
+    expect(rows.get("a")?.name).toBe("Acme");
+    expect(rows.get("c")!.order).toBeLessThan(rows.get("tj")!.order);
   });
 });

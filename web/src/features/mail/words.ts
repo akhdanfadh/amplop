@@ -24,8 +24,8 @@ import { conversationCount } from "./text";
 // without where gets no Undo: its result stays in view; several
 // conversations' always do, as which of them it changed does not. One
 // whose result can be out of view without moving the conversation,
-// e.g. a label added, which a row may not show, has an Undo always
-// (alwaysUndo).
+// e.g. a label added, which a row may not show (it shows at most two),
+// has an Undo always (alwaysUndo).
 export type ActionWords = {
   label: string;
   icon: LucideIcon;
@@ -142,7 +142,7 @@ export function moveWords(path: string): ActionWords {
 // labelWords returns the words of adding conversations to the labels of
 // added and taking them out of removed's, each named by its path: one
 // label's change by its name, any other as labels changed. Always with an
-// Undo, as rows don't show labels.
+// Undo, as a row shows at most two labels.
 export function labelWords(added: readonly string[], removed: readonly string[]): ActionWords {
   const done =
     added.length === 1 && removed.length === 0
