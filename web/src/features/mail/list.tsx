@@ -4,17 +4,15 @@ import {
   useRef,
   useState,
   type FocusEvent,
-  type KeyboardEvent,
-  type PointerEvent,
   type ReactElement,
   type RefObject,
   type UIEvent,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { linkOptions, useNavigate, useRouter } from "@tanstack/react-router";
+import { linkOptions, useRouter } from "@tanstack/react-router";
 import { useLiveInfiniteQuery } from "@tanstack/react-db";
 import type { HealthNode } from "@tanstack/db";
-import { Collection, Link, type Selection } from "react-aria-components";
+import { Collection, Link } from "react-aria-components";
 import { ArrowUpIcon } from "lucide-react";
 import { useCountNewConversations, useListConnectedAccounts } from "@/api/generated/inbok";
 import type { ListedAccountOutput } from "@/api/generated/model/listedAccount.zod";
@@ -39,7 +37,7 @@ import { useAct } from "./act";
 import { useToday } from "./dates";
 import { listKey, nextRow, takeRowFocus, useRowFocusRequest } from "./focus-request";
 import { useKeepPlace, useRestIntent, useRowSize } from "./list-state";
-import type { Picking } from "./picking";
+import { usePickingGrid, type Picking } from "./picking";
 import { RowLabelsContext, rowLabelsOf, useLabels } from "./labels";
 import { isViewPlace, type Place } from "./places";
 import { ConversationRow, PickingContext, createOpenStore, type RowAccount } from "./row";
@@ -106,7 +104,6 @@ export function ConversationList({
   onRetry: () => void;
 }): ReactElement {
   const client = useQueryClient();
-  const navigate = useNavigate();
   const router = useRouter();
   // Taken once: after sign-out drops the member's mail, this list, still
   // drawn for a moment, must not start a new collection and read again.
@@ -169,8 +166,6 @@ export function ConversationList({
   // view first, as only the rows on screen are drawn. With no row left,
   // the heading takes it, as focus would fall to the page.
   const listBox = useRef<HTMLDivElement>(null);
-  // Where the last press on the list began (onSelectionChange).
-  const press = useRef<{ mouse: boolean; text: boolean; id: string | undefined }>(undefined);
   const focusKey = listKey(place, account);
   const focusRequest = useRowFocusRequest(focusKey);
   // A row's action runs as the reading pane's toolbar runs it, the open
@@ -250,6 +245,14 @@ export function ConversationList({
   const now = useToday();
   const [openStore] = useState(() => createOpenStore(openId));
   useEffect(() => openStore.set(openId), [openStore, openId]);
+  // The list picks as search results do (usePickingGrid).
+  const pickingGrid = usePickingGrid({
+    picking,
+    rows,
+    hrefOf: conversationHref,
+    replaces: () => openStore.get() !== undefined,
+    guard,
+  });
   const readAhead = useRestIntent((id) => {
     void router.preloadRoute(conversationHref(id));
   });
@@ -318,58 +321,6 @@ export function ConversationList({
     });
   };
 
-  // open opens the conversation id as its row's link does, for a press
-  // React Aria takes as picking once rows are picked; its entry keeps the
-  // picking entry's number, so Back still stops picking (picking.ts).
-  const open = (id: string) => {
-    const replace = openStore.get() !== undefined;
-    void navigate({
-      ...conversationHref(id),
-      replace,
-      state: (left) => ({ fromList: !replace || left.fromList === true, picking: left.picking }),
-    });
-  };
-  const anyPicked = picking.ids.size > 0;
-  // A mouse press on a row's text, without Shift, Ctrl, or Cmd, and Enter,
-  // open the row even while rows are picked; a press on the row's box,
-  // Space, Shift ranges, and a touch tap while picking pick (DESIGN.md
-  // "Message list"). React Aria picks on any press once a row is picked,
-  // so the list notes where each press began.
-  const onPointerDownCapture = (event: PointerEvent) => {
-    if (guard.onPointerDownCapture(event)) return;
-    const target = event.target instanceof Element ? event.target : null;
-    const plain = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
-    press.current = {
-      mouse: event.pointerType === "mouse",
-      text: plain && target?.closest("[data-slot=pick-box]") === null,
-      id: target?.closest("[data-conversation]")?.getAttribute("data-conversation") ?? undefined,
-    };
-  };
-  const onKeyDownCapture = (event: KeyboardEvent) => {
-    if (guard.onKeyDownCapture(event)) return;
-    press.current = undefined;
-    const plain = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
-    const id =
-      event.target instanceof HTMLElement ? event.target.getAttribute("data-conversation") : null;
-    if (event.key !== "Enter" || !plain || !anyPicked || id === null) return;
-    // Only the row itself: Enter on its star presses the star.
-    event.preventDefault();
-    event.stopPropagation();
-    open(id);
-  };
-  const onSelectionChange = (keys: Selection) => {
-    const pressed = press.current;
-    press.current = undefined;
-    if (pressed?.mouse && pressed.text && pressed.id !== undefined && anyPicked) {
-      open(pressed.id);
-      return;
-    }
-    // Ctrl or Cmd+A picks every row loaded, as fixed IDs. Any other set is
-    // kept as React Aria gives it: its anchor, where a Shift range starts,
-    // lives on it.
-    picking.pick(keys === "all" ? new Set(rows.map((row) => row.id)) : keys);
-  };
-
   // Focus resting on a row reads its conversation ahead, as hovering does.
   const onFocus = (event: FocusEvent) => {
     const row =
@@ -385,9 +336,7 @@ export function ConversationList({
       className="flex min-h-0 flex-1 flex-col"
       onFocus={onFocus}
       onBlur={readAhead.leave}
-      onPointerDownCapture={onPointerDownCapture}
-      onClickCapture={guard.onClickCapture}
-      onKeyDownCapture={onKeyDownCapture}
+      {...pickingGrid.boxProps}
     >
       {/* 1 rem square, so the rows follow the browser's text size. */}
       <span
@@ -419,7 +368,7 @@ export function ConversationList({
           </div>
         )}
         <RowLabelsContext value={rowLabels}>
-          <PickingContext value={anyPicked ? "picking" : "ready"}>
+          <PickingContext value={pickingGrid.picks}>
             <GridList
               key={shown}
               aria-label={listName}
@@ -428,9 +377,7 @@ export function ConversationList({
               // the button they pressed is gone.
               // oxlint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={shown > 0 ? "first" : undefined}
-              selectionMode="multiple"
-              selectedKeys={picking.ids}
-              onSelectionChange={onSelectionChange}
+              {...pickingGrid.gridProps}
               onScroll={onScroll}
               className="min-h-0 flex-1"
             >

@@ -1,6 +1,19 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "@tanstack/react-router";
-import type { Key } from "react-aria-components";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+} from "react";
+import { useNavigate, useRouter } from "@tanstack/react-router";
+import type { Key, Selection } from "react-aria-components";
+import type { AppHref } from "./places";
+import type { PressGuard } from "./press-guard";
+import type { Picks } from "./row";
 
 // Picking is the conversations picked in one list, by ID, and what
 // changes them: pick replaces them, and an empty set stops picking;
@@ -158,6 +171,111 @@ export function usePicking(key: string): Picking {
     [keep],
   );
   return useMemo(() => ({ ids, pick, follow, hold }), [ids, pick, follow, hold]);
+}
+
+// PickingGrid is what a list that picks spreads on its grid (gridProps),
+// on the box around it (boxProps), and its rows' PickingContext (picks).
+export type PickingGrid = {
+  gridProps: {
+    selectionMode: "multiple";
+    selectedKeys: ReadonlySet<Key>;
+    onSelectionChange: (keys: Selection) => void;
+  };
+  boxProps: {
+    onPointerDownCapture: (event: PointerEvent) => void;
+    onClickCapture: (event: MouseEvent) => void;
+    onKeyDownCapture: (event: KeyboardEvent) => void;
+  };
+  picks: Picks;
+};
+
+// usePickingGrid returns the PickingGrid of a list whose rows, its loaded
+// ones, picking holds (DESIGN.md "Message list"): a mouse press on a row's
+// text, without Shift, Ctrl, or Cmd, and Enter open the row even while
+// rows are picked, at hrefOf's address, replacing the open conversation's
+// entry while replaces says one is open; a press on the row's box, Space,
+// Shift ranges, and a touch tap while picking pick; Ctrl or Cmd+A picks
+// every row loaded. guard drops the list's presses just after a row's
+// action, before any of this hears them.
+//
+// DESIGN: React Aria picks on any press once a row is picked, so the box
+// notes where each press began, and a press it took as picking opens the
+// row instead. An opened row's entry keeps the picking entry's number, so
+// Back still stops picking (usePicking).
+export function usePickingGrid({
+  picking,
+  rows,
+  hrefOf,
+  replaces,
+  guard,
+}: {
+  picking: Picking;
+  rows: readonly { id: string }[];
+  hrefOf: (id: string) => AppHref | undefined;
+  replaces: () => boolean;
+  guard: PressGuard;
+}): PickingGrid {
+  const navigate = useNavigate();
+  // Where the last press on the list began.
+  const press = useRef<{ mouse: boolean; text: boolean; id: string | undefined }>(undefined);
+  const anyPicked = picking.ids.size > 0;
+  const open = (id: string) => {
+    const href = hrefOf(id);
+    if (!href) return;
+    const replace = replaces();
+    void navigate({
+      ...href,
+      replace,
+      state: (left) => ({ fromList: !replace || left.fromList === true, picking: left.picking }),
+    });
+  };
+  return {
+    gridProps: {
+      selectionMode: "multiple",
+      selectedKeys: picking.ids,
+      onSelectionChange: (keys) => {
+        const pressed = press.current;
+        press.current = undefined;
+        if (pressed?.mouse && pressed.text && pressed.id !== undefined && anyPicked) {
+          open(pressed.id);
+          return;
+        }
+        // Ctrl or Cmd+A picks every row loaded, as fixed IDs. Any other
+        // set is kept as React Aria gives it: its anchor, where a Shift
+        // range starts, lives on it.
+        picking.pick(keys === "all" ? new Set(rows.map((row) => row.id)) : keys);
+      },
+    },
+    boxProps: {
+      onPointerDownCapture: (event) => {
+        if (guard.onPointerDownCapture(event)) return;
+        const target = event.target instanceof Element ? event.target : null;
+        const plain = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
+        press.current = {
+          mouse: event.pointerType === "mouse",
+          text: plain && target?.closest("[data-slot=pick-box]") === null,
+          id:
+            target?.closest("[data-conversation]")?.getAttribute("data-conversation") ?? undefined,
+        };
+      },
+      onClickCapture: guard.onClickCapture,
+      onKeyDownCapture: (event) => {
+        if (guard.onKeyDownCapture(event)) return;
+        press.current = undefined;
+        const plain = !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
+        const id =
+          event.target instanceof HTMLElement
+            ? event.target.getAttribute("data-conversation")
+            : null;
+        if (event.key !== "Enter" || !plain || !anyPicked || id === null) return;
+        // Only the row itself: Enter on its star presses the star.
+        event.preventDefault();
+        event.stopPropagation();
+        open(id);
+      },
+    },
+    picks: anyPicked ? "picking" : "ready",
+  };
 }
 
 // leave goes back from the history entry picking added, entry, while it is
