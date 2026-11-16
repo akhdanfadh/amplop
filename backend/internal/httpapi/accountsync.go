@@ -65,8 +65,11 @@ func registerAccountSync(api huma.API, handler connectedAccountHandler) {
 	accountNotFoundResponse(responses)
 
 	conflict := responses[strconv.Itoa(http.StatusConflict)]
-	conflict.Description = "Google stopped accepting the account's permission; reconnect it first."
-	conflict.Content[problemContentType].Example = accountSyncProblem(connectedaccount.ErrNeedsReconnect)
+	conflict.Description = "Google stopped accepting the account's permission, so reconnect it first; or no Google client is configured, so Gmail is not offered."
+	conflict.Content[problemContentType].Examples = map[string]*huma.Example{
+		"needsReconnect":     {Value: accountSyncProblem(connectedaccount.ErrNeedsReconnect)},
+		"gmailNotConfigured": {Value: accountSyncProblem(errGmailNotConfigured)},
+	}
 
 	throttled := responses[strconv.Itoa(http.StatusTooManyRequests)]
 	throttled.Description = "The account's sync was requested in the last 15 seconds."
@@ -80,7 +83,7 @@ func registerAccountSync(api huma.API, handler connectedAccountHandler) {
 		Tags:        []string{tagConnectedAccounts},
 		Description: "Starts a connected account's sync now instead of at the next minute: a check for new mail, or a full sync when one is due. " +
 			"A sync already waiting or running keeps its place, with the same answer; it checks for mail again before it ends, or the next minute's check does. " +
-			"One request per account every 15 seconds.",
+			"One request per account every 15 seconds. The account's allowedActions in the list says whether it can sync now.",
 		Metadata:      map[string]any{accessKey: session.AccessMember},
 		Security:      []map[string][]string{{sessionSecuritySchemeName: {}}},
 		DefaultStatus: http.StatusAccepted,
@@ -89,6 +92,14 @@ func registerAccountSync(api huma.API, handler connectedAccountHandler) {
 }
 
 func (h connectedAccountHandler) handleSyncAccount(ctx context.Context, in *connectedAccountInput) (*output[accountSync], error) {
+	// 1. Refuse before the request is saved: without the client no worker
+	// syncs Gmail, so an accepted request would wait forever (ADR001,
+	// "Polling"). Gmail is the only provider, so the account is Gmail's.
+	if !h.offered(connectedaccount.ProviderGmail) {
+		return nil, accountSyncProblem(errGmailNotConfigured)
+	}
+
+	// 2. Save the request and start the sync.
 	user := ctx.Value(sessionKey{}).(session.Authenticated).Identity.User
 	report, err := h.syncs.Request(ctx, user.ID, in.ID)
 	if err != nil {
@@ -101,6 +112,8 @@ func accountSyncProblem(err error) error {
 	switch {
 	case errors.Is(err, mailsync.ErrNotFound):
 		return connectedAccountProblem(connectedaccount.ErrNotFound)
+	case errors.Is(err, errGmailNotConfigured):
+		return newProblem(http.StatusConflict, gmailNotConfiguredType, "Gmail not configured", "Gmail accounts can't sync until an administrator sets up a Google client.")
 	case errors.Is(err, connectedaccount.ErrNeedsReconnect):
 		return newProblem(http.StatusConflict, accountNeedsReconnectType, "Account needs reconnecting", "Google stopped accepting this account's permission. Reconnect it to sync.")
 	case errors.Is(err, mailsync.ErrRequestThrottled):

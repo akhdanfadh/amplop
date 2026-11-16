@@ -27,6 +27,10 @@ function account(
     createdAt: earlier,
     name: null,
     color: 1,
+    allowedActions:
+      status === "needs-reconnect"
+        ? ["reconnect", "rename", "disconnect"]
+        : ["sync", "reconnect", "rename", "disconnect"],
     sync: { ...idle, ...sync },
   };
 }

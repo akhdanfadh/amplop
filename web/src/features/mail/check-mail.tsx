@@ -29,9 +29,9 @@ const turnMs = 1000;
 // CheckMail is Check for new mail (DESIGN.md "Message list"): it asks the
 // server to check each account the list shows, accountId's or every one,
 // for new mail now instead of at the next minute, skipping an account
-// inbok cannot use, then reads the mail pages often while those checks
-// run. A refusal shows in an error toast; the list stays as it is. An
-// ended session opens sign-in.
+// whose allowedActions lack sync, then reads the mail pages often while
+// those checks run. A refusal shows in an error toast; the list stays as
+// it is. An ended session opens sign-in.
 export function CheckMail({ accountId }: { accountId: number | undefined }): ReactElement {
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -56,11 +56,16 @@ export function CheckMail({ accountId }: { accountId: number | undefined }): Rea
       showError(checkFailedTitle, noAccountToCheck);
       return;
     }
-    const usable = shown.filter((account) => account.status === "usable");
-    if (usable.length === 0) {
+    // The server says which accounts it would check now.
+    const syncable = shown.filter((account) => account.allowedActions.includes("sync"));
+    if (syncable.length === 0) {
       const refused = shown.map((account) => ({
         name: accountName(account),
-        refusal: { kind: "reconnect" as const },
+        refusal: {
+          kind: account.allowedActions.includes("reconnect")
+            ? ("reconnect" as const)
+            : ("unavailable" as const),
+        },
       }));
       showError(checkFailedTitle, checkFailures(refused));
       return;
@@ -71,7 +76,7 @@ export function CheckMail({ accountId }: { accountId: number | undefined }): Rea
     const started = Date.now();
     setChecking(true);
     const outcomes = await Promise.allSettled(
-      usable.map((account) => sync.mutateAsync({ id: account.id })),
+      syncable.map((account) => sync.mutateAsync({ id: account.id })),
     );
     // The icon ends its turn rather than snapping back.
     const elapsed = Date.now() - started;
@@ -88,7 +93,7 @@ export function CheckMail({ accountId }: { accountId: number | undefined }): Rea
     const refused = outcomes.flatMap((outcome, i) => {
       if (outcome.status !== "rejected") return [];
       const refusal = checkRefusal(asApiError(outcome.reason));
-      return refusal ? [{ name: accountName(usable[i]), refusal }] : [];
+      return refusal ? [{ name: accountName(syncable[i]), refusal }] : [];
     });
     // Every check that started, or was running already, brings its mail
     // within seconds; a refusal still leaves the others' to show.

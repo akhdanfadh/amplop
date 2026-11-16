@@ -108,6 +108,40 @@ type Account struct {
 	Color int
 }
 
+// Action is something a member can ask of one of their connected accounts.
+type Action string
+
+const (
+	ActionSync       Action = "sync"       // sync it now
+	ActionReconnect  Action = "reconnect"  // give inbok its permission again
+	ActionRename     Action = "rename"     // set or clear its name
+	ActionDisconnect Action = "disconnect" // delete it from inbok
+)
+
+// Actions are every [Action], in the order the API lists them.
+var Actions = []Action{ActionSync, ActionReconnect, ActionRename, ActionDisconnect}
+
+// AllowedActions returns the actions accepted for a now; offered says
+// whether its provider can be connected, i.e. an administrator set up its
+// client. Syncing needs the provider and a permission the provider still
+// accepts; reconnecting needs the provider; renaming and disconnecting are
+// always accepted.
+//
+// DESIGN: The services refuse the rest: mailsync refuses a sync while
+// [Account.NeedsReconnectSince] is set, and the HTTP API refuses a sync or
+// reconnect when no client is configured. An unreadable token still
+// syncs: the sync records why it failed, which the account's sync shows.
+func (a Account) AllowedActions(offered bool) []Action {
+	actions := make([]Action, 0, len(Actions))
+	if offered && a.NeedsReconnectSince == nil {
+		actions = append(actions, ActionSync)
+	}
+	if offered {
+		actions = append(actions, ActionReconnect)
+	}
+	return append(actions, ActionRename, ActionDisconnect)
+}
+
 // StoredAccount is an account with its sealed refresh token, as storage
 // keeps it.
 type StoredAccount struct {

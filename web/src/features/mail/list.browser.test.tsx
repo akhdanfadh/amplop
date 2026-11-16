@@ -738,7 +738,11 @@ function checkAccounts() {
   return [
     listedAccount(1, "ana@example.com"),
     listedAccount(2, "ana@work.example"),
-    { ...listedAccount(3, "ana@old.example"), status: "needs-reconnect" as const },
+    {
+      ...listedAccount(3, "ana@old.example"),
+      status: "needs-reconnect" as const,
+      allowedActions: ["reconnect" as const, "rename" as const, "disconnect" as const],
+    },
   ];
 }
 

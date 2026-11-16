@@ -28,6 +28,18 @@ describe("checkRefusal", () => {
       kind: "uncertain",
     });
   });
+
+  it("tells an instance without Gmail from an account to reconnect", () => {
+    expect(checkRefusal(refused(409, "/api/v0/problems/gmail-not-configured"))).toEqual({
+      kind: "unavailable",
+    });
+    expect(
+      checkFailures([
+        { name: "Work", refusal: { kind: "unavailable" } },
+        { name: "Home", refusal: { kind: "unavailable" } },
+      ]),
+    ).toBe("inbok can't check 2 accounts until an administrator sets up Gmail: Work and Home.");
+  });
 });
 
 describe("checkFailures", () => {

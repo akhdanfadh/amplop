@@ -20,6 +20,7 @@ function accounts(): ListedAccount[] {
     ...listedAccount(3, "ana@old.example"),
     status: "needs-reconnect" as const,
     needsReconnectSince: "2026-11-12T08:00:00Z",
+    allowedActions: ["reconnect" as const, "rename" as const, "disconnect" as const],
   };
   return [personal, office, old];
 }

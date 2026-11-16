@@ -800,6 +800,19 @@
       "ListedAccount": {
         "additionalProperties": false,
         "properties": {
+          "allowedActions": {
+            "description": "What the member can ask of this account now: sync (Sync Account Now), reconnect (Reconnect Account), rename (Rename Account), and disconnect (Disconnect Account). sync is missing while the account needs reconnecting, and sync and reconnect while its provider is not offered (see List Account Providers). A listed action can still be refused when the account or the instance's settings changed since this read. Clients ignore values they don't know.",
+            "items": {
+              "enum": [
+                "sync",
+                "reconnect",
+                "rename",
+                "disconnect"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
           "color": {
             "description": "The account's colour, one of eight the web app defines, given at connect: the lowest the member's other accounts use least.",
             "format": "int64",
@@ -861,7 +874,8 @@
           "createdAt",
           "name",
           "color",
-          "sync"
+          "sync",
+          "allowedActions"
         ],
         "type": "object"
       },
@@ -3808,7 +3822,7 @@
     },
     "/connected-accounts/{id}/sync": {
       "post": {
-        "description": "Starts a connected account's sync now instead of at the next minute: a check for new mail, or a full sync when one is due. A sync already waiting or running keeps its place, with the same answer; it checks for mail again before it ends, or the next minute's check does. One request per account every 15 seconds.",
+        "description": "Starts a connected account's sync now instead of at the next minute: a check for new mail, or a full sync when one is due. A sync already waiting or running keeps its place, with the same answer; it checks for mail again before it ends, or the next minute's check does. One request per account every 15 seconds. The account's allowedActions in the list says whether it can sync now.",
         "operationId": "syncConnectedAccount",
         "parameters": [
           {
@@ -3890,18 +3904,30 @@
           "409": {
             "content": {
               "application/problem+json": {
-                "example": {
-                  "type": "/api/v0/problems/account-needs-reconnect",
-                  "status": 409,
-                  "title": "Account needs reconnecting",
-                  "detail": "Google stopped accepting this account's permission. Reconnect it to sync."
+                "examples": {
+                  "gmailNotConfigured": {
+                    "value": {
+                      "type": "/api/v0/problems/gmail-not-configured",
+                      "status": 409,
+                      "title": "Gmail not configured",
+                      "detail": "Gmail accounts can't sync until an administrator sets up a Google client."
+                    }
+                  },
+                  "needsReconnect": {
+                    "value": {
+                      "type": "/api/v0/problems/account-needs-reconnect",
+                      "status": 409,
+                      "title": "Account needs reconnecting",
+                      "detail": "Google stopped accepting this account's permission. Reconnect it to sync."
+                    }
+                  }
                 },
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Google stopped accepting the account's permission; reconnect it first."
+            "description": "Google stopped accepting the account's permission, so reconnect it first; or no Google client is configured, so Gmail is not offered."
           },
           "429": {
             "content": {

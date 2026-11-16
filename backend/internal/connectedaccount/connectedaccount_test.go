@@ -359,6 +359,28 @@ func TestCheckToken(t *testing.T) {
 	require.ErrorIs(t, service.CheckToken(member, account.ID+1, credential), ErrTokenUnreadable)
 }
 
+// The actions offered are the ones the services accept: an unreadable token
+// still syncs, and a provider without a client refuses sync and reconnect.
+func TestAccountAllowedActions(t *testing.T) {
+	refused := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		name    string
+		account Account
+		offered bool
+		want    []Action
+	}{
+		{"usable", Account{Status: StatusUsable}, true, []Action{ActionSync, ActionReconnect, ActionRename, ActionDisconnect}},
+		{"token unreadable", Account{Status: StatusTokenUnreadable}, true, []Action{ActionSync, ActionReconnect, ActionRename, ActionDisconnect}},
+		{"needs reconnect", Account{Status: StatusNeedsReconnect, NeedsReconnectSince: &refused}, true, []Action{ActionReconnect, ActionRename, ActionDisconnect}},
+		{"provider not offered", Account{Status: StatusUsable}, false, []Action{ActionRename, ActionDisconnect}},
+		{"needs reconnect, not offered", Account{Status: StatusNeedsReconnect, NeedsReconnectSince: &refused}, false, []Action{ActionRename, ActionDisconnect}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, c.account.AllowedActions(c.offered))
+		})
+	}
+}
+
 func TestListEmpty(t *testing.T) {
 	service, _, _ := newTestService(t)
 

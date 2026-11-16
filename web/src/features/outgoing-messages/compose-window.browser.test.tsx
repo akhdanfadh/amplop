@@ -33,6 +33,7 @@ const studio: ListedAccount = {
   status: "usable",
   createdAt: "2026-11-01T00:00:00Z",
   needsReconnectSince: null,
+  allowedActions: ["sync", "reconnect", "rename", "disconnect"],
   sync: {
     status: "complete",
     failure: null,

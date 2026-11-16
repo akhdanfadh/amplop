@@ -12,6 +12,7 @@ const tooManyRequests = 429;
 export const accountNotFoundType: ProblemType = "/api/v0/problems/connected-account-not-found";
 export const needsReconnectType: ProblemType = "/api/v0/problems/account-needs-reconnect";
 export const throttledType: ProblemType = "/api/v0/problems/sync-throttled";
+export const gmailNotConfiguredType: ProblemType = "/api/v0/problems/gmail-not-configured";
 
 // OutcomeNotice is what the page says about how a connection ended, as a
 // polite notice or an interrupting alert.

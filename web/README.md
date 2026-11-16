@@ -1443,7 +1443,8 @@ counts; it shares List Places' query with the place route's loader, so a
 page reads them once (TanStack DB's `select` takes the list out of the
 answer). The connected accounts, whose sync status the sidebar words,
 are read then too. Check for new mail (`features/mail/check-mail.tsx`)
-asks the server to sync each account the list shows, then reads all
+asks the server to sync each account the list shows whose
+`allowedActions` include `sync`, then reads all
 three every 2 s for 30 s. When a page fails, TanStack DB asks for the
 whole place to repair the list; `conversations.ts` refuses that
 (hundreds of requests for a large Inbox), so the list keeps its rows,
