@@ -33,7 +33,7 @@ const studio: ListedAccount = {
   status: "usable",
   createdAt: "2026-11-01T00:00:00Z",
   needsReconnectSince: null,
-  allowedActions: ["sync", "reconnect", "rename", "disconnect"],
+  allowedActions: ["sync", "send", "reconnect", "rename", "disconnect"],
   sync: {
     status: "complete",
     failure: null,
@@ -340,13 +340,33 @@ describe("ComposeWindow", () => {
     await userEvent.click(page.getByRole("button", { name: "Compose" }));
     await userEvent.type(page.getByRole("textbox", { name: "Subject" }), "Lunch");
 
-    accounts = [{ ...studio, status: "needs-reconnect" }];
+    accounts = [
+      {
+        ...studio,
+        status: "needs-reconnect",
+        allowedActions: ["reconnect", "rename", "disconnect"],
+      },
+    ];
     await client.invalidateQueries();
     // The new read has drawn: From now marks the account.
     await userEvent.click(page.getByRole("button", { name: /From/ }));
     await expect.element(page.getByRole("option", { name: /needs reconnecting/ })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     await expect.element(page.getByRole("textbox", { name: "Subject" })).toHaveValue("Lunch");
+  });
+
+  it("says the accounts can't send yet when the server lists none able to", async () => {
+    // Usable, as when no Google client is set up: only allowedActions says.
+    serve({ accounts: () => [{ ...studio, allowedActions: ["rename", "disconnect"] }] });
+    await show();
+    await userEvent.click(page.getByRole("button", { name: "Compose" }));
+
+    const window = page.getByRole("region", { name: "New message" });
+    await expect.element(window).toMatchTextContent("Your Gmail accounts can't send yet.");
+    await expect
+      .element(window.getByRole("link", { name: "Open Connected accounts" }))
+      .toBeVisible();
+    await expect.element(window.getByRole("textbox", { name: "Subject" })).not.toBeInTheDocument();
   });
 
   it("gives each window an id no later page load repeats", () => {

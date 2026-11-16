@@ -788,9 +788,14 @@ question while it holds typed text, is sending, or may have saved.
 The form (`ComposeForm`) sends from one of the member's connected
 accounts, chosen in From and shown by its address. From starts with none
 chosen, so the member picks the address recipients see; Edit and send
-keeps the opened message's account while it can send. One that needs
-reconnecting is listed but can't be chosen, and a member with no usable
-account gets a link to Connected accounts instead. Focus starts in the
+keeps the opened message's account while it can send. An account can send
+when its `allowedActions` from the server include `send`, never by the
+page's own copy of the rule; one that can't is listed but can't be chosen
+(marked when it needs reconnecting), and a member with none that can
+gets a link to Connected accounts instead, with why: no account yet, each
+needs reconnecting, or, usable as they are, Gmail isn't set up on the
+inbok ("Your Gmail accounts can't send yet."), which that page words by
+role. Focus starts in the
 first field to fill in: From, To, or, for Edit and send, the start of the
 message, which fills the window's height (`MessageField size="fill"`). A
 401 on any of the window's own reads or writes keeps what it holds, with
@@ -880,9 +885,10 @@ conversation's `accountId`. It reads only the member's accounts, so the
 conversation view passes a message in as it is. `replyDefaults`
 (`reply-defaults.ts`) fills the editor, with table tests:
 
-- From is the account that received the message while it can send;
-  otherwise none is chosen, and From's description names the account
-  that needs reconnecting.
+- From is the account that received the message while its
+  `allowedActions` include `send`; otherwise none is chosen, and From's
+  description names the account that needs reconnecting, or, usable as
+  it is, says the accounts can't send yet (`cannotSendNote`).
 - Reply goes to Reply-To, else From; Reply all also copies To and Cc. A
   message the account itself sent is answered to its own To, and Reply
   all copies its Cc.
@@ -1667,7 +1673,7 @@ const form = useAppForm({
   the others wait.
 - **Message editor rows** are `FromField`, the quiet select of the
   member's connected accounts (a value of 0 while none is chosen, an
-  account the server doesn't report usable listed but not choosable, and a
+  account whose `allowedActions` lack `send` listed but not choosable, and a
   `description` under the row); `RecipientsField`, chips by the
   `isAddress` it is given, with `after` for the row's end and `onTyping`
   for typed text not yet a chip; `SubjectField`; and `MessageField`, with

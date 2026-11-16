@@ -7,10 +7,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { CatchBoundary } from "@tanstack/react-router";
-import type { ConnectedAccount } from "@/api/generated/model";
+import type { ListedAccount } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
 import { emailAddress } from "@/api/validation";
 import { RequestError } from "@/components/request-error";
+import { listedAccount } from "@/test/mail-api";
 import { useAppForm } from "./app-form";
 import { useFormRequest } from "./request";
 
@@ -598,16 +599,7 @@ const MessageSchema = z.object({
   body: z.string(),
 });
 type MessageValues = z.infer<typeof MessageSchema>;
-const account: ConnectedAccount = {
-  id: 7,
-  provider: "gmail",
-  email: "studio@example.com",
-  name: null,
-  color: 1,
-  status: "usable",
-  createdAt: "2026-11-01T00:00:00Z",
-  needsReconnectSince: null,
-};
+const account: ListedAccount = listedAccount(7, "studio@example.com", 1);
 const addressRule = emailAddress(z.string());
 
 // MessageTestForm is a message editor's rows, sending with send.

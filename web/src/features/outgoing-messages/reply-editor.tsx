@@ -3,7 +3,7 @@ import { revalidateLogic, useSelector } from "@tanstack/react-form";
 import { Trash2Icon } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetOutgoingMessageQueryKey, useReplyToMessage } from "@/api/generated/inbok";
-import type { ConnectedAccount, OutgoingMessage } from "@/api/generated/model";
+import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { useAppForm } from "@/components/form/app-form";
 import { useFormRequest } from "@/components/form/request";
 import { LeaveWarning } from "@/components/leave-warning";
@@ -22,7 +22,7 @@ import { EditorCard, RecipientRows, SendFailure, recipientLists, useEditorSend }
 import type { ReplyMode, ReplyValues } from "./reply-defaults";
 import { ReplySchema, replyFields, replyRequest } from "./reply-schema";
 import {
-  needsReconnectNote,
+  cannotSendNote,
   otherAccountNote,
   replyErrorMessage,
   replyLabels,
@@ -30,8 +30,8 @@ import {
 } from "./text";
 
 // ReplyEditor writes a reply to the message answeredId names and sends it
-// from one of accounts, the member's connected accounts; one that isn't
-// usable needs reconnecting and can't be chosen. mode names the editor;
+// from one of accounts, the member's connected accounts; one whose
+// allowedActions lack send can't be chosen. mode names the editor;
 // initial is what it starts with; receiving is the account that holds the
 // answered message, named when it can't send. onSent receives the saved
 // reply, whose send goes on in the background; onDiscard runs when the
@@ -48,8 +48,8 @@ export function ReplyEditor({
 }: {
   answeredId: string;
   mode: ReplyMode;
-  accounts: ConnectedAccount[];
-  receiving: ConnectedAccount | undefined;
+  accounts: ListedAccount[];
+  receiving: ListedAccount | undefined;
   initial: ReplyValues;
   onSent: (reply: OutgoingMessage) => void;
   onDiscard: () => void;
@@ -86,14 +86,16 @@ export function ReplyEditor({
   const edited = formEdited || typingIn.size > 0;
   const chosen = useSelector(form.store, (state) => state.values.connectedAccountId);
   const receivingCannotSend =
-    receiving !== undefined && receiving.status !== "usable" && initial.connectedAccountId === 0;
+    receiving !== undefined &&
+    !receiving.allowedActions.includes("send") &&
+    initial.connectedAccountId === 0;
   // Gmail threads a reply only within the account that holds the message
   // (ADR006, "Replies"), so another account's reply starts a conversation.
   const otherAccount = receiving !== undefined && chosen !== 0 && chosen !== receiving.id;
   const fromNote = otherAccount
     ? otherAccountNote
     : receivingCannotSend
-      ? needsReconnectNote(receiving.email)
+      ? cannotSendNote(receiving)
       : undefined;
 
   function discard(): void {

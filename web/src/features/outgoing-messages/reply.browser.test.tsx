@@ -28,7 +28,7 @@ const studio: ListedAccount = {
   status: "usable",
   createdAt: "2026-11-01T00:00:00Z",
   needsReconnectSince: null,
-  allowedActions: ["sync", "reconnect", "rename", "disconnect"],
+  allowedActions: ["sync", "send", "reconnect", "rename", "disconnect"],
   sync: {
     status: "complete",
     failure: null,
@@ -153,7 +153,8 @@ function Conversation({ message }: { message: AnsweredMessage }) {
 }
 
 // show renders the reply part of a conversation whose last message is
-// message, inside a router, as the conversation view places it.
+// message, inside a router, as the conversation view places it. It
+// returns the query client.
 async function show(message: AnsweredMessage = answered) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRootRoute();
@@ -171,6 +172,7 @@ async function show(message: AnsweredMessage = answered) {
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
   await render(<RouterProvider router={router} />);
+  return { client };
 }
 
 afterEach(() => {
@@ -386,7 +388,16 @@ describe("ConversationReply", () => {
 
   it("asks for an account when the receiving one needs reconnecting", async () => {
     await page.viewport(1440, 900);
-    serve({ accounts: [{ ...studio, status: "needs-reconnect" }, personal] });
+    serve({
+      accounts: [
+        {
+          ...studio,
+          status: "needs-reconnect",
+          allowedActions: ["reconnect", "rename", "disconnect"],
+        },
+        personal,
+      ],
+    });
     await show();
 
     await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
@@ -398,6 +409,26 @@ describe("ConversationReply", () => {
     await expect
       .element(editor)
       .toMatchTextContent("studio@example.com needs reconnecting before it can send.");
+  });
+
+  it("says the accounts can't send yet when the receiving one is usable but can't", async () => {
+    await page.viewport(1440, 900);
+    // As when no Google client is set up: usable, yet without send.
+    const cannotSend = { ...studio, allowedActions: ["rename" as const, "disconnect" as const] };
+    serve({ accounts: [cannotSend, { ...personal, allowedActions: cannotSend.allowedActions }] });
+    await show();
+
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+
+    const editor = page.getByRole("form", { name: "Reply" });
+    await expect
+      .element(editor.getByRole("button", { name: /From/ }))
+      .toHaveTextContent("Choose an account");
+    await expect
+      .element(editor)
+      .toMatchTextContent(
+        "Your Gmail accounts can't send yet. The Connected accounts page says why.",
+      );
   });
 
   it("edits a refused reply into a new reply to the same message", async () => {
@@ -429,6 +460,30 @@ describe("ConversationReply", () => {
       .filter((call) => call.method === "POST")
       .map((call) => call.headers.get("Idempotency-Key"));
     expect(keys[0]).not.toBe(keys[1]);
+  });
+
+  it("edits a refused reply from no account once the server lists its own unable to send", async () => {
+    await page.viewport(1440, 900);
+    const accounts = [studio, personal];
+    serve({
+      accounts,
+      reply: () => Response.json({ data: saved("failed", "refused") }, { status: created }),
+      statuses: [saved("failed", "refused")],
+    });
+    const { client } = await show();
+    await userEvent.click(page.getByRole("button", { name: "Reply", exact: true }));
+    await userEvent.keyboard("Noon works.");
+    await userEvent.click(page.getByRole("button", { name: "Send" }));
+    await expect.element(page.getByRole("button", { name: "Edit and send" })).toBeVisible();
+
+    // Usable, as when no Google client is set up: only allowedActions says.
+    accounts[0] = { ...studio, allowedActions: ["rename", "disconnect"] };
+    await client.invalidateQueries();
+    await userEvent.click(page.getByRole("button", { name: "Edit and send" }));
+
+    await expect
+      .element(page.getByRole("form", { name: "Reply" }).getByRole("button", { name: /From/ }))
+      .toHaveTextContent("Choose an account");
   });
 
   it("keeps the reply when the window crosses the phone width, both ways", async () => {

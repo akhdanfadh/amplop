@@ -1,4 +1,4 @@
-import type { OutgoingMessageSummary, ProblemType } from "@/api/generated/model";
+import type { ListedAccount, OutgoingMessageSummary, ProblemType } from "@/api/generated/model";
 import { uncertainMessage, uncertainOutcome, userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import type { LeaveWarningText } from "@/components/leave-warning";
@@ -213,11 +213,15 @@ export const messageStatusStale =
 export const composeAccountsUnreadable = "Could not load your connected accounts.";
 
 // noAccountText says why the compose window has no editor: no connected
-// account, or none of count able to send.
-export function noAccountText(count: number): string {
-  return count === 0
-    ? "Connect a Gmail account to send messages from it."
-    : "Each of your Gmail accounts needs reconnecting before it can send.";
+// account, or none of accounts able to send, because each needs
+// reconnecting, or else, usable as they are, because Gmail isn't set up on
+// this inbok, which the Connected accounts page it links to words for
+// whoever reads it.
+export function noAccountText(accounts: readonly Pick<ListedAccount, "status">[]): string {
+  if (accounts.length === 0) return "Connect a Gmail account to send messages from it.";
+  if (accounts.some((account) => account.status === "usable"))
+    return "Your Gmail accounts can't send yet.";
+  return "Each of your Gmail accounts needs reconnecting before it can send.";
 }
 
 // What the compose window says after a 401, before the link to sign in.
@@ -253,10 +257,14 @@ export function invalidAddressMessage(value: string): string {
   return `This isn't an email address, so fix it or remove it: ${value}`;
 }
 
-// needsReconnectNote says the account that received the message, email,
-// can't send, so no account is chosen.
-export function needsReconnectNote(email: string): string {
-  return `${email} needs reconnecting before it can send. Choose another account, or reconnect it on the Connected accounts page.`;
+// cannotSendNote says why the account that received the message can't
+// send, so no account is chosen: it needs reconnecting, or else, usable as
+// it is, no account can send until Gmail is set up on this inbok, which
+// the Connected accounts page words for whoever reads it.
+export function cannotSendNote(account: Pick<ListedAccount, "email" | "status">): string {
+  return account.status === "usable"
+    ? "Your Gmail accounts can't send yet. The Connected accounts page says why."
+    : `${account.email} needs reconnecting before it can send. Choose another account, or reconnect it on the Connected accounts page.`;
 }
 
 // sendTooltip is the Send button's tooltip: its name and the keys that

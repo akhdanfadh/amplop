@@ -612,8 +612,11 @@ last two redirect into settings, so settings can move without the server.
   shows its mark, its address, which recipients see, and the name the
   member chose for it, which only the member does. A line under
   it says when the chosen account didn't receive the message (the reply
-  then starts a new conversation in that account's Gmail), or which
-  account needs reconnecting when none could be chosen.
+  then starts a new conversation in that account's Gmail), or, when none
+  could be chosen, which account needs reconnecting, or, while Gmail isn't
+  set up on the inbok, that the accounts can't send yet, pointing to
+  Connected accounts, which says why for whoever reads it. Only accounts
+  the server lists as able to send (`allowedActions`) can be chosen.
 - **Recipients are chips**, one pill per address (`secondary`, 14 px, 28
   px tall, 36 px for a coarse pointer). A comma, semicolon, Enter,
   leaving the field, or pasting a list makes chips; "Name <address>"

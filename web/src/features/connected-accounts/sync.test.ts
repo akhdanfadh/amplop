@@ -27,10 +27,14 @@ function account(
     createdAt: earlier,
     name: null,
     color: 1,
+    // As the server lists them: an unreadable token still syncs, but only a
+    // usable account sends.
     allowedActions:
       status === "needs-reconnect"
         ? ["reconnect", "rename", "disconnect"]
-        : ["sync", "reconnect", "rename", "disconnect"],
+        : status === "token-unreadable"
+          ? ["sync", "reconnect", "rename", "disconnect"]
+          : ["sync", "send", "reconnect", "rename", "disconnect"],
     sync: { ...idle, ...sync },
   };
 }

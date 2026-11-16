@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "
 import { revalidateLogic, useSelector } from "@tanstack/react-form";
 import { Trash2Icon } from "lucide-react";
 import { useSendMessage } from "@/api/generated/inbok";
-import type { ConnectedAccount, OutgoingMessage } from "@/api/generated/model";
+import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { useAppForm } from "@/components/form/app-form";
 import { useFormRequest } from "@/components/form/request";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export function ComposeForm({
   onLoses,
   onUnauthorized,
 }: {
-  accounts: ConnectedAccount[];
+  accounts: ListedAccount[];
   initial: ComposeValues;
   note?: ReactNode;
   look: "window" | "full-screen";

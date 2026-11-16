@@ -13,7 +13,8 @@ import {
   getListConnectedAccountsQueryKey,
   getListOutgoingMessagesQueryKey,
 } from "@/api/generated/inbok";
-import type { ConnectedAccount, OutgoingMessage } from "@/api/generated/model";
+import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
+import { listedAccount } from "@/test/mail-api";
 import { ComposeForm } from "./compose-form";
 import { composeValues, type ComposeValues } from "./compose-schema";
 import type { LeaveState } from "./text";
@@ -23,22 +24,14 @@ const created = 201;
 const notFound = 404;
 const unprocessable = 422;
 
-const studio: ConnectedAccount = {
-  id: 7,
-  provider: "gmail",
-  email: "studio@example.com",
-  name: "Studio",
-  color: 1,
-  status: "usable",
-  createdAt: "2026-11-01T00:00:00Z",
-  needsReconnectSince: null,
-};
-const stale: ConnectedAccount = {
+const studio: ListedAccount = { ...listedAccount(7, "studio@example.com", 1), name: "Studio" };
+const stale: ListedAccount = {
   ...studio,
   id: 8,
   email: "old@example.org",
   name: null,
   status: "needs-reconnect",
+  allowedActions: ["reconnect", "rename", "disconnect"],
 };
 
 // The message the server saves.
@@ -85,12 +78,15 @@ function serve(
   return calls;
 }
 
-// show renders the compose form starting with initial, as the docked
-// window draws it, inside a router with a second page, /elsewhere, to
+// show renders the compose form starting with initial, sending from one of
+// accounts, as the docked window draws it, inside a router with a second page, /elsewhere, to
 // leave for. It returns the messages the form reported sent, how many 401s
 // it reported, what closing would lose as it last reported, the query
 // client, the router, and the rendered screen.
-async function show(initial: ComposeValues = composeValues([])) {
+async function show(
+  initial: ComposeValues = composeValues([]),
+  accounts: ListedAccount[] = [studio, stale],
+) {
   const sent: OutgoingMessage[] = [];
   const unauthorized = { count: 0 };
   const loses: { last: LeaveState | null } = { last: null };
@@ -101,7 +97,7 @@ async function show(initial: ComposeValues = composeValues([])) {
     path: "/",
     component: () => (
       <ComposeForm
-        accounts={[studio, stale]}
+        accounts={accounts}
         initial={initial}
         look="window"
         header={({ title }) => <h2>{title}</h2>}
@@ -211,6 +207,17 @@ describe("ComposeForm", () => {
     await userEvent.click(page.getByRole("button", { name: /From/ }));
     await expect
       .element(page.getByRole("option", { name: "old@example.org (needs reconnecting)" }))
+      .toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("offers a usable account the server doesn't list able to send, but not to choose", async () => {
+    serve();
+    // As when no Google client is set up: usable, yet without send.
+    await show(composeValues([]), [{ ...studio, allowedActions: ["rename", "disconnect"] }]);
+
+    await userEvent.click(page.getByRole("button", { name: /From/ }));
+    await expect
+      .element(page.getByRole("option", { name: "studio@example.com Studio" }))
       .toHaveAttribute("aria-disabled", "true");
   });
 

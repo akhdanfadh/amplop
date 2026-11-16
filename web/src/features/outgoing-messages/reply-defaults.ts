@@ -1,5 +1,5 @@
 import type {
-  ConnectedAccount,
+  ListedAccount,
   ConversationMessageOutput,
   MailAddressOutput,
 } from "@/api/generated/model";
@@ -53,7 +53,7 @@ export type ReplyValues = {
 export function replyDefaults(
   message: AnsweredMessage,
   mode: ReplyMode,
-  accounts: readonly ConnectedAccount[],
+  accounts: readonly ListedAccount[],
 ): ReplyValues {
   const account = accounts.find((candidate) => candidate.id === message.accountId);
   const own = account?.email;
@@ -68,7 +68,7 @@ export function replyDefaults(
   if (own !== undefined) seen.add(own.toLowerCase());
   const ccList = distinct(copied, seen);
   return {
-    connectedAccountId: account?.status === "usable" ? account.id : 0,
+    connectedAccountId: account?.allowedActions.includes("send") ? account.id : 0,
     to: toList,
     cc: ccList,
     bcc: [],
@@ -80,7 +80,7 @@ export function replyDefaults(
 // leaves out, so the conversation offers it (DESIGN.md, "Reading pane").
 export function othersReceived(
   message: AnsweredMessage,
-  accounts: readonly ConnectedAccount[],
+  accounts: readonly ListedAccount[],
 ): boolean {
   return replyDefaults(message, "reply-all", accounts).cc.length > 0;
 }

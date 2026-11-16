@@ -19,7 +19,7 @@ import {
   useGetOutgoingMessage,
   useListConnectedAccounts,
 } from "@/api/generated/inbok";
-import type { ConnectedAccount, OutgoingMessage } from "@/api/generated/model";
+import type { ListedAccount, OutgoingMessage } from "@/api/generated/model";
 import { userMessage } from "@/api/problem";
 import type { ApiError } from "@/api/transport";
 import { textLink } from "@/components/link-style";
@@ -377,14 +377,14 @@ function MessageContent({
   // window keeps what it holds to copy (ADR031).
   const expired =
     writeExpired || accounts.error?.status === unauthorized || sent.error?.status === unauthorized;
-  const usable = list?.filter((account) => account.status === "usable") ?? [];
+  const senders = list?.filter((account) => account.allowedActions.includes("send")) ?? [];
   // Once shown, the editor stays, whatever a later read of the accounts
   // says, so typed text is never dropped; its From then marks an account
   // that can no longer send, and the server refuses it. Set while
   // rendering, as React advises for state that follows a render's result.
   const [formShown, setFormShown] = useState(false);
   const showForm =
-    list !== undefined && (formShown || usable.length > 0 || message.edit !== undefined);
+    list !== undefined && (formShown || senders.length > 0 || message.edit !== undefined);
   if (showForm && !formShown) setFormShown(true);
 
   // A sent message closes the window 3 s after Gmail takes it, waiting
@@ -471,13 +471,13 @@ function MessageContent({
         <ComposeForm
           accounts={list}
           initial={composeValues(
-            usable.map((account) => account.id),
+            senders.map((account) => account.id),
             message.edit,
           )}
           note={
             <>
               {signedOut}
-              {message.edit && <EditNote message={message.edit} usable={usable} />}
+              {message.edit && <EditNote message={message.edit} senders={senders} />}
             </>
           }
           look={look}
@@ -638,7 +638,7 @@ function WindowState({
   retrying,
   onRetry,
 }: {
-  accounts: ConnectedAccount[] | undefined;
+  accounts: ListedAccount[] | undefined;
   error: ApiError | null;
   retrying: boolean;
   onRetry: () => void;
@@ -655,7 +655,7 @@ function WindowState({
   if (!accounts) return <output>Loading...</output>;
   return (
     <p>
-      {noAccountText(accounts.length)}{" "}
+      {noAccountText(accounts)}{" "}
       <Link to="/settings/connected-accounts" className={textLink}>
         Open Connected accounts
       </Link>
@@ -665,15 +665,15 @@ function WindowState({
 
 // EditNote says that the window starts with message's content as a new
 // message, leaving message as it is, and asks for another account when
-// message's own, not among usable, can't send now.
+// message's own, not among senders, can't send now.
 function EditNote({
   message,
-  usable,
+  senders,
 }: {
   message: OutgoingMessage;
-  usable: ConnectedAccount[];
+  senders: ListedAccount[];
 }): ReactElement {
-  const own = usable.some((account) => account.id === message.connectedAccountId);
+  const own = senders.some((account) => account.id === message.connectedAccountId);
   return (
     <p className="border-b px-4 py-2 text-sm wrap-anywhere text-muted-foreground">
       {editNoteText(

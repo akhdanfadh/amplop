@@ -22,7 +22,7 @@ export function listedAccount(id: number, email: string, color = id): ListedAcco
     needsReconnectSince: null,
     provider: "gmail",
     status: "usable",
-    allowedActions: ["sync", "reconnect", "rename", "disconnect"],
+    allowedActions: ["sync", "send", "reconnect", "rename", "disconnect"],
     sync: {
       status: "complete",
       failure: null,
