@@ -388,17 +388,17 @@ describe("New label in a picker", () => {
     await expect.element(page.getByText("Moved to Taxes", { exact: true })).toBeVisible();
   });
 
-  it("isn't offered where the account's labels can't change, which says no label matches", async () => {
+  it("isn't offered where the account's mail can't change, whose toolbar opens no picker", async () => {
     const row = conversation(1, { accountId: 1 });
     const [work] = accounts();
     work.allowedActions = work.allowedActions.filter((action) => action !== "change-mail");
     await open(`/mail/inbox/${row.id}`, [row], [work]);
-    await expect.element(toolbar()).toBeVisible();
+    await expect.element(page.getByRole("heading", { name: row.subject })).toBeVisible();
 
-    await picker("Labels");
-    await userEvent.fill(page.getByRole("searchbox", { name: "Filter labels" }), "zzq");
-    await expect.element(page.getByText("No labels match.")).toBeVisible();
-    expect(page.getByRole("menuitem", { name: /New label/ }).elements()).toHaveLength(0);
+    // No More at all: it would hold only Move to and Labels, and the
+    // conversation has no Gmail link here.
+    expect(page.getByRole("button", { name: "More actions" }).elements()).toHaveLength(0);
+    expect(page.getByRole("button", { name: "Archive" }).elements()).toHaveLength(0);
   });
 
   it("isn't offered for a name a label shown has, in any case", async () => {

@@ -1,4 +1,5 @@
 import { and, eq, inArray, type Ref } from "@tanstack/db";
+import type { ListedAccountOutput } from "@/api/generated/model/listedAccount.zod";
 import type { ConversationActionBodyOutput } from "@/api/generated/model/conversationActionBody.zod";
 import type { ConversationChangeOutput } from "@/api/generated/model/conversationChange.zod";
 import type { Conversation } from "./conversations";
@@ -175,6 +176,30 @@ export function countChanges(before: Conversation, after: Conversation): UnreadC
   ];
 }
 
+// Changers is the accounts, by ID, whose conversations take actions:
+// those whose allowedActions list change-mail, as the API offers them
+// (AGENTS.md, "API contract").
+export type Changers = ReadonlySet<number>;
+
+// changersOf returns the Changers of accounts, as the API listed them; none
+// until they are read.
+export function changersOf(
+  accounts: readonly Pick<ListedAccountOutput, "id" | "allowedActions">[] | undefined,
+): Changers {
+  return new Set(
+    (accounts ?? []).filter((a) => a.allowedActions.includes("change-mail")).map((a) => a.id),
+  );
+}
+
+// changeable returns the conversations, of conversations, whose account
+// takes actions (changers), in their order.
+export function changeable(
+  conversations: readonly Conversation[],
+  changers: Changers,
+): Conversation[] {
+  return conversations.filter((conversation) => changers.has(conversation.accountId));
+}
+
 // The order actions are offered in: the state's move first, then Delete,
 // Report spam, the marks, and the star, as the toolbar shows them.
 const actionOrder: readonly Action[] = [
@@ -196,20 +221,31 @@ const actionOrder: readonly Action[] = [
 // to Inbox. One conversation offers its state's: a Spam or Trash list
 // offers its own, so a conversation with one message there can leave it;
 // elsewhere its flags decide: in the inbox, archived, or only in Spam or
-// Trash, as those lists. No Delete forever: it cannot be undone.
-export function actionsFor(conversations: readonly Conversation[], list: Place): Action[] {
-  const offered = new Set(conversations.flatMap((conversation) => actionsOf(conversation, list)));
+// Trash, as those lists. No Delete forever: it cannot be undone. A
+// conversation whose account takes no actions (changers) offers none.
+export function actionsFor(
+  conversations: readonly Conversation[],
+  list: Place,
+  changers: Changers,
+): Action[] {
+  const offered = new Set(
+    changeable(conversations, changers).flatMap((conversation) => actionsOf(conversation, list)),
+  );
   return actionOrder.filter((action) => offered.has(action));
 }
 
 // targetsOf returns the conversations, of conversations, that offer action
-// in list, in their order: the ones it changes.
+// in list, in their order: the ones it changes, of accounts that take
+// actions (changers).
 export function targetsOf(
   conversations: readonly Conversation[],
   action: Action,
   list: Place,
+  changers: Changers,
 ): Conversation[] {
-  return conversations.filter((conversation) => actionsOf(conversation, list).includes(action));
+  return changeable(conversations, changers).filter((conversation) =>
+    actionsOf(conversation, list).includes(action),
+  );
 }
 
 // actionsOf returns the actions conversation offers in list, as

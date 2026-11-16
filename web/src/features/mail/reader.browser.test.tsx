@@ -339,6 +339,47 @@ describe("Reader, opening", () => {
     await expect.poll(() => api.actions).toEqual([{ action: "read", ids: [row.id] }]);
   });
 
+  it("leaves an account that takes no actions as it is, offering none", async () => {
+    const row = conversation(1, { unread: true });
+    // Usable, as when no Google client is set up: only allowedActions says.
+    const account = {
+      ...listedAccount(1, "ana@example.com"),
+      allowedActions: ["rename" as const, "disconnect" as const],
+    };
+    const api = mailApi([row], [account]);
+    withMessage(api, row);
+    await app(api, row.id, "from-list");
+
+    await expect.element(page.getByText("<bo@example.com>")).toBeVisible();
+    const toolbar = page.getByRole("toolbar", { name: "Conversation actions" });
+    expect(toolbar.getByRole("button", { name: "Archive" }).query()).toBeNull();
+    expect(toolbar.getByRole("button", { name: "Star" }).query()).toBeNull();
+    // No address in Gmail either: More would open empty.
+    expect(toolbar.getByRole("button", { name: "More actions" }).query()).toBeNull();
+    // The Inbox chip still opens the Inbox, with no × to archive.
+    const marks = page.getByRole("grid", { name: "Labels" });
+    await expect.element(marks.getByRole("row", { name: "Inbox" })).toBeVisible();
+    expect(marks.getByRole("button").query()).toBeNull();
+    await new Promise((done) => setTimeout(done, 100));
+    expect(api.actions).toEqual([]);
+  });
+
+  it("offers More with Open in Gmail alone on an account that takes no actions", async () => {
+    const row = conversation(1);
+    const account = {
+      ...listedAccount(1, "ana@example.com"),
+      allowedActions: ["rename" as const, "disconnect" as const],
+    };
+    const api = mailApi([row], [account]);
+    withProviderUrl(api, row, "https://mail.google.com/mail/#all/18c2");
+    await app(api, row.id);
+
+    await userEvent.click(page.getByRole("button", { name: "More actions" }));
+
+    await expect.element(page.getByRole("menuitem", { name: /Open in Gmail/ })).toBeVisible();
+    expect(page.getByRole("menuitem").elements()).toHaveLength(1);
+  });
+
   it("leaves an account that needs reconnecting as it is", async () => {
     const row = conversation(1, { unread: true });
     const account = {

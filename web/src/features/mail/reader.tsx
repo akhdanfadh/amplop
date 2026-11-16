@@ -1,8 +1,7 @@
-import { useEffect, useRef, useSyncExternalStore, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore, type ReactElement } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { eq, useLiveQuery } from "@tanstack/react-db";
 import { ArrowLeftIcon } from "lucide-react";
-import { useNavigate, useRouter } from "@tanstack/react-router";
 import { getGetConversationQueryOptions, useListConnectedAccounts } from "@/api/generated/inbok";
 import { accountName } from "@/components/account-mark";
 import { ReadError } from "@/components/read-error";
@@ -13,15 +12,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { ConversationView } from "@/features/messages/conversation";
 import { isSessionEnded } from "@/features/auth/guard";
 import { useLayout } from "@/hooks/use-layout";
+import { offeredIn, useAct, type ReaderList } from "./act";
 import { runAction, type ActionMail } from "./actions";
 import { currentMail } from "./conversations";
-import { requestRowFocus } from "./focus-request";
 import { LabelChips } from "./label-chips";
 import { labelWords } from "./words";
 import { useLabelsIn } from "./labels";
-import { perform, type Performed } from "./perform";
-import type { AppHref, Place } from "./places";
-import { leavesList, staysInList } from "./rules";
+import type { Performed } from "./perform";
+import { changersOf } from "./rules";
 import { ConversationToolbar } from "./toolbar";
 import {
   accountsUnreadable,
@@ -32,17 +30,6 @@ import {
 } from "./text";
 
 const notFoundStatus = 404;
-
-// ReaderList is the list a conversation was opened from: one place's, or
-// a search's, which keeps a conversation in any of its places, of account
-// alone when given; key names it for its focus requests (listKey), and
-// back is its address.
-export type ReaderList = {
-  places: readonly Place[];
-  account: number | undefined;
-  key: string;
-  back: AppHref;
-};
 
 // Reader is the reading pane's conversation, shown by the conversation
 // view (features/messages). It draws the subject and account from the
@@ -67,10 +54,8 @@ export function Reader({
   list: ReaderList;
   startAt?: string;
 }): ReactElement {
-  const { places, account: listAccount, back } = list;
+  const { places, account: listAccount } = list;
   const client = useQueryClient();
-  const navigate = useNavigate();
-  const router = useRouter();
   const accounts = useListConnectedAccounts();
   const phone = useLayout() === "phone";
   // Read again with the lists, by inbok's timer, the tab showing again, or
@@ -98,57 +83,21 @@ export function Reader({
         : undefined,
   });
   const conversation = row ?? detail?.conversation;
-  const account = accounts.data?.data.accounts.find((a) => a.id === conversation?.accountId);
+  const accountList = accounts.data?.data.accounts;
+  const account = accountList?.find((a) => a.id === conversation?.accountId);
+  const changers = useMemo(() => changersOf(accountList), [accountList]);
+  // Whether the conversation's account takes actions, as the API says.
+  const changes = conversation !== undefined && changers.has(conversation.accountId);
   const actionMail = mail && {
     client,
     conversations: mail.conversations,
     placeCounts: mail.placeCounts,
   };
-  useReadOnOpen(
-    actionMail,
-    conversation,
-    detail?.messages !== undefined && account?.status === "usable",
-  );
-  // Back returns to the list the member came from, as the phone's own back
-  // does, so it adds no history, when a row of it opened the conversation;
-  // one opened another way, e.g. from a link or Settings' Back to mail,
-  // goes to its list in its place, rather than back out of mail.
-  const goBack = () => {
-    if (router.state.location.state.fromList) router.history.back();
-    else void navigate({ ...back, replace: true });
-  };
-  // The conversation an action took out of its list, which takes no more
-  // actions: going back takes a moment, and a second press of a double
-  // click would land on the button's opposite, e.g. Move to Inbox.
-  const left = useRef<string | null>(null);
-  useEffect(() => {
-    left.current = null;
-  }, [conversationId]);
-  // onAction runs one of the toolbar's actions on the row. One that takes
-  // the conversation out of its list, as the guess shows it, goes back to
-  // it at once, where the row that took its place takes focus, or the row
-  // itself after Mark unread; a refusal then says why on the list. One the
-  // provider no longer has goes back too, its row gone, while the address
-  // is still the one it was run at.
-  const onAction = (act: Performed) => {
-    if (!row || !actionMail || left.current === row.id) return;
-    const leaves = leavesList(row, act, places, listAccount);
-    // The address, not the pane's drawn conversation: a row chosen since
-    // moves the address at once, while the pane draws this conversation
-    // until the next one's page has loaded.
-    const at = router.state.location.href;
-    void perform({ mail: actionMail, conversations: [row], act }).then((outcomes) => {
-      const gone = outcomes.get(row.id) === "gone";
-      if (gone && !leaves && router.state.location.href === at) goBack();
-    });
-    if (!leaves) return;
-    left.current = row.id;
-    requestRowFocus(list.key, {
-      id: row.id,
-      dateMs: row.dateMs,
-      stays: staysInList(row, act, places, listAccount),
-    });
-    goBack();
+  useReadOnOpen(actionMail, conversation, detail?.messages !== undefined && changes);
+  // The toolbar's actions run as the open row's do (useAct).
+  const { act, goBack } = useAct(actionMail, list, conversationId);
+  const onAction = (performed: Performed) => {
+    if (row) act(row, performed);
   };
   // What shows in the messages' place, or the whole pane's without a frame.
   const status =
@@ -199,6 +148,7 @@ export function Reader({
               conversation={row}
               labels={labels}
               listAccount={listAccount}
+              removable={changes}
               onArchive={() => onAction("archive")}
               onRemove={(label) =>
                 onAction({
@@ -215,21 +165,17 @@ export function Reader({
               conversation={row}
               // One place's actions, e.g. Spam's, where the list has one;
               // a search of several follows the conversation, as All mail.
-              list={places.length === 1 ? places[0] : "all"}
+              list={offeredIn(places)}
               providerUrl={detail?.providerUrl}
               // Labels under their account's name where the list shows
               // several accounts' mail, as picking's menus show them.
-              headings={listAccount === undefined && (accounts.data?.data.accounts.length ?? 0) > 1}
+              headings={listAccount === undefined && (accountList?.length ?? 0) > 1}
               labels={labels}
               accountName={(id) => {
-                const owner = accounts.data?.data.accounts.find((a) => a.id === id);
+                const owner = accountList?.find((a) => a.id === id);
                 return owner ? accountName(owner) : "";
               }}
-              canChange={(id) =>
-                accounts.data?.data.accounts.some(
-                  (a) => a.id === id && a.allowedActions.includes("change-mail"),
-                ) ?? false
-              }
+              changers={changers}
               onAction={onAction}
             />
           )
@@ -260,7 +206,7 @@ export function Reader({
 // useReadOnOpen marks conversation read in mail as it opens, once: when
 // ready and the tab shows, only while it is unread then. ready says its
 // messages are read, which decided the ones that start open, and its
-// account is usable. A refused or failed read puts the row back unsaid
+// account takes actions (changersOf). A refused or failed read puts the row back unsaid
 // and is not tried again.
 function useReadOnOpen(
   mail: ActionMail | undefined,

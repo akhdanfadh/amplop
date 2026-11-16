@@ -14,15 +14,19 @@ import { CheckboxContext, ToggleButton, useSlottedContext } from "react-aria-com
 import { CheckIcon, StarIcon } from "lucide-react";
 import { accountBorder, accountName, type AccountColor } from "@/components/account-mark";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { GridListItem } from "@/components/ui/grid-list";
+import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import type { SearchMatchOutput } from "@/api/generated/model/searchMatch.zod";
-import type { AppHref } from "./places";
+import type { AppHref, Place } from "./places";
 import type { Conversation } from "./conversations";
 import { fullDate, listDate } from "./dates";
 import { Marked } from "./marks";
 import { senders } from "./people";
 import { SenderAvatar } from "./sender-avatar";
 import { RowLabelsContext, type RowLabel } from "./labels";
+import { actionsFor, type Action, type Changers } from "./rules";
+import { laidOut } from "./slots";
 import { inboxChip, messageCount, moreMarks, rowName, subjectText, unknownSender } from "./text";
 import { actionWords } from "./words";
 
@@ -68,7 +72,11 @@ export function headingHeight(): number {
 // pane's Back needs it; openStore says which conversation the reading
 // pane shows; now is the day its date is shown at; onRest and onLeave run as
 // the pointer comes to rest on it and leaves, to read it ahead; onStar
-// stars or unstars it. match, for a search's result, is the message that
+// stars or unstars it. Its actions in list, actionsFor's, show over its
+// date while it is hovered (RowActions), and onAction runs one. While its
+// account takes no actions (changers), it has none, and its star is a
+// mark. match,
+// for a search's result, is the message that
 // matched best, whose sender, date, subject, and text around the match the
 // row shows in place of the conversation's, with the matched words marked
 // (DESIGN.md "Message list").
@@ -84,6 +92,9 @@ export function ConversationRow({
   onRest,
   onLeave,
   onStar,
+  list,
+  changers,
+  onAction,
 }: {
   conversation: Conversation;
   match?: SearchMatchOutput;
@@ -96,7 +107,11 @@ export function ConversationRow({
   onRest: () => void;
   onLeave: () => void;
   onStar: (starred: boolean) => void;
+  list: Place;
+  changers: Changers;
+  onAction: (action: Action) => void;
 }): ReactElement {
+  const changes = changers.has(conversation.accountId);
   const open = useIsOpen(openStore, conversation.id);
   // Opening a conversation while another is open replaces that one in the
   // history: choosing in the reading pane is not a new page, so Back, the
@@ -163,7 +178,12 @@ export function ConversationRow({
       // The list reads the conversation ahead when focus rests here.
       data-conversation={conversation.id}
       className={cn(
-        "group/row h-full gap-3 border-b px-4 py-2",
+        // A container, so RowActions show only where the row has room.
+        "group/row @container/row h-full gap-3 border-b px-4 py-2",
+        // The row's surface, as GridListItem fills it, for what covers
+        // part of it (RowActions): the page's at rest, the open row's,
+        // and hover's.
+        "[--row-fill:var(--color-background)] aria-[current=page]:[--row-fill:var(--color-selection)] data-hovered:not-aria-[current=page]:[--row-fill:var(--color-accent)]",
         // An unread row's mark: a 3 px bar in primary at its leading edge,
         // the text's colour in forced colours, which drop the others.
         conversation.unread &&
@@ -182,6 +202,12 @@ export function ConversationRow({
               ring={ringed && account ? account.color : undefined}
             />
           </PickBox>
+          <RowActions
+            conversation={conversation}
+            list={list}
+            changers={changers}
+            onAction={onAction}
+          />
           <RowText
             conversation={conversation}
             match={match}
@@ -194,7 +220,7 @@ export function ConversationRow({
             subject={subject}
             inInbox={inInbox}
             labels={labels}
-            onStar={onStar}
+            onStar={changes ? onStar : undefined}
           />
         </>
       )}
@@ -203,7 +229,8 @@ export function ConversationRow({
 }
 
 // RowText is a row's three lines: who, count, and date; subject; and
-// preview, the Inbox chip while inInbox, and the star, which onStar sets;
+// preview, the Inbox chip while inInbox, and the star, which onStar sets,
+// or a mark of it without onStar;
 // match's own, words marked, for a search's result.
 // Memoized: React Aria draws a row again at each selection, focus, or
 // press change, while its text stays.
@@ -232,7 +259,7 @@ const RowText = memo(function RowText({
   subject: string;
   inInbox: boolean;
   labels: readonly RowLabel[];
-  onStar: (starred: boolean) => void;
+  onStar: ((starred: boolean) => void) | undefined;
 }): ReactElement {
   return (
     <div
@@ -300,7 +327,11 @@ const RowText = memo(function RowText({
           )}
         </p>
         <RowMarks inbox={inInbox} labels={labels} />
-        <StarButton starred={conversation.starred} onStar={onStar} />
+        {onStar ? (
+          <StarButton starred={conversation.starred} onStar={onStar} />
+        ) : (
+          <StarMark starred={conversation.starred} />
+        )}
       </div>
     </div>
   );
@@ -480,6 +511,76 @@ function PickBox({
   );
 }
 
+// RowActions is a row's actions in list (DESIGN.md "Message list"): the
+// reading pane toolbar's slots but the star, which the row has, and More,
+// the list header's 32 px buttons, named by tooltips, over the date's place
+// on the first line, on the row's own fill with a 16 px fade at their
+// start. onAction runs one. None while the list is picking, when the
+// picking bar acts, nor while its account takes no actions (changers), nor
+// in a row under 16rem, e.g. a 300 px list at twice
+// the usual text size, where they would cover the whole first line and the
+// checkbox; the reading pane's toolbar and the picking bar still act.
+//
+// DESIGN: always drawn, so they are in the row's arrow-key path: → from
+// the row reaches the first, then the star; ← from the row, the star.
+// They show and take presses only while the row is hovered or one of them
+// has keyboard focus, so the date stays while focus moves from row to
+// row. React Aria's hover ignores touch, so a touch screen never shows
+// them (ADR031, feat/row-actions 8b3).
+function RowActions({
+  conversation,
+  list,
+  changers,
+  onAction,
+}: {
+  conversation: Conversation;
+  list: Place;
+  changers: Changers;
+  onAction: (action: Action) => void;
+}): ReactElement | null {
+  const picks = useContext(PickingContext);
+  const { buttons } = laidOut(actionsFor([conversation], list, changers));
+  if (picks === "picking" || buttons.length === 0) return null;
+  return (
+    <div
+      data-slot="row-actions"
+      className={cn(
+        // Over the first line, 16 px from the row's end, as the date's and
+        // the star's icons end there. 16rem leaves at least 4rem of the
+        // line beside them: the row's 4rem before its text, and their 8rem
+        // with the fade and the inset. In rem, so it follows the text size.
+        // The fill changes as the row's does, which fades.
+        "absolute top-2 right-2 z-1 hidden h-5 items-center gap-1 bg-(--row-fill) transition-colors @min-[16rem]/row:flex",
+        "before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-linear-to-r before:from-transparent before:to-(--row-fill)",
+        "pointer-events-none opacity-0 group-data-hovered/row:pointer-events-auto group-data-hovered/row:opacity-100 has-data-focus-visible:pointer-events-auto has-data-focus-visible:opacity-100",
+      )}
+    >
+      {buttons
+        .filter(({ slot }) => slot !== "star")
+        .map(({ slot, action }) => {
+          const { label, icon: Icon } = actionWords[action];
+          return (
+            <TooltipTrigger key={slot}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={label}
+                onPress={() => onAction(action)}
+                // Its icon lights up on hover, as the row's star does, with
+                // no fill of its own over the row's.
+                // Positioned, so its focus ring is drawn over the fade.
+                className="relative text-muted-foreground hover:bg-transparent hover:text-foreground"
+              >
+                <Icon aria-hidden="true" />
+              </Button>
+              <Tooltip>{label}</Tooltip>
+            </TooltipTrigger>
+          );
+        })}
+    </div>
+  );
+}
+
 // StarButton stars a row (DESIGN.md "Message list"), on every row, as
 // Gmail's list and app show it: outlined, then filled in the text colour
 // once starred.
@@ -511,6 +612,21 @@ function StarButton({
     >
       <StarIcon aria-hidden="true" className={cn("size-4", starred && "fill-current")} />
     </ToggleButton>
+  );
+}
+
+// StarMark is StarButton's place on a row whose account takes no actions:
+// the filled star while starred, else nothing, in the same 24 px, so the
+// marks before it line up with other rows'. Hidden from screen readers,
+// which hear "Starred" in the row's name.
+function StarMark({ starred }: { starred: boolean }): ReactElement {
+  return (
+    <span
+      aria-hidden="true"
+      className="-my-0.5 -mr-1 flex size-6 shrink-0 items-center justify-center text-foreground"
+    >
+      {starred && <StarIcon className="size-4 fill-current" />}
+    </span>
   );
 }
 

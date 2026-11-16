@@ -4,7 +4,7 @@ import { page, userEvent } from "vite-plus/test/browser/context";
 import { render } from "vitest-browser-react";
 import { Button } from "./button";
 import { Sheet, SheetTitle } from "./sheet";
-import { closeAbout, closeToasts, showError, Toaster } from "./toast";
+import { closeAbout, closeToasts, showError, shownAbout, Toaster } from "./toast";
 
 // Counts the toasts on screen now, without waiting.
 function toasts(): number {
@@ -167,16 +167,28 @@ describe("Toaster", () => {
     await expect.poll(toasts).toBe(0);
   });
 
-  it("closes for a key that covers what it is about, the keys under it", async () => {
+  it("says which keys the toasts still showing are about", async () => {
+    await render(<Toaster />);
+    showError("Couldn't archive the conversation", undefined, { about: ["c1 place inbox"] });
+    showError("Couldn't star the conversation", undefined, { about: ["c2 star"] });
+    await expect.poll(toasts).toBe(2);
+    expect(shownAbout()).toEqual(new Set(["c1 place inbox", "c2 star"]));
+
+    closeAbout(["c2 star"]);
+
+    await expect.poll(toasts).toBe(1);
+    expect(shownAbout()).toEqual(new Set(["c1 place inbox"]));
+  });
+
+  it("closes for its exact keys only, the caller saying which a change covers", async () => {
     await render(<Toaster />);
     showError("Couldn't undo", undefined, { about: ["c1 place inbox"] });
     await expect.element(page.getByText("Couldn't undo")).toBeVisible();
 
-    // A key that only starts the same way covers nothing.
-    closeAbout(["c1 place in"]);
+    closeAbout(["c1 place"]);
     await new Promise((done) => requestAnimationFrame(done));
     expect(toasts()).toBe(1);
-    closeAbout(["c1 place"]);
+    closeAbout(["c1 place inbox"]);
 
     await expect.poll(toasts).toBe(0);
   });

@@ -383,13 +383,13 @@ describe("the row's star", () => {
     await expect.element(page.getByRole("row", { name: /Subject 1, .*Starred/ })).toBeVisible();
   });
 
-  it("is reached from its row with the arrow keys", async () => {
+  it("is reached from its row with the arrow keys, ← going straight to it", async () => {
     const api = mailApi([conversation(1)], one);
     await app(api);
     const row = page.getByRole("row", { name: /Subject 1,/ });
     await expect.element(row).toBeVisible();
     row.element().focus();
-    await userEvent.keyboard("{ArrowRight}");
+    await userEvent.keyboard("{ArrowLeft}");
     const star = starOf(/Subject 1,/);
     await expect.element(star).toHaveFocus();
     await userEvent.keyboard(" ");
@@ -448,6 +448,220 @@ function subjectStyle(n: number) {
 function bar(row: Element) {
   return getComputedStyle(row, "::before");
 }
+
+// The light theme's hover and open row fills (styles.css).
+const accent = "rgb(236, 236, 236)";
+const selection = "rgb(229, 234, 246)";
+
+// rowActions returns the hovered-row actions of the row named like name.
+function rowActions(name: RegExp): HTMLElement {
+  const row = page.getByRole("row", { name }).element();
+  const actions = row.querySelector<HTMLElement>("[data-slot=row-actions]");
+  if (!actions) throw new Error("the row has no actions");
+  return actions;
+}
+
+describe("a hovered row's actions", () => {
+  it("show over the date only while the row is hovered, on the row's own fill", async () => {
+    await app(mailApi([conversation(1), conversation(2)], one));
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
+    // At rest: the pointer off every row, wherever an earlier test left it.
+    await userEvent.hover(page.getByRole("heading", { level: 1 }));
+    expect(getComputedStyle(rowActions(/Subject 1,/)).opacity).toBe("0");
+    expect(getComputedStyle(rowActions(/Subject 1,/)).pointerEvents).toBe("none");
+
+    await userEvent.hover(row);
+    await expect.element(row).toHaveAttribute("data-hovered", "true");
+    expect(getComputedStyle(rowActions(/Subject 1,/)).opacity).toBe("1");
+    expect(getComputedStyle(rowActions(/Subject 2,/)).opacity).toBe("0");
+    // The toolbar's, but the star the row already has, and Report spam.
+    const names = [...row.element().querySelectorAll("button")].map((b) => b.ariaLabel);
+    expect(names).toEqual(["Archive", "Delete", "Mark unread", "Star"]);
+    await expect
+      .poll(() => [
+        getComputedStyle(rowActions(/Subject 1,/)).backgroundColor,
+        getComputedStyle(row.element()).backgroundColor,
+      ])
+      .toEqual([accent, accent]);
+  });
+
+  it("are on the open row's fill there", async () => {
+    await app(mailApi([conversation(1)], one), "/mail/inbox", conversation(1).id);
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await userEvent.unhover(row);
+    await userEvent.hover(row);
+    await expect.element(row).toHaveAttribute("data-hovered", "true");
+    await expect
+      .poll(() => [
+        getComputedStyle(rowActions(/Subject 1,/)).backgroundColor,
+        getComputedStyle(row.element()).backgroundColor,
+      ])
+      .toEqual([selection, selection]);
+  });
+
+  it("are in the row's arrow-key path, showing while one has keyboard focus", async () => {
+    await app(mailApi([conversation(1, { unread: true })], one));
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
+    await userEvent.hover(page.getByRole("heading", { level: 1 }));
+    row.element().focus();
+    // Focus on the row keeps its date.
+    expect(getComputedStyle(rowActions(/Subject 1,/)).opacity).toBe("0");
+    await userEvent.keyboard("{ArrowRight}");
+    await expect.element(row.getByRole("button", { name: "Archive" })).toHaveFocus();
+    expect(getComputedStyle(rowActions(/Subject 1,/)).opacity).toBe("1");
+    await userEvent.keyboard("{ArrowRight}");
+    await expect.element(row.getByRole("button", { name: "Delete" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    await expect.element(row.getByRole("button", { name: "Mark read" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    await expect.element(starOf(/Subject 1,/)).toHaveFocus();
+  });
+
+  it("archive a row with an Undo, focus going to the row that took its place", async () => {
+    const api = mailApi([conversation(1), conversation(2), conversation(3)], one);
+    await app(api);
+    const row = page.getByRole("row", { name: /Subject 2,/ });
+    await userEvent.unhover(row);
+    await userEvent.hover(row);
+    await userEvent.click(row.getByRole("button", { name: "Archive" }));
+    await expect.element(row).not.toBeInTheDocument();
+    expect(api.actions).toEqual([{ action: "archive", ids: [conversation(2).id] }]);
+    await expect.element(page.getByRole("button", { name: "Undo" })).toBeVisible();
+    await expect.element(page.getByRole("row", { name: /Subject 1,/ })).toHaveFocus();
+  });
+
+  it("take the open conversation's row back to the list, as the toolbar does", async () => {
+    const api = mailApi([conversation(1), conversation(2)], one);
+    const { router } = await app(api, `/mail/inbox/${conversation(2).id}`);
+    const row = page.getByRole("row", { name: /Subject 2,/ });
+    await userEvent.unhover(row);
+    await userEvent.hover(row);
+    await userEvent.click(row.getByRole("button", { name: "Archive" }));
+    await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");
+    await expect.element(page.getByRole("row", { name: /Subject 1,/ })).toHaveFocus();
+  });
+
+  it("take the open row back to the list after Mark unread, focus staying on it", async () => {
+    const api = mailApi([conversation(1), conversation(2)], one);
+    const { router } = await app(api, `/mail/inbox/${conversation(2).id}`);
+    const row = page.getByRole("row", { name: /Subject 2,/ });
+    await userEvent.unhover(row);
+    await userEvent.hover(row);
+    await userEvent.click(row.getByRole("button", { name: "Mark unread" }));
+    await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");
+    expect(api.actions).toEqual([{ action: "unread", ids: [conversation(2).id] }]);
+    await expect.element(page.getByRole("row", { name: /Subject 2,/ })).toHaveFocus();
+  });
+
+  it("know a row opened after the list drew it as the open one", async () => {
+    const api = mailApi([conversation(1), conversation(2)], one);
+    const { router } = await app(api);
+    const row = page.getByRole("row", { name: /Subject 2,/ });
+    // React Aria keeps a drawn row, and the callbacks it was drawn with.
+    await userEvent.click(row);
+    await expect
+      .poll(() => router.state.location.pathname)
+      .toBe(`/mail/inbox/${conversation(2).id}`);
+    await new Promise((done) => setTimeout(done, 500));
+    await userEvent.unhover(row);
+    await userEvent.hover(row);
+    await userEvent.click(row.getByRole("button", { name: "Mark unread" }));
+    await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");
+    expect(api.actions).toEqual([{ action: "unread", ids: [conversation(2).id] }]);
+  });
+
+  it("keep a mark on a row that is not open in place, its button keeping focus", async () => {
+    const api = mailApi([conversation(1, { unread: true })], one);
+    const { router } = await app(api);
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    row.element().focus();
+    await userEvent.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}");
+    await userEvent.keyboard("{Enter}");
+    // One slot, so focus stays as its action turns to Mark unread.
+    await expect.element(row.getByRole("button", { name: "Mark unread" })).toHaveFocus();
+    expect(api.actions).toEqual([{ action: "read", ids: [conversation(1).id] }]);
+    expect(router.state.location.pathname).toBe("/mail/inbox");
+  });
+
+  it("drop a press in the list for a moment after one, so a double press acts once", async () => {
+    const api = mailApi([conversation(1), conversation(2), conversation(3)], one);
+    const { router } = await app(api);
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await userEvent.unhover(row);
+    await userEvent.hover(row);
+    // The second press lands on Mark read, which took Mark unread's place.
+    await userEvent.dblClick(row.getByRole("button", { name: "Mark unread" }));
+    await expect.element(row.getByRole("button", { name: "Mark read" })).toBeInTheDocument();
+    await new Promise((done) => setTimeout(done, 500));
+    // Archive, then a press on the row that slid under the pointer.
+    const second = page.getByRole("row", { name: /Subject 2,/ });
+    await userEvent.unhover(second);
+    await userEvent.hover(second);
+    await userEvent.click(second.getByRole("button", { name: "Archive" }));
+    await userEvent.click(row);
+    expect(api.actions).toEqual([
+      { action: "unread", ids: [conversation(1).id] },
+      { action: "archive", ids: [conversation(2).id] },
+    ]);
+    expect(router.state.location.pathname).toBe("/mail/inbox");
+    // Then presses act again.
+    await new Promise((done) => setTimeout(done, 500));
+    await userEvent.click(row);
+    await expect
+      .poll(() => router.state.location.pathname)
+      .toBe(`/mail/inbox/${conversation(1).id}`);
+  });
+
+  it("drop Enter and Space for a moment after a keyboard press, so a double press acts once", async () => {
+    const api = mailApi([conversation(1, { unread: true })], one);
+    await app(api);
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    row.element().focus();
+    await userEvent.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}");
+    await expect.element(row.getByRole("button", { name: "Mark read" })).toHaveFocus();
+    await userEvent.keyboard("{Enter}{Enter}");
+    await userEvent.keyboard(" ");
+    const mark = row.getByRole("button", { name: "Mark unread" });
+    await expect.element(mark).toHaveFocus();
+    expect(api.actions).toEqual([{ action: "read", ids: [conversation(1).id] }]);
+    // Then the keys act again.
+    await new Promise((done) => setTimeout(done, 500));
+    await userEvent.keyboard("{Enter}");
+    await expect.element(row.getByRole("button", { name: "Mark read" })).toHaveFocus();
+    expect(api.actions).toEqual([
+      { action: "read", ids: [conversation(1).id] },
+      { action: "unread", ids: [conversation(1).id] },
+    ]);
+  });
+
+  it("are left out of a row too narrow for them, e.g. at twice the text size", async () => {
+    await app(mailApi([conversation(1)], one));
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(row).toBeVisible();
+    document.documentElement.style.fontSize = "32px";
+    try {
+      // The list's 373 px at 1440 is under 16rem at 32 px text.
+      await expect.poll(() => getComputedStyle(rowActions(/Subject 1,/)).display).toBe("none");
+      row.element().focus();
+      await userEvent.keyboard("{ArrowRight}");
+      await expect.element(starOf(/Subject 1,/)).toHaveFocus();
+    } finally {
+      document.documentElement.style.fontSize = "";
+    }
+    await expect.poll(() => getComputedStyle(rowActions(/Subject 1,/)).display).toBe("flex");
+  });
+
+  it("are left out while the list is picking", async () => {
+    await app(mailApi([conversation(1), conversation(2)], one));
+    const row = page.getByRole("row", { name: /Subject 1,/ });
+    row.element().focus();
+    await userEvent.keyboard(" ");
+    await expect.element(row).toHaveAttribute("aria-selected", "true");
+    expect(document.querySelector("[data-slot=row-actions]")).toBeNull();
+  });
+});
 
 describe("an unread row", () => {
   it("stands out by weight, a bar at its edge, and a read row's quieter text", async () => {
@@ -705,6 +919,30 @@ describe("the list's order and refreshes", () => {
     button.element().focus();
     await userEvent.keyboard("{Enter}");
     await expect.element(page.getByRole("row", { name: /Subject 100,/ })).toHaveFocus();
+  });
+
+  it("marks the star without a button, and shows no actions, on an account that takes none", async () => {
+    // Usable, as when no Google client is set up: only allowedActions says.
+    const api = mailApi(
+      [conversation(1, { starred: true }), conversation(2, { accountId: 2 })],
+      [
+        { ...listedAccount(1, "ana@example.com"), allowedActions: ["rename", "disconnect"] },
+        listedAccount(2, "ana@work.example"),
+      ],
+    );
+    await app(api);
+    const starred = page.getByRole("row", { name: /Subject 1,/ });
+    await expect.element(starred).toBeVisible();
+    // The row's name still says it is starred.
+    await expect.element(starred).toHaveAccessibleName(/Starred/);
+    expect(starred.getByRole("button", { name: "Star" }).query()).toBeNull();
+    await expect.element(starOf(/Subject 2,/)).toBeInTheDocument();
+    // Hovered, it offers nothing; its neighbour of the other account does.
+    await userEvent.unhover(starred);
+    await userEvent.hover(starred);
+    await expect.element(starred).toHaveAttribute("data-hovered", "true");
+    expect(starred.element().querySelector("[data-slot=row-actions]")).toBeNull();
+    expect(rowActions(/Subject 2,/)).not.toBeNull();
   });
 
   it("sends a quick star and unstar one after the other", async () => {

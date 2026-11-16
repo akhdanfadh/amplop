@@ -65,20 +65,24 @@ export function showError(
 
 // closeAbout marks keys as no longer failing, e.g. what a newer action
 // changed again: each toast about them is then about the rest only, and
-// closes once nothing it was about is left. A key covers itself and the
-// keys under it, those it starts with a space after, e.g. "c1 place"
-// covers "c1 place inbox".
+// closes once nothing it was about is left. Keys match exactly; which keys
+// a change covers is the caller's to say.
 export function closeAbout(keys: Iterable<string>): void {
-  const covered = [...keys];
-  const isCovered = (key: string) =>
-    covered.some((cover) => key === cover || key.startsWith(`${cover} `));
+  const closed = new Set(keys);
   for (const toast of queue.visibleToasts) {
     const about = toast.content.about;
     if (!about || about.length === 0) continue;
-    const left = about.filter((key) => !isCovered(key));
+    const left = about.filter((key) => !closed.has(key));
     if (left.length === 0) queue.close(toast.key);
     else toast.content.about = left;
   }
+}
+
+// shownAbout returns the keys the toasts still showing are about, so a
+// caller that tracks them can let go of the rest, e.g. one the member
+// closed.
+export function shownAbout(): Set<string> {
+  return new Set(queue.visibleToasts.flatMap((toast) => toast.content.about ?? []));
 }
 
 // closeToasts closes every toast, e.g. on sign-out, when no toast should

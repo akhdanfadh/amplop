@@ -153,8 +153,10 @@ Put shared code in the folder for its responsibility:
   toolbar, mail's TanStack DB collections (`conversations.ts`), what
   actions guess and which places a conversation is in (`rules.ts`), each
   action's words (`words.ts`), running an action on one conversation or
-  many (`perform.ts`) and its Undo bar (`undo.tsx`), picking rows
-  (`picking.ts`) and the bar that acts on them (`picking-bar.tsx`), the
+  many (`perform.ts`) and its Undo bar (`undo.tsx`), picking rows, in a
+  place's list and a search's results alike (`picking.ts`, whose
+  `usePickingGrid` both lists use), and the bar that acts on them
+  (`picking-bar.tsx`), the
   member's labels in the sidebar's order and where a move can leave
   (`labels.ts`), More's Move to and Labels pickers (`label-menu.tsx`), the
   reading pane's label chips (`label-chips.tsx`), the New label and Edit
@@ -1218,7 +1220,25 @@ through history when a row of it opened the conversation (the row's
 link sets `fromList` in its history state, or keeps the flag of the
 open conversation's entry it replaces), else to the list in its place, and asks the list, through `mail/focus-request.ts`, to focus the
 row that took its place, or the conversation's own row after Mark
-unread.
+unread. That rule is `useAct` (`mail/act.ts`), which the list and a
+search's results run too for a hovered row's actions (`RowActions` in
+`mail/row.tsx`): the open row's as the toolbar's, another row's taking
+focus to the row that took its place at once. The toolbar, the picking
+bar, and the row lay out their buttons by one slots module
+(`mail/slots.ts`), and a list drops its presses for a double click's
+time after a row's action (`mail/press-guard.ts`), so a double press
+acts once.
+
+A conversation takes actions only while its account's `allowedActions`
+from the server include `change-mail` (`changersOf` in `mail/rules.ts`),
+never by the page's own copy of the rule. `actionsFor` and `targetsOf`
+leave the others out, so the toolbar, the picking bar, a hovered row,
+Move to, and Labels follow from them, as does marking read on open; the
+label chips drop their ×, a row's star becomes a plain mark, and More
+shows only while it holds something. A conversation refused as
+`needs-reconnect` reads the accounts again (`send` in `mail/actions.ts`),
+so an account that broke while the page was open loses its actions and
+the sidebar offers Reconnect.
 
 ## Checks and tests
 
@@ -1653,8 +1673,20 @@ refuses, or every one when the request fails, goes back as it was, and
 `details`) list them by reason; a later answer that changed again what
 failed on every conversation a toast names closes it (`closeAbout`):
 a toast is about keys of a conversation and what failed on it, e.g.
-`<id> place <label>`, and a named action's `<id> place` covers each
-place under it. Actions in flight
+`<id> place <label>`; Archive's and `unarchive`'s (Move to Inbox of an
+archived conversation) key is `<id> place inbox`, as they change the
+Inbox alone, and the other named actions', `untrash` (Move to Inbox from
+Trash) among them, is `<id> place`, which covers each place under it
+(`covers`). Each action, an Undo included, takes its turn in one order
+as its requests are queued: it is the latest for its own keys and the
+earlier keys they cover, so an older action's late failure is said only
+while nothing later changed the same thing: after Archive then Move to,
+or Move to then Delete, the first one's failure stays unsaid, while a
+label added after Archive leaves "Couldn't archive" to be said. A
+success closes only failures an older action said (`closeOlder`), each
+by its exact key, so a long action's late second request never closes a
+newer failure on a conversation its first request already changed.
+Actions in flight
 at once keep none of their answers' counts, which each hold the whole of
 List Places at their own moment; the last to settle reads them again. The reading pane reads its row from the same
 collection by ID, loaded from Get Conversation when no list holds it, so

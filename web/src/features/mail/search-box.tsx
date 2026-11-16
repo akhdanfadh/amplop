@@ -123,17 +123,21 @@ export function inheritedPlaces(place: Place): string[] | undefined {
 // stepping through each word. Emptying the box searches the filters alone.
 // onLeave, from Escape or the clear button, returns to the place the
 // search started from, or the one place it searches, or the Inbox, and
-// runs onLeft; on a place's own page it empties the box.
+// runs onLeft; on a place's own page it empties the box. Each move waits
+// for beforeMove, e.g. picking ending, which takes back its own history
+// entry, so a search that replaces the address replaces the page's.
 export function useSearchBox({
   place,
   account,
   search,
   onLeft,
+  beforeMove = () => Promise.resolve(),
 }: {
   place: Place;
   account: number | undefined;
   search: SearchFilters | undefined;
   onLeft?: () => void;
+  beforeMove?: () => Promise<void>;
 }): SearchBoxState {
   const navigate = useNavigate();
   const [text, setText] = useState(search?.q ?? "");
@@ -145,6 +149,14 @@ export function useSearchBox({
   // Whether the box itself is moving the address, which then keeps what
   // the member types meanwhile.
   const moving = useRef(false);
+  // How many moves the box has started: after beforeMove, only the latest
+  // goes, so words submitted while an earlier move waited win over it.
+  const moves = useRef(0);
+  // after runs go once beforeMove resolves, unless a later move started.
+  const after = (go: () => Promise<unknown>) => {
+    const move = ++moves.current;
+    void beforeMove().then(() => (move === moves.current ? go() : undefined));
+  };
 
   // The page moved another way, e.g. a sidebar press or Back to an earlier
   // search: typing not yet searched was for the page before, so it is
@@ -169,22 +181,26 @@ export function useSearchBox({
       // Words too short to search keep the last results.
       if (found === search.q || (found === undefined && value.trim() !== "")) return;
       moving.current = true;
-      void navigate({
-        to: "/mail/$place",
-        params: { place: searchPlace },
-        search: { ...search, account, q: found },
-        replace: true,
-      });
+      after(() =>
+        navigate({
+          to: "/mail/$place",
+          params: { place: searchPlace },
+          search: { ...search, account, q: found },
+          replace: true,
+        }),
+      );
       return;
     }
     if (found === undefined) return;
     origin.current = place;
     moving.current = true;
-    void navigate({
-      to: "/mail/$place",
-      params: { place: searchPlace },
-      search: { account, q: found, place: inheritedPlaces(place) },
-    });
+    after(() =>
+      navigate({
+        to: "/mail/$place",
+        params: { place: searchPlace },
+        search: { account, q: found, place: inheritedPlaces(place) },
+      }),
+    );
   };
 
   const searchTyped = useEffectEvent(() => go(text));
@@ -208,7 +224,7 @@ export function useSearchBox({
       if (search) {
         const back = origin.current ?? (search.place?.length === 1 ? search.place[0] : "inbox");
         origin.current = undefined;
-        void navigate({ to: "/mail/$place", params: { place: back }, search: { account } });
+        after(() => navigate({ to: "/mail/$place", params: { place: back }, search: { account } }));
       }
       onLeft?.();
     },

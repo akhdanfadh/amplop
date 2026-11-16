@@ -5,6 +5,7 @@ import {
   useState,
   type FocusEvent,
   type ReactElement,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,16 +22,19 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
 import { GridList, GridListEnd, GridListLoadMore } from "@/components/ui/grid-list";
 import { Spinner } from "@/components/ui/spinner";
+import { offeredIn, useAct } from "./act";
 import { holdFound, mailData, toConversation, type Conversation } from "./conversations";
 import { useToday } from "./dates";
 import { takeRowFocus, useRowFocusRequest } from "./focus-request";
 import { Placeholder, rowAccount, syncing } from "./list";
 import { useRestIntent, useRowSize } from "./list-state";
 import { perform } from "./perform";
+import { usePressGuard } from "./press-guard";
 import { RowLabelsContext, rowLabelsOf, useLabels } from "./labels";
 import { isViewPlace, searchPlace } from "./places";
-import { ConversationRow, createOpenStore } from "./row";
-import { inList } from "./rules";
+import { usePickingGrid, type Picking } from "./picking";
+import { ConversationRow, PickingContext, createOpenStore } from "./row";
+import { changersOf, inList, type Action } from "./rules";
 import {
   filtered,
   mostResults,
@@ -80,7 +84,12 @@ const maxFocusFrames = 30;
 // the member scrolls. filters and account are the search; onChange
 // changes them; openId is the conversation the reading pane shows;
 // focusKey names the list for the reading pane's focus requests; heading
-// takes focus when an action leaves no row to focus.
+// takes focus when an action leaves no row to focus. Results pick as a
+// place's list's rows do (usePickingGrid), picking holding the picks;
+// while any is picked, bar, the picking bar, takes the sentence's place
+// (none on a phone, where it is in the top bar), so the filters can't
+// change the results mid-pick. onRows hears the results shown and whether
+// they have all loaded.
 export function SearchResults({
   filters,
   account,
@@ -88,6 +97,9 @@ export function SearchResults({
   openId,
   focusKey,
   heading,
+  picking,
+  bar,
+  onRows,
 }: {
   filters: SearchFilters;
   account: number | undefined;
@@ -95,6 +107,9 @@ export function SearchResults({
   openId: string | undefined;
   focusKey: string;
   heading: RefObject<HTMLElement | null>;
+  picking: Picking;
+  bar: ReactNode;
+  onRows: (rows: readonly Conversation[], complete: boolean) => void;
 }): ReactElement {
   const client = useQueryClient();
   const router = useRouter();
@@ -104,6 +119,8 @@ export function SearchResults({
     () => new Map<number, ListedAccountOutput>(accounts?.map((a) => [a.id, a])),
     [accounts],
   );
+  // The accounts whose conversations take actions, as the API says.
+  const changers = useMemo(() => changersOf(accounts), [accounts]);
   // The labels rows mark, one at most, so the snippet keeps its room to
   // show the match; a search of one label leaves it out, as its list
   // does.
@@ -179,6 +196,42 @@ export function SearchResults({
   });
   const listBox = useRef<HTMLDivElement>(null);
   useFocusRequest({ focusKey, openId, order: ids, rows, rowSize, listBox, heading });
+  // A row's action runs as a place's list runs it (ConversationList).
+  const guard = usePressGuard();
+  const { act } = useAct(
+    { client, conversations, placeCounts },
+    {
+      places,
+      account,
+      key: focusKey,
+      back: linkOptions({
+        to: "/mail/$place",
+        params: { place: searchPlace },
+        search: { ...filters, account },
+      }),
+    },
+    openId,
+  );
+  const rowAction = (conversation: Conversation, action: Action) => {
+    guard.hold();
+    act(conversation, action);
+  };
+  const pickingGrid = usePickingGrid({
+    picking,
+    rows,
+    hrefOf: (id) => {
+      const row = rows.find((r) => r.id === id);
+      return row && href(row);
+    },
+    replaces: () => openStore.get() !== undefined,
+    guard,
+  });
+  const complete = !search.hasNextPage;
+  useEffect(() => onRows(rows, complete), [onRows, rows, complete]);
+  // Whether a result on screen is picked, as the place page decides the
+  // bar's heading by: a pick an action holds while its guess took the
+  // result away doesn't keep the bar in the sentence's place.
+  const picked = rows.some((row) => picking.ids.has(row.id));
 
   const error = search.error instanceof ApiError ? search.error : undefined;
   // An ended session, which the session-end rule answers: the results
@@ -299,11 +352,13 @@ export function SearchResults({
     const ringed = account === undefined && (accounts?.length ?? 0) > 1;
     const olderFailed = search.isFetchNextPageError;
     body = (
+      // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- notes where a press began, or drops it just after a row's action; the rows are what act.
       <div
         ref={listBox}
         className="flex min-h-0 flex-1 flex-col"
         onFocus={onFocus}
         onBlur={readAhead.leave}
+        {...pickingGrid.boxProps}
       >
         {/* 1 rem square, so the rows follow the browser's text size. */}
         <span
@@ -312,39 +367,49 @@ export function SearchResults({
           className="pointer-events-none invisible absolute size-4"
         />
         <RowLabelsContext value={rowLabels}>
-          <GridList aria-label={resultsName} rowSize={rowSize} className="min-h-0 flex-1">
-            <Collection items={rows} dependencies={[now, accountsById, ringed]}>
-              {(row) => (
-                <ConversationRow
-                  conversation={row}
-                  match={row.found.match}
-                  account={rowAccount(accountsById.get(row.accountId))}
-                  ringed={ringed}
-                  markInbox={!(places.length === 1 && places[0] === "inbox")}
-                  href={href(row)}
-                  openStore={openStore}
-                  now={now}
-                  onRest={() => readAhead.rest(row.id)}
-                  onLeave={readAhead.leave}
-                  onStar={(starred) => star(row, starred)}
-                />
+          <PickingContext value={pickingGrid.picks}>
+            <GridList
+              aria-label={resultsName}
+              rowSize={rowSize}
+              className="min-h-0 flex-1"
+              {...pickingGrid.gridProps}
+            >
+              <Collection items={rows} dependencies={[now, accountsById, ringed, changers]}>
+                {(row) => (
+                  <ConversationRow
+                    conversation={row}
+                    match={row.found.match}
+                    account={rowAccount(accountsById.get(row.accountId))}
+                    ringed={ringed}
+                    markInbox={!(places.length === 1 && places[0] === "inbox")}
+                    href={href(row)}
+                    openStore={openStore}
+                    now={now}
+                    onRest={() => readAhead.rest(row.id)}
+                    onLeave={readAhead.leave}
+                    onStar={(starred) => star(row, starred)}
+                    list={offeredIn(places)}
+                    changers={changers}
+                    onAction={(action) => rowAction(row, action)}
+                  />
+                )}
+              </Collection>
+              {search.hasNextPage && !olderFailed ? (
+                <GridListLoadMore
+                  isLoading={search.isFetchingNextPage}
+                  onLoadMore={() => {
+                    if (!search.isFetchingNextPage) void search.fetchNextPage();
+                  }}
+                  className="justify-center"
+                >
+                  <Spinner />
+                  <span className="sr-only">{resultsLoadingMore}</span>
+                </GridListLoadMore>
+              ) : (
+                !olderFailed && <GridListEnd>{resultsEnd}</GridListEnd>
               )}
-            </Collection>
-            {search.hasNextPage && !olderFailed ? (
-              <GridListLoadMore
-                isLoading={search.isFetchingNextPage}
-                onLoadMore={() => {
-                  if (!search.isFetchingNextPage) void search.fetchNextPage();
-                }}
-                className="justify-center"
-              >
-                <Spinner />
-                <span className="sr-only">{resultsLoadingMore}</span>
-              </GridListLoadMore>
-            ) : (
-              !olderFailed && <GridListEnd>{resultsEnd}</GridListEnd>
-            )}
-          </GridList>
+            </GridList>
+          </PickingContext>
         </RowLabelsContext>
         {olderFailed && (
           <div role="alert" className="flex items-center gap-3 border-t px-4 py-2 text-sm">
@@ -360,7 +425,7 @@ export function SearchResults({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {header}
+      {picked ? bar : header}
       {body}
     </div>
   );
@@ -374,9 +439,9 @@ function failureText(error: ApiError | undefined): string {
   return searchFailed;
 }
 
-// useFocusRequest carries out the reading pane's request to focus a row
-// after an action took its conversation out of the results, or kept it,
-// e.g. Mark unread: that row while it stays, else the one after it in
+// useFocusRequest carries out the reading pane's or a row's request to
+// focus a row after an action took its conversation out of the results,
+// or kept it, e.g. Mark unread: that row while it stays, else the one after it in
 // order, the search's, which still holds a row an action took out, else
 // the one before; with none left, heading. Rows on screen only are drawn,
 // so the row scrolls into view first.
@@ -399,7 +464,7 @@ function useFocusRequest({
 }): void {
   const request = useRowFocusRequest(focusKey);
   useEffect(() => {
-    if (!request || openId !== undefined) return;
+    if (!request || (openId !== undefined && !request.now)) return;
     takeRowFocus(focusKey);
     const shown = new Set(rows.map((row) => row.id));
     const at = order.indexOf(request.id);

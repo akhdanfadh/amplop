@@ -11,8 +11,7 @@ Status: decided 2026-11-11. `feat/design-system` builds the foundation
 pages, messages, leave warnings, and banners; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
-work to this file, not to the old code. Not built yet: the actions on a
-hovered row and the row menu (ADR031, "Mitigations and follow-up").
+work to this file, not to the old code.
 
 ## Principles
 
@@ -240,7 +239,6 @@ text colour of their role.
 | List beside the reading pane             | none: the list has a fluid width ("Panes and widths")                                       |
 | Member menu with the theme choice        | `popover` holding a `toggle-group`                                                          |
 | More menus                               | `dropdown-menu`                                                                             |
-| Right-click row menu                     | `context-menu`                                                                              |
 | Icon button names, and shortcuts         | `tooltip`, but none on an in-row toggle whose icon and state are its meaning, e.g. the star |
 | Error toasts                             | `toast.tsx` on React Aria's Toast (see below)                                               |
 | An action's Undo                         | the Undo bar, `features/mail/undo.tsx` ("Feedback")                                         |
@@ -277,7 +275,7 @@ React Aria's [GridList](https://react-aria.adobe.com/GridList) inside its
 `selectionMode="multiple"`, `selectionBehavior="toggle"`, and
 `disallowTypeAhead`. Rows navigate through `href` and React Aria's
 `RouterProvider` wired to TanStack Router (click opens, Ctrl/Cmd-click
-opens a new tab). Right-click opens inbok's row menu. The list scrolls its
+opens a new tab). The list scrolls its
 own box on every screen size. It is the only GridList; search results use
 the same component.
 
@@ -466,8 +464,10 @@ last two redirect into settings, so settings can move without the server.
   show on hover, screen readers hear every label in the row's name, last
   ("…, Labels Clients/Acme and Hiring"), and the reading pane shows them
   whole; then the star button, on every row as in Gmail's
-  list and app, outlined until starred (→ reaches it from the row);
-  pressing it stars or unstars at once. A 36 px initials
+  list and app, outlined until starred (← reaches it from the row);
+  pressing it stars or unstars at once. On an account that takes no
+  actions it is a plain mark in the same place, filled while starred. A
+  36 px initials
   avatar ringed in the account colour leads (initials of the newest
   message's sender), its top on the first line's, 16 px from the list's edge
   (the heading's inset) and 12 px from the text, closer than the edge so it
@@ -480,6 +480,34 @@ last two redirect into settings, so settings can move without the server.
   current state is its `selection` fill. Markers: an attachment clip, a star filled in the
   text colour, the Inbox chip; a screen reader hears "In Inbox" and
   "Starred" in the row's name.
+- **Actions on a hovered row:** the reading pane toolbar's slots but the
+  star, which the row has, and More (Report spam stays there): the
+  state's move (Archive, Move to Inbox, or Not spam), Delete (none in
+  Trash), and Mark read or unread, as `actionsFor` offers them in the
+  list's place, a search's results in each result's own ("all" across
+  places), laid out by the toolbar's and the picking bar's slots
+  (`features/mail/slots.ts`). They take the date's place on the first
+  line, as in Gmail's list: the list header's 32 px buttons, 4 px apart,
+  their icons `muted-foreground`, lit to `foreground` on hover as the
+  star is, with no fill of their own, named by tooltips, on the row's own
+  fill (`accent` hovered, `selection` open) with a 16 px fade where they
+  start, so they cover the date and about 104 px of the line. They show
+  only while the row is hovered or one of them has keyboard focus, never
+  while the list is picking or on an account that takes no actions, and
+  only in a row at least 16rem wide, so a narrow list at a large text
+  size keeps its first line and checkbox (a container query, in rem); a
+  touch screen never shows them (long press and the picking bar act
+  there). Where a row has room for them, they are
+  always in its arrow-key path, so → from
+  a row reaches the first, then the star, and ← the star; focus moving
+  from row to row leaves the dates in place. An action runs as the
+  toolbar's (see Feedback): on the open row it is the toolbar's, going
+  back to the list when the conversation leaves it or is marked unread;
+  on another row, a row it takes out of the list gives focus to the row
+  that took its place. The next row slides under a still pointer and
+  shows its buttons, so pressing on at a steady pace acts row after row;
+  for 500 ms after an action (a double click's time) the list takes no
+  press, by pointer, Enter, or Space, so a double press acts once.
 - **Dates:** today the time (the browser's 12 or 24 hour clock),
   "Yesterday", the weekday within 7 days, "2 Nov" this year, "2 Nov 2025"
   in another year, a later day too; the full date and time on hover.
@@ -502,9 +530,8 @@ last two redirect into settings, so settings can move without the server.
   history entry, which Back takes, at every width. Picks follow
   the rows: a row the list no longer shows is unpicked, except one an
   action took out until it answers, so a refused row comes back picked;
-  Undo brings rows back unpicked. A place's list picks; a search's
-  results, which span places, keep their avatars (ADR031, "Mitigations
-  and follow-up").
+  Undo brings rows back unpicked. A place's list and a search's results
+  pick alike (see Search).
 - **Picking bar:** it takes the list header's place (the top bar's on a
   phone, see Phones): a tri-state checkbox over the rows' boxes, mixed
   while some loaded rows are picked, which picks every loaded row
@@ -522,7 +549,8 @@ last two redirect into settings, so settings can move without the server.
   them); the pair's other action goes into More when the rows are mixed,
   with Move to… and Labels… (see Reading pane, Labels) and Report spam;
   the star is a plain Star or Remove star. An action
-  goes only to the picked rows it changes, every guess showing at once,
+  goes only to the picked rows it changes, of accounts that take
+  actions, the others keeping their pick, every guess showing at once,
   and always gets an Undo (see Feedback). Picking all picks the loaded
   rows, as fixed IDs; acting on a whole place is Not now. When an action
   leaves no picked row, focus goes to the row that took the first one's
@@ -561,7 +589,12 @@ last two redirect into settings, so settings can move without the server.
   Inbox, Mark read or unread, Star; elsewhere in the inbox, Archive,
   Delete, Report spam, Mark read or unread, Star; archived, Move to
   Inbox in place of Archive; only in Spam or only in Trash, as in those
-  lists. No Delete forever. At most five buttons, then More: a sixth
+  lists. No Delete forever. A conversation whose account takes no
+  actions, as the server lists it (`allowedActions` without
+  `change-mail`: it needs reconnecting, or Gmail isn't set up), has More
+  with Open in Gmail alone: the sidebar's Reconnect says why. More shows
+  only while it holds something, here and in the picking bar, so it
+  never opens empty. At most five buttons, then More: a sixth
   action goes in More, chosen by hand, never moved there by width; the
   same buttons at every width. The faded subject may shrink under a
   512 px pane, so the bar keeps one 48 px row, and hides under a 28em
@@ -586,14 +619,17 @@ last two redirect into settings, so settings can move without the server.
   error toast; one the provider no longer has also removes the row.
 - Opening an unread conversation marks it read, once: when its messages
   have come (they decide which start open) and the tab shows, and not for
-  an account that needs reconnecting. Its row un-bolds and the counts
+  an account that takes no actions. An action refused because the
+  account needs reconnecting reads the accounts again, so that account's
+  conversations offer none from then on and the sidebar says Reconnect.
+  Its row un-bolds and the counts
   drop at once. A read the server refuses or that fails puts both back
   silently and is not tried again; arrow keys in the list only move
   focus, never open.
 - **Labels** (ADR031, "Labels as built"): More's "Move to…" and
   "Labels…" close More and open a picker in its place, under More's
   button, at every width (a submenu beside More ran off a 320 px screen
-  and large text); one picker for both and later the row menu
+  and large text); one picker for both
   (`features/mail/label-menu.tsx`): its title, "Move to" or "Labels",
   which names the dialog, as the two read alike once More closes; a
   filter field under it (React Aria's `Autocomplete`, focused as it
@@ -650,8 +686,9 @@ last two redirect into settings, so settings can move without the server.
     sends at once: the Inbox's runs Archive, a label's takes that label
     off. One Tab stop reaches them; arrow keys move between them, Delete
     or Backspace removes one; with the last gone, focus goes to the
-    title. No chip for Spam or Trash, whose toolbar already says where
-    the conversation is.
+    title. An account that takes no actions has chips without ×. No chip
+    for Spam or Trash, whose toolbar already says where the conversation
+    is.
 - Title (22 px), the account mark, the message count. The title and
   account draw from the list's row at once; "Loading messages..." stands
   under them until the messages come, and the view takes focus, so a
@@ -978,7 +1015,18 @@ sending (web/README.md, "Routes").
   browser; a match only in the sender or recipients marks nothing. A row
   stars, and its conversation's actions show, at once, as in every list;
   one an action takes out of the places searched leaves the results.
-  Under the sentence: how many conversations ("1,000 or more" at the
+  Results pick as a place's rows do ("Picking"): the bar takes the
+  sentence's place, the box staying with the words, and on a phone the
+  top bar, the sentence waiting too, so a filter can't change the results
+  mid-pick; it offers what the picked results offer where each one is, as
+  their reading pane does, a search of one place that place's actions,
+  else each conversation's own, so a search of several places offers no
+  Move to; it picks the loaded results, "All 6 picked" once they have
+  all loaded, the count of matches waiting in the sentence. New words, or
+  leaving the search, end picking first, so the new results start
+  unpicked and Back leaves the search; picking that stops on a phone
+  gives focus back to the results, not to the box. Under the
+  sentence: how many conversations ("1,000 or more" at the
   API's limit), then, unless Spam or Trash is searched, "Spam and Trash
   are not searched." with "Search them too", which adds both, offered
   only while both fit the API's limit of places. The end reads "That's
@@ -1483,9 +1531,12 @@ Before a web checkpoint is done:
 
 ## Not now
 
-Recorded for later, not built: the search's filter sentence scrolling
-away with its results, which at 200% text fills most of a short list
-pane before the first result (the results' own box scrolls, so the
+Recorded for later, not built: a row menu on right-click or a long
+press (`context-menu`), deferred as the keyboard reaches a row's actions
+without it, which leaves a screen reader on a touch screen no announced
+way to start picking (ADR031, `feat/row-actions`); the search's filter
+sentence scrolling away with its results, which at 200% text fills
+most of a short list pane before the first result (the results' own box scrolls, so the
 sentence would have to move inside it); a result's mark past where its
 subject or snippet is cut short, which shows only once the row is
 opened, as in Gmail's list; app keyboard shortcuts, a command palette,

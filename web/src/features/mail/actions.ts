@@ -4,6 +4,7 @@ import {
   applyConversationAction,
   changeConversations,
   getGetConversationQueryKey,
+  getListConnectedAccountsQueryKey,
   getListPlacesQueryKey,
 } from "@/api/generated/inbok";
 import type { ConversationActionResultOutput } from "@/api/generated/model/conversationActionResult.zod";
@@ -123,8 +124,11 @@ const inFlight = new WeakMap<PlaceCounts, { running: number; overlapped: boolean
 // send asks the API for request, stores the rows it changed and the
 // unread counts it answered with, and returns its answer. Requests in
 // flight at once keep no answer's counts: the last to settle reads them
-// again. It throws MailEnded, sending nothing, once mail has ended, and
-// an answer that comes after that stores nothing.
+// again. A conversation refused as needs-reconnect reads the accounts
+// again, so one that broke since they were read takes no more actions
+// (its allowedActions lose change-mail) and the sidebar offers Reconnect.
+// It throws MailEnded, sending nothing, once mail has ended, and an answer
+// that comes after that stores nothing.
 //
 // DESIGN: each answer's counts are the whole of List Places as the server
 // had them then, and answers arrive in any order, so an older answer's
@@ -160,6 +164,9 @@ async function send(mail: ActionMail, request: Request): Promise<ActionResult> {
   }
   const counts = settle(flight);
   if (!isCurrent(mail)) return result;
+  if (result.refused.some((r) => r.reason === "needs-reconnect")) {
+    void client.invalidateQueries({ queryKey: getListConnectedAccountsQueryKey() });
+  }
   // NOTE: a list's read in flight never lands over these rows: TanStack DB
   // keeps a direct write over a read that started before it.
   if (result.conversations.length > 0) {

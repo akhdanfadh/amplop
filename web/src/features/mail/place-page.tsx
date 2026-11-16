@@ -27,7 +27,7 @@ import { PickingBar } from "./picking-bar";
 import { UndoBar } from "./undo";
 import { isViewPlace, searchPlace, type Place } from "./places";
 import { labelPath, usePlaceCounts } from "./place-counts";
-import type { FilterChange, SearchFilters } from "./search";
+import { searchPlaces, type FilterChange, type SearchFilters } from "./search";
 import { SearchBox, useSearchBox } from "./search-box";
 import { SearchResults } from "./search-results";
 import { closeSearch, openSearch, placeName, searchPlaceholder } from "./text";
@@ -110,10 +110,19 @@ export function PlacePage({
     return () => cancelAnimationFrame(frame);
   }, [searching]);
 
+  const focusKey = listKey(place, account?.id);
+  // The rows the list shows, and whether it has reached its end, for the
+  // picking bar; picks follow them, so a row that leaves the list leaves
+  // the picks, unless an action holds it until it is answered.
+  const picking = usePicking(focusKey);
   const box = useSearchBox({
     place,
     account: account?.id,
     search,
+    // A new search, or leaving one, ends picking first: the picks were the
+    // list's, and Back then leaves the search rather than restoring the
+    // words before.
+    beforeMove: picking.end,
     onLeft: () => {
       if (inBar) {
         setBarOpen(false);
@@ -137,12 +146,7 @@ export function PlacePage({
 
   // A list asked to focus a row, as an action sends the member back to it,
   // takes focus itself.
-  const focusKey = listKey(place, account?.id);
   const rowAsked = useRowFocusRequest(focusKey) !== undefined;
-  // The rows the list shows, and whether it has reached its end, for the
-  // picking bar; picks follow them, so a row that leaves the list leaves
-  // the picks, unless an action holds it until it is answered.
-  const picking = usePicking(focusKey);
   const [shown, setShown] = useState<{ rows: readonly Conversation[]; complete: boolean }>({
     rows: [],
     complete: false,
@@ -230,7 +234,8 @@ export function PlacePage({
   // The picking bar, in the list header's place, or the top bar's.
   const pickingBar = (inTopBar: boolean) => (
     <PickingBar
-      place={place}
+      places={search ? searchPlaces(search) : [place]}
+      focusKey={focusKey}
       account={account?.id}
       name={name}
       headingRef={headingRef}
@@ -312,10 +317,13 @@ export function PlacePage({
             {search ? (
               <>
                 {/* The results have no heading on screen: the box and the
-                    sentence under it say what they are. */}
-                <h1 ref={headingRef} id="place-heading" tabIndex={-1} className="sr-only">
-                  {name}
-                </h1>
+                    sentence under it say what they are. While picking, the
+                    bar keeps it, as it does a place's. */}
+                {!anyPicked && (
+                  <h1 ref={headingRef} id="place-heading" tabIndex={-1} className="sr-only">
+                    {name}
+                  </h1>
+                )}
                 <SearchResults
                   filters={search}
                   account={account?.id}
@@ -323,6 +331,11 @@ export function PlacePage({
                   openId={openId}
                   focusKey={focusKey}
                   heading={headingRef}
+                  picking={picking}
+                  // In the sentence's place, as a place's list puts it in
+                  // its header's; a phone's is in the top bar.
+                  bar={!inBar && pickingBar(false)}
+                  onRows={onRows}
                 />
               </>
             ) : (
@@ -365,7 +378,7 @@ export function PlacePage({
 }
 
 // BarSearch is the top bar turned into the search box: a way back, then
-// box, which takes focus as it opens.
+// box, which takes focus as it opens, unless something else has it.
 function BarSearch({
   box,
   boxRef,
@@ -375,8 +388,12 @@ function BarSearch({
   boxRef: RefObject<HTMLInputElement | null>;
   onClose: () => void;
 }): ReactElement {
+  // Only while focus is on the page: opened from the search icon, which it
+  // replaced, focus has fallen there; back in the top bar after picking
+  // stops, focus is on the results' row it was last on, and stays there.
   useEffect(() => {
-    if (document.activeElement !== boxRef.current) boxRef.current?.focus();
+    const active = document.activeElement;
+    if (active === null || active === document.body) boxRef.current?.focus();
   }, [boxRef]);
   return (
     <>

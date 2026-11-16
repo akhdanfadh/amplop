@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -17,13 +18,15 @@ import { DropdownMenu, DropdownMenuItem, DropdownMenuTrigger } from "@/component
 import { Tooltip, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { mailData, type Conversation } from "./conversations";
-import { listKey, requestRowFocus } from "./focus-request";
-import { LabelMenuItems, LabelPicker, type Picker } from "./label-menu";
+import { offeredIn } from "./act";
+import { requestRowFocus } from "./focus-request";
+import { LabelMenuItems, LabelPicker, pickersFor, type Picker } from "./label-menu";
 import { useLabels } from "./labels";
 import { perform, type Performed } from "./perform";
 import type { Picking } from "./picking";
 import type { Place } from "./places";
-import { actionsFor, staysInList, targetsOf, type Action } from "./rules";
+import { actionsFor, changeable, changersOf, staysInList, targetsOf, type Action } from "./rules";
+import { laidOut } from "./slots";
 import {
   moreName,
   pickAllName,
@@ -36,33 +39,26 @@ import {
 } from "./text";
 import { actionWords } from "./words";
 
-// The bar's slots, in order, each the actions that take turns in it, the
-// usual one first, as the toolbar's buttons; Report spam is kept in More,
-// as the toolbar keeps it (toolbar.tsx).
-const slots: readonly (readonly Action[])[] = [
-  ["archive", "unarchive", "unspam", "untrash"],
-  ["trash"],
-  ["read", "unread"],
-  ["star", "unstar"],
-];
-const inMore: Action = "spam";
-
 // PickingBar takes the list header's place while conversations are picked
-// (DESIGN.md "Message list"), and the top bar's on a phone (inTopBar),
+// (DESIGN.md "Message list"), or a search's filter sentence's, and the top
+// bar's on a phone (inTopBar),
 // after an arrow that stops picking. It leads with a checkbox, mixed while
 // some of the loaded rows are picked, that picks all loaded, or unpicks
 // all once all are; then how many are picked, "All N" once the list has
-// reached its end (complete); then the actions picked offers in place
-// (actionsFor): each slot shows its usual action while any picked row
+// reached its end (complete); then the actions picked offers in the list
+// of places, of account alone when given, as its reading pane offers them
+// (actionsFor, offeredIn): each slot shows its usual action while any picked row
 // needs it, and More holds Move to… and Labels… (LabelPicker), the pair's
-// other action when the rows are mixed, and Report spam. An action goes to
-// the picked rows it changes;
+// other action when the rows are mixed, and Report spam, shown while it
+// holds any. An action goes to the picked rows it changes, of accounts
+// that take actions (changersOf), the others keeping their pick;
 // rows it takes out of the list stay picked until it is answered, so a
 // refused one comes back picked, and focus goes to the list's next row
-// when none is left. heading keeps the place's name for screen readers,
-// headingRef the page's focus target.
+// (focusKey's) when none is left. heading keeps the place's name for
+// screen readers, headingRef the page's focus target.
 export function PickingBar({
-  place,
+  places,
+  focusKey,
   account,
   name,
   headingRef,
@@ -72,7 +68,8 @@ export function PickingBar({
   picking,
   inTopBar,
 }: {
-  place: Place;
+  places: readonly Place[];
+  focusKey: string;
   account: number | undefined;
   name: string;
   headingRef: RefObject<HTMLHeadingElement | null>;
@@ -92,20 +89,34 @@ export function PickingBar({
     [accountList],
   );
 
-  const offered = actionsFor(picked, place);
+  const changers = useMemo(() => changersOf(accountList), [accountList]);
   // Each button keeps its slot as its key, so focus stays on it as its
   // action changes, e.g. Star to Remove star, as the toolbar's do.
-  const buttons: { slot: number; action: Action }[] = [];
-  const more: Action[] = [];
-  for (const [slot, actions] of slots.entries()) {
-    const here = actions.filter((action) => offered.includes(action));
-    if (here.length === 0) continue;
-    buttons.push({ slot, action: here[0] });
-    more.push(...here.slice(1));
-  }
-  if (offered.includes(inMore)) more.push(inMore);
+  // The list whose actions picked rows offer: a place's own, or a search's.
+  const place = offeredIn(places);
+  const { buttons, more } = laidOut(actionsFor(picked, place, changers));
+  // The picked rows whose accounts take actions, which Move to and Labels
+  // change; the others keep their pick.
+  const own = changeable(picked, changers);
+  // No More while it would open empty: no picked row's account takes
+  // actions.
+  const offersMore = pickersFor(own, place).length > 0 || more.length > 0;
+  // Whether focus was last on one of the actions, and the pick-all box,
+  // which takes it when none is left, e.g. after Archive took the picked
+  // rows of accounts that take actions and left only others: a focused
+  // button that goes leaves focus on the page. The browser tells no one
+  // as the button goes, so this is noted as focus moves.
+  const onAction = useRef(false);
+  const pickAllBox = useRef<HTMLSpanElement>(null);
+  const offersNothing = buttons.length === 0 && !offersMore;
+  useEffect(() => {
+    if (!offersNothing || !onAction.current) return;
+    onAction.current = false;
+    if (document.activeElement !== document.body) return;
+    pickAllBox.current?.querySelector("input")?.focus();
+  }, [offersNothing]);
 
-  const run = (action: Action) => act(action, targetsOf(picked, action, place));
+  const run = (action: Action) => act(action, targetsOf(picked, action, place, changers));
   // act runs performed on targets, the picked rows it changes.
   const act = (performed: Performed, targets: readonly Conversation[]) => {
     if (targets.length === 0) return;
@@ -113,7 +124,7 @@ export function PickingBar({
     const changing = new Set(ids);
     const { conversations, placeCounts } = mailData(client);
     const emptied = picked.every(
-      (row) => changing.has(row.id) && !staysInList(row, performed, [place], account),
+      (row) => changing.has(row.id) && !staysInList(row, performed, places, account),
     );
     const release = picking.hold(ids);
     void perform({
@@ -130,7 +141,7 @@ export function PickingBar({
     // that took the first one's place.
     if (emptied) {
       const [first] = picked;
-      requestRowFocus(listKey(place, account), {
+      requestRowFocus(focusKey, {
         id: first.id,
         dateMs: first.dateMs,
         stays: false,
@@ -193,7 +204,7 @@ export function PickingBar({
           )}
           {/* Over the rows' avatars beside the list, so its box sits on
             their checkboxes' line. */}
-          <span className={cn("flex shrink-0 justify-center", !inTopBar && "w-9")}>
+          <span ref={pickAllBox} className={cn("flex shrink-0 justify-center", !inTopBar && "w-9")}>
             <TooltipTrigger>
               <Checkbox
                 // As its tooltip says, so a voice command by what it shows
@@ -224,7 +235,15 @@ export function PickingBar({
             Never wider than the bar: where they do not fit beside the
             count, the actions take a row of their own and wrap in it, at
             its end, so none runs off the screen. */}
-          <span className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end">
+          <span
+            className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end"
+            onFocus={() => {
+              onAction.current = true;
+            }}
+            onBlur={() => {
+              onAction.current = false;
+            }}
+          >
             {buttons.map(({ slot, action }) => {
               const { label, icon: Icon } = actionWords[action];
               return (
@@ -241,41 +260,40 @@ export function PickingBar({
                 </TooltipTrigger>
               );
             })}
-            <DropdownMenuTrigger>
-              <TooltipTrigger>
-                <Button ref={moreButton} variant="ghost" size="icon-sm" aria-label={moreName}>
-                  <EllipsisVerticalIcon aria-hidden="true" />
-                </Button>
-                <Tooltip>{moreName}</Tooltip>
-              </TooltipTrigger>
-              <DropdownMenu placement="bottom end" className="w-auto">
-                <LabelMenuItems conversations={picked} list={place} onOpen={setPicker} />
-                {more.map((action) => {
-                  const { label, icon: Icon } = actionWords[action];
-                  return (
-                    <DropdownMenuItem key={action} onAction={() => run(action)}>
-                      <Icon aria-hidden="true" />
-                      {label}
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenu>
-            </DropdownMenuTrigger>
+            {offersMore && (
+              <DropdownMenuTrigger>
+                <TooltipTrigger>
+                  <Button ref={moreButton} variant="ghost" size="icon-sm" aria-label={moreName}>
+                    <EllipsisVerticalIcon aria-hidden="true" />
+                  </Button>
+                  <Tooltip>{moreName}</Tooltip>
+                </TooltipTrigger>
+                <DropdownMenu placement="bottom end" className="w-auto">
+                  <LabelMenuItems conversations={own} list={place} onOpen={setPicker} />
+                  {more.map((action) => {
+                    const { label, icon: Icon } = actionWords[action];
+                    return (
+                      <DropdownMenuItem key={action} onAction={() => run(action)}>
+                        <Icon aria-hidden="true" />
+                        {label}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenu>
+              </DropdownMenuTrigger>
+            )}
             <LabelPicker
               picker={picker}
               triggerRef={moreButton}
               onClose={() => setPicker(null)}
-              conversations={picked}
+              conversations={own}
               list={place}
               // Under their account's name where the list shows several
               // accounts' mail, even once one account's picks are left.
               headings={account === undefined && (accountList?.length ?? 0) > 1}
               labels={labels}
               accountName={(id) => names.get(id) ?? ""}
-              canChange={(id) =>
-                accountList?.some((a) => a.id === id && a.allowedActions.includes("change-mail")) ??
-                false
-              }
+              canChange={(id) => changers.has(id)}
               onAct={act}
             />
           </span>
