@@ -31,6 +31,10 @@ type Failure =
   | { conversation: Conversation; reason: Refusal }
   | { conversation: Conversation; reason: "error"; message: string | undefined };
 
+// From is where an action comes from: one conversation's own controls, or
+// the picking bar, whose action is on several though it may change one.
+export type From = "one" | "picked";
+
 // The actions run so far, which numbers each, and the latest to reach each
 // conversation for each thing it changes (actionKind): an answer speaks for
 // a conversation only while no later action changed the same thing on it,
@@ -64,32 +68,35 @@ type Run = { batch: readonly Conversation[]; answer: Promise<ActionResult> };
 // the contract's limit each and go one after another, so an account's
 // provider calls stay within the server's own limit. An action that moves
 // conversations, or acts on several, shows its Undo in the Undo bar at
-// once (UndoBar); its Undo waits for the answers and sends their undo,
-// putting back what changed. A refusal or failure lowers that Undo's
-// count, closing it when nothing changed, and one error toast says why:
-// for several, one sentence per reason and the conversations by reason
-// under Show details, each with its account's name from accountName. The
+// once (UndoBar), as does every action from the picking bar (from); its
+// Undo waits for the answers and sends their undo, putting back what
+// changed. A refusal or failure lowers that Undo's count, closing it when
+// nothing changed, and one error toast says why: for several, one
+// sentence per reason and the conversations by reason under Show
+// details, each with its account's name from accountName. The
 // conversations an answer changed no longer keep an older error toast
 // open (closeAbout). Feedback about a conversation a later action reached
-// is left to that action. A refusal as not found also removes the row; an ended
-// session calls onUnauthorized. Nothing shows once the member's mail has
-// ended, e.g. after sign-out.
+// is left to that action. A refusal as not found also removes the row;
+// an ended session calls onUnauthorized. Nothing shows once the member's
+// mail has ended, e.g. after sign-out.
 export async function perform({
   mail,
   conversations,
   action,
+  from = "one",
   accountName,
   onUnauthorized,
 }: {
   mail: ActionMail;
   conversations: readonly Conversation[];
   action: Action;
+  from?: From;
   accountName?: (accountId: number) => string;
   onUnauthorized: () => void;
 }): Promise<Map<string, Outcome>> {
   const words = actionWords[action];
   const current = () => isCurrent(mail);
-  const many = conversations.length > 1;
+  const many = from === "picked" || conversations.length > 1;
   actions++;
   const self = actions;
   const slot = (id: string) => `${id} ${actionKind[action]}`;

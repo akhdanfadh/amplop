@@ -12,9 +12,9 @@ pages, messages, leave warnings, and banners; the mail branches build on
 both and add the list's building blocks with the list (ADR031, "For branch
 3"). Until a part is built, the code still shows the old look; build new
 work to this file, not to the old code. Not built yet: one rule for a
-session that ends on an open page (`feat/session-end`), the row menu and
-picking several conversations (`feat/list-actions`), and the Outbox in the
-mail list (`feat/outbox-list`; ADR031, "Mitigations and follow-up").
+session that ends on an open page (`feat/session-end`), the actions on a
+hovered row and the row menu (ADR031, "Mitigations and follow-up"), and
+the Outbox in the mail list (`feat/outbox-list`; the same).
 
 ## Principles
 
@@ -445,14 +445,37 @@ last two redirect into settings, so settings can move without the server.
   whose they are while picking. The box, Space, Shift ranges (Shift on a
   press or an arrow), Ctrl or Cmd+A, and a long press on touch pick;
   while picking, a tap picks too, and a mouse press on a row's text, or
-  Enter, still opens it, the picks staying. Escape, Back, and unticking
-  the last row stop picking, focus staying on the list's row. Starting
-  adds a history entry, which Back takes, at every width. Picks follow
+  Enter, still opens it, the picks staying. Escape (from the list or the
+  bar), Back, and unticking the last row stop picking, focus going back
+  to the list's row, where coming back to the list while picking puts it
+  too, the heading being the bar's hidden one then. Starting adds a
+  history entry, which Back takes, at every width. Picks follow
   the rows: a row the list no longer shows is unpicked, except one an
   action took out until it answers, so a refused row comes back picked;
   Undo brings rows back unpicked. A place's list picks; a search's
   results, which span places, keep their avatars (ADR031, "Mitigations
   and follow-up").
+- **Picking bar:** it takes the list header's place (the top bar's on a
+  phone, see Phones): a tri-state checkbox over the rows' boxes, mixed
+  while some loaded rows are picked, which picks every loaded row
+  ("Pick all 25 loaded conversations"), and unpicks all once all are;
+  how many are picked ("25 picked"), "All 60 picked" only once the list
+  has reached its end; with touch-size buttons the number alone ("3",
+  "All 60"), as phone mail apps show it, and elsewhere the word dropped
+  where it does not fit; then the toolbar's slots, move, Delete,
+  mark, star, and More, the list header's 32 px buttons; where they do not
+  fit beside the count, e.g. at large text, they wrap onto a row of their
+  own.
+  Each slot shows its usual action while any picked row needs it
+  (Archive while any is in the Inbox, Mark read while any is unread,
+  Star while any is unstarred, as `actionsFor` over the rows offers
+  them); the pair's other action goes into More when the rows are mixed,
+  with Report spam; the star is a plain Star or Remove star. An action
+  goes only to the picked rows it changes, every guess showing at once,
+  and always gets an Undo (see Feedback). Picking all picks the loaded
+  rows, as fixed IDs; acting on a whole place is Not now. When an action
+  leaves no picked row, focus goes to the row that took the first one's
+  place.
 - **Loading more:** pages of 50 as the member nears the end. New mail while
   scrolled waits behind a "N new conversations" button floating over the
   list's top, centred: a small primary button with an up arrow and the
@@ -776,7 +799,10 @@ then search, whose icon turns the bar into the box (a Back arrow, then
 the box) until the member leaves the search; no unread count, as in
 phone mail apps: the list's bold rows show what is unread, and the
 drawer has the counts. It stays in
-place, and an open conversation leaves it to the wordmark. From 780 px
+place, and an open conversation leaves it to the wordmark. While picking
+it is the picking bar, the menu turned into an arrow, "Stop picking", and
+the bar is the phone's way to the picked rows' actions; picking closes
+an open search box. From 780 px
 to 1023 px, where the sidebar is also a drawer, the same bar holds them.
 Compose is a labelled floating button. A conversation has Back and its
 actions on top, and labelled Reply, Reply all, Forward at the bottom.

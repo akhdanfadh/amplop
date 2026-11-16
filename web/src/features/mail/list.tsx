@@ -155,9 +155,10 @@ export function ConversationList({
   // An action in the reading pane that sent the member back to this list
   // asks it, once the pane has closed, to focus the row that took its
   // conversation's place, or that row itself while it stays (ADR031, "Mail
-  // actions as built", checkpoint 7c): scrolled into view first, as only
-  // the rows on screen are drawn. With no row left, the heading takes it,
-  // as focus would fall to the page.
+  // actions as built", checkpoint 7c); the picking bar's action that took
+  // every picked row away asks it at once, as the bar goes: scrolled into
+  // view first, as only the rows on screen are drawn. With no row left,
+  // the heading takes it, as focus would fall to the page.
   const listBox = useRef<HTMLDivElement>(null);
   // Where the last press on the list began (onSelectionChange).
   const press = useRef<{ mouse: boolean; text: boolean; id: string | undefined }>(undefined);
@@ -166,7 +167,7 @@ export function ConversationList({
   // Not while the first page loads, which would leave no row to focus.
   const drawn = !list.isLoading && !list.isIdle;
   useEffect(() => {
-    if (!focusRequest || openId !== undefined || !drawn) return;
+    if (!focusRequest || (openId !== undefined && !focusRequest.now) || !drawn) return;
     takeRowFocus(focusKey);
     const index = nextRow(rows, focusRequest);
     const grid = listBox.current?.querySelector<HTMLElement>("[role=grid]");

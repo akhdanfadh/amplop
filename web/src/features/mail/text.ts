@@ -178,6 +178,31 @@ export function undone(subject: string): string {
   return `Undone: ${subject}.`;
 }
 
+// The picking bar's name as a toolbar, and its words.
+export const pickedBarName = "Picked conversations";
+export const stopPicking = "Stop picking";
+
+// pickedNumber returns how many conversations are picked, "All 60" once
+// every one of the place is (DESIGN.md "Message list"); the picking bar
+// says pickedWord after it.
+export function pickedNumber(count: number, all: boolean): string {
+  return all ? `All ${formatCount(count)}` : formatCount(count);
+}
+export const pickedWord = "picked";
+
+// pickAllName returns the name of the bar's checkbox that picks the count
+// conversations loaded, and pickAllTooltip its shorter tooltip.
+export function pickAllName(count: number): string {
+  return `Pick all ${formatCount(count)} loaded conversations`;
+}
+export function pickAllTooltip(count: number): string {
+  return `Pick all ${formatCount(count)} loaded`;
+}
+
+// The bar's checkbox's tooltip once every loaded row is picked, when a press
+// unpicks them all; its name stays, and its state says it is ticked.
+export const unpickAll = "Unpick all";
+
 // What a conversation's toolbar's More menu is called, and its link.
 export const moreName = "More actions";
 export const openInGmail = "Open in Gmail";

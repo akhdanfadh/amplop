@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ProblemType } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
-import { checkFailures, checkRefusal, refusalSentences, subjectText, syncingDetail } from "./text";
+import {
+  checkFailures,
+  checkRefusal,
+  pickedNumber,
+  refusalSentences,
+  subjectText,
+  syncingDetail,
+} from "./text";
 import { actionWords } from "./words";
 
 // refused returns an error the API sent with status and type.
@@ -107,6 +114,13 @@ describe("refusalSentences", () => {
     expect(refusalSentences({ reconnect: ["Work"], gone: 1, failed: 0, errors: [] })).toBe(
       "Reconnect Work in Connected accounts, then try again. 1 conversation is no longer in Gmail.",
     );
+  });
+});
+
+describe("pickedNumber", () => {
+  it("says how many are picked, and All once every one of a place is", () => {
+    expect(pickedNumber(25, false)).toBe("25");
+    expect(pickedNumber(1284, true)).toBe("All 1,284");
   });
 });
 

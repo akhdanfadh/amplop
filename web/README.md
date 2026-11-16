@@ -149,8 +149,9 @@ Put shared code in the folder for its responsibility:
   actions guess and which places a conversation is in (`rules.ts`), each
   action's words (`words.ts`), running an action on one conversation or
   many (`perform.ts`) and its Undo bar (`undo.tsx`), picking rows
-  (`picking.ts`), how a row shows its date and people, and the address
-  Back to mail returns to.
+  (`picking.ts`) and the bar that acts on them (`picking-bar.tsx`), how a
+  row shows its date and people, and the address Back to mail returns
+  to.
 - `src/features/settings`: the settings sidebar and the settings page
   layout (`SettingsPage`, `SettingsSection`) every settings page uses.
 - `src/components`: shared components, such as the shell around every page
@@ -1496,8 +1497,9 @@ collections live per query client and end with the member's session
 router's loaded pages. `clearAccountCache` tells the browser's other
 inbok tabs over a `BroadcastChannel`, and a signed-in frame that hears
 it loads again, so a tab never shows one member's mail beside another's.
-Mail actions, e.g. the row's star, go through `perform`
-(`features/mail/perform.ts`), which leaves feedback about a conversation
+Mail actions, e.g. the row's star or the picking bar's Archive, go
+through `perform` (`features/mail/perform.ts`), which gives the picking
+bar's every action an Undo (`from: "picked"`), leaves feedback about a conversation
 to the latest action that changed the same thing on it (its place, read
 state, or star), sends several conversations in requests of at most the
 contract's limit, one after another (`runAction`'s `after`), and runs

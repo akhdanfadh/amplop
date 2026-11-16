@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { cleanup, render } from "vitest-browser-react";
 import type { ConversationRow } from "@/api/generated/model";
+import { closeToasts } from "@/components/ui/toast";
 import { clearAccountCache } from "@/features/auth/session-cache";
 import { appRouter, memberSession } from "@/test/app-router";
 import { conversation, listedAccount, mailApi, type MailApi } from "@/test/mail-api";
@@ -11,11 +12,19 @@ let api: MailApi;
 let current: Awaited<ReturnType<typeof appRouter>> | undefined;
 
 afterEach(async () => {
+  gated = false;
+  waiting = [];
+  closeToasts();
   await cleanup();
   if (current) clearAccountCache(current.options.context.queryClient);
   current = undefined;
   vi.unstubAllGlobals();
 });
+
+// Whether open's actions wait to be answered, and the ones waiting, each
+// answered when its function runs.
+let gated = false;
+let waiting: (() => void)[] = [];
 
 // open renders the app width wide at address over rows, one account's, or
 // accounts', and returns its router once the list shows.
@@ -29,6 +38,9 @@ async function open(
     const path = new URL(url, location.href).pathname;
     if (path === "/api/v0/sessions/current") {
       return api.signedOut ? api.fetch(url, init) : undefined;
+    }
+    if (gated && path === "/api/v0/conversations/actions") {
+      return new Promise<void>((done) => waiting.push(done)).then(() => api.fetch(url, init));
     }
     return api.fetch(url, init);
   });
@@ -61,9 +73,25 @@ async function pickBox(subject: string, { shift = false } = {}): Promise<void> {
   await userEvent.click(box(subject), (shift ? { modifiers: ["Shift"] } : {}) as object);
 }
 
-// picked expects subject's row to be picked, or not when is is false.
-async function picked(subject: string, is = true): Promise<void> {
-  await expect.element(row(subject)).toHaveAttribute("aria-selected", String(is));
+// count returns the bar's count of n picked, "All n" when all is set.
+function count(n: number, all = false) {
+  return bar().getByText(`${all ? "All " : ""}${n}`, { exact: true });
+}
+
+// pickAll returns the box of the bar's checkbox named name: its input is
+// hidden, under the box a pointer presses.
+function pickAll(name: string): HTMLElement {
+  const input = bar().getByRole("checkbox", { name }).element();
+  const shown = input
+    .closest("[data-slot=checkbox]")
+    ?.querySelector<HTMLElement>("[data-slot=checkbox-box]");
+  if (!shown) throw new Error(`No box for ${name}.`);
+  return shown;
+}
+
+// bar returns the picking bar.
+function bar() {
+  return page.getByRole("toolbar", { name: "Picked conversations" });
 }
 
 describe("picking", () => {
@@ -71,11 +99,11 @@ describe("picking", () => {
     await open([conversation(5), conversation(4), conversation(3), conversation(2)]);
 
     await pickBox("Subject 5");
-    await picked("Subject 5");
+    await expect.element(count(1)).toBeVisible();
     await pickBox("Subject 3", { shift: true });
 
+    await expect.element(count(3)).toBeVisible();
     await expect.element(row("Subject 4")).toHaveAttribute("aria-selected", "true");
-    await expect.element(row("Subject 3")).toHaveAttribute("aria-selected", "true");
     await expect.element(row("Subject 2")).toHaveAttribute("aria-selected", "false");
   });
 
@@ -87,8 +115,33 @@ describe("picking", () => {
     await userEvent.click(row("Subject 3").getByText("Preview 3"));
 
     await expect.poll(() => router.state.location.pathname).toBe(`/mail/inbox/${rows[2].id}`);
-    await picked("Subject 5");
-    await picked("Subject 3", false);
+    await expect.element(count(1)).toBeVisible();
+    await expect.element(row("Subject 3")).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("picks again, and Back stops it, while a conversation opened while picking stays open", async () => {
+    const rows = Array.from({ length: 8 }, (_, n) => conversation(20 - n));
+    const router = await open(rows);
+    await pickBox("Subject 20");
+    await pickBox("Subject 17", { shift: true });
+    await userEvent.click(row("Subject 15").getByText("Preview 15"));
+    await expect.poll(() => router.state.location.pathname).toBe(`/mail/inbox/${rows[5].id}`);
+    await userEvent.click(bar().getByRole("button", { name: "Archive" }));
+    await expect.element(bar()).not.toBeInTheDocument();
+    await new Promise((done) => setTimeout(done, 1500));
+    await userEvent.click(
+      page.getByRole("region", { name: "Undo" }).getByRole("button", { name: "Undo" }),
+    );
+    await expect.element(row("Subject 20")).toBeVisible();
+
+    await pickBox("Subject 20");
+
+    await expect.element(count(1)).toBeVisible();
+    // Back stops this picking, though the conversation's entry is the last
+    // picking's.
+    router.history.back();
+    await expect.element(bar()).not.toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(`/mail/inbox/${rows[5].id}`);
   });
 
   it("opens the focused row on Enter while rows are picked", async () => {
@@ -100,7 +153,7 @@ describe("picking", () => {
     await userEvent.keyboard("{Enter}");
 
     await expect.poll(() => router.state.location.pathname).toBe(`/mail/inbox/${rows[1].id}`);
-    await picked("Subject 5");
+    await expect.element(count(1)).toBeVisible();
   });
 
   it("picks with Space, and Escape stops picking", async () => {
@@ -108,11 +161,11 @@ describe("picking", () => {
 
     row("Subject 4").element().focus();
     await userEvent.keyboard(" ");
-    await picked("Subject 4");
+    await expect.element(count(1)).toBeVisible();
     await userEvent.keyboard("{Escape}");
 
-    await picked("Subject 4", false);
-    await expect.element(row("Subject 4")).toHaveFocus();
+    await expect.element(bar()).not.toBeInTheDocument();
+    await expect.element(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
   });
 
   it("stops picking on Back, and takes back the entry it added when stopped another way", async () => {
@@ -122,25 +175,346 @@ describe("picking", () => {
     await pickBox("Subject 5");
     await expect.poll(() => router.history.length).toBe(entries + 1);
     router.history.back();
-    await picked("Subject 5", false);
+    await expect.element(bar()).not.toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/mail/inbox");
 
     await pickBox("Subject 4");
     await expect.poll(() => router.history.location.state.picking).toBeDefined();
     await pickBox("Subject 4");
-    await picked("Subject 4", false);
+    await expect.element(bar()).not.toBeInTheDocument();
     await expect.poll(() => router.history.location.state.picking).toBeUndefined();
+  });
+
+  it("archives the picked rows, with one Undo that puts them back unpicked", async () => {
+    const rows = [conversation(5), conversation(4), conversation(3)];
+    await open(rows);
+    await pickBox("Subject 5");
+    await pickBox("Subject 4");
+
+    await userEvent.click(bar().getByRole("button", { name: "Archive" }));
+
+    await expect.element(row("Subject 5")).not.toBeInTheDocument();
+    await expect.element(bar()).not.toBeInTheDocument();
+    // Focus goes to the row that took the first picked one's place.
+    await expect.element(row("Subject 3")).toHaveFocus();
+    await expect
+      .element(page.getByText("Archived: 2 conversations. Find them in All mail."))
+      .toBeInTheDocument();
+    const undo = page.getByRole("region", { name: "Undo" });
+    expect(api.actions).toEqual([{ action: "archive", ids: [rows[0].id, rows[1].id] }]);
+
+    await userEvent.click(undo.getByRole("button", { name: "Undo" }));
+
+    await expect.element(row("Subject 5")).toBeVisible();
+    await expect.element(row("Subject 5")).toHaveAttribute("aria-selected", "false");
+    await expect.element(bar()).not.toBeInTheDocument();
+    // Picking starts again as before.
+    await pickBox("Subject 4");
+    await expect.element(count(1)).toBeVisible();
+  });
+
+  it("sends an action only to the picked rows it changes, which stay picked", async () => {
+    const rows = [
+      conversation(5, { unread: true }),
+      conversation(4),
+      conversation(3, { unread: true }),
+    ];
+    await open(rows);
+    await pickBox("Subject 5");
+    await pickBox("Subject 3", { shift: true });
+
+    // Mark read while any is unread; Mark unread waits in More.
+    await userEvent.click(bar().getByRole("button", { name: "Mark read" }));
+
+    expect(api.actions).toEqual([{ action: "read", ids: [rows[0].id, rows[2].id] }]);
+    await expect.element(count(3, true)).toBeVisible();
+    await expect.element(page.getByText("Marked read: 2 conversations.")).toBeInTheDocument();
+    await expect.element(bar().getByRole("button", { name: "Mark unread" })).toBeVisible();
+  });
+
+  it("keeps a refused row picked and says why in one toast, with details", async () => {
+    const rows = [conversation(5), conversation(4), conversation(3)];
+    await open(rows);
+    api.refuse[rows[0].id] = "needs-reconnect";
+    // Gone at Gmail, and from inbok's lists once its poll noticed.
+    api.refuse[rows[1].id] = "not-found";
+    api.conversations = [rows[0], rows[2]];
+    await pickBox("Subject 5");
+    await pickBox("Subject 3", { shift: true });
+
+    await userEvent.click(bar().getByRole("button", { name: "Archive" }));
+
+    await expect.element(page.getByText("Couldn't archive 2 conversations")).toBeVisible();
+    await expect
+      .element(
+        page.getByText(
+          "Reconnect ana@example.com in Connected accounts, then try again. 1 conversation is no longer in Gmail.",
+        ),
+      )
+      .toBeVisible();
+    await expect.element(row("Subject 5")).toHaveAttribute("aria-selected", "true");
+    await expect.element(row("Subject 4")).not.toBeInTheDocument();
+    // The one row left in the list.
+    await expect.element(count(1, true)).toBeVisible();
+    // The Undo is for the one that changed.
+    await expect
+      .element(page.getByText("Archived: Subject 3. Find it in All mail."))
+      .toBeInTheDocument();
+
+    await userEvent.click(page.getByRole("button", { name: "Show details" }));
+    await expect.element(page.getByText("Account needs reconnecting")).toBeVisible();
+    // One account: the lines name only their subjects.
+    await expect
+      .element(
+        page
+          .getByRole("list", { name: "Account needs reconnecting" })
+          .getByText("Subject 5", { exact: true }),
+      )
+      .toBeVisible();
+    await expect
+      .element(
+        page
+          .getByRole("list", { name: "No longer in Gmail" })
+          .getByText("Subject 4", { exact: true }),
+      )
+      .toBeVisible();
+  });
+
+  it("names each conversation's account in the details when they span several", async () => {
+    const rows = [conversation(5), conversation(4, { accountId: 2 })];
+    await open(rows, {
+      accounts: [listedAccount(1, "ana@example.com"), listedAccount(2, "bo@example.com")],
+    });
+    api.refuse[rows[0].id] = "failed";
+    api.refuse[rows[1].id] = "failed";
+    await pickBox("Subject 5");
+    await pickBox("Subject 4");
+
+    await userEvent.click(bar().getByRole("button", { name: "Archive" }));
+    await userEvent.click(page.getByRole("button", { name: "Show details" }));
+
+    const lines = page.getByRole("list", { name: "Gmail didn't answer" });
+    await expect.element(lines.getByText("Subject 5 ·\u00a0ana@example.com")).toBeVisible();
+    await expect.element(lines.getByText("Subject 4 ·\u00a0bo@example.com")).toBeVisible();
+  });
+
+  it("closes a failure's toast once a newer action changes each conversation it named", async () => {
+    const rows = [conversation(5), conversation(4)];
+    await open(rows);
+    api.refuse[rows[0].id] = "failed";
+    await pickBox("Subject 5");
+    await pickBox("Subject 4");
+    await userEvent.click(bar().getByRole("button", { name: "Archive" }));
+    await expect.element(page.getByText("Couldn't archive 1 conversation")).toBeVisible();
+
+    delete api.refuse[rows[0].id];
+    await userEvent.click(bar().getByRole("button", { name: "Archive" }));
+
+    await expect.element(page.getByText("Couldn't archive 1 conversation")).not.toBeInTheDocument();
+  });
+
+  it("picks every loaded row from the bar's checkbox, all of them once the list has ended", async () => {
+    await open([conversation(5), conversation(4), conversation(3)]);
+    await pickBox("Subject 4");
+
+    await userEvent.click(pickAll("Pick all 3 loaded conversations"));
+    await expect.element(count(3, true)).toBeVisible();
+    await userEvent.click(pickAll("Unpick all"));
+
+    await expect.element(bar()).not.toBeInTheDocument();
+  });
+
+  it("picks only the loaded rows, and says how many, while older ones are still to load", async () => {
+    await open(Array.from({ length: 60 }, (_, n) => conversation(n)));
+    await pickBox("Subject 59");
+
+    await userEvent.click(pickAll("Pick all 50 loaded conversations"));
+
+    await expect.element(count(50)).toBeVisible();
+  });
+
+  it("sends more picked than the contract takes in requests of its limit, one after another", async () => {
+    const rows = Array.from({ length: 120 }, (_, n) => conversation(n));
+    await open(rows);
+    // Each move to the last row loads the next page, until the end.
+    const end = page.getByText("That's everything inbok has copied.", { exact: false });
+    await vi.waitFor(
+      async () => {
+        const last = list().element().querySelectorAll<HTMLElement>("[role=row][aria-label]");
+        last[last.length - 1]?.focus();
+        await userEvent.keyboard("{End}");
+        expect(end.query()).not.toBeNull();
+      },
+      { timeout: 10_000 },
+    );
+    list().element().querySelector<HTMLElement>("[role=row][aria-label]")?.focus();
+    // React Aria's select all: Cmd+A on a Mac, Ctrl+A elsewhere.
+    const mod = /Mac/.test(navigator.platform) ? "Meta" : "Control";
+    await userEvent.keyboard(`{${mod}>}a{/${mod}}`);
+    await expect.element(count(120, true)).toBeVisible();
+
+    gated = true;
+    await userEvent.click(bar().getByRole("button", { name: "Archive" }));
+    await expect
+      .element(page.getByText("Archived: 120 conversations. Find them in All mail."))
+      .toBeInTheDocument();
+    // Undo pressed at once waits for every answer, then undoes them all.
+    await userEvent.click(
+      page.getByRole("region", { name: "Undo" }).getByRole("button", { name: "Undo" }),
+    );
+
+    // One request at a time: each waits for the one before to answer.
+    // oxlint-disable no-await-in-loop -- each step needs the one before it answered.
+    for (let sent = 1; sent <= 5; sent++) {
+      await expect.poll(() => waiting.length).toBe(1);
+      await new Promise((done) => setTimeout(done, 100));
+      expect(waiting.length).toBe(1);
+      waiting.shift()?.();
+      await expect.poll(() => api.actions.length).toBe(sent);
+    }
+    // oxlint-enable no-await-in-loop
+    expect(api.actions.map((a) => a.ids.length)).toEqual([25, 25, 25, 25, 20]);
+    await expect
+      .poll(() => api.requests.filter((r) => r === "/api/v0/conversations/changes").length, {
+        timeout: 5000,
+      })
+      .toBe(5);
+    await expect.element(row("Subject 119")).toBeVisible();
+  });
+
+  it("gives an action from the bar its Undo though it changes one picked row", async () => {
+    const rows = [conversation(5, { unread: true }), conversation(4), conversation(3)];
+    await open(rows);
+    await pickBox("Subject 5");
+    await pickBox("Subject 3", { shift: true });
+
+    await userEvent.click(bar().getByRole("button", { name: "Mark read" }));
+
+    expect(api.actions).toEqual([{ action: "read", ids: [rows[0].id] }]);
+    await expect.element(page.getByText("Marked read: Subject 5.")).toBeInTheDocument();
+  });
+
+  it("keeps focus on a bar button whose action changes, e.g. Star to Remove star", async () => {
+    await open([conversation(5), conversation(4)]);
+    await pickBox("Subject 5");
+    bar().getByRole("button", { name: "Star" }).element().focus();
+
+    await userEvent.keyboard("{Enter}");
+
+    await expect.element(bar().getByRole("button", { name: "Remove star" })).toHaveFocus();
+  });
+
+  it("stops picking on Escape from the bar, after its tooltip, focus back on the list's row", async () => {
+    await open([conversation(5), conversation(4)]);
+    row("Subject 4").element().focus();
+    await userEvent.keyboard(" ");
+    bar().getByRole("button", { name: "Archive" }).element().focus();
+    // The first Escape closes the button's tooltip, which focus showed.
+    await userEvent.keyboard("{Escape}");
+    await expect.element(bar()).toBeVisible();
+
+    await userEvent.keyboard("{Escape}");
+
+    await expect.element(bar()).not.toBeInTheDocument();
+    await expect.element(row("Subject 4")).toHaveFocus();
+  });
+
+  it("gives focus back to the list when the bar's checkbox unpicks every row", async () => {
+    await open([conversation(5), conversation(4)]);
+    row("Subject 5").element().focus();
+    await userEvent.keyboard(" ");
+    await userEvent.click(pickAll("Pick all 2 loaded conversations"));
+    await expect.element(count(2, true)).toBeVisible();
+
+    await userEvent.click(pickAll("Unpick all"));
+
+    await expect.element(bar()).not.toBeInTheDocument();
+    await expect.element(row("Subject 5")).toHaveFocus();
   });
 
   it("starts with none picked on coming back to a place", async () => {
     const router = await open([conversation(5), conversation(4, { inbox: false })]);
     await pickBox("Subject 5");
-    await picked("Subject 5");
+    await expect.element(count(1, true)).toBeVisible();
 
     await router.navigate({ to: "/mail/$place", params: { place: "all" } });
     await expect.element(row("Subject 4")).toBeVisible();
     await router.navigate({ to: "/mail/$place", params: { place: "inbox" } });
 
-    await picked("Subject 5", false);
+    await expect.element(row("Subject 5")).toHaveAttribute("aria-selected", "false");
+    await expect.element(bar()).not.toBeInTheDocument();
+  });
+
+  it("puts focus on the list's row, not the bar's hidden heading, on coming back while picking", async () => {
+    const rows = [conversation(5), conversation(4), conversation(3)];
+    const router = await open(rows);
+    await pickBox("Subject 5");
+    await userEvent.click(row("Subject 3").getByText("Preview 3"));
+    await expect.poll(() => router.state.location.pathname).toBe(`/mail/inbox/${rows[2].id}`);
+
+    router.history.back();
+
+    await expect.poll(() => router.state.location.pathname).toBe("/mail/inbox");
+    await expect.element(row("Subject 3")).toHaveFocus();
+    await expect.element(count(1)).toBeVisible();
+  });
+
+  it("puts focus on the bar's last button when an action from More empties More", async () => {
+    // In Spam, More holds no Report spam: only the star pair's other action.
+    const spam = { inbox: false, allMail: false, spam: true };
+    await open([conversation(5, { ...spam, starred: true }), conversation(4, spam)], {
+      address: "/mail/spam",
+    });
+    await pickBox("Subject 5");
+    await pickBox("Subject 4");
+    bar().getByRole("button", { name: "More actions" }).element().focus();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(page.getByRole("menuitem", { name: "Remove star" })).toBeVisible();
+
+    await userEvent.keyboard("{Enter}");
+
+    await expect
+      .element(bar().getByRole("button", { name: "More actions" }))
+      .not.toBeInTheDocument();
+    await expect.element(bar().getByRole("button", { name: "Star" })).toHaveFocus();
+  });
+
+  it("is the top bar on a phone, after an arrow that stops picking", async () => {
+    await open([conversation(5), conversation(4)], { width: 390 });
+    await pickBox("Subject 5");
+
+    await expect.element(bar()).toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: "Open sidebar" }))
+      .not.toBeInTheDocument();
+    await userEvent.click(bar().getByRole("button", { name: "Stop picking" }));
+
+    await expect.element(bar()).not.toBeInTheDocument();
+    await expect.element(page.getByRole("button", { name: "Open sidebar" })).toBeVisible();
+  });
+
+  it("takes a phone's top bar from an open search box, which stays closed after", async () => {
+    await open([conversation(5), conversation(4)], { width: 390 });
+    await userEvent.click(page.getByRole("button", { name: "Search", exact: true }));
+    await expect.element(page.getByRole("button", { name: "Close search" })).toBeVisible();
+
+    await pickBox("Subject 5");
+
+    await expect.element(bar()).toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: "Close search" }))
+      .not.toBeInTheDocument();
+    await userEvent.click(bar().getByRole("button", { name: "Stop picking" }));
+    await expect.element(page.getByRole("button", { name: "Search", exact: true })).toBeVisible();
+    await expect.element(row("Subject 5")).toHaveFocus();
+  });
+
+  it("sits under the search box beside the list", async () => {
+    await open([conversation(5), conversation(4)]);
+    await pickBox("Subject 5");
+
+    await expect.element(bar()).toBeVisible();
+    const search = page.getByRole("searchbox").element().getBoundingClientRect();
+    expect(bar().element().getBoundingClientRect().top).toBeGreaterThanOrEqual(search.bottom);
   });
 });

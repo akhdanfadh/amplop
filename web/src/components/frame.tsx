@@ -142,7 +142,7 @@ export function Frame({
 // TopBar holds the drawer's button where the sidebar is a drawer, and is
 // absent elsewhere. After the button, a page's own bar, which slotRef
 // receives the box of, takes the wordmark's place; a page without one
-// shows the wordmark.
+// shows the wordmark. A picking bar takes the button's place too.
 function TopBar({ slotRef }: { slotRef: (box: HTMLElement | null) => void }): ReactElement | null {
   const { isDrawer } = useSidebar();
   if (!isDrawer) return null;
@@ -151,7 +151,9 @@ function TopBar({ slotRef }: { slotRef: (box: HTMLElement | null) => void }): Re
     // The sidebar header's padding, so the drawer's button opens over the
     // top bar's in the same place.
     <header className="group/top-bar flex shrink-0 items-center gap-2 border-b p-3">
-      <SidebarTrigger />
+      {/* A page's picking bar leads with its own arrow, which stops
+          picking (features/mail/picking-bar.tsx). */}
+      <SidebarTrigger className="group-has-[[data-slot=picking-bar]]/top-bar:hidden" />
       <Link
         to="/"
         className={cn(
