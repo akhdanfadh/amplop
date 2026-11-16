@@ -65,6 +65,27 @@ describe("runAction", () => {
     expect(mail.conversations.get(row.id)?.unread).toBe(false);
   });
 
+  it("answers a later change by its own request, though an earlier one on the row failed", async () => {
+    const [work, home] = [
+      "00000000-0000-4000-8000-0000000000c1",
+      "00000000-0000-4000-8000-0000000000c2",
+    ];
+    const row = conversation(1, { labelIds: [work, home] });
+    const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
+    const mail = await openInbox(api);
+    api.failAction = 500;
+
+    // Two label chips' × pressed at once: the second waits for the first.
+    const first = runAction(mail, { changes: [{ ids: [row.id], remove: [work] }] });
+    const second = runAction(mail, { changes: [{ ids: [row.id], remove: [home] }] });
+
+    await expect(first).rejects.toMatchObject({ status: 500 });
+    const answer = await second;
+    expect(answer.refused).toEqual([]);
+    expect(api.changes).toHaveLength(2);
+    expect(mail.conversations.get(row.id)?.labelIds).toEqual([work]);
+  });
+
   it("keeps the answer's counts", async () => {
     const row = conversation(1, { unread: true });
     const api = mailApi([row], [listedAccount(1, "ana@example.com")]);
