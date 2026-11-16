@@ -2979,7 +2979,7 @@ changed, so the job commits with the change and a rollback drops it:
 
 | Write | Job |
 |-|-|
-| `UpdateSyncedMail`: messages saved, updated (labels and flags), or deleted, by a sync or a member's action | `inbok.search-indexing` for those messages |
+| `UpdateSyncedMail`: messages saved, updated (labels and flags), or deleted, by a sync or a member's action | `inbok.search-indexing` for those messages and every message of their threads |
 | `SaveMessageParts`: a body stored | `inbok.search-indexing` for the message |
 | `SavePartBlob`: a text body the provider sends apart, e.g. Gmail's long HTML | `inbok.search-indexing` for the message |
 | `DeleteConnectedAccount`: an account disconnected | `inbok.search-account-removal` for the account |
@@ -3005,14 +3005,21 @@ one DBOS step each, and each step retries for about an hour (1, 2, 4,
 count again) while the member's later runs wait behind it. A run that still fails is logged and dropped: its messages
 stay as they were in the index until they change again or the index is
 [rebuilt](#rebuilding-the-index), e.g. by the next nightly rebuild. A message's document holds its subject, sender, recipients,
-date, account, the inbok IDs of its mailboxes, and, once its body is
-stored, its text in two fields: `body_text`, the text of the bodies a
+date, account, the inbok IDs of its mailboxes, its conversation's
+places, and, once its body is stored, its text in two fields: `body_text`, the text of the bodies a
 view of it shows, and `alt_text`, the text of its other text parts,
 e.g. the plain-text alternative of HTML a view shows. A word in either
 finds the message, and one in `body_text` ranks it higher. Until its
 body is stored, a message is found by its headers. The document's
 `conversation` field, the account's ID and the provider's thread ID,
-names the conversation a search keeps one message of. Three fields serve
+names the conversation a search keeps one message of. Its conversation's
+places are `conversation_mailbox_ids`, the mailboxes the conversation is
+in as lists place it (`conversation_mailboxes`), and
+`conversation_flagged`, whether it is starred: a reply in the inbox puts
+its whole conversation in the inbox, so the derive step of
+`UpdateSyncedMail` returns every message of each thread it derives, and
+the write's job indexes them all. A long thread's new reply so indexes
+its older messages again, which ADR005 accepts. Three more fields serve
 filters: `from_addresses`, every address of its From as PostgreSQL holds
 it, without empty ones, e.g. a group's name; `internal_date`, when the
 provider received it, in Unix milliseconds, Gmail's own precision; and,

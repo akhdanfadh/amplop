@@ -22,8 +22,10 @@ var errCountRange = errors.New("conversation's message count is out of storage's
 // deriveConversations makes the conversations of accountID's threads match
 // their messages, in tx, as [conversation.Derive] makes them: a thread with
 // none to show loses its conversation, and every other one gets its row and
-// mailboxes again, keeping its ID. It must run in the transaction that wrote
-// the messages, after every write to them.
+// mailboxes again, keeping its ID. It returns the IDs of every message the
+// threads have, whose search documents hold their conversation's places
+// (ADR005). It must run in the transaction that wrote the messages, after
+// every write to them.
 //
 // DESIGN: Conversations are a summary the list reads with one index, kept
 // only by this function. Every write to the mail tables goes through
@@ -31,24 +33,26 @@ var errCountRange = errors.New("conversation's message count is out of storage's
 // summary is right after every write inbok makes. SQL run by hand, or a write
 // added elsewhere, leaves it stale; ADR001 lists the alternatives, e.g. a
 // trigger, should that change.
-func deriveConversations(ctx context.Context, tx pgx.Tx, accountID int64, threads []string) error {
+func deriveConversations(ctx context.Context, tx pgx.Tx, accountID int64, threads []string) ([]uuid.UUID, error) {
 	if len(threads) == 0 {
-		return nil
+		return nil, nil
 	}
 	queries := sqlc.New(tx)
 
 	// 1. Read the threads' messages, and derive each thread's conversation.
 	rows, err := queries.ListThreadMessages(ctx, sqlc.ListThreadMessagesParams{ConnectedAccountID: accountID, ProviderThreadIds: threads})
 	if err != nil {
-		return fmt.Errorf("list thread messages: %w", err)
+		return nil, fmt.Errorf("list thread messages: %w", err)
 	}
 	byThread := make(map[string][]conversation.Message, len(threads))
-	for _, row := range rows {
+	messageIDs := make([]uuid.UUID, len(rows))
+	for n, row := range rows {
 		message, err := derivedMessageFromRow(row)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		byThread[row.ProviderThreadID] = append(byThread[row.ProviderThreadID], message)
+		messageIDs[n] = row.ID
 	}
 	var gone []string
 	var saves []sqlc.UpsertConversationParams
@@ -61,7 +65,7 @@ func deriveConversations(ctx context.Context, tx pgx.Tx, accountID int64, thread
 		}
 		params, err := conversationParams(accountID, thread, summary)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		saves = append(saves, params)
 		places = append(places, summary.Mailboxes)
@@ -70,11 +74,11 @@ func deriveConversations(ctx context.Context, tx pgx.Tx, accountID int64, thread
 	// 2. Drop the conversations left with nothing to show.
 	if len(gone) > 0 {
 		if err := queries.DeleteThreadConversations(ctx, sqlc.DeleteThreadConversationsParams{ConnectedAccountID: accountID, ProviderThreadIds: gone}); err != nil {
-			return fmt.Errorf("delete conversations: %w", err)
+			return nil, fmt.Errorf("delete conversations: %w", err)
 		}
 	}
 	if len(saves) == 0 {
-		return nil
+		return messageIDs, nil
 	}
 
 	// 3. Save the rest's rows, which keep their IDs.
@@ -85,12 +89,12 @@ func deriveConversations(ctx context.Context, tx pgx.Tx, accountID int64, thread
 		batchErr = errors.Join(batchErr, err)
 	})
 	if batchErr != nil {
-		return fmt.Errorf("save conversations: %w", batchErr)
+		return nil, fmt.Errorf("save conversations: %w", batchErr)
 	}
 
 	// 4. Replace their mailboxes, which copy the rows just saved.
 	if err := queries.DeleteConversationMailboxes(ctx, ids); err != nil {
-		return fmt.Errorf("delete conversation mailboxes: %w", err)
+		return nil, fmt.Errorf("delete conversation mailboxes: %w", err)
 	}
 	pairs := sqlc.InsertConversationMailboxesParams{ConnectedAccountID: accountID}
 	for i, mailboxes := range places {
@@ -100,12 +104,12 @@ func deriveConversations(ctx context.Context, tx pgx.Tx, accountID int64, thread
 		}
 	}
 	if len(pairs.ConversationIds) == 0 {
-		return nil
+		return messageIDs, nil
 	}
 	if err := queries.InsertConversationMailboxes(ctx, pairs); err != nil {
-		return fmt.Errorf("insert conversation mailboxes: %w", err)
+		return nil, fmt.Errorf("insert conversation mailboxes: %w", err)
 	}
-	return nil
+	return messageIDs, nil
 }
 
 // derivedMessageFromRow converts a thread message as storage read it.

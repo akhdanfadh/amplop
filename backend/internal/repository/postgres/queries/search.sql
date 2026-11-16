@@ -4,7 +4,8 @@ SELECT user_id FROM connected_accounts WHERE id = @id;
 
 -- name: ListIndexSources :many
 -- Owner's messages among the IDs, with what their search documents need:
--- the IDs of the mailboxes each is in, and whether its parts are stored.
+-- the IDs of the mailboxes each is in, whether its parts are stored, and
+-- its conversation's mailboxes and star, none for a message without one.
 SELECT m.id, m.connected_account_id, m.provider_thread_id, m.internal_date,
     m.subject, m.from_addresses, m.to_addresses, m.cc_addresses,
     coalesce((
@@ -12,9 +13,17 @@ SELECT m.id, m.connected_account_id, m.provider_thread_id, m.internal_date,
         FROM message_mailboxes mm
         WHERE mm.message_id = m.id
     ), '{}')::uuid[] AS mailbox_ids,
-    EXISTS (SELECT 1 FROM message_parts p WHERE p.message_id = m.id)::boolean AS has_parts
+    EXISTS (SELECT 1 FROM message_parts p WHERE p.message_id = m.id)::boolean AS has_parts,
+    coalesce((
+        SELECT array_agg(cm.mailbox_id ORDER BY cm.mailbox_id)
+        FROM conversation_mailboxes cm
+        WHERE cm.conversation_id = c.id
+    ), '{}')::uuid[] AS conversation_mailbox_ids,
+    coalesce(c.flagged, false)::boolean AS conversation_flagged
 FROM messages m
 JOIN connected_accounts a ON a.id = m.connected_account_id
+LEFT JOIN conversations c ON c.connected_account_id = m.connected_account_id
+    AND c.provider_thread_id = m.provider_thread_id
 WHERE a.user_id = @owner
     AND m.id = ANY (@ids::uuid[]);
 

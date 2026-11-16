@@ -18,7 +18,7 @@ import (
 // account and the thread.
 func TestUpsertFields(t *testing.T) {
 	index := newIndex(t)
-	inbox := uuid.New()
+	inbox, label := uuid.New(), uuid.New()
 	d := search.Document{
 		ID:                 uuid.New(),
 		OwnerUserID:        owner,
@@ -34,6 +34,9 @@ func TestUpsertFields(t *testing.T) {
 		FromAddresses:      []string{"asha.k@example.co.id", "Office@Example.co.id"},
 		HasAttachment:      true,
 		MailboxIDs:         []uuid.UUID{inbox},
+
+		ConversationMailboxIDs: []uuid.UUID{inbox, label},
+		ConversationFlagged:    true,
 	}
 
 	require.NoError(t, index.Upsert(t.Context(), []search.Document{d}))
@@ -55,6 +58,9 @@ func TestUpsertFields(t *testing.T) {
 		"from_addresses":       []any{"asha.k@example.co.id", "Office@Example.co.id"},
 		"has_attachment":       true,
 		"mailbox_ids":          []any{inbox.String()},
+
+		"conversation_mailbox_ids": []any{inbox.String(), label.String()},
+		"conversation_flagged":     true,
 	}, stored)
 }
 

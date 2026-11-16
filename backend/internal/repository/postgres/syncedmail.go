@@ -141,10 +141,14 @@ func (db *DB) updateSyncedMail(ctx context.Context, accountID int64, update func
 		}
 
 		// 6. Derive the touched threads' conversations from the messages
-		// they have now, which every step above has written.
-		if err := deriveConversations(ctx, tx, accountID, uniqueStrings(threads)); err != nil {
+		// they have now, which every step above has written. Every message
+		// of those threads is changed: its document holds its
+		// conversation's places.
+		threadMessages, err := deriveConversations(ctx, tx, accountID, uniqueStrings(threads))
+		if err != nil {
 			return err
 		}
+		changed = append(changed, threadMessages...)
 
 		// 7. Save the job that deletes the deleted messages' blobs. A worker
 		// sees it only once this commits, and a rollback drops it, so no
@@ -156,7 +160,8 @@ func (db *DB) updateSyncedMail(ctx context.Context, accountID int64, update func
 		// 8. Save the job that brings the changed messages up to date in the
 		// search index, deleted ones included. It reads them when it runs,
 		// so it commits with them, and a rollback drops it (ADR005).
-		if err := db.indexAfter(ctx, tx, accountID, changed); err != nil {
+		slices.SortFunc(changed, uuid.UUID.Compare)
+		if err := db.indexAfter(ctx, tx, accountID, slices.Compact(changed)); err != nil {
 			return err
 		}
 

@@ -40,6 +40,10 @@ const (
 	// Every address of the message's From, as storage holds it.
 	fieldFromAddresses = "from_addresses"
 	fieldAttachment    = "has_attachment"
+	// The mailboxes of the message's conversation, and whether it is
+	// starred: where lists place the conversation.
+	fieldConversationMailboxes = "conversation_mailbox_ids"
+	fieldConversationFlagged   = "conversation_flagged"
 )
 
 // Index is the message index on one Meilisearch server: one Meilisearch

@@ -29,6 +29,11 @@ type Source struct {
 	To           []mailsync.Address
 	CC           []mailsync.Address
 	MailboxIDs   []uuid.UUID // inbok's IDs of the mailboxes it is in
+	// ConversationMailboxIDs and ConversationFlagged are its
+	// conversation's places and star, as [Document]'s fields of those
+	// names hold them.
+	ConversationMailboxIDs []uuid.UUID
+	ConversationFlagged    bool
 	// HasParts is whether content storage keeps the message's parts, so
 	// its body has text to read.
 	HasParts bool
@@ -125,6 +130,11 @@ func (x *Indexer) document(ctx context.Context, owner int64, source Source) (Doc
 		CC:                 names(source.CC),
 		MailboxIDs:         source.MailboxIDs,
 		FromAddresses:      addresses(source.From),
+		// A message's document holds its conversation's places, which
+		// storage derives again with every write to the thread and so
+		// queues every message of the thread to index (ADR005).
+		ConversationMailboxIDs: source.ConversationMailboxIDs,
+		ConversationFlagged:    source.ConversationFlagged,
 	}
 	if !source.HasParts {
 		// Found by its headers until its body is stored (ADR005).

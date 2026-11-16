@@ -34,6 +34,10 @@ type document struct {
 	HasAttachment bool     `json:"has_attachment"`
 	MailboxIDs    []string `json:"mailbox_ids"`
 	Conversation  string   `json:"conversation"`
+	// The conversation's places, [search.Document.ConversationMailboxIDs]
+	// and [search.Document.ConversationFlagged].
+	ConversationMailboxIDs []string `json:"conversation_mailbox_ids"`
+	ConversationFlagged    bool     `json:"conversation_flagged"`
 }
 
 // Upsert adds documents to their owners' indexes, replacing whole any with
@@ -51,20 +55,22 @@ func (i *Index) Upsert(ctx context.Context, documents []search.Document) error {
 			owners = append(owners, d.OwnerUserID)
 		}
 		rows[d.OwnerUserID] = append(rows[d.OwnerUserID], document{
-			ID:                 d.ID.String(),
-			OwnerUserID:        decimal(d.OwnerUserID),
-			ConnectedAccountID: decimal(d.ConnectedAccountID),
-			InternalDate:       d.InternalDate.UnixMilli(),
-			Subject:            d.Subject,
-			From:               d.From,
-			To:                 d.To,
-			CC:                 d.CC,
-			BodyText:           d.BodyText,
-			AltText:            d.AltText,
-			FromAddresses:      nonNil(d.FromAddresses),
-			HasAttachment:      d.HasAttachment,
-			MailboxIDs:         texts(d.MailboxIDs),
-			Conversation:       conversation(d.ConnectedAccountID, d.ThreadID),
+			ID:                     d.ID.String(),
+			OwnerUserID:            decimal(d.OwnerUserID),
+			ConnectedAccountID:     decimal(d.ConnectedAccountID),
+			InternalDate:           d.InternalDate.UnixMilli(),
+			Subject:                d.Subject,
+			From:                   d.From,
+			To:                     d.To,
+			CC:                     d.CC,
+			BodyText:               d.BodyText,
+			AltText:                d.AltText,
+			FromAddresses:          nonNil(d.FromAddresses),
+			HasAttachment:          d.HasAttachment,
+			MailboxIDs:             texts(d.MailboxIDs),
+			Conversation:           conversation(d.ConnectedAccountID, d.ThreadID),
+			ConversationMailboxIDs: texts(d.ConversationMailboxIDs),
+			ConversationFlagged:    d.ConversationFlagged,
 		})
 	}
 	for _, owner := range owners {

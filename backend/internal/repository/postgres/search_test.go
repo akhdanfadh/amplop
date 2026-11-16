@@ -110,6 +110,35 @@ func TestSyncedMailSearchJobs(t *testing.T) {
 	assert.ElementsMatch(t, jobsFor(s.member, before["saved"].ID, before["updated"].ID, before["deleted"].ID, swept), changed)
 }
 
+// A write to one message of a thread names every message of the thread,
+// whose documents hold their conversation's places, and no other thread's:
+// a reply to an archived message puts both in the inbox, and archiving or
+// deleting the reply takes both out.
+func TestSyncedMailSearchJobsThread(t *testing.T) {
+	s := newSyncedMailTest(t).withMailboxes(t)
+	archived := syncedMessage("archived")
+	archived.MailboxProviderIDs = nil
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{archived, syncedMessage("other")}})
+	searchJobs(t, s.conn)
+	reply := syncedMessage("reply")
+	reply.ThreadID = archived.ThreadID
+
+	s.update(t, s.account, mailsync.Change{State: running(1), Saved: []mailsync.Message{reply}})
+	saved := s.messages(t, s.account)
+	replied := searchJobs(t, s.conn)
+	s.update(t, s.account, mailsync.Change{State: running(1), Updated: []mailsync.MessageUpdate{
+		{ProviderID: "reply", MailboxProviderIDs: []string{}, Version: 2},
+	}})
+	unlabelled := searchJobs(t, s.conn)
+	s.update(t, s.account, mailsync.Change{State: running(1), Deleted: []string{"reply"}})
+	deleted := searchJobs(t, s.conn)
+
+	thread := jobsFor(s.member, saved["archived"].ID, saved["reply"].ID)
+	assert.ElementsMatch(t, thread, replied)
+	assert.ElementsMatch(t, thread, unlabelled)
+	assert.ElementsMatch(t, thread, deleted)
+}
+
 // A mail action's labels, which [DB.UpdateMessages] writes, name the
 // message they change in one job for the account's member, as a sync's
 // do, so the index follows an archive before the next sync.
@@ -220,43 +249,61 @@ func TestConnectedAccountSearchRemovalFails(t *testing.T) {
 }
 
 // A member's index sources are their messages among the IDs, with
-// addresses as stored, mailboxes by inbok's IDs in order, and whether
-// parts are stored; another member's message, and an unknown ID, are
-// left out.
+// addresses as stored, mailboxes by inbok's IDs in order, whether parts
+// are stored, and their conversation's mailboxes and star, none for a
+// draft alone in its thread; another member's message, and an unknown ID,
+// are left out.
 func TestIndexSources(t *testing.T) {
 	s := newMessagePartsTest(t)
 	ids := s.save(t, "m1", "m2")
 	_, err := s.db.SaveMessageParts(t.Context(), s.account, ids[1], storedTree())
 	require.NoError(t, err)
+	// Archived and not starred itself, in m1's conversation.
+	archived := syncedMessage("archived")
+	archived.ThreadID, archived.MailboxProviderIDs, archived.Flagged = "thread-m1", nil, false
+	draft := syncedMessage("draft")
+	draft.MailboxProviderIDs = []string{"DRAFT"}
+	mailboxes := append(slices.Clone(gmailMailboxes), mailsync.Mailbox{ProviderID: "DRAFT", Name: "DRAFT", Role: mailsync.RoleDrafts, MadeBy: mailsync.MadeByProvider})
+	s.update(t, s.account, mailsync.Change{State: running(1), Mailboxes: mailboxes, Saved: []mailsync.Message{archived, draft}})
+	saved := s.messages(t, s.account)
 	stranger := insertConnectingMember(t, s.conn, "stranger@example.com")
 	theirAccount := insertSyncingAccount(t, s.conn, stranger, "sub-stranger")
 	s.update(t, theirAccount, mailsync.Change{State: running(1), Mailboxes: gmailMailboxes, Saved: []mailsync.Message{syncedMessage("theirs")}})
 	theirs := s.messages(t, theirAccount)["theirs"].ID
 
-	sources, err := s.db.IndexSources(t.Context(), s.member, []uuid.UUID{ids[0], ids[1], theirs, uuid.New()})
+	sources, err := s.db.IndexSources(t.Context(), s.member, []uuid.UUID{ids[0], ids[1], saved["archived"].ID, saved["draft"].ID, theirs, uuid.New()})
 	require.NoError(t, err)
 
-	mailboxes := []uuid.UUID{s.mailboxID(t, s.account, "INBOX"), s.mailboxID(t, s.account, "Label_1")}
-	if mailboxes[0].String() > mailboxes[1].String() {
-		mailboxes[0], mailboxes[1] = mailboxes[1], mailboxes[0]
-	}
+	inboxAndReceipts := []uuid.UUID{s.mailboxID(t, s.account, "INBOX"), s.mailboxID(t, s.account, "Label_1")}
+	slices.SortFunc(inboxAndReceipts, uuid.UUID.Compare)
 	m := syncedMessage("m1")
 	want := search.Source{
-		ID:           ids[0],
-		AccountID:    s.account,
-		ThreadID:     "thread-m1",
-		InternalDate: time.Date(2026, 11, 2, 9, 30, 0, 0, time.UTC),
-		Subject:      m.Subject,
-		From:         m.From,
-		To:           m.To,
-		CC:           m.CC,
-		MailboxIDs:   mailboxes,
+		ID:                     ids[0],
+		AccountID:              s.account,
+		ThreadID:               "thread-m1",
+		InternalDate:           time.Date(2026, 11, 2, 9, 30, 0, 0, time.UTC),
+		Subject:                m.Subject,
+		From:                   m.From,
+		To:                     m.To,
+		CC:                     m.CC,
+		MailboxIDs:             inboxAndReceipts,
+		ConversationMailboxIDs: inboxAndReceipts,
+		ConversationFlagged:    true,
 	}
 	withParts := want
 	withParts.ID = ids[1]
 	withParts.ThreadID = "thread-m2"
 	withParts.HasParts = true
-	assert.ElementsMatch(t, []search.Source{want, withParts}, sources)
+	inThread := want
+	inThread.ID = saved["archived"].ID
+	inThread.MailboxIDs = []uuid.UUID{}
+	alone := want
+	alone.ID = saved["draft"].ID
+	alone.ThreadID = "thread-draft"
+	alone.MailboxIDs = []uuid.UUID{s.mailboxID(t, s.account, "DRAFT")}
+	alone.ConversationMailboxIDs = []uuid.UUID{}
+	alone.ConversationFlagged = false
+	assert.ElementsMatch(t, []search.Source{want, withParts, inThread, alone}, sources)
 }
 
 // A rebuild reads every member, mail or not, and each member's messages

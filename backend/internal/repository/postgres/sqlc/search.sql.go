@@ -84,9 +84,17 @@ SELECT m.id, m.connected_account_id, m.provider_thread_id, m.internal_date,
         FROM message_mailboxes mm
         WHERE mm.message_id = m.id
     ), '{}')::uuid[] AS mailbox_ids,
-    EXISTS (SELECT 1 FROM message_parts p WHERE p.message_id = m.id)::boolean AS has_parts
+    EXISTS (SELECT 1 FROM message_parts p WHERE p.message_id = m.id)::boolean AS has_parts,
+    coalesce((
+        SELECT array_agg(cm.mailbox_id ORDER BY cm.mailbox_id)
+        FROM conversation_mailboxes cm
+        WHERE cm.conversation_id = c.id
+    ), '{}')::uuid[] AS conversation_mailbox_ids,
+    coalesce(c.flagged, false)::boolean AS conversation_flagged
 FROM messages m
 JOIN connected_accounts a ON a.id = m.connected_account_id
+LEFT JOIN conversations c ON c.connected_account_id = m.connected_account_id
+    AND c.provider_thread_id = m.provider_thread_id
 WHERE a.user_id = $1
     AND m.id = ANY ($2::uuid[])
 `
@@ -97,20 +105,23 @@ type ListIndexSourcesParams struct {
 }
 
 type ListIndexSourcesRow struct {
-	ID                 uuid.UUID
-	ConnectedAccountID int64
-	ProviderThreadID   string
-	InternalDate       time.Time
-	Subject            string
-	FromAddresses      []byte
-	ToAddresses        []byte
-	CcAddresses        []byte
-	MailboxIds         []uuid.UUID
-	HasParts           bool
+	ID                     uuid.UUID
+	ConnectedAccountID     int64
+	ProviderThreadID       string
+	InternalDate           time.Time
+	Subject                string
+	FromAddresses          []byte
+	ToAddresses            []byte
+	CcAddresses            []byte
+	MailboxIds             []uuid.UUID
+	HasParts               bool
+	ConversationMailboxIds []uuid.UUID
+	ConversationFlagged    bool
 }
 
 // Owner's messages among the IDs, with what their search documents need:
-// the IDs of the mailboxes each is in, and whether its parts are stored.
+// the IDs of the mailboxes each is in, whether its parts are stored, and
+// its conversation's mailboxes and star, none for a message without one.
 func (q *Queries) ListIndexSources(ctx context.Context, arg ListIndexSourcesParams) ([]ListIndexSourcesRow, error) {
 	rows, err := q.db.Query(ctx, listIndexSources, arg.Owner, arg.Ids)
 	if err != nil {
@@ -131,6 +142,8 @@ func (q *Queries) ListIndexSources(ctx context.Context, arg ListIndexSourcesPara
 			&i.CcAddresses,
 			&i.MailboxIds,
 			&i.HasParts,
+			&i.ConversationMailboxIds,
+			&i.ConversationFlagged,
 		); err != nil {
 			return nil, err
 		}

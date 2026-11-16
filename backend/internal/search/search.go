@@ -39,6 +39,14 @@ type Document struct {
 	// included: the index holds every message, and a query decides which
 	// mailboxes it leaves out.
 	MailboxIDs []uuid.UUID
+	// ConversationMailboxIDs are the mailboxes the message's conversation
+	// is in, as lists place it, conversation.Summary.Mailboxes: a reply
+	// in the inbox puts every message of its conversation there. Empty for
+	// a message with no conversation, e.g. a thread's only draft.
+	ConversationMailboxIDs []uuid.UUID
+	// ConversationFlagged is whether the message's conversation is
+	// starred, which any of its messages makes it.
+	ConversationFlagged bool
 }
 
 // Query is what a member searches for. The owner is not part of it: every

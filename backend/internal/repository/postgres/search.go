@@ -24,13 +24,15 @@ func (db *DB) IndexSources(ctx context.Context, owner int64, ids []uuid.UUID) ([
 	sources := make([]search.Source, 0, len(rows))
 	for _, row := range rows {
 		source := search.Source{
-			ID:           row.ID,
-			AccountID:    row.ConnectedAccountID,
-			ThreadID:     row.ProviderThreadID,
-			InternalDate: row.InternalDate.UTC(),
-			Subject:      row.Subject,
-			MailboxIDs:   row.MailboxIds,
-			HasParts:     row.HasParts,
+			ID:                     row.ID,
+			AccountID:              row.ConnectedAccountID,
+			ThreadID:               row.ProviderThreadID,
+			InternalDate:           row.InternalDate.UTC(),
+			Subject:                row.Subject,
+			MailboxIDs:             row.MailboxIds,
+			HasParts:               row.HasParts,
+			ConversationMailboxIDs: row.ConversationMailboxIds,
+			ConversationFlagged:    row.ConversationFlagged,
 		}
 		lists := []*[]mailsync.Address{&source.From, &source.To, &source.CC}
 		for i, raw := range [][]byte{row.FromAddresses, row.ToAddresses, row.CcAddresses} {

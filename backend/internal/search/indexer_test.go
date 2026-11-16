@@ -154,6 +154,8 @@ func TestIndex(t *testing.T) {
 	m := message(ashaWork, "Invoice")
 	m.From = append(m.From, mailsync.Address{Address: "Eka@Example.com"})
 	m.HasParts = true
+	m.ConversationMailboxIDs = []uuid.UUID{uuid.New(), m.MailboxIDs[0]}
+	m.ConversationFlagged = true
 	s.memory.save(asha, m)
 	s.memory.bodies[m.ID] = messagecontent.MessageTexts{
 		Shown: []messagecontent.StoredText{
@@ -183,6 +185,9 @@ func TestIndex(t *testing.T) {
 		FromAddresses:      []string{"citra@example.com", "Eka@Example.com"},
 		HasAttachment:      true,
 		MailboxIDs:         m.MailboxIDs,
+
+		ConversationMailboxIDs: m.ConversationMailboxIDs,
+		ConversationFlagged:    true,
 	}, got)
 }
 
