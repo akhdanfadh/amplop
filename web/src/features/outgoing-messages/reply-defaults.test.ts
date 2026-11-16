@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { ConnectedAccount } from "@/api/generated/model";
+import type { ListedAccount } from "@/api/generated/model";
+import { listedAccount } from "@/test/mail-api";
 import {
   othersReceived,
   replyDefaults,
@@ -8,17 +9,8 @@ import {
 } from "./reply-defaults";
 
 // The member's accounts: Studio received the answered messages.
-const studio: ConnectedAccount = {
-  id: 7,
-  provider: "gmail",
-  email: "studio@example.com",
-  name: null,
-  color: 1,
-  status: "usable",
-  createdAt: "2026-11-01T00:00:00Z",
-  needsReconnectSince: null,
-};
-const personal: ConnectedAccount = { ...studio, id: 8, email: "me@example.org" };
+const studio: ListedAccount = listedAccount(7, "studio@example.com", 1);
+const personal: ListedAccount = { ...studio, id: 8, email: "me@example.org" };
 const accounts = [studio, personal];
 
 // address returns a mail address with a display name, as sync stores it.
@@ -129,9 +121,10 @@ describe("replyDefaults", () => {
     });
   });
 
-  it("sends from the receiving account only while it can send", () => {
-    const reconnect = { ...studio, status: "needs-reconnect" as const };
-    expect(replyDefaults(received, "reply", [reconnect, personal]).connectedAccountId).toBe(0);
+  it("sends from the receiving account only while the server lists it able to send", () => {
+    // Usable, as when no Google client is set up: only allowedActions says.
+    const cannotSend: ListedAccount = { ...studio, allowedActions: ["rename", "disconnect"] };
+    expect(replyDefaults(received, "reply", [cannotSend, personal]).connectedAccountId).toBe(0);
     expect(replyDefaults(received, "reply", [personal]).connectedAccountId).toBe(0);
   });
 });

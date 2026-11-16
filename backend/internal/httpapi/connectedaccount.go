@@ -64,13 +64,14 @@ type connectionService interface {
 type connectedAccountHandler struct {
 	accounts    connectedAccountService
 	connections connectionService
+	providers   offeredProviders
 	syncs       syncService
 	sessions    sessionService
 	logger      *slog.Logger
 }
 
-func registerConnectedAccounts(api huma.API, logger *slog.Logger, accounts connectedAccountService, connections connectionService, syncs syncService, sessions sessionService) {
-	handler := connectedAccountHandler{accounts: accounts, connections: connections, syncs: syncs, sessions: sessions, logger: logger}
+func registerConnectedAccounts(api huma.API, logger *slog.Logger, accounts connectedAccountService, connections connectionService, providers offeredProviders, syncs syncService, sessions sessionService) {
+	handler := connectedAccountHandler{accounts: accounts, connections: connections, providers: providers, syncs: syncs, sessions: sessions, logger: logger}
 
 	registerConnectedAccountList(api, handler)
 	registerAccountSync(api, handler)
@@ -177,9 +178,24 @@ type listedAccount struct {
 	Name                *string                   `json:"name" nullable:"true" doc:"What the member calls the account, shown instead of its email; null until they choose one."`
 	Color               int                       `json:"color" minimum:"1" maximum:"8" doc:"The account's colour, one of eight the web app defines, given at connect: the lowest the member's other accounts use least."`
 	Sync                accountSync               `json:"sync"`
+	// Listed here, so every client offers only what the server accepts
+	// instead of restating its rule (AGENTS.md, "API contract").
+	AllowedActions []connectedaccount.Action `json:"allowedActions" nullable:"false" doc:"What the member can ask of this account now: sync (Sync Account Now), send (Send Message, Reply to Message, and Send Message Again from it), reconnect (Reconnect Account), rename (Rename Account), and disconnect (Disconnect Account). sync is missing while the account needs reconnecting, send while its status is not usable, and sync, send, and reconnect while its provider is not offered (see List Account Providers). A listed action can still be refused when the account or the instance's settings changed since this read. Clients ignore values they don't know."`
 }
 
-func listedAccountOf(account connectedaccount.Account, report mailsync.Report) listedAccount {
+// TransformSchema lists allowedActions' values from [connectedaccount.Actions].
+func (listedAccount) TransformSchema(_ huma.Registry, s *huma.Schema) *huma.Schema {
+	values := make([]any, 0, len(connectedaccount.Actions))
+	for _, action := range connectedaccount.Actions {
+		values = append(values, string(action))
+	}
+	s.Properties["allowedActions"].Items.Enum = values
+	return s
+}
+
+// listedAccountOf returns account with report, its sync, in the response's
+// shape; offered says whether its provider is offered.
+func listedAccountOf(account connectedaccount.Account, report mailsync.Report, offered bool) listedAccount {
 	return listedAccount{
 		ID:                  account.ID,
 		Provider:            account.Provider,
@@ -190,6 +206,7 @@ func listedAccountOf(account connectedaccount.Account, report mailsync.Report) l
 		Name:                accountName(account),
 		Color:               account.Color,
 		Sync:                accountSyncOf(report),
+		AllowedActions:      account.AllowedActions(offered),
 	}
 }
 
@@ -244,7 +261,7 @@ func (h connectedAccountHandler) handleListConnectedAccounts(ctx context.Context
 		if !ok {
 			continue
 		}
-		listed.Accounts = append(listed.Accounts, listedAccountOf(account, report))
+		listed.Accounts = append(listed.Accounts, listedAccountOf(account, report, h.providers.offered(account.Provider)))
 	}
 	return respondData(listed), nil
 }
@@ -274,10 +291,22 @@ func registerAccountProviders(api huma.API, handler connectedAccountHandler) {
 
 func (h connectedAccountHandler) handleListAccountProviders(_ context.Context, _ *struct{}) (*output[accountProviders], error) {
 	providers := accountProviders{Offered: []connectedaccount.Provider{}}
-	if h.connections != nil {
+	if h.providers.offered(connectedaccount.ProviderGmail) {
 		providers.Offered = append(providers.Offered, connectedaccount.ProviderGmail)
 	}
 	return respondData(providers), nil
+}
+
+// offeredProviders says which providers an administrator set up a client
+// for, which every operation that reaches a provider asks.
+type offeredProviders struct {
+	gmail bool
+}
+
+// offered reports whether accounts can be connected with provider, and its
+// accounts reconnected, synced, and sent from.
+func (p offeredProviders) offered(provider connectedaccount.Provider) bool {
+	return provider == connectedaccount.ProviderGmail && p.gmail
 }
 
 // ========================
@@ -311,7 +340,8 @@ func (h connectedAccountHandler) handleConnectGmail(ctx context.Context, _ *stru
 // start begins the flow for the signed-in account; accountID is the
 // account to reconnect, or 0 for a new one.
 func (h connectedAccountHandler) start(ctx context.Context, accountID int64) (*output[authorization], error) {
-	if h.connections == nil {
+	// Gmail is the only provider, so a reconnect's account is Gmail's too.
+	if !h.providers.offered(connectedaccount.ProviderGmail) {
 		return nil, connectStartProblem(errGmailNotConfigured)
 	}
 	current := ctx.Value(sessionKey{}).(session.Authenticated)

@@ -3,6 +3,7 @@ import { formatCount } from "@/lib/count";
 import type { ApiError } from "@/api/transport";
 import {
   accountNotFoundType,
+  gmailNotConfiguredType,
   needsReconnectType,
   throttledType,
 } from "@/features/connected-accounts/text";
@@ -191,10 +192,11 @@ export const accountsNotRead =
   "inbok couldn't read your accounts, so it checked nothing. Try again.";
 
 // CheckRefusal is why Check for new mail could not check one account: it
-// is no longer connected, it needs reconnecting, the outcome is unknown,
-// or it failed otherwise, with what to say.
+// is no longer connected, it needs reconnecting, Gmail isn't set up on the
+// instance, the outcome is unknown, or it failed otherwise, with what to
+// say.
 export type CheckRefusal =
-  | { kind: "gone" | "reconnect" | "uncertain" }
+  | { kind: "gone" | "reconnect" | "unavailable" | "uncertain" }
   | { kind: "failed"; message: string };
 
 // checkRefusal returns why err refused a check, or undefined for a refusal
@@ -204,6 +206,7 @@ export function checkRefusal(err: ApiError): CheckRefusal | undefined {
   if (err.status === tooManyRequests && type === throttledType) return undefined;
   if (err.status === notFound && type === accountNotFoundType) return { kind: "gone" };
   if (err.status === conflict && type === needsReconnectType) return { kind: "reconnect" };
+  if (err.status === conflict && type === gmailNotConfiguredType) return { kind: "unavailable" };
   // Unknown, not failed: the check may have started.
   if (uncertainOutcome(err)) return { kind: "uncertain" };
   return { kind: "failed", message: userMessage(err) };
@@ -229,6 +232,13 @@ export function checkFailures(refused: readonly { name: string; refusal: CheckRe
   if (reconnect.length > 1)
     sentences.push(
       `Reconnect ${reconnect.length} accounts in Connected accounts to get their mail: ${names.format(reconnect)}.`,
+    );
+  const unavailable = of("unavailable");
+  if (unavailable.length === 1)
+    sentences.push(`inbok can't check ${unavailable[0]} until an administrator sets up Gmail.`);
+  if (unavailable.length > 1)
+    sentences.push(
+      `inbok can't check ${unavailable.length} accounts until an administrator sets up Gmail: ${names.format(unavailable)}.`,
     );
   const uncertain = of("uncertain");
   if (uncertain.length === 1)

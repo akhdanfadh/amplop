@@ -105,36 +105,44 @@ func TestGoogleCallbackURL(t *testing.T) {
 // Connected account list
 // ========================
 
-// The list shows each account with its sync, and never Google's ID for
-// it.
+// The list shows each account with its sync and what it accepts now, and
+// never Google's ID for it.
 func TestListConnectedAccounts(t *testing.T) {
 	refused := alexAccount
 	refused.NeedsReconnectSince = &alexRefused
 	refused.Status = connectedaccount.StatusNeedsReconnect
 	unreadable := alexAccount
 	unreadable.Status = connectedaccount.StatusTokenUnreadable
-	const waitingJSON = `"sync":{"status":"waiting","messagesSoFar":null,"lastSyncedAt":null,"failure":null,"failedAt":null}`
+	const (
+		waitingJSON = `"sync":{"status":"waiting","messagesSoFar":null,"lastSyncedAt":null,"failure":null,"failedAt":null}`
+		allJSON     = `"allowedActions":["sync","send","reconnect","rename","disconnect"]`
+	)
 	for _, c := range []struct {
-		name     string
-		accounts []connectedaccount.Account
-		stopped  bool
-		want     string
+		name        string
+		accounts    []connectedaccount.Account
+		connections connectionService
+		stopped     bool
+		want        string
 	}{
-		{"none", []connectedaccount.Account{}, false, `{"data":{"accounts":[],"syncStopped":false}}`},
-		{"one", []connectedaccount.Account{alexAccount}, false,
-			`{"data":{"accounts":[` + alexJSON[:len(alexJSON)-1] + `,` + waitingJSON + `}],"syncStopped":false}}`},
-		{"needs reconnecting", []connectedaccount.Account{refused}, false,
+		{"none", []connectedaccount.Account{}, &fakeConnections{}, false, `{"data":{"accounts":[],"syncStopped":false}}`},
+		{"one", []connectedaccount.Account{alexAccount}, &fakeConnections{}, false,
+			`{"data":{"accounts":[` + alexJSON[:len(alexJSON)-1] + `,` + waitingJSON + `,` + allJSON + `}],"syncStopped":false}}`},
+		{"needs reconnecting", []connectedaccount.Account{refused}, &fakeConnections{}, false,
 			`{"data":{"accounts":[{"id":3,"provider":"gmail","email":"alex@example.com",` +
-				`"needsReconnectSince":"2026-11-06T09:00:00Z","status":"needs-reconnect","createdAt":"2026-11-05T09:00:00Z","name":null,"color":2,` + waitingJSON + `}],"syncStopped":false}}`},
-		{"token unreadable", []connectedaccount.Account{unreadable}, false,
+				`"needsReconnectSince":"2026-11-06T09:00:00Z","status":"needs-reconnect","createdAt":"2026-11-05T09:00:00Z","name":null,"color":2,` + waitingJSON +
+				`,"allowedActions":["reconnect","rename","disconnect"]}],"syncStopped":false}}`},
+		{"token unreadable", []connectedaccount.Account{unreadable}, &fakeConnections{}, false,
 			`{"data":{"accounts":[{"id":3,"provider":"gmail","email":"alex@example.com",` +
-				`"needsReconnectSince":null,"status":"token-unreadable","createdAt":"2026-11-05T09:00:00Z","name":null,"color":2,` + waitingJSON + `}],"syncStopped":false}}`},
-		{"syncing stopped", []connectedaccount.Account{}, true, `{"data":{"accounts":[],"syncStopped":true}}`},
+				`"needsReconnectSince":null,"status":"token-unreadable","createdAt":"2026-11-05T09:00:00Z","name":null,"color":2,` + waitingJSON +
+				`,"allowedActions":["sync","reconnect","rename","disconnect"]}],"syncStopped":false}}`},
+		{"Gmail not offered", []connectedaccount.Account{alexAccount}, nil, false,
+			`{"data":{"accounts":[` + alexJSON[:len(alexJSON)-1] + `,` + waitingJSON + `,"allowedActions":["rename","disconnect"]}],"syncStopped":false}}`},
+		{"syncing stopped", []connectedaccount.Account{}, &fakeConnections{}, true, `{"data":{"accounts":[],"syncStopped":true}}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			accounts := &fakeConnectedAccounts{accounts: c.accounts}
 			syncs := &fakeSyncs{reports: map[int64]mailsync.Report{3: {AccountID: 3, Status: mailsync.StatusWaiting}}, stopped: c.stopped}
-			api := New(discard, Services{ConnectedAccounts: accounts, Syncs: syncs, Session: memberSessions(account.RoleMember)})
+			api := New(discard, Services{ConnectedAccounts: accounts, Connections: c.connections, Syncs: syncs, Session: memberSessions(account.RoleMember)})
 
 			response := requestAuthenticated(api, http.MethodGet, "/connected-accounts", "")
 

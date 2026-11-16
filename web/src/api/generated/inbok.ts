@@ -723,7 +723,7 @@ export const getSyncConnectedAccountUrl = (id: number,) => {
 }
 
 /**
- * Starts a connected account's sync now instead of at the next minute: a check for new mail, or a full sync when one is due. A sync already waiting or running keeps its place, with the same answer; it checks for mail again before it ends, or the next minute's check does. One request per account every 15 seconds.
+ * Starts a connected account's sync now instead of at the next minute: a check for new mail, or a full sync when one is due. A sync already waiting or running keeps its place, with the same answer; it checks for mail again before it ends, or the next minute's check does. One request per account every 15 seconds. The account's allowedActions in the list says whether it can sync now.
  * @summary Sync Account Now
  */
 export const syncConnectedAccount = async (id: number, options?: Parameters<typeof transport>[1]): Promise<ResponseAccountSync> => {

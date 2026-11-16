@@ -70,12 +70,18 @@ export function ConfirmDialog({
         errors={failure ? [{ message: failure.message }] : []}
         requestId={failure?.requestId}
       />
-      <AlertDialogFooter>
+      {/* Side by side, a short Cancel keeps its height beside an action
+          whose long label wraps. */}
+      <AlertDialogFooter className="sm:items-center">
         <AlertDialogCancel isDisabled={pending}>Cancel</AlertDialogCancel>
         <AlertDialogAction
           type="button"
           closes="by-caller"
           variant={tone}
+          // Its label can name what it acts on, e.g. a long account name,
+          // which wraps rather than leave the dialog: a button keeps its
+          // width and one line by default.
+          className="min-w-0 shrink wrap-anywhere whitespace-normal"
           isPending={pending}
           onPress={onConfirm}
         >

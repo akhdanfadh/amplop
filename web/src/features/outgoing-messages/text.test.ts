@@ -18,6 +18,8 @@ import {
   type MessageState,
   type Offer,
   invalidAddressMessage,
+  noAccountText,
+  cannotSendNote,
 } from "./text";
 
 type Failure = NonNullable<OutgoingMessageSummary["failure"]>;
@@ -293,6 +295,32 @@ describe("invalidAddressMessage", () => {
   it("ends with the value as typed, so its own quotes read as typed", () => {
     expect(invalidAddressMessage('"Lopez, Ana"')).toBe(
       'This isn\'t an email address, so fix it or remove it: "Lopez, Ana"',
+    );
+  });
+});
+
+describe("why no account can send", () => {
+  it("asks to connect one when there is none", () => {
+    expect(noAccountText([])).toBe("Connect a Gmail account to send messages from it.");
+  });
+
+  it("says to reconnect when each account needs it", () => {
+    expect(noAccountText([{ status: "needs-reconnect" }, { status: "token-unreadable" }])).toBe(
+      "Each of your Gmail accounts needs reconnecting before it can send.",
+    );
+    expect(cannotSendNote({ email: "studio@example.com", status: "needs-reconnect" })).toBe(
+      "studio@example.com needs reconnecting before it can send. Choose another account, or reconnect it on the Connected accounts page.",
+    );
+  });
+
+  // Usable accounts the server lists unable to send: Gmail isn't set up,
+  // which Connected accounts words for whoever reads it.
+  it("says they can't send yet when they are usable", () => {
+    expect(noAccountText([{ status: "needs-reconnect" }, { status: "usable" }])).toBe(
+      "Your Gmail accounts can't send yet.",
+    );
+    expect(cannotSendNote({ email: "studio@example.com", status: "usable" })).toBe(
+      "Your Gmail accounts can't send yet. The Connected accounts page says why.",
     );
   });
 });

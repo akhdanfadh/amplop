@@ -71,3 +71,16 @@ export function refreshInterval(
   if (!list) return idleRefresh;
   return list.accounts.some(syncBusy) ? busyRefresh : idleRefresh;
 }
+
+// checkLanded reports whether sync shows the outcome of a Check now
+// accepted while the account's sync was before: a check or failure newer
+// than before's, or a full sync, whose progress the row then shows.
+export function checkLanded(sync: AccountSync, before: AccountSync): boolean {
+  if (sync.status === "waiting" || sync.status === "running") return true;
+  return later(sync.lastSyncedAt, before.lastSyncedAt) || later(sync.failedAt, before.failedAt);
+}
+
+// later reports whether the time at is after since; null is never.
+function later(at: string | null, since: string | null): boolean {
+  return at !== null && (since === null || Date.parse(at) > Date.parse(since));
+}

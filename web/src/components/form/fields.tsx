@@ -2,7 +2,7 @@ import { Fragment, useEffect, useId, useRef, type ReactElement, type ReactNode }
 import { useSelector } from "@tanstack/react-form";
 import { cn } from "@/lib/cn";
 import { CircleAlertIcon } from "lucide-react";
-import type { ConnectedAccount } from "@/api/generated/model";
+import type { ListedAccount } from "@/api/generated/model";
 import { accountDot } from "@/components/account-mark";
 import { PasswordInput } from "@/components/password-input";
 import { RecipientInput, type Typing } from "@/components/recipient-input";
@@ -333,7 +333,7 @@ export function FromField({
   description,
 }: {
   label: string;
-  accounts: readonly ConnectedAccount[];
+  accounts: readonly ListedAccount[];
   description?: string;
 }): ReactElement {
   return (
@@ -346,9 +346,10 @@ export function FromField({
           placeholder="Choose an account"
           value={control.value === 0 ? null : control.value}
           onChange={(value) => change(value === null ? 0 : Number(value))}
-          // Its send could only fail; the server refuses it too.
+          // An account the server doesn't list as able to send, whose send
+          // it would refuse.
           disabledKeys={accounts
-            .filter((account) => account.status !== "usable")
+            .filter((account) => !account.allowedActions.includes("send"))
             .map((account) => account.id)}
           isDisabled={control.disabled}
           isInvalid={control["aria-invalid"]}

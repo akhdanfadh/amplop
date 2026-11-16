@@ -2422,8 +2422,10 @@ decides. Only an instance with a Google client offers it:
 guide's [Connecting Gmail](../deploy/README.md#connecting-gmail) section
 shows how to create. `serve` builds `connectedaccount.Connections` only
 then; without it, `GET /api/v0/connected-accounts/providers` answers
-`{"offered": []}` instead of `["gmail"]`, and the two starts below answer
-409 `gmail-not-configured`. In development the [Google emulator](#google-emulator)
+`{"offered": []}` instead of `["gmail"]`, and the two starts below, Sync
+Account Now, and the three sends (Send Message, Reply to Message, Send
+Message Again) answer 409 `gmail-not-configured`, the syncs and sends
+before saving anything, since no worker would run them. In development the [Google emulator](#google-emulator)
 stands in for Google.
 
 ### Connected accounts
@@ -2452,7 +2454,12 @@ otherwise; `Service.List` opens each token for it, saving nothing, so
 restoring a lost key makes an account usable again (see [Encryption
 keys](#encryption-keys)). `sync` is where the account's
 [sync](#synchronization) stands: `status`, `messagesSoFar` while running,
-`lastSyncedAt`, `failure`, and `failedAt`. The handler composes
+`lastSyncedAt`, `failure`, and `failedAt`. `allowedActions` is what the
+member can ask of the account now (`connectedaccount.Account.AllowedActions`),
+so a client offers only that: `sync` while Google accepts the token,
+`send` while `status` is `usable`, `reconnect`, and `rename` and
+`disconnect` always; without a Google client, neither `sync`, `send`, nor
+`reconnect`. The handler composes
 `connectedaccount`'s list with `mailsync`'s reports, since `mailsync`
 depends on `connectedaccount`; an account disconnected between the two
 reads is left out. `syncStopped` is true when no run of

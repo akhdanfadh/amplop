@@ -2,16 +2,18 @@ import { describe, expect, it } from "vite-plus/test";
 import { ConnectOutcome } from "@/api/generated/model";
 import { ApiError } from "@/api/transport";
 import {
-  disconnectedMessage,
-  disconnectErrorMessage,
+  alreadyDisconnectedNotice,
+  disconnectedNotice,
+  disconnectFailure,
+  disconnectWords,
   failureWords,
   formatDate,
   formatMoment,
+  isAccountGone,
   outcomeNotice,
   runningText,
   startErrorMessage,
-  syncErrorMessage,
-  syncStartedMessage,
+  syncNotice,
 } from "./text";
 
 const httpStatus = {
@@ -32,6 +34,22 @@ function refusal(status: number, type: string): ApiError {
   });
 }
 
+// throttledAfter returns Check now's 429 with the Retry-After header wait.
+function throttledAfter(wait: string | undefined): ApiError {
+  return new ApiError("http", {
+    method: "POST",
+    status: httpStatus.tooManyRequests,
+    retryAfter: wait,
+    receivedAt: Date.now(),
+    problem: {
+      type: "/api/v0/problems/sync-throttled",
+      status: httpStatus.tooManyRequests,
+      title: "Sync requested recently",
+      detail: "Requested moments ago.",
+    },
+  });
+}
+
 describe("connect outcomes", () => {
   it("words every outcome the contract lists", () => {
     for (const outcome of ConnectOutcome.options) {
@@ -39,20 +57,20 @@ describe("connect outcomes", () => {
     }
   });
 
-  it("alerts only when the member has something to fix", () => {
-    const kinds = Object.fromEntries(
-      ConnectOutcome.options.map((outcome) => [outcome, outcomeNotice(outcome).kind]),
+  it("is a problem only when the member has something to fix", () => {
+    const tones = Object.fromEntries(
+      ConnectOutcome.options.map((outcome) => [outcome, outcomeNotice(outcome).tone]),
     );
-    expect(kinds).toEqual({
-      connected: "notice",
-      cancelled: "notice",
-      "gmail-not-granted": "alert",
-      "email-not-verified": "alert",
-      "no-gmail": "alert",
-      "already-connected": "notice",
-      "different-account": "alert",
-      expired: "alert",
-      failed: "alert",
+    expect(tones).toEqual({
+      connected: "success",
+      cancelled: "neutral",
+      "gmail-not-granted": "problem",
+      "email-not-verified": "problem",
+      "no-gmail": "problem",
+      "already-connected": "neutral",
+      "different-account": "problem",
+      expired: "problem",
+      failed: "problem",
     });
   });
 });
@@ -127,11 +145,22 @@ describe("start messages", () => {
 });
 
 describe("disconnect messages", () => {
-  it("reports a confirmed disconnect by the account's address", () => {
-    expect(disconnectedMessage(email)).toBe("mail@example.com is disconnected.");
+  it("names the account in the dialog's button", () => {
+    const words = disconnectWords("Work", false);
+    expect(words.action).toBe("Disconnect Work");
+    expect(words.description).toMatch(/asks Google to end its access\. Your mail in Gmail/);
+    expect(disconnectWords("Work", true).description).toMatch(/can't ask Google to end its access/);
   });
 
-  it("reports an account the API says is gone", () => {
+  it("reports a confirmed disconnect, and one already done, by the account's name", () => {
+    expect(disconnectedNotice("Work")).toEqual({ tone: "success", text: "Work is disconnected." });
+    expect(alreadyDisconnectedNotice("Work")).toEqual({
+      tone: "neutral",
+      text: "Work was already disconnected.",
+    });
+  });
+
+  it("takes only the API's own 404 as an account already gone", () => {
     const gone = new ApiError("http", {
       status: httpStatus.notFound,
       method: "DELETE",
@@ -140,13 +169,11 @@ describe("disconnect messages", () => {
         detail: "The connected account does not exist.",
       },
     });
-    expect(disconnectErrorMessage(gone, email)).toBe("mail@example.com was already disconnected.");
-  });
-
-  it("keeps a 404 without the API's type as a failure", () => {
+    expect(isAccountGone(gone)).toBe(true);
     const missingRoute = new ApiError("http", { status: httpStatus.notFound, method: "DELETE" });
-    expect(disconnectErrorMessage(missingRoute, email)).toMatch(
-      /^Could not disconnect mail@example\.com\. /,
+    expect(isAccountGone(missingRoute)).toBe(false);
+    expect(disconnectFailure(missingRoute, email)).toMatch(
+      /^Couldn't disconnect mail@example\.com\. /,
     );
   });
 
@@ -156,34 +183,28 @@ describe("disconnect messages", () => {
       method: "DELETE",
       problem: { detail: "The account is busy." },
     });
-    expect(disconnectErrorMessage(refused, email)).toBe(
-      "Could not disconnect mail@example.com. The account is busy.",
+    expect(disconnectFailure(refused, email)).toBe(
+      "Couldn't disconnect mail@example.com. The account is busy.",
     );
   });
 
   it("asks for a look at the list when the outcome is unknown", () => {
     const advice =
-      "Could not confirm whether mail@example.com is disconnected. Check the list before trying again.";
+      "Couldn't confirm whether mail@example.com is disconnected. Check the list before trying again.";
     for (const err of [
       new ApiError("network", { method: "DELETE" }),
       new ApiError("timeout", { method: "DELETE" }),
       new ApiError("http", { status: httpStatus.internalServerError, method: "DELETE" }),
+      new ApiError("response", { status: httpStatus.ok, method: "DELETE" }),
     ]) {
-      expect(disconnectErrorMessage(err, email)).toBe(advice);
+      expect(disconnectFailure(err, email)).toBe(advice);
     }
     const explained = new ApiError("http", {
       status: httpStatus.internalServerError,
       method: "DELETE",
       problem: { detail: "The database is unavailable." },
     });
-    expect(disconnectErrorMessage(explained, email)).toBe(`The database is unavailable. ${advice}`);
-  });
-
-  it("asks for a look at the list when the result is unreadable", () => {
-    const unreadable = new ApiError("response", { status: httpStatus.ok, method: "DELETE" });
-    expect(disconnectErrorMessage(unreadable, email)).toBe(
-      "Could not confirm whether mail@example.com is disconnected. Check the list before trying again.",
-    );
+    expect(disconnectFailure(explained, email)).toBe(`The database is unavailable. ${advice}`);
   });
 });
 
@@ -217,29 +238,43 @@ describe("wording", () => {
     expect(formatMoment(today, now)).not.toMatch(/2026/);
     expect(formatMoment(yesterday, now)).toMatch(/2026/);
   });
-
-  it("says a Check now started", () => {
-    expect(syncStartedMessage(email)).toBe(`Checking ${email} for new mail.`);
-  });
 });
 
-describe("syncErrorMessage", () => {
+describe("syncNotice", () => {
   it("words each refusal by its type", () => {
-    expect(
-      syncErrorMessage(refusal(404, "/api/v0/problems/connected-account-not-found"), email),
-    ).toBe(`${email} is no longer connected.`);
-    expect(syncErrorMessage(refusal(409, "/api/v0/problems/account-needs-reconnect"), email)).toBe(
-      `Reconnect ${email} before checking it for mail.`,
+    expect(syncNotice(refusal(404, "/api/v0/problems/connected-account-not-found"), email)).toEqual(
+      { tone: "neutral", text: `${email} is no longer connected.` },
     );
-    expect(syncErrorMessage(refusal(429, "/api/v0/problems/sync-throttled"), email)).toBe(
-      `inbok started checking ${email} moments ago. See its status below.`,
-    );
+    expect(syncNotice(refusal(409, "/api/v0/problems/account-needs-reconnect"), email)).toEqual({
+      tone: "problem",
+      text: `Reconnect ${email} before checking it for mail.`,
+    });
   });
 
-  it("asks for a look when the outcome is unknown", () => {
+  it("words a wait under a minute, not as a clock time", () => {
+    // The limit is 15 seconds, which a time rounded up to the minute would
+    // overstate.
+    for (const wait of ["12", "60"])
+      expect(syncNotice(throttledAfter(wait), email)).toEqual({
+        tone: "neutral",
+        text: `${email} was checked moments ago. Check again in a few seconds.`,
+      });
+  });
+
+  it("gives a longer or unreadable wait as the usual time to try again", () => {
+    for (const wait of ["61", undefined, "soon"]) {
+      const notice = syncNotice(throttledAfter(wait), email);
+      expect(notice.tone).toBe("neutral");
+      expect(notice.text).not.toMatch(/a few seconds/);
+      expect(notice.text).toMatch(/^mail@example\.com: Requested moments ago\. Try again/);
+    }
+  });
+
+  it("says the mail still comes when the outcome is unknown", () => {
     const lost = new ApiError("network", { method: "POST" });
-    expect(syncErrorMessage(lost, email)).toBe(
-      `Couldn't tell whether inbok started checking ${email}. See its status below.`,
-    );
+    expect(syncNotice(lost, email)).toEqual({
+      tone: "neutral",
+      text: `Couldn't tell whether inbok started checking ${email}. Its mail still arrives within a minute.`,
+    });
   });
 });

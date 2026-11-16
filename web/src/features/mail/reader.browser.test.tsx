@@ -350,7 +350,11 @@ describe("Reader, opening", () => {
 
   it("leaves an account that needs reconnecting as it is", async () => {
     const row = conversation(1, { unread: true });
-    const account = { ...listedAccount(1, "ana@example.com"), status: "needs-reconnect" as const };
+    const account = {
+      ...listedAccount(1, "ana@example.com"),
+      status: "needs-reconnect" as const,
+      allowedActions: ["reconnect" as const, "rename" as const, "disconnect" as const],
+    };
     const api = mailApi([row], [account]);
     withMessage(api, row);
     await app(api, row.id, "from-list");

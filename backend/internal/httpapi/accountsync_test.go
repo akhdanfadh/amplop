@@ -58,7 +58,7 @@ func TestSyncAccount(t *testing.T) {
 	syncs := &fakeSyncs{reports: map[int64]mailsync.Report{
 		3: {AccountID: 3, Status: mailsync.StatusComplete, LastSyncedAt: &alexCreated, RequestedAt: &alexRefused},
 	}}
-	api := New(discard, Services{Syncs: syncs, Session: memberSessions(account.RoleMember)})
+	api := New(discard, Services{Connections: &fakeConnections{}, Syncs: syncs, Session: memberSessions(account.RoleMember)})
 
 	response := requestAuthenticated(api, http.MethodPost, "/connected-accounts/3/sync", "")
 
@@ -83,7 +83,7 @@ func TestSyncAccountRefused(t *testing.T) {
 			http.StatusTooManyRequests, syncThrottledType, "15"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			api := New(discard, Services{Syncs: &fakeSyncs{requestErr: c.err}, Session: memberSessions(account.RoleMember)})
+			api := New(discard, Services{Connections: &fakeConnections{}, Syncs: &fakeSyncs{requestErr: c.err}, Session: memberSessions(account.RoleMember)})
 
 			response := requestAuthenticated(api, http.MethodPost, "/connected-accounts/3/sync", "")
 
@@ -92,6 +92,19 @@ func TestSyncAccountRefused(t *testing.T) {
 			assert.Equal(t, c.retryAfter, response.Header().Get(retryAfterHeader))
 		})
 	}
+}
+
+// Without a Google client no worker syncs Gmail, so a request is refused
+// before the service queues a sync that would wait forever.
+func TestSyncAccountNotConfigured(t *testing.T) {
+	syncs := &fakeSyncs{}
+	api := New(discard, Services{Syncs: syncs, Session: memberSessions(account.RoleMember)})
+
+	response := requestAuthenticated(api, http.MethodPost, "/connected-accounts/3/sync", "")
+
+	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	assert.Equal(t, gmailNotConfiguredType, decodeJSON(t, response.Body.Bytes())["type"])
+	assert.Zero(t, syncs.requests)
 }
 
 // A request from another site is refused before the service.
@@ -116,4 +129,13 @@ func TestAccountSyncSchema(t *testing.T) {
 	failure := doc.Components.Schemas.Map()["AccountSync"].Properties["failure"]
 
 	assert.Equal(t, []any{"provider", "token-unreadable", "internal", nil}, failure.Enum)
+}
+
+// The contract lists every action a listed account can allow.
+func TestListedAccountSchema(t *testing.T) {
+	doc := New(discard, Services{}).api.OpenAPI()
+
+	actions := doc.Components.Schemas.Map()["ListedAccount"].Properties["allowedActions"]
+
+	assert.Equal(t, []any{"sync", "send", "reconnect", "rename", "disconnect"}, actions.Items.Enum)
 }

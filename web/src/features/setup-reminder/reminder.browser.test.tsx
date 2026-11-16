@@ -350,6 +350,8 @@ describe("SetupReminder", () => {
         "You're offline. inbok shows what it already loaded and catches up when the connection returns.",
       );
     await expect.element(reminders()).toBeVisible();
+    // Found again as a landmark of its own while it shows.
+    await expect.element(page.getByRole("region", { name: "Offline" })).toBeVisible();
     expect(
       offline.element().compareDocumentPosition(reminders().element()) &
         Node.DOCUMENT_POSITION_FOLLOWING,

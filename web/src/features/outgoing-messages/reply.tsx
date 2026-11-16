@@ -178,11 +178,12 @@ export function ReplyProvider({
     // answered answered: a new reply to that same message, from reply's
     // account while it can send.
     function edit(reply: OutgoingMessage, answered: AnsweredMessage): void {
-      const usable = accounts?.some(
-        (account) => account.id === reply.connectedAccountId && account.status === "usable",
+      const sends = accounts?.some(
+        (account) =>
+          account.id === reply.connectedAccountId && account.allowedActions.includes("send"),
       );
       open(answered, "reply", {
-        connectedAccountId: usable ? reply.connectedAccountId : 0,
+        connectedAccountId: sends ? reply.connectedAccountId : 0,
         to: reply.to,
         cc: reply.cc,
         bcc: reply.bcc,

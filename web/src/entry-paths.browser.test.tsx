@@ -14,13 +14,28 @@ const entryPaths = [
   "/connected-accounts",
 ] as const satisfies readonly FileRouteTypes["fullPaths"][];
 
+// connectedAccounts answers Connected accounts' loader: no account yet,
+// Gmail offered.
+function connectedAccounts(url: string): Promise<Response> | undefined {
+  const path = new URL(url, location.href).pathname;
+  if (path === "/api/v0/connected-accounts")
+    return Promise.resolve(Response.json({ data: { accounts: [], syncStopped: false } }));
+  if (path === "/api/v0/connected-accounts/providers")
+    return Promise.resolve(Response.json({ data: { offered: ["gmail"] } }));
+  return undefined;
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("entry addresses", () => {
   it.each(entryPaths)("%s opens a page, not Page not found", async (path) => {
-    const router = await appRouter(path, path === "/sign-in" ? undefined : memberSession);
+    const router = await appRouter(
+      path,
+      path === "/sign-in" ? undefined : memberSession,
+      connectedAccounts,
+    );
     expect(router.state.matches.at(-1)?.routeId).not.toBe("__root__");
     expect(router.state.matches.every((match) => match.status === "success")).toBe(true);
   });
@@ -32,7 +47,11 @@ describe("entry addresses", () => {
   });
 
   it("opens Connected accounts from /connected-accounts with Google's outcome", async () => {
-    const router = await appRouter("/connected-accounts?outcome=connected", memberSession);
+    const router = await appRouter(
+      "/connected-accounts?outcome=connected",
+      memberSession,
+      connectedAccounts,
+    );
     expect(router.state.location.pathname).toBe("/settings/connected-accounts");
     expect(router.state.location.search).toEqual({ outcome: "connected" });
     expect(router.history.length).toBe(1);

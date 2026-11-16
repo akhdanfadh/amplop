@@ -64,6 +64,10 @@ export async function appRouter(
     routeTree,
     history: createMemoryHistory({ initialEntries: [address] }),
     context: { queryClient, compose: new ComposeStore() },
+    // As the app's router does (router.tsx): a visit, a preloaded one too,
+    // waits for a read marked out of date.
+    defaultStaleReloadMode: "blocking",
+    defaultPreloadStaleTime: 0,
     // As the app's router does (router.tsx), so a rendered page reaches the
     // query client.
     Wrap: ({ children }) => createElement(QueryClientProvider, { client: queryClient }, children),

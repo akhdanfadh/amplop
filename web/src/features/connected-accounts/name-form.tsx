@@ -1,47 +1,38 @@
-import { useRef, type ReactElement } from "react";
-import { useForm, useSelector } from "@tanstack/react-form";
+import { useEffect, useRef, type ReactElement } from "react";
+import { revalidateLogic, useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListConnectedAccountsQueryKey, useRenameConnectedAccount } from "@/api/generated/inbok";
 import type { ListedAccount, ResponseConnectedAccounts } from "@/api/generated/model";
-import {
-  RenameConnectedAccountBody,
-  renameConnectedAccountBodyNameMax,
-} from "@/api/generated/model/renameConnectedAccountBody.zod";
-import { formErrors, formSummary, userMessage } from "@/api/problem";
-import type { ApiError } from "@/api/transport";
-import { LeaveWarning } from "@/components/leave-warning";
+import { RenameConnectedAccountBody } from "@/api/generated/model/renameConnectedAccountBody.zod";
+import { userMessage } from "@/api/problem";
+import { useAppForm } from "@/components/form/app-form";
+import { useFormRequest } from "@/components/form/request";
 import { RequestError } from "@/components/request-error";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { useFocusAfterError } from "@/hooks/use-focus-after-error";
-import { blurKeepingSubmitErrors } from "@/lib/blur-keeping-submit-errors";
-import { nameLabel, nameLeaveWarning, savedText, saveNameText, savingNameText } from "./text";
+import { useSessionEnd } from "@/features/auth/session-end";
+import { cancelText, nameDescription, nameLabel, saveText, savingText } from "./text";
 
-const unauthorized = 401;
 const nameFields = ["name"] as const;
 
-// AccountNameForm sets what the member calls account, shown in mail
-// instead of its address (DESIGN.md "Sidebar"); an empty name goes back to
-// the address. It updates the accounts list with the server's answer.
-// describedBy names the element that explains the field, which the page
-// shows once for every account's; onUnauthorized runs on a 401.
-export function AccountNameForm({
+// NameForm sets what the member calls account, shown in mail instead of
+// its address (DESIGN.md "Sidebar"); an empty name goes back to the
+// address. It opens in the account's row with focus in the field, puts the
+// server's answer into the accounts list, and calls onClose once saved, or
+// on Cancel or Escape, which save nothing.
+export function NameForm({
   account,
-  describedBy,
-  onUnauthorized,
+  onClose,
 }: {
   account: ListedAccount;
-  describedBy?: string;
-  onUnauthorized: () => void;
+  onClose: () => void;
 }): ReactElement {
   const client = useQueryClient();
-  const formRef = useRef<HTMLFormElement>(null);
-  const submitRef = useRef<HTMLButtonElement>(null);
-  const id = `account-name-${account.id}`;
+  const sessionEnd = useSessionEnd();
+  const ref = useRef<HTMLDivElement>(null);
   const rename = useRenameConnectedAccount({
     mutation: {
       gcTime: 0,
+      // Here, not in the form, so the list changes even if the form closed.
       onSuccess: async (result) => {
         const renamed = result.data.account;
         // A list read already under way holds the old name and would put
@@ -60,98 +51,86 @@ export function AccountNameForm({
               }
             : list,
         );
-        // The server drops the white space around a name, so the field
-        // shows what was kept.
-        form.reset({ name: renamed.name ?? "" });
       },
-      onError: (err: ApiError) => {
-        if (err.status === unauthorized) onUnauthorized();
+      onError: (err) => {
+        sessionEnd(err);
       },
     },
   });
-  const form = useForm({
+  const request = useFormRequest(rename, nameFields);
+  const form = useAppForm({
     defaultValues: { name: account.name ?? "" },
-    validators: { onChange: RenameConnectedAccountBody },
-    onSubmitInvalid: () => formRef.current?.querySelector<HTMLInputElement>("input")?.focus(),
-    onSubmit: ({ value, formApi }) => {
-      if (rename.isPending) return;
-      rename.mutate(
-        { id: account.id, data: value },
-        {
-          onError: (err) => {
-            const { fields } = formErrors(err, nameFields);
-            if (Object.keys(fields).length > 0) formApi.setErrorMap({ onSubmit: { fields } });
-          },
-        },
-      );
+    validationLogic: revalidateLogic(),
+    validators: { onDynamic: request.check(RenameConnectedAccountBody) },
+    onSubmit: async ({ value, formApi }) => {
+      const sent = await request.send(formApi, value, { id: account.id, data: value });
+      if (sent.outcome === "done") onClose();
     },
     listeners: {
       onChange: () => {
-        if (!rename.isIdle) rename.reset();
+        if (rename.error) rename.reset();
       },
     },
   });
-  const submitted = useSelector(form.store, (state) => state.submissionAttempts > 0);
-  const dirty = useSelector(form.store, (state) => state.isDirty);
-  const failure = rename.error && rename.error.status !== unauthorized ? rename.error : null;
-  const summary = failure ? formSummary(userMessage(failure), formErrors(failure, nameFields)) : [];
+  const sending = useSelector(form.store, (state) => state.isSubmitting);
 
-  useFocusAfterError(rename.error, rename.isPending, formRef, submitRef);
+  // The latest onClose, which the Escape listener below calls, so the
+  // listener is added once.
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
+
+  useEffect(() => {
+    const input = ref.current?.querySelector<HTMLInputElement>("input");
+    // select() alone need not focus the field (MDN, "HTMLInputElement:
+    // select() method").
+    input?.focus();
+    input?.select();
+  }, []);
+
+  useEffect(() => {
+    const box = ref.current;
+    if (!box) return undefined;
+    // Escape cancels, as Cancel does; a sent name can't be called back, so
+    // it waits for the answer as Cancel does.
+    function cancel(event: KeyboardEvent): void {
+      if (event.key !== "Escape" || form.state.isSubmitting) return;
+      event.preventDefault();
+      close.current();
+    }
+    // NOTE: a native listener, not onKeyDown on the box: the lint rule
+    // jsx-a11y/no-static-element-interactions refuses a key handler on a
+    // div, and the box only catches Escape bubbling from the field and the
+    // buttons inside it.
+    box.addEventListener("keydown", cancel);
+    return () => box.removeEventListener("keydown", cancel);
+  }, [form]);
 
   return (
-    <form
-      ref={formRef}
-      className="flex flex-col gap-2"
-      noValidate
-      aria-label={`${nameLabel}, ${account.email}`}
-      aria-busy={rename.isPending}
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
-      <LeaveWarning active={dirty && !rename.isPending} text={nameLeaveWarning} />
-      <form.Field name="name">
-        {(field) => {
-          const errors = field.state.meta.isBlurred || submitted ? field.state.meta.errors : [];
-          return (
-            <Field data-invalid={errors.length > 0} data-disabled={rename.isPending}>
-              <FieldLabel htmlFor={id}>{nameLabel}</FieldLabel>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  id={id}
-                  name="name"
-                  className="min-w-0 flex-1 basis-48"
-                  maxLength={renameConnectedAccountBodyNameMax}
-                  autoComplete="off"
-                  // Read-only, not disabled, while saving, so focus stays.
-                  readOnly={rename.isPending}
-                  aria-invalid={errors.length > 0}
-                  aria-describedby={[describedBy, errors.length > 0 && `${id}-error`]
-                    .filter(Boolean)
-                    .join(" ")}
-                  value={field.state.value}
-                  onBlur={() => blurKeepingSubmitErrors(field)}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                />
-                <Button
-                  ref={submitRef}
-                  type="submit"
-                  variant="outline"
-                  className="whitespace-normal"
-                  isPending={rename.isPending}
-                >
-                  {rename.isPending ? savingNameText : saveNameText}
-                </Button>
-              </div>
-              <FieldError id={`${id}-error`} errors={errors} />
-            </Field>
-          );
-        }}
-      </form.Field>
-      {/* Stays mounted so screen readers announce it. */}
-      <output className="text-sm text-muted-foreground">{rename.isSuccess ? savedText : ""}</output>
-      <RequestError errors={summary} requestId={failure?.requestId} />
-    </form>
+    <div ref={ref} className="w-full max-w-sm">
+      <form.AppForm>
+        <form.Form label={`${nameLabel}, ${account.email}`} className="gap-4">
+          <form.AppField name="name">
+            {(field) => (
+              <field.TextField
+                label={nameLabel}
+                description={nameDescription}
+                optional
+                autoComplete="off"
+              />
+            )}
+          </form.AppField>
+          <div className="flex flex-wrap gap-3">
+            <form.SubmitButton working={savingText}>{saveText}</form.SubmitButton>
+            {/* Waits while a save sends: a sent name can't be called back. */}
+            <Button type="button" variant="outline" isDisabled={sending} onPress={onClose}>
+              {cancelText}
+            </Button>
+          </div>
+          <RequestError errors={request.summary(userMessage)} requestId={request.reference} />
+        </form.Form>
+      </form.AppForm>
+    </div>
   );
 }

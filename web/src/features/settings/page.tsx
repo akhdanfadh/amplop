@@ -8,12 +8,29 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { CircleAlertIcon, CircleCheckIcon, InfoIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
+
+// NoticeTone is what a page's notice reports: a change that worked, news
+// that changed nothing, or a problem the member can fix.
+export type NoticeTone = "success" | "neutral" | "problem";
+
+// Each tone's look: its icon, so the tone never rests on colour alone, and
+// its tint.
+const noticeLooks = {
+  success: { icon: CircleCheckIcon, box: "bg-success/8 text-success dark:bg-success/12" },
+  neutral: { icon: InfoIcon, box: "bg-muted text-foreground" },
+  problem: {
+    icon: CircleAlertIcon,
+    box: "bg-destructive/8 text-destructive dark:bg-destructive/12",
+  },
+} as const;
 
 // SettingsPage is one settings page (DESIGN.md "Settings and signed-out
 // pages"): back, e.g. a link up to the page it belongs to, the title, aside
 // it, e.g. a status badge, a one-sentence lead, notice, a result to report,
-// e.g. "Two-factor authentication is on.", then the sections, divided by
+// e.g. "Two-factor authentication is on.", in noticeTone's look, success by
+// default, where a problem is an alert, then the sections, divided by
 // hairlines, capped at 720 px. height "fill" keeps the page to the window
 // and gives its last section, laid out "fill", the height left, e.g. for a
 // table that scrolls inside it. The title takes focus when the page opens,
@@ -24,6 +41,7 @@ export function SettingsPage({
   lead,
   back,
   notice,
+  noticeTone = "success",
   height = "content",
   children,
 }: {
@@ -32,6 +50,7 @@ export function SettingsPage({
   lead: string;
   back?: ReactNode;
   notice?: string;
+  noticeTone?: NoticeTone;
   height?: "content" | "fill";
   children: ReactNode;
 }): ReactElement {
@@ -76,12 +95,17 @@ export function SettingsPage({
       {/* Always present, so a screen reader announces the notice that fills
           it; empty, it takes no space. */}
       <output className="block">
-        {listening && notice && (
-          <span className="mt-4 block w-fit rounded-md bg-success/8 px-3 py-2 text-sm text-success dark:bg-success/12">
-            {notice}
-          </span>
+        {listening && notice && noticeTone !== "problem" && (
+          <NoticeBox tone={noticeTone}>{notice}</NoticeBox>
         )}
       </output>
+      {/* A problem interrupts: a screen reader reads an alert as it
+          appears, not only when the member is idle. */}
+      {listening && notice && noticeTone === "problem" && (
+        <div role="alert">
+          <NoticeBox tone="problem">{notice}</NoticeBox>
+        </div>
+      )}
       <div
         className={cn(
           "mt-6 divide-y border-t",
@@ -91,6 +115,18 @@ export function SettingsPage({
         {children}
       </div>
     </main>
+  );
+}
+
+// NoticeBox is a page's notice, children, in tone's look.
+function NoticeBox({ tone, children }: { tone: NoticeTone; children: string }): ReactElement {
+  const { icon: Icon, box } = noticeLooks[tone];
+  return (
+    <span className={cn("mt-4 flex w-fit items-start gap-2 rounded-md px-3 py-2 text-sm", box)}>
+      {/* On the first line's centre, however many lines the text takes. */}
+      <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+      <span className="min-w-0">{children}</span>
+    </span>
   );
 }
 

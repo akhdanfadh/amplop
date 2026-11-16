@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { AccountSync, ConnectedAccounts, ListedAccount } from "@/api/generated/model";
-import { busyRefresh, idleRefresh, refreshInterval, syncView } from "./sync";
+import { busyRefresh, checkLanded, idleRefresh, refreshInterval, syncView } from "./sync";
 
 const email = "mail@example.com";
 const earlier = "2026-11-11T09:00:00Z";
@@ -27,6 +27,14 @@ function account(
     createdAt: earlier,
     name: null,
     color: 1,
+    // As the server lists them: an unreadable token still syncs, but only a
+    // usable account sends.
+    allowedActions:
+      status === "needs-reconnect"
+        ? ["reconnect", "rename", "disconnect"]
+        : status === "token-unreadable"
+          ? ["sync", "reconnect", "rename", "disconnect"]
+          : ["sync", "send", "reconnect", "rename", "disconnect"],
     sync: { ...idle, ...sync },
   };
 }
@@ -87,5 +95,21 @@ describe("refreshInterval", () => {
       expect(refreshInterval(list([account({ status: "waiting" }, status)]), now, 0)).toBe(
         idleRefresh,
       );
+  });
+});
+
+describe("checkLanded", () => {
+  it("waits until the list shows a newer check or failure", () => {
+    expect(checkLanded(idle, idle)).toBe(false);
+    expect(checkLanded({ ...idle, lastSyncedAt: later }, idle)).toBe(true);
+    expect(checkLanded({ ...idle, failure: "provider", failedAt: later }, idle)).toBe(true);
+    // An older failure, still shown, is not this check's.
+    const failed = { ...idle, failure: "provider", failedAt: earlier } as const;
+    expect(checkLanded(failed, failed)).toBe(false);
+  });
+
+  it("ends when a full sync takes over, whose progress the row shows", () => {
+    expect(checkLanded({ ...idle, status: "waiting" }, idle)).toBe(true);
+    expect(checkLanded({ ...idle, status: "running", messagesSoFar: 0 }, idle)).toBe(true);
   });
 });
